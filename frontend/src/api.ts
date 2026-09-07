@@ -88,8 +88,8 @@ export function sourceName(source?: string): string | undefined {
       return "directory sign-in";
     case "oidc":
       return "OIDC sign-in";
-    case "admin":
-      return "break-glass admin";
+    case "recovery":
+      return "recovery sign-in";
     default:
       return source || undefined;
   }

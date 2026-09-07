@@ -22,23 +22,3 @@ data:
     lifetimes:
       default: 12h
     {{- end }}
-  access.yaml: |
-    admin:
-      enabled: {{ include "directory-roster.adminEnabled" . }}
-    holdWindow: {{ .Values.access.holdWindow | quote }}
-    login:
-      directory: {{ .Values.access.login.directory }}
-      {{- if .Values.access.login.oidc.issuer }}
-      oidc:
-        issuer: {{ .Values.access.login.oidc.issuer | quote }}
-        clientSecretName: {{ .Values.access.login.oidc.clientSecretName | quote }}
-      {{- end }}
-      {{- if .Values.access.login.forwardedBearer.issuer }}
-      forwardedBearer:
-        issuer: {{ .Values.access.login.forwardedBearer.issuer | quote }}
-      {{- end }}
-    consumers:
-    {{- range .Values.consumers }}
-      - namespace: {{ .namespace | quote }}
-        serviceAccount: {{ .serviceAccount | quote }}
-    {{- end }}

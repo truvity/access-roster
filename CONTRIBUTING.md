@@ -81,7 +81,7 @@ DEMO=1 FORWARDED_EMAIL_HEADER=X-Auth-Request-Email FORWARDED_ISSUER=https://issu
 
 Behind a real gateway the header carries the caller; in a local run, put
 any reverse proxy that adds `X-Auth-Request-Email: ada@north.example` in
-front of `:8081`, or sign in with the break-glass password the process
+front of `:8081`, or sign in with the recovery password the process
 prints. The demonstration tenants and policy live in `internal/demo`.
 
 The console's rules are in the hub design, under "The console": two

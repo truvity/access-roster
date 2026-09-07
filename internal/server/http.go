@@ -1,116 +1,24 @@
 package server
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"html"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/emailaddr"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/version"
-	"golang.org/x/crypto/argon2"
 )
-
-// Argon2id parameters for the break-glass password.
-//
-// Deliberately modest. The password this normally holds is 32 bytes of
-// machine-generated entropy, against which no amount of stretching
-// matters; the stretching is for the installation that sets a memorable
-// one in its values, where an attacker who reaches the process memory or
-// a heap dump should not get the password back cheaply. Memory is the
-// parameter that bounds the damage an unauthenticated caller can do, so
-// it is kept where one verification is a few tens of milliseconds and a
-// few tens of megabytes — and [adminAttempts] stops there being many.
-const (
-	argonTime    = 2
-	argonMemory  = 32 * 1024 // KiB
-	argonThreads = 2
-	argonLength  = 32
-)
-
-// adminAttempts is how many failures are answered before the account
-// stops answering for adminWindow.
-//
-// It is not really about guessing: a generated password is not going to
-// be guessed. It is because verifying costs memory on purpose, so an
-// endpoint that anyone can reach and that allocates on every call needs a
-// ceiling — otherwise the hardening is a way to take the hub down.
-const (
-	adminAttempts = 10
-	adminWindow   = time.Minute
-)
-
-// AdminAccount is the break-glass account: one password, kept only as an
-// Argon2id digest with a random salt.
-//
-// It is a value that carries a lock, so it is created once and used
-// through a pointer; the lock serialises verification, which is what
-// keeps the memory cost of one attempt from becoming the memory cost of
-// as many as anyone cares to send.
-type AdminAccount struct {
-	Enabled bool
-
-	salt   []byte
-	digest []byte
-
-	mu       sync.Mutex
-	failures int
-	blocked  time.Time
-	now      func() time.Time
-}
-
-// NewAdminAccount returns an enabled admin account for a password.
-func NewAdminAccount(password string) *AdminAccount {
-	salt := make([]byte, 16)
-	// crypto/rand.Read does not fail; it stops the program if the system
-	// source is broken, which is the correct outcome for a process about
-	// to authenticate people.
-	_, _ = rand.Read(salt)
-	return &AdminAccount{
-		Enabled: true,
-		salt:    salt,
-		digest:  argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonLength),
-		now:     time.Now,
-	}
-}
-
-// enabled is nil-safe: a deployment with the break-glass account off has
-// no account at all, rather than a disabled one.
-func (a *AdminAccount) enabled() bool { return a != nil && a.Enabled }
-
-// verify reports whether the password is the one, and whether the account
-// was willing to answer at all.
-func (a *AdminAccount) verify(password string) (ok, answered bool) {
-	if !a.enabled() {
-		return false, true
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	now := a.now()
-	if now.Before(a.blocked) {
-		return false, false
-	}
-	got := argon2.IDKey([]byte(password), a.salt, argonTime, argonMemory, argonThreads, argonLength)
-	if subtle.ConstantTimeCompare(got, a.digest) != 1 {
-		a.failures++
-		if a.failures >= adminAttempts {
-			a.failures, a.blocked = 0, now.Add(adminWindow)
-		}
-		return false, true
-	}
-	a.failures = 0
-	return true, true
-}
 
 // ForwardedIdentity configures how a bearer forwarded by an authenticating
 // gateway becomes a principal.
@@ -133,7 +41,7 @@ type ConsoleServer struct {
 	state      *access.StateCodec
 	connectors map[string]Connector
 	hub        *hub.Hub
-	admin      *AdminAccount
+	recovery   Recovery
 	forwarded  ForwardedIdentity
 	log        *slog.Logger
 	consoleUI  fs.FS
@@ -147,9 +55,11 @@ type ConsoleServerDeps struct {
 	State      *access.StateCodec
 	Connectors []Connector
 	Hub        *hub.Hub
-	Admin      *AdminAccount
-	Forwarded  ForwardedIdentity
-	Log        *slog.Logger
+	// Recovery is the way in when the ordinary one is broken. Nil is a
+	// deployment with no recovery path at all.
+	Recovery  Recovery
+	Forwarded ForwardedIdentity
+	Log       *slog.Logger
 	// UI is the built console. Nil serves no UI, which is what a
 	// deployment that only wants the API does.
 	UI fs.FS
@@ -167,7 +77,7 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		state:      deps.State,
 		connectors: map[string]Connector{},
 		hub:        deps.Hub,
-		admin:      deps.Admin,
+		recovery:   deps.Recovery,
 		forwarded:  deps.Forwarded,
 		log:        deps.Log,
 		consoleUI:  deps.UI,
@@ -195,7 +105,7 @@ func (s *ConsoleServer) Handler() http.Handler {
 	}
 
 	mux.HandleFunc("GET /login", s.loginPage)
-	mux.HandleFunc("POST /admin/login", s.adminLogin)
+	mux.HandleFunc("POST /login/recovery", s.recoveryLogin)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /connect/{backend}/callback", s.connectCallback)
 	mux.HandleFunc("GET /.access/whoami", s.whoami)
@@ -291,23 +201,57 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	// One button per directory kind, never one per company: an anonymous
+	// page that lists the companies an installation serves has published
+	// them to anyone who loads it. Which tenant a person belongs to is
+	// answered by the address the provider gives back, not by asking them
+	// first — the provider's own account chooser has already asked.
 	var sources strings.Builder
-	for kind := range s.connectors {
+	for _, kind := range slices.Sorted(maps.Keys(s.connectors)) {
 		fmt.Fprintf(&sources,
-			`<p><a class="btn" href="/login/%s/start">Sign in with the %s directory</a></p>`, kind, kind)
+			`<p><a class="btn" href="/login/%s/start">Continue with %s</a></p>`,
+			html.EscapeString(kind), html.EscapeString(providerName(kind)))
 	}
-	admin := ""
-	if s.admin.enabled() {
-		admin = `<form method="post" action="/admin/login">
-			<p><label>Break-glass admin password<br><input type="password" name="password" autofocus></label></p>
-			<p><button type="submit">Sign in as admin</button></p>
+
+	// Recovery is behind a disclosure rather than on the page. It is the
+	// path for the day the one above is broken, and a field sitting in
+	// the open invites a password manager to fill it and everyone else to
+	// treat it as the normal way in.
+	recovery := ""
+	if recoveryEnabled(s.recovery) {
+		recovery = fmt.Sprintf(`<details><summary class="note">Recovery sign-in</summary>
+		<form method="post" action="/login/recovery">
+			<p><label>%s<br><input type="password" name="proof" autocomplete="off"></label></p>
+			<p><button type="submit">Recover access</button></p>
 		</form>
-		<p class="note">The admin account is for day one and for the day the directory
-		is what is broken. Turn it off once a rule grants operator to a real identity.</p>`
+		<p class="note">For the day the directory is what is broken. Present %s</p></details>`,
+			html.EscapeString(recoveryLabel(s.recovery.Kind())), html.EscapeString(s.recovery.Prompt()))
 	}
-	if _, err := fmt.Fprintf(w, loginHTML, sources.String(), admin); err != nil {
+	if _, err := fmt.Fprintf(w, loginHTML, sources.String(), recovery); err != nil {
 		s.log.WarnContext(r.Context(), "login page could not be written", "error", err)
 	}
+}
+
+// providerName is what a person calls the directory, rather than what the
+// code calls the backend.
+func providerName(kind string) string {
+	switch kind {
+	case "google":
+		return "Google"
+	case "entra":
+		return "Microsoft"
+	case "demo":
+		return "the demonstration directory"
+	default:
+		return kind
+	}
+}
+
+func recoveryLabel(kind string) string {
+	if kind == "token" {
+		return "Recovery token"
+	}
+	return "Recovery password"
 }
 
 const loginHTML = `<!doctype html><meta charset="utf-8"><title>Sign in — directory-roster</title>
@@ -323,31 +267,53 @@ const loginHTML = `<!doctype html><meta charset="utf-8"><title>Sign in — direc
 <p class="note">The directory hub. Sign in to connect workspaces and grant access.</p>
 %s%s</main>`
 
-// adminLogin signs the break-glass account in.
-func (s *ConsoleServer) adminLogin(w http.ResponseWriter, r *http.Request) {
-	if !s.admin.enabled() {
-		http.Error(w, "the admin account is disabled", http.StatusForbidden)
+// recoveryLogin is the way in when the ordinary one is broken.
+//
+// The proof may come in the form, as JSON, or as a bearer — the last so
+// that a runbook can be one curl, which matters on the day this is
+// reached at all.
+func (s *ConsoleServer) recoveryLogin(w http.ResponseWriter, r *http.Request) {
+	if !recoveryEnabled(s.recovery) {
+		http.Error(w, "this deployment has no recovery sign-in", http.StatusForbidden)
 		return
 	}
-	password := r.FormValue("password")
-	if password == "" {
-		password = jsonField(r, "password")
+	proof := r.FormValue("proof")
+	if proof == "" {
+		proof = jsonField(r, "proof")
 	}
-	switch ok, answered := s.admin.verify(password); {
-	case !answered:
-		s.log.WarnContext(r.Context(), "admin sign-in refused: too many attempts", "remote", r.RemoteAddr)
+	if proof == "" {
+		proof = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	}
+
+	subject, err := s.recovery.Verify(r.Context(), strings.TrimSpace(proof))
+	switch {
+	case errors.Is(err, ErrRecoveryThrottled):
+		s.log.WarnContext(r.Context(), "recovery refused: too many attempts", "remote", r.RemoteAddr)
 		http.Error(w, "too many attempts; wait a minute", http.StatusTooManyRequests)
 		return
-	case !ok:
-		s.log.WarnContext(r.Context(), "admin sign-in refused", "remote", r.RemoteAddr)
-		http.Error(w, "wrong password", http.StatusUnauthorized)
+	case errors.Is(err, ErrRecoveryRefused):
+		s.log.WarnContext(r.Context(), "recovery refused", "remote", r.RemoteAddr, "reason", err)
+		http.Error(w, "that proof was not accepted", http.StatusUnauthorized)
+		return
+	case err != nil:
+		// The check did not happen — an unreachable API server, a hub
+		// that may not create TokenReviews. Saying "wrong password" here
+		// would send an operator hunting for the wrong thing on the worst
+		// possible day.
+		s.log.ErrorContext(r.Context(), "recovery could not be checked", "error", err)
+		http.Error(w, "recovery could not be checked: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	if err := s.sessions.Issue(w, access.Principal{Email: "admin", Subject: "admin", Source: access.SourceAdmin}); err != nil {
+
+	// The session records who recovered. A shared password made every
+	// recovery look like the same person; a token names one.
+	if err = s.sessions.Issue(w, access.Principal{
+		Email: subject, Subject: subject, Source: access.SourceRecovery,
+	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.log.InfoContext(r.Context(), "admin signed in")
+	s.log.WarnContext(r.Context(), "recovery sign-in", "subject", subject, "kind", s.recovery.Kind())
 	redirectOrOK(w, r, "/")
 }
 

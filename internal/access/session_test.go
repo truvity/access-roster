@@ -57,7 +57,7 @@ func TestSessionExpires(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 	s := sessions(t, &now)
-	req := roundTrip(t, s, access.Principal{Email: "alice@example.com", Source: access.SourceAdmin})
+	req := roundTrip(t, s, access.Principal{Email: "alice@example.com", Source: access.SourceRecovery})
 
 	now = now.Add(2 * time.Hour)
 	if _, err := s.Read(req); err == nil {

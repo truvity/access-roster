@@ -61,41 +61,45 @@ type config struct {
 
 	freshness hub.Config
 
-	demo            bool
-	publicURL       string
-	adminEnabled    bool
-	adminPassword   string
-	sessionLifetime time.Duration
-	secureCookies   bool
-	forwardedHeader string
-	forwardedIssuer string
-	policyPath      string
-	overlayPath     string
-	store           string
-	release         string
-	oauthSecretName string
-	valkey          valkey.Config
-	holdWindow      time.Duration
-	logLevel        slog.Level
+	demo             bool
+	publicURL        string
+	recoveryEnabled  bool
+	recoveryAccount  string
+	recoveryAudience string
+	adminPassword    string
+	sessionLifetime  time.Duration
+	secureCookies    bool
+	forwardedHeader  string
+	forwardedIssuer  string
+	policyPath       string
+	overlayPath      string
+	store            string
+	release          string
+	oauthSecretName  string
+	valkey           valkey.Config
+	holdWindow       time.Duration
+	logLevel         slog.Level
 }
 
 func load() (config, error) {
 	c := config{
-		apiPort:         envInt("API_PORT", 8080),
-		consolePort:     envInt("CONSOLE_PORT", 8081),
-		healthPort:      envInt("HEALTH_PORT", 7070),
-		demo:            envBool("DEMO", false),
-		publicURL:       strings.TrimSuffix(envString("PUBLIC_URL", ""), "/"),
-		adminEnabled:    envBool("ADMIN_ENABLED", true),
-		adminPassword:   envString("ADMIN_PASSWORD", ""),
-		secureCookies:   envBool("SECURE_COOKIES", false),
-		forwardedHeader: envString("FORWARDED_EMAIL_HEADER", ""),
-		forwardedIssuer: envString("FORWARDED_ISSUER", ""),
-		policyPath:      envString("POLICY_DIR", ""),
-		overlayPath:     envString("OVERLAY_FILE", ""),
-		store:           envString("STORE", "memory"),
-		release:         envString("RELEASE_NAME", "directory-roster"),
-		oauthSecretName: envString("OAUTH_CLIENT_SECRET_NAME", ""),
+		apiPort:          envInt("API_PORT", 8080),
+		consolePort:      envInt("CONSOLE_PORT", 8081),
+		healthPort:       envInt("HEALTH_PORT", 7070),
+		demo:             envBool("DEMO", false),
+		publicURL:        strings.TrimSuffix(envString("PUBLIC_URL", ""), "/"),
+		recoveryEnabled:  envBool("RECOVERY_ENABLED", true),
+		recoveryAccount:  envString("RECOVERY_SERVICE_ACCOUNT", "directory-roster-recovery"),
+		recoveryAudience: envString("RECOVERY_AUDIENCE", "directory-roster-recovery"),
+		adminPassword:    envString("ADMIN_PASSWORD", ""),
+		secureCookies:    envBool("SECURE_COOKIES", false),
+		forwardedHeader:  envString("FORWARDED_EMAIL_HEADER", ""),
+		forwardedIssuer:  envString("FORWARDED_ISSUER", ""),
+		policyPath:       envString("POLICY_DIR", ""),
+		overlayPath:      envString("OVERLAY_FILE", ""),
+		store:            envString("STORE", "memory"),
+		release:          envString("RELEASE_NAME", "directory-roster"),
+		oauthSecretName:  envString("OAUTH_CLIENT_SECRET_NAME", ""),
 	}
 	c.valkey = valkey.Config{
 		Address:  envString("VALKEY_ADDRESS", ""),
@@ -169,17 +173,53 @@ func openSnapshots(ctx context.Context, cfg config, log *slog.Logger) (hub.Snaps
 	return shared, func() { _ = shared.Close() }, nil
 }
 
+// openRecovery builds the way in for the day the ordinary one is broken.
+//
+// In a cluster there is already an authority that says who is trusted —
+// the API server — so recovery proves access to it and the hub keeps no
+// credential at all: nothing to rotate, nothing to leak, nothing to find
+// in an etcd backup, and an audit trail that names who recovered rather
+// than "admin". Anywhere else there is nothing to prove access to, so a
+// generated password is what is left, and it is printed once.
+func openRecovery(ctx context.Context, cfg config, kept stores, log *slog.Logger) (server.Recovery, error) {
+	if !cfg.recoveryEnabled {
+		log.InfoContext(ctx, "no recovery sign-in: this hub can only be entered through the directory")
+		return nil, nil //nolint:nilnil // no recovery is a configuration, not a failure
+	}
+	if kept.reviewToken == nil {
+		password := cfg.adminPassword
+		if password == "" {
+			generated, err := generatedPassword()
+			if err != nil {
+				return nil, err
+			}
+			password = generated
+			announceRecoveryPassword(password)
+		}
+		return server.NewPasswordRecovery(password), nil
+	}
+
+	subject := kube.ServiceAccountSubject(kept.namespace, cfg.recoveryAccount)
+	log.InfoContext(ctx, "recovery is by cluster access; nothing is stored",
+		"serviceAccount", cfg.recoveryAccount, "audience", cfg.recoveryAudience, "subject", subject)
+	return &server.TokenRecovery{
+		Review:   kept.reviewToken,
+		Audience: cfg.recoveryAudience,
+		Subjects: []string{subject},
+	}, nil
+}
+
 // stores is everything the hub writes down, and where.
 type stores struct {
 	workspaces  hub.Store
 	credentials hub.CredentialStore
 	settings    settings.Store
 	sessionKey  []byte
-	// adminPassword reads the break-glass password, creating one on
-	// first start. Nil when nothing is kept, which is when a generated
-	// one is printed for the run instead.
-	adminPassword func(ctx context.Context) (string, error)
-	adminSecret   string
+	// reviewToken asks the cluster's API server who a token
+	// authenticates. Nil outside a cluster, which is what selects the
+	// password shape of recovery.
+	reviewToken func(ctx context.Context, token string, audiences []string) (string, error)
+	namespace   string
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -217,10 +257,8 @@ func openStores(ctx context.Context, cfg config, log *slog.Logger) (stores, erro
 		credentials: kube.NewCredentials(client),
 		settings:    kube.NewSettings(client, cfg.oauthSecretName),
 		sessionKey:  key,
-		adminPassword: func(ctx context.Context) (string, error) {
-			return client.AdminPassword(ctx, generatedPassword)
-		},
-		adminSecret: client.AdminPasswordName(),
+		reviewToken: client.ReviewToken,
+		namespace:   client.Namespace(),
 	}, nil
 }
 
@@ -266,28 +304,9 @@ func run() error {
 		return err
 	}
 
-	var admin *server.AdminAccount
-	if cfg.adminEnabled {
-		password := cfg.adminPassword
-		switch {
-		case password != "":
-		case kept.adminPassword != nil:
-			// Kept in a Secret, and read from there on every start: a
-			// recovery account whose password changes on every rollout is
-			// not a recovery account. It is never printed — an operator
-			// reads it with kubectl, an access they must already have.
-			if password, err = kept.adminPassword(ctx); err != nil {
-				return err
-			}
-			log.InfoContext(ctx, "the break-glass account is on; its password is in a Secret",
-				"secret", kept.adminSecret, "key", "password")
-		default:
-			if password, err = generatedPassword(); err != nil {
-				return err
-			}
-			announceAdminPassword(password)
-		}
-		admin = server.NewAdminAccount(password)
+	recovery, err := openRecovery(ctx, cfg, kept, log)
+	if err != nil {
+		return err
 	}
 
 	oauthClient := func() (google.OAuthClient, error) {
@@ -321,8 +340,8 @@ func run() error {
 	if cfg.forwardedHeader != "" {
 		loginSources = append(loginSources, "forwarded:"+cfg.forwardedIssuer)
 	}
-	if cfg.adminEnabled {
-		loginSources = append(loginSources, "admin")
+	if cfg.recoveryEnabled {
+		loginSources = append(loginSources, "recovery")
 	}
 
 	console, err := server.NewConsole(ctx, server.ConsoleDeps{
@@ -331,7 +350,7 @@ func run() error {
 		Settings:     kept.settings,
 		State:        access.NewStateCodec(sessionKey, 10*time.Minute),
 		Connectors:   connectors,
-		AdminEnabled: cfg.adminEnabled,
+		Recovery:     recovery,
 		LoginSources: loginSources,
 		CacheBackend: cacheName(cfg),
 		SecureCookie: cfg.secureCookies,
@@ -348,7 +367,7 @@ func run() error {
 		State:      access.NewStateCodec(sessionKey, 10*time.Minute),
 		Connectors: connectors,
 		Hub:        directory,
-		Admin:      admin,
+		Recovery:   recovery,
 		Forwarded: server.ForwardedIdentity{
 			Issuer:      cfg.forwardedIssuer,
 			EmailHeader: cfg.forwardedHeader,
@@ -366,7 +385,7 @@ func run() error {
 
 	log.InfoContext(ctx, "directory-roster starting",
 		"api", cfg.apiPort, "console", cfg.consolePort, "health", cfg.healthPort,
-		"demo", cfg.demo, "admin", cfg.adminEnabled, "public", cfg.publicURL,
+		"demo", cfg.demo, "recovery", recoveryKind(recovery), "public", cfg.publicURL,
 		"version", version.String(), "policy", policySource(cfg.policyPath, cfg.demo))
 
 	group, gctx := errgroup.WithContext(ctx)
@@ -625,11 +644,12 @@ func generatedPassword() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-// announceAdminPassword prints the generated password once. The built
-// service writes it to a Secret instead, and shows it nowhere.
-func announceAdminPassword(password string) {
-	fmt.Fprintf(os.Stderr, "\n  break-glass admin password (generated for this run): %s\n"+
-		"  Sign in at /login. Turn the account off once a rule grants operator to a real identity.\n\n",
+// announceRecoveryPassword prints the generated password once. It is only
+// reached outside a cluster: in one, recovery proves cluster access and
+// there is no password to print.
+func announceRecoveryPassword(password string) {
+	fmt.Fprintf(os.Stderr, "\n  recovery password (generated for this run): %s\n"+
+		"  Sign in at /login, under Recovery sign-in.\n\n",
 		password)
 }
 
@@ -672,4 +692,12 @@ func cacheName(cfg config) string {
 		return "memory"
 	}
 	return "valkey"
+}
+
+// recoveryKind names the shape of the recovery path for the startup line.
+func recoveryKind(r server.Recovery) string {
+	if r == nil {
+		return "none"
+	}
+	return r.Kind()
 }

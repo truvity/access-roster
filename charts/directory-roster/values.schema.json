@@ -180,15 +180,18 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "admin": {
+        "recovery": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "enabled": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": "boolean"
+            },
+            "serviceAccountName": {
+              "type": "string"
+            },
+            "audience": {
+              "type": "string"
             }
           }
         },

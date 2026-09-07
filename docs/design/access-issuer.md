@@ -20,7 +20,13 @@ It is a **security token service**, not an identity provider. The line:
 - it holds no passwords, no user records, no MFA, no consent screens, no
   self-registration, no second way in;
 - break-glass lives outside it, in the cloud account and the cluster's
-  own access mechanisms;
+  own access mechanisms. **The issuer has no recovery sign-in of its
+  own, by rule** (decided 2026-09-08): the hub's recovery gets a person
+  into one console, where they can fix a membership, and it is already
+  gated by cluster RBAC; a standing way into the issuer would be a
+  skeleton key to every cluster, account and console it mints for. When
+  the issuer itself is what is broken, recovery is the cloud account and
+  kubectl, which is where that privilege is meant to live;
 - its console surface grants nothing: the only write is revoking a
   session or a registration; policy changes are commits.
 

@@ -47,12 +47,13 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
         clientConfigured: Boolean(current.value.oauthClient?.configured),
         directories: list.length,
         operators: (operators?.members.length ?? 0) + (operators?.rules.length ?? 0),
-        adminEnabled: Boolean(policy.value.adminEnabled),
+        standingPassword: policy.value.recoveryKind === "password",
         setup: current.value.setup,
         operatorGroup: operators?.name ?? "hub-operators",
       }
     : undefined;
   const settingUp = progress !== undefined && incomplete(progress);
+  const standingPassword = policy.value?.recoveryKind === "password";
 
   return (
     <Page title="Overview" lede="Whether anything is broken, and the counts behind it. Every number is a link to the thing it counts.">
@@ -77,13 +78,14 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
       </Box>
 
       <Section title="Needs attention" hint="everything else is working">
-        {clean && emptyGroups.length === 0 && unusedGroups.length === 0 && !policy.value?.adminEnabled ? (
+        {clean && emptyGroups.length === 0 && unusedGroups.length === 0 && !standingPassword ? (
           <Nothing>Nothing. Every domain is authoritative and every group leads somewhere.</Nothing>
         ) : (
           <Stack spacing={1}>
-            {policy.value?.adminEnabled && !settingUp ? (
-              <Row severity="warning" title="The break-glass admin account is enabled">
-                Turn it off in the deployment once a group grants operator to a real identity.
+            {standingPassword && !settingUp ? (
+              <Row severity="warning" title="A recovery password is kept on this installation">
+                It is a standing credential. In a cluster, recovery proves access to the API server instead and
+                keeps nothing; otherwise turn it off once a group grants operator to a real identity.
               </Row>
             ) : null}
             {failing.map((w) => (

@@ -90,8 +90,9 @@ enum IdentitySource {
   IDENTITY_SOURCE_OIDC = 2;
   // a bearer forwarded by an authenticating gateway in front of the hub.
   IDENTITY_SOURCE_FORWARDED = 3;
-  // the break-glass admin account.
-  IDENTITY_SOURCE_ADMIN = 4;
+  // the recovery sign-in: proven cluster access, or the generated
+  // password an installation outside Kubernetes keeps.
+  IDENTITY_SOURCE_RECOVERY = 4;
 }
 
 message Identity {
@@ -233,8 +234,9 @@ message PolicyClient {
 message GetPolicyRequest {}
 message GetPolicyResponse {
   repeated PolicyGroup groups = 1;
-  // the break-glass account is still enabled (a banner in the console).
-  bool admin_enabled = 2;
+  // a recovery sign-in exists (the way in when the ordinary one is
+  // broken). Whether it deserves a banner depends on recovery_kind.
+  bool recovery_enabled = 2;
   // enabled sign-in sources, e.g. "directory", "oidc:<issuer>", "forwarded:<issuer>".
   repeated string login_sources = 3;
   // the console layer as YAML, so that an installation which started
@@ -242,6 +244,11 @@ message GetPolicyResponse {
   string console_layer = 4;
   // the declared clients: who may reach what.
   repeated PolicyClient clients = 5;
+  // how recovery is proved: "token" (access to the cluster, nothing
+  // stored) or "password" (a generated one, outside Kubernetes). Empty
+  // when there is no recovery path. Only "password" is a standing
+  // credential, so only it is worth telling an operator about.
+  string recovery_kind = 6;
 }
 
 message AddMembershipRequest {

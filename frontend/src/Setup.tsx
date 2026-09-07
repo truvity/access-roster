@@ -29,7 +29,10 @@ export type Progress = {
   clientConfigured: boolean;
   directories: number;
   operators: number;
-  adminEnabled: boolean;
+  /** A recovery sign-in exists AND it is a stored password — the only
+   *  shape that is a standing credential. Recovery by cluster access
+   *  stores nothing, so there is nothing to turn off. */
+  standingPassword: boolean;
   setup: ConnectorSetup[];
   operatorGroup: string;
 };
@@ -37,7 +40,7 @@ export type Progress = {
 /** Whether anything is left to do. A finished installation shows nothing:
  *  a checklist of ticks is a to-do list that has stopped being one. */
 export function incomplete(p: Progress): boolean {
-  return !p.clientConfigured || p.directories === 0 || p.operators === 0 || p.adminEnabled;
+  return !p.clientConfigured || p.directories === 0 || p.operators === 0 || p.standingPassword;
 }
 
 export function Setup({ progress, operator }: { progress: Progress; operator: boolean }) {
@@ -80,18 +83,22 @@ export function Setup({ progress, operator }: { progress: Progress; operator: bo
         </Typography>
       ),
     },
-    {
-      done: !progress.adminEnabled,
-      title: "Turn off the break-glass account",
+  ];
+  // Only an installation that keeps a generated password has anything to
+  // turn off. In a cluster, recovery is proving access to the API server
+  // and stores nothing, so this step never appears.
+  if (progress.standingPassword) {
+    steps.push({
+      done: false,
+      title: "Turn off the recovery password",
       body: (
         <Typography variant="body2" color="text.secondary">
-          Set <Mono>access.admin.enabled: false</Mono> in the deployment. It is for recovery, and a password
-          nobody needs is a standing credential. The runbook turns it back on when recovery is what you
-          need.
+          Set <Mono>access.recovery.enabled: false</Mono>, or run this hub in a cluster, where recovery is a
+          short-lived token proving access to the API server and no password is kept at all.
         </Typography>
       ),
-    },
-  ];
+    });
+  }
   const done = steps.filter((step) => step.done).length;
 
   return (

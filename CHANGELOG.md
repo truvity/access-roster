@@ -44,13 +44,23 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
-- **The break-glass password** is kept as an Argon2id digest with a random
-  salt rather than a bare hash, verifications are serialised, and the
-  account stops answering for a minute after ten failures — the correct
-  password included, so the limit says nothing about which guess was
-  close. The forwarded identity header is now required to be an address
-  before it is taken as a principal; the consent cookie is cleared with
-  the same attributes it was set with.
+- **Recovery replaces the break-glass account.** In a cluster the hub
+  stores no credential at all: recovery is a ServiceAccount token minted
+  for one audience and a few minutes, checked with a TokenReview, so the
+  authority is the cluster's own RBAC — revocable by removing a binding,
+  recorded in the cluster's audit log, and naming who recovered rather
+  than "admin". Whoever could read a stored break-glass Secret already had
+  cluster access, so the secret was only ever converting that access into
+  a session; this does it directly. Outside a cluster a password is
+  generated and printed once, kept as an Argon2id digest with a random
+  salt, serialised, and silent for a minute after ten failures — the
+  correct one included, so the limit says nothing about which guess was
+  close. Only that shape is a standing credential, so only it gets a
+  warning and a "turn it off" setup step. `POST /admin/login` becomes
+  `POST /login/recovery`.
+- The forwarded identity header is now required to be an address before it
+  is taken as a principal; the consent cookie is cleared with the same
+  attributes it was set with.
 - **The policy** (`docs/reference/policy.md`): five tables — groups,
   claims, lifetimes, clients, memberships — one schema for both services,
   deep merge with a load-time scalar-conflict check, shortest lifetime,

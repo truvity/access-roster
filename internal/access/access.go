@@ -68,8 +68,10 @@ const (
 	SourceDirectory Source = "directory"
 	// SourceOIDC is the hub's own sign-in against an external issuer.
 	SourceOIDC Source = "oidc"
-	// SourceAdmin is the break-glass account.
-	SourceAdmin Source = "admin"
+	// SourceRecovery is the way in for the day the ordinary one is
+	// broken: proven cluster access, or a generated password outside a
+	// cluster.
+	SourceRecovery Source = "recovery"
 )
 
 // Principal is an authenticated caller, before the policy has run.
@@ -158,19 +160,21 @@ func (a *Authorizer) Policy() *policy.Set { return a.set }
 
 // Authorize resolves a principal into an identity.
 //
-// The break-glass account is an operator by construction: it exists for
-// the day the policy or the directory is what is broken. Everyone else is
+// A recovery sign-in is an operator by construction: it exists for the
+// day the policy or the directory is what is broken, and it was already
+// authorised — by the cluster's RBAC, or by holding the one generated
+// password — before it reached here. Everyone else is
 // resolved through the directory and the policy, and an authoritative
 // "not live" is a refusal rather than an empty role — a suspended account
 // must not reach the console at all.
 func (a *Authorizer) Authorize(ctx context.Context, p Principal) (Identity, error) {
-	if p.Source == SourceAdmin {
+	if p.Source == SourceRecovery {
 		return Identity{
 			Email:   p.Email,
-			Subject: "admin",
-			Source:  SourceAdmin,
+			Subject: p.Subject,
+			Source:  SourceRecovery,
 			Role:    RoleOperator,
-			Held:    []policy.Held{{Group: "break-glass admin", Via: []string{"the admin account"}}},
+			Held:    []policy.Held{{Group: "recovery", Via: []string{"the recovery sign-in"}}},
 		}, nil
 	}
 

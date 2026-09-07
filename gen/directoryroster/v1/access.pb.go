@@ -87,8 +87,9 @@ const (
 	IdentitySource_IDENTITY_SOURCE_OIDC IdentitySource = 2
 	// a bearer forwarded by an authenticating gateway in front of the hub.
 	IdentitySource_IDENTITY_SOURCE_FORWARDED IdentitySource = 3
-	// the break-glass admin account.
-	IdentitySource_IDENTITY_SOURCE_ADMIN IdentitySource = 4
+	// the recovery sign-in: proven cluster access, or the generated
+	// password an installation outside Kubernetes keeps.
+	IdentitySource_IDENTITY_SOURCE_RECOVERY IdentitySource = 4
 )
 
 // Enum value maps for IdentitySource.
@@ -98,14 +99,14 @@ var (
 		1: "IDENTITY_SOURCE_DIRECTORY",
 		2: "IDENTITY_SOURCE_OIDC",
 		3: "IDENTITY_SOURCE_FORWARDED",
-		4: "IDENTITY_SOURCE_ADMIN",
+		4: "IDENTITY_SOURCE_RECOVERY",
 	}
 	IdentitySource_value = map[string]int32{
 		"IDENTITY_SOURCE_UNSPECIFIED": 0,
 		"IDENTITY_SOURCE_DIRECTORY":   1,
 		"IDENTITY_SOURCE_OIDC":        2,
 		"IDENTITY_SOURCE_FORWARDED":   3,
-		"IDENTITY_SOURCE_ADMIN":       4,
+		"IDENTITY_SOURCE_RECOVERY":    4,
 	}
 )
 
@@ -1154,15 +1155,21 @@ func (*GetPolicyRequest) Descriptor() ([]byte, []int) {
 type GetPolicyResponse struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Groups []*PolicyGroup         `protobuf:"bytes,1,rep,name=groups,proto3" json:"groups,omitempty"`
-	// the break-glass account is still enabled (a banner in the console).
-	AdminEnabled bool `protobuf:"varint,2,opt,name=admin_enabled,json=adminEnabled,proto3" json:"admin_enabled,omitempty"`
+	// a recovery sign-in exists (the way in when the ordinary one is
+	// broken). Whether it deserves a banner depends on recovery_kind.
+	RecoveryEnabled bool `protobuf:"varint,2,opt,name=recovery_enabled,json=recoveryEnabled,proto3" json:"recovery_enabled,omitempty"`
 	// enabled sign-in sources, e.g. "directory", "oidc:<issuer>", "forwarded:<issuer>".
 	LoginSources []string `protobuf:"bytes,3,rep,name=login_sources,json=loginSources,proto3" json:"login_sources,omitempty"`
 	// the console layer as YAML, so that an installation which started
 	// standalone can move its edits into git by pasting.
 	ConsoleLayer string `protobuf:"bytes,4,opt,name=console_layer,json=consoleLayer,proto3" json:"console_layer,omitempty"`
 	// the declared clients: who may reach what.
-	Clients       []*PolicyClient `protobuf:"bytes,5,rep,name=clients,proto3" json:"clients,omitempty"`
+	Clients []*PolicyClient `protobuf:"bytes,5,rep,name=clients,proto3" json:"clients,omitempty"`
+	// how recovery is proved: "token" (access to the cluster, nothing
+	// stored) or "password" (a generated one, outside Kubernetes). Empty
+	// when there is no recovery path. Only "password" is a standing
+	// credential, so only it is worth telling an operator about.
+	RecoveryKind  string `protobuf:"bytes,6,opt,name=recovery_kind,json=recoveryKind,proto3" json:"recovery_kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1204,9 +1211,9 @@ func (x *GetPolicyResponse) GetGroups() []*PolicyGroup {
 	return nil
 }
 
-func (x *GetPolicyResponse) GetAdminEnabled() bool {
+func (x *GetPolicyResponse) GetRecoveryEnabled() bool {
 	if x != nil {
-		return x.AdminEnabled
+		return x.RecoveryEnabled
 	}
 	return false
 }
@@ -1230,6 +1237,13 @@ func (x *GetPolicyResponse) GetClients() []*PolicyClient {
 		return x.Clients
 	}
 	return nil
+}
+
+func (x *GetPolicyResponse) GetRecoveryKind() string {
+	if x != nil {
+		return x.RecoveryKind
+	}
+	return ""
 }
 
 type AddMembershipRequest struct {
@@ -2359,13 +2373,14 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\tredirects\x18\x04 \x03(\tR\tredirects\x122\n" +
 	"\attl_cap\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x06ttlCap\x12\x16\n" +
 	"\x06secret\x18\x06 \x01(\tR\x06secret\"\x12\n" +
-	"\x10GetPolicyRequest\"\xf7\x01\n" +
+	"\x10GetPolicyRequest\"\xa2\x02\n" +
 	"\x11GetPolicyResponse\x127\n" +
-	"\x06groups\x18\x01 \x03(\v2\x1f.directoryroster.v1.PolicyGroupR\x06groups\x12#\n" +
-	"\radmin_enabled\x18\x02 \x01(\bR\fadminEnabled\x12#\n" +
+	"\x06groups\x18\x01 \x03(\v2\x1f.directoryroster.v1.PolicyGroupR\x06groups\x12)\n" +
+	"\x10recovery_enabled\x18\x02 \x01(\bR\x0frecoveryEnabled\x12#\n" +
 	"\rlogin_sources\x18\x03 \x03(\tR\floginSources\x12#\n" +
 	"\rconsole_layer\x18\x04 \x01(\tR\fconsoleLayer\x12:\n" +
-	"\aclients\x18\x05 \x03(\v2 .directoryroster.v1.PolicyClientR\aclients\"U\n" +
+	"\aclients\x18\x05 \x03(\v2 .directoryroster.v1.PolicyClientR\aclients\x12#\n" +
+	"\rrecovery_kind\x18\x06 \x01(\tR\frecoveryKind\"U\n" +
 	"\x14AddMembershipRequest\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12'\n" +
 	"\x0fdirectory_group\x18\x02 \x01(\tR\x0edirectoryGroup\"\x17\n" +
@@ -2444,13 +2459,13 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_VIEWER\x10\x01\x12\x11\n" +
-	"\rROLE_OPERATOR\x10\x02*\xa4\x01\n" +
+	"\rROLE_OPERATOR\x10\x02*\xa7\x01\n" +
 	"\x0eIdentitySource\x12\x1f\n" +
 	"\x1bIDENTITY_SOURCE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19IDENTITY_SOURCE_DIRECTORY\x10\x01\x12\x18\n" +
 	"\x14IDENTITY_SOURCE_OIDC\x10\x02\x12\x1d\n" +
-	"\x19IDENTITY_SOURCE_FORWARDED\x10\x03\x12\x19\n" +
-	"\x15IDENTITY_SOURCE_ADMIN\x10\x04*f\n" +
+	"\x19IDENTITY_SOURCE_FORWARDED\x10\x03\x12\x1c\n" +
+	"\x18IDENTITY_SOURCE_RECOVERY\x10\x04*f\n" +
 	"\rAccountFilter\x12\x1e\n" +
 	"\x1aACCOUNT_FILTER_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACCOUNT_FILTER_LIVE\x10\x01\x12\x1c\n" +

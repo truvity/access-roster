@@ -326,7 +326,7 @@ console edits — from either end.
 | Surface | Answers |
 |---|---|
 | Search, on every page | almost every task starts with a name: a person, a group on either side, a client, a directory. One field resolves any of them |
-| Overview | is anything broken: failing directories, domains on hold or contested, directory groups attached to nothing, internal groups nobody feeds, the break-glass state. On an installation that is not finished it leads with what is left to do instead, because the counts cannot say anything useful yet |
+| Overview | is anything broken: failing directories, domains on hold or contested, directory groups attached to nothing, internal groups nobody feeds, a recovery password if one is kept. On an installation that is not finished it leads with what is left to do instead, because the counts cannot say anything useful yet |
 | Directories, and one page per directory | which tenants we read, their domains and standing, the actions on the tenant itself, and the groups and accounts it holds — every one a link. **Add a directory** offers both ways in, admin consent and an uploaded key, and only the ways this deployment can take |
 | Directory groups, and one page per group | what the directories say exists, and which of it the policy uses. A group's page reads along the chain: its members as the directory reports them, the internal groups it feeds, the clients that therefore open |
 | People, and one page per person | every account, as the last snapshot has it, filtered by directory and by whether it is live. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why. Once the issuer exists it gains **Active sessions** with Revoke, and your own page **Sign out everywhere** |
@@ -385,7 +385,7 @@ same role. The hub's **own login page** exists for two situations only: a
 standalone installation with no proxy and no issuer, where operators sign
 in with the connected directory itself (the workspace's OAuth client with
 the openid, email and profile scopes; the address must be live in a served
-domain), and break-glass. An external OIDC issuer can also drive the own
+domain), and recovery. An external OIDC issuer can also drive the own
 login page, for the rare installation with an issuer but no proxy.
 
 | Source | Normal for |
@@ -393,7 +393,7 @@ login page, for the rare installation with an issuer but no proxy.
 | forwarded bearer | an installation with a proxy in front of every console |
 | the connected directory, own login | a standalone installation; also what makes day one work before any issuer exists |
 | an external OIDC issuer, own login | an issuer but no proxy |
-| the admin account | day one and break-glass, by port-forward |
+| recovery | day one and the day the rest is broken, by port-forward |
 
 Whichever source, the result is one HttpOnly cookie signed with the
 hub's session key, short-lived, revoked only by rotating the key. The
@@ -401,32 +401,67 @@ console never sees a token. The routes are HTTP, not RPC: `/login`,
 `/login/directory/start` and `/callback`, `/login/oidc/start` and
 `/callback`, `/logout`, and `/admin/login`.
 
-### The break-glass account
+### Recovery
 
-A local `admin` with a password generated on first start into the Secret
-`<release>-admin`, shown nowhere else. It signs in only through `/admin/login`,
-so behind a gateway it is reached by port-forward. The console shows a
-banner while it is enabled; a chart value turns it off. It exists for day
-one and for the day the corporate sign-in is what is broken.
+The way in for the day the ordinary one is broken: nobody in the operators
+group, the group renamed, the directory refusing to answer. It is reached
+at `/login` under a disclosure rather than as a field on the page —
+recovery that looks like the normal way in gets used as one — and it posts
+to `POST /login/recovery`.
 
-The password is held only as an Argon2id digest with a random salt, and
-compared in constant time. The stretching is not for the generated
-password — nothing stretches 32 bytes of entropy usefully — but for the
-installation that sets a memorable one in its values, where reaching the
-process memory should not hand back the password. Because verifying costs
-memory deliberately, and anyone who can reach the console can ask for it,
-verifications are serialised and the account stops answering for a minute
-after ten failures — including to the right password, since a limit that
-lets the correct one through is a hint about which guess was close.
+**In a cluster it stores nothing.** The proof is a ServiceAccount token
+minted for one audience and a few minutes, checked with a TokenReview:
 
-A password-authenticated key exchange (SRP and friends) was considered and
-is the wrong tool here. What it buys is not sending the password to the
-server; but this server is the party being authenticated to and already
-holds the password, in a Secret it generated. What it costs is JavaScript
-doing modular arithmetic, a multi-step exchange with ephemeral state
-shared between replicas, and a lightly-maintained crypto dependency —
-placed on the one path that has to work when everything else is broken.
-Recovery mechanisms earn their keep by having the fewest moving parts.
+```sh
+kubectl -n directory-roster create token <release>-recovery \
+  --audience <release>-recovery --duration 10m
+```
+
+The reasoning starts from a fact that makes a stored secret look much less
+useful than it seems: **whoever could read a break-glass Secret already
+has cluster access to that namespace, and could equally exec into the
+hub.** So the secret was never protecting the console from an attacker —
+it was converting cluster access into a console session. Doing that
+directly is better on every axis. There is no standing credential to
+rotate, to leak, or to find in an etcd backup. The authority becomes the
+cluster's own RBAC — who may create a token for that account — which is
+where cluster privilege is supposed to be visible, is revocable by
+removing a binding, and is recorded in the cluster's audit log. Expiry and
+audience come for free, and the audience is what stops every mounted
+ServiceAccount token in the cluster from being a recovery token. And the
+session names *who* recovered; a shared password made every recovery look
+like the same person.
+
+It fails when the API server is unreachable — but so does reading a
+Secret, and so does port-forwarding to the console, so nothing is lost. A
+review that could not run is reported as exactly that, never as a wrong
+proof: telling an operator "wrong password" on the day the API server is
+down would send them hunting for the wrong thing.
+
+**Outside a cluster** there is no authority to prove access to, so a
+password is generated at start and printed once. It is held only as an
+Argon2id digest with a random salt and compared in constant time — the
+stretching is for the installation that sets a memorable one, where
+reaching the process memory should not hand the password back. Because
+verifying costs memory deliberately and anyone who can reach the console
+can ask for it, verifications are serialised and the password stops
+answering for a minute after ten failures, the correct one included, since
+a limit that lets it through is a hint about which guess was close. This
+shape *is* a standing credential, so it is the only one the console warns
+about and the only one with a "turn it off" step.
+
+Two alternatives, recorded so they are not re-litigated. A **recovery
+key** — generated only, shown once, formatted in groups — is a real
+improvement over a chooseable password and still a standing credential
+stored somewhere, failing in exactly the situations the token does; it
+would only be the answer if a TokenReview verifier were not needed anyway.
+A **password-authenticated key exchange** (SRP and friends) buys not
+sending the password to the server, but this server is the party being
+authenticated to and holds the password already; what it costs is
+JavaScript doing modular arithmetic, a multi-step exchange with ephemeral
+state shared between replicas, and a lightly-maintained crypto dependency,
+placed on the one path that must work when everything else is broken.
+Recovery earns its keep by having the fewest moving parts.
 
 ### Roles come from the policy, membership from the console
 
@@ -454,10 +489,12 @@ policy.
 | workspaces | connect, reconnect, upload a key, probe, refresh, disconnect what it connected | a workspace the deployment declared |
 | the OAuth client | set it once, when the chart did not declare one | a declared client |
 | sessions, once the issuer exists | revoke another identity's (operator); sign out everywhere (anyone, their own). Removal only: a console can end access here, never grant it. The browser calls the issuer directly, so the hub's own code stays independent of it | — |
-| the break-glass admin, the intervals, the sign-in sources | nothing | all |
+| recovery, the intervals, the sign-in sources | nothing | all |
 
-A console that could re-enable its own break-glass account would be a
-back door, which is why that flag is the chart's alone.
+A console that could re-enable its own recovery path would be a back
+door, which is why that flag is the chart's alone — and why recovery is
+not expressed as an ordinary policy matcher, tempting as that is: it has
+to work on the day the policy is what is broken.
 
 ### Explaining a proof
 
@@ -491,11 +528,10 @@ definition.
 
 A deployment that declares a workspace and a non-empty `hub-operators`
 has no day one: it is signed into through the directory from its first
-boot, and the break-glass account never turns itself on. That is the
-gitops path, and it is the common one.
+boot. That is the gitops path, and it is the common one.
 
 A standalone installation is the other path, and the console leads it:
-admin → OAuth client → connect the first workspace → one membership from
+recovery → OAuth client → connect the first workspace → one membership from
 the group picker → sign in as yourself → admin off. Overview carries
 those five steps until none is left, each disappearing as it completes.
 

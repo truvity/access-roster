@@ -27,12 +27,13 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "directory-roster.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
-{{- if .Values.consumers }}
+{{- if or .Values.consumers .Values.access.recovery.enabled }}
 ---
-# The one cluster-scoped permission: creating TokenReviews to verify the
-# ServiceAccount tokens consumers present on the API listener. It reads
+# The one cluster-scoped permission: creating TokenReviews. It reads
 # nothing; it asks the API server whether a token is genuine and for which
-# audience.
+# audience. Two callers need it — the consumers presenting ServiceAccount
+# tokens on the API listener, and recovery, which is a token proving
+# cluster access rather than a password this hub would have to store.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

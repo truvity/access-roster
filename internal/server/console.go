@@ -49,12 +49,15 @@ type KeyConnector interface {
 
 // ConsoleDeps is everything the operator services need.
 type ConsoleDeps struct {
-	Hub          *hub.Hub
-	Authorizer   *access.Authorizer
-	Settings     settings.Store
-	State        *access.StateCodec
-	Connectors   []Connector
-	AdminEnabled bool
+	Hub        *hub.Hub
+	Authorizer *access.Authorizer
+	Settings   settings.Store
+	State      *access.StateCodec
+	Connectors []Connector
+	// Recovery is the way in when the ordinary one is broken; nil is a
+	// deployment with none. The console reports its shape, because only
+	// a stored password is a standing credential worth a banner.
+	Recovery     Recovery
 	LoginSources []string
 	CacheBackend string
 	SecureCookie bool
@@ -482,9 +485,10 @@ func (c *Console) GetPolicy(
 	set := c.deps.Authorizer.Policy()
 	groups := set.Groups()
 	out := &directoryrosterv1.GetPolicyResponse{
-		AdminEnabled: c.deps.AdminEnabled,
-		LoginSources: c.deps.LoginSources,
-		Groups:       make([]*directoryrosterv1.PolicyGroup, 0, len(groups)),
+		RecoveryEnabled: recoveryEnabled(c.deps.Recovery),
+		RecoveryKind:    recoveryKindOf(c.deps.Recovery),
+		LoginSources:    c.deps.LoginSources,
+		Groups:          make([]*directoryrosterv1.PolicyGroup, 0, len(groups)),
 	}
 	for i := range groups {
 		group, err := policyGroupProto(&groups[i])
