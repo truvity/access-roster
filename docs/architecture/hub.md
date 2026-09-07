@@ -19,7 +19,7 @@ flowchart TB
 
   hub["directory-roster<br/>[Software System]<br/>is this account live, who is in this group,<br/>for every connected directory, routed by email domain,<br/>with a per-domain authoritative flag"]:::system
 
-  webhook["Authorization webhook<br/>[Software System]<br/>at login: groups → roles"]:::system
+  webhook["Whatever computes roles at login<br/>[Software System]<br/>an IdP's login hook today,<br/>the token service later"]:::system
   teamsync["Team-sync service<br/>[Software System]<br/>keeps a code-hosting org's teams<br/>equal to directory groups"]:::system
 
   gateway["Gateway + authentication<br/>[External]<br/>terminates TLS, runs the login,<br/>forwards identity and roles"]:::ext
@@ -29,8 +29,8 @@ flowchart TB
   operator -- "console<br/>[HTTPS]" --> gateway
   gateway -- "console listener<br/>[HTTP + identity headers]" --> hub
   admin -. "consents to the hub's OAuth client<br/>[browser]" .-> google
-  webhook -- "ResolveUser<br/>[ConnectRPC, cluster network]" --> hub
-  teamsync -- "GetGroup, ListGroups, ResolveAccounts<br/>[ConnectRPC, cluster network]" --> hub
+  webhook -- "ResolveUser<br/>[ConnectRPC, SA token]" --> hub
+  teamsync -- "GetGroup, ListGroups, ResolveAccounts<br/>[ConnectRPC, SA token]" --> hub
   hub -- "reads users, groups, members, domains<br/>[Admin SDK, read-only scopes]" --> google
   hub -. "later<br/>[Graph, read-only]" .-> entra
 
@@ -63,7 +63,7 @@ flowchart TB
 
   operator -- "[HTTPS]" --> gateway
   gateway -- "console listener :8081<br/>[HTTP, identity headers]" --> hub
-  consumers -- "API listener :8080<br/>[ConnectRPC]" --> hub
+  consumers -- "API listener :8080<br/>[ConnectRPC, SA token via TokenReview]" --> hub
   hub -- "serves<br/>[same origin]" --> spa
   hub -- "get / watch / write<br/>[namespaced Role]" --> k8s
   hub -- "snapshots, locks<br/>[RESP]" --> valkey
@@ -79,9 +79,11 @@ flowchart TB
 ```
 
 The two listeners are the privilege boundary: a consumer on the cluster
-network can reach `DirectoryService` and nothing else; an operator RPC
-exists only on the port the gateway forwards to. NetworkPolicy enforces
-both.
+network can reach `DirectoryService` and nothing else, and only with an
+allow-listed ServiceAccount token; an operator RPC exists only on the
+console port, behind the hub's own session. NetworkPolicy enforces both
+as the second layer. The family-level picture, with the token service
+and the relying parties, is [access-roster.md](access-roster.md).
 
 ## 3. Components
 
@@ -217,6 +219,8 @@ sequenceDiagram
 | Account missing from the snapshot | one live read first; `found=false` only after the backend said so |
 | Valkey unreachable | every domain non-authoritative until it returns; the in-memory fallback is for a single replica only |
 | Credential revoked or admin suspended | probe fails → non-authoritative; Reconnect is the recovery |
+| A signed-in operator's own account turns non-authoritative | last granted role kept for a bounded window; no new identity granted anything |
+| Consumer presents no token, a wrong audience, or a foreign ServiceAccount | `unauthenticated`; NetworkPolicy would have stopped most of these earlier |
 
 The rule under all of them: **a consumer removes access only on an
 authoritative answer.** Everything that can go wrong on the hub's side

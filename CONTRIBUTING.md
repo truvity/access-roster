@@ -1,5 +1,15 @@
 # Contributing
 
+## Layout
+
+One repository, two components, each with its own binary and chart and
+installable alone: `cmd/directory-roster` with `charts/directory-roster`,
+and later the token service. Shared Go packages under `pkg/` — the
+backends, the Connect flow, the rules engine, the verifiers — are
+importable behind storage interfaces and must stay free of Kubernetes
+specifics. Contracts under `proto/`, generated code under `gen/`, design
+and reference under `docs/`.
+
 ## Toolchain
 
 Everything comes from [devbox](https://www.jetify.com/devbox): `devbox shell`
@@ -28,5 +38,5 @@ vuln. The pre-push hook (installed by devbox's init hook) runs the same.
 ## Releasing
 
 Push a `v*` tag. The release workflow builds the binary, the image
-(`ghcr.io/truvity/directory-roster/directory-roster`) and the chart
+(`ghcr.io/truvity/access-roster/directory-roster`) and the chart
 (`ghcr.io/truvity/charts/directory-roster`), all stamped with the tag.

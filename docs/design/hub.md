@@ -1,6 +1,11 @@
 # directory-roster — the directory hub
 
-**Status:** accepted 2026-09-06; API and secret-handling decisions closed 2026-09-07. Successor to
+Part of [access-roster](../../README.md): the hub is the first component,
+the [token service](token-service.md) the second, later one. This document
+is the hub alone.
+
+**Status:** accepted 2026-09-06; API, secret-handling, freshness and access
+decisions closed 2026-09-07. Successor to
 [google-group-sync](https://github.com/truvity/google-group-sync), which is
 archived once its consumers have moved.
 
@@ -12,11 +17,13 @@ It holds every directory credential so that its consumers hold none. Today
 the backend is Google Workspace; Microsoft Entra is the next backend behind
 the same record and the same contracts.
 
-Consumers reach it over the cluster network: a login-time authorization
-webhook (groups → roles) and
-[github-roster](https://github.com/truvity/github-roster) (groups → GitHub
-teams) are the two it was built for. Only the console goes through the
-gateway.
+Consumers reach it over the cluster network, each presenting its
+Kubernetes ServiceAccount token: whatever computes roles at login — an
+identity provider's login hook today, this repository's token service
+later — and [github-roster](https://github.com/truvity/github-roster)
+(groups → GitHub teams). Only the console goes through the gateway. The
+hub never issues a token and never authenticates anyone; it answers
+questions.
 
 ## The model
 
@@ -82,8 +89,10 @@ Two listeners, so a consumer can never reach an operator call:
 - **`SettingsService`** — `GetSettings` (the OAuth client id and where it
   came from, never the secret; the intervals and the cache backend,
   read-only) and `SetOAuthClient` (refused when the chart declared one).
-  Intervals are chart values: operational knobs belong to the deployment,
-  and the console's write surface stays at exactly one thing.
+  Intervals are chart values: operational knobs belong to the deployment.
+- **`AccessService`** — `WhoAmI`, `GetAccessPolicy`, `AddRule`,
+  `RemoveRule`: the rules that grant viewer and operator (see *Access to
+  the hub itself*). Declared rules are read-only here.
 
 ## Freshness
 
@@ -205,7 +214,9 @@ example, the hub has no dependency on it.
 | `Secret workspace-<id>` | the credential (refresh token, or service-account key) |
 | `ConfigMap workspace-<id>` | backend, domains, admin, connectedBy/At, last health |
 | `Secret hub-oauth-client` | the OAuth client id and secret (written by Settings, or declared) |
-| `Secret hub-connect-state` | the key that signs the consent-flow state cookie; generated on first start |
+| `Secret hub-session-key` | signs the session cookie and the consent-flow state; generated on first start, rotated by deleting it |
+| `Secret hub-admin` | the break-glass password; generated on first start |
+| `ConfigMap hub-access` | console-added rules |
 | `ConfigMap hub-settings` | freshness window, probe interval, cache |
 | chart-rendered overlay | workspaces declared by the deployment (a key delivered as a Secret, the admin to impersonate; domains discovered like any other), read-only in the console, winning on conflict |
 | Valkey (external) | snapshots, refresh locks, the short negative cache — never a credential |
@@ -235,10 +246,109 @@ Secret is deleted.
 ## The console
 
 Built on the shared fleet console stack (gateway-auth library, Vite, MUI,
-Connect-Web): a Workspaces view (each with domains, health, authoritative
-state, Connect / Reconnect / Disconnect), and Settings (the OAuth client).
-Roles `viewer` and `operator` from the groups claim. Nothing about
-authentication is editable from the UI.
+Connect-Web): Workspaces (each with domains, health, authoritative state,
+Connect / Reconnect / Disconnect), Settings (the OAuth client, the
+read-only knobs) and Access (who is signed in, the rules, the admin
+banner).
+
+## Access to the hub itself
+
+The hub authorizes its own operators the way it serves everyone else:
+from directory groups. That makes a standalone installation
+self-sufficient — no identity provider is deployed for the hub's sake —
+and it resolves the apparent redundancy between "the hub integrates with
+the corporate directory" and "operators sign in with the corporate
+directory": those are two protocols against the same tenant, sign-in and
+directory reads, and the hub happens to hold a client capable of both.
+
+### Three ways an identity is established, one session
+
+| Source | How | When to use |
+|---|---|---|
+| **the connected directory** | "Sign in with Google" on the hub's own login page, using a connected workspace's OAuth client with the openid, email and profile scopes only. The address routes to its workspace; the account must be live in the snapshot. | the default; on as soon as one workspace is connected |
+| **an external OIDC issuer** | the same login page against a configured issuer and client | estates with a central issuer and no proxy in front |
+| **a forwarded bearer** | an authenticating gateway in front of the console forwards the caller's token; the hub verifies it against the configured issuer | estates that put one proxy in front of every console |
+
+Whichever source, the result is one HttpOnly cookie signed with the
+hub's session key, short-lived, revoked only by rotating the key. The
+console never sees a token. The routes are HTTP, not RPC: `/login`,
+`/login/directory/start` and `/callback`, `/login/oidc/start` and
+`/callback`, `/logout`, and `/admin/login`.
+
+### The break-glass account
+
+A local `admin` with a password generated on first start into the Secret
+`hub-admin`, shown nowhere else. It signs in only through `/admin/login`,
+so behind a gateway it is reached by port-forward. The console shows a
+banner while it is enabled; a chart value turns it off. It exists for day
+one and for the day the corporate sign-in is what is broken.
+
+### Rules
+
+Authorization is a list of rules, evaluated in order, default deny.
+Operator implies viewer. Four subject kinds:
+
+| Subject | Matches | Needs |
+|---|---|---|
+| `directoryGroup` | members of a group the hub snapshots, in a served domain, live | a connected workspace |
+| `claim` | a value in a named claim of a verified token from a named issuer — a groups claim, a roles claim | the OIDC or forwarded source |
+| `email` | one address | nothing |
+| `emailDomain` | every address in a domain | nothing |
+
+Declared rules come from the chart and are read-only in the console;
+console-added rules are stored by the hub and evaluated after them. The
+Access view offers a picker over snapshotted groups, so the first rule is
+a click, not a typed address. When the directory answer for a signed-in
+identity is not authoritative, the last granted role is kept for a
+bounded window and no new identity is granted anything: the same
+hold-never-remove rule, applied to the hub's own door.
+
+### Day one, in order
+
+1. Install. The hub generates the admin password and the session key.
+2. Sign in as admin, by port-forward or through the gateway.
+3. Settings: the OAuth client, pasted or declared.
+4. Connect the first workspace as its admin role account. Domains are
+   discovered; the first snapshot lands.
+5. Access: one rule, "members of *directory-admins* are operators", from
+   the picker.
+6. Sign out; sign in with the directory as yourself; you are an operator.
+7. Turn the admin account off.
+
+A second backend later repeats steps 4 to 6 with its own client and adds
+a second button.
+
+### Consumers
+
+The API listener authenticates callers by Kubernetes ServiceAccount
+token: the consumer mounts a projected token with audience
+`directory-roster` and a short expiry, the hub verifies it with a
+TokenReview, and an allow-list of `namespace/serviceAccount` pairs in the
+chart decides who may read. Bound tokens die with their pod. It is the
+one cluster-scoped permission the chart creates, and it reads nothing.
+NetworkPolicy stays as the second layer, never the only one. A consumer
+outside the cluster, if one ever exists, presents an OIDC token through
+the same verifier the console uses.
+
+## Two boundaries worth naming
+
+**The library.** The Connect flow (consent, tenant and domain discovery,
+the first probe, reconnect), the per-backend clients and the rules engine
+are importable Go packages behind storage interfaces, not code welded to
+the Kubernetes store. A product that lets a customer's administrator
+connect their own directory in one click imports the same packages with
+its own store; sign-in for that customer's users is the product's identity
+provider's job, and the two compose behind one screen. The boundary is
+kept from day one because it is cheap then and expensive later.
+
+**The token service.** The second component of this repository is a
+security token service: it verifies proofs — corporate sign-ins, workload
+tokens — applies rules, and issues tokens that clusters, cloud accounts
+and consoles trust. It is the hub's first consumer and shares its
+verifiers, backends and rules engine. It is designed in
+[token-service.md](token-service.md) and built after the hub. Nothing in
+the hub depends on it; an installation that only wants the sync model
+never deploys it.
 
 ## Failure semantics
 
@@ -272,11 +382,13 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 | File | Holds |
 |---|---|
 | `README.md` | what it is, the contracts, quick start |
-| `docs/architecture/hub.md` | this design, rewritten as the running architecture |
+| `docs/architecture/access-roster.md` | the family: both components, the relying parties, the use cases end to end |
+| `docs/architecture/hub.md` | the hub: C4 views, the connect flow, a lookup with freshness, failure semantics |
+| `docs/design/token-service.md` | the second component's design and its guardrail |
 | `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`; `max_age`/`snapshot_at`; the additive fields vs google-group-sync |
-| `docs/reference/configuration.md` | chart values, the overlay format, roles, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |
+| `docs/reference/configuration.md` | chart values, the overlay format, access rules and consumers, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |
 | `docs/operations/connect-runbook.md` | the one-time GCP prerequisites, the per-workspace flow, trusting the client, verification |
-| `docs/operations/runbook.md` | health, reconnect as the recovery, domain moves and conflicts, export |
+| `docs/operations/runbook.md` | day one, health, reconnect as the recovery, lost operator access, domain moves and conflicts, export |
 | `docs/operations/migration-from-google-group-sync.md` | overlay first, consumers moved to the ConnectRPC client, Connect later, archive |
 | `docs/development/testing.md` | fakes for the backend and the store |
 | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, chart README, `values.schema.json` | estate-standard |

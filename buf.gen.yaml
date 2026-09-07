@@ -3,7 +3,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/truvity/directory-roster/gen
+      value: github.com/truvity/access-roster/gen
 plugins:
   # Local plugins (installed via devbox: protoc-gen-go, protoc-gen-connect-go)
   # to avoid BSR rate limits.

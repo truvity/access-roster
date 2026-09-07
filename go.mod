@@ -1,4 +1,4 @@
-module github.com/truvity/directory-roster
+module github.com/truvity/access-roster
 
 go 1.27.0
 

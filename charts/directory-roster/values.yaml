@@ -13,7 +13,7 @@
 replicaCount: 2
 
 image:
-  repository: ghcr.io/truvity/directory-roster/directory-roster
+  repository: ghcr.io/truvity/access-roster/directory-roster
   tag: ""  # defaults to appVersion
   pullPolicy: IfNotPresent
 
@@ -73,6 +73,49 @@ workspaces: []
 #    backend: google
 #    admin: admin@example.com
 #    secretName: example-sa-key
+
+# Who may call the API listener: ServiceAccounts, verified by TokenReview
+# (the one cluster-scoped permission the chart creates, and it reads
+# nothing). Consumers mount a projected token with audience `directory-roster`.
+# Empty = the API listener accepts no caller (NetworkPolicy is the second
+# layer, never the only one).
+consumers: []
+#  - namespace: identity-system
+#    serviceAccount: zitadel-rbac-mapper
+
+# Access to the console and the operator API.
+access:
+  # The break-glass account: password generated on first start into the
+  # Secret `hub-admin`, shown nowhere else. Keep it on until a rule grants
+  # operator to a real identity, then turn it off.
+  admin:
+    enabled: true
+  login:
+    # "Sign in with <directory>" using a connected workspace's OAuth client
+    # with openid scopes only. Works as soon as one workspace is connected.
+    directory: true
+    # An external OIDC issuer for the hub's own login page (optional).
+    oidc:
+      issuer: ""
+      # Secret with keys client-id and client-secret.
+      clientSecretName: ""
+    # Trust a bearer forwarded by an authenticating gateway in front of the
+    # console (oauth2-proxy and the like); the hub verifies it against this
+    # issuer. Optional.
+    forwardedBearer:
+      issuer: ""
+  # Declared rules: read-only in the console, evaluated before console-added
+  # ones. Subject kinds: directoryGroup, claim, email, emailDomain.
+  rules: []
+  #  - id: platform-admins
+  #    directoryGroup: { group: platform-admins@example.com }
+  #    role: operator
+  #  - id: fleet-operators
+  #    claim: { issuer: https://issuer.example, claim: groups, value: "hub:operator" }
+  #    role: operator
+  #  - id: everyone-reads
+  #    emailDomain: example.com
+  #    role: viewer
 
 # Ingress to the API port is allow-listed by namespace; the console port
 # admits only the gateway's namespace. Off by default so a plain

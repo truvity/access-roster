@@ -1237,8 +1237,8 @@ const file_directory_v1_directory_proto_rawDesc = "" +
 	"\n" +
 	"GetAccount\x12\x1f.directory.v1.GetAccountRequest\x1a .directory.v1.GetAccountResponse\x12^\n" +
 	"\x0fResolveAccounts\x12$.directory.v1.ResolveAccountsRequest\x1a%.directory.v1.ResolveAccountsResponse\x12R\n" +
-	"\vResolveUser\x12 .directory.v1.ResolveUserRequest\x1a!.directory.v1.ResolveUserResponseB\xb7\x01\n" +
-	"\x10com.directory.v1B\x0eDirectoryProtoP\x01Z@github.com/truvity/directory-roster/gen/directory/v1;directoryv1\xa2\x02\x03DXX\xaa\x02\fDirectory.V1\xca\x02\rDirectory_\\V1\xe2\x02\x19Directory_\\V1\\GPBMetadata\xea\x02\rDirectory::V1b\x06proto3"
+	"\vResolveUser\x12 .directory.v1.ResolveUserRequest\x1a!.directory.v1.ResolveUserResponseB\xb4\x01\n" +
+	"\x10com.directory.v1B\x0eDirectoryProtoP\x01Z=github.com/truvity/access-roster/gen/directory/v1;directoryv1\xa2\x02\x03DXX\xaa\x02\fDirectory.V1\xca\x02\rDirectory_\\V1\xe2\x02\x19Directory_\\V1\\GPBMetadata\xea\x02\rDirectory::V1b\x06proto3"
 
 var (
 	file_directory_v1_directory_proto_rawDescOnce sync.Once

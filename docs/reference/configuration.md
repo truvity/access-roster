@@ -21,7 +21,7 @@ external-secrets is at the end of this page.
 | Value | Default | Meaning |
 |---|---|---|
 | `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory cache |
-| `image.repository` / `tag` | `ghcr.io/truvity/directory-roster/directory-roster` / app version | |
+| `image.repository` / `tag` | `ghcr.io/truvity/access-roster/directory-roster` / app version | |
 | `listeners.api.port` | `8080` | `DirectoryService` — consumers |
 | `listeners.console.port` | `8081` | `WorkspaceService`, `SettingsService`, the SPA, the consent callback — through the gateway |
 | `listeners.health.port` | `7070` | `/healthz`, `/readyz` |
@@ -33,6 +33,12 @@ external-secrets is at the end of this page.
 | `freshness.probeInterval` | `5m` | how often a credential is probed and the domain list re-read |
 | `oauthClient.existingSecret` | `""` | a Secret with `client-id` and `client-secret`; set, the console shows the client read-only |
 | `workspaces[]` | `[]` | declared workspaces, see below |
+| `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener; verified by TokenReview |
+| `access.admin.enabled` | `true` | the break-glass account; turn off once a rule grants operator to a real identity |
+| `access.login.directory` | `true` | "Sign in with <directory>" using a connected workspace's OAuth client |
+| `access.login.oidc.issuer` / `.clientSecretName` | `""` | an external issuer for the hub's own login page; Secret keys `client-id`, `client-secret` |
+| `access.login.forwardedBearer.issuer` | `""` | verify a bearer forwarded by a gateway against this issuer |
+| `access.rules[]` | `[]` | declared rules, see below |
 | `networkPolicy.enabled` | `false` | |
 | `networkPolicy.apiClients[]` | `[]` | namespaces allowed to reach the API listener |
 | `networkPolicy.gatewayNamespace` | `""` | the namespace allowed to reach the console listener |
@@ -61,6 +67,61 @@ as for a connected workspace.
 This is how an installation that already holds service-account keys goes
 live on day one, and connects through consent later at its own pace.
 
+## Consumers
+
+A consumer mounts a projected ServiceAccount token with the hub's audience
+and sends it as a bearer:
+
+```yaml
+volumes:
+  - name: directory-roster-token
+    projected:
+      sources:
+        - serviceAccountToken:
+            audience: directory-roster
+            expirationSeconds: 3600
+            path: token
+```
+
+and appears in the hub's values:
+
+```yaml
+consumers:
+  - namespace: identity-system
+    serviceAccount: authorization-webhook
+```
+
+The chart then creates the one cluster-scoped permission it ever needs, a
+ClusterRole allowing `create` on `tokenreviews`, bound to the hub's
+ServiceAccount. It reads nothing.
+
+## Access rules
+
+Declared rules live in values and are read-only in the console; rules added
+in the console are stored in `ConfigMap hub-access` and evaluated after
+them. Evaluation is in order, default deny, operator implies viewer.
+
+```yaml
+access:
+  rules:
+    - id: platform-admins
+      directoryGroup: { group: platform-admins@example.com }
+      role: operator
+    - id: fleet-operators
+      claim: { issuer: https://issuer.example, claim: groups, value: "hub:operator" }
+      role: operator
+    - id: everyone-reads
+      emailDomain: example.com
+      role: viewer
+```
+
+| Subject | Matches | Needs |
+|---|---|---|
+| `directoryGroup` | live members of a snapshotted group in a served domain; `workspaceId` optional | a connected workspace |
+| `claim` | a value in a named claim of a verified token from a named issuer | the OIDC or forwarded source |
+| `email` | one address, case-insensitive | nothing |
+| `emailDomain` | every address in the domain | nothing |
+
 ## Kubernetes objects the hub owns
 
 | Object | Holds | Written by |
@@ -68,7 +129,10 @@ live on day one, and connects through consent later at its own pace.
 | `Secret workspace-<id>` | the credential: refresh token, or service-account key | the hub (Connect, UploadKey) |
 | `ConfigMap workspace-<id>` | backend, domains, admin, connected by/at, last health, credential type | the hub |
 | `Secret hub-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.existingSecret` |
-| `Secret hub-connect-state` | the key that signs the consent-flow state cookie | the hub, generated on first start |
+| `Secret hub-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
+| `Secret hub-admin` | the break-glass password | the hub, generated on first start |
+| `ConfigMap hub-access` | console-added rules | the hub |
+| `ConfigMap <release>-access` | declared rules, consumers, login sources | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 
 Labels on every hub-written object: `app.kubernetes.io/name=directory-roster`,
@@ -95,17 +159,28 @@ from the values above.
 | `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_PASSWORD` | `valkey.*` (absent = in-memory) |
 | `OAUTH_CLIENT_SECRET_NAME` | `oauthClient.existingSecret` |
 | `OVERLAY_FILE` | set when `workspaces` is non-empty |
+| `ACCESS_FILE` | the rendered access configuration: admin, login sources, consumers, declared rules |
 
 ## Roles
 
-The console listener trusts the identity the gateway forwards and maps the
-groups claim to two roles. The chart does not mint them; the identity
-provider does.
+Two roles, granted by the access rules above, whatever the sign-in source.
 
 | Role | May |
 |---|---|
-| `directory-roster:viewer` | `ListWorkspaces`, `GetSettings`, see the console |
-| `directory-roster:operator` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient |
+| viewer | `ListWorkspaces`, `GetSettings`, `GetAccessPolicy`, `WhoAmI`, see the console |
+| operator | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient, AddRule, RemoveRule |
+
+Behind a gateway that forwards a token with a groups or roles claim, a
+`claim` rule maps that claim to a role; the identity provider mints the
+claim, the hub reads it.
+
+## The repository
+
+access-roster ships two components from one repository, each with its own
+binary and chart, installable alone: `directory-roster`, this hub, and
+later the token service. Shared Go packages — the backends, the Connect
+flow, the rules engine, the verifiers — are importable behind storage
+interfaces.
 
 ## Valkey: a recommendation
 

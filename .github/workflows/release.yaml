@@ -39,5 +39,5 @@ jobs:
       charts: '["directory-roster"]'
       # Nest the image under the repo namespace (INF-574 / INF-584 N1):
       # ko names the artifact after the cmd dir (cmd/directory-roster), so the
-      # published slug is ghcr.io/truvity/directory-roster/directory-roster.
-      ko-docker-repo: ghcr.io/truvity/directory-roster
+      # published slug is ghcr.io/truvity/access-roster/directory-roster.
+      ko-docker-repo: ghcr.io/truvity/access-roster

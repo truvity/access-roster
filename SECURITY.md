@@ -3,7 +3,7 @@
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please report it privately via
-[GitHub Security Advisories](https://github.com/truvity/directory-roster/security/advisories/new).
+[GitHub Security Advisories](https://github.com/truvity/access-roster/security/advisories/new).
 
 Do NOT open a public issue for security vulnerabilities.
 
@@ -30,6 +30,15 @@ Only the latest release is supported with security updates.
   Consumers that remove access act only on authoritative answers; a failed
   probe, a partial read, a stale snapshot or a domain conflict all read as
   "not authoritative", never as "gone".
-- The consumer API listens on a ClusterIP Service gated by NetworkPolicy;
-  the operator API and console sit on a separate listener that is only
-  reachable through the gateway's authentication.
+- The consumer API authenticates callers by Kubernetes ServiceAccount
+  token (TokenReview, audience-bound, allow-listed) on a ClusterIP Service
+  gated by NetworkPolicy. The operator API and console sit on a separate
+  listener with its own session, established by a corporate sign-in, an
+  external issuer, a bearer forwarded by an authenticating gateway, or —
+  for day one and break-glass — a local admin account whose password is
+  generated into a Secret and shown nowhere else.
+- The hub **authenticates nobody and issues nothing.** Sign-in is always
+  delegated to an identity provider; the hub verifies the result and
+  applies rules. The token service designed for this repository is a
+  security token service under the same rule: it verifies proofs produced
+  elsewhere and holds no passwords, no users, no MFA.

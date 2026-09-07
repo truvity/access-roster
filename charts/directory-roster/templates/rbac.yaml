@@ -27,3 +27,35 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "directory-roster.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
+{{- if .Values.consumers }}
+---
+# The one cluster-scoped permission: creating TokenReviews to verify the
+# ServiceAccount tokens consumers present on the API listener. It reads
+# nothing; it asks the API server whether a token is genuine and for which
+# audience.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "directory-roster.fullname" . }}-{{ .Release.Namespace }}-tokenreview
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "directory-roster.fullname" . }}-{{ .Release.Namespace }}-tokenreview
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "directory-roster.fullname" . }}-{{ .Release.Namespace }}-tokenreview
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "directory-roster.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

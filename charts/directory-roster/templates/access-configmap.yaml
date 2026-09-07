@@ -1,0 +1,33 @@
+# Declared access rules and allowed consumers. Read by the hub at start and
+# on change; console-added rules live in the hub-written ConfigMap
+# `hub-access` and never here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "directory-roster.fullname" . }}-access
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+data:
+  access.yaml: |
+    admin:
+      enabled: {{ .Values.access.admin.enabled }}
+    login:
+      directory: {{ .Values.access.login.directory }}
+      {{- if .Values.access.login.oidc.issuer }}
+      oidc:
+        issuer: {{ .Values.access.login.oidc.issuer | quote }}
+        clientSecretName: {{ .Values.access.login.oidc.clientSecretName | quote }}
+      {{- end }}
+      {{- if .Values.access.login.forwardedBearer.issuer }}
+      forwardedBearer:
+        issuer: {{ .Values.access.login.forwardedBearer.issuer | quote }}
+      {{- end }}
+    consumers:
+    {{- range .Values.consumers }}
+      - namespace: {{ .namespace | quote }}
+        serviceAccount: {{ .serviceAccount | quote }}
+    {{- end }}
+    rules:
+    {{- range .Values.access.rules }}
+      - {{ toJson . }}
+    {{- end }}
