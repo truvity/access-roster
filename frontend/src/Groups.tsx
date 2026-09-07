@@ -137,10 +137,39 @@ export function Group({
       lede={`${peopleCount(people.length)} in it, fed by ${plural(group.members.length, "directory group", "directory groups")}${
         group.matchers.length ? ` and ${plural(group.matchers.length, "matcher", "matchers")}` : ""
       }, opening ${plural(opens.length, "client", "clients")}.`}
-      facts={[
-        { label: "Token lifetime", value: forHowLong(group.lifetime) },
-        { label: "Adds to a token", value: adds(claims).replace(/^adds /, "") },
-      ]}
+      facts={[{ label: "Token lifetime", value: forHowLong(group.lifetime) }]}
+      aside={
+        <>
+      <Section title="What it adds to a token" hint="merged with every other group the identity is in; the shortest lifetime wins">
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          {claims ? (
+            <Stack spacing={1.5}>
+              {Array.isArray(claims.groups) ? (
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
+                    groups claim
+                  </Typography>
+                  <Names items={(claims.groups as string[]).map((value) => ({ label: value, mono: true }))} />
+                </Box>
+              ) : null}
+              {Object.keys(claims).some((key) => key !== "groups") ? (
+                <Typography component="pre" variant="body2" sx={{ m: 0, fontFamily: "monospace" }}>
+                  {JSON.stringify(Object.fromEntries(Object.entries(claims).filter(([key]) => key !== "groups")), null, 2)}
+                </Typography>
+              ) : null}
+              <Typography variant="body2" color="text.secondary">
+                Tokens live {forHowLong(group.lifetime)} through this group, unless another group or the client says shorter.
+              </Typography>
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Only its own name, which relying parties read from the groups claim. Tokens live {forHowLong(group.lifetime)} through it.
+            </Typography>
+          )}
+        </Paper>
+      </Section>
+        </>
+      }
     >
       <Loading busy={policy.loading || holders.loading} />
       <Failure error={failure ?? policy.error ?? holders.error} />
@@ -215,35 +244,6 @@ export function Group({
             group.matchers.length ? "Nobody by membership. Only what the matchers above admit is in it." : "Nobody. Attaching a directory group above is what changes that."
           }
         />
-      </Section>
-
-      <Section title="What it adds to a token" hint="merged with every other group the identity is in; the shortest lifetime wins">
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          {claims ? (
-            <Stack spacing={1.5}>
-              {Array.isArray(claims.groups) ? (
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
-                    groups claim
-                  </Typography>
-                  <Names items={(claims.groups as string[]).map((value) => ({ label: value, mono: true }))} />
-                </Box>
-              ) : null}
-              {Object.keys(claims).some((key) => key !== "groups") ? (
-                <Typography component="pre" variant="body2" sx={{ m: 0, fontFamily: "monospace" }}>
-                  {JSON.stringify(Object.fromEntries(Object.entries(claims).filter(([key]) => key !== "groups")), null, 2)}
-                </Typography>
-              ) : null}
-              <Typography variant="body2" color="text.secondary">
-                Tokens live {forHowLong(group.lifetime)} through this group, unless another group or the client says shorter.
-              </Typography>
-            </Stack>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Only its own name, which relying parties read from the groups claim. Tokens live {forHowLong(group.lifetime)} through it.
-            </Typography>
-          )}
-        </Paper>
       </Section>
 
       <Section title="Clients it opens" hint="what being in this group buys">

@@ -281,8 +281,12 @@ keeps a data-dense page readable: a name is a link, monospace when it is
 an identifier; a chip is a state and nothing else is; facts are a label
 over a value; two-column data is a list and tabular data is a table. The
 navigation is a rail with the two sides as groups, which is what Material
-recommends for this many destinations, and it leaves the header for the
-two things that belong there — search, and who you are. The reverse edges are what make it navigable: from a directory
+recommends for this many destinations; the account sits at the foot of
+the rail, your name there is a link to your own page, and the header is
+left to search alone. On a wide window a detail page splits: the main
+column carries the edges, the aside carries the facts and the reference
+material — directory groups, claims, redirects, what a group adds — that
+would otherwise push the edges below the fold. The reverse edges are what make it navigable: from a directory
 group, the internal groups it feeds; from an internal group, the people
 in it; from a client, the groups and the people. Two of those questions
 the policy file cannot answer alone. Who is in an internal group right
