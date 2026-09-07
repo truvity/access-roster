@@ -24,6 +24,10 @@ var ErrInvalidAddress = errors.New("hub: address has no domain")
 // deployment owns the workspace.
 var ErrDeclared = errors.New("hub: workspace is declared by the deployment")
 
+// ErrTenantMismatch is returned when a declared workspace names one
+// tenant and its credential opens another.
+var ErrTenantMismatch = errors.New("hub: the credential opens a different tenant")
+
 // Default intervals, used for any zero value in [Config].
 const (
 	DefaultRefreshInterval = 15 * time.Minute
@@ -684,6 +688,27 @@ func (h *Hub) probeOne(ctx context.Context, ws Workspace) WorkspaceHealth {
 // snapshot. It is what the Connect callback, a key upload and a declared
 // overlay entry all end in.
 func (h *Hub) Adopt(ctx context.Context, ws Workspace, b backend.Backend) (Workspace, error) {
+	// The tenant knows its own id, so asking is better than being told:
+	// an id nobody typed cannot be mistyped, and a declared one that
+	// disagrees means the credential opens a different tenant than the
+	// deployment believes. Reading the wrong directory silently is the
+	// failure worth refusing, because everything downstream — who is
+	// live, who is in which group — would be answered about strangers.
+	tenant, err := b.Tenant(ctx)
+	switch {
+	case err != nil && ws.ID == "":
+		return Workspace{}, fmt.Errorf("read the tenant: %w", err)
+	case err != nil:
+		// The credential could not be exercised now. The workspace is
+		// still adopted with the id it was given; the probe below records
+		// the failure, and its domains stay non-authoritative until a
+		// later probe succeeds.
+	case ws.ID == "":
+		ws.ID = tenant.ID
+	case !strings.EqualFold(ws.ID, tenant.ID):
+		return Workspace{}, fmt.Errorf("%w: declared %q, the credential opens %q",
+			ErrTenantMismatch, ws.ID, tenant.ID)
+	}
 	if ws.ID == "" {
 		return Workspace{}, errors.New("hub: workspace id is required")
 	}

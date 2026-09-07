@@ -69,10 +69,29 @@ oauthClient:
 # other workspace's. Declared workspaces are read-only in the console and
 # win on conflict.
 workspaces: []
-#  - id: C0example        # the backend's tenant id (Google: customer id)
-#    backend: google
-#    admin: admin@example.com
-#    secretName: example-sa-key
+#  - backend: google
+#    admin: admin@example.com     # the account the key impersonates
+#    secretName: example-sa-key   # holds key.json in this namespace
+#    # id is optional: the credential opens exactly one tenant and that
+#    # tenant knows its own id, so the hub discovers it. Supply it and
+#    # adoption becomes a check — a credential that opens a different
+#    # tenant is refused rather than quietly reading another company's
+#    # directory.
+#    id: C0example
+
+# The console's hostname on the gateway, and only the console's. The API
+# listener never gets a route: consumers reach it by Service DNS, and a
+# consumer that could arrive over the gateway could reach an operator
+# call. Empty renders nothing, which is right for a hub reached by
+# port-forward.
+route:
+  host: ""
+  gatewayClassName: internal
+  certificate:
+    # Empty issuerName renders no Certificate, for a gateway that brings
+    # its own.
+    issuerName: internal-ca
+    issuerKind: ClusterIssuer
 
 # Who may call the API listener: ServiceAccounts, verified by TokenReview
 # (the one cluster-scoped permission the chart creates, and it reads
