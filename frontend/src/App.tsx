@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Alert from "@mui/material/Alert";
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -9,40 +10,53 @@ import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
-import Alert from "@mui/material/Alert";
 
 import { whoami, type Me } from "./api";
-import { useAsync, useHashView } from "./hooks";
-import { Workspaces } from "./Workspaces";
-import { AccessView } from "./Access";
-import { MeView } from "./Me";
+import { useAsync } from "./hooks";
+import { paths, useRoute } from "./router";
+import { Search } from "./Search";
+import { Overview } from "./Overview";
+import { Directories, Directory } from "./Directories";
+import { Groups, Group } from "./Groups";
+import { Clients, Client } from "./Clients";
+import { Person } from "./Person";
+import { Explain } from "./Explain";
 import { SettingsView } from "./Settings";
 
-const views = ["workspaces", "access", "me", "settings"] as const;
+const tabs = [
+  { value: "overview", label: "Overview", to: paths.overview() },
+  { value: "directories", label: "Directories", to: paths.directories() },
+  { value: "groups", label: "Groups", to: paths.groups() },
+  { value: "clients", label: "Clients", to: paths.clients() },
+  { value: "explain", label: "Explain", to: paths.explain() },
+  { value: "settings", label: "Settings", to: paths.settings() },
+];
 
 export function App() {
-  const [view, setView] = useHashView("workspaces");
+  const route = useRoute();
   const me = useAsync<Me>(whoami, []);
   const [banner, setBanner] = useState<string | undefined>();
 
   const identity = me.value;
   const roles = identity?.roles ?? [];
   const operator = roles.includes("operator");
-  const current = views.includes(view as (typeof views)[number]) ? view : "workspaces";
+  const current = tabs.some((tab) => tab.value === route.view) ? route.view : "";
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
       <AppBar position="static" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
-        <Toolbar>
-          <Typography variant="h6">directory-roster</Typography>
-          {identity?.version ? (
-            <Chip
-              size="small"
-              variant="outlined"
-              label={identity.version}
-              sx={{ ml: 1, fontFamily: "monospace" }}
-            />
-          ) : null}
+        <Toolbar sx={{ gap: 2 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: "baseline" }}>
+            <Typography variant="h6" sx={{ whiteSpace: "nowrap" }}>
+              directory-roster
+            </Typography>
+            {identity?.version ? (
+              <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+                {identity.version}
+              </Typography>
+            ) : null}
+          </Stack>
+          <Search />
           <Box sx={{ flexGrow: 1 }} />
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             {identity?.status === "signed-in" ? (
@@ -71,11 +85,10 @@ export function App() {
             )}
           </Stack>
         </Toolbar>
-        <Tabs value={current} onChange={(_, next: string) => setView(next)} sx={{ px: 2 }}>
-          <Tab value="workspaces" label="Workspaces" />
-          <Tab value="access" label="Access" />
-          <Tab value="me" label="Effective access" />
-          <Tab value="settings" label="Settings" />
+        <Tabs value={current || false} sx={{ px: 2 }}>
+          {tabs.map((tab) => (
+            <Tab key={tab.value} value={tab.value} label={tab.label} href={`#${tab.to}`} component="a" />
+          ))}
         </Tabs>
       </AppBar>
 
@@ -83,7 +96,7 @@ export function App() {
         {identity?.status === "signed-in" && roles.length === 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
             You are signed in as {identity.email}, and no group grants you access. An operator can attach a
-            directory group to one on the Access tab; on a fresh installation, sign in with the break-glass
+            directory group to one on a group's page; on a fresh installation, sign in with the break-glass
             admin account first.
           </Alert>
         ) : null}
@@ -93,13 +106,41 @@ export function App() {
           </Alert>
         ) : null}
 
-        {current === "workspaces" ? <Workspaces operator={operator} onDone={setBanner} /> : null}
-        {current === "access" ? <AccessView operator={operator} onDone={setBanner} /> : null}
-        {current === "me" ? <MeView operator={operator} /> : null}
-        {current === "settings" ? <SettingsView operator={operator} onDone={setBanner} /> : null}
+        <Page view={route.view} id={route.id} operator={operator} onDone={setBanner} me={identity} />
       </Container>
     </Box>
   );
+}
+
+function Page({
+  view,
+  id,
+  operator,
+  onDone,
+  me,
+}: {
+  view: string;
+  id?: string;
+  operator: boolean;
+  onDone: (message: string) => void;
+  me?: Me;
+}) {
+  switch (view) {
+    case "directories":
+      return id ? <Directory id={id} operator={operator} onDone={onDone} /> : <Directories operator={operator} onDone={onDone} />;
+    case "groups":
+      return id ? <Group name={id} operator={operator} onDone={onDone} /> : <Groups />;
+    case "clients":
+      return id ? <Client id={id} /> : <Clients />;
+    case "people":
+      return <Person email={id ?? me?.email ?? ""} />;
+    case "explain":
+      return <Explain />;
+    case "settings":
+      return <SettingsView operator={operator} onDone={onDone} />;
+    default:
+      return <Overview me={me} />;
+  }
 }
 
 /** Sign-out is a POST: a link that logs you out would be a link anyone

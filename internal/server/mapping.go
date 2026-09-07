@@ -199,6 +199,21 @@ func proofFromRequest(msg *directoryrosterv1.ExplainRequest) access.Proof {
 	return proof
 }
 
+func holderProto(h *access.Holder) *directoryrosterv1.Holder {
+	out := &directoryrosterv1.Holder{
+		Email:         h.Email,
+		GivenName:     h.GivenName,
+		FamilyName:    h.FamilyName,
+		Live:          h.Live,
+		Authoritative: h.Authoritative,
+		Via:           h.Via,
+	}
+	if h.Lifetime > 0 {
+		out.Lifetime = durationpb.New(h.Lifetime)
+	}
+	return out
+}
+
 func clientProto(view *policy.ClientView) *directoryrosterv1.PolicyClient {
 	out := &directoryrosterv1.PolicyClient{
 		Id:        view.ID,

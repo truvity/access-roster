@@ -239,11 +239,34 @@ Secret is deleted.
 
 ## The console
 
-Built on the shared fleet console stack (gateway-auth library, Vite, MUI,
-Connect-Web): Workspaces (each with domains, health, authoritative state,
-Connect / Reconnect / Disconnect), Settings (the OAuth client, the
-read-only knobs), Access (the internal groups and who is in them) and
-Effective access (what an identity gets, and what put it there).
+Built on the shared fleet console stack (Vite, MUI, Connect-Web), and
+organised around what the content actually is: a graph of named things,
+where the chain runs from a directory group to an internal group to a
+claim and a lifetime to a client and its audience.
+
+Three rules hold it together. **Every name is a link**, so the chain is
+walkable in both directions. **Every page opens with one plain-language
+summary line**, then its edges, then raw detail behind a disclosure, which
+is what lets the same page serve an employee and an operator. **Actions
+live on the object they change.**
+
+| Surface | Answers |
+|---|---|
+| Search, on every page | almost every task starts with a name: a person, a group, a client, a tenant. One field resolves any of them |
+| Overview | is anything broken: failing tenants, domains on hold or contested, groups nobody is in, clients nobody reaches, the break-glass state |
+| Directories, list and one page per tenant | which tenants we read, their domains and standing, and the actions on the tenant itself |
+| A group's page | who is in it and the editing, what it adds, its lifetime, the clients it opens, and the people who hold it right now |
+| A client's page | kind, redirects, cap, the groups that open it, and the people who therefore reach it |
+| A person's page | what they reach, which group put them there, and the claims a token would carry |
+| Explain | the same answer for a CI job or a workload, which cannot be searched for because they do not exist until one runs |
+| Settings | the OAuth client, the policy layers with their export, the intervals |
+
+The reverse edges are what make it navigable: from a group, the clients
+it opens and the people in it; from a client, the groups and the people.
+Resolving a group to the people currently in it is also the question an
+access review asks, and the policy file cannot answer it alone — the file
+says which directory groups count, and only the directory knows who is in
+them.
 
 ## Access to the hub itself
 

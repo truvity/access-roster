@@ -772,3 +772,76 @@ func (h *Hub) WorkspaceViews(ctx context.Context) ([]WorkspaceView, error) {
 	}
 	return out, nil
 }
+
+// Person is one account, as a console lists it.
+type Person struct {
+	Email           string
+	GivenName       string
+	FamilyName      string
+	Workspace       string
+	Live            bool
+	Authoritative   bool
+	DirectoryGroups []string
+}
+
+// People returns the accounts every snapshot holds, filtered by a
+// case-insensitive match on the address or the name.
+//
+// It reads only what is already in memory: the console needs to start
+// from a name rather than from a navigation tree, and resolving a group
+// to the people in it is the question an audit actually asks. Neither is
+// worth a round trip to a directory that was read minutes ago.
+func (h *Hub) People(ctx context.Context, query string, limit int) ([]Person, bool, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	v, err := h.view(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+
+	var out []Person
+	for _, id := range slices.Sorted(maps.Keys(v.workspaces)) {
+		ws := v.workspaces[id]
+		snap, snapErr := h.snapshots.Get(ctx, id)
+		if snapErr != nil || snap == nil {
+			continue
+		}
+		// A workspace is authoritative for its accounts when every domain
+		// it serves is: a person in a contested domain is an opinion.
+		authoritative := len(ws.Domains) > 0
+		for _, domain := range ws.Domains {
+			res, routed := v.routing[domain]
+			if !routed || res.workspace != id || !h.authoritative(ws, res, snap) {
+				authoritative = false
+				break
+			}
+		}
+		for _, email := range slices.Sorted(maps.Keys(snap.Accounts)) {
+			account := snap.Accounts[email]
+			if query != "" && !matchesPerson(account, query) {
+				continue
+			}
+			out = append(out, Person{
+				Email:           account.Email,
+				GivenName:       account.GivenName,
+				FamilyName:      account.FamilyName,
+				Workspace:       id,
+				Live:            account.Live,
+				Authoritative:   authoritative,
+				DirectoryGroups: snap.GroupsOf(email),
+			})
+		}
+	}
+	if len(out) > limit {
+		return out[:limit], true, nil
+	}
+	return out, false, nil
+}
+
+// matchesPerson reports whether an account matches a search term.
+func matchesPerson(account backend.Account, query string) bool {
+	full := strings.ToLower(account.Email + " " + account.GivenName + " " + account.FamilyName)
+	return strings.Contains(full, query)
+}

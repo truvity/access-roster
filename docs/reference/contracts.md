@@ -148,10 +148,12 @@ can see what the hub runs with; changing them is a deployment change.
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
 | `WhoAmI` | any signed-in identity | — | `identity{email, subject, source, role, groups[], given_name, family_name}`, `version` | groups are the internal groups the policy puts the caller in |
-| `Explain` | self: any; anything else: operator | one proof: `email?`, `github{repository, owner, ref, workflow, environment}?` or `service_account{namespace, name}?` | the identity, the directory's answer (`in_domain`, `found`, `suspended`, `authoritative`), `directory_groups[]`, `held[]{group, via[]}`, `claims`, `lifetime`, `clients[]{id, kind, requires[], admitted, lifetime}` | what a proof effectively gets and why. A person, a CI job and a workload are the same question, so they are the same call; nothing set explains the caller |
+| `Explain` | self: any; anything else: viewer | one proof: `email?`, `github{repository, owner, ref, workflow, environment}?` or `service_account{namespace, name}?` | the identity, the directory's answer (`in_domain`, `found`, `suspended`, `authoritative`), `directory_groups[]`, `held[]{group, via[]}`, `claims`, `lifetime`, `clients[]{id, kind, requires[], admitted, lifetime}` | what a proof effectively gets and why. A person, a CI job and a workload are the same question, so they are the same call; nothing set explains the caller |
 | `GetPolicy` | viewer | — | `groups[]{name, members[]{address, layer}, matchers[], claims, lifetime}`, `clients[]{id, kind, requires[], redirects[], ttl_cap, secret}`, `admin_enabled`, `login_sources[]`, `console_layer` | `console_layer` is the console's own edits as YAML, for export; a confidential client names the Secret holding its secret, never the secret |
 | `AddMembership` | operator | `group`, `directory_group` | — | the group must be declared |
 | `RemoveMembership` | operator | `group`, `directory_group` | — | `failed_precondition` for a membership the deployment declared |
+| `ListHolders` | viewer | `group?` or `client?`, `limit?` | `holders[]{email, given_name, family_name, live, authoritative, via[], lifetime}`, `examined`, `truncated` | who holds a group, or reaches a client, right now. The policy says which directory groups count; only the directory knows who is in them |
+| `SearchPeople` | viewer | `query`, `limit?` | `people[]{email, given_name, family_name, workspace_id, live}`, `truncated` | accounts by address or name across every snapshot, so a console can start from a name |
 | `ListDirectoryGroups` | viewer | `domain?` | `groups[]{email, domain, workspace_id, members}` | the picker's source: the hub's own snapshots |
 
 Errors: `unauthenticated` with no session; `permission_denied` without the

@@ -63,6 +63,28 @@ export function ago(when?: Date): string {
   return `${Math.round(seconds / 86400)}d ago`;
 }
 
+/** "1 person", "3 people": a count a reader does not have to translate. */
+export function people(n: number): string {
+  return n === 1 ? "1 person" : `${n} people`;
+}
+
+/** What a group's claim fragment adds, in words. */
+export function adds(claims?: Record<string, unknown>): string {
+  if (!claims) return "adds only its own name to a token";
+  const values = Array.isArray(claims.groups) ? claims.groups.length : 0;
+  const others = Object.keys(claims).filter((key) => key !== "groups");
+  const parts: string[] = [];
+  if (values) parts.push(`${values} value${values === 1 ? "" : "s"} to the groups claim`);
+  for (const key of others) parts.push(key);
+  return parts.length ? `adds ${parts.join(" and ")}` : "adds only its own name to a token";
+}
+
+/** A person's name as the directory has it, or their address. */
+export function personName(given?: string, family?: string, email?: string): string {
+  const name = [given, family].filter(Boolean).join(" ");
+  return name || email || "";
+}
+
 export function backendName(b: Backend): string {
   switch (b) {
     case Backend.GOOGLE:
