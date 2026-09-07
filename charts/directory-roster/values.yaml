@@ -81,7 +81,7 @@ workspaces: []
 # layer, never the only one).
 consumers: []
 #  - namespace: identity-system
-#    serviceAccount: zitadel-rbac-mapper
+#    serviceAccount: authorization-webhook
 
 # Access to the console and the operator API.
 access:

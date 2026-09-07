@@ -21,8 +21,9 @@ Consumers reach it over the cluster network, each presenting its
 Kubernetes ServiceAccount token: whatever computes roles at login — an
 identity provider's login hook today, this repository's token service
 later — and [github-roster](https://github.com/truvity/github-roster)
-(groups → GitHub teams). Only the console goes through the gateway. The
-hub never issues a token and never authenticates anyone; it answers
+(groups → GitHub teams). The console is reached by operators through the
+hub's own login, or through an authenticating gateway where one fronts
+every console. The hub never issues a token and never authenticates anyone; it answers
 questions.
 
 ## The model
@@ -67,7 +68,7 @@ Two listeners, so a consumer can never reach an operator call:
 | Port | Services | Reached by |
 |---|---|---|
 | API | `DirectoryService` | consumers over the cluster network (ClusterIP, NetworkPolicy) |
-| console | `WorkspaceService`, `SettingsService`, the SPA | operators through the gateway |
+| console | `WorkspaceService`, `SettingsService`, `AccessService`, the SPA, the login routes | operators, through the hub's own login or a gateway in front |
 
 - **`DirectoryService`** — google-group-sync's proto plus **additive**
   fields, so its existing clients stay valid: `Describe` gains a structured
