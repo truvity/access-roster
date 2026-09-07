@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "directory-roster.fullname" . }}
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "directory-roster.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "directory-roster.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "directory-roster.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: directory-roster
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: api
+              containerPort: {{ .Values.listeners.api.port }}
+            - name: console
+              containerPort: {{ .Values.listeners.console.port }}
+            - name: health
+              containerPort: {{ .Values.listeners.health.port }}
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: API_PORT
+              value: {{ .Values.listeners.api.port | quote }}
+            - name: CONSOLE_PORT
+              value: {{ .Values.listeners.console.port | quote }}
+            - name: HEALTH_PORT
+              value: {{ .Values.listeners.health.port | quote }}
+            - name: REFRESH_INTERVAL
+              value: {{ .Values.freshness.refreshInterval | quote }}
+            - name: FRESHNESS_WINDOW
+              value: {{ .Values.freshness.freshnessWindow | quote }}
+            - name: PROBE_INTERVAL
+              value: {{ .Values.freshness.probeInterval | quote }}
+            {{- if .Values.valkey.address }}
+            - name: VALKEY_ADDRESS
+              value: {{ .Values.valkey.address | quote }}
+            - name: VALKEY_TLS
+              value: {{ .Values.valkey.tls | quote }}
+            {{- if .Values.valkey.passwordSecret.name }}
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.valkey.passwordSecret.name }}
+                  key: {{ .Values.valkey.passwordSecret.key }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.oauthClient.existingSecret }}
+            - name: OAUTH_CLIENT_SECRET_NAME
+              value: {{ .Values.oauthClient.existingSecret | quote }}
+            {{- end }}
+            {{- if .Values.workspaces }}
+            - name: OVERLAY_FILE
+              value: /var/run/directory-roster/overlay.yaml
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.workspaces }}
+            - name: overlay
+              mountPath: /var/run/directory-roster/overlay.yaml
+              subPath: overlay.yaml
+              readOnly: true
+            {{- range .Values.workspaces }}
+            - name: key-{{ .secretName }}
+              mountPath: /var/run/directory-roster/keys/{{ .secretName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.workspaces }}
+        - name: overlay
+          configMap:
+            name: {{ include "directory-roster.fullname" . }}-overlay
+        {{- range .Values.workspaces }}
+        - name: key-{{ .secretName }}
+          secret:
+            secretName: {{ .secretName }}
+        {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,27 @@
+# Binaries
+bin/
+# ko / goreleaser output; NOT the web console — frontend/dist is COMMITTED
+# (the embed needs it and `go build` must work without a Node toolchain).
+/dist/
+!frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Devbox
+.devbox/
+
+# Coverage
+coverage.out
+
+# Go
+vendor/
+
+# Local configuration — may name real tenants and credentials.
+config.yaml
+config.local.yaml
+frontend/node_modules/

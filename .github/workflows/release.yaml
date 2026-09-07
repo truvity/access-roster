@@ -1,0 +1,43 @@
+# Tag-triggered release: binaries, the service image (ko) and the helm
+# chart, all to GHCR — the shared implementation.
+#
+# The hand-rolled copy this replaces was one of NINE identical ones
+# across the public estate, and the shared workflow it now calls had sat
+# in ci-workflows with zero callers. That gap is not theoretical: bar's
+# release workflows drifted out of sync with the tool they invoked and
+# nobody noticed until a tag was cut months later, because release
+# machinery is exercised only by a tag.
+#
+# The caller must grant the permissions below — a reusable workflow can
+# narrow them but never widen them, which is also why the private (ECR)
+# half is a separate workflow rather than a flag on this one: its
+# callers grant id-token, not packages.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+# Never cancel a running publish — a half-pushed artifact set is worse
+# than a queued wait.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    permissions:
+      contents: write
+      packages: write
+    uses: truvity/ci-workflows/.github/workflows/release-public.yaml@eb317bdb3240d43404665cc943d1c00e8946f733 # v2.18.0
+    with:
+      charts: '["directory-roster"]'
+      # Nest the image under the repo namespace (INF-574 / INF-584 N1):
+      # ko names the artifact after the cmd dir (cmd/directory-roster), so the
+      # published slug is ghcr.io/truvity/directory-roster/directory-roster.
+      ko-docker-repo: ghcr.io/truvity/directory-roster

@@ -1,0 +1,96 @@
+# directory-roster chart values.
+#
+# What the chart INCLUDES: everything that is a standard Kubernetes API —
+# the Deployment, the two Services (API and console), the ServiceAccount
+# and its namespaced Role, the NetworkPolicy, and (with the console slice)
+# the Gateway API HTTPRoute for the console host.
+#
+# What the chart EXPECTS to exist: a Valkey to point at (snapshots and
+# locks — never a credential) and the gateway authentication in front of
+# the console host. Recommendations for both are in
+# docs/reference/configuration.md.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/truvity/directory-roster/directory-roster
+  tag: ""  # defaults to appVersion
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Two listeners, so a consumer can never reach an operator call.
+listeners:
+  # DirectoryService — consumers over the cluster network.
+  api:
+    port: 8080
+  # WorkspaceService, SettingsService and the SPA — operators through the
+  # gateway.
+  console:
+    port: 8081
+  # liveness/readiness only.
+  health:
+    port: 7070
+
+# The snapshot cache. External to this chart: point at an existing Valkey.
+# Empty address = the in-memory backend, for development and a single
+# replica only.
+valkey:
+  address: ""
+  # Optional: a Secret holding the password.
+  passwordSecret:
+    name: ""
+    key: password
+  tls: false
+
+# Freshness knobs. Operational configuration belongs to the deployment;
+# the console shows these read-only.
+freshness:
+  # how often the background refresher takes a new snapshot per workspace.
+  refreshInterval: 15m
+  # how old a snapshot may be before its domains stop being authoritative.
+  freshnessWindow: 30m
+  # how often a workspace's credential is probed and its domains re-read.
+  probeInterval: 5m
+
+# The OAuth client for the admin-consent flow. Either name a Secret that
+# already holds it (keys: client-id, client-secret) — then the console
+# shows it read-only — or leave empty and paste it into Settings once.
+oauthClient:
+  existingSecret: ""
+
+# Declared (overlay) workspaces: how an existing installation moves without
+# a Connect step. Each names a Secret in this namespace holding a
+# service-account key with domain-wide delegation (key `key.json`) and the
+# admin to impersonate. Domains are discovered from the backend like any
+# other workspace's. Declared workspaces are read-only in the console and
+# win on conflict.
+workspaces: []
+#  - id: C0example        # the backend's tenant id (Google: customer id)
+#    backend: google
+#    admin: admin@example.com
+#    secretName: example-sa-key
+
+# Ingress to the API port is allow-listed by namespace; the console port
+# admits only the gateway's namespace. Off by default so a plain
+# `helm install` works on a cluster without a CNI that enforces policy.
+networkPolicy:
+  enabled: false
+  # namespaces whose pods may call the API listener.
+  apiClients: []
+  # the namespace the gateway's proxy runs in.
+  gatewayNamespace: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
