@@ -19,8 +19,10 @@ groups:                        # internal groups — the vocabulary
   dpo:
     members: [role-security@a.example]
   ci-gitops:
-    matchers:                                             # machine groups: matched, not listed
+    matchers:                                             # matched, not listed
       - github: { repository: example-org/gitops, ref: refs/heads/master }
+  hub-viewers:
+    matchers: [{ email_domain: a.example }]                # the escape hatch, see below
   hub-operators:
     members: [directory-admins@a.example]
 
@@ -46,7 +48,7 @@ memberships:                   # the one table a console may extend — the same
 
 | Table | Key | Holds | Who writes it |
 |---|---|---|---|
-| `groups` | internal group name | directory `members`, or `matchers` for machines | declared |
+| `groups` | internal group name | directory `members`, or `matchers`; a group with neither is one nobody is in yet, which is where a fresh installation starts | declared |
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
 | `clients` | client id | kind, secret ref, redirects, `requires`, `ttl_cap` | declared, plus self-registration |
@@ -66,6 +68,12 @@ point a person and a job are the same thing.
 | a corporate sign-in | whose `members` (or `memberships`) contain a directory group the hub confirms the account is in, **authoritatively** |
 | a CI identity token | whose `matchers` the token's claims satisfy |
 | a Kubernetes ServiceAccount token | whose `matchers` name that namespace and ServiceAccount |
+
+`matchers` are conditions on a verified proof, so they also cover a
+signed-in address (`email`) or its domain (`email_domain`). Those are the
+escape hatch for the day before any directory group exists, and for a
+population no group describes; `members` is the normal way, because it is
+the one the directory can confirm and therefore the one liveness gates.
 
 Attributes exist only in matchers, at the front door. There is no policy
 engine behind it: relying parties are role-based systems, and a cluster
@@ -88,6 +96,10 @@ account: workspace id plus the backend's user id), `email`, `name`,
 | maps | merged recursively |
 | scalars | may not conflict: two groups setting one key to different values is a **load-time error**, never a runtime choice |
 | lifetime | the shortest across the caller's groups, then the client's `ttl_cap`, then `lifetimes.default` |
+
+Conflicts are refused when the policy loads rather than when someone in
+both groups signs in, so a bad edit fails a rollout and never produces a
+token whose shape depends on who is looking.
 
 Lifetime is a property of the privilege, never of the identity provider:
 nothing in this file may be a function of a pair such as group and
@@ -123,6 +135,13 @@ A key present in both is shown once, marked declared, and the console's
 copy is ignored rather than merged over it. The console layer exports as
 the same YAML, so an installation that starts standalone moves its
 edits into git by pasting.
+
+## Not in this file
+
+The **hold window** — how long a signed-in identity keeps its last granted
+role while the directory cannot be vouched for — is a property of the hub,
+not of the policy: it belongs to the service that has to stay usable while
+its own directory is uncertain. It is a chart value.
 
 ## Validation at load
 

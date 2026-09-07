@@ -4,6 +4,16 @@ One line per release; full detail lives in the release notes and the
 git history.
 
 ## Unreleased
+- Prototype reworked to the policy model: `policy` replaces `rules`, the
+  hub is a relying party of its own policy (`hub-operators`,
+  `hub-viewers`), `AccessService` moves from rule writing to membership
+  editing plus `Explain` and `GetPolicy`, and the chart carries `policy`
+  as a mounted directory.
+- Console: the Access tab is the membership table with an inline row and
+  declared members locked; a new Effective access page answers what an
+  identity gets and why, for yourself or — as an operator — for anyone;
+  the header carries the person's name and the build; Workspaces offers
+  one Connect button per provider the deployment can use.
 - Policy model settled (2026-09-07): five tables — groups, claims,
   lifetimes, clients, memberships — one schema for both services, deep
   merge with a scalar-conflict check, shortest lifetime, layered loading

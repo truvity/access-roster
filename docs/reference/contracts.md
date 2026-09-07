@@ -23,8 +23,8 @@ NetworkPolicy is the second layer, never the only one.
 **Console listener.** One session cookie, HttpOnly, signed with the hub's
 session key, obtained through one of the login routes below or — behind
 an authenticating gateway — minted from the forwarded bearer on the first
-request. Roles come from membership of two declared policy groups: **viewer** reads, **operator**
-writes. Unauthenticated RPCs get `unauthenticated`; a missing role gets
+request. Roles come from membership of two declared policy groups:
+`hub-viewers` reads, `hub-operators` writes. Unauthenticated RPCs get `unauthenticated`; a missing role gets
 `permission_denied`.
 
 | Route | Does |
@@ -147,14 +147,36 @@ can see what the hub runs with; changing them is a deployment change.
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `WhoAmI` | any signed-in identity | — | `identity{email, subject, source, role, matched_rules[]}` | source is directory, oidc, forwarded or admin |
-| `GetAccessPolicy` | viewer | — | `rules[]`, `admin_enabled`, `login_sources[]` | declared rules carry `declared=true` |
-| `AddRule` | operator | `rule{subject, role}` | `rule` with its id | console-added rules only |
-| `RemoveRule` | operator | `id` | — | `failed_precondition` for a declared rule |
+| `WhoAmI` | any signed-in identity | — | `identity{email, subject, source, role, groups[], given_name, family_name}`, `version` | groups are the internal groups the policy puts the caller in |
+| `Explain` | self: any; someone else: operator | `email?` | the identity, the directory's answer (`in_domain`, `found`, `suspended`, `authoritative`), `directory_groups[]`, `held[]{group, via[]}`, `claims`, `lifetime` | what an identity effectively gets and why; empty email explains the caller |
+| `GetPolicy` | viewer | — | `groups[]{name, members[]{address, layer}, matchers[], claims, lifetime}`, `admin_enabled`, `login_sources[]`, `console_layer` | `console_layer` is the console's own edits as YAML, for export |
+| `AddMembership` | operator | `group`, `directory_group` | — | the group must be declared |
+| `RemoveMembership` | operator | `group`, `directory_group` | — | `failed_precondition` for a membership the deployment declared |
+| `ListDirectoryGroups` | viewer | `domain?` | `groups[]{email, domain, workspace_id, members}` | the picker's source: the hub's own snapshots |
 
-Rule subjects: `directory_group{workspace_id?, group}`, `claim{issuer,
-claim, value}`, `email`, `email_domain`. Evaluation in order, declared
-first, default deny, operator implies viewer.
+Errors: `unauthenticated` with no session; `permission_denied` without the
+role; `not_found` for an undeclared group; `failed_precondition` for
+anything the deployment owns.
+
+## The whoami endpoint
+
+`GET /.access/whoami` on the console listener, the same shape every
+adapter of the Go module serves:
+
+```json
+{
+  "status": "signed-in",
+  "email": "alice@example.com",
+  "name": "Alice Ant",
+  "givenName": "Alice",
+  "familyName": "Ant",
+  "roles": ["operator", "viewer"],
+  "source": "forwarded",
+  "groups": ["engineering", "hub-operators"],
+  "version": "v1.0.0",
+  "signOutUrl": "/logout"
+}
+```
 
 ## Calling from a shell
 

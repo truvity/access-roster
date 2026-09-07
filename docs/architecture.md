@@ -97,7 +97,7 @@ flowchart TB
   subgraph nsHub["namespace: directory-roster"]
     direction TB
     hub["directory-roster<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: Workspaces, Settings, Access, SPA, login routes<br/>refresher, prober, router by domain"]:::hub
-    spa["console<br/>[Container: React SPA, served by the hub]"]:::hub
+    spa["console<br/>[Container: React SPA, served by the hub]<br/>Workspaces · Access · Effective access · Settings"]:::hub
     k8s[("workspace records + credentials<br/>[Secrets + ConfigMaps, this namespace]<br/>refresh tokens, SA keys, OAuth client,<br/>session key, admin password, console rules")]:::hubStore
     hv[("Valkey<br/>[external to the chart]<br/>one snapshot per workspace, locks")]:::hubStore
   end
