@@ -1,0 +1,11 @@
+version: v2
+modules:
+  - path: proto
+    name: buf.build/truvity/directory-roster
+# google/protobuf/* well-known types are bundled with buf — no deps needed.
+breaking:
+  use:
+    - FILE
+lint:
+  use:
+    - STANDARD

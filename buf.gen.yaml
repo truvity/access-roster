@@ -1,0 +1,17 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/truvity/directory-roster/gen
+plugins:
+  # Local plugins (installed via devbox: protoc-gen-go, protoc-gen-connect-go)
+  # to avoid BSR rate limits.
+  - local: protoc-gen-go
+    out: gen
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: gen
+    opt: paths=source_relative
+  # The TypeScript target for the console (buf.build/bufbuild/es → frontend/src/gen)
+  # is added with the console slice.

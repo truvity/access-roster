@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+import "google/protobuf/duration.proto";
+
+// SettingsService exposes the hub's configuration to the console. Only the
+// OAuth client is writable, and only when the deployment did not declare
+// it; the intervals and the cache backend are chart values, shown so an
+// operator can see what the hub is running with.
+service SettingsService {
+  // GetSettings returns the OAuth client's public half and the read-only
+  // knobs. Never the client secret. Viewer.
+  rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
+
+  // SetOAuthClient stores the OAuth client id and secret in the hub's own
+  // Secret. Refused (failed_precondition) when the chart declared the
+  // client. Operator.
+  rpc SetOAuthClient(SetOAuthClientRequest) returns (SetOAuthClientResponse);
+}
+
+// ClientSource says where the OAuth client came from.
+enum ClientSource {
+  CLIENT_SOURCE_UNSPECIFIED = 0;
+  // a Secret named by the deployment; read-only in the console.
+  CLIENT_SOURCE_DECLARED = 1;
+  // stored through SetOAuthClient.
+  CLIENT_SOURCE_CONSOLE = 2;
+}
+
+message OAuthClient {
+  string client_id = 1;
+  // true when both id and secret are present.
+  bool configured = 2;
+  ClientSource source = 3;
+}
+
+message GetSettingsRequest {}
+message GetSettingsResponse {
+  OAuthClient oauth_client = 1;
+  // how often the background refresher takes a new snapshot per workspace.
+  google.protobuf.Duration refresh_interval = 2;
+  // how old a snapshot may be before its domains stop being authoritative.
+  google.protobuf.Duration freshness_window = 3;
+  // how often a workspace's credential is probed and its domains re-read.
+  google.protobuf.Duration probe_interval = 4;
+  // "valkey" or "memory".
+  string cache_backend = 5;
+}
+
+message SetOAuthClientRequest {
+  string client_id = 1;
+  string client_secret = 2;
+}
+message SetOAuthClientResponse {}
