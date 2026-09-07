@@ -24,7 +24,8 @@ a login cache and an issuer configuration.
 | `kube-token` | a Kubernetes exec credential for one cluster audience; refreshes silently from the cached login | people |
 | `aws-config` | writes a profile per granted cloud role with `credential_process = accessctl aws --audience aws:<account>:<role>` | people |
 | `aws` | exchanges the cached login for the role's audience and answers the credential-process JSON | people |
-| `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts, the action |
+| `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
+| `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
 **Machines do not run the CLI.** A job's exchange is one call to the
 issuer's token endpoint; the action below does it in shell. The CLI may
@@ -35,28 +36,47 @@ shape.
 
 ## The GitHub Action
 
-`truvity/access-roster/actions/exchange` is **shell only** — `curl` and
-`jq`, no binary downloaded into the job. It requests the job's identity
-token, exchanges it at the issuer for each audience requested, and writes
-a kubeconfig with the cluster token and an AWS profile pointing at a
-web-identity token file. A workflow deploying to one cluster and one
-account:
+One action, at the repository root, toggled by its inputs. It prepares
+exactly what is ours to prepare and stops:
 
 ```yaml
-permissions:
-  id-token: write
-steps:
-  - uses: truvity/access-roster/actions/exchange@v1
-    with:
-      issuer: https://issuer.example.internal
-      audiences: k8s:devel, aws:111122223333:gitops-deployer
-  - run: kubectl -n demo rollout status deploy/app
-  - run: aws s3 ls
+- uses: truvity/access-roster@v1
+  with:
+    issuer: https://issuer.example.internal
+    audiences: k8s:devel, aws:111122223333:gitops-deployer, aws:444455556666:artifacts-reader
+    kubeconfig: true                            # a context per k8s:* audience
+    default-profile: gitops-deployer@111122223333
+    region: eu-central-1                        # written into every profile
 ```
 
-Policy is not in the workflow: the rules decide that `example-org/gitops`
-on `refs/heads/master` may have those two audiences and a fork branch may
-have none.
+| Input | Effect |
+|---|---|
+| `issuer`, `audiences` | required: one exchange per audience, rules decide |
+| `kubeconfig` | write a kubeconfig with one context per `k8s:<cluster>` audience, the cluster token as bearer |
+| `default-profile` | export `AWS_PROFILE` |
+| `region` | the region written into each profile |
+
+For every `aws:<account>:<role>` audience it writes a profile named
+`<role>@<account>` with `role_arn`, `web_identity_token_file` pointing at
+the exchanged token, and the region. Outputs: the profile names, the
+kubeconfig path, the tokens (masked). Inside: `curl`, `jq`, two files.
+Nothing of ours is downloaded into the job.
+
+**Everything downstream of an AWS credential is AWS's tooling and runs on
+top of those profiles**: ECR login, CodeArtifact tokens, any other service.
+The action does not wrap them, on purpose — many registries and many
+artifact domains are just many profiles and many `--profile` flags, and no
+version of ours moves when Amazon's tooling does. The recipes are in
+[connect/registries-and-artifacts.md](../connect/registries-and-artifacts.md).
+
+## `accessctl setup` on a laptop
+
+The same boundary for people: one command that writes the kubeconfig
+contexts and the AWS profiles for everything the rules grant, with
+`accessctl aws` as the credential process behind each profile, and then
+prints the lines it will not write for you — the Docker credential-helper
+mapping and the CodeArtifact login commands. Idempotent; run it again
+after a rules change.
 
 ## What it never does
 

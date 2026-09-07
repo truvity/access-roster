@@ -32,6 +32,7 @@ flowchart TB
     argo["ArgoCD · Kargo"]:::ext
     consoles["Consoles<br/>(ours and business test surfaces)"]:::ext
     ghteams["GitHub teams<br/>via github-roster"]:::ext
+    reg["ECR · CodeArtifact · any AWS service<br/>(on top of the profiles)"]:::ext
   end
 
   gws -- "① Admin SDK reads<br/>admin consent or SA key" --> hub
@@ -49,6 +50,7 @@ flowchart TB
   ctl -- "⑫ device flow, exchange" --> iss
   act -- "⑬ exchange, shell only" --> iss
   hub -- "⑭ groups, liveness,<br/>authoritative" --> ghteams
+  aws -. "⑮ AWS's own tooling<br/>with --profile" .-> reg
 
   classDef ext fill:#8A93A3,stroke:#5E6675,color:#fff
   classDef hub fill:#0E7C7B,stroke:#0A5958,color:#fff
@@ -57,6 +59,23 @@ flowchart TB
   style out fill:none,stroke:#8A93A3,stroke-dasharray:5 5
   style ar fill:none,stroke:#4A4FB5,stroke-dasharray:5 5
 ```
+
+## The batteries, by kind of artifact
+
+| Kind | Name | What it is | Who deploys or uses it | Status |
+|---|---|---|---|---|
+| **Service** | directory-roster | the directory hub | the platform, once per installation | design under review, prototype next |
+| **Service** | access-issuer | the token service | the platform, once per installation | designed, after the hub |
+| **Helm chart** | `directory-roster` | the hub's chart; expects a Valkey | the platform | with the hub |
+| **Helm chart** | `access-issuer` | the issuer's chart; expects a Valkey and the hub | the platform | with the issuer |
+| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console; self-registers at the issuer; expects a Valkey | every team that ships a console, one release per console | with the issuer |
+| **Go module** | `github.com/truvity/access-roster` | `identity` with net/http, fiber v3, gRPC and connect adapters; `authz`; `directory`; `tokens`; `rules`; `connect` | every Go service and console | `identity` core with the hub, the rest with the issuer |
+| **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>`, generated clients | every console UI | with the hub's console |
+| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `rules test` | people, on laptops; never machines | with the issuer |
+| **GitHub Action** | `truvity/access-roster@v1` (root `action.yml`) | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | with the issuer |
+| **File format** | the rules file | subject → grant; the one place policy is written | the platform, in gitops | with the hub's console, extended by the issuer |
+| **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the hub's console services | consumers of the hub | now |
+| **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
 
 ## What is ours and what is third-party
 
@@ -219,9 +238,23 @@ configure and where, what you get.
   keeps bound teams equal to directory groups, removing only on
   authoritative answers. No issuer involved: this is the sync model.
 
+### ⑮ Registries, artifacts and every other AWS service
+
+- **Parties:** ECR, CodeArtifact, anything on AWS; the profiles ⑦ and ⑫ or
+  ⑬ prepared.
+- **Trust:** none of their own; they consume an AWS credential.
+- **Flow:** `--profile <role>@<account>`, then the service's own login:
+  Amazon's ECR credential helper or action, `aws codeartifact login` per
+  tool. Many registries and domains are many profiles.
+- **You configure:** roles whose only purpose is registry or artifact
+  access, granted by rules; the tool-specific line per registry or domain.
+- **You get:** a push or a package install that never sees an expired
+  login, with the entitlement decided in the rules file.
+- Guide: [connect/registries-and-artifacts.md](connect/registries-and-artifacts.md).
+
 ## Reading the two models together
 
-Cases ⑥ ⑦ ⑧ ⑩ are the **claims model**: the decision rides in a token,
+Cases ⑥ ⑦ ⑧ ⑩ ⑮ are the **claims model**: the decision rides in a token,
 because a cluster, a cloud account or a session cannot call the hub.
 Case ⑭ is the **sync model**: the decision is materialized where it is
 enforced, because GitHub can be written to. Both draw from the same hub

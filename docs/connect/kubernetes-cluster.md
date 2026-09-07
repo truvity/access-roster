@@ -43,7 +43,7 @@ users:
 ## Job side
 
 The API server trusts one issuer, access-issuer, so a job's GitHub token is
-never presented to it. `truvity/access-roster/actions/exchange` with
+never presented to it. `truvity/access-roster@v1` with
 `audiences: k8s:<cluster>` exchanges the job's token at the issuer and
 writes a kubeconfig with the resulting token; rules on repository and ref
 decide which jobs may. The token's lifetime is the issuer's CI client

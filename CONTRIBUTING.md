@@ -12,7 +12,7 @@ cmd/accessctl             the CLI (later)
 charts/directory-roster   the hub's chart
 charts/access-issuer      the issuer's chart (later)
 charts/access-proxy       the console exposure chart (later)
-actions/exchange          the GitHub Action (later)
+action.yml                the GitHub Action, at the root so `uses: truvity/access-roster@v1` works (later)
 identity/ authz/ directory/ tokens/ rules/ connect/ backend/ proof/
                           the Go module's public packages; framework
                           adapters under identity/<framework>mw
