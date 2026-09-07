@@ -23,6 +23,12 @@ type Config struct {
 	// HoldWindow is how long an identity keeps its last-known groups while
 	// the hub cannot be vouched for.
 	HoldWindow time.Duration
+	// AllowInsecure permits an http:// issuer URL. The library refuses
+	// one by default and is right to: every token this service signs is
+	// bearer credential, and an issuer reached over plaintext can be
+	// impersonated by anyone on the path. It exists for a local run and a
+	// test, and a deployment that sets it has misconfigured itself.
+	AllowInsecure bool
 }
 
 // Defaults for the durations a deployment does not set.

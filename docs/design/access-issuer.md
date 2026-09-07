@@ -151,6 +151,65 @@ in the issuer's own namespace.
 | an audience is not granted | `invalid_target`, the exchange is refused |
 | a registration names a host outside its namespace's pattern | refused, logged |
 
+## What running it already settled
+
+The decision core and the OpenID surface are built against the library
+with in-memory state, which is what the spike calls for, and six things
+came out of running it rather than reading about it. They are recorded
+here because each one changes what somebody else has to build.
+
+**A token exchange authenticates with HTTP Basic and nothing else.** The
+library reads the exchange's client credentials from the Basic header
+only; unlike the code grant it never looks at a posted `client_id`. A
+public client therefore presents `Basic base64(<client id>:)`, with an
+empty password. The GitHub Action has to send exactly that, and a job
+that posts its client id in the form gets `invalid_client` with no hint
+as to why.
+
+**A public client is authenticated by presenting no secret.** The library
+asks the storage to authorize every exchange, public clients included.
+That is the right question with the wrong premise: in an exchange the
+subject token is the credential — a CI identity token checked against the
+platform's keys — and the client id only names who is asking. So a public
+client presenting nothing is admitted, and one presenting a secret is
+refused, because it should not have one.
+
+**An exchange yields an access token and never a refresh token.** A job's
+proof is short-lived by design, minted per run; trading it for a
+credential that outlives the run would undo that and leave a standing key
+on a machine whose whole appeal is holding none. So an exchange leaves no
+session behind, and there is nothing to revoke afterwards: the access
+ends when the token expires, whether or not anyone remembers it.
+
+**Revocation arrives as a session id, not the token.** The library
+resolves a refresh token through `GetRefreshTokenInfo` and then hands
+back what that returned. A storage that handles only the raw token
+answers 200 and revokes nothing — success reported for a security control
+that did not act, which is the worst answer available. Both forms are
+handled.
+
+**Discovery over-promises, so it is corrected on the way out.** The
+library composes `response_types_supported` from a hardcoded list that
+includes the implicit and hybrid flows. Every client here declares `code`
+alone, so such a request is refused — but a relying party that believes
+the metadata is told a flow exists that does not, and an auditor reading
+discovery sees something we deliberately do not serve. Metadata that lies
+is a defect in a service whose whole job is to be trusted, so the
+document is rewritten before it is served.
+
+**The issuer URL must be HTTPS**, and the library refuses otherwise
+unless told explicitly. It is right to: every token this service signs is
+a bearer credential, and an issuer reached over plaintext can be
+impersonated by anyone on the path. The override exists for a local run
+and a test; a deployment that sets it has misconfigured itself.
+
+None of this changes the model. The gate holds: a CI job on the declared
+branch reaches the AWS role through its rule, the same repository on a
+branch anyone with a fork can push reaches nothing, and the audience in
+the token is exactly the role asked for. That is the claim the whole
+design rests on, and it is now a test that fails when the check is
+removed.
+
 ## Before building: the spike
 
 1. Rule-gated audiences accepted by trust policies across two cloud
@@ -165,6 +224,10 @@ in the issuer's own namespace.
 7. The OpenID Foundation conformance suite against the spike, Basic OP,
    Config and RP-Initiated Logout profiles, so that "fully implemented"
    is a green run and not an opinion.
+
+Items 1 to 5 need real infrastructure — two cloud accounts, a cluster, a
+workflow — and item 6 and the model beneath all of them are already
+settled above.
 
 Each with a number attached. The migration that follows is consumer by
 consumer, the previous issuer running as fallback until it has no relying
