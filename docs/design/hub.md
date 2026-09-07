@@ -379,7 +379,7 @@ policy.
 | group names, claim fragments, lifetimes, clients, matchers | nothing | all |
 | workspaces | connect, reconnect, upload a key, probe, refresh, disconnect what it connected | a workspace the deployment declared |
 | the OAuth client | set it once, when the chart did not declare one | a declared client |
-| sessions, once the issuer exists | revoke another identity's (operator); sign out everywhere (anyone, their own). Removal only: a console can end access here, never grant it | — |
+| sessions, once the issuer exists | revoke another identity's (operator); sign out everywhere (anyone, their own). Removal only: a console can end access here, never grant it. The browser calls the issuer directly, so the hub's own code stays independent of it | — |
 | the break-glass admin, the intervals, the sign-in sources | nothing | all |
 
 A console that could re-enable its own break-glass account would be a
