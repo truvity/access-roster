@@ -262,14 +262,25 @@ func (x *Workspace) GetDeclared() bool {
 	return false
 }
 
-// WorkspaceDomain is one domain a workspace claims, and its standing.
+// WorkspaceDomain is one domain a workspace holds, and its standing.
 type WorkspaceDomain struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Authoritative bool                   `protobuf:"varint,2,opt,name=authoritative,proto3" json:"authoritative,omitempty"`
-	// true when another connected workspace claims the same domain; neither
-	// is authoritative for it until the conflict clears.
-	Conflict      bool `protobuf:"varint,3,opt,name=conflict,proto3" json:"conflict,omitempty"`
+	// true when another workspace serves the same domain; neither is
+	// authoritative for it until the conflict clears. Only a domain both
+	// workspaces *serve* contests: owning one another tenant serves is not
+	// a conflict.
+	Conflict bool `protobuf:"varint,3,opt,name=conflict,proto3" json:"conflict,omitempty"`
+	// true when the hub answers for this domain. False means the tenant
+	// owns it and this installation has chosen not to read it; the hub
+	// neither routes it nor keeps its accounts.
+	Served bool `protobuf:"varint,4,opt,name=served,proto3" json:"served,omitempty"`
+	// true when the tenant still owns the domain. False appears only for a
+	// domain the served list names and discovery no longer returns — after
+	// a domain moves to another tenant, say. It routes nothing and should
+	// be dropped from the list.
+	Owned         bool `protobuf:"varint,5,opt,name=owned,proto3" json:"owned,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -321,6 +332,20 @@ func (x *WorkspaceDomain) GetAuthoritative() bool {
 func (x *WorkspaceDomain) GetConflict() bool {
 	if x != nil {
 		return x.Conflict
+	}
+	return false
+}
+
+func (x *WorkspaceDomain) GetServed() bool {
+	if x != nil {
+		return x.Served
+	}
+	return false
+}
+
+func (x *WorkspaceDomain) GetOwned() bool {
+	if x != nil {
+		return x.Owned
 	}
 	return false
 }
@@ -933,6 +958,103 @@ func (x *RefreshResponse) GetSnapshotAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type SetServedDomainsRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// the domains to serve; empty serves every domain the tenant owns.
+	Domains       []string `protobuf:"bytes,2,rep,name=domains,proto3" json:"domains,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetServedDomainsRequest) Reset() {
+	*x = SetServedDomainsRequest{}
+	mi := &file_directoryroster_v1_workspace_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetServedDomainsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetServedDomainsRequest) ProtoMessage() {}
+
+func (x *SetServedDomainsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_workspace_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetServedDomainsRequest.ProtoReflect.Descriptor instead.
+func (*SetServedDomainsRequest) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_workspace_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SetServedDomainsRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *SetServedDomainsRequest) GetDomains() []string {
+	if x != nil {
+		return x.Domains
+	}
+	return nil
+}
+
+type SetServedDomainsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Workspace     *Workspace             `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetServedDomainsResponse) Reset() {
+	*x = SetServedDomainsResponse{}
+	mi := &file_directoryroster_v1_workspace_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetServedDomainsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetServedDomainsResponse) ProtoMessage() {}
+
+func (x *SetServedDomainsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_workspace_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetServedDomainsResponse.ProtoReflect.Descriptor instead.
+func (*SetServedDomainsResponse) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_workspace_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *SetServedDomainsResponse) GetWorkspace() *Workspace {
+	if x != nil {
+		return x.Workspace
+	}
+	return nil
+}
+
 type DisconnectRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkspaceId   string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
@@ -942,7 +1064,7 @@ type DisconnectRequest struct {
 
 func (x *DisconnectRequest) Reset() {
 	*x = DisconnectRequest{}
-	mi := &file_directoryroster_v1_workspace_proto_msgTypes[15]
+	mi := &file_directoryroster_v1_workspace_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -954,7 +1076,7 @@ func (x *DisconnectRequest) String() string {
 func (*DisconnectRequest) ProtoMessage() {}
 
 func (x *DisconnectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_workspace_proto_msgTypes[15]
+	mi := &file_directoryroster_v1_workspace_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -967,7 +1089,7 @@ func (x *DisconnectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectRequest.ProtoReflect.Descriptor instead.
 func (*DisconnectRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_workspace_proto_rawDescGZIP(), []int{15}
+	return file_directoryroster_v1_workspace_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DisconnectRequest) GetWorkspaceId() string {
@@ -985,7 +1107,7 @@ type DisconnectResponse struct {
 
 func (x *DisconnectResponse) Reset() {
 	*x = DisconnectResponse{}
-	mi := &file_directoryroster_v1_workspace_proto_msgTypes[16]
+	mi := &file_directoryroster_v1_workspace_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -997,7 +1119,7 @@ func (x *DisconnectResponse) String() string {
 func (*DisconnectResponse) ProtoMessage() {}
 
 func (x *DisconnectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_workspace_proto_msgTypes[16]
+	mi := &file_directoryroster_v1_workspace_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1010,7 +1132,7 @@ func (x *DisconnectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectResponse.ProtoReflect.Descriptor instead.
 func (*DisconnectResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_workspace_proto_rawDescGZIP(), []int{16}
+	return file_directoryroster_v1_workspace_proto_rawDescGZIP(), []int{18}
 }
 
 var File_directoryroster_v1_workspace_proto protoreflect.FileDescriptor
@@ -1032,11 +1154,13 @@ const file_directoryroster_v1_workspace_proto_rawDesc = "" +
 	"\vsnapshot_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"snapshotAt\x12\x1a\n" +
 	"\bdeclared\x18\n" +
-	" \x01(\bR\bdeclared\"g\n" +
+	" \x01(\bR\bdeclared\"\x95\x01\n" +
 	"\x0fWorkspaceDomain\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12$\n" +
 	"\rauthoritative\x18\x02 \x01(\bR\rauthoritative\x12\x1a\n" +
-	"\bconflict\x18\x03 \x01(\bR\bconflict\"g\n" +
+	"\bconflict\x18\x03 \x01(\bR\bconflict\x12\x16\n" +
+	"\x06served\x18\x04 \x01(\bR\x06served\x12\x14\n" +
+	"\x05owned\x18\x05 \x01(\bR\x05owned\"g\n" +
 	"\x06Health\x127\n" +
 	"\tprobed_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\bprobedAt\x12\x0e\n" +
 	"\x02ok\x18\x02 \x01(\bR\x02ok\x12\x14\n" +
@@ -1071,7 +1195,12 @@ const file_directoryroster_v1_workspace_proto_rawDesc = "" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\"N\n" +
 	"\x0fRefreshResponse\x12;\n" +
 	"\vsnapshot_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"snapshotAt\"6\n" +
+	"snapshotAt\"V\n" +
+	"\x17SetServedDomainsRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x18\n" +
+	"\adomains\x18\x02 \x03(\tR\adomains\"W\n" +
+	"\x18SetServedDomainsResponse\x12;\n" +
+	"\tworkspace\x18\x01 \x01(\v2\x1d.directoryroster.v1.WorkspaceR\tworkspace\"6\n" +
 	"\x11DisconnectRequest\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\"\x14\n" +
 	"\x12DisconnectResponse*[\n" +
@@ -1083,12 +1212,13 @@ const file_directoryroster_v1_workspace_proto_rawDesc = "" +
 	"\x0eCredentialType\x12\x1f\n" +
 	"\x1bCREDENTIAL_TYPE_UNSPECIFIED\x10\x00\x12'\n" +
 	"#CREDENTIAL_TYPE_OAUTH_REFRESH_TOKEN\x10\x01\x12'\n" +
-	"#CREDENTIAL_TYPE_SERVICE_ACCOUNT_KEY\x10\x022\x91\x05\n" +
+	"#CREDENTIAL_TYPE_SERVICE_ACCOUNT_KEY\x10\x022\x80\x06\n" +
 	"\x10WorkspaceService\x12g\n" +
 	"\x0eListWorkspaces\x12).directoryroster.v1.ListWorkspacesRequest\x1a*.directoryroster.v1.ListWorkspacesResponse\x12a\n" +
 	"\fBeginConnect\x12'.directoryroster.v1.BeginConnectRequest\x1a(.directoryroster.v1.BeginConnectResponse\x12X\n" +
 	"\tReconnect\x12$.directoryroster.v1.ReconnectRequest\x1a%.directoryroster.v1.ReconnectResponse\x12X\n" +
-	"\tUploadKey\x12$.directoryroster.v1.UploadKeyRequest\x1a%.directoryroster.v1.UploadKeyResponse\x12L\n" +
+	"\tUploadKey\x12$.directoryroster.v1.UploadKeyRequest\x1a%.directoryroster.v1.UploadKeyResponse\x12m\n" +
+	"\x10SetServedDomains\x12+.directoryroster.v1.SetServedDomainsRequest\x1a,.directoryroster.v1.SetServedDomainsResponse\x12L\n" +
 	"\x05Probe\x12 .directoryroster.v1.ProbeRequest\x1a!.directoryroster.v1.ProbeResponse\x12R\n" +
 	"\aRefresh\x12\".directoryroster.v1.RefreshRequest\x1a#.directoryroster.v1.RefreshResponse\x12[\n" +
 	"\n" +
@@ -1108,63 +1238,68 @@ func file_directoryroster_v1_workspace_proto_rawDescGZIP() []byte {
 }
 
 var file_directoryroster_v1_workspace_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_directoryroster_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_directoryroster_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_directoryroster_v1_workspace_proto_goTypes = []any{
-	(Backend)(0),                   // 0: directoryroster.v1.Backend
-	(CredentialType)(0),            // 1: directoryroster.v1.CredentialType
-	(*Workspace)(nil),              // 2: directoryroster.v1.Workspace
-	(*WorkspaceDomain)(nil),        // 3: directoryroster.v1.WorkspaceDomain
-	(*Health)(nil),                 // 4: directoryroster.v1.Health
-	(*ListWorkspacesRequest)(nil),  // 5: directoryroster.v1.ListWorkspacesRequest
-	(*ListWorkspacesResponse)(nil), // 6: directoryroster.v1.ListWorkspacesResponse
-	(*BeginConnectRequest)(nil),    // 7: directoryroster.v1.BeginConnectRequest
-	(*BeginConnectResponse)(nil),   // 8: directoryroster.v1.BeginConnectResponse
-	(*ReconnectRequest)(nil),       // 9: directoryroster.v1.ReconnectRequest
-	(*ReconnectResponse)(nil),      // 10: directoryroster.v1.ReconnectResponse
-	(*UploadKeyRequest)(nil),       // 11: directoryroster.v1.UploadKeyRequest
-	(*UploadKeyResponse)(nil),      // 12: directoryroster.v1.UploadKeyResponse
-	(*ProbeRequest)(nil),           // 13: directoryroster.v1.ProbeRequest
-	(*ProbeResponse)(nil),          // 14: directoryroster.v1.ProbeResponse
-	(*RefreshRequest)(nil),         // 15: directoryroster.v1.RefreshRequest
-	(*RefreshResponse)(nil),        // 16: directoryroster.v1.RefreshResponse
-	(*DisconnectRequest)(nil),      // 17: directoryroster.v1.DisconnectRequest
-	(*DisconnectResponse)(nil),     // 18: directoryroster.v1.DisconnectResponse
-	(*timestamppb.Timestamp)(nil),  // 19: google.protobuf.Timestamp
+	(Backend)(0),                     // 0: directoryroster.v1.Backend
+	(CredentialType)(0),              // 1: directoryroster.v1.CredentialType
+	(*Workspace)(nil),                // 2: directoryroster.v1.Workspace
+	(*WorkspaceDomain)(nil),          // 3: directoryroster.v1.WorkspaceDomain
+	(*Health)(nil),                   // 4: directoryroster.v1.Health
+	(*ListWorkspacesRequest)(nil),    // 5: directoryroster.v1.ListWorkspacesRequest
+	(*ListWorkspacesResponse)(nil),   // 6: directoryroster.v1.ListWorkspacesResponse
+	(*BeginConnectRequest)(nil),      // 7: directoryroster.v1.BeginConnectRequest
+	(*BeginConnectResponse)(nil),     // 8: directoryroster.v1.BeginConnectResponse
+	(*ReconnectRequest)(nil),         // 9: directoryroster.v1.ReconnectRequest
+	(*ReconnectResponse)(nil),        // 10: directoryroster.v1.ReconnectResponse
+	(*UploadKeyRequest)(nil),         // 11: directoryroster.v1.UploadKeyRequest
+	(*UploadKeyResponse)(nil),        // 12: directoryroster.v1.UploadKeyResponse
+	(*ProbeRequest)(nil),             // 13: directoryroster.v1.ProbeRequest
+	(*ProbeResponse)(nil),            // 14: directoryroster.v1.ProbeResponse
+	(*RefreshRequest)(nil),           // 15: directoryroster.v1.RefreshRequest
+	(*RefreshResponse)(nil),          // 16: directoryroster.v1.RefreshResponse
+	(*SetServedDomainsRequest)(nil),  // 17: directoryroster.v1.SetServedDomainsRequest
+	(*SetServedDomainsResponse)(nil), // 18: directoryroster.v1.SetServedDomainsResponse
+	(*DisconnectRequest)(nil),        // 19: directoryroster.v1.DisconnectRequest
+	(*DisconnectResponse)(nil),       // 20: directoryroster.v1.DisconnectResponse
+	(*timestamppb.Timestamp)(nil),    // 21: google.protobuf.Timestamp
 }
 var file_directoryroster_v1_workspace_proto_depIdxs = []int32{
 	0,  // 0: directoryroster.v1.Workspace.backend:type_name -> directoryroster.v1.Backend
 	3,  // 1: directoryroster.v1.Workspace.domains:type_name -> directoryroster.v1.WorkspaceDomain
 	1,  // 2: directoryroster.v1.Workspace.credential:type_name -> directoryroster.v1.CredentialType
-	19, // 3: directoryroster.v1.Workspace.connected_at:type_name -> google.protobuf.Timestamp
+	21, // 3: directoryroster.v1.Workspace.connected_at:type_name -> google.protobuf.Timestamp
 	4,  // 4: directoryroster.v1.Workspace.health:type_name -> directoryroster.v1.Health
-	19, // 5: directoryroster.v1.Workspace.snapshot_at:type_name -> google.protobuf.Timestamp
-	19, // 6: directoryroster.v1.Health.probed_at:type_name -> google.protobuf.Timestamp
+	21, // 5: directoryroster.v1.Workspace.snapshot_at:type_name -> google.protobuf.Timestamp
+	21, // 6: directoryroster.v1.Health.probed_at:type_name -> google.protobuf.Timestamp
 	2,  // 7: directoryroster.v1.ListWorkspacesResponse.workspaces:type_name -> directoryroster.v1.Workspace
 	0,  // 8: directoryroster.v1.BeginConnectRequest.backend:type_name -> directoryroster.v1.Backend
 	0,  // 9: directoryroster.v1.UploadKeyRequest.backend:type_name -> directoryroster.v1.Backend
 	2,  // 10: directoryroster.v1.UploadKeyResponse.workspace:type_name -> directoryroster.v1.Workspace
 	4,  // 11: directoryroster.v1.ProbeResponse.health:type_name -> directoryroster.v1.Health
 	3,  // 12: directoryroster.v1.ProbeResponse.domains:type_name -> directoryroster.v1.WorkspaceDomain
-	19, // 13: directoryroster.v1.RefreshResponse.snapshot_at:type_name -> google.protobuf.Timestamp
-	5,  // 14: directoryroster.v1.WorkspaceService.ListWorkspaces:input_type -> directoryroster.v1.ListWorkspacesRequest
-	7,  // 15: directoryroster.v1.WorkspaceService.BeginConnect:input_type -> directoryroster.v1.BeginConnectRequest
-	9,  // 16: directoryroster.v1.WorkspaceService.Reconnect:input_type -> directoryroster.v1.ReconnectRequest
-	11, // 17: directoryroster.v1.WorkspaceService.UploadKey:input_type -> directoryroster.v1.UploadKeyRequest
-	13, // 18: directoryroster.v1.WorkspaceService.Probe:input_type -> directoryroster.v1.ProbeRequest
-	15, // 19: directoryroster.v1.WorkspaceService.Refresh:input_type -> directoryroster.v1.RefreshRequest
-	17, // 20: directoryroster.v1.WorkspaceService.Disconnect:input_type -> directoryroster.v1.DisconnectRequest
-	6,  // 21: directoryroster.v1.WorkspaceService.ListWorkspaces:output_type -> directoryroster.v1.ListWorkspacesResponse
-	8,  // 22: directoryroster.v1.WorkspaceService.BeginConnect:output_type -> directoryroster.v1.BeginConnectResponse
-	10, // 23: directoryroster.v1.WorkspaceService.Reconnect:output_type -> directoryroster.v1.ReconnectResponse
-	12, // 24: directoryroster.v1.WorkspaceService.UploadKey:output_type -> directoryroster.v1.UploadKeyResponse
-	14, // 25: directoryroster.v1.WorkspaceService.Probe:output_type -> directoryroster.v1.ProbeResponse
-	16, // 26: directoryroster.v1.WorkspaceService.Refresh:output_type -> directoryroster.v1.RefreshResponse
-	18, // 27: directoryroster.v1.WorkspaceService.Disconnect:output_type -> directoryroster.v1.DisconnectResponse
-	21, // [21:28] is the sub-list for method output_type
-	14, // [14:21] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	21, // 13: directoryroster.v1.RefreshResponse.snapshot_at:type_name -> google.protobuf.Timestamp
+	2,  // 14: directoryroster.v1.SetServedDomainsResponse.workspace:type_name -> directoryroster.v1.Workspace
+	5,  // 15: directoryroster.v1.WorkspaceService.ListWorkspaces:input_type -> directoryroster.v1.ListWorkspacesRequest
+	7,  // 16: directoryroster.v1.WorkspaceService.BeginConnect:input_type -> directoryroster.v1.BeginConnectRequest
+	9,  // 17: directoryroster.v1.WorkspaceService.Reconnect:input_type -> directoryroster.v1.ReconnectRequest
+	11, // 18: directoryroster.v1.WorkspaceService.UploadKey:input_type -> directoryroster.v1.UploadKeyRequest
+	17, // 19: directoryroster.v1.WorkspaceService.SetServedDomains:input_type -> directoryroster.v1.SetServedDomainsRequest
+	13, // 20: directoryroster.v1.WorkspaceService.Probe:input_type -> directoryroster.v1.ProbeRequest
+	15, // 21: directoryroster.v1.WorkspaceService.Refresh:input_type -> directoryroster.v1.RefreshRequest
+	19, // 22: directoryroster.v1.WorkspaceService.Disconnect:input_type -> directoryroster.v1.DisconnectRequest
+	6,  // 23: directoryroster.v1.WorkspaceService.ListWorkspaces:output_type -> directoryroster.v1.ListWorkspacesResponse
+	8,  // 24: directoryroster.v1.WorkspaceService.BeginConnect:output_type -> directoryroster.v1.BeginConnectResponse
+	10, // 25: directoryroster.v1.WorkspaceService.Reconnect:output_type -> directoryroster.v1.ReconnectResponse
+	12, // 26: directoryroster.v1.WorkspaceService.UploadKey:output_type -> directoryroster.v1.UploadKeyResponse
+	18, // 27: directoryroster.v1.WorkspaceService.SetServedDomains:output_type -> directoryroster.v1.SetServedDomainsResponse
+	14, // 28: directoryroster.v1.WorkspaceService.Probe:output_type -> directoryroster.v1.ProbeResponse
+	16, // 29: directoryroster.v1.WorkspaceService.Refresh:output_type -> directoryroster.v1.RefreshResponse
+	20, // 30: directoryroster.v1.WorkspaceService.Disconnect:output_type -> directoryroster.v1.DisconnectResponse
+	23, // [23:31] is the sub-list for method output_type
+	15, // [15:23] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_workspace_proto_init() }
@@ -1178,7 +1313,7 @@ func file_directoryroster_v1_workspace_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_workspace_proto_rawDesc), len(file_directoryroster_v1_workspace_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

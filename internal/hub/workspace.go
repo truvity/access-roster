@@ -58,6 +58,11 @@ type Workspace struct {
 	Backend string
 	// Domains are the discovered domains, lower-cased and sorted.
 	Domains []string
+	// Serve narrows which of those domains the hub actually answers for.
+	// Empty means all of them, which is the ordinary case; a subset is
+	// how an installation takes one domain out of a tenant that holds
+	// several it has no business reading. See [Workspace.Served].
+	Serve []string
 	// Admin is the account the credential acts as.
 	Admin string
 	// Credential is how the hub authenticates.
@@ -74,9 +79,44 @@ type Workspace struct {
 	Declared bool
 }
 
+// Served returns the domains the hub routes to this workspace: the
+// discovered domains, narrowed by Serve when it is set.
+//
+// The intersection, rather than Serve as written, is what makes a domain
+// moving between tenants safe. The old tenant stops serving it the moment
+// the directory stops listing it — no edit, no window in which two
+// workspaces both claim it — and the stale Serve entry is surfaced to an
+// operator by [Workspace.Unowned] as something to tidy, not as an outage.
+func (w Workspace) Served() []string {
+	if len(w.Serve) == 0 {
+		return slices.Clone(w.Domains)
+	}
+	out := make([]string, 0, len(w.Serve))
+	for _, d := range w.Domains {
+		if slices.Contains(w.Serve, d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// Unowned returns the entries of Serve the tenant does not (or no longer)
+// own. They route nothing; they are shown so that an operator can see why
+// a domain they asked for is not being served.
+func (w Workspace) Unowned() []string {
+	var out []string
+	for _, d := range w.Serve {
+		if !slices.Contains(w.Domains, d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // clone returns a copy that shares no slice with the original.
 func (w Workspace) clone() Workspace {
 	w.Domains = slices.Clone(w.Domains)
+	w.Serve = slices.Clone(w.Serve)
 	return w
 }
 

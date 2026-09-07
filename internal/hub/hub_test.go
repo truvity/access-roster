@@ -510,6 +510,9 @@ workspaces:
     backend: google
     admin: integrations@other.example
     keyFile: /keys/other/key.json
+    serve:
+      - one.example
+      - two.example
 `))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -519,6 +522,13 @@ workspaces:
 	}
 	if overlay.Workspaces[0].ID != "" || overlay.Workspaces[1].ID != "C0known" {
 		t.Errorf("ids = %q, %q", overlay.Workspaces[0].ID, overlay.Workspaces[1].ID)
+	}
+	// serve is optional: omitted means every domain the tenant owns.
+	if len(overlay.Workspaces[0].Serve) != 0 {
+		t.Errorf("serve = %v, want empty when it is not declared", overlay.Workspaces[0].Serve)
+	}
+	if got := overlay.Workspaces[1].Serve; len(got) != 2 || got[0] != "one.example" {
+		t.Errorf("serve = %v", got)
 	}
 
 	// A field nobody reads is a rollout that silently declares nothing.

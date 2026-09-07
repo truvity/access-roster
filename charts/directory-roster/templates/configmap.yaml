@@ -19,5 +19,11 @@ data:
       {{- end }}
         admin: {{ .admin | quote }}
         keyFile: /var/run/directory-roster/keys/{{ .secretName }}/key.json
+      {{- with .serve }}
+        serve:
+        {{- range . }}
+          - {{ . | quote }}
+        {{- end }}
+      {{- end }}
     {{- end }}
 {{- end }}

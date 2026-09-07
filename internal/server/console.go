@@ -242,6 +242,32 @@ func (c *Console) adopt(ctx context.Context, ws hub.Workspace, b backend.Backend
 	return nil, connect.NewError(connect.CodeInternal, errors.New("the workspace vanished after being adopted"))
 }
 
+// SetServedDomains implements the operator contract: which of a tenant's
+// domains this hub answers for.
+func (c *Console) SetServedDomains(
+	ctx context.Context, req *connect.Request[directoryrosterv1.SetServedDomainsRequest],
+) (*connect.Response[directoryrosterv1.SetServedDomainsResponse], error) {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+		return nil, err
+	}
+	id := req.Msg.GetWorkspaceId()
+	if _, err := c.deps.Hub.SetServed(ctx, id, req.Msg.GetDomains()); err != nil {
+		return nil, rpcError(err)
+	}
+	views, err := c.deps.Hub.WorkspaceViews(ctx)
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	for i := range views {
+		if views[i].Workspace.ID == id {
+			return connect.NewResponse(&directoryrosterv1.SetServedDomainsResponse{
+				Workspace: workspaceProto(&views[i]),
+			}), nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%w: %s", hub.ErrNotFound, id))
+}
+
 // Probe implements the operator contract.
 func (c *Console) Probe(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ProbeRequest],

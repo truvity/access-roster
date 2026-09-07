@@ -78,6 +78,16 @@ workspaces: []
 #    # tenant is refused rather than quietly reading another company's
 #    # directory.
 #    id: C0example
+#    # serve is optional: which of the tenant's domains this hub answers
+#    # for. Omitted, it serves every domain the tenant owns, which is the
+#    # ordinary case. Naming a subset is how an installation reads one
+#    # domain of a company whose other domains are none of its business:
+#    # the rest are discovered and shown, but not routed and not cached.
+#    # A domain named here that the tenant does not own routes nothing and
+#    # is reported as no longer owned — which is what makes declaring a
+#    # domain that is about to move between tenants safe.
+#    serve:
+#      - example.com
 
 # The console's hostname on the gateway, and only the console's. The API
 # listener never gets a route: consumers reach it by Service DNS, and a
