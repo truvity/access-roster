@@ -15,14 +15,14 @@ C4Context
   title System context — the directory hub
 
   Person(operator, "Operator", "Connects and watches workspaces through the console")
-  Person(admin, "Directory admin", "A role account of one tenant; consents once")
+  Person(admin, "Directory admin", "A role account of one tenant, consents once")
 
   System(hub, "directory-roster", "Answers 'is this account live' and 'who is in this group' for every connected directory, routed by email domain, with a per-domain authoritative flag")
 
   System(webhook, "Authorization webhook", "At login: groups → roles. Calls ResolveUser")
   System(teamsync, "Team-sync service", "Keeps a code-hosting org's teams equal to directory groups. Calls GetGroup, ListGroups, ResolveAccounts")
   System_Ext(google, "Google Workspace", "Admin SDK Directory API — users, groups, members, domains (read-only)")
-  System_Ext(entra, "Microsoft Entra", "Next backend; same record, same contracts")
+  System_Ext(entra, "Microsoft Entra", "Next backend, same record, same contracts")
   System_Ext(gateway, "Gateway + authentication", "Terminates TLS, runs the login, forwards identity and roles")
 
   Rel(operator, gateway, "console", "HTTPS")
@@ -51,7 +51,7 @@ C4Container
 
   Container_Boundary(ns, "namespace: directory-roster") {
     Container(hub, "hub", "Go, ConnectRPC", "API listener (DirectoryService) and console listener (WorkspaceService, SettingsService, SPA). Refresher, prober, router by domain")
-    Container(spa, "console", "React SPA, served by the hub", "Workspaces and Settings views; Connect / Reconnect / Disconnect")
+    Container(spa, "console", "React SPA, served by the hub", "Workspaces and Settings views, Connect / Reconnect / Disconnect")
     ContainerDb(k8s, "Kubernetes API (this namespace)", "Secrets + ConfigMaps", "workspace records, credentials, the OAuth client, the state key. Written by the hub")
     ContainerDb(valkey, "Valkey", "external to the chart", "one snapshot per workspace, refresh locks, negative cache. Never a credential")
   }
@@ -82,14 +82,14 @@ C4Component
 
   Container_Boundary(hub, "hub") {
     Component(dirapi, "DirectoryService handlers", "connect-go", "Describe, Probe, GetGroup, ListGroups, GetAccount, ResolveAccounts, ResolveUser")
-    Component(opapi, "Operator handlers", "connect-go", "WorkspaceService, SettingsService; role gate from identity headers")
+    Component(opapi, "Operator handlers", "connect-go", "WorkspaceService, SettingsService, role gate from identity headers")
     Component(connect, "Connect flow", "HTTP", "BeginConnect / callback: state cookie, code exchange, tenant + domain discovery, first probe")
-    Component(router, "Router", "domain → workspace", "email domain to the workspace serving it; conflict detection; authoritative per domain")
+    Component(router, "Router", "domain → workspace", "email domain to the workspace serving it, conflict detection, authoritative per domain")
     Component(fresh, "Freshness", "max_age policy", "serve / refresh single-flight / point read live / miss goes live once")
-    Component(refresher, "Refresher + prober", "background loops", "new snapshot every refresh interval; probe + domain re-read every probe interval; shared lock")
+    Component(refresher, "Refresher + prober", "background loops", "new snapshot every refresh interval, probe + domain re-read every probe interval, shared lock")
     Component(snap, "Snapshot store", "Valkey or memory", "per-workspace snapshot, snapshot_at, negative cache")
-    Component(wsstore, "Workspace store", "Kubernetes", "records in ConfigMaps, credentials in Secrets; overlay merged read-only")
-    Component(backend, "Backend: Google", "Admin SDK client", "users.list, groups.list, members.list (atomic per group), domains.list; token from refresh token or SA key")
+    Component(wsstore, "Workspace store", "Kubernetes", "records in ConfigMaps, credentials in Secrets, overlay merged read-only")
+    Component(backend, "Backend: Google", "Admin SDK client", "users.list, groups.list, members.list (atomic per group), domains.list, token from refresh token or SA key")
   }
 
   Rel(dirapi, router, "which workspace")
@@ -125,14 +125,14 @@ sequenceDiagram
   GW->>Hub: BeginConnect (identity headers: operator)
   Hub-->>Op: consent URL + state cookie
   Op->>G: consent screen, signed in as the tenant's admin role account
-  G-->>Op: redirect /connect/google/callback?code&state
+  G-->>Op: redirect to /connect/google/callback with code and state
   Op->>GW: callback
   GW->>Hub: callback (still authenticated)
   Hub->>Hub: verify state cookie
   Hub->>G: exchange code → refresh token (offline, forced consent)
-  Hub->>G: customers.get → tenant id; domains.list → domains
+  Hub->>G: customers.get → tenant id, domains.list → domains
   Hub->>G: first probe (users.list page, groups.list page)
-  Hub->>K: Secret workspace-<id> (refresh token), ConfigMap workspace-<id> (record)
+  Hub->>K: Secret workspace-{id} (refresh token), ConfigMap workspace-{id} (record)
   Hub-->>Op: Workspaces view: domains served, authoritative after the first snapshot
 ```
 
@@ -152,8 +152,8 @@ sequenceDiagram
   alt snapshot younger than max_age and account present
     Hub-->>W: groups, suspended, authoritative, snapshot_at
   else snapshot older than max_age, or account missing
-    Note over Hub,G: point call: read ONE account live, never a full refresh
-    Hub->>G: users.get(email); groups.list(userKey=email)
+    Note over Hub,G: point call - read ONE account live, never a full refresh
+    Hub->>G: users.get(email), groups.list(userKey=email)
     alt live read ok
       Hub->>V: patch snapshot entry
       Hub-->>W: fresh answer, authoritative, snapshot_at=now
@@ -174,12 +174,12 @@ sequenceDiagram
   participant K as Kubernetes ConfigMaps
 
   loop every refresh interval, per workspace
-    R->>V: SET NX lock:<workspace>
+    R->>V: SET NX lock:{workspace}
     R->>G: users.list, groups.list, members.list per group (atomic per group)
     alt every page ok
-      R->>V: replace snapshot(<workspace>), snapshot_at=now
+      R->>V: replace snapshot({workspace}), snapshot_at=now
     else any page failed
-      Note over R,V: keep the old snapshot; domains become non-authoritative once it ages past the freshness window
+      Note over R,V: keep the old snapshot - domains turn non-authoritative once it ages past the freshness window
     end
     R->>V: DEL lock
   end
