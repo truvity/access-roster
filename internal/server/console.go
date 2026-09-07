@@ -577,12 +577,13 @@ func (c *Console) SearchPeople(
 		query.Live = &live
 	case directoryrosterv1.AccountFilter_ACCOUNT_FILTER_UNSPECIFIED:
 	}
-	people, truncated, err := c.deps.Hub.People(ctx, query, limit)
+	people, total, err := c.deps.Hub.People(ctx, query, limit)
 	if err != nil {
 		return nil, rpcError(err)
 	}
 	out := &directoryrosterv1.SearchPeopleResponse{
-		Truncated: truncated,
+		Truncated: total > len(people),
+		Total:     int32(total), //nolint:gosec // a snapshot's account count never overflows
 		People:    make([]*directoryrosterv1.PersonSummary, 0, len(people)),
 	}
 	for i := range people {

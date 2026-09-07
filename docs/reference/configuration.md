@@ -158,7 +158,7 @@ Two roles, held by membership of two declared internal groups.
 
 | Role | Group | May |
 |---|---|---|
-| viewer | `hub-viewers` | `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, see the console |
+| viewer | `hub-viewers` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders` — the whole console, read-only |
 | operator | `hub-operators` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient, AddMembership, RemoveMembership |
 
 Behind a gateway that forwards a token, the forwarded identity's email is

@@ -166,6 +166,10 @@ message ExplainResponse {
   // every declared client, and whether this proof would be issued a token
   // for it. The id is the audience the token would carry.
   repeated ClientAdmission clients = 10;
+  // workspace_id is the directory that serves this address, when one
+  // does, so a page about a person can link to where they come from
+  // without a second call.
+  string workspace_id = 11;
 }
 
 // ClientAdmission is one relying party, and whether a proof reaches it.
@@ -194,9 +198,9 @@ message GroupMember {
 message PolicyGroup {
   string name = 1;
   repeated GroupMember members = 2;
-  // matchers rendered for a person to read.
-  repeated string matchers = 3;
-  // rules are the same matchers, structured: the machine side's roster.
+  // 3 was the matchers as prose; rules carry them structured instead.
+  reserved 3;
+  // rules are the matchers: the machine side's roster.
   repeated PolicyMatcher rules = 6;
   // what this group adds to a token.
   google.protobuf.Struct claims = 4;
@@ -317,6 +321,9 @@ message PersonSummary {
 message SearchPeopleResponse {
   repeated PersonSummary people = 1;
   bool truncated = 2;
+  // total is how many matched before the limit, so a page can say
+  // "holding 1,204 accounts" while showing 200.
+  int32 total = 3;
 }
 
 message ListDirectoryGroupsRequest {

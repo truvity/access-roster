@@ -11,9 +11,8 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
-import Menu from "@mui/material/Menu";
-import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
@@ -22,7 +21,7 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import DomainIcon from "@mui/icons-material/Domain";
 import GroupsIcon from "@mui/icons-material/Groups";
 import MenuIcon from "@mui/icons-material/Menu";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import LogoutIcon from "@mui/icons-material/Logout";
 import PeopleIcon from "@mui/icons-material/People";
 import SettingsIcon from "@mui/icons-material/Settings";
 import ShieldIcon from "@mui/icons-material/Shield";
@@ -66,7 +65,6 @@ export function App() {
   const me = useAsync<Me>(whoami, []);
   const [banner, setBanner] = useState<string | undefined>();
   const [open, setOpen] = useState(false);
-  const [menu, setMenu] = useState<HTMLElement | null>(null);
   const theme = useTheme();
   const wide = useMediaQuery(theme.breakpoints.up("md"));
 
@@ -106,36 +104,29 @@ export function App() {
       </List>
       <Divider />
       {identityInfo?.status === "signed-in" ? (
-        <Stack direction="row" sx={{ alignItems: "center", gap: 1, px: 2, py: 1.5 }}>
-          <Box sx={{ minWidth: 0, flexGrow: 1, lineHeight: 1.2 }}>
-            <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
-              <a href={`#${paths.person(identityInfo.email ?? "")}`} style={{ color: "inherit", textDecoration: "none" }} onClick={() => setOpen(false)}>
-                {identityInfo.name || identityInfo.email}
-              </a>
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", wordBreak: "break-all", lineHeight: 1.3 }}>
-              {roles.length ? roles[0] : "no access"}
-              {identityInfo.email && identityInfo.email !== (identityInfo.name || identityInfo.email) ? ` · ${identityInfo.email}` : ""}
-            </Typography>
-          </Box>
-          <IconButton size="small" aria-label="account menu" onClick={(e) => setMenu(e.currentTarget)}>
-            <MoreHorizIcon fontSize="small" />
-          </IconButton>
-          <Menu anchorEl={menu} open={Boolean(menu)} onClose={() => setMenu(null)} anchorOrigin={{ vertical: "top", horizontal: "right" }} transformOrigin={{ vertical: "bottom", horizontal: "right" }}>
-            <MenuItem
+        <Stack direction="row" sx={{ alignItems: "stretch", gap: 0.5, px: 1, py: 1 }}>
+          <Tooltip title="Your page: what you are, and what you reach">
+            <ListItemButton
               component="a"
               href={`#${paths.person(identityInfo.email ?? "")}`}
-              onClick={() => {
-                setMenu(null);
-                setOpen(false);
-              }}
+              selected={route.view === "people" && route.id?.toLowerCase() === identityInfo.email?.toLowerCase()}
+              onClick={() => setOpen(false)}
+              sx={{ mx: 0, px: 1.25, py: 0.75, flexGrow: 1, minWidth: 0, display: "block" }}
             >
-              Your page
-            </MenuItem>
-            <MenuItem component="a" href={identityInfo.signOutUrl ?? "/logout"} onClick={signOut}>
-              Sign out
-            </MenuItem>
-          </Menu>
+              <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+                {identityInfo.name || identityInfo.email}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", wordBreak: "break-all", lineHeight: 1.3 }}>
+                {roles.length ? roles[0] : "no access"}
+                {identityInfo.email && identityInfo.email !== (identityInfo.name || identityInfo.email) ? ` · ${identityInfo.email}` : ""}
+              </Typography>
+            </ListItemButton>
+          </Tooltip>
+          <Tooltip title="Sign out">
+            <IconButton aria-label="sign out" href={identityInfo.signOutUrl ?? "/logout"} onClick={signOut} sx={{ alignSelf: "center" }}>
+              <LogoutIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Stack>
       ) : (
         <Box sx={{ px: 2, py: 1.5 }}>

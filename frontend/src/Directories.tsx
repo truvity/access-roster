@@ -285,7 +285,7 @@ export function Directory({ id, operator, onDone }: { id: string; operator: bool
     <Page
       title={tenant.id}
       mono
-      lede={`A ${backendName(tenant.backend)} directory holding ${people.length} accounts and ${contributed.length} groups.`}
+      lede={`A ${backendName(tenant.backend)} directory holding ${accounts.value?.total ?? people.length} accounts and ${contributed.length} groups.`}
       facts={[
         { label: "Acting as", value: tenant.admin || "—" },
         { label: "Connected by", value: tenant.connectedBy || undefined },

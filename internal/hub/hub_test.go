@@ -435,9 +435,16 @@ func TestDirectoryGroupResolvesMembersAndPeopleFilterByTenant(t *testing.T) {
 		t.Errorf("missing group = %+v, %v", missing, err)
 	}
 
-	two, truncated, err := h.hub.People(ctx, hub.PeopleQuery{Workspace: twoID}, 0)
-	if err != nil || truncated || len(two) != 1 || two[0].Email != "carol@two.example" {
-		t.Errorf("People(two) = %+v, %v, %v", two, truncated, err)
+	two, total, err := h.hub.People(ctx, hub.PeopleQuery{Workspace: twoID}, 0)
+	if err != nil || total != 1 || len(two) != 1 || two[0].Email != "carol@two.example" {
+		t.Errorf("People(two) = %+v, %v, %v", two, total, err)
+	}
+	one, total, err := h.hub.People(ctx, hub.PeopleQuery{}, 1)
+	if err != nil || total != 3 || len(one) != 1 {
+		t.Errorf("People(limit 1) = %d shown of %d, %v", len(one), total, err)
+	}
+	if who := h.resolve("alice@one.example", nil); who.Workspace != oneID {
+		t.Errorf("ResolveUser workspace = %q, want %q", who.Workspace, oneID)
 	}
 	none, _, err := h.hub.People(ctx, hub.PeopleQuery{Text: "carol", Workspace: oneID}, 0)
 	if err != nil || len(none) != 0 {

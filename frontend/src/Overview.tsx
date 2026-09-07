@@ -23,7 +23,7 @@ export function Overview({ me }: { me?: Me }) {
   const domains = list.flatMap((w) => w.domains.map((d) => ({ ...d, workspace: w.id })));
   const contested = domains.filter((d) => d.conflict);
   const held = domains.filter((d) => !d.authoritative && !d.conflict);
-  const emptyGroups = groups.filter((g) => g.members.length === 0 && g.matchers.length === 0);
+  const emptyGroups = groups.filter((g) => g.members.length === 0 && g.rules.length === 0);
   const attached = new Set(groups.flatMap((g) => g.members.map((m) => m.address)));
   const allDirectoryGroups = directoryGroups.value?.groups ?? [];
   const usedDirectoryGroups = allDirectoryGroups.filter((g) => attached.has(g.email));

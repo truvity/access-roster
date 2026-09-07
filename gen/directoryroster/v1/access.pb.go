@@ -638,7 +638,11 @@ type ExplainResponse struct {
 	Lifetime *durationpb.Duration `protobuf:"bytes,9,opt,name=lifetime,proto3" json:"lifetime,omitempty"`
 	// every declared client, and whether this proof would be issued a token
 	// for it. The id is the audience the token would carry.
-	Clients       []*ClientAdmission `protobuf:"bytes,10,rep,name=clients,proto3" json:"clients,omitempty"`
+	Clients []*ClientAdmission `protobuf:"bytes,10,rep,name=clients,proto3" json:"clients,omitempty"`
+	// workspace_id is the directory that serves this address, when one
+	// does, so a page about a person can link to where they come from
+	// without a second call.
+	WorkspaceId   string `protobuf:"bytes,11,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -741,6 +745,13 @@ func (x *ExplainResponse) GetClients() []*ClientAdmission {
 		return x.Clients
 	}
 	return nil
+}
+
+func (x *ExplainResponse) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
 }
 
 // ClientAdmission is one relying party, and whether a proof reaches it.
@@ -885,9 +896,7 @@ type PolicyGroup struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Name    string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Members []*GroupMember         `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"`
-	// matchers rendered for a person to read.
-	Matchers []string `protobuf:"bytes,3,rep,name=matchers,proto3" json:"matchers,omitempty"`
-	// rules are the same matchers, structured: the machine side's roster.
+	// rules are the matchers: the machine side's roster.
 	Rules []*PolicyMatcher `protobuf:"bytes,6,rep,name=rules,proto3" json:"rules,omitempty"`
 	// what this group adds to a token.
 	Claims *structpb.Struct `protobuf:"bytes,4,opt,name=claims,proto3" json:"claims,omitempty"`
@@ -937,13 +946,6 @@ func (x *PolicyGroup) GetName() string {
 func (x *PolicyGroup) GetMembers() []*GroupMember {
 	if x != nil {
 		return x.Members
-	}
-	return nil
-}
-
-func (x *PolicyGroup) GetMatchers() []string {
-	if x != nil {
-		return x.Matchers
 	}
 	return nil
 }
@@ -1782,9 +1784,12 @@ func (x *PersonSummary) GetLive() bool {
 }
 
 type SearchPeopleResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	People        []*PersonSummary       `protobuf:"bytes,1,rep,name=people,proto3" json:"people,omitempty"`
-	Truncated     bool                   `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	People    []*PersonSummary       `protobuf:"bytes,1,rep,name=people,proto3" json:"people,omitempty"`
+	Truncated bool                   `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// total is how many matched before the limit, so a page can say
+	// "holding 1,204 accounts" while showing 200.
+	Total         int32 `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1831,6 +1836,13 @@ func (x *SearchPeopleResponse) GetTruncated() bool {
 		return x.Truncated
 	}
 	return false
+}
+
+func (x *SearchPeopleResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
 }
 
 type ListDirectoryGroupsRequest struct {
@@ -2308,7 +2320,7 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x0eExplainRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x127\n" +
 	"\x06github\x18\x02 \x01(\v2\x1f.directoryroster.v1.GitHubProofR\x06github\x12P\n" +
-	"\x0fservice_account\x18\x03 \x01(\v2'.directoryroster.v1.ServiceAccountProofR\x0eserviceAccount\"\xc7\x03\n" +
+	"\x0fservice_account\x18\x03 \x01(\v2'.directoryroster.v1.ServiceAccountProofR\x0eserviceAccount\"\xea\x03\n" +
 	"\x0fExplainResponse\x128\n" +
 	"\bidentity\x18\x01 \x01(\v2\x1c.directoryroster.v1.IdentityR\bidentity\x12\x1b\n" +
 	"\tin_domain\x18\x02 \x01(\bR\binDomain\x12\x14\n" +
@@ -2320,7 +2332,8 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x06claims\x18\b \x01(\v2\x17.google.protobuf.StructR\x06claims\x125\n" +
 	"\blifetime\x18\t \x01(\v2\x19.google.protobuf.DurationR\blifetime\x12=\n" +
 	"\aclients\x18\n" +
-	" \x03(\v2#.directoryroster.v1.ClientAdmissionR\aclients\"\xa4\x01\n" +
+	" \x03(\v2#.directoryroster.v1.ClientAdmissionR\aclients\x12!\n" +
+	"\fworkspace_id\x18\v \x01(\tR\vworkspaceId\"\xa4\x01\n" +
 	"\x0fClientAdmission\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1a\n" +
@@ -2329,14 +2342,13 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\blifetime\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\blifetime\"=\n" +
 	"\vGroupMember\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x14\n" +
-	"\x05layer\x18\x02 \x01(\tR\x05layer\"\x99\x02\n" +
+	"\x05layer\x18\x02 \x01(\tR\x05layer\"\x83\x02\n" +
 	"\vPolicyGroup\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x129\n" +
-	"\amembers\x18\x02 \x03(\v2\x1f.directoryroster.v1.GroupMemberR\amembers\x12\x1a\n" +
-	"\bmatchers\x18\x03 \x03(\tR\bmatchers\x127\n" +
+	"\amembers\x18\x02 \x03(\v2\x1f.directoryroster.v1.GroupMemberR\amembers\x127\n" +
 	"\x05rules\x18\x06 \x03(\v2!.directoryroster.v1.PolicyMatcherR\x05rules\x12/\n" +
 	"\x06claims\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06claims\x125\n" +
-	"\blifetime\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\blifetime\"7\n" +
+	"\blifetime\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\blifetimeJ\x04\b\x03\x10\x04\"7\n" +
 	"\rPolicyMatcher\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x12\n" +
 	"\x04rule\x18\x02 \x01(\tR\x04rule\"\xb8\x01\n" +
@@ -2392,10 +2404,11 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\vfamily_name\x18\x03 \x01(\tR\n" +
 	"familyName\x12!\n" +
 	"\fworkspace_id\x18\x04 \x01(\tR\vworkspaceId\x12\x12\n" +
-	"\x04live\x18\x05 \x01(\bR\x04live\"o\n" +
+	"\x04live\x18\x05 \x01(\bR\x04live\"\x85\x01\n" +
 	"\x14SearchPeopleResponse\x129\n" +
 	"\x06people\x18\x01 \x03(\v2!.directoryroster.v1.PersonSummaryR\x06people\x12\x1c\n" +
-	"\ttruncated\x18\x02 \x01(\bR\ttruncated\"4\n" +
+	"\ttruncated\x18\x02 \x01(\bR\ttruncated\x12\x14\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total\"4\n" +
 	"\x1aListDirectoryGroupsRequest\x12\x16\n" +
 	"\x06domain\x18\x01 \x01(\tR\x06domain\"`\n" +
 	"\x1bListDirectoryGroupsResponse\x12A\n" +
