@@ -440,3 +440,33 @@ func (c *Console) RemoveRule(
 	}
 	return connect.NewResponse(&directoryrosterv1.RemoveRuleResponse{}), nil
 }
+
+// ListDirectoryGroups implements the operator contract: the groups the hub
+// has snapshotted, so that a rule is a click rather than a typed address.
+func (c *Console) ListDirectoryGroups(
+	ctx context.Context, req *connect.Request[directoryrosterv1.ListDirectoryGroupsRequest],
+) (*connect.Response[directoryrosterv1.ListDirectoryGroupsResponse], error) {
+	if _, err := requireRole(ctx, rules.RoleViewer); err != nil {
+		return nil, err
+	}
+	groups, served, err := c.deps.Hub.ListGroups(ctx, req.Msg.GetDomain(), nil)
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	workspaceOf := make(map[string]string, len(served))
+	for _, s := range served {
+		workspaceOf[s.Name] = s.Workspace
+	}
+	out := &directoryrosterv1.ListDirectoryGroupsResponse{
+		Groups: make([]*directoryrosterv1.DirectoryGroupSummary, 0, len(groups)),
+	}
+	for _, g := range groups {
+		out.Groups = append(out.Groups, &directoryrosterv1.DirectoryGroupSummary{
+			Email:       g.Email,
+			Domain:      g.Domain,
+			WorkspaceId: workspaceOf[g.Domain],
+			Members:     int32(len(g.Members)), //nolint:gosec // a membership count never overflows
+		})
+	}
+	return connect.NewResponse(out), nil
+}

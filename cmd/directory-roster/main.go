@@ -27,6 +27,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/truvity/access-roster/frontend"
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/demo"
@@ -184,6 +185,7 @@ func run() error {
 			EmailHeader: cfg.forwardedHeader,
 		},
 		Log: log,
+		UI:  frontend.FS(),
 	})
 
 	apiMux := http.NewServeMux()

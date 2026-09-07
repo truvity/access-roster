@@ -23,6 +23,28 @@ service AccessService {
   // RemoveRule deletes a console-added rule. A declared rule refuses
   // (failed_precondition): change the deployment instead. Operator.
   rpc RemoveRule(RemoveRuleRequest) returns (RemoveRuleResponse);
+
+  // ListDirectoryGroups returns the groups the hub has snapshotted, so
+  // that granting a role is a click on a group rather than a typed
+  // address that may be a typo. Viewer.
+  rpc ListDirectoryGroups(ListDirectoryGroupsRequest) returns (ListDirectoryGroupsResponse);
+}
+
+message ListDirectoryGroupsRequest {
+  // empty lists the groups of every served domain.
+  string domain = 1;
+}
+message ListDirectoryGroupsResponse {
+  repeated DirectoryGroupSummary groups = 1;
+}
+
+// DirectoryGroupSummary is one group as the rule picker shows it.
+message DirectoryGroupSummary {
+  string email = 1;
+  string domain = 2;
+  string workspace_id = 3;
+  // members is the flat membership count at the last snapshot.
+  int32 members = 4;
 }
 
 // Role is what a rule grants. Operator implies viewer.

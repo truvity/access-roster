@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -60,6 +61,7 @@ type ConsoleServer struct {
 	admin      AdminAccount
 	forwarded  ForwardedIdentity
 	log        *slog.Logger
+	consoleUI  fs.FS
 }
 
 // ConsoleServerDeps is what the console listener needs.
@@ -73,6 +75,9 @@ type ConsoleServerDeps struct {
 	Admin      AdminAccount
 	Forwarded  ForwardedIdentity
 	Log        *slog.Logger
+	// UI is the built console. Nil serves no UI, which is what a
+	// deployment that only wants the API does.
+	UI fs.FS
 }
 
 // NewConsoleServer assembles the console listener.
@@ -90,6 +95,7 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		admin:      deps.Admin,
 		forwarded:  deps.Forwarded,
 		log:        deps.Log,
+		consoleUI:  deps.UI,
 	}
 	for _, c := range deps.Connectors {
 		s.connectors[c.Kind()] = c
@@ -105,6 +111,14 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.Handle(directoryrosterv1connect.NewSettingsServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewAccessServiceHandler(s.console))
 
+	if s.consoleUI != nil {
+		mux.Handle("GET /assets/", http.FileServerFS(s.consoleUI))
+		mux.HandleFunc("GET /{$}", s.index)
+		mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /admin/login", s.adminLogin)
 	mux.HandleFunc("POST /logout", s.logout)
@@ -112,6 +126,25 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.HandleFunc("GET /.access/whoami", s.whoami)
 
 	return s.withIdentity(mux)
+}
+
+// index serves the console shell. Views live in the URL fragment, so one
+// route is enough: no catch-all, and every API path stays clean.
+func (s *ConsoleServer) index(w http.ResponseWriter, r *http.Request) {
+	if _, ok := IdentityFrom(r.Context()); !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	page, err := fs.ReadFile(s.consoleUI, "index.html")
+	if err != nil {
+		http.Error(w, "the console is not built into this binary", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if _, err = w.Write(page); err != nil {
+		s.log.WarnContext(r.Context(), "console shell could not be written", "error", err)
+	}
 }
 
 // withIdentity resolves the caller once per request and puts the identity

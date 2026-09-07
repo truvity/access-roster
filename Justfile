@@ -61,5 +61,10 @@ chart-lint:
         --set 'access.rules[0].directoryGroup.group=platform-admins@example.com' >/dev/null
     ! helm template directory-roster charts/directory-roster --set bogusKey=1 >/dev/null 2>&1
 
+# Rebuild the console SPA into frontend/dist (committed). Needs Node; CI
+# does not run this, which is why dist/ is in the repository.
+console:
+    cd frontend && npm ci && npm run build
+
 # Run all checks (build + test + lint + chart-lint + vuln)
 check: build test lint chart-lint vuln
