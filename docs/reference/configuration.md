@@ -34,6 +34,8 @@ external-secrets is at the end of this page.
 | `oauthClient.existingSecret` | `""` | a Secret with `client-id` and `client-secret`; set, the console shows the client read-only |
 | `workspaces[]` | `[]` | declared workspaces, see below |
 | `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener; verified by TokenReview |
+| `route.host` | `""` | the console's hostname on the gateway, and only the console's: the API listener never gets a route, because a consumer that could arrive over the gateway could reach an operator call. Empty renders no Gateway, HTTPRoute or Certificate, which is right for a hub reached by port-forward |
+| `route.gatewayClassName`, `route.certificate.*` | `internal`, `internal-ca` | which class the Gateway joins, and who issues its certificate. An empty `issuerName` renders none, for a gateway that brings its own |
 | `access.admin.enabled` | unset | the break-glass account, for recovery: nobody in the operators group, the group renamed, directory sign-in broken. Unset, it turns itself on only when the values declare no other way in — off when they carry both a workspace and a non-empty `hub-operators`, because that installation signs in through the directory from its first boot and a password nobody needs is a standing credential. Set it explicitly to override either way |
 | `access.holdWindow` | `4h` | how long a signed-in identity keeps its last granted role while the directory cannot be vouched for |
 | `access.login.directory` | `true` | "Sign in with <directory>" using a connected workspace's OAuth client |

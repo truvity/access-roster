@@ -1,0 +1,71 @@
+{{- if .Values.route.host }}
+{{- /*
+  The console's hostname, and only the console's. The API listener never
+  gets a route: consumers reach it by Service DNS inside the cluster, and
+  a consumer that could arrive over the gateway could reach an operator
+  call, which is the one thing the two listeners exist to prevent.
+
+  Rendered only when a host is set. A hub reached by port-forward needs no
+  route, and a hostname that resolves nowhere is worse than none at all.
+*/}}
+{{- if .Values.route.certificate.issuerName }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "directory-roster.fullname" . }}-tls
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "directory-roster.fullname" . }}-tls
+  dnsNames:
+    - {{ .Values.route.host | quote }}
+  issuerRef:
+    name: {{ .Values.route.certificate.issuerName | quote }}
+    kind: {{ .Values.route.certificate.issuerKind | quote }}
+    group: cert-manager.io
+---
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ include "directory-roster.fullname" . }}
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.route.gatewayClassName | quote }}
+  listeners:
+    - name: console
+      protocol: HTTPS
+      port: 443
+      hostname: {{ .Values.route.host | quote }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ include "directory-roster.fullname" . }}-tls
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "directory-roster.fullname" . }}
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ include "directory-roster.fullname" . }}
+      sectionName: console
+  hostnames:
+    - {{ .Values.route.host | quote }}
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "directory-roster.fullname" . }}-console
+          port: {{ .Values.listeners.console.port }}
+          weight: 1
+{{- end }}

@@ -11,8 +11,12 @@ data:
   overlay.yaml: |
     workspaces:
     {{- range .Values.workspaces }}
+      {{- if .id }}
       - id: {{ .id | quote }}
         backend: {{ .backend | quote }}
+      {{- else }}
+      - backend: {{ .backend | quote }}
+      {{- end }}
         admin: {{ .admin | quote }}
         keyFile: /var/run/directory-roster/keys/{{ .secretName }}/key.json
     {{- end }}

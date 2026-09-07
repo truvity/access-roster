@@ -437,6 +437,30 @@ The sequence is drawn in
 [the architecture](../architecture.md#58-day-one-of-a-standalone-installation)
 and the commands are in [the runbook](../operations/runbook.md#day-one).
 
+### Declared workspaces
+
+A deployment that already holds directory credentials declares them
+rather than clicking through consent: a backend, an admin to impersonate
+and a Secret holding the key. The hub adopts each at start, and a
+declared workspace is read-only in the console and wins a contested
+domain.
+
+The tenant id is optional, and discovering it is the better path. The
+credential opens exactly one tenant and that tenant knows its own id, so
+a value copied out of a cloud console by hand is a value that can be
+mistyped. Supplying it turns adoption into a check instead: a credential
+that opens a different tenant than the deployment named is refused, which
+matters because the failure it prevents is silent. Everything downstream
+— who is live, who is in which group — would otherwise be answered
+correctly about the wrong company.
+
+A declared workspace that cannot be adopted stops the process. The
+deployment asked for a directory; starting without it means answering
+"no opinion" about every address in it, which reads to a consumer exactly
+like a tenant that was removed. A hub that refuses to start is visible in
+one place. A hub that quietly serves less than it was configured to is
+visible nowhere.
+
 ### Consumers
 
 The API listener authenticates callers by Kubernetes ServiceAccount

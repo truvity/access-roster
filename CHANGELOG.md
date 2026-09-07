@@ -62,6 +62,14 @@ repository, not the order it arrived in.
   contract was tightened for it: `Explain` names the directory that
   served the address, `SearchPeople` reports the total before the limit,
   and `GetPolicy` carries matchers only in structured form.
+- **Declared workspaces are read at start**, which the chart had shipped
+  the configuration for and no code had read. The tenant id became
+  optional — the credential opens one tenant and it knows its own id — and
+  supplying it turns adoption into a check that refuses a credential
+  opening a different tenant. A declared workspace that cannot be adopted
+  stops the process rather than leaving a hub that silently serves less
+  than it was configured to. The chart renders the Gateway, HTTPRoute and
+  Certificate for the console host it had always claimed to.
 - **Day one leads itself.** Overview carries what a fresh installation
   still has to do, with that installation's own redirect URI and scopes to
   copy rather than a document's placeholders, and each step disappears as

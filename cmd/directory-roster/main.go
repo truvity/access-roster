@@ -17,9 +17,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -27,6 +29,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/truvity/access-roster/backend"
 	"github.com/truvity/access-roster/frontend"
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/access"
@@ -63,6 +66,7 @@ type config struct {
 	forwardedHeader string
 	forwardedIssuer string
 	policyPath      string
+	overlayPath     string
 	holdWindow      time.Duration
 	logLevel        slog.Level
 }
@@ -80,6 +84,7 @@ func load() (config, error) {
 		forwardedHeader: envString("FORWARDED_EMAIL_HEADER", ""),
 		forwardedIssuer: envString("FORWARDED_ISSUER", ""),
 		policyPath:      envString("POLICY_DIR", ""),
+		overlayPath:     envString("OVERLAY_FILE", ""),
 	}
 	var err error
 	if c.freshness.RefreshInterval, err = envDuration("REFRESH_INTERVAL", hub.DefaultRefreshInterval); err != nil {
@@ -154,6 +159,9 @@ func run() error {
 	loginSources := []string{}
 	if cfg.demo {
 		connectors = append(connectors, seedDemo(ctx, directory, cfg.publicURL, log))
+	}
+	if err := adoptDeclared(ctx, directory, cfg.overlayPath, log); err != nil {
+		return err
 	}
 	if cfg.forwardedHeader != "" {
 		loginSources = append(loginSources, "forwarded:"+cfg.forwardedIssuer)
@@ -265,6 +273,68 @@ func declaredPolicy(path string, demonstration bool) (policy.Policy, error) {
 	default:
 		return policy.Parse([]byte(builtinPolicy))
 	}
+}
+
+// adoptDeclared brings up the workspaces the deployment owns.
+//
+// A declared workspace that cannot be adopted stops the process rather
+// than being skipped. The deployment asked for a directory; starting
+// without it means answering "no opinion" about every address in it,
+// which reads to a consumer exactly like a tenant that was removed. A
+// hub that refuses to start is visible in one place; a hub that quietly
+// serves less than it was configured to is visible nowhere.
+func adoptDeclared(ctx context.Context, directory *hub.Hub, path string, log *slog.Logger) error {
+	overlay, err := hub.LoadOverlay(path)
+	if err != nil {
+		return err
+	}
+	for i := range overlay.Workspaces {
+		declared := &overlay.Workspaces[i]
+		reader, err := openBackend(ctx, declared)
+		if err != nil {
+			return fmt.Errorf("declared workspace %q: %w", declared.Backend+"/"+declared.Admin, err)
+		}
+		adopted, err := directory.Adopt(ctx, hub.Workspace{
+			ID:         declared.ID,
+			Admin:      declared.Admin,
+			Credential: hub.CredentialServiceAccountKey,
+			Declared:   true,
+		}, reader)
+		if err != nil {
+			return fmt.Errorf("adopt declared workspace %q: %w", declared.Admin, err)
+		}
+		log.InfoContext(ctx, "declared workspace adopted",
+			"workspace", adopted.ID, "backend", adopted.Backend,
+			"admin", adopted.Admin, "domains", adopted.Domains)
+	}
+	return nil
+}
+
+// backendOpeners is how a build declares which directories it can read.
+//
+// It is a registry rather than a switch so that adding a backend is a
+// registration next to the backend itself, and so that a build without
+// one fails by naming exactly what it lacks. The map is empty today: the
+// hub reads real directories from its 1.0, and until then a deployment
+// that declares a workspace is told so at start rather than left to
+// discover it from a console with nothing in it.
+var backendOpeners = map[string]func(ctx context.Context, d *hub.Declared) (backend.Backend, error){}
+
+// openBackend builds the reader for a declared workspace.
+//
+// A backend this build does not carry is an error naming what was asked
+// for. The alternative — ignoring the entry — is how a deployment ends up
+// believing it reads a directory it has never once opened.
+func openBackend(ctx context.Context, declared *hub.Declared) (backend.Backend, error) {
+	open, ok := backendOpeners[declared.Backend]
+	if !ok {
+		known := slices.Sorted(maps.Keys(backendOpeners))
+		if len(known) == 0 {
+			return nil, fmt.Errorf("this build reads no directory backend yet, and %q was declared", declared.Backend)
+		}
+		return nil, fmt.Errorf("unknown backend %q; this build reads %v", declared.Backend, known)
+	}
+	return open(ctx, declared)
 }
 
 // seedDemo adopts the demonstration tenants and returns their connector.

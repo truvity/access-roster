@@ -2,6 +2,7 @@ package hub_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"slices"
@@ -454,5 +455,88 @@ func TestDirectoryGroupResolvesMembersAndPeopleFilterByTenant(t *testing.T) {
 	gone, _, err := h.hub.People(ctx, hub.PeopleQuery{Live: &suspended}, 0)
 	if err != nil || len(gone) != 1 || gone[0].Email != "alice@one.example" {
 		t.Errorf("People(suspended) = %+v, %v", gone, err)
+	}
+}
+
+func TestAdoptDiscoversAndChecksTheTenantID(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	ctx := context.Background()
+
+	// A declaration that names no id gets the one the credential opens,
+	// so nothing has to be copied out of a cloud console by hand.
+	three := fake.New("C0three", "three.example").WithAccount("dana@three.example", "Dana", "Dee")
+	adopted, err := h.hub.Adopt(ctx, hub.Workspace{Admin: "admin@three.example", Declared: true}, three)
+	if err != nil {
+		t.Fatalf("adopt without an id: %v", err)
+	}
+	if adopted.ID != "C0three" {
+		t.Errorf("id = %q, want the tenant's own", adopted.ID)
+	}
+
+	// A declaration that names the right one is unchanged.
+	four := fake.New("C0four", "four.example")
+	if _, err := h.hub.Adopt(ctx, hub.Workspace{ID: "C0four", Admin: "admin@four.example"}, four); err != nil {
+		t.Fatalf("adopt with the right id: %v", err)
+	}
+
+	// A declaration that names the wrong one is refused rather than
+	// silently reading a different company's directory.
+	five := fake.New("C0five", "five.example")
+	_, err = h.hub.Adopt(ctx, hub.Workspace{ID: "C0typo", Admin: "admin@five.example"}, five)
+	if !errors.Is(err, hub.ErrTenantMismatch) {
+		t.Errorf("adopt with a mismatched id = %v, want a refusal", err)
+	}
+	views, err := h.hub.WorkspaceViews(ctx)
+	if err != nil {
+		t.Fatalf("WorkspaceViews: %v", err)
+	}
+	for i := range views {
+		if views[i].Workspace.ID == "C0typo" {
+			t.Errorf("the refused workspace was stored anyway")
+		}
+	}
+}
+
+func TestParseOverlay(t *testing.T) {
+	t.Parallel()
+
+	overlay, err := hub.ParseOverlay([]byte(`
+workspaces:
+  - backend: google
+    admin: integrations@example.com
+    keyFile: /keys/example/key.json
+  - id: C0known
+    backend: google
+    admin: integrations@other.example
+    keyFile: /keys/other/key.json
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(overlay.Workspaces) != 2 {
+		t.Fatalf("workspaces = %+v", overlay.Workspaces)
+	}
+	if overlay.Workspaces[0].ID != "" || overlay.Workspaces[1].ID != "C0known" {
+		t.Errorf("ids = %q, %q", overlay.Workspaces[0].ID, overlay.Workspaces[1].ID)
+	}
+
+	// A field nobody reads is a rollout that silently declares nothing.
+	if _, err := hub.ParseOverlay([]byte("workspaces:\n  - backend: google\n    adminEmail: x@y.z\n    keyFile: /k\n")); err == nil {
+		t.Errorf("an unknown key was accepted")
+	}
+	// The three that cannot be discovered are required.
+	for _, missing := range []string{
+		"workspaces:\n  - admin: a@b.c\n    keyFile: /k\n",
+		"workspaces:\n  - backend: google\n    keyFile: /k\n",
+		"workspaces:\n  - backend: google\n    admin: a@b.c\n",
+	} {
+		if _, err := hub.ParseOverlay([]byte(missing)); err == nil {
+			t.Errorf("accepted an incomplete declaration: %q", missing)
+		}
+	}
+	// No file at all is the ordinary standalone case.
+	if o, err := hub.LoadOverlay("/nonexistent/overlay.yaml"); err != nil || len(o.Workspaces) != 0 {
+		t.Errorf("a missing overlay = %+v, %v", o, err)
 	}
 }
