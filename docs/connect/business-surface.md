@@ -15,7 +15,7 @@ exposure:
 `authenticated` passes any signed-in employee and forwards the bearer;
 the application authorizes itself, or ignores the identity entirely. Paths
 the product must keep public — wallet callbacks, well-known documents —
-stay off the list and get no route through the proxy. No rule is needed:
+stay off the list and get no route through the proxy. No internal group is needed:
 signing in at all is the entitlement.
 
 End users of the product never see this path; their sign-in remains the

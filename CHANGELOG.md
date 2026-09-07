@@ -4,39 +4,35 @@ One line per release; full detail lives in the release notes and the
 git history.
 
 ## Unreleased
-- Prototype reworked to the policy model: `policy` replaces `rules`, the
-  hub is a relying party of its own policy (`hub-operators`,
-  `hub-viewers`), `AccessService` moves from rule writing to membership
-  editing plus `Explain` and `GetPolicy`, and the chart carries `policy`
-  as a mounted directory.
-- Console: the Access tab is the membership table with an inline row and
-  declared members locked; a new Effective access page answers what an
-  identity gets and why, for yourself or — as an operator — for anyone;
-  the header carries the person's name and the build; Workspaces offers
-  one Connect button per provider the deployment can use.
-- Policy model settled (2026-09-07): five tables — groups, claims,
-  lifetimes, clients, memberships — one schema for both services, deep
-  merge with a scalar-conflict check, shortest lifetime, layered loading
-  (declared + console), memberships the only console-writable table,
-  clients declared or self-registered and never created in a console.
-  Replaces the flat rules list; `docs/reference/policy.md`.
-- Documentation rewritten for the self-contained repository: why it
-  exists, the ten concepts, one architecture, a design per battery
-  (hub, access-issuer, access-proxy, libraries, accessctl and the
-  action), reference pages including the rules language, connect guides
-  per kind of relying party, migration from an identity provider,
-  extension points.
-- Repository renamed to access-roster: one repository for the directory
-  hub and the later token service, which share verifiers, rules and
-  backends. The hub keeps its name: `directory-roster` binary, chart and
-  namespace.
-- Access model for the hub itself: own login with a connected directory
-  or an external issuer, a forwarded bearer behind a gateway, a generated
-  break-glass admin, rules with four subject kinds (`AccessService`);
-  consumers authenticate with ServiceAccount tokens verified by
-  TokenReview.
-- The token service designed (`docs/design/token-service.md`) and the
-  family drawn end to end in one architecture page (`docs/architecture.md`).
-- Repository scaffolding, the hub design (`docs/design/hub.md`), the
-  architecture with C4 diagrams, the contracts and the connect runbook —
-  documentation first, for review before the prototype.
+
+The first release has not been cut. This section describes what is in the
+repository, not the order it arrived in.
+
+- **directory-roster**, the directory hub: workspaces whose domains are
+  discovered, snapshots with the freshness policy (`max_age`, the
+  cheapest path, an in-domain miss that always checks live once), routing
+  by email domain with conflict detection, and the authority rule that
+  makes everything degrade to a hold rather than to "gone".
+- **DirectoryService** over ConnectRPC for consumers, authenticated by
+  Kubernetes ServiceAccount tokens; the operator services, the login
+  routes, the consent callback and `/.access/whoami` on a second
+  listener.
+- **The policy** (`docs/reference/policy.md`): five tables — groups,
+  claims, lifetimes, clients, memberships — one schema for both services,
+  deep merge with a load-time scalar-conflict check, shortest lifetime,
+  layered loading, memberships the only console-writable table, clients
+  declared or self-registered and never created in a console. The hub is
+  a relying party of it: `hub-operators` and `hub-viewers`.
+- **The console** on the fleet stack: Workspaces, Access (the membership
+  table), Effective access (what an identity gets and why) and Settings,
+  with the person's name and the build in the header.
+- **A demonstration mode** (`DEMO=1`): two tenants in memory and a
+  consent connector, so every use-case is walkable before a credential
+  exists.
+- **The documentation set**: why it exists, the concepts, the fifteen
+  integration points, the architecture, a design per battery, the
+  reference pages, one connect guide per kind of relying party, the
+  operations runbooks and the extension points.
+
+Designed but not built: access-issuer, access-proxy, the libraries as a
+public module, accessctl and the GitHub Action.

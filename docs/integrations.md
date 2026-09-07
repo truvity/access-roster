@@ -69,9 +69,9 @@ flowchart TB
 | **Helm chart** | `directory-roster` | the hub's chart; expects a Valkey | the platform | with the hub |
 | **Helm chart** | `access-issuer` | the issuer's chart; expects a Valkey and the hub | the platform | with the issuer |
 | **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console; self-registers at the issuer; expects a Valkey | every team that ships a console, one release per console | with the issuer |
-| **Go module** | `github.com/truvity/access-roster` | `identity` with net/http, fiber v3, gRPC and connect adapters; `authz`; `directory`; `tokens`; `rules`; `connect` | every Go service and console | `identity` core with the hub, the rest with the issuer |
+| **Go module** | `github.com/truvity/access-roster` | `identity` with net/http, fiber v3, gRPC and connect adapters; `authz`; `directory`; `tokens`; `policy`; `connect` | every Go service and console | `identity` core with the hub, the rest with the issuer |
 | **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>`, generated clients | every console UI | with the hub's console |
-| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `rules test` | people, on laptops; never machines | with the issuer |
+| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `policy test` | people, on laptops; never machines | with the issuer |
 | **GitHub Action** | `truvity/access-roster@v1` (root `action.yml`) | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | with the issuer |
 | **File format** | the policy | groups, claims, lifetimes, clients, memberships — one schema for both services | the platform, in gitops; memberships also from the console | with the hub's console, extended by the issuer |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the hub's console services | consumers of the hub | now |
@@ -110,7 +110,7 @@ configure and where, what you get.
   openid scopes only.
 - **Flow:** the person types their email at the issuer → routed by domain
   to the right tenant → signs in there with MFA → back at the issuer, ⑤
-  asks the hub → rules → token.
+  asks the hub → policy → token.
 - **You configure:** one OIDC client per backend (Google, later Entra) in
   the issuer's values. Not per tenant: tenants are discovered.
 - **You get:** one login for every relying party; a suspended account
@@ -122,10 +122,11 @@ configure and where, what you get.
 - **Trust:** the issuer verifies GitHub's token against GitHub's keys and
   an organisation allow-list; nothing trusts GitHub directly.
 - **Flow:** the job requests its identity token → the action exchanges it
-  at the issuer for each requested audience → rules on repository, ref
-  and workflow decide → the job gets tokens for ⑥ and ⑦.
-- **You configure:** the organisations in the issuer's values; the rules;
-  one step in the workflow.
+  at the issuer for each requested audience → matchers on repository,
+  ref and workflow decide → the job gets tokens for ⑥ and ⑦.
+- **You configure:** the organisations in the issuer's values; a machine
+  group with the matcher, and the clients that require it; one step in
+  the workflow.
 - **You get:** no stored secret anywhere; a fork branch gets nothing.
 - Guide: [connect/github-actions.md](connect/github-actions.md).
 
@@ -158,8 +159,8 @@ configure and where, what you get.
   exchange (jobs) → a token with the cluster's audience and the group
   values → RBAC as today.
 - **You configure:** the cluster's OIDC provider once; a public client
-  `k8s:<cluster>` in the issuer; rules granting the audience and the
-  groups; RBAC bindings by group as before.
+  `k8s:<cluster>` in the issuer; the internal groups it requires and the
+  fragments that mint the values; RBAC bindings by group as before.
 - **You get:** kubeconfigs written by `accessctl kubeconfig` for every
   cluster a person is granted; no kubeconfig generation elsewhere.
 - Guide: [connect/kubernetes-cluster.md](connect/kubernetes-cluster.md).
@@ -170,11 +171,12 @@ configure and where, what you get.
   token.
 - **Trust:** one IAM OIDC provider for the issuer per account; per role a
   trust policy requiring `aud == aws:<account>:<role>`.
-- **Flow:** exchange for the role's audience, gated by the rules →
+- **Flow:** exchange for the role's audience, gated by the client's
+  `requires` →
   `AssumeRoleWithWebIdentity` → temporary credentials. People through a
   `credential_process`, jobs through a web-identity token file.
 - **You configure:** the provider once per account; a trust policy per
-  role; rules granting audiences.
+  role; the internal groups each client requires.
 - **You get:** group-based cloud roles across several organisations
   without Identity Center, and one trust policy per role instead of
   per-user statements.
@@ -186,7 +188,7 @@ configure and where, what you get.
 - **Flow:** their own OIDC login against the issuer; they read `groups`
   and apply their own policy, unchanged.
 - **You configure:** the clients in the issuer; issuer URL and client id
-  in their values; their admin accounts off once a rule-granted admin has
+  in their values; their admin accounts off once a policy-granted admin has
   signed in.
 - Guides: [connect/argocd.md](connect/argocd.md), [connect/kargo.md](connect/kargo.md).
 
@@ -200,7 +202,7 @@ configure and where, what you get.
 - **Flow:** open the host → proxy redirects to the issuer → ② → session in
   Valkey → every request forwarded with the bearer → console reads it.
 - **You configure:** an eight-line `access-proxy` release per console;
-  DNS; a rule minting the console's group values; the namespace label the
+  DNS; an internal group whose fragment mints the console's values; the namespace label the
   fleet egress policy selects.
 - **You get:** login, session, refresh in the background, global sign-out
   and a posture (`groups` or `authenticated`) without a line of console
@@ -221,7 +223,7 @@ configure and where, what you get.
 ### ⑫ A person's laptop
 
 - `accessctl login` once; `accessctl kubeconfig` and `aws-config` write
-  the files for everything the rules grant; kubectl and the AWS CLI then
+  the files for everything the policy grants; kubectl and the AWS CLI then
   work as usual through the exec plugin and the credential process.
   kubelogin is an equivalent for kubectl. Machines never run accessctl.
 - Reference: [reference/accessctl.md](reference/accessctl.md).
@@ -229,7 +231,7 @@ configure and where, what you get.
 ### ⑬ A workflow
 
 - One shell-only step exchanges the job's token at the issuer and writes
-  a kubeconfig and an AWS profile. Policy is in the rules, not in the
+  a kubeconfig and an AWS profile. Policy is in the policy file, not in the
   workflow.
 
 ### ⑭ GitHub teams
@@ -247,7 +249,7 @@ configure and where, what you get.
   Amazon's ECR credential helper or action, `aws codeartifact login` per
   tool. Many registries and domains are many profiles.
 - **You configure:** roles whose only purpose is registry or artifact
-  access, granted by rules; the tool-specific line per registry or domain.
+  access, required by those clients; the tool-specific line per registry or domain.
 - **You get:** a push or a package install that never sees an expired
   login, with the entitlement decided in the policy.
 - Guide: [connect/registries-and-artifacts.md](connect/registries-and-artifacts.md).
@@ -258,5 +260,5 @@ Cases ⑥ ⑦ ⑧ ⑩ ⑮ are the **claims model**: the decision rides in a toke
 because a cluster, a cloud account or a session cannot call the hub.
 Case ⑭ is the **sync model**: the decision is materialized where it is
 enforced, because GitHub can be written to. Both draw from the same hub
-and the same rules; the choice per relying party is dictated by what that
+and the same policy; the choice per relying party is dictated by what that
 relying party can consume, never by preference.

@@ -39,6 +39,7 @@ Only the latest release is supported with security updates.
   generated into a Secret and shown nowhere else.
 - The hub **authenticates nobody and issues nothing.** Sign-in is always
   delegated to an identity provider; the hub verifies the result and
-  applies rules. The token service designed for this repository is a
-  security token service under the same rule: it verifies proofs produced
-  elsewhere and holds no passwords, no users, no MFA.
+  applies the policy. access-issuer, the second service designed for this
+  repository, is a security token service under the same rule: it
+  verifies proofs produced elsewhere and holds no passwords, no users
+  and no MFA.

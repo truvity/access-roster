@@ -21,9 +21,9 @@ nothing about that policy changes when the issuer does.
    logoutURL: https://issuer.example.internal/end_session?id_token_hint={{token}}&post_logout_redirect_uri=https://argocd.example.internal
    ```
 3. `policy.csv` keeps its `g, <group>, role:<x>` lines: the `groups` values
-   come from the rules and can be identical to the ones ArgoCD reads
+   come from the claim fragments and can be identical to the ones ArgoCD reads
    today.
-4. Keep ArgoCD's local admin until a rule-granted identity has signed in
+4. Keep ArgoCD's local admin until a policy-granted identity has signed in
    as an admin, then `admin.enabled: "false"`.
 
 The `argocd` CLI logs in through the same client with the browser flow;

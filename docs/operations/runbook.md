@@ -11,19 +11,20 @@ Workspaces view and in `Describe`; nothing needs a shell except the export.
 4. Settings: the OAuth client, unless the chart declared it.
 5. Workspaces: Connect, as the tenant's admin role account.
 6. Access: pick the operators' group from the snapshot; grant operator.
-7. Sign out; sign in with the directory as yourself. `WhoAmI` shows operator and the rule that granted it.
+7. Sign out; sign in with the directory as yourself. The Effective access page shows operator and the membership that granted it.
 8. `access.admin.enabled: false` in the values. The banner disappears.
 
 Behind an authenticating proxy, steps 3 and 7 go through the proxy's
-login and the rule in step 6 is a `claim` rule on the forwarded token;
+login; the membership in step 6 is unchanged, because the hub resolves
+the forwarded identity's address through the directory like any other;
 the admin account stays as break-glass by port-forward.
 
 ## Lost operator access
 
-The rules deny everyone, or the group was renamed, or the directory
+Nobody is in the operators group, or the group was renamed, or the directory
 sign-in is what is broken:
 
-- **admin still enabled:** port-forward, `/admin/login`, fix the rule.
+- **admin still enabled:** port-forward, `/admin/login`, fix the membership.
 - **admin disabled:** set `access.admin.enabled: true` in the values, roll
   the deployment, then as above. The password is still in `hub-admin`.
 - **forgotten password:** delete `Secret hub-admin`; the hub generates a

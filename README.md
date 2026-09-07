@@ -9,7 +9,7 @@ directories can put people and machines in front of clusters, cloud
 accounts, consoles and code hosts — under one rule: **nothing here
 authenticates anyone.** Sign-in stays with the corporate identity
 providers; this repository verifies the result, knows the directory, and
-applies rules.
+applies the policy.
 
 > **Status: design under review; nothing runs yet.** Documentation first,
 > services second. The directory hub is built first; the issuer and the
@@ -27,9 +27,9 @@ what is in [docs/integrations.md](docs/integrations.md#the-batteries-by-kind-of-
 | Kind | Battery | Use it when |
 |---|---|---|
 | Service + chart | **directory-roster** — the directory hub: holds every directory credential, snapshots every tenant, answers *is this account live* and *who is in this group* with an **authoritative** flag | you have corporate directories and anything that must react to leavers and groups |
-| Service + chart | **access-issuer** — the token service: verifies a corporate sign-in, a CI token or a workload token, asks the hub, applies the rules, issues tokens | clusters, cloud accounts, a CD system or consoles must trust one issuer |
+| Service + chart | **access-issuer** — the token service: verifies a corporate sign-in, a CI token or a workload token, asks the hub, applies the policy, issues tokens | clusters, cloud accounts, a CD system or consoles must trust one issuer |
 | Helm chart | **access-proxy** — oauth2-proxy and its wiring in front of one console: login against the issuer, sessions, forwarded bearer, two postures, self-registered client | you put a web UI behind the gateway |
-| Go module | `github.com/truvity/access-roster` — `identity` with net/http, fiber v3, gRPC and connect adapters; `authz`; `directory`; `tokens`; `rules` | you write a service or a console in Go |
+| Go module | `github.com/truvity/access-roster` — `identity` with net/http, fiber v3, gRPC and connect adapters; `authz`; `directory`; `tokens`; `policy` | you write a service or a console in Go |
 | TypeScript package | `access-roster` — `useIdentity()` and `<UserBadge/>` over the standard `/.access/whoami` | you write a console UI |
 | CLI | **accessctl** — `login`, `setup` (kubeconfig contexts and AWS profiles for everything you are granted), `aws` as a credential process, `kube-token`, `whoami`; people only | a person needs kubectl or cloud credentials |
 | GitHub Action | `truvity/access-roster@v1` — shell only: exchanges the job's token at the issuer, writes a kubeconfig and AWS profiles; ECR, CodeArtifact and the rest run on top with AWS's own tooling | a workflow deploys, pushes or installs |
@@ -59,7 +59,7 @@ admin consent, or by uploading a service-account key. The hub discovers
 the tenant's domains, snapshots its accounts and groups every fifteen
 minutes, and answers every read from that snapshot, saying which snapshot
 and whether the domain is authoritative right now. The issuer never reads
-a directory: at every login it asks the hub, applies the rules, and mints
+a directory: at every login it asks the hub, applies the policy, and mints
 a token whose `groups` name the roles relying parties already read and
 whose audiences carry the decisions a cloud trust policy can see. A
 console sits behind `access-proxy` and reads the forwarded bearer through

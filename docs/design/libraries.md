@@ -17,7 +17,7 @@ package gives a UI the first without parsing a token.
 |---|---|
 | `identity` | `Identity{Subject, Email, Name, Groups, Roles, Source, Expiry}`; verifiers for a bearer from the issuer (JWKS, audience, issuer) and for a Kubernetes ServiceAccount token (TokenReview, audience, allow-list); a header-trust source for the proxy's identity headers; `FromContext` |
 | `identity/httpmw`, `identity/fibermw`, `identity/grpcmw`, `identity/connectmw` | the same verification as middleware for net/http, fiber v3, gRPC unary and stream interceptors, and connect interceptors; every adapter also serves `GET /.access/whoami` for the UI |
-| `authz` | `Require(role)` and `RequireAny(...)` per handler; role mapping from `groups` values or from rules, so a two-role console needs no code of its own |
+| `authz` | `Require(role)` and `RequireAny(...)` per handler; role mapping from `groups` values or from the policy, so a two-role console needs no code of its own |
 | `directory` | a typed `DirectoryService` client with the ServiceAccount token source built in and the authoritative rule enforced: `Live(email)` and `Members(group)` return a value and an `Authoritative` flag, and a helper `RemoveOnlyIf(authoritative)` for reconcilers |
 | `tokens` | `Exchange(ctx, subject, audience)`, a refreshing `Source` for a projected ServiceAccount token, and the AWS `credential_process` and Kubernetes exec-credential encoders `accessctl` uses |
 | `policy` | the policy engine and its schema — groups, claims, lifetimes, clients, memberships — shared by the hub's console and the issuer |
