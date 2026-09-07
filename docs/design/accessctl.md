@@ -19,7 +19,7 @@ a login cache and an issuer configuration.
 | Command | Does | Used by |
 |---|---|---|
 | `login` | device or authorization-code flow against the issuer; caches the refresh token in the OS keyring or a file with mode 0600 | people |
-| `whoami` | the identity and the grants the rules allow | people |
+| `whoami` | the identity and what the policy grants it | people |
 | `kubeconfig` | reads `/.access/grants`, writes a kubeconfig context per granted cluster, exec plugin `accessctl kube-token` (or kubelogin) | people |
 | `kube-token` | a Kubernetes exec credential for one cluster audience; refreshes silently from the cached login | people |
 | `aws-config` | writes a profile per granted cloud role with `credential_process = accessctl aws --audience aws:<account>:<role>` | people |
@@ -51,7 +51,7 @@ exactly what is ours to prepare and stops:
 
 | Input | Effect |
 |---|---|
-| `issuer`, `audiences` | required: one exchange per audience, rules decide |
+| `issuer`, `audiences` | required: one exchange per audience; each client's `requires` decides |
 | `kubeconfig` | write a kubeconfig with one context per `k8s:<cluster>` audience, the cluster token as bearer |
 | `default-profile` | export `AWS_PROFILE` |
 | `region` | the region written into each profile |
@@ -72,11 +72,11 @@ version of ours moves when Amazon's tooling does. The recipes are in
 ## `accessctl setup` on a laptop
 
 The same boundary for people: one command that writes the kubeconfig
-contexts and the AWS profiles for everything the rules grant, with
+contexts and the AWS profiles for everything the policy grants, with
 `accessctl aws` as the credential process behind each profile, and then
 prints the lines it will not write for you — the Docker credential-helper
 mapping and the CodeArtifact login commands. Idempotent; run it again
-after a rules change.
+after a policy change.
 
 ## What it never does
 

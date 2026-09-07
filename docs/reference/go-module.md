@@ -6,6 +6,7 @@ import (
     "github.com/truvity/access-roster/identity/httpmw"
     "github.com/truvity/access-roster/authz"
     "github.com/truvity/access-roster/directory"
+    "github.com/truvity/access-roster/policy"
     "github.com/truvity/access-roster/tokens"
 )
 ```
@@ -53,11 +54,21 @@ if authoritative && !live { /* remove */ }
 tok, err := tokens.Exchange(ctx, issuerURL, subjectToken, "aws:111122223333:power")
 ```
 
-## Rules
+## Policy
 
 ```go
-policy, _ := rules.Load("rules.yaml")
-grant := policy.Evaluate(rules.Input{Email: "alice@example.com", Groups: groups, Authoritative: true})
+declared, _ := policy.LoadDeclared("/etc/access-roster/policy")  // a file or a directory
+set, _ := policy.NewSet(declared)                                 // validated once, at load
+_ = set.SetConsole(consoleMemberships)                            // the second layer
+
+result := set.Evaluate(policy.Input{
+    Email:           "alice@example.com",
+    DirectoryGroups: groups,   // what the hub confirmed
+    Authoritative:   true,     // membership grants nothing without it
+})
+result.Has("hub-operators")  // the internal groups held
+result.Claims                // the deep-merged fragments
+result.Lifetime              // shortest across the held groups
 ```
 
 Full API on pkg.go.dev once tagged.

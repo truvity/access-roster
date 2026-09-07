@@ -209,7 +209,7 @@ namespace — an external-secrets `ExternalSecret`, a sealed secret, `kubectl`
 example, the hub has no dependency on it.
 
 The objects — workspace Secrets and ConfigMaps, the OAuth client, the
-session key, the admin password, console-added rules, the declared
+session key, the admin password, console-added memberships, the declared
 overlay — are listed once, in
 [reference/configuration.md](../reference/configuration.md#kubernetes-objects-the-hub-owns).
 Valkey holds snapshots, refresh locks and the short negative cache, never
@@ -242,8 +242,8 @@ Secret is deleted.
 Built on the shared fleet console stack (gateway-auth library, Vite, MUI,
 Connect-Web): Workspaces (each with domains, health, authoritative state,
 Connect / Reconnect / Disconnect), Settings (the OAuth client, the
-read-only knobs) and Access (who is signed in, the rules, the admin
-banner).
+read-only knobs), Access (the internal groups and who is in them) and
+Effective access (what an identity gets, and what put it there).
 
 ## Access to the hub itself
 
@@ -260,8 +260,9 @@ directory reads, and the hub happens to hold a client capable of both.
 In an installation with an authenticating proxy in front of its consoles
 — the normal case — the hub's console sits behind that proxy like every
 other console, and the **forwarded bearer** is the identity: the hub
-verifies it against the configured issuer and a `claim` rule grants the
-role. The hub's **own login page** exists for two situations only: a
+verifies it against the configured issuer and resolves the address
+through the directory like any other, so the same memberships grant the
+same role. The hub's **own login page** exists for two situations only: a
 standalone installation with no proxy and no issuer, where operators sign
 in with the connected directory itself (the workspace's OAuth client with
 the openid, email and profile scopes; the address must be live in a served
@@ -329,8 +330,8 @@ discloses their access, so that needs operator.
 
 ### Day one
 
-Admin → OAuth client → connect the first workspace → one rule from the
-group picker → sign in as yourself → admin off. The sequence is drawn in
+Admin → OAuth client → connect the first workspace → one membership from
+the group picker → sign in as yourself → admin off. The sequence is drawn in
 [the architecture](../architecture.md#58-day-one-of-a-standalone-installation)
 and the commands are in [the runbook](../operations/runbook.md#day-one).
 
@@ -359,7 +360,7 @@ kept from day one because it is cheap then and expensive later.
 
 **The issuer.** The second service of this repository, access-issuer, is a
 security token service: it verifies proofs — corporate sign-ins, workload
-tokens — applies rules, and issues tokens that clusters, cloud accounts
+tokens — applies the policy, and issues tokens that clusters, cloud accounts
 and consoles trust. It is the hub's first consumer and shares its
 verifiers, backends and policy engine. It is designed in
 [access-issuer.md](access-issuer.md) and built after the hub. Nothing in

@@ -18,9 +18,9 @@ connect / revoke / domain move against the fake.
 
 `pkg/proof`: implement `Verifier` — given a token, return a verified
 `Proof{Issuer, Subject, Claims}` or an error — and a subject kind in the
-rules that reads its claims. GitHub is the first; GitLab or a cloud's
+matcher kind that reads its claims. GitHub is the first; GitLab or a cloud's
 instance identity are the same shape. Ship: fixtures of real tokens with
-rotated keys, and a rules test.
+rotated keys, and a policy test.
 
 ## 3. A matcher kind, or a table
 
@@ -41,7 +41,7 @@ lines; a fifth should be too.
 ## 5. A relying-party recipe
 
 `docs/connect/<thing>.md`: what the relying party trusts (issuer, client,
-audience or groups), the static client if it needs one, the rule shape,
+audience or groups), the client it needs, the policy shape,
 the person side and the job side. If it needs a new audience prefix,
 name it in [reference/policy.md](../reference/policy.md).
 

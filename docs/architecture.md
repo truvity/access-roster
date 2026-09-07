@@ -38,7 +38,7 @@ flowchart TB
   admin["Directory admin<br/>[Person]<br/>a role account of one tenant,<br/>consents once"]:::person
   ci["CI job<br/>[External workload]<br/>a signed identity token per run"]:::ext
 
-  ts["access-issuer<br/>[Software System, later]<br/>verifies proofs, asks the hub,<br/>applies rules, issues tokens"]:::token
+  ts["access-issuer<br/>[Software System, later]<br/>verifies proofs, asks the hub,<br/>applies the policy, issues tokens"]:::token
   hub["directory-roster<br/>[Software System]<br/>who exists, who is live, who is in which group,<br/>per connected directory, with an authoritative flag"]:::hub
   teamsync["github-roster<br/>[Software System]<br/>directory groups → GitHub teams"]:::system
 
@@ -89,7 +89,7 @@ flowchart TB
   subgraph nsTs["namespace: access-issuer (later)"]
     direction TB
     ts["access-issuer<br/>[Container: Go, OpenID Provider library]<br/>verifiers: corporate OIDC, workload OIDC, k8s SA<br/>policy engine · client registry · device flow"]:::token
-    rules[("rules + static clients<br/>[ConfigMap from the deployment]<br/>dynamic registrations [own namespace]")]:::tokenStore
+    policyStore[("policy: groups · claims · lifetimes · clients<br/>[ConfigMaps from the deployment]<br/>self-registrations [own namespace]")]:::tokenStore
     keys[("signing keys<br/>[Secrets]")]:::tokenStore
     tsv[("Valkey<br/>[external to the chart]<br/>codes, refresh, device codes,<br/>last-known groups")]:::tokenStore
   end
@@ -98,7 +98,7 @@ flowchart TB
     direction TB
     hub["directory-roster<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: Workspaces, Settings, Access, SPA, login routes<br/>refresher, prober, router by domain"]:::hub
     spa["console<br/>[Container: React SPA, served by the hub]<br/>Workspaces · Access · Effective access · Settings"]:::hub
-    k8s[("workspace records + credentials<br/>[Secrets + ConfigMaps, this namespace]<br/>refresh tokens, SA keys, OAuth client,<br/>session key, admin password, console rules")]:::hubStore
+    k8s[("workspace records + credentials<br/>[Secrets + ConfigMaps, this namespace]<br/>refresh tokens, SA keys, OAuth client,<br/>session key, admin password, console memberships")]:::hubStore
     hv[("Valkey<br/>[external to the chart]<br/>one snapshot per workspace, locks")]:::hubStore
   end
 
@@ -119,7 +119,7 @@ flowchart TB
   ci -- "exchange action" --> ts
   ts -- "sign-in<br/>[OIDC]" --> idp
   ts -- "ResolveUser<br/>[ConnectRPC, SA token]" --> hub
-  ts --> rules
+  ts --> policyStore
   ts --> keys
   ts --> tsv
   ts -. "issuer trusted by<br/>[JWKS, client ids]" .-> rp
@@ -159,12 +159,12 @@ flowchart TB
     dirapi["DirectoryService handlers<br/>[connect-go]<br/>Describe, Probe, GetGroup, ListGroups,<br/>GetAccount, ResolveAccounts, ResolveUser"]:::component
     consauth["Consumer authentication<br/>[TokenReview]<br/>SA token, audience, allow-list"]:::component
     opapi["Operator handlers<br/>[connect-go]<br/>WorkspaceService, SettingsService,<br/>AccessService, role gate from the session"]:::component
-    access["Access<br/>[session, rules, login routes]<br/>forwarded bearer, or standalone sign-in,<br/>or admin, rules to roles"]:::component
+    access["Access<br/>[session, policy, login routes]<br/>forwarded bearer, or standalone sign-in,<br/>or admin; internal groups to roles"]:::component
     connect["Connect flow<br/>[HTTP]<br/>BeginConnect and callback: state cookie,<br/>code exchange, tenant + domain discovery, first probe"]:::component
     router["Router<br/>[domain → workspace]<br/>email domain to the workspace serving it,<br/>conflict detection, authoritative per domain"]:::component
     fresh["Freshness<br/>[max_age policy]<br/>serve / refresh single-flight /<br/>point read live / miss goes live once"]:::component
     refresher["Refresher + prober<br/>[background loops]<br/>new snapshot every refresh interval,<br/>probe + domain re-read every probe interval,<br/>shared lock"]:::component
-    wsstore[("Workspace store<br/>[Kubernetes]<br/>records in ConfigMaps, credentials in Secrets,<br/>overlay merged read-only, console rules")]:::component
+    wsstore[("Workspace store<br/>[Kubernetes]<br/>records in ConfigMaps, credentials in Secrets,<br/>overlay merged read-only, console memberships")]:::component
     backend["Backend: Google<br/>[Admin SDK client + OIDC verifier]<br/>users.list, groups.list, members.list (atomic per group),<br/>domains.list, token from refresh token or SA key"]:::component
     snap[("Snapshot store<br/>[Valkey or memory]<br/>per-workspace snapshot, snapshot_at,<br/>negative cache")]:::component
   end
@@ -173,7 +173,7 @@ flowchart TB
   access -- "identity + role" --> opapi
   access -- "is the account live, in the group" --> router
   opapi -- "BeginConnect" --> connect
-  opapi -- "list / upsert / delete, rules" --> wsstore
+  opapi -- "list / upsert / delete, memberships" --> wsstore
   connect -- "store credential + record" --> wsstore
   connect -- "exchange code, discover" --> backend
   dirapi -- "which workspace" --> router
@@ -230,12 +230,12 @@ sequenceDiagram
   T->>G: exchange code, verify ID token
   T->>H: ResolveUser(email)
   H-->>T: groups, live, authoritative, snapshot_at
-  T->>T: rules: groups → claims
+  T->>T: policy: directory groups to internal groups to claims
   T-->>E: code for the proxy
   E->>P: callback
   P->>T: exchange code → ID token
   P-->>E: the console, with the bearer forwarded
-  Note over P,H: when the console is the hub's own, the hub verifies the forwarded bearer and a claim rule grants viewer or operator
+  Note over P,H: when the console is the hub's own, it verifies the forwarded bearer and resolves the address itself, so the same memberships grant the role
 ```
 
 Until the access-issuer exists, the issuer in this flow is whatever
@@ -257,7 +257,7 @@ sequenceDiagram
   T-->>C: redirect to sign in
   E->>B: sign in at the corporate IdP
   B->>T: code
-  Note over T: ResolveUser → rules → groups, audiences
+  Note over T: ResolveUser, then the policy: internal groups and the clients they admit
   T-->>C: ID token (aud this cluster, groups) + refresh token
   C->>K: request with bearer
   K->>T: JWKS (cached)
@@ -274,7 +274,7 @@ sequenceDiagram
   participant T as access-issuer
   participant S as Cloud STS (account 1111)
   C->>T: token exchange: subject = my token, requested aud = aws:1111:power
-  T->>T: rules: may this identity have aws:1111:power?
+  T->>T: policy: does this identity hold a group aws:1111:power requires?
   alt allowed
     T-->>C: token with aud aws:1111:power
     C->>S: AssumeRoleWithWebIdentity(role power, token)
@@ -299,7 +299,7 @@ sequenceDiagram
   GH-->>W: JWT: sub repo:example-org/gitops:ref:refs/heads/master
   W->>T: token exchange, subject = that JWT, requested aud = aws:1111:gitops-deployer
   T->>GH: JWKS (cached)
-  T->>T: verify iss, aud, exp · organisation allow-list · rules on repository and ref
+  T->>T: verify iss, aud, exp · organisation allow-list · matchers on repository and ref
   T-->>W: token (aud aws:1111:gitops-deployer)
   W->>S: AssumeRoleWithWebIdentity
   S-->>W: temporary credentials
@@ -338,7 +338,7 @@ sequenceDiagram
   participant G as Google (OAuth + Admin SDK)
   participant K as Kubernetes Secrets/ConfigMaps
   Op->>Hub: Connect Google Workspace
-  Hub->>Hub: session → operator role (rules)
+  Hub->>Hub: session to operator role (policy)
   Hub-->>Op: consent URL + state cookie
   Op->>G: consent screen, signed in as the tenant's admin role account
   G-->>Op: redirect to /connect/google/callback with code and state
@@ -392,12 +392,12 @@ sequenceDiagram
   O->>G: consent as the admin role account
   G-->>H: callback: refresh token, tenant id, domains
   H->>G: first snapshot
-  O->>H: Access: group directory-admins → operator (picker over snapshotted groups)
+  O->>H: Access: directory-admins joins hub-operators (picker over snapshotted groups)
   O->>H: sign out, "Sign in with Google"
   H->>G: OIDC sign-in with the same client, openid scopes only
   H->>H: email → workspace → live and in group → operator
   O->>H: disable admin (chart value)
-  Note over O,H: with a proxy in front, steps 1 and 9-11 are replaced by the proxy's login and a claim rule - admin stays as break-glass by port-forward
+  Note over O,H: with a proxy in front, steps 1 and 9-11 are replaced by the proxy's login - the memberships are the same, and admin stays as break-glass by port-forward
 ```
 
 ## 6. Failure semantics, in one table

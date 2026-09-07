@@ -68,7 +68,7 @@ things the installation already has, under one rule.
 
 Two services and their batteries. **Nothing here authenticates anyone**:
 sign-in stays with the corporate IdPs and the CI platform; these services
-verify the result, know the directory, and apply rules.
+verify the result, know the directory, and apply the policy.
 
 - **directory-roster** solves 1, 2 and 3 on the directory side: it holds
   every directory credential so nobody else does, snapshots every tenant,
@@ -76,7 +76,7 @@ verify the result, know the directory, and apply rules.
   flag. A consumer removes access only on an authoritative answer.
 - **access-issuer** solves 3, 4, 5 and 6: it verifies proofs — a corporate
   sign-in, a CI token, a workload token — asks the hub, applies **one
-  rules file**, and issues tokens whose `groups` name the roles relying
+  policy**, and issues tokens whose `groups` name the roles relying
   parties already read and whose **audiences** carry the decisions a
   cloud trust policy can see.
 - **access-proxy**, the **libraries**, **accessctl** and the **action**
@@ -95,8 +95,8 @@ The full map of who talks to whom is [integrations.md](integrations.md).
   and a consumer that removes access waits.
 - **Sync where you can, claim where you must.** GitHub teams are
   synchronised from groups; clusters and cloud accounts need the decision
-  in the token. Both draw from the same hub and the same rules.
-- **One rules file.** Who gets which groups and which audiences is
+  in the token. Both draw from the same hub and the same policy.
+- **One policy.** Who is in which internal group, what each adds and which clients it may use is
   written once, versioned, tested. No role is minted anywhere else.
 - **Conventions over registration.** A console registers itself, an
   exposure derives its client from its hostname, a cluster's audience

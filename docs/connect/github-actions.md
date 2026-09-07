@@ -1,7 +1,7 @@
 # Connect GitHub Actions
 
 A workflow holds no secret. It requests its identity token, exchanges it
-at the issuer for the audiences the rules allow, and uses the result.
+at the issuer for the clients its groups admit it to, and uses the result.
 
 ## Issuer side
 
@@ -54,8 +54,8 @@ the job.
 **Both targets go through the issuer, never directly.** A cluster trusts
 one OIDC issuer and that is access-issuer, so a GitHub token can never be
 presented to an API server; and cloud accounts trust the issuer's
-audiences rather than GitHub's subjects, so the policy stays in one rules
-file instead of in every account's trust policies.
+audiences rather than GitHub's subjects, so the policy stays in one file
+instead of in every account's trust policies.
 
 **Token lifetime.** An exchanged token for a CI audience lives as long as
 the issuer's client setting for CI says — long enough for a deploy or a

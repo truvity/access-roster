@@ -27,4 +27,4 @@ api:
 ```
 
 Per-project roles bind on the `groups` claim through Kargo's own RBAC.
-Keep Kargo's admin account until a rule-granted admin has logged in.
+Keep Kargo's admin account until a policy-granted admin has logged in.

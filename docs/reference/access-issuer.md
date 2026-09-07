@@ -7,9 +7,9 @@
 | `/.well-known/openid-configuration`, `/keys` | OIDC discovery, JWKS | what relying parties read |
 | `/authorize`, `/token`, `/userinfo`, `/end_session` | OIDC | login, tokens, RP-initiated logout |
 | `/device_authorization` | RFC 8628 | kubelogin, `accessctl`, the Kargo CLI |
-| `/token` with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange` | RFC 8693 | CI and workload exchange; `audience` requested, gated by rules |
+| `/token` with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange` | RFC 8693 | CI and workload exchange; the requested `audience` is a client, gated by its `requires` |
 | `/register` | RFC 7591 | dynamic client registration, authenticated by a ServiceAccount token |
-| `/.access/grants` | ours | the audiences the caller's rules allow; read by `accessctl kubeconfig` and `aws-config` |
+| `/.access/grants` | ours | the clients the caller's groups admit it to; read by `accessctl kubeconfig` and `aws-config` |
 | `/.access/simulate` | ours | the one operator page: what would this identity get. Read-only |
 
 ## Values
@@ -25,7 +25,7 @@
 | `clients.registration[]` | `{namespace, hostPattern}` — which namespaces may self-register clients for which hosts |
 | `proofs.github[]` | `{organisation}` — accepted CI organisations |
 | `proofs.corporate.backends[]` | `google`, later `entra`; tenants come from the hub |
-| `tokens.idLifetime`, `tokens.refreshLifetime`, `tokens.holdWindow` | lifetimes; the hold window mirrors the rules default |
+| `tokens.idLifetime`, `tokens.refreshLifetime`, `tokens.holdWindow` | token lifetimes the policy does not set, and how long an identity keeps its last grant while the hub cannot be vouched for |
 | `networkPolicy.*` | who may reach `/token` and `/register` from inside the cluster |
 
 ## What the chart renders and expects

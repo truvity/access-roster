@@ -51,7 +51,7 @@ the job's GitHub token at the issuer and writes the profile
 `gitops-deployer@111122223333` with `web_identity_token_file` pointing at
 the result; the AWS CLI does the rest. The account trusts the issuer, not
 GitHub: no direct GitHub provider is configured, and CI's entitlements
-live in the rules file.
+live in the policy.
 
 ## On top: every other AWS service
 

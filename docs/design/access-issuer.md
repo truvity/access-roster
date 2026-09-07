@@ -31,7 +31,7 @@ stop and reconsider, not to extend.
 | Proof | From | How |
 |---|---|---|
 | a corporate sign-in | Google Workspace, Microsoft Entra | an OIDC authorization-code flow the issuer starts and finishes, routed by email domain; the address is then resolved through the hub |
-| a CI identity token | GitHub Actions, per organisation | RFC 8693 token exchange; verified against the platform's keys, the organisation checked against an allow-list, claims such as repository and ref fed to the rules |
+| a CI identity token | GitHub Actions, per organisation | RFC 8693 token exchange; verified against the platform's keys, the organisation checked against an allow-list, claims such as repository and ref matched by a machine group's matchers |
 | a workload token | a Kubernetes ServiceAccount | token exchange verified with TokenReview, for the rare in-cluster service that needs a token another system trusts |
 
 Every human login and refresh asks the hub `ResolveUser`: is the account
@@ -49,7 +49,7 @@ RP-initiated logout.
 
 Claims: `sub` stable per identity, `email`, `name`, `groups` — the role
 names relying parties already read — and `aud`, the set of audiences the
-rules allow for this client and identity.
+policy allows for this client and identity.
 
 **Clients** come to exist in exactly two ways, never in a console:
 
@@ -66,7 +66,7 @@ the registering ServiceAccount, and refuses a host outside that
 namespace's allowed pattern.
 
 **Audiences** carry the cloud and cluster decisions. A rule-gated audience
-is minted only for identities the rules allow, and a role's trust policy
+is minted only for identities the client's `requires` admits, and a role's trust policy
 names only that audience: one trust policy per role, no per-user policies,
 several organisations behind one issuer. For a custom issuer a cloud
 trust policy can see only `sub`, `aud`, `amr` and `email`, which is why the
@@ -75,7 +75,7 @@ through — a cleaner carrier for groups — is a spike item, not an
 assumption.
 
 **Discovery of what you are granted.** `GET /.access/grants` answers, for
-the caller's identity, the audiences the rules allow. `accessctl
+the caller's identity, the clients its groups admit it to. `accessctl
 kubeconfig` and `accessctl aws-config` read it and write the files for
 every cluster and role a person may use, so nobody maintains kubeconfigs
 by hand.
@@ -96,7 +96,7 @@ kind `exchange`, which is where the earlier audience table went.
 
 No database. Signing keys in Secrets, rotated. Authorization codes,
 refresh tokens, device codes and the last-known groups per identity in
-Valkey, external to the chart. Static clients and rules from the
+Valkey, external to the chart. Static clients and the policy from the
 deployment; dynamic registrations in the issuer's own namespace.
 
 ## Failure semantics

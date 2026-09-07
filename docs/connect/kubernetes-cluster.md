@@ -11,8 +11,8 @@ the `groups` claim into RBAC. People use kubelogin or `accessctl`; jobs use
   kubeadm: `--oidc-*` flags): issuer URL, client id `k8s:<cluster>`,
   username claim `email`, groups claim `groups`, a groups prefix if you
   want one.
-- RBAC bindings by group name, unchanged if the rules mint the same
-  values as before.
+- RBAC bindings by group name, unchanged if the claim fragments mint the
+  same values as before.
 
 ## Policy
 
@@ -49,8 +49,8 @@ users:
 The API server trusts one issuer, access-issuer, so a job's GitHub token is
 never presented to it. `truvity/access-roster@v1` with
 `audiences: k8s:<cluster>` exchanges the job's token at the issuer and
-writes a kubeconfig with the resulting token; rules on repository and ref
-decide which jobs may. The token's lifetime is the issuer's CI client
+writes a kubeconfig with the resulting token; the machine group's
+matchers on repository and ref decide which jobs may. The token's lifetime is the issuer's CI client
 setting; a step that outlives it re-runs the action.
 
 ## Break-glass
