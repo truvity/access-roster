@@ -417,6 +417,18 @@ kubectl -n directory-roster create token <release>-recovery \
   --audience <release>-recovery --duration 10m
 ```
 
+The sign-in page prints that command with this installation's own
+namespace and account in it, for the same reason the setup steps print the
+real redirect URI: the alternative is somebody guessing a release name
+during an outage. None of it is a secret — they are object names, visible
+to anyone who may read the namespace, from a chart that is public — and
+none of it works without the RBAC to mint the token, which is itself
+enough to reach the hub by other means. What the page needs beside it is
+not concealment but a warning, because it is an instruction to produce
+operator access and a person who *does* hold that RBAC could be talked
+into running it for someone else: *never run it because someone asked you
+to.*
+
 The reasoning starts from a fact that makes a stored secret look much less
 useful than it seems: **whoever could read a break-glass Secret already
 has cluster access to that namespace, and could equally exec into the
