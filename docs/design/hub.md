@@ -274,10 +274,10 @@ console edits — from either end.
 | Overview | is anything broken: failing directories, domains on hold or contested, directory groups attached to nothing, internal groups nobody feeds, the break-glass state |
 | Directories, and one page per directory | which tenants we read, their domains and standing, the actions on the tenant itself, and the groups and accounts it holds — every one a link. **Add a directory** offers both ways in, admin consent and an uploaded key, and only the ways this deployment can take |
 | Directory groups, and one page per group | what the directories say exists, and which of it the policy uses. A group's page reads along the chain: its members as the directory reports them, the internal groups it feeds, the clients that therefore open |
-| People, and one page per person | every account, as the last snapshot has it, filtered by directory and by whether it is live. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why |
+| People, and one page per person | every account, as the last snapshot has it, filtered by directory and by whether it is live. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why. Once the issuer exists it gains **Active sessions** with Revoke, and your own page **Sign out everywhere** |
 | Matchers | every rule that admits a proof by its shape — a CI job, a workload, a verified sign-in — with the internal group it feeds and the clients that opens. The identity side's second way in: a directory group feeds by membership, a matcher by pattern. Below the list, a simulator for a concrete proof, because a CI run exists only while it runs and cannot be listed |
 | Internal groups, and one page per group | the vocabulary of access. A group's page mirrors a directory group's: the directory groups that feed it, the people that puts in it now, what it adds to a token, the clients it opens |
-| Clients, and one page per client | kind, redirects, cap, the internal groups that open it, the people who therefore reach it, and the rules that admit machines into it |
+| Clients, and one page per client | kind, redirects, cap, the internal groups that open it, the people who therefore reach it, and the rules that admit machines into it; once the issuer exists, the sessions open on it |
 | Settings | the OAuth client, the policy layers with their export, the intervals |
 
 Every page reads in the same direction, from the identity side toward
@@ -379,6 +379,7 @@ policy.
 | group names, claim fragments, lifetimes, clients, matchers | nothing | all |
 | workspaces | connect, reconnect, upload a key, probe, refresh, disconnect what it connected | a workspace the deployment declared |
 | the OAuth client | set it once, when the chart did not declare one | a declared client |
+| sessions, once the issuer exists | revoke another identity's (operator); sign out everywhere (anyone, their own). Removal only: a console can end access here, never grant it | — |
 | the break-glass admin, the intervals, the sign-in sources | nothing | all |
 
 A console that could re-enable its own break-glass account would be a

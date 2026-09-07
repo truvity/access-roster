@@ -21,7 +21,8 @@ It is a **security token service**, not an identity provider. The line:
   self-registration, no second way in;
 - break-glass lives outside it, in the cloud account and the cluster's
   own access mechanisms;
-- its one operator page is read-only; policy changes are commits.
+- its console surface grants nothing: the only write is revoking a
+  session or a registration; policy changes are commits.
 
 The day a requirement needs one of the things on that list is the day to
 stop and reconsider, not to extend.
@@ -42,10 +43,31 @@ issuer stops refreshing.
 
 ## What it issues, and to whom
 
-A standard OpenID Provider surface, from a library rather than written:
-discovery, JWKS with key rotation, authorization code with PKCE, refresh,
-device authorization, client credentials, JWT profile, token exchange,
-RP-initiated logout.
+A standard OpenID Provider surface, from a library rather than written.
+The library is `github.com/zitadel/oidc/v3` (`op` package), which is
+OpenID-certified for the Basic and Config profiles and already ships
+every grant below except dynamic registration; the issuer implements the
+library's storage interfaces over Valkey and the policy, and nothing
+else of the protocol. "Fully implement" means one thing here: the
+profiles named as *in* pass the OpenID Foundation conformance suite in
+the acceptance run, and nothing named as *out* is served.
+
+| Standard | Status | Why |
+|---|---|---|
+| OpenID Connect Core 1.0, authorization code with PKCE (RFC 7636); ID token, `userinfo`; refresh (RFC 6749 §6) | **in**, conformance target | every human login: consoles through the proxy, kubelogin, accessctl |
+| OpenID Connect Discovery 1.0, JWKS (RFC 7517) with rotation; RFC 8414 metadata | **in**, conformance target | what relying parties read |
+| OpenID Connect RP-Initiated Logout 1.0 (`end_session`) | **in**, conformance target | the proxy's sign-out chains here; ends the issuer's browser session |
+| RFC 8628 device authorization | **in** | kubelogin, accessctl, the Kargo CLI |
+| RFC 8693 token exchange | **in** | CI and workload proofs, and the AWS `exchange` clients |
+| RFC 7523 JWT profile for client authentication | **in** | confidential clients that hold a key rather than a secret |
+| RFC 6749 §4.4 client credentials | **in** | the rare in-cluster service that is its own client |
+| RFC 7009 token revocation | **in** | the mechanism behind Revoke and "sign out everywhere" |
+| RFC 7591 dynamic client registration | **in, written here** | proxies self-register; the library does not cover it and the rule (ServiceAccount token, per-namespace host pattern) is ours |
+| RFC 9068 JWT access tokens (`typ: at+jwt`) | **in** | relying parties verify offline against JWKS; no introspection round-trip |
+| RFC 7662 introspection | **out** | JWT access tokens make it unnecessary; an endpoint nobody calls is attack surface |
+| implicit and hybrid flows | **out** | superseded by code + PKCE; the library supports implicit and it is disabled |
+| OpenID Connect Back-Channel Logout 1.0 | **out for 1.0** | the proxy does not consume it; a revoked session dies at the proxy's next refresh, five minutes by default. Revisit if a relying party needs the push |
+| session-management iframe, front-channel logout, PAR, DPoP, mTLS, CIBA | **out** | no relying party asks; each is surface without a consumer |
 
 Claims: `sub` stable per identity, `email`, `name`, `groups` — the role
 names relying parties already read — and `aud`, the set of audiences the
@@ -92,12 +114,50 @@ lifetime is the shortest across the groups, capped by the client. The
 gate, its kind says whether there is a secret. AWS roles are clients of
 kind `exchange`, which is where the earlier audience table went.
 
+## Sessions and sign-out
+
+Three things get called a session and each has one owner. The proxy
+holds the **browser session** for one console, a ticket cookie with the
+state in Valkey, and refreshes the token behind it. The issuer holds the
+**SSO session** with the browser, so a second console needs no second
+login, and one **refresh token per identity and client**, which is what
+kubelogin, accessctl, and every proxy actually hold. The hub's own cookie
+exists only in standalone day-one mode and lists nothing.
+
+Sessions are first-class issuer state, not opaque tokens in a store: the
+issuer keeps a per-identity index — client, how it was obtained (code,
+device, exchange), issued, expires, last refreshed — so that they can be
+**listed** per identity and per client and **revoked** per identity, per
+client, or one at a time. Revocation is RFC 7009 underneath and the only
+write the console has against the issuer; it removes access and can never
+grant it, which is why it may live in a console at all.
+
+Sign-out has two halves and both are already designed: the proxy ends its
+session and chains to `end_session`, which ends the SSO session; a
+revoked or suspended person is stopped by the issuer refusing the next
+refresh, with the hub's liveness signal behind it. What was missing was
+the operator's lever between those two — cutting a person off *before*
+their next refresh — and the person's own: "sign out everywhere". Both
+are revocation of the identity's sessions, one by an operator, one by
+the identity itself.
+
+Where this shows: on a person's page in the console, an **Active
+sessions** section with Revoke; on a client's page, the sessions open on
+it; on your own page, **Sign out everywhere**. The operator contract for
+it is a small session service, list and revoke, gated like the rest.
+
+The issuer serves three pages of its own, minimal HTML from the same
+theme, because each runs before any session exists: the sign-in chooser
+by email domain, the device-code entry page, and the signed-out page.
+They are not the console.
+
 ## State
 
 No database. Signing keys in Secrets, rotated. Authorization codes,
-refresh tokens, device codes and the last-known groups per identity in
-Valkey, external to the chart. Static clients and the policy from the
-deployment; dynamic registrations in the issuer's own namespace.
+refresh tokens with their per-identity session index, device codes and
+the last-known groups per identity in Valkey, external to the chart.
+Static clients and the policy from the deployment; dynamic registrations
+in the issuer's own namespace.
 
 ## Failure semantics
 
@@ -121,6 +181,9 @@ deployment; dynamic registrations in the issuer's own namespace.
 5. Dynamic registration from a proxy's ServiceAccount, and its refusal
    for a foreign host.
 6. The hold window when the hub answers non-authoritative.
+7. The OpenID Foundation conformance suite against the spike, Basic OP,
+   Config and RP-Initiated Logout profiles, so that "fully implemented"
+   is a green run and not an opinion.
 
 Each with a number attached. The migration that follows is consumer by
 consumer, the previous issuer running as fallback until it has no relying
