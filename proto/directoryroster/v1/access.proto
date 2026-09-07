@@ -2,59 +2,60 @@ syntax = "proto3";
 
 package directoryroster.v1;
 
-// AccessService is how the console learns who is signed in and which
-// rules grant what. Rules declared by the deployment are read-only here;
-// rules added through the console are stored by the hub and can be
-// removed the same way. Signing in itself is not an RPC: it is a set of
-// HTTP routes on the console listener (see docs/reference/contracts.md).
+import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
+
+// AccessService is how the console learns who is signed in, what the
+// policy says, and what any identity would effectively get.
+//
+// The policy's five tables are declared by the deployment. Exactly one of
+// them is writable here — memberships, which directory groups populate an
+// internal group — because everything else shapes a token and belongs in
+// a reviewed commit. See docs/reference/policy.md.
 service AccessService {
-  // WhoAmI returns the caller's identity, how it was established, the
-  // role it holds and which rules granted it. Any signed-in identity.
+  // WhoAmI returns the caller's identity: who they are, how they were
+  // established, the role they hold and the internal groups behind it.
+  // Any signed-in identity.
   rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
 
-  // GetAccessPolicy returns every rule, declared and console-added, plus
-  // the state of the break-glass admin account and the enabled sign-in
-  // sources. Viewer.
-  rpc GetAccessPolicy(GetAccessPolicyRequest) returns (GetAccessPolicyResponse);
+  // Explain answers "what does this identity effectively get, and why":
+  // the directory groups the hub confirms, the internal groups they put
+  // the identity in, the merged claims and the token lifetime. With an
+  // empty email it explains the caller, which any signed-in identity may
+  // ask; for anyone else it is operator, because it discloses another
+  // person's access.
+  rpc Explain(ExplainRequest) returns (ExplainResponse);
 
-  // AddRule stores a console-added rule. Operator.
-  rpc AddRule(AddRuleRequest) returns (AddRuleResponse);
+  // GetPolicy returns every internal group with its members and what each
+  // adds, the state of the break-glass admin, the enabled sign-in
+  // sources, and the console layer as YAML for export. Viewer.
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
 
-  // RemoveRule deletes a console-added rule. A declared rule refuses
-  // (failed_precondition): change the deployment instead. Operator.
-  rpc RemoveRule(RemoveRuleRequest) returns (RemoveRuleResponse);
+  // AddMembership records a directory group in an internal group.
+  // Operator.
+  rpc AddMembership(AddMembershipRequest) returns (AddMembershipResponse);
+
+  // RemoveMembership drops one the console added. A membership the
+  // deployment declared refuses (failed_precondition): change the values
+  // instead. Operator.
+  rpc RemoveMembership(RemoveMembershipRequest) returns (RemoveMembershipResponse);
 
   // ListDirectoryGroups returns the groups the hub has snapshotted, so
-  // that granting a role is a click on a group rather than a typed
-  // address that may be a typo. Viewer.
+  // that a membership is a click rather than a typed address that may be
+  // a typo. Viewer.
   rpc ListDirectoryGroups(ListDirectoryGroupsRequest) returns (ListDirectoryGroupsResponse);
 }
 
-message ListDirectoryGroupsRequest {
-  // empty lists the groups of every served domain.
-  string domain = 1;
-}
-message ListDirectoryGroupsResponse {
-  repeated DirectoryGroupSummary groups = 1;
-}
-
-// DirectoryGroupSummary is one group as the rule picker shows it.
-message DirectoryGroupSummary {
-  string email = 1;
-  string domain = 2;
-  string workspace_id = 3;
-  // members is the flat membership count at the last snapshot.
-  int32 members = 4;
-}
-
-// Role is what a rule grants. Operator implies viewer.
+// Role is what an identity may do in this console. Operator implies
+// viewer. A role is not granted directly: it is held by being in the
+// internal group the deployment declared for it.
 enum Role {
   ROLE_UNSPECIFIED = 0;
   ROLE_VIEWER = 1;
   ROLE_OPERATOR = 2;
 }
 
-// IdentitySource says how the caller was established.
+// IdentitySource says how a caller was established.
 enum IdentitySource {
   IDENTITY_SOURCE_UNSPECIFIED = 0;
   // signed in with a connected directory through the hub's own login.
@@ -69,69 +70,113 @@ enum IdentitySource {
 
 message Identity {
   string email = 1;
-  // the issuer's subject, or "admin".
+  // the issuer's stable identifier, or "admin".
   string subject = 2;
   IdentitySource source = 3;
   Role role = 4;
-  // ids of the rules that granted the role, in evaluation order.
-  repeated string matched_rules = 5;
-}
-
-// AccessRule grants a role to every identity its subject matches.
-message AccessRule {
-  // stable id; declared rules use the id from the deployment's values.
-  string id = 1;
-  oneof subject {
-    DirectoryGroupSubject directory_group = 2;
-    ClaimSubject claim = 3;
-    // an exact address, case-insensitive.
-    string email = 4;
-    // every address in this domain.
-    string email_domain = 5;
-  }
-  Role role = 6;
-  // true when the deployment declared it: read-only in the console.
-  bool declared = 7;
-}
-
-// DirectoryGroupSubject matches members of a group the hub snapshots.
-// The identity's address must be live and in a served domain.
-message DirectoryGroupSubject {
-  // empty means whichever workspace serves the group's domain.
-  string workspace_id = 1;
-  string group = 2;
-}
-
-// ClaimSubject matches a value in a claim of a verified token from a
-// named issuer: a groups claim, a roles claim, anything the issuer emits.
-message ClaimSubject {
-  string issuer = 1;
-  string claim = 2;
-  string value = 3;
+  // the internal groups the identity is in.
+  repeated string groups = 5;
+  // given and family name as the directory supplies them; empty when it
+  // does not, so callers must tolerate that.
+  string given_name = 6;
+  string family_name = 7;
 }
 
 message WhoAmIRequest {}
 message WhoAmIResponse {
   Identity identity = 1;
+  // the build this hub is running.
+  string version = 2;
 }
 
-message GetAccessPolicyRequest {}
-message GetAccessPolicyResponse {
-  repeated AccessRule rules = 1;
+// HeldGroup is one internal group an identity is in, and why: the
+// directory groups matched, or the matcher, rendered to be read.
+message HeldGroup {
+  string group = 1;
+  repeated string via = 2;
+}
+
+message ExplainRequest {
+  // empty explains the caller.
+  string email = 1;
+}
+message ExplainResponse {
+  Identity identity = 1;
+  // the directory's answer about the address, with the same semantics as
+  // DirectoryService: authoritative false makes the rest an opinion.
+  bool in_domain = 2;
+  bool found = 3;
+  bool suspended = 4;
+  bool authoritative = 5;
+  // the directory groups the hub reports for the address.
+  repeated string directory_groups = 6;
+  // the internal groups held, and why.
+  repeated HeldGroup held = 7;
+  // the claims a token would carry: the deep merge of the held groups'
+  // fragments.
+  google.protobuf.Struct claims = 8;
+  // how long a token would live: the shortest across the held groups.
+  google.protobuf.Duration lifetime = 9;
+}
+
+// GroupMember is one directory group inside an internal group, and the
+// layer it came from: "declared" or "console".
+message GroupMember {
+  string address = 1;
+  string layer = 2;
+}
+
+// PolicyGroup is one internal group as the console shows it.
+message PolicyGroup {
+  string name = 1;
+  repeated GroupMember members = 2;
+  // matchers rendered for a person to read.
+  repeated string matchers = 3;
+  // what this group adds to a token.
+  google.protobuf.Struct claims = 4;
+  // how long a token lives for someone in this group alone.
+  google.protobuf.Duration lifetime = 5;
+}
+
+message GetPolicyRequest {}
+message GetPolicyResponse {
+  repeated PolicyGroup groups = 1;
   // the break-glass account is still enabled (a banner in the console).
   bool admin_enabled = 2;
   // enabled sign-in sources, e.g. "directory", "oidc:<issuer>", "forwarded:<issuer>".
   repeated string login_sources = 3;
+  // the console layer as YAML, so that an installation which started
+  // standalone can move its edits into git by pasting.
+  string console_layer = 4;
 }
 
-message AddRuleRequest {
-  AccessRule rule = 1;
+message AddMembershipRequest {
+  // the internal group, which must be declared.
+  string group = 1;
+  // the directory group's address.
+  string directory_group = 2;
 }
-message AddRuleResponse {
-  AccessRule rule = 1;
+message AddMembershipResponse {}
+
+message RemoveMembershipRequest {
+  string group = 1;
+  string directory_group = 2;
+}
+message RemoveMembershipResponse {}
+
+message ListDirectoryGroupsRequest {
+  // empty lists the groups of every served domain.
+  string domain = 1;
+}
+message ListDirectoryGroupsResponse {
+  repeated DirectoryGroupSummary groups = 1;
 }
 
-message RemoveRuleRequest {
-  string id = 1;
+// DirectoryGroupSummary is one group as the membership picker shows it.
+message DirectoryGroupSummary {
+  string email = 1;
+  string domain = 2;
+  string workspace_id = 3;
+  // members is the flat membership count at the last snapshot.
+  int32 members = 4;
 }
-message RemoveRuleResponse {}

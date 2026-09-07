@@ -1,0 +1,273 @@
+package policy_test
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/truvity/access-roster/policy"
+)
+
+const declared = `
+version: 1
+groups:
+  sre:
+    members: [role-sre@a.example, role-sre@b.example]
+  dpo:
+    members: [role-security@a.example]
+  hub-operators:
+    members: [directory-admins@a.example]
+  hub-viewers:
+    matchers: [{ email_domain: a.example }]
+  ci-gitops:
+    matchers:
+      - github: { repository: example-org/gitops, ref: refs/heads/master }
+claims:
+  sre: { groups: [cluster-kernel:admin, cluster-prod:admin], tailnet: { tiers: [vpc, service] } }
+  dpo: { groups: [cluster-kernel:auditor], tailnet: { tiers: [vpc] } }
+  hub-operators: { groups: [hub:operator] }
+lifetimes:
+  default: 12h
+  sre: 8h
+  ci-gitops: 1h
+clients:
+  k8s:kernel:        { kind: public, requires: [sre, dpo] }
+  aws:1111:deployer: { kind: exchange, requires: [ci-gitops] }
+  argocd:            { kind: confidential, secret: argocd-oidc, redirects: [https://argo.example/cb], requires: [sre, dpo], ttl_cap: 4h }
+memberships:
+  hub-viewers: [all@a.example]
+`
+
+func set(t *testing.T) *policy.Set {
+	t.Helper()
+	p, err := policy.Parse([]byte(declared))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	s, err := policy.NewSet(p)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+	return s
+}
+
+func TestDirectoryMembershipNeedsAuthority(t *testing.T) {
+	t.Parallel()
+	s := set(t)
+	in := policy.Input{
+		Email:           "alice@a.example",
+		DirectoryGroups: []string{"role-sre@a.example", "directory-admins@a.example"},
+		Authoritative:   true,
+	}
+
+	got := s.Evaluate(in)
+	if !got.Has("sre") || !got.Has("hub-operators") {
+		t.Fatalf("groups = %v, want sre and hub-operators", got.Groups)
+	}
+	if !got.Has("hub-viewers") {
+		t.Error("the email-domain matcher should hold regardless of the directory")
+	}
+
+	in.Authoritative = false
+	got = s.Evaluate(in)
+	if got.Has("sre") || got.Has("hub-operators") {
+		t.Errorf("groups = %v, want no directory-derived group when the answer is not authoritative", got.Groups)
+	}
+	if !got.Has("hub-viewers") {
+		t.Error("a matcher on a verified sign-in does not need the directory")
+	}
+}
+
+func TestClaimsDeepMerge(t *testing.T) {
+	t.Parallel()
+	got := set(t).Evaluate(policy.Input{
+		Email:           "alice@a.example",
+		DirectoryGroups: []string{"role-sre@a.example", "role-security@a.example"},
+		Authoritative:   true,
+	})
+
+	groups, _ := got.Claims["groups"].([]any)
+	want := []string{
+		"cluster-kernel:admin", "cluster-kernel:auditor", "cluster-prod:admin",
+		"dpo", "hub-viewers", "sre",
+	}
+	if len(groups) != len(want) {
+		t.Fatalf("groups claim = %v, want %v", groups, want)
+	}
+	for i, value := range groups {
+		if value != want[i] {
+			t.Errorf("groups claim[%d] = %v, want %v (sorted union)", i, value, want[i])
+		}
+	}
+
+	tailnet, ok := got.Claims["tailnet"].(map[string]any)
+	if !ok {
+		t.Fatalf("tailnet = %#v, want a merged map", got.Claims["tailnet"])
+	}
+	tiers, _ := tailnet["tiers"].([]any)
+	if len(tiers) != 2 || tiers[0] != "service" || tiers[1] != "vpc" {
+		t.Errorf("tiers = %v, want the sorted union of both fragments", tiers)
+	}
+}
+
+func TestShortestLifetimeWinsAndTheClientCaps(t *testing.T) {
+	t.Parallel()
+	s := set(t)
+
+	sre := s.Evaluate(policy.Input{
+		DirectoryGroups: []string{"role-sre@a.example"}, Authoritative: true, Email: "a@b.example",
+	})
+	if sre.Lifetime != 8*time.Hour {
+		t.Errorf("lifetime = %v, want the sre exception", sre.Lifetime)
+	}
+
+	plain := s.Evaluate(policy.Input{
+		DirectoryGroups: []string{"role-security@a.example"}, Authoritative: true, Email: "a@b.example",
+	})
+	if plain.Lifetime != 12*time.Hour {
+		t.Errorf("lifetime = %v, want the default", plain.Lifetime)
+	}
+
+	client, ok := s.Client("argocd")
+	if !ok {
+		t.Fatal("argocd is not declared")
+	}
+	if got := client.Cap(sre.Lifetime); got != 4*time.Hour {
+		t.Errorf("capped = %v, want the client's cap", got)
+	}
+}
+
+func TestMachineGroupsAndClientGate(t *testing.T) {
+	t.Parallel()
+	s := set(t)
+
+	job := s.Evaluate(policy.Input{GitHub: &policy.GitHubClaims{
+		Repository: "example-org/gitops", Ref: "refs/heads/master",
+	}})
+	if !job.Has("ci-gitops") || job.Lifetime != time.Hour {
+		t.Errorf("job = %+v, want ci-gitops for an hour", job)
+	}
+
+	fork := s.Evaluate(policy.Input{GitHub: &policy.GitHubClaims{
+		Repository: "example-org/gitops", Ref: "refs/heads/feature",
+	}})
+	if len(fork.Groups) != 0 {
+		t.Errorf("a non-master ref got %v, want nothing", fork.Groups)
+	}
+
+	deployer, _ := s.Client("aws:1111:deployer")
+	if !deployer.Admits(job) {
+		t.Error("the deployer client must admit the job")
+	}
+	if deployer.Admits(fork) {
+		t.Error("the deployer client must refuse the fork")
+	}
+}
+
+func TestConsoleLayerIsAdditiveAndLabelled(t *testing.T) {
+	t.Parallel()
+	s := set(t)
+
+	added, err := s.AddMembership("hub-operators", "platform@b.example")
+	if err != nil || !added {
+		t.Fatalf("AddMembership: %v, %v", added, err)
+	}
+	if again, _ := s.AddMembership("hub-operators", "platform@b.example"); again {
+		t.Error("adding the same membership twice must be a no-op")
+	}
+
+	got := s.Evaluate(policy.Input{
+		Email: "bob@b.example", DirectoryGroups: []string{"platform@b.example"}, Authoritative: true,
+	})
+	if !got.Has("hub-operators") {
+		t.Errorf("groups = %v, want the console membership to count", got.Groups)
+	}
+
+	var operators policy.GroupView
+	for _, view := range s.Groups() {
+		if view.Name == "hub-operators" {
+			operators = view
+		}
+	}
+	layers := map[string]string{}
+	for _, member := range operators.Members {
+		layers[member.Address] = member.Layer
+	}
+	if layers["directory-admins@a.example"] != policy.LayerDeclared {
+		t.Errorf("declared member reported as %q", layers["directory-admins@a.example"])
+	}
+	if layers["platform@b.example"] != policy.LayerConsole {
+		t.Errorf("console member reported as %q", layers["platform@b.example"])
+	}
+
+	if err = s.RemoveMembership("hub-operators", "directory-admins@a.example"); err == nil {
+		t.Error("removing a declared membership must be refused")
+	}
+	if err = s.RemoveMembership("hub-operators", "platform@b.example"); err != nil {
+		t.Errorf("removing a console membership: %v", err)
+	}
+	if err = s.RemoveMembership("hub-viewers", "all@a.example"); err == nil {
+		t.Error("a membership declared in the memberships table is still declared")
+	}
+	if _, err = s.AddMembership("nobody", "x@y.example"); err == nil {
+		t.Error("adding to an undeclared group must be refused")
+	}
+}
+
+func TestRejectsBadPolicies(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"unknown key":        "version: 1\ntypo: true\n",
+		"wrong version":      "version: 2\n",
+		"member no domain":   "version: 1\ngroups: { a: { members: [nodomain] } }\n",
+		"claims unknown":     "version: 1\ngroups: { a: { members: [g@h.example] } }\nclaims: { b: {} }\n",
+		"lifetime unknown":   "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { b: 1h }\n",
+		"membership unknown": "version: 1\ngroups: { a: { members: [g@h.example] } }\nmemberships: { b: [x@y.example] }\n",
+		"client no kind":     "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { requires: [a] } }\n",
+		"client no group":    "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public, requires: [b] } }\n",
+		"client no require":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public } }\n",
+		"confidential bare":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: confidential, requires: [a] } }\n",
+		"two matchers":       "version: 1\ngroups: { a: { matchers: [{ email: a@b.c, email_domain: b.c }] } }\n",
+		"empty github":       "version: 1\ngroups: { a: { matchers: [{ github: {} }] } }\n",
+		"bad duration":       "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { default: soon }\n",
+	}
+	for name, doc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			p, err := policy.Parse([]byte(doc))
+			if err == nil {
+				_, err = policy.NewSet(p)
+			}
+			if err == nil {
+				t.Fatal("want an error, got none")
+			}
+			if strings.TrimSpace(err.Error()) == "" {
+				t.Fatal("error message is empty")
+			}
+		})
+	}
+}
+
+func TestConflictingScalarsAreRefusedAtLoad(t *testing.T) {
+	t.Parallel()
+	doc := `
+version: 1
+groups:
+  a: { members: [x@y.example] }
+  b: { members: [z@y.example] }
+claims:
+  a: { tailnet: { tier: vpc } }
+  b: { tailnet: { tier: service } }
+`
+	p, err := policy.Parse([]byte(doc))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	_, err = policy.NewSet(p)
+	if err == nil {
+		t.Fatal("want a conflict error")
+	}
+	if !strings.Contains(err.Error(), "tailnet.tier") {
+		t.Errorf("error = %v, want it to name the conflicting path", err)
+	}
+}

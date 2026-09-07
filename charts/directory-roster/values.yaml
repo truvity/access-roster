@@ -104,18 +104,27 @@ access:
     # issuer. Optional.
     forwardedBearer:
       issuer: ""
-  # Declared rules: read-only in the console, evaluated before console-added
-  # ones. Subject kinds: directoryGroup, claim, email, emailDomain.
-  rules: []
-  #  - id: platform-admins
-  #    directoryGroup: { group: platform-admins@example.com }
-  #    role: operator
-  #  - id: fleet-operators
-  #    claim: { issuer: https://issuer.example, claim: groups, value: "hub:operator" }
-  #    role: operator
-  #  - id: everyone-reads
-  #    emailDomain: example.com
-  #    role: viewer
+  # The hold window: how long a signed-in identity keeps its last granted
+  # role while the directory cannot vouch for its membership. Zero means
+  # no hold, and an uncertain directory then grants nothing.
+  holdWindow: 4h
+
+# The declared layer of the policy (docs/reference/policy.md). The hub
+# reads `groups`, `claims`, `lifetimes` and `memberships`; the issuer
+# reads `clients` too. Leave it empty and the hub declares only the two
+# groups it is a relying party of, with nobody in them — which is where a
+# fresh installation starts, and the console attaches the first
+# membership.
+policy: {}
+#  version: 1
+#  groups:
+#    hub-operators: { members: [directory-admins@example.com] }
+#    hub-viewers:   { members: [all@example.com] }
+#  claims:
+#    hub-operators: { groups: [hub:operator] }
+#  lifetimes:
+#    default: 12h
+#    hub-operators: 4h
 
 # Ingress to the API port is allow-listed by namespace; the console port
 # admits only the gateway's namespace. Off by default so a plain

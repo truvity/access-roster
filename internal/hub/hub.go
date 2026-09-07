@@ -124,13 +124,17 @@ type AccountResult struct {
 }
 
 // UserResult is the grant-decision answer: the groups an account is in and
-// whether it is suspended.
+// whether it is suspended. The names come with it because the one caller
+// that shows a person their own name has already asked this question, and
+// a second round trip for it would be a second chance to disagree.
 type UserResult struct {
 	Email         string
 	InDomain      bool
 	Found         bool
 	Suspended     bool
 	Groups        []string
+	GivenName     string
+	FamilyName    string
 	Authoritative bool
 	SnapshotAt    time.Time
 }
@@ -411,6 +415,8 @@ func (h *Hub) ResolveUser(ctx context.Context, email string, maxAge *time.Durati
 		Found:         p.found,
 		Suspended:     p.found && !p.account.Live,
 		Groups:        p.groups,
+		GivenName:     p.account.GivenName,
+		FamilyName:    p.account.FamilyName,
 		Authoritative: p.authoritative,
 		SnapshotAt:    p.snapshotAt,
 	}, nil

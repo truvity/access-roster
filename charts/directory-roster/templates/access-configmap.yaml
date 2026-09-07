@@ -1,18 +1,31 @@
-# The declared layer of the policy plus allowed consumers. Read by the hub
-# at start and on change; the console layer lives in the hub-written
-# ConfigMap `hub-memberships` and never here. The `rules:` key below is the
-# pre-policy shape and is replaced by the five policy tables in the
-# prototype's next step (docs/reference/policy.md).
+# The declared layer of the policy plus the console's own settings. Read
+# by the hub at start and on change; the console layer lives in the
+# hub-written ConfigMap `hub-memberships` and never here.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "directory-roster.fullname" . }}-access
+  name: {{ include "directory-roster.fullname" . }}-policy
   labels:
     {{- include "directory-roster.labels" . | nindent 4 }}
 data:
+  policy.yaml: |
+    {{- if .Values.policy }}
+    {{- toYaml .Values.policy | nindent 4 }}
+    {{- else }}
+    version: 1
+    groups:
+      hub-operators: {}
+      hub-viewers: {}
+    claims:
+      hub-operators: { groups: [hub:operator] }
+      hub-viewers: { groups: [hub:viewer] }
+    lifetimes:
+      default: 12h
+    {{- end }}
   access.yaml: |
     admin:
       enabled: {{ .Values.access.admin.enabled }}
+    holdWindow: {{ .Values.access.holdWindow | quote }}
     login:
       directory: {{ .Values.access.login.directory }}
       {{- if .Values.access.login.oidc.issuer }}
@@ -28,8 +41,4 @@ data:
     {{- range .Values.consumers }}
       - namespace: {{ .namespace | quote }}
         serviceAccount: {{ .serviceAccount | quote }}
-    {{- end }}
-    rules:
-    {{- range .Values.access.rules }}
-      - {{ toJson . }}
     {{- end }}

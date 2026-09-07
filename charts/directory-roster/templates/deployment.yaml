@@ -73,8 +73,10 @@ spec:
             - name: OAUTH_CLIENT_SECRET_NAME
               value: {{ .Values.oauthClient.existingSecret | quote }}
             {{- end }}
-            - name: ACCESS_FILE
-              value: /var/run/directory-roster/access.yaml
+            - name: POLICY_DIR
+              value: /var/run/directory-roster/policy
+            - name: HOLD_WINDOW
+              value: {{ .Values.access.holdWindow | quote }}
             {{- if .Values.workspaces }}
             - name: OVERLAY_FILE
               value: /var/run/directory-roster/overlay.yaml
@@ -92,9 +94,8 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            - name: access
-              mountPath: /var/run/directory-roster/access.yaml
-              subPath: access.yaml
+            - name: policy
+              mountPath: /var/run/directory-roster/policy
               readOnly: true
             {{- if .Values.workspaces }}
             - name: overlay
@@ -110,9 +111,12 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        - name: access
+        - name: policy
           configMap:
-            name: {{ include "directory-roster.fullname" . }}-access
+            name: {{ include "directory-roster.fullname" . }}-policy
+            items:
+              - key: policy.yaml
+                path: policy.yaml
         {{- if .Values.workspaces }}
         - name: overlay
           configMap:

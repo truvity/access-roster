@@ -3,11 +3,16 @@ package server
 import (
 	"errors"
 	"fmt"
+	"strings"
+
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/structpb"
+	"gopkg.in/yaml.v3"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/hub"
-	"github.com/truvity/access-roster/rules"
+	"github.com/truvity/access-roster/policy"
 )
 
 // backendKind turns the contract's enum into a backend's own name.
@@ -83,29 +88,16 @@ func workspaceProto(v *hub.WorkspaceView) *directoryrosterv1.Workspace {
 	}
 }
 
-func roleEnum(r rules.Role) directoryrosterv1.Role {
+func roleEnum(r access.Role) directoryrosterv1.Role {
 	switch r {
-	case rules.RoleOperator:
+	case access.RoleOperator:
 		return directoryrosterv1.Role_ROLE_OPERATOR
-	case rules.RoleViewer:
+	case access.RoleViewer:
 		return directoryrosterv1.Role_ROLE_VIEWER
-	case rules.RoleNone:
+	case access.RoleNone:
 		return directoryrosterv1.Role_ROLE_UNSPECIFIED
 	default:
 		return directoryrosterv1.Role_ROLE_UNSPECIFIED
-	}
-}
-
-func roleFromProto(r directoryrosterv1.Role) rules.Role {
-	switch r {
-	case directoryrosterv1.Role_ROLE_OPERATOR:
-		return rules.RoleOperator
-	case directoryrosterv1.Role_ROLE_VIEWER:
-		return rules.RoleViewer
-	case directoryrosterv1.Role_ROLE_UNSPECIFIED:
-		return rules.RoleNone
-	default:
-		return rules.RoleNone
 	}
 }
 
@@ -126,70 +118,109 @@ func sourceEnum(s access.Source) directoryrosterv1.IdentitySource {
 
 func identityProto(id access.Identity) *directoryrosterv1.Identity {
 	return &directoryrosterv1.Identity{
-		Email:        id.Email,
-		Subject:      id.Subject,
-		Source:       sourceEnum(id.Source),
-		Role:         roleEnum(id.Role),
-		MatchedRules: id.Matched,
+		Email:      id.Email,
+		Subject:    id.Subject,
+		Source:     sourceEnum(id.Source),
+		Role:       roleEnum(id.Role),
+		Groups:     id.Groups,
+		GivenName:  id.GivenName,
+		FamilyName: id.FamilyName,
 	}
 }
 
-func ruleProto(r rules.Rule, declared bool) *directoryrosterv1.AccessRule {
-	out := &directoryrosterv1.AccessRule{
-		Id:       r.ID,
-		Role:     roleEnum(r.Grant.Role),
-		Declared: declared,
-	}
-	switch {
-	case r.When.DirectoryGroup != nil:
-		out.Subject = &directoryrosterv1.AccessRule_DirectoryGroup{
-			DirectoryGroup: &directoryrosterv1.DirectoryGroupSubject{
-				WorkspaceId: r.When.DirectoryGroup.Workspace,
-				Group:       r.When.DirectoryGroup.Group,
-			},
-		}
-	case r.When.Claim != nil:
-		out.Subject = &directoryrosterv1.AccessRule_Claim{
-			Claim: &directoryrosterv1.ClaimSubject{
-				Issuer: r.When.Claim.Issuer,
-				Claim:  r.When.Claim.Claim,
-				Value:  r.When.Claim.Value,
-			},
-		}
-	case r.When.Email != "":
-		out.Subject = &directoryrosterv1.AccessRule_Email{Email: r.When.Email}
-	case r.When.EmailDomain != "":
-		out.Subject = &directoryrosterv1.AccessRule_EmailDomain{EmailDomain: r.When.EmailDomain}
+func heldProto(held []policy.Held) []*directoryrosterv1.HeldGroup {
+	out := make([]*directoryrosterv1.HeldGroup, 0, len(held))
+	for _, h := range held {
+		out = append(out, &directoryrosterv1.HeldGroup{Group: h.Group, Via: h.Via})
 	}
 	return out
 }
 
-// ruleFromProto builds a rule the console asked for. Only the subject
-// kinds a console can express are accepted: the CI and workload kinds
-// belong to the issuer's file, not to a button.
-func ruleFromProto(r *directoryrosterv1.AccessRule) (rules.Rule, error) {
-	if r == nil {
-		return rules.Rule{}, errors.New("no rule given")
+// claimsProto renders a claim fragment for the wire. Fragments come from
+// YAML, so they are already JSON-shaped; Plain strips the named map type
+// that yaml.v3 leaves behind and that structpb would otherwise refuse.
+func claimsProto(claims map[string]any) (*structpb.Struct, error) {
+	if len(claims) == 0 {
+		return nil, nil
 	}
-	out := rules.Rule{ID: r.GetId(), Grant: rules.Grant{Role: roleFromProto(r.GetRole())}}
-	switch {
-	case r.GetDirectoryGroup() != nil:
-		out.When.DirectoryGroup = &rules.DirectoryGroup{
-			Workspace: r.GetDirectoryGroup().GetWorkspaceId(),
-			Group:     r.GetDirectoryGroup().GetGroup(),
-		}
-	case r.GetClaim() != nil:
-		out.When.Claim = &rules.Claim{
-			Issuer: r.GetClaim().GetIssuer(),
-			Claim:  r.GetClaim().GetClaim(),
-			Value:  r.GetClaim().GetValue(),
-		}
-	case r.GetEmail() != "":
-		out.When.Email = r.GetEmail()
-	case r.GetEmailDomain() != "":
-		out.When.EmailDomain = r.GetEmailDomain()
-	default:
-		return rules.Rule{}, fmt.Errorf("rule %q has no subject", out.ID)
+	plain, ok := policy.Plain(claims).(map[string]any)
+	if !ok {
+		return nil, errors.New("claims are not a map")
+	}
+	out, err := structpb.NewStruct(plain)
+	if err != nil {
+		return nil, fmt.Errorf("encode claims: %w", err)
 	}
 	return out, nil
+}
+
+func policyGroupProto(view *policy.GroupView) (*directoryrosterv1.PolicyGroup, error) {
+	claims, err := claimsProto(view.Claims)
+	if err != nil {
+		return nil, fmt.Errorf("group %s: %w", view.Name, err)
+	}
+	out := &directoryrosterv1.PolicyGroup{
+		Name:     view.Name,
+		Matchers: view.Matchers,
+		Claims:   claims,
+		Members:  make([]*directoryrosterv1.GroupMember, 0, len(view.Members)),
+	}
+	if view.Lifetime > 0 {
+		out.Lifetime = durationpb.New(view.Lifetime)
+	}
+	for _, member := range view.Members {
+		out.Members = append(out.Members, &directoryrosterv1.GroupMember{
+			Address: member.Address,
+			Layer:   member.Layer,
+		})
+	}
+	return out, nil
+}
+
+// explanationProto renders what an identity effectively gets. The caller
+// is passed so that explaining yourself carries your own subject and
+// source rather than an empty shell.
+func explanationProto(e access.Explanation, caller access.Identity) *directoryrosterv1.ExplainResponse {
+	identity := &directoryrosterv1.Identity{
+		Email:      e.Email,
+		Role:       roleEnum(e.Role),
+		Groups:     e.Result.Groups,
+		GivenName:  e.GivenName,
+		FamilyName: e.FamilyName,
+	}
+	if strings.EqualFold(e.Email, caller.Email) {
+		identity.Subject = caller.Subject
+		identity.Source = sourceEnum(caller.Source)
+	}
+	out := &directoryrosterv1.ExplainResponse{
+		Identity:        identity,
+		InDomain:        e.InDomain,
+		Found:           e.Found,
+		Suspended:       e.Suspended,
+		Authoritative:   e.Authoritative,
+		DirectoryGroups: e.DirectoryGroups,
+		Held:            heldProto(e.Result.Held),
+	}
+	if claims, err := claimsProto(e.Result.Claims); err == nil {
+		out.Claims = claims
+	}
+	if e.Result.Lifetime > 0 {
+		out.Lifetime = durationpb.New(e.Result.Lifetime)
+	}
+	return out
+}
+
+// exportConsoleLayer renders the console layer as the same YAML the
+// declared layer uses, so that an installation which started standalone
+// moves its edits into git by pasting.
+func exportConsoleLayer(memberships map[string][]string) (string, error) {
+	if len(memberships) == 0 {
+		return "", nil
+	}
+	document := map[string]any{"version": 1, "memberships": memberships}
+	out, err := yaml.Marshal(document)
+	if err != nil {
+		return "", fmt.Errorf("export the console layer: %w", err)
+	}
+	return string(out), nil
 }
