@@ -27,6 +27,17 @@ Handler tests are at the join level, not the unit level: they call the
 Connect handler and assert the response, so a rule that exists but is
 never wired shows up as a failing test.
 
+## Issuer, proxy and CLI
+
+The issuer's verifiers run against recorded tokens with rotated keys and
+a fake hub; the rules engine against fixtures; the OpenID Provider glue
+against the library's conformance tests plus kubelogin and an OAuth2
+proxy as real clients in the acceptance suite. `access-proxy` is tested by
+installing it in front of a fixture backend and driving a browser through
+login, sign-out and a revoked identity. `accessctl` is tested against the
+acceptance issuer with a fake cloud STS and a kind cluster, on a laptop
+path and on a simulated CI path.
+
 ## Acceptance
 
 `cmd/acceptance`: a Go program run against a live install (kind or a

@@ -1,8 +1,8 @@
 # directory-roster — the directory hub
 
-Part of [access-roster](../../README.md): the hub is the first component,
-the [token service](token-service.md) the second, later one. This document
-is the hub alone.
+Part of [access-roster](../../README.md): the hub is the first service,
+[access-issuer](access-issuer.md) the second, later one. This document is
+the hub alone.
 
 **Status:** accepted 2026-09-06; API, secret-handling, freshness and access
 decisions closed 2026-09-07. Successor to
@@ -338,12 +338,12 @@ its own store; sign-in for that customer's users is the product's identity
 provider's job, and the two compose behind one screen. The boundary is
 kept from day one because it is cheap then and expensive later.
 
-**The token service.** The second component of this repository is a
+**The issuer.** The second service of this repository, access-issuer, is a
 security token service: it verifies proofs — corporate sign-ins, workload
 tokens — applies rules, and issues tokens that clusters, cloud accounts
 and consoles trust. It is the hub's first consumer and shares its
 verifiers, backends and rules engine. It is designed in
-[token-service.md](token-service.md) and built after the hub. Nothing in
+[access-issuer.md](access-issuer.md) and built after the hub. Nothing in
 the hub depends on it; an installation that only wants the sync model
 never deploys it.
 
@@ -380,7 +380,7 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 |---|---|
 | `README.md` | what it is, the contracts, quick start |
 | `docs/architecture.md` | the family in one page: context, containers, the hub's components, who owns what, use cases, failure semantics |
-| `docs/design/token-service.md` | the second component's design and its guardrail |
+| `docs/design/access-issuer.md` | the issuer's design and its guardrail |
 | `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`; `max_age`/`snapshot_at`; the additive fields vs google-group-sync |
 | `docs/reference/configuration.md` | chart values, the overlay format, access rules and consumers, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |
 | `docs/operations/connect-runbook.md` | the one-time GCP prerequisites, the per-workspace flow, trusting the client, verification |

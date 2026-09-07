@@ -1,4 +1,4 @@
-# Configuration
+# directory-roster — chart and configuration
 
 How the hub is configured: the chart's boundary, its values, the overlay
 format, the Kubernetes objects it owns, the roles, and the two things it
