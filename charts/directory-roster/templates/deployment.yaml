@@ -44,6 +44,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            # The hub keeps what a console changed — connected workspaces
+            # and their credentials, the memberships, the OAuth client it
+            # was given, the session key — as ConfigMaps and Secrets in
+            # this namespace. Anything else and a restart is a fresh
+            # installation.
+            - name: STORE
+              value: kubernetes
+            - name: RELEASE_NAME
+              value: {{ include "directory-roster.fullname" . }}
             - name: API_PORT
               value: {{ .Values.listeners.api.port | quote }}
             - name: CONSOLE_PORT

@@ -58,6 +58,45 @@ type Tenant struct {
 	Domains []string
 }
 
+// The credential kinds, in the same vocabulary the hub records on a
+// workspace. They are strings rather than an enum because they are also
+// what a store writes down and reads back after a restart.
+const (
+	// CredentialOAuth is a refresh token minted by admin consent; it acts
+	// as the account that consented.
+	CredentialOAuth = "oauth"
+	// CredentialServiceAccountKey is a key with domain-wide delegation,
+	// impersonating a named admin.
+	CredentialServiceAccountKey = "service-account-key"
+)
+
+// Credential is everything needed to reopen a backend after a restart,
+// and nothing else.
+//
+// It exists because a workspace connected in a console has no other home:
+// the deployment never saw the credential, so if the hub does not write it
+// down, a restart silently loses a directory. Data is the secret itself —
+// a refresh token, a service-account key — and never leaves a store, a
+// [Portable] implementation, or the opener that reads it back.
+type Credential struct {
+	// Type is one of the credential kinds above.
+	Type string
+	// Admin is the account the credential acts as. Stored beside the
+	// secret because reopening needs it and rediscovering it would cost a
+	// round trip on every start.
+	Admin string
+	// Data is the secret. Treat it as opaque: only the backend that
+	// issued it knows its shape.
+	Data []byte
+}
+
+// Portable is a backend that can be written down and opened again. A
+// backend that cannot — a fixture, a demonstration tenant — simply does
+// not implement it, and nothing persists it.
+type Portable interface {
+	Credential() Credential
+}
+
 // Backend reads one tenant.
 //
 // Implementations must be safe for concurrent use: the hub probes,

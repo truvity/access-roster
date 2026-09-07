@@ -115,7 +115,7 @@ consumers: []
 # Access to the console and the operator API.
 access:
   # The break-glass account: password generated on first start into the
-  # Secret `hub-admin`, shown nowhere else. It is for recovery — nobody in
+  # Secret `<release>-admin`, shown nowhere else. It is for recovery — nobody in
   # the operators group, the group renamed, directory sign-in broken.
   #
   # Unset, it turns itself on only when this deployment has no other way

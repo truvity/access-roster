@@ -66,13 +66,33 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
+// CredentialStore keeps what is needed to open a workspace's backend
+// again after a restart.
+//
+// It is separate from [Store] because the two have different rules. A
+// record is shown in a console and read by everything here; a credential
+// is written once, read once at start, and never leaves this package's
+// callers. Keeping them apart means the type the console handles cannot
+// carry a secret by accident, and it makes the failure modes independent:
+// a record whose credential is missing is a workspace with no reader,
+// which the hub already reports as unhealthy rather than as gone.
+type CredentialStore interface {
+	// Load returns the credential, or false when there is none.
+	Load(ctx context.Context, workspaceID string) (backend.Credential, bool, error)
+	// Save writes one, replacing any it had.
+	Save(ctx context.Context, workspaceID string, cred backend.Credential) error
+	// Delete removes it. Deleting an unknown id is not an error.
+	Delete(ctx context.Context, workspaceID string) error
+}
+
 // Hub answers the two directory questions for every connected workspace.
 // It is safe for concurrent use.
 type Hub struct {
-	store     Store
-	snapshots SnapshotStore
-	cfg       Config
-	log       *slog.Logger
+	store       Store
+	snapshots   SnapshotStore
+	credentials CredentialStore
+	cfg         Config
+	log         *slog.Logger
 
 	// now is time.Now, replaced in tests.
 	now func() time.Time
@@ -97,6 +117,29 @@ func New(store Store, snapshots SnapshotStore, cfg Config, log *slog.Logger) *Hu
 		now:       time.Now,
 		backends:  map[string]backend.Backend{},
 	}
+}
+
+// UseCredentials makes the hub write down what opens each workspace it
+// adopts, so that a restart does not lose a directory nobody declared.
+// Call it before serving. Without it nothing is persisted, which is what
+// a prototype and the tests want.
+func (h *Hub) UseCredentials(store CredentialStore) { h.credentials = store }
+
+// Attach registers the reader for a workspace already in the store: what
+// a restart does, once a credential has been read back.
+//
+// It deliberately does not probe. A directory that is unreachable at the
+// moment the hub starts must not stop it from starting — the probe loop
+// will reach it, and until then its domains are a hold, which removes
+// nobody's access.
+func (h *Hub) Attach(ctx context.Context, workspaceID string, b backend.Backend) error {
+	if _, err := h.store.Get(ctx, workspaceID); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	h.backends[workspaceID] = b
+	h.mu.Unlock()
+	return nil
 }
 
 // SetClock replaces the hub's clock. For tests.
@@ -733,6 +776,19 @@ func (h *Hub) Adopt(ctx context.Context, ws Workspace, b backend.Backend) (Works
 	h.backends[ws.ID] = b
 	h.mu.Unlock()
 
+	// A workspace the deployment declared is opened from what the
+	// deployment mounts, so copying its credential here would be a second
+	// place to leak it from and a second place for it to go stale.
+	if portable, ok := b.(backend.Portable); ok && h.credentials != nil && !ws.Declared {
+		if err = h.credentials.Save(ctx, ws.ID, portable.Credential()); err != nil {
+			// Adopting without storing would leave a directory that works
+			// until the next restart and then silently disappears. The
+			// operator is standing in front of the screen that caused
+			// this; failing now is the only moment they can act on it.
+			return Workspace{}, fmt.Errorf("store the credential: %w", err)
+		}
+	}
+
 	ws.Backend = b.Kind()
 	ws.Serve = normaliseDomains(ws.Serve)
 	if ws.ConnectedAt.IsZero() {
@@ -813,6 +869,11 @@ func (h *Hub) Disconnect(ctx context.Context, workspaceID string) error {
 	}
 	if err = h.snapshots.Delete(ctx, workspaceID); err != nil {
 		h.log.WarnContext(ctx, "deleting the snapshot failed", "workspace", workspaceID, "error", err)
+	}
+	if h.credentials != nil {
+		if err = h.credentials.Delete(ctx, workspaceID); err != nil {
+			h.log.WarnContext(ctx, "deleting the credential failed", "workspace", workspaceID, "error", err)
+		}
 	}
 	h.mu.Lock()
 	delete(h.backends, workspaceID)

@@ -30,8 +30,11 @@ import (
 type Connector interface {
 	// Kind names the backend, matching backend.Backend.Kind.
 	Kind() string
-	// AuthURL is where the browser goes to consent.
-	AuthURL(state string) string
+	// AuthURL is where the browser goes to consent. It fails when this
+	// deployment cannot start a consent yet — most often because nobody
+	// has registered an OAuth client — because a button that navigates
+	// nowhere is worse than one that says why.
+	AuthURL(state string) (string, error)
 	// Exchange turns the callback's code into a workspace and the backend
 	// that reads it. Bind carries the workspace being reconnected, or is
 	// empty for a new connection.
@@ -187,7 +190,11 @@ func (c *Console) beginFlow(
 		Secure:   c.deps.SecureCookie,
 		SameSite: http.SameSiteLaxMode,
 	}
-	return conn.AuthURL(state), cookie.String(), nil
+	url, err := conn.AuthURL(state)
+	if err != nil {
+		return "", "", connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return url, cookie.String(), nil
 }
 
 // UploadKey implements the operator contract.
