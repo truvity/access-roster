@@ -43,6 +43,9 @@ const (
 	// AccessServiceRemoveRuleProcedure is the fully-qualified name of the AccessService's RemoveRule
 	// RPC.
 	AccessServiceRemoveRuleProcedure = "/directoryroster.v1.AccessService/RemoveRule"
+	// AccessServiceListDirectoryGroupsProcedure is the fully-qualified name of the AccessService's
+	// ListDirectoryGroups RPC.
+	AccessServiceListDirectoryGroupsProcedure = "/directoryroster.v1.AccessService/ListDirectoryGroups"
 )
 
 // AccessServiceClient is a client for the directoryroster.v1.AccessService service.
@@ -59,6 +62,10 @@ type AccessServiceClient interface {
 	// RemoveRule deletes a console-added rule. A declared rule refuses
 	// (failed_precondition): change the deployment instead. Operator.
 	RemoveRule(context.Context, *connect.Request[v1.RemoveRuleRequest]) (*connect.Response[v1.RemoveRuleResponse], error)
+	// ListDirectoryGroups returns the groups the hub has snapshotted, so
+	// that granting a role is a click on a group rather than a typed
+	// address that may be a typo. Viewer.
+	ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error)
 }
 
 // NewAccessServiceClient constructs a client for the directoryroster.v1.AccessService service. By
@@ -96,15 +103,22 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(accessServiceMethods.ByName("RemoveRule")),
 			connect.WithClientOptions(opts...),
 		),
+		listDirectoryGroups: connect.NewClient[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse](
+			httpClient,
+			baseURL+AccessServiceListDirectoryGroupsProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("ListDirectoryGroups")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // accessServiceClient implements AccessServiceClient.
 type accessServiceClient struct {
-	whoAmI          *connect.Client[v1.WhoAmIRequest, v1.WhoAmIResponse]
-	getAccessPolicy *connect.Client[v1.GetAccessPolicyRequest, v1.GetAccessPolicyResponse]
-	addRule         *connect.Client[v1.AddRuleRequest, v1.AddRuleResponse]
-	removeRule      *connect.Client[v1.RemoveRuleRequest, v1.RemoveRuleResponse]
+	whoAmI              *connect.Client[v1.WhoAmIRequest, v1.WhoAmIResponse]
+	getAccessPolicy     *connect.Client[v1.GetAccessPolicyRequest, v1.GetAccessPolicyResponse]
+	addRule             *connect.Client[v1.AddRuleRequest, v1.AddRuleResponse]
+	removeRule          *connect.Client[v1.RemoveRuleRequest, v1.RemoveRuleResponse]
+	listDirectoryGroups *connect.Client[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse]
 }
 
 // WhoAmI calls directoryroster.v1.AccessService.WhoAmI.
@@ -127,6 +141,11 @@ func (c *accessServiceClient) RemoveRule(ctx context.Context, req *connect.Reque
 	return c.removeRule.CallUnary(ctx, req)
 }
 
+// ListDirectoryGroups calls directoryroster.v1.AccessService.ListDirectoryGroups.
+func (c *accessServiceClient) ListDirectoryGroups(ctx context.Context, req *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error) {
+	return c.listDirectoryGroups.CallUnary(ctx, req)
+}
+
 // AccessServiceHandler is an implementation of the directoryroster.v1.AccessService service.
 type AccessServiceHandler interface {
 	// WhoAmI returns the caller's identity, how it was established, the
@@ -141,6 +160,10 @@ type AccessServiceHandler interface {
 	// RemoveRule deletes a console-added rule. A declared rule refuses
 	// (failed_precondition): change the deployment instead. Operator.
 	RemoveRule(context.Context, *connect.Request[v1.RemoveRuleRequest]) (*connect.Response[v1.RemoveRuleResponse], error)
+	// ListDirectoryGroups returns the groups the hub has snapshotted, so
+	// that granting a role is a click on a group rather than a typed
+	// address that may be a typo. Viewer.
+	ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error)
 }
 
 // NewAccessServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -174,6 +197,12 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(accessServiceMethods.ByName("RemoveRule")),
 		connect.WithHandlerOptions(opts...),
 	)
+	accessServiceListDirectoryGroupsHandler := connect.NewUnaryHandler(
+		AccessServiceListDirectoryGroupsProcedure,
+		svc.ListDirectoryGroups,
+		connect.WithSchema(accessServiceMethods.ByName("ListDirectoryGroups")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/directoryroster.v1.AccessService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AccessServiceWhoAmIProcedure:
@@ -184,6 +213,8 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 			accessServiceAddRuleHandler.ServeHTTP(w, r)
 		case AccessServiceRemoveRuleProcedure:
 			accessServiceRemoveRuleHandler.ServeHTTP(w, r)
+		case AccessServiceListDirectoryGroupsProcedure:
+			accessServiceListDirectoryGroupsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -207,4 +238,8 @@ func (UnimplementedAccessServiceHandler) AddRule(context.Context, *connect.Reque
 
 func (UnimplementedAccessServiceHandler) RemoveRule(context.Context, *connect.Request[v1.RemoveRuleRequest]) (*connect.Response[v1.RemoveRuleResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.RemoveRule is not implemented"))
+}
+
+func (UnimplementedAccessServiceHandler) ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.ListDirectoryGroups is not implemented"))
 }

@@ -1,0 +1,88 @@
+// The only file that touches the Connect clients. Views call these
+// functions and get view types back, so a contract change is a compile
+// error here rather than a runtime surprise in a table cell.
+import { createClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-web";
+
+import { WorkspaceService, Backend } from "./gen/directoryroster/v1/workspace_pb";
+import { SettingsService } from "./gen/directoryroster/v1/settings_pb";
+import { AccessService, Role } from "./gen/directoryroster/v1/access_pb";
+
+const transport = createConnectTransport({ baseUrl: "/" });
+
+export const workspaces = createClient(WorkspaceService, transport);
+export const settings = createClient(SettingsService, transport);
+export const access = createClient(AccessService, transport);
+
+export { Backend, Role };
+
+/** WhoAmI, as the standard endpoint every adapter serves. */
+export type Me = {
+  status: "signed-in" | "signed-out";
+  email?: string;
+  roles?: string[];
+  source?: string;
+  matchedRules?: string[];
+  signOutUrl?: string;
+};
+
+export async function whoami(): Promise<Me> {
+  const response = await fetch("/.access/whoami", { headers: { accept: "application/json" } });
+  if (!response.ok) return { status: "signed-out" };
+  return (await response.json()) as Me;
+}
+
+/** A protobuf timestamp, as a Date. */
+export function at(stamp?: { seconds: bigint; nanos: number }): Date | undefined {
+  if (!stamp) return undefined;
+  return new Date(Number(stamp.seconds) * 1000 + stamp.nanos / 1e6);
+}
+
+/** A duration, as human minutes. */
+export function every(d?: { seconds: bigint }): string {
+  if (!d) return "—";
+  const seconds = Number(d.seconds);
+  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+  if (seconds % 60 === 0) return `${seconds / 60}m`;
+  return `${seconds}s`;
+}
+
+/** How long ago, in the words an operator uses. */
+export function ago(when?: Date): string {
+  if (!when) return "never";
+  const seconds = Math.max(0, Math.round((Date.now() - when.getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+
+export function backendName(b: Backend): string {
+  switch (b) {
+    case Backend.GOOGLE:
+      return "Google Workspace";
+    case Backend.ENTRA:
+      return "Microsoft Entra";
+    case Backend.DEMO:
+      return "demonstration";
+    default:
+      return "unknown";
+  }
+}
+
+export function roleName(r: Role): string {
+  switch (r) {
+    case Role.OPERATOR:
+      return "operator";
+    case Role.VIEWER:
+      return "viewer";
+    default:
+      return "none";
+  }
+}
+
+/** The message a failed call should show, without the transport noise. */
+export function reason(err: unknown): string {
+  if (err instanceof Error) return err.message.replace(/^\[[a-z_]+\]\s*/, "");
+  return String(err);
+}

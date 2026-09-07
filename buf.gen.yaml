@@ -13,5 +13,10 @@ plugins:
   - local: protoc-gen-connect-go
     out: gen
     opt: paths=source_relative
-  # The TypeScript target for the console (buf.build/bufbuild/es → frontend/src/gen)
-  # is added with the console slice.
+  # TypeScript for the console. protobuf-es v2 emits the message schemas
+  # AND the service descriptor, which @connectrpc/connect v2 consumes via
+  # createClient — so there is no separate connect-es plugin. Generated
+  # code is committed here too: CI builds the SPA without buf.
+  - remote: buf.build/bufbuild/es
+    out: frontend/src/gen
+    opt: target=ts
