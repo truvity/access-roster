@@ -85,7 +85,9 @@ directory side degrades to "not authoritative", never to "gone".
 ## Developing
 
 `devbox shell` (or direnv), then `just check`. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the layout and the conventions.
+[CONTRIBUTING.md](CONTRIBUTING.md) for the layout, the conventions, the
+console build order and the demonstration mode, and where the next
+phase starts.
 
 ## License
 
