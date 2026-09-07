@@ -24,8 +24,6 @@ import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type
  *  one more fact: how you signed in. */
 export function Person({ email, me }: { email: string; me?: Me }) {
   const explained = useAsync(() => access.explain({ email } as ExplainRequest), [email]);
-  const found = useAsync(() => access.searchPeople({ query: email, limit: 5 }), [email]);
-  const account = (found.value?.people ?? []).find((p) => p.email.toLowerCase() === email.toLowerCase());
   const self = me?.status === "signed-in" && me.email?.toLowerCase() === email.toLowerCase();
 
   if (!email) {
@@ -36,7 +34,7 @@ export function Person({ email, me }: { email: string; me?: Me }) {
       <Loading busy={explained.loading} />
       <Failure error={explained.error} />
       {explained.value ? (
-        <Explanation value={explained.value} directory={account?.workspaceId} signedInVia={self ? sourceName(me?.source) : undefined} />
+        <Explanation value={explained.value} directory={explained.value.workspaceId || undefined} signedInVia={self ? sourceName(me?.source) : undefined} />
       ) : null}
     </Box>
   );

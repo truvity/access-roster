@@ -11,7 +11,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, adds, forHowLong, people as peopleCount, personName, reason } from "./api";
+import { access, adds, forHowLong, matcherKind, people as peopleCount, personName, reason } from "./api";
 import { Attach } from "./attach";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
@@ -47,7 +47,7 @@ export function Groups() {
               const opens = clients.filter((client) => client.requires.includes(group.name));
               const fedBy = [
                 ...group.members.map((member) => ({ label: member.address, to: paths.directoryGroup(member.address), mono: true })),
-                ...group.matchers.map((matcher) => ({ label: matcher, mono: true })),
+                ...group.rules.map((rule) => ({ label: `${matcherKind(rule.kind)} ${rule.rule}`, mono: true })),
               ];
               return (
                 <TableRow key={group.name} hover>
@@ -127,7 +127,7 @@ export function Group({
   type Feeder = { key: string; address?: string; matcher?: string; layer?: string };
   const feeders: Feeder[] = [
     ...group.members.map((m) => ({ key: m.address, address: m.address, layer: m.layer })),
-    ...group.matchers.map((m) => ({ key: m, matcher: m })),
+    ...group.rules.map((r) => ({ key: `${r.kind}:${r.rule}`, matcher: `${matcherKind(r.kind)} ${r.rule}` })),
   ];
 
   return (
@@ -135,7 +135,7 @@ export function Group({
       title={group.name}
       mono
       lede={`${peopleCount(people.length)} in it, fed by ${plural(group.members.length, "directory group", "directory groups")}${
-        group.matchers.length ? ` and ${plural(group.matchers.length, "matcher", "matchers")}` : ""
+        group.rules.length ? ` and ${plural(group.rules.length, "matcher", "matchers")}` : ""
       }, opening ${plural(opens.length, "client", "clients")}.`}
       facts={[{ label: "Token lifetime", value: forHowLong(group.lifetime) }]}
       aside={
@@ -241,7 +241,7 @@ export function Group({
             </>
           )}
           empty={
-            group.matchers.length ? "Nobody by membership. Only what the matchers above admit is in it." : "Nobody. Attaching a directory group above is what changes that."
+            group.rules.length ? "Nobody by membership. Only what the matchers above admit is in it." : "Nobody. Attaching a directory group above is what changes that."
           }
         />
       </Section>

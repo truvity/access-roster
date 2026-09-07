@@ -91,10 +91,16 @@ Two listeners, so a consumer can never reach an operator call:
   came from, never the secret; the intervals and the cache backend,
   read-only) and `SetOAuthClient` (refused when the chart declared one).
   Intervals are chart values: operational knobs belong to the deployment.
-- **`AccessService`** — `WhoAmI` and `Explain` (what an identity
-  effectively gets, and what put it there), `GetPolicy`, and
-  `AddMembership`/`RemoveMembership`: the one table a console may write.
-  Everything else the policy declares is read-only here.
+- **`AccessService`** — the reads a console composes its pages from:
+  `WhoAmI`; `Explain` (what a proof effectively gets, what put it there,
+  and which directory served it); `GetPolicy` (groups with members by
+  layer and matchers structured, clients, the console layer for export);
+  `ListDirectoryGroups` and `GetDirectoryGroup` (a directory group with
+  its members and the internal groups it feeds); `SearchPeople` (by name,
+  by directory, by account state, with the total before the limit);
+  `ListHolders` (who holds an internal group or reaches a client right
+  now). And the one write: `AddMembership`/`RemoveMembership`. Everything
+  else the policy declares is read-only here.
 
 ## Freshness
 
@@ -250,8 +256,8 @@ summary line**, then its edges, then raw detail behind a disclosure, which
 is what lets the same page serve an employee and an operator. **Actions
 live on the object they change.**
 
-The graph has two sides, and the navigation shows them as two clusters
-with one adjective each, so that "group" never means two things:
+The graph has two sides, and the navigation rail shows them as two
+groups with one adjective each, so that "group" never means two things:
 
 | | Identity — where people come from | Access — what they get |
 |---|---|---|
@@ -281,14 +287,22 @@ keeps a data-dense page readable: a name is a link, monospace when it is
 an identifier; a chip is a state and nothing else is; facts are a label
 over a value; two-column data is a list and tabular data is a table. The
 navigation is a rail with the two sides as groups, which is what Material
-recommends for this many destinations; the account sits at the foot of
-the rail, your name there is a link to your own page, and the header is
-left to search alone. On a wide window a detail page splits: the main
-column carries the edges, the aside carries the facts and the reference
-material — directory groups, claims, redirects, what a group adds — that
-would otherwise push the edges below the fold. The reverse edges are what make it navigable: from a directory
-group, the internal groups it feeds; from an internal group, the people
-in it; from a client, the groups and the people. Two of those questions
+recommends for this many destinations. The account sits at the foot of
+the rail as two controls: your name and role are one button, to your own
+page, which then also says how you signed in; sign out is the other. The
+header is left to search alone. On a wide window a detail page splits:
+the main column carries the edges, the aside carries the facts and the
+reference material — directory groups, claims, redirects, what a group
+adds — that would otherwise push the edges below the fold.
+
+The console is composed from a handful of reads and one write, and the
+contract is shaped so that no page needs a second call to finish a
+sentence: an explanation names the directory that served the address, a
+people search reports how many matched before the limit, and the policy
+carries its matchers structured rather than as prose. The reverse edges
+are what make it navigable: from a directory group, the internal groups
+it feeds; from an internal group, the people in it; from a client, the
+groups and the people. Two of those questions
 the policy file cannot answer alone. Who is in an internal group right
 now: the file says which directory groups count, and only the directory
 knows who is in them. And what a directory group grants: the direction an
@@ -471,7 +485,7 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 | `README.md` | what it is, the contracts, quick start |
 | `docs/architecture.md` | the family in one page: context, containers, the hub's components, who owns what, use cases, failure semantics |
 | `docs/design/access-issuer.md` | the issuer's design and its guardrail |
-| `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`; `max_age`/`snapshot_at`; the additive fields vs google-group-sync |
+| `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`, `AccessService`; `max_age`/`snapshot_at`; the additive fields vs google-group-sync |
 | `docs/reference/configuration.md` | chart values, the overlay format, the policy and consumers, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |
 | `docs/operations/connect-runbook.md` | the one-time GCP prerequisites, the per-workspace flow, trusting the client, verification |
 | `docs/operations/runbook.md` | day one, health, reconnect as the recovery, lost operator access, domain moves and conflicts, export |

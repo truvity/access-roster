@@ -161,10 +161,9 @@ func policyGroupProto(view *policy.GroupView) (*directoryrosterv1.PolicyGroup, e
 		return nil, fmt.Errorf("group %s: %w", view.Name, err)
 	}
 	out := &directoryrosterv1.PolicyGroup{
-		Name:     view.Name,
-		Matchers: view.Matchers,
-		Claims:   claims,
-		Members:  make([]*directoryrosterv1.GroupMember, 0, len(view.Members)),
+		Name:    view.Name,
+		Claims:  claims,
+		Members: make([]*directoryrosterv1.GroupMember, 0, len(view.Members)),
 	}
 	if view.Lifetime > 0 {
 		out.Lifetime = durationpb.New(view.Lifetime)
@@ -283,6 +282,7 @@ func explanationProto(
 		DirectoryGroups: e.DirectoryGroups,
 		Held:            heldProto(held),
 		Clients:         admissionsProto(e.Clients),
+		WorkspaceId:     e.Workspace,
 	}
 	if claims, err := claimsProto(e.Result.Claims); err == nil {
 		out.Claims = claims

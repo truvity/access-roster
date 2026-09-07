@@ -216,6 +216,7 @@ type ClientAdmission struct {
 // Explanation is what a proof effectively gets, and why.
 type Explanation struct {
 	Email           string
+	Workspace       string
 	GivenName       string
 	FamilyName      string
 	InDomain        bool
@@ -253,6 +254,7 @@ func (a *Authorizer) explain(ctx context.Context, proof Proof, refuseSuspended b
 			(!resolved.Found || resolved.Suspended) {
 			return Explanation{}, fmt.Errorf("%w: %s", ErrSuspended, email)
 		}
+		out.Workspace = resolved.Workspace
 		out.InDomain, out.Found, out.Suspended = resolved.InDomain, resolved.Found, resolved.Suspended
 		out.Authoritative, out.DirectoryGroups = resolved.Authoritative, resolved.Groups
 		out.GivenName, out.FamilyName = resolved.GivenName, resolved.FamilyName

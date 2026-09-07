@@ -128,7 +128,10 @@ type AccountResult struct {
 // that shows a person their own name has already asked this question, and
 // a second round trip for it would be a second chance to disagree.
 type UserResult struct {
-	Email         string
+	Email string
+	// Workspace is the tenant that serves the address's domain, when one
+	// does.
+	Workspace     string
 	InDomain      bool
 	Found         bool
 	Suspended     bool
@@ -401,7 +404,8 @@ func (h *Hub) pointLive(
 // ResolveUser answers the grant-decision call: the groups an account is in
 // and whether it is suspended.
 func (h *Hub) ResolveUser(ctx context.Context, email string, maxAge *time.Duration) (UserResult, error) {
-	if _, ok := emailaddr.Domain(email); !ok {
+	domain, ok := emailaddr.Domain(email)
+	if !ok {
 		return UserResult{}, fmt.Errorf("%w: %q", ErrInvalidAddress, email)
 	}
 	v, err := h.view(ctx)
@@ -409,8 +413,13 @@ func (h *Hub) ResolveUser(ctx context.Context, email string, maxAge *time.Durati
 		return UserResult{}, err
 	}
 	p := h.point(ctx, v, email, maxAge, true)
+	var workspace string
+	if res, routed := v.routing[domain]; routed {
+		workspace = res.workspace
+	}
 	return UserResult{
 		Email:         email,
+		Workspace:     workspace,
 		InDomain:      p.inDomain,
 		Found:         p.found,
 		Suspended:     p.found && !p.account.Live,
@@ -802,13 +811,15 @@ type PeopleQuery struct {
 // from a name rather than from a navigation tree, and resolving a group
 // to the people in it is the question an audit actually asks. Neither is
 // worth a round trip to a directory that was read minutes ago.
-func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Person, bool, error) {
+//
+// It returns the page, how many matched in total, and an error.
+func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Person, int, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	v, err := h.view(ctx)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, err
 	}
 	text := strings.ToLower(strings.TrimSpace(query.Text))
 
@@ -851,10 +862,11 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 			})
 		}
 	}
-	if len(out) > limit {
-		return out[:limit], true, nil
+	total := len(out)
+	if total > limit {
+		return out[:limit], total, nil
 	}
-	return out, false, nil
+	return out, total, nil
 }
 
 // matchesPerson reports whether an account matches a search term.

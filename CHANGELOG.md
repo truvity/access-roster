@@ -46,7 +46,10 @@ repository, not the order it arrived in.
   a label over a value, and two-column data is a list. The account sits at
   the foot of the rail with your name linking to your own page, which
   also says how you signed in; detail pages split into a main column and
-  an aside on wide windows, so a person's chain fits a screen.
+  an aside on wide windows, so a person's chain fits a screen. The
+  contract was tightened for it: `Explain` names the directory that
+  served the address, `SearchPeople` reports the total before the limit,
+  and `GetPolicy` carries matchers only in structured form.
 - **A demonstration mode** (`DEMO=1`): two tenants in memory and a
   consent connector, so every use-case is walkable before a credential
   exists.
