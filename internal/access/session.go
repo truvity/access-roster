@@ -146,6 +146,10 @@ func (s *Sessions) Clear(w http.ResponseWriter) {
 	})
 }
 
+// Secure reports whether cookies are marked Secure, so that everything
+// else this installation sets matches its sessions rather than guessing.
+func (s *Sessions) Secure() bool { return s.secure }
+
 // Lifetime is how long an issued session lasts.
 func (s *Sessions) Lifetime() time.Duration { return s.lifetime }
 

@@ -1,7 +1,7 @@
 package server
 
 import (
-	"crypto/sha256"
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -9,31 +9,107 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/emailaddr"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/version"
+	"golang.org/x/crypto/argon2"
 )
 
-// AdminAccount is the break-glass account: a generated password, kept as a
-// digest. The password is 32 bytes of machine-generated entropy and never
-// chosen by a person, so a fast digest is the right tool — there is
-// nothing to brute-force and no password to reuse elsewhere.
+// Argon2id parameters for the break-glass password.
+//
+// Deliberately modest. The password this normally holds is 32 bytes of
+// machine-generated entropy, against which no amount of stretching
+// matters; the stretching is for the installation that sets a memorable
+// one in its values, where an attacker who reaches the process memory or
+// a heap dump should not get the password back cheaply. Memory is the
+// parameter that bounds the damage an unauthenticated caller can do, so
+// it is kept where one verification is a few tens of milliseconds and a
+// few tens of megabytes — and [adminAttempts] stops there being many.
+const (
+	argonTime    = 2
+	argonMemory  = 32 * 1024 // KiB
+	argonThreads = 2
+	argonLength  = 32
+)
+
+// adminAttempts is how many failures are answered before the account
+// stops answering for adminWindow.
+//
+// It is not really about guessing: a generated password is not going to
+// be guessed. It is because verifying costs memory on purpose, so an
+// endpoint that anyone can reach and that allocates on every call needs a
+// ceiling — otherwise the hardening is a way to take the hub down.
+const (
+	adminAttempts = 10
+	adminWindow   = time.Minute
+)
+
+// AdminAccount is the break-glass account: one password, kept only as an
+// Argon2id digest with a random salt.
+//
+// It is a value that carries a lock, so it is created once and used
+// through a pointer; the lock serialises verification, which is what
+// keeps the memory cost of one attempt from becoming the memory cost of
+// as many as anyone cares to send.
 type AdminAccount struct {
 	Enabled bool
-	digest  [32]byte
+
+	salt   []byte
+	digest []byte
+
+	mu       sync.Mutex
+	failures int
+	blocked  time.Time
+	now      func() time.Time
 }
 
 // NewAdminAccount returns an enabled admin account for a password.
-func NewAdminAccount(password string) AdminAccount {
-	return AdminAccount{Enabled: true, digest: sha256.Sum256([]byte(password))}
+func NewAdminAccount(password string) *AdminAccount {
+	salt := make([]byte, 16)
+	// crypto/rand.Read does not fail; it stops the program if the system
+	// source is broken, which is the correct outcome for a process about
+	// to authenticate people.
+	_, _ = rand.Read(salt)
+	return &AdminAccount{
+		Enabled: true,
+		salt:    salt,
+		digest:  argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonLength),
+		now:     time.Now,
+	}
 }
 
-// verify reports whether the password is the one.
-func (a AdminAccount) verify(password string) bool {
-	got := sha256.Sum256([]byte(password))
-	return a.Enabled && subtle.ConstantTimeCompare(got[:], a.digest[:]) == 1
+// enabled is nil-safe: a deployment with the break-glass account off has
+// no account at all, rather than a disabled one.
+func (a *AdminAccount) enabled() bool { return a != nil && a.Enabled }
+
+// verify reports whether the password is the one, and whether the account
+// was willing to answer at all.
+func (a *AdminAccount) verify(password string) (ok, answered bool) {
+	if !a.enabled() {
+		return false, true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	now := a.now()
+	if now.Before(a.blocked) {
+		return false, false
+	}
+	got := argon2.IDKey([]byte(password), a.salt, argonTime, argonMemory, argonThreads, argonLength)
+	if subtle.ConstantTimeCompare(got, a.digest) != 1 {
+		a.failures++
+		if a.failures >= adminAttempts {
+			a.failures, a.blocked = 0, now.Add(adminWindow)
+		}
+		return false, true
+	}
+	a.failures = 0
+	return true, true
 }
 
 // ForwardedIdentity configures how a bearer forwarded by an authenticating
@@ -57,7 +133,7 @@ type ConsoleServer struct {
 	state      *access.StateCodec
 	connectors map[string]Connector
 	hub        *hub.Hub
-	admin      AdminAccount
+	admin      *AdminAccount
 	forwarded  ForwardedIdentity
 	log        *slog.Logger
 	consoleUI  fs.FS
@@ -71,7 +147,7 @@ type ConsoleServerDeps struct {
 	State      *access.StateCodec
 	Connectors []Connector
 	Hub        *hub.Hub
-	Admin      AdminAccount
+	Admin      *AdminAccount
 	Forwarded  ForwardedIdentity
 	Log        *slog.Logger
 	// UI is the built console. Nil serves no UI, which is what a
@@ -173,13 +249,26 @@ func (s *ConsoleServer) principal(r *http.Request) (access.Principal, bool) {
 		return p, true
 	}
 	if s.forwarded.EmailHeader != "" {
-		if email := strings.TrimSpace(r.Header.Get(s.forwarded.EmailHeader)); email != "" {
+		email := strings.ToLower(strings.TrimSpace(r.Header.Get(s.forwarded.EmailHeader)))
+		// An identity arriving in a header is only as trustworthy as the
+		// gateway that sets it, and the hub cannot check that. What it can
+		// check is that the value is an address at all: everything above
+		// routes by the domain after the '@', so a header carrying a
+		// bare word, a whole log line, or a stray newline is not an
+		// identity this hub could answer about — it is a misconfigured
+		// gateway, and taking it as a principal would put unvalidated
+		// header content into the policy and the audit log alike.
+		if _, ok := emailaddr.Domain(email); ok {
 			return access.Principal{
 				Email:   email,
 				Subject: email,
 				Source:  access.SourceForwarded,
 				Issuer:  s.forwarded.Issuer,
 			}, true
+		}
+		if email != "" {
+			s.log.WarnContext(r.Context(), "the forwarded identity header is not an address; ignoring it",
+				"header", s.forwarded.EmailHeader, "length", len(email))
 		}
 	}
 	return access.Principal{}, false
@@ -201,7 +290,7 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 			`<p><a class="btn" href="/login/%s/start">Sign in with the %s directory</a></p>`, kind, kind)
 	}
 	admin := ""
-	if s.admin.Enabled {
+	if s.admin.enabled() {
 		admin = `<form method="post" action="/admin/login">
 			<p><label>Break-glass admin password<br><input type="password" name="password" autofocus></label></p>
 			<p><button type="submit">Sign in as admin</button></p>
@@ -229,7 +318,7 @@ const loginHTML = `<!doctype html><meta charset="utf-8"><title>Sign in — direc
 
 // adminLogin signs the break-glass account in.
 func (s *ConsoleServer) adminLogin(w http.ResponseWriter, r *http.Request) {
-	if !s.admin.Enabled {
+	if !s.admin.enabled() {
 		http.Error(w, "the admin account is disabled", http.StatusForbidden)
 		return
 	}
@@ -237,7 +326,12 @@ func (s *ConsoleServer) adminLogin(w http.ResponseWriter, r *http.Request) {
 	if password == "" {
 		password = jsonField(r, "password")
 	}
-	if !s.admin.verify(password) {
+	switch ok, answered := s.admin.verify(password); {
+	case !answered:
+		s.log.WarnContext(r.Context(), "admin sign-in refused: too many attempts", "remote", r.RemoteAddr)
+		http.Error(w, "too many attempts; wait a minute", http.StatusTooManyRequests)
+		return
+	case !ok:
 		s.log.WarnContext(r.Context(), "admin sign-in refused", "remote", r.RemoteAddr)
 		http.Error(w, "wrong password", http.StatusUnauthorized)
 		return
@@ -282,7 +376,7 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: access.ConnectCookieName, Path: "/", MaxAge: -1})
+	http.SetCookie(w, access.ConnectCookie("", s.sessions.Secure(), 0))
 
 	ws, b, err := conn.Exchange(r.Context(), r.URL.Query().Get("code"), bind)
 	if err != nil {

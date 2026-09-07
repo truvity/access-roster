@@ -409,6 +409,25 @@ so behind a gateway it is reached by port-forward. The console shows a
 banner while it is enabled; a chart value turns it off. It exists for day
 one and for the day the corporate sign-in is what is broken.
 
+The password is held only as an Argon2id digest with a random salt, and
+compared in constant time. The stretching is not for the generated
+password — nothing stretches 32 bytes of entropy usefully — but for the
+installation that sets a memorable one in its values, where reaching the
+process memory should not hand back the password. Because verifying costs
+memory deliberately, and anyone who can reach the console can ask for it,
+verifications are serialised and the account stops answering for a minute
+after ten failures — including to the right password, since a limit that
+lets the correct one through is a hint about which guess was close.
+
+A password-authenticated key exchange (SRP and friends) was considered and
+is the wrong tool here. What it buys is not sending the password to the
+server; but this server is the party being authenticated to and already
+holds the password, in a Secret it generated. What it costs is JavaScript
+doing modular arithmetic, a multi-step exchange with ephemeral state
+shared between replicas, and a lightly-maintained crypto dependency —
+placed on the one path that has to work when everything else is broken.
+Recovery mechanisms earn their keep by having the fewest moving parts.
+
 ### Roles come from the policy, membership from the console
 
 The hub is a relying party of the family's own [policy](../reference/policy.md):

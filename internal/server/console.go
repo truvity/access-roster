@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -181,15 +180,7 @@ func (c *Console) beginFlow(
 	if err != nil {
 		return "", "", connect.NewError(connect.CodeInternal, err)
 	}
-	cookie := &http.Cookie{
-		Name:     access.ConnectCookieName,
-		Value:    state,
-		Path:     "/",
-		MaxAge:   int((10 * time.Minute).Seconds()),
-		HttpOnly: true,
-		Secure:   c.deps.SecureCookie,
-		SameSite: http.SameSiteLaxMode,
-	}
+	cookie := access.ConnectCookie(state, c.deps.SecureCookie, 10*time.Minute)
 	url, err := conn.AuthURL(state)
 	if err != nil {
 		return "", "", connect.NewError(connect.CodeFailedPrecondition, err)

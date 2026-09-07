@@ -266,7 +266,7 @@ func run() error {
 		return err
 	}
 
-	admin := server.AdminAccount{}
+	var admin *server.AdminAccount
 	if cfg.adminEnabled {
 		password := cfg.adminPassword
 		switch {
