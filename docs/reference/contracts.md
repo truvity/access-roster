@@ -74,11 +74,38 @@ that satisfies the request:
 When the fetch fails, the stale snapshot is served with
 `authoritative=false`. It is never an error to the caller.
 
+## Served domains
+
+A workspace serves every domain its tenant owns, unless it is narrowed to
+a subset. The domains are always **discovered**; `serve` says which of the
+discovered ones this installation answers for. An unserved domain routes
+nothing — an address in it comes back `in_domain=false`, exactly as if no
+directory here had ever heard of it — and its accounts are not kept in the
+snapshot at all.
+
+Two consequences worth stating:
+
+- **A domain contests only when two workspaces both serve it.** Owning a
+  domain another tenant serves is not a conflict, which is what lets one
+  installation hold two directories that overlap on paper.
+- **The served list is intersected with discovery, never trusted over
+  it.** A domain moving between tenants therefore hands over by itself:
+  the old workspace stops serving it the moment the directory stops
+  listing it, and the new one picks it up when its own discovery returns
+  it. The stale entry in the old list is reported as `owned=false` for an
+  operator to tidy; it grants nothing in the meantime.
+
+A workspace may be narrowed in the deployment's values (`workspaces[].serve`,
+for a declared workspace) or in the console (`SetServedDomains`, for a
+connected one). Either way the only domains that may be named are the ones
+discovery returned: the ceiling is the tenant's own verified domains, so
+every setting is a subtraction from what the directory itself allows.
+
 ## Authority
 
 A domain is **authoritative** when all three hold: its workspace's last
 probe succeeded, its snapshot is younger than the freshness window, and no
-other connected workspace claims the domain. Every answer that names an
+other workspace **serves** the domain too. Every answer that names an
 account or a group carries the flag for the domain it came from.
 
 The contract with consumers: **act on removals only when
@@ -115,10 +142,11 @@ not an error; it is a non-authoritative answer.
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `ListWorkspaces` | viewer | — | `workspaces[]` | id, backend, domains with authoritative and conflict flags, admin, credential type, connected_by/at, health, snapshot_at, declared |
+| `ListWorkspaces` | viewer | — | `workspaces[]` | id, backend, domains with authoritative/conflict/served/owned flags, admin, credential type, connected_by/at, health, snapshot_at, declared |
 | `BeginConnect` | operator | `backend` | `consent_url` | sets the state cookie; the browser navigates to the URL |
 | `Reconnect` | operator | `workspace_id` | `consent_url` | the callback checks the consenting tenant is the same, then replaces the credential |
 | `UploadKey` | operator | `backend`, `key` (bytes), `admin` | `workspace` | service-account key with domain-wide delegation; creates or re-credentials |
+| `SetServedDomains` | operator | `workspace_id`, `domains[]` | `workspace` | which of the tenant's domains this hub answers for; empty = all of them, including ones added later. Only discovered domains may be named (`InvalidArgument` otherwise); a declared workspace refuses (`FailedPrecondition`) — its list is in the values. A new snapshot is taken so that what was excluded stops being cached |
 | `Probe` | operator | `workspace_id` | `health`, `domains[]` | credential check now, domain list re-read |
 | `Refresh` | operator | `workspace_id` | `snapshot_at` | a full snapshot now |
 | `Disconnect` | operator | `workspace_id` | — | revokes at the backend, deletes the Secret and the record. `failed_precondition` for a declared workspace |

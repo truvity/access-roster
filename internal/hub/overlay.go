@@ -25,6 +25,12 @@ type Declared struct {
 	Admin string `yaml:"admin"`
 	// KeyFile is where the service-account key is mounted.
 	KeyFile string `yaml:"keyFile"`
+	// Serve narrows the tenant to a subset of its domains. Optional:
+	// empty serves every domain discovery returns. A domain named here
+	// that the tenant does not own routes nothing and is reported as
+	// such, which is what makes a domain moving between tenants safe to
+	// declare ahead of the move.
+	Serve []string `yaml:"serve,omitempty"`
 }
 
 // Overlay is the declared layer of workspaces.

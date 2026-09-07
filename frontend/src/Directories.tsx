@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -16,6 +18,7 @@ import Typography from "@mui/material/Typography";
 
 import { Backend, access, ago, at, backendName, personName, reason, settings, workspaces } from "./api";
 import { useAsync } from "./hooks";
+import type { Workspace } from "./gen/directoryroster/v1/workspace_pb";
 import { paths } from "./router";
 import { Authority, Failure, Loading, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
 
@@ -83,8 +86,10 @@ export function Directories({ operator, onDone }: { operator: boolean; onDone: (
                   <Stack spacing={0.5}>
                     {tenant.domains.map((domain) => (
                       <Stack key={domain.name} direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                        <Typography variant="body2">{domain.name}</Typography>
-                        <Authority authoritative={domain.authoritative} conflict={domain.conflict} />
+                        <Typography variant="body2" color={domain.served ? undefined : "text.secondary"}>
+                          {domain.name}
+                        </Typography>
+                        <Authority authoritative={domain.authoritative} conflict={domain.conflict} served={domain.served} owned={domain.owned} />
                       </Stack>
                     ))}
                   </Stack>
@@ -295,15 +300,17 @@ export function Directory({ id, operator, onDone }: { id: string; operator: bool
       ]}
       aside={
         <>
-      <Section title="Domains" hint="discovered from the directory and re-read on every probe">
-        <Rows
-          items={tenant.domains}
-          keyOf={(d) => d.name}
-          primary={(d) => d.name}
-          right={(d) => <Authority authoritative={d.authoritative} conflict={d.conflict} />}
-          empty="None discovered yet. Probe once the credential works."
-        />
-      </Section>
+      <Domains
+        tenant={tenant}
+        operator={operator}
+        busy={busy}
+        onSave={(domains) => {
+          void act(
+            () => workspaces.setServedDomains({ workspaceId: tenant.id, domains }),
+            domains.length === 0 ? "Serving every domain this directory owns." : `Serving ${domains.length} of its domains.`,
+          );
+        }}
+      />
         </>
       }
       actions={
@@ -375,5 +382,114 @@ export function Directory({ id, operator, onDone }: { id: string; operator: bool
         />
       </Section>
     </Page>
+  );
+}
+
+/** The domains of one directory: what it owns, and which of them this hub
+ *  answers for.
+ *
+ *  Discovery and service are two different facts about a domain and the
+ *  section shows both, because the difference is invisible otherwise: a
+ *  domain missing from a list looks the same whether the directory never
+ *  had it or an operator decided not to read it. Narrowing is offered
+ *  only where it is the operator's to make — a declared directory says so
+ *  in the deployment's values — and only ever picks from what the
+ *  directory itself reports, so nothing here can claim a domain the
+ *  company does not own.
+ *
+ *  Ticking every box means "all of them", not "these ones", so a domain
+ *  the company adds later is served without anyone remembering to come
+ *  back here. */
+function Domains({
+  tenant,
+  operator,
+  busy,
+  onSave,
+}: {
+  tenant: Workspace;
+  operator: boolean;
+  busy: boolean;
+  onSave: (domains: string[]) => void;
+}) {
+  const owned = tenant.domains.filter((d) => d.owned).map((d) => d.name);
+  const [choice, setChoice] = useState<string[] | undefined>();
+  const editing = choice !== undefined;
+  const narrowed = tenant.domains.some((d) => !d.served);
+
+  const toggle = (name: string) =>
+    setChoice((current) => {
+      const now = current ?? [];
+      return now.includes(name) ? now.filter((d) => d !== name) : [...now, name];
+    });
+
+  return (
+    <Section
+      title="Domains"
+      hint={
+        editing
+          ? "tick the ones this hub should answer for; all of them means later ones too"
+          : narrowed
+            ? "discovered from the directory; only the served ones are routed and kept"
+            : "discovered from the directory and re-read on every probe"
+      }
+    >
+      {editing ? (
+        <Stack spacing={0.5}>
+          {tenant.domains.map((domain) => (
+            <FormControlLabel
+              key={domain.name}
+              control={<Checkbox size="small" checked={choice.includes(domain.name)} disabled={!domain.owned} onChange={() => toggle(domain.name)} />}
+              label={
+                <Typography variant="body2" color={domain.owned ? undefined : "text.secondary"}>
+                  {domain.name}
+                  {domain.owned ? null : " — no longer owned"}
+                </Typography>
+              }
+            />
+          ))}
+          <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={busy || choice.length === 0}
+              onClick={() => {
+                onSave(choice.length === owned.length ? [] : choice);
+                setChoice(undefined);
+              }}
+            >
+              Save
+            </Button>
+            <Button size="small" disabled={busy} onClick={() => setChoice(undefined)}>
+              Cancel
+            </Button>
+          </Stack>
+          {choice.length === 0 ? (
+            <Typography variant="caption" color="text.secondary">
+              A directory that serves nothing answers for nobody. Disconnect it instead.
+            </Typography>
+          ) : null}
+        </Stack>
+      ) : (
+        <>
+          <Rows
+            items={tenant.domains}
+            keyOf={(d) => d.name}
+            primary={(d) => d.name}
+            right={(d) => <Authority authoritative={d.authoritative} conflict={d.conflict} served={d.served} owned={d.owned} />}
+            empty="None discovered yet. Probe once the credential works."
+          />
+          {operator && !tenant.declared && tenant.domains.length > 1 ? (
+            <Button size="small" sx={{ ml: -1, mt: 0.5 }} onClick={() => setChoice(tenant.domains.filter((d) => d.served).map((d) => d.name))}>
+              Choose which to serve
+            </Button>
+          ) : null}
+          {tenant.declared && narrowed ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+              The deployment states which domains this directory serves.
+            </Typography>
+          ) : null}
+        </>
+      )}
+    </Section>
   );
 }

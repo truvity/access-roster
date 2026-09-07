@@ -13,6 +13,13 @@ repository, not the order it arrived in.
   cheapest path, an in-domain miss that always checks live once), routing
   by email domain with conflict detection, and the authority rule that
   makes everything degrade to a hold rather than to "gone".
+- **Served domains**: a workspace may be narrowed to a subset of the
+  domains its tenant owns — `workspaces[].serve` in the values, or
+  *Choose which to serve* on a connected directory's page. What is left
+  out is discovered and shown but routes nothing and is not cached, only
+  two workspaces that both serve a domain contest it, and the list is
+  intersected with discovery so a domain moving between tenants hands
+  over without an edit.
 - **DirectoryService** over ConnectRPC for consumers, authenticated by
   Kubernetes ServiceAccount tokens; the operator services, the login
   routes, the consent callback and `/.access/whoami` on a second

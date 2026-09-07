@@ -64,6 +64,8 @@ func domainsProto(domains []hub.DomainStanding) []*directoryrosterv1.WorkspaceDo
 			Name:          d.Name,
 			Authoritative: d.Authoritative,
 			Conflict:      d.Conflict,
+			Served:        d.Served,
+			Owned:         d.Owned,
 		})
 	}
 	return out

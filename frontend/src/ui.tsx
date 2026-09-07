@@ -82,7 +82,9 @@ export type StateKind =
   | "healthy"
   | "failing"
   | "configured"
-  | "unconfigured";
+  | "unconfigured"
+  | "unserved"
+  | "unowned";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The directory reports this account as active." },
@@ -98,6 +100,16 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   failing: { label: "failing", color: "warning", filled: true, title: "The last probe failed." },
   configured: { label: "configured", color: "success", title: "" },
   unconfigured: { label: "not configured", color: "warning", filled: true, title: "" },
+  unserved: {
+    label: "not served",
+    color: "default",
+    title: "This directory owns the domain and this hub has been told not to read it: nothing routes to it and its accounts are not kept.",
+  },
+  unowned: {
+    label: "no longer owned",
+    color: "warning",
+    title: "This hub is set to serve the domain, but the directory no longer lists it — it has moved elsewhere. It routes nothing; drop it from the served list.",
+  },
 };
 
 /** The one thing a chip means here: a state. */
@@ -108,8 +120,23 @@ export function State({ kind, title }: { kind: StateKind; title?: string }) {
   return tip ? <Tooltip title={tip}>{chip}</Tooltip> : chip;
 }
 
-/** Whether a domain's answers may be acted on. */
-export function Authority({ authoritative, conflict }: { authoritative: boolean; conflict?: boolean }) {
+/** Whether a domain's answers may be acted on — or, before that question
+ *  arises, whether the hub answers for it at all. A domain left out of the
+ *  served list has no authority to report and never gets a "hold": it is
+ *  not a degraded answer, it is no answer. */
+export function Authority({
+  authoritative,
+  conflict,
+  served,
+  owned,
+}: {
+  authoritative: boolean;
+  conflict?: boolean;
+  served?: boolean;
+  owned?: boolean;
+}) {
+  if (owned === false) return <State kind="unowned" />;
+  if (served === false) return <State kind="unserved" />;
   return <State kind={conflict ? "conflict" : authoritative ? "authoritative" : "hold"} />;
 }
 

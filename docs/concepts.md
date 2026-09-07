@@ -8,8 +8,9 @@ Fourteen words this repository uses precisely.
 |---|---|
 | **workspace** | one directory tenant the hub holds a credential for — a Google customer, later an Entra tenant. Identified by the backend's tenant id, never by a domain |
 | **domain** | discovered from the workspace, re-read on every probe, never typed. Addresses route to workspaces by domain |
+| **served** | which of a workspace's discovered domains this hub answers for. All of them unless it is narrowed (values, or the console); an unserved domain routes nothing and its accounts are not kept. The list is intersected with discovery, so it can never claim a domain the tenant does not own |
 | **snapshot** | the hub's copy of one workspace: accounts with liveness, groups with flat members, domains, taken every refresh interval. Every read answers from it and says which one (`snapshot_at`) |
-| **authoritative** | a domain's answers may be acted on: its workspace's last probe succeeded, its snapshot is inside the freshness window, and no other workspace claims the domain. Anything else is a hold |
+| **authoritative** | a domain's answers may be acted on: its workspace's last probe succeeded, its snapshot is inside the freshness window, and no other workspace serves the domain too. Anything else is a hold |
 | **`max_age`** | a caller's freshness demand: omitted serves the snapshot, a value makes it fresher first, zero fetches now. Point lookups satisfy it with one live read, never a full refresh |
 
 ## The policy

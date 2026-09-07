@@ -32,6 +32,14 @@ service WorkspaceService {
   // service-account key and the admin to act as. Operator.
   rpc UploadKey(UploadKeyRequest) returns (UploadKeyResponse);
 
+  // SetServedDomains narrows a workspace to a subset of its domains, or
+  // widens it back. An empty list serves every domain the tenant owns,
+  // which is the default. Only a domain discovery returns may be named:
+  // the ceiling is the tenant's own verified domains, so every setting is
+  // a subtraction from what the directory itself allows. A declared
+  // workspace refuses — the deployment states its list. Operator.
+  rpc SetServedDomains(SetServedDomainsRequest) returns (SetServedDomainsResponse);
+
   // Probe checks one workspace's credential now and re-reads its domain
   // list. Operator.
   rpc Probe(ProbeRequest) returns (ProbeResponse);
@@ -88,13 +96,24 @@ message Workspace {
   bool declared = 10;
 }
 
-// WorkspaceDomain is one domain a workspace claims, and its standing.
+// WorkspaceDomain is one domain a workspace holds, and its standing.
 message WorkspaceDomain {
   string name = 1;
   bool authoritative = 2;
-  // true when another connected workspace claims the same domain; neither
-  // is authoritative for it until the conflict clears.
+  // true when another workspace serves the same domain; neither is
+  // authoritative for it until the conflict clears. Only a domain both
+  // workspaces *serve* contests: owning one another tenant serves is not
+  // a conflict.
   bool conflict = 3;
+  // true when the hub answers for this domain. False means the tenant
+  // owns it and this installation has chosen not to read it; the hub
+  // neither routes it nor keeps its accounts.
+  bool served = 4;
+  // true when the tenant still owns the domain. False appears only for a
+  // domain the served list names and discovery no longer returns — after
+  // a domain moves to another tenant, say. It routes nothing and should
+  // be dropped from the list.
+  bool owned = 5;
 }
 
 // Health is the outcome of the last probe.
@@ -148,6 +167,15 @@ message RefreshRequest {
 }
 message RefreshResponse {
   google.protobuf.Timestamp snapshot_at = 1;
+}
+
+message SetServedDomainsRequest {
+  string workspace_id = 1;
+  // the domains to serve; empty serves every domain the tenant owns.
+  repeated string domains = 2;
+}
+message SetServedDomainsResponse {
+  Workspace workspace = 1;
 }
 
 message DisconnectRequest {

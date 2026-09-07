@@ -19,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/workspace.proto.
  */
 export const file_directoryroster_v1_workspace: GenFile = /*@__PURE__*/
-  fileDesc("CiJkaXJlY3Rvcnlyb3N0ZXIvdjEvd29ya3NwYWNlLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEi+QIKCVdvcmtzcGFjZRIKCgJpZBgBIAEoCRIsCgdiYWNrZW5kGAIgASgOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSNAoHZG9tYWlucxgDIAMoCzIjLmRpcmVjdG9yeXJvc3Rlci52MS5Xb3Jrc3BhY2VEb21haW4SDQoFYWRtaW4YBCABKAkSNgoKY3JlZGVudGlhbBgFIAEoDjIiLmRpcmVjdG9yeXJvc3Rlci52MS5DcmVkZW50aWFsVHlwZRIUCgxjb25uZWN0ZWRfYnkYBiABKAkSMAoMY29ubmVjdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIqCgZoZWFsdGgYCCABKAsyGi5kaXJlY3Rvcnlyb3N0ZXIudjEuSGVhbHRoEi8KC3NuYXBzaG90X2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIQCghkZWNsYXJlZBgKIAEoCCJICg9Xb3Jrc3BhY2VEb21haW4SDAoEbmFtZRgBIAEoCRIVCg1hdXRob3JpdGF0aXZlGAIgASgIEhAKCGNvbmZsaWN0GAMgASgIIlIKBkhlYWx0aBItCglwcm9iZWRfYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgoKAm9rGAIgASgIEg0KBWVycm9yGAMgASgJIhcKFUxpc3RXb3Jrc3BhY2VzUmVxdWVzdCJLChZMaXN0V29ya3NwYWNlc1Jlc3BvbnNlEjEKCndvcmtzcGFjZXMYASADKAsyHS5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlIkMKE0JlZ2luQ29ubmVjdFJlcXVlc3QSLAoHYmFja2VuZBgBIAEoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kIisKFEJlZ2luQ29ubmVjdFJlc3BvbnNlEhMKC2NvbnNlbnRfdXJsGAEgASgJIigKEFJlY29ubmVjdFJlcXVlc3QSFAoMd29ya3NwYWNlX2lkGAEgASgJIigKEVJlY29ubmVjdFJlc3BvbnNlEhMKC2NvbnNlbnRfdXJsGAEgASgJIlwKEFVwbG9hZEtleVJlcXVlc3QSLAoHYmFja2VuZBgBIAEoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kEgsKA2tleRgCIAEoDBINCgVhZG1pbhgDIAEoCSJFChFVcGxvYWRLZXlSZXNwb25zZRIwCgl3b3Jrc3BhY2UYASABKAsyHS5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlIiQKDFByb2JlUmVxdWVzdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkicQoNUHJvYmVSZXNwb25zZRIqCgZoZWFsdGgYASABKAsyGi5kaXJlY3Rvcnlyb3N0ZXIudjEuSGVhbHRoEjQKB2RvbWFpbnMYAiADKAsyIy5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlRG9tYWluIiYKDlJlZnJlc2hSZXF1ZXN0EhQKDHdvcmtzcGFjZV9pZBgBIAEoCSJCCg9SZWZyZXNoUmVzcG9uc2USLwoLc25hcHNob3RfYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIikKEURpc2Nvbm5lY3RSZXF1ZXN0EhQKDHdvcmtzcGFjZV9pZBgBIAEoCSIUChJEaXNjb25uZWN0UmVzcG9uc2UqWwoHQmFja2VuZBIXChNCQUNLRU5EX1VOU1BFQ0lGSUVEEAASEgoOQkFDS0VORF9HT09HTEUQARIRCg1CQUNLRU5EX0VOVFJBEAISEAoMQkFDS0VORF9ERU1PEAMqgwEKDkNyZWRlbnRpYWxUeXBlEh8KG0NSRURFTlRJQUxfVFlQRV9VTlNQRUNJRklFRBAAEicKI0NSRURFTlRJQUxfVFlQRV9PQVVUSF9SRUZSRVNIX1RPS0VOEAESJwojQ1JFREVOVElBTF9UWVBFX1NFUlZJQ0VfQUNDT1VOVF9LRVkQAjKRBQoQV29ya3NwYWNlU2VydmljZRJnCg5MaXN0V29ya3NwYWNlcxIpLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0V29ya3NwYWNlc1JlcXVlc3QaKi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdFdvcmtzcGFjZXNSZXNwb25zZRJhCgxCZWdpbkNvbm5lY3QSJy5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5Db25uZWN0UmVxdWVzdBooLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkNvbm5lY3RSZXNwb25zZRJYCglSZWNvbm5lY3QSJC5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVjb25uZWN0UmVxdWVzdBolLmRpcmVjdG9yeXJvc3Rlci52MS5SZWNvbm5lY3RSZXNwb25zZRJYCglVcGxvYWRLZXkSJC5kaXJlY3Rvcnlyb3N0ZXIudjEuVXBsb2FkS2V5UmVxdWVzdBolLmRpcmVjdG9yeXJvc3Rlci52MS5VcGxvYWRLZXlSZXNwb25zZRJMCgVQcm9iZRIgLmRpcmVjdG9yeXJvc3Rlci52MS5Qcm9iZVJlcXVlc3QaIS5kaXJlY3Rvcnlyb3N0ZXIudjEuUHJvYmVSZXNwb25zZRJSCgdSZWZyZXNoEiIuZGlyZWN0b3J5cm9zdGVyLnYxLlJlZnJlc2hSZXF1ZXN0GiMuZGlyZWN0b3J5cm9zdGVyLnYxLlJlZnJlc2hSZXNwb25zZRJbCgpEaXNjb25uZWN0EiUuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RSZXF1ZXN0GiYuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RSZXNwb25zZULcAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUIOV29ya3NwYWNlUHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("CiJkaXJlY3Rvcnlyb3N0ZXIvdjEvd29ya3NwYWNlLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEi+QIKCVdvcmtzcGFjZRIKCgJpZBgBIAEoCRIsCgdiYWNrZW5kGAIgASgOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSNAoHZG9tYWlucxgDIAMoCzIjLmRpcmVjdG9yeXJvc3Rlci52MS5Xb3Jrc3BhY2VEb21haW4SDQoFYWRtaW4YBCABKAkSNgoKY3JlZGVudGlhbBgFIAEoDjIiLmRpcmVjdG9yeXJvc3Rlci52MS5DcmVkZW50aWFsVHlwZRIUCgxjb25uZWN0ZWRfYnkYBiABKAkSMAoMY29ubmVjdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIqCgZoZWFsdGgYCCABKAsyGi5kaXJlY3Rvcnlyb3N0ZXIudjEuSGVhbHRoEi8KC3NuYXBzaG90X2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIQCghkZWNsYXJlZBgKIAEoCCJnCg9Xb3Jrc3BhY2VEb21haW4SDAoEbmFtZRgBIAEoCRIVCg1hdXRob3JpdGF0aXZlGAIgASgIEhAKCGNvbmZsaWN0GAMgASgIEg4KBnNlcnZlZBgEIAEoCBINCgVvd25lZBgFIAEoCCJSCgZIZWFsdGgSLQoJcHJvYmVkX2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIKCgJvaxgCIAEoCBINCgVlcnJvchgDIAEoCSIXChVMaXN0V29ya3NwYWNlc1JlcXVlc3QiSwoWTGlzdFdvcmtzcGFjZXNSZXNwb25zZRIxCgp3b3Jrc3BhY2VzGAEgAygLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZSJDChNCZWdpbkNvbm5lY3RSZXF1ZXN0EiwKB2JhY2tlbmQYASABKA4yGy5kaXJlY3Rvcnlyb3N0ZXIudjEuQmFja2VuZCIrChRCZWdpbkNvbm5lY3RSZXNwb25zZRITCgtjb25zZW50X3VybBgBIAEoCSIoChBSZWNvbm5lY3RSZXF1ZXN0EhQKDHdvcmtzcGFjZV9pZBgBIAEoCSIoChFSZWNvbm5lY3RSZXNwb25zZRITCgtjb25zZW50X3VybBgBIAEoCSJcChBVcGxvYWRLZXlSZXF1ZXN0EiwKB2JhY2tlbmQYASABKA4yGy5kaXJlY3Rvcnlyb3N0ZXIudjEuQmFja2VuZBILCgNrZXkYAiABKAwSDQoFYWRtaW4YAyABKAkiRQoRVXBsb2FkS2V5UmVzcG9uc2USMAoJd29ya3NwYWNlGAEgASgLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZSIkCgxQcm9iZVJlcXVlc3QSFAoMd29ya3NwYWNlX2lkGAEgASgJInEKDVByb2JlUmVzcG9uc2USKgoGaGVhbHRoGAEgASgLMhouZGlyZWN0b3J5cm9zdGVyLnYxLkhlYWx0aBI0Cgdkb21haW5zGAIgAygLMiMuZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZURvbWFpbiImCg5SZWZyZXNoUmVxdWVzdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkiQgoPUmVmcmVzaFJlc3BvbnNlEi8KC3NuYXBzaG90X2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJAChdTZXRTZXJ2ZWREb21haW5zUmVxdWVzdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkSDwoHZG9tYWlucxgCIAMoCSJMChhTZXRTZXJ2ZWREb21haW5zUmVzcG9uc2USMAoJd29ya3NwYWNlGAEgASgLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZSIpChFEaXNjb25uZWN0UmVxdWVzdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkiFAoSRGlzY29ubmVjdFJlc3BvbnNlKlsKB0JhY2tlbmQSFwoTQkFDS0VORF9VTlNQRUNJRklFRBAAEhIKDkJBQ0tFTkRfR09PR0xFEAESEQoNQkFDS0VORF9FTlRSQRACEhAKDEJBQ0tFTkRfREVNTxADKoMBCg5DcmVkZW50aWFsVHlwZRIfChtDUkVERU5USUFMX1RZUEVfVU5TUEVDSUZJRUQQABInCiNDUkVERU5USUFMX1RZUEVfT0FVVEhfUkVGUkVTSF9UT0tFThABEicKI0NSRURFTlRJQUxfVFlQRV9TRVJWSUNFX0FDQ09VTlRfS0VZEAIygAYKEFdvcmtzcGFjZVNlcnZpY2USZwoOTGlzdFdvcmtzcGFjZXMSKS5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdFdvcmtzcGFjZXNSZXF1ZXN0GiouZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3RXb3Jrc3BhY2VzUmVzcG9uc2USYQoMQmVnaW5Db25uZWN0EicuZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luQ29ubmVjdFJlcXVlc3QaKC5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5Db25uZWN0UmVzcG9uc2USWAoJUmVjb25uZWN0EiQuZGlyZWN0b3J5cm9zdGVyLnYxLlJlY29ubmVjdFJlcXVlc3QaJS5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVjb25uZWN0UmVzcG9uc2USWAoJVXBsb2FkS2V5EiQuZGlyZWN0b3J5cm9zdGVyLnYxLlVwbG9hZEtleVJlcXVlc3QaJS5kaXJlY3Rvcnlyb3N0ZXIudjEuVXBsb2FkS2V5UmVzcG9uc2USbQoQU2V0U2VydmVkRG9tYWlucxIrLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRTZXJ2ZWREb21haW5zUmVxdWVzdBosLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRTZXJ2ZWREb21haW5zUmVzcG9uc2USTAoFUHJvYmUSIC5kaXJlY3Rvcnlyb3N0ZXIudjEuUHJvYmVSZXF1ZXN0GiEuZGlyZWN0b3J5cm9zdGVyLnYxLlByb2JlUmVzcG9uc2USUgoHUmVmcmVzaBIiLmRpcmVjdG9yeXJvc3Rlci52MS5SZWZyZXNoUmVxdWVzdBojLmRpcmVjdG9yeXJvc3Rlci52MS5SZWZyZXNoUmVzcG9uc2USWwoKRGlzY29ubmVjdBIlLmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0UmVxdWVzdBomLmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0UmVzcG9uc2VC3AEKFmNvbS5kaXJlY3Rvcnlyb3N0ZXIudjFCDldvcmtzcGFjZVByb3RvUAFaSWdpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9kaXJlY3Rvcnlyb3N0ZXIvdjE7ZGlyZWN0b3J5cm9zdGVydjGiAgNEWFiqAhJEaXJlY3Rvcnlyb3N0ZXIuVjHKAhJEaXJlY3Rvcnlyb3N0ZXJcVjHiAh5EaXJlY3Rvcnlyb3N0ZXJcVjFcR1BCTWV0YWRhdGHqAhNEaXJlY3Rvcnlyb3N0ZXI6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * Workspace is one directory tenant the hub holds a credential for.
@@ -99,7 +99,7 @@ export const WorkspaceSchema: GenMessage<Workspace> = /*@__PURE__*/
   messageDesc(file_directoryroster_v1_workspace, 0);
 
 /**
- * WorkspaceDomain is one domain a workspace claims, and its standing.
+ * WorkspaceDomain is one domain a workspace holds, and its standing.
  *
  * @generated from message directoryroster.v1.WorkspaceDomain
  */
@@ -115,12 +115,33 @@ export type WorkspaceDomain = Message<"directoryroster.v1.WorkspaceDomain"> & {
   authoritative: boolean;
 
   /**
-   * true when another connected workspace claims the same domain; neither
-   * is authoritative for it until the conflict clears.
+   * true when another workspace serves the same domain; neither is
+   * authoritative for it until the conflict clears. Only a domain both
+   * workspaces *serve* contests: owning one another tenant serves is not
+   * a conflict.
    *
    * @generated from field: bool conflict = 3;
    */
   conflict: boolean;
+
+  /**
+   * true when the hub answers for this domain. False means the tenant
+   * owns it and this installation has chosen not to read it; the hub
+   * neither routes it nor keeps its accounts.
+   *
+   * @generated from field: bool served = 4;
+   */
+  served: boolean;
+
+  /**
+   * true when the tenant still owns the domain. False appears only for a
+   * domain the served list names and discovery no longer returns — after
+   * a domain moves to another tenant, say. It routes nothing and should
+   * be dropped from the list.
+   *
+   * @generated from field: bool owned = 5;
+   */
+  owned: boolean;
 };
 
 /**
@@ -381,6 +402,47 @@ export const RefreshResponseSchema: GenMessage<RefreshResponse> = /*@__PURE__*/
   messageDesc(file_directoryroster_v1_workspace, 14);
 
 /**
+ * @generated from message directoryroster.v1.SetServedDomainsRequest
+ */
+export type SetServedDomainsRequest = Message<"directoryroster.v1.SetServedDomainsRequest"> & {
+  /**
+   * @generated from field: string workspace_id = 1;
+   */
+  workspaceId: string;
+
+  /**
+   * the domains to serve; empty serves every domain the tenant owns.
+   *
+   * @generated from field: repeated string domains = 2;
+   */
+  domains: string[];
+};
+
+/**
+ * Describes the message directoryroster.v1.SetServedDomainsRequest.
+ * Use `create(SetServedDomainsRequestSchema)` to create a new message.
+ */
+export const SetServedDomainsRequestSchema: GenMessage<SetServedDomainsRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_workspace, 15);
+
+/**
+ * @generated from message directoryroster.v1.SetServedDomainsResponse
+ */
+export type SetServedDomainsResponse = Message<"directoryroster.v1.SetServedDomainsResponse"> & {
+  /**
+   * @generated from field: directoryroster.v1.Workspace workspace = 1;
+   */
+  workspace?: Workspace | undefined;
+};
+
+/**
+ * Describes the message directoryroster.v1.SetServedDomainsResponse.
+ * Use `create(SetServedDomainsResponseSchema)` to create a new message.
+ */
+export const SetServedDomainsResponseSchema: GenMessage<SetServedDomainsResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_workspace, 16);
+
+/**
  * @generated from message directoryroster.v1.DisconnectRequest
  */
 export type DisconnectRequest = Message<"directoryroster.v1.DisconnectRequest"> & {
@@ -395,7 +457,7 @@ export type DisconnectRequest = Message<"directoryroster.v1.DisconnectRequest"> 
  * Use `create(DisconnectRequestSchema)` to create a new message.
  */
 export const DisconnectRequestSchema: GenMessage<DisconnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 15);
+  messageDesc(file_directoryroster_v1_workspace, 17);
 
 /**
  * @generated from message directoryroster.v1.DisconnectResponse
@@ -408,7 +470,7 @@ export type DisconnectResponse = Message<"directoryroster.v1.DisconnectResponse"
  * Use `create(DisconnectResponseSchema)` to create a new message.
  */
 export const DisconnectResponseSchema: GenMessage<DisconnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 16);
+  messageDesc(file_directoryroster_v1_workspace, 18);
 
 /**
  * Backend is the kind of directory behind a workspace.
@@ -533,6 +595,21 @@ export const WorkspaceService: GenService<{
     methodKind: "unary";
     input: typeof UploadKeyRequestSchema;
     output: typeof UploadKeyResponseSchema;
+  },
+  /**
+   * SetServedDomains narrows a workspace to a subset of its domains, or
+   * widens it back. An empty list serves every domain the tenant owns,
+   * which is the default. Only a domain discovery returns may be named:
+   * the ceiling is the tenant's own verified domains, so every setting is
+   * a subtraction from what the directory itself allows. A declared
+   * workspace refuses — the deployment states its list. Operator.
+   *
+   * @generated from rpc directoryroster.v1.WorkspaceService.SetServedDomains
+   */
+  setServedDomains: {
+    methodKind: "unary";
+    input: typeof SetServedDomainsRequestSchema;
+    output: typeof SetServedDomainsResponseSchema;
   },
   /**
    * Probe checks one workspace's credential now and re-reads its domain

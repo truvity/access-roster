@@ -141,6 +141,13 @@
           "secretName": {
             "type": "string",
             "minLength": 1
+          },
+          "serve": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }

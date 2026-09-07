@@ -56,7 +56,9 @@ delete `Secret hub-session-key`; the hub generates a new one on restart.
 |---|---|---|
 | Health: error, domains not authoritative | probe failed: token revoked, admin suspended, tenant policy changed, scopes withdrawn | **Reconnect** (consent) or upload a new key. Nothing is lost meanwhile: the last snapshot is served, non-authoritative |
 | Health ok, domains not authoritative, snapshot old | refresher cannot complete a full read (a page fails, quota, timeouts) | check the hub logs for the failing page; **Refresh** to retry now; the snapshot recovers on the next successful pass |
-| One domain not authoritative on two workspaces, marked *conflict* | both tenants list the domain — a move in progress, or a misconfiguration | wait for the move to complete, or remove the domain from the tenant that should not have it |
+| One domain not authoritative on two workspaces, marked *conflict* | both tenants list the domain **and both serve it** — a move in progress, or a misconfiguration | wait for the move to complete, or narrow one of them: *Choose which to serve* on the directory's page, leaving the domain out of the tenant that should not answer for it |
+| A domain shows *not served* | this hub was narrowed to a subset of the tenant's domains, so nothing routes to it and its accounts are not cached | intended in most cases; *Choose which to serve* changes it. A declared workspace says so in the values (`workspaces[].serve`) |
+| A domain shows *no longer owned* | the served list names a domain the directory no longer lists — it has moved to another tenant | the hand-over already happened: the other workspace serves it as soon as its own discovery returns it. Drop the entry here so the list matches reality |
 | Every domain non-authoritative at once | Valkey unreachable | restore Valkey; the hub refills it within one refresh interval |
 | A workspace shows *declared* and no Reconnect/Disconnect | it comes from the chart's overlay | change the deployment's values, not the console |
 

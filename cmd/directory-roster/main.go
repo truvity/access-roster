@@ -299,6 +299,7 @@ func adoptDeclared(ctx context.Context, directory *hub.Hub, path string, log *sl
 			ID:         declared.ID,
 			Admin:      declared.Admin,
 			Credential: hub.CredentialServiceAccountKey,
+			Serve:      declared.Serve,
 			Declared:   true,
 		}, reader)
 		if err != nil {
@@ -306,7 +307,8 @@ func adoptDeclared(ctx context.Context, directory *hub.Hub, path string, log *sl
 		}
 		log.InfoContext(ctx, "declared workspace adopted",
 			"workspace", adopted.ID, "backend", adopted.Backend,
-			"admin", adopted.Admin, "domains", adopted.Domains)
+			"admin", adopted.Admin, "domains", adopted.Domains,
+			"served", adopted.Served())
 	}
 	return nil
 }

@@ -51,6 +51,9 @@ const (
 	// WorkspaceServiceUploadKeyProcedure is the fully-qualified name of the WorkspaceService's
 	// UploadKey RPC.
 	WorkspaceServiceUploadKeyProcedure = "/directoryroster.v1.WorkspaceService/UploadKey"
+	// WorkspaceServiceSetServedDomainsProcedure is the fully-qualified name of the WorkspaceService's
+	// SetServedDomains RPC.
+	WorkspaceServiceSetServedDomainsProcedure = "/directoryroster.v1.WorkspaceService/SetServedDomains"
 	// WorkspaceServiceProbeProcedure is the fully-qualified name of the WorkspaceService's Probe RPC.
 	WorkspaceServiceProbeProcedure = "/directoryroster.v1.WorkspaceService/Probe"
 	// WorkspaceServiceRefreshProcedure is the fully-qualified name of the WorkspaceService's Refresh
@@ -79,6 +82,13 @@ type WorkspaceServiceClient interface {
 	// UploadKey connects (or re-credentials) a workspace with a
 	// service-account key and the admin to act as. Operator.
 	UploadKey(context.Context, *connect.Request[v1.UploadKeyRequest]) (*connect.Response[v1.UploadKeyResponse], error)
+	// SetServedDomains narrows a workspace to a subset of its domains, or
+	// widens it back. An empty list serves every domain the tenant owns,
+	// which is the default. Only a domain discovery returns may be named:
+	// the ceiling is the tenant's own verified domains, so every setting is
+	// a subtraction from what the directory itself allows. A declared
+	// workspace refuses — the deployment states its list. Operator.
+	SetServedDomains(context.Context, *connect.Request[v1.SetServedDomainsRequest]) (*connect.Response[v1.SetServedDomainsResponse], error)
 	// Probe checks one workspace's credential now and re-reads its domain
 	// list. Operator.
 	Probe(context.Context, *connect.Request[v1.ProbeRequest]) (*connect.Response[v1.ProbeResponse], error)
@@ -126,6 +136,12 @@ func NewWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(workspaceServiceMethods.ByName("UploadKey")),
 			connect.WithClientOptions(opts...),
 		),
+		setServedDomains: connect.NewClient[v1.SetServedDomainsRequest, v1.SetServedDomainsResponse](
+			httpClient,
+			baseURL+WorkspaceServiceSetServedDomainsProcedure,
+			connect.WithSchema(workspaceServiceMethods.ByName("SetServedDomains")),
+			connect.WithClientOptions(opts...),
+		),
 		probe: connect.NewClient[v1.ProbeRequest, v1.ProbeResponse](
 			httpClient,
 			baseURL+WorkspaceServiceProbeProcedure,
@@ -149,13 +165,14 @@ func NewWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // workspaceServiceClient implements WorkspaceServiceClient.
 type workspaceServiceClient struct {
-	listWorkspaces *connect.Client[v1.ListWorkspacesRequest, v1.ListWorkspacesResponse]
-	beginConnect   *connect.Client[v1.BeginConnectRequest, v1.BeginConnectResponse]
-	reconnect      *connect.Client[v1.ReconnectRequest, v1.ReconnectResponse]
-	uploadKey      *connect.Client[v1.UploadKeyRequest, v1.UploadKeyResponse]
-	probe          *connect.Client[v1.ProbeRequest, v1.ProbeResponse]
-	refresh        *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
-	disconnect     *connect.Client[v1.DisconnectRequest, v1.DisconnectResponse]
+	listWorkspaces   *connect.Client[v1.ListWorkspacesRequest, v1.ListWorkspacesResponse]
+	beginConnect     *connect.Client[v1.BeginConnectRequest, v1.BeginConnectResponse]
+	reconnect        *connect.Client[v1.ReconnectRequest, v1.ReconnectResponse]
+	uploadKey        *connect.Client[v1.UploadKeyRequest, v1.UploadKeyResponse]
+	setServedDomains *connect.Client[v1.SetServedDomainsRequest, v1.SetServedDomainsResponse]
+	probe            *connect.Client[v1.ProbeRequest, v1.ProbeResponse]
+	refresh          *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
+	disconnect       *connect.Client[v1.DisconnectRequest, v1.DisconnectResponse]
 }
 
 // ListWorkspaces calls directoryroster.v1.WorkspaceService.ListWorkspaces.
@@ -176,6 +193,11 @@ func (c *workspaceServiceClient) Reconnect(ctx context.Context, req *connect.Req
 // UploadKey calls directoryroster.v1.WorkspaceService.UploadKey.
 func (c *workspaceServiceClient) UploadKey(ctx context.Context, req *connect.Request[v1.UploadKeyRequest]) (*connect.Response[v1.UploadKeyResponse], error) {
 	return c.uploadKey.CallUnary(ctx, req)
+}
+
+// SetServedDomains calls directoryroster.v1.WorkspaceService.SetServedDomains.
+func (c *workspaceServiceClient) SetServedDomains(ctx context.Context, req *connect.Request[v1.SetServedDomainsRequest]) (*connect.Response[v1.SetServedDomainsResponse], error) {
+	return c.setServedDomains.CallUnary(ctx, req)
 }
 
 // Probe calls directoryroster.v1.WorkspaceService.Probe.
@@ -211,6 +233,13 @@ type WorkspaceServiceHandler interface {
 	// UploadKey connects (or re-credentials) a workspace with a
 	// service-account key and the admin to act as. Operator.
 	UploadKey(context.Context, *connect.Request[v1.UploadKeyRequest]) (*connect.Response[v1.UploadKeyResponse], error)
+	// SetServedDomains narrows a workspace to a subset of its domains, or
+	// widens it back. An empty list serves every domain the tenant owns,
+	// which is the default. Only a domain discovery returns may be named:
+	// the ceiling is the tenant's own verified domains, so every setting is
+	// a subtraction from what the directory itself allows. A declared
+	// workspace refuses — the deployment states its list. Operator.
+	SetServedDomains(context.Context, *connect.Request[v1.SetServedDomainsRequest]) (*connect.Response[v1.SetServedDomainsResponse], error)
 	// Probe checks one workspace's credential now and re-reads its domain
 	// list. Operator.
 	Probe(context.Context, *connect.Request[v1.ProbeRequest]) (*connect.Response[v1.ProbeResponse], error)
@@ -254,6 +283,12 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 		connect.WithSchema(workspaceServiceMethods.ByName("UploadKey")),
 		connect.WithHandlerOptions(opts...),
 	)
+	workspaceServiceSetServedDomainsHandler := connect.NewUnaryHandler(
+		WorkspaceServiceSetServedDomainsProcedure,
+		svc.SetServedDomains,
+		connect.WithSchema(workspaceServiceMethods.ByName("SetServedDomains")),
+		connect.WithHandlerOptions(opts...),
+	)
 	workspaceServiceProbeHandler := connect.NewUnaryHandler(
 		WorkspaceServiceProbeProcedure,
 		svc.Probe,
@@ -282,6 +317,8 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 			workspaceServiceReconnectHandler.ServeHTTP(w, r)
 		case WorkspaceServiceUploadKeyProcedure:
 			workspaceServiceUploadKeyHandler.ServeHTTP(w, r)
+		case WorkspaceServiceSetServedDomainsProcedure:
+			workspaceServiceSetServedDomainsHandler.ServeHTTP(w, r)
 		case WorkspaceServiceProbeProcedure:
 			workspaceServiceProbeHandler.ServeHTTP(w, r)
 		case WorkspaceServiceRefreshProcedure:
@@ -311,6 +348,10 @@ func (UnimplementedWorkspaceServiceHandler) Reconnect(context.Context, *connect.
 
 func (UnimplementedWorkspaceServiceHandler) UploadKey(context.Context, *connect.Request[v1.UploadKeyRequest]) (*connect.Response[v1.UploadKeyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.WorkspaceService.UploadKey is not implemented"))
+}
+
+func (UnimplementedWorkspaceServiceHandler) SetServedDomains(context.Context, *connect.Request[v1.SetServedDomainsRequest]) (*connect.Response[v1.SetServedDomainsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.WorkspaceService.SetServedDomains is not implemented"))
 }
 
 func (UnimplementedWorkspaceServiceHandler) Probe(context.Context, *connect.Request[v1.ProbeRequest]) (*connect.Response[v1.ProbeResponse], error) {

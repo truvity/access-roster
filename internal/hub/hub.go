@@ -28,6 +28,10 @@ var ErrDeclared = errors.New("hub: workspace is declared by the deployment")
 // tenant and its credential opens another.
 var ErrTenantMismatch = errors.New("hub: the credential opens a different tenant")
 
+// ErrUnknownDomain is returned when a workspace is asked to serve a domain
+// its tenant does not own.
+var ErrUnknownDomain = errors.New("hub: the tenant does not own that domain")
+
 // Default intervals, used for any zero value in [Config].
 const (
 	DefaultRefreshInterval = 15 * time.Minute
@@ -191,7 +195,11 @@ func routingOf(workspaces []Workspace) map[string]resolution {
 	for i := range workspaces {
 		ws := &workspaces[i]
 		declared[ws.ID] = ws.Declared
-		for _, d := range ws.Domains {
+		// Served, not Domains: a domain a workspace holds but does not
+		// serve claims nothing, so a tenant that happens to own a domain
+		// another tenant serves is not a conflict. Two workspaces both
+		// serving one domain still is.
+		for _, d := range ws.Served() {
 			claims[d] = append(claims[d], ws.ID)
 		}
 	}
@@ -611,6 +619,10 @@ func (h *Hub) Refresh(ctx context.Context, workspaceID string) (time.Time, error
 		if !ok {
 			return time.Time{}, fmt.Errorf("%w: %s", ErrNotFound, workspaceID)
 		}
+		ws, err := h.store.Get(ctx, workspaceID)
+		if err != nil {
+			return time.Time{}, err
+		}
 		accounts, err := b.Accounts(ctx)
 		if err != nil {
 			return time.Time{}, fmt.Errorf("read accounts: %w", err)
@@ -619,6 +631,11 @@ func (h *Hub) Refresh(ctx context.Context, workspaceID string) (time.Time, error
 		if err != nil {
 			return time.Time{}, fmt.Errorf("read groups: %w", err)
 		}
+		// Narrowed to Serve as written rather than to the domains
+		// discovery currently returns: a probe that failed a minute ago
+		// must not turn a good full read into an empty snapshot. Routing
+		// uses the intersection, so nothing unowned is answered either way.
+		accounts, groups = restrict(accounts, groups, ws.Serve)
 		snap := NewSnapshot(workspaceID, h.now(), accounts, groups)
 		if err = h.snapshots.Put(ctx, snap); err != nil {
 			return time.Time{}, fmt.Errorf("store snapshot: %w", err)
@@ -717,6 +734,7 @@ func (h *Hub) Adopt(ctx context.Context, ws Workspace, b backend.Backend) (Works
 	h.mu.Unlock()
 
 	ws.Backend = b.Kind()
+	ws.Serve = normaliseDomains(ws.Serve)
 	if ws.ConnectedAt.IsZero() {
 		ws.ConnectedAt = h.now()
 	}
@@ -732,6 +750,48 @@ func (h *Hub) Adopt(ctx context.Context, ws Workspace, b backend.Backend) (Works
 		h.log.WarnContext(ctx, "first snapshot failed", "workspace", ws.ID, "error", err)
 	}
 	return h.store.Get(ctx, ws.ID)
+}
+
+// SetServed narrows a workspace to a subset of its domains, or widens it
+// back. An empty list means every domain the tenant owns.
+//
+// The choice is bounded by discovery: a domain may be served only if the
+// directory says this tenant owns it. That bound is what makes this an
+// operator's decision rather than a grant — the ceiling is the tenant's
+// own verified domains, and every setting is a subtraction from it. A
+// declared workspace refuses, because the deployment states its list.
+func (h *Hub) SetServed(ctx context.Context, workspaceID string, domains []string) (Workspace, error) {
+	ws, err := h.store.Get(ctx, workspaceID)
+	if err != nil {
+		return Workspace{}, err
+	}
+	if ws.Declared {
+		return Workspace{}, fmt.Errorf("%w: %s", ErrDeclared, workspaceID)
+	}
+	serve := normaliseDomains(domains)
+	for _, d := range serve {
+		if !slices.Contains(ws.Domains, d) {
+			return Workspace{}, fmt.Errorf("%w: %s does not own %s", ErrUnknownDomain, workspaceID, d)
+		}
+	}
+	ws.Serve = serve
+	if err = h.store.Put(ctx, ws); err != nil {
+		return Workspace{}, fmt.Errorf("store workspace: %w", err)
+	}
+	// The snapshot was taken under the old list, so it holds accounts this
+	// hub has just been told not to read. Take a new one; if that fails,
+	// delete the old rather than leave the excluded people cached — the
+	// cost is answers that are stale and therefore not authoritative,
+	// which removes nobody's access, and the refresher will fill it in.
+	if _, err = h.Refresh(ctx, workspaceID); err != nil {
+		h.log.WarnContext(ctx, "refresh after narrowing failed; dropping the snapshot",
+			"workspace", workspaceID, "error", err)
+		if delErr := h.snapshots.Delete(ctx, workspaceID); delErr != nil {
+			h.log.WarnContext(ctx, "dropping the snapshot failed",
+				"workspace", workspaceID, "error", delErr)
+		}
+	}
+	return h.store.Get(ctx, workspaceID)
 }
 
 // Disconnect revokes the credential at the backend, then forgets the
@@ -769,6 +829,13 @@ type DomainStanding struct {
 	// Conflict reports that another workspace claims it too, which is why
 	// it is authoritative for neither until one of them drops it.
 	Conflict bool
+	// Served reports whether the hub answers for it. False means the
+	// tenant owns the domain and the deployment has chosen not to read it.
+	Served bool
+	// Owned reports whether the tenant still holds the domain. False is
+	// only possible for a domain Serve names and discovery no longer
+	// returns: it routes nothing, and an operator should drop it.
+	Owned bool
 }
 
 // WorkspaceView is a workspace record with the standing of each of its
@@ -792,11 +859,22 @@ func (h *Hub) WorkspaceViews(ctx context.Context) ([]WorkspaceView, error) {
 		if snapErr != nil {
 			h.log.WarnContext(ctx, "snapshot unreadable", "workspace", id, "error", snapErr)
 		}
-		domains := make([]DomainStanding, 0, len(ws.Domains))
-		for _, d := range ws.Domains {
+		served := ws.Served()
+		// The discovered domains and any the deployment asked for and the
+		// tenant does not have: an operator who narrowed a workspace to a
+		// domain that has since moved away needs to see the entry, not an
+		// unexplained gap.
+		names := append(slices.Clone(ws.Domains), ws.Unowned()...)
+		slices.Sort(names)
+		domains := make([]DomainStanding, 0, len(names))
+		for _, d := range names {
 			res, routed := v.routing[d]
-			standing := DomainStanding{Name: d}
-			if routed {
+			standing := DomainStanding{
+				Name:   d,
+				Served: slices.Contains(served, d),
+				Owned:  slices.Contains(ws.Domains, d),
+			}
+			if routed && standing.Served {
 				standing.Conflict = res.conflict
 				standing.Authoritative = res.workspace == id && h.authoritative(ws, res, snap)
 			}
@@ -860,8 +938,9 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 		}
 		// A workspace is authoritative for its accounts when every domain
 		// it serves is: a person in a contested domain is an opinion.
-		authoritative := len(ws.Domains) > 0
-		for _, domain := range ws.Domains {
+		servedDomains := ws.Served()
+		authoritative := len(servedDomains) > 0
+		for _, domain := range servedDomains {
 			res, routed := v.routing[domain]
 			if !routed || res.workspace != id || !h.authoritative(ws, res, snap) {
 				authoritative = false

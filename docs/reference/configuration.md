@@ -58,6 +58,8 @@ workspaces:
     backend: google
     admin: admin@example.com   # the account the key impersonates
     secretName: example-sa-key # a Secret in this namespace; key `key.json`
+    serve:                     # optional; omitted serves every domain it owns
+      - example.com
 ```
 
 The chart renders the list into a ConfigMap and mounts each named Secret
@@ -66,6 +68,17 @@ through the console: declared ones are read-only in the console, cannot be
 disconnected there (remove them from the values instead) and win when a
 domain is claimed twice. Domains are discovered from the backend, exactly
 as for a connected workspace.
+
+`serve` narrows a tenant to a subset of the domains it owns. Leave it out
+and the hub serves all of them, including ones the company adds later —
+the ordinary case. Name a subset and the rest are still discovered and
+shown, but nothing routes to them and their accounts are never cached:
+that is how one installation reads a single domain of a company whose
+other domains are none of its business. A domain named here that the
+tenant does not own routes nothing and is reported as no longer owned,
+which makes it safe to declare a domain that is about to move between
+tenants. For a workspace connected through the console the same choice is
+made there, on the directory's page.
 
 This is how an installation that already holds service-account keys goes
 live on day one, and connects through consent later at its own pace.

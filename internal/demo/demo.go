@@ -108,12 +108,18 @@ func Tenants(now time.Time) []Tenant {
 	// live, which is exactly the answer a consumer must act on.
 	first.Suspend("cleo@north.example")
 
-	second := fake.New("C0demo-south", "south.example").
+	// The second company owns a domain this installation has no business
+	// reading, and is narrowed to the one it does: the case where "the
+	// tenant owns it" and "we answer for it" come apart. Fern is in the
+	// directory and, deliberately, in nothing the hub can see.
+	second := fake.New("C0demo-south", "south.example", "aside.example").
 		WithAccount("dana@south.example", "Dana", "Sud").
 		WithAccount("eli@south.example", "Eli", "East").
+		WithAccount("fern@aside.example", "Fern", "Aside").
 		WithGroup("engineering@south.example", "dana@south.example").
 		WithGroup("security@south.example", "eli@south.example").
-		WithGroup("everyone@south.example", "dana@south.example", "eli@south.example")
+		WithGroup("everyone@south.example", "dana@south.example", "eli@south.example").
+		WithGroup("everyone@aside.example", "fern@aside.example")
 
 	return []Tenant{
 		{
@@ -126,6 +132,7 @@ func Tenants(now time.Time) []Tenant {
 		{
 			Workspace: hub.Workspace{
 				ID: "C0demo-south", Admin: "admin@south.example",
+				Serve:      []string{"south.example"},
 				Credential: hub.CredentialOAuth, ConnectedAt: now, ConnectedBy: "someone@north.example",
 			},
 			Backend: second,

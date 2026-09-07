@@ -58,6 +58,58 @@ func NewSnapshot(workspace string, takenAt time.Time, accounts []backend.Account
 	return s
 }
 
+// restrict drops from a full read everything a workspace narrowed to a
+// subset of its domains has no business keeping.
+//
+// Two rules, and the second is the one worth stating. An account is kept
+// when its address is at a served domain: nothing routes to the others, so
+// holding their names and liveness is a liability with no reader. A group
+// is kept when it is *at* a served domain — a served group must be
+// answerable in full, and one dropped for having no served member today
+// would come back as "found: false", which a consumer reads as gone —
+// or when it holds at least one served member, because that group is part
+// of a served person's answer even though it lives at another domain.
+//
+// Members are never filtered. A group returned short is a partial list
+// presented as a whole, which is the one thing this hub never does.
+func restrict(
+	accounts []backend.Account, groups []backend.Group, serve []string,
+) ([]backend.Account, []backend.Group) {
+	if len(serve) == 0 {
+		return accounts, groups
+	}
+	served := make(map[string]struct{}, len(serve))
+	for _, d := range serve {
+		served[strings.ToLower(d)] = struct{}{}
+	}
+	inServed := func(address string) bool {
+		at := strings.LastIndex(address, "@")
+		if at < 0 {
+			return false
+		}
+		_, ok := served[strings.ToLower(address[at+1:])]
+		return ok
+	}
+
+	keptAccounts := make([]backend.Account, 0, len(accounts))
+	for _, a := range accounts {
+		if inServed(a.Email) {
+			keptAccounts = append(keptAccounts, a)
+		}
+	}
+	keptGroups := make([]backend.Group, 0, len(groups))
+	for _, g := range groups {
+		keep := inServed(g.Email)
+		for i := 0; !keep && i < len(g.Members); i++ {
+			keep = inServed(g.Members[i])
+		}
+		if keep {
+			keptGroups = append(keptGroups, g)
+		}
+	}
+	return keptAccounts, keptGroups
+}
+
 // Age reports how old the snapshot is at now.
 func (s *Snapshot) Age(now time.Time) time.Duration { return now.Sub(s.TakenAt) }
 
