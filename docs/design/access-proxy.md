@@ -11,8 +11,13 @@ who may pass. `access-proxy` is one chart that gives a console all five
 from a hostname and a backend name, and nothing the console has to
 implement.
 
-It keeps the shape that earned its place: an OAuth2 proxy as the gateway's
-external authorization backend, with sessions in Valkey. That shape was
+**It is a chart, not a service of ours.** The process inside it is the
+upstream oauth2-proxy image, deployed as Envoy Gateway's external
+authorization backend with sessions in Valkey — the shape that earned its
+place. The chart contributes the wiring around it (routes, policies,
+labels), the conventions (client from hostname, fleet values, postures),
+and one small init step that registers the proxy as a client at the
+issuer. No request ever passes through code written here. That shape was
 chosen over the gateway's native OIDC filter for four properties a token
 in a cookie cannot give — real session management, room for large
 tokens, global logout, and token refresh in the background — and the
@@ -72,6 +77,18 @@ console: a fleet egress policy that selects namespaces labelled
 end-session endpoint, which ends the issuer session too. A revoked person
 is stopped by the issuer refusing to refresh, with the hub's liveness
 signal behind it; the proxy's session then dies at its next refresh.
+
+## Why not something else
+
+- **Not Envoy's native OIDC filter alone:** no session store, so no global
+  sign-out and no background refresh, and tokens in cookies with size
+  limits — the reasons oauth2-proxy was chosen in the first place.
+- **Not a proxy of ours:** identity-critical code on every request path
+  to every console, for no capability oauth2-proxy lacks.
+- **Not the issuer as the authorization backend:** that would make the
+  issuer hold per-user sessions and sit on every console's request path,
+  which is oauth2-proxy rebuilt inside it — the identity-provider creep
+  the guardrail forbids.
 
 ## Failure semantics
 
