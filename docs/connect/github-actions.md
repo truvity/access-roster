@@ -28,10 +28,13 @@ proofs:
 permissions:
   id-token: write
 steps:
-  - uses: truvity/access-roster/actions/exchange@v1
+  - uses: truvity/access-roster@v1
     with:
       issuer: https://issuer.example.internal
       audiences: k8s:devel, aws:111122223333:gitops-deployer
+      kubeconfig: true
+      default-profile: gitops-deployer@111122223333
+      region: eu-central-1
   - run: kubectl -n demo rollout status deploy/app
   - run: aws s3 ls
 ```
@@ -39,8 +42,9 @@ steps:
 The action is shell only: one `curl` to `/token` per audience with
 `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`,
 `subject_token=<the job's token>` and `audience=<one audience>`, then a
-kubeconfig with the cluster token and an AWS profile with
-`web_identity_token_file`. Nothing is downloaded into the job.
+kubeconfig with the cluster token and a profile `<role>@<account>` per
+cloud audience with `web_identity_token_file`. Nothing is downloaded into
+the job.
 
 **Both targets go through the issuer, never directly.** A cluster trusts
 one OIDC issuer and that is access-issuer, so a GitHub token can never be
@@ -53,5 +57,6 @@ the issuer's client setting for CI says — long enough for a deploy or a
 soak step. A job that must outlive it re-runs the action before the long
 step.
 
-Runners inside the cluster keep their ServiceAccount and the cloud's pod
-identity; they never need this flow.
+**Registries and artifacts** — ECR, CodeArtifact, anything else on AWS —
+run on top of the profiles the action wrote, with the official actions
+and the AWS CLI: [registries-and-artifacts.md](registries-and-artifacts.md).

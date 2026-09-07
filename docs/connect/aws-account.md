@@ -30,11 +30,13 @@ one workload only.
 
 ## Person side
 
-`accessctl aws-config` writes a profile per granted role:
+`accessctl setup` (or `aws-config` alone) writes a profile per granted
+role, named `<role>@<account>`:
 
 ```ini
-[profile power@1111]
+[profile power@111122223333]
 credential_process = accessctl aws --audience aws:111122223333:power
+region = eu-central-1
 ```
 
 `accessctl aws` exchanges the cached login for that audience and calls
@@ -44,7 +46,15 @@ credentials.
 ## Job side
 
 The action with `audiences: aws:111122223333:gitops-deployer` exchanges
-the job's GitHub token at the issuer and writes a profile with
-`web_identity_token_file` pointing at the result; the AWS CLI does the
-rest. The account trusts the issuer, not GitHub: no direct GitHub
-provider is configured, and CI's entitlements live in the rules file.
+the job's GitHub token at the issuer and writes the profile
+`gitops-deployer@111122223333` with `web_identity_token_file` pointing at
+the result; the AWS CLI does the rest. The account trusts the issuer, not
+GitHub: no direct GitHub provider is configured, and CI's entitlements
+live in the rules file.
+
+## On top: every other AWS service
+
+ECR, CodeArtifact, S3, anything: `--profile <role>@<account>`, or
+`AWS_PROFILE`. Nothing here knows those services; see
+[registries-and-artifacts.md](registries-and-artifacts.md) for the
+registry and artifact recipes.

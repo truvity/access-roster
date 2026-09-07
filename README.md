@@ -21,16 +21,19 @@ applies rules.
 
 ## The batteries
 
-| Battery | What it is | Use it when |
+Grouped by kind of artifact. The full table with status and who uses
+what is in [docs/integrations.md](docs/integrations.md#the-batteries-by-kind-of-artifact).
+
+| Kind | Battery | Use it when |
 |---|---|---|
-| **directory-roster** — service + chart | the directory hub: holds every directory credential, snapshots every tenant, answers *is this account live* and *who is in this group* with an **authoritative** flag | you have one or more corporate directories and anything that must react to leavers and groups |
-| **access-issuer** — service + chart | the token service: verifies a corporate sign-in, a CI token or a workload token, asks the hub, applies the rules, issues tokens | clusters, cloud accounts, a CD system or consoles must trust one issuer |
-| **access-proxy** — chart | the proxy in front of a console: login against the issuer, sessions, forwarded bearer, two postures | you put a web UI behind the gateway |
-| **Go module** `github.com/truvity/access-roster` | `identity` (who is calling, from a forwarded bearer or a ServiceAccount token) with net/http, fiber v3, gRPC and connect adapters; `directory` client with the authoritative rule built in; `tokens` for exchange and refresh; `rules` | you write a service or a console in Go |
-| **TypeScript package** `access-roster` | `useIdentity()` and the `UserBadge`, fed by the standard `/.access/whoami` every Go adapter serves | you write a console UI |
-| **accessctl** — CLI | `login`, `aws` as a credential process, `kube-token` as a kubeconfig exec plugin, `kubeconfig` and `aws-config` to write the files for everything you are granted, `exchange`, `whoami`. For people; machines never run it | a person needs cloud credentials or kubectl |
-| **GitHub Action** `truvity/access-roster/actions/exchange` | shell only: exchanges the job's identity token at the issuer for the audiences its rules allow, writes the kubeconfig and the cloud profile | a workflow deploys to a cluster or a cloud account |
-| **the rules file** | subject → grant, once, versioned, tested. The only place where "who may do what" is written | always |
+| Service + chart | **directory-roster** — the directory hub: holds every directory credential, snapshots every tenant, answers *is this account live* and *who is in this group* with an **authoritative** flag | you have corporate directories and anything that must react to leavers and groups |
+| Service + chart | **access-issuer** — the token service: verifies a corporate sign-in, a CI token or a workload token, asks the hub, applies the rules, issues tokens | clusters, cloud accounts, a CD system or consoles must trust one issuer |
+| Helm chart | **access-proxy** — oauth2-proxy and its wiring in front of one console: login against the issuer, sessions, forwarded bearer, two postures, self-registered client | you put a web UI behind the gateway |
+| Go module | `github.com/truvity/access-roster` — `identity` with net/http, fiber v3, gRPC and connect adapters; `authz`; `directory`; `tokens`; `rules` | you write a service or a console in Go |
+| TypeScript package | `access-roster` — `useIdentity()` and `<UserBadge/>` over the standard `/.access/whoami` | you write a console UI |
+| CLI | **accessctl** — `login`, `setup` (kubeconfig contexts and AWS profiles for everything you are granted), `aws` as a credential process, `kube-token`, `whoami`; people only | a person needs kubectl or cloud credentials |
+| GitHub Action | `truvity/access-roster@v1` — shell only: exchanges the job's token at the issuer, writes a kubeconfig and AWS profiles; ECR, CodeArtifact and the rest run on top with AWS's own tooling | a workflow deploys, pushes or installs |
+| File format | **the rules file** — subject → grant, once, versioned, tested | always |
 
 ## I want to…
 
@@ -41,6 +44,7 @@ applies rules.
 | let people `kubectl` into a cluster | [connect/kubernetes-cluster.md](docs/connect/kubernetes-cluster.md) |
 | give people and jobs cloud credentials without SSO | [connect/aws-account.md](docs/connect/aws-account.md) |
 | let a workflow deploy with no stored secret | [connect/github-actions.md](docs/connect/github-actions.md) |
+| push to ECR or install from CodeArtifact, on a laptop or in a job | [connect/registries-and-artifacts.md](docs/connect/registries-and-artifacts.md) |
 | sign in to ArgoCD or Kargo with the issuer | [connect/argocd.md](docs/connect/argocd.md), [connect/kargo.md](docs/connect/kargo.md) |
 | expose a business surface to employees for testing | [connect/business-surface.md](docs/connect/business-surface.md) |
 | keep GitHub teams equal to directory groups | [github-roster](https://github.com/truvity/github-roster), a consumer of the hub |
