@@ -190,9 +190,84 @@ func TestRecoveryByClusterAccess(t *testing.T) {
 		t.Errorf("an unreachable API server = %v, want neither success nor a refusal", err)
 	}
 
-	// The page tells a person how to obtain one, with the real names.
+	// The page tells a person how to obtain one, with this installation's
+	// own names rather than placeholders: the alternative is guessing a
+	// release name during an outage. None of it is a secret, and none of
+	// it works without the RBAC to mint the token.
+	recovery.Namespace, recovery.Account = "identity", "hub-recovery"
 	prompt := recovery.Prompt()
-	if !strings.Contains(prompt, "directory-roster-recovery") || !strings.Contains(prompt, "--audience") {
-		t.Errorf("prompt = %q, want the command that mints a token", prompt)
+	for _, want := range []string{"kubectl -n identity", "hub-recovery", "--audience " + audience, "--duration"} {
+		if !strings.Contains(prompt.Command, want) {
+			t.Errorf("command = %q, want it to contain %q", prompt.Command, want)
+		}
+	}
+	// Showing it is only defensible with the warning beside it: it is an
+	// instruction to mint operator access, on a page anyone may load.
+	if !strings.Contains(prompt.Caution, "Never run it") {
+		t.Errorf("caution = %q, want it to warn against running it on request", prompt.Caution)
+	}
+	// It degrades rather than printing a lie when the namespace is unknown.
+	bare := &TokenRecovery{Audience: audience, Subjects: []string{allowed}}
+	if got := bare.Prompt().Command; !strings.Contains(got, "<namespace>") ||
+		!strings.Contains(got, "directory-roster-recovery") {
+		t.Errorf("command with no namespace = %q", got)
+	}
+
+	// The password shape says something else entirely: there is nothing
+	// to run, and the danger is handing it over rather than running it.
+	password := NewPasswordRecovery("x").Prompt()
+	if password.Command != "" || !strings.Contains(password.Caution, "Never give it") {
+		t.Errorf("password prompt = %+v", password)
+	}
+}
+
+// What the sign-in page actually renders, for both shapes. The command is
+// the interesting half: it carries this installation's own namespace and
+// account, which is only defensible with the warning beside it.
+func TestTheSignInPageShowsTheRealCommand(t *testing.T) {
+	t.Parallel()
+
+	page := func(recovery Recovery) string {
+		server := &ConsoleServer{
+			recovery:   recovery,
+			connectors: map[string]Connector{"google": nil},
+			log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}
+		recorder := httptest.NewRecorder()
+		server.loginPage(recorder, httptest.NewRequest(http.MethodGet, "/login", nil))
+		return recorder.Body.String()
+	}
+
+	token := page(&TokenRecovery{
+		Namespace: "directory-roster", Account: "directory-roster-recovery",
+		Audience: "directory-roster-recovery",
+	})
+	for _, want := range []string{
+		"kubectl -n directory-roster create token directory-roster-recovery",
+		"--audience directory-roster-recovery",
+		"<pre>",
+		"Never run it because someone asked you to",
+		// One button per directory kind, and no company anywhere: an
+		// anonymous page that lists the tenants has published them.
+		"Continue with Google",
+	} {
+		if !strings.Contains(token, want) {
+			t.Errorf("the page is missing %q", want)
+		}
+	}
+
+	// The password shape has nothing to run, so it shows no command block
+	// and warns about the other danger.
+	password := page(NewPasswordRecovery("x"))
+	if strings.Contains(password, "<pre>") || strings.Contains(password, "kubectl") {
+		t.Error("the password shape rendered a command block")
+	}
+	if !strings.Contains(password, "Never give it to anyone") {
+		t.Error("the password shape lost its warning")
+	}
+
+	// A deployment with no recovery at all offers none.
+	if none := page(nil); strings.Contains(none, "Recovery sign-in") {
+		t.Error("a deployment with no recovery path still offered one")
 	}
 }

@@ -219,13 +219,30 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 	// treat it as the normal way in.
 	recovery := ""
 	if recoveryEnabled(s.recovery) {
+		prompt := s.recovery.Prompt()
+		command := ""
+		if prompt.Command != "" {
+			command = "<pre>" + html.EscapeString(prompt.Command) + "</pre>"
+		}
+		// The command carries this installation's own namespace and
+		// account, because the alternative is an operator guessing a
+		// release name during an outage — the same reason the setup steps
+		// show the real redirect URI. None of it is a secret, and none of
+		// it works without the cluster RBAC to mint the token.
+		//
+		// The warning is the part that matters. What is written here is
+		// an instruction to produce a credential that grants operator on
+		// this hub, on a page anyone may load, so it says plainly that
+		// nobody should ever run it because they were asked to.
 		recovery = fmt.Sprintf(`<details><summary class="note">Recovery sign-in</summary>
-		<form method="post" action="/login/recovery">
+		<p class="note">For the day the directory is what is broken. %s</p>
+		%s<form method="post" action="/login/recovery">
 			<p><label>%s<br><input type="password" name="proof" autocomplete="off"></label></p>
 			<p><button type="submit">Recover access</button></p>
 		</form>
-		<p class="note">For the day the directory is what is broken. Present %s</p></details>`,
-			html.EscapeString(recoveryLabel(s.recovery.Kind())), html.EscapeString(s.recovery.Prompt()))
+		<p class="warn">%s</p></details>`,
+			html.EscapeString(prompt.Intro), command,
+			html.EscapeString(prompt.Label), html.EscapeString(prompt.Caution))
 	}
 	if _, err := fmt.Fprintf(w, loginHTML, sources.String(), recovery); err != nil {
 		s.log.WarnContext(r.Context(), "login page could not be written", "error", err)
@@ -247,13 +264,6 @@ func providerName(kind string) string {
 	}
 }
 
-func recoveryLabel(kind string) string {
-	if kind == "token" {
-		return "Recovery token"
-	}
-	return "Recovery password"
-}
-
 const loginHTML = `<!doctype html><meta charset="utf-8"><title>Sign in — directory-roster</title>
 <style>
  body{font:16px/1.5 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f3f5f8;color:#1b2230}
@@ -262,6 +272,10 @@ const loginHTML = `<!doctype html><meta charset="utf-8"><title>Sign in — direc
  input{width:100%%;padding:8px;border:1px solid #d9dee6;border-radius:4px;font:inherit}
  button,.btn{display:inline-block;padding:8px 14px;border:0;border-radius:4px;background:#0e7c7b;color:#fff;font:inherit;text-decoration:none;cursor:pointer}
  .note{font-size:14px;color:#6b7383}
+ .warn{font-size:13px;color:#8a4b21;background:#fdf3e7;border:1px solid #f0d9c0;border-radius:4px;padding:8px 10px}
+ pre{font-size:13px;background:#f3f5f8;border:1px solid #d9dee6;border-radius:4px;padding:10px;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+ details{margin-top:20px;border-top:1px solid #e6eaef;padding-top:12px}
+ summary{cursor:pointer}
 </style>
 <main><h1>directory-roster</h1>
 <p class="note">The directory hub. Sign in to connect workspaces and grant access.</p>

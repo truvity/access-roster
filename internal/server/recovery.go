@@ -25,10 +25,26 @@ import (
 type Recovery interface {
 	// Kind is "token" or "password": what the recovery page asks for.
 	Kind() string
-	// Prompt is the sentence that tells a person how to obtain the proof.
-	Prompt() string
+	// Prompt is how the sign-in page explains this shape. Each shape
+	// carries its own words, because the two are not variations on one
+	// sentence: one is a command to run, the other a secret to have kept.
+	Prompt() Prompt
 	// Verify returns the identity the proof establishes.
 	Verify(ctx context.Context, proof string) (string, error)
+}
+
+// Prompt is what the sign-in page shows above the recovery field.
+type Prompt struct {
+	// Label names the field.
+	Label string
+	// Intro is the sentence before it.
+	Intro string
+	// Command, when set, is shown as a command to run. It carries this
+	// installation's own names rather than placeholders.
+	Command string
+	// Caution is the sentence after it, and is the reason showing any of
+	// this is safe to do on a page anyone may load.
+	Caution string
 }
 
 // ErrRecoveryRefused is returned for a proof that does not check out. It
@@ -67,6 +83,15 @@ func recoveryKindOf(r Recovery) string {
 type TokenRecovery struct {
 	// Review is [kube.Client.ReviewToken].
 	Review func(ctx context.Context, token string, audiences []string) (string, error)
+	// Namespace and Account are what the sign-in page tells a person to
+	// mint a token for. They are object names, not secrets: they are
+	// visible to anyone who may read the namespace, the chart that
+	// creates them is public, and none of it helps without the RBAC to
+	// create a token — which is itself enough to reach the hub by other
+	// means. Printing the real ones beats making somebody guess a release
+	// name during an outage.
+	Namespace string
+	Account   string
 	// Audience the token must have been minted for.
 	Audience string
 	// Subjects that may recover, as the API server spells them.
@@ -78,16 +103,39 @@ var _ Recovery = (*TokenRecovery)(nil)
 // Kind implements [Recovery].
 func (t *TokenRecovery) Kind() string { return "token" }
 
-// Prompt implements [Recovery].
-func (t *TokenRecovery) Prompt() string {
-	account := "the recovery ServiceAccount"
-	if len(t.Subjects) == 1 {
-		if _, name, found := strings.Cut(strings.TrimPrefix(t.Subjects[0], "system:serviceaccount:"), ":"); found {
-			account = name
+// Prompt implements [Recovery]: the command that mints a proof, with this
+// installation's own names in it.
+func (t *TokenRecovery) Prompt() Prompt {
+	return Prompt{
+		Label:   "Recovery token",
+		Intro:   "Mint a short-lived token proving access to this cluster:",
+		Command: t.command(),
+		// The command is an instruction to produce a credential that
+		// grants operator here, printed on a page anyone may load. The
+		// names in it are not secrets and are useless without the RBAC to
+		// mint the token — but a person who *has* that RBAC could be
+		// talked into running it on somebody else's behalf, so the page
+		// says so plainly.
+		Caution: "This mints a credential that grants operator on this hub. " +
+			"Never run it because someone asked you to.",
+	}
+}
+
+func (t *TokenRecovery) command() string {
+	namespace, account := t.Namespace, t.Account
+	if namespace == "" {
+		namespace = "<namespace>"
+	}
+	if account == "" {
+		account = "<service-account>"
+		if len(t.Subjects) == 1 {
+			if _, name, found := strings.Cut(strings.TrimPrefix(t.Subjects[0], "system:serviceaccount:"), ":"); found {
+				account = name
+			}
 		}
 	}
-	return fmt.Sprintf("kubectl -n <namespace> create token %s --audience %s --duration 10m",
-		account, t.Audience)
+	return fmt.Sprintf("kubectl -n %s create token %s \\\n  --audience %s --duration 10m",
+		namespace, account, t.Audience)
 }
 
 // Verify implements [Recovery].
@@ -171,8 +219,12 @@ func NewPasswordRecovery(password string) *PasswordRecovery {
 func (p *PasswordRecovery) Kind() string { return "password" }
 
 // Prompt implements [Recovery].
-func (p *PasswordRecovery) Prompt() string {
-	return "the recovery password this hub printed when it started"
+func (p *PasswordRecovery) Prompt() Prompt {
+	return Prompt{
+		Label:   "Recovery password",
+		Intro:   "Present the password this hub printed when it started.",
+		Caution: "This grants operator on this hub. Never give it to anyone who asks for it.",
+	}
 }
 
 // Verify implements [Recovery].

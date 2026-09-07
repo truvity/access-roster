@@ -203,9 +203,11 @@ func openRecovery(ctx context.Context, cfg config, kept stores, log *slog.Logger
 	log.InfoContext(ctx, "recovery is by cluster access; nothing is stored",
 		"serviceAccount", cfg.recoveryAccount, "audience", cfg.recoveryAudience, "subject", subject)
 	return &server.TokenRecovery{
-		Review:   kept.reviewToken,
-		Audience: cfg.recoveryAudience,
-		Subjects: []string{subject},
+		Review:    kept.reviewToken,
+		Namespace: kept.namespace,
+		Account:   cfg.recoveryAccount,
+		Audience:  cfg.recoveryAudience,
+		Subjects:  []string{subject},
 	}, nil
 }
 
