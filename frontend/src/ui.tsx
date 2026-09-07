@@ -2,105 +2,187 @@ import type { ReactNode } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
+import Divider from "@mui/material/Divider";
 import LinearProgress from "@mui/material/LinearProgress";
 import Link from "@mui/material/Link";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-/** Whether a domain's answers may be acted on — the flag the whole design
- *  turns on, so it gets a shape of its own rather than a word in a cell. */
-export function Authority({ authoritative, conflict }: { authoritative: boolean; conflict?: boolean }) {
-  if (conflict) {
-    return (
-      <Tooltip title="Another workspace claims this domain too. It is authoritative for neither until one of them drops it.">
-        <Chip size="small" color="warning" variant="filled" label="conflict" />
-      </Tooltip>
-    );
-  }
-  if (authoritative) {
-    return (
-      <Tooltip title="The last probe succeeded, the snapshot is fresh and no one else claims this domain. Consumers may act on removals.">
-        <Chip size="small" color="success" variant="outlined" label="authoritative" />
-      </Tooltip>
-    );
-  }
-  return (
-    <Tooltip title="Answers about this domain are a hold, not a fact: consumers add but never remove.">
-      <Chip size="small" color="warning" variant="outlined" label="hold" />
-    </Tooltip>
-  );
-}
+/* The console's visual vocabulary. One meaning per form:
+ *   a name is a Link (monospace when it is an identifier),
+ *   a state is a Chip and nothing else is,
+ *   facts are a label/value grid,
+ *   two-column data is a list, tabular data is a table. */
 
-export function Loading({ busy }: { busy: boolean }) {
-  return <Box sx={{ height: 4 }}>{busy ? <LinearProgress /> : null}</Box>;
-}
-
-export function Failure({ error }: { error?: string }) {
-  if (!error) return null;
-  return (
-    <Alert severity="error" sx={{ my: 2 }}>
-      {error}
-    </Alert>
-  );
-}
-
-/** Every name in the console is a link to the page about that thing: it
- *  is what makes the chain from a directory group to an audience
- *  walkable in both directions. */
+/** Every name in the console is a link to the page about that thing. */
 export function Ref({ to, children, mono }: { to: string; children: ReactNode; mono?: boolean }) {
   return (
-    <Link
-      href={`#${to}`}
-      underline="hover"
-      sx={{ fontFamily: mono ? "monospace" : undefined, cursor: "pointer" }}
-    >
+    <Link href={`#${to}`} underline="hover" sx={{ fontFamily: mono ? "monospace" : undefined, fontSize: mono ? "0.85em" : undefined }}>
       {children}
     </Link>
   );
 }
 
-/** The one line at the top of every detail page: what this is, in plain
- *  language, before any table. */
-export function Summary({
-  title,
-  subtitle,
-  chips,
-  right,
+/** Several names in a sentence, separated rather than boxed. */
+export function Names({
+  items,
+  empty,
+  muted,
 }: {
-  title: ReactNode;
-  subtitle?: ReactNode;
-  chips?: ReactNode;
-  right?: ReactNode;
+  items: { label: string; to?: string; mono?: boolean; note?: string }[];
+  empty?: string;
+  muted?: boolean;
 }) {
+  if (items.length === 0) {
+    return empty ? (
+      <Typography component="span" variant="body2" color="text.secondary">
+        {empty}
+      </Typography>
+    ) : null;
+  }
   return (
-    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h6" sx={{ lineHeight: 1.2 }}>
-            {title}
-          </Typography>
-          {subtitle ? (
-            <Typography variant="body2" color="text.secondary">
-              {subtitle}
+    <Typography component="span" variant="body2" color={muted ? "text.secondary" : "text.primary"} sx={{ lineHeight: 1.8 }}>
+      {items.map((item, index) => (
+        <span key={item.label + index}>
+          {index > 0 ? <span style={{ opacity: 0.5 }}>, </span> : null}
+          {item.to ? (
+            <Ref to={item.to} mono={item.mono}>
+              {item.label}
+            </Ref>
+          ) : (
+            <span style={{ fontFamily: item.mono ? "monospace" : undefined, fontSize: item.mono ? "0.85em" : undefined }}>{item.label}</span>
+          )}
+          {item.note ? (
+            <Typography component="span" variant="caption" color="text.secondary">
+              {" "}
+              {item.note}
             </Typography>
           ) : null}
-        </Box>
-        {chips ? (
-          <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
-            {chips}
-          </Stack>
-        ) : null}
-        <Box sx={{ flexGrow: 1 }} />
-        {right}
-      </Stack>
-    </Paper>
+        </span>
+      ))}
+    </Typography>
   );
 }
 
-/** A titled block. Detail pages are a stack of these: edges first, raw
- *  detail last. */
+export type StateKind =
+  | "live"
+  | "suspended"
+  | "authoritative"
+  | "hold"
+  | "conflict"
+  | "declared"
+  | "console"
+  | "matcher"
+  | "unknown"
+  | "healthy"
+  | "failing"
+  | "configured"
+  | "unconfigured";
+
+const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
+  live: { label: "live", color: "success", title: "The directory reports this account as active." },
+  suspended: { label: "suspended", color: "warning", filled: true, title: "The directory says this account is not live. A consumer acts on that only when the answer is authoritative." },
+  authoritative: { label: "authoritative", color: "success", title: "The last probe succeeded, the snapshot is fresh and no one else claims this domain. Consumers may act on removals." },
+  hold: { label: "hold", color: "warning", title: "Answers about this are a hold, not a fact: consumers add but never remove." },
+  conflict: { label: "conflict", color: "warning", filled: true, title: "Another directory claims this domain too. It is authoritative for neither until one of them drops it." },
+  declared: { label: "declared", color: "secondary", title: "Declared by the deployment: change it in the values." },
+  console: { label: "console", color: "default", title: "Added in this console." },
+  matcher: { label: "matcher", color: "secondary", title: "Admits a proof by its shape rather than through a directory: a CI job, a workload, a verified sign-in. Declared only." },
+  unknown: { label: "not read by the hub", color: "default", title: "No connected directory has this account, so the hub cannot say whether it is live." },
+  healthy: { label: "healthy", color: "success", title: "The last probe succeeded." },
+  failing: { label: "failing", color: "warning", filled: true, title: "The last probe failed." },
+  configured: { label: "configured", color: "success", title: "" },
+  unconfigured: { label: "not configured", color: "warning", filled: true, title: "" },
+};
+
+/** The one thing a chip means here: a state. */
+export function State({ kind, title }: { kind: StateKind; title?: string }) {
+  const s = states[kind];
+  const chip = <Chip label={s.label} color={s.color} variant={s.filled ? "filled" : "outlined"} />;
+  const tip = title ?? s.title;
+  return tip ? <Tooltip title={tip}>{chip}</Tooltip> : chip;
+}
+
+/** Whether a domain's answers may be acted on. */
+export function Authority({ authoritative, conflict }: { authoritative: boolean; conflict?: boolean }) {
+  return <State kind={conflict ? "conflict" : authoritative ? "authoritative" : "hold"} />;
+}
+
+export type Fact = { label: string; value: ReactNode };
+
+/** Label over value, in a row. Metadata reads as metadata. */
+export function Facts({ items }: { items: Fact[] }) {
+  const shown = items.filter((item) => item.value !== undefined && item.value !== null && item.value !== "");
+  if (shown.length === 0) return null;
+  return (
+    <Stack direction="row" sx={{ flexWrap: "wrap", columnGap: 4, rowGap: 1.5 }}>
+      {shown.map((item) => (
+        <Box key={item.label} sx={{ minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
+            {item.label}
+          </Typography>
+          <Typography component="div" variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.75, minHeight: 22 }}>
+            {item.value}
+          </Typography>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+/** The top of every page: what this is, in one line and one sentence,
+ *  then its facts, then the actions that belong to it. */
+export function Page({
+  title,
+  mono,
+  lede,
+  facts,
+  actions,
+  children,
+}: {
+  title: ReactNode;
+  mono?: boolean;
+  lede?: ReactNode;
+  facts?: Fact[];
+  actions?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <Box>
+      <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 2, mb: facts?.length ? 2 : 3 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="h5" sx={{ fontFamily: mono ? "monospace" : undefined, wordBreak: "break-word" }}>
+            {title}
+          </Typography>
+          {lede ? (
+            <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 760 }}>
+              {lede}
+            </Typography>
+          ) : null}
+        </Box>
+        {actions ? (
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
+            {actions}
+          </Stack>
+        ) : null}
+      </Stack>
+      {facts?.length ? (
+        <Box sx={{ mb: 3 }}>
+          <Facts items={facts} />
+        </Box>
+      ) : null}
+      {children}
+    </Box>
+  );
+}
+
+/** A titled block. Pages are a stack of these, separated by type and
+ *  space rather than by a border each. */
 export function Section({
   title,
   hint,
@@ -108,17 +190,17 @@ export function Section({
   children,
 }: {
   title: string;
-  hint?: string;
+  hint?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <Box sx={{ mb: 3 }}>
-      <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+    <Box sx={{ mb: 4 }}>
+      <Stack direction="row" sx={{ alignItems: "flex-end", justifyContent: "space-between", gap: 2, mb: 1 }}>
         <Box>
-          <Typography variant="subtitle2">{title}</Typography>
+          <Typography variant="subtitle1">{title}</Typography>
           {hint ? (
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               {hint}
             </Typography>
           ) : null}
@@ -130,13 +212,79 @@ export function Section({
   );
 }
 
+/** Two-column data: a primary line, a secondary line, something on the
+ *  right. A list, because a table with an empty half is not a table. */
+export function Rows<T>({
+  items,
+  keyOf,
+  primary,
+  secondary,
+  right,
+  empty,
+}: {
+  items: T[];
+  keyOf: (item: T) => string;
+  primary: (item: T) => ReactNode;
+  secondary?: (item: T) => ReactNode;
+  right?: (item: T) => ReactNode;
+  empty: ReactNode;
+}) {
+  if (items.length === 0) return <Nothing>{empty}</Nothing>;
+  return (
+    <Paper variant="outlined">
+      <List disablePadding>
+        {items.map((item, index) => (
+          <Box key={keyOf(item)}>
+            {index > 0 ? <Divider component="li" /> : null}
+            <ListItem sx={{ py: 0.75, px: 1.5, gap: 2 }}>
+              <ListItemText
+                primary={primary(item)}
+                secondary={secondary ? secondary(item) : undefined}
+                slotProps={{ primary: { component: "div", variant: "body2" }, secondary: { component: "div", variant: "caption" } }}
+                sx={{ my: 0 }}
+              />
+              {right ? (
+                <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexShrink: 0, justifyContent: "flex-end", flexWrap: "wrap", rowGap: 0.5 }}>
+                  {right(item)}
+                </Stack>
+              ) : null}
+            </ListItem>
+          </Box>
+        ))}
+      </List>
+    </Paper>
+  );
+}
+
+export function Loading({ busy }: { busy: boolean }) {
+  return <Box sx={{ height: 3, mb: 1 }}>{busy ? <LinearProgress sx={{ height: 3 }} /> : null}</Box>;
+}
+
+export function Failure({ error }: { error?: string }) {
+  if (!error) return null;
+  return (
+    <Alert severity="error" sx={{ my: 2 }}>
+      {error}
+    </Alert>
+  );
+}
+
 /** An empty state says what to do next, never "no data". */
 export function Nothing({ children }: { children: ReactNode }) {
   return (
-    <Paper variant="outlined" sx={{ p: 2 }}>
+    <Box sx={{ px: 1.5, py: 1.25, borderRadius: 1, bgcolor: "action.hover" }}>
       <Typography variant="body2" color="text.secondary">
         {children}
       </Typography>
-    </Paper>
+    </Box>
+  );
+}
+
+/** Monospace inline, for an identifier that is not a link. */
+export function Mono({ children }: { children: ReactNode }) {
+  return (
+    <Box component="span" sx={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+      {children}
+    </Box>
   );
 }

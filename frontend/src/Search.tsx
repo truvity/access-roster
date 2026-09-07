@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
-import Chip from "@mui/material/Chip";
 import InputBase from "@mui/material/InputBase";
 import ListItemButton from "@mui/material/ListItemButton";
 import Paper from "@mui/material/Paper";
@@ -112,15 +111,15 @@ export function Search() {
   };
 
   return (
-    <Box sx={{ position: "relative", minWidth: { xs: 200, sm: 380 } }}>
+    <Box sx={{ position: "relative", minWidth: { xs: 180, sm: 420 } }}>
       <Paper
         variant="outlined"
-        sx={{ px: 1.5, py: 0.5, display: "flex", alignItems: "center", gap: 1 }}
+        sx={{ px: 1.5, py: 0.25, display: "flex", alignItems: "center", gap: 1, bgcolor: "background.default" }}
         ref={setAnchor}
       >
         <InputBase
           fullWidth
-          placeholder="Search a person, group or client"
+          placeholder="Search people, groups, clients, directories"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
@@ -146,7 +145,9 @@ export function Search() {
                     </Typography>
                   ) : null}
                 </Box>
-                <Chip size="small" variant="outlined" label={hit.kind} />
+                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                  {hit.kind}
+                </Typography>
               </Stack>
             </ListItemButton>
           ))}
