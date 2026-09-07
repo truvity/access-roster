@@ -43,7 +43,10 @@ repository, not the order it arrived in.
   guidance for a console: a navigation rail with the two sides as groups
   and a header kept for search and identity, a denser lowercase theme,
   and one meaning per form — names are links, chips are states, facts are
-  a label over a value, and two-column data is a list.
+  a label over a value, and two-column data is a list. The account sits at
+  the foot of the rail with your name linking to your own page, which
+  also says how you signed in; detail pages split into a main column and
+  an aside on wide windows, so a person's chain fits a screen.
 - **A demonstration mode** (`DEMO=1`): two tenants in memory and a
   consent connector, so every use-case is walkable before a credential
   exists.

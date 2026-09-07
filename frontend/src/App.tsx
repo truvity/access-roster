@@ -11,6 +11,8 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -20,6 +22,7 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import DomainIcon from "@mui/icons-material/Domain";
 import GroupsIcon from "@mui/icons-material/Groups";
 import MenuIcon from "@mui/icons-material/Menu";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import PeopleIcon from "@mui/icons-material/People";
 import SettingsIcon from "@mui/icons-material/Settings";
 import ShieldIcon from "@mui/icons-material/Shield";
@@ -63,6 +66,7 @@ export function App() {
   const me = useAsync<Me>(whoami, []);
   const [banner, setBanner] = useState<string | undefined>();
   const [open, setOpen] = useState(false);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
   const theme = useTheme();
   const wide = useMediaQuery(theme.breakpoints.up("md"));
 
@@ -100,6 +104,46 @@ export function App() {
       <List dense disablePadding sx={{ py: 1 }}>
         <NavItem item={{ value: "settings", label: "Settings", to: paths.settings(), icon: <SettingsIcon fontSize="small" /> }} current={route.view} onPick={() => setOpen(false)} />
       </List>
+      <Divider />
+      {identityInfo?.status === "signed-in" ? (
+        <Stack direction="row" sx={{ alignItems: "center", gap: 1, px: 2, py: 1.5 }}>
+          <Box sx={{ minWidth: 0, flexGrow: 1, lineHeight: 1.2 }}>
+            <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+              <a href={`#${paths.person(identityInfo.email ?? "")}`} style={{ color: "inherit", textDecoration: "none" }} onClick={() => setOpen(false)}>
+                {identityInfo.name || identityInfo.email}
+              </a>
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", wordBreak: "break-all", lineHeight: 1.3 }}>
+              {roles.length ? roles[0] : "no access"}
+              {identityInfo.email && identityInfo.email !== (identityInfo.name || identityInfo.email) ? ` · ${identityInfo.email}` : ""}
+            </Typography>
+          </Box>
+          <IconButton size="small" aria-label="account menu" onClick={(e) => setMenu(e.currentTarget)}>
+            <MoreHorizIcon fontSize="small" />
+          </IconButton>
+          <Menu anchorEl={menu} open={Boolean(menu)} onClose={() => setMenu(null)} anchorOrigin={{ vertical: "top", horizontal: "right" }} transformOrigin={{ vertical: "bottom", horizontal: "right" }}>
+            <MenuItem
+              component="a"
+              href={`#${paths.person(identityInfo.email ?? "")}`}
+              onClick={() => {
+                setMenu(null);
+                setOpen(false);
+              }}
+            >
+              Your page
+            </MenuItem>
+            <MenuItem component="a" href={identityInfo.signOutUrl ?? "/logout"} onClick={signOut}>
+              Sign out
+            </MenuItem>
+          </Menu>
+        </Stack>
+      ) : (
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Button size="small" variant="contained" href="/login" fullWidth>
+            Sign in
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 
@@ -140,30 +184,9 @@ export function App() {
             </IconButton>
           ) : null}
           <Search />
-          <Box sx={{ flexGrow: 1 }} />
-          {identityInfo?.status === "signed-in" ? (
-            <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-              <Box sx={{ textAlign: "right", lineHeight: 1.15 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {identityInfo.name || identityInfo.email}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {roles.length ? roles[0] : "no access"}
-                  {identityInfo.name && identityInfo.name !== identityInfo.email ? ` · ${identityInfo.email}` : ""}
-                </Typography>
-              </Box>
-              <Button size="small" href={identityInfo.signOutUrl ?? "/logout"} onClick={signOut}>
-                Sign out
-              </Button>
-            </Stack>
-          ) : (
-            <Button size="small" variant="contained" href="/login">
-              Sign in
-            </Button>
-          )}
         </Box>
 
-        <Container maxWidth="lg" sx={{ py: 3.5, px: { xs: 2, md: 4 } }}>
+        <Container maxWidth="xl" sx={{ py: 3.5, px: { xs: 2, md: 4 } }}>
           {identityInfo?.status === "signed-in" && roles.length === 0 ? (
             <Alert severity="warning" sx={{ mb: 2 }}>
               You are signed in as {identityInfo.email}, and no internal group grants you access. An operator
@@ -213,7 +236,7 @@ function PageFor({
     case "directory-groups":
       return id ? <DirectoryGroup email={id} operator={operator} onDone={onDone} /> : <DirectoryGroups />;
     case "people":
-      return id ? <Person email={id} /> : <People />;
+      return id ? <Person email={id} me={me} /> : <People />;
     case "matchers":
       return <Matchers />;
     case "groups":
@@ -229,7 +252,7 @@ function PageFor({
 
 /** Sign-out is a POST: a link that logs you out would be a link anyone
  *  could put in a page. */
-function signOut(event: React.MouseEvent<HTMLAnchorElement>) {
+function signOut(event: React.MouseEvent<HTMLElement>) {
   event.preventDefault();
   const url = event.currentTarget.getAttribute("href") ?? "/logout";
   void fetch(url, { method: "POST" }).then(() => {

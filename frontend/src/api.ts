@@ -79,6 +79,22 @@ export function adds(claims?: Record<string, unknown>): string {
   return parts.length ? `adds ${parts.join(" and ")}` : "adds only its own name to a token";
 }
 
+/** How the caller was established, in words. */
+export function sourceName(source?: string): string | undefined {
+  switch (source) {
+    case "forwarded":
+      return "forwarded by the gateway";
+    case "directory":
+      return "directory sign-in";
+    case "oidc":
+      return "OIDC sign-in";
+    case "admin":
+      return "break-glass admin";
+    default:
+      return source || undefined;
+  }
+}
+
 /** A matcher's kind, in words. */
 export function matcherKind(kind: string): string {
   switch (kind) {

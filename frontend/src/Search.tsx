@@ -111,7 +111,7 @@ export function Search() {
   };
 
   return (
-    <Box sx={{ position: "relative", minWidth: { xs: 180, sm: 420 } }}>
+    <Box sx={{ position: "relative", flexGrow: 1, maxWidth: 640, minWidth: { xs: 180, sm: 360 } }}>
       <Paper
         variant="outlined"
         sx={{ px: 1.5, py: 0.25, display: "flex", alignItems: "center", gap: 1, bgcolor: "background.default" }}

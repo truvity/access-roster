@@ -101,6 +101,15 @@ export function Client({ id }: { id: string }) {
         { label: "Token cap", value: client.ttlCap ? forHowLong(client.ttlCap) : "none" },
         { label: "Secret, as a Kubernetes Secret name", value: client.secret ? <Mono>{client.secret}</Mono> : undefined },
       ]}
+      aside={
+        <>
+      {client.redirects.length ? (
+        <Section title="Redirects">
+          <Rows items={client.redirects} keyOf={(uri) => uri} primary={(uri) => <Box sx={{ wordBreak: "break-all" }}><Mono>{uri}</Mono></Box>} empty="" />
+        </Section>
+      ) : null}
+        </>
+      }
     >
       <Loading busy={policy.loading || holders.loading} />
       <Failure error={policy.error ?? holders.error} />
@@ -117,12 +126,6 @@ export function Client({ id }: { id: string }) {
           empty="It requires no group, so nobody is admitted."
         />
       </Section>
-
-      {client.redirects.length ? (
-        <Section title="Redirects">
-          <Rows items={client.redirects} keyOf={(uri) => uri} primary={(uri) => <Mono>{uri}</Mono>} empty="" />
-        </Section>
-      ) : null}
 
       <Section title="People who reach it now" hint={`resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}>
         <Rows

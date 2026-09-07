@@ -293,6 +293,19 @@ export function Directory({ id, operator, onDone }: { id: string; operator: bool
         { label: "Snapshot", value: ago(at(tenant.snapshotAt)) },
         { label: "Origin", value: tenant.declared ? <State kind="declared" /> : "connected here" },
       ]}
+      aside={
+        <>
+      <Section title="Domains" hint="discovered from the directory and re-read on every probe">
+        <Rows
+          items={tenant.domains}
+          keyOf={(d) => d.name}
+          primary={(d) => d.name}
+          right={(d) => <Authority authoritative={d.authoritative} conflict={d.conflict} />}
+          empty="None discovered yet. Probe once the credential works."
+        />
+      </Section>
+        </>
+      }
       actions={
         <>
           <Button size="small" disabled={!operator || busy} onClick={() => void act(() => workspaces.probe({ workspaceId: tenant.id }), "Probed.")}>
@@ -332,16 +345,6 @@ export function Directory({ id, operator, onDone }: { id: string; operator: bool
     >
       <Loading busy={busy || list.loading || groups.loading || accounts.loading} />
       <Failure error={failure ?? groups.error ?? accounts.error} />
-
-      <Section title="Domains" hint="discovered from the directory and re-read on every probe">
-        <Rows
-          items={tenant.domains}
-          keyOf={(d) => d.name}
-          primary={(d) => d.name}
-          right={(d) => <Authority authoritative={d.authoritative} conflict={d.conflict} />}
-          empty="None discovered yet. Probe once the credential works."
-        />
-      </Section>
 
       <Section title="Directory groups it contributes" hint="what a membership can attach to an internal group">
         <Rows

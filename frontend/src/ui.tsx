@@ -115,12 +115,13 @@ export function Authority({ authoritative, conflict }: { authoritative: boolean;
 
 export type Fact = { label: string; value: ReactNode };
 
-/** Label over value, in a row. Metadata reads as metadata. */
-export function Facts({ items }: { items: Fact[] }) {
+/** Label over value, in a row — or stacked, in an aside. Metadata reads
+ *  as metadata. */
+export function Facts({ items, stacked }: { items: Fact[]; stacked?: boolean }) {
   const shown = items.filter((item) => item.value !== undefined && item.value !== null && item.value !== "");
   if (shown.length === 0) return null;
   return (
-    <Stack direction="row" sx={{ flexWrap: "wrap", columnGap: 4, rowGap: 1.5 }}>
+    <Stack direction={stacked ? "column" : "row"} sx={{ flexWrap: "wrap", columnGap: 4, rowGap: stacked ? 1.75 : 1.5 }}>
       {shown.map((item) => (
         <Box key={item.label} sx={{ minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
@@ -136,13 +137,19 @@ export function Facts({ items }: { items: Fact[] }) {
 }
 
 /** The top of every page: what this is, in one line and one sentence,
- *  then its facts, then the actions that belong to it. */
+ *  then its facts, then the actions that belong to it.
+ *
+ *  A detail page splits on a wide window: the main column carries the
+ *  edges, the aside carries the facts and the reference material that
+ *  would otherwise push the edges down. On a narrow window the aside
+ *  follows the main column. */
 export function Page({
   title,
   mono,
   lede,
   facts,
   actions,
+  aside,
   children,
 }: {
   title: ReactNode;
@@ -150,8 +157,43 @@ export function Page({
   lede?: ReactNode;
   facts?: Fact[];
   actions?: ReactNode;
+  aside?: ReactNode;
   children?: ReactNode;
 }) {
+  if (aside !== undefined) {
+    return (
+      <Box>
+        <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 2, mb: 3 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h5" sx={{ fontFamily: mono ? "monospace" : undefined, wordBreak: "break-word" }}>
+              {title}
+            </Typography>
+            {lede ? (
+              <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5, maxWidth: 760 }}>
+                {lede}
+              </Typography>
+            ) : null}
+          </Box>
+          {actions ? (
+            <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
+              {actions}
+            </Stack>
+          ) : null}
+        </Stack>
+        <Box sx={{ display: { xs: "block", lg: "grid" }, gridTemplateColumns: "minmax(0, 1fr) 300px", columnGap: 5, alignItems: "start" }}>
+          <Box sx={{ minWidth: 0 }}>{children}</Box>
+          <Box sx={{ position: { lg: "sticky" }, top: 76, pl: { lg: 4 }, borderLeft: { lg: 1 }, borderColor: { lg: "divider" } }}>
+            {facts?.length ? (
+              <Box sx={{ mb: 3 }}>
+                <Facts items={facts} stacked />
+              </Box>
+            ) : null}
+            {aside}
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
   return (
     <Box>
       <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 2, mb: facts?.length ? 2 : 3 }}>

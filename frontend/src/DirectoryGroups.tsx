@@ -149,6 +149,7 @@ export function DirectoryGroup({
             ]
           : []
       }
+      aside={null}
     >
       <Loading busy={group.loading || policy.loading} />
       <Failure error={failure ?? policy.error} />
