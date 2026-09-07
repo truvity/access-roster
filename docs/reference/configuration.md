@@ -28,6 +28,7 @@ external-secrets is at the end of this page.
 | `valkey.address` | `""` | host:port of the snapshot cache; empty selects the in-memory backend |
 | `valkey.passwordSecret.name` / `.key` | `""` / `password` | optional Secret with the password |
 | `valkey.tls` | `false` | |
+| `valkey.cluster` | `true` | speak the cluster protocol; the fleet's Valkeys are ValkeyClusters even at one shard. A plain single server needs `false`, and a mismatch is refused at start |
 | `freshness.refreshInterval` | `15m` | how often the refresher takes a new snapshot per workspace |
 | `freshness.freshnessWindow` | `30m` | how old a snapshot may be before its domains stop being authoritative |
 | `freshness.probeInterval` | `5m` | how often a credential is probed and the domain list re-read |
@@ -187,7 +188,7 @@ from the values above.
 | `RELEASE_NAME` | the chart's full name, which prefixes every object the hub writes |
 | `API_PORT`, `CONSOLE_PORT`, `HEALTH_PORT` | `listeners.*` |
 | `REFRESH_INTERVAL`, `FRESHNESS_WINDOW`, `PROBE_INTERVAL` | `freshness.*` |
-| `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_PASSWORD` | `valkey.*` (absent = in-memory) |
+| `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_CLUSTER`, `VALKEY_PASSWORD` | `valkey.*` (no address = in-memory snapshots, which is correct for one replica and wasteful for more) |
 | `OAUTH_CLIENT_SECRET_NAME` | `oauthClient.existingSecret` |
 | `OVERLAY_FILE` | set when `workspaces` is non-empty |
 | `POLICY_DIR` | the directory the declared layer is mounted in; every YAML file in it merges |

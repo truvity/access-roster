@@ -37,6 +37,13 @@ repository, not the order it arrived in.
   always sets `kubernetes`. At start, a declaration removed from the
   values takes its record with it, and a credential that cannot be read
   leaves one workspace unhealthy rather than stopping the hub.
+- **Snapshots shared across replicas**, in Valkey: one copy of each
+  directory, gzipped, with the reverse index rebuilt on read rather than
+  stored. The refresh lease is held for the whole interval rather than for
+  the work, so replicas that tick at different moments still read a
+  directory once per interval — a quota is per tenant, not per reader —
+  while a failed pass hands its lease straight back. No address configured
+  keeps snapshots in memory, which the hub says at start.
 - **The policy** (`docs/reference/policy.md`): five tables — groups,
   claims, lifetimes, clients, memberships — one schema for both services,
   deep merge with a load-time scalar-conflict check, shortest lifetime,

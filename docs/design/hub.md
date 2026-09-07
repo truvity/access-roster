@@ -161,8 +161,23 @@ to run one. With a shared cache, replicas answer from the same snapshot,
 a restart is warm, and the backend is read once per interval regardless of
 replica count. An in-memory backend exists for development and a single
 replica; a production installation with more than one replica needs
-Valkey. Valkey holds only snapshots and locks — losing it costs one fetch
+Valkey. Valkey holds only snapshots and leases — losing it costs one fetch
 per workspace, never a credential.
+
+The lease is what makes "once per interval" true, and it is **held for the
+interval, not for the work**. Replicas do not tick together: a lease let go
+when a refresh finished would simply be taken by the replica whose turn
+came four minutes later, which would read the same directory again — and a
+directory's API quota is per tenant, not per reader. So a successful pass
+leaves its lease to expire, and only a failed pass hands one straight back,
+because then somebody else should try. None of it applies to a refresh
+somebody asked for: an operator pressing Refresh, or a caller passing
+`max_age=0`, is asking for a read now.
+
+A snapshot is stored gzipped, and the reverse index from a person to their
+groups is rebuilt on read rather than written — it is derived from the
+memberships, so storing it would double the payload and make a copy that
+could disagree with them.
 
 ## Connecting a workspace
 
@@ -240,8 +255,8 @@ The objects — a ConfigMap and a Secret per workspace, the OAuth client,
 the session key, the admin password, console-added memberships, the
 declared overlay — are listed once, in
 [reference/configuration.md](../reference/configuration.md#kubernetes-objects-the-hub-owns).
-Valkey holds snapshots, refresh locks and the short negative cache, never
-a credential.
+Valkey holds snapshots, refresh leases and the short negative cache,
+never a credential.
 
 A workspace is two objects because the record and the credential have
 different readers: the record is what the console shows, the credential is
