@@ -44,6 +44,13 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **The break-glass password** is kept as an Argon2id digest with a random
+  salt rather than a bare hash, verifications are serialised, and the
+  account stops answering for a minute after ten failures — the correct
+  password included, so the limit says nothing about which guess was
+  close. The forwarded identity header is now required to be an address
+  before it is taken as a principal; the consent cookie is cleared with
+  the same attributes it was set with.
 - **The policy** (`docs/reference/policy.md`): five tables — groups,
   claims, lifetimes, clients, memberships — one schema for both services,
   deep merge with a load-time scalar-conflict check, shortest lifetime,

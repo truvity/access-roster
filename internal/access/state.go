@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,31 @@ const ConnectCookieName = "access_roster_connect"
 
 // ErrBadState is returned for a state that is forged, stale or malformed.
 var ErrBadState = errors.New("access: state is not valid")
+
+// ConnectCookie builds the consent flow's state cookie, and — with an
+// empty value — the one that clears it.
+//
+// Both come from here because they were built in two places and drifted:
+// the cookie was set Secure and cleared without it. Attributes are not
+// part of a cookie's identity, so the clearing still worked, but a
+// browser being asked to store a cookie over plain HTTP on a site that
+// only ever speaks HTTPS is the kind of difference that stops being
+// harmless the moment someone copies it.
+func ConnectCookie(value string, secure bool, ttl time.Duration) *http.Cookie {
+	cookie := &http.Cookie{
+		Name:     ConnectCookieName,
+		Value:    value,
+		Path:     "/",
+		MaxAge:   int(ttl.Seconds()),
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	}
+	if value == "" {
+		cookie.MaxAge = -1
+	}
+	return cookie
+}
 
 // StateCodec signs the opaque state an OAuth flow carries. It keeps
 // nothing: the state is its own record, and the cookie beside it is what

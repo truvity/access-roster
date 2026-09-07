@@ -46,6 +46,9 @@ sign-in is what is broken:
   the deployment, then as above. The password is still in `<release>-admin`.
 - **forgotten password:** delete `Secret <release>-admin`; the hub generates a
   new one on restart.
+- **`429 too many attempts`:** ten wrong passwords stop the account
+  answering for a minute — the correct one included, so that the limit is
+  not a hint about which guess was close. Wait, then try once.
 
 Sessions are stateless signed cookies. To log everyone out at once,
 delete `Secret <release>-session-key`; the hub generates a new one on restart.
