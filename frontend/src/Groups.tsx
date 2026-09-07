@@ -212,7 +212,7 @@ export function Group({
             </>
           )}
           empty={
-            group.matchers.length ? "Nobody. Only machines can be in it, through the matchers above." : "Nobody. Attaching a directory group above is what changes that."
+            group.matchers.length ? "Nobody by membership. Only what the matchers above admit is in it." : "Nobody. Attaching a directory group above is what changes that."
           }
         />
       </Section>

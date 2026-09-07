@@ -196,6 +196,8 @@ message PolicyGroup {
   repeated GroupMember members = 2;
   // matchers rendered for a person to read.
   repeated string matchers = 3;
+  // rules are the same matchers, structured: the machine side's roster.
+  repeated PolicyMatcher rules = 6;
   // what this group adds to a token.
   google.protobuf.Struct claims = 4;
   // how long a token lives for someone in this group alone.
@@ -205,6 +207,16 @@ message PolicyGroup {
 // PolicyClient is one declared client as the console shows it. A
 // confidential client names the Secret holding its secret; the secret
 // itself never leaves the namespace.
+// PolicyMatcher is one declared rule that admits a proof by its shape
+// rather than through a directory. Always declared: never written here.
+message PolicyMatcher {
+  // kind is ci, workload or sign-in.
+  string kind = 1;
+  // rule is the pattern, in words: "repository example-org/gitops, ref
+  // refs/heads/master", "identity-system/authorization-webhook".
+  string rule = 2;
+}
+
 message PolicyClient {
   string id = 1;
   string kind = 2;
@@ -283,6 +295,14 @@ message SearchPeopleRequest {
   // workspace_id restricts the search to one tenant's accounts, which is
   // what a tenant's page lists. Empty searches every tenant.
   string workspace_id = 3;
+  // account restricts by state, so a review can list the suspended.
+  AccountFilter account = 4;
+}
+
+enum AccountFilter {
+  ACCOUNT_FILTER_UNSPECIFIED = 0;
+  ACCOUNT_FILTER_LIVE = 1;
+  ACCOUNT_FILTER_SUSPENDED = 2;
 }
 
 // PersonSummary is one account as a search result shows it.

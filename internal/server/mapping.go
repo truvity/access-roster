@@ -175,6 +175,9 @@ func policyGroupProto(view *policy.GroupView) (*directoryrosterv1.PolicyGroup, e
 			Layer:   member.Layer,
 		})
 	}
+	for _, rule := range view.Rules {
+		out.Rules = append(out.Rules, &directoryrosterv1.PolicyMatcher{Kind: rule.Kind, Rule: rule.Rule})
+	}
 	return out, nil
 }
 

@@ -208,6 +208,37 @@ func (m Matcher) Describe() string {
 	}
 }
 
+// Kind names what a matcher admits: ci, workload or sign-in.
+func (m Matcher) Kind() string {
+	switch {
+	case m.GitHub != nil:
+		return "ci"
+	case m.ServiceAccount != nil:
+		return "workload"
+	case m.Email != "", m.EmailDomain != "":
+		return "sign-in"
+	default:
+		return ""
+	}
+}
+
+// Rule is the pattern alone, without the kind: what a reviewer compares
+// against the thing that presented itself.
+func (m Matcher) Rule() string {
+	switch {
+	case m.GitHub != nil:
+		return strings.TrimPrefix(m.Describe(), "CI job with ")
+	case m.ServiceAccount != nil:
+		return m.ServiceAccount.Namespace + "/" + m.ServiceAccount.Name
+	case m.Email != "":
+		return m.Email
+	case m.EmailDomain != "":
+		return "anyone at " + m.EmailDomain
+	default:
+		return ""
+	}
+}
+
 // matches reports whether a proof satisfies the matcher.
 func (m Matcher) matches(in Input) bool {
 	switch {

@@ -567,10 +567,17 @@ func (c *Console) SearchPeople(
 	if limit <= 0 {
 		limit = 20
 	}
-	people, truncated, err := c.deps.Hub.People(ctx, hub.PeopleQuery{
-		Text:      req.Msg.GetQuery(),
-		Workspace: req.Msg.GetWorkspaceId(),
-	}, limit)
+	query := hub.PeopleQuery{Text: req.Msg.GetQuery(), Workspace: req.Msg.GetWorkspaceId()}
+	switch req.Msg.GetAccount() {
+	case directoryrosterv1.AccountFilter_ACCOUNT_FILTER_LIVE:
+		live := true
+		query.Live = &live
+	case directoryrosterv1.AccountFilter_ACCOUNT_FILTER_SUSPENDED:
+		live := false
+		query.Live = &live
+	case directoryrosterv1.AccountFilter_ACCOUNT_FILTER_UNSPECIFIED:
+	}
+	people, truncated, err := c.deps.Hub.People(ctx, query, limit)
 	if err != nil {
 		return nil, rpcError(err)
 	}

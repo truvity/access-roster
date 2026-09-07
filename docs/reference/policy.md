@@ -170,7 +170,7 @@ that would result, so the file is reviewed like code.
 The console does it live against the policy in force. Search for a
 person and their page shows the internal groups, what put them in each,
 the merged claims, the lifetime, and every client with whether they reach
-it; Machines answers the same for a CI job or a workload. From the other
+it; Matchers lists every rule and answers the same for a CI job or a workload. From the other
 end, a group's page and a client's page list the people who hold them
 right now, which is the question an access review asks and the one this
 file cannot answer alone: the file says which directory groups count, and

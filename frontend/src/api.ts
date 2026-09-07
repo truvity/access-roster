@@ -79,6 +79,20 @@ export function adds(claims?: Record<string, unknown>): string {
   return parts.length ? `adds ${parts.join(" and ")}` : "adds only its own name to a token";
 }
 
+/** A matcher's kind, in words. */
+export function matcherKind(kind: string): string {
+  switch (kind) {
+    case "ci":
+      return "CI job";
+    case "workload":
+      return "workload";
+    case "sign-in":
+      return "sign-in";
+    default:
+      return kind;
+  }
+}
+
 /** A person's name as the directory has it, or their address. */
 export function personName(given?: string, family?: string, email?: string): string {
   const name = [given, family].filter(Boolean).join(" ");
