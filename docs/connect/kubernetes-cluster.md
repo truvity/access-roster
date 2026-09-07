@@ -42,9 +42,12 @@ users:
 
 ## Job side
 
-`truvity/access-roster/actions/exchange` with `audiences: k8s:<cluster>`
-writes a kubeconfig whose exec plugin re-exchanges the job's token when
-needed. Rules on repository and ref decide which jobs may.
+The API server trusts one issuer, access-issuer, so a job's GitHub token is
+never presented to it. `truvity/access-roster/actions/exchange` with
+`audiences: k8s:<cluster>` exchanges the job's token at the issuer and
+writes a kubeconfig with the resulting token; rules on repository and ref
+decide which jobs may. The token's lifetime is the issuer's CI client
+setting; a step that outlives it re-runs the action.
 
 ## Break-glass
 

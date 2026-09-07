@@ -24,8 +24,8 @@ applies rules.
 | **access-proxy** — chart | the proxy in front of a console: login against the issuer, sessions, forwarded bearer, two postures | you put a web UI behind the gateway |
 | **Go module** `github.com/truvity/access-roster` | `identity` (who is calling, from a forwarded bearer or a ServiceAccount token) with net/http, fiber v3, gRPC and connect adapters; `directory` client with the authoritative rule built in; `tokens` for exchange and refresh; `rules` | you write a service or a console in Go |
 | **TypeScript package** `access-roster` | `useIdentity()` and the `UserBadge`, fed by the standard `/.access/whoami` every Go adapter serves | you write a console UI |
-| **accessctl** — CLI | `login`, `aws` as a credential process, `kube-token` as a kubeconfig exec plugin, `kubeconfig` and `aws-config` to write the files for everything you are granted, `exchange`, `whoami`. Works for a person on a laptop and as the exec plugin inside a CI job | a person needs cloud credentials or kubectl; a job needs the same |
-| **GitHub Action** `truvity/access-roster/actions/exchange` | exchanges the job's identity token for the audiences its rules allow, writes the kubeconfig and the cloud credentials | a workflow deploys |
+| **accessctl** — CLI | `login`, `aws` as a credential process, `kube-token` as a kubeconfig exec plugin, `kubeconfig` and `aws-config` to write the files for everything you are granted, `exchange`, `whoami`. For people; machines never run it | a person needs cloud credentials or kubectl |
+| **GitHub Action** `truvity/access-roster/actions/exchange` | shell only: exchanges the job's identity token at the issuer for the audiences its rules allow, writes the kubeconfig and the cloud profile | a workflow deploys to a cluster or a cloud account |
 | **the rules file** | subject → grant, once, versioned, tested. The only place where "who may do what" is written | always |
 
 ## I want to…
