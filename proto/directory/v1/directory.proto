@@ -1,0 +1,202 @@
+syntax = "proto3";
+
+// Package directory.v1 is the directory contract: liveness and flat group
+// membership for the corporate directories an installation owns.
+// google-group-sync was the first server behind it; directory-roster serves
+// it for every connected workspace at once, routed by email domain.
+// Consumers (a team-sync service, an authorization webhook) hold no
+// directory credential — only this endpoint.
+//
+// Compatibility: every field added since google-group-sync is ADDITIVE.
+// A client generated from the older file keeps working; it simply does not
+// see `authoritative`, `snapshot_at` or `max_age`, and is served as if
+// `max_age` were omitted.
+package directory.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// DirectoryService answers three questions about a directory: is it
+// healthy, who is in a group, and what is an account's standing.
+//
+// Freshness. Every read is answered from a per-workspace snapshot and says
+// which one (`snapshot_at`). `max_age` on a request means "no older than
+// this": omitted serves the current snapshot, a value makes the snapshot
+// fresher first when it is older, zero fetches now. When the fetch fails
+// the stale snapshot is served with authoritative=false — never an error,
+// never "gone".
+service DirectoryService {
+  // Describe returns the served domains and backend identity. A consumer
+  // uses the domains to decide which addresses this directory vouches for,
+  // and `served` to learn which of them are authoritative right now.
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+
+  // Probe exercises the credential against the backend (the health
+  // canary). A healthy Probe means reads are working right now.
+  rpc Probe(ProbeRequest) returns (ProbeResponse);
+
+  // GetGroup returns a group's flat membership. Nested groups are NOT
+  // expanded. found=false means the directory returned not-found for a
+  // group in a served domain (an absent group — fail-safe: suppress its
+  // removals), distinct from an RPC error (could not read at all).
+  rpc GetGroup(GetGroupRequest) returns (GetGroupResponse);
+
+  // ListGroups returns every group with its flat members. For pickers and
+  // for a consumer's whole-directory view.
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+
+  // GetAccount returns one account's standing. See Account for the
+  // in-domain vs out-of-domain semantics that the fail-safe depends on.
+  rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+
+  // ResolveAccounts is GetAccount for many addresses in one call.
+  rpc ResolveAccounts(ResolveAccountsRequest) returns (ResolveAccountsResponse);
+
+  // ResolveUser returns the groups an account belongs to plus its
+  // suspension signal — the grant-decision call an authorization webhook
+  // makes at login.
+  rpc ResolveUser(ResolveUserRequest) returns (ResolveUserResponse);
+}
+
+message DescribeRequest {}
+message DescribeResponse {
+  // domains this directory serves (vouches for suspension of).
+  repeated string domains = 1;
+  // backend identifier, e.g. "google-workspace". With several workspaces
+  // behind one hub this is the hub's own identifier; per-domain backends
+  // are in `served`.
+  string backend = 2;
+  // one entry per served domain, with its authority and origin.
+  repeated ServedDomain served = 3;
+}
+
+// ServedDomain is one domain the hub routes, and whether it may be
+// trusted for removals right now.
+message ServedDomain {
+  string name = 1;
+  // true when the serving workspace's last probe succeeded within the
+  // freshness window and no other workspace claims this domain.
+  bool authoritative = 2;
+  // the backend's tenant identifier of the serving workspace.
+  string workspace_id = 3;
+  // backend identifier of the serving workspace, e.g. "google-workspace".
+  string backend = 4;
+  // when the serving workspace's snapshot was taken.
+  google.protobuf.Timestamp snapshot_at = 5;
+}
+
+message ProbeRequest {
+  // empty probes every workspace; set, only that one.
+  string workspace_id = 1;
+}
+message ProbeResponse {
+  // true when every probed workspace is healthy.
+  bool healthy = 1;
+  // detail carries the failure reason when healthy=false.
+  string detail = 2;
+  // one entry per probed workspace.
+  repeated WorkspaceHealth workspaces = 3;
+}
+
+message WorkspaceHealth {
+  string workspace_id = 1;
+  bool healthy = 2;
+  string detail = 3;
+  google.protobuf.Timestamp probed_at = 4;
+}
+
+message GetGroupRequest {
+  string email = 1;
+  google.protobuf.Duration max_age = 2;
+}
+message GetGroupResponse {
+  Group group = 1;
+  // false when the directory reported the group not-found (absent group).
+  bool found = 2;
+  // authority of the group's domain at answer time.
+  bool authoritative = 3;
+  google.protobuf.Timestamp snapshot_at = 4;
+}
+
+message ListGroupsRequest {
+  // empty lists the union of every served domain; set, only that domain.
+  string domain = 1;
+  google.protobuf.Duration max_age = 2;
+}
+message ListGroupsResponse {
+  repeated Group groups = 1;
+  // the domains the listing covers, with their authority and snapshot age.
+  repeated ServedDomain served = 2;
+}
+
+message Group {
+  string email = 1;
+  // flat member addresses; nested groups are not expanded.
+  repeated string members = 2;
+  // the domain the group belongs to (its workspace's).
+  string domain = 3;
+}
+
+message GetAccountRequest {
+  string email = 1;
+  google.protobuf.Duration max_age = 2;
+}
+message GetAccountResponse {
+  Account account = 1;
+  google.protobuf.Timestamp snapshot_at = 2;
+}
+
+message ResolveAccountsRequest {
+  repeated string emails = 1;
+  google.protobuf.Duration max_age = 2;
+}
+message ResolveAccountsResponse {
+  // one entry per requested address, same order.
+  repeated Account accounts = 1;
+  // the oldest snapshot any answer came from.
+  google.protobuf.Timestamp snapshot_at = 2;
+}
+
+// Account is one address's standing IN THIS DIRECTORY.
+//
+//   in_domain=true,  found=true,  live=true   → a live account.
+//   in_domain=true,  found=true,  live=false  → suspended: gone for the
+//                                               orgs this account governs.
+//   in_domain=true,  found=false               → deleted/absent: also gone.
+//   in_domain=false                            → NO OPINION. This directory
+//     does not serve the address's domain; the caller must resolve it from
+//     its home directory. Never read as "gone".
+//
+// A caller that removes access reads `authoritative` first: with
+// authoritative=false the three "gone" rows above are also no opinion.
+message Account {
+  string email = 1;
+  bool in_domain = 2;
+  bool found = 3;
+  bool live = 4;
+  // given/family name when the backend can supply them (needs the
+  // user-read scope on Google); empty otherwise — callers must tolerate.
+  string given_name = 5;
+  string family_name = 6;
+  // authority of the address's domain at answer time.
+  bool authoritative = 7;
+}
+
+message ResolveUserRequest {
+  string email = 1;
+  google.protobuf.Duration max_age = 2;
+}
+message ResolveUserResponse {
+  repeated string groups = 1;
+  bool suspended = 2;
+  // false when no served domain matches the address: the answer is no
+  // opinion, groups is empty and suspended is meaningless.
+  bool in_domain = 3;
+  // false when the address is in a served domain but the directory does
+  // not know it (deleted/absent).
+  bool found = 4;
+  // authority of the address's domain at answer time. A caller removes
+  // grants only when this is true.
+  bool authoritative = 5;
+  google.protobuf.Timestamp snapshot_at = 6;
+}

@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+// Package directoryroster.v1 is the operator contract of the hub: the
+// workspaces it holds credentials for, and its settings. It is served on
+// the console listener only, behind the gateway's authentication; the
+// roles come from the identity provider's groups claim (viewer reads,
+// operator writes).
+package directoryroster.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// WorkspaceService manages the directories the hub is connected to.
+service WorkspaceService {
+  // ListWorkspaces returns every workspace with its domains, health and
+  // snapshot age. Viewer.
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+
+  // BeginConnect starts the admin-consent flow for a new workspace: it
+  // sets the state cookie on the response and returns the consent URL the
+  // browser navigates to. The callback is a plain HTTP route
+  // (`/connect/<backend>/callback`), authenticated by the gateway like any
+  // other page. Operator.
+  rpc BeginConnect(BeginConnectRequest) returns (BeginConnectResponse);
+
+  // Reconnect is BeginConnect bound to an existing workspace: the callback
+  // verifies the consenting tenant is the same and replaces the
+  // credential. Operator.
+  rpc Reconnect(ReconnectRequest) returns (ReconnectResponse);
+
+  // UploadKey connects (or re-credentials) a workspace with a
+  // service-account key and the admin to act as. Operator.
+  rpc UploadKey(UploadKeyRequest) returns (UploadKeyResponse);
+
+  // Probe checks one workspace's credential now and re-reads its domain
+  // list. Operator.
+  rpc Probe(ProbeRequest) returns (ProbeResponse);
+
+  // Refresh takes a new snapshot of one workspace now — the operator's
+  // max_age=0. Operator.
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+
+  // Disconnect revokes the credential at the backend, then deletes the
+  // workspace. A declared (overlay) workspace refuses: it is removed from
+  // the deployment instead. Operator.
+  rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+}
+
+// Backend is the kind of directory behind a workspace.
+enum Backend {
+  BACKEND_UNSPECIFIED = 0;
+  BACKEND_GOOGLE = 1;
+  BACKEND_ENTRA = 2;
+}
+
+// CredentialType is how the hub authenticates to a workspace.
+enum CredentialType {
+  CREDENTIAL_TYPE_UNSPECIFIED = 0;
+  // minted by admin consent; acts as the consenting account.
+  CREDENTIAL_TYPE_OAUTH_REFRESH_TOKEN = 1;
+  // a key with domain-wide delegation, impersonating `admin`.
+  CREDENTIAL_TYPE_SERVICE_ACCOUNT_KEY = 2;
+}
+
+// Workspace is one directory tenant the hub holds a credential for.
+message Workspace {
+  // the backend's tenant identifier (Google: the customer id).
+  string id = 1;
+  Backend backend = 2;
+  // discovered from the backend; re-read on every probe.
+  repeated WorkspaceDomain domains = 3;
+  // the account the credential acts as.
+  string admin = 4;
+  CredentialType credential = 5;
+  // console identity that connected it; empty for declared workspaces.
+  string connected_by = 6;
+  google.protobuf.Timestamp connected_at = 7;
+  Health health = 8;
+  // when the current snapshot was taken; unset before the first one.
+  google.protobuf.Timestamp snapshot_at = 9;
+  // true when the deployment declared it (overlay): read-only in the
+  // console, wins on conflict.
+  bool declared = 10;
+}
+
+// WorkspaceDomain is one domain a workspace claims, and its standing.
+message WorkspaceDomain {
+  string name = 1;
+  bool authoritative = 2;
+  // true when another connected workspace claims the same domain; neither
+  // is authoritative for it until the conflict clears.
+  bool conflict = 3;
+}
+
+// Health is the outcome of the last probe.
+message Health {
+  google.protobuf.Timestamp probed_at = 1;
+  bool ok = 2;
+  // the failure reason when ok=false.
+  string error = 3;
+}
+
+message ListWorkspacesRequest {}
+message ListWorkspacesResponse {
+  repeated Workspace workspaces = 1;
+}
+
+message BeginConnectRequest {
+  Backend backend = 1;
+}
+message BeginConnectResponse {
+  string consent_url = 1;
+}
+
+message ReconnectRequest {
+  string workspace_id = 1;
+}
+message ReconnectResponse {
+  string consent_url = 1;
+}
+
+message UploadKeyRequest {
+  Backend backend = 1;
+  // the key file as issued by the backend (Google: the JSON key).
+  bytes key = 2;
+  // the admin account to impersonate.
+  string admin = 3;
+}
+message UploadKeyResponse {
+  Workspace workspace = 1;
+}
+
+message ProbeRequest {
+  string workspace_id = 1;
+}
+message ProbeResponse {
+  Health health = 1;
+  repeated WorkspaceDomain domains = 2;
+}
+
+message RefreshRequest {
+  string workspace_id = 1;
+}
+message RefreshResponse {
+  google.protobuf.Timestamp snapshot_at = 1;
+}
+
+message DisconnectRequest {
+  string workspace_id = 1;
+}
+message DisconnectResponse {}
