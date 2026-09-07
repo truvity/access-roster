@@ -36,6 +36,11 @@ const (
 	Backend_BACKEND_UNSPECIFIED Backend = 0
 	Backend_BACKEND_GOOGLE      Backend = 1
 	Backend_BACKEND_ENTRA       Backend = 2
+	// A demonstration tenant held in memory: fixture accounts and groups,
+	// no credential, no network. It exists so that the use-cases can be
+	// walked through and tested without a real directory, and the console
+	// labels it plainly so that nobody mistakes one for a tenant.
+	Backend_BACKEND_DEMO Backend = 3
 )
 
 // Enum value maps for Backend.
@@ -44,11 +49,13 @@ var (
 		0: "BACKEND_UNSPECIFIED",
 		1: "BACKEND_GOOGLE",
 		2: "BACKEND_ENTRA",
+		3: "BACKEND_DEMO",
 	}
 	Backend_value = map[string]int32{
 		"BACKEND_UNSPECIFIED": 0,
 		"BACKEND_GOOGLE":      1,
 		"BACKEND_ENTRA":       2,
+		"BACKEND_DEMO":        3,
 	}
 )
 
@@ -1067,11 +1074,12 @@ const file_directoryroster_v1_workspace_proto_rawDesc = "" +
 	"snapshotAt\"6\n" +
 	"\x11DisconnectRequest\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\"\x14\n" +
-	"\x12DisconnectResponse*I\n" +
+	"\x12DisconnectResponse*[\n" +
 	"\aBackend\x12\x17\n" +
 	"\x13BACKEND_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eBACKEND_GOOGLE\x10\x01\x12\x11\n" +
-	"\rBACKEND_ENTRA\x10\x02*\x83\x01\n" +
+	"\rBACKEND_ENTRA\x10\x02\x12\x10\n" +
+	"\fBACKEND_DEMO\x10\x03*\x83\x01\n" +
 	"\x0eCredentialType\x12\x1f\n" +
 	"\x1bCREDENTIAL_TYPE_UNSPECIFIED\x10\x00\x12'\n" +
 	"#CREDENTIAL_TYPE_OAUTH_REFRESH_TOKEN\x10\x01\x12'\n" +
