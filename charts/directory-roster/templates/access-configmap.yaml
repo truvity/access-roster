@@ -1,6 +1,6 @@
 # The declared layer of the policy plus the console's own settings. Read
 # by the hub at start and on change; the console layer lives in the
-# hub-written ConfigMap `hub-memberships` and never here.
+# hub-written ConfigMap `<release>-memberships` and never here.
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -170,8 +170,8 @@ func (c *Connector) Kind() string { return "demo" }
 // AuthURL implements [server.Connector]. There is nobody to consent, so it
 // points straight back at the callback — the rest of the flow, state
 // cookie included, is exactly the real one.
-func (c *Connector) AuthURL(state string) string {
-	return fmt.Sprintf("%s/connect/demo/callback?code=demo-consent&state=%s", c.base, url.QueryEscape(state))
+func (c *Connector) AuthURL(state string) (string, error) {
+	return fmt.Sprintf("%s/connect/demo/callback?code=demo-consent&state=%s", c.base, url.QueryEscape(state)), nil
 }
 
 // FromKey implements [server.KeyConnector], so the second way in is

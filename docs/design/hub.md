@@ -236,12 +236,30 @@ namespace — an external-secrets `ExternalSecret`, a sealed secret, `kubectl`
 — is the deployment's business; the configuration reference carries an
 example, the hub has no dependency on it.
 
-The objects — workspace Secrets and ConfigMaps, the OAuth client, the
-session key, the admin password, console-added memberships, the declared
-overlay — are listed once, in
+The objects — a ConfigMap and a Secret per workspace, the OAuth client,
+the session key, the admin password, console-added memberships, the
+declared overlay — are listed once, in
 [reference/configuration.md](../reference/configuration.md#kubernetes-objects-the-hub-owns).
 Valkey holds snapshots, refresh locks and the short negative cache, never
 a credential.
+
+A workspace is two objects because the record and the credential have
+different readers: the record is what the console shows, the credential is
+written once and read once, at the next start. Splitting them keeps a
+secret out of the type the console handles, and makes the failure modes
+independent — a record whose credential has gone is a workspace with no
+reader, which the hub already reports as unhealthy, rather than a hub that
+refuses to start.
+
+Start-up is the other half of the store, and has three cases. A workspace
+the values declare is opened from what the deployment mounts. A workspace
+whose stored record says it was declared, and which the values no longer
+mention, has been taken out of the deployment: its record is deleted,
+because leaving it would be a directory nobody could disconnect. Everything
+else was connected in the console and is opened from the credential stored
+beside it — and if that credential is missing or refused, the hub says so
+and carries on, because refusing to start would take every other directory
+down with it.
 
 What the chart includes and what it expects: it renders everything that is
 a standard Kubernetes API — Deployment, Services, ServiceAccount and Role,
@@ -371,7 +389,7 @@ console never sees a token. The routes are HTTP, not RPC: `/login`,
 ### The break-glass account
 
 A local `admin` with a password generated on first start into the Secret
-`hub-admin`, shown nowhere else. It signs in only through `/admin/login`,
+`<release>-admin`, shown nowhere else. It signs in only through `/admin/login`,
 so behind a gateway it is reached by port-forward. The console shows a
 banner while it is enabled; a chart value turns it off. It exists for day
 one and for the day the corporate sign-in is what is broken.

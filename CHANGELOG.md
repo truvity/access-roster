@@ -24,6 +24,19 @@ repository, not the order it arrived in.
   Kubernetes ServiceAccount tokens; the operator services, the login
   routes, the consent callback and `/.access/whoami` on a second
   listener.
+- **Connecting a real Google Workspace**, both ways in: admin consent
+  (offline access, a forced consent screen so a reconnect really returns a
+  refresh token, and the consenting account read from the id token) and an
+  uploaded service-account key. Disconnecting hands the refresh token back
+  to Google.
+- **Nothing is lost on restart.** What a console changed — connected
+  workspaces, their credentials, the memberships, the OAuth client, the
+  session key and the break-glass password — is kept as plain ConfigMaps
+  and Secrets in the hub's own namespace, written and read by the hub
+  itself. `STORE=memory` keeps nothing and says so at WARN; the chart
+  always sets `kubernetes`. At start, a declaration removed from the
+  values takes its record with it, and a credential that cannot be read
+  leaves one workspace unhealthy rather than stopping the hub.
 - **The policy** (`docs/reference/policy.md`): five tables — groups,
   claims, lifetimes, clients, memberships — one schema for both services,
   deep merge with a load-time scalar-conflict check, shortest lifetime,

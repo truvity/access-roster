@@ -115,7 +115,8 @@ ServiceAccount. It reads nothing.
 
 The hub loads the family's [policy](policy.md): `groups`, `claims`,
 `lifetimes` and `memberships`, from the deployment's ConfigMap(s) as the
-declared layer and from `ConfigMap hub-memberships` as the console layer.
+declared layer and from `ConfigMap <release>-memberships` as the console
+layer.
 The chart renders the declared layer from `policy:` in values, which is
 the same YAML:
 
@@ -129,19 +130,36 @@ policy:
 
 ## Kubernetes objects the hub owns
 
+Everything an operator adds in the console lives here. `<release>` is the
+chart's full name, so two hubs in one namespace do not write over each
+other, and `<tenant>` is a readable part of the tenant id followed by a
+short hash of it — a tenant id belongs to the backend, not to Kubernetes,
+so the hash carries the uniqueness the readable part may have lost.
+
 | Object | Holds | Written by |
 |---|---|---|
-| `Secret workspace-<id>` | the credential: refresh token, or service-account key | the hub (Connect, UploadKey) |
-| `ConfigMap workspace-<id>` | backend, domains, admin, connected by/at, last health, credential type | the hub |
-| `Secret hub-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.existingSecret` |
-| `Secret hub-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
-| `Secret hub-admin` | the break-glass password | the hub, generated on first start |
-| `ConfigMap hub-memberships` | memberships added in the console | the hub |
+| `ConfigMap <release>-workspace-<tenant>` | backend, domains, served domains, admin, connected by/at, last health, credential type | the hub |
+| `Secret <release>-credential-<tenant>` | the credential: refresh token, or service-account key | the hub (Connect, UploadKey) |
+| `Secret <release>-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.existingSecret`, and then read-only |
+| `ConfigMap <release>-memberships` | memberships added in the console | the hub |
+| `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
+| `Secret <release>-admin` | the break-glass password | the hub, generated on first start; never logged |
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 
-Labels on every hub-written object: `app.kubernetes.io/name=directory-roster`,
-`app.kubernetes.io/managed-by=directory-roster`. Export everything with
+The record and the credential are two objects on purpose. A record is
+shown to anyone who may see the console; a credential is written once and
+read once, at start. Keeping them apart means the type the console handles
+cannot carry a secret by accident, and it makes the failure modes
+independent: a record whose credential is missing is a workspace with no
+reader, which the console shows as unhealthy with the reason — not a hub
+that will not start.
+
+Labels on every hub-written object: `app.kubernetes.io/managed-by=directory-roster`,
+`app.kubernetes.io/part-of=<release>`, and
+`directory-roster.truvity.com/kind` = `workspace`, `credential` or
+`settings`. The workspace id as the backend spells it is the annotation
+`directory-roster.truvity.com/workspace-id`. Export everything with
 
 ```sh
 kubectl -n directory-roster get secret,configmap -l app.kubernetes.io/managed-by=directory-roster -o yaml
@@ -151,6 +169,12 @@ There is no backup mechanism in the hub. A consent credential is cheap to
 mint again — Reconnect is the recovery — and a declared Secret is
 re-delivered by whatever declared it.
 
+**`STORE=memory`** turns all of it off: nothing is written, and a restart
+is a fresh installation. It is the default for the binary, because a local
+run and the demonstration should need no cluster; the chart always sets
+`kubernetes`. A hub started on the memory store says so at WARN on its
+first line, naming what a restart would lose.
+
 ## Environment
 
 The binary is configured by environment variables; the chart sets them
@@ -159,6 +183,8 @@ from the values above.
 | Variable | From |
 |---|---|
 | `NAMESPACE` | the pod's namespace (downward API) |
+| `STORE` | always `kubernetes` from the chart; `memory` (the binary's default) keeps nothing |
+| `RELEASE_NAME` | the chart's full name, which prefixes every object the hub writes |
 | `API_PORT`, `CONSOLE_PORT`, `HEALTH_PORT` | `listeners.*` |
 | `REFRESH_INTERVAL`, `FRESHNESS_WINDOW`, `PROBE_INTERVAL` | `freshness.*` |
 | `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_PASSWORD` | `valkey.*` (absent = in-memory) |

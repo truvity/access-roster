@@ -108,6 +108,19 @@ func (b *Backend) Remove(email string) {
 	delete(b.accounts, strings.ToLower(email))
 }
 
+// Credential implements [backend.Portable]. A fixture has no secret, so
+// what it hands over is the tenant it opens — enough for a store to write
+// something down and for a test to prove it comes back.
+func (b *Backend) Credential() backend.Credential {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return backend.Credential{
+		Type:  backend.CredentialServiceAccountKey,
+		Admin: "admin@" + b.tenant.ID,
+		Data:  []byte(b.tenant.ID),
+	}
+}
+
 // SetDomains replaces the tenant's domain list, the way a domain moves
 // between tenants between two probes.
 func (b *Backend) SetDomains(domains ...string) {

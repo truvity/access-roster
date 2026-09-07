@@ -17,8 +17,8 @@ with this installation's own values to copy rather than a placeholder to
 translate — the redirect URI is its hostname, and that is where a day-one
 setup goes wrong.
 
-1. Install; the hub generates `Secret hub-admin` and `Secret hub-session-key`.
-2. Read the admin password: `kubectl -n directory-roster get secret hub-admin -o jsonpath='{.data.password}' | base64 -d`.
+1. Install; the hub generates `Secret <release>-admin` and `Secret <release>-session-key`.
+2. Read the admin password: `kubectl -n directory-roster get secret <release>-admin -o jsonpath='{.data.password}' | base64 -d`.
 3. Port-forward the console port (or go through the gateway) and sign in at `/admin/login`.
 4. Follow Overview. It walks the same five steps: register an OAuth client
    with the directory, give it to the hub, connect the first directory,
@@ -43,12 +43,12 @@ sign-in is what is broken:
 
 - **admin still enabled:** port-forward, `/admin/login`, fix the membership.
 - **admin disabled:** set `access.admin.enabled: true` in the values, roll
-  the deployment, then as above. The password is still in `hub-admin`.
-- **forgotten password:** delete `Secret hub-admin`; the hub generates a
+  the deployment, then as above. The password is still in `<release>-admin`.
+- **forgotten password:** delete `Secret <release>-admin`; the hub generates a
   new one on restart.
 
 Sessions are stateless signed cookies. To log everyone out at once,
-delete `Secret hub-session-key`; the hub generates a new one on restart.
+delete `Secret <release>-session-key`; the hub generates a new one on restart.
 
 ## What "unhealthy" means and what to do
 
@@ -61,6 +61,7 @@ delete `Secret hub-session-key`; the hub generates a new one on restart.
 | A domain shows *no longer owned* | the served list names a domain the directory no longer lists — it has moved to another tenant | the hand-over already happened: the other workspace serves it as soon as its own discovery returns it. Drop the entry here so the list matches reality |
 | Every domain non-authoritative at once | Valkey unreachable | restore Valkey; the hub refills it within one refresh interval |
 | A workspace shows *declared* and no Reconnect/Disconnect | it comes from the chart's overlay | change the deployment's values, not the console |
+| After a restart, a workspace is unhealthy with "no backend: the credential is not loaded" | its `Secret <release>-credential-<tenant>` is gone or unreadable — restored namespace, hand-edited object, a Secret deleted with the wrong selector | **Reconnect** (consent) or upload the key again. The record, its served domains and its memberships are intact; only the credential is missing. The hub logs the workspace id at start |
 
 The rule consumers follow makes every row above safe: **a
 non-authoritative answer holds, it never removes.**

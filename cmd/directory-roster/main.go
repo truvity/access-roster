@@ -34,8 +34,10 @@ import (
 	"github.com/truvity/access-roster/frontend"
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/hub"
+	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
 	"github.com/truvity/access-roster/internal/version"
@@ -68,6 +70,9 @@ type config struct {
 	forwardedIssuer string
 	policyPath      string
 	overlayPath     string
+	store           string
+	release         string
+	oauthSecretName string
 	holdWindow      time.Duration
 	logLevel        slog.Level
 }
@@ -86,6 +91,9 @@ func load() (config, error) {
 		forwardedIssuer: envString("FORWARDED_ISSUER", ""),
 		policyPath:      envString("POLICY_DIR", ""),
 		overlayPath:     envString("OVERLAY_FILE", ""),
+		store:           envString("STORE", "memory"),
+		release:         envString("RELEASE_NAME", "directory-roster"),
+		oauthSecretName: envString("OAUTH_CLIENT_SECRET_NAME", ""),
 	}
 	var err error
 	if c.freshness.RefreshInterval, err = envDuration("REFRESH_INTERVAL", hub.DefaultRefreshInterval); err != nil {
@@ -109,7 +117,79 @@ func load() (config, error) {
 	if err = c.logLevel.UnmarshalText([]byte(envString("LOG_LEVEL", "info"))); err != nil {
 		return config{}, fmt.Errorf("LOG_LEVEL: %w", err)
 	}
+	switch c.store {
+	case storeMemory, storeKubernetes:
+	default:
+		return config{}, fmt.Errorf("STORE: %q is neither %q nor %q", c.store, storeMemory, storeKubernetes)
+	}
 	return c, nil
+}
+
+// The two places the hub can keep what a console changed.
+const (
+	// storeMemory keeps nothing: a restart is a fresh installation. It is
+	// what a local run and the demonstration want, and it is the default
+	// so that neither needs a cluster.
+	storeMemory = "memory"
+	// storeKubernetes keeps it in the hub's own namespace, which is what
+	// a deployment wants: a workspace connected in the console has no
+	// other home.
+	storeKubernetes = "kubernetes"
+)
+
+// stores is everything the hub writes down, and where.
+type stores struct {
+	workspaces  hub.Store
+	credentials hub.CredentialStore
+	settings    settings.Store
+	sessionKey  []byte
+	// adminPassword reads the break-glass password, creating one on
+	// first start. Nil when nothing is kept, which is when a generated
+	// one is printed for the run instead.
+	adminPassword func(ctx context.Context) (string, error)
+	adminSecret   string
+}
+
+// openStores builds them, and says plainly in the log which was chosen.
+// The memory store losing everything on restart is correct for a
+// prototype and catastrophic for a deployment, so it is never silent.
+func openStores(ctx context.Context, cfg config, log *slog.Logger) (stores, error) {
+	if cfg.store == storeMemory {
+		key, err := access.NewSessionKey()
+		if err != nil {
+			return stores{}, err
+		}
+		log.WarnContext(ctx, "keeping state in memory: a restart loses every connected workspace, "+
+			"the memberships added here and every session", "store", storeMemory)
+		return stores{
+			workspaces: hub.NewMemoryStore(),
+			settings:   settings.NewMemory(settings.OAuthClient{}),
+			sessionKey: key,
+		}, nil
+	}
+
+	client, err := kube.InCluster(cfg.release)
+	if err != nil {
+		return stores{}, err
+	}
+	key, err := client.SessionKey(ctx, access.NewSessionKey)
+	if err != nil {
+		return stores{}, err
+	}
+	log.InfoContext(ctx, "keeping state in this namespace",
+		"store", storeKubernetes, "namespace", client.Namespace(),
+		"sessionKeySecret", client.SessionKeyName(),
+		"oauthClientSecret", cfg.oauthSecretName)
+	return stores{
+		workspaces:  kube.NewWorkspaces(client),
+		credentials: kube.NewCredentials(client),
+		settings:    kube.NewSettings(client, cfg.oauthSecretName),
+		sessionKey:  key,
+		adminPassword: func(ctx context.Context) (string, error) {
+			return client.AdminPassword(ctx, generatedPassword)
+		},
+		adminSecret: client.AdminPasswordName(),
+	}, nil
 }
 
 func run() error {
@@ -123,7 +203,14 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	directory := hub.New(hub.NewMemoryStore(), hub.NewMemorySnapshots(), cfg.freshness, log)
+	kept, err := openStores(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	directory := hub.New(kept.workspaces, hub.NewMemorySnapshots(), cfg.freshness, log)
+	if kept.credentials != nil {
+		directory.UseCredentials(kept.credentials)
+	}
 
 	declared, err := declaredPolicy(cfg.policyPath, cfg.demo)
 	if err != nil {
@@ -135,10 +222,7 @@ func run() error {
 	}
 	authorizer := access.NewAuthorizer(set, directory, cfg.holdWindow)
 
-	sessionKey, err := access.NewSessionKey()
-	if err != nil {
-		return err
-	}
+	sessionKey := kept.sessionKey
 	sessions, err := access.NewSessions(sessionKey, cfg.sessionLifetime, cfg.secureCookies)
 	if err != nil {
 		return err
@@ -147,7 +231,19 @@ func run() error {
 	admin := server.AdminAccount{}
 	if cfg.adminEnabled {
 		password := cfg.adminPassword
-		if password == "" {
+		switch {
+		case password != "":
+		case kept.adminPassword != nil:
+			// Kept in a Secret, and read from there on every start: a
+			// recovery account whose password changes on every rollout is
+			// not a recovery account. It is never printed — an operator
+			// reads it with kubectl, an access they must already have.
+			if password, err = kept.adminPassword(ctx); err != nil {
+				return err
+			}
+			log.InfoContext(ctx, "the break-glass account is on; its password is in a Secret",
+				"secret", kept.adminSecret, "key", "password")
+		default:
 			if password, err = generatedPassword(); err != nil {
 				return err
 			}
@@ -156,12 +252,32 @@ func run() error {
 		admin = server.NewAdminAccount(password)
 	}
 
-	var connectors []server.Connector
+	oauthClient := func() (google.OAuthClient, error) {
+		stored, err := kept.settings.OAuthClient(context.Background())
+		if err != nil {
+			return google.OAuthClient{}, err
+		}
+		if !stored.Configured() {
+			return google.OAuthClient{}, errors.New(
+				"no OAuth client is registered yet: add one in Settings, or declare it in the deployment")
+		}
+		return google.OAuthClient{
+			ID:          stored.ID,
+			Secret:      stored.Secret,
+			RedirectURL: cfg.publicURL + google.CallbackPath,
+		}, nil
+	}
+
+	connectors := []server.Connector{connector.NewGoogle(oauthClient)}
 	loginSources := []string{}
 	if cfg.demo {
 		connectors = append(connectors, seedDemo(ctx, directory, cfg.publicURL, log))
 	}
-	if err := adoptDeclared(ctx, directory, cfg.overlayPath, log); err != nil {
+	adopted, err := adoptDeclared(ctx, directory, cfg.overlayPath, log)
+	if err != nil {
+		return err
+	}
+	if err = reopenStored(ctx, directory, kept, adopted, oauthClient, log); err != nil {
 		return err
 	}
 	if cfg.forwardedHeader != "" {
@@ -171,11 +287,10 @@ func run() error {
 		loginSources = append(loginSources, "admin")
 	}
 
-	store := settings.NewMemory(settings.OAuthClient{})
 	console, err := server.NewConsole(ctx, server.ConsoleDeps{
 		Hub:          directory,
 		Authorizer:   authorizer,
-		Settings:     store,
+		Settings:     kept.settings,
 		State:        access.NewStateCodec(sessionKey, 10*time.Minute),
 		Connectors:   connectors,
 		AdminEnabled: cfg.adminEnabled,
@@ -284,18 +399,21 @@ func declaredPolicy(path string, demonstration bool) (policy.Policy, error) {
 // which reads to a consumer exactly like a tenant that was removed. A
 // hub that refuses to start is visible in one place; a hub that quietly
 // serves less than it was configured to is visible nowhere.
-func adoptDeclared(ctx context.Context, directory *hub.Hub, path string, log *slog.Logger) error {
+func adoptDeclared(
+	ctx context.Context, directory *hub.Hub, path string, log *slog.Logger,
+) (map[string]bool, error) {
+	adopted := map[string]bool{}
 	overlay, err := hub.LoadOverlay(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for i := range overlay.Workspaces {
 		declared := &overlay.Workspaces[i]
 		reader, err := openBackend(ctx, declared)
 		if err != nil {
-			return fmt.Errorf("declared workspace %q: %w", declared.Backend+"/"+declared.Admin, err)
+			return nil, fmt.Errorf("declared workspace %q: %w", declared.Backend+"/"+declared.Admin, err)
 		}
-		adopted, err := directory.Adopt(ctx, hub.Workspace{
+		ws, err := directory.Adopt(ctx, hub.Workspace{
 			ID:         declared.ID,
 			Admin:      declared.Admin,
 			Credential: hub.CredentialServiceAccountKey,
@@ -303,14 +421,99 @@ func adoptDeclared(ctx context.Context, directory *hub.Hub, path string, log *sl
 			Declared:   true,
 		}, reader)
 		if err != nil {
-			return fmt.Errorf("adopt declared workspace %q: %w", declared.Admin, err)
+			return nil, fmt.Errorf("adopt declared workspace %q: %w", declared.Admin, err)
 		}
+		adopted[ws.ID] = true
 		log.InfoContext(ctx, "declared workspace adopted",
-			"workspace", adopted.ID, "backend", adopted.Backend,
-			"admin", adopted.Admin, "domains", adopted.Domains,
-			"served", adopted.Served())
+			"workspace", ws.ID, "backend", ws.Backend,
+			"admin", ws.Admin, "domains", ws.Domains, "served", ws.Served())
+	}
+	return adopted, nil
+}
+
+// reopenStored brings back what a console added before the last restart.
+//
+// Three cases, and the middle one is the reason this is not a loop over
+// the store. A workspace the deployment declares was already opened
+// above. A workspace that was declared when it was last written and is
+// not any more has been taken out of the values: its record is stale, and
+// leaving it would be a directory nobody could disconnect, so it is
+// deleted. Everything else was connected in the console and is opened
+// from the credential stored beside it.
+//
+// A credential that cannot be read does not stop the hub. The workspace
+// stays, with no reader, and the console shows it as unhealthy with the
+// reason — which is the same state as a directory that is refusing the
+// credential, and is already handled everywhere downstream. Refusing to
+// start would take every other directory down with it.
+func reopenStored(
+	ctx context.Context, directory *hub.Hub, kept stores, adopted map[string]bool,
+	client func() (google.OAuthClient, error), log *slog.Logger,
+) error {
+	if kept.credentials == nil {
+		return nil
+	}
+	list, err := kept.workspaces.List(ctx)
+	if err != nil {
+		return fmt.Errorf("read the stored workspaces: %w", err)
+	}
+	for i := range list {
+		ws := &list[i]
+		if adopted[ws.ID] {
+			continue
+		}
+		if ws.Declared {
+			log.InfoContext(ctx, "forgetting a workspace the deployment no longer declares",
+				"workspace", ws.ID, "admin", ws.Admin)
+			if err = kept.workspaces.Delete(ctx, ws.ID); err != nil {
+				return fmt.Errorf("forget declared workspace %s: %w", ws.ID, err)
+			}
+			continue
+		}
+
+		cred, found, err := kept.credentials.Load(ctx, ws.ID)
+		if err != nil || !found {
+			log.WarnContext(ctx, "a connected workspace has no usable credential; "+
+				"it will answer for nothing until it is reconnected",
+				"workspace", ws.ID, "backend", ws.Backend, "error", err)
+			continue
+		}
+		reader, err := openStored(ctx, ws.Backend, cred, client)
+		if err != nil {
+			log.WarnContext(ctx, "a connected workspace could not be reopened; "+
+				"it will answer for nothing until it is reconnected",
+				"workspace", ws.ID, "backend", ws.Backend, "error", err)
+			continue
+		}
+		if err = directory.Attach(ctx, ws.ID, reader); err != nil {
+			return fmt.Errorf("attach workspace %s: %w", ws.ID, err)
+		}
+		log.InfoContext(ctx, "connected workspace reopened",
+			"workspace", ws.ID, "backend", ws.Backend, "credential", cred.Type,
+			"admin", cred.Admin, "served", ws.Served())
 	}
 	return nil
+}
+
+// openStored turns a stored credential back into a reader.
+func openStored(
+	ctx context.Context, kind string, cred backend.Credential, client func() (google.OAuthClient, error),
+) (backend.Backend, error) {
+	if kind != "google" {
+		return nil, fmt.Errorf("this build cannot reopen a %q workspace", kind)
+	}
+	switch cred.Type {
+	case backend.CredentialOAuth:
+		oauth, err := client()
+		if err != nil {
+			return nil, err
+		}
+		return google.OpenWithToken(ctx, oauth, string(cred.Data), cred.Admin)
+	case backend.CredentialServiceAccountKey:
+		return google.Open(ctx, cred.Data, cred.Admin)
+	default:
+		return nil, fmt.Errorf("unknown credential kind %q", cred.Type)
+	}
 }
 
 // backendOpeners is how a build declares which directories it can read.

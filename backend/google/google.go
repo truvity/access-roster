@@ -11,8 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 
+	"golang.org/x/oauth2"
 	googleauth "golang.org/x/oauth2/google"
 	directory "google.golang.org/api/admin/directory/v1"
 	"google.golang.org/api/googleapi"
@@ -47,6 +50,7 @@ const pageSize = 500
 type Backend struct {
 	svc   *directory.Service
 	admin string
+	cred  backend.Credential
 }
 
 var _ backend.Backend = (*Backend)(nil)
@@ -97,7 +101,66 @@ func Open(ctx context.Context, keyJSON []byte, admin string) (*Backend, error) {
 	if err != nil {
 		return nil, fmt.Errorf("google: open the Admin SDK: %w", err)
 	}
-	return &Backend{svc: svc, admin: admin}, nil
+	return &Backend{
+		svc:   svc,
+		admin: admin,
+		cred: backend.Credential{
+			Type:  backend.CredentialServiceAccountKey,
+			Admin: admin,
+			Data:  slices.Clone(keyJSON),
+		},
+	}, nil
+}
+
+// OpenWithToken returns a backend reading the Workspace whose admin
+// consented, acting as that admin.
+//
+// This is the other half of the same authorisation story. Where a
+// service-account key is granted its scopes by an administrator inside
+// the Workspace, a refresh token *is* an administrator's own grant: it
+// was minted at a consent screen the admin saw and can withdraw. The hub
+// therefore holds no standing power over a tenant that has not knowingly
+// given it, which is the property that lets one installation serve
+// companies that do not trust each other.
+//
+// The client id and secret belong to the installation and are needed to
+// use the token at all; the token alone is not enough to read anything.
+func OpenWithToken(ctx context.Context, client OAuthClient, refreshToken, admin string) (*Backend, error) {
+	admin = strings.ToLower(strings.TrimSpace(admin))
+	switch {
+	case client.ID == "" || client.Secret == "":
+		return nil, errors.New("google: the OAuth client id and secret are required to use a refresh token")
+	case refreshToken == "":
+		return nil, errors.New("google: the refresh token is empty")
+	}
+
+	cfg := client.config()
+	// An empty access token with a refresh token makes the library fetch
+	// one on first use and refresh it from then on. Nothing is stored but
+	// the refresh token: an access token would be stale before the next
+	// start anyway.
+	source := cfg.TokenSource(ctx, &oauth2.Token{RefreshToken: refreshToken})
+	svc, err := directory.NewService(ctx, option.WithTokenSource(source))
+	if err != nil {
+		return nil, fmt.Errorf("google: open the Admin SDK: %w", err)
+	}
+	return &Backend{
+		svc:   svc,
+		admin: admin,
+		cred: backend.Credential{
+			Type:  backend.CredentialOAuth,
+			Admin: admin,
+			Data:  []byte(refreshToken),
+		},
+	}, nil
+}
+
+// Credential implements [backend.Portable]: what a store writes down so
+// that this backend can be opened again after a restart.
+func (b *Backend) Credential() backend.Credential {
+	out := b.cred
+	out.Data = slices.Clone(b.cred.Data)
+	return out
 }
 
 // Kind implements [backend.Backend].
@@ -257,14 +320,35 @@ func (b *Backend) GroupsOf(ctx context.Context, email string) ([]string, error) 
 
 // Revoke implements [backend.Backend].
 //
-// A service-account key cannot be revoked from here: it belongs to a
-// cloud project, and what makes it able to read this Workspace is a
-// grant in that Workspace's admin console. Saying so is more useful than
+// A refresh token can be handed back, and is: the grant an administrator
+// made is the grant this hub gives up, in one call, at disconnect. A
+// service-account key cannot be revoked from here — it belongs to a cloud
+// project, and what makes it able to read this Workspace is a grant in
+// that Workspace's admin console — so that case says so rather than
 // pretending, and the hub reports it as "deleted locally, retire the
 // credential yourself".
-func (b *Backend) Revoke(context.Context) error {
-	return fmt.Errorf("%w: a service-account key is retired in the cloud project and the Workspace's admin console",
-		backend.ErrUnsupported)
+func (b *Backend) Revoke(ctx context.Context) error {
+	if b.cred.Type != backend.CredentialOAuth || len(b.cred.Data) == 0 {
+		return fmt.Errorf("%w: a service-account key is retired in the cloud project and the Workspace's admin console",
+			backend.ErrUnsupported)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, revokeURL,
+		strings.NewReader(url.Values{"token": {string(b.cred.Data)}}.Encode()))
+	if err != nil {
+		return fmt.Errorf("google: build the revocation: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("google: revoke the refresh token: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	// A token Google has already forgotten answers 400. That is the state
+	// being asked for, so it is a success, not a failure to report.
+	if resp.StatusCode >= 300 && resp.StatusCode != http.StatusBadRequest {
+		return fmt.Errorf("google: revoke the refresh token: %s", resp.Status)
+	}
+	return nil
 }
 
 // account maps one Admin SDK user.
