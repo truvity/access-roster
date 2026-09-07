@@ -43,5 +43,8 @@ credentials.
 
 ## Job side
 
-The action with `audiences: aws:111122223333:gitops-deployer` writes the
-same profile; `accessctl aws` exchanges the job's platform token instead.
+The action with `audiences: aws:111122223333:gitops-deployer` exchanges
+the job's GitHub token at the issuer and writes a profile with
+`web_identity_token_file` pointing at the result; the AWS CLI does the
+rest. The account trusts the issuer, not GitHub: no direct GitHub
+provider is configured, and CI's entitlements live in the rules file.

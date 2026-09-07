@@ -36,10 +36,22 @@ steps:
   - run: aws s3 ls
 ```
 
-Without the action, the exchange is one `curl` to `/token` with
+The action is shell only: one `curl` to `/token` per audience with
 `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`,
-`subject_token=<the job's token>` and `audience=<one audience>`; the
-action only saves the kubeconfig and profile plumbing.
+`subject_token=<the job's token>` and `audience=<one audience>`, then a
+kubeconfig with the cluster token and an AWS profile with
+`web_identity_token_file`. Nothing is downloaded into the job.
+
+**Both targets go through the issuer, never directly.** A cluster trusts
+one OIDC issuer and that is access-issuer, so a GitHub token can never be
+presented to an API server; and cloud accounts trust the issuer's
+audiences rather than GitHub's subjects, so the policy stays in one rules
+file instead of in every account's trust policies.
+
+**Token lifetime.** An exchanged token for a CI audience lives as long as
+the issuer's client setting for CI says — long enough for a deploy or a
+soak step. A job that must outlive it re-runs the action before the long
+step.
 
 Runners inside the cluster keep their ServiceAccount and the cloud's pod
 identity; they never need this flow.
