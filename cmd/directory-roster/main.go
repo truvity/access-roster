@@ -40,6 +40,7 @@ import (
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
+	"github.com/truvity/access-roster/internal/valkey"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
 )
@@ -73,6 +74,7 @@ type config struct {
 	store           string
 	release         string
 	oauthSecretName string
+	valkey          valkey.Config
 	holdWindow      time.Duration
 	logLevel        slog.Level
 }
@@ -94,6 +96,13 @@ func load() (config, error) {
 		store:           envString("STORE", "memory"),
 		release:         envString("RELEASE_NAME", "directory-roster"),
 		oauthSecretName: envString("OAUTH_CLIENT_SECRET_NAME", ""),
+	}
+	c.valkey = valkey.Config{
+		Address:  envString("VALKEY_ADDRESS", ""),
+		Password: envString("VALKEY_PASSWORD", ""),
+		TLS:      envBool("VALKEY_TLS", false),
+		Cluster:  envBool("VALKEY_CLUSTER", true),
+		Prefix:   envString("RELEASE_NAME", "directory-roster"),
 	}
 	var err error
 	if c.freshness.RefreshInterval, err = envDuration("REFRESH_INTERVAL", hub.DefaultRefreshInterval); err != nil {
@@ -136,6 +145,29 @@ const (
 	// other home.
 	storeKubernetes = "kubernetes"
 )
+
+// openSnapshots decides where snapshots live.
+//
+// In memory unless a Valkey is configured, and the difference matters at
+// more than one replica: two hubs each holding their own snapshots answer
+// the same question two ways and read the same directory twice, and a
+// directory's API quota is per tenant, not per reader. So a deployment
+// running more than one replica without a Valkey is a mistake worth
+// saying out loud, rather than one that shows up as somebody's quota.
+func openSnapshots(ctx context.Context, cfg config, log *slog.Logger) (hub.SnapshotStore, func(), error) {
+	if cfg.valkey.Address == "" {
+		log.InfoContext(ctx, "keeping snapshots in memory: correct for one replica, "+
+			"wasteful and inconsistent for more", "cache", "memory")
+		return hub.NewMemorySnapshots(), func() {}, nil
+	}
+	shared, err := valkey.Open(ctx, cfg.valkey)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.InfoContext(ctx, "sharing snapshots and the refresh lease",
+		"cache", "valkey", "address", cfg.valkey.Address, "cluster", cfg.valkey.Cluster)
+	return shared, func() { _ = shared.Close() }, nil
+}
 
 // stores is everything the hub writes down, and where.
 type stores struct {
@@ -207,7 +239,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	directory := hub.New(kept.workspaces, hub.NewMemorySnapshots(), cfg.freshness, log)
+	snapshots, closeSnapshots, err := openSnapshots(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer closeSnapshots()
+
+	directory := hub.New(kept.workspaces, snapshots, cfg.freshness, log)
 	if kept.credentials != nil {
 		directory.UseCredentials(kept.credentials)
 	}
@@ -295,7 +333,7 @@ func run() error {
 		Connectors:   connectors,
 		AdminEnabled: cfg.adminEnabled,
 		LoginSources: loginSources,
-		CacheBackend: "memory",
+		CacheBackend: cacheName(cfg),
 		SecureCookie: cfg.secureCookies,
 		PublicURL:    cfg.publicURL,
 	})
@@ -626,4 +664,12 @@ func envDuration(name string, fallback time.Duration) (time.Duration, error) {
 		return 0, fmt.Errorf("%s: %w", name, err)
 	}
 	return d, nil
+}
+
+// cacheName is what the console shows for where snapshots live.
+func cacheName(cfg config) string {
+	if cfg.valkey.Address == "" {
+		return "memory"
+	}
+	return "valkey"
 }

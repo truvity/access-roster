@@ -87,6 +87,9 @@
         },
         "tls": {
           "type": "boolean"
+        },
+        "cluster": {
+          "type": "boolean"
         }
       }
     },

@@ -45,6 +45,11 @@ valkey:
     name: ""
     key: password
   tls: false
+  # The fleet's Valkeys are ValkeyClusters even at one shard, so the
+  # cluster protocol is the usual answer. A plain single server needs
+  # this off; a mismatch is refused at start rather than surfacing later
+  # as a puzzling command error.
+  cluster: true
 
 # Freshness knobs. Operational configuration belongs to the deployment;
 # the console shows these read-only.
