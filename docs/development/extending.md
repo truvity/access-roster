@@ -22,12 +22,13 @@ rules that reads its claims. GitHub is the first; GitLab or a cloud's
 instance identity are the same shape. Ship: fixtures of real tokens with
 rotated keys, and a rules test.
 
-## 3. A rule subject or grant
+## 3. A matcher kind, or a table
 
-`pkg/rules`: a subject is a `Matcher` over `Input{Email, Groups, Claims,
-Proof, Authoritative}`; a grant is a field on `Grant` that a consumer
-reads. Adding either is a schema change to the file, so bump the file's
-`version` and keep the old key readable.
+`pkg/policy`: a matcher is a `Matcher` over a verified proof's claims; a
+new proof kind brings its own. The five tables are the whole schema: a
+need that cannot be met by a new group, a new client or a new matcher
+kind is a need for a new dimension, and the answer to that is no — see
+[reference/policy.md](../reference/policy.md) for why.
 
 ## 4. A middleware adapter
 
@@ -42,7 +43,7 @@ lines; a fifth should be too.
 `docs/connect/<thing>.md`: what the relying party trusts (issuer, client,
 audience or groups), the static client if it needs one, the rule shape,
 the person side and the job side. If it needs a new audience prefix,
-name it in [reference/rules.md](../reference/rules.md).
+name it in [reference/policy.md](../reference/policy.md).
 
 ## 6. A CLI subcommand
 

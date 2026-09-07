@@ -11,7 +11,7 @@ logins.
    hook's directory reads to the hub's Connect client, honouring
    `authoritative`. Nothing user-visible changes; the per-tenant readers
    retire.
-2. **Issuer beside the IdP.** Deploy access-issuer with the rules file
+2. **Issuer beside the IdP.** Deploy access-issuer with the policy
    seeded from the login hook's policy, minting the same `groups` values
    the IdP mints today. Run the spike list from its design. No relying
    party trusts it yet.

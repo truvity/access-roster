@@ -19,13 +19,14 @@ custom issuer the trust policy can see `sub`, `aud`, `amr` and `email`,
 and the decision rides in `aud`. Add a `sub` condition when a role is for
 one workload only.
 
-## Rules
+## Policy
+
+Each role is a client of kind `exchange`; `requires` says who may assume it:
 
 ```yaml
-- when: { directory_group: platform-admins@example.com }
-  grant: { audiences: [aws:111122223333:power] }
-- when: { github: { repository: example-org/gitops, ref: refs/heads/master } }
-  grant: { audiences: [aws:111122223333:gitops-deployer] }
+clients:
+  aws:111122223333:power:           { kind: exchange, requires: [sre] }
+  aws:111122223333:gitops-deployer: { kind: exchange, requires: [ci-gitops] }
 ```
 
 ## Person side

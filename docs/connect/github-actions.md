@@ -11,15 +11,20 @@ proofs:
     - organisation: example-org
 ```
 
-## Rules
+## Policy
+
+A job becomes a machine group by matcher; the clients it may obtain a
+token for list that group:
 
 ```yaml
-- id: gitops-deploys
-  when: { github: { repository: example-org/gitops, ref: refs/heads/master } }
-  grant: { audiences: [aws:111122223333:gitops-deployer, k8s:devel] }
-- id: any-repo-reads-devel
-  when: { github: { owner: example-org, ref: refs/heads/* } }
-  grant: { audiences: [k8s:devel-readonly] }
+groups:
+  ci-gitops:   { matchers: [{ github: { repository: example-org/gitops, ref: refs/heads/master } }] }
+  ci-any-main: { matchers: [{ github: { owner: example-org, ref: refs/heads/* } }] }
+lifetimes: { ci-gitops: 1h, ci-any-main: 1h }
+clients:
+  aws:111122223333:gitops-deployer: { kind: exchange, requires: [ci-gitops] }
+  k8s:devel:                        { kind: public,   requires: [ci-gitops, engineer] }
+  k8s:devel-readonly:               { kind: public,   requires: [ci-any-main] }
 ```
 
 ## Workflow side

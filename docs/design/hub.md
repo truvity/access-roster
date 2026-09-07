@@ -288,25 +288,20 @@ so behind a gateway it is reached by port-forward. The console shows a
 banner while it is enabled; a chart value turns it off. It exists for day
 one and for the day the corporate sign-in is what is broken.
 
-### Rules
+### Roles come from the policy, membership from the console
 
-Authorization is a list of rules, evaluated in order, default deny.
-Operator implies viewer. Four subject kinds:
+The hub is a relying party of the family's own [policy](../reference/policy.md):
+`hub-operators` and `hub-viewers` are two declared internal groups, and
+an identity holds a role by being in one of them. Who is in them is the
+one thing the console edits: the Access view attaches a directory group,
+picked from the hub's own snapshots, to a declared internal group, and
+detaches what it attached. Group names, claim fragments, lifetimes and
+clients are declared in the deployment and shown locked.
 
-| Subject | Matches | Needs |
-|---|---|---|
-| `directoryGroup` | members of a group the hub snapshots, in a served domain, live | a connected workspace |
-| `claim` | a value in a named claim of a verified token from a named issuer — a groups claim, a roles claim | the OIDC or forwarded source |
-| `email` | one address | nothing |
-| `emailDomain` | every address in a domain | nothing |
-
-Declared rules come from the chart and are read-only in the console;
-console-added rules are stored by the hub and evaluated after them. The
-Access view offers a picker over snapshotted groups, so the first rule is
-a click, not a typed address. When the directory answer for a signed-in
-identity is not authoritative, the last granted role is kept for a
-bounded window and no new identity is granted anything: the same
-hold-never-remove rule, applied to the hub's own door.
+When the directory answer for a signed-in identity is not authoritative,
+the last granted role is kept for the policy's hold window and no new
+identity is granted anything: the same hold-never-remove rule, applied to
+the hub's own door.
 
 ### Day one
 
@@ -330,7 +325,7 @@ the same verifier the console uses.
 ## Two boundaries worth naming
 
 **The library.** The Connect flow (consent, tenant and domain discovery,
-the first probe, reconnect), the per-backend clients and the rules engine
+the first probe, reconnect), the per-backend clients and the policy engine
 are importable Go packages behind storage interfaces, not code welded to
 the Kubernetes store. A product that lets a customer's administrator
 connect their own directory in one click imports the same packages with
@@ -342,7 +337,7 @@ kept from day one because it is cheap then and expensive later.
 security token service: it verifies proofs — corporate sign-ins, workload
 tokens — applies rules, and issues tokens that clusters, cloud accounts
 and consoles trust. It is the hub's first consumer and shares its
-verifiers, backends and rules engine. It is designed in
+verifiers, backends and policy engine. It is designed in
 [access-issuer.md](access-issuer.md) and built after the hub. Nothing in
 the hub depends on it; an installation that only wants the sync model
 never deploys it.
@@ -382,7 +377,7 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 | `docs/architecture.md` | the family in one page: context, containers, the hub's components, who owns what, use cases, failure semantics |
 | `docs/design/access-issuer.md` | the issuer's design and its guardrail |
 | `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`; `max_age`/`snapshot_at`; the additive fields vs google-group-sync |
-| `docs/reference/configuration.md` | chart values, the overlay format, access rules and consumers, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |
+| `docs/reference/configuration.md` | chart values, the overlay format, the policy and consumers, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |
 | `docs/operations/connect-runbook.md` | the one-time GCP prerequisites, the per-workspace flow, trusting the client, verification |
 | `docs/operations/runbook.md` | day one, health, reconnect as the recovery, lost operator access, domain moves and conflicts, export |
 | `docs/operations/migration-from-google-group-sync.md` | overlay first, consumers moved to the ConnectRPC client, Connect later, archive |

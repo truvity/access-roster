@@ -73,7 +73,7 @@ flowchart TB
 | **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>`, generated clients | every console UI | with the hub's console |
 | **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `rules test` | people, on laptops; never machines | with the issuer |
 | **GitHub Action** | `truvity/access-roster@v1` (root `action.yml`) | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | with the issuer |
-| **File format** | the rules file | subject → grant; the one place policy is written | the platform, in gitops | with the hub's console, extended by the issuer |
+| **File format** | the policy | groups, claims, lifetimes, clients, memberships — one schema for both services | the platform, in gitops; memberships also from the console | with the hub's console, extended by the issuer |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the hub's console services | consumers of the hub | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
 
@@ -81,7 +81,7 @@ flowchart TB
 
 | Ours (this repository) | Third-party, used as is |
 |---|---|
-| directory-roster, access-issuer, the access-proxy **chart** (wiring, conventions and a registration init step around a third-party proxy), the Go module, the TypeScript package, accessctl, the exchange action, the rules file format | Google Workspace and Entra (sign-in, MFA, directory), GitHub Actions OIDC, Envoy Gateway, **oauth2-proxy** (the process inside access-proxy), Valkey, kubelogin, kubectl, the AWS CLI, `curl` and `jq` in the action, the OpenID Provider library the issuer is built on |
+| directory-roster, access-issuer, the access-proxy **chart** (wiring, conventions and a registration init step around a third-party proxy), the Go module, the TypeScript package, accessctl, the exchange action, the policy schema | Google Workspace and Entra (sign-in, MFA, directory), GitHub Actions OIDC, Envoy Gateway, **oauth2-proxy** (the process inside access-proxy), Valkey, kubelogin, kubectl, the AWS CLI, `curl` and `jq` in the action, the OpenID Provider library the issuer is built on |
 
 ## Case by case
 
@@ -249,7 +249,7 @@ configure and where, what you get.
 - **You configure:** roles whose only purpose is registry or artifact
   access, granted by rules; the tool-specific line per registry or domain.
 - **You get:** a push or a package install that never sees an expired
-  login, with the entitlement decided in the rules file.
+  login, with the entitlement decided in the policy.
 - Guide: [connect/registries-and-artifacts.md](connect/registries-and-artifacts.md).
 
 ## Reading the two models together

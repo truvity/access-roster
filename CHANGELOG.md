@@ -4,6 +4,12 @@ One line per release; full detail lives in the release notes and the
 git history.
 
 ## Unreleased
+- Policy model settled (2026-09-07): five tables — groups, claims,
+  lifetimes, clients, memberships — one schema for both services, deep
+  merge with a scalar-conflict check, shortest lifetime, layered loading
+  (declared + console), memberships the only console-writable table,
+  clients declared or self-registered and never created in a console.
+  Replaces the flat rules list; `docs/reference/policy.md`.
 - Documentation rewritten for the self-contained repository: why it
   exists, the ten concepts, one architecture, a design per battery
   (hub, access-issuer, access-proxy, libraries, accessctl and the

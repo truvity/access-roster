@@ -14,14 +14,18 @@ the `groups` claim into RBAC. People use kubelogin or `accessctl`; jobs use
 - RBAC bindings by group name, unchanged if the rules mint the same
   values as before.
 
-## Rules
+## Policy
+
+The cluster is a public client; the group values its RBAC binds come from
+the claim fragments:
 
 ```yaml
-- when: { directory_group: platform-admins@example.com }
-  grant: { groups: [cluster-kernel:admin], audiences: [k8s:kernel] }
+groups:  { sre: { members: [role-sre@example.com] } }
+claims:  { sre: { groups: [cluster-kernel:admin] } }
+clients: { k8s:kernel: { kind: public, requires: [sre, it] } }
 ```
 
-The audience is what lets `accessctl kubeconfig` know this person may use
+`requires` is what lets `accessctl kubeconfig` know this person may use
 this cluster; the `groups` value is what the cluster's RBAC binds.
 
 ## Person side
