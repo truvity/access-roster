@@ -23,6 +23,18 @@ repository, not the order it arrived in.
   layered loading, memberships the only console-writable table, clients
   declared or self-registered and never created in a console. The hub is
   a relying party of it: `hub-operators` and `hub-viewers`.
+- **The issuer design, completed on sessions and standards**: sessions
+  are first-class issuer state, listable per identity and client and
+  revocable, which gives the console its second write — Revoke, and
+  "sign out everywhere" for oneself — and the operator a lever between
+  the proxy's sign-out and the next refused refresh. The standards table
+  names what is in (Core code+PKCE, Discovery, RP-Initiated Logout as the
+  conformance target; device, token exchange, JWT profile, client
+  credentials, revocation, dynamic registration, JWT access tokens) and
+  what is deliberately out (introspection, implicit and hybrid, back-
+  channel logout for 1.0, the session iframe, PAR, DPoP, mTLS, CIBA), on
+  `zitadel/oidc/v3`, with the OpenID conformance suite as the spike's
+  seventh item.
 - **The console** on the fleet stack, organised as the graph the content
   actually is rather than as a set of tables: search on every page, an
   overview that answers whether anything is broken, and a page per

@@ -8,9 +8,13 @@
 | `/authorize`, `/token`, `/userinfo`, `/end_session` | OIDC | login, tokens, RP-initiated logout |
 | `/device_authorization` | RFC 8628 | kubelogin, `accessctl`, the Kargo CLI |
 | `/token` with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange` | RFC 8693 | CI and workload exchange; the requested `audience` is a client, gated by its `requires` |
+| `/revoke` | RFC 7009 | revokes a refresh token; what Revoke and "sign out everywhere" call underneath |
 | `/register` | RFC 7591 | dynamic client registration, authenticated by a ServiceAccount token |
+| `/login`, `/device`, `/signed-out` | ours | the three pages the issuer serves itself: sign-in chooser by domain, device-code entry, signed out. Minimal HTML, same theme; not the console |
 | `/.access/grants` | ours | the clients the caller's groups admit it to; read by `accessctl kubeconfig` and `aws-config` |
-| `/.access/simulate` | ours | the one operator page: what would this identity get. Read-only |
+| `/.access/simulate` | ours | what would this identity get. Read-only |
+| `SessionService` (ConnectRPC): `ListSessions{identity? \| client?}`, `RevokeSessions{identity, client?, session_id?}` | ours | sessions per identity and per client, with client, how obtained, issued, expires, last refreshed; revoke per identity, per client, or one. Listing and revoking others is operator; listing and revoking your own is any signed-in identity |
+| not served | RFC 7662 introspection, implicit and hybrid flows, back-channel logout, session-management iframe | JWT access tokens are verified offline; the rest has no consumer here |
 
 ## Values
 
