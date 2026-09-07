@@ -1,10 +1,12 @@
 # Architecture
 
-One page for the whole family: the directory hub, the token service that
-comes after it, the relying parties around them, and the flows that have
-to work. Decisions and their reasons live in the design documents
-([hub](design/hub.md), [token service](design/token-service.md)); the
-contracts in [reference/contracts.md](reference/contracts.md). Diagrams
+One page for the whole family: the directory hub, the issuer that comes
+after it, the proxy, the libraries and the CLI around them, the relying
+parties, and the flows that have to work. Decisions and their reasons
+live in the design documents ([hub](design/hub.md),
+[issuer](design/access-issuer.md), [proxy](design/access-proxy.md),
+[libraries](design/libraries.md), [CLI](design/accessctl.md)); the
+contracts in [reference/](reference/). Diagrams
 follow the C4 model and are drawn as Mermaid flowcharts, which GitHub
 renders inline.
 
@@ -12,9 +14,9 @@ renders inline.
 
 The hub's console is reached **the same way as every other console in
 the installation: through the authenticating proxy that fronts them
-all**, which forwards the caller's token from the installation's issuer
-(the token service once it exists; whatever identity provider the
-installation runs until then). The hub verifies that bearer and applies
+all** — `access-proxy` — which forwards the caller's token from the
+installation's issuer (access-issuer once it exists; whatever identity
+provider the installation runs until then). The hub verifies that bearer and applies
 its access rules. That is the normal path, and it is the only path drawn
 solid below.
 
@@ -36,11 +38,11 @@ flowchart TB
   admin["Directory admin<br/>[Person]<br/>a role account of one tenant,<br/>consents once"]:::person
   ci["CI job<br/>[External workload]<br/>a signed identity token per run"]:::ext
 
-  ts["token service<br/>[Software System, later]<br/>verifies proofs, asks the hub,<br/>applies rules, issues tokens"]:::token
+  ts["access-issuer<br/>[Software System, later]<br/>verifies proofs, asks the hub,<br/>applies rules, issues tokens"]:::token
   hub["directory-roster<br/>[Software System]<br/>who exists, who is live, who is in which group,<br/>per connected directory, with an authoritative flag"]:::hub
   teamsync["github-roster<br/>[Software System]<br/>directory groups → GitHub teams"]:::system
 
-  proxy["Authenticating proxy<br/>[External]<br/>one in front of every console,<br/>forwards the caller's token"]:::ext
+  proxy["access-proxy<br/>[chart, one per console]<br/>login, session, forwarded bearer,<br/>self-registered client"]:::token
   rp["Relying parties<br/>[External]<br/>Kubernetes API servers, cloud accounts,<br/>consoles behind the proxy"]:::ext
   idp["Corporate IdPs<br/>[External]<br/>Google Workspace tenants, Entra later<br/>sign-in and MFA live here"]:::ext
 
@@ -48,9 +50,9 @@ flowchart TB
   proxy -- "login<br/>[OIDC]" --> ts
   proxy -- "forwarded bearer<br/>[HTTP]" --> hub
   proxy -- "forwarded bearer" --> rp
-  eng -- "kubectl, cloud credentials<br/>[OIDC, device flow, token exchange]" --> ts
+  eng -- "kubelogin, accessctl<br/>[OIDC, device flow, token exchange]" --> ts
   eng -. "standalone or break-glass only<br/>[own login]" .-> hub
-  ci -- "token exchange<br/>[RFC 8693]" --> ts
+  ci -- "the exchange action<br/>[RFC 8693]" --> ts
   ts -- "sign-in<br/>[OIDC]" --> idp
   ts -- "ResolveUser at login and refresh<br/>[ConnectRPC, SA token]" --> hub
   ts -. "trusted issuer<br/>[JWKS]" .-> rp
@@ -68,9 +70,10 @@ flowchart TB
   classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
 ```
 
-The hub sits behind exactly two callers, the token service and
-github-roster, plus its own console. Everything else reads claims from the
-token service and never sees the hub. Neither component has a database;
+The hub sits behind exactly two callers, access-issuer and github-roster,
+plus its own console. Applications read the forwarded bearer through the
+Go module or the TypeScript package; they implement no login. Everything else reads claims from the
+access-issuer and never sees the hub. Neither component has a database;
 neither authenticates anyone.
 
 ## 2. Containers
@@ -79,14 +82,14 @@ neither authenticates anyone.
 flowchart TB
   eng["Engineer / operator<br/>[Person]"]:::person
   ci["CI job<br/>[External workload]"]:::ext
-  proxy["Authenticating proxy + sessions<br/>[External, one per console]"]:::ext
+  proxy["access-proxy + sessions<br/>[chart, one per console, self-registered]"]:::token
   idp["Corporate IdPs<br/>[External]<br/>Admin SDK reads · OIDC sign-in"]:::ext
   kapi["Kubernetes API server<br/>[External]<br/>TokenReview"]:::ext
 
-  subgraph nsTs["namespace: token-service (later)"]
+  subgraph nsTs["namespace: access-issuer (later)"]
     direction TB
-    ts["token service<br/>[Container: Go, OpenID Provider library]<br/>verifiers: corporate OIDC, workload OIDC, k8s SA<br/>rules engine · client registry · device flow"]:::token
-    rules[("rules + clients<br/>[ConfigMap from the deployment]")]:::tokenStore
+    ts["access-issuer<br/>[Container: Go, OpenID Provider library]<br/>verifiers: corporate OIDC, workload OIDC, k8s SA<br/>rules engine · client registry · device flow"]:::token
+    rules[("rules + static clients<br/>[ConfigMap from the deployment]<br/>dynamic registrations [own namespace]")]:::tokenStore
     keys[("signing keys<br/>[Secrets]")]:::tokenStore
     tsv[("Valkey<br/>[external to the chart]<br/>codes, refresh, device codes,<br/>last-known groups")]:::tokenStore
   end
@@ -108,12 +111,12 @@ flowchart TB
   end
 
   eng -- "[HTTPS]" --> proxy
-  proxy -- "login<br/>[OIDC code flow]" --> ts
+  proxy -- "login, and self-registration at start<br/>[OIDC, RFC 7591 with SA token]" --> ts
   proxy -- "console listener :8081<br/>[forwarded bearer]" --> hub
   proxy --> consoles
   eng -. "standalone or break-glass<br/>[own login, :8081]" .-> hub
-  eng -- "kubectl, CLI<br/>[OIDC]" --> ts
-  ci -- "token exchange" --> ts
+  eng -- "kubelogin, accessctl<br/>[OIDC]" --> ts
+  ci -- "exchange action" --> ts
   ts -- "sign-in<br/>[OIDC]" --> idp
   ts -- "ResolveUser<br/>[ConnectRPC, SA token]" --> hub
   ts --> rules
@@ -195,7 +198,7 @@ flowchart TB
 
 ## 4. Who owns what
 
-| | directory-roster | token service | external |
+| | directory-roster | access-issuer | external |
 |---|---|---|---|
 | credentials held | directory read credentials — the only place they exist | its own signing keys | the IdPs hold users, passwords, MFA |
 | knows | who exists, who is live, who is in which group, which domains each tenant owns, and whether that is authoritative | who just proved what | each relying party knows its own roles |
@@ -214,7 +217,7 @@ sequenceDiagram
   autonumber
   actor E as Operator (browser)
   participant P as proxy (in front of the console)
-  participant T as token service
+  participant T as access-issuer
   participant G as Corporate IdP
   participant H as directory-roster
   E->>P: open the console
@@ -235,7 +238,7 @@ sequenceDiagram
   Note over P,H: when the console is the hub's own, the hub verifies the forwarded bearer and a claim rule grants viewer or operator
 ```
 
-Until the token service exists, the issuer in this flow is whatever
+Until the access-issuer exists, the issuer in this flow is whatever
 identity provider the installation already runs; nothing about the hub's
 side changes.
 
@@ -246,7 +249,7 @@ sequenceDiagram
   autonumber
   actor E as Engineer
   participant C as kubelogin
-  participant T as token service
+  participant T as access-issuer
   participant B as Browser + IdP
   participant K as Kubernetes API server
   E->>C: kubectl get pods (exec plugin)
@@ -268,7 +271,7 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   participant C as CLI (already logged in)
-  participant T as token service
+  participant T as access-issuer
   participant S as Cloud STS (account 1111)
   C->>T: token exchange: subject = my token, requested aud = aws:1111:power
   T->>T: rules: may this identity have aws:1111:power?
@@ -290,7 +293,7 @@ sequenceDiagram
   autonumber
   participant W as Workflow (gitops, master)
   participant GH as CI platform OIDC
-  participant T as token service
+  participant T as access-issuer
   participant S as Cloud STS
   W->>GH: request id-token (aud the issuer)
   GH-->>W: JWT: sub repo:example-org/gitops:ref:refs/heads/master
@@ -411,8 +414,8 @@ sequenceDiagram
 | Credential revoked or admin suspended | probe fails → non-authoritative; Reconnect is the recovery |
 | A signed-in operator's own account turns non-authoritative | last granted role kept for a bounded window; no new identity granted anything |
 | Consumer presents no token, a wrong audience, or a foreign ServiceAccount | `unauthenticated`; NetworkPolicy would have stopped most of these earlier |
-| The token service is down | no new logins anywhere; existing sessions and tokens live to expiry; break-glass is outside it |
-| The hub is down | the token service keeps last-known groups within its hold window; github-roster holds removals |
+| access-issuer is down | no new logins anywhere; existing sessions and tokens live to expiry; break-glass is outside it |
+| The hub is down | access-issuer keeps last-known groups within its hold window; github-roster holds removals |
 
 The rule under all of them: **a consumer removes access only on an
 authoritative answer.** Everything that can go wrong degrades to "hold",

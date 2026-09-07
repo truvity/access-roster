@@ -2,13 +2,30 @@
 
 ## Layout
 
-One repository, two components, each with its own binary and chart and
-installable alone: `cmd/directory-roster` with `charts/directory-roster`,
-and later the token service. Shared Go packages under `pkg/` — the
-backends, the Connect flow, the rules engine, the verifiers — are
-importable behind storage interfaces and must stay free of Kubernetes
-specifics. Contracts under `proto/`, generated code under `gen/`, design
-and reference under `docs/`.
+One repository, one tag, several deliverables, each installable or
+importable alone:
+
+```
+cmd/directory-roster      the directory hub
+cmd/access-issuer         the token service (later)
+cmd/accessctl             the CLI (later)
+charts/directory-roster   the hub's chart
+charts/access-issuer      the issuer's chart (later)
+charts/access-proxy       the console exposure chart (later)
+actions/exchange          the GitHub Action (later)
+identity/ authz/ directory/ tokens/ rules/ connect/ backend/ proof/
+                          the Go module's public packages; framework
+                          adapters under identity/<framework>mw
+ts/                       the TypeScript package (later)
+proto/  gen/              contracts and committed generated code
+docs/                     why, concepts, architecture, design per
+                          battery, reference, connect guides,
+                          operations, development
+```
+
+Public Go packages stay free of Kubernetes and framework specifics
+except in the adapters and the store implementations; anything a product
+might import lives behind a storage interface.
 
 ## Toolchain
 

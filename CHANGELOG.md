@@ -4,6 +4,12 @@ One line per release; full detail lives in the release notes and the
 git history.
 
 ## Unreleased
+- Documentation rewritten for the self-contained repository: why it
+  exists, the ten concepts, one architecture, a design per battery
+  (hub, access-issuer, access-proxy, libraries, accessctl and the
+  action), reference pages including the rules language, connect guides
+  per kind of relying party, migration from an identity provider,
+  extension points.
 - Repository renamed to access-roster: one repository for the directory
   hub and the later token service, which share verifiers, rules and
   backends. The hub keeps its name: `directory-roster` binary, chart and

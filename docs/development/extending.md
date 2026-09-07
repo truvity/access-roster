@@ -1,0 +1,59 @@
+# Extension points
+
+Six places something new plugs in, each behind an interface that already
+has one implementation. The rule for all of them: the new thing ships
+with its fake and its acceptance scenario, or it is not done.
+
+## 1. A directory backend (Entra, LDAP, …)
+
+`pkg/backend`: implement `Backend` — `Probe`, `Domains`, `Users`,
+`Groups`, `Members` (atomic per group), plus `Consent` for the
+admin-consent flow or `KeyCredential` for an uploaded key — and register
+it under a name. The hub's record, routing, snapshots, freshness and
+console need no change; the Workspaces view gains a button. Ship: the
+backend's fake, a consent-runbook page, and the acceptance scenarios
+connect / revoke / domain move against the fake.
+
+## 2. A proof kind (another CI platform, a cloud's workload identity)
+
+`pkg/proof`: implement `Verifier` — given a token, return a verified
+`Proof{Issuer, Subject, Claims}` or an error — and a subject kind in the
+rules that reads its claims. GitHub is the first; GitLab or a cloud's
+instance identity are the same shape. Ship: fixtures of real tokens with
+rotated keys, and a rules test.
+
+## 3. A rule subject or grant
+
+`pkg/rules`: a subject is a `Matcher` over `Input{Email, Groups, Claims,
+Proof, Authoritative}`; a grant is a field on `Grant` that a consumer
+reads. Adding either is a schema change to the file, so bump the file's
+`version` and keep the old key readable.
+
+## 4. A middleware adapter
+
+`identity/<framework>mw`: wrap the framework's request into
+`identity.Request{Header(name) string}`, call the shared `Authenticate`,
+put the `Identity` in the context the framework uses, serve
+`/.access/whoami`. The four existing adapters are each under a hundred
+lines; a fifth should be too.
+
+## 5. A relying-party recipe
+
+`docs/connect/<thing>.md`: what the relying party trusts (issuer, client,
+audience or groups), the static client if it needs one, the rule shape,
+the person side and the job side. If it needs a new audience prefix,
+name it in [reference/rules.md](../reference/rules.md).
+
+## 6. A CLI subcommand
+
+`cmd/accessctl`: subcommands share the login cache and the issuer client
+in `internal/cli`; a new one that needs neither probably belongs in a
+script. Keep the CI detection path working: every command must behave
+with an ambient platform token and no cache.
+
+## What is not an extension point
+
+Authentication. There is no interface for "a way to prove who you are
+that this repository checks itself". Passwords, MFA, consent screens and
+user records are an identity provider's; the day one is needed, the
+answer is to run one and connect it as a proof.
