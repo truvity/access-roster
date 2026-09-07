@@ -48,10 +48,9 @@ Proto under [`proto/`](proto); reading guide in
 
 | Read | For |
 |---|---|
-| [docs/architecture/access-roster.md](docs/architecture/access-roster.md) | the family end to end: containers, who owns what, six use cases |
+| [docs/architecture.md](docs/architecture.md) | one page: how operators reach the hub, context, containers, the hub's components, who owns what, eight use cases, failure semantics |
 | [docs/design/hub.md](docs/design/hub.md) | the hub: the model, the decisions, access to the hub itself, what is not carried |
 | [docs/design/token-service.md](docs/design/token-service.md) | the token service: purpose, guardrail, verifiers, rules, what it issues, the spike |
-| [docs/architecture/hub.md](docs/architecture/hub.md) | the hub's C4 views, the connect flow, a lookup with freshness, failure semantics |
 | [docs/reference/contracts.md](docs/reference/contracts.md) | every RPC, authentication on both listeners, `max_age`/`snapshot_at`, authority, errors |
 | [docs/reference/configuration.md](docs/reference/configuration.md) | what the chart includes vs expects, values, the overlay, consumers, access rules, Kubernetes objects, a Valkey recommendation |
 | [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) | the one-time OAuth client, the per-workspace consent step, the key path |

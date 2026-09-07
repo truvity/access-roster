@@ -14,7 +14,7 @@ git history.
   consumers authenticate with ServiceAccount tokens verified by
   TokenReview.
 - The token service designed (`docs/design/token-service.md`) and the
-  family drawn end to end (`docs/architecture/access-roster.md`).
+  family drawn end to end in one architecture page (`docs/architecture.md`).
 - Repository scaffolding, the hub design (`docs/design/hub.md`), the
   architecture with C4 diagrams, the contracts and the connect runbook —
   documentation first, for review before the prototype.
