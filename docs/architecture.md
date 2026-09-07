@@ -24,7 +24,8 @@ The hub also carries its **own login page**, for exactly two situations:
 
 - a **standalone installation** with no proxy and no issuer, where
   operators sign in with the connected directory itself;
-- **break-glass**, the generated admin account, reached by port-forward,
+- **recovery**, a short-lived token proving cluster access (a generated
+  password outside Kubernetes), reached by port-forward,
   for day one and for the day the proxy or the issuer is what is broken.
 
 It is drawn dotted, once, and it is never a third parallel path in an
@@ -51,7 +52,7 @@ flowchart TB
   proxy -- "forwarded bearer<br/>[HTTP]" --> hub
   proxy -- "forwarded bearer" --> rp
   eng -- "kubelogin, accessctl<br/>[OIDC, device flow, token exchange]" --> ts
-  eng -. "standalone or break-glass only<br/>[own login]" .-> hub
+  eng -. "standalone or recovery only<br/>[own login]" .-> hub
   ci -- "the exchange action<br/>[RFC 8693]" --> ts
   ts -- "sign-in<br/>[OIDC]" --> idp
   ts -- "ResolveUser at login and refresh<br/>[ConnectRPC, SA token]" --> hub
@@ -114,7 +115,7 @@ flowchart TB
   proxy -- "login, and self-registration at start<br/>[OIDC, RFC 7591 with SA token]" --> ts
   proxy -- "console listener :8081<br/>[forwarded bearer]" --> hub
   proxy --> consoles
-  eng -. "standalone or break-glass<br/>[own login, :8081]" .-> hub
+  eng -. "standalone or recovery<br/>[own login, :8081]" .-> hub
   eng -- "kubelogin, accessctl<br/>[OIDC]" --> ts
   ci -- "exchange action" --> ts
   ts -- "sign-in<br/>[OIDC]" --> idp
@@ -397,7 +398,7 @@ sequenceDiagram
   H->>G: OIDC sign-in with the same client, openid scopes only
   H->>H: email → workspace → live and in group → operator
   O->>H: disable admin (chart value)
-  Note over O,H: with a proxy in front, steps 1 and 9-11 are replaced by the proxy's login - the memberships are the same, and admin stays as break-glass by port-forward
+  Note over O,H: with a proxy in front, steps 1 and 9-11 are replaced by the proxy's login - the memberships are the same, and recovery stays reachable by port-forward
 ```
 
 ## 6. Failure semantics, in one table

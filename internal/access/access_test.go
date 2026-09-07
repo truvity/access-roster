@@ -143,11 +143,11 @@ func TestBreakGlassAdminIsAlwaysOperator(t *testing.T) {
 	a, dir, _ := setup(t, hub.UserResult{})
 	dir.result.Authoritative = false
 
-	got, err := a.Authorize(context.Background(), access.Principal{Source: access.SourceAdmin, Email: "admin"})
+	got, err := a.Authorize(context.Background(), access.Principal{Source: access.SourceRecovery, Email: "admin"})
 	if err != nil {
 		t.Fatalf("Authorize: %v", err)
 	}
-	if got.Role != access.RoleOperator || got.Source != access.SourceAdmin {
+	if got.Role != access.RoleOperator || got.Source != access.SourceRecovery {
 		t.Errorf("identity = %+v, want the admin as operator", got)
 	}
 }

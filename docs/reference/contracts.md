@@ -32,7 +32,7 @@ request. Roles come from membership of two declared policy groups:
 | `GET /login` | the login page: the enabled sources as buttons |
 | `GET /login/directory/start` → `GET /login/directory/callback` | sign in with a connected directory: its OAuth client, openid scopes only; the address must be live in a served domain |
 | `GET /login/oidc/start` → `GET /login/oidc/callback` | sign in with the configured external issuer |
-| `POST /admin/login` | the break-glass account, only while enabled |
+| `POST /login/recovery` | the recovery sign-in, while a deployment has one. In a cluster the proof is a ServiceAccount token minted for the recovery audience, verified by TokenReview; elsewhere it is the generated password. The proof may come in the form, as JSON, or as a bearer, so a runbook can be one curl |
 | `POST /logout` | clears the session |
 | `GET /connect/<backend>/callback` | the admin-consent callback, authenticated like any page |
 

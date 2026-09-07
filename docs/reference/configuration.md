@@ -37,7 +37,9 @@ external-secrets is at the end of this page.
 | `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener; verified by TokenReview |
 | `route.host` | `""` | the console's hostname on the gateway, and only the console's: the API listener never gets a route, because a consumer that could arrive over the gateway could reach an operator call. Empty renders no Gateway, HTTPRoute or Certificate, which is right for a hub reached by port-forward |
 | `route.gatewayClassName`, `route.certificate.*` | `internal`, `internal-ca` | which class the Gateway joins, and who issues its certificate. An empty `issuerName` renders none, for a gateway that brings its own |
-| `access.admin.enabled` | unset | the break-glass account, for recovery: nobody in the operators group, the group renamed, directory sign-in broken. Unset, it turns itself on only when the values declare no other way in — off when they carry both a workspace and a non-empty `hub-operators`, because that installation signs in through the directory from its first boot and a password nobody needs is a standing credential. Set it explicitly to override either way |
+| `access.recovery.enabled` | `true` | the way in for the day the ordinary one is broken. In a cluster it stores nothing: recovery is a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. On by default because it no longer costs a standing credential |
+| `access.recovery.serviceAccountName` | `<release>-recovery` | the account recovery proves access as; the chart creates it, bound to nobody. Granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
+| `access.recovery.audience` | `<release>-recovery` | the audience the token must be minted for. Without one, every mounted ServiceAccount token in the cluster would be a recovery token |
 | `access.holdWindow` | `4h` | how long a signed-in identity keeps its last granted role while the directory cannot be vouched for |
 | `access.login.directory` | `true` | "Sign in with <directory>" using a connected workspace's OAuth client |
 | `access.login.oidc.issuer` / `.clientSecretName` | `""` | an external issuer for the hub's own login page; Secret keys `client-id`, `client-secret` |
@@ -144,7 +146,6 @@ so the hash carries the uniqueness the readable part may have lost.
 | `Secret <release>-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.existingSecret`, and then read-only |
 | `ConfigMap <release>-memberships` | memberships added in the console | the hub |
 | `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
-| `Secret <release>-admin` | the break-glass password | the hub, generated on first start; never logged |
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 

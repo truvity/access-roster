@@ -84,6 +84,14 @@ spec:
             - name: OAUTH_CLIENT_SECRET_NAME
               value: {{ .Values.oauthClient.existingSecret | quote }}
             {{- end }}
+            - name: RECOVERY_ENABLED
+              value: {{ .Values.access.recovery.enabled | quote }}
+            {{- if .Values.access.recovery.enabled }}
+            - name: RECOVERY_SERVICE_ACCOUNT
+              value: {{ include "directory-roster.recoveryServiceAccountName" . | quote }}
+            - name: RECOVERY_AUDIENCE
+              value: {{ include "directory-roster.recoveryAudience" . | quote }}
+            {{- end }}
             - name: POLICY_DIR
               value: /var/run/directory-roster/policy
             - name: HOLD_WINDOW

@@ -112,8 +112,8 @@ func sourceEnum(s access.Source) directoryrosterv1.IdentitySource {
 		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_OIDC
 	case access.SourceForwarded:
 		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_FORWARDED
-	case access.SourceAdmin:
-		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_ADMIN
+	case access.SourceRecovery:
+		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_RECOVERY
 	default:
 		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_UNSPECIFIED
 	}
@@ -267,12 +267,12 @@ func explanationProto(
 	if self {
 		identity.Subject = caller.Subject
 		identity.Source = sourceEnum(caller.Source)
-		if caller.Source == access.SourceAdmin {
+		if caller.Source == access.SourceRecovery {
 			identity.Role = roleEnum(caller.Role)
 		}
 	}
 	held := e.Result.Held
-	if self && caller.Source == access.SourceAdmin {
+	if self && caller.Source == access.SourceRecovery {
 		held = append(slices.Clone(held), caller.Held...)
 	}
 	out := &directoryrosterv1.ExplainResponse{

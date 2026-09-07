@@ -7,8 +7,7 @@ console and in `Describe`; nothing needs a shell except the export.
 
 **A deployment that declares its own way in has no day one.** Values that
 carry a workspace and a non-empty `hub-operators` are signed into through
-the directory from the first boot, and the break-glass account never
-turns itself on. Nothing below applies; go to
+the directory from the first boot. Nothing below applies; go to
 [the connect runbook](connect-runbook.md) when you add the next tenant.
 
 **A standalone installation configures itself through the console**, and
@@ -17,15 +16,31 @@ with this installation's own values to copy rather than a placeholder to
 translate — the redirect URI is its hostname, and that is where a day-one
 setup goes wrong.
 
-1. Install; the hub generates `Secret <release>-admin` and `Secret <release>-session-key`.
-2. Read the admin password: `kubectl -n directory-roster get secret <release>-admin -o jsonpath='{.data.password}' | base64 -d`.
-3. Port-forward the console port (or go through the gateway) and sign in at `/admin/login`.
-4. Follow Overview. It walks the same five steps: register an OAuth client
-   with the directory, give it to the hub, connect the first directory,
-   attach a directory group to `hub-operators`, and turn the break-glass
-   account off. Each disappears as it completes.
+1. Install. The hub generates `Secret <release>-session-key` and creates
+   the ServiceAccount `<release>-recovery`. There is no password anywhere.
+2. Mint a recovery token — a cluster administrator already has the RBAC
+   for this, and granting `create` on `serviceaccounts/token` for that
+   account is how you give it to somebody else:
+
+   ```sh
+   kubectl -n directory-roster create token <release>-recovery \
+     --audience <release>-recovery --duration 10m
+   ```
+
+3. Port-forward the console port (or go through the gateway), open
+   `/login`, expand **Recovery sign-in** and paste the token.
+4. Follow Overview. It walks the four steps: register an OAuth client with
+   the directory, give it to the hub, connect the first directory, and
+   attach a directory group to `hub-operators`. Each disappears as it
+   completes.
 5. Sign out; sign in with the directory as yourself. Search for yourself:
    your page shows operator and the membership that granted it.
+
+Outside a cluster there is nothing to prove access to, so the hub prints a
+generated recovery password once at start and step 2 is reading it off the
+log. That installation gets a fifth setup step — turn the password off —
+because a stored password *is* a standing credential, which the token is
+not.
 
 Step 4's first item is the only one that leaves the console:
 [the connect runbook](connect-runbook.md) has the full walk-through of the
@@ -33,22 +48,31 @@ cloud-console visit, and Overview has the two values to paste into it.
 
 Behind an authenticating proxy, steps 3 and 5 go through the proxy's
 login; attaching the membership is unchanged, because the hub resolves the
-forwarded identity's address through the directory like any other; the
-admin account stays as break-glass by port-forward.
+forwarded identity's address through the directory like any other;
+recovery stays reachable by port-forward.
 
 ## Lost operator access
 
 Nobody is in the operators group, or the group was renamed, or the directory
 sign-in is what is broken:
 
-- **admin still enabled:** port-forward, `/admin/login`, fix the membership.
-- **admin disabled:** set `access.admin.enabled: true` in the values, roll
-  the deployment, then as above. The password is still in `<release>-admin`.
-- **forgotten password:** delete `Secret <release>-admin`; the hub generates a
-  new one on restart.
-- **`429 too many attempts`:** ten wrong passwords stop the account
-  answering for a minute — the correct one included, so that the limit is
-  not a hint about which guess was close. Wait, then try once.
+- **recovery enabled (the default):** mint a token as in day one, sign in
+  at `/login` under *Recovery sign-in*, fix the membership. Who did it is
+  in the hub's log and in the cluster's audit log, by name.
+- **recovery disabled:** set `access.recovery.enabled: true` in the values,
+  roll the deployment, then as above. There is no password to recover,
+  only RBAC to hold.
+- **`503 recovery could not be checked`:** the check did not run — the API
+  server is unreachable, or the hub may not create TokenReviews (the
+  ClusterRole `<release>-<namespace>-tokenreview`). It is not a wrong
+  token; do not go looking for one.
+- **`401 that proof was not accepted`:** the token expired (they are
+  minted for minutes), was minted for another audience, or belongs to an
+  account that may not recover. Mint another with both flags.
+- **outside a cluster, `429 too many attempts`:** ten wrong passwords stop
+  the password answering for a minute — the correct one included, so that
+  the limit is not a hint about which guess was close. Wait, then try
+  once.
 
 Sessions are stateless signed cookies. To log everyone out at once,
 delete `Secret <release>-session-key`; the hub generates a new one on restart.
