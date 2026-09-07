@@ -71,6 +71,21 @@ The namespace label is the convention that removes one hand edit per
 console: a fleet egress policy that selects namespaces labelled
 `access-roster.io/exposed=true` needs no per-console entry.
 
+## The session store
+
+Valkey, external to the chart, exactly as for the hub and the issuer: the
+chart takes an address and optional credentials and ships no Valkey of its
+own, because upstream's chart and the valkey.io operator already do that
+job. Two topologies, both a one-line value:
+
+| Topology | When |
+|---|---|
+| **one Valkey per cluster, shared by every proxy** | the default recommendation: fewer pods, one thing to watch. Sessions are keyed by random tickets, so proxies cannot collide; give each proxy its own ACL user if you want isolation inside the instance |
+| **one Valkey per exposure** | when an exposure must not share a failure domain or an operator with the others |
+
+The configuration reference carries an example `ValkeyCluster` for the
+operator. Nothing else is needed to make them work together.
+
 ## Sign-out
 
 `/oauth2/sign_out` ends the proxy session and redirects to the issuer's
