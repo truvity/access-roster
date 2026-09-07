@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/truvity/access-roster/internal/emailaddr"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/policy"
 )
@@ -173,7 +174,7 @@ func (a *Authorizer) Authorize(ctx context.Context, p Principal) (Identity, erro
 		}, nil
 	}
 
-	explained, err := a.explain(ctx, strings.ToLower(strings.TrimSpace(p.Email)), true)
+	explained, err := a.explain(ctx, Proof{Email: p.Email}, true)
 	if err != nil {
 		return Identity{}, err
 	}
@@ -191,9 +192,28 @@ func (a *Authorizer) Authorize(ctx context.Context, p Principal) (Identity, erro
 	}, nil
 }
 
-// Explanation is what an identity effectively gets, and why. It is what
-// the About-me page shows, and what an operator sees when looking at
-// someone else.
+// Proof is what to explain: a person by address, a CI job, or a cluster
+// workload. Exactly the three kinds the policy can resolve, so the same
+// page answers what a pipeline is entitled to as well as what a person is.
+type Proof struct {
+	Email          string
+	GitHub         *policy.GitHubClaims
+	ServiceAccount *policy.ServiceAccountRef
+}
+
+// IsPerson reports whether the proof is an address.
+func (p Proof) IsPerson() bool { return p.GitHub == nil && p.ServiceAccount == nil }
+
+// ClientAdmission is one relying party and whether a proof reaches it.
+type ClientAdmission struct {
+	ID       string
+	Kind     string
+	Requires []string
+	Admitted bool
+	Lifetime time.Duration
+}
+
+// Explanation is what a proof effectively gets, and why.
 type Explanation struct {
 	Email           string
 	GivenName       string
@@ -205,20 +225,26 @@ type Explanation struct {
 	DirectoryGroups []string
 	Result          policy.Result
 	Role            Role
+	Clients         []ClientAdmission
 }
 
-// Explain answers what an address would effectively get. Unlike
-// Authorize it never refuses: a suspended account is reported as
-// suspended, which is the whole point of looking.
-func (a *Authorizer) Explain(ctx context.Context, email string) (Explanation, error) {
-	return a.explain(ctx, strings.ToLower(strings.TrimSpace(email)), false)
+// Explain answers what a proof would effectively get. Unlike Authorize it
+// never refuses: a suspended account is reported as suspended, which is
+// the whole point of looking.
+func (a *Authorizer) Explain(ctx context.Context, proof Proof) (Explanation, error) {
+	return a.explain(ctx, proof, false)
 }
 
-func (a *Authorizer) explain(ctx context.Context, email string, refuseSuspended bool) (Explanation, error) {
+func (a *Authorizer) explain(ctx context.Context, proof Proof, refuseSuspended bool) (Explanation, error) {
+	email := strings.ToLower(strings.TrimSpace(proof.Email))
 	out := Explanation{Email: email}
-	in := policy.Input{Email: email}
+	in := policy.Input{Email: email, GitHub: proof.GitHub, ServiceAccount: proof.ServiceAccount}
 
-	if email != "" && a.dir != nil {
+	// The break-glass admin has no address, so there is nothing to resolve
+	// and nothing to look up: it holds its role by construction, not by
+	// membership, and saying so is more useful than an error.
+	_, routable := emailaddr.Domain(email)
+	if routable && proof.IsPerson() && a.dir != nil {
 		resolved, err := a.dir.ResolveUser(ctx, email, nil)
 		if err != nil {
 			return Explanation{}, fmt.Errorf("resolve %s: %w", email, err)
@@ -235,7 +261,31 @@ func (a *Authorizer) explain(ctx context.Context, email string, refuseSuspended 
 
 	out.Result = a.evaluate(in)
 	out.Role = roleOf(out.Result)
+	out.Clients = a.admissions(out.Result)
 	return out, nil
+}
+
+// admissions reports, for every declared client, whether this result
+// reaches it and how long the token would live once the client's cap is
+// applied. It is what makes the whole model observable from one page:
+// groups are the vocabulary, clients are what the vocabulary buys.
+func (a *Authorizer) admissions(result policy.Result) []ClientAdmission {
+	clients := a.set.Clients()
+	out := make([]ClientAdmission, 0, len(clients))
+	for i := range clients {
+		client := &clients[i]
+		admission := ClientAdmission{
+			ID:       client.ID,
+			Kind:     client.Kind,
+			Requires: client.Requires,
+			Admitted: client.Admits(result),
+		}
+		if admission.Admitted {
+			admission.Lifetime = client.Cap(result.Lifetime)
+		}
+		out = append(out, admission)
+	}
+	return out
 }
 
 // roleOf reads the console's two roles off the policy: an identity is an

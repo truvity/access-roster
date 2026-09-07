@@ -25,9 +25,75 @@ type Tenant struct {
 	Backend   *fake.Backend
 }
 
+// Policy is the demonstration policy: enough of every table that each
+// mechanic can be seen working rather than described. It is used only
+// when the prototype runs with DEMO=1 and no policy of its own.
+//
+// What each part is here to show:
+//
+//   - two companies feeding one internal group (engineering), which is the
+//     whole point of internal names;
+//   - a fragment that merges with another's (platform and engineering both
+//     set tailnet.tiers, and the union is what a token carries);
+//   - lifetimes that differ by privilege, shortest winning;
+//   - a client that caps a lifetime shorter than the groups would give;
+//   - machine groups, so a CI job and a workload are explainable next to a
+//     person;
+//   - a membership declared in the memberships table, which the console
+//     may extend but not remove.
+const Policy = `
+version: 1
+groups:
+  platform:      { members: [directory-admins@north.example] }
+  engineering:   { members: [engineering@north.example, engineering@south.example] }
+  security:      { members: [security@south.example] }
+  hub-operators: { members: [directory-admins@north.example] }
+  hub-viewers:   {}
+  ci-gitops:
+    matchers:
+      - github: { repository: example-org/gitops, ref: refs/heads/master }
+  ci-any-branch:
+    matchers:
+      - github: { owner: example-org }
+  cluster-agent:
+    matchers:
+      - service_account: { namespace: identity-system, name: authorization-webhook }
+claims:
+  platform:      { groups: [cluster-kernel:admin, cluster-devel:admin], tailnet: { tiers: [vpc, service] } }
+  engineering:   { groups: [cluster-devel:developer], tailnet: { tiers: [vpc] } }
+  security:      { groups: [cluster-kernel:auditor] }
+  hub-operators: { groups: [hub:operator] }
+  hub-viewers:   { groups: [hub:viewer] }
+lifetimes:
+  default: 12h
+  platform: 4h
+  security: 8h
+  ci-gitops: 1h
+  ci-any-branch: 30m
+clients:
+  k8s:kernel:        { kind: public, requires: [platform, security] }
+  k8s:devel:         { kind: public, requires: [platform, engineering, ci-gitops] }
+  aws:1111:power:    { kind: exchange, requires: [platform] }
+  aws:1111:deployer: { kind: exchange, requires: [ci-gitops] }
+  directory-roster:  { kind: exchange, requires: [cluster-agent] }
+  argocd:
+    kind: confidential
+    secret: argocd-oidc-client
+    redirects: [https://argocd.demo.example/auth/callback]
+    requires: [platform, engineering, security]
+    ttl_cap: 2h
+  local-dev:
+    kind: public
+    redirects: [http://localhost:8000/callback]
+    requires: [engineering]
+memberships:
+  hub-viewers: [everyone@north.example, everyone@south.example]
+`
+
 // Tenants returns the two workspaces the prototype starts with: one
 // standing in for the installation's own directory, one for a second
-// company, so that routing by domain has something to route.
+// company, so that routing by domain has something to route. One account
+// is suspended, because a leaver is the case the whole design turns on.
 func Tenants(now time.Time) []Tenant {
 	first := fake.New("C0demo-north", "north.example").
 		WithAccount("ada@north.example", "Ada", "North").
@@ -36,11 +102,15 @@ func Tenants(now time.Time) []Tenant {
 		WithGroup("directory-admins@north.example", "ada@north.example").
 		WithGroup("engineering@north.example", "ada@north.example", "brian@north.example").
 		WithGroup("everyone@north.example", "ada@north.example", "brian@north.example", "cleo@north.example")
+	// Cleo has left: still in every group the directory lists, and not
+	// live, which is exactly the answer a consumer must act on.
+	first.Suspend("cleo@north.example")
 
 	second := fake.New("C0demo-south", "south.example").
 		WithAccount("dana@south.example", "Dana", "Sud").
 		WithAccount("eli@south.example", "Eli", "East").
 		WithGroup("engineering@south.example", "dana@south.example").
+		WithGroup("security@south.example", "eli@south.example").
 		WithGroup("everyone@south.example", "dana@south.example", "eli@south.example")
 
 	return []Tenant{

@@ -80,6 +80,67 @@ export function AccessView({ operator, onDone }: { operator: boolean; onDone: (m
         ))}
       </Stack>
 
+      <Typography variant="subtitle1" sx={{ mt: 4, mb: 1 }}>
+        Clients
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        What the groups above buy: a client's id is the audience of the tokens issued for it, and its
+        requirements are who may be issued one. Clients are declared by the deployment or registered by the
+        workload itself, never created here.
+      </Typography>
+      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Client</TableCell>
+              <TableCell>Kind</TableCell>
+              <TableCell>Requires any of</TableCell>
+              <TableCell>Token cap</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {(policy.value?.clients ?? []).map((client) => (
+              <TableRow key={client.id} hover>
+                <TableCell>
+                  <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                    {client.id}
+                  </Typography>
+                  {client.redirects.length ? (
+                    <Typography variant="caption" color="text.secondary">
+                      {client.redirects.join(", ")}
+                    </Typography>
+                  ) : null}
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2" color="text.secondary">
+                    {client.kind}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                    {client.requires.map((group) => (
+                      <Chip key={group} size="small" variant="outlined" label={group} />
+                    ))}
+                  </Stack>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">{client.ttlCap ? forHowLong(client.ttlCap) : "—"}</Typography>
+                </TableCell>
+              </TableRow>
+            ))}
+            {(policy.value?.clients ?? []).length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4}>
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                    No clients are declared. The hub itself needs none; they arrive with the issuer.
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
         Sign-in sources in this deployment: {(policy.value?.loginSources ?? ["none"]).join(", ")}
       </Typography>

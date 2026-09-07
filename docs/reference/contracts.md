@@ -148,8 +148,8 @@ can see what the hub runs with; changing them is a deployment change.
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
 | `WhoAmI` | any signed-in identity | — | `identity{email, subject, source, role, groups[], given_name, family_name}`, `version` | groups are the internal groups the policy puts the caller in |
-| `Explain` | self: any; someone else: operator | `email?` | the identity, the directory's answer (`in_domain`, `found`, `suspended`, `authoritative`), `directory_groups[]`, `held[]{group, via[]}`, `claims`, `lifetime` | what an identity effectively gets and why; empty email explains the caller |
-| `GetPolicy` | viewer | — | `groups[]{name, members[]{address, layer}, matchers[], claims, lifetime}`, `admin_enabled`, `login_sources[]`, `console_layer` | `console_layer` is the console's own edits as YAML, for export |
+| `Explain` | self: any; anything else: operator | one proof: `email?`, `github{repository, owner, ref, workflow, environment}?` or `service_account{namespace, name}?` | the identity, the directory's answer (`in_domain`, `found`, `suspended`, `authoritative`), `directory_groups[]`, `held[]{group, via[]}`, `claims`, `lifetime`, `clients[]{id, kind, requires[], admitted, lifetime}` | what a proof effectively gets and why. A person, a CI job and a workload are the same question, so they are the same call; nothing set explains the caller |
+| `GetPolicy` | viewer | — | `groups[]{name, members[]{address, layer}, matchers[], claims, lifetime}`, `clients[]{id, kind, requires[], redirects[], ttl_cap, secret}`, `admin_enabled`, `login_sources[]`, `console_layer` | `console_layer` is the console's own edits as YAML, for export; a confidential client names the Secret holding its secret, never the secret |
 | `AddMembership` | operator | `group`, `directory_group` | — | the group must be declared |
 | `RemoveMembership` | operator | `group`, `directory_group` | — | `failed_precondition` for a membership the deployment declared |
 | `ListDirectoryGroups` | viewer | `domain?` | `groups[]{email, domain, workspace_id, members}` | the picker's source: the hub's own snapshots |

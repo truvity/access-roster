@@ -56,12 +56,15 @@ type AccessServiceClient interface {
 	// established, the role they hold and the internal groups behind it.
 	// Any signed-in identity.
 	WhoAmI(context.Context, *connect.Request[v1.WhoAmIRequest]) (*connect.Response[v1.WhoAmIResponse], error)
-	// Explain answers "what does this identity effectively get, and why":
-	// the directory groups the hub confirms, the internal groups they put
-	// the identity in, the merged claims and the token lifetime. With an
-	// empty email it explains the caller, which any signed-in identity may
-	// ask; for anyone else it is operator, because it discloses another
-	// person's access.
+	// Explain answers "what does this proof effectively get, and why": the
+	// internal groups it lands in, what put it in each, the merged claims,
+	// the token lifetime, and which clients would admit it.
+	//
+	// A proof is a person (an address), a CI job or a workload, so the same
+	// call shows what a pipeline is entitled to as well as what a person
+	// is. With nothing set it explains the caller, which any signed-in
+	// identity may ask; anything else is operator, because it discloses
+	// somebody else's access.
 	Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error)
 	// GetPolicy returns every internal group with its members and what each
 	// adds, the state of the break-glass admin, the enabled sign-in
@@ -176,12 +179,15 @@ type AccessServiceHandler interface {
 	// established, the role they hold and the internal groups behind it.
 	// Any signed-in identity.
 	WhoAmI(context.Context, *connect.Request[v1.WhoAmIRequest]) (*connect.Response[v1.WhoAmIResponse], error)
-	// Explain answers "what does this identity effectively get, and why":
-	// the directory groups the hub confirms, the internal groups they put
-	// the identity in, the merged claims and the token lifetime. With an
-	// empty email it explains the caller, which any signed-in identity may
-	// ask; for anyone else it is operator, because it discloses another
-	// person's access.
+	// Explain answers "what does this proof effectively get, and why": the
+	// internal groups it lands in, what put it in each, the merged claims,
+	// the token lifetime, and which clients would admit it.
+	//
+	// A proof is a person (an address), a CI job or a workload, so the same
+	// call shows what a pipeline is entitled to as well as what a person
+	// is. With nothing set it explains the caller, which any signed-in
+	// identity may ask; anything else is operator, because it discloses
+	// somebody else's access.
 	Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error)
 	// GetPolicy returns every internal group with its members and what each
 	// adds, the state of the break-glass admin, the enabled sign-in

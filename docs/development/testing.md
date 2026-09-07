@@ -10,6 +10,20 @@ the authority rule (probe ok × snapshot age × conflict), the freshness
 policy (`max_age` against `snapshot_at` per call kind), the domain-claim
 conflict detection, the overlay merge.
 
+## Demonstration fixtures
+
+`DEMO=1` brings up two tenants in memory and a policy that exercises every
+mechanic, so the behaviour can be watched rather than described: two
+companies feeding one internal group, two fragments whose lists merge, a
+lifetime that differs by privilege with the shortest winning, a client
+that caps it shorter still, machine groups for a CI job and a workload, a
+membership declared in the memberships table that the console may extend
+but not remove, and one suspended account, because a leaver is the case
+the whole design turns on.
+
+It is the same code path as a real install: nothing in the fixtures is a
+special case in the hub, only a backend with no network behind it.
+
 ## Fakes
 
 - **Backend fake:** an in-memory Google Workspace with users, groups,
