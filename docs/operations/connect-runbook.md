@@ -64,7 +64,7 @@ and only removes the interstitial.
    consent. The redirect brings the browser back to the hub.
 4. The hub records the consenting account, reads the customer id and the
    domain list, runs a first probe and stores the workspace. The
-   Workspaces view shows the discovered domains; they become
+   The tenant's page shows the discovered domains; they become
    authoritative as soon as the first snapshot lands (seconds to a
    minute, depending on directory size).
 

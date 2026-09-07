@@ -318,7 +318,7 @@ one and for the day the corporate sign-in is what is broken.
 The hub is a relying party of the family's own [policy](../reference/policy.md):
 `hub-operators` and `hub-viewers` are two declared internal groups, and
 an identity holds a role by being in one of them. Who is in them is the
-one thing the console edits: the Access view attaches a directory group,
+one thing the console edits: a group's page attaches a directory group,
 picked from the hub's own snapshots, to a declared internal group, and
 detaches what it attached. Group names, claim fragments, lifetimes and
 clients are declared in the deployment and shown locked.
@@ -343,23 +343,32 @@ policy.
 A console that could re-enable its own break-glass account would be a
 back door, which is why that flag is the chart's alone.
 
-### Effective access
+### Explaining a proof
 
-One page answers "what does this proof get, and what put it there". A
-person, a CI job and a workload are the same question — every proof
-resolves to internal groups and stops being anything else — so they are
-the same page, with a picker for which to explain.
+"What does this proof get, and what put it there" is one answer, and a
+person, a CI job and a workload are one question: every proof resolves to
+internal groups and stops being anything else. So one component renders
+it, in two places. A person is a thing with a name, so their answer is
+their page, reached by searching for them. A CI job and a workload have
+no name to search for — they do not exist until one runs — so Explain
+keeps the proof picker for exactly those two.
 
-It shows the internal groups held with the directory group or matcher
-behind each, the claims a token would carry, the lifetime, the directory
-groups the hub reports, and every declared client with whether this proof
-would be issued a token for it and how long that token would live once
-the client's cap applies. That last table is where the model stops being
-a diagram: groups are the vocabulary, and clients are what the vocabulary
-buys.
+The answer opens with a sentence: their role here, how many internal
+groups they hold, how many clients they reach. Then what they reach, one
+row per client, with the group that opened it and how long the token
+lives once the client's cap applies. Then the internal groups with the
+directory group or matcher behind each, then the directory groups the hub
+reports, then the claims a token would carry, behind a disclosure because
+they are the least actionable thing on the page and the tallest.
 
-Anyone may ask about themselves. Anything else discloses somebody's
-access, so it needs operator.
+That client table is where the model stops being a diagram: groups are
+the vocabulary, and clients are what the vocabulary buys.
+
+Anyone may ask about themselves; explaining anyone else needs viewer. A
+viewer already sees every group's members and every client's
+requirements, so withholding a conclusion they could reach by hand
+protected nothing and blocked the auditor, who is read-only by
+definition.
 
 ### Day one
 
