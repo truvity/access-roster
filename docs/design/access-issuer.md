@@ -51,13 +51,12 @@ Claims: `sub` stable per identity, `email`, `name`, `groups` — the role
 names relying parties already read — and `aud`, the set of audiences the
 rules allow for this client and identity.
 
-**Clients** are of three kinds:
+**Clients** come to exist in exactly two ways, never in a console:
 
-| Kind | Registered by | Example |
-|---|---|---|
-| **dynamic, in-cluster** | the relying party itself, at start, through RFC 7591 dynamic registration authenticated with its ServiceAccount token and constrained by a redirect-host policy per namespace | every `access-proxy` instance |
-| **static, declared** | the deployment's values | ArgoCD, Kargo and its CLI, one per cluster for kubectl |
-| **public** | the deployment's values, no secret, device flow and PKCE | `accessctl`, kubelogin |
+| Way | Which |
+|---|---|
+| **declared** in the policy's `clients` table | one public client per cluster, the AWS roles as `exchange` clients, ArgoCD and Kargo as `confidential`, accessctl and kubelogin as `public`, and one `local-dev` public client for laptops |
+| **self-registered** by an in-cluster workload through RFC 7591, authenticated with its ServiceAccount token and constrained by the host pattern allowed for its namespace | every `access-proxy` instance, and any other in-cluster relying party |
 
 Dynamic registration is the convention that removes per-console
 bookkeeping: a proxy comes up, registers `https://<its host>/oauth2/callback`,
@@ -81,27 +80,17 @@ kubeconfig` and `accessctl aws-config` read it and write the files for
 every cluster and role a person may use, so nobody maintains kubeconfigs
 by hand.
 
-## Rules
+## The policy
 
-The same engine the hub's console uses, with more outputs. Subjects: a
-directory group (through the hub), a claim on a named issuer (a CI
-repository, a ref, a workflow), an email, an email domain. Grants: a
-`groups` claim and a set of audiences. The full language is in
-[reference/rules.md](../reference/rules.md).
-
-```yaml
-rules:
-  - when: { directory_group: platform-admins@example.com }
-    grant:
-      groups: [cluster-kernel:admin, cluster-prod:admin]
-      audiences: [k8s:kernel, k8s:prod, aws:111122223333:power]
-  - when: { github: { repository: example-org/gitops, ref: refs/heads/master } }
-    grant:
-      audiences: [aws:111122223333:gitops-deployer]
-defaults:
-  unmatched: deny
-  hold_window: 4h
-```
+One file, shared with the hub: [reference/policy.md](../reference/policy.md).
+Every proof resolves to internal groups — people through directory
+membership the hub confirms, jobs and workloads through matchers — and
+from there a person and a job are the same thing. The token is the fixed
+identity claims plus the deep merge of the groups' claim fragments;
+lifetime is the shortest across the groups, capped by the client. The
+`clients` table is the audience: its id is `aud`, its `requires` is the
+gate, its kind says whether there is a secret. AWS roles are clients of
+kind `exchange`, which is where the earlier audience table went.
 
 ## State
 

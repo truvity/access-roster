@@ -33,7 +33,7 @@ what is in [docs/integrations.md](docs/integrations.md#the-batteries-by-kind-of-
 | TypeScript package | `access-roster` — `useIdentity()` and `<UserBadge/>` over the standard `/.access/whoami` | you write a console UI |
 | CLI | **accessctl** — `login`, `setup` (kubeconfig contexts and AWS profiles for everything you are granted), `aws` as a credential process, `kube-token`, `whoami`; people only | a person needs kubectl or cloud credentials |
 | GitHub Action | `truvity/access-roster@v1` — shell only: exchanges the job's token at the issuer, writes a kubeconfig and AWS profiles; ECR, CodeArtifact and the rest run on top with AWS's own tooling | a workflow deploys, pushes or installs |
-| File format | **the rules file** — subject → grant, once, versioned, tested | always |
+| File format | **the policy** — groups, claims, lifetimes, clients, memberships; one schema for both services, versioned, tested | always |
 
 ## I want to…
 
@@ -48,8 +48,8 @@ what is in [docs/integrations.md](docs/integrations.md#the-batteries-by-kind-of-
 | sign in to ArgoCD or Kargo with the issuer | [connect/argocd.md](docs/connect/argocd.md), [connect/kargo.md](docs/connect/kargo.md) |
 | expose a business surface to employees for testing | [connect/business-surface.md](docs/connect/business-surface.md) |
 | keep GitHub teams equal to directory groups | [github-roster](https://github.com/truvity/github-roster), a consumer of the hub |
-| write the rules | [reference/rules.md](docs/reference/rules.md) |
-| add a backend, a proof kind, a subject, an adapter | [development/extending.md](docs/development/extending.md) |
+| write the policy | [reference/policy.md](docs/reference/policy.md) |
+| add a backend, a proof kind, a matcher, an adapter | [development/extending.md](docs/development/extending.md) |
 | move off an identity provider you run for infrastructure | [operations/migration-from-an-idp.md](docs/operations/migration-from-an-idp.md) |
 
 ## How it fits together, in one paragraph
@@ -77,7 +77,7 @@ directory side degrades to "not authoritative", never to "gone".
 | [docs/concepts.md](docs/concepts.md) | the ten words used precisely |
 | [docs/architecture.md](docs/architecture.md) | context, containers, the hub's components, who owns what, use cases, failure semantics |
 | [docs/design/](docs/design/) | one design per battery: [hub](docs/design/hub.md), [issuer](docs/design/access-issuer.md), [proxy](docs/design/access-proxy.md), [libraries](docs/design/libraries.md), [CLI and action](docs/design/accessctl.md) |
-| [docs/reference/](docs/reference/) | contracts, the rules language, values of each chart, the Go module, the TypeScript package, the CLI |
+| [docs/reference/](docs/reference/) | contracts, the policy, values of each chart, the Go module, the TypeScript package, the CLI |
 | [docs/connect/](docs/connect/) | one guide per kind of relying party |
 | [docs/operations/](docs/operations/) | day one, the connect runbook, the runbook, migrations |
 | [docs/development/](docs/development/) | testing, extension points |

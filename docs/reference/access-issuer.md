@@ -20,7 +20,7 @@
 | `hub.address` | the hub's API Service, `directory-roster.directory-roster.svc:8080` |
 | `valkey.address`, `valkey.passwordSecret` | token state; external to the chart |
 | `signingKeys.rotation` | rotation period; previous keys stay in JWKS for one token lifetime |
-| `rules.configMap` | the rules file, rendered by the deployment |
+| `policy.configMaps[]` | the declared layer: one or several ConfigMaps in the issuer's namespace, merged |
 | `clients.static[]` | `{id, secretName?, redirectUris[], public: bool, audiences[]}` — ArgoCD, Kargo, one per cluster |
 | `clients.registration[]` | `{namespace, hostPattern}` — which namespaces may self-register clients for which hosts |
 | `proofs.github[]` | `{organisation}` — accepted CI organisations |

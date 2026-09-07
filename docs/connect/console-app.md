@@ -26,12 +26,11 @@ exposure:
   allow: [myconsole:operator, myconsole:viewer]
 ```
 
-and one rule that mints those two values:
+and two lines of policy that mint those values:
 
 ```yaml
-- id: myconsole-operators
-  when: { directory_group: myconsole-admins@example.com }
-  grant: { groups: [myconsole:operator] }
+groups: { myconsole-admins: { members: [myconsole-admins@example.com] } }
+claims: { myconsole-admins: { groups: [myconsole:operator] } }
 ```
 
 DNS for the hostname, and the namespace label the fleet egress policy

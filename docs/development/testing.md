@@ -30,7 +30,7 @@ never wired shows up as a failing test.
 ## Issuer, proxy and CLI
 
 The issuer's verifiers run against recorded tokens with rotated keys and
-a fake hub; the rules engine against fixtures; the OpenID Provider glue
+a fake hub; the policy engine against fixtures; the OpenID Provider glue
 against the library's conformance tests plus kubelogin and an OAuth2
 proxy as real clients in the acceptance suite. `access-proxy` is tested by
 installing it in front of a fixture backend and driving a browser through
@@ -55,4 +55,4 @@ about and prints a table:
 | freshness | `max_age` omitted serves the snapshot; a short `max_age` triggers a point read; a miss goes live once |
 | what the webhook sees | `ResolveUser` for live, suspended, deleted and out-of-domain addresses, with and without authority |
 | consumer authentication | a projected token from an allow-listed ServiceAccount is accepted; a wrong audience, a foreign ServiceAccount and no token are refused |
-| access rules | day one end to end: admin → connect → rule from the picker → directory sign-in → operator → admin off; a suspended account cannot sign in; a declared rule cannot be removed |
+| policy | day one end to end: admin → connect → membership from the picker → directory sign-in → operator → admin off; a suspended account cannot sign in; a declared membership cannot be removed; two fragments with a conflicting scalar fail to load |

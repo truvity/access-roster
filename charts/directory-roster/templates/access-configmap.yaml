@@ -1,6 +1,8 @@
-# Declared access rules and allowed consumers. Read by the hub at start and
-# on change; console-added rules live in the hub-written ConfigMap
-# `hub-access` and never here.
+# The declared layer of the policy plus allowed consumers. Read by the hub
+# at start and on change; the console layer lives in the hub-written
+# ConfigMap `hub-memberships` and never here. The `rules:` key below is the
+# pre-policy shape and is replaced by the five policy tables in the
+# prototype's next step (docs/reference/policy.md).
 apiVersion: v1
 kind: ConfigMap
 metadata:

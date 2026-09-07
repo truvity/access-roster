@@ -38,7 +38,7 @@ external-secrets is at the end of this page.
 | `access.login.directory` | `true` | "Sign in with <directory>" using a connected workspace's OAuth client |
 | `access.login.oidc.issuer` / `.clientSecretName` | `""` | an external issuer for the hub's own login page; Secret keys `client-id`, `client-secret` |
 | `access.login.forwardedBearer.issuer` | `""` | verify a bearer forwarded by a gateway against this issuer |
-| `access.rules[]` | `[]` | declared rules, see below |
+| `policy` | `{}` | the declared layer of the policy, see below |
 | `networkPolicy.enabled` | `false` | |
 | `networkPolicy.apiClients[]` | `[]` | namespaces allowed to reach the API listener |
 | `networkPolicy.gatewayNamespace` | `""` | the namespace allowed to reach the console listener |
@@ -95,32 +95,21 @@ The chart then creates the one cluster-scoped permission it ever needs, a
 ClusterRole allowing `create` on `tokenreviews`, bound to the hub's
 ServiceAccount. It reads nothing.
 
-## Access rules
+## The policy
 
-Declared rules live in values and are read-only in the console; rules added
-in the console are stored in `ConfigMap hub-access` and evaluated after
-them. Evaluation is in order, default deny, operator implies viewer.
+The hub loads the family's [policy](policy.md): `groups`, `claims`,
+`lifetimes` and `memberships`, from the deployment's ConfigMap(s) as the
+declared layer and from `ConfigMap hub-memberships` as the console layer.
+The chart renders the declared layer from `policy:` in values, which is
+the same YAML:
 
 ```yaml
-access:
-  rules:
-    - id: platform-admins
-      directoryGroup: { group: platform-admins@example.com }
-      role: operator
-    - id: fleet-operators
-      claim: { issuer: https://issuer.example, claim: groups, value: "hub:operator" }
-      role: operator
-    - id: everyone-reads
-      emailDomain: example.com
-      role: viewer
+policy:
+  groups:
+    hub-operators: { members: [platform-admins@example.com] }
+    hub-viewers:   { members: [all@example.com] }
+  lifetimes: { default: 12h }
 ```
-
-| Subject | Matches | Needs |
-|---|---|---|
-| `directoryGroup` | live members of a snapshotted group in a served domain; `workspaceId` optional | a connected workspace |
-| `claim` | a value in a named claim of a verified token from a named issuer | the OIDC or forwarded source |
-| `email` | one address, case-insensitive | nothing |
-| `emailDomain` | every address in the domain | nothing |
 
 ## Kubernetes objects the hub owns
 
@@ -131,8 +120,8 @@ access:
 | `Secret hub-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.existingSecret` |
 | `Secret hub-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
 | `Secret hub-admin` | the break-glass password | the hub, generated on first start |
-| `ConfigMap hub-access` | console-added rules | the hub |
-| `ConfigMap <release>-access` | declared rules, consumers, login sources | the chart |
+| `ConfigMap hub-memberships` | memberships added in the console | the hub |
+| `ConfigMap <release>-policy` | the declared layer of the policy, consumers, login sources | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 
 Labels on every hub-written object: `app.kubernetes.io/name=directory-roster`,
@@ -159,27 +148,27 @@ from the values above.
 | `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_PASSWORD` | `valkey.*` (absent = in-memory) |
 | `OAUTH_CLIENT_SECRET_NAME` | `oauthClient.existingSecret` |
 | `OVERLAY_FILE` | set when `workspaces` is non-empty |
-| `ACCESS_FILE` | the rendered access configuration: admin, login sources, consumers, declared rules |
+| `POLICY_DIR` | the directory the declared layer is mounted in; every file merges |
 
 ## Roles
 
-Two roles, granted by the access rules above, whatever the sign-in source.
+Two roles, held by membership of two declared internal groups.
 
-| Role | May |
-|---|---|
-| viewer | `ListWorkspaces`, `GetSettings`, `GetAccessPolicy`, `WhoAmI`, see the console |
-| operator | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient, AddRule, RemoveRule |
+| Role | Group | May |
+|---|---|---|
+| viewer | `hub-viewers` | `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, see the console |
+| operator | `hub-operators` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient, AddMembership, RemoveMembership |
 
-Behind a gateway that forwards a token with a groups or roles claim, a
-`claim` rule maps that claim to a role; the identity provider mints the
-claim, the hub reads it.
+Behind a gateway that forwards a token, the forwarded identity's email is
+resolved through the hub like any other; the groups in the token itself
+are not consulted, because the hub is the source they came from.
 
 ## The repository
 
 access-roster ships two components from one repository, each with its own
 binary and chart, installable alone: `directory-roster`, this hub, and
 later the token service. Shared Go packages — the backends, the Connect
-flow, the rules engine, the verifiers — are importable behind storage
+flow, the policy engine, the verifiers — are importable behind storage
 interfaces.
 
 ## Valkey: a recommendation

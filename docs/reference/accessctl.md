@@ -8,7 +8,7 @@ accessctl aws-config                         # a profile per granted cloud role
 kubectl --context kernel get nodes           # exec plugin: accessctl kube-token
 aws --profile power@1111 sts get-caller-identity   # credential_process: accessctl aws
 accessctl exchange --audience k8s:devel < subject-token
-accessctl rules test rules.yaml
+accessctl policy test policy.yaml
 ```
 
 Configuration: `~/.config/accessctl/config.yaml` (issuer, client id,

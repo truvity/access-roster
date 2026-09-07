@@ -14,10 +14,12 @@ Grant roles whose only purpose is registry or artifact access, so a job
 or a person who needs to push an image does not also get anything else:
 
 ```yaml
-- when: { github: { repository: example-org/app, ref: refs/heads/master } }
-  grant: { audiences: [aws:111122223333:ecr-push] }
-- when: { directory_group: engineers@example.com }
-  grant: { audiences: [aws:444455556666:artifacts-reader] }
+groups:
+  ci-app:   { matchers: [{ github: { repository: example-org/app, ref: refs/heads/master } }] }
+  engineer: { members: [engineers@example.com] }
+clients:
+  aws:111122223333:ecr-push:         { kind: exchange, requires: [ci-app] }
+  aws:444455556666:artifacts-reader: { kind: exchange, requires: [engineer] }
 ```
 
 ## ECR

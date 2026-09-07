@@ -17,7 +17,7 @@ the installation: through the authenticating proxy that fronts them
 all** — `access-proxy` — which forwards the caller's token from the
 installation's issuer (access-issuer once it exists; whatever identity
 provider the installation runs until then). The hub verifies that bearer and applies
-its access rules. That is the normal path, and it is the only path drawn
+its policy. That is the normal path, and it is the only path drawn
 solid below.
 
 The hub also carries its **own login page**, for exactly two situations:
@@ -88,7 +88,7 @@ flowchart TB
 
   subgraph nsTs["namespace: access-issuer (later)"]
     direction TB
-    ts["access-issuer<br/>[Container: Go, OpenID Provider library]<br/>verifiers: corporate OIDC, workload OIDC, k8s SA<br/>rules engine · client registry · device flow"]:::token
+    ts["access-issuer<br/>[Container: Go, OpenID Provider library]<br/>verifiers: corporate OIDC, workload OIDC, k8s SA<br/>policy engine · client registry · device flow"]:::token
     rules[("rules + static clients<br/>[ConfigMap from the deployment]<br/>dynamic registrations [own namespace]")]:::tokenStore
     keys[("signing keys<br/>[Secrets]")]:::tokenStore
     tsv[("Valkey<br/>[external to the chart]<br/>codes, refresh, device codes,<br/>last-known groups")]:::tokenStore

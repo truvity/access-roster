@@ -23,7 +23,7 @@ NetworkPolicy is the second layer, never the only one.
 **Console listener.** One session cookie, HttpOnly, signed with the hub's
 session key, obtained through one of the login routes below or — behind
 an authenticating gateway — minted from the forwarded bearer on the first
-request. Roles come from the access rules: **viewer** reads, **operator**
+request. Roles come from membership of two declared policy groups: **viewer** reads, **operator**
 writes. Unauthenticated RPCs get `unauthenticated`; a missing role gets
 `permission_denied`.
 
