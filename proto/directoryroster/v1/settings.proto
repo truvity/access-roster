@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package directoryroster.v1;
 
+import "directoryroster/v1/workspace.proto";
 import "google/protobuf/duration.proto";
 
 // SettingsService exposes the hub's configuration to the console. Only the
@@ -46,6 +47,12 @@ message GetSettingsResponse {
   google.protobuf.Duration probe_interval = 4;
   // "valkey" or "memory".
   string cache_backend = 5;
+  // the backends this deployment can connect a workspace with: the
+  // console offers one Connect button per entry, and none at all when a
+  // deployment has configured no OAuth client.
+  repeated Backend connectors = 6;
+  // the build this hub is running.
+  string version = 7;
 }
 
 message SetOAuthClientRequest {

@@ -181,7 +181,13 @@ type GetSettingsResponse struct {
 	// how often a workspace's credential is probed and its domains re-read.
 	ProbeInterval *durationpb.Duration `protobuf:"bytes,4,opt,name=probe_interval,json=probeInterval,proto3" json:"probe_interval,omitempty"`
 	// "valkey" or "memory".
-	CacheBackend  string `protobuf:"bytes,5,opt,name=cache_backend,json=cacheBackend,proto3" json:"cache_backend,omitempty"`
+	CacheBackend string `protobuf:"bytes,5,opt,name=cache_backend,json=cacheBackend,proto3" json:"cache_backend,omitempty"`
+	// the backends this deployment can connect a workspace with: the
+	// console offers one Connect button per entry, and none at all when a
+	// deployment has configured no OAuth client.
+	Connectors []Backend `protobuf:"varint,6,rep,packed,name=connectors,proto3,enum=directoryroster.v1.Backend" json:"connectors,omitempty"`
+	// the build this hub is running.
+	Version       string `protobuf:"bytes,7,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -247,6 +253,20 @@ func (x *GetSettingsResponse) GetProbeInterval() *durationpb.Duration {
 func (x *GetSettingsResponse) GetCacheBackend() string {
 	if x != nil {
 		return x.CacheBackend
+	}
+	return ""
+}
+
+func (x *GetSettingsResponse) GetConnectors() []Backend {
+	if x != nil {
+		return x.Connectors
+	}
+	return nil
+}
+
+func (x *GetSettingsResponse) GetVersion() string {
+	if x != nil {
+		return x.Version
 	}
 	return ""
 }
@@ -343,20 +363,24 @@ var File_directoryroster_v1_settings_proto protoreflect.FileDescriptor
 
 const file_directoryroster_v1_settings_proto_rawDesc = "" +
 	"\n" +
-	"!directoryroster/v1/settings.proto\x12\x12directoryroster.v1\x1a\x1egoogle/protobuf/duration.proto\"\x84\x01\n" +
+	"!directoryroster/v1/settings.proto\x12\x12directoryroster.v1\x1a\"directoryroster/v1/workspace.proto\x1a\x1egoogle/protobuf/duration.proto\"\x84\x01\n" +
 	"\vOAuthClient\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12\x1e\n" +
 	"\n" +
 	"configured\x18\x02 \x01(\bR\n" +
 	"configured\x128\n" +
 	"\x06source\x18\x03 \x01(\x0e2 .directoryroster.v1.ClientSourceR\x06source\"\x14\n" +
-	"\x12GetSettingsRequest\"\xcc\x02\n" +
+	"\x12GetSettingsRequest\"\xa3\x03\n" +
 	"\x13GetSettingsResponse\x12B\n" +
 	"\foauth_client\x18\x01 \x01(\v2\x1f.directoryroster.v1.OAuthClientR\voauthClient\x12D\n" +
 	"\x10refresh_interval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0frefreshInterval\x12D\n" +
 	"\x10freshness_window\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x0ffreshnessWindow\x12@\n" +
 	"\x0eprobe_interval\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\rprobeInterval\x12#\n" +
-	"\rcache_backend\x18\x05 \x01(\tR\fcacheBackend\"Y\n" +
+	"\rcache_backend\x18\x05 \x01(\tR\fcacheBackend\x12;\n" +
+	"\n" +
+	"connectors\x18\x06 \x03(\x0e2\x1b.directoryroster.v1.BackendR\n" +
+	"connectors\x12\x18\n" +
+	"\aversion\x18\a \x01(\tR\aversion\"Y\n" +
 	"\x15SetOAuthClientRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12#\n" +
 	"\rclient_secret\x18\x02 \x01(\tR\fclientSecret\"\x18\n" +
@@ -392,6 +416,7 @@ var file_directoryroster_v1_settings_proto_goTypes = []any{
 	(*SetOAuthClientRequest)(nil),  // 4: directoryroster.v1.SetOAuthClientRequest
 	(*SetOAuthClientResponse)(nil), // 5: directoryroster.v1.SetOAuthClientResponse
 	(*durationpb.Duration)(nil),    // 6: google.protobuf.Duration
+	(Backend)(0),                   // 7: directoryroster.v1.Backend
 }
 var file_directoryroster_v1_settings_proto_depIdxs = []int32{
 	0, // 0: directoryroster.v1.OAuthClient.source:type_name -> directoryroster.v1.ClientSource
@@ -399,15 +424,16 @@ var file_directoryroster_v1_settings_proto_depIdxs = []int32{
 	6, // 2: directoryroster.v1.GetSettingsResponse.refresh_interval:type_name -> google.protobuf.Duration
 	6, // 3: directoryroster.v1.GetSettingsResponse.freshness_window:type_name -> google.protobuf.Duration
 	6, // 4: directoryroster.v1.GetSettingsResponse.probe_interval:type_name -> google.protobuf.Duration
-	2, // 5: directoryroster.v1.SettingsService.GetSettings:input_type -> directoryroster.v1.GetSettingsRequest
-	4, // 6: directoryroster.v1.SettingsService.SetOAuthClient:input_type -> directoryroster.v1.SetOAuthClientRequest
-	3, // 7: directoryroster.v1.SettingsService.GetSettings:output_type -> directoryroster.v1.GetSettingsResponse
-	5, // 8: directoryroster.v1.SettingsService.SetOAuthClient:output_type -> directoryroster.v1.SetOAuthClientResponse
-	7, // [7:9] is the sub-list for method output_type
-	5, // [5:7] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	7, // 5: directoryroster.v1.GetSettingsResponse.connectors:type_name -> directoryroster.v1.Backend
+	2, // 6: directoryroster.v1.SettingsService.GetSettings:input_type -> directoryroster.v1.GetSettingsRequest
+	4, // 7: directoryroster.v1.SettingsService.SetOAuthClient:input_type -> directoryroster.v1.SetOAuthClientRequest
+	3, // 8: directoryroster.v1.SettingsService.GetSettings:output_type -> directoryroster.v1.GetSettingsResponse
+	5, // 9: directoryroster.v1.SettingsService.SetOAuthClient:output_type -> directoryroster.v1.SetOAuthClientResponse
+	8, // [8:10] is the sub-list for method output_type
+	6, // [6:8] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_settings_proto_init() }
@@ -415,6 +441,7 @@ func file_directoryroster_v1_settings_proto_init() {
 	if File_directoryroster_v1_settings_proto != nil {
 		return
 	}
+	file_directoryroster_v1_workspace_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

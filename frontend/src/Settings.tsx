@@ -9,13 +9,14 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
-import { every, reason, settings } from "./api";
+import { access, every, reason, settings } from "./api";
 import { ClientSource } from "./gen/directoryroster/v1/settings_pb";
 import { useAsync } from "./hooks";
 import { Failure, Loading } from "./ui";
 
 export function SettingsView({ operator, onDone }: { operator: boolean; onDone: (message: string) => void }) {
   const current = useAsync(() => settings.getSettings({}), []);
+  const policy = useAsync(() => access.getPolicy({}), []);
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [failure, setFailure] = useState<string | undefined>();
@@ -95,6 +96,31 @@ export function SettingsView({ operator, onDone }: { operator: boolean; onDone: 
                 </Button>
               </Box>
             </Stack>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined" sx={{ mb: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle2" gutterBottom>
+            Policy layers
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            The declared layer comes from the deployment and is read-only here. The console layer is what was
+            added on the Access tab; it is the same YAML, so an installation that started standalone moves its
+            edits into git by pasting.
+          </Typography>
+          {policy.value?.consoleLayer ? (
+            <Box
+              component="pre"
+              sx={{ m: 0, p: 2, fontSize: 13, fontFamily: "monospace", bgcolor: "action.hover", borderRadius: 1, overflowX: "auto" }}
+            >
+              {policy.value.consoleLayer}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              The console layer is empty: every membership in force was declared by the deployment.
+            </Typography>
           )}
         </CardContent>
       </Card>

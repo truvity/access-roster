@@ -4,6 +4,8 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { Backend } from "./workspace_pb";
+import { file_directoryroster_v1_workspace } from "./workspace_pb";
 import type { Duration } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_duration } from "@bufbuild/protobuf/wkt";
 import type { Message } from "@bufbuild/protobuf";
@@ -12,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/settings.proto.
  */
 export const file_directoryroster_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkaXJlY3Rvcnlyb3N0ZXIvdjEvc2V0dGluZ3MucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSJmCgtPQXV0aENsaWVudBIRCgljbGllbnRfaWQYASABKAkSEgoKY29uZmlndXJlZBgCIAEoCBIwCgZzb3VyY2UYAyABKA4yIC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50U291cmNlIhQKEkdldFNldHRpbmdzUmVxdWVzdCKAAgoTR2V0U2V0dGluZ3NSZXNwb25zZRI1CgxvYXV0aF9jbGllbnQYASABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuT0F1dGhDbGllbnQSMwoQcmVmcmVzaF9pbnRlcnZhbBgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIzChBmcmVzaG5lc3Nfd2luZG93GAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjEKDnByb2JlX2ludGVydmFsGAQgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEhUKDWNhY2hlX2JhY2tlbmQYBSABKAkiQQoVU2V0T0F1dGhDbGllbnRSZXF1ZXN0EhEKCWNsaWVudF9pZBgBIAEoCRIVCg1jbGllbnRfc2VjcmV0GAIgASgJIhgKFlNldE9BdXRoQ2xpZW50UmVzcG9uc2UqZAoMQ2xpZW50U291cmNlEh0KGUNMSUVOVF9TT1VSQ0VfVU5TUEVDSUZJRUQQABIaChZDTElFTlRfU09VUkNFX0RFQ0xBUkVEEAESGQoVQ0xJRU5UX1NPVVJDRV9DT05TT0xFEAIy2gEKD1NldHRpbmdzU2VydmljZRJeCgtHZXRTZXR0aW5ncxImLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRTZXR0aW5nc1JlcXVlc3QaJy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0U2V0dGluZ3NSZXNwb25zZRJnCg5TZXRPQXV0aENsaWVudBIpLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRPQXV0aENsaWVudFJlcXVlc3QaKi5kaXJlY3Rvcnlyb3N0ZXIudjEuU2V0T0F1dGhDbGllbnRSZXNwb25zZULbAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUINU2V0dGluZ3NQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_duration]);
+  fileDesc("CiFkaXJlY3Rvcnlyb3N0ZXIvdjEvc2V0dGluZ3MucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSJmCgtPQXV0aENsaWVudBIRCgljbGllbnRfaWQYASABKAkSEgoKY29uZmlndXJlZBgCIAEoCBIwCgZzb3VyY2UYAyABKA4yIC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50U291cmNlIhQKEkdldFNldHRpbmdzUmVxdWVzdCLCAgoTR2V0U2V0dGluZ3NSZXNwb25zZRI1CgxvYXV0aF9jbGllbnQYASABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuT0F1dGhDbGllbnQSMwoQcmVmcmVzaF9pbnRlcnZhbBgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIzChBmcmVzaG5lc3Nfd2luZG93GAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjEKDnByb2JlX2ludGVydmFsGAQgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEhUKDWNhY2hlX2JhY2tlbmQYBSABKAkSLwoKY29ubmVjdG9ycxgGIAMoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kEg8KB3ZlcnNpb24YByABKAkiQQoVU2V0T0F1dGhDbGllbnRSZXF1ZXN0EhEKCWNsaWVudF9pZBgBIAEoCRIVCg1jbGllbnRfc2VjcmV0GAIgASgJIhgKFlNldE9BdXRoQ2xpZW50UmVzcG9uc2UqZAoMQ2xpZW50U291cmNlEh0KGUNMSUVOVF9TT1VSQ0VfVU5TUEVDSUZJRUQQABIaChZDTElFTlRfU09VUkNFX0RFQ0xBUkVEEAESGQoVQ0xJRU5UX1NPVVJDRV9DT05TT0xFEAIy2gEKD1NldHRpbmdzU2VydmljZRJeCgtHZXRTZXR0aW5ncxImLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRTZXR0aW5nc1JlcXVlc3QaJy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0U2V0dGluZ3NSZXNwb25zZRJnCg5TZXRPQXV0aENsaWVudBIpLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRPQXV0aENsaWVudFJlcXVlc3QaKi5kaXJlY3Rvcnlyb3N0ZXIudjEuU2V0T0F1dGhDbGllbnRSZXNwb25zZULbAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUINU2V0dGluZ3NQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_directoryroster_v1_workspace, file_google_protobuf_duration]);
 
 /**
  * @generated from message directoryroster.v1.OAuthClient
@@ -92,6 +94,22 @@ export type GetSettingsResponse = Message<"directoryroster.v1.GetSettingsRespons
    * @generated from field: string cache_backend = 5;
    */
   cacheBackend: string;
+
+  /**
+   * the backends this deployment can connect a workspace with: the
+   * console offers one Connect button per entry, and none at all when a
+   * deployment has configured no OAuth client.
+   *
+   * @generated from field: repeated directoryroster.v1.Backend connectors = 6;
+   */
+  connectors: Backend[];
+
+  /**
+   * the build this hub is running.
+   *
+   * @generated from field: string version = 7;
+   */
+  version: string;
 };
 
 /**
