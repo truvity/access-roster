@@ -34,7 +34,8 @@ external-secrets is at the end of this page.
 | `oauthClient.existingSecret` | `""` | a Secret with `client-id` and `client-secret`; set, the console shows the client read-only |
 | `workspaces[]` | `[]` | declared workspaces, see below |
 | `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener; verified by TokenReview |
-| `access.admin.enabled` | `true` | the break-glass account; turn off once a rule grants operator to a real identity |
+| `access.admin.enabled` | `true` | the break-glass account; turn off once a group grants operator to a real identity |
+| `access.holdWindow` | `4h` | how long a signed-in identity keeps its last granted role while the directory cannot be vouched for |
 | `access.login.directory` | `true` | "Sign in with <directory>" using a connected workspace's OAuth client |
 | `access.login.oidc.issuer` / `.clientSecretName` | `""` | an external issuer for the hub's own login page; Secret keys `client-id`, `client-secret` |
 | `access.login.forwardedBearer.issuer` | `""` | verify a bearer forwarded by a gateway against this issuer |
@@ -121,7 +122,7 @@ policy:
 | `Secret hub-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
 | `Secret hub-admin` | the break-glass password | the hub, generated on first start |
 | `ConfigMap hub-memberships` | memberships added in the console | the hub |
-| `ConfigMap <release>-policy` | the declared layer of the policy, consumers, login sources | the chart |
+| `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 
 Labels on every hub-written object: `app.kubernetes.io/name=directory-roster`,
@@ -148,7 +149,8 @@ from the values above.
 | `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_PASSWORD` | `valkey.*` (absent = in-memory) |
 | `OAUTH_CLIENT_SECRET_NAME` | `oauthClient.existingSecret` |
 | `OVERLAY_FILE` | set when `workspaces` is non-empty |
-| `POLICY_DIR` | the directory the declared layer is mounted in; every file merges |
+| `POLICY_DIR` | the directory the declared layer is mounted in; every YAML file in it merges |
+| `HOLD_WINDOW` | `access.holdWindow` |
 
 ## Roles
 

@@ -91,9 +91,10 @@ Two listeners, so a consumer can never reach an operator call:
   came from, never the secret; the intervals and the cache backend,
   read-only) and `SetOAuthClient` (refused when the chart declared one).
   Intervals are chart values: operational knobs belong to the deployment.
-- **`AccessService`** — `WhoAmI`, `GetAccessPolicy`, `AddRule`,
-  `RemoveRule`: the rules that grant viewer and operator (see *Access to
-  the hub itself*). Declared rules are read-only here.
+- **`AccessService`** — `WhoAmI` and `Explain` (what an identity
+  effectively gets, and what put it there), `GetPolicy`, and
+  `AddMembership`/`RemoveMembership`: the one table a console may write.
+  Everything else the policy declares is read-only here.
 
 ## Freshness
 
@@ -299,9 +300,32 @@ detaches what it attached. Group names, claim fragments, lifetimes and
 clients are declared in the deployment and shown locked.
 
 When the directory answer for a signed-in identity is not authoritative,
-the last granted role is kept for the policy's hold window and no new
-identity is granted anything: the same hold-never-remove rule, applied to
-the hub's own door.
+the last granted role is kept for the hold window and no new identity is
+granted anything: the same hold-never-remove rule, applied to the hub's
+own door. The window is a chart value, because staying usable while its
+own directory is uncertain is a property of the hub rather than of the
+policy.
+
+### What the console may change
+
+| Area | Console | Declared only |
+|---|---|---|
+| memberships | attach a snapshotted directory group to a declared internal group; detach what the console attached | the baseline |
+| group names, claim fragments, lifetimes, clients, matchers | nothing | all |
+| workspaces | connect, reconnect, upload a key, probe, refresh, disconnect what it connected | a workspace the deployment declared |
+| the OAuth client | set it once, when the chart did not declare one | a declared client |
+| the break-glass admin, the intervals, the sign-in sources | nothing | all |
+
+A console that could re-enable its own break-glass account would be a
+back door, which is why that flag is the chart's alone.
+
+### Effective access
+
+One page answers "what does this identity get, and what put it there":
+the internal groups held with the directory group or matcher behind each,
+the claims a token would carry, the lifetime, and the directory groups the
+hub reports. Anyone may ask it about themselves; asking about someone else
+discloses their access, so that needs operator.
 
 ### Day one
 
