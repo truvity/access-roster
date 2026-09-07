@@ -30,6 +30,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/truvity/access-roster/backend"
+	"github.com/truvity/access-roster/backend/google"
 	"github.com/truvity/access-roster/frontend"
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/access"
@@ -318,7 +319,15 @@ func adoptDeclared(ctx context.Context, directory *hub.Hub, path string, log *sl
 // hub reads real directories from its 1.0, and until then a deployment
 // that declares a workspace is told so at start rather than left to
 // discover it from a console with nothing in it.
-var backendOpeners = map[string]func(ctx context.Context, d *hub.Declared) (backend.Backend, error){}
+var backendOpeners = map[string]func(ctx context.Context, d *hub.Declared) (backend.Backend, error){
+	"google": func(ctx context.Context, d *hub.Declared) (backend.Backend, error) {
+		key, err := os.ReadFile(d.KeyFile) //nolint:gosec // the path is deployment configuration, not input
+		if err != nil {
+			return nil, fmt.Errorf("read the service-account key: %w", err)
+		}
+		return google.Open(ctx, key, d.Admin)
+	},
+}
 
 // openBackend builds the reader for a declared workspace.
 //

@@ -1,0 +1,162 @@
+package google
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"testing"
+
+	directory "google.golang.org/api/admin/directory/v1"
+	"google.golang.org/api/googleapi"
+
+	"github.com/truvity/access-roster/backend"
+)
+
+// The four scopes are read-only, and the console shows this same list for
+// an operator to paste into a cloud console. A write scope arriving here
+// would be granted by everyone who followed the setup, so the list is
+// worth asserting rather than trusting.
+func TestScopesAreReadOnlyAndComplete(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]bool{
+		"https://www.googleapis.com/auth/admin.directory.user.readonly":         false,
+		"https://www.googleapis.com/auth/admin.directory.group.readonly":        false,
+		"https://www.googleapis.com/auth/admin.directory.group.member.readonly": false,
+		"https://www.googleapis.com/auth/admin.directory.domain.readonly":       false,
+	}
+	for _, scope := range Scopes {
+		if !strings.HasSuffix(scope, ".readonly") {
+			t.Errorf("scope %q is not read-only", scope)
+		}
+		if _, expected := want[scope]; !expected {
+			t.Errorf("unexpected scope %q", scope)
+		}
+		want[scope] = true
+	}
+	for scope, seen := range want {
+		if !seen {
+			t.Errorf("missing scope %q", scope)
+		}
+	}
+}
+
+// Suspended and archived accounts are both not live. A consumer acts on
+// that by removing access, so counting an archived leaver as live would
+// keep access for someone who has gone.
+func TestAccountLiveness(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		user *directory.User
+		live bool
+	}{
+		{"active", &directory.User{PrimaryEmail: "Ada@North.Example"}, true},
+		{"suspended", &directory.User{PrimaryEmail: "a@b.c", Suspended: true}, false},
+		{"archived", &directory.User{PrimaryEmail: "a@b.c", Archived: true}, false},
+	} {
+		got := account(tc.user)
+		if got.Live != tc.live {
+			t.Errorf("%s: live = %v, want %v", tc.name, got.Live, tc.live)
+		}
+	}
+
+	// Addresses are lower-cased on the way in, because every index above
+	// this compares them as written.
+	named := account(&directory.User{
+		PrimaryEmail: "Ada@North.Example",
+		Name:         &directory.UserName{GivenName: "Ada", FamilyName: "North"},
+	})
+	if named.Email != "ada@north.example" {
+		t.Errorf("email = %q, want it lower-cased", named.Email)
+	}
+	if named.GivenName != "Ada" || named.FamilyName != "North" {
+		t.Errorf("name = %q %q", named.GivenName, named.FamilyName)
+	}
+	// A user with no name block must not panic; callers tolerate empty.
+	if bare := account(&directory.User{PrimaryEmail: "b@c.d"}); bare.GivenName != "" {
+		t.Errorf("given name = %q, want empty", bare.GivenName)
+	}
+}
+
+// A not-found is an answer and everything else is a failure. The hub
+// draws its whole authoritative/hold distinction on that line: a
+// not-found means the account is gone, an error means nothing may be
+// concluded.
+func TestNotFoundIsDistinguishedFromFailure(t *testing.T) {
+	t.Parallel()
+
+	if !isNotFound(&googleapi.Error{Code: http.StatusNotFound}) {
+		t.Errorf("a 404 was not recognised")
+	}
+	for _, err := range []error{
+		&googleapi.Error{Code: http.StatusForbidden},
+		&googleapi.Error{Code: http.StatusInternalServerError},
+		errors.New("dial: connection refused"),
+		nil,
+	} {
+		if isNotFound(err) {
+			t.Errorf("%v was taken for a not-found", err)
+		}
+	}
+}
+
+// The two errors an operator will actually hit during setup are the two
+// worth explaining. The raw messages name neither the missing grant nor
+// the missing privilege.
+func TestErrorsExplainTheLikelyCause(t *testing.T) {
+	t.Parallel()
+
+	unauthorized := reason(&googleapi.Error{Code: http.StatusUnauthorized})
+	if !strings.Contains(unauthorized.Error(), "client id") {
+		t.Errorf("401 = %q, want it to name the missing grant", unauthorized)
+	}
+	forbidden := reason(&googleapi.Error{Code: http.StatusForbidden, Message: "insufficient permission"})
+	if !strings.Contains(forbidden.Error(), "privileges") {
+		t.Errorf("403 = %q, want it to name the missing privilege", forbidden)
+	}
+	// Anything else is passed through rather than reinterpreted.
+	plain := errors.New("dial: connection refused")
+	if reason(plain).Error() != plain.Error() {
+		t.Errorf("a transport error was rewritten: %v", reason(plain))
+	}
+}
+
+// Opening refuses what cannot work, before any network call, so a
+// misconfiguration is a startup error rather than a puzzling 401 later.
+func TestOpenRefusesIncompleteCredentials(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	if _, err := Open(ctx, []byte(`{"type":"service_account"}`), ""); err == nil {
+		t.Errorf("opening with no admin was accepted")
+	}
+	if _, err := Open(ctx, nil, "admin@example.com"); err == nil {
+		t.Errorf("opening with no key was accepted")
+	}
+	if _, err := Open(ctx, []byte("not json"), "admin@example.com"); err == nil {
+		t.Errorf("opening with a key that is not JSON was accepted")
+	}
+	// A credentials file may also describe an external account, which
+	// fetches its token from a URL the file names. Accepting one would
+	// turn "read this key" into "authenticate as whatever answers that
+	// endpoint", so only a service-account key is admitted.
+	external := `{"type":"external_account","audience":"//iam.example/x","token_url":"https://example.invalid/token"}`
+	if _, err := Open(ctx, []byte(external), "admin@example.com"); err == nil {
+		t.Errorf("an external-account credential was accepted as a service-account key")
+	}
+}
+
+// A service-account key cannot be retired from here, and saying so is
+// more useful than pretending: the hub reports it as "deleted locally,
+// retire the credential yourself".
+func TestRevokeIsUnsupported(t *testing.T) {
+	t.Parallel()
+
+	err := (&Backend{}).Revoke(context.Background())
+	if !errors.Is(err, backend.ErrUnsupported) {
+		t.Errorf("revoke = %v, want ErrUnsupported", err)
+	}
+}

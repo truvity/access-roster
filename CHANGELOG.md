@@ -62,6 +62,17 @@ repository, not the order it arrived in.
   contract was tightened for it: `Explain` names the directory that
   served the address, `SearchPeople` reports the total before the limit,
   and `GetPolicy` carries matchers only in structured form.
+- **The Google backend**, which is the first real directory the hub can
+  read: the Admin SDK over a service-account key with domain-wide
+  delegation, discovering the customer id and every verified domain,
+  listing accounts and groups with their flat membership, and answering
+  one address at a time. Archived counts as not live beside suspended.
+  Unverified domains are not served, because a domain anyone may claim in
+  a console is not evidence of anything. The credential type is pinned to
+  a service-account key, since a credentials file may also name an
+  external account that fetches its token from a URL the file itself
+  carries. The console's setup guidance now reads its scope list from the
+  backend rather than repeating it.
 - **Declared workspaces are read at start**, which the chart had shipped
   the configuration for and no code had read. The tenant id became
   optional — the credential opens one tenant and it knows its own id — and
