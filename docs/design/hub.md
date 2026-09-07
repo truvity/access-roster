@@ -207,7 +207,7 @@ example, the hub has no dependency on it.
 | `Secret hub-oauth-client` | the OAuth client id and secret (written by Settings, or declared) |
 | `Secret hub-connect-state` | the key that signs the consent-flow state cookie; generated on first start |
 | `ConfigMap hub-settings` | freshness window, probe interval, cache |
-| chart-rendered overlay | workspaces declared by the deployment (a key delivered as a Secret, domains listed), read-only in the console, winning on conflict |
+| chart-rendered overlay | workspaces declared by the deployment (a key delivered as a Secret, the admin to impersonate; domains discovered like any other), read-only in the console, winning on conflict |
 | Valkey (external) | snapshots, refresh locks, the short negative cache — never a credential |
 
 What the chart includes and what it expects: it renders everything that is

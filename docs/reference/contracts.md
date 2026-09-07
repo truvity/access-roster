@@ -1,0 +1,135 @@
+# Contracts
+
+Three ConnectRPC services on two listeners. The proto files under
+[`proto/`](../../proto) are the source of truth; this page is the reading
+guide. Connect speaks JSON over plain HTTP as well as gRPC, and serves
+idempotent calls over `GET`, so `curl` works without a generated client.
+
+| Listener | Services | Reached by | Path prefix |
+|---|---|---|---|
+| API (`:8080`) | `directory.v1.DirectoryService` | consumers over the cluster network | `/directory.v1.DirectoryService/` |
+| console (`:8081`) | `directoryroster.v1.WorkspaceService`, `directoryroster.v1.SettingsService`, the SPA, `/connect/<backend>/callback` | operators through the gateway | `/directoryroster.v1.*/` |
+
+The API listener has no authentication of its own: it is ClusterIP,
+NetworkPolicy-gated, and carries only reads. The console listener trusts
+the identity headers the gateway forwards and maps the groups claim to two
+roles: **viewer** (reads) and **operator** (writes).
+
+## Compatibility with google-group-sync
+
+`directory.v1.DirectoryService` is google-group-sync's contract with
+additive fields only. A client generated from the older proto keeps
+working and is served as if `max_age` were omitted; it does not see
+`authoritative`, so it must be upgraded before it may act on removals from
+a multi-workspace hub. The REST routes google-group-sync also served
+(`/users/{email}/groups`, `/groups`, `/groups/{email}`) are **not**
+carried; their one consumer moves to the Connect client.
+
+## Freshness: `max_age` and `snapshot_at`
+
+Every read is answered from a per-workspace **snapshot** and returns
+`snapshot_at`. Every read request takes an optional `max_age`
+(`google.protobuf.Duration`):
+
+| `max_age` | Behaviour |
+|---|---|
+| omitted | serve the current snapshot; nothing is fetched on the request path |
+| a duration | if the snapshot is older, make it fresher first, then answer |
+| `0s` | fetch now |
+
+How "make it fresher" happens depends on the call, by the cheapest path
+that satisfies the request:
+
+- **Bulk calls** (`ListGroups`, `GetGroup`) trigger a full workspace read,
+  single-flight: concurrent requests wait for the one in progress.
+- **Point calls** (`ResolveUser`, `GetAccount`, `ResolveAccounts`) read that
+  one account and its groups live and patch the snapshot. A login-time
+  caller with a short timeout is never held behind a full read.
+- **A miss on an in-domain address** always goes live once before the hub
+  answers `found=false`, whatever `max_age` says: not-found is a removal
+  signal, and an account created after the last snapshot must never be
+  reported absent.
+
+When the fetch fails, the stale snapshot is served with
+`authoritative=false`. It is never an error to the caller.
+
+## Authority
+
+A domain is **authoritative** when all three hold: its workspace's last
+probe succeeded, its snapshot is younger than the freshness window, and no
+other connected workspace claims the domain. Every answer that names an
+account or a group carries the flag for the domain it came from.
+
+The contract with consumers: **act on removals only when
+`authoritative=true`.** A non-authoritative "suspended", "not found" or
+"not a member" is a hold, not a change.
+
+## `directory.v1.DirectoryService`
+
+| RPC | Request | Response | Notes |
+|---|---|---|---|
+| `Describe` | — | `domains[]`, `backend`, `served[]{name, authoritative, workspace_id, backend, snapshot_at}` | `domains` and `backend` are the legacy fields; `served` is the structured list |
+| `Probe` | `workspace_id?` | `healthy`, `detail`, `workspaces[]{workspace_id, healthy, detail, probed_at}` | empty id probes every workspace; exercises the credential now |
+| `GetGroup` | `email`, `max_age?` | `group{email, members[], domain}`, `found`, `authoritative`, `snapshot_at` | flat members, nested groups not expanded; `found=false` = the backend said not-found |
+| `ListGroups` | `domain?`, `max_age?` | `groups[]`, `served[]` | empty domain = union of every served domain, each group tagged with its domain |
+| `GetAccount` | `email`, `max_age?` | `account{email, in_domain, found, live, given_name, family_name, authoritative}`, `snapshot_at` | see the `Account` table below |
+| `ResolveAccounts` | `emails[]`, `max_age?` | `accounts[]` (same order), `snapshot_at` (oldest) | addresses may span workspaces; each is routed on its own |
+| `ResolveUser` | `email`, `max_age?` | `groups[]`, `suspended`, `in_domain`, `found`, `authoritative`, `snapshot_at` | the login-time call |
+
+`Account` semantics:
+
+| `in_domain` | `found` | `live` | Meaning |
+|---|---|---|---|
+| true | true | true | a live account |
+| true | true | false | suspended — gone, if authoritative |
+| true | false | — | deleted or absent — gone, if authoritative |
+| false | — | — | no opinion: the address's domain is not served here |
+
+Error model: the API returns Connect errors only for malformed requests
+(`invalid_argument`: empty or unparseable address) and for internal
+faults that are not a backend read (`internal`). A backend read failing is
+not an error; it is a non-authoritative answer.
+
+## `directoryroster.v1.WorkspaceService`
+
+| RPC | Role | Request | Response | Notes |
+|---|---|---|---|---|
+| `ListWorkspaces` | viewer | — | `workspaces[]` | id, backend, domains with authoritative and conflict flags, admin, credential type, connected_by/at, health, snapshot_at, declared |
+| `BeginConnect` | operator | `backend` | `consent_url` | sets the state cookie; the browser navigates to the URL |
+| `Reconnect` | operator | `workspace_id` | `consent_url` | the callback checks the consenting tenant is the same, then replaces the credential |
+| `UploadKey` | operator | `backend`, `key` (bytes), `admin` | `workspace` | service-account key with domain-wide delegation; creates or re-credentials |
+| `Probe` | operator | `workspace_id` | `health`, `domains[]` | credential check now, domain list re-read |
+| `Refresh` | operator | `workspace_id` | `snapshot_at` | a full snapshot now |
+| `Disconnect` | operator | `workspace_id` | — | revokes at the backend, deletes the Secret and the record. `failed_precondition` for a declared workspace |
+
+The consent callback, `GET /connect/google/callback?code&state`, is an
+ordinary HTTP route on the console listener: it verifies the state cookie,
+exchanges the code, discovers the tenant id and the domain list, runs a
+first probe, stores the workspace and redirects to the Workspaces view.
+
+Errors: `permission_denied` when the role is missing; `not_found` for an
+unknown workspace id; `failed_precondition` for an operation the
+workspace's kind refuses (Disconnect on a declared one); `invalid_argument`
+for a key that does not parse or an admin address without a domain.
+
+## `directoryroster.v1.SettingsService`
+
+| RPC | Role | Request | Response | Notes |
+|---|---|---|---|---|
+| `GetSettings` | viewer | — | `oauth_client{client_id, configured, source}`, `refresh_interval`, `freshness_window`, `probe_interval`, `cache_backend` | never the client secret |
+| `SetOAuthClient` | operator | `client_id`, `client_secret` | — | `failed_precondition` when the deployment declared the client |
+
+The intervals are chart values. The console shows them so an operator
+can see what the hub runs with; changing them is a deployment change.
+
+## Calling from a shell
+
+```sh
+# Describe, over GET (Connect's idempotent-GET encoding)
+curl -s 'http://directory-roster.directory-roster.svc:8080/directory.v1.DirectoryService/Describe?encoding=json&message=%7B%7D'
+
+# ResolveUser, over POST
+curl -s -H 'content-type: application/json' \
+  -d '{"email":"alice@example.com","maxAge":"600s"}' \
+  http://directory-roster.directory-roster.svc:8080/directory.v1.DirectoryService/ResolveUser
+```
