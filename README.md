@@ -13,7 +13,11 @@ applies rules.
 
 > **Status: design under review; nothing runs yet.** Documentation first,
 > services second. The directory hub is built first; the issuer and the
-> batteries follow. [Why this exists](docs/why.md) · [the architecture](docs/architecture.md)
+> batteries follow.
+>
+> Start with [why this exists](docs/why.md), then the
+> [helicopter view of every integration](docs/integrations.md), then
+> [the architecture](docs/architecture.md).
 
 ## The batteries
 
@@ -65,6 +69,7 @@ directory side degrades to "not authoritative", never to "gone".
 | Read | For |
 |---|---|
 | [docs/why.md](docs/why.md) | motivation, principles, what it is not |
+| [docs/integrations.md](docs/integrations.md) | the helicopter view: fourteen integration points, case by case — parties, trust, flow, what you configure, what you get |
 | [docs/concepts.md](docs/concepts.md) | the ten words used precisely |
 | [docs/architecture.md](docs/architecture.md) | context, containers, the hub's components, who owns what, use cases, failure semantics |
 | [docs/design/](docs/design/) | one design per battery: [hub](docs/design/hub.md), [issuer](docs/design/access-issuer.md), [proxy](docs/design/access-proxy.md), [libraries](docs/design/libraries.md), [CLI and action](docs/design/accessctl.md) |
