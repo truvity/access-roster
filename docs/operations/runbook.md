@@ -1,7 +1,7 @@
 # Runbook
 
-Day-two operations. Everything here is visible in the console's
-Workspaces view and in `Describe`; nothing needs a shell except the export.
+Day-two operations. Everything here is visible on a tenant's page in the
+console and in `Describe`; nothing needs a shell except the export.
 
 ## Day one
 
@@ -9,9 +9,9 @@ Workspaces view and in `Describe`; nothing needs a shell except the export.
 2. Read the admin password: `kubectl -n directory-roster get secret hub-admin -o jsonpath='{.data.password}' | base64 -d`.
 3. Port-forward the console port (or go through the gateway) and sign in at `/admin/login`.
 4. Settings: the OAuth client, unless the chart declared it.
-5. Workspaces: Connect, as the tenant's admin role account.
+5. Directories: Connect, as the tenant's admin role account.
 6. Access: pick the operators' group from the snapshot; grant operator.
-7. Sign out; sign in with the directory as yourself. The Effective access page shows operator and the membership that granted it.
+7. Sign out; sign in with the directory as yourself. Search for yourself: your page shows operator and the membership that granted it.
 8. `access.admin.enabled: false` in the values. The banner disappears.
 
 Behind an authenticating proxy, steps 3 and 7 go through the proxy's

@@ -23,9 +23,14 @@ repository, not the order it arrived in.
   layered loading, memberships the only console-writable table, clients
   declared or self-registered and never created in a console. The hub is
   a relying party of it: `hub-operators` and `hub-viewers`.
-- **The console** on the fleet stack: Workspaces, Access (the membership
-  table), Effective access (what an identity gets and why) and Settings,
-  with the person's name and the build in the header.
+- **The console** on the fleet stack, organised as the graph the content
+  actually is rather than as a set of tables: search on every page, an
+  overview that answers whether anything is broken, and a page per
+  tenant, group, client and person, each carrying its edges in both
+  directions. Every name is a link, every page opens with a
+  plain-language summary, and actions live on the object they change.
+  Explain keeps the proofs nobody can search for, a CI job and a
+  workload, because they do not exist until one runs.
 - **A demonstration mode** (`DEMO=1`): two tenants in memory and a
   consent connector, so every use-case is walkable before a credential
   exists.

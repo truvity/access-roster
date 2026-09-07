@@ -34,7 +34,7 @@ request. Roles come from membership of two declared policy groups:
 | `GET /login/oidc/start` → `GET /login/oidc/callback` | sign in with the configured external issuer |
 | `POST /admin/login` | the break-glass account, only while enabled |
 | `POST /logout` | clears the session |
-| `GET /connect/<backend>/callback` | the admin-consent callback (Workspaces), authenticated like any page |
+| `GET /connect/<backend>/callback` | the admin-consent callback, authenticated like any page |
 
 ## Compatibility with google-group-sync
 
@@ -126,7 +126,7 @@ not an error; it is a non-authoritative answer.
 The consent callback, `GET /connect/google/callback?code&state`, is an
 ordinary HTTP route on the console listener: it verifies the state cookie,
 exchanges the code, discovers the tenant id and the domain list, runs a
-first probe, stores the workspace and redirects to the Workspaces view.
+first probe, stores the workspace and redirects to that tenant's page.
 
 Errors: `permission_denied` when the role is missing; `not_found` for an
 unknown workspace id; `failed_precondition` for an operation the

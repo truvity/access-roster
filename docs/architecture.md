@@ -96,8 +96,8 @@ flowchart TB
 
   subgraph nsHub["namespace: directory-roster"]
     direction TB
-    hub["directory-roster<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: Workspaces, Settings, Access, SPA, login routes<br/>refresher, prober, router by domain"]:::hub
-    spa["console<br/>[Container: React SPA, served by the hub]<br/>Workspaces · Access · Effective access · Settings"]:::hub
+    hub["directory-roster<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: operator services, SPA, login routes<br/>refresher, prober, router by domain"]:::hub
+    spa["console<br/>[Container: React SPA, served by the hub]<br/>search · overview · a page per tenant, group, client and person"]:::hub
     k8s[("workspace records + credentials<br/>[Secrets + ConfigMaps, this namespace]<br/>refresh tokens, SA keys, OAuth client,<br/>session key, admin password, console memberships")]:::hubStore
     hv[("Valkey<br/>[external to the chart]<br/>one snapshot per workspace, locks")]:::hubStore
   end
@@ -205,7 +205,7 @@ flowchart TB
 | decides | nothing about access; it answers | what a proof entitles you to | each relying party enforces on claims |
 | authenticates | nobody | nobody | Google, Entra, the CI platform |
 | issues | nothing | tokens to registered clients and exchanged tokens for workloads | the cloud issues credentials against the audience |
-| operator surface | Workspaces, Settings, Access | one read-only page | the proxy, unchanged |
+| operator surface | a page per tenant, group, client and person, with search over all of them | one read-only page | the proxy, unchanged |
 | when down | the issuer keeps last-known groups within a window; github-roster holds removals | no new logins; sessions live to expiry; break-glass is outside | |
 
 ## 5. Use cases
@@ -348,7 +348,7 @@ sequenceDiagram
   Hub->>G: customers.get → tenant id, domains.list → domains
   Hub->>G: first probe (users.list page, groups.list page)
   Hub->>K: Secret workspace-{id} (refresh token), ConfigMap workspace-{id} (record)
-  Hub-->>Op: Workspaces view: domains served, authoritative after the first snapshot
+  Hub-->>Op: the tenant's page: domains served, authoritative after the first snapshot
 ```
 
 ### 5.7 A login-time lookup with freshness

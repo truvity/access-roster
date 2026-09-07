@@ -167,9 +167,13 @@ Two ways, and both answer the same question.
 directory groups, a CI token's claims, a client id — and prints the token
 that would result, so the file is reviewed like code.
 
-The console's **Effective access** page does it live against the policy in
-force: pick a person, a CI job or a workload, and it shows the internal
-groups, what put the proof in each, the merged claims, the lifetime, and
-every client with whether this proof reaches it. A policy that reads
-correctly and behaves differently is the failure worth catching, and that
-page is where it shows.
+The console does it live against the policy in force. Search for a
+person and their page shows the internal groups, what put them in each,
+the merged claims, the lifetime, and every client with whether they reach
+it; Explain answers the same for a CI job or a workload. From the other
+end, a group's page and a client's page list the people who hold them
+right now, which is the question an access review asks and the one this
+file cannot answer alone: the file says which directory groups count, and
+only the directory knows who is in them. A policy that reads correctly
+and behaves differently is the failure worth catching, and those pages
+are where it shows.
