@@ -62,6 +62,14 @@ repository, not the order it arrived in.
   contract was tightened for it: `Explain` names the directory that
   served the address, `SearchPeople` reports the total before the limit,
   and `GetPolicy` carries matchers only in structured form.
+- **Day one leads itself.** Overview carries what a fresh installation
+  still has to do, with that installation's own redirect URI and scopes to
+  copy rather than a document's placeholders, and each step disappears as
+  it completes. The break-glass account's default is computed rather than
+  fixed: it stays off when the values already declare a workspace and a
+  non-empty `hub-operators`, because such a deployment signs in through
+  the directory from its first boot and a password nobody needs is a
+  standing credential. `GetSettings` reports the setup values.
 - **A demonstration mode** (`DEMO=1`): two tenants in memory and a
   consent connector, so every use-case is walkable before a credential
   exists.

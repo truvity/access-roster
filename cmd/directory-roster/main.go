@@ -173,6 +173,7 @@ func run() error {
 		LoginSources: loginSources,
 		CacheBackend: "memory",
 		SecureCookie: cfg.secureCookies,
+		PublicURL:    cfg.publicURL,
 	})
 	if err != nil {
 		return err

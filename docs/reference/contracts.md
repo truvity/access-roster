@@ -137,7 +137,7 @@ for a key that does not parse or an admin address without a domain.
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `GetSettings` | viewer | — | `oauth_client{client_id, configured, source}`, `refresh_interval`, `freshness_window`, `probe_interval`, `cache_backend`, `connectors[]`, `key_connectors[]`, `version` | never the client secret. `connectors` are the backends this deployment can add a directory from; `key_connectors` the subset that also take an uploaded key |
+| `GetSettings` | viewer | — | `oauth_client{client_id, configured, source}`, `refresh_interval`, `freshness_window`, `probe_interval`, `cache_backend`, `connectors[]`, `key_connectors[]`, `version`, `setup[]{backend, redirect_uri, scopes[]}` | never the client secret. `setup` is the one-time cloud-console step as values to copy: the redirect URI is this installation's own hostname, which a document can only describe. `connectors` are the backends this deployment can add a directory from; `key_connectors` the subset that also take an uploaded key |
 | `SetOAuthClient` | operator | `client_id`, `client_secret` | — | `failed_precondition` when the deployment declared the client |
 
 The intervals are chart values. The console shows them so an operator

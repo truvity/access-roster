@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/settings.proto.
  */
 export const file_directoryroster_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkaXJlY3Rvcnlyb3N0ZXIvdjEvc2V0dGluZ3MucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSJmCgtPQXV0aENsaWVudBIRCgljbGllbnRfaWQYASABKAkSEgoKY29uZmlndXJlZBgCIAEoCBIwCgZzb3VyY2UYAyABKA4yIC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50U291cmNlIhQKEkdldFNldHRpbmdzUmVxdWVzdCL3AgoTR2V0U2V0dGluZ3NSZXNwb25zZRI1CgxvYXV0aF9jbGllbnQYASABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuT0F1dGhDbGllbnQSMwoQcmVmcmVzaF9pbnRlcnZhbBgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIzChBmcmVzaG5lc3Nfd2luZG93GAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjEKDnByb2JlX2ludGVydmFsGAQgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEhUKDWNhY2hlX2JhY2tlbmQYBSABKAkSLwoKY29ubmVjdG9ycxgGIAMoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kEjMKDmtleV9jb25uZWN0b3JzGAggAygOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSDwoHdmVyc2lvbhgHIAEoCSJBChVTZXRPQXV0aENsaWVudFJlcXVlc3QSEQoJY2xpZW50X2lkGAEgASgJEhUKDWNsaWVudF9zZWNyZXQYAiABKAkiGAoWU2V0T0F1dGhDbGllbnRSZXNwb25zZSpkCgxDbGllbnRTb3VyY2USHQoZQ0xJRU5UX1NPVVJDRV9VTlNQRUNJRklFRBAAEhoKFkNMSUVOVF9TT1VSQ0VfREVDTEFSRUQQARIZChVDTElFTlRfU09VUkNFX0NPTlNPTEUQAjLaAQoPU2V0dGluZ3NTZXJ2aWNlEl4KC0dldFNldHRpbmdzEiYuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFNldHRpbmdzUmVxdWVzdBonLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRTZXR0aW5nc1Jlc3BvbnNlEmcKDlNldE9BdXRoQ2xpZW50EikuZGlyZWN0b3J5cm9zdGVyLnYxLlNldE9BdXRoQ2xpZW50UmVxdWVzdBoqLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRPQXV0aENsaWVudFJlc3BvbnNlQtsBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQg1TZXR0aW5nc1Byb3RvUAFaSWdpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9kaXJlY3Rvcnlyb3N0ZXIvdjE7ZGlyZWN0b3J5cm9zdGVydjGiAgNEWFiqAhJEaXJlY3Rvcnlyb3N0ZXIuVjHKAhJEaXJlY3Rvcnlyb3N0ZXJcVjHiAh5EaXJlY3Rvcnlyb3N0ZXJcVjFcR1BCTWV0YWRhdGHqAhNEaXJlY3Rvcnlyb3N0ZXI6OlYxYgZwcm90bzM", [file_directoryroster_v1_workspace, file_google_protobuf_duration]);
+  fileDesc("CiFkaXJlY3Rvcnlyb3N0ZXIvdjEvc2V0dGluZ3MucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSJmCgtPQXV0aENsaWVudBIRCgljbGllbnRfaWQYASABKAkSEgoKY29uZmlndXJlZBgCIAEoCBIwCgZzb3VyY2UYAyABKA4yIC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50U291cmNlIhQKEkdldFNldHRpbmdzUmVxdWVzdCKqAwoTR2V0U2V0dGluZ3NSZXNwb25zZRI1CgxvYXV0aF9jbGllbnQYASABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuT0F1dGhDbGllbnQSMwoQcmVmcmVzaF9pbnRlcnZhbBgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIzChBmcmVzaG5lc3Nfd2luZG93GAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjEKDnByb2JlX2ludGVydmFsGAQgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEhUKDWNhY2hlX2JhY2tlbmQYBSABKAkSLwoKY29ubmVjdG9ycxgGIAMoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kEjMKDmtleV9jb25uZWN0b3JzGAggAygOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSDwoHdmVyc2lvbhgHIAEoCRIxCgVzZXR1cBgJIAMoCzIiLmRpcmVjdG9yeXJvc3Rlci52MS5Db25uZWN0b3JTZXR1cCJkCg5Db25uZWN0b3JTZXR1cBIsCgdiYWNrZW5kGAEgASgOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSFAoMcmVkaXJlY3RfdXJpGAIgASgJEg4KBnNjb3BlcxgDIAMoCSJBChVTZXRPQXV0aENsaWVudFJlcXVlc3QSEQoJY2xpZW50X2lkGAEgASgJEhUKDWNsaWVudF9zZWNyZXQYAiABKAkiGAoWU2V0T0F1dGhDbGllbnRSZXNwb25zZSpkCgxDbGllbnRTb3VyY2USHQoZQ0xJRU5UX1NPVVJDRV9VTlNQRUNJRklFRBAAEhoKFkNMSUVOVF9TT1VSQ0VfREVDTEFSRUQQARIZChVDTElFTlRfU09VUkNFX0NPTlNPTEUQAjLaAQoPU2V0dGluZ3NTZXJ2aWNlEl4KC0dldFNldHRpbmdzEiYuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFNldHRpbmdzUmVxdWVzdBonLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRTZXR0aW5nc1Jlc3BvbnNlEmcKDlNldE9BdXRoQ2xpZW50EikuZGlyZWN0b3J5cm9zdGVyLnYxLlNldE9BdXRoQ2xpZW50UmVxdWVzdBoqLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRPQXV0aENsaWVudFJlc3BvbnNlQtsBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQg1TZXR0aW5nc1Byb3RvUAFaSWdpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9kaXJlY3Rvcnlyb3N0ZXIvdjE7ZGlyZWN0b3J5cm9zdGVydjGiAgNEWFiqAhJEaXJlY3Rvcnlyb3N0ZXIuVjHKAhJEaXJlY3Rvcnlyb3N0ZXJcVjHiAh5EaXJlY3Rvcnlyb3N0ZXJcVjFcR1BCTWV0YWRhdGHqAhNEaXJlY3Rvcnlyb3N0ZXI6OlYxYgZwcm90bzM", [file_directoryroster_v1_workspace, file_google_protobuf_duration]);
 
 /**
  * @generated from message directoryroster.v1.OAuthClient
@@ -118,6 +118,16 @@ export type GetSettingsResponse = Message<"directoryroster.v1.GetSettingsRespons
    * @generated from field: string version = 7;
    */
   version: string;
+
+  /**
+   * what an operator must register with a backend before a workspace can
+   * be connected. It is here rather than only in a runbook because the
+   * values are this installation's own: the redirect URI is its hostname,
+   * and a document can only describe it.
+   *
+   * @generated from field: repeated directoryroster.v1.ConnectorSetup setup = 9;
+   */
+  setup: ConnectorSetup[];
 };
 
 /**
@@ -126,6 +136,40 @@ export type GetSettingsResponse = Message<"directoryroster.v1.GetSettingsRespons
  */
 export const GetSettingsResponseSchema: GenMessage<GetSettingsResponse> = /*@__PURE__*/
   messageDesc(file_directoryroster_v1_settings, 2);
+
+/**
+ * ConnectorSetup is the one-time cloud-console step, as values to copy
+ * rather than prose to translate.
+ *
+ * @generated from message directoryroster.v1.ConnectorSetup
+ */
+export type ConnectorSetup = Message<"directoryroster.v1.ConnectorSetup"> & {
+  /**
+   * @generated from field: directoryroster.v1.Backend backend = 1;
+   */
+  backend: Backend;
+
+  /**
+   * the exact redirect URI to register with the backend.
+   *
+   * @generated from field: string redirect_uri = 2;
+   */
+  redirectUri: string;
+
+  /**
+   * the scopes this hub will ask for, all read-only.
+   *
+   * @generated from field: repeated string scopes = 3;
+   */
+  scopes: string[];
+};
+
+/**
+ * Describes the message directoryroster.v1.ConnectorSetup.
+ * Use `create(ConnectorSetupSchema)` to create a new message.
+ */
+export const ConnectorSetupSchema: GenMessage<ConnectorSetup> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_settings, 3);
 
 /**
  * @generated from message directoryroster.v1.SetOAuthClientRequest
@@ -147,7 +191,7 @@ export type SetOAuthClientRequest = Message<"directoryroster.v1.SetOAuthClientRe
  * Use `create(SetOAuthClientRequestSchema)` to create a new message.
  */
 export const SetOAuthClientRequestSchema: GenMessage<SetOAuthClientRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_settings, 3);
+  messageDesc(file_directoryroster_v1_settings, 4);
 
 /**
  * @generated from message directoryroster.v1.SetOAuthClientResponse
@@ -160,7 +204,7 @@ export type SetOAuthClientResponse = Message<"directoryroster.v1.SetOAuthClientR
  * Use `create(SetOAuthClientResponseSchema)` to create a new message.
  */
 export const SetOAuthClientResponseSchema: GenMessage<SetOAuthClientResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_settings, 4);
+  messageDesc(file_directoryroster_v1_settings, 5);
 
 /**
  * ClientSource says where the OAuth client came from.

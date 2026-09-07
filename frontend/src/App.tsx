@@ -237,7 +237,7 @@ function PageFor({
     case "settings":
       return <SettingsView operator={operator} onDone={onDone} />;
     default:
-      return <Overview me={me} />;
+      return <Overview me={me} operator={operator} />;
   }
 }
 

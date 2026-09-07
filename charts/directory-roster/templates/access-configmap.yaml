@@ -24,7 +24,7 @@ data:
     {{- end }}
   access.yaml: |
     admin:
-      enabled: {{ .Values.access.admin.enabled }}
+      enabled: {{ include "directory-roster.adminEnabled" . }}
     holdWindow: {{ .Values.access.holdWindow | quote }}
     login:
       directory: {{ .Values.access.login.directory }}

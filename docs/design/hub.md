@@ -271,7 +271,7 @@ console edits — from either end.
 | Surface | Answers |
 |---|---|
 | Search, on every page | almost every task starts with a name: a person, a group on either side, a client, a directory. One field resolves any of them |
-| Overview | is anything broken: failing directories, domains on hold or contested, directory groups attached to nothing, internal groups nobody feeds, the break-glass state |
+| Overview | is anything broken: failing directories, domains on hold or contested, directory groups attached to nothing, internal groups nobody feeds, the break-glass state. On an installation that is not finished it leads with what is left to do instead, because the counts cannot say anything useful yet |
 | Directories, and one page per directory | which tenants we read, their domains and standing, the actions on the tenant itself, and the groups and accounts it holds — every one a link. **Add a directory** offers both ways in, admin consent and an uploaded key, and only the ways this deployment can take |
 | Directory groups, and one page per group | what the directories say exists, and which of it the policy uses. A group's page reads along the chain: its members as the directory reports them, the internal groups it feeds, the clients that therefore open |
 | People, and one page per person | every account, as the last snapshot has it, filtered by directory and by whether it is live. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why. Once the issuer exists it gains **Active sessions** with Revoke, and your own page **Sign out everywhere** |
@@ -415,8 +415,25 @@ definition.
 
 ### Day one
 
-Admin → OAuth client → connect the first workspace → one membership from
-the group picker → sign in as yourself → admin off. The sequence is drawn in
+A deployment that declares a workspace and a non-empty `hub-operators`
+has no day one: it is signed into through the directory from its first
+boot, and the break-glass account never turns itself on. That is the
+gitops path, and it is the common one.
+
+A standalone installation is the other path, and the console leads it:
+admin → OAuth client → connect the first workspace → one membership from
+the group picker → sign in as yourself → admin off. Overview carries
+those five steps until none is left, each disappearing as it completes.
+
+It is there rather than only in a runbook because the values are this
+installation's own. The redirect URI to register is the hub's hostname
+plus a fixed path, and the scopes are a fixed list; a document can only
+describe them, so an operator reads one, translates it, and retypes a
+hostname into a cloud console. That is where a day-one setup goes wrong,
+and it fails much later, at the first probe, complaining about a redirect
+mismatch. The hub knows the value exactly, so it shows it.
+
+The sequence is drawn in
 [the architecture](../architecture.md#58-day-one-of-a-standalone-installation)
 and the commands are in [the runbook](../operations/runbook.md#day-one).
 
