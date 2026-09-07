@@ -1,0 +1,29 @@
+# The store is plain Kubernetes objects in THIS namespace: workspace
+# records (ConfigMaps) and credentials (Secrets), written by the hub
+# itself. A namespaced Role, never a ClusterRole — which is why the hub
+# gets a namespace of its own.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "directory-roster.fullname" . }}
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "directory-roster.fullname" . }}
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "directory-roster.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "directory-roster.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

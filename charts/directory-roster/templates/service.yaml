@@ -1,0 +1,31 @@
+# Two Services for two listeners: consumers reach the API one over the
+# cluster network; the gateway reaches the console one.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "directory-roster.fullname" . }}
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "directory-roster.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: api
+      port: {{ .Values.listeners.api.port }}
+      targetPort: api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "directory-roster.fullname" . }}-console
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "directory-roster.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: console
+      port: {{ .Values.listeners.console.port }}
+      targetPort: console

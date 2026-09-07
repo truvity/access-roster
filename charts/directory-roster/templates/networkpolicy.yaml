@@ -1,0 +1,35 @@
+{{- if .Values.networkPolicy.enabled }}
+# Consumers reach the API listener from allow-listed namespaces; the
+# console listener admits only the gateway's namespace. Health stays open
+# to the node's kubelet by virtue of not being selected here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "directory-roster.fullname" . }}
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "directory-roster.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    {{- if .Values.networkPolicy.apiClients }}
+    - from:
+        {{- range .Values.networkPolicy.apiClients }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+      ports:
+        - port: {{ $.Values.listeners.api.port }}
+    {{- end }}
+    {{- if .Values.networkPolicy.gatewayNamespace }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gatewayNamespace }}
+      ports:
+        - port: {{ .Values.listeners.console.port }}
+    {{- end }}
+{{- end }}

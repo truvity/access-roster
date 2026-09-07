@@ -1,0 +1,12 @@
+apiVersion: v2
+name: directory-roster
+description: >-
+  The directory hub: one deployment holding every corporate-directory
+  credential, answering "is this account live" and "who is in this group"
+  over ConnectRPC, routed by email domain, with a per-domain authoritative
+  flag. See docs/design/hub.md.
+type: application
+# Placeholder. The git tag is the sole version authority — the release
+# workflow stamps `--version`/`--app-version` from it at package time.
+version: 0.0.0
+appVersion: "0.0.0"

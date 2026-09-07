@@ -1,0 +1,19 @@
+{{- if .Values.workspaces }}
+# Declared workspaces (the overlay). The hub reads this file at start and
+# on change; the credential of each is the named Secret, mounted below.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "directory-roster.fullname" . }}-overlay
+  labels:
+    {{- include "directory-roster.labels" . | nindent 4 }}
+data:
+  overlay.yaml: |
+    workspaces:
+    {{- range .Values.workspaces }}
+      - id: {{ .id | quote }}
+        backend: {{ .backend | quote }}
+        admin: {{ .admin | quote }}
+        keyFile: /var/run/directory-roster/keys/{{ .secretName }}/key.json
+    {{- end }}
+{{- end }}
