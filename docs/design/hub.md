@@ -1,6 +1,6 @@
 # directory-roster — the directory hub
 
-**Status:** accepted 2026-09-06. Successor to
+**Status:** accepted 2026-09-06; API and secret-handling decisions closed 2026-09-07. Successor to
 [google-group-sync](https://github.com/truvity/google-group-sync), which is
 archived once its consumers have moved.
 
@@ -50,13 +50,26 @@ Workspace {
 
 ## Contracts
 
-- **`DirectoryService`** (ConnectRPC) — unchanged from google-group-sync:
-  `Describe`, `Probe`, `GetGroup`, `ListGroups`, `GetAccount`,
-  `ResolveAccounts`, `ResolveUser`. `Describe` now lists every served domain
-  with its authoritative flag and workspace.
-- **REST** — unchanged from google-group-sync (`/users/{email}/groups`,
-  `/groups`, `/groups/{email}`, `/health`), routed by domain, so the
-  authorization webhook moves by changing one URL.
+The hub speaks **ConnectRPC only**. There is no REST façade: a consumer
+that still speaks google-group-sync's REST routes moves to the generated
+client. Connect serves idempotent RPCs over plain GET with JSON, so a
+shell and `curl` are enough to debug from a pod.
+
+Two listeners, so a consumer can never reach an operator call:
+
+| Port | Services | Reached by |
+|---|---|---|
+| API | `DirectoryService` | consumers over the cluster network (ClusterIP, NetworkPolicy) |
+| console | `WorkspaceService`, `SettingsService`, the SPA | operators through the gateway |
+
+- **`DirectoryService`** — google-group-sync's proto plus **additive**
+  fields, so its existing clients stay valid: `Describe` gains a structured
+  domain list (name, authoritative, workspace, backend) beside the plain
+  list; `Account` and `ResolveUserResponse` gain `authoritative`;
+  `ListGroupsRequest` gains an optional `domain` filter — empty means the
+  union of every served domain, each group tagged with its domain. A
+  consumer that removes access reads `authoritative` first: a
+  non-authoritative answer is no opinion, never a removal.
 - **`WorkspaceService`** (ConnectRPC, operator-gated) — `ListWorkspaces`,
   `BeginConnect` (returns the consent URL), `UploadKey`, `Probe`,
   `Reconnect`, `Disconnect`.
@@ -82,9 +95,12 @@ done once per installation, never per company.
 3. Scopes, all read-only: Admin SDK user, group, group member, and domain.
    The domain scope is what makes discovery possible.
 4. One OAuth client, type Web application, redirect URI
-   `https://<hub host>/connect/google/callback`.
-5. Paste the client id and secret into the hub's Settings once. Nothing else
-   reads them.
+   `https://<hub host>/connect/google/callback`. While the hub is being
+   tried on a workstation a second URI, `http://localhost:8080/connect/
+   google/callback`, may sit on the same client; remove it afterwards.
+5. Paste the client id and secret into the hub's Settings once, or hand the
+   chart the name of a Secret that already holds them. Nothing else reads
+   them.
 
 Verification by Google is optional. Unverified, the consent screen shows
 "Google hasn't verified this app" and the admin clicks through; a tenant
@@ -125,13 +141,19 @@ being authoritative, consumers hold their removals, and the console offers
 
 ## The store
 
-Kubernetes objects in the hub's own namespace; no cloud dependency.
+Plain Kubernetes objects in the hub's own namespace, read and written by
+the hub itself. Nothing else is in the loop: no external-secrets operator,
+no cloud parameter store, no cache. How a *declared* Secret gets into the
+namespace — an external-secrets `ExternalSecret`, a sealed secret, `kubectl`
+— is the deployment's business; the configuration reference carries an
+example, the hub has no dependency on it.
 
 | Object | Holds |
 |---|---|
 | `Secret workspace-<id>` | the credential (refresh token, or service-account key) |
 | `ConfigMap workspace-<id>` | backend, domains, admin, connectedBy/At, last health |
-| `Secret hub-oauth-client` | the OAuth client id and secret |
+| `Secret hub-oauth-client` | the OAuth client id and secret (written by Settings, or declared) |
+| `Secret hub-connect-state` | the key that signs the consent-flow state cookie; generated on first start |
 | `ConfigMap hub-settings` | freshness window, probe interval, cache |
 | chart-rendered overlay | workspaces declared by the deployment (a key delivered as a Secret, domains listed), read-only in the console, winning on conflict |
 
@@ -141,9 +163,14 @@ the operator connects through consent later, at which point the declared
 workspace is removed from the overlay.
 
 The ServiceAccount holds a namespaced Role on ConfigMaps and Secrets, which
-is why the hub has a namespace of its own. Encryption at rest and backup are
-the cluster's; the deployment may mirror the Secrets off-cluster (an ESO
-`PushSecret`); the export is `kubectl get -o yaml`.
+is why the hub has a namespace of its own. Encryption at rest is the
+cluster's. There is no backup mechanism in the hub: a consent credential is
+cheap to mint again, so the recovery for a lost workspace Secret is
+**Reconnect**, and a declared Secret is re-delivered by whatever declared
+it. The export, for anyone who wants a copy in a vault, is
+`kubectl get -o yaml`. The console never returns secret material; the logs
+never print it; **Disconnect** revokes the token at the backend before the
+Secret is deleted.
 
 ## The console
 
@@ -165,14 +192,16 @@ authentication is editable from the UI.
 ## What is not carried from google-group-sync
 
 The Lambda and Lambda-extension flavours (single-workspace by construction),
-the one-workspace-per-process configuration, and the environment-variable
-credential path (replaced by the overlay).
+the one-workspace-per-process configuration, the environment-variable
+credential path (replaced by the overlay), and the REST routes
+(`/users/{email}/groups`, `/groups`, `/groups/{email}`): their one consumer
+moves to the ConnectRPC client and learns `authoritative` at the same time.
 
 ## Build
 
 1. Workspace model, Kubernetes store, overlay.
 2. Routing by domain, per-domain authoritative flag, domain discovery,
-   probes.
+   probes; the additive contract fields.
 3. `WorkspaceService`, the consent flow, key upload, `SettingsService`.
 4. The console.
 5. Documentation (below).
@@ -183,11 +212,11 @@ credential path (replaced by the overlay).
 |---|---|
 | `README.md` | what it is, the contracts, quick start |
 | `docs/architecture/hub.md` | this design, rewritten as the running architecture |
-| `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`, REST |
-| `docs/reference/configuration.md` | chart values, the overlay format, roles, Kubernetes objects |
+| `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`; the additive fields vs google-group-sync |
+| `docs/reference/configuration.md` | chart values, the overlay format, roles, Kubernetes objects; an example of delivering a declared Secret with external-secrets |
 | `docs/operations/connect-runbook.md` | the one-time GCP prerequisites, the per-workspace flow, trusting the client, verification |
-| `docs/operations/runbook.md` | health, reconnect, domain moves and conflicts, backup and export |
-| `docs/operations/migration-from-google-group-sync.md` | overlay first, consumers repointed, Connect later, archive |
+| `docs/operations/runbook.md` | health, reconnect as the recovery, domain moves and conflicts, export |
+| `docs/operations/migration-from-google-group-sync.md` | overlay first, consumers moved to the ConnectRPC client, Connect later, archive |
 | `docs/development/testing.md` | fakes for the backend and the store |
 | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, chart README, `values.schema.json` | estate-standard |
 
