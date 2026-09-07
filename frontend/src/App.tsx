@@ -17,19 +17,39 @@ import { paths, useRoute } from "./router";
 import { Search } from "./Search";
 import { Overview } from "./Overview";
 import { Directories, Directory } from "./Directories";
+import { DirectoryGroups, DirectoryGroup } from "./DirectoryGroups";
+import { People } from "./People";
+import { Person } from "./Person";
+import { Machines } from "./Machines";
 import { Groups, Group } from "./Groups";
 import { Clients, Client } from "./Clients";
-import { Person } from "./Person";
-import { Explain } from "./Explain";
 import { SettingsView } from "./Settings";
 
-const tabs = [
-  { value: "overview", label: "Overview", to: paths.overview() },
-  { value: "directories", label: "Directories", to: paths.directories() },
-  { value: "groups", label: "Groups", to: paths.groups() },
-  { value: "clients", label: "Clients", to: paths.clients() },
-  { value: "explain", label: "Explain", to: paths.explain() },
-  { value: "settings", label: "Settings", to: paths.settings() },
+type Tab = { value: string; label: string; to: string };
+
+/** The navigation is the model: two sides, one adjective each, joined by
+ *  the membership. Clustering the tabs is what makes the symmetry
+ *  visible, and naming both sides in full is what keeps "group" from
+ *  meaning two things. */
+const clusters: { label?: string; tabs: Tab[] }[] = [
+  { tabs: [{ value: "overview", label: "Overview", to: paths.overview() }] },
+  {
+    label: "Identity — where people come from",
+    tabs: [
+      { value: "directories", label: "Directories", to: paths.directories() },
+      { value: "directory-groups", label: "Directory groups", to: paths.directoryGroups() },
+      { value: "people", label: "People", to: paths.people() },
+      { value: "machines", label: "Machines", to: paths.machines() },
+    ],
+  },
+  {
+    label: "Access — what they get",
+    tabs: [
+      { value: "groups", label: "Internal groups", to: paths.groups() },
+      { value: "clients", label: "Clients", to: paths.clients() },
+    ],
+  },
+  { tabs: [{ value: "settings", label: "Settings", to: paths.settings() }] },
 ];
 
 export function App() {
@@ -40,7 +60,6 @@ export function App() {
   const identity = me.value;
   const roles = identity?.roles ?? [];
   const operator = roles.includes("operator");
-  const current = tabs.some((tab) => tab.value === route.view) ? route.view : "";
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
@@ -85,19 +104,45 @@ export function App() {
             )}
           </Stack>
         </Toolbar>
-        <Tabs value={current || false} sx={{ px: 2 }}>
-          {tabs.map((tab) => (
-            <Tab key={tab.value} value={tab.value} label={tab.label} href={`#${tab.to}`} component="a" />
-          ))}
-        </Tabs>
+
+        <Stack direction="row" sx={{ px: 2, alignItems: "flex-end", flexWrap: "wrap", columnGap: 3 }}>
+          {clusters.map((cluster, index) => {
+            const current = cluster.tabs.some((tab) => tab.value === route.view) ? route.view : false;
+            return (
+              <Box key={index} sx={{ pt: cluster.label ? 0 : 2.25 }}>
+                {cluster.label ? (
+                  <Typography
+                    variant="overline"
+                    color="text.secondary"
+                    sx={{ display: "block", lineHeight: 1.6, px: 2, fontSize: 10 }}
+                  >
+                    {cluster.label}
+                  </Typography>
+                ) : null}
+                <Tabs value={current} sx={{ minHeight: 40 }}>
+                  {cluster.tabs.map((tab) => (
+                    <Tab
+                      key={tab.value}
+                      value={tab.value}
+                      label={tab.label}
+                      href={`#${tab.to}`}
+                      component="a"
+                      sx={{ minHeight: 40, py: 0.5 }}
+                    />
+                  ))}
+                </Tabs>
+              </Box>
+            );
+          })}
+        </Stack>
       </AppBar>
 
       <Container maxWidth="lg" sx={{ py: 3 }}>
         {identity?.status === "signed-in" && roles.length === 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            You are signed in as {identity.email}, and no group grants you access. An operator can attach a
-            directory group to one on a group's page; on a fresh installation, sign in with the break-glass
-            admin account first.
+            You are signed in as {identity.email}, and no internal group grants you access. An operator can
+            attach a directory group to one on either group's page; on a fresh installation, sign in with
+            the break-glass admin account first.
           </Alert>
         ) : null}
         {banner ? (
@@ -127,15 +172,21 @@ function Page({
 }) {
   switch (view) {
     case "directories":
-      return id ? <Directory id={id} operator={operator} onDone={onDone} /> : <Directories operator={operator} onDone={onDone} />;
+      return id ? (
+        <Directory id={id} operator={operator} onDone={onDone} />
+      ) : (
+        <Directories operator={operator} onDone={onDone} />
+      );
+    case "directory-groups":
+      return id ? <DirectoryGroup email={id} operator={operator} onDone={onDone} /> : <DirectoryGroups />;
+    case "people":
+      return id ? <Person email={id} /> : <People />;
+    case "machines":
+      return <Machines />;
     case "groups":
       return id ? <Group name={id} operator={operator} onDone={onDone} /> : <Groups />;
     case "clients":
       return id ? <Client id={id} /> : <Clients />;
-    case "people":
-      return <Person email={id ?? me?.email ?? ""} />;
-    case "explain":
-      return <Explain />;
     case "settings":
       return <SettingsView operator={operator} onDone={onDone} />;
     default:

@@ -186,6 +186,9 @@ type GetSettingsResponse struct {
 	// console offers one Connect button per entry, and none at all when a
 	// deployment has configured no OAuth client.
 	Connectors []Backend `protobuf:"varint,6,rep,packed,name=connectors,proto3,enum=directoryroster.v1.Backend" json:"connectors,omitempty"`
+	// key_connectors is the subset of connectors that also accept an
+	// uploaded service-account key, the second way to add a directory.
+	KeyConnectors []Backend `protobuf:"varint,8,rep,packed,name=key_connectors,json=keyConnectors,proto3,enum=directoryroster.v1.Backend" json:"key_connectors,omitempty"`
 	// the build this hub is running.
 	Version       string `protobuf:"bytes,7,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -260,6 +263,13 @@ func (x *GetSettingsResponse) GetCacheBackend() string {
 func (x *GetSettingsResponse) GetConnectors() []Backend {
 	if x != nil {
 		return x.Connectors
+	}
+	return nil
+}
+
+func (x *GetSettingsResponse) GetKeyConnectors() []Backend {
+	if x != nil {
+		return x.KeyConnectors
 	}
 	return nil
 }
@@ -370,7 +380,7 @@ const file_directoryroster_v1_settings_proto_rawDesc = "" +
 	"configured\x18\x02 \x01(\bR\n" +
 	"configured\x128\n" +
 	"\x06source\x18\x03 \x01(\x0e2 .directoryroster.v1.ClientSourceR\x06source\"\x14\n" +
-	"\x12GetSettingsRequest\"\xa3\x03\n" +
+	"\x12GetSettingsRequest\"\xe7\x03\n" +
 	"\x13GetSettingsResponse\x12B\n" +
 	"\foauth_client\x18\x01 \x01(\v2\x1f.directoryroster.v1.OAuthClientR\voauthClient\x12D\n" +
 	"\x10refresh_interval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0frefreshInterval\x12D\n" +
@@ -379,7 +389,8 @@ const file_directoryroster_v1_settings_proto_rawDesc = "" +
 	"\rcache_backend\x18\x05 \x01(\tR\fcacheBackend\x12;\n" +
 	"\n" +
 	"connectors\x18\x06 \x03(\x0e2\x1b.directoryroster.v1.BackendR\n" +
-	"connectors\x12\x18\n" +
+	"connectors\x12B\n" +
+	"\x0ekey_connectors\x18\b \x03(\x0e2\x1b.directoryroster.v1.BackendR\rkeyConnectors\x12\x18\n" +
 	"\aversion\x18\a \x01(\tR\aversion\"Y\n" +
 	"\x15SetOAuthClientRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12#\n" +
@@ -425,15 +436,16 @@ var file_directoryroster_v1_settings_proto_depIdxs = []int32{
 	6, // 3: directoryroster.v1.GetSettingsResponse.freshness_window:type_name -> google.protobuf.Duration
 	6, // 4: directoryroster.v1.GetSettingsResponse.probe_interval:type_name -> google.protobuf.Duration
 	7, // 5: directoryroster.v1.GetSettingsResponse.connectors:type_name -> directoryroster.v1.Backend
-	2, // 6: directoryroster.v1.SettingsService.GetSettings:input_type -> directoryroster.v1.GetSettingsRequest
-	4, // 7: directoryroster.v1.SettingsService.SetOAuthClient:input_type -> directoryroster.v1.SetOAuthClientRequest
-	3, // 8: directoryroster.v1.SettingsService.GetSettings:output_type -> directoryroster.v1.GetSettingsResponse
-	5, // 9: directoryroster.v1.SettingsService.SetOAuthClient:output_type -> directoryroster.v1.SetOAuthClientResponse
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	7, // 6: directoryroster.v1.GetSettingsResponse.key_connectors:type_name -> directoryroster.v1.Backend
+	2, // 7: directoryroster.v1.SettingsService.GetSettings:input_type -> directoryroster.v1.GetSettingsRequest
+	4, // 8: directoryroster.v1.SettingsService.SetOAuthClient:input_type -> directoryroster.v1.SetOAuthClientRequest
+	3, // 9: directoryroster.v1.SettingsService.GetSettings:output_type -> directoryroster.v1.GetSettingsResponse
+	5, // 10: directoryroster.v1.SettingsService.SetOAuthClient:output_type -> directoryroster.v1.SetOAuthClientResponse
+	9, // [9:11] is the sub-list for method output_type
+	7, // [7:9] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_settings_proto_init() }

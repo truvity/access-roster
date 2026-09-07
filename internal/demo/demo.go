@@ -9,8 +9,10 @@ package demo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -163,6 +165,34 @@ func (c *Connector) Kind() string { return "demo" }
 // cookie included, is exactly the real one.
 func (c *Connector) AuthURL(state string) string {
 	return fmt.Sprintf("%s/connect/demo/callback?code=demo-consent&state=%s", c.base, url.QueryEscape(state))
+}
+
+// FromKey implements [server.KeyConnector], so the second way in is
+// walkable too. The key must at least be JSON naming a client_email, as a
+// real service-account key does; the tenant it opens takes its domain
+// from the admin to act as.
+func (c *Connector) FromKey(_ context.Context, key []byte, admin string) (hub.Workspace, backend.Backend, error) {
+	var parsed struct {
+		ClientEmail string `json:"client_email"`
+	}
+	if err := json.Unmarshal(key, &parsed); err != nil || parsed.ClientEmail == "" {
+		return hub.Workspace{}, nil, fmt.Errorf("demo: not a service-account key: expected JSON with a client_email")
+	}
+	_, domain, ok := strings.Cut(admin, "@")
+	if !ok || domain == "" {
+		return hub.Workspace{}, nil, fmt.Errorf("demo: the admin to act as must be an address")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.minted++
+	id := fmt.Sprintf("C0demo-key-%d", c.minted)
+	b := fake.New(id, domain).
+		WithAccount(admin, "Kay", "Keyholder").
+		WithAccount("robot@"+domain, "Robot", "Runner").
+		WithGroup("everyone@"+domain, admin, "robot@"+domain)
+	c.tenants[id] = b
+	return hub.Workspace{ID: id, Admin: admin, Credential: hub.CredentialServiceAccountKey}, b, nil
 }
 
 // Exchange implements [server.Connector].

@@ -4,6 +4,7 @@ package directoryroster.v1;
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 
 // AccessService is how the console learns who is signed in, what the
 // policy says, and what any identity would effectively get.
@@ -60,6 +61,15 @@ service AccessService {
   // that a membership is a click rather than a typed address that may be
   // a typo. Viewer.
   rpc ListDirectoryGroups(ListDirectoryGroupsRequest) returns (ListDirectoryGroupsResponse);
+
+  // GetDirectoryGroup returns one snapshotted directory group as the
+  // console shows it: where it came from and whether that can be vouched
+  // for, its members straight from the directory, and the internal groups
+  // it feeds. It is the reverse of a membership — an admin who just
+  // changed a group in the directory wants to know its blast radius, and
+  // that direction is not derivable from the policy alone. Viewer, for
+  // the same reason as Explain.
+  rpc GetDirectoryGroup(GetDirectoryGroupRequest) returns (GetDirectoryGroupResponse);
 }
 
 // Role is what an identity may do in this console. Operator implies
@@ -270,6 +280,9 @@ message SearchPeopleRequest {
   // lists everyone, up to the limit.
   string query = 1;
   int32 limit = 2;
+  // workspace_id restricts the search to one tenant's accounts, which is
+  // what a tenant's page lists. Empty searches every tenant.
+  string workspace_id = 3;
 }
 
 // PersonSummary is one account as a search result shows it.
@@ -301,4 +314,40 @@ message DirectoryGroupSummary {
   string workspace_id = 3;
   // members is the flat membership count at the last snapshot.
   int32 members = 4;
+}
+
+message GetDirectoryGroupRequest {
+  string email = 1;
+}
+
+// DirectoryGroupMember is one member as the directory reports it. A member
+// from a tenant the hub does not read has an address and nothing else.
+message DirectoryGroupMember {
+  string email = 1;
+  string given_name = 2;
+  string family_name = 3;
+  // known is true when the account is in a snapshot, so live means
+  // something; a member the hub has never seen is neither live nor gone.
+  bool known = 4;
+  bool live = 5;
+}
+
+// DirectoryGroupFeed is one internal group this directory group is a
+// member of, and which layer put it there.
+message DirectoryGroupFeed {
+  string group = 1;
+  string layer = 2;
+}
+
+message GetDirectoryGroupResponse {
+  string email = 1;
+  string domain = 2;
+  string workspace_id = 3;
+  // found is false when the domain is served but the snapshot has no such
+  // group: the address may be a typo, or the group may be gone.
+  bool found = 4;
+  bool authoritative = 5;
+  google.protobuf.Timestamp snapshot_at = 6;
+  repeated DirectoryGroupMember members = 7;
+  repeated DirectoryGroupFeed feeds = 8;
 }

@@ -2,7 +2,6 @@ import { useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
-import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -11,16 +10,16 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { access, adds, forHowLong, people as peopleCount, personName, reason } from "./api";
+import { Attach } from "./attach";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Nothing, Ref, Section, Summary } from "./ui";
 
-/** The vocabulary of access, as a list to browse and audit. */
+/** The access-side groups: the vocabulary everything downstream speaks. */
 export function Groups() {
   const policy = useAsync(() => access.getPolicy({}), []);
   const groups = policy.value?.groups ?? [];
@@ -30,8 +29,9 @@ export function Groups() {
     <Box>
       <Typography variant="h6">Internal groups</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        The vocabulary of access. A person or a machine is in one by membership or by a matcher, and
-        everything downstream speaks these names.
+        The vocabulary of access. A person is in one through a directory group, a machine through a
+        matcher, and every client and every claim speaks these names. They are declared by the deployment;
+        who is in them is what this console edits.
       </Typography>
 
       <Loading busy={policy.loading} />
@@ -41,8 +41,8 @@ export function Groups() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Group</TableCell>
-              <TableCell>In it by</TableCell>
+              <TableCell>Internal group</TableCell>
+              <TableCell>Fed by</TableCell>
               <TableCell>Adds</TableCell>
               <TableCell>Token</TableCell>
               <TableCell>Opens</TableCell>
@@ -59,15 +59,24 @@ export function Groups() {
                     </Ref>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {group.members.length ? `${group.members.length} directory groups` : ""}
-                      {group.members.length && group.matchers.length ? ", " : ""}
-                      {group.matchers.length ? `${group.matchers.length} matchers` : ""}
-                      {!group.members.length && !group.matchers.length ? "nobody yet" : ""}
-                    </Typography>
+                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                      {group.members.map((member) => (
+                        <Ref key={member.address} to={paths.directoryGroup(member.address)}>
+                          <Chip size="small" variant="outlined" label={member.address} clickable />
+                        </Ref>
+                      ))}
+                      {group.matchers.map((matcher) => (
+                        <Chip key={matcher} size="small" variant="outlined" color="secondary" label={matcher} />
+                      ))}
+                      {!group.members.length && !group.matchers.length ? (
+                        <Typography variant="body2" color="text.secondary">
+                          nobody yet
+                        </Typography>
+                      ) : null}
+                    </Stack>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 300 }}>
+                    <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 260 }}>
                       {adds(group.claims as Record<string, unknown> | undefined).replace(/^adds /, "")}
                     </Typography>
                   </TableCell>
@@ -76,7 +85,7 @@ export function Groups() {
                     <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
                       {opens.map((client) => (
                         <Ref key={client.id} to={paths.client(client.id)}>
-                          <Chip size="small" variant="outlined" label={client.id} clickable />
+                          <Chip size="small" variant="outlined" color="primary" label={client.id} clickable />
                         </Ref>
                       ))}
                       {opens.length === 0 ? (
@@ -96,8 +105,10 @@ export function Groups() {
   );
 }
 
-/** One internal group: who is in it, what it adds, and what it opens.
- *  The pivot of the whole model, so both directions are on the page. */
+/** One internal group, read along the chain: the directory groups that
+ *  feed it, the people that puts in it right now, what it adds to a
+ *  token, and the clients it opens. The mirror of a directory group's
+ *  page. */
 export function Group({
   name,
   operator,
@@ -138,19 +149,17 @@ export function Group({
   }
 
   const people = holders.value?.holders ?? [];
+  const claims = group.claims as Record<string, unknown> | undefined;
 
   return (
     <Box>
       <Summary
         title={<span style={{ fontFamily: "monospace" }}>{group.name}</span>}
-        subtitle={`It ${adds(group.claims as Record<string, unknown> | undefined)}.`}
+        subtitle={`${peopleCount(people.length)} in it · fed by ${group.members.length} directory ${group.members.length === 1 ? "group" : "groups"}${group.matchers.length ? ` and ${group.matchers.length} ${group.matchers.length === 1 ? "matcher" : "matchers"}` : ""} · opens ${opens.length} ${opens.length === 1 ? "client" : "clients"}`}
         chips={
           <>
             <Chip size="small" variant="outlined" label={`token ${forHowLong(group.lifetime)}`} />
-            <Chip size="small" variant="outlined" label={peopleCount(people.length)} />
-            {group.matchers.map((matcher) => (
-              <Chip key={matcher} size="small" variant="outlined" color="secondary" label={matcher} />
-            ))}
+            <Chip size="small" variant="outlined" label={adds(claims)} />
           </>
         }
       />
@@ -158,43 +167,9 @@ export function Group({
       <Loading busy={policy.loading || holders.loading} />
       <Failure error={failure ?? policy.error ?? holders.error} />
 
-      <Section title="What it adds to a token" hint="merged with every other group the person is in">
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          {group.claims ? (
-            <Stack spacing={1}>
-              {Array.isArray((group.claims as Record<string, unknown>).groups) ? (
-                <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5, alignItems: "center" }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
-                    groups claim
-                  </Typography>
-                  {((group.claims as Record<string, unknown>).groups as string[]).map((value) => (
-                    <Chip key={value} size="small" variant="outlined" label={value} />
-                  ))}
-                </Stack>
-              ) : null}
-              {Object.keys(group.claims as Record<string, unknown>).some((key) => key !== "groups") ? (
-                <Box component="pre" sx={{ m: 0, fontSize: 13, fontFamily: "monospace" }}>
-                  {JSON.stringify(
-                    Object.fromEntries(
-                      Object.entries(group.claims as Record<string, unknown>).filter(([key]) => key !== "groups"),
-                    ),
-                    null,
-                    2,
-                  )}
-                </Box>
-              ) : null}
-            </Stack>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Only its own name, which relying parties read from the groups claim.
-            </Typography>
-          )}
-        </Paper>
-      </Section>
-
       <Section
-        title="Directory groups in it"
-        hint="the one thing this console changes"
+        title="Directory groups that feed it"
+        hint="the memberships table: the one thing this console changes"
         action={
           <Button size="small" variant="contained" disabled={!operator || adding} onClick={() => setAdding(true)}>
             Attach a directory group
@@ -205,7 +180,7 @@ export function Group({
           <Attach
             group={group.name}
             onCancel={() => setAdding(false)}
-            onAdded={(address) => {
+            onAdded={(_, address) => {
               setAdding(false);
               onDone(`${address} added to ${group.name}.`);
               policy.reload();
@@ -219,7 +194,11 @@ export function Group({
             <TableBody>
               {group.members.map((member) => (
                 <TableRow key={member.address} hover>
-                  <TableCell>{member.address}</TableCell>
+                  <TableCell>
+                    <Ref to={paths.directoryGroup(member.address)} mono>
+                      {member.address}
+                    </Ref>
+                  </TableCell>
                   <TableCell>
                     <Tooltip
                       title={
@@ -250,12 +229,26 @@ export function Group({
                   </TableCell>
                 </TableRow>
               ))}
-              {group.members.length === 0 ? (
+              {group.matchers.map((matcher) => (
+                <TableRow key={matcher} hover>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                      {matcher}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title="A matcher admits a proof by its shape rather than by a directory: a CI job, a workload, or a verified sign-in. Declared only.">
+                      <Chip size="small" variant="outlined" color="secondary" label="matcher" />
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell />
+                </TableRow>
+              ))}
+              {group.members.length === 0 && group.matchers.length === 0 ? (
                 <TableRow>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                      No directory group is attached
-                      {group.matchers.length ? ", so only the matchers above put anyone in it." : " yet."}
+                      Nothing feeds it yet, so nobody is in it.
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -263,6 +256,93 @@ export function Group({
             </TableBody>
           </Table>
         </TableContainer>
+      </Section>
+
+      <Section
+        title="People in it now"
+        hint={`the directory groups above, resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}
+      >
+        {people.length === 0 ? (
+          <Nothing>
+            Nobody.{" "}
+            {group.matchers.length
+              ? "Only machines can be in it, through the matchers above."
+              : "Attaching a directory group above is what changes that."}
+          </Nothing>
+        ) : (
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Person</TableCell>
+                  <TableCell>Through</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {people.map((holder) => (
+                  <TableRow key={holder.email} hover>
+                    <TableCell>
+                      <Ref to={paths.person(holder.email)}>
+                        {personName(holder.givenName, holder.familyName, holder.email)}
+                      </Ref>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        {holder.email}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                        {holder.via.map((why) => (
+                          <Ref key={why} to={paths.directoryGroup(why)}>
+                            <Chip size="small" variant="outlined" label={why} clickable />
+                          </Ref>
+                        ))}
+                        {!holder.live ? <Chip size="small" color="warning" label="suspended" /> : null}
+                        {!holder.authoritative ? <Chip size="small" color="warning" variant="outlined" label="hold" /> : null}
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Section>
+
+      <Section title="What it adds to a token" hint="merged with every other group the identity is in; the shortest lifetime wins">
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          {claims ? (
+            <Stack spacing={1}>
+              {Array.isArray(claims.groups) ? (
+                <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5, alignItems: "center" }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>
+                    groups claim
+                  </Typography>
+                  {(claims.groups as string[]).map((value) => (
+                    <Chip key={value} size="small" variant="outlined" label={value} />
+                  ))}
+                </Stack>
+              ) : null}
+              {Object.keys(claims).some((key) => key !== "groups") ? (
+                <Box component="pre" sx={{ m: 0, fontSize: 13, fontFamily: "monospace" }}>
+                  {JSON.stringify(
+                    Object.fromEntries(Object.entries(claims).filter(([key]) => key !== "groups")),
+                    null,
+                    2,
+                  )}
+                </Box>
+              ) : null}
+              <Typography variant="body2" color="text.secondary">
+                Tokens live {forHowLong(group.lifetime)} through this group, unless another group or the client
+                says shorter.
+              </Typography>
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Only its own name, which relying parties read from the groups claim. Tokens live{" "}
+              {forHowLong(group.lifetime)} through it.
+            </Typography>
+          )}
+        </Paper>
       </Section>
 
       <Section title="Clients it opens" hint="what being in this group buys">
@@ -284,50 +364,7 @@ export function Group({
                         {client.kind}
                       </Typography>
                     </TableCell>
-                    <TableCell align="right">{client.ttlCap ? forHowLong(client.ttlCap) : "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </Section>
-
-      <Section
-        title="Who is in it now"
-        hint={`resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}
-      >
-        {people.length === 0 ? (
-          <Nothing>Nobody. Attaching a directory group above is what changes that.</Nothing>
-        ) : (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Person</TableCell>
-                  <TableCell>Because of</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {people.map((holder) => (
-                  <TableRow key={holder.email} hover>
-                    <TableCell>
-                      <Ref to={paths.person(holder.email)}>
-                        {personName(holder.givenName, holder.familyName, holder.email)}
-                      </Ref>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        {holder.email}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                        {holder.via.map((why) => (
-                          <Chip key={why} size="small" variant="outlined" label={why} />
-                        ))}
-                        {!holder.live ? <Chip size="small" color="warning" label="suspended" /> : null}
-                        {!holder.authoritative ? <Chip size="small" color="warning" variant="outlined" label="hold" /> : null}
-                      </Stack>
-                    </TableCell>
+                    <TableCell align="right">{client.ttlCap ? `capped at ${forHowLong(client.ttlCap)}` : ""}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -336,66 +373,5 @@ export function Group({
         )}
       </Section>
     </Box>
-  );
-}
-
-/** The inline row: a picker over the groups the hub has already
- *  snapshotted, so there is nothing to mistype. */
-function Attach({
-  group,
-  onCancel,
-  onAdded,
-  onFailure,
-}: {
-  group: string;
-  onCancel: () => void;
-  onAdded: (address: string) => void;
-  onFailure: (message: string) => void;
-}) {
-  const [chosen, setChosen] = useState("");
-  const available = useAsync(() => access.listDirectoryGroups({}), []);
-  const picked = (available.value?.groups ?? []).find((g) => g.email === chosen);
-
-  const submit = async () => {
-    try {
-      await access.addMembership({ group, directoryGroup: chosen });
-      onAdded(chosen);
-    } catch (error) {
-      onFailure(reason(error));
-    }
-  };
-
-  return (
-    <Paper variant="outlined" sx={{ p: 2, mb: 1 }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start", flexWrap: "wrap", gap: 1 }}>
-        <TextField
-          select
-          size="small"
-          label="Directory group"
-          value={chosen}
-          onChange={(e) => setChosen(e.target.value)}
-          sx={{ minWidth: 360 }}
-          helperText={
-            picked
-              ? `Adds ${picked.members} people to ${group}.`
-              : available.value?.groups.length
-                ? "From the hub's own snapshots."
-                : "No groups snapshotted yet: connect a tenant first."
-          }
-        >
-          {(available.value?.groups ?? []).map((g) => (
-            <MenuItem key={g.email} value={g.email}>
-              {g.email} · {g.members} members
-            </MenuItem>
-          ))}
-        </TextField>
-        <Button variant="contained" disabled={!chosen} onClick={() => void submit()} sx={{ mt: 0.25 }}>
-          Attach
-        </Button>
-        <Button onClick={onCancel} sx={{ mt: 0.25 }}>
-          Cancel
-        </Button>
-      </Stack>
-    </Paper>
   );
 }

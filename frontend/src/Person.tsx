@@ -21,11 +21,15 @@ import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Nothing, Ref, Section, Summary } from "./ui";
 
-/** One person: everything they reach, and what put it there. The most
- *  used page in the console, because the most frequent question is "why
- *  can't this person do that". */
+/** One person: the place where the two sides meet. Their identity facts
+ *  come from the directory, and from there the chain runs one row per
+ *  hop to the clients they reach. The most used page in the console,
+ *  because the most frequent question is "why can't this person do
+ *  that". */
 export function Person({ email }: { email: string }) {
   const explained = useAsync(() => access.explain({ email } as ExplainRequest), [email]);
+  const found = useAsync(() => access.searchPeople({ query: email, limit: 5 }), [email]);
+  const account = (found.value?.people ?? []).find((p) => p.email.toLowerCase() === email.toLowerCase());
 
   if (!email) {
     return <Nothing>Search for a person to see what they reach.</Nothing>;
@@ -34,19 +38,24 @@ export function Person({ email }: { email: string }) {
     <Box>
       <Loading busy={explained.loading} />
       <Failure error={explained.error} />
-      {explained.value ? <Explanation value={explained.value} /> : null}
+      {explained.value ? <Explanation value={explained.value} directory={account?.workspaceId} /> : null}
     </Box>
   );
 }
 
-/** The shared body of a person page and of an explained machine proof:
- *  the same question, so the same answer. */
-export function Explanation({ value }: { value: ExplainResponse }) {
+/** The shared body of a person's page and of a machine's: the same
+ *  question, so the same answer. Reads along the chain — where the
+ *  identity comes from, then one row per internal group held with the
+ *  directory group or matcher that put it there and the clients that
+ *  opened, then what did not open and why, then the raw claims. */
+export function Explanation({ value, directory }: { value: ExplainResponse; directory?: string }) {
   const [showClaims, setShowClaims] = useState(false);
   const identity = value.identity;
   const isPerson = Boolean(identity?.email);
   const admitted = value.clients.filter((client) => client.admitted);
+  const refused = value.clients.filter((client) => !client.admitted);
   const name = personName(identity?.givenName, identity?.familyName, identity?.email);
+  const heldNames = new Set(value.held.map((held) => held.group));
 
   return (
     <Box>
@@ -54,18 +63,28 @@ export function Explanation({ value }: { value: ExplainResponse }) {
         title={name || "a machine identity"}
         subtitle={
           isPerson
-            ? `${roleName(identity?.role ?? 0)} in this console · in ${value.held.length} internal groups · reaches ${admitted.length} of ${value.clients.length} clients`
-            : `in ${value.held.length} internal groups · reaches ${admitted.length} of ${value.clients.length} clients`
+            ? `${roleName(identity?.role ?? 0)} in this console · in ${value.held.length} internal ${value.held.length === 1 ? "group" : "groups"} · reaches ${admitted.length} of ${value.clients.length} clients`
+            : `in ${value.held.length} internal ${value.held.length === 1 ? "group" : "groups"} · reaches ${admitted.length} of ${value.clients.length} clients`
         }
         chips={
           <>
+            {isPerson && identity?.email && identity.email !== name ? (
+              <Chip size="small" variant="outlined" label={identity.email} sx={{ fontFamily: "monospace" }} />
+            ) : null}
+            {directory ? (
+              <Ref to={paths.directory(directory)}>
+                <Chip size="small" variant="outlined" label={`from ${directory}`} clickable />
+              </Ref>
+            ) : null}
             {value.suspended ? (
               <Tooltip title="The directory says this account is not live. A consumer acts on that only because the answer is authoritative.">
                 <Chip size="small" color="warning" label="suspended" />
               </Tooltip>
+            ) : isPerson && value.inDomain && value.found ? (
+              <Chip size="small" color="success" variant="outlined" label="live" />
             ) : null}
             {isPerson && !value.inDomain ? (
-              <Tooltip title="No connected tenant serves this address's domain, so the hub has no opinion about it.">
+              <Tooltip title="No connected directory serves this address's domain, so the hub has no opinion about it.">
                 <Chip size="small" variant="outlined" label="no opinion" />
               </Tooltip>
             ) : null}
@@ -89,78 +108,138 @@ export function Explanation({ value }: { value: ExplainResponse }) {
         </Alert>
       ) : null}
 
-      <Section title="What it reaches" hint="a client's id is the audience its tokens carry">
-        {value.clients.length === 0 ? (
-          <Nothing>No clients are declared yet, so there is nothing to be issued a token for.</Nothing>
+      {isPerson ? (
+        <Section title="Directory groups" hint="what the directory says, before the policy">
+          {value.directoryGroups.length === 0 ? (
+            <Nothing>
+              {value.inDomain
+                ? "In no directory group, so no membership can put them anywhere."
+                : "Nothing: no connected directory reads this address."}
+            </Nothing>
+          ) : (
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+              {value.directoryGroups.map((group) => (
+                <Ref key={group} to={paths.directoryGroup(group)}>
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={group}
+                    clickable
+                    color={value.held.some((held) => held.via.includes(group)) ? "primary" : "default"}
+                  />
+                </Ref>
+              ))}
+            </Stack>
+          )}
+        </Section>
+      ) : null}
+
+      <Section
+        title="The chain"
+        hint="one row per internal group held: what put them in it, and what it opens"
+      >
+        {value.held.length === 0 ? (
+          <Nothing>
+            In no internal group, so nothing opens.{" "}
+            {isPerson
+              ? "Attaching one of the directory groups above to an internal group is what changes that."
+              : "No matcher admits this proof."}
+          </Nothing>
         ) : (
           <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Client</TableCell>
-                  <TableCell>Through</TableCell>
-                  <TableCell>Token</TableCell>
+                  <TableCell>{isPerson ? "Directory group" : "Matcher"}</TableCell>
+                  <TableCell>Internal group</TableCell>
+                  <TableCell>Opens</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {value.clients.map((client) => (
-                  <TableRow key={client.id} hover sx={{ opacity: client.admitted ? 1 : 0.45 }}>
-                    <TableCell>
-                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                        <Ref to={paths.client(client.id)} mono>
-                          {client.id}
+                {value.held.map((held) => {
+                  const opens = admitted.filter((client) => client.requires.includes(held.group));
+                  return (
+                    <TableRow key={held.group} hover>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                          {held.via.map((why) =>
+                            why.includes("@") ? (
+                              <Ref key={why} to={paths.directoryGroup(why)}>
+                                <Chip size="small" variant="outlined" label={why} clickable />
+                              </Ref>
+                            ) : (
+                              <Chip key={why} size="small" variant="outlined" color="secondary" label={why} />
+                            ),
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Ref to={paths.group(held.group)} mono>
+                          {held.group}
                         </Ref>
-                        {client.admitted ? null : <Chip size="small" variant="outlined" label="refused" />}
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                        {client.requires
-                          .filter((group) => !client.admitted || value.held.some((held) => held.group === group))
-                          .map((group) => (
-                            <Ref key={group} to={paths.group(group)}>
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                          {opens.map((client) => (
+                            <Ref key={client.id} to={paths.client(client.id)}>
                               <Chip
                                 size="small"
                                 variant="outlined"
-                                color={client.admitted ? "primary" : "default"}
-                                label={group}
+                                color="primary"
+                                label={`${client.id} · ${forHowLong(client.lifetime)}`}
                                 clickable
                               />
                             </Ref>
                           ))}
-                      </Stack>
-                    </TableCell>
-                    <TableCell>{client.admitted ? forHowLong(client.lifetime) : "—"}</TableCell>
-                  </TableRow>
-                ))}
+                          {opens.length === 0 ? (
+                            <Typography variant="body2" color="text.secondary">
+                              only claims
+                            </Typography>
+                          ) : null}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
         )}
       </Section>
 
-      <Section title="Internal groups, and what put it in them">
-        {value.held.length === 0 ? (
-          <Nothing>
-            In no internal group, so nothing is granted. Attaching a directory group to one is what changes
-            that.
-          </Nothing>
-        ) : (
+      {refused.length ? (
+        <Section title="Not reached" hint="and the internal group that would open each">
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">
               <TableBody>
-                {value.held.map((held) => (
-                  <TableRow key={held.group} hover>
+                {refused.map((client) => (
+                  <TableRow key={client.id} hover sx={{ opacity: 0.7 }}>
                     <TableCell>
-                      <Ref to={paths.group(held.group)} mono>
-                        {held.group}
+                      <Ref to={paths.client(client.id)} mono>
+                        {client.id}
                       </Ref>
                     </TableCell>
                     <TableCell>
-                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                        {held.via.map((why) => (
-                          <Chip key={why} size="small" variant="outlined" label={why} />
+                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5, alignItems: "center" }}>
+                        <Typography variant="body2" color="text.secondary">
+                          needs any of
+                        </Typography>
+                        {client.requires.map((group) => (
+                          <Ref key={group} to={paths.group(group)}>
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={group}
+                              clickable
+                              color={heldNames.has(group) ? "primary" : "default"}
+                            />
+                          </Ref>
                         ))}
+                        {client.requires.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary">
+                            nobody: it requires no group
+                          </Typography>
+                        ) : null}
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -168,16 +247,6 @@ export function Explanation({ value }: { value: ExplainResponse }) {
               </TableBody>
             </Table>
           </TableContainer>
-        )}
-      </Section>
-
-      {value.directoryGroups.length ? (
-        <Section title="Directory groups the hub reports" hint="the raw membership behind the rows above">
-          <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
-            {value.directoryGroups.map((group) => (
-              <Chip key={group} size="small" variant="outlined" label={group} />
-            ))}
-          </Stack>
         </Section>
       ) : null}
 

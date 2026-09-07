@@ -16,10 +16,11 @@ import { Failure, Loading } from "./ui";
 
 type Kind = "ci" | "workload";
 
-/** A machine is the same question as a person, so it gets the same
- *  answer. People are reached by search; this page is for the proofs
- *  nobody can search for, because they do not exist until a job runs. */
-export function Explain() {
+/** The identity-side leaf for proofs that have no directory. A CI job and
+ *  a workload resolve to internal groups exactly as a person does, so
+ *  they get the same page; they just cannot be searched for, because they
+ *  do not exist until one runs, so the proof is typed here instead. */
+export function Machines() {
   const [kind, setKind] = useState<Kind>("ci");
   const [repository, setRepository] = useState("example-org/gitops");
   const [ref, setRef] = useState("refs/heads/master");
@@ -39,10 +40,10 @@ export function Explain() {
 
   return (
     <Box>
-      <Typography variant="h6">Explain a machine</Typography>
+      <Typography variant="h6">Machines</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        A CI job and a workload resolve to internal groups exactly as a person does, so what they reach is
-        the same question. Type the proof a real one would present.
+        A CI job or a workload is in an internal group by a matcher rather than by a directory group, and
+        from there the chain is the same as a person's. Type the proof a real one would present.
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
@@ -65,7 +66,7 @@ export function Explain() {
               </>
             )}
             <Button variant="contained" onClick={ask} sx={{ mt: 0.25 }}>
-              Explain
+              Show the chain
             </Button>
           </Stack>
         </Stack>

@@ -14,6 +14,7 @@ import { Failure, Loading, Nothing, Ref, Section } from "./ui";
 export function Overview({ me }: { me?: Me }) {
   const tenants = useAsync(() => workspaces.listWorkspaces({}), []);
   const policy = useAsync(() => access.getPolicy({}), []);
+  const directoryGroups = useAsync(() => access.listDirectoryGroups({}), []);
 
   const list = tenants.value?.workspaces ?? [];
   const groups = policy.value?.groups ?? [];
@@ -24,6 +25,9 @@ export function Overview({ me }: { me?: Me }) {
   const contested = domains.filter((d) => d.conflict);
   const held = domains.filter((d) => !d.authoritative && !d.conflict);
   const emptyGroups = groups.filter((g) => g.members.length === 0 && g.matchers.length === 0);
+  const attached = new Set(groups.flatMap((g) => g.members.map((m) => m.address)));
+  const allDirectoryGroups = directoryGroups.value?.groups ?? [];
+  const usedDirectoryGroups = allDirectoryGroups.filter((g) => attached.has(g.email));
   const openTo = new Set(clients.flatMap((c) => c.requires));
   const unusedGroups = groups.filter((g) => !openTo.has(g.name) && !g.name.startsWith("hub-"));
   const staleSnapshot = list
@@ -54,9 +58,15 @@ export function Overview({ me }: { me?: Me }) {
           bad={contested.length + held.length > 0}
           to={paths.directories()}
         />
+        <Tile
+          label="Directory groups"
+          value={`${usedDirectoryGroups.length}/${allDirectoryGroups.length}`}
+          hint="attached to an internal group"
+          to={paths.directoryGroups()}
+        />
         <Tile label="Internal groups" value={String(groups.length)} hint={`${emptyGroups.length} with nobody in them`} to={paths.groups()} />
-        <Tile label="Clients" value={String(clients.length)} hint="what the groups buy" to={paths.clients()} />
-        <Tile label="Last snapshot" value={ago(staleSnapshot)} hint="oldest across tenants" to={paths.directories()} />
+        <Tile label="Clients" value={String(clients.length)} hint="what the internal groups buy" to={paths.clients()} />
+        <Tile label="Last snapshot" value={ago(staleSnapshot)} hint="oldest across directories" to={paths.directories()} />
       </Stack>
 
       <Section title="Needs attention" hint="everything else is working">
@@ -89,7 +99,8 @@ export function Overview({ me }: { me?: Me }) {
             ))}
             {emptyGroups.map((g) => (
               <Row key={g.name} severity="info" title={`${g.name} has nobody in it`}>
-                Declared but empty, so it grants nothing. <Ref to={paths.group(g.name)}>Attach a directory group</Ref>.
+                Declared, but no directory group feeds it, so it grants nothing.{" "}
+                <Ref to={paths.group(g.name)}>Attach one</Ref>.
               </Row>
             ))}
             {unusedGroups.map((g) => (
@@ -110,7 +121,7 @@ export function Overview({ me }: { me?: Me }) {
                 <Chip key={group} size="small" variant="outlined" label={group} />
               ))}
               <Box sx={{ flexGrow: 1 }} />
-              <Ref to={paths.person(me.email)}>See everything you reach</Ref>
+              <Ref to={paths.person(me.email)}>See your chain</Ref>
             </Stack>
           </Paper>
         </Section>

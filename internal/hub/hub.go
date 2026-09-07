@@ -784,6 +784,15 @@ type Person struct {
 	DirectoryGroups []string
 }
 
+// PeopleQuery narrows People. Every field is optional; the zero value
+// lists everyone.
+type PeopleQuery struct {
+	// Text is matched case-insensitively against the address and the name.
+	Text string
+	// Workspace restricts the answer to one tenant's accounts.
+	Workspace string
+}
+
 // People returns the accounts every snapshot holds, filtered by a
 // case-insensitive match on the address or the name.
 //
@@ -791,7 +800,7 @@ type Person struct {
 // from a name rather than from a navigation tree, and resolving a group
 // to the people in it is the question an audit actually asks. Neither is
 // worth a round trip to a directory that was read minutes ago.
-func (h *Hub) People(ctx context.Context, query string, limit int) ([]Person, bool, error) {
+func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Person, bool, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -799,10 +808,13 @@ func (h *Hub) People(ctx context.Context, query string, limit int) ([]Person, bo
 	if err != nil {
 		return nil, false, err
 	}
-	query = strings.ToLower(strings.TrimSpace(query))
+	text := strings.ToLower(strings.TrimSpace(query.Text))
 
 	var out []Person
 	for _, id := range slices.Sorted(maps.Keys(v.workspaces)) {
+		if query.Workspace != "" && id != query.Workspace {
+			continue
+		}
 		ws := v.workspaces[id]
 		snap, snapErr := h.snapshots.Get(ctx, id)
 		if snapErr != nil || snap == nil {
@@ -820,7 +832,7 @@ func (h *Hub) People(ctx context.Context, query string, limit int) ([]Person, bo
 		}
 		for _, email := range slices.Sorted(maps.Keys(snap.Accounts)) {
 			account := snap.Accounts[email]
-			if query != "" && !matchesPerson(account, query) {
+			if text != "" && !matchesPerson(account, text) {
 				continue
 			}
 			out = append(out, Person{
@@ -844,4 +856,69 @@ func (h *Hub) People(ctx context.Context, query string, limit int) ([]Person, bo
 func matchesPerson(account backend.Account, query string) bool {
 	full := strings.ToLower(account.Email + " " + account.GivenName + " " + account.FamilyName)
 	return strings.Contains(full, query)
+}
+
+// GroupMember is one member of a directory group as the console shows it.
+// The directory reports addresses; the hub adds what it knows about each
+// from the snapshots, which may be nothing for a member of a tenant it
+// does not read.
+type GroupMember struct {
+	Email      string
+	GivenName  string
+	FamilyName string
+	// Known is true when some snapshot holds the account, so that Live
+	// means something. An unknown member is neither live nor gone.
+	Known bool
+	Live  bool
+}
+
+// DirectoryGroup is one snapshotted group with its members resolved.
+type DirectoryGroup struct {
+	GroupResult
+	Workspace string
+	Members   []GroupMember
+}
+
+// DirectoryGroup answers what the console asks of a directory group: the
+// snapshot it came from, whether that can be vouched for, and who the
+// directory says is in it. It reads memory only, like People; a caller
+// who needs the directory's answer right now refreshes the tenant first.
+func (h *Hub) DirectoryGroup(ctx context.Context, groupEmail string) (DirectoryGroup, error) {
+	result, err := h.Group(ctx, groupEmail, nil)
+	if err != nil {
+		return DirectoryGroup{}, err
+	}
+	out := DirectoryGroup{GroupResult: result}
+	v, err := h.view(ctx)
+	if err != nil {
+		return DirectoryGroup{}, err
+	}
+	if res, routed := v.routing[result.Domain]; routed {
+		out.Workspace = res.workspace
+	}
+	if !result.Found {
+		return out, nil
+	}
+
+	// A member may belong to any tenant the hub reads, or to none; look
+	// across every snapshot once rather than per member.
+	accounts := map[string]backend.Account{}
+	for _, id := range slices.Sorted(maps.Keys(v.workspaces)) {
+		snap, snapErr := h.snapshots.Get(ctx, id)
+		if snapErr != nil || snap == nil {
+			continue
+		}
+		maps.Copy(accounts, snap.Accounts)
+	}
+	out.Members = make([]GroupMember, 0, len(result.Members))
+	for _, email := range result.Members {
+		email = strings.ToLower(email)
+		member := GroupMember{Email: email}
+		if account, known := accounts[email]; known {
+			member.Known, member.Live = true, account.Live
+			member.GivenName, member.FamilyName = account.GivenName, account.FamilyName
+		}
+		out.Members = append(out.Members, member)
+	}
+	return out, nil
 }

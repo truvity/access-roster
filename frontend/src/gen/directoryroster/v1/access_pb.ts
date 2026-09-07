@@ -4,15 +4,15 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
-import type { Duration } from "@bufbuild/protobuf/wkt";
-import { file_google_protobuf_duration, file_google_protobuf_struct } from "@bufbuild/protobuf/wkt";
+import type { Duration, Timestamp } from "@bufbuild/protobuf/wkt";
+import { file_google_protobuf_duration, file_google_protobuf_struct, file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { JsonObject, Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file directoryroster/v1/access.proto.
  */
 export const file_directoryroster_v1_access: GenFile = /*@__PURE__*/
-  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvYWNjZXNzLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEivwEKCElkZW50aXR5Eg0KBWVtYWlsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSMgoGc291cmNlGAMgASgOMiIuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5U291cmNlEiYKBHJvbGUYBCABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZRIOCgZncm91cHMYBSADKAkSEgoKZ2l2ZW5fbmFtZRgGIAEoCRITCgtmYW1pbHlfbmFtZRgHIAEoCSIPCg1XaG9BbUlSZXF1ZXN0IlEKDldob0FtSVJlc3BvbnNlEi4KCGlkZW50aXR5GAEgASgLMhwuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5Eg8KB3ZlcnNpb24YAiABKAkiJwoJSGVsZEdyb3VwEg0KBWdyb3VwGAEgASgJEgsKA3ZpYRgCIAMoCSJkCgtHaXRIdWJQcm9vZhISCgpyZXBvc2l0b3J5GAEgASgJEg0KBW93bmVyGAIgASgJEgsKA3JlZhgDIAEoCRIQCgh3b3JrZmxvdxgEIAEoCRITCgtlbnZpcm9ubWVudBgFIAEoCSI2ChNTZXJ2aWNlQWNjb3VudFByb29mEhEKCW5hbWVzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJIpIBCg5FeHBsYWluUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIvCgZnaXRodWIYAiABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViUHJvb2YSQAoPc2VydmljZV9hY2NvdW50GAMgASgLMicuZGlyZWN0b3J5cm9zdGVyLnYxLlNlcnZpY2VBY2NvdW50UHJvb2Yi4AIKD0V4cGxhaW5SZXNwb25zZRIuCghpZGVudGl0eRgBIAEoCzIcLmRpcmVjdG9yeXJvc3Rlci52MS5JZGVudGl0eRIRCglpbl9kb21haW4YAiABKAgSDQoFZm91bmQYAyABKAgSEQoJc3VzcGVuZGVkGAQgASgIEhUKDWF1dGhvcml0YXRpdmUYBSABKAgSGAoQZGlyZWN0b3J5X2dyb3VwcxgGIAMoCRIrCgRoZWxkGAcgAygLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLkhlbGRHcm91cBInCgZjbGFpbXMYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKCGxpZmV0aW1lGAkgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjQKB2NsaWVudHMYCiADKAsyIy5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50QWRtaXNzaW9uInwKD0NsaWVudEFkbWlzc2lvbhIKCgJpZBgBIAEoCRIMCgRraW5kGAIgASgJEhAKCHJlcXVpcmVzGAMgAygJEhAKCGFkbWl0dGVkGAQgASgIEisKCGxpZmV0aW1lGAUgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uIi0KC0dyb3VwTWVtYmVyEg8KB2FkZHJlc3MYASABKAkSDQoFbGF5ZXIYAiABKAkitQEKC1BvbGljeUdyb3VwEgwKBG5hbWUYASABKAkSMAoHbWVtYmVycxgCIAMoCzIfLmRpcmVjdG9yeXJvc3Rlci52MS5Hcm91cE1lbWJlchIQCghtYXRjaGVycxgDIAMoCRInCgZjbGFpbXMYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKCGxpZmV0aW1lGAUgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uIokBCgxQb2xpY3lDbGllbnQSCgoCaWQYASABKAkSDAoEa2luZBgCIAEoCRIQCghyZXF1aXJlcxgDIAMoCRIRCglyZWRpcmVjdHMYBCADKAkSKgoHdHRsX2NhcBgFIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIOCgZzZWNyZXQYBiABKAkiEgoQR2V0UG9saWN5UmVxdWVzdCK8AQoRR2V0UG9saWN5UmVzcG9uc2USLwoGZ3JvdXBzGAEgAygLMh8uZGlyZWN0b3J5cm9zdGVyLnYxLlBvbGljeUdyb3VwEhUKDWFkbWluX2VuYWJsZWQYAiABKAgSFQoNbG9naW5fc291cmNlcxgDIAMoCRIVCg1jb25zb2xlX2xheWVyGAQgASgJEjEKB2NsaWVudHMYBSADKAsyIC5kaXJlY3Rvcnlyb3N0ZXIudjEuUG9saWN5Q2xpZW50Ij4KFEFkZE1lbWJlcnNoaXBSZXF1ZXN0Eg0KBWdyb3VwGAEgASgJEhcKD2RpcmVjdG9yeV9ncm91cBgCIAEoCSIXChVBZGRNZW1iZXJzaGlwUmVzcG9uc2UiQQoXUmVtb3ZlTWVtYmVyc2hpcFJlcXVlc3QSDQoFZ3JvdXAYASABKAkSFwoPZGlyZWN0b3J5X2dyb3VwGAIgASgJIhoKGFJlbW92ZU1lbWJlcnNoaXBSZXNwb25zZSJCChJMaXN0SG9sZGVyc1JlcXVlc3QSDQoFZ3JvdXAYASABKAkSDgoGY2xpZW50GAIgASgJEg0KBWxpbWl0GAMgASgFIp8BCgZIb2xkZXISDQoFZW1haWwYASABKAkSEgoKZ2l2ZW5fbmFtZRgCIAEoCRITCgtmYW1pbHlfbmFtZRgDIAEoCRIMCgRsaXZlGAQgASgIEhUKDWF1dGhvcml0YXRpdmUYBSABKAgSCwoDdmlhGAYgAygJEisKCGxpZmV0aW1lGAcgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uImcKE0xpc3RIb2xkZXJzUmVzcG9uc2USKwoHaG9sZGVycxgBIAMoCzIaLmRpcmVjdG9yeXJvc3Rlci52MS5Ib2xkZXISEAoIZXhhbWluZWQYAiABKAUSEQoJdHJ1bmNhdGVkGAMgASgIIjMKE1NlYXJjaFBlb3BsZVJlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFbGltaXQYAiABKAUiawoNUGVyc29uU3VtbWFyeRINCgVlbWFpbBgBIAEoCRISCgpnaXZlbl9uYW1lGAIgASgJEhMKC2ZhbWlseV9uYW1lGAMgASgJEhQKDHdvcmtzcGFjZV9pZBgEIAEoCRIMCgRsaXZlGAUgASgIIlwKFFNlYXJjaFBlb3BsZVJlc3BvbnNlEjEKBnBlb3BsZRgBIAMoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5QZXJzb25TdW1tYXJ5EhEKCXRydW5jYXRlZBgCIAEoCCIsChpMaXN0RGlyZWN0b3J5R3JvdXBzUmVxdWVzdBIOCgZkb21haW4YASABKAkiWAobTGlzdERpcmVjdG9yeUdyb3Vwc1Jlc3BvbnNlEjkKBmdyb3VwcxgBIAMoCzIpLmRpcmVjdG9yeXJvc3Rlci52MS5EaXJlY3RvcnlHcm91cFN1bW1hcnkiXQoVRGlyZWN0b3J5R3JvdXBTdW1tYXJ5Eg0KBWVtYWlsGAEgASgJEg4KBmRvbWFpbhgCIAEoCRIUCgx3b3Jrc3BhY2VfaWQYAyABKAkSDwoHbWVtYmVycxgEIAEoBSpACgRSb2xlEhQKEFJPTEVfVU5TUEVDSUZJRUQQABIPCgtST0xFX1ZJRVdFUhABEhEKDVJPTEVfT1BFUkFUT1IQAiqkAQoOSWRlbnRpdHlTb3VyY2USHwobSURFTlRJVFlfU09VUkNFX1VOU1BFQ0lGSUVEEAASHQoZSURFTlRJVFlfU09VUkNFX0RJUkVDVE9SWRABEhgKFElERU5USVRZX1NPVVJDRV9PSURDEAISHQoZSURFTlRJVFlfU09VUkNFX0ZPUldBUkRFRBADEhkKFUlERU5USVRZX1NPVVJDRV9BRE1JThAEMp4GCg1BY2Nlc3NTZXJ2aWNlEk8KBldob0FtSRIhLmRpcmVjdG9yeXJvc3Rlci52MS5XaG9BbUlSZXF1ZXN0GiIuZGlyZWN0b3J5cm9zdGVyLnYxLldob0FtSVJlc3BvbnNlElIKB0V4cGxhaW4SIi5kaXJlY3Rvcnlyb3N0ZXIudjEuRXhwbGFpblJlcXVlc3QaIy5kaXJlY3Rvcnlyb3N0ZXIudjEuRXhwbGFpblJlc3BvbnNlEl4KC0xpc3RIb2xkZXJzEiYuZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3RIb2xkZXJzUmVxdWVzdBonLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0SG9sZGVyc1Jlc3BvbnNlEmEKDFNlYXJjaFBlb3BsZRInLmRpcmVjdG9yeXJvc3Rlci52MS5TZWFyY2hQZW9wbGVSZXF1ZXN0GiguZGlyZWN0b3J5cm9zdGVyLnYxLlNlYXJjaFBlb3BsZVJlc3BvbnNlElgKCUdldFBvbGljeRIkLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRQb2xpY3lSZXF1ZXN0GiUuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFBvbGljeVJlc3BvbnNlEmQKDUFkZE1lbWJlcnNoaXASKC5kaXJlY3Rvcnlyb3N0ZXIudjEuQWRkTWVtYmVyc2hpcFJlcXVlc3QaKS5kaXJlY3Rvcnlyb3N0ZXIudjEuQWRkTWVtYmVyc2hpcFJlc3BvbnNlEm0KEFJlbW92ZU1lbWJlcnNoaXASKy5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVtb3ZlTWVtYmVyc2hpcFJlcXVlc3QaLC5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVtb3ZlTWVtYmVyc2hpcFJlc3BvbnNlEnYKE0xpc3REaXJlY3RvcnlHcm91cHMSLi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdERpcmVjdG9yeUdyb3Vwc1JlcXVlc3QaLy5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdERpcmVjdG9yeUdyb3Vwc1Jlc3BvbnNlQtkBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQgtBY2Nlc3NQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_duration, file_google_protobuf_struct]);
+  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvYWNjZXNzLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEivwEKCElkZW50aXR5Eg0KBWVtYWlsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSMgoGc291cmNlGAMgASgOMiIuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5U291cmNlEiYKBHJvbGUYBCABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZRIOCgZncm91cHMYBSADKAkSEgoKZ2l2ZW5fbmFtZRgGIAEoCRITCgtmYW1pbHlfbmFtZRgHIAEoCSIPCg1XaG9BbUlSZXF1ZXN0IlEKDldob0FtSVJlc3BvbnNlEi4KCGlkZW50aXR5GAEgASgLMhwuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5Eg8KB3ZlcnNpb24YAiABKAkiJwoJSGVsZEdyb3VwEg0KBWdyb3VwGAEgASgJEgsKA3ZpYRgCIAMoCSJkCgtHaXRIdWJQcm9vZhISCgpyZXBvc2l0b3J5GAEgASgJEg0KBW93bmVyGAIgASgJEgsKA3JlZhgDIAEoCRIQCgh3b3JrZmxvdxgEIAEoCRITCgtlbnZpcm9ubWVudBgFIAEoCSI2ChNTZXJ2aWNlQWNjb3VudFByb29mEhEKCW5hbWVzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJIpIBCg5FeHBsYWluUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIvCgZnaXRodWIYAiABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViUHJvb2YSQAoPc2VydmljZV9hY2NvdW50GAMgASgLMicuZGlyZWN0b3J5cm9zdGVyLnYxLlNlcnZpY2VBY2NvdW50UHJvb2Yi4AIKD0V4cGxhaW5SZXNwb25zZRIuCghpZGVudGl0eRgBIAEoCzIcLmRpcmVjdG9yeXJvc3Rlci52MS5JZGVudGl0eRIRCglpbl9kb21haW4YAiABKAgSDQoFZm91bmQYAyABKAgSEQoJc3VzcGVuZGVkGAQgASgIEhUKDWF1dGhvcml0YXRpdmUYBSABKAgSGAoQZGlyZWN0b3J5X2dyb3VwcxgGIAMoCRIrCgRoZWxkGAcgAygLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLkhlbGRHcm91cBInCgZjbGFpbXMYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKCGxpZmV0aW1lGAkgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjQKB2NsaWVudHMYCiADKAsyIy5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50QWRtaXNzaW9uInwKD0NsaWVudEFkbWlzc2lvbhIKCgJpZBgBIAEoCRIMCgRraW5kGAIgASgJEhAKCHJlcXVpcmVzGAMgAygJEhAKCGFkbWl0dGVkGAQgASgIEisKCGxpZmV0aW1lGAUgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uIi0KC0dyb3VwTWVtYmVyEg8KB2FkZHJlc3MYASABKAkSDQoFbGF5ZXIYAiABKAkitQEKC1BvbGljeUdyb3VwEgwKBG5hbWUYASABKAkSMAoHbWVtYmVycxgCIAMoCzIfLmRpcmVjdG9yeXJvc3Rlci52MS5Hcm91cE1lbWJlchIQCghtYXRjaGVycxgDIAMoCRInCgZjbGFpbXMYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKCGxpZmV0aW1lGAUgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uIokBCgxQb2xpY3lDbGllbnQSCgoCaWQYASABKAkSDAoEa2luZBgCIAEoCRIQCghyZXF1aXJlcxgDIAMoCRIRCglyZWRpcmVjdHMYBCADKAkSKgoHdHRsX2NhcBgFIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIOCgZzZWNyZXQYBiABKAkiEgoQR2V0UG9saWN5UmVxdWVzdCK8AQoRR2V0UG9saWN5UmVzcG9uc2USLwoGZ3JvdXBzGAEgAygLMh8uZGlyZWN0b3J5cm9zdGVyLnYxLlBvbGljeUdyb3VwEhUKDWFkbWluX2VuYWJsZWQYAiABKAgSFQoNbG9naW5fc291cmNlcxgDIAMoCRIVCg1jb25zb2xlX2xheWVyGAQgASgJEjEKB2NsaWVudHMYBSADKAsyIC5kaXJlY3Rvcnlyb3N0ZXIudjEuUG9saWN5Q2xpZW50Ij4KFEFkZE1lbWJlcnNoaXBSZXF1ZXN0Eg0KBWdyb3VwGAEgASgJEhcKD2RpcmVjdG9yeV9ncm91cBgCIAEoCSIXChVBZGRNZW1iZXJzaGlwUmVzcG9uc2UiQQoXUmVtb3ZlTWVtYmVyc2hpcFJlcXVlc3QSDQoFZ3JvdXAYASABKAkSFwoPZGlyZWN0b3J5X2dyb3VwGAIgASgJIhoKGFJlbW92ZU1lbWJlcnNoaXBSZXNwb25zZSJCChJMaXN0SG9sZGVyc1JlcXVlc3QSDQoFZ3JvdXAYASABKAkSDgoGY2xpZW50GAIgASgJEg0KBWxpbWl0GAMgASgFIp8BCgZIb2xkZXISDQoFZW1haWwYASABKAkSEgoKZ2l2ZW5fbmFtZRgCIAEoCRITCgtmYW1pbHlfbmFtZRgDIAEoCRIMCgRsaXZlGAQgASgIEhUKDWF1dGhvcml0YXRpdmUYBSABKAgSCwoDdmlhGAYgAygJEisKCGxpZmV0aW1lGAcgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uImcKE0xpc3RIb2xkZXJzUmVzcG9uc2USKwoHaG9sZGVycxgBIAMoCzIaLmRpcmVjdG9yeXJvc3Rlci52MS5Ib2xkZXISEAoIZXhhbWluZWQYAiABKAUSEQoJdHJ1bmNhdGVkGAMgASgIIkkKE1NlYXJjaFBlb3BsZVJlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFbGltaXQYAiABKAUSFAoMd29ya3NwYWNlX2lkGAMgASgJImsKDVBlcnNvblN1bW1hcnkSDQoFZW1haWwYASABKAkSEgoKZ2l2ZW5fbmFtZRgCIAEoCRITCgtmYW1pbHlfbmFtZRgDIAEoCRIUCgx3b3Jrc3BhY2VfaWQYBCABKAkSDAoEbGl2ZRgFIAEoCCJcChRTZWFyY2hQZW9wbGVSZXNwb25zZRIxCgZwZW9wbGUYASADKAsyIS5kaXJlY3Rvcnlyb3N0ZXIudjEuUGVyc29uU3VtbWFyeRIRCgl0cnVuY2F0ZWQYAiABKAgiLAoaTGlzdERpcmVjdG9yeUdyb3Vwc1JlcXVlc3QSDgoGZG9tYWluGAEgASgJIlgKG0xpc3REaXJlY3RvcnlHcm91cHNSZXNwb25zZRI5CgZncm91cHMYASADKAsyKS5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlyZWN0b3J5R3JvdXBTdW1tYXJ5Il0KFURpcmVjdG9yeUdyb3VwU3VtbWFyeRINCgVlbWFpbBgBIAEoCRIOCgZkb21haW4YAiABKAkSFAoMd29ya3NwYWNlX2lkGAMgASgJEg8KB21lbWJlcnMYBCABKAUiKQoYR2V0RGlyZWN0b3J5R3JvdXBSZXF1ZXN0Eg0KBWVtYWlsGAEgASgJImsKFERpcmVjdG9yeUdyb3VwTWVtYmVyEg0KBWVtYWlsGAEgASgJEhIKCmdpdmVuX25hbWUYAiABKAkSEwoLZmFtaWx5X25hbWUYAyABKAkSDQoFa25vd24YBCABKAgSDAoEbGl2ZRgFIAEoCCIyChJEaXJlY3RvcnlHcm91cEZlZWQSDQoFZ3JvdXAYASABKAkSDQoFbGF5ZXIYAiABKAkimQIKGUdldERpcmVjdG9yeUdyb3VwUmVzcG9uc2USDQoFZW1haWwYASABKAkSDgoGZG9tYWluGAIgASgJEhQKDHdvcmtzcGFjZV9pZBgDIAEoCRINCgVmb3VuZBgEIAEoCBIVCg1hdXRob3JpdGF0aXZlGAUgASgIEi8KC3NuYXBzaG90X2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI5CgdtZW1iZXJzGAcgAygLMiguZGlyZWN0b3J5cm9zdGVyLnYxLkRpcmVjdG9yeUdyb3VwTWVtYmVyEjUKBWZlZWRzGAggAygLMiYuZGlyZWN0b3J5cm9zdGVyLnYxLkRpcmVjdG9yeUdyb3VwRmVlZCpACgRSb2xlEhQKEFJPTEVfVU5TUEVDSUZJRUQQABIPCgtST0xFX1ZJRVdFUhABEhEKDVJPTEVfT1BFUkFUT1IQAiqkAQoOSWRlbnRpdHlTb3VyY2USHwobSURFTlRJVFlfU09VUkNFX1VOU1BFQ0lGSUVEEAASHQoZSURFTlRJVFlfU09VUkNFX0RJUkVDVE9SWRABEhgKFElERU5USVRZX1NPVVJDRV9PSURDEAISHQoZSURFTlRJVFlfU09VUkNFX0ZPUldBUkRFRBADEhkKFUlERU5USVRZX1NPVVJDRV9BRE1JThAEMpAHCg1BY2Nlc3NTZXJ2aWNlEk8KBldob0FtSRIhLmRpcmVjdG9yeXJvc3Rlci52MS5XaG9BbUlSZXF1ZXN0GiIuZGlyZWN0b3J5cm9zdGVyLnYxLldob0FtSVJlc3BvbnNlElIKB0V4cGxhaW4SIi5kaXJlY3Rvcnlyb3N0ZXIudjEuRXhwbGFpblJlcXVlc3QaIy5kaXJlY3Rvcnlyb3N0ZXIudjEuRXhwbGFpblJlc3BvbnNlEl4KC0xpc3RIb2xkZXJzEiYuZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3RIb2xkZXJzUmVxdWVzdBonLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0SG9sZGVyc1Jlc3BvbnNlEmEKDFNlYXJjaFBlb3BsZRInLmRpcmVjdG9yeXJvc3Rlci52MS5TZWFyY2hQZW9wbGVSZXF1ZXN0GiguZGlyZWN0b3J5cm9zdGVyLnYxLlNlYXJjaFBlb3BsZVJlc3BvbnNlElgKCUdldFBvbGljeRIkLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRQb2xpY3lSZXF1ZXN0GiUuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFBvbGljeVJlc3BvbnNlEmQKDUFkZE1lbWJlcnNoaXASKC5kaXJlY3Rvcnlyb3N0ZXIudjEuQWRkTWVtYmVyc2hpcFJlcXVlc3QaKS5kaXJlY3Rvcnlyb3N0ZXIudjEuQWRkTWVtYmVyc2hpcFJlc3BvbnNlEm0KEFJlbW92ZU1lbWJlcnNoaXASKy5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVtb3ZlTWVtYmVyc2hpcFJlcXVlc3QaLC5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVtb3ZlTWVtYmVyc2hpcFJlc3BvbnNlEnYKE0xpc3REaXJlY3RvcnlHcm91cHMSLi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdERpcmVjdG9yeUdyb3Vwc1JlcXVlc3QaLy5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdERpcmVjdG9yeUdyb3Vwc1Jlc3BvbnNlEnAKEUdldERpcmVjdG9yeUdyb3VwEiwuZGlyZWN0b3J5cm9zdGVyLnYxLkdldERpcmVjdG9yeUdyb3VwUmVxdWVzdBotLmRpcmVjdG9yeXJvc3Rlci52MS5HZXREaXJlY3RvcnlHcm91cFJlc3BvbnNlQtkBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQgtBY2Nlc3NQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_duration, file_google_protobuf_struct, file_google_protobuf_timestamp]);
 
 /**
  * @generated from message directoryroster.v1.Identity
@@ -739,6 +739,14 @@ export type SearchPeopleRequest = Message<"directoryroster.v1.SearchPeopleReques
    * @generated from field: int32 limit = 2;
    */
   limit: number;
+
+  /**
+   * workspace_id restricts the search to one tenant's accounts, which is
+   * what a tenant's page lists. Empty searches every tenant.
+   *
+   * @generated from field: string workspace_id = 3;
+   */
+  workspaceId: string;
 };
 
 /**
@@ -880,6 +888,146 @@ export type DirectoryGroupSummary = Message<"directoryroster.v1.DirectoryGroupSu
  */
 export const DirectoryGroupSummarySchema: GenMessage<DirectoryGroupSummary> = /*@__PURE__*/
   messageDesc(file_directoryroster_v1_access, 26);
+
+/**
+ * @generated from message directoryroster.v1.GetDirectoryGroupRequest
+ */
+export type GetDirectoryGroupRequest = Message<"directoryroster.v1.GetDirectoryGroupRequest"> & {
+  /**
+   * @generated from field: string email = 1;
+   */
+  email: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.GetDirectoryGroupRequest.
+ * Use `create(GetDirectoryGroupRequestSchema)` to create a new message.
+ */
+export const GetDirectoryGroupRequestSchema: GenMessage<GetDirectoryGroupRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 27);
+
+/**
+ * DirectoryGroupMember is one member as the directory reports it. A member
+ * from a tenant the hub does not read has an address and nothing else.
+ *
+ * @generated from message directoryroster.v1.DirectoryGroupMember
+ */
+export type DirectoryGroupMember = Message<"directoryroster.v1.DirectoryGroupMember"> & {
+  /**
+   * @generated from field: string email = 1;
+   */
+  email: string;
+
+  /**
+   * @generated from field: string given_name = 2;
+   */
+  givenName: string;
+
+  /**
+   * @generated from field: string family_name = 3;
+   */
+  familyName: string;
+
+  /**
+   * known is true when the account is in a snapshot, so live means
+   * something; a member the hub has never seen is neither live nor gone.
+   *
+   * @generated from field: bool known = 4;
+   */
+  known: boolean;
+
+  /**
+   * @generated from field: bool live = 5;
+   */
+  live: boolean;
+};
+
+/**
+ * Describes the message directoryroster.v1.DirectoryGroupMember.
+ * Use `create(DirectoryGroupMemberSchema)` to create a new message.
+ */
+export const DirectoryGroupMemberSchema: GenMessage<DirectoryGroupMember> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 28);
+
+/**
+ * DirectoryGroupFeed is one internal group this directory group is a
+ * member of, and which layer put it there.
+ *
+ * @generated from message directoryroster.v1.DirectoryGroupFeed
+ */
+export type DirectoryGroupFeed = Message<"directoryroster.v1.DirectoryGroupFeed"> & {
+  /**
+   * @generated from field: string group = 1;
+   */
+  group: string;
+
+  /**
+   * @generated from field: string layer = 2;
+   */
+  layer: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.DirectoryGroupFeed.
+ * Use `create(DirectoryGroupFeedSchema)` to create a new message.
+ */
+export const DirectoryGroupFeedSchema: GenMessage<DirectoryGroupFeed> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 29);
+
+/**
+ * @generated from message directoryroster.v1.GetDirectoryGroupResponse
+ */
+export type GetDirectoryGroupResponse = Message<"directoryroster.v1.GetDirectoryGroupResponse"> & {
+  /**
+   * @generated from field: string email = 1;
+   */
+  email: string;
+
+  /**
+   * @generated from field: string domain = 2;
+   */
+  domain: string;
+
+  /**
+   * @generated from field: string workspace_id = 3;
+   */
+  workspaceId: string;
+
+  /**
+   * found is false when the domain is served but the snapshot has no such
+   * group: the address may be a typo, or the group may be gone.
+   *
+   * @generated from field: bool found = 4;
+   */
+  found: boolean;
+
+  /**
+   * @generated from field: bool authoritative = 5;
+   */
+  authoritative: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp snapshot_at = 6;
+   */
+  snapshotAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: repeated directoryroster.v1.DirectoryGroupMember members = 7;
+   */
+  members: DirectoryGroupMember[];
+
+  /**
+   * @generated from field: repeated directoryroster.v1.DirectoryGroupFeed feeds = 8;
+   */
+  feeds: DirectoryGroupFeed[];
+};
+
+/**
+ * Describes the message directoryroster.v1.GetDirectoryGroupResponse.
+ * Use `create(GetDirectoryGroupResponseSchema)` to create a new message.
+ */
+export const GetDirectoryGroupResponseSchema: GenMessage<GetDirectoryGroupResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 30);
 
 /**
  * Role is what an identity may do in this console. Operator implies
@@ -1072,6 +1220,22 @@ export const AccessService: GenService<{
     methodKind: "unary";
     input: typeof ListDirectoryGroupsRequestSchema;
     output: typeof ListDirectoryGroupsResponseSchema;
+  },
+  /**
+   * GetDirectoryGroup returns one snapshotted directory group as the
+   * console shows it: where it came from and whether that can be vouched
+   * for, its members straight from the directory, and the internal groups
+   * it feeds. It is the reverse of a membership — an admin who just
+   * changed a group in the directory wants to know its blast radius, and
+   * that direction is not derivable from the policy alone. Viewer, for
+   * the same reason as Explain.
+   *
+   * @generated from rpc directoryroster.v1.AccessService.GetDirectoryGroup
+   */
+  getDirectoryGroup: {
+    methodKind: "unary";
+    input: typeof GetDirectoryGroupRequestSchema;
+    output: typeof GetDirectoryGroupResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_directoryroster_v1_access, 0);
