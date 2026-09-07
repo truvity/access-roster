@@ -276,7 +276,13 @@ console edits — from either end.
 
 Every page reads in the same direction, from the identity side toward
 the access side, and the two group pages carry the same sections
-mirrored. The reverse edges are what make it navigable: from a directory
+mirrored. The visual vocabulary has one meaning per form, which is what
+keeps a data-dense page readable: a name is a link, monospace when it is
+an identifier; a chip is a state and nothing else is; facts are a label
+over a value; two-column data is a list and tabular data is a table. The
+navigation is a rail with the two sides as groups, which is what Material
+recommends for this many destinations, and it leaves the header for the
+two things that belong there — search, and who you are. The reverse edges are what make it navigable: from a directory
 group, the internal groups it feeds; from an internal group, the people
 in it; from a client, the groups and the people. Two of those questions
 the policy file cannot answer alone. Who is in an internal group right

@@ -36,7 +36,11 @@ repository, not the order it arrived in.
   is the chain, one row per internal group held. Machines keeps the proofs
   nobody can search for, a CI job and a workload, because they do not
   exist until one runs. **Add a directory** offers both ways in and only
-  the ways the deployment can take.
+  the ways the deployment can take. The visual layer follows Material's
+  guidance for a console: a navigation rail with the two sides as groups
+  and a header kept for search and identity, a denser lowercase theme,
+  and one meaning per form — names are links, chips are states, facts are
+  a label over a value, and two-column data is a list.
 - **A demonstration mode** (`DEMO=1`): two tenants in memory and a
   consent connector, so every use-case is walkable before a credential
   exists.

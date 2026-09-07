@@ -1,7 +1,5 @@
 import Box from "@mui/material/Box";
-import Chip from "@mui/material/Chip";
 import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -13,21 +11,19 @@ import Typography from "@mui/material/Typography";
 import { access, forHowLong, people as peopleCount, personName } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
-import { Failure, Loading, Nothing, Ref, Section, Summary } from "./ui";
+import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
 
-/** What the groups buy: the relying parties a token can be issued for. */
+/** What the internal groups buy: the relying parties a token can be
+ *  issued for. */
 export function Clients() {
   const policy = useAsync(() => access.getPolicy({}), []);
   const clients = policy.value?.clients ?? [];
 
   return (
-    <Box>
-      <Typography variant="h6">Clients</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        A client's id is the audience of the tokens issued for it, and its requirements are who may be issued
-        one. Clients are declared by the deployment or registered by the workload itself, never created here.
-      </Typography>
-
+    <Page
+      title="Clients"
+      lede="A client's id is the audience of the tokens issued for it, and its requirements are who may be issued one. Clients are declared by the deployment or registered by the workload itself, never created here."
+    >
       <Loading busy={policy.loading} />
       <Failure error={policy.error} />
 
@@ -58,13 +54,7 @@ export function Clients() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                      {client.requires.map((group) => (
-                        <Ref key={group} to={paths.group(group)}>
-                          <Chip size="small" variant="outlined" label={group} clickable />
-                        </Ref>
-                      ))}
-                    </Stack>
+                    <Names items={client.requires.map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="nobody" />
                   </TableCell>
                   <TableCell>{client.ttlCap ? forHowLong(client.ttlCap) : "—"}</TableCell>
                 </TableRow>
@@ -73,7 +63,7 @@ export function Clients() {
           </Table>
         </TableContainer>
       )}
-    </Box>
+    </Page>
   );
 }
 
@@ -96,100 +86,57 @@ export function Client({ id }: { id: string }) {
   }
 
   return (
-    <Box>
-      <Summary
-        title={<span style={{ fontFamily: "monospace" }}>{client.id}</span>}
-        subtitle={`A ${client.kind} client. Tokens issued for it carry this id as their audience.`}
-        chips={
-          <>
-            {client.ttlCap ? <Chip size="small" variant="outlined" label={`caps tokens at ${forHowLong(client.ttlCap)}`} /> : null}
-            {client.secret ? <Chip size="small" variant="outlined" label={`secret in ${client.secret}`} /> : null}
-            <Chip size="small" variant="outlined" label={`${peopleCount(people.length)} reach it`} />
-          </>
-        }
-      />
-
+    <Page
+      title={client.id}
+      mono
+      lede={`A ${client.kind} client. Tokens issued for it carry this id as their audience; ${peopleCount(people.length)} reach it right now.`}
+      facts={[
+        { label: "Kind", value: client.kind },
+        { label: "Token cap", value: client.ttlCap ? forHowLong(client.ttlCap) : "none" },
+        { label: "Secret", value: client.secret ? <Mono>{client.secret}</Mono> : undefined },
+      ]}
+    >
       <Loading busy={policy.loading || holders.loading} />
       <Failure error={policy.error ?? holders.error} />
 
       <Section title="Internal groups that open it" hint="being in any one of them is enough">
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableBody>
-              {client.requires.map((group) => (
-                <TableRow key={group} hover>
-                  <TableCell>
-                    <Ref to={paths.group(group)} mono>
-                      {group}
-                    </Ref>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <Rows
+          items={client.requires}
+          keyOf={(group) => group}
+          primary={(group) => (
+            <Ref to={paths.group(group)} mono>
+              {group}
+            </Ref>
+          )}
+          empty="It requires no group, so nobody is admitted."
+        />
       </Section>
 
       {client.redirects.length ? (
         <Section title="Redirects" hint="where a login may return to">
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            {client.redirects.map((uri) => (
-              <Typography key={uri} variant="body2" sx={{ fontFamily: "monospace" }}>
-                {uri}
-              </Typography>
-            ))}
-          </Paper>
+          <Rows items={client.redirects} keyOf={(uri) => uri} primary={(uri) => <Mono>{uri}</Mono>} empty="" />
         </Section>
       ) : null}
 
-      <Section
-        title="Who reaches it now"
-        hint={`resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}
-      >
-        {people.length === 0 ? (
-          <Nothing>
-            Nobody. Attach a directory group to one of the internal groups above, and the people in it
-            reach this client.
-          </Nothing>
-        ) : (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Person</TableCell>
-                  <TableCell>Through</TableCell>
-                  <TableCell>Token</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {people.map((holder) => (
-                  <TableRow key={holder.email} hover>
-                    <TableCell>
-                      <Ref to={paths.person(holder.email)}>
-                        {personName(holder.givenName, holder.familyName, holder.email)}
-                      </Ref>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        {holder.email}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                        {holder.via.map((group) => (
-                          <Ref key={group} to={paths.group(group)}>
-                            <Chip size="small" variant="outlined" label={group} clickable />
-                          </Ref>
-                        ))}
-                        {!holder.live ? <Chip size="small" color="warning" label="suspended" /> : null}
-                      </Stack>
-                    </TableCell>
-                    <TableCell>{forHowLong(holder.lifetime)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
+      <Section title="Who reaches it now" hint={`resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}>
+        <Rows
+          items={people}
+          keyOf={(h) => h.email}
+          primary={(h) => <Ref to={paths.person(h.email)}>{personName(h.givenName, h.familyName, h.email)}</Ref>}
+          secondary={(h) => (
+            <>
+              {h.email} · through <Names items={h.via.map((group) => ({ label: group, to: paths.group(group), mono: true }))} muted />
+            </>
+          )}
+          right={(h) => (
+            <>
+              {!h.live ? <State kind="suspended" /> : null}
+              <span>token {forHowLong(h.lifetime)}</span>
+            </>
+          )}
+          empty="Nobody. Attach a directory group to one of the internal groups above, and the people in it reach this client."
+        />
       </Section>
-    </Box>
+    </Page>
   );
 }
