@@ -56,6 +56,21 @@ message GetSettingsResponse {
   repeated Backend key_connectors = 8;
   // the build this hub is running.
   string version = 7;
+  // what an operator must register with a backend before a workspace can
+  // be connected. It is here rather than only in a runbook because the
+  // values are this installation's own: the redirect URI is its hostname,
+  // and a document can only describe it.
+  repeated ConnectorSetup setup = 9;
+}
+
+// ConnectorSetup is the one-time cloud-console step, as values to copy
+// rather than prose to translate.
+message ConnectorSetup {
+  Backend backend = 1;
+  // the exact redirect URI to register with the backend.
+  string redirect_uri = 2;
+  // the scopes this hub will ask for, all read-only.
+  repeated string scopes = 3;
 }
 
 message SetOAuthClientRequest {

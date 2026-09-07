@@ -55,6 +55,11 @@ type ConsoleDeps struct {
 	LoginSources []string
 	CacheBackend string
 	SecureCookie bool
+	// PublicURL is where a browser reaches this console. It is what makes
+	// the redirect URI reportable: a runbook can only say "your hostname
+	// plus this path", and an operator retyping a hostname into a cloud
+	// console is exactly where a day-one setup goes wrong.
+	PublicURL string
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on
@@ -327,6 +332,7 @@ func (c *Console) GetSettings(
 		Connectors:      c.connectorKinds(),
 		KeyConnectors:   c.keyConnectorKinds(),
 		Version:         version.String(),
+		Setup:           c.setupGuidance(),
 	}), nil
 }
 
@@ -337,6 +343,36 @@ func (c *Console) connectorKinds() []directoryrosterv1.Backend {
 	out := make([]directoryrosterv1.Backend, 0, len(c.connectors))
 	for _, kind := range slices.Sorted(maps.Keys(c.connectors)) {
 		out = append(out, backendEnum(kind))
+	}
+	return out
+}
+
+// backendScopes is what each backend is asked for, all read-only. It has
+// to match what the backend actually requests — a list that drifts sends
+// an operator to grant the wrong thing and the failure arrives much
+// later, at the first probe. The same four are in the connect runbook.
+var backendScopes = map[string][]string{
+	"google": {
+		"https://www.googleapis.com/auth/admin.directory.user.readonly",
+		"https://www.googleapis.com/auth/admin.directory.group.readonly",
+		"https://www.googleapis.com/auth/admin.directory.group.member.readonly",
+		"https://www.googleapis.com/auth/admin.directory.domain.readonly",
+	},
+}
+
+// setupGuidance is what must be registered with a backend before a
+// workspace can be connected, with this installation's own values filled
+// in. It is reported for every backend the hub knows how to guide, not
+// only those already configured: the whole point is to be readable before
+// an OAuth client exists, because registering one is the step it guides.
+func (c *Console) setupGuidance() []*directoryrosterv1.ConnectorSetup {
+	out := make([]*directoryrosterv1.ConnectorSetup, 0, len(backendScopes))
+	for _, kind := range slices.Sorted(maps.Keys(backendScopes)) {
+		out = append(out, &directoryrosterv1.ConnectorSetup{
+			Backend:     backendEnum(kind),
+			RedirectUri: c.deps.PublicURL + "/connect/" + kind + "/callback",
+			Scopes:      backendScopes[kind],
+		})
 	}
 	return out
 }

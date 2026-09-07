@@ -3,17 +3,19 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-import { access, ago, at, workspaces, type Me } from "./api";
+import { access, ago, at, settings, workspaces, type Me } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
+import { incomplete, Setup, type Progress } from "./Setup";
 import { Failure, Loading, Names, Nothing, Page, Ref, Section } from "./ui";
 
 /** The first question anyone has is whether something is broken. This
  *  page answers it, and every count is a link to the thing it counts. */
-export function Overview({ me }: { me?: Me }) {
+export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
   const tenants = useAsync(() => workspaces.listWorkspaces({}), []);
   const policy = useAsync(() => access.getPolicy({}), []);
   const directoryGroups = useAsync(() => access.listDirectoryGroups({}), []);
+  const current = useAsync(() => settings.getSettings({}), []);
 
   const list = tenants.value?.workspaces ?? [];
   const groups = policy.value?.groups ?? [];
@@ -36,10 +38,28 @@ export function Overview({ me }: { me?: Me }) {
 
   const clean = failing.length + contested.length + held.length === 0 && list.length > 0;
 
+  // An installation that is not finished is not "broken", and the counts
+  // below cannot say anything useful about it yet. What it needs is the
+  // next step, so that is what the page leads with until there is none.
+  const operators = groups.find((g) => g.name === "hub-operators");
+  const progress: Progress | undefined = policy.value && current.value
+    ? {
+        clientConfigured: Boolean(current.value.oauthClient?.configured),
+        directories: list.length,
+        operators: (operators?.members.length ?? 0) + (operators?.rules.length ?? 0),
+        adminEnabled: Boolean(policy.value.adminEnabled),
+        setup: current.value.setup,
+        operatorGroup: operators?.name ?? "hub-operators",
+      }
+    : undefined;
+  const settingUp = progress !== undefined && incomplete(progress);
+
   return (
     <Page title="Overview" lede="Whether anything is broken, and the counts behind it. Every number is a link to the thing it counts.">
-      <Loading busy={tenants.loading || policy.loading} />
+      <Loading busy={tenants.loading || policy.loading || current.loading} />
       <Failure error={tenants.error ?? policy.error} />
+
+      {settingUp && progress ? <Setup progress={progress} operator={operator} /> : null}
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }, gap: 1.5, mb: 4 }}>
         <Tile label="Directories" value={`${list.length - failing.length}/${list.length}`} hint={failing.length ? `${failing.length} failing` : "all healthy"} bad={failing.length > 0} to={paths.directories()} />
@@ -61,7 +81,7 @@ export function Overview({ me }: { me?: Me }) {
           <Nothing>Nothing. Every domain is authoritative and every group leads somewhere.</Nothing>
         ) : (
           <Stack spacing={1}>
-            {policy.value?.adminEnabled ? (
+            {policy.value?.adminEnabled && !settingUp ? (
               <Row severity="warning" title="The break-glass admin account is enabled">
                 Turn it off in the deployment once a group grants operator to a real identity.
               </Row>

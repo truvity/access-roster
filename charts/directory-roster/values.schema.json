@@ -99,7 +99,7 @@
         "admin": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "enabled": { "type": "boolean" } }
+          "properties": { "enabled": { "type": ["boolean", "null"] } }
         },
         "login": {
           "type": "object",

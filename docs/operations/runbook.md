@@ -5,19 +5,36 @@ console and in `Describe`; nothing needs a shell except the export.
 
 ## Day one
 
+**A deployment that declares its own way in has no day one.** Values that
+carry a workspace and a non-empty `hub-operators` are signed into through
+the directory from the first boot, and the break-glass account never
+turns itself on. Nothing below applies; go to
+[the connect runbook](connect-runbook.md) when you add the next tenant.
+
+**A standalone installation configures itself through the console**, and
+the console leads it. Overview shows what is left to do until nothing is,
+with this installation's own values to copy rather than a placeholder to
+translate — the redirect URI is its hostname, and that is where a day-one
+setup goes wrong.
+
 1. Install; the hub generates `Secret hub-admin` and `Secret hub-session-key`.
 2. Read the admin password: `kubectl -n directory-roster get secret hub-admin -o jsonpath='{.data.password}' | base64 -d`.
 3. Port-forward the console port (or go through the gateway) and sign in at `/admin/login`.
-4. Settings: the OAuth client, unless the chart declared it.
-5. Directories: Connect, as the tenant's admin role account.
-6. Access: pick the operators' group from the snapshot; grant operator.
-7. Sign out; sign in with the directory as yourself. Search for yourself: your page shows operator and the membership that granted it.
-8. `access.admin.enabled: false` in the values. The banner disappears.
+4. Follow Overview. It walks the same five steps: register an OAuth client
+   with the directory, give it to the hub, connect the first directory,
+   attach a directory group to `hub-operators`, and turn the break-glass
+   account off. Each disappears as it completes.
+5. Sign out; sign in with the directory as yourself. Search for yourself:
+   your page shows operator and the membership that granted it.
 
-Behind an authenticating proxy, steps 3 and 7 go through the proxy's
-login; the membership in step 6 is unchanged, because the hub resolves
-the forwarded identity's address through the directory like any other;
-the admin account stays as break-glass by port-forward.
+Step 4's first item is the only one that leaves the console:
+[the connect runbook](connect-runbook.md) has the full walk-through of the
+cloud-console visit, and Overview has the two values to paste into it.
+
+Behind an authenticating proxy, steps 3 and 5 go through the proxy's
+login; attaching the membership is unchanged, because the hub resolves the
+forwarded identity's address through the directory like any other; the
+admin account stays as break-glass by port-forward.
 
 ## Lost operator access
 
