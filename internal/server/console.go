@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/truvity/access-roster/backend"
+	"github.com/truvity/access-roster/backend/google"
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
@@ -347,17 +348,15 @@ func (c *Console) connectorKinds() []directoryrosterv1.Backend {
 	return out
 }
 
-// backendScopes is what each backend is asked for, all read-only. It has
-// to match what the backend actually requests — a list that drifts sends
-// an operator to grant the wrong thing and the failure arrives much
-// later, at the first probe. The same four are in the connect runbook.
+// backendScopes is what each backend is asked for, all read-only.
+//
+// It reads the list from the backend rather than repeating it. A copy
+// would drift, and the drift is invisible: the console would tell an
+// operator to grant one set while the hub asked for another, and the
+// mismatch would surface much later as a 403 at the first read, naming
+// nothing useful. The connect runbook documents the same four.
 var backendScopes = map[string][]string{
-	"google": {
-		"https://www.googleapis.com/auth/admin.directory.user.readonly",
-		"https://www.googleapis.com/auth/admin.directory.group.readonly",
-		"https://www.googleapis.com/auth/admin.directory.group.member.readonly",
-		"https://www.googleapis.com/auth/admin.directory.domain.readonly",
-	},
+	"google": google.Scopes,
 }
 
 // setupGuidance is what must be registered with a backend before a

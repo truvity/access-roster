@@ -6,6 +6,10 @@ with its fake and its acceptance scenario, or it is not done.
 
 ## 1. A directory backend (Entra, LDAP, …)
 
+`backend/google` is the worked example, and `cmd/directory-roster`'s
+registry is where a new one is announced: a build that lacks a declared
+backend says exactly what it lacks rather than starting up empty.
+
 `pkg/backend`: implement `Backend` — `Probe`, `Domains`, `Users`,
 `Groups`, `Members` (atomic per group), plus `Consent` for the
 admin-consent flow or `KeyCredential` for an uploaded key — and register
