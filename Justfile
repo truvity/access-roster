@@ -56,9 +56,8 @@ chart-lint:
         --set 'workspaces[0].secretName=example-sa-key' \
         --set 'consumers[0].namespace=example-ns' \
         --set 'consumers[0].serviceAccount=example-sa' \
-        --set 'access.rules[0].id=admins' \
-        --set 'access.rules[0].role=operator' \
-        --set 'access.rules[0].directoryGroup.group=platform-admins@example.com' >/dev/null
+        --set 'policy.version=1' \
+        --set 'policy.groups.hub-operators.members[0]=platform-admins@example.com' >/dev/null
     ! helm template directory-roster charts/directory-roster --set bogusKey=1 >/dev/null 2>&1
 
 # Rebuild the console SPA into frontend/dist (committed). Needs Node; CI

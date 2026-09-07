@@ -121,40 +121,12 @@
             }
           }
         },
-        "rules": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["id", "role"],
-            "properties": {
-              "id": { "type": "string", "minLength": 1 },
-              "role": { "enum": ["viewer", "operator"] },
-              "directoryGroup": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["group"],
-                "properties": {
-                  "workspaceId": { "type": "string" },
-                  "group": { "type": "string", "minLength": 3 }
-                }
-              },
-              "claim": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["issuer", "claim", "value"],
-                "properties": {
-                  "issuer": { "type": "string", "minLength": 1 },
-                  "claim": { "type": "string", "minLength": 1 },
-                  "value": { "type": "string", "minLength": 1 }
-                }
-              },
-              "email": { "type": "string", "minLength": 3 },
-              "emailDomain": { "type": "string", "minLength": 1 }
-            }
-          }
-        }
+        "holdWindow": { "$ref": "#/definitions/duration" }
       }
+    },
+    "policy": {
+      "type": "object",
+      "description": "The declared layer of the policy; see docs/reference/policy.md. Validated by the hub at start, not here, because its shape is the policy schema rather than chart values."
     },
     "networkPolicy": {
       "type": "object",

@@ -1,34 +1,29 @@
 // Package settings keeps the two things an operator can change from the
 // console: the OAuth client used for admin consent and for sign-in, and
-// the access rules added there.
+// the memberships added there.
 //
-// Everything else an operator sees — the intervals, the cache backend, the
-// declared rules — is deployment configuration, shown read-only.
+// Everything else an operator sees — the internal groups, what they add,
+// the lifetimes, the clients, the intervals — is deployment
+// configuration, shown read-only.
 package settings
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"sync"
-
-	"github.com/truvity/access-roster/rules"
 )
 
 // ErrDeclared is returned when the deployment owns what is being changed.
 var ErrDeclared = errors.New("settings: declared by the deployment")
-
-// ErrNotFound is returned for a rule id the store does not hold.
-var ErrNotFound = errors.New("settings: not found")
 
 // OAuthClient is the client an installation registered once with its
 // directory backend: it drives both admin consent and operator sign-in.
 type OAuthClient struct {
 	ID     string
 	Secret string
-	// Declared marks a client the chart named, which the console shows but
-	// cannot change.
+	// Declared marks a client the chart named, which the console shows
+	// but cannot change.
 	Declared bool
 }
 
@@ -39,29 +34,28 @@ func (c OAuthClient) Configured() bool { return c.ID != "" && c.Secret != "" }
 type Store interface {
 	// OAuthClient returns the client, which may be unconfigured.
 	OAuthClient(ctx context.Context) (OAuthClient, error)
-	// SetOAuthClient stores one; it returns ErrDeclared when the chart
-	// declared the client.
+	// SetOAuthClient stores one; ErrDeclared when the chart declared it.
 	SetOAuthClient(ctx context.Context, id, secret string) error
-	// Rules returns the rules added through the console, in order.
-	Rules(ctx context.Context) ([]rules.Rule, error)
-	// AddRule appends one.
-	AddRule(ctx context.Context, rule rules.Rule) error
-	// RemoveRule deletes one by id; ErrNotFound when there is none.
-	RemoveRule(ctx context.Context, id string) error
+	// Memberships returns the console layer of the policy.
+	Memberships(ctx context.Context) (map[string][]string, error)
+	// SetMemberships replaces it.
+	SetMemberships(ctx context.Context, memberships map[string][]string) error
 }
 
 // Memory is a Store in process memory: the prototype's, and the fake
 // behind tests of the one that persists.
 type Memory struct {
-	mu     sync.RWMutex
-	client OAuthClient
-	added  []rules.Rule
+	mu          sync.RWMutex
+	client      OAuthClient
+	memberships map[string][]string
 }
 
 var _ Store = (*Memory)(nil)
 
 // NewMemory returns a store, optionally seeded with a declared client.
-func NewMemory(declared OAuthClient) *Memory { return &Memory{client: declared} }
+func NewMemory(declared OAuthClient) *Memory {
+	return &Memory{client: declared, memberships: map[string][]string{}}
+}
 
 // OAuthClient implements [Store].
 func (m *Memory) OAuthClient(_ context.Context) (OAuthClient, error) {
@@ -84,35 +78,24 @@ func (m *Memory) SetOAuthClient(_ context.Context, id, secret string) error {
 	return nil
 }
 
-// Rules implements [Store].
-func (m *Memory) Rules(_ context.Context) ([]rules.Rule, error) {
+// Memberships implements [Store].
+func (m *Memory) Memberships(_ context.Context) (map[string][]string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return slices.Clone(m.added), nil
+	out := make(map[string][]string, len(m.memberships))
+	for name, members := range m.memberships {
+		out[name] = slices.Clone(members)
+	}
+	return out, nil
 }
 
-// AddRule implements [Store].
-func (m *Memory) AddRule(_ context.Context, rule rules.Rule) error {
+// SetMemberships implements [Store].
+func (m *Memory) SetMemberships(_ context.Context, memberships map[string][]string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i := range m.added {
-		if m.added[i].ID == rule.ID {
-			return fmt.Errorf("settings: rule %q already exists", rule.ID)
-		}
+	m.memberships = make(map[string][]string, len(memberships))
+	for name, members := range memberships {
+		m.memberships[name] = slices.Clone(members)
 	}
-	m.added = append(m.added, rule)
 	return nil
-}
-
-// RemoveRule implements [Store].
-func (m *Memory) RemoveRule(_ context.Context, id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i := range m.added {
-		if m.added[i].ID == id {
-			m.added = slices.Delete(m.added, i, i+1)
-			return nil
-		}
-	}
-	return fmt.Errorf("%w: rule %q", ErrNotFound, id)
 }

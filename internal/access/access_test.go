@@ -8,7 +8,7 @@ import (
 
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/hub"
-	"github.com/truvity/access-roster/rules"
+	"github.com/truvity/access-roster/policy"
 )
 
 // directory is a stand-in for the hub: whatever the test says the
@@ -21,28 +21,31 @@ func (d *directory) ResolveUser(_ context.Context, email string, _ *time.Duratio
 	return out, nil
 }
 
-const policyDoc = `
+const declared = `
 version: 1
-rules:
-  - id: admins
-    when: { directory_group: { group: platform@example.com } }
-    grant: { role: operator }
-  - id: staff
-    when: { email_domain: example.com }
-    grant: { role: viewer }
-defaults:
-  hold_window: 1h
+groups:
+  hub-operators: { members: [platform@example.com] }
+  hub-viewers:   { matchers: [{ email_domain: example.com }] }
+claims:
+  hub-operators: { groups: [hub:operator] }
+lifetimes:
+  default: 12h
+  hub-operators: 4h
 `
 
 func setup(t *testing.T, result hub.UserResult) (*access.Authorizer, *directory, *time.Time) {
 	t.Helper()
-	policy, err := rules.Parse([]byte(policyDoc))
+	p, err := policy.Parse([]byte(declared))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
+	set, err := policy.NewSet(p)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
 	dir := &directory{result: result}
 	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
-	a := access.NewAuthorizer(policy, dir)
+	a := access.NewAuthorizer(set, dir, time.Hour)
 	a.SetClock(func() time.Time { return now })
 	return a, dir, &now
 }
@@ -51,22 +54,30 @@ func principal(email string) access.Principal {
 	return access.Principal{Email: email, Subject: "sub-1", Source: access.SourceForwarded}
 }
 
-func TestDirectoryGroupGrantsOperator(t *testing.T) {
+func TestMembershipGrantsOperator(t *testing.T) {
 	t.Parallel()
 	a, _, _ := setup(t, hub.UserResult{
 		InDomain: true, Found: true, Authoritative: true,
-		Groups: []string{"platform@example.com"},
+		Groups: []string{"platform@example.com"}, GivenName: "Alice", FamilyName: "Ant",
 	})
 
 	got, err := a.Authorize(context.Background(), principal("alice@example.com"))
 	if err != nil {
 		t.Fatalf("Authorize: %v", err)
 	}
-	if got.Role != rules.RoleOperator || !got.Can(rules.RoleViewer) {
+	if got.Role != access.RoleOperator || !got.Can(access.RoleViewer) {
 		t.Errorf("identity = %+v, want operator", got)
 	}
-	if len(got.Matched) != 2 {
-		t.Errorf("matched = %v, want both rules", got.Matched)
+	if got.Name() != "Alice Ant" {
+		t.Errorf("name = %q, want the directory's", got.Name())
+	}
+	if got.Lifetime != 4*time.Hour {
+		t.Errorf("lifetime = %v, want the operators' exception", got.Lifetime)
+	}
+	// Both internal group names, plus the one fragment that adds to the
+	// claim: hub-viewers contributes only its own name.
+	if groups, _ := got.Claims["groups"].([]any); len(groups) != 3 {
+		t.Errorf("claims groups = %v, want the two group names and the operators' fragment", groups)
 	}
 }
 
@@ -83,49 +94,46 @@ func TestSuspendedAccountIsRefused(t *testing.T) {
 
 func TestNonAuthoritativeHoldsTheLastGrant(t *testing.T) {
 	t.Parallel()
-	authoritative := hub.UserResult{
-		InDomain: true, Found: true, Authoritative: true,
-		Groups: []string{"platform@example.com"},
-	}
-	a, dir, now := setup(t, authoritative)
+	a, dir, now := setup(t, hub.UserResult{
+		InDomain: true, Found: true, Authoritative: true, Groups: []string{"platform@example.com"},
+	})
 	ctx := context.Background()
 
 	if _, err := a.Authorize(ctx, principal("alice@example.com")); err != nil {
 		t.Fatalf("Authorize: %v", err)
 	}
 
-	// The directory goes uncertain: the group rule can no longer match,
-	// but an operator who was one a minute ago stays one for the window.
+	// The directory goes uncertain: membership can no longer be trusted,
+	// but an operator of a minute ago stays one for the window.
 	dir.result.Authoritative = false
 	*now = now.Add(30 * time.Minute)
 	got, err := a.Authorize(ctx, principal("alice@example.com"))
 	if err != nil {
 		t.Fatalf("Authorize: %v", err)
 	}
-	if got.Role != rules.RoleOperator {
+	if got.Role != access.RoleOperator {
 		t.Errorf("role inside the hold window = %q, want operator", got.Role)
 	}
 
-	// Past the window it falls back to what the rules can still prove: the
-	// domain rule, which needs no directory answer.
+	// Past it, only what a matcher can still prove: the domain group.
 	*now = now.Add(2 * time.Hour)
 	if got, err = a.Authorize(ctx, principal("alice@example.com")); err != nil {
 		t.Fatalf("Authorize: %v", err)
 	}
-	if got.Role != rules.RoleViewer {
+	if got.Role != access.RoleViewer {
 		t.Errorf("role past the hold window = %q, want viewer", got.Role)
 	}
 }
 
-func TestUnknownIdentityGetsNothingWhileUncertain(t *testing.T) {
+func TestUnknownIdentityGetsNothing(t *testing.T) {
 	t.Parallel()
-	a, _, _ := setup(t, hub.UserResult{InDomain: true, Found: true, Authoritative: false})
+	a, _, _ := setup(t, hub.UserResult{})
 
 	got, err := a.Authorize(context.Background(), principal("stranger@elsewhere.example"))
 	if err != nil {
 		t.Fatalf("Authorize: %v", err)
 	}
-	if got.Role != rules.RoleNone {
+	if got.Role != access.RoleNone {
 		t.Errorf("role = %q, want none", got.Role)
 	}
 }
@@ -139,7 +147,35 @@ func TestBreakGlassAdminIsAlwaysOperator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Authorize: %v", err)
 	}
-	if got.Role != rules.RoleOperator || got.Source != access.SourceAdmin {
+	if got.Role != access.RoleOperator || got.Source != access.SourceAdmin {
 		t.Errorf("identity = %+v, want the admin as operator", got)
+	}
+}
+
+func TestExplainReportsWhyAndDoesNotRefuse(t *testing.T) {
+	t.Parallel()
+	a, _, _ := setup(t, hub.UserResult{
+		InDomain: true, Found: true, Suspended: true, Authoritative: true,
+		Groups: []string{"platform@example.com"},
+	})
+
+	got, err := a.Explain(context.Background(), "alice@example.com")
+	if err != nil {
+		t.Fatalf("Explain: %v", err)
+	}
+	if !got.Suspended {
+		t.Error("Explain must report a suspended account rather than refuse it")
+	}
+	if got.Role != access.RoleOperator {
+		t.Errorf("role = %q, want what the policy says regardless", got.Role)
+	}
+	var via []string
+	for _, held := range got.Result.Held {
+		if held.Group == "hub-operators" {
+			via = held.Via
+		}
+	}
+	if len(via) != 1 || via[0] != "platform@example.com" {
+		t.Errorf("via = %v, want the directory group that put them there", via)
 	}
 }

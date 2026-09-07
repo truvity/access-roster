@@ -4,13 +4,415 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
-import type { Message } from "@bufbuild/protobuf";
+import type { Duration } from "@bufbuild/protobuf/wkt";
+import { file_google_protobuf_duration, file_google_protobuf_struct } from "@bufbuild/protobuf/wkt";
+import type { JsonObject, Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file directoryroster/v1/access.proto.
  */
 export const file_directoryroster_v1_access: GenFile = /*@__PURE__*/
-  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvYWNjZXNzLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEiLAoaTGlzdERpcmVjdG9yeUdyb3Vwc1JlcXVlc3QSDgoGZG9tYWluGAEgASgJIlgKG0xpc3REaXJlY3RvcnlHcm91cHNSZXNwb25zZRI5CgZncm91cHMYASADKAsyKS5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlyZWN0b3J5R3JvdXBTdW1tYXJ5Il0KFURpcmVjdG9yeUdyb3VwU3VtbWFyeRINCgVlbWFpbBgBIAEoCRIOCgZkb21haW4YAiABKAkSFAoMd29ya3NwYWNlX2lkGAMgASgJEg8KB21lbWJlcnMYBCABKAUinQEKCElkZW50aXR5Eg0KBWVtYWlsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSMgoGc291cmNlGAMgASgOMiIuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5U291cmNlEiYKBHJvbGUYBCABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZRIVCg1tYXRjaGVkX3J1bGVzGAUgAygJIv8BCgpBY2Nlc3NSdWxlEgoKAmlkGAEgASgJEkQKD2RpcmVjdG9yeV9ncm91cBgCIAEoCzIpLmRpcmVjdG9yeXJvc3Rlci52MS5EaXJlY3RvcnlHcm91cFN1YmplY3RIABIxCgVjbGFpbRgDIAEoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5DbGFpbVN1YmplY3RIABIPCgVlbWFpbBgEIAEoCUgAEhYKDGVtYWlsX2RvbWFpbhgFIAEoCUgAEiYKBHJvbGUYBiABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZRIQCghkZWNsYXJlZBgHIAEoCEIJCgdzdWJqZWN0IjwKFURpcmVjdG9yeUdyb3VwU3ViamVjdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkSDQoFZ3JvdXAYAiABKAkiPAoMQ2xhaW1TdWJqZWN0Eg4KBmlzc3VlchgBIAEoCRINCgVjbGFpbRgCIAEoCRINCgV2YWx1ZRgDIAEoCSIPCg1XaG9BbUlSZXF1ZXN0IkAKDldob0FtSVJlc3BvbnNlEi4KCGlkZW50aXR5GAEgASgLMhwuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5IhgKFkdldEFjY2Vzc1BvbGljeVJlcXVlc3QidgoXR2V0QWNjZXNzUG9saWN5UmVzcG9uc2USLQoFcnVsZXMYASADKAsyHi5kaXJlY3Rvcnlyb3N0ZXIudjEuQWNjZXNzUnVsZRIVCg1hZG1pbl9lbmFibGVkGAIgASgIEhUKDWxvZ2luX3NvdXJjZXMYAyADKAkiPgoOQWRkUnVsZVJlcXVlc3QSLAoEcnVsZRgBIAEoCzIeLmRpcmVjdG9yeXJvc3Rlci52MS5BY2Nlc3NSdWxlIj8KD0FkZFJ1bGVSZXNwb25zZRIsCgRydWxlGAEgASgLMh4uZGlyZWN0b3J5cm9zdGVyLnYxLkFjY2Vzc1J1bGUiHwoRUmVtb3ZlUnVsZVJlcXVlc3QSCgoCaWQYASABKAkiFAoSUmVtb3ZlUnVsZVJlc3BvbnNlKkAKBFJvbGUSFAoQUk9MRV9VTlNQRUNJRklFRBAAEg8KC1JPTEVfVklFV0VSEAESEQoNUk9MRV9PUEVSQVRPUhACKqQBCg5JZGVudGl0eVNvdXJjZRIfChtJREVOVElUWV9TT1VSQ0VfVU5TUEVDSUZJRUQQABIdChlJREVOVElUWV9TT1VSQ0VfRElSRUNUT1JZEAESGAoUSURFTlRJVFlfU09VUkNFX09JREMQAhIdChlJREVOVElUWV9TT1VSQ0VfRk9SV0FSREVEEAMSGQoVSURFTlRJVFlfU09VUkNFX0FETUlOEAQy9QMKDUFjY2Vzc1NlcnZpY2USTwoGV2hvQW1JEiEuZGlyZWN0b3J5cm9zdGVyLnYxLldob0FtSVJlcXVlc3QaIi5kaXJlY3Rvcnlyb3N0ZXIudjEuV2hvQW1JUmVzcG9uc2USagoPR2V0QWNjZXNzUG9saWN5EiouZGlyZWN0b3J5cm9zdGVyLnYxLkdldEFjY2Vzc1BvbGljeVJlcXVlc3QaKy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0QWNjZXNzUG9saWN5UmVzcG9uc2USUgoHQWRkUnVsZRIiLmRpcmVjdG9yeXJvc3Rlci52MS5BZGRSdWxlUmVxdWVzdBojLmRpcmVjdG9yeXJvc3Rlci52MS5BZGRSdWxlUmVzcG9uc2USWwoKUmVtb3ZlUnVsZRIlLmRpcmVjdG9yeXJvc3Rlci52MS5SZW1vdmVSdWxlUmVxdWVzdBomLmRpcmVjdG9yeXJvc3Rlci52MS5SZW1vdmVSdWxlUmVzcG9uc2USdgoTTGlzdERpcmVjdG9yeUdyb3VwcxIuLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0RGlyZWN0b3J5R3JvdXBzUmVxdWVzdBovLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0RGlyZWN0b3J5R3JvdXBzUmVzcG9uc2VC2QEKFmNvbS5kaXJlY3Rvcnlyb3N0ZXIudjFCC0FjY2Vzc1Byb3RvUAFaSWdpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9kaXJlY3Rvcnlyb3N0ZXIvdjE7ZGlyZWN0b3J5cm9zdGVydjGiAgNEWFiqAhJEaXJlY3Rvcnlyb3N0ZXIuVjHKAhJEaXJlY3Rvcnlyb3N0ZXJcVjHiAh5EaXJlY3Rvcnlyb3N0ZXJcVjFcR1BCTWV0YWRhdGHqAhNEaXJlY3Rvcnlyb3N0ZXI6OlYxYgZwcm90bzM");
+  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvYWNjZXNzLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEivwEKCElkZW50aXR5Eg0KBWVtYWlsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSMgoGc291cmNlGAMgASgOMiIuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5U291cmNlEiYKBHJvbGUYBCABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZRIOCgZncm91cHMYBSADKAkSEgoKZ2l2ZW5fbmFtZRgGIAEoCRITCgtmYW1pbHlfbmFtZRgHIAEoCSIPCg1XaG9BbUlSZXF1ZXN0IlEKDldob0FtSVJlc3BvbnNlEi4KCGlkZW50aXR5GAEgASgLMhwuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5Eg8KB3ZlcnNpb24YAiABKAkiJwoJSGVsZEdyb3VwEg0KBWdyb3VwGAEgASgJEgsKA3ZpYRgCIAMoCSIfCg5FeHBsYWluUmVxdWVzdBINCgVlbWFpbBgBIAEoCSKqAgoPRXhwbGFpblJlc3BvbnNlEi4KCGlkZW50aXR5GAEgASgLMhwuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5EhEKCWluX2RvbWFpbhgCIAEoCBINCgVmb3VuZBgDIAEoCBIRCglzdXNwZW5kZWQYBCABKAgSFQoNYXV0aG9yaXRhdGl2ZRgFIAEoCBIYChBkaXJlY3RvcnlfZ3JvdXBzGAYgAygJEisKBGhlbGQYByADKAsyHS5kaXJlY3Rvcnlyb3N0ZXIudjEuSGVsZEdyb3VwEicKBmNsYWltcxgIIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSKwoIbGlmZXRpbWUYCSABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24iLQoLR3JvdXBNZW1iZXISDwoHYWRkcmVzcxgBIAEoCRINCgVsYXllchgCIAEoCSK1AQoLUG9saWN5R3JvdXASDAoEbmFtZRgBIAEoCRIwCgdtZW1iZXJzGAIgAygLMh8uZGlyZWN0b3J5cm9zdGVyLnYxLkdyb3VwTWVtYmVyEhAKCG1hdGNoZXJzGAMgAygJEicKBmNsYWltcxgEIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QSKwoIbGlmZXRpbWUYBSABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24iEgoQR2V0UG9saWN5UmVxdWVzdCKJAQoRR2V0UG9saWN5UmVzcG9uc2USLwoGZ3JvdXBzGAEgAygLMh8uZGlyZWN0b3J5cm9zdGVyLnYxLlBvbGljeUdyb3VwEhUKDWFkbWluX2VuYWJsZWQYAiABKAgSFQoNbG9naW5fc291cmNlcxgDIAMoCRIVCg1jb25zb2xlX2xheWVyGAQgASgJIj4KFEFkZE1lbWJlcnNoaXBSZXF1ZXN0Eg0KBWdyb3VwGAEgASgJEhcKD2RpcmVjdG9yeV9ncm91cBgCIAEoCSIXChVBZGRNZW1iZXJzaGlwUmVzcG9uc2UiQQoXUmVtb3ZlTWVtYmVyc2hpcFJlcXVlc3QSDQoFZ3JvdXAYASABKAkSFwoPZGlyZWN0b3J5X2dyb3VwGAIgASgJIhoKGFJlbW92ZU1lbWJlcnNoaXBSZXNwb25zZSIsChpMaXN0RGlyZWN0b3J5R3JvdXBzUmVxdWVzdBIOCgZkb21haW4YASABKAkiWAobTGlzdERpcmVjdG9yeUdyb3Vwc1Jlc3BvbnNlEjkKBmdyb3VwcxgBIAMoCzIpLmRpcmVjdG9yeXJvc3Rlci52MS5EaXJlY3RvcnlHcm91cFN1bW1hcnkiXQoVRGlyZWN0b3J5R3JvdXBTdW1tYXJ5Eg0KBWVtYWlsGAEgASgJEg4KBmRvbWFpbhgCIAEoCRIUCgx3b3Jrc3BhY2VfaWQYAyABKAkSDwoHbWVtYmVycxgEIAEoBSpACgRSb2xlEhQKEFJPTEVfVU5TUEVDSUZJRUQQABIPCgtST0xFX1ZJRVdFUhABEhEKDVJPTEVfT1BFUkFUT1IQAiqkAQoOSWRlbnRpdHlTb3VyY2USHwobSURFTlRJVFlfU09VUkNFX1VOU1BFQ0lGSUVEEAASHQoZSURFTlRJVFlfU09VUkNFX0RJUkVDVE9SWRABEhgKFElERU5USVRZX1NPVVJDRV9PSURDEAISHQoZSURFTlRJVFlfU09VUkNFX0ZPUldBUkRFRBADEhkKFUlERU5USVRZX1NPVVJDRV9BRE1JThAEMtsECg1BY2Nlc3NTZXJ2aWNlEk8KBldob0FtSRIhLmRpcmVjdG9yeXJvc3Rlci52MS5XaG9BbUlSZXF1ZXN0GiIuZGlyZWN0b3J5cm9zdGVyLnYxLldob0FtSVJlc3BvbnNlElIKB0V4cGxhaW4SIi5kaXJlY3Rvcnlyb3N0ZXIudjEuRXhwbGFpblJlcXVlc3QaIy5kaXJlY3Rvcnlyb3N0ZXIudjEuRXhwbGFpblJlc3BvbnNlElgKCUdldFBvbGljeRIkLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRQb2xpY3lSZXF1ZXN0GiUuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFBvbGljeVJlc3BvbnNlEmQKDUFkZE1lbWJlcnNoaXASKC5kaXJlY3Rvcnlyb3N0ZXIudjEuQWRkTWVtYmVyc2hpcFJlcXVlc3QaKS5kaXJlY3Rvcnlyb3N0ZXIudjEuQWRkTWVtYmVyc2hpcFJlc3BvbnNlEm0KEFJlbW92ZU1lbWJlcnNoaXASKy5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVtb3ZlTWVtYmVyc2hpcFJlcXVlc3QaLC5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVtb3ZlTWVtYmVyc2hpcFJlc3BvbnNlEnYKE0xpc3REaXJlY3RvcnlHcm91cHMSLi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdERpcmVjdG9yeUdyb3Vwc1JlcXVlc3QaLy5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdERpcmVjdG9yeUdyb3Vwc1Jlc3BvbnNlQtkBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQgtBY2Nlc3NQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_duration, file_google_protobuf_struct]);
+
+/**
+ * @generated from message directoryroster.v1.Identity
+ */
+export type Identity = Message<"directoryroster.v1.Identity"> & {
+  /**
+   * @generated from field: string email = 1;
+   */
+  email: string;
+
+  /**
+   * the issuer's stable identifier, or "admin".
+   *
+   * @generated from field: string subject = 2;
+   */
+  subject: string;
+
+  /**
+   * @generated from field: directoryroster.v1.IdentitySource source = 3;
+   */
+  source: IdentitySource;
+
+  /**
+   * @generated from field: directoryroster.v1.Role role = 4;
+   */
+  role: Role;
+
+  /**
+   * the internal groups the identity is in.
+   *
+   * @generated from field: repeated string groups = 5;
+   */
+  groups: string[];
+
+  /**
+   * given and family name as the directory supplies them; empty when it
+   * does not, so callers must tolerate that.
+   *
+   * @generated from field: string given_name = 6;
+   */
+  givenName: string;
+
+  /**
+   * @generated from field: string family_name = 7;
+   */
+  familyName: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.Identity.
+ * Use `create(IdentitySchema)` to create a new message.
+ */
+export const IdentitySchema: GenMessage<Identity> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 0);
+
+/**
+ * @generated from message directoryroster.v1.WhoAmIRequest
+ */
+export type WhoAmIRequest = Message<"directoryroster.v1.WhoAmIRequest"> & {
+};
+
+/**
+ * Describes the message directoryroster.v1.WhoAmIRequest.
+ * Use `create(WhoAmIRequestSchema)` to create a new message.
+ */
+export const WhoAmIRequestSchema: GenMessage<WhoAmIRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 1);
+
+/**
+ * @generated from message directoryroster.v1.WhoAmIResponse
+ */
+export type WhoAmIResponse = Message<"directoryroster.v1.WhoAmIResponse"> & {
+  /**
+   * @generated from field: directoryroster.v1.Identity identity = 1;
+   */
+  identity?: Identity | undefined;
+
+  /**
+   * the build this hub is running.
+   *
+   * @generated from field: string version = 2;
+   */
+  version: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.WhoAmIResponse.
+ * Use `create(WhoAmIResponseSchema)` to create a new message.
+ */
+export const WhoAmIResponseSchema: GenMessage<WhoAmIResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 2);
+
+/**
+ * HeldGroup is one internal group an identity is in, and why: the
+ * directory groups matched, or the matcher, rendered to be read.
+ *
+ * @generated from message directoryroster.v1.HeldGroup
+ */
+export type HeldGroup = Message<"directoryroster.v1.HeldGroup"> & {
+  /**
+   * @generated from field: string group = 1;
+   */
+  group: string;
+
+  /**
+   * @generated from field: repeated string via = 2;
+   */
+  via: string[];
+};
+
+/**
+ * Describes the message directoryroster.v1.HeldGroup.
+ * Use `create(HeldGroupSchema)` to create a new message.
+ */
+export const HeldGroupSchema: GenMessage<HeldGroup> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 3);
+
+/**
+ * @generated from message directoryroster.v1.ExplainRequest
+ */
+export type ExplainRequest = Message<"directoryroster.v1.ExplainRequest"> & {
+  /**
+   * empty explains the caller.
+   *
+   * @generated from field: string email = 1;
+   */
+  email: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.ExplainRequest.
+ * Use `create(ExplainRequestSchema)` to create a new message.
+ */
+export const ExplainRequestSchema: GenMessage<ExplainRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 4);
+
+/**
+ * @generated from message directoryroster.v1.ExplainResponse
+ */
+export type ExplainResponse = Message<"directoryroster.v1.ExplainResponse"> & {
+  /**
+   * @generated from field: directoryroster.v1.Identity identity = 1;
+   */
+  identity?: Identity | undefined;
+
+  /**
+   * the directory's answer about the address, with the same semantics as
+   * DirectoryService: authoritative false makes the rest an opinion.
+   *
+   * @generated from field: bool in_domain = 2;
+   */
+  inDomain: boolean;
+
+  /**
+   * @generated from field: bool found = 3;
+   */
+  found: boolean;
+
+  /**
+   * @generated from field: bool suspended = 4;
+   */
+  suspended: boolean;
+
+  /**
+   * @generated from field: bool authoritative = 5;
+   */
+  authoritative: boolean;
+
+  /**
+   * the directory groups the hub reports for the address.
+   *
+   * @generated from field: repeated string directory_groups = 6;
+   */
+  directoryGroups: string[];
+
+  /**
+   * the internal groups held, and why.
+   *
+   * @generated from field: repeated directoryroster.v1.HeldGroup held = 7;
+   */
+  held: HeldGroup[];
+
+  /**
+   * the claims a token would carry: the deep merge of the held groups'
+   * fragments.
+   *
+   * @generated from field: google.protobuf.Struct claims = 8;
+   */
+  claims?: JsonObject | undefined;
+
+  /**
+   * how long a token would live: the shortest across the held groups.
+   *
+   * @generated from field: google.protobuf.Duration lifetime = 9;
+   */
+  lifetime?: Duration | undefined;
+};
+
+/**
+ * Describes the message directoryroster.v1.ExplainResponse.
+ * Use `create(ExplainResponseSchema)` to create a new message.
+ */
+export const ExplainResponseSchema: GenMessage<ExplainResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 5);
+
+/**
+ * GroupMember is one directory group inside an internal group, and the
+ * layer it came from: "declared" or "console".
+ *
+ * @generated from message directoryroster.v1.GroupMember
+ */
+export type GroupMember = Message<"directoryroster.v1.GroupMember"> & {
+  /**
+   * @generated from field: string address = 1;
+   */
+  address: string;
+
+  /**
+   * @generated from field: string layer = 2;
+   */
+  layer: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.GroupMember.
+ * Use `create(GroupMemberSchema)` to create a new message.
+ */
+export const GroupMemberSchema: GenMessage<GroupMember> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 6);
+
+/**
+ * PolicyGroup is one internal group as the console shows it.
+ *
+ * @generated from message directoryroster.v1.PolicyGroup
+ */
+export type PolicyGroup = Message<"directoryroster.v1.PolicyGroup"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: repeated directoryroster.v1.GroupMember members = 2;
+   */
+  members: GroupMember[];
+
+  /**
+   * matchers rendered for a person to read.
+   *
+   * @generated from field: repeated string matchers = 3;
+   */
+  matchers: string[];
+
+  /**
+   * what this group adds to a token.
+   *
+   * @generated from field: google.protobuf.Struct claims = 4;
+   */
+  claims?: JsonObject | undefined;
+
+  /**
+   * how long a token lives for someone in this group alone.
+   *
+   * @generated from field: google.protobuf.Duration lifetime = 5;
+   */
+  lifetime?: Duration | undefined;
+};
+
+/**
+ * Describes the message directoryroster.v1.PolicyGroup.
+ * Use `create(PolicyGroupSchema)` to create a new message.
+ */
+export const PolicyGroupSchema: GenMessage<PolicyGroup> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 7);
+
+/**
+ * @generated from message directoryroster.v1.GetPolicyRequest
+ */
+export type GetPolicyRequest = Message<"directoryroster.v1.GetPolicyRequest"> & {
+};
+
+/**
+ * Describes the message directoryroster.v1.GetPolicyRequest.
+ * Use `create(GetPolicyRequestSchema)` to create a new message.
+ */
+export const GetPolicyRequestSchema: GenMessage<GetPolicyRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 8);
+
+/**
+ * @generated from message directoryroster.v1.GetPolicyResponse
+ */
+export type GetPolicyResponse = Message<"directoryroster.v1.GetPolicyResponse"> & {
+  /**
+   * @generated from field: repeated directoryroster.v1.PolicyGroup groups = 1;
+   */
+  groups: PolicyGroup[];
+
+  /**
+   * the break-glass account is still enabled (a banner in the console).
+   *
+   * @generated from field: bool admin_enabled = 2;
+   */
+  adminEnabled: boolean;
+
+  /**
+   * enabled sign-in sources, e.g. "directory", "oidc:<issuer>", "forwarded:<issuer>".
+   *
+   * @generated from field: repeated string login_sources = 3;
+   */
+  loginSources: string[];
+
+  /**
+   * the console layer as YAML, so that an installation which started
+   * standalone can move its edits into git by pasting.
+   *
+   * @generated from field: string console_layer = 4;
+   */
+  consoleLayer: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.GetPolicyResponse.
+ * Use `create(GetPolicyResponseSchema)` to create a new message.
+ */
+export const GetPolicyResponseSchema: GenMessage<GetPolicyResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 9);
+
+/**
+ * @generated from message directoryroster.v1.AddMembershipRequest
+ */
+export type AddMembershipRequest = Message<"directoryroster.v1.AddMembershipRequest"> & {
+  /**
+   * the internal group, which must be declared.
+   *
+   * @generated from field: string group = 1;
+   */
+  group: string;
+
+  /**
+   * the directory group's address.
+   *
+   * @generated from field: string directory_group = 2;
+   */
+  directoryGroup: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.AddMembershipRequest.
+ * Use `create(AddMembershipRequestSchema)` to create a new message.
+ */
+export const AddMembershipRequestSchema: GenMessage<AddMembershipRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 10);
+
+/**
+ * @generated from message directoryroster.v1.AddMembershipResponse
+ */
+export type AddMembershipResponse = Message<"directoryroster.v1.AddMembershipResponse"> & {
+};
+
+/**
+ * Describes the message directoryroster.v1.AddMembershipResponse.
+ * Use `create(AddMembershipResponseSchema)` to create a new message.
+ */
+export const AddMembershipResponseSchema: GenMessage<AddMembershipResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 11);
+
+/**
+ * @generated from message directoryroster.v1.RemoveMembershipRequest
+ */
+export type RemoveMembershipRequest = Message<"directoryroster.v1.RemoveMembershipRequest"> & {
+  /**
+   * @generated from field: string group = 1;
+   */
+  group: string;
+
+  /**
+   * @generated from field: string directory_group = 2;
+   */
+  directoryGroup: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.RemoveMembershipRequest.
+ * Use `create(RemoveMembershipRequestSchema)` to create a new message.
+ */
+export const RemoveMembershipRequestSchema: GenMessage<RemoveMembershipRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 12);
+
+/**
+ * @generated from message directoryroster.v1.RemoveMembershipResponse
+ */
+export type RemoveMembershipResponse = Message<"directoryroster.v1.RemoveMembershipResponse"> & {
+};
+
+/**
+ * Describes the message directoryroster.v1.RemoveMembershipResponse.
+ * Use `create(RemoveMembershipResponseSchema)` to create a new message.
+ */
+export const RemoveMembershipResponseSchema: GenMessage<RemoveMembershipResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_access, 13);
 
 /**
  * @generated from message directoryroster.v1.ListDirectoryGroupsRequest
@@ -29,7 +431,7 @@ export type ListDirectoryGroupsRequest = Message<"directoryroster.v1.ListDirecto
  * Use `create(ListDirectoryGroupsRequestSchema)` to create a new message.
  */
 export const ListDirectoryGroupsRequestSchema: GenMessage<ListDirectoryGroupsRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 0);
+  messageDesc(file_directoryroster_v1_access, 14);
 
 /**
  * @generated from message directoryroster.v1.ListDirectoryGroupsResponse
@@ -46,10 +448,10 @@ export type ListDirectoryGroupsResponse = Message<"directoryroster.v1.ListDirect
  * Use `create(ListDirectoryGroupsResponseSchema)` to create a new message.
  */
 export const ListDirectoryGroupsResponseSchema: GenMessage<ListDirectoryGroupsResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 1);
+  messageDesc(file_directoryroster_v1_access, 15);
 
 /**
- * DirectoryGroupSummary is one group as the rule picker shows it.
+ * DirectoryGroupSummary is one group as the membership picker shows it.
  *
  * @generated from message directoryroster.v1.DirectoryGroupSummary
  */
@@ -82,312 +484,12 @@ export type DirectoryGroupSummary = Message<"directoryroster.v1.DirectoryGroupSu
  * Use `create(DirectoryGroupSummarySchema)` to create a new message.
  */
 export const DirectoryGroupSummarySchema: GenMessage<DirectoryGroupSummary> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 2);
+  messageDesc(file_directoryroster_v1_access, 16);
 
 /**
- * @generated from message directoryroster.v1.Identity
- */
-export type Identity = Message<"directoryroster.v1.Identity"> & {
-  /**
-   * @generated from field: string email = 1;
-   */
-  email: string;
-
-  /**
-   * the issuer's subject, or "admin".
-   *
-   * @generated from field: string subject = 2;
-   */
-  subject: string;
-
-  /**
-   * @generated from field: directoryroster.v1.IdentitySource source = 3;
-   */
-  source: IdentitySource;
-
-  /**
-   * @generated from field: directoryroster.v1.Role role = 4;
-   */
-  role: Role;
-
-  /**
-   * ids of the rules that granted the role, in evaluation order.
-   *
-   * @generated from field: repeated string matched_rules = 5;
-   */
-  matchedRules: string[];
-};
-
-/**
- * Describes the message directoryroster.v1.Identity.
- * Use `create(IdentitySchema)` to create a new message.
- */
-export const IdentitySchema: GenMessage<Identity> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 3);
-
-/**
- * AccessRule grants a role to every identity its subject matches.
- *
- * @generated from message directoryroster.v1.AccessRule
- */
-export type AccessRule = Message<"directoryroster.v1.AccessRule"> & {
-  /**
-   * stable id; declared rules use the id from the deployment's values.
-   *
-   * @generated from field: string id = 1;
-   */
-  id: string;
-
-  /**
-   * @generated from oneof directoryroster.v1.AccessRule.subject
-   */
-  subject: {
-    /**
-     * @generated from field: directoryroster.v1.DirectoryGroupSubject directory_group = 2;
-     */
-    value: DirectoryGroupSubject;
-    case: "directoryGroup";
-  } | {
-    /**
-     * @generated from field: directoryroster.v1.ClaimSubject claim = 3;
-     */
-    value: ClaimSubject;
-    case: "claim";
-  } | {
-    /**
-     * an exact address, case-insensitive.
-     *
-     * @generated from field: string email = 4;
-     */
-    value: string;
-    case: "email";
-  } | {
-    /**
-     * every address in this domain.
-     *
-     * @generated from field: string email_domain = 5;
-     */
-    value: string;
-    case: "emailDomain";
-  } | { case: undefined; value?: undefined };
-
-  /**
-   * @generated from field: directoryroster.v1.Role role = 6;
-   */
-  role: Role;
-
-  /**
-   * true when the deployment declared it: read-only in the console.
-   *
-   * @generated from field: bool declared = 7;
-   */
-  declared: boolean;
-};
-
-/**
- * Describes the message directoryroster.v1.AccessRule.
- * Use `create(AccessRuleSchema)` to create a new message.
- */
-export const AccessRuleSchema: GenMessage<AccessRule> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 4);
-
-/**
- * DirectoryGroupSubject matches members of a group the hub snapshots.
- * The identity's address must be live and in a served domain.
- *
- * @generated from message directoryroster.v1.DirectoryGroupSubject
- */
-export type DirectoryGroupSubject = Message<"directoryroster.v1.DirectoryGroupSubject"> & {
-  /**
-   * empty means whichever workspace serves the group's domain.
-   *
-   * @generated from field: string workspace_id = 1;
-   */
-  workspaceId: string;
-
-  /**
-   * @generated from field: string group = 2;
-   */
-  group: string;
-};
-
-/**
- * Describes the message directoryroster.v1.DirectoryGroupSubject.
- * Use `create(DirectoryGroupSubjectSchema)` to create a new message.
- */
-export const DirectoryGroupSubjectSchema: GenMessage<DirectoryGroupSubject> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 5);
-
-/**
- * ClaimSubject matches a value in a claim of a verified token from a
- * named issuer: a groups claim, a roles claim, anything the issuer emits.
- *
- * @generated from message directoryroster.v1.ClaimSubject
- */
-export type ClaimSubject = Message<"directoryroster.v1.ClaimSubject"> & {
-  /**
-   * @generated from field: string issuer = 1;
-   */
-  issuer: string;
-
-  /**
-   * @generated from field: string claim = 2;
-   */
-  claim: string;
-
-  /**
-   * @generated from field: string value = 3;
-   */
-  value: string;
-};
-
-/**
- * Describes the message directoryroster.v1.ClaimSubject.
- * Use `create(ClaimSubjectSchema)` to create a new message.
- */
-export const ClaimSubjectSchema: GenMessage<ClaimSubject> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 6);
-
-/**
- * @generated from message directoryroster.v1.WhoAmIRequest
- */
-export type WhoAmIRequest = Message<"directoryroster.v1.WhoAmIRequest"> & {
-};
-
-/**
- * Describes the message directoryroster.v1.WhoAmIRequest.
- * Use `create(WhoAmIRequestSchema)` to create a new message.
- */
-export const WhoAmIRequestSchema: GenMessage<WhoAmIRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 7);
-
-/**
- * @generated from message directoryroster.v1.WhoAmIResponse
- */
-export type WhoAmIResponse = Message<"directoryroster.v1.WhoAmIResponse"> & {
-  /**
-   * @generated from field: directoryroster.v1.Identity identity = 1;
-   */
-  identity?: Identity | undefined;
-};
-
-/**
- * Describes the message directoryroster.v1.WhoAmIResponse.
- * Use `create(WhoAmIResponseSchema)` to create a new message.
- */
-export const WhoAmIResponseSchema: GenMessage<WhoAmIResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 8);
-
-/**
- * @generated from message directoryroster.v1.GetAccessPolicyRequest
- */
-export type GetAccessPolicyRequest = Message<"directoryroster.v1.GetAccessPolicyRequest"> & {
-};
-
-/**
- * Describes the message directoryroster.v1.GetAccessPolicyRequest.
- * Use `create(GetAccessPolicyRequestSchema)` to create a new message.
- */
-export const GetAccessPolicyRequestSchema: GenMessage<GetAccessPolicyRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 9);
-
-/**
- * @generated from message directoryroster.v1.GetAccessPolicyResponse
- */
-export type GetAccessPolicyResponse = Message<"directoryroster.v1.GetAccessPolicyResponse"> & {
-  /**
-   * @generated from field: repeated directoryroster.v1.AccessRule rules = 1;
-   */
-  rules: AccessRule[];
-
-  /**
-   * the break-glass account is still enabled (a banner in the console).
-   *
-   * @generated from field: bool admin_enabled = 2;
-   */
-  adminEnabled: boolean;
-
-  /**
-   * enabled sign-in sources, e.g. "directory", "oidc:<issuer>", "forwarded:<issuer>".
-   *
-   * @generated from field: repeated string login_sources = 3;
-   */
-  loginSources: string[];
-};
-
-/**
- * Describes the message directoryroster.v1.GetAccessPolicyResponse.
- * Use `create(GetAccessPolicyResponseSchema)` to create a new message.
- */
-export const GetAccessPolicyResponseSchema: GenMessage<GetAccessPolicyResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 10);
-
-/**
- * @generated from message directoryroster.v1.AddRuleRequest
- */
-export type AddRuleRequest = Message<"directoryroster.v1.AddRuleRequest"> & {
-  /**
-   * @generated from field: directoryroster.v1.AccessRule rule = 1;
-   */
-  rule?: AccessRule | undefined;
-};
-
-/**
- * Describes the message directoryroster.v1.AddRuleRequest.
- * Use `create(AddRuleRequestSchema)` to create a new message.
- */
-export const AddRuleRequestSchema: GenMessage<AddRuleRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 11);
-
-/**
- * @generated from message directoryroster.v1.AddRuleResponse
- */
-export type AddRuleResponse = Message<"directoryroster.v1.AddRuleResponse"> & {
-  /**
-   * @generated from field: directoryroster.v1.AccessRule rule = 1;
-   */
-  rule?: AccessRule | undefined;
-};
-
-/**
- * Describes the message directoryroster.v1.AddRuleResponse.
- * Use `create(AddRuleResponseSchema)` to create a new message.
- */
-export const AddRuleResponseSchema: GenMessage<AddRuleResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 12);
-
-/**
- * @generated from message directoryroster.v1.RemoveRuleRequest
- */
-export type RemoveRuleRequest = Message<"directoryroster.v1.RemoveRuleRequest"> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
-};
-
-/**
- * Describes the message directoryroster.v1.RemoveRuleRequest.
- * Use `create(RemoveRuleRequestSchema)` to create a new message.
- */
-export const RemoveRuleRequestSchema: GenMessage<RemoveRuleRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 13);
-
-/**
- * @generated from message directoryroster.v1.RemoveRuleResponse
- */
-export type RemoveRuleResponse = Message<"directoryroster.v1.RemoveRuleResponse"> & {
-};
-
-/**
- * Describes the message directoryroster.v1.RemoveRuleResponse.
- * Use `create(RemoveRuleResponseSchema)` to create a new message.
- */
-export const RemoveRuleResponseSchema: GenMessage<RemoveRuleResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 14);
-
-/**
- * Role is what a rule grants. Operator implies viewer.
+ * Role is what an identity may do in this console. Operator implies
+ * viewer. A role is not granted directly: it is held by being in the
+ * internal group the deployment declared for it.
  *
  * @generated from enum directoryroster.v1.Role
  */
@@ -415,7 +517,7 @@ export const RoleSchema: GenEnum<Role> = /*@__PURE__*/
   enumDesc(file_directoryroster_v1_access, 0);
 
 /**
- * IdentitySource says how the caller was established.
+ * IdentitySource says how a caller was established.
  *
  * @generated from enum directoryroster.v1.IdentitySource
  */
@@ -461,18 +563,21 @@ export const IdentitySourceSchema: GenEnum<IdentitySource> = /*@__PURE__*/
   enumDesc(file_directoryroster_v1_access, 1);
 
 /**
- * AccessService is how the console learns who is signed in and which
- * rules grant what. Rules declared by the deployment are read-only here;
- * rules added through the console are stored by the hub and can be
- * removed the same way. Signing in itself is not an RPC: it is a set of
- * HTTP routes on the console listener (see docs/reference/contracts.md).
+ * AccessService is how the console learns who is signed in, what the
+ * policy says, and what any identity would effectively get.
+ *
+ * The policy's five tables are declared by the deployment. Exactly one of
+ * them is writable here — memberships, which directory groups populate an
+ * internal group — because everything else shapes a token and belongs in
+ * a reviewed commit. See docs/reference/policy.md.
  *
  * @generated from service directoryroster.v1.AccessService
  */
 export const AccessService: GenService<{
   /**
-   * WhoAmI returns the caller's identity, how it was established, the
-   * role it holds and which rules granted it. Any signed-in identity.
+   * WhoAmI returns the caller's identity: who they are, how they were
+   * established, the role they hold and the internal groups behind it.
+   * Any signed-in identity.
    *
    * @generated from rpc directoryroster.v1.AccessService.WhoAmI
    */
@@ -482,42 +587,59 @@ export const AccessService: GenService<{
     output: typeof WhoAmIResponseSchema;
   },
   /**
-   * GetAccessPolicy returns every rule, declared and console-added, plus
-   * the state of the break-glass admin account and the enabled sign-in
-   * sources. Viewer.
+   * Explain answers "what does this identity effectively get, and why":
+   * the directory groups the hub confirms, the internal groups they put
+   * the identity in, the merged claims and the token lifetime. With an
+   * empty email it explains the caller, which any signed-in identity may
+   * ask; for anyone else it is operator, because it discloses another
+   * person's access.
    *
-   * @generated from rpc directoryroster.v1.AccessService.GetAccessPolicy
+   * @generated from rpc directoryroster.v1.AccessService.Explain
    */
-  getAccessPolicy: {
+  explain: {
     methodKind: "unary";
-    input: typeof GetAccessPolicyRequestSchema;
-    output: typeof GetAccessPolicyResponseSchema;
+    input: typeof ExplainRequestSchema;
+    output: typeof ExplainResponseSchema;
   },
   /**
-   * AddRule stores a console-added rule. Operator.
+   * GetPolicy returns every internal group with its members and what each
+   * adds, the state of the break-glass admin, the enabled sign-in
+   * sources, and the console layer as YAML for export. Viewer.
    *
-   * @generated from rpc directoryroster.v1.AccessService.AddRule
+   * @generated from rpc directoryroster.v1.AccessService.GetPolicy
    */
-  addRule: {
+  getPolicy: {
     methodKind: "unary";
-    input: typeof AddRuleRequestSchema;
-    output: typeof AddRuleResponseSchema;
+    input: typeof GetPolicyRequestSchema;
+    output: typeof GetPolicyResponseSchema;
   },
   /**
-   * RemoveRule deletes a console-added rule. A declared rule refuses
-   * (failed_precondition): change the deployment instead. Operator.
+   * AddMembership records a directory group in an internal group.
+   * Operator.
    *
-   * @generated from rpc directoryroster.v1.AccessService.RemoveRule
+   * @generated from rpc directoryroster.v1.AccessService.AddMembership
    */
-  removeRule: {
+  addMembership: {
     methodKind: "unary";
-    input: typeof RemoveRuleRequestSchema;
-    output: typeof RemoveRuleResponseSchema;
+    input: typeof AddMembershipRequestSchema;
+    output: typeof AddMembershipResponseSchema;
+  },
+  /**
+   * RemoveMembership drops one the console added. A membership the
+   * deployment declared refuses (failed_precondition): change the values
+   * instead. Operator.
+   *
+   * @generated from rpc directoryroster.v1.AccessService.RemoveMembership
+   */
+  removeMembership: {
+    methodKind: "unary";
+    input: typeof RemoveMembershipRequestSchema;
+    output: typeof RemoveMembershipResponseSchema;
   },
   /**
    * ListDirectoryGroups returns the groups the hub has snapshotted, so
-   * that granting a role is a click on a group rather than a typed
-   * address that may be a typo. Viewer.
+   * that a membership is a click rather than a typed address that may be
+   * a typo. Viewer.
    *
    * @generated from rpc directoryroster.v1.AccessService.ListDirectoryGroups
    */

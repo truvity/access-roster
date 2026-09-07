@@ -8,7 +8,6 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/truvity/access-roster/internal/access"
-	"github.com/truvity/access-roster/rules"
 )
 
 type identityKey struct{}
@@ -26,7 +25,7 @@ func IdentityFrom(ctx context.Context) (access.Identity, bool) {
 }
 
 // requireRole is the gate every operator handler opens with.
-func requireRole(ctx context.Context, want rules.Role) (access.Identity, error) {
+func requireRole(ctx context.Context, want access.Role) (access.Identity, error) {
 	id, ok := IdentityFrom(ctx)
 	if !ok {
 		return access.Identity{}, connect.NewError(connect.CodeUnauthenticated, errors.New("sign in first"))

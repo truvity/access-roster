@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/settings"
-	"github.com/truvity/access-roster/rules"
+	"github.com/truvity/access-roster/internal/version"
 )
 
 // Connector starts and finishes an admin-consent flow for one backend.
@@ -49,8 +48,6 @@ type ConsoleDeps struct {
 	Settings     settings.Store
 	State        *access.StateCodec
 	Connectors   []Connector
-	DeclaredRule []rules.Rule
-	Defaults     rules.Defaults
 	AdminEnabled bool
 	LoginSources []string
 	CacheBackend string
@@ -70,36 +67,27 @@ var (
 	_ directoryrosterv1connect.AccessServiceHandler    = (*Console)(nil)
 )
 
-// NewConsole returns the operator services and installs the current
-// policy, so that a rule added before a restart is in force after it.
+// NewConsole returns the operator services and installs the console layer
+// of the policy, so that a membership added before a restart is in force
+// after it.
 func NewConsole(ctx context.Context, deps ConsoleDeps) (*Console, error) {
 	c := &Console{deps: deps, connectors: map[string]Connector{}}
 	for _, conn := range deps.Connectors {
 		c.connectors[conn.Kind()] = conn
 	}
-	if err := c.reloadPolicy(ctx); err != nil {
-		return nil, err
+	stored, err := deps.Settings.Memberships(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read the console layer: %w", err)
+	}
+	if err = deps.Authorizer.Policy().SetConsole(stored); err != nil {
+		return nil, fmt.Errorf("install the console layer: %w", err)
 	}
 	return c, nil
 }
 
-// reloadPolicy assembles the declared rules and the console-added ones
-// into the policy the authorizer runs.
-func (c *Console) reloadPolicy(ctx context.Context) error {
-	added, err := c.deps.Settings.Rules(ctx)
-	if err != nil {
-		return fmt.Errorf("read console rules: %w", err)
-	}
-	policy := rules.Policy{
-		Version:  1,
-		Rules:    append(slices.Clone(c.deps.DeclaredRule), added...),
-		Defaults: c.deps.Defaults,
-	}
-	if err = policy.Validate(); err != nil {
-		return fmt.Errorf("assembled policy: %w", err)
-	}
-	c.deps.Authorizer.SetPolicy(policy)
-	return nil
+// persist writes the console layer back after a change.
+func (c *Console) persist(ctx context.Context) error {
+	return c.deps.Settings.SetMemberships(ctx, c.deps.Authorizer.Policy().Console())
 }
 
 // ------------------------------------------------------- WorkspaceService
@@ -108,7 +96,7 @@ func (c *Console) reloadPolicy(ctx context.Context) error {
 func (c *Console) ListWorkspaces(
 	ctx context.Context, _ *connect.Request[directoryrosterv1.ListWorkspacesRequest],
 ) (*connect.Response[directoryrosterv1.ListWorkspacesResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleViewer); err != nil {
+	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
 		return nil, err
 	}
 	views, err := c.deps.Hub.WorkspaceViews(ctx)
@@ -169,7 +157,7 @@ func (c *Console) Reconnect(
 func (c *Console) beginFlow(
 	ctx context.Context, want directoryrosterv1.Backend, bind string,
 ) (consentURL, setCookie string, err error) {
-	if _, err = requireRole(ctx, rules.RoleOperator); err != nil {
+	if _, err = requireRole(ctx, access.RoleOperator); err != nil {
 		return "", "", err
 	}
 	conn, ok := c.connectors[backendKind(want)]
@@ -197,7 +185,7 @@ func (c *Console) beginFlow(
 func (c *Console) UploadKey(
 	ctx context.Context, req *connect.Request[directoryrosterv1.UploadKeyRequest],
 ) (*connect.Response[directoryrosterv1.UploadKeyResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleOperator); err != nil {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	conn, ok := c.connectors[backendKind(req.Msg.GetBackend())]
@@ -249,7 +237,7 @@ func (c *Console) adopt(ctx context.Context, ws hub.Workspace, b backend.Backend
 func (c *Console) Probe(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ProbeRequest],
 ) (*connect.Response[directoryrosterv1.ProbeResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleOperator); err != nil {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	id := req.Msg.GetWorkspaceId()
@@ -281,7 +269,7 @@ func (c *Console) Probe(
 func (c *Console) Refresh(
 	ctx context.Context, req *connect.Request[directoryrosterv1.RefreshRequest],
 ) (*connect.Response[directoryrosterv1.RefreshResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleOperator); err != nil {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	at, err := c.deps.Hub.Refresh(ctx, req.Msg.GetWorkspaceId())
@@ -295,7 +283,7 @@ func (c *Console) Refresh(
 func (c *Console) Disconnect(
 	ctx context.Context, req *connect.Request[directoryrosterv1.DisconnectRequest],
 ) (*connect.Response[directoryrosterv1.DisconnectResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleOperator); err != nil {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	if err := c.deps.Hub.Disconnect(ctx, req.Msg.GetWorkspaceId()); err != nil {
@@ -311,7 +299,7 @@ func (c *Console) Disconnect(
 func (c *Console) GetSettings(
 	ctx context.Context, _ *connect.Request[directoryrosterv1.GetSettingsRequest],
 ) (*connect.Response[directoryrosterv1.GetSettingsResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleViewer); err != nil {
+	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
 		return nil, err
 	}
 	client, err := c.deps.Settings.OAuthClient(ctx)
@@ -340,7 +328,7 @@ func (c *Console) GetSettings(
 func (c *Console) SetOAuthClient(
 	ctx context.Context, req *connect.Request[directoryrosterv1.SetOAuthClientRequest],
 ) (*connect.Response[directoryrosterv1.SetOAuthClientResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleOperator); err != nil {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	err := c.deps.Settings.SetOAuthClient(ctx, req.Msg.GetClientId(), req.Msg.GetClientSecret())
@@ -363,90 +351,115 @@ func (c *Console) WhoAmI(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("sign in first"))
 	}
-	return connect.NewResponse(&directoryrosterv1.WhoAmIResponse{Identity: identityProto(id)}), nil
+	return connect.NewResponse(&directoryrosterv1.WhoAmIResponse{
+		Identity: identityProto(id),
+		Version:  version.String(),
+	}), nil
 }
 
-// GetAccessPolicy implements the operator contract.
-func (c *Console) GetAccessPolicy(
-	ctx context.Context, _ *connect.Request[directoryrosterv1.GetAccessPolicyRequest],
-) (*connect.Response[directoryrosterv1.GetAccessPolicyResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleViewer); err != nil {
+// Explain implements the operator contract. An empty address explains the
+// caller, which anyone signed in may ask; explaining somebody else
+// discloses their access, so that needs operator.
+func (c *Console) Explain(
+	ctx context.Context, req *connect.Request[directoryrosterv1.ExplainRequest],
+) (*connect.Response[directoryrosterv1.ExplainResponse], error) {
+	caller, ok := IdentityFrom(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("sign in first"))
+	}
+	email := strings.TrimSpace(req.Msg.GetEmail())
+	if email == "" || strings.EqualFold(email, caller.Email) {
+		email = caller.Email
+	} else if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
-	added, err := c.deps.Settings.Rules(ctx)
+
+	if email == "" {
+		// The break-glass admin has no address to explain.
+		return connect.NewResponse(&directoryrosterv1.ExplainResponse{
+			Identity: identityProto(caller),
+		}), nil
+	}
+
+	explained, err := c.deps.Authorizer.Explain(ctx, email)
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	out := &directoryrosterv1.GetAccessPolicyResponse{
+	return connect.NewResponse(explanationProto(explained, caller)), nil
+}
+
+// GetPolicy implements the operator contract.
+func (c *Console) GetPolicy(
+	ctx context.Context, _ *connect.Request[directoryrosterv1.GetPolicyRequest],
+) (*connect.Response[directoryrosterv1.GetPolicyResponse], error) {
+	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+		return nil, err
+	}
+	set := c.deps.Authorizer.Policy()
+	groups := set.Groups()
+	out := &directoryrosterv1.GetPolicyResponse{
 		AdminEnabled: c.deps.AdminEnabled,
 		LoginSources: c.deps.LoginSources,
-		Rules:        make([]*directoryrosterv1.AccessRule, 0, len(c.deps.DeclaredRule)+len(added)),
+		Groups:       make([]*directoryrosterv1.PolicyGroup, 0, len(groups)),
 	}
-	for i := range c.deps.DeclaredRule {
-		out.Rules = append(out.Rules, ruleProto(c.deps.DeclaredRule[i], true))
+	for i := range groups {
+		group, err := policyGroupProto(&groups[i])
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+		out.Groups = append(out.Groups, group)
 	}
-	for i := range added {
-		out.Rules = append(out.Rules, ruleProto(added[i], false))
+	exported, err := exportConsoleLayer(set.Console())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	out.ConsoleLayer = exported
 	return connect.NewResponse(out), nil
 }
 
-// AddRule implements the operator contract.
-func (c *Console) AddRule(
-	ctx context.Context, req *connect.Request[directoryrosterv1.AddRuleRequest],
-) (*connect.Response[directoryrosterv1.AddRuleResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleOperator); err != nil {
+// AddMembership implements the operator contract.
+func (c *Console) AddMembership(
+	ctx context.Context, req *connect.Request[directoryrosterv1.AddMembershipRequest],
+) (*connect.Response[directoryrosterv1.AddMembershipResponse], error) {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
-	rule, err := ruleFromProto(req.Msg.GetRule())
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	if _, err := c.deps.Authorizer.Policy().AddMembership(
+		req.Msg.GetGroup(), strings.ToLower(strings.TrimSpace(req.Msg.GetDirectoryGroup())),
+	); err != nil {
+		return nil, policyError(err)
 	}
-	// Validate the rule on its own before it can break the whole policy.
-	if err = (rules.Policy{Version: 1, Rules: []rules.Rule{rule}}).Validate(); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	if err = c.deps.Settings.AddRule(ctx, rule); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	if err = c.reloadPolicy(ctx); err != nil {
+	if err := c.persist(ctx); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&directoryrosterv1.AddRuleResponse{Rule: ruleProto(rule, false)}), nil
+	return connect.NewResponse(&directoryrosterv1.AddMembershipResponse{}), nil
 }
 
-// RemoveRule implements the operator contract.
-func (c *Console) RemoveRule(
-	ctx context.Context, req *connect.Request[directoryrosterv1.RemoveRuleRequest],
-) (*connect.Response[directoryrosterv1.RemoveRuleResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleOperator); err != nil {
+// RemoveMembership implements the operator contract.
+func (c *Console) RemoveMembership(
+	ctx context.Context, req *connect.Request[directoryrosterv1.RemoveMembershipRequest],
+) (*connect.Response[directoryrosterv1.RemoveMembershipResponse], error) {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
-	id := req.Msg.GetId()
-	for i := range c.deps.DeclaredRule {
-		if c.deps.DeclaredRule[i].ID == id {
-			return nil, connect.NewError(connect.CodeFailedPrecondition,
-				errors.New("the deployment declared this rule: change the values instead"))
-		}
+	if err := c.deps.Authorizer.Policy().RemoveMembership(
+		req.Msg.GetGroup(), strings.ToLower(strings.TrimSpace(req.Msg.GetDirectoryGroup())),
+	); err != nil {
+		return nil, policyError(err)
 	}
-	if err := c.deps.Settings.RemoveRule(ctx, id); err != nil {
-		if errors.Is(err, settings.ErrNotFound) {
-			return nil, connect.NewError(connect.CodeNotFound, err)
-		}
+	if err := c.persist(ctx); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	if err := c.reloadPolicy(ctx); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	return connect.NewResponse(&directoryrosterv1.RemoveRuleResponse{}), nil
+	return connect.NewResponse(&directoryrosterv1.RemoveMembershipResponse{}), nil
 }
 
 // ListDirectoryGroups implements the operator contract: the groups the hub
-// has snapshotted, so that a rule is a click rather than a typed address.
+// has snapshotted, so that a membership is a click rather than a typed
+// address.
 func (c *Console) ListDirectoryGroups(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ListDirectoryGroupsRequest],
 ) (*connect.Response[directoryrosterv1.ListDirectoryGroupsResponse], error) {
-	if _, err := requireRole(ctx, rules.RoleViewer); err != nil {
+	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
 		return nil, err
 	}
 	groups, served, err := c.deps.Hub.ListGroups(ctx, req.Msg.GetDomain(), nil)

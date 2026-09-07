@@ -1,11 +1,15 @@
 // Package access decides who is at the console and what they may do.
 //
-// It never proves who anyone is. A principal arrives already authenticated
-// — by a bearer an authenticating gateway forwarded, by a sign-in the hub
-// delegated to a connected directory or an external issuer, or by the
-// break-glass admin account — and this package turns that principal into
-// an identity with a role, by asking the directory for the caller's groups
-// and running the rules.
+// It never proves who anyone is. A principal arrives already
+// authenticated — by a bearer an authenticating gateway forwarded, by a
+// sign-in the hub delegated to a connected directory or an external
+// issuer, or by the break-glass admin account — and this package turns
+// that principal into an identity, by asking the directory which groups
+// the account is in and running the policy.
+//
+// The hub holds no role vocabulary of its own: an identity is an operator
+// because the policy puts it in the operators group, exactly as any other
+// relying party's roles work.
 package access
 
 import (
@@ -17,12 +21,38 @@ import (
 	"time"
 
 	"github.com/truvity/access-roster/internal/hub"
-	"github.com/truvity/access-roster/rules"
+	"github.com/truvity/access-roster/policy"
 )
 
 // ErrSuspended is returned when the directory says, authoritatively, that
 // the account signing in is not live.
 var ErrSuspended = errors.New("access: the account is not live")
+
+// Role is what an identity may do in this console.
+type Role string
+
+// The roles. Operator implies viewer.
+const (
+	RoleNone     Role = ""
+	RoleViewer   Role = "viewer"
+	RoleOperator Role = "operator"
+)
+
+func (r Role) rank() int {
+	switch r {
+	case RoleOperator:
+		return 2
+	case RoleViewer:
+		return 1
+	case RoleNone:
+		return 0
+	default:
+		return 0
+	}
+}
+
+// Implies reports whether holding r also confers other.
+func (r Role) Implies(other Role) bool { return r.rank() >= other.rank() }
 
 // Source says how a principal was established.
 type Source string
@@ -41,85 +71,95 @@ const (
 	SourceAdmin Source = "admin"
 )
 
-// Principal is an authenticated caller, before the rules have run.
+// Principal is an authenticated caller, before the policy has run.
 type Principal struct {
-	// Email of the caller; empty for the admin account.
-	Email string
-	// Subject is the issuer's stable identifier, or "admin".
+	Email   string
 	Subject string
-	// Source is how the caller was established.
-	Source Source
-	// Issuer of the token, for claim rules.
-	Issuer string
-	// Claims of that token.
-	Claims map[string][]string
+	Source  Source
+	Issuer  string
+	Claims  map[string][]string
 }
 
-// Identity is an authorized caller: a principal plus what the rules gave it.
+// Identity is an authorized caller: a principal, the internal groups the
+// policy puts it in, and what those groups grant.
 type Identity struct {
-	Email     string
-	Subject   string
-	Source    Source
-	Role      rules.Role
-	Matched   []string
-	ExpiresAt time.Time
+	Email      string
+	Subject    string
+	GivenName  string
+	FamilyName string
+	Source     Source
+	Role       Role
+	// Groups are the internal groups held.
+	Groups []string
+	// Held carries the same with the reason for each.
+	Held []policy.Held
+	// Claims is what a token for this identity would carry.
+	Claims map[string]any
+	// Lifetime is how long such a token would live.
+	Lifetime time.Duration
 }
 
 // Can reports whether the identity holds at least the given role.
-func (i Identity) Can(role rules.Role) bool { return i.Role.Implies(role) }
+func (i Identity) Can(role Role) bool { return i.Role.Implies(role) }
+
+// Name is the person's name as the directory has it, or the address when
+// it has none.
+func (i Identity) Name() string {
+	name := strings.TrimSpace(i.GivenName + " " + i.FamilyName)
+	if name == "" {
+		return i.Email
+	}
+	return name
+}
 
 // Directory is the part of the hub this package needs: the groups an
-// address is in, and whether that answer may be acted on.
+// address is in, whether the account is live, and whether that answer may
+// be acted on.
 type Directory interface {
 	ResolveUser(ctx context.Context, email string, maxAge *time.Duration) (hub.UserResult, error)
 }
 
 // Authorizer turns principals into identities.
 type Authorizer struct {
-	dir Directory
-	now func() time.Time
+	dir        Directory
+	set        *policy.Set
+	holdWindow time.Duration
+	now        func() time.Time
 
-	mu     sync.Mutex
-	policy rules.Policy
-	held   map[string]heldGrant
+	mu   sync.Mutex
+	held map[string]heldGrant
 }
 
-// heldGrant is the last result an identity was granted while the directory
-// was authoritative, kept so that a spell of uncertainty does not lock
-// people out of the console that fixes it.
+// heldGrant is the last result an identity was granted while the
+// directory was authoritative, kept so that a spell of uncertainty does
+// not lock people out of the console that fixes it.
 type heldGrant struct {
-	result rules.Result
+	result policy.Result
 	at     time.Time
 }
 
 // NewAuthorizer returns an authorizer over a policy and a directory.
-func NewAuthorizer(policy rules.Policy, dir Directory) *Authorizer {
-	return &Authorizer{dir: dir, now: time.Now, policy: policy, held: map[string]heldGrant{}}
+func NewAuthorizer(set *policy.Set, dir Directory, holdWindow time.Duration) *Authorizer {
+	return &Authorizer{
+		dir:        dir,
+		set:        set,
+		holdWindow: holdWindow,
+		now:        time.Now,
+		held:       map[string]heldGrant{},
+	}
 }
 
 // SetClock replaces the clock. For tests.
 func (a *Authorizer) SetClock(now func() time.Time) { a.now = now }
 
-// SetPolicy replaces the rules, so that a console-added rule takes effect
-// without a restart.
-func (a *Authorizer) SetPolicy(p rules.Policy) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.policy = p
-}
-
-// Policy returns the rules in force.
-func (a *Authorizer) Policy() rules.Policy {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.policy
-}
+// Policy returns the policy in force.
+func (a *Authorizer) Policy() *policy.Set { return a.set }
 
 // Authorize resolves a principal into an identity.
 //
 // The break-glass account is an operator by construction: it exists for
-// the day the rules or the directory are what is broken. Everyone else is
-// resolved through the directory and the rules, and an authoritative
+// the day the policy or the directory is what is broken. Everyone else is
+// resolved through the directory and the policy, and an authoritative
 // "not live" is a refusal rather than an empty role — a suspended account
 // must not reach the console at all.
 func (a *Authorizer) Authorize(ctx context.Context, p Principal) (Identity, error) {
@@ -128,65 +168,113 @@ func (a *Authorizer) Authorize(ctx context.Context, p Principal) (Identity, erro
 			Email:   p.Email,
 			Subject: "admin",
 			Source:  SourceAdmin,
-			Role:    rules.RoleOperator,
-			Matched: []string{"break-glass admin"},
+			Role:    RoleOperator,
+			Held:    []policy.Held{{Group: "break-glass admin", Via: []string{"the admin account"}}},
 		}, nil
 	}
 
-	in := rules.Input{
-		Email:  strings.ToLower(strings.TrimSpace(p.Email)),
-		Issuer: p.Issuer,
-		Claims: p.Claims,
+	explained, err := a.explain(ctx, strings.ToLower(strings.TrimSpace(p.Email)), true)
+	if err != nil {
+		return Identity{}, err
 	}
-
-	if in.Email != "" && a.dir != nil {
-		resolved, err := a.dir.ResolveUser(ctx, in.Email, nil)
-		if err != nil {
-			return Identity{}, fmt.Errorf("resolve %s: %w", in.Email, err)
-		}
-		if resolved.Authoritative && resolved.InDomain && (!resolved.Found || resolved.Suspended) {
-			return Identity{}, fmt.Errorf("%w: %s", ErrSuspended, in.Email)
-		}
-		in.Groups = resolved.Groups
-		in.Authoritative = resolved.Authoritative
-	}
-
-	result := a.evaluate(in)
 	return Identity{
-		Email:   p.Email,
-		Subject: p.Subject,
-		Source:  p.Source,
-		Role:    result.Role,
-		Matched: result.Matched,
+		Email:      p.Email,
+		Subject:    p.Subject,
+		GivenName:  explained.GivenName,
+		FamilyName: explained.FamilyName,
+		Source:     p.Source,
+		Role:       explained.Role,
+		Groups:     explained.Result.Groups,
+		Held:       explained.Result.Held,
+		Claims:     explained.Result.Claims,
+		Lifetime:   explained.Result.Lifetime,
 	}, nil
 }
 
-// evaluate runs the rules and applies the hold window: while the directory
-// is not authoritative, an identity keeps what it last held, and one that
-// was never seen gets only what rules independent of the directory grant.
-func (a *Authorizer) evaluate(in rules.Input) rules.Result {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// Explanation is what an identity effectively gets, and why. It is what
+// the About-me page shows, and what an operator sees when looking at
+// someone else.
+type Explanation struct {
+	Email           string
+	GivenName       string
+	FamilyName      string
+	InDomain        bool
+	Found           bool
+	Suspended       bool
+	Authoritative   bool
+	DirectoryGroups []string
+	Result          policy.Result
+	Role            Role
+}
 
-	result := a.policy.Evaluate(in)
+// Explain answers what an address would effectively get. Unlike
+// Authorize it never refuses: a suspended account is reported as
+// suspended, which is the whole point of looking.
+func (a *Authorizer) Explain(ctx context.Context, email string) (Explanation, error) {
+	return a.explain(ctx, strings.ToLower(strings.TrimSpace(email)), false)
+}
+
+func (a *Authorizer) explain(ctx context.Context, email string, refuseSuspended bool) (Explanation, error) {
+	out := Explanation{Email: email}
+	in := policy.Input{Email: email}
+
+	if email != "" && a.dir != nil {
+		resolved, err := a.dir.ResolveUser(ctx, email, nil)
+		if err != nil {
+			return Explanation{}, fmt.Errorf("resolve %s: %w", email, err)
+		}
+		if refuseSuspended && resolved.Authoritative && resolved.InDomain &&
+			(!resolved.Found || resolved.Suspended) {
+			return Explanation{}, fmt.Errorf("%w: %s", ErrSuspended, email)
+		}
+		out.InDomain, out.Found, out.Suspended = resolved.InDomain, resolved.Found, resolved.Suspended
+		out.Authoritative, out.DirectoryGroups = resolved.Authoritative, resolved.Groups
+		out.GivenName, out.FamilyName = resolved.GivenName, resolved.FamilyName
+		in.DirectoryGroups, in.Authoritative = resolved.Groups, resolved.Authoritative
+	}
+
+	out.Result = a.evaluate(in)
+	out.Role = roleOf(out.Result)
+	return out, nil
+}
+
+// roleOf reads the console's two roles off the policy: an identity is an
+// operator because it is in the operators group.
+func roleOf(result policy.Result) Role {
+	switch {
+	case result.Has(policy.GroupOperators):
+		return RoleOperator
+	case result.Has(policy.GroupViewers):
+		return RoleViewer
+	default:
+		return RoleNone
+	}
+}
+
+// evaluate runs the policy and applies the hold window: while the
+// directory is not authoritative, an identity keeps what it last held,
+// and one that was never seen gets only what matchers grant.
+func (a *Authorizer) evaluate(in policy.Input) policy.Result {
+	result := a.set.Evaluate(in)
 	if in.Email == "" {
 		return result
 	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
 	if in.Authoritative {
 		a.held[in.Email] = heldGrant{result: result, at: a.now()}
 		return result
 	}
-
-	window := a.policy.Defaults.HoldWindow.Duration()
-	if window <= 0 {
+	if a.holdWindow <= 0 {
 		return result
 	}
 	previous, ok := a.held[in.Email]
-	if !ok || a.now().Sub(previous.at) > window {
+	if !ok || a.now().Sub(previous.at) > a.holdWindow {
 		return result
 	}
-	if previous.result.Role.Implies(result.Role) {
+	if roleOf(previous.result).Implies(roleOf(result)) {
 		return previous.result
 	}
 	return result

@@ -9,12 +9,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/hub"
-	"github.com/truvity/access-roster/rules"
+	"github.com/truvity/access-roster/internal/version"
 )
 
 // AdminAccount is the break-glass account: a generated password, kept as a
@@ -190,7 +189,7 @@ func (s *ConsoleServer) principal(r *http.Request) (access.Principal, bool) {
 // a gateway fronts the console it is never reached: the proxy has already
 // run the login and forwards the bearer.
 func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
-	if id, ok := IdentityFrom(r.Context()); ok && id.Role != rules.RoleNone {
+	if id, ok := IdentityFrom(r.Context()); ok && id.Role != access.RoleNone {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -262,7 +261,7 @@ func (s *ConsoleServer) logout(w http.ResponseWriter, r *http.Request) {
 // against the cookie, exchanges the code, and adopts the workspace.
 func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) {
 	id, ok := IdentityFrom(r.Context())
-	if !ok || !id.Can(rules.RoleOperator) {
+	if !ok || !id.Can(access.RoleOperator) {
 		http.Error(w, "this needs the operator role", http.StatusForbidden)
 		return
 	}
@@ -309,25 +308,34 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 // whoamiBody is the shape every adapter of the Go module serves, so that a
 // console UI needs no knowledge of the proxy's header names.
 type whoamiBody struct {
-	Status     string    `json:"status"`
-	Email      string    `json:"email,omitempty"`
-	Name       string    `json:"name,omitempty"`
-	Roles      []string  `json:"roles,omitempty"`
-	Source     string    `json:"source,omitempty"`
-	Matched    []string  `json:"matchedRules,omitempty"`
-	ExpiresAt  time.Time `json:"expiresAt,omitzero"`
-	SignOutURL string    `json:"signOutUrl,omitempty"`
+	Status     string   `json:"status"`
+	Email      string   `json:"email,omitempty"`
+	Name       string   `json:"name,omitempty"`
+	GivenName  string   `json:"givenName,omitempty"`
+	FamilyName string   `json:"familyName,omitempty"`
+	Roles      []string `json:"roles,omitempty"`
+	Source     string   `json:"source,omitempty"`
+	// Groups are the internal groups the policy puts the caller in.
+	Groups []string `json:"groups,omitempty"`
+	// Version is the build the hub is running, so that a console can show
+	// it without a second call.
+	Version    string `json:"version"`
+	SignOutURL string `json:"signOutUrl,omitempty"`
 }
 
 func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
-	body := whoamiBody{Status: "signed-out"}
+	body := whoamiBody{Status: "signed-out", Version: version.String()}
 	if id, ok := IdentityFrom(r.Context()); ok {
 		body = whoamiBody{
 			Status:     "signed-in",
 			Email:      id.Email,
+			Name:       id.Name(),
+			GivenName:  id.GivenName,
+			FamilyName: id.FamilyName,
 			Roles:      rolesOf(id.Role),
 			Source:     string(id.Source),
-			Matched:    id.Matched,
+			Groups:     id.Groups,
+			Version:    version.String(),
 			SignOutURL: "/logout",
 		}
 	}
@@ -340,13 +348,13 @@ func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
 
 // rolesOf expands a role into every role it implies, so that a UI can ask
 // for one without knowing the hierarchy.
-func rolesOf(r rules.Role) []string {
+func rolesOf(r access.Role) []string {
 	switch r {
-	case rules.RoleOperator:
+	case access.RoleOperator:
 		return []string{"operator", "viewer"}
-	case rules.RoleViewer:
+	case access.RoleViewer:
 		return []string{"viewer"}
-	case rules.RoleNone:
+	case access.RoleNone:
 		return nil
 	default:
 		return nil

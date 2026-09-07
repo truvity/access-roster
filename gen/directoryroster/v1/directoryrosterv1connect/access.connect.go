@@ -35,14 +35,16 @@ const (
 const (
 	// AccessServiceWhoAmIProcedure is the fully-qualified name of the AccessService's WhoAmI RPC.
 	AccessServiceWhoAmIProcedure = "/directoryroster.v1.AccessService/WhoAmI"
-	// AccessServiceGetAccessPolicyProcedure is the fully-qualified name of the AccessService's
-	// GetAccessPolicy RPC.
-	AccessServiceGetAccessPolicyProcedure = "/directoryroster.v1.AccessService/GetAccessPolicy"
-	// AccessServiceAddRuleProcedure is the fully-qualified name of the AccessService's AddRule RPC.
-	AccessServiceAddRuleProcedure = "/directoryroster.v1.AccessService/AddRule"
-	// AccessServiceRemoveRuleProcedure is the fully-qualified name of the AccessService's RemoveRule
-	// RPC.
-	AccessServiceRemoveRuleProcedure = "/directoryroster.v1.AccessService/RemoveRule"
+	// AccessServiceExplainProcedure is the fully-qualified name of the AccessService's Explain RPC.
+	AccessServiceExplainProcedure = "/directoryroster.v1.AccessService/Explain"
+	// AccessServiceGetPolicyProcedure is the fully-qualified name of the AccessService's GetPolicy RPC.
+	AccessServiceGetPolicyProcedure = "/directoryroster.v1.AccessService/GetPolicy"
+	// AccessServiceAddMembershipProcedure is the fully-qualified name of the AccessService's
+	// AddMembership RPC.
+	AccessServiceAddMembershipProcedure = "/directoryroster.v1.AccessService/AddMembership"
+	// AccessServiceRemoveMembershipProcedure is the fully-qualified name of the AccessService's
+	// RemoveMembership RPC.
+	AccessServiceRemoveMembershipProcedure = "/directoryroster.v1.AccessService/RemoveMembership"
 	// AccessServiceListDirectoryGroupsProcedure is the fully-qualified name of the AccessService's
 	// ListDirectoryGroups RPC.
 	AccessServiceListDirectoryGroupsProcedure = "/directoryroster.v1.AccessService/ListDirectoryGroups"
@@ -50,21 +52,31 @@ const (
 
 // AccessServiceClient is a client for the directoryroster.v1.AccessService service.
 type AccessServiceClient interface {
-	// WhoAmI returns the caller's identity, how it was established, the
-	// role it holds and which rules granted it. Any signed-in identity.
+	// WhoAmI returns the caller's identity: who they are, how they were
+	// established, the role they hold and the internal groups behind it.
+	// Any signed-in identity.
 	WhoAmI(context.Context, *connect.Request[v1.WhoAmIRequest]) (*connect.Response[v1.WhoAmIResponse], error)
-	// GetAccessPolicy returns every rule, declared and console-added, plus
-	// the state of the break-glass admin account and the enabled sign-in
-	// sources. Viewer.
-	GetAccessPolicy(context.Context, *connect.Request[v1.GetAccessPolicyRequest]) (*connect.Response[v1.GetAccessPolicyResponse], error)
-	// AddRule stores a console-added rule. Operator.
-	AddRule(context.Context, *connect.Request[v1.AddRuleRequest]) (*connect.Response[v1.AddRuleResponse], error)
-	// RemoveRule deletes a console-added rule. A declared rule refuses
-	// (failed_precondition): change the deployment instead. Operator.
-	RemoveRule(context.Context, *connect.Request[v1.RemoveRuleRequest]) (*connect.Response[v1.RemoveRuleResponse], error)
+	// Explain answers "what does this identity effectively get, and why":
+	// the directory groups the hub confirms, the internal groups they put
+	// the identity in, the merged claims and the token lifetime. With an
+	// empty email it explains the caller, which any signed-in identity may
+	// ask; for anyone else it is operator, because it discloses another
+	// person's access.
+	Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error)
+	// GetPolicy returns every internal group with its members and what each
+	// adds, the state of the break-glass admin, the enabled sign-in
+	// sources, and the console layer as YAML for export. Viewer.
+	GetPolicy(context.Context, *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error)
+	// AddMembership records a directory group in an internal group.
+	// Operator.
+	AddMembership(context.Context, *connect.Request[v1.AddMembershipRequest]) (*connect.Response[v1.AddMembershipResponse], error)
+	// RemoveMembership drops one the console added. A membership the
+	// deployment declared refuses (failed_precondition): change the values
+	// instead. Operator.
+	RemoveMembership(context.Context, *connect.Request[v1.RemoveMembershipRequest]) (*connect.Response[v1.RemoveMembershipResponse], error)
 	// ListDirectoryGroups returns the groups the hub has snapshotted, so
-	// that granting a role is a click on a group rather than a typed
-	// address that may be a typo. Viewer.
+	// that a membership is a click rather than a typed address that may be
+	// a typo. Viewer.
 	ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error)
 }
 
@@ -85,22 +97,28 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(accessServiceMethods.ByName("WhoAmI")),
 			connect.WithClientOptions(opts...),
 		),
-		getAccessPolicy: connect.NewClient[v1.GetAccessPolicyRequest, v1.GetAccessPolicyResponse](
+		explain: connect.NewClient[v1.ExplainRequest, v1.ExplainResponse](
 			httpClient,
-			baseURL+AccessServiceGetAccessPolicyProcedure,
-			connect.WithSchema(accessServiceMethods.ByName("GetAccessPolicy")),
+			baseURL+AccessServiceExplainProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("Explain")),
 			connect.WithClientOptions(opts...),
 		),
-		addRule: connect.NewClient[v1.AddRuleRequest, v1.AddRuleResponse](
+		getPolicy: connect.NewClient[v1.GetPolicyRequest, v1.GetPolicyResponse](
 			httpClient,
-			baseURL+AccessServiceAddRuleProcedure,
-			connect.WithSchema(accessServiceMethods.ByName("AddRule")),
+			baseURL+AccessServiceGetPolicyProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("GetPolicy")),
 			connect.WithClientOptions(opts...),
 		),
-		removeRule: connect.NewClient[v1.RemoveRuleRequest, v1.RemoveRuleResponse](
+		addMembership: connect.NewClient[v1.AddMembershipRequest, v1.AddMembershipResponse](
 			httpClient,
-			baseURL+AccessServiceRemoveRuleProcedure,
-			connect.WithSchema(accessServiceMethods.ByName("RemoveRule")),
+			baseURL+AccessServiceAddMembershipProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("AddMembership")),
+			connect.WithClientOptions(opts...),
+		),
+		removeMembership: connect.NewClient[v1.RemoveMembershipRequest, v1.RemoveMembershipResponse](
+			httpClient,
+			baseURL+AccessServiceRemoveMembershipProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("RemoveMembership")),
 			connect.WithClientOptions(opts...),
 		),
 		listDirectoryGroups: connect.NewClient[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse](
@@ -115,9 +133,10 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 // accessServiceClient implements AccessServiceClient.
 type accessServiceClient struct {
 	whoAmI              *connect.Client[v1.WhoAmIRequest, v1.WhoAmIResponse]
-	getAccessPolicy     *connect.Client[v1.GetAccessPolicyRequest, v1.GetAccessPolicyResponse]
-	addRule             *connect.Client[v1.AddRuleRequest, v1.AddRuleResponse]
-	removeRule          *connect.Client[v1.RemoveRuleRequest, v1.RemoveRuleResponse]
+	explain             *connect.Client[v1.ExplainRequest, v1.ExplainResponse]
+	getPolicy           *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
+	addMembership       *connect.Client[v1.AddMembershipRequest, v1.AddMembershipResponse]
+	removeMembership    *connect.Client[v1.RemoveMembershipRequest, v1.RemoveMembershipResponse]
 	listDirectoryGroups *connect.Client[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse]
 }
 
@@ -126,19 +145,24 @@ func (c *accessServiceClient) WhoAmI(ctx context.Context, req *connect.Request[v
 	return c.whoAmI.CallUnary(ctx, req)
 }
 
-// GetAccessPolicy calls directoryroster.v1.AccessService.GetAccessPolicy.
-func (c *accessServiceClient) GetAccessPolicy(ctx context.Context, req *connect.Request[v1.GetAccessPolicyRequest]) (*connect.Response[v1.GetAccessPolicyResponse], error) {
-	return c.getAccessPolicy.CallUnary(ctx, req)
+// Explain calls directoryroster.v1.AccessService.Explain.
+func (c *accessServiceClient) Explain(ctx context.Context, req *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error) {
+	return c.explain.CallUnary(ctx, req)
 }
 
-// AddRule calls directoryroster.v1.AccessService.AddRule.
-func (c *accessServiceClient) AddRule(ctx context.Context, req *connect.Request[v1.AddRuleRequest]) (*connect.Response[v1.AddRuleResponse], error) {
-	return c.addRule.CallUnary(ctx, req)
+// GetPolicy calls directoryroster.v1.AccessService.GetPolicy.
+func (c *accessServiceClient) GetPolicy(ctx context.Context, req *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error) {
+	return c.getPolicy.CallUnary(ctx, req)
 }
 
-// RemoveRule calls directoryroster.v1.AccessService.RemoveRule.
-func (c *accessServiceClient) RemoveRule(ctx context.Context, req *connect.Request[v1.RemoveRuleRequest]) (*connect.Response[v1.RemoveRuleResponse], error) {
-	return c.removeRule.CallUnary(ctx, req)
+// AddMembership calls directoryroster.v1.AccessService.AddMembership.
+func (c *accessServiceClient) AddMembership(ctx context.Context, req *connect.Request[v1.AddMembershipRequest]) (*connect.Response[v1.AddMembershipResponse], error) {
+	return c.addMembership.CallUnary(ctx, req)
+}
+
+// RemoveMembership calls directoryroster.v1.AccessService.RemoveMembership.
+func (c *accessServiceClient) RemoveMembership(ctx context.Context, req *connect.Request[v1.RemoveMembershipRequest]) (*connect.Response[v1.RemoveMembershipResponse], error) {
+	return c.removeMembership.CallUnary(ctx, req)
 }
 
 // ListDirectoryGroups calls directoryroster.v1.AccessService.ListDirectoryGroups.
@@ -148,21 +172,31 @@ func (c *accessServiceClient) ListDirectoryGroups(ctx context.Context, req *conn
 
 // AccessServiceHandler is an implementation of the directoryroster.v1.AccessService service.
 type AccessServiceHandler interface {
-	// WhoAmI returns the caller's identity, how it was established, the
-	// role it holds and which rules granted it. Any signed-in identity.
+	// WhoAmI returns the caller's identity: who they are, how they were
+	// established, the role they hold and the internal groups behind it.
+	// Any signed-in identity.
 	WhoAmI(context.Context, *connect.Request[v1.WhoAmIRequest]) (*connect.Response[v1.WhoAmIResponse], error)
-	// GetAccessPolicy returns every rule, declared and console-added, plus
-	// the state of the break-glass admin account and the enabled sign-in
-	// sources. Viewer.
-	GetAccessPolicy(context.Context, *connect.Request[v1.GetAccessPolicyRequest]) (*connect.Response[v1.GetAccessPolicyResponse], error)
-	// AddRule stores a console-added rule. Operator.
-	AddRule(context.Context, *connect.Request[v1.AddRuleRequest]) (*connect.Response[v1.AddRuleResponse], error)
-	// RemoveRule deletes a console-added rule. A declared rule refuses
-	// (failed_precondition): change the deployment instead. Operator.
-	RemoveRule(context.Context, *connect.Request[v1.RemoveRuleRequest]) (*connect.Response[v1.RemoveRuleResponse], error)
+	// Explain answers "what does this identity effectively get, and why":
+	// the directory groups the hub confirms, the internal groups they put
+	// the identity in, the merged claims and the token lifetime. With an
+	// empty email it explains the caller, which any signed-in identity may
+	// ask; for anyone else it is operator, because it discloses another
+	// person's access.
+	Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error)
+	// GetPolicy returns every internal group with its members and what each
+	// adds, the state of the break-glass admin, the enabled sign-in
+	// sources, and the console layer as YAML for export. Viewer.
+	GetPolicy(context.Context, *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error)
+	// AddMembership records a directory group in an internal group.
+	// Operator.
+	AddMembership(context.Context, *connect.Request[v1.AddMembershipRequest]) (*connect.Response[v1.AddMembershipResponse], error)
+	// RemoveMembership drops one the console added. A membership the
+	// deployment declared refuses (failed_precondition): change the values
+	// instead. Operator.
+	RemoveMembership(context.Context, *connect.Request[v1.RemoveMembershipRequest]) (*connect.Response[v1.RemoveMembershipResponse], error)
 	// ListDirectoryGroups returns the groups the hub has snapshotted, so
-	// that granting a role is a click on a group rather than a typed
-	// address that may be a typo. Viewer.
+	// that a membership is a click rather than a typed address that may be
+	// a typo. Viewer.
 	ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error)
 }
 
@@ -179,22 +213,28 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(accessServiceMethods.ByName("WhoAmI")),
 		connect.WithHandlerOptions(opts...),
 	)
-	accessServiceGetAccessPolicyHandler := connect.NewUnaryHandler(
-		AccessServiceGetAccessPolicyProcedure,
-		svc.GetAccessPolicy,
-		connect.WithSchema(accessServiceMethods.ByName("GetAccessPolicy")),
+	accessServiceExplainHandler := connect.NewUnaryHandler(
+		AccessServiceExplainProcedure,
+		svc.Explain,
+		connect.WithSchema(accessServiceMethods.ByName("Explain")),
 		connect.WithHandlerOptions(opts...),
 	)
-	accessServiceAddRuleHandler := connect.NewUnaryHandler(
-		AccessServiceAddRuleProcedure,
-		svc.AddRule,
-		connect.WithSchema(accessServiceMethods.ByName("AddRule")),
+	accessServiceGetPolicyHandler := connect.NewUnaryHandler(
+		AccessServiceGetPolicyProcedure,
+		svc.GetPolicy,
+		connect.WithSchema(accessServiceMethods.ByName("GetPolicy")),
 		connect.WithHandlerOptions(opts...),
 	)
-	accessServiceRemoveRuleHandler := connect.NewUnaryHandler(
-		AccessServiceRemoveRuleProcedure,
-		svc.RemoveRule,
-		connect.WithSchema(accessServiceMethods.ByName("RemoveRule")),
+	accessServiceAddMembershipHandler := connect.NewUnaryHandler(
+		AccessServiceAddMembershipProcedure,
+		svc.AddMembership,
+		connect.WithSchema(accessServiceMethods.ByName("AddMembership")),
+		connect.WithHandlerOptions(opts...),
+	)
+	accessServiceRemoveMembershipHandler := connect.NewUnaryHandler(
+		AccessServiceRemoveMembershipProcedure,
+		svc.RemoveMembership,
+		connect.WithSchema(accessServiceMethods.ByName("RemoveMembership")),
 		connect.WithHandlerOptions(opts...),
 	)
 	accessServiceListDirectoryGroupsHandler := connect.NewUnaryHandler(
@@ -207,12 +247,14 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 		switch r.URL.Path {
 		case AccessServiceWhoAmIProcedure:
 			accessServiceWhoAmIHandler.ServeHTTP(w, r)
-		case AccessServiceGetAccessPolicyProcedure:
-			accessServiceGetAccessPolicyHandler.ServeHTTP(w, r)
-		case AccessServiceAddRuleProcedure:
-			accessServiceAddRuleHandler.ServeHTTP(w, r)
-		case AccessServiceRemoveRuleProcedure:
-			accessServiceRemoveRuleHandler.ServeHTTP(w, r)
+		case AccessServiceExplainProcedure:
+			accessServiceExplainHandler.ServeHTTP(w, r)
+		case AccessServiceGetPolicyProcedure:
+			accessServiceGetPolicyHandler.ServeHTTP(w, r)
+		case AccessServiceAddMembershipProcedure:
+			accessServiceAddMembershipHandler.ServeHTTP(w, r)
+		case AccessServiceRemoveMembershipProcedure:
+			accessServiceRemoveMembershipHandler.ServeHTTP(w, r)
 		case AccessServiceListDirectoryGroupsProcedure:
 			accessServiceListDirectoryGroupsHandler.ServeHTTP(w, r)
 		default:
@@ -228,16 +270,20 @@ func (UnimplementedAccessServiceHandler) WhoAmI(context.Context, *connect.Reques
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.WhoAmI is not implemented"))
 }
 
-func (UnimplementedAccessServiceHandler) GetAccessPolicy(context.Context, *connect.Request[v1.GetAccessPolicyRequest]) (*connect.Response[v1.GetAccessPolicyResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.GetAccessPolicy is not implemented"))
+func (UnimplementedAccessServiceHandler) Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.Explain is not implemented"))
 }
 
-func (UnimplementedAccessServiceHandler) AddRule(context.Context, *connect.Request[v1.AddRuleRequest]) (*connect.Response[v1.AddRuleResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.AddRule is not implemented"))
+func (UnimplementedAccessServiceHandler) GetPolicy(context.Context, *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.GetPolicy is not implemented"))
 }
 
-func (UnimplementedAccessServiceHandler) RemoveRule(context.Context, *connect.Request[v1.RemoveRuleRequest]) (*connect.Response[v1.RemoveRuleResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.RemoveRule is not implemented"))
+func (UnimplementedAccessServiceHandler) AddMembership(context.Context, *connect.Request[v1.AddMembershipRequest]) (*connect.Response[v1.AddMembershipResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.AddMembership is not implemented"))
+}
+
+func (UnimplementedAccessServiceHandler) RemoveMembership(context.Context, *connect.Request[v1.RemoveMembershipRequest]) (*connect.Response[v1.RemoveMembershipResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.RemoveMembership is not implemented"))
 }
 
 func (UnimplementedAccessServiceHandler) ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error) {

@@ -34,7 +34,8 @@ import (
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
-	"github.com/truvity/access-roster/rules"
+	"github.com/truvity/access-roster/internal/version"
+	"github.com/truvity/access-roster/policy"
 )
 
 func main() {
@@ -61,7 +62,8 @@ type config struct {
 	secureCookies   bool
 	forwardedHeader string
 	forwardedIssuer string
-	accessFile      string
+	policyPath      string
+	holdWindow      time.Duration
 	logLevel        slog.Level
 }
 
@@ -77,7 +79,7 @@ func load() (config, error) {
 		secureCookies:   envBool("SECURE_COOKIES", false),
 		forwardedHeader: envString("FORWARDED_EMAIL_HEADER", ""),
 		forwardedIssuer: envString("FORWARDED_ISSUER", ""),
-		accessFile:      envString("ACCESS_FILE", ""),
+		policyPath:      envString("POLICY_DIR", ""),
 	}
 	var err error
 	if c.freshness.RefreshInterval, err = envDuration("REFRESH_INTERVAL", hub.DefaultRefreshInterval); err != nil {
@@ -90,6 +92,9 @@ func load() (config, error) {
 		return config{}, err
 	}
 	if c.sessionLifetime, err = envDuration("SESSION_LIFETIME", 12*time.Hour); err != nil {
+		return config{}, err
+	}
+	if c.holdWindow, err = envDuration("HOLD_WINDOW", 4*time.Hour); err != nil {
 		return config{}, err
 	}
 	if c.publicURL == "" {
@@ -114,12 +119,15 @@ func run() error {
 
 	directory := hub.New(hub.NewMemoryStore(), hub.NewMemorySnapshots(), cfg.freshness, log)
 
-	declared, defaults, err := declaredRules(cfg.accessFile)
+	declared, err := declaredPolicy(cfg.policyPath)
 	if err != nil {
 		return err
 	}
-
-	authorizer := access.NewAuthorizer(rules.Policy{Version: 1, Rules: declared, Defaults: defaults}, directory)
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		return err
+	}
+	authorizer := access.NewAuthorizer(set, directory, cfg.holdWindow)
 
 	sessionKey, err := access.NewSessionKey()
 	if err != nil {
@@ -161,8 +169,6 @@ func run() error {
 		Settings:     store,
 		State:        access.NewStateCodec(sessionKey, 10*time.Minute),
 		Connectors:   connectors,
-		DeclaredRule: declared,
-		Defaults:     defaults,
 		AdminEnabled: cfg.adminEnabled,
 		LoginSources: loginSources,
 		CacheBackend: "memory",
@@ -197,7 +203,8 @@ func run() error {
 
 	log.InfoContext(ctx, "directory-roster starting",
 		"api", cfg.apiPort, "console", cfg.consolePort, "health", cfg.healthPort,
-		"demo", cfg.demo, "admin", cfg.adminEnabled, "public", cfg.publicURL)
+		"demo", cfg.demo, "admin", cfg.adminEnabled, "public", cfg.publicURL,
+		"version", version.String(), "policy", policySource(cfg.policyPath))
 
 	group, gctx := errgroup.WithContext(ctx)
 	group.Go(func() error { return serve(gctx, cfg.apiPort, apiMux, "api", log) })
@@ -228,16 +235,30 @@ func serve(ctx context.Context, port int, handler http.Handler, name string, log
 	return nil
 }
 
-// declaredRules reads the deployment's rules file, if there is one.
-func declaredRules(path string) ([]rules.Rule, rules.Defaults, error) {
+// builtinPolicy is what a hub with no declared policy starts from: the two
+// groups it is a relying party of, empty. Nobody is in them, so nobody but
+// the break-glass admin can act until an operator attaches the first
+// directory group in the console — which is day one, exactly as the
+// runbook describes it.
+const builtinPolicy = `
+version: 1
+groups:
+  hub-operators: {}
+  hub-viewers: {}
+claims:
+  hub-operators: { groups: [hub:operator] }
+  hub-viewers: { groups: [hub:viewer] }
+lifetimes:
+  default: 12h
+`
+
+// declaredPolicy reads the deployment's policy, or falls back to the
+// built-in one.
+func declaredPolicy(path string) (policy.Policy, error) {
 	if path == "" {
-		return nil, rules.Defaults{HoldWindow: rules.Duration(4 * time.Hour)}, nil
+		return policy.Parse([]byte(builtinPolicy))
 	}
-	policy, err := rules.Load(path)
-	if err != nil {
-		return nil, rules.Defaults{}, err
-	}
-	return policy.Rules, policy.Defaults, nil
+	return policy.LoadDeclared(path)
 }
 
 // seedDemo adopts the demonstration tenants and returns their connector.
@@ -254,6 +275,14 @@ func seedDemo(ctx context.Context, directory *hub.Hub, publicURL string, log *sl
 	}
 	log.InfoContext(ctx, "demonstration tenants adopted; no credential and no network is involved")
 	return connector
+}
+
+// policySource says where the policy came from, for the startup line.
+func policySource(path string) string {
+	if path == "" {
+		return "built-in"
+	}
+	return path
 }
 
 func generatedPassword() (string, error) {
