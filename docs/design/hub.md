@@ -105,14 +105,11 @@ shared lock, so one replica fetches for all. Every read answers from the
 snapshot and says which one: `snapshot_at` and `authoritative` come back on
 every response.
 
-Every read call takes an optional `max_age`:
-
-- **Omitted** — serve the current snapshot; nothing is fetched.
-- **Set** — if the snapshot is older than `max_age`, make it fresher first.
-  `max_age = 0` means fetch now.
-- **The fetch fails** — the stale snapshot is served with
-  `authoritative = false`. The same rule as a failed probe: never an error
-  to the caller, never "gone".
+Every read call takes an optional `max_age`: omitted serves the current
+snapshot, a value makes it fresher first when it is older, zero fetches
+now, and a failed fetch serves the stale snapshot with
+`authoritative=false`. The normative semantics are in
+[reference/contracts.md](../reference/contracts.md#freshness-max_age-and-snapshot_at).
 
 Freshness is honoured by the cheapest path that satisfies it. Bulk calls
 (`ListGroups`, `GetGroup`) trigger a full workspace read, single-flight.
@@ -210,17 +207,12 @@ namespace — an external-secrets `ExternalSecret`, a sealed secret, `kubectl`
 — is the deployment's business; the configuration reference carries an
 example, the hub has no dependency on it.
 
-| Object | Holds |
-|---|---|
-| `Secret workspace-<id>` | the credential (refresh token, or service-account key) |
-| `ConfigMap workspace-<id>` | backend, domains, admin, connectedBy/At, last health |
-| `Secret hub-oauth-client` | the OAuth client id and secret (written by Settings, or declared) |
-| `Secret hub-session-key` | signs the session cookie and the consent-flow state; generated on first start, rotated by deleting it |
-| `Secret hub-admin` | the break-glass password; generated on first start |
-| `ConfigMap hub-access` | console-added rules |
-| `ConfigMap hub-settings` | freshness window, probe interval, cache |
-| chart-rendered overlay | workspaces declared by the deployment (a key delivered as a Secret, the admin to impersonate; domains discovered like any other), read-only in the console, winning on conflict |
-| Valkey (external) | snapshots, refresh locks, the short negative cache — never a credential |
+The objects — workspace Secrets and ConfigMaps, the OAuth client, the
+session key, the admin password, console-added rules, the declared
+overlay — are listed once, in
+[reference/configuration.md](../reference/configuration.md#kubernetes-objects-the-hub-owns).
+Valkey holds snapshots, refresh locks and the short negative cache, never
+a credential.
 
 What the chart includes and what it expects: it renders everything that is
 a standard Kubernetes API — Deployment, Services, ServiceAccount and Role,
@@ -262,13 +254,25 @@ the corporate directory" and "operators sign in with the corporate
 directory": those are two protocols against the same tenant, sign-in and
 directory reads, and the hub happens to hold a client capable of both.
 
-### Three ways an identity is established, one session
+### One session, established three ways
 
-| Source | How | When to use |
-|---|---|---|
-| **the connected directory** | "Sign in with Google" on the hub's own login page, using a connected workspace's OAuth client with the openid, email and profile scopes only. The address routes to its workspace; the account must be live in the snapshot. | the default; on as soon as one workspace is connected |
-| **an external OIDC issuer** | the same login page against a configured issuer and client | estates with a central issuer and no proxy in front |
-| **a forwarded bearer** | an authenticating gateway in front of the console forwards the caller's token; the hub verifies it against the configured issuer | estates that put one proxy in front of every console |
+In an installation with an authenticating proxy in front of its consoles
+— the normal case — the hub's console sits behind that proxy like every
+other console, and the **forwarded bearer** is the identity: the hub
+verifies it against the configured issuer and a `claim` rule grants the
+role. The hub's **own login page** exists for two situations only: a
+standalone installation with no proxy and no issuer, where operators sign
+in with the connected directory itself (the workspace's OAuth client with
+the openid, email and profile scopes; the address must be live in a served
+domain), and break-glass. An external OIDC issuer can also drive the own
+login page, for the rare installation with an issuer but no proxy.
+
+| Source | Normal for |
+|---|---|
+| forwarded bearer | an installation with a proxy in front of every console |
+| the connected directory, own login | a standalone installation; also what makes day one work before any issuer exists |
+| an external OIDC issuer, own login | an issuer but no proxy |
+| the admin account | day one and break-glass, by port-forward |
 
 Whichever source, the result is one HttpOnly cookie signed with the
 hub's session key, short-lived, revoked only by rotating the key. The
@@ -304,20 +308,12 @@ identity is not authoritative, the last granted role is kept for a
 bounded window and no new identity is granted anything: the same
 hold-never-remove rule, applied to the hub's own door.
 
-### Day one, in order
+### Day one
 
-1. Install. The hub generates the admin password and the session key.
-2. Sign in as admin, by port-forward or through the gateway.
-3. Settings: the OAuth client, pasted or declared.
-4. Connect the first workspace as its admin role account. Domains are
-   discovered; the first snapshot lands.
-5. Access: one rule, "members of *directory-admins* are operators", from
-   the picker.
-6. Sign out; sign in with the directory as yourself; you are an operator.
-7. Turn the admin account off.
-
-A second backend later repeats steps 4 to 6 with its own client and adds
-a second button.
+Admin → OAuth client → connect the first workspace → one rule from the
+group picker → sign in as yourself → admin off. The sequence is drawn in
+[the architecture](../architecture.md#58-day-one-of-a-standalone-installation)
+and the commands are in [the runbook](../operations/runbook.md#day-one).
 
 ### Consumers
 
@@ -383,8 +379,7 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 | File | Holds |
 |---|---|
 | `README.md` | what it is, the contracts, quick start |
-| `docs/architecture/access-roster.md` | the family: both components, the relying parties, the use cases end to end |
-| `docs/architecture/hub.md` | the hub: C4 views, the connect flow, a lookup with freshness, failure semantics |
+| `docs/architecture.md` | the family in one page: context, containers, the hub's components, who owns what, use cases, failure semantics |
 | `docs/design/token-service.md` | the second component's design and its guardrail |
 | `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`; `max_age`/`snapshot_at`; the additive fields vs google-group-sync |
 | `docs/reference/configuration.md` | chart values, the overlay format, access rules and consumers, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |

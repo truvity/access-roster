@@ -14,6 +14,10 @@ Workspaces view and in `Describe`; nothing needs a shell except the export.
 7. Sign out; sign in with the directory as yourself. `WhoAmI` shows operator and the rule that granted it.
 8. `access.admin.enabled: false` in the values. The banner disappears.
 
+Behind an authenticating proxy, steps 3 and 7 go through the proxy's
+login and the rule in step 6 is a `claim` rule on the forwarded token;
+the admin account stays as break-glass by port-forward.
+
 ## Lost operator access
 
 The rules deny everyone, or the group was renamed, or the directory

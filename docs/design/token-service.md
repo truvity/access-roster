@@ -73,6 +73,7 @@ Declared in the deployment, rendered into a ConfigMap, tested like code.
 
 ## What it issues, and who trusts it
 
+The flows are drawn in [the architecture](../architecture.md#5-use-cases).
 Standard OpenID Provider surface, from a library rather than written:
 discovery, JWKS with key rotation, authorization code with PKCE, refresh,
 device authorization, client credentials, JWT profile, token exchange.
