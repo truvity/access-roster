@@ -11,6 +11,7 @@ import (
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	structpb "google.golang.org/protobuf/types/known/structpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -1519,8 +1520,11 @@ type SearchPeopleRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// matched against the address and the name, case-insensitively. Empty
 	// lists everyone, up to the limit.
-	Query         string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Limit         int32  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	Query string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Limit int32  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	// workspace_id restricts the search to one tenant's accounts, which is
+	// what a tenant's page lists. Empty searches every tenant.
+	WorkspaceId   string `protobuf:"bytes,3,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1567,6 +1571,13 @@ func (x *SearchPeopleRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *SearchPeopleRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
 }
 
 // PersonSummary is one account as a search result shows it.
@@ -1857,11 +1868,291 @@ func (x *DirectoryGroupSummary) GetMembers() int32 {
 	return 0
 }
 
+type GetDirectoryGroupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDirectoryGroupRequest) Reset() {
+	*x = GetDirectoryGroupRequest{}
+	mi := &file_directoryroster_v1_access_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDirectoryGroupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDirectoryGroupRequest) ProtoMessage() {}
+
+func (x *GetDirectoryGroupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_access_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDirectoryGroupRequest.ProtoReflect.Descriptor instead.
+func (*GetDirectoryGroupRequest) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *GetDirectoryGroupRequest) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+// DirectoryGroupMember is one member as the directory reports it. A member
+// from a tenant the hub does not read has an address and nothing else.
+type DirectoryGroupMember struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Email      string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	GivenName  string                 `protobuf:"bytes,2,opt,name=given_name,json=givenName,proto3" json:"given_name,omitempty"`
+	FamilyName string                 `protobuf:"bytes,3,opt,name=family_name,json=familyName,proto3" json:"family_name,omitempty"`
+	// known is true when the account is in a snapshot, so live means
+	// something; a member the hub has never seen is neither live nor gone.
+	Known         bool `protobuf:"varint,4,opt,name=known,proto3" json:"known,omitempty"`
+	Live          bool `protobuf:"varint,5,opt,name=live,proto3" json:"live,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DirectoryGroupMember) Reset() {
+	*x = DirectoryGroupMember{}
+	mi := &file_directoryroster_v1_access_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DirectoryGroupMember) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DirectoryGroupMember) ProtoMessage() {}
+
+func (x *DirectoryGroupMember) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_access_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DirectoryGroupMember.ProtoReflect.Descriptor instead.
+func (*DirectoryGroupMember) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *DirectoryGroupMember) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *DirectoryGroupMember) GetGivenName() string {
+	if x != nil {
+		return x.GivenName
+	}
+	return ""
+}
+
+func (x *DirectoryGroupMember) GetFamilyName() string {
+	if x != nil {
+		return x.FamilyName
+	}
+	return ""
+}
+
+func (x *DirectoryGroupMember) GetKnown() bool {
+	if x != nil {
+		return x.Known
+	}
+	return false
+}
+
+func (x *DirectoryGroupMember) GetLive() bool {
+	if x != nil {
+		return x.Live
+	}
+	return false
+}
+
+// DirectoryGroupFeed is one internal group this directory group is a
+// member of, and which layer put it there.
+type DirectoryGroupFeed struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Group         string                 `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
+	Layer         string                 `protobuf:"bytes,2,opt,name=layer,proto3" json:"layer,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DirectoryGroupFeed) Reset() {
+	*x = DirectoryGroupFeed{}
+	mi := &file_directoryroster_v1_access_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DirectoryGroupFeed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DirectoryGroupFeed) ProtoMessage() {}
+
+func (x *DirectoryGroupFeed) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_access_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DirectoryGroupFeed.ProtoReflect.Descriptor instead.
+func (*DirectoryGroupFeed) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *DirectoryGroupFeed) GetGroup() string {
+	if x != nil {
+		return x.Group
+	}
+	return ""
+}
+
+func (x *DirectoryGroupFeed) GetLayer() string {
+	if x != nil {
+		return x.Layer
+	}
+	return ""
+}
+
+type GetDirectoryGroupResponse struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Email       string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	Domain      string                 `protobuf:"bytes,2,opt,name=domain,proto3" json:"domain,omitempty"`
+	WorkspaceId string                 `protobuf:"bytes,3,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// found is false when the domain is served but the snapshot has no such
+	// group: the address may be a typo, or the group may be gone.
+	Found         bool                    `protobuf:"varint,4,opt,name=found,proto3" json:"found,omitempty"`
+	Authoritative bool                    `protobuf:"varint,5,opt,name=authoritative,proto3" json:"authoritative,omitempty"`
+	SnapshotAt    *timestamppb.Timestamp  `protobuf:"bytes,6,opt,name=snapshot_at,json=snapshotAt,proto3" json:"snapshot_at,omitempty"`
+	Members       []*DirectoryGroupMember `protobuf:"bytes,7,rep,name=members,proto3" json:"members,omitempty"`
+	Feeds         []*DirectoryGroupFeed   `protobuf:"bytes,8,rep,name=feeds,proto3" json:"feeds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDirectoryGroupResponse) Reset() {
+	*x = GetDirectoryGroupResponse{}
+	mi := &file_directoryroster_v1_access_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDirectoryGroupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDirectoryGroupResponse) ProtoMessage() {}
+
+func (x *GetDirectoryGroupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_access_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDirectoryGroupResponse.ProtoReflect.Descriptor instead.
+func (*GetDirectoryGroupResponse) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *GetDirectoryGroupResponse) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *GetDirectoryGroupResponse) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
+func (x *GetDirectoryGroupResponse) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *GetDirectoryGroupResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *GetDirectoryGroupResponse) GetAuthoritative() bool {
+	if x != nil {
+		return x.Authoritative
+	}
+	return false
+}
+
+func (x *GetDirectoryGroupResponse) GetSnapshotAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SnapshotAt
+	}
+	return nil
+}
+
+func (x *GetDirectoryGroupResponse) GetMembers() []*DirectoryGroupMember {
+	if x != nil {
+		return x.Members
+	}
+	return nil
+}
+
+func (x *GetDirectoryGroupResponse) GetFeeds() []*DirectoryGroupFeed {
+	if x != nil {
+		return x.Feeds
+	}
+	return nil
+}
+
 var File_directoryroster_v1_access_proto protoreflect.FileDescriptor
 
 const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\n" +
-	"\x1fdirectoryroster/v1/access.proto\x12\x12directoryroster.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xfc\x01\n" +
+	"\x1fdirectoryroster/v1/access.proto\x12\x12directoryroster.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfc\x01\n" +
 	"\bIdentity\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x18\n" +
 	"\asubject\x18\x02 \x01(\tR\asubject\x12:\n" +
@@ -1960,10 +2251,11 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x13ListHoldersResponse\x124\n" +
 	"\aholders\x18\x01 \x03(\v2\x1a.directoryroster.v1.HolderR\aholders\x12\x1a\n" +
 	"\bexamined\x18\x02 \x01(\x05R\bexamined\x12\x1c\n" +
-	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"A\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"d\n" +
 	"\x13SearchPeopleRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\x9c\x01\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12!\n" +
+	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\"\x9c\x01\n" +
 	"\rPersonSummary\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1d\n" +
 	"\n" +
@@ -1983,7 +2275,30 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x16\n" +
 	"\x06domain\x18\x02 \x01(\tR\x06domain\x12!\n" +
 	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\x12\x18\n" +
-	"\amembers\x18\x04 \x01(\x05R\amembers*@\n" +
+	"\amembers\x18\x04 \x01(\x05R\amembers\"0\n" +
+	"\x18GetDirectoryGroupRequest\x12\x14\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\"\x96\x01\n" +
+	"\x14DirectoryGroupMember\x12\x14\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1d\n" +
+	"\n" +
+	"given_name\x18\x02 \x01(\tR\tgivenName\x12\x1f\n" +
+	"\vfamily_name\x18\x03 \x01(\tR\n" +
+	"familyName\x12\x14\n" +
+	"\x05known\x18\x04 \x01(\bR\x05known\x12\x12\n" +
+	"\x04live\x18\x05 \x01(\bR\x04live\"@\n" +
+	"\x12DirectoryGroupFeed\x12\x14\n" +
+	"\x05group\x18\x01 \x01(\tR\x05group\x12\x14\n" +
+	"\x05layer\x18\x02 \x01(\tR\x05layer\"\xe7\x02\n" +
+	"\x19GetDirectoryGroupResponse\x12\x14\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\x12\x16\n" +
+	"\x06domain\x18\x02 \x01(\tR\x06domain\x12!\n" +
+	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\x12\x14\n" +
+	"\x05found\x18\x04 \x01(\bR\x05found\x12$\n" +
+	"\rauthoritative\x18\x05 \x01(\bR\rauthoritative\x12;\n" +
+	"\vsnapshot_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"snapshotAt\x12B\n" +
+	"\amembers\x18\a \x03(\v2(.directoryroster.v1.DirectoryGroupMemberR\amembers\x12<\n" +
+	"\x05feeds\x18\b \x03(\v2&.directoryroster.v1.DirectoryGroupFeedR\x05feeds*@\n" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_VIEWER\x10\x01\x12\x11\n" +
@@ -1993,7 +2308,7 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x19IDENTITY_SOURCE_DIRECTORY\x10\x01\x12\x18\n" +
 	"\x14IDENTITY_SOURCE_OIDC\x10\x02\x12\x1d\n" +
 	"\x19IDENTITY_SOURCE_FORWARDED\x10\x03\x12\x19\n" +
-	"\x15IDENTITY_SOURCE_ADMIN\x10\x042\x9e\x06\n" +
+	"\x15IDENTITY_SOURCE_ADMIN\x10\x042\x90\a\n" +
 	"\rAccessService\x12O\n" +
 	"\x06WhoAmI\x12!.directoryroster.v1.WhoAmIRequest\x1a\".directoryroster.v1.WhoAmIResponse\x12R\n" +
 	"\aExplain\x12\".directoryroster.v1.ExplainRequest\x1a#.directoryroster.v1.ExplainResponse\x12^\n" +
@@ -2002,7 +2317,8 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\tGetPolicy\x12$.directoryroster.v1.GetPolicyRequest\x1a%.directoryroster.v1.GetPolicyResponse\x12d\n" +
 	"\rAddMembership\x12(.directoryroster.v1.AddMembershipRequest\x1a).directoryroster.v1.AddMembershipResponse\x12m\n" +
 	"\x10RemoveMembership\x12+.directoryroster.v1.RemoveMembershipRequest\x1a,.directoryroster.v1.RemoveMembershipResponse\x12v\n" +
-	"\x13ListDirectoryGroups\x12..directoryroster.v1.ListDirectoryGroupsRequest\x1a/.directoryroster.v1.ListDirectoryGroupsResponseB\xd9\x01\n" +
+	"\x13ListDirectoryGroups\x12..directoryroster.v1.ListDirectoryGroupsRequest\x1a/.directoryroster.v1.ListDirectoryGroupsResponse\x12p\n" +
+	"\x11GetDirectoryGroup\x12,.directoryroster.v1.GetDirectoryGroupRequest\x1a-.directoryroster.v1.GetDirectoryGroupResponseB\xd9\x01\n" +
 	"\x16com.directoryroster.v1B\vAccessProtoP\x01ZIgithub.com/truvity/access-roster/gen/directoryroster/v1;directoryrosterv1\xa2\x02\x03DXX\xaa\x02\x12Directoryroster.V1\xca\x02\x12Directoryroster\\V1\xe2\x02\x1eDirectoryroster\\V1\\GPBMetadata\xea\x02\x13Directoryroster::V1b\x06proto3"
 
 var (
@@ -2018,7 +2334,7 @@ func file_directoryroster_v1_access_proto_rawDescGZIP() []byte {
 }
 
 var file_directoryroster_v1_access_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_directoryroster_v1_access_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_directoryroster_v1_access_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_directoryroster_v1_access_proto_goTypes = []any{
 	(Role)(0),                           // 0: directoryroster.v1.Role
 	(IdentitySource)(0),                 // 1: directoryroster.v1.IdentitySource
@@ -2049,8 +2365,13 @@ var file_directoryroster_v1_access_proto_goTypes = []any{
 	(*ListDirectoryGroupsRequest)(nil),  // 26: directoryroster.v1.ListDirectoryGroupsRequest
 	(*ListDirectoryGroupsResponse)(nil), // 27: directoryroster.v1.ListDirectoryGroupsResponse
 	(*DirectoryGroupSummary)(nil),       // 28: directoryroster.v1.DirectoryGroupSummary
-	(*structpb.Struct)(nil),             // 29: google.protobuf.Struct
-	(*durationpb.Duration)(nil),         // 30: google.protobuf.Duration
+	(*GetDirectoryGroupRequest)(nil),    // 29: directoryroster.v1.GetDirectoryGroupRequest
+	(*DirectoryGroupMember)(nil),        // 30: directoryroster.v1.DirectoryGroupMember
+	(*DirectoryGroupFeed)(nil),          // 31: directoryroster.v1.DirectoryGroupFeed
+	(*GetDirectoryGroupResponse)(nil),   // 32: directoryroster.v1.GetDirectoryGroupResponse
+	(*structpb.Struct)(nil),             // 33: google.protobuf.Struct
+	(*durationpb.Duration)(nil),         // 34: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),       // 35: google.protobuf.Timestamp
 }
 var file_directoryroster_v1_access_proto_depIdxs = []int32{
 	1,  // 0: directoryroster.v1.Identity.source:type_name -> directoryroster.v1.IdentitySource
@@ -2060,41 +2381,46 @@ var file_directoryroster_v1_access_proto_depIdxs = []int32{
 	7,  // 4: directoryroster.v1.ExplainRequest.service_account:type_name -> directoryroster.v1.ServiceAccountProof
 	2,  // 5: directoryroster.v1.ExplainResponse.identity:type_name -> directoryroster.v1.Identity
 	5,  // 6: directoryroster.v1.ExplainResponse.held:type_name -> directoryroster.v1.HeldGroup
-	29, // 7: directoryroster.v1.ExplainResponse.claims:type_name -> google.protobuf.Struct
-	30, // 8: directoryroster.v1.ExplainResponse.lifetime:type_name -> google.protobuf.Duration
+	33, // 7: directoryroster.v1.ExplainResponse.claims:type_name -> google.protobuf.Struct
+	34, // 8: directoryroster.v1.ExplainResponse.lifetime:type_name -> google.protobuf.Duration
 	10, // 9: directoryroster.v1.ExplainResponse.clients:type_name -> directoryroster.v1.ClientAdmission
-	30, // 10: directoryroster.v1.ClientAdmission.lifetime:type_name -> google.protobuf.Duration
+	34, // 10: directoryroster.v1.ClientAdmission.lifetime:type_name -> google.protobuf.Duration
 	11, // 11: directoryroster.v1.PolicyGroup.members:type_name -> directoryroster.v1.GroupMember
-	29, // 12: directoryroster.v1.PolicyGroup.claims:type_name -> google.protobuf.Struct
-	30, // 13: directoryroster.v1.PolicyGroup.lifetime:type_name -> google.protobuf.Duration
-	30, // 14: directoryroster.v1.PolicyClient.ttl_cap:type_name -> google.protobuf.Duration
+	33, // 12: directoryroster.v1.PolicyGroup.claims:type_name -> google.protobuf.Struct
+	34, // 13: directoryroster.v1.PolicyGroup.lifetime:type_name -> google.protobuf.Duration
+	34, // 14: directoryroster.v1.PolicyClient.ttl_cap:type_name -> google.protobuf.Duration
 	12, // 15: directoryroster.v1.GetPolicyResponse.groups:type_name -> directoryroster.v1.PolicyGroup
 	13, // 16: directoryroster.v1.GetPolicyResponse.clients:type_name -> directoryroster.v1.PolicyClient
-	30, // 17: directoryroster.v1.Holder.lifetime:type_name -> google.protobuf.Duration
+	34, // 17: directoryroster.v1.Holder.lifetime:type_name -> google.protobuf.Duration
 	21, // 18: directoryroster.v1.ListHoldersResponse.holders:type_name -> directoryroster.v1.Holder
 	24, // 19: directoryroster.v1.SearchPeopleResponse.people:type_name -> directoryroster.v1.PersonSummary
 	28, // 20: directoryroster.v1.ListDirectoryGroupsResponse.groups:type_name -> directoryroster.v1.DirectoryGroupSummary
-	3,  // 21: directoryroster.v1.AccessService.WhoAmI:input_type -> directoryroster.v1.WhoAmIRequest
-	8,  // 22: directoryroster.v1.AccessService.Explain:input_type -> directoryroster.v1.ExplainRequest
-	20, // 23: directoryroster.v1.AccessService.ListHolders:input_type -> directoryroster.v1.ListHoldersRequest
-	23, // 24: directoryroster.v1.AccessService.SearchPeople:input_type -> directoryroster.v1.SearchPeopleRequest
-	14, // 25: directoryroster.v1.AccessService.GetPolicy:input_type -> directoryroster.v1.GetPolicyRequest
-	16, // 26: directoryroster.v1.AccessService.AddMembership:input_type -> directoryroster.v1.AddMembershipRequest
-	18, // 27: directoryroster.v1.AccessService.RemoveMembership:input_type -> directoryroster.v1.RemoveMembershipRequest
-	26, // 28: directoryroster.v1.AccessService.ListDirectoryGroups:input_type -> directoryroster.v1.ListDirectoryGroupsRequest
-	4,  // 29: directoryroster.v1.AccessService.WhoAmI:output_type -> directoryroster.v1.WhoAmIResponse
-	9,  // 30: directoryroster.v1.AccessService.Explain:output_type -> directoryroster.v1.ExplainResponse
-	22, // 31: directoryroster.v1.AccessService.ListHolders:output_type -> directoryroster.v1.ListHoldersResponse
-	25, // 32: directoryroster.v1.AccessService.SearchPeople:output_type -> directoryroster.v1.SearchPeopleResponse
-	15, // 33: directoryroster.v1.AccessService.GetPolicy:output_type -> directoryroster.v1.GetPolicyResponse
-	17, // 34: directoryroster.v1.AccessService.AddMembership:output_type -> directoryroster.v1.AddMembershipResponse
-	19, // 35: directoryroster.v1.AccessService.RemoveMembership:output_type -> directoryroster.v1.RemoveMembershipResponse
-	27, // 36: directoryroster.v1.AccessService.ListDirectoryGroups:output_type -> directoryroster.v1.ListDirectoryGroupsResponse
-	29, // [29:37] is the sub-list for method output_type
-	21, // [21:29] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	35, // 21: directoryroster.v1.GetDirectoryGroupResponse.snapshot_at:type_name -> google.protobuf.Timestamp
+	30, // 22: directoryroster.v1.GetDirectoryGroupResponse.members:type_name -> directoryroster.v1.DirectoryGroupMember
+	31, // 23: directoryroster.v1.GetDirectoryGroupResponse.feeds:type_name -> directoryroster.v1.DirectoryGroupFeed
+	3,  // 24: directoryroster.v1.AccessService.WhoAmI:input_type -> directoryroster.v1.WhoAmIRequest
+	8,  // 25: directoryroster.v1.AccessService.Explain:input_type -> directoryroster.v1.ExplainRequest
+	20, // 26: directoryroster.v1.AccessService.ListHolders:input_type -> directoryroster.v1.ListHoldersRequest
+	23, // 27: directoryroster.v1.AccessService.SearchPeople:input_type -> directoryroster.v1.SearchPeopleRequest
+	14, // 28: directoryroster.v1.AccessService.GetPolicy:input_type -> directoryroster.v1.GetPolicyRequest
+	16, // 29: directoryroster.v1.AccessService.AddMembership:input_type -> directoryroster.v1.AddMembershipRequest
+	18, // 30: directoryroster.v1.AccessService.RemoveMembership:input_type -> directoryroster.v1.RemoveMembershipRequest
+	26, // 31: directoryroster.v1.AccessService.ListDirectoryGroups:input_type -> directoryroster.v1.ListDirectoryGroupsRequest
+	29, // 32: directoryroster.v1.AccessService.GetDirectoryGroup:input_type -> directoryroster.v1.GetDirectoryGroupRequest
+	4,  // 33: directoryroster.v1.AccessService.WhoAmI:output_type -> directoryroster.v1.WhoAmIResponse
+	9,  // 34: directoryroster.v1.AccessService.Explain:output_type -> directoryroster.v1.ExplainResponse
+	22, // 35: directoryroster.v1.AccessService.ListHolders:output_type -> directoryroster.v1.ListHoldersResponse
+	25, // 36: directoryroster.v1.AccessService.SearchPeople:output_type -> directoryroster.v1.SearchPeopleResponse
+	15, // 37: directoryroster.v1.AccessService.GetPolicy:output_type -> directoryroster.v1.GetPolicyResponse
+	17, // 38: directoryroster.v1.AccessService.AddMembership:output_type -> directoryroster.v1.AddMembershipResponse
+	19, // 39: directoryroster.v1.AccessService.RemoveMembership:output_type -> directoryroster.v1.RemoveMembershipResponse
+	27, // 40: directoryroster.v1.AccessService.ListDirectoryGroups:output_type -> directoryroster.v1.ListDirectoryGroupsResponse
+	32, // 41: directoryroster.v1.AccessService.GetDirectoryGroup:output_type -> directoryroster.v1.GetDirectoryGroupResponse
+	33, // [33:42] is the sub-list for method output_type
+	24, // [24:33] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_access_proto_init() }
@@ -2108,7 +2434,7 @@ func file_directoryroster_v1_access_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_access_proto_rawDesc), len(file_directoryroster_v1_access_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   27,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

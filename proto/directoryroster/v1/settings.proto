@@ -51,6 +51,9 @@ message GetSettingsResponse {
   // console offers one Connect button per entry, and none at all when a
   // deployment has configured no OAuth client.
   repeated Backend connectors = 6;
+  // key_connectors is the subset of connectors that also accept an
+  // uploaded service-account key, the second way to add a directory.
+  repeated Backend key_connectors = 8;
   // the build this hub is running.
   string version = 7;
 }

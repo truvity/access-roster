@@ -54,6 +54,9 @@ const (
 	// AccessServiceListDirectoryGroupsProcedure is the fully-qualified name of the AccessService's
 	// ListDirectoryGroups RPC.
 	AccessServiceListDirectoryGroupsProcedure = "/directoryroster.v1.AccessService/ListDirectoryGroups"
+	// AccessServiceGetDirectoryGroupProcedure is the fully-qualified name of the AccessService's
+	// GetDirectoryGroup RPC.
+	AccessServiceGetDirectoryGroupProcedure = "/directoryroster.v1.AccessService/GetDirectoryGroup"
 )
 
 // AccessServiceClient is a client for the directoryroster.v1.AccessService service.
@@ -98,6 +101,14 @@ type AccessServiceClient interface {
 	// that a membership is a click rather than a typed address that may be
 	// a typo. Viewer.
 	ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error)
+	// GetDirectoryGroup returns one snapshotted directory group as the
+	// console shows it: where it came from and whether that can be vouched
+	// for, its members straight from the directory, and the internal groups
+	// it feeds. It is the reverse of a membership — an admin who just
+	// changed a group in the directory wants to know its blast radius, and
+	// that direction is not derivable from the policy alone. Viewer, for
+	// the same reason as Explain.
+	GetDirectoryGroup(context.Context, *connect.Request[v1.GetDirectoryGroupRequest]) (*connect.Response[v1.GetDirectoryGroupResponse], error)
 }
 
 // NewAccessServiceClient constructs a client for the directoryroster.v1.AccessService service. By
@@ -159,6 +170,12 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(accessServiceMethods.ByName("ListDirectoryGroups")),
 			connect.WithClientOptions(opts...),
 		),
+		getDirectoryGroup: connect.NewClient[v1.GetDirectoryGroupRequest, v1.GetDirectoryGroupResponse](
+			httpClient,
+			baseURL+AccessServiceGetDirectoryGroupProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("GetDirectoryGroup")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -172,6 +189,7 @@ type accessServiceClient struct {
 	addMembership       *connect.Client[v1.AddMembershipRequest, v1.AddMembershipResponse]
 	removeMembership    *connect.Client[v1.RemoveMembershipRequest, v1.RemoveMembershipResponse]
 	listDirectoryGroups *connect.Client[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse]
+	getDirectoryGroup   *connect.Client[v1.GetDirectoryGroupRequest, v1.GetDirectoryGroupResponse]
 }
 
 // WhoAmI calls directoryroster.v1.AccessService.WhoAmI.
@@ -212,6 +230,11 @@ func (c *accessServiceClient) RemoveMembership(ctx context.Context, req *connect
 // ListDirectoryGroups calls directoryroster.v1.AccessService.ListDirectoryGroups.
 func (c *accessServiceClient) ListDirectoryGroups(ctx context.Context, req *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error) {
 	return c.listDirectoryGroups.CallUnary(ctx, req)
+}
+
+// GetDirectoryGroup calls directoryroster.v1.AccessService.GetDirectoryGroup.
+func (c *accessServiceClient) GetDirectoryGroup(ctx context.Context, req *connect.Request[v1.GetDirectoryGroupRequest]) (*connect.Response[v1.GetDirectoryGroupResponse], error) {
+	return c.getDirectoryGroup.CallUnary(ctx, req)
 }
 
 // AccessServiceHandler is an implementation of the directoryroster.v1.AccessService service.
@@ -256,6 +279,14 @@ type AccessServiceHandler interface {
 	// that a membership is a click rather than a typed address that may be
 	// a typo. Viewer.
 	ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error)
+	// GetDirectoryGroup returns one snapshotted directory group as the
+	// console shows it: where it came from and whether that can be vouched
+	// for, its members straight from the directory, and the internal groups
+	// it feeds. It is the reverse of a membership — an admin who just
+	// changed a group in the directory wants to know its blast radius, and
+	// that direction is not derivable from the policy alone. Viewer, for
+	// the same reason as Explain.
+	GetDirectoryGroup(context.Context, *connect.Request[v1.GetDirectoryGroupRequest]) (*connect.Response[v1.GetDirectoryGroupResponse], error)
 }
 
 // NewAccessServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -313,6 +344,12 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(accessServiceMethods.ByName("ListDirectoryGroups")),
 		connect.WithHandlerOptions(opts...),
 	)
+	accessServiceGetDirectoryGroupHandler := connect.NewUnaryHandler(
+		AccessServiceGetDirectoryGroupProcedure,
+		svc.GetDirectoryGroup,
+		connect.WithSchema(accessServiceMethods.ByName("GetDirectoryGroup")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/directoryroster.v1.AccessService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AccessServiceWhoAmIProcedure:
@@ -331,6 +368,8 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 			accessServiceRemoveMembershipHandler.ServeHTTP(w, r)
 		case AccessServiceListDirectoryGroupsProcedure:
 			accessServiceListDirectoryGroupsHandler.ServeHTTP(w, r)
+		case AccessServiceGetDirectoryGroupProcedure:
+			accessServiceGetDirectoryGroupHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -370,4 +409,8 @@ func (UnimplementedAccessServiceHandler) RemoveMembership(context.Context, *conn
 
 func (UnimplementedAccessServiceHandler) ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.ListDirectoryGroups is not implemented"))
+}
+
+func (UnimplementedAccessServiceHandler) GetDirectoryGroup(context.Context, *connect.Request[v1.GetDirectoryGroupRequest]) (*connect.Response[v1.GetDirectoryGroupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.GetDirectoryGroup is not implemented"))
 }

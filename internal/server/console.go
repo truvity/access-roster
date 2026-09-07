@@ -12,6 +12,7 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/truvity/access-roster/backend"
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
@@ -324,6 +325,7 @@ func (c *Console) GetSettings(
 		ProbeInterval:   durationpb.New(cfg.ProbeInterval),
 		CacheBackend:    c.deps.CacheBackend,
 		Connectors:      c.connectorKinds(),
+		KeyConnectors:   c.keyConnectorKinds(),
 		Version:         version.String(),
 	}), nil
 }
@@ -335,6 +337,18 @@ func (c *Console) connectorKinds() []directoryrosterv1.Backend {
 	out := make([]directoryrosterv1.Backend, 0, len(c.connectors))
 	for _, kind := range slices.Sorted(maps.Keys(c.connectors)) {
 		out = append(out, backendEnum(kind))
+	}
+	return out
+}
+
+// keyConnectorKinds names the backends that take an uploaded key, so the
+// console offers that path only where it works.
+func (c *Console) keyConnectorKinds() []directoryrosterv1.Backend {
+	var out []directoryrosterv1.Backend
+	for _, kind := range slices.Sorted(maps.Keys(c.connectors)) {
+		if _, ok := c.connectors[kind].(KeyConnector); ok {
+			out = append(out, backendEnum(kind))
+		}
 	}
 	return out
 }
@@ -521,7 +535,7 @@ func (c *Console) ListHolders(
 	// Every account is examined, because holding a group is a property of
 	// the whole policy rather than of one table; the limit bounds what is
 	// returned, not what is considered.
-	people, _, err := c.deps.Hub.People(ctx, "", maxExamined)
+	people, _, err := c.deps.Hub.People(ctx, hub.PeopleQuery{}, maxExamined)
 	if err != nil {
 		return nil, rpcError(err)
 	}
@@ -553,7 +567,10 @@ func (c *Console) SearchPeople(
 	if limit <= 0 {
 		limit = 20
 	}
-	people, truncated, err := c.deps.Hub.People(ctx, req.Msg.GetQuery(), limit)
+	people, truncated, err := c.deps.Hub.People(ctx, hub.PeopleQuery{
+		Text:      req.Msg.GetQuery(),
+		Workspace: req.Msg.GetWorkspaceId(),
+	}, limit)
 	if err != nil {
 		return nil, rpcError(err)
 	}
@@ -570,6 +587,52 @@ func (c *Console) SearchPeople(
 			WorkspaceId: person.Workspace,
 			Live:        person.Live,
 		})
+	}
+	return connect.NewResponse(out), nil
+}
+
+// GetDirectoryGroup implements the operator contract: one directory group,
+// its members as the directory reports them, and the internal groups it
+// feeds. The feeds are the memberships table read backwards.
+func (c *Console) GetDirectoryGroup(
+	ctx context.Context, req *connect.Request[directoryrosterv1.GetDirectoryGroupRequest],
+) (*connect.Response[directoryrosterv1.GetDirectoryGroupResponse], error) {
+	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+		return nil, err
+	}
+	group, err := c.deps.Hub.DirectoryGroup(ctx, req.Msg.GetEmail())
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	out := &directoryrosterv1.GetDirectoryGroupResponse{
+		Email:         group.Email,
+		Domain:        group.Domain,
+		WorkspaceId:   group.Workspace,
+		Found:         group.Found,
+		Authoritative: group.Authoritative,
+		Members:       make([]*directoryrosterv1.DirectoryGroupMember, 0, len(group.Members)),
+	}
+	if !group.SnapshotAt.IsZero() {
+		out.SnapshotAt = timestamppb.New(group.SnapshotAt)
+	}
+	for i := range group.Members {
+		m := &group.Members[i]
+		out.Members = append(out.Members, &directoryrosterv1.DirectoryGroupMember{
+			Email:      m.Email,
+			GivenName:  m.GivenName,
+			FamilyName: m.FamilyName,
+			Known:      m.Known,
+			Live:       m.Live,
+		})
+	}
+	for _, view := range c.deps.Authorizer.Policy().Groups() {
+		for _, member := range view.Members {
+			if strings.EqualFold(member.Address, group.Email) {
+				out.Feeds = append(out.Feeds, &directoryrosterv1.DirectoryGroupFeed{
+					Group: view.Name, Layer: member.Layer,
+				})
+			}
+		}
 	}
 	return connect.NewResponse(out), nil
 }

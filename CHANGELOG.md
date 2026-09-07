@@ -29,8 +29,14 @@ repository, not the order it arrived in.
   tenant, group, client and person, each carrying its edges in both
   directions. Every name is a link, every page opens with a
   plain-language summary, and actions live on the object they change.
-  Explain keeps the proofs nobody can search for, a CI job and a
-  workload, because they do not exist until one runs.
+  The navigation is two clusters, identity and access, with one adjective
+  each — directory groups and internal groups — and a page at every level
+  of both: a directory group's page mirrors an internal group's, and the
+  membership that joins them is editable from either end. A person's page
+  is the chain, one row per internal group held. Machines keeps the proofs
+  nobody can search for, a CI job and a workload, because they do not
+  exist until one runs. **Add a directory** offers both ways in and only
+  the ways the deployment can take.
 - **A demonstration mode** (`DEMO=1`): two tenants in memory and a
   consent connector, so every use-case is walkable before a credential
   exists.

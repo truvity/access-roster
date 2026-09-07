@@ -137,7 +137,7 @@ for a key that does not parse or an admin address without a domain.
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `GetSettings` | viewer | — | `oauth_client{client_id, configured, source}`, `refresh_interval`, `freshness_window`, `probe_interval`, `cache_backend` | never the client secret |
+| `GetSettings` | viewer | — | `oauth_client{client_id, configured, source}`, `refresh_interval`, `freshness_window`, `probe_interval`, `cache_backend`, `connectors[]`, `key_connectors[]`, `version` | never the client secret. `connectors` are the backends this deployment can add a directory from; `key_connectors` the subset that also take an uploaded key |
 | `SetOAuthClient` | operator | `client_id`, `client_secret` | — | `failed_precondition` when the deployment declared the client |
 
 The intervals are chart values. The console shows them so an operator
@@ -153,8 +153,9 @@ can see what the hub runs with; changing them is a deployment change.
 | `AddMembership` | operator | `group`, `directory_group` | — | the group must be declared |
 | `RemoveMembership` | operator | `group`, `directory_group` | — | `failed_precondition` for a membership the deployment declared |
 | `ListHolders` | viewer | `group?` or `client?`, `limit?` | `holders[]{email, given_name, family_name, live, authoritative, via[], lifetime}`, `examined`, `truncated` | who holds a group, or reaches a client, right now. The policy says which directory groups count; only the directory knows who is in them |
-| `SearchPeople` | viewer | `query`, `limit?` | `people[]{email, given_name, family_name, workspace_id, live}`, `truncated` | accounts by address or name across every snapshot, so a console can start from a name |
+| `SearchPeople` | viewer | `query?`, `workspace_id?`, `limit?` | `people[]{email, given_name, family_name, workspace_id, live}`, `truncated` | accounts by address or name across every snapshot, or one tenant's accounts, so a console can start from a name and a tenant's page can list who it holds |
 | `ListDirectoryGroups` | viewer | `domain?` | `groups[]{email, domain, workspace_id, members}` | the picker's source: the hub's own snapshots |
+| `GetDirectoryGroup` | viewer | `email` | `email, domain, workspace_id, found, authoritative, snapshot_at`, `members[]{email, given_name, family_name, known, live}`, `feeds[]{group, layer}` | one directory group: its members as the directory reports them, and the memberships table read backwards. The direction an admin who just changed a group in the directory thinks in, and not derivable from the policy alone |
 
 Errors: `unauthenticated` with no session; `permission_denied` without the
 role; `not_found` for an undeclared group; `failed_precondition` for

@@ -395,3 +395,52 @@ func TestInvalidAddress(t *testing.T) {
 		t.Error("want an error for an address with no domain")
 	}
 }
+
+func TestDirectoryGroupResolvesMembersAndPeopleFilterByTenant(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	ctx := context.Background()
+
+	// A group with a member from the other tenant and a member nobody
+	// reads: the first resolves to a name, the second is honestly unknown.
+	h.one.WithGroup("mixed@one.example", "alice@one.example", "carol@two.example", "ghost@elsewhere.example")
+	h.one.Suspend("alice@one.example")
+	if _, err := h.hub.Refresh(ctx, oneID); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	group, err := h.hub.DirectoryGroup(ctx, "Mixed@one.example")
+	if err != nil {
+		t.Fatalf("DirectoryGroup: %v", err)
+	}
+	if !group.Found || group.Workspace != oneID || !group.Authoritative {
+		t.Fatalf("group = %+v", group.GroupResult)
+	}
+	want := map[string]hub.GroupMember{
+		"alice@one.example":       {Email: "alice@one.example", GivenName: "Alice", FamilyName: "Ant", Known: true, Live: false},
+		"carol@two.example":       {Email: "carol@two.example", GivenName: "Carol", FamilyName: "Cat", Known: true, Live: true},
+		"ghost@elsewhere.example": {Email: "ghost@elsewhere.example"},
+	}
+	if len(group.Members) != len(want) {
+		t.Fatalf("members = %+v", group.Members)
+	}
+	for _, m := range group.Members {
+		if m != want[m.Email] {
+			t.Errorf("member %s = %+v, want %+v", m.Email, m, want[m.Email])
+		}
+	}
+
+	missing, err := h.hub.DirectoryGroup(ctx, "nobody@one.example")
+	if err != nil || missing.Found || len(missing.Members) != 0 {
+		t.Errorf("missing group = %+v, %v", missing, err)
+	}
+
+	two, truncated, err := h.hub.People(ctx, hub.PeopleQuery{Workspace: twoID}, 0)
+	if err != nil || truncated || len(two) != 1 || two[0].Email != "carol@two.example" {
+		t.Errorf("People(two) = %+v, %v, %v", two, truncated, err)
+	}
+	none, _, err := h.hub.People(ctx, hub.PeopleQuery{Text: "carol", Workspace: oneID}, 0)
+	if err != nil || len(none) != 0 {
+		t.Errorf("People(carol in one) = %+v, %v", none, err)
+	}
+}

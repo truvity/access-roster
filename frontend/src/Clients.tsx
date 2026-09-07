@@ -40,7 +40,7 @@ export function Clients() {
               <TableRow>
                 <TableCell>Client</TableCell>
                 <TableCell>Kind</TableCell>
-                <TableCell>Requires any of</TableCell>
+                <TableCell>Opened by any of</TableCell>
                 <TableCell>Token cap</TableCell>
               </TableRow>
             </TableHead>
@@ -112,7 +112,7 @@ export function Client({ id }: { id: string }) {
       <Loading busy={policy.loading || holders.loading} />
       <Failure error={policy.error ?? holders.error} />
 
-      <Section title="Groups that open it" hint="being in any one of them is enough">
+      <Section title="Internal groups that open it" hint="being in any one of them is enough">
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableBody>
@@ -148,8 +148,8 @@ export function Client({ id }: { id: string }) {
       >
         {people.length === 0 ? (
           <Nothing>
-            Nobody. Attach a directory group to one of the groups above, and the people in it reach this
-            client.
+            Nobody. Attach a directory group to one of the internal groups above, and the people in it
+            reach this client.
           </Nothing>
         ) : (
           <TableContainer component={Paper} variant="outlined">

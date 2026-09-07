@@ -26,15 +26,25 @@ export function go(to: string) {
   window.location.hash = to;
 }
 
+/** Two hierarchies, joined by the membership. The identity side is where
+ *  people come from: a directory, its groups, its accounts, and the
+ *  machines that prove themselves without one. The access side is what
+ *  they get: an internal group and the clients it opens. Every level on
+ *  either side is a page. */
 export const paths = {
   overview: () => "/",
+  // identity
   directories: () => "/directories",
   directory: (id: string) => `/directories/${encodeURIComponent(id)}`,
+  directoryGroups: () => "/directory-groups",
+  directoryGroup: (email: string) => `/directory-groups/${encodeURIComponent(email)}`,
+  people: () => "/people",
+  person: (email: string) => `/people/${encodeURIComponent(email)}`,
+  machines: () => "/machines",
+  // access
   groups: () => "/groups",
   group: (name: string) => `/groups/${encodeURIComponent(name)}`,
   clients: () => "/clients",
   client: (id: string) => `/clients/${encodeURIComponent(id)}`,
-  person: (email: string) => `/people/${encodeURIComponent(email)}`,
-  explain: () => "/explain",
   settings: () => "/settings",
 };

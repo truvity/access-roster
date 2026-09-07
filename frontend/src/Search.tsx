@@ -14,8 +14,8 @@ import { go, paths } from "./router";
 
 type Hit = { kind: string; label: string; detail?: string; to: string };
 
-/** Almost every task starts with a name: a person, a group, a client, a
- *  tenant. One field that resolves any of them removes the first click
+/** Almost every task starts with a name: a person, a group on either
+ *  side, a client, a directory. One field that resolves any of them removes the first click
  *  from nearly every journey, which is why it sits on every page rather
  *  than on one. */
 export function Search() {
@@ -67,9 +67,9 @@ export function Search() {
     for (const group of policy.value?.groups ?? []) {
       if (matches(group.name)) {
         out.push({
-          kind: "group",
+          kind: "internal group",
           label: group.name,
-          detail: `${group.members.length} directory groups`,
+          detail: `fed by ${group.members.length} directory groups`,
           to: paths.group(group.name),
         });
       }
@@ -84,15 +84,15 @@ export function Search() {
         out.push({
           kind: "directory group",
           label: group.email,
-          detail: `${group.members} members`,
-          to: paths.directory(group.workspaceId),
+          detail: `${group.members} members · from ${group.workspaceId}`,
+          to: paths.directoryGroup(group.email),
         });
       }
     }
     for (const tenant of tenants.value?.workspaces ?? []) {
       const domains = tenant.domains.map((d) => d.name).join(", ");
       if (matches(tenant.id) || matches(domains)) {
-        out.push({ kind: "tenant", label: tenant.id, detail: domains, to: paths.directory(tenant.id) });
+        out.push({ kind: "directory", label: tenant.id, detail: domains, to: paths.directory(tenant.id) });
       }
     }
     // An address nobody knows is still worth looking up: the answer "no

@@ -2,6 +2,7 @@ import { useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
+import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -10,68 +11,64 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { Backend, access, ago, at, backendName, reason, settings, workspaces } from "./api";
+import { Backend, access, ago, at, backendName, personName, reason, settings, workspaces } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Authority, Failure, Loading, Nothing, Ref, Section, Summary } from "./ui";
 
-/** The tenants this hub holds a credential for. */
-export function Directories({ operator }: { operator: boolean; onDone: (message: string) => void }) {
+/** The identity-side container: every directory this hub reads. */
+export function Directories({
+  operator,
+  onDone,
+}: {
+  operator: boolean;
+  onDone: (message: string) => void;
+}) {
   const list = useAsync(() => workspaces.listWorkspaces({}), []);
-  const providers = useAsync(() => settings.getSettings({}), []);
+  const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
 
-  const connect = async (backend: Backend) => {
-    setFailure(undefined);
-    try {
-      const started = await workspaces.beginConnect({ backend });
-      window.location.href = started.consentUrl;
-    } catch (error) {
-      setFailure(reason(error));
-    }
-  };
-
   const rows = list.value?.workspaces ?? [];
-  const connectors = providers.value?.connectors ?? [];
 
   return (
     <Box>
-      <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+      <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", mb: 1, gap: 2 }}>
         <Box>
           <Typography variant="h6">Directories</Typography>
           <Typography variant="body2" color="text.secondary">
-            Every tenant this hub holds a credential for. Domains are discovered, never typed.
+            Every directory this hub holds a credential for. Its domains are discovered, never typed, and its
+            groups and accounts are what memberships and people are made of.
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
-          {connectors.map((backend) => (
-            <Button key={backend} variant="contained" disabled={!operator} onClick={() => void connect(backend)}>
-              Connect {backendName(backend)}
-            </Button>
-          ))}
-          {providers.value && connectors.length === 0 ? (
-            <Tooltip title="No backend is configured to connect with. Set the OAuth client in Settings first.">
-              <span>
-                <Button variant="contained" disabled>
-                  Connect a tenant
-                </Button>
-              </span>
-            </Tooltip>
-          ) : null}
-        </Stack>
+        <Button variant="contained" disabled={!operator || adding} onClick={() => setAdding(true)} sx={{ whiteSpace: "nowrap" }}>
+          Add a directory
+        </Button>
       </Stack>
 
-      <Loading busy={list.loading || providers.loading} />
+      {adding ? (
+        <AddDirectory
+          onCancel={() => setAdding(false)}
+          onAdded={(message) => {
+            setAdding(false);
+            onDone(message);
+            list.reload();
+          }}
+          onFailure={setFailure}
+        />
+      ) : null}
+
+      <Loading busy={list.loading} />
       <Failure error={failure ?? list.error} />
 
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Tenant</TableCell>
+              <TableCell>Directory</TableCell>
               <TableCell>Domains</TableCell>
               <TableCell>Health</TableCell>
               <TableCell>Snapshot</TableCell>
@@ -117,7 +114,7 @@ export function Directories({ operator }: { operator: boolean; onDone: (message:
               <TableRow>
                 <TableCell colSpan={4}>
                   <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-                    No tenants yet. Connect one to start serving its domains.
+                    No directories yet. Add one to start serving its domains.
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -129,7 +126,151 @@ export function Directories({ operator }: { operator: boolean; onDone: (message:
   );
 }
 
-/** One tenant: its domains, its health, and what it contributes. */
+/** The two ways in, as one panel: admin consent through the directory's
+ *  own screen, or a service-account key the operator already holds. Only
+ *  the ways this deployment can actually take are offered, and when there
+ *  are none the panel says why instead of showing a button that does
+ *  nothing. */
+function AddDirectory({
+  onCancel,
+  onAdded,
+  onFailure,
+}: {
+  onCancel: () => void;
+  onAdded: (message: string) => void;
+  onFailure: (message: string) => void;
+}) {
+  const providers = useAsync(() => settings.getSettings({}), []);
+  const connectors = providers.value?.connectors ?? [];
+  const keyConnectors = providers.value?.keyConnectors ?? [];
+  const [backend, setBackend] = useState<Backend | undefined>();
+  const [admin, setAdmin] = useState("");
+  const [key, setKey] = useState<{ name: string; bytes: Uint8Array } | undefined>();
+  const [busy, setBusy] = useState(false);
+
+  const chosenKeyBackend = backend ?? keyConnectors[0];
+
+  const consent = async (which: Backend) => {
+    setBusy(true);
+    try {
+      const started = await workspaces.beginConnect({ backend: which });
+      window.location.href = started.consentUrl;
+    } catch (error) {
+      setBusy(false);
+      onFailure(reason(error));
+    }
+  };
+
+  const upload = async () => {
+    if (!chosenKeyBackend || !key) return;
+    setBusy(true);
+    try {
+      const done = await workspaces.uploadKey({ backend: chosenKeyBackend, key: key.bytes, admin: admin.trim() });
+      onAdded(`${done.workspace?.id ?? "The directory"} added from ${key.name}.`);
+    } catch (error) {
+      onFailure(reason(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pick = (file: File | undefined) => {
+    if (!file) {
+      setKey(undefined);
+      return;
+    }
+    void file.arrayBuffer().then((buffer) => setKey({ name: file.name, bytes: new Uint8Array(buffer) }));
+  };
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      <Loading busy={providers.loading || busy} />
+      <Failure error={providers.error} />
+      {providers.value && connectors.length === 0 ? (
+        <Stack spacing={1}>
+          <Typography variant="body2">
+            This deployment has no directory backend wired, so there is nothing to connect to yet.
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Connecting a Google Workspace needs the Google connector and an OAuth client in{" "}
+            <Ref to={paths.settings()}>Settings</Ref>; a deployment can also declare a directory in its
+            values with a service-account key.
+          </Typography>
+        </Stack>
+      ) : (
+        <Stack spacing={2}>
+          <Box>
+            <Typography variant="subtitle2">Through admin consent</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+              The directory's own consent screen, signed in as its admin. Domains, accounts and groups are
+              discovered from what it grants.
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+              {connectors.map((which) => (
+                <Button key={which} variant="contained" disabled={busy} onClick={() => void consent(which)}>
+                  Connect {backendName(which)}
+                </Button>
+              ))}
+            </Stack>
+          </Box>
+
+          {keyConnectors.length ? (
+            <Box>
+              <Typography variant="subtitle2">With a service-account key</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                The key the directory issued, and the admin account it should act as. The key is stored in
+                the hub's namespace and never shown again.
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start", flexWrap: "wrap", gap: 1 }}>
+                {keyConnectors.length > 1 ? (
+                  <TextField
+                    select
+                    size="small"
+                    label="Directory"
+                    value={chosenKeyBackend ?? ""}
+                    onChange={(e) => setBackend(Number(e.target.value) as Backend)}
+                    sx={{ minWidth: 200 }}
+                  >
+                    {keyConnectors.map((which) => (
+                      <MenuItem key={which} value={which}>
+                        {backendName(which)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                ) : null}
+                <Button variant="outlined" component="label" disabled={busy}>
+                  {key ? key.name : "Choose the key file"}
+                  <input type="file" accept="application/json,.json" hidden onChange={(e) => pick(e.target.files?.[0])} />
+                </Button>
+                <TextField
+                  size="small"
+                  label="Admin to act as"
+                  placeholder="admin@example.com"
+                  value={admin}
+                  onChange={(e) => setAdmin(e.target.value)}
+                  sx={{ minWidth: 260 }}
+                />
+                <Button variant="contained" disabled={busy || !key || !admin.trim()} onClick={() => void upload()}>
+                  Add
+                </Button>
+              </Stack>
+            </Box>
+          ) : null}
+        </Stack>
+      )}
+      <Box sx={{ mt: 2 }}>
+        <Button size="small" onClick={onCancel}>
+          Cancel
+        </Button>
+      </Box>
+    </Paper>
+  );
+}
+
+/** One directory, read along the chain: its standing, the domains it
+ *  serves, the groups it contributes and the accounts it holds. Every
+ *  group and every account is a link, because a directory is the top of
+ *  the identity side and everything below it is reachable from here. */
 export function Directory({
   id,
   operator,
@@ -141,13 +282,22 @@ export function Directory({
 }) {
   const list = useAsync(() => workspaces.listWorkspaces({}), []);
   const groups = useAsync(() => access.listDirectoryGroups({}), []);
+  const policy = useAsync(() => access.getPolicy({}), []);
+  const accounts = useAsync(() => access.searchPeople({ workspaceId: id, limit: 200 }), [id]);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
 
   const tenant = (list.value?.workspaces ?? []).find((w) => w.id === id);
   const contributed = (groups.value?.groups ?? []).filter((g) => g.workspaceId === id);
+  const feeds = new Map<string, string[]>();
+  for (const group of policy.value?.groups ?? []) {
+    for (const member of group.members) {
+      feeds.set(member.address, [...(feeds.get(member.address) ?? []), group.name]);
+    }
+  }
+  const people = accounts.value?.people ?? [];
 
-  const act = async (what: string, run: () => Promise<unknown>, done: string) => {
+  const act = async (run: () => Promise<unknown>, done: string) => {
     setBusy(true);
     setFailure(undefined);
     try {
@@ -155,12 +305,12 @@ export function Directory({
       onDone(done);
       list.reload();
       groups.reload();
+      accounts.reload();
     } catch (error) {
       setFailure(reason(error));
     } finally {
       setBusy(false);
     }
-    void what;
   };
 
   if (!tenant) {
@@ -168,7 +318,7 @@ export function Directory({
       <Box>
         <Loading busy={list.loading} />
         <Failure error={list.error} />
-        {!list.loading ? <Nothing>No tenant with that id. It may have been disconnected.</Nothing> : null}
+        {!list.loading ? <Nothing>No directory with that id. It may have been disconnected.</Nothing> : null}
       </Box>
     );
   }
@@ -177,13 +327,13 @@ export function Directory({
     <Box>
       <Summary
         title={<span style={{ fontFamily: "monospace" }}>{tenant.id}</span>}
-        subtitle={`${backendName(tenant.backend)} · acting as ${tenant.admin || "—"}${
+        subtitle={`${backendName(tenant.backend)} · ${people.length} accounts · ${contributed.length} groups · acting as ${tenant.admin || "—"}${
           tenant.connectedBy ? ` · connected by ${tenant.connectedBy}` : ""
         }`}
         chips={
           <>
             {tenant.declared ? (
-              <Tooltip title="The deployment declared this tenant: it is read-only here and wins a contested domain.">
+              <Tooltip title="The deployment declared this directory: it is read-only here and wins a contested domain.">
                 <Chip size="small" variant="outlined" color="secondary" label="declared" />
               </Tooltip>
             ) : null}
@@ -199,10 +349,10 @@ export function Directory({
         }
         right={
           <Stack direction="row" spacing={1}>
-            <Button size="small" disabled={!operator || busy} onClick={() => void act("probe", () => workspaces.probe({ workspaceId: tenant.id }), "Probed.")}>
+            <Button size="small" disabled={!operator || busy} onClick={() => void act(() => workspaces.probe({ workspaceId: tenant.id }), "Probed.")}>
               Probe
             </Button>
-            <Button size="small" disabled={!operator || busy} onClick={() => void act("refresh", () => workspaces.refresh({ workspaceId: tenant.id }), "New snapshot taken.")}>
+            <Button size="small" disabled={!operator || busy} onClick={() => void act(() => workspaces.refresh({ workspaceId: tenant.id }), "New snapshot taken.")}>
               Refresh
             </Button>
             <Button
@@ -223,7 +373,7 @@ export function Directory({
               title={
                 tenant.declared
                   ? "Declared by the deployment: remove it from the values instead."
-                  : "Revoke the credential and forget this tenant."
+                  : "Revoke the credential and forget this directory."
               }
             >
               <span>
@@ -232,7 +382,7 @@ export function Directory({
                   color="warning"
                   disabled={!operator || tenant.declared || busy}
                   onClick={() =>
-                    void act("disconnect", () => workspaces.disconnect({ workspaceId: tenant.id }), `${tenant.id} disconnected.`)
+                    void act(() => workspaces.disconnect({ workspaceId: tenant.id }), `${tenant.id} disconnected.`)
                   }
                 >
                   Disconnect
@@ -243,10 +393,10 @@ export function Directory({
         }
       />
 
-      <Loading busy={busy || list.loading} />
-      <Failure error={failure} />
+      <Loading busy={busy || list.loading || groups.loading || accounts.loading} />
+      <Failure error={failure ?? groups.error ?? accounts.error} />
 
-      <Section title="Domains" hint="discovered from the tenant and re-read on every probe">
+      <Section title="Domains" hint="discovered from the directory and re-read on every probe">
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableBody>
@@ -272,9 +422,9 @@ export function Directory({
         </TableContainer>
       </Section>
 
-      <Section title="Groups it contributes" hint="what a membership can be attached to">
+      <Section title="Directory groups it contributes" hint="what a membership can attach to an internal group">
         {contributed.length === 0 ? (
-          <Nothing>No groups snapshotted from this tenant yet.</Nothing>
+          <Nothing>No groups snapshotted from this directory yet.</Nothing>
         ) : (
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">
@@ -282,13 +432,70 @@ export function Directory({
                 <TableRow>
                   <TableCell>Directory group</TableCell>
                   <TableCell align="right">Members</TableCell>
+                  <TableCell>Feeds</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {contributed.map((group) => (
-                  <TableRow key={group.email} hover>
-                    <TableCell>{group.email}</TableCell>
-                    <TableCell align="right">{group.members}</TableCell>
+                {contributed.map((group) => {
+                  const into = feeds.get(group.email) ?? [];
+                  return (
+                    <TableRow key={group.email} hover>
+                      <TableCell>
+                        <Ref to={paths.directoryGroup(group.email)} mono>
+                          {group.email}
+                        </Ref>
+                      </TableCell>
+                      <TableCell align="right">{group.members}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                          {into.map((name) => (
+                            <Ref key={name} to={paths.group(name)}>
+                              <Chip size="small" variant="outlined" color="primary" label={name} clickable />
+                            </Ref>
+                          ))}
+                          {into.length === 0 ? (
+                            <Typography variant="body2" color="text.secondary">
+                              nothing
+                            </Typography>
+                          ) : null}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Section>
+
+      <Section
+        title="Accounts it holds"
+        hint={accounts.value?.truncated ? `the first ${people.length}; the People page filters the rest` : "as the last snapshot has them"}
+      >
+        {people.length === 0 ? (
+          <Nothing>No accounts snapshotted from this directory yet.</Nothing>
+        ) : (
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
+              <TableBody>
+                {people.map((person) => (
+                  <TableRow key={person.email} hover>
+                    <TableCell>
+                      <Ref to={paths.person(person.email)}>
+                        {personName(person.givenName, person.familyName, person.email)}
+                      </Ref>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        {person.email}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      {person.live ? (
+                        <Chip size="small" color="success" variant="outlined" label="live" />
+                      ) : (
+                        <Chip size="small" color="warning" label="suspended" />
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

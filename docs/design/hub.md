@@ -250,23 +250,40 @@ summary line**, then its edges, then raw detail behind a disclosure, which
 is what lets the same page serve an employee and an operator. **Actions
 live on the object they change.**
 
+The graph has two sides, and the navigation shows them as two clusters
+with one adjective each, so that "group" never means two things:
+
+| | Identity — where people come from | Access — what they get |
+|---|---|---|
+| container | a **directory**: one connected tenant | the policy and its layers, in Settings |
+| group | a **directory group** | an **internal group** |
+| leaf | a **person**, or a **machine** proving itself without a directory | a **client** |
+
+The membership joins the two group levels, and it is the one edge the
+console edits — from either end.
+
 | Surface | Answers |
 |---|---|
-| Search, on every page | almost every task starts with a name: a person, a group, a client, a tenant. One field resolves any of them |
-| Overview | is anything broken: failing tenants, domains on hold or contested, groups nobody is in, clients nobody reaches, the break-glass state |
-| Directories, list and one page per tenant | which tenants we read, their domains and standing, and the actions on the tenant itself |
-| A group's page | who is in it and the editing, what it adds, its lifetime, the clients it opens, and the people who hold it right now |
-| A client's page | kind, redirects, cap, the groups that open it, and the people who therefore reach it |
-| A person's page | what they reach, which group put them there, and the claims a token would carry |
-| Explain | the same answer for a CI job or a workload, which cannot be searched for because they do not exist until one runs |
+| Search, on every page | almost every task starts with a name: a person, a group on either side, a client, a directory. One field resolves any of them |
+| Overview | is anything broken: failing directories, domains on hold or contested, directory groups attached to nothing, internal groups nobody feeds, the break-glass state |
+| Directories, and one page per directory | which tenants we read, their domains and standing, the actions on the tenant itself, and the groups and accounts it holds — every one a link. **Add a directory** offers both ways in, admin consent and an uploaded key, and only the ways this deployment can take |
+| Directory groups, and one page per group | what the directories say exists, and which of it the policy uses. A group's page reads along the chain: its members as the directory reports them, the internal groups it feeds, the clients that therefore open |
+| People, and one page per person | every account, as the last snapshot has it. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why |
+| Machines | the same chain for a CI job or a workload, which cannot be searched for because they do not exist until one runs |
+| Internal groups, and one page per group | the vocabulary of access. A group's page mirrors a directory group's: the directory groups that feed it, the people that puts in it now, what it adds to a token, the clients it opens |
+| Clients, and one page per client | kind, redirects, cap, the internal groups that open it, and the people who therefore reach it |
 | Settings | the OAuth client, the policy layers with their export, the intervals |
 
-The reverse edges are what make it navigable: from a group, the clients
-it opens and the people in it; from a client, the groups and the people.
-Resolving a group to the people currently in it is also the question an
-access review asks, and the policy file cannot answer it alone — the file
-says which directory groups count, and only the directory knows who is in
-them.
+Every page reads in the same direction, from the identity side toward
+the access side, and the two group pages carry the same sections
+mirrored. The reverse edges are what make it navigable: from a directory
+group, the internal groups it feeds; from an internal group, the people
+in it; from a client, the groups and the people. Two of those questions
+the policy file cannot answer alone. Who is in an internal group right
+now: the file says which directory groups count, and only the directory
+knows who is in them. And what a directory group grants: the direction an
+admin who just changed one in the directory thinks in, which is the
+memberships table read backwards.
 
 ## Access to the hub itself
 
@@ -350,7 +367,7 @@ person, a CI job and a workload are one question: every proof resolves to
 internal groups and stops being anything else. So one component renders
 it, in two places. A person is a thing with a name, so their answer is
 their page, reached by searching for them. A CI job and a workload have
-no name to search for — they do not exist until one runs — so Explain
+no name to search for — they do not exist until one runs — so Machines
 keeps the proof picker for exactly those two.
 
 The answer opens with a sentence: their role here, how many internal

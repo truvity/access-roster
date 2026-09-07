@@ -97,7 +97,7 @@ flowchart TB
   subgraph nsHub["namespace: directory-roster"]
     direction TB
     hub["directory-roster<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: operator services, SPA, login routes<br/>refresher, prober, router by domain"]:::hub
-    spa["console<br/>[Container: React SPA, served by the hub]<br/>search · overview · a page per tenant, group, client and person"]:::hub
+    spa["console<br/>[Container: React SPA, served by the hub]<br/>identity side: directories · directory groups · people · machines<br/>access side: internal groups · clients"]:::hub
     k8s[("workspace records + credentials<br/>[Secrets + ConfigMaps, this namespace]<br/>refresh tokens, SA keys, OAuth client,<br/>session key, admin password, console memberships")]:::hubStore
     hv[("Valkey<br/>[external to the chart]<br/>one snapshot per workspace, locks")]:::hubStore
   end
@@ -205,7 +205,7 @@ flowchart TB
 | decides | nothing about access; it answers | what a proof entitles you to | each relying party enforces on claims |
 | authenticates | nobody | nobody | Google, Entra, the CI platform |
 | issues | nothing | tokens to registered clients and exchanged tokens for workloads | the cloud issues credentials against the audience |
-| operator surface | a page per tenant, group, client and person, with search over all of them | one read-only page | the proxy, unchanged |
+| operator surface | two mirrored sides, identity and access: a page per directory, directory group, person, internal group and client, search over all of them | one read-only page | the proxy, unchanged |
 | when down | the issuer keeps last-known groups within a window; github-roster holds removals | no new logins; sessions live to expiry; break-glass is outside | |
 
 ## 5. Use cases
