@@ -1,9 +1,15 @@
 package server
 
 import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/truvity/access-roster/internal/access"
 )
 
 // The break-glass password is the one credential this service holds that a
@@ -78,5 +84,45 @@ func TestTheAdminAccountStopsAnsweringAfterTooManyAttempts(t *testing.T) {
 	}
 	if ok, answered := account.verify("the-real-one"); !ok || !answered {
 		t.Errorf("failures were not cleared by a success: %v, %v", ok, answered)
+	}
+}
+
+// An identity arriving in a header is only as trustworthy as the gateway
+// that sets it, which the hub cannot check. What it can check is that the
+// value is an address at all — everything above routes on the domain
+// after the '@', and a value carrying a line break would be written into
+// an audit line as two.
+func TestTheForwardedIdentityMustBeAnAddress(t *testing.T) {
+	t.Parallel()
+
+	server := &ConsoleServer{
+		forwarded: ForwardedIdentity{EmailHeader: "X-Forwarded-Email", Issuer: "gateway"},
+		sessions:  &access.Sessions{},
+		log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	for _, tc := range []struct {
+		value string
+		want  string
+	}{
+		{"Ada@North.Example", "ada@north.example"},
+		{"  ada@north.example  ", "ada@north.example"},
+		{"", ""},
+		{"admin", ""},
+		{"@north.example", ""},
+		{"ada@", ""},
+		{"ada\n@north.example", ""},
+		{"ada@north.example evil", ""},
+	} {
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		if tc.value != "" {
+			request.Header.Set("X-Forwarded-Email", tc.value)
+		}
+		principal, ok := server.principal(request)
+		switch {
+		case tc.want == "" && ok:
+			t.Errorf("%q was taken as the identity %q", tc.value, principal.Email)
+		case tc.want != "" && (!ok || principal.Email != tc.want):
+			t.Errorf("%q became %q (%v), want %q", tc.value, principal.Email, ok, tc.want)
+		}
 	}
 }

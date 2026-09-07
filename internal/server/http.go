@@ -258,7 +258,7 @@ func (s *ConsoleServer) principal(r *http.Request) (access.Principal, bool) {
 		// identity this hub could answer about — it is a misconfigured
 		// gateway, and taking it as a principal would put unvalidated
 		// header content into the policy and the audit log alike.
-		if _, ok := emailaddr.Domain(email); ok {
+		if _, ok := emailaddr.Domain(email); ok && !strings.ContainsFunc(email, unwritable) {
 			return access.Principal{
 				Email:   email,
 				Subject: email,
@@ -273,6 +273,13 @@ func (s *ConsoleServer) principal(r *http.Request) (access.Principal, bool) {
 	}
 	return access.Principal{}, false
 }
+
+// unwritable reports a rune that has no business in an address: a control
+// character, or the space that would let one header value look like two
+// fields. An address is written down in audit lines and matched against
+// the policy, and a value that can forge a line break in either is not an
+// address however well-formed the rest of it looks.
+func unwritable(r rune) bool { return r < 0x20 || r == 0x7f || r == ' ' }
 
 // loginPage is the plain page a standalone installation signs in on. Where
 // a gateway fronts the console it is never reached: the proxy has already
