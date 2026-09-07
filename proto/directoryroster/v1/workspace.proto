@@ -51,6 +51,11 @@ enum Backend {
   BACKEND_UNSPECIFIED = 0;
   BACKEND_GOOGLE = 1;
   BACKEND_ENTRA = 2;
+  // A demonstration tenant held in memory: fixture accounts and groups,
+  // no credential, no network. It exists so that the use-cases can be
+  // walked through and tested without a real directory, and the console
+  // labels it plainly so that nobody mistakes one for a tenant.
+  BACKEND_DEMO = 3;
 }
 
 // CredentialType is how the hub authenticates to a workspace.
