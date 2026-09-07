@@ -70,11 +70,63 @@ Two listeners, so a consumer can never reach an operator call:
   union of every served domain, each group tagged with its domain. A
   consumer that removes access reads `authoritative` first: a
   non-authoritative answer is no opinion, never a removal.
+  Every read call takes an optional `max_age` and returns `snapshot_at`
+  (see *Freshness*).
 - **`WorkspaceService`** (ConnectRPC, operator-gated) — `ListWorkspaces`,
-  `BeginConnect` (returns the consent URL), `UploadKey`, `Probe`,
-  `Reconnect`, `Disconnect`.
-- **`SettingsService`** — the OAuth client (id, secret), the freshness
-  window, cache settings.
+  `BeginConnect` (returns the consent URL and sets the state cookie; the
+  callback itself is a plain HTTP route), `Reconnect` (the same, bound to
+  an existing workspace; the callback checks the tenant id matches),
+  `UploadKey`, `Probe`, `Refresh` (a new snapshot now — the operator's
+  `max_age = 0`), `Disconnect` (revoke at the backend, then delete;
+  declared workspaces refuse).
+- **`SettingsService`** — `GetSettings` (the OAuth client id and where it
+  came from, never the secret; the intervals and the cache backend,
+  read-only) and `SetOAuthClient` (refused when the chart declared one).
+  Intervals are chart values: operational knobs belong to the deployment,
+  and the console's write surface stays at exactly one thing.
+
+## Freshness
+
+The hub does not read the backend on the request path. It keeps one
+**snapshot per workspace** — domains, every group with its flat members,
+every account with its live flag, and `snapshot_at` — and a background
+refresher replaces it every `refresh_interval` (default 15 minutes) under a
+shared lock, so one replica fetches for all. Every read answers from the
+snapshot and says which one: `snapshot_at` and `authoritative` come back on
+every response.
+
+Every read call takes an optional `max_age`:
+
+- **Omitted** — serve the current snapshot; nothing is fetched.
+- **Set** — if the snapshot is older than `max_age`, make it fresher first.
+  `max_age = 0` means fetch now.
+- **The fetch fails** — the stale snapshot is served with
+  `authoritative = false`. The same rule as a failed probe: never an error
+  to the caller, never "gone".
+
+Freshness is honoured by the cheapest path that satisfies it. Bulk calls
+(`ListGroups`, `GetGroup`) trigger a full workspace read, single-flight.
+Point calls (`ResolveUser`, `GetAccount`, `ResolveAccounts`) read that one
+account and its groups live and patch the snapshot, so a login-time caller
+with a short timeout is never held behind a full read. And a miss on an
+in-domain address always goes live once before the hub answers
+`found = false`, because not-found is a removal signal: an account created
+after the last snapshot is never reported absent.
+
+A domain is authoritative when its workspace's last probe succeeded, its
+snapshot is younger than the freshness window (default twice the refresh
+interval) and no domain conflict exists.
+
+### The cache
+
+Snapshots live in **Valkey**, which is external to the hub: the chart takes
+an address and credentials, and the configuration reference recommends how
+to run one. With a shared cache, replicas answer from the same snapshot,
+a restart is warm, and the backend is read once per interval regardless of
+replica count. An in-memory backend exists for development and a single
+replica; a production installation with more than one replica needs
+Valkey. Valkey holds only snapshots and locks — losing it costs one fetch
+per workspace, never a credential.
 
 ## Connecting a workspace
 
@@ -156,6 +208,14 @@ example, the hub has no dependency on it.
 | `Secret hub-connect-state` | the key that signs the consent-flow state cookie; generated on first start |
 | `ConfigMap hub-settings` | freshness window, probe interval, cache |
 | chart-rendered overlay | workspaces declared by the deployment (a key delivered as a Secret, domains listed), read-only in the console, winning on conflict |
+| Valkey (external) | snapshots, refresh locks, the short negative cache — never a credential |
+
+What the chart includes and what it expects: it renders everything that is
+a standard Kubernetes API — Deployment, Services, ServiceAccount and Role,
+NetworkPolicy, the Gateway API `Gateway`/`HTTPRoute` for the console — and
+it expects the two things that are infrastructure to exist already: a
+Valkey to point at, and the gateway authentication in front of the console
+host.
 
 The overlay is how an existing installation moves without a Connect step:
 its service-account keys are declared, the hub serves them on day one, and
@@ -201,7 +261,8 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 
 1. Workspace model, Kubernetes store, overlay.
 2. Routing by domain, per-domain authoritative flag, domain discovery,
-   probes; the additive contract fields.
+   probes; snapshots in Valkey, the refresher, `max_age` and the
+   cheapest-path rule; the additive contract fields.
 3. `WorkspaceService`, the consent flow, key upload, `SettingsService`.
 4. The console.
 5. Documentation (below).
@@ -212,8 +273,8 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 |---|---|
 | `README.md` | what it is, the contracts, quick start |
 | `docs/architecture/hub.md` | this design, rewritten as the running architecture |
-| `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`; the additive fields vs google-group-sync |
-| `docs/reference/configuration.md` | chart values, the overlay format, roles, Kubernetes objects; an example of delivering a declared Secret with external-secrets |
+| `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`; `max_age`/`snapshot_at`; the additive fields vs google-group-sync |
+| `docs/reference/configuration.md` | chart values, the overlay format, roles, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |
 | `docs/operations/connect-runbook.md` | the one-time GCP prerequisites, the per-workspace flow, trusting the client, verification |
 | `docs/operations/runbook.md` | health, reconnect as the recovery, domain moves and conflicts, export |
 | `docs/operations/migration-from-google-group-sync.md` | overlay first, consumers moved to the ConnectRPC client, Connect later, archive |
