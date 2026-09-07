@@ -175,8 +175,21 @@ credential path (replaced by the overlay).
    probes.
 3. `WorkspaceService`, the consent flow, key upload, `SettingsService`.
 4. The console.
-5. Documentation: architecture, the Connect runbook, the migration note
-   from google-group-sync.
+5. Documentation (below).
+
+## Documentation at 1.0
+
+| File | Holds |
+|---|---|
+| `README.md` | what it is, the contracts, quick start |
+| `docs/architecture/hub.md` | this design, rewritten as the running architecture |
+| `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`, REST |
+| `docs/reference/configuration.md` | chart values, the overlay format, roles, Kubernetes objects |
+| `docs/operations/connect-runbook.md` | the one-time GCP prerequisites, the per-workspace flow, trusting the client, verification |
+| `docs/operations/runbook.md` | health, reconnect, domain moves and conflicts, backup and export |
+| `docs/operations/migration-from-google-group-sync.md` | overlay first, consumers repointed, Connect later, archive |
+| `docs/development/testing.md` | fakes for the backend and the store |
+| `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, chart README, `values.schema.json` | estate-standard |
 
 Entra is the first change after 1.0: a second backend behind the same
 workspace record, with its own consent flow.
