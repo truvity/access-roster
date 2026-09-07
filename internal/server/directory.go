@@ -26,6 +26,11 @@ import (
 // several workspaces: the per-domain backends are in the served list.
 const hubIdentity = "directory-roster"
 
+// maxExamined bounds an access review: every account under it is
+// considered, and a directory larger than this needs reporting of its own
+// rather than a console page.
+const maxExamined = 10000
+
 // Directory serves directory.v1.DirectoryService.
 type Directory struct {
 	hub *hub.Hub

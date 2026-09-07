@@ -386,8 +386,9 @@ func (c *Console) Explain(
 	self := proof.IsPerson() && (proof.Email == "" || strings.EqualFold(proof.Email, caller.Email))
 	if self {
 		proof.Email = caller.Email
-	} else if _, err := requireRole(ctx, access.RoleOperator); err != nil {
-		// Explaining anyone but yourself discloses their access.
+	} else if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+		// A viewer already sees every group's members and every client's
+		// requirements, so the derived answer is not a secret from them.
 		return nil, err
 	}
 
@@ -494,6 +495,80 @@ func (c *Console) ListDirectoryGroups(
 			Domain:      g.Domain,
 			WorkspaceId: workspaceOf[g.Domain],
 			Members:     int32(len(g.Members)), //nolint:gosec // a membership count never overflows
+		})
+	}
+	return connect.NewResponse(out), nil
+}
+
+// ListHolders implements the operator contract: who holds an internal
+// group, or who reaches a client, right now.
+func (c *Console) ListHolders(
+	ctx context.Context, req *connect.Request[directoryrosterv1.ListHoldersRequest],
+) (*connect.Response[directoryrosterv1.ListHoldersResponse], error) {
+	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+		return nil, err
+	}
+	group, client := req.Msg.GetGroup(), req.Msg.GetClient()
+	switch {
+	case group == "" && client == "":
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("name an internal group or a client"))
+	case group != "" && client != "":
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("name an internal group or a client, not both"))
+	}
+
+	// Every account is examined, because holding a group is a property of
+	// the whole policy rather than of one table; the limit bounds what is
+	// returned, not what is considered.
+	people, _, err := c.deps.Hub.People(ctx, "", maxExamined)
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	holders := c.deps.Authorizer.HoldersOf(people, group, client)
+
+	limit := int(req.Msg.GetLimit())
+	if limit <= 0 || limit > len(holders) {
+		limit = len(holders)
+	}
+	out := &directoryrosterv1.ListHoldersResponse{
+		Examined:  int32(len(people)), //nolint:gosec // a snapshot's account count never overflows
+		Truncated: limit < len(holders),
+		Holders:   make([]*directoryrosterv1.Holder, 0, limit),
+	}
+	for i := range holders[:limit] {
+		out.Holders = append(out.Holders, holderProto(&holders[i]))
+	}
+	return connect.NewResponse(out), nil
+}
+
+// SearchPeople implements the operator contract.
+func (c *Console) SearchPeople(
+	ctx context.Context, req *connect.Request[directoryrosterv1.SearchPeopleRequest],
+) (*connect.Response[directoryrosterv1.SearchPeopleResponse], error) {
+	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+		return nil, err
+	}
+	limit := int(req.Msg.GetLimit())
+	if limit <= 0 {
+		limit = 20
+	}
+	people, truncated, err := c.deps.Hub.People(ctx, req.Msg.GetQuery(), limit)
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	out := &directoryrosterv1.SearchPeopleResponse{
+		Truncated: truncated,
+		People:    make([]*directoryrosterv1.PersonSummary, 0, len(people)),
+	}
+	for i := range people {
+		person := &people[i]
+		out.People = append(out.People, &directoryrosterv1.PersonSummary{
+			Email:       person.Email,
+			GivenName:   person.GivenName,
+			FamilyName:  person.FamilyName,
+			WorkspaceId: person.Workspace,
+			Live:        person.Live,
 		})
 	}
 	return connect.NewResponse(out), nil

@@ -37,6 +37,12 @@ const (
 	AccessServiceWhoAmIProcedure = "/directoryroster.v1.AccessService/WhoAmI"
 	// AccessServiceExplainProcedure is the fully-qualified name of the AccessService's Explain RPC.
 	AccessServiceExplainProcedure = "/directoryroster.v1.AccessService/Explain"
+	// AccessServiceListHoldersProcedure is the fully-qualified name of the AccessService's ListHolders
+	// RPC.
+	AccessServiceListHoldersProcedure = "/directoryroster.v1.AccessService/ListHolders"
+	// AccessServiceSearchPeopleProcedure is the fully-qualified name of the AccessService's
+	// SearchPeople RPC.
+	AccessServiceSearchPeopleProcedure = "/directoryroster.v1.AccessService/SearchPeople"
 	// AccessServiceGetPolicyProcedure is the fully-qualified name of the AccessService's GetPolicy RPC.
 	AccessServiceGetPolicyProcedure = "/directoryroster.v1.AccessService/GetPolicy"
 	// AccessServiceAddMembershipProcedure is the fully-qualified name of the AccessService's
@@ -62,10 +68,21 @@ type AccessServiceClient interface {
 	//
 	// A proof is a person (an address), a CI job or a workload, so the same
 	// call shows what a pipeline is entitled to as well as what a person
-	// is. With nothing set it explains the caller, which any signed-in
-	// identity may ask; anything else is operator, because it discloses
-	// somebody else's access.
+	// is. With nothing set it explains the caller. Viewer: a viewer already
+	// sees every group's members and every client's requirements, so
+	// withholding the answer they could derive by hand protects nothing and
+	// blocks the auditor, who is read-only by definition.
 	Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error)
+	// ListHolders resolves an internal group, or a client, to the people who
+	// hold it right now. It is the question an auditor actually asks, and
+	// the one the policy file cannot answer on its own: the file says which
+	// directory groups count, and only the directory knows who is in them.
+	// Viewer.
+	ListHolders(context.Context, *connect.Request[v1.ListHoldersRequest]) (*connect.Response[v1.ListHoldersResponse], error)
+	// SearchPeople finds accounts by address or name across every
+	// snapshotted workspace, so that a console can start from a name rather
+	// than from a navigation tree. Viewer.
+	SearchPeople(context.Context, *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error)
 	// GetPolicy returns every internal group with its members and what each
 	// adds, the state of the break-glass admin, the enabled sign-in
 	// sources, and the console layer as YAML for export. Viewer.
@@ -106,6 +123,18 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(accessServiceMethods.ByName("Explain")),
 			connect.WithClientOptions(opts...),
 		),
+		listHolders: connect.NewClient[v1.ListHoldersRequest, v1.ListHoldersResponse](
+			httpClient,
+			baseURL+AccessServiceListHoldersProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("ListHolders")),
+			connect.WithClientOptions(opts...),
+		),
+		searchPeople: connect.NewClient[v1.SearchPeopleRequest, v1.SearchPeopleResponse](
+			httpClient,
+			baseURL+AccessServiceSearchPeopleProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("SearchPeople")),
+			connect.WithClientOptions(opts...),
+		),
 		getPolicy: connect.NewClient[v1.GetPolicyRequest, v1.GetPolicyResponse](
 			httpClient,
 			baseURL+AccessServiceGetPolicyProcedure,
@@ -137,6 +166,8 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 type accessServiceClient struct {
 	whoAmI              *connect.Client[v1.WhoAmIRequest, v1.WhoAmIResponse]
 	explain             *connect.Client[v1.ExplainRequest, v1.ExplainResponse]
+	listHolders         *connect.Client[v1.ListHoldersRequest, v1.ListHoldersResponse]
+	searchPeople        *connect.Client[v1.SearchPeopleRequest, v1.SearchPeopleResponse]
 	getPolicy           *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
 	addMembership       *connect.Client[v1.AddMembershipRequest, v1.AddMembershipResponse]
 	removeMembership    *connect.Client[v1.RemoveMembershipRequest, v1.RemoveMembershipResponse]
@@ -151,6 +182,16 @@ func (c *accessServiceClient) WhoAmI(ctx context.Context, req *connect.Request[v
 // Explain calls directoryroster.v1.AccessService.Explain.
 func (c *accessServiceClient) Explain(ctx context.Context, req *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error) {
 	return c.explain.CallUnary(ctx, req)
+}
+
+// ListHolders calls directoryroster.v1.AccessService.ListHolders.
+func (c *accessServiceClient) ListHolders(ctx context.Context, req *connect.Request[v1.ListHoldersRequest]) (*connect.Response[v1.ListHoldersResponse], error) {
+	return c.listHolders.CallUnary(ctx, req)
+}
+
+// SearchPeople calls directoryroster.v1.AccessService.SearchPeople.
+func (c *accessServiceClient) SearchPeople(ctx context.Context, req *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error) {
+	return c.searchPeople.CallUnary(ctx, req)
 }
 
 // GetPolicy calls directoryroster.v1.AccessService.GetPolicy.
@@ -185,10 +226,21 @@ type AccessServiceHandler interface {
 	//
 	// A proof is a person (an address), a CI job or a workload, so the same
 	// call shows what a pipeline is entitled to as well as what a person
-	// is. With nothing set it explains the caller, which any signed-in
-	// identity may ask; anything else is operator, because it discloses
-	// somebody else's access.
+	// is. With nothing set it explains the caller. Viewer: a viewer already
+	// sees every group's members and every client's requirements, so
+	// withholding the answer they could derive by hand protects nothing and
+	// blocks the auditor, who is read-only by definition.
 	Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error)
+	// ListHolders resolves an internal group, or a client, to the people who
+	// hold it right now. It is the question an auditor actually asks, and
+	// the one the policy file cannot answer on its own: the file says which
+	// directory groups count, and only the directory knows who is in them.
+	// Viewer.
+	ListHolders(context.Context, *connect.Request[v1.ListHoldersRequest]) (*connect.Response[v1.ListHoldersResponse], error)
+	// SearchPeople finds accounts by address or name across every
+	// snapshotted workspace, so that a console can start from a name rather
+	// than from a navigation tree. Viewer.
+	SearchPeople(context.Context, *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error)
 	// GetPolicy returns every internal group with its members and what each
 	// adds, the state of the break-glass admin, the enabled sign-in
 	// sources, and the console layer as YAML for export. Viewer.
@@ -225,6 +277,18 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(accessServiceMethods.ByName("Explain")),
 		connect.WithHandlerOptions(opts...),
 	)
+	accessServiceListHoldersHandler := connect.NewUnaryHandler(
+		AccessServiceListHoldersProcedure,
+		svc.ListHolders,
+		connect.WithSchema(accessServiceMethods.ByName("ListHolders")),
+		connect.WithHandlerOptions(opts...),
+	)
+	accessServiceSearchPeopleHandler := connect.NewUnaryHandler(
+		AccessServiceSearchPeopleProcedure,
+		svc.SearchPeople,
+		connect.WithSchema(accessServiceMethods.ByName("SearchPeople")),
+		connect.WithHandlerOptions(opts...),
+	)
 	accessServiceGetPolicyHandler := connect.NewUnaryHandler(
 		AccessServiceGetPolicyProcedure,
 		svc.GetPolicy,
@@ -255,6 +319,10 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 			accessServiceWhoAmIHandler.ServeHTTP(w, r)
 		case AccessServiceExplainProcedure:
 			accessServiceExplainHandler.ServeHTTP(w, r)
+		case AccessServiceListHoldersProcedure:
+			accessServiceListHoldersHandler.ServeHTTP(w, r)
+		case AccessServiceSearchPeopleProcedure:
+			accessServiceSearchPeopleHandler.ServeHTTP(w, r)
 		case AccessServiceGetPolicyProcedure:
 			accessServiceGetPolicyHandler.ServeHTTP(w, r)
 		case AccessServiceAddMembershipProcedure:
@@ -278,6 +346,14 @@ func (UnimplementedAccessServiceHandler) WhoAmI(context.Context, *connect.Reques
 
 func (UnimplementedAccessServiceHandler) Explain(context.Context, *connect.Request[v1.ExplainRequest]) (*connect.Response[v1.ExplainResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.Explain is not implemented"))
+}
+
+func (UnimplementedAccessServiceHandler) ListHolders(context.Context, *connect.Request[v1.ListHoldersRequest]) (*connect.Response[v1.ListHoldersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.ListHolders is not implemented"))
+}
+
+func (UnimplementedAccessServiceHandler) SearchPeople(context.Context, *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.SearchPeople is not implemented"))
 }
 
 func (UnimplementedAccessServiceHandler) GetPolicy(context.Context, *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error) {

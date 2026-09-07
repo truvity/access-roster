@@ -329,3 +329,77 @@ func (a *Authorizer) evaluate(in policy.Input) policy.Result {
 	}
 	return result
 }
+
+// Holder is one account that holds a group or reaches a client, and why.
+type Holder struct {
+	Email         string
+	GivenName     string
+	FamilyName    string
+	Live          bool
+	Authoritative bool
+	Via           []string
+	Lifetime      time.Duration
+}
+
+// HoldersOf resolves an internal group, or a client, to the people who
+// hold it right now.
+//
+// The policy says which directory groups count; only the directory knows
+// who is in them. Answering that is what makes an access review possible
+// at all, and it is a read over snapshots already in memory.
+//
+// A suspended account still appears, marked: seeing that a leaver is
+// still counted somewhere is the whole point of looking.
+func (a *Authorizer) HoldersOf(people []hub.Person, group, client string) []Holder {
+	var wanted policy.Client
+	if client != "" {
+		found, ok := a.set.Client(client)
+		if !ok {
+			return nil
+		}
+		wanted = found
+	}
+
+	out := make([]Holder, 0, len(people))
+	for i := range people {
+		person := &people[i]
+		result := a.set.Evaluate(policy.Input{
+			Email:           person.Email,
+			DirectoryGroups: person.DirectoryGroups,
+			Authoritative:   person.Authoritative,
+		})
+
+		holder := Holder{
+			Email:         person.Email,
+			GivenName:     person.GivenName,
+			FamilyName:    person.FamilyName,
+			Live:          person.Live,
+			Authoritative: person.Authoritative,
+		}
+		switch {
+		case group != "":
+			if !result.Has(group) {
+				continue
+			}
+			for _, held := range result.Held {
+				if held.Group == group {
+					holder.Via = held.Via
+				}
+			}
+		case client != "":
+			if !wanted.Admits(result) {
+				continue
+			}
+			for _, name := range wanted.Requires {
+				if result.Has(name) {
+					holder.Via = append(holder.Via, name)
+				}
+			}
+			holder.Lifetime = wanted.Cap(result.Lifetime)
+		default:
+			continue
+		}
+		out = append(out, holder)
+	}
+	return out
+}

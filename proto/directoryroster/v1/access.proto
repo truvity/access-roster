@@ -24,10 +24,23 @@ service AccessService {
   //
   // A proof is a person (an address), a CI job or a workload, so the same
   // call shows what a pipeline is entitled to as well as what a person
-  // is. With nothing set it explains the caller, which any signed-in
-  // identity may ask; anything else is operator, because it discloses
-  // somebody else's access.
+  // is. With nothing set it explains the caller. Viewer: a viewer already
+  // sees every group's members and every client's requirements, so
+  // withholding the answer they could derive by hand protects nothing and
+  // blocks the auditor, who is read-only by definition.
   rpc Explain(ExplainRequest) returns (ExplainResponse);
+
+  // ListHolders resolves an internal group, or a client, to the people who
+  // hold it right now. It is the question an auditor actually asks, and
+  // the one the policy file cannot answer on its own: the file says which
+  // directory groups count, and only the directory knows who is in them.
+  // Viewer.
+  rpc ListHolders(ListHoldersRequest) returns (ListHoldersResponse);
+
+  // SearchPeople finds accounts by address or name across every
+  // snapshotted workspace, so that a console can start from a name rather
+  // than from a navigation tree. Viewer.
+  rpc SearchPeople(SearchPeopleRequest) returns (SearchPeopleResponse);
 
   // GetPolicy returns every internal group with its members and what each
   // adds, the state of the break-glass admin, the enabled sign-in
@@ -218,6 +231,60 @@ message RemoveMembershipRequest {
   string directory_group = 2;
 }
 message RemoveMembershipResponse {}
+
+message ListHoldersRequest {
+  // exactly one of the two: an internal group, or a client id.
+  string group = 1;
+  string client = 2;
+  // how many to return; zero means a sensible default.
+  int32 limit = 3;
+}
+
+// Holder is one account that holds a group or reaches a client, and why.
+message Holder {
+  string email = 1;
+  string given_name = 2;
+  string family_name = 3;
+  // live is false for a suspended account, which still appears: seeing
+  // that a leaver is still counted somewhere is the point of looking.
+  bool live = 4;
+  // authoritative is false when the directory cannot be vouched for, and
+  // the row is then an opinion rather than a fact.
+  bool authoritative = 5;
+  // for a group: the directory groups that put them in it. For a client:
+  // the internal groups that admit them.
+  repeated string via = 6;
+  // for a client: how long their token would live.
+  google.protobuf.Duration lifetime = 7;
+}
+
+message ListHoldersResponse {
+  repeated Holder holders = 1;
+  // how many accounts were examined, so a truncated answer is honest.
+  int32 examined = 2;
+  bool truncated = 3;
+}
+
+message SearchPeopleRequest {
+  // matched against the address and the name, case-insensitively. Empty
+  // lists everyone, up to the limit.
+  string query = 1;
+  int32 limit = 2;
+}
+
+// PersonSummary is one account as a search result shows it.
+message PersonSummary {
+  string email = 1;
+  string given_name = 2;
+  string family_name = 3;
+  string workspace_id = 4;
+  bool live = 5;
+}
+
+message SearchPeopleResponse {
+  repeated PersonSummary people = 1;
+  bool truncated = 2;
+}
 
 message ListDirectoryGroupsRequest {
   // empty lists the groups of every served domain.
