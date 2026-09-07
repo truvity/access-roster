@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+// AccessService is how the console learns who is signed in and which
+// rules grant what. Rules declared by the deployment are read-only here;
+// rules added through the console are stored by the hub and can be
+// removed the same way. Signing in itself is not an RPC: it is a set of
+// HTTP routes on the console listener (see docs/reference/contracts.md).
+service AccessService {
+  // WhoAmI returns the caller's identity, how it was established, the
+  // role it holds and which rules granted it. Any signed-in identity.
+  rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
+
+  // GetAccessPolicy returns every rule, declared and console-added, plus
+  // the state of the break-glass admin account and the enabled sign-in
+  // sources. Viewer.
+  rpc GetAccessPolicy(GetAccessPolicyRequest) returns (GetAccessPolicyResponse);
+
+  // AddRule stores a console-added rule. Operator.
+  rpc AddRule(AddRuleRequest) returns (AddRuleResponse);
+
+  // RemoveRule deletes a console-added rule. A declared rule refuses
+  // (failed_precondition): change the deployment instead. Operator.
+  rpc RemoveRule(RemoveRuleRequest) returns (RemoveRuleResponse);
+}
+
+// Role is what a rule grants. Operator implies viewer.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_VIEWER = 1;
+  ROLE_OPERATOR = 2;
+}
+
+// IdentitySource says how the caller was established.
+enum IdentitySource {
+  IDENTITY_SOURCE_UNSPECIFIED = 0;
+  // signed in with a connected directory through the hub's own login.
+  IDENTITY_SOURCE_DIRECTORY = 1;
+  // signed in with an external OIDC issuer through the hub's own login.
+  IDENTITY_SOURCE_OIDC = 2;
+  // a bearer forwarded by an authenticating gateway in front of the hub.
+  IDENTITY_SOURCE_FORWARDED = 3;
+  // the break-glass admin account.
+  IDENTITY_SOURCE_ADMIN = 4;
+}
+
+message Identity {
+  string email = 1;
+  // the issuer's subject, or "admin".
+  string subject = 2;
+  IdentitySource source = 3;
+  Role role = 4;
+  // ids of the rules that granted the role, in evaluation order.
+  repeated string matched_rules = 5;
+}
+
+// AccessRule grants a role to every identity its subject matches.
+message AccessRule {
+  // stable id; declared rules use the id from the deployment's values.
+  string id = 1;
+  oneof subject {
+    DirectoryGroupSubject directory_group = 2;
+    ClaimSubject claim = 3;
+    // an exact address, case-insensitive.
+    string email = 4;
+    // every address in this domain.
+    string email_domain = 5;
+  }
+  Role role = 6;
+  // true when the deployment declared it: read-only in the console.
+  bool declared = 7;
+}
+
+// DirectoryGroupSubject matches members of a group the hub snapshots.
+// The identity's address must be live and in a served domain.
+message DirectoryGroupSubject {
+  // empty means whichever workspace serves the group's domain.
+  string workspace_id = 1;
+  string group = 2;
+}
+
+// ClaimSubject matches a value in a claim of a verified token from a
+// named issuer: a groups claim, a roles claim, anything the issuer emits.
+message ClaimSubject {
+  string issuer = 1;
+  string claim = 2;
+  string value = 3;
+}
+
+message WhoAmIRequest {}
+message WhoAmIResponse {
+  Identity identity = 1;
+}
+
+message GetAccessPolicyRequest {}
+message GetAccessPolicyResponse {
+  repeated AccessRule rules = 1;
+  // the break-glass account is still enabled (a banner in the console).
+  bool admin_enabled = 2;
+  // enabled sign-in sources, e.g. "directory", "oidc:<issuer>", "forwarded:<issuer>".
+  repeated string login_sources = 3;
+}
+
+message AddRuleRequest {
+  AccessRule rule = 1;
+}
+message AddRuleResponse {
+  AccessRule rule = 1;
+}
+
+message RemoveRuleRequest {
+  string id = 1;
+}
+message RemoveRuleResponse {}

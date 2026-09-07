@@ -8,12 +8,31 @@ idempotent calls over `GET`, so `curl` works without a generated client.
 | Listener | Services | Reached by | Path prefix |
 |---|---|---|---|
 | API (`:8080`) | `directory.v1.DirectoryService` | consumers over the cluster network | `/directory.v1.DirectoryService/` |
-| console (`:8081`) | `directoryroster.v1.WorkspaceService`, `directoryroster.v1.SettingsService`, the SPA, `/connect/<backend>/callback` | operators through the gateway | `/directoryroster.v1.*/` |
+| console (`:8081`) | `directoryroster.v1.WorkspaceService`, `SettingsService`, `AccessService`, the SPA, the login routes, `/connect/<backend>/callback` | operators: own login, or through a gateway | `/directoryroster.v1.*/` |
 
-The API listener has no authentication of its own: it is ClusterIP,
-NetworkPolicy-gated, and carries only reads. The console listener trusts
-the identity headers the gateway forwards and maps the groups claim to two
-roles: **viewer** (reads) and **operator** (writes).
+## Authentication
+
+**API listener.** Callers present a Kubernetes ServiceAccount token as a
+bearer, projected with audience `directory-roster`. The hub verifies it
+with a TokenReview and checks the `namespace/serviceAccount` pair against
+the chart's `consumers` allow-list. Anything else is `unauthenticated`.
+NetworkPolicy is the second layer, never the only one.
+
+**Console listener.** One session cookie, HttpOnly, signed with the hub's
+session key, obtained through one of the login routes below or — behind
+an authenticating gateway — minted from the forwarded bearer on the first
+request. Roles come from the access rules: **viewer** reads, **operator**
+writes. Unauthenticated RPCs get `unauthenticated`; a missing role gets
+`permission_denied`.
+
+| Route | Does |
+|---|---|
+| `GET /login` | the login page: the enabled sources as buttons |
+| `GET /login/directory/start` → `GET /login/directory/callback` | sign in with a connected directory: its OAuth client, openid scopes only; the address must be live in a served domain |
+| `GET /login/oidc/start` → `GET /login/oidc/callback` | sign in with the configured external issuer |
+| `POST /admin/login` | the break-glass account, only while enabled |
+| `POST /logout` | clears the session |
+| `GET /connect/<backend>/callback` | the admin-consent callback (Workspaces), authenticated like any page |
 
 ## Compatibility with google-group-sync
 
@@ -122,14 +141,31 @@ for a key that does not parse or an admin address without a domain.
 The intervals are chart values. The console shows them so an operator
 can see what the hub runs with; changing them is a deployment change.
 
+## `directoryroster.v1.AccessService`
+
+| RPC | Role | Request | Response | Notes |
+|---|---|---|---|---|
+| `WhoAmI` | any signed-in identity | — | `identity{email, subject, source, role, matched_rules[]}` | source is directory, oidc, forwarded or admin |
+| `GetAccessPolicy` | viewer | — | `rules[]`, `admin_enabled`, `login_sources[]` | declared rules carry `declared=true` |
+| `AddRule` | operator | `rule{subject, role}` | `rule` with its id | console-added rules only |
+| `RemoveRule` | operator | `id` | — | `failed_precondition` for a declared rule |
+
+Rule subjects: `directory_group{workspace_id?, group}`, `claim{issuer,
+claim, value}`, `email`, `email_domain`. Evaluation in order, declared
+first, default deny, operator implies viewer.
+
 ## Calling from a shell
 
 ```sh
+# From a consumer pod: the projected token is the bearer.
+TOKEN=$(cat /var/run/secrets/directory-roster/token)
+
 # Describe, over GET (Connect's idempotent-GET encoding)
-curl -s 'http://directory-roster.directory-roster.svc:8080/directory.v1.DirectoryService/Describe?encoding=json&message=%7B%7D'
+curl -s -H "authorization: Bearer $TOKEN" \
+  'http://directory-roster.directory-roster.svc:8080/directory.v1.DirectoryService/Describe?encoding=json&message=%7B%7D'
 
 # ResolveUser, over POST
-curl -s -H 'content-type: application/json' \
+curl -s -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"email":"alice@example.com","maxAge":"600s"}' \
   http://directory-roster.directory-roster.svc:8080/directory.v1.DirectoryService/ResolveUser
 ```

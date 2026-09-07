@@ -367,8 +367,8 @@ const file_directoryroster_v1_settings_proto_rawDesc = "" +
 	"\x15CLIENT_SOURCE_CONSOLE\x10\x022\xda\x01\n" +
 	"\x0fSettingsService\x12^\n" +
 	"\vGetSettings\x12&.directoryroster.v1.GetSettingsRequest\x1a'.directoryroster.v1.GetSettingsResponse\x12g\n" +
-	"\x0eSetOAuthClient\x12).directoryroster.v1.SetOAuthClientRequest\x1a*.directoryroster.v1.SetOAuthClientResponseB\xde\x01\n" +
-	"\x16com.directoryroster.v1B\rSettingsProtoP\x01ZLgithub.com/truvity/directory-roster/gen/directoryroster/v1;directoryrosterv1\xa2\x02\x03DXX\xaa\x02\x12Directoryroster.V1\xca\x02\x12Directoryroster\\V1\xe2\x02\x1eDirectoryroster\\V1\\GPBMetadata\xea\x02\x13Directoryroster::V1b\x06proto3"
+	"\x0eSetOAuthClient\x12).directoryroster.v1.SetOAuthClientRequest\x1a*.directoryroster.v1.SetOAuthClientResponseB\xdb\x01\n" +
+	"\x16com.directoryroster.v1B\rSettingsProtoP\x01ZIgithub.com/truvity/access-roster/gen/directoryroster/v1;directoryrosterv1\xa2\x02\x03DXX\xaa\x02\x12Directoryroster.V1\xca\x02\x12Directoryroster\\V1\xe2\x02\x1eDirectoryroster\\V1\\GPBMetadata\xea\x02\x13Directoryroster::V1b\x06proto3"
 
 var (
 	file_directoryroster_v1_settings_proto_rawDescOnce sync.Once

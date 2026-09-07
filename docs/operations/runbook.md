@@ -3,6 +3,31 @@
 Day-two operations. Everything here is visible in the console's
 Workspaces view and in `Describe`; nothing needs a shell except the export.
 
+## Day one
+
+1. Install; the hub generates `Secret hub-admin` and `Secret hub-session-key`.
+2. Read the admin password: `kubectl -n directory-roster get secret hub-admin -o jsonpath='{.data.password}' | base64 -d`.
+3. Port-forward the console port (or go through the gateway) and sign in at `/admin/login`.
+4. Settings: the OAuth client, unless the chart declared it.
+5. Workspaces: Connect, as the tenant's admin role account.
+6. Access: pick the operators' group from the snapshot; grant operator.
+7. Sign out; sign in with the directory as yourself. `WhoAmI` shows operator and the rule that granted it.
+8. `access.admin.enabled: false` in the values. The banner disappears.
+
+## Lost operator access
+
+The rules deny everyone, or the group was renamed, or the directory
+sign-in is what is broken:
+
+- **admin still enabled:** port-forward, `/admin/login`, fix the rule.
+- **admin disabled:** set `access.admin.enabled: true` in the values, roll
+  the deployment, then as above. The password is still in `hub-admin`.
+- **forgotten password:** delete `Secret hub-admin`; the hub generates a
+  new one on restart.
+
+Sessions are stateless signed cookies. To log everyone out at once,
+delete `Secret hub-session-key`; the hub generates a new one on restart.
+
 ## What "unhealthy" means and what to do
 
 | Symptom (console) | Cause | Action |

@@ -80,6 +80,82 @@
         }
       }
     },
+    "consumers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["namespace", "serviceAccount"],
+        "properties": {
+          "namespace": { "type": "string", "minLength": 1 },
+          "serviceAccount": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "access": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "admin": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "login": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "directory": { "type": "boolean" },
+            "oidc": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "issuer": { "type": "string" },
+                "clientSecretName": { "type": "string" }
+              }
+            },
+            "forwardedBearer": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "issuer": { "type": "string" } }
+            }
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "role"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "role": { "enum": ["viewer", "operator"] },
+              "directoryGroup": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["group"],
+                "properties": {
+                  "workspaceId": { "type": "string" },
+                  "group": { "type": "string", "minLength": 3 }
+                }
+              },
+              "claim": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["issuer", "claim", "value"],
+                "properties": {
+                  "issuer": { "type": "string", "minLength": 1 },
+                  "claim": { "type": "string", "minLength": 1 },
+                  "value": { "type": "string", "minLength": 1 }
+                }
+              },
+              "email": { "type": "string", "minLength": 3 },
+              "emailDomain": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,

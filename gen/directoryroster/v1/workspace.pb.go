@@ -1083,8 +1083,8 @@ const file_directoryroster_v1_workspace_proto_rawDesc = "" +
 	"\x05Probe\x12 .directoryroster.v1.ProbeRequest\x1a!.directoryroster.v1.ProbeResponse\x12R\n" +
 	"\aRefresh\x12\".directoryroster.v1.RefreshRequest\x1a#.directoryroster.v1.RefreshResponse\x12[\n" +
 	"\n" +
-	"Disconnect\x12%.directoryroster.v1.DisconnectRequest\x1a&.directoryroster.v1.DisconnectResponseB\xdf\x01\n" +
-	"\x16com.directoryroster.v1B\x0eWorkspaceProtoP\x01ZLgithub.com/truvity/directory-roster/gen/directoryroster/v1;directoryrosterv1\xa2\x02\x03DXX\xaa\x02\x12Directoryroster.V1\xca\x02\x12Directoryroster\\V1\xe2\x02\x1eDirectoryroster\\V1\\GPBMetadata\xea\x02\x13Directoryroster::V1b\x06proto3"
+	"Disconnect\x12%.directoryroster.v1.DisconnectRequest\x1a&.directoryroster.v1.DisconnectResponseB\xdc\x01\n" +
+	"\x16com.directoryroster.v1B\x0eWorkspaceProtoP\x01ZIgithub.com/truvity/access-roster/gen/directoryroster/v1;directoryrosterv1\xa2\x02\x03DXX\xaa\x02\x12Directoryroster.V1\xca\x02\x12Directoryroster\\V1\xe2\x02\x1eDirectoryroster\\V1\\GPBMetadata\xea\x02\x13Directoryroster::V1b\x06proto3"
 
 var (
 	file_directoryroster_v1_workspace_proto_rawDescOnce sync.Once

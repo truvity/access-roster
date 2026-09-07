@@ -43,3 +43,5 @@ about and prints a table:
 | key upload | same record, different credential type |
 | freshness | `max_age` omitted serves the snapshot; a short `max_age` triggers a point read; a miss goes live once |
 | what the webhook sees | `ResolveUser` for live, suspended, deleted and out-of-domain addresses, with and without authority |
+| consumer authentication | a projected token from an allow-listed ServiceAccount is accepted; a wrong audience, a foreign ServiceAccount and no token are refused |
+| access rules | day one end to end: admin → connect → rule from the picker → directory sign-in → operator → admin off; a suspended account cannot sign in; a declared rule cannot be removed |
