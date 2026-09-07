@@ -21,6 +21,7 @@
 | Value | Meaning |
 |---|---|
 | `issuer.url` | the public issuer URL; must be stable for the life of the installation |
+| `console.origin` | the console's origin, allowed to call `SessionService` from a browser. It is what lets sessions show on a person's page while the hub's own code stays independent of this service |
 | `hub.address` | the hub's API Service, `directory-roster.directory-roster.svc:8080` |
 | `valkey.address`, `valkey.passwordSecret` | token state; external to the chart |
 | `signingKeys.rotation` | rotation period; previous keys stay in JWKS for one token lifetime |

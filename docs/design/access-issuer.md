@@ -127,10 +127,29 @@ sessions** section with Revoke; on a client's page, the sessions open on
 it; on your own page, **Sign out everywhere**. The operator contract for
 it is a small session service, list and revoke, gated like the rest.
 
+**The browser makes those calls, not the hub.** Sessions live here and
+the console is served by the hub, which must not depend on this service:
+the hub answers *is this account live* for consumers, and that has to
+keep working when the issuer is down. So the console — which already
+speaks to the hub's own operator services — speaks to the session service
+at the issuer's host directly, and the hub's code learns nothing about
+the issuer at all. The console reads the issuer's URL from settings and
+shows the sessions sections only when there is one, so a hub deployed
+alone simply has no such sections. The cost is that the issuer allows the
+console's origin, which is one value in its chart.
+
+There is no second console. The whole surface is the one graph the hub
+serves, with two sections in it that happen to be answered from here.
+
 The issuer serves three pages of its own, minimal HTML from the same
 theme, because each runs before any session exists: the sign-in chooser
 by email domain, the device-code entry page, and the signed-out page.
-They are not the console.
+They are not the console, and they cannot be: each runs before there is
+anyone to authorize.
+
+`access-proxy` serves no page of ours. Upstream oauth2-proxy shows a
+sign-in interstitial, and it is skipped, so a person meets one login
+experience at this issuer rather than a different doorway per console.
 
 ## State
 
