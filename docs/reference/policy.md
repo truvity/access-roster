@@ -161,6 +161,15 @@ not a login.
 
 ## Testing the file
 
+Two ways, and both answer the same question.
+
 `accessctl policy test policy.yaml` evaluates fixtures — an account with
 directory groups, a CI token's claims, a client id — and prints the token
 that would result, so the file is reviewed like code.
+
+The console's **Effective access** page does it live against the policy in
+force: pick a person, a CI job or a workload, and it shows the internal
+groups, what put the proof in each, the merged claims, the lifetime, and
+every client with whether this proof reaches it. A policy that reads
+correctly and behaves differently is the failure worth catching, and that
+page is where it shows.

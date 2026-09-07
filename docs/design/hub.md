@@ -322,11 +322,21 @@ back door, which is why that flag is the chart's alone.
 
 ### Effective access
 
-One page answers "what does this identity get, and what put it there":
-the internal groups held with the directory group or matcher behind each,
-the claims a token would carry, the lifetime, and the directory groups the
-hub reports. Anyone may ask it about themselves; asking about someone else
-discloses their access, so that needs operator.
+One page answers "what does this proof get, and what put it there". A
+person, a CI job and a workload are the same question — every proof
+resolves to internal groups and stops being anything else — so they are
+the same page, with a picker for which to explain.
+
+It shows the internal groups held with the directory group or matcher
+behind each, the claims a token would carry, the lifetime, the directory
+groups the hub reports, and every declared client with whether this proof
+would be issued a token for it and how long that token would live once
+the client's cap applies. That last table is where the model stops being
+a diagram: groups are the vocabulary, and clients are what the vocabulary
+buys.
+
+Anyone may ask about themselves. Anything else discloses somebody's
+access, so it needs operator.
 
 ### Day one
 

@@ -177,6 +177,23 @@ func (s *Set) Groups() []GroupView {
 	return out
 }
 
+// ClientView is one declared client as the console shows it.
+type ClientView struct {
+	ID string
+	Client
+}
+
+// Clients returns every declared client, sorted by id.
+func (s *Set) Clients() []ClientView {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]ClientView, 0, len(s.declared.Clients))
+	for _, id := range slices.Sorted(maps.Keys(s.declared.Clients)) {
+		out = append(out, ClientView{ID: id, Client: s.declared.Clients[id]})
+	}
+	return out
+}
+
 // HasGroup reports whether an internal group is declared.
 func (s *Set) HasGroup(name string) bool {
 	s.mu.RLock()

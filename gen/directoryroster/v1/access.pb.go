@@ -374,17 +374,152 @@ func (x *HeldGroup) GetVia() []string {
 	return nil
 }
 
-type ExplainRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// empty explains the caller.
-	Email         string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+// GitHubProof is a CI identity token's claims, as the simulator supplies
+// them: what a real job would present.
+type GitHubProof struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Repository    string                 `protobuf:"bytes,1,opt,name=repository,proto3" json:"repository,omitempty"`
+	Owner         string                 `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
+	Ref           string                 `protobuf:"bytes,3,opt,name=ref,proto3" json:"ref,omitempty"`
+	Workflow      string                 `protobuf:"bytes,4,opt,name=workflow,proto3" json:"workflow,omitempty"`
+	Environment   string                 `protobuf:"bytes,5,opt,name=environment,proto3" json:"environment,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *GitHubProof) Reset() {
+	*x = GitHubProof{}
+	mi := &file_directoryroster_v1_access_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GitHubProof) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GitHubProof) ProtoMessage() {}
+
+func (x *GitHubProof) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_access_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GitHubProof.ProtoReflect.Descriptor instead.
+func (*GitHubProof) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GitHubProof) GetRepository() string {
+	if x != nil {
+		return x.Repository
+	}
+	return ""
+}
+
+func (x *GitHubProof) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *GitHubProof) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+func (x *GitHubProof) GetWorkflow() string {
+	if x != nil {
+		return x.Workflow
+	}
+	return ""
+}
+
+func (x *GitHubProof) GetEnvironment() string {
+	if x != nil {
+		return x.Environment
+	}
+	return ""
+}
+
+// ServiceAccountProof is a Kubernetes workload.
+type ServiceAccountProof struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceAccountProof) Reset() {
+	*x = ServiceAccountProof{}
+	mi := &file_directoryroster_v1_access_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceAccountProof) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceAccountProof) ProtoMessage() {}
+
+func (x *ServiceAccountProof) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_access_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceAccountProof.ProtoReflect.Descriptor instead.
+func (*ServiceAccountProof) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ServiceAccountProof) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *ServiceAccountProof) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type ExplainRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// an address; empty with no other proof explains the caller.
+	Email string `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	// a CI job instead of a person.
+	Github *GitHubProof `protobuf:"bytes,2,opt,name=github,proto3" json:"github,omitempty"`
+	// a cluster workload instead of a person.
+	ServiceAccount *ServiceAccountProof `protobuf:"bytes,3,opt,name=service_account,json=serviceAccount,proto3" json:"service_account,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
 func (x *ExplainRequest) Reset() {
 	*x = ExplainRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[4]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -396,7 +531,7 @@ func (x *ExplainRequest) String() string {
 func (*ExplainRequest) ProtoMessage() {}
 
 func (x *ExplainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[4]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -409,7 +544,7 @@ func (x *ExplainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainRequest.ProtoReflect.Descriptor instead.
 func (*ExplainRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{4}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ExplainRequest) GetEmail() string {
@@ -417,6 +552,20 @@ func (x *ExplainRequest) GetEmail() string {
 		return x.Email
 	}
 	return ""
+}
+
+func (x *ExplainRequest) GetGithub() *GitHubProof {
+	if x != nil {
+		return x.Github
+	}
+	return nil
+}
+
+func (x *ExplainRequest) GetServiceAccount() *ServiceAccountProof {
+	if x != nil {
+		return x.ServiceAccount
+	}
+	return nil
 }
 
 type ExplainResponse struct {
@@ -436,14 +585,17 @@ type ExplainResponse struct {
 	// fragments.
 	Claims *structpb.Struct `protobuf:"bytes,8,opt,name=claims,proto3" json:"claims,omitempty"`
 	// how long a token would live: the shortest across the held groups.
-	Lifetime      *durationpb.Duration `protobuf:"bytes,9,opt,name=lifetime,proto3" json:"lifetime,omitempty"`
+	Lifetime *durationpb.Duration `protobuf:"bytes,9,opt,name=lifetime,proto3" json:"lifetime,omitempty"`
+	// every declared client, and whether this proof would be issued a token
+	// for it. The id is the audience the token would carry.
+	Clients       []*ClientAdmission `protobuf:"bytes,10,rep,name=clients,proto3" json:"clients,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExplainResponse) Reset() {
 	*x = ExplainResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[5]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -455,7 +607,7 @@ func (x *ExplainResponse) String() string {
 func (*ExplainResponse) ProtoMessage() {}
 
 func (x *ExplainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[5]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -468,7 +620,7 @@ func (x *ExplainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainResponse.ProtoReflect.Descriptor instead.
 func (*ExplainResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{5}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ExplainResponse) GetIdentity() *Identity {
@@ -534,6 +686,96 @@ func (x *ExplainResponse) GetLifetime() *durationpb.Duration {
 	return nil
 }
 
+func (x *ExplainResponse) GetClients() []*ClientAdmission {
+	if x != nil {
+		return x.Clients
+	}
+	return nil
+}
+
+// ClientAdmission is one relying party, and whether a proof reaches it.
+type ClientAdmission struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// the client's id, which is the audience of the tokens issued for it.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// public, confidential or exchange.
+	Kind string `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	// the internal groups any one of which admits a caller.
+	Requires []string `protobuf:"bytes,3,rep,name=requires,proto3" json:"requires,omitempty"`
+	// whether this proof holds one of them.
+	Admitted bool `protobuf:"varint,4,opt,name=admitted,proto3" json:"admitted,omitempty"`
+	// the lifetime this proof would get for this client: the groups'
+	// shortest, capped by the client.
+	Lifetime      *durationpb.Duration `protobuf:"bytes,5,opt,name=lifetime,proto3" json:"lifetime,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClientAdmission) Reset() {
+	*x = ClientAdmission{}
+	mi := &file_directoryroster_v1_access_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClientAdmission) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClientAdmission) ProtoMessage() {}
+
+func (x *ClientAdmission) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_access_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClientAdmission.ProtoReflect.Descriptor instead.
+func (*ClientAdmission) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ClientAdmission) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ClientAdmission) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ClientAdmission) GetRequires() []string {
+	if x != nil {
+		return x.Requires
+	}
+	return nil
+}
+
+func (x *ClientAdmission) GetAdmitted() bool {
+	if x != nil {
+		return x.Admitted
+	}
+	return false
+}
+
+func (x *ClientAdmission) GetLifetime() *durationpb.Duration {
+	if x != nil {
+		return x.Lifetime
+	}
+	return nil
+}
+
 // GroupMember is one directory group inside an internal group, and the
 // layer it came from: "declared" or "console".
 type GroupMember struct {
@@ -546,7 +788,7 @@ type GroupMember struct {
 
 func (x *GroupMember) Reset() {
 	*x = GroupMember{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[6]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -558,7 +800,7 @@ func (x *GroupMember) String() string {
 func (*GroupMember) ProtoMessage() {}
 
 func (x *GroupMember) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[6]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -571,7 +813,7 @@ func (x *GroupMember) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GroupMember.ProtoReflect.Descriptor instead.
 func (*GroupMember) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{6}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GroupMember) GetAddress() string {
@@ -605,7 +847,7 @@ type PolicyGroup struct {
 
 func (x *PolicyGroup) Reset() {
 	*x = PolicyGroup{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[7]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +859,7 @@ func (x *PolicyGroup) String() string {
 func (*PolicyGroup) ProtoMessage() {}
 
 func (x *PolicyGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[7]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +872,7 @@ func (x *PolicyGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyGroup.ProtoReflect.Descriptor instead.
 func (*PolicyGroup) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{7}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *PolicyGroup) GetName() string {
@@ -668,6 +910,93 @@ func (x *PolicyGroup) GetLifetime() *durationpb.Duration {
 	return nil
 }
 
+// PolicyClient is one declared client as the console shows it. A
+// confidential client names the Secret holding its secret; the secret
+// itself never leaves the namespace.
+type PolicyClient struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Requires      []string               `protobuf:"bytes,3,rep,name=requires,proto3" json:"requires,omitempty"`
+	Redirects     []string               `protobuf:"bytes,4,rep,name=redirects,proto3" json:"redirects,omitempty"`
+	TtlCap        *durationpb.Duration   `protobuf:"bytes,5,opt,name=ttl_cap,json=ttlCap,proto3" json:"ttl_cap,omitempty"`
+	Secret        string                 `protobuf:"bytes,6,opt,name=secret,proto3" json:"secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PolicyClient) Reset() {
+	*x = PolicyClient{}
+	mi := &file_directoryroster_v1_access_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PolicyClient) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PolicyClient) ProtoMessage() {}
+
+func (x *PolicyClient) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_access_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PolicyClient.ProtoReflect.Descriptor instead.
+func (*PolicyClient) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *PolicyClient) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *PolicyClient) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *PolicyClient) GetRequires() []string {
+	if x != nil {
+		return x.Requires
+	}
+	return nil
+}
+
+func (x *PolicyClient) GetRedirects() []string {
+	if x != nil {
+		return x.Redirects
+	}
+	return nil
+}
+
+func (x *PolicyClient) GetTtlCap() *durationpb.Duration {
+	if x != nil {
+		return x.TtlCap
+	}
+	return nil
+}
+
+func (x *PolicyClient) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
 type GetPolicyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -676,7 +1005,7 @@ type GetPolicyRequest struct {
 
 func (x *GetPolicyRequest) Reset() {
 	*x = GetPolicyRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[8]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -688,7 +1017,7 @@ func (x *GetPolicyRequest) String() string {
 func (*GetPolicyRequest) ProtoMessage() {}
 
 func (x *GetPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[8]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -701,7 +1030,7 @@ func (x *GetPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPolicyRequest.ProtoReflect.Descriptor instead.
 func (*GetPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{8}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{12}
 }
 
 type GetPolicyResponse struct {
@@ -713,14 +1042,16 @@ type GetPolicyResponse struct {
 	LoginSources []string `protobuf:"bytes,3,rep,name=login_sources,json=loginSources,proto3" json:"login_sources,omitempty"`
 	// the console layer as YAML, so that an installation which started
 	// standalone can move its edits into git by pasting.
-	ConsoleLayer  string `protobuf:"bytes,4,opt,name=console_layer,json=consoleLayer,proto3" json:"console_layer,omitempty"`
+	ConsoleLayer string `protobuf:"bytes,4,opt,name=console_layer,json=consoleLayer,proto3" json:"console_layer,omitempty"`
+	// the declared clients: who may reach what.
+	Clients       []*PolicyClient `protobuf:"bytes,5,rep,name=clients,proto3" json:"clients,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetPolicyResponse) Reset() {
 	*x = GetPolicyResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[9]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -732,7 +1063,7 @@ func (x *GetPolicyResponse) String() string {
 func (*GetPolicyResponse) ProtoMessage() {}
 
 func (x *GetPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[9]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -745,7 +1076,7 @@ func (x *GetPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPolicyResponse.ProtoReflect.Descriptor instead.
 func (*GetPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{9}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetPolicyResponse) GetGroups() []*PolicyGroup {
@@ -776,6 +1107,13 @@ func (x *GetPolicyResponse) GetConsoleLayer() string {
 	return ""
 }
 
+func (x *GetPolicyResponse) GetClients() []*PolicyClient {
+	if x != nil {
+		return x.Clients
+	}
+	return nil
+}
+
 type AddMembershipRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// the internal group, which must be declared.
@@ -788,7 +1126,7 @@ type AddMembershipRequest struct {
 
 func (x *AddMembershipRequest) Reset() {
 	*x = AddMembershipRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[10]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -800,7 +1138,7 @@ func (x *AddMembershipRequest) String() string {
 func (*AddMembershipRequest) ProtoMessage() {}
 
 func (x *AddMembershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[10]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -813,7 +1151,7 @@ func (x *AddMembershipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddMembershipRequest.ProtoReflect.Descriptor instead.
 func (*AddMembershipRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{10}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AddMembershipRequest) GetGroup() string {
@@ -838,7 +1176,7 @@ type AddMembershipResponse struct {
 
 func (x *AddMembershipResponse) Reset() {
 	*x = AddMembershipResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[11]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -850,7 +1188,7 @@ func (x *AddMembershipResponse) String() string {
 func (*AddMembershipResponse) ProtoMessage() {}
 
 func (x *AddMembershipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[11]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -863,7 +1201,7 @@ func (x *AddMembershipResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddMembershipResponse.ProtoReflect.Descriptor instead.
 func (*AddMembershipResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{11}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{15}
 }
 
 type RemoveMembershipRequest struct {
@@ -876,7 +1214,7 @@ type RemoveMembershipRequest struct {
 
 func (x *RemoveMembershipRequest) Reset() {
 	*x = RemoveMembershipRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[12]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -888,7 +1226,7 @@ func (x *RemoveMembershipRequest) String() string {
 func (*RemoveMembershipRequest) ProtoMessage() {}
 
 func (x *RemoveMembershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[12]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -901,7 +1239,7 @@ func (x *RemoveMembershipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveMembershipRequest.ProtoReflect.Descriptor instead.
 func (*RemoveMembershipRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{12}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RemoveMembershipRequest) GetGroup() string {
@@ -926,7 +1264,7 @@ type RemoveMembershipResponse struct {
 
 func (x *RemoveMembershipResponse) Reset() {
 	*x = RemoveMembershipResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[13]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -938,7 +1276,7 @@ func (x *RemoveMembershipResponse) String() string {
 func (*RemoveMembershipResponse) ProtoMessage() {}
 
 func (x *RemoveMembershipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[13]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -951,7 +1289,7 @@ func (x *RemoveMembershipResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveMembershipResponse.ProtoReflect.Descriptor instead.
 func (*RemoveMembershipResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{13}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{17}
 }
 
 type ListDirectoryGroupsRequest struct {
@@ -964,7 +1302,7 @@ type ListDirectoryGroupsRequest struct {
 
 func (x *ListDirectoryGroupsRequest) Reset() {
 	*x = ListDirectoryGroupsRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[14]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -976,7 +1314,7 @@ func (x *ListDirectoryGroupsRequest) String() string {
 func (*ListDirectoryGroupsRequest) ProtoMessage() {}
 
 func (x *ListDirectoryGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[14]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -989,7 +1327,7 @@ func (x *ListDirectoryGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirectoryGroupsRequest.ProtoReflect.Descriptor instead.
 func (*ListDirectoryGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{14}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListDirectoryGroupsRequest) GetDomain() string {
@@ -1008,7 +1346,7 @@ type ListDirectoryGroupsResponse struct {
 
 func (x *ListDirectoryGroupsResponse) Reset() {
 	*x = ListDirectoryGroupsResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[15]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1020,7 +1358,7 @@ func (x *ListDirectoryGroupsResponse) String() string {
 func (*ListDirectoryGroupsResponse) ProtoMessage() {}
 
 func (x *ListDirectoryGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[15]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1033,7 +1371,7 @@ func (x *ListDirectoryGroupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirectoryGroupsResponse.ProtoReflect.Descriptor instead.
 func (*ListDirectoryGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{15}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListDirectoryGroupsResponse) GetGroups() []*DirectoryGroupSummary {
@@ -1057,7 +1395,7 @@ type DirectoryGroupSummary struct {
 
 func (x *DirectoryGroupSummary) Reset() {
 	*x = DirectoryGroupSummary{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[16]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1069,7 +1407,7 @@ func (x *DirectoryGroupSummary) String() string {
 func (*DirectoryGroupSummary) ProtoMessage() {}
 
 func (x *DirectoryGroupSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[16]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1082,7 +1420,7 @@ func (x *DirectoryGroupSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectoryGroupSummary.ProtoReflect.Descriptor instead.
 func (*DirectoryGroupSummary) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{16}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *DirectoryGroupSummary) GetEmail() string {
@@ -1134,9 +1472,22 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\"3\n" +
 	"\tHeldGroup\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12\x10\n" +
-	"\x03via\x18\x02 \x03(\tR\x03via\"&\n" +
+	"\x03via\x18\x02 \x03(\tR\x03via\"\x93\x01\n" +
+	"\vGitHubProof\x12\x1e\n" +
+	"\n" +
+	"repository\x18\x01 \x01(\tR\n" +
+	"repository\x12\x14\n" +
+	"\x05owner\x18\x02 \x01(\tR\x05owner\x12\x10\n" +
+	"\x03ref\x18\x03 \x01(\tR\x03ref\x12\x1a\n" +
+	"\bworkflow\x18\x04 \x01(\tR\bworkflow\x12 \n" +
+	"\venvironment\x18\x05 \x01(\tR\venvironment\"G\n" +
+	"\x13ServiceAccountProof\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\xb1\x01\n" +
 	"\x0eExplainRequest\x12\x14\n" +
-	"\x05email\x18\x01 \x01(\tR\x05email\"\x88\x03\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\x127\n" +
+	"\x06github\x18\x02 \x01(\v2\x1f.directoryroster.v1.GitHubProofR\x06github\x12P\n" +
+	"\x0fservice_account\x18\x03 \x01(\v2'.directoryroster.v1.ServiceAccountProofR\x0eserviceAccount\"\xc7\x03\n" +
 	"\x0fExplainResponse\x128\n" +
 	"\bidentity\x18\x01 \x01(\v2\x1c.directoryroster.v1.IdentityR\bidentity\x12\x1b\n" +
 	"\tin_domain\x18\x02 \x01(\bR\binDomain\x12\x14\n" +
@@ -1146,7 +1497,15 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x10directory_groups\x18\x06 \x03(\tR\x0fdirectoryGroups\x121\n" +
 	"\x04held\x18\a \x03(\v2\x1d.directoryroster.v1.HeldGroupR\x04held\x12/\n" +
 	"\x06claims\x18\b \x01(\v2\x17.google.protobuf.StructR\x06claims\x125\n" +
-	"\blifetime\x18\t \x01(\v2\x19.google.protobuf.DurationR\blifetime\"=\n" +
+	"\blifetime\x18\t \x01(\v2\x19.google.protobuf.DurationR\blifetime\x12=\n" +
+	"\aclients\x18\n" +
+	" \x03(\v2#.directoryroster.v1.ClientAdmissionR\aclients\"\xa4\x01\n" +
+	"\x0fClientAdmission\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1a\n" +
+	"\brequires\x18\x03 \x03(\tR\brequires\x12\x1a\n" +
+	"\badmitted\x18\x04 \x01(\bR\badmitted\x125\n" +
+	"\blifetime\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\blifetime\"=\n" +
 	"\vGroupMember\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x14\n" +
 	"\x05layer\x18\x02 \x01(\tR\x05layer\"\xe0\x01\n" +
@@ -1155,13 +1514,21 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\amembers\x18\x02 \x03(\v2\x1f.directoryroster.v1.GroupMemberR\amembers\x12\x1a\n" +
 	"\bmatchers\x18\x03 \x03(\tR\bmatchers\x12/\n" +
 	"\x06claims\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06claims\x125\n" +
-	"\blifetime\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\blifetime\"\x12\n" +
-	"\x10GetPolicyRequest\"\xbb\x01\n" +
+	"\blifetime\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\blifetime\"\xb8\x01\n" +
+	"\fPolicyClient\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1a\n" +
+	"\brequires\x18\x03 \x03(\tR\brequires\x12\x1c\n" +
+	"\tredirects\x18\x04 \x03(\tR\tredirects\x122\n" +
+	"\attl_cap\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x06ttlCap\x12\x16\n" +
+	"\x06secret\x18\x06 \x01(\tR\x06secret\"\x12\n" +
+	"\x10GetPolicyRequest\"\xf7\x01\n" +
 	"\x11GetPolicyResponse\x127\n" +
 	"\x06groups\x18\x01 \x03(\v2\x1f.directoryroster.v1.PolicyGroupR\x06groups\x12#\n" +
 	"\radmin_enabled\x18\x02 \x01(\bR\fadminEnabled\x12#\n" +
 	"\rlogin_sources\x18\x03 \x03(\tR\floginSources\x12#\n" +
-	"\rconsole_layer\x18\x04 \x01(\tR\fconsoleLayer\"U\n" +
+	"\rconsole_layer\x18\x04 \x01(\tR\fconsoleLayer\x12:\n" +
+	"\aclients\x18\x05 \x03(\v2 .directoryroster.v1.PolicyClientR\aclients\"U\n" +
 	"\x14AddMembershipRequest\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12'\n" +
 	"\x0fdirectory_group\x18\x02 \x01(\tR\x0edirectoryGroup\"\x17\n" +
@@ -1211,7 +1578,7 @@ func file_directoryroster_v1_access_proto_rawDescGZIP() []byte {
 }
 
 var file_directoryroster_v1_access_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_directoryroster_v1_access_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_directoryroster_v1_access_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_directoryroster_v1_access_proto_goTypes = []any{
 	(Role)(0),                           // 0: directoryroster.v1.Role
 	(IdentitySource)(0),                 // 1: directoryroster.v1.IdentitySource
@@ -1219,52 +1586,62 @@ var file_directoryroster_v1_access_proto_goTypes = []any{
 	(*WhoAmIRequest)(nil),               // 3: directoryroster.v1.WhoAmIRequest
 	(*WhoAmIResponse)(nil),              // 4: directoryroster.v1.WhoAmIResponse
 	(*HeldGroup)(nil),                   // 5: directoryroster.v1.HeldGroup
-	(*ExplainRequest)(nil),              // 6: directoryroster.v1.ExplainRequest
-	(*ExplainResponse)(nil),             // 7: directoryroster.v1.ExplainResponse
-	(*GroupMember)(nil),                 // 8: directoryroster.v1.GroupMember
-	(*PolicyGroup)(nil),                 // 9: directoryroster.v1.PolicyGroup
-	(*GetPolicyRequest)(nil),            // 10: directoryroster.v1.GetPolicyRequest
-	(*GetPolicyResponse)(nil),           // 11: directoryroster.v1.GetPolicyResponse
-	(*AddMembershipRequest)(nil),        // 12: directoryroster.v1.AddMembershipRequest
-	(*AddMembershipResponse)(nil),       // 13: directoryroster.v1.AddMembershipResponse
-	(*RemoveMembershipRequest)(nil),     // 14: directoryroster.v1.RemoveMembershipRequest
-	(*RemoveMembershipResponse)(nil),    // 15: directoryroster.v1.RemoveMembershipResponse
-	(*ListDirectoryGroupsRequest)(nil),  // 16: directoryroster.v1.ListDirectoryGroupsRequest
-	(*ListDirectoryGroupsResponse)(nil), // 17: directoryroster.v1.ListDirectoryGroupsResponse
-	(*DirectoryGroupSummary)(nil),       // 18: directoryroster.v1.DirectoryGroupSummary
-	(*structpb.Struct)(nil),             // 19: google.protobuf.Struct
-	(*durationpb.Duration)(nil),         // 20: google.protobuf.Duration
+	(*GitHubProof)(nil),                 // 6: directoryroster.v1.GitHubProof
+	(*ServiceAccountProof)(nil),         // 7: directoryroster.v1.ServiceAccountProof
+	(*ExplainRequest)(nil),              // 8: directoryroster.v1.ExplainRequest
+	(*ExplainResponse)(nil),             // 9: directoryroster.v1.ExplainResponse
+	(*ClientAdmission)(nil),             // 10: directoryroster.v1.ClientAdmission
+	(*GroupMember)(nil),                 // 11: directoryroster.v1.GroupMember
+	(*PolicyGroup)(nil),                 // 12: directoryroster.v1.PolicyGroup
+	(*PolicyClient)(nil),                // 13: directoryroster.v1.PolicyClient
+	(*GetPolicyRequest)(nil),            // 14: directoryroster.v1.GetPolicyRequest
+	(*GetPolicyResponse)(nil),           // 15: directoryroster.v1.GetPolicyResponse
+	(*AddMembershipRequest)(nil),        // 16: directoryroster.v1.AddMembershipRequest
+	(*AddMembershipResponse)(nil),       // 17: directoryroster.v1.AddMembershipResponse
+	(*RemoveMembershipRequest)(nil),     // 18: directoryroster.v1.RemoveMembershipRequest
+	(*RemoveMembershipResponse)(nil),    // 19: directoryroster.v1.RemoveMembershipResponse
+	(*ListDirectoryGroupsRequest)(nil),  // 20: directoryroster.v1.ListDirectoryGroupsRequest
+	(*ListDirectoryGroupsResponse)(nil), // 21: directoryroster.v1.ListDirectoryGroupsResponse
+	(*DirectoryGroupSummary)(nil),       // 22: directoryroster.v1.DirectoryGroupSummary
+	(*structpb.Struct)(nil),             // 23: google.protobuf.Struct
+	(*durationpb.Duration)(nil),         // 24: google.protobuf.Duration
 }
 var file_directoryroster_v1_access_proto_depIdxs = []int32{
 	1,  // 0: directoryroster.v1.Identity.source:type_name -> directoryroster.v1.IdentitySource
 	0,  // 1: directoryroster.v1.Identity.role:type_name -> directoryroster.v1.Role
 	2,  // 2: directoryroster.v1.WhoAmIResponse.identity:type_name -> directoryroster.v1.Identity
-	2,  // 3: directoryroster.v1.ExplainResponse.identity:type_name -> directoryroster.v1.Identity
-	5,  // 4: directoryroster.v1.ExplainResponse.held:type_name -> directoryroster.v1.HeldGroup
-	19, // 5: directoryroster.v1.ExplainResponse.claims:type_name -> google.protobuf.Struct
-	20, // 6: directoryroster.v1.ExplainResponse.lifetime:type_name -> google.protobuf.Duration
-	8,  // 7: directoryroster.v1.PolicyGroup.members:type_name -> directoryroster.v1.GroupMember
-	19, // 8: directoryroster.v1.PolicyGroup.claims:type_name -> google.protobuf.Struct
-	20, // 9: directoryroster.v1.PolicyGroup.lifetime:type_name -> google.protobuf.Duration
-	9,  // 10: directoryroster.v1.GetPolicyResponse.groups:type_name -> directoryroster.v1.PolicyGroup
-	18, // 11: directoryroster.v1.ListDirectoryGroupsResponse.groups:type_name -> directoryroster.v1.DirectoryGroupSummary
-	3,  // 12: directoryroster.v1.AccessService.WhoAmI:input_type -> directoryroster.v1.WhoAmIRequest
-	6,  // 13: directoryroster.v1.AccessService.Explain:input_type -> directoryroster.v1.ExplainRequest
-	10, // 14: directoryroster.v1.AccessService.GetPolicy:input_type -> directoryroster.v1.GetPolicyRequest
-	12, // 15: directoryroster.v1.AccessService.AddMembership:input_type -> directoryroster.v1.AddMembershipRequest
-	14, // 16: directoryroster.v1.AccessService.RemoveMembership:input_type -> directoryroster.v1.RemoveMembershipRequest
-	16, // 17: directoryroster.v1.AccessService.ListDirectoryGroups:input_type -> directoryroster.v1.ListDirectoryGroupsRequest
-	4,  // 18: directoryroster.v1.AccessService.WhoAmI:output_type -> directoryroster.v1.WhoAmIResponse
-	7,  // 19: directoryroster.v1.AccessService.Explain:output_type -> directoryroster.v1.ExplainResponse
-	11, // 20: directoryroster.v1.AccessService.GetPolicy:output_type -> directoryroster.v1.GetPolicyResponse
-	13, // 21: directoryroster.v1.AccessService.AddMembership:output_type -> directoryroster.v1.AddMembershipResponse
-	15, // 22: directoryroster.v1.AccessService.RemoveMembership:output_type -> directoryroster.v1.RemoveMembershipResponse
-	17, // 23: directoryroster.v1.AccessService.ListDirectoryGroups:output_type -> directoryroster.v1.ListDirectoryGroupsResponse
-	18, // [18:24] is the sub-list for method output_type
-	12, // [12:18] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	6,  // 3: directoryroster.v1.ExplainRequest.github:type_name -> directoryroster.v1.GitHubProof
+	7,  // 4: directoryroster.v1.ExplainRequest.service_account:type_name -> directoryroster.v1.ServiceAccountProof
+	2,  // 5: directoryroster.v1.ExplainResponse.identity:type_name -> directoryroster.v1.Identity
+	5,  // 6: directoryroster.v1.ExplainResponse.held:type_name -> directoryroster.v1.HeldGroup
+	23, // 7: directoryroster.v1.ExplainResponse.claims:type_name -> google.protobuf.Struct
+	24, // 8: directoryroster.v1.ExplainResponse.lifetime:type_name -> google.protobuf.Duration
+	10, // 9: directoryroster.v1.ExplainResponse.clients:type_name -> directoryroster.v1.ClientAdmission
+	24, // 10: directoryroster.v1.ClientAdmission.lifetime:type_name -> google.protobuf.Duration
+	11, // 11: directoryroster.v1.PolicyGroup.members:type_name -> directoryroster.v1.GroupMember
+	23, // 12: directoryroster.v1.PolicyGroup.claims:type_name -> google.protobuf.Struct
+	24, // 13: directoryroster.v1.PolicyGroup.lifetime:type_name -> google.protobuf.Duration
+	24, // 14: directoryroster.v1.PolicyClient.ttl_cap:type_name -> google.protobuf.Duration
+	12, // 15: directoryroster.v1.GetPolicyResponse.groups:type_name -> directoryroster.v1.PolicyGroup
+	13, // 16: directoryroster.v1.GetPolicyResponse.clients:type_name -> directoryroster.v1.PolicyClient
+	22, // 17: directoryroster.v1.ListDirectoryGroupsResponse.groups:type_name -> directoryroster.v1.DirectoryGroupSummary
+	3,  // 18: directoryroster.v1.AccessService.WhoAmI:input_type -> directoryroster.v1.WhoAmIRequest
+	8,  // 19: directoryroster.v1.AccessService.Explain:input_type -> directoryroster.v1.ExplainRequest
+	14, // 20: directoryroster.v1.AccessService.GetPolicy:input_type -> directoryroster.v1.GetPolicyRequest
+	16, // 21: directoryroster.v1.AccessService.AddMembership:input_type -> directoryroster.v1.AddMembershipRequest
+	18, // 22: directoryroster.v1.AccessService.RemoveMembership:input_type -> directoryroster.v1.RemoveMembershipRequest
+	20, // 23: directoryroster.v1.AccessService.ListDirectoryGroups:input_type -> directoryroster.v1.ListDirectoryGroupsRequest
+	4,  // 24: directoryroster.v1.AccessService.WhoAmI:output_type -> directoryroster.v1.WhoAmIResponse
+	9,  // 25: directoryroster.v1.AccessService.Explain:output_type -> directoryroster.v1.ExplainResponse
+	15, // 26: directoryroster.v1.AccessService.GetPolicy:output_type -> directoryroster.v1.GetPolicyResponse
+	17, // 27: directoryroster.v1.AccessService.AddMembership:output_type -> directoryroster.v1.AddMembershipResponse
+	19, // 28: directoryroster.v1.AccessService.RemoveMembership:output_type -> directoryroster.v1.RemoveMembershipResponse
+	21, // 29: directoryroster.v1.AccessService.ListDirectoryGroups:output_type -> directoryroster.v1.ListDirectoryGroupsResponse
+	24, // [24:30] is the sub-list for method output_type
+	18, // [18:24] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_access_proto_init() }
@@ -1278,7 +1655,7 @@ func file_directoryroster_v1_access_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_access_proto_rawDesc), len(file_directoryroster_v1_access_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   17,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -119,7 +119,7 @@ func run() error {
 
 	directory := hub.New(hub.NewMemoryStore(), hub.NewMemorySnapshots(), cfg.freshness, log)
 
-	declared, err := declaredPolicy(cfg.policyPath)
+	declared, err := declaredPolicy(cfg.policyPath, cfg.demo)
 	if err != nil {
 		return err
 	}
@@ -204,7 +204,7 @@ func run() error {
 	log.InfoContext(ctx, "directory-roster starting",
 		"api", cfg.apiPort, "console", cfg.consolePort, "health", cfg.healthPort,
 		"demo", cfg.demo, "admin", cfg.adminEnabled, "public", cfg.publicURL,
-		"version", version.String(), "policy", policySource(cfg.policyPath))
+		"version", version.String(), "policy", policySource(cfg.policyPath, cfg.demo))
 
 	group, gctx := errgroup.WithContext(ctx)
 	group.Go(func() error { return serve(gctx, cfg.apiPort, apiMux, "api", log) })
@@ -252,13 +252,18 @@ lifetimes:
   default: 12h
 `
 
-// declaredPolicy reads the deployment's policy, or falls back to the
-// built-in one.
-func declaredPolicy(path string) (policy.Policy, error) {
-	if path == "" {
+// declaredPolicy reads the deployment's policy. With none, a
+// demonstration run gets one rich enough to watch every mechanic work,
+// and anything else gets the built-in two groups.
+func declaredPolicy(path string, demonstration bool) (policy.Policy, error) {
+	switch {
+	case path != "":
+		return policy.LoadDeclared(path)
+	case demonstration:
+		return policy.Parse([]byte(demo.Policy))
+	default:
 		return policy.Parse([]byte(builtinPolicy))
 	}
-	return policy.LoadDeclared(path)
 }
 
 // seedDemo adopts the demonstration tenants and returns their connector.
@@ -278,11 +283,15 @@ func seedDemo(ctx context.Context, directory *hub.Hub, publicURL string, log *sl
 }
 
 // policySource says where the policy came from, for the startup line.
-func policySource(path string) string {
-	if path == "" {
+func policySource(path string, demonstration bool) string {
+	switch {
+	case path != "":
+		return path
+	case demonstration:
+		return "demonstration"
+	default:
 		return "built-in"
 	}
-	return path
 }
 
 func generatedPassword() (string, error) {

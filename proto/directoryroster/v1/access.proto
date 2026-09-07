@@ -18,12 +18,15 @@ service AccessService {
   // Any signed-in identity.
   rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
 
-  // Explain answers "what does this identity effectively get, and why":
-  // the directory groups the hub confirms, the internal groups they put
-  // the identity in, the merged claims and the token lifetime. With an
-  // empty email it explains the caller, which any signed-in identity may
-  // ask; for anyone else it is operator, because it discloses another
-  // person's access.
+  // Explain answers "what does this proof effectively get, and why": the
+  // internal groups it lands in, what put it in each, the merged claims,
+  // the token lifetime, and which clients would admit it.
+  //
+  // A proof is a person (an address), a CI job or a workload, so the same
+  // call shows what a pipeline is entitled to as well as what a person
+  // is. With nothing set it explains the caller, which any signed-in
+  // identity may ask; anything else is operator, because it discloses
+  // somebody else's access.
   rpc Explain(ExplainRequest) returns (ExplainResponse);
 
   // GetPolicy returns every internal group with its members and what each
@@ -96,9 +99,29 @@ message HeldGroup {
   repeated string via = 2;
 }
 
+// GitHubProof is a CI identity token's claims, as the simulator supplies
+// them: what a real job would present.
+message GitHubProof {
+  string repository = 1;
+  string owner = 2;
+  string ref = 3;
+  string workflow = 4;
+  string environment = 5;
+}
+
+// ServiceAccountProof is a Kubernetes workload.
+message ServiceAccountProof {
+  string namespace = 1;
+  string name = 2;
+}
+
 message ExplainRequest {
-  // empty explains the caller.
+  // an address; empty with no other proof explains the caller.
   string email = 1;
+  // a CI job instead of a person.
+  GitHubProof github = 2;
+  // a cluster workload instead of a person.
+  ServiceAccountProof service_account = 3;
 }
 message ExplainResponse {
   Identity identity = 1;
@@ -117,6 +140,24 @@ message ExplainResponse {
   google.protobuf.Struct claims = 8;
   // how long a token would live: the shortest across the held groups.
   google.protobuf.Duration lifetime = 9;
+  // every declared client, and whether this proof would be issued a token
+  // for it. The id is the audience the token would carry.
+  repeated ClientAdmission clients = 10;
+}
+
+// ClientAdmission is one relying party, and whether a proof reaches it.
+message ClientAdmission {
+  // the client's id, which is the audience of the tokens issued for it.
+  string id = 1;
+  // public, confidential or exchange.
+  string kind = 2;
+  // the internal groups any one of which admits a caller.
+  repeated string requires = 3;
+  // whether this proof holds one of them.
+  bool admitted = 4;
+  // the lifetime this proof would get for this client: the groups'
+  // shortest, capped by the client.
+  google.protobuf.Duration lifetime = 5;
 }
 
 // GroupMember is one directory group inside an internal group, and the
@@ -138,6 +179,18 @@ message PolicyGroup {
   google.protobuf.Duration lifetime = 5;
 }
 
+// PolicyClient is one declared client as the console shows it. A
+// confidential client names the Secret holding its secret; the secret
+// itself never leaves the namespace.
+message PolicyClient {
+  string id = 1;
+  string kind = 2;
+  repeated string requires = 3;
+  repeated string redirects = 4;
+  google.protobuf.Duration ttl_cap = 5;
+  string secret = 6;
+}
+
 message GetPolicyRequest {}
 message GetPolicyResponse {
   repeated PolicyGroup groups = 1;
@@ -148,6 +201,8 @@ message GetPolicyResponse {
   // the console layer as YAML, so that an installation which started
   // standalone can move its edits into git by pasting.
   string console_layer = 4;
+  // the declared clients: who may reach what.
+  repeated PolicyClient clients = 5;
 }
 
 message AddMembershipRequest {

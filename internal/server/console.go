@@ -382,25 +382,20 @@ func (c *Console) Explain(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("sign in first"))
 	}
-	email := strings.TrimSpace(req.Msg.GetEmail())
-	if email == "" || strings.EqualFold(email, caller.Email) {
-		email = caller.Email
+	proof := proofFromRequest(req.Msg)
+	self := proof.IsPerson() && (proof.Email == "" || strings.EqualFold(proof.Email, caller.Email))
+	if self {
+		proof.Email = caller.Email
 	} else if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+		// Explaining anyone but yourself discloses their access.
 		return nil, err
 	}
 
-	if email == "" {
-		// The break-glass admin has no address to explain.
-		return connect.NewResponse(&directoryrosterv1.ExplainResponse{
-			Identity: identityProto(caller),
-		}), nil
-	}
-
-	explained, err := c.deps.Authorizer.Explain(ctx, email)
+	explained, err := c.deps.Authorizer.Explain(ctx, proof)
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	return connect.NewResponse(explanationProto(explained, caller)), nil
+	return connect.NewResponse(explanationProto(explained, caller, self)), nil
 }
 
 // GetPolicy implements the operator contract.
@@ -423,6 +418,11 @@ func (c *Console) GetPolicy(
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 		out.Groups = append(out.Groups, group)
+	}
+	clients := set.Clients()
+	out.Clients = make([]*directoryrosterv1.PolicyClient, 0, len(clients))
+	for i := range clients {
+		out.Clients = append(out.Clients, clientProto(&clients[i]))
 	}
 	exported, err := exportConsoleLayer(set.Console())
 	if err != nil {

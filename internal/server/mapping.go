@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -177,10 +178,66 @@ func policyGroupProto(view *policy.GroupView) (*directoryrosterv1.PolicyGroup, e
 	return out, nil
 }
 
-// explanationProto renders what an identity effectively gets. The caller
-// is passed so that explaining yourself carries your own subject and
-// source rather than an empty shell.
-func explanationProto(e access.Explanation, caller access.Identity) *directoryrosterv1.ExplainResponse {
+// proofFromRequest reads which of the three proofs to explain.
+func proofFromRequest(msg *directoryrosterv1.ExplainRequest) access.Proof {
+	proof := access.Proof{Email: strings.TrimSpace(msg.GetEmail())}
+	if g := msg.GetGithub(); g != nil {
+		proof.GitHub = &policy.GitHubClaims{
+			Repository:  g.GetRepository(),
+			Owner:       g.GetOwner(),
+			Ref:         g.GetRef(),
+			Workflow:    g.GetWorkflow(),
+			Environment: g.GetEnvironment(),
+		}
+	}
+	if sa := msg.GetServiceAccount(); sa != nil {
+		proof.ServiceAccount = &policy.ServiceAccountRef{
+			Namespace: sa.GetNamespace(),
+			Name:      sa.GetName(),
+		}
+	}
+	return proof
+}
+
+func clientProto(view *policy.ClientView) *directoryrosterv1.PolicyClient {
+	out := &directoryrosterv1.PolicyClient{
+		Id:        view.ID,
+		Kind:      view.Kind,
+		Requires:  view.Requires,
+		Redirects: view.Redirects,
+		Secret:    view.Secret,
+	}
+	if view.TTLCap > 0 {
+		out.TtlCap = durationpb.New(view.TTLCap.Duration())
+	}
+	return out
+}
+
+func admissionsProto(admissions []access.ClientAdmission) []*directoryrosterv1.ClientAdmission {
+	out := make([]*directoryrosterv1.ClientAdmission, 0, len(admissions))
+	for i := range admissions {
+		admission := &admissions[i]
+		entry := &directoryrosterv1.ClientAdmission{
+			Id:       admission.ID,
+			Kind:     admission.Kind,
+			Requires: admission.Requires,
+			Admitted: admission.Admitted,
+		}
+		if admission.Lifetime > 0 {
+			entry.Lifetime = durationpb.New(admission.Lifetime)
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// explanationProto renders what a proof effectively gets. The caller is
+// passed so that explaining yourself carries your own subject and source,
+// and so that the break-glass admin is shown holding its role by
+// construction rather than appearing to hold nothing.
+func explanationProto(
+	e access.Explanation, caller access.Identity, self bool,
+) *directoryrosterv1.ExplainResponse {
 	identity := &directoryrosterv1.Identity{
 		Email:      e.Email,
 		Role:       roleEnum(e.Role),
@@ -188,9 +245,16 @@ func explanationProto(e access.Explanation, caller access.Identity) *directoryro
 		GivenName:  e.GivenName,
 		FamilyName: e.FamilyName,
 	}
-	if strings.EqualFold(e.Email, caller.Email) {
+	if self {
 		identity.Subject = caller.Subject
 		identity.Source = sourceEnum(caller.Source)
+		if caller.Source == access.SourceAdmin {
+			identity.Role = roleEnum(caller.Role)
+		}
+	}
+	held := e.Result.Held
+	if self && caller.Source == access.SourceAdmin {
+		held = append(slices.Clone(held), caller.Held...)
 	}
 	out := &directoryrosterv1.ExplainResponse{
 		Identity:        identity,
@@ -199,7 +263,8 @@ func explanationProto(e access.Explanation, caller access.Identity) *directoryro
 		Suspended:       e.Suspended,
 		Authoritative:   e.Authoritative,
 		DirectoryGroups: e.DirectoryGroups,
-		Held:            heldProto(e.Result.Held),
+		Held:            heldProto(held),
+		Clients:         admissionsProto(e.Clients),
 	}
 	if claims, err := claimsProto(e.Result.Claims); err == nil {
 		out.Claims = claims
