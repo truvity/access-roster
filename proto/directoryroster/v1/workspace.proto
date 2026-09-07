@@ -1,10 +1,11 @@
 syntax = "proto3";
 
 // Package directoryroster.v1 is the operator contract of the hub: the
-// workspaces it holds credentials for, and its settings. It is served on
-// the console listener only, behind the gateway's authentication; the
-// roles come from the identity provider's groups claim (viewer reads,
-// operator writes).
+// workspaces it holds credentials for, its settings, and access to the
+// hub itself. It is served on the console listener only, behind the hub's
+// own session (a corporate sign-in, an external issuer, a forwarded
+// bearer, or the break-glass admin); the roles viewer and operator come
+// from the access rules (see access.proto).
 package directoryroster.v1;
 
 import "google/protobuf/timestamp.proto";

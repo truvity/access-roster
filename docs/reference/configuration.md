@@ -23,7 +23,7 @@ external-secrets is at the end of this page.
 | `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory cache |
 | `image.repository` / `tag` | `ghcr.io/truvity/access-roster/directory-roster` / app version | |
 | `listeners.api.port` | `8080` | `DirectoryService` — consumers |
-| `listeners.console.port` | `8081` | `WorkspaceService`, `SettingsService`, the SPA, the consent callback — through the gateway |
+| `listeners.console.port` | `8081` | `WorkspaceService`, `SettingsService`, `AccessService`, the SPA, the login routes, the consent callback — operators, own login or a gateway in front |
 | `listeners.health.port` | `7070` | `/healthz`, `/readyz` |
 | `valkey.address` | `""` | host:port of the snapshot cache; empty selects the in-memory backend |
 | `valkey.passwordSecret.name` / `.key` | `""` / `password` | optional Secret with the password |

@@ -14,24 +14,26 @@ directory credential; the hub holds all of them.
 
 ```mermaid
 flowchart TB
-  operator["Operator<br/>[Person]<br/>connects and watches workspaces<br/>through the console"]:::person
+  operator["Operator<br/>[Person]<br/>connects and watches workspaces,<br/>grants roles"]:::person
   admin["Directory admin<br/>[Person]<br/>a role account of one tenant,<br/>consents once"]:::person
 
   hub["directory-roster<br/>[Software System]<br/>is this account live, who is in this group,<br/>for every connected directory, routed by email domain,<br/>with a per-domain authoritative flag"]:::system
 
-  webhook["Whatever computes roles at login<br/>[Software System]<br/>an IdP's login hook today,<br/>the token service later"]:::system
+  rolesrc["Whatever computes roles at login<br/>[Software System]<br/>an IdP's login hook today,<br/>the token service later"]:::system
   teamsync["Team-sync service<br/>[Software System]<br/>keeps a code-hosting org's teams<br/>equal to directory groups"]:::system
 
-  gateway["Gateway + authentication<br/>[External]<br/>terminates TLS, runs the login,<br/>forwards identity and roles"]:::ext
-  google["Google Workspace<br/>[External]<br/>Admin SDK Directory API:<br/>users, groups, members, domains"]:::ext
+  gateway["Authenticating gateway<br/>[External, optional]<br/>one proxy in front of every console,<br/>forwards the caller's token"]:::ext
+  google["Google Workspace<br/>[External]<br/>Admin SDK: users, groups, members, domains<br/>OIDC: sign-in for the hub's own operators"]:::ext
   entra["Microsoft Entra<br/>[External, next]<br/>same record, same contracts"]:::ext
 
-  operator -- "console<br/>[HTTPS]" --> gateway
-  gateway -- "console listener<br/>[HTTP + identity headers]" --> hub
+  operator -- "own login: sign in with the directory<br/>[HTTPS]" --> hub
+  operator -. "or through a gateway<br/>[HTTPS]" .-> gateway
+  gateway -. "forwarded bearer<br/>[HTTP]" .-> hub
   admin -. "consents to the hub's OAuth client<br/>[browser]" .-> google
-  webhook -- "ResolveUser<br/>[ConnectRPC, SA token]" --> hub
+  rolesrc -- "ResolveUser<br/>[ConnectRPC, SA token]" --> hub
   teamsync -- "GetGroup, ListGroups, ResolveAccounts<br/>[ConnectRPC, SA token]" --> hub
   hub -- "reads users, groups, members, domains<br/>[Admin SDK, read-only scopes]" --> google
+  hub -- "verifies operator sign-ins<br/>[OIDC, openid scopes]" --> google
   hub -. "later<br/>[Graph, read-only]" .-> entra
 
   classDef person fill:#08427b,stroke:#052e56,color:#fff
@@ -49,25 +51,28 @@ One process, two listeners, two stores, in a namespace of its own.
 ```mermaid
 flowchart TB
   operator["Operator<br/>[Person]"]:::person
-  gateway["Gateway + authentication<br/>[External]"]:::ext
-  consumers["Consumers<br/>[Software Systems]<br/>authorization webhook, team-sync service"]:::system
-  google["Google Workspace<br/>[External]<br/>Admin SDK"]:::ext
+  gateway["Authenticating gateway<br/>[External, optional]"]:::ext
+  consumers["Consumers<br/>[Software Systems]<br/>role computation at login, team-sync service"]:::system
+  kapi["Kubernetes API server<br/>[External]<br/>TokenReview"]:::ext
+  google["Google Workspace<br/>[External]<br/>Admin SDK + OIDC sign-in"]:::ext
 
   subgraph ns["namespace: directory-roster"]
     direction TB
-    hub["hub<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: WorkspaceService, SettingsService, SPA<br/>refresher, prober, router by domain"]:::container
-    spa["console<br/>[Container: React SPA, served by the hub]<br/>Workspaces and Settings views,<br/>Connect / Reconnect / Disconnect"]:::container
-    k8s[("Kubernetes API, this namespace<br/>[Secrets + ConfigMaps]<br/>workspace records, credentials,<br/>the OAuth client, the state key,<br/>written by the hub")]:::store
+    hub["hub<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: Workspaces, Settings, Access, login routes, SPA<br/>refresher, prober, router by domain"]:::container
+    spa["console<br/>[Container: React SPA, served by the hub]<br/>Workspaces, Settings, Access views"]:::container
+    k8s[("Kubernetes API, this namespace<br/>[Secrets + ConfigMaps]<br/>workspace records, credentials, OAuth client,<br/>session key, admin password, console rules,<br/>written by the hub")]:::store
     valkey[("Valkey<br/>[external to the chart]<br/>one snapshot per workspace,<br/>refresh locks, negative cache,<br/>never a credential")]:::store
   end
 
-  operator -- "[HTTPS]" --> gateway
-  gateway -- "console listener :8081<br/>[HTTP, identity headers]" --> hub
-  consumers -- "API listener :8080<br/>[ConnectRPC, SA token via TokenReview]" --> hub
+  operator -- "own login<br/>[HTTPS]" --> hub
+  operator -. "[HTTPS]" .-> gateway
+  gateway -. "console listener :8081<br/>[forwarded bearer]" .-> hub
+  consumers -- "API listener :8080<br/>[ConnectRPC, SA token]" --> hub
+  hub -- "[TokenReview]" --> kapi
   hub -- "serves<br/>[same origin]" --> spa
   hub -- "get / watch / write<br/>[namespaced Role]" --> k8s
   hub -- "snapshots, locks<br/>[RESP]" --> valkey
-  hub -- "reads<br/>[Admin SDK, read-only]" --> google
+  hub -- "reads · verifies sign-ins<br/>[Admin SDK, OIDC]" --> google
 
   classDef person fill:#08427b,stroke:#052e56,color:#fff
   classDef system fill:#1168bd,stroke:#0b4884,color:#fff
@@ -94,18 +99,23 @@ flowchart TB
   subgraph hub["hub [Container]"]
     direction TB
     dirapi["DirectoryService handlers<br/>[connect-go]<br/>Describe, Probe, GetGroup, ListGroups,<br/>GetAccount, ResolveAccounts, ResolveUser"]:::component
-    opapi["Operator handlers<br/>[connect-go]<br/>WorkspaceService, SettingsService,<br/>role gate from identity headers"]:::component
+    consauth["Consumer authentication<br/>[TokenReview]<br/>SA token, audience, allow-list"]:::component
+    opapi["Operator handlers<br/>[connect-go]<br/>WorkspaceService, SettingsService,<br/>AccessService, role gate from the session"]:::component
+    access["Access<br/>[login routes, session, rules]<br/>sign in with the directory / an issuer /<br/>a forwarded bearer / admin, rules to roles"]:::component
     connect["Connect flow<br/>[HTTP]<br/>BeginConnect and callback: state cookie,<br/>code exchange, tenant + domain discovery, first probe"]:::component
     router["Router<br/>[domain → workspace]<br/>email domain to the workspace serving it,<br/>conflict detection, authoritative per domain"]:::component
     fresh["Freshness<br/>[max_age policy]<br/>serve / refresh single-flight /<br/>point read live / miss goes live once"]:::component
     refresher["Refresher + prober<br/>[background loops]<br/>new snapshot every refresh interval,<br/>probe + domain re-read every probe interval,<br/>shared lock"]:::component
-    wsstore[("Workspace store<br/>[Kubernetes]<br/>records in ConfigMaps, credentials in Secrets,<br/>overlay merged read-only")]:::component
-    backend["Backend: Google<br/>[Admin SDK client]<br/>users.list, groups.list, members.list (atomic per group),<br/>domains.list, token from refresh token or SA key"]:::component
+    wsstore[("Workspace store<br/>[Kubernetes]<br/>records in ConfigMaps, credentials in Secrets,<br/>overlay merged read-only, console rules")]:::component
+    backend["Backend: Google<br/>[Admin SDK client + OIDC verifier]<br/>users.list, groups.list, members.list (atomic per group),<br/>domains.list, token from refresh token or SA key"]:::component
     snap[("Snapshot store<br/>[Valkey or memory]<br/>per-workspace snapshot, snapshot_at,<br/>negative cache")]:::component
   end
 
+  consauth -- "admits" --> dirapi
+  access -- "identity + role" --> opapi
+  access -- "is the account live, in the group" --> router
   opapi -- "BeginConnect" --> connect
-  opapi -- "list / upsert / delete" --> wsstore
+  opapi -- "list / upsert / delete, rules" --> wsstore
   connect -- "store credential + record" --> wsstore
   connect -- "exchange code, discover" --> backend
   dirapi -- "which workspace" --> router
@@ -128,30 +138,33 @@ flowchart TB
 
 ## 4. Dynamics
 
+The hub's own sign-in and the day-one sequence are drawn in
+[access-roster.md](access-roster.md); here, the two flows that are the
+hub's alone.
+
 ### Connecting a workspace by admin consent
 
 ```mermaid
 sequenceDiagram
   autonumber
-  actor Op as Operator (browser)
-  participant GW as Gateway + auth
+  actor Op as Operator (browser, signed in)
   participant Hub as hub (console listener)
   participant G as Google (OAuth + Admin SDK)
   participant K as Kubernetes Secrets/ConfigMaps
 
-  Op->>GW: Connect Google Workspace
-  GW->>Hub: BeginConnect (identity headers: operator)
+  Op->>Hub: Connect Google Workspace
+  Hub->>Hub: session → operator role (rules)
   Hub-->>Op: consent URL + state cookie
   Op->>G: consent screen, signed in as the tenant's admin role account
   G-->>Op: redirect to /connect/google/callback with code and state
-  Op->>GW: callback
-  GW->>Hub: callback (still authenticated)
+  Op->>Hub: callback (same session)
   Hub->>Hub: verify state cookie
   Hub->>G: exchange code → refresh token (offline, forced consent)
   Hub->>G: customers.get → tenant id, domains.list → domains
   Hub->>G: first probe (users.list page, groups.list page)
   Hub->>K: Secret workspace-{id} (refresh token), ConfigMap workspace-{id} (record)
   Hub-->>Op: Workspaces view: domains served, authoritative after the first snapshot
+  Note over Op,Hub: behind a gateway the session is minted from the forwarded bearer on the first request, nothing else changes
 ```
 
 ### A login-time lookup with freshness
@@ -159,7 +172,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  participant W as Authorization webhook
+  participant W as Role computation at login (SA token)
   participant Hub as hub (API listener)
   participant V as Valkey (snapshot)
   participant G as Google Admin SDK

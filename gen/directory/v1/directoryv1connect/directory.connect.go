@@ -6,8 +6,10 @@
 // membership for the corporate directories an installation owns.
 // google-group-sync was the first server behind it; directory-roster serves
 // it for every connected workspace at once, routed by email domain.
-// Consumers (a team-sync service, an authorization webhook) hold no
-// directory credential — only this endpoint.
+// Consumers (a team-sync service, whatever computes roles at login — an
+// identity provider's hook or a token service) hold no directory
+// credential — only this endpoint, reached with their own ServiceAccount
+// token.
 //
 // Compatibility: every field added since google-group-sync is ADDITIVE.
 // A client generated from the older file keeps working; it simply does not
@@ -89,8 +91,8 @@ type DirectoryServiceClient interface {
 	// ResolveAccounts is GetAccount for many addresses in one call.
 	ResolveAccounts(context.Context, *connect.Request[v1.ResolveAccountsRequest]) (*connect.Response[v1.ResolveAccountsResponse], error)
 	// ResolveUser returns the groups an account belongs to plus its
-	// suspension signal — the grant-decision call an authorization webhook
-	// makes at login.
+	// suspension signal — the grant-decision call made at login by whatever
+	// computes roles (an identity provider's hook, a token service).
 	ResolveUser(context.Context, *connect.Request[v1.ResolveUserRequest]) (*connect.Response[v1.ResolveUserResponse], error)
 }
 
@@ -219,8 +221,8 @@ type DirectoryServiceHandler interface {
 	// ResolveAccounts is GetAccount for many addresses in one call.
 	ResolveAccounts(context.Context, *connect.Request[v1.ResolveAccountsRequest]) (*connect.Response[v1.ResolveAccountsResponse], error)
 	// ResolveUser returns the groups an account belongs to plus its
-	// suspension signal — the grant-decision call an authorization webhook
-	// makes at login.
+	// suspension signal — the grant-decision call made at login by whatever
+	// computes roles (an identity provider's hook, a token service).
 	ResolveUser(context.Context, *connect.Request[v1.ResolveUserRequest]) (*connect.Response[v1.ResolveUserResponse], error)
 }
 
