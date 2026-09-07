@@ -52,55 +52,36 @@ else of the protocol. "Fully implement" means one thing here: the
 profiles named as *in* pass the OpenID Foundation conformance suite in
 the acceptance run, and nothing named as *out* is served.
 
-| Standard | Status | Why |
+The list below is one thing, not ten: an OpenID Connect provider from a
+library. It is grouped by what someone is doing, because that is what
+decides whether a row costs us anything.
+
+| Someone is… | Which means | Who does the work |
 |---|---|---|
-| OpenID Connect Core 1.0, authorization code with PKCE (RFC 7636); ID token, `userinfo`; refresh (RFC 6749 §6) | **in**, conformance target | every human login: consoles through the proxy, kubelogin, accessctl |
-| OpenID Connect Discovery 1.0, JWKS (RFC 7517) with rotation; RFC 8414 metadata | **in**, conformance target | what relying parties read |
-| OpenID Connect RP-Initiated Logout 1.0 (`end_session`) | **in**, conformance target | the proxy's sign-out chains here; ends the issuer's browser session |
-| RFC 8628 device authorization | **in** | kubelogin, accessctl, the Kargo CLI |
-| RFC 8693 token exchange | **in** | CI and workload proofs, and the AWS `exchange` clients |
-| RFC 7523 JWT profile for client authentication | **in** | confidential clients that hold a key rather than a secret |
-| RFC 6749 §4.4 client credentials | **in** | the rare in-cluster service that is its own client |
-| RFC 7009 token revocation | **in** | the mechanism behind Revoke and "sign out everywhere" |
-| RFC 7591 dynamic client registration | **in, written here** | proxies self-register; the library does not cover it and the rule (ServiceAccount token, per-namespace host pattern) is ours |
-| RFC 9068 JWT access tokens (`typ: at+jwt`) | **in** | relying parties verify offline against JWKS; no introspection round-trip |
-| RFC 7662 introspection | **out** | JWT access tokens make it unnecessary; an endpoint nobody calls is attack surface |
-| implicit and hybrid flows | **out** | superseded by code + PKCE; the library supports implicit and it is disabled |
-| OpenID Connect Back-Channel Logout 1.0 | **out for 1.0** | the proxy does not consume it; a revoked session dies at the proxy's next refresh, five minutes by default. Revisit if a relying party needs the push |
-| session-management iframe, front-channel logout, PAR, DPoP, mTLS, CIBA | **out** | no relying party asks; each is surface without a consumer |
+| a person signing in to a console or a cluster | ordinary OpenID Connect login — authorization code with PKCE, refresh, `userinfo` — plus discovery with a rotating JWKS, and RP-initiated logout (`end_session`) | **the library.** This is the only part that is certified, and it is what "an OpenID Provider" means. It is the conformance target |
+| a person in a terminal — kubelogin, accessctl, the Kargo CLI — with no browser to redirect | the device authorization flow (RFC 8628) | the library |
+| a CI job or a workload swapping its own token for ours, or an exchange for an AWS role | token exchange (RFC 8693) | the library, plus **our verifier** for the incoming proof: GitHub's keys and the organisation allow-list, or TokenReview |
+| an operator revoking someone, or a person signing out everywhere | token revocation (RFC 7009) | the library, plus **our session index**, so there is something to list and to revoke |
+| a proxy registering itself when it starts | dynamic client registration (RFC 7591) | **us**, one endpoint. The library does not have it, and the rule — ServiceAccount token, per-namespace host pattern — is ours anyway |
+| a confidential client proving itself with a key rather than a secret; an in-cluster service that is its own client | JWT client authentication (RFC 7523); client credentials | the library, switched on |
+| a relying party checking a token it received | the access token is a JWT (RFC 9068), verified offline against the JWKS | the library, switched on; it is why there is no introspection endpoint |
 
-Claims: `sub` stable per identity, `email`, `name`, `groups` — the role
-names relying parties already read — and `aud`, the set of audiences the
-policy allows for this client and identity.
+What the issuer itself is, then, is not protocol: the storage behind the
+library in Valkey; the mapping from the policy to the claims in a token;
+the three verifiers; the registration endpoint; the session index; and
+three small HTML pages. The conformance suite proves the library is
+wired correctly, not that we wrote a protocol.
 
-**Clients** come to exist in exactly two ways, never in a console:
-
-| Way | Which |
-|---|---|
-| **declared** in the policy's `clients` table | one public client per cluster, the AWS roles as `exchange` clients, ArgoCD and Kargo as `confidential`, accessctl and kubelogin as `public`, and one `local-dev` public client for laptops |
-| **self-registered** by an in-cluster workload through RFC 7591, authenticated with its ServiceAccount token and constrained by the host pattern allowed for its namespace | every `access-proxy` instance, and any other in-cluster relying party |
-
-Dynamic registration is the convention that removes per-console
-bookkeeping: a proxy comes up, registers `https://<its host>/oauth2/callback`,
-receives a client id and secret, and is done. The issuer records the
-registration in a ConfigMap and a Secret in its own namespace, keyed by
-the registering ServiceAccount, and refuses a host outside that
-namespace's allowed pattern.
-
-**Audiences** carry the cloud and cluster decisions. A rule-gated audience
-is minted only for identities the client's `requires` admits, and a role's trust policy
-names only that audience: one trust policy per role, no per-user policies,
-several organisations behind one issuer. For a custom issuer a cloud
-trust policy can see only `sub`, `aud`, `amr` and `email`, which is why the
-decision rides in `aud`. Whether the cloud passes a custom issuer's `amr`
-through — a cleaner carrier for groups — is a spike item, not an
-assumption.
-
-**Discovery of what you are granted.** `GET /.access/grants` answers, for
-the caller's identity, the clients its groups admit it to. `accessctl
-kubeconfig` and `accessctl aws-config` read it and write the files for
-every cluster and role a person may use, so nobody maintains kubeconfigs
-by hand.
+**Deliberately not served**, so nobody adds them later without a reason:
+introspection (RFC 7662; JWT access tokens make it unnecessary and an
+endpoint nobody calls is attack surface); the implicit and hybrid flows
+(superseded by code with PKCE; the library supports implicit and it is
+switched off); back-channel logout for 1.0 (the proxy does not consume
+it, so a revoked session dies at the proxy's next refresh, five minutes
+by default; the library supports it if a relying party ever needs the
+push); the session-management iframe, front-channel logout, PAR, DPoP,
+mTLS and CIBA (no relying party asks; each is surface without a
+consumer).
 
 ## The policy
 
