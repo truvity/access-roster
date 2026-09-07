@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -321,7 +323,20 @@ func (c *Console) GetSettings(
 		FreshnessWindow: durationpb.New(cfg.FreshnessWindow),
 		ProbeInterval:   durationpb.New(cfg.ProbeInterval),
 		CacheBackend:    c.deps.CacheBackend,
+		Connectors:      c.connectorKinds(),
+		Version:         version.String(),
 	}), nil
+}
+
+// connectorKinds is the backends this deployment can connect, so the
+// console offers a button per provider instead of a menu of things that
+// may not work.
+func (c *Console) connectorKinds() []directoryrosterv1.Backend {
+	out := make([]directoryrosterv1.Backend, 0, len(c.connectors))
+	for _, kind := range slices.Sorted(maps.Keys(c.connectors)) {
+		out = append(out, backendEnum(kind))
+	}
+	return out
 }
 
 // SetOAuthClient implements the operator contract.

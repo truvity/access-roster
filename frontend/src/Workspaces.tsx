@@ -2,8 +2,6 @@ import { useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
-import Menu from "@mui/material/Menu";
-import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -15,15 +13,15 @@ import TableRow from "@mui/material/TableRow";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { Backend, ago, at, backendName, reason, workspaces } from "./api";
+import { Backend, ago, at, backendName, reason, settings, workspaces } from "./api";
 import { useAsync } from "./hooks";
 import { Authority, Failure, Loading } from "./ui";
 
 export function Workspaces({ operator, onDone }: { operator: boolean; onDone: (message: string) => void }) {
   const list = useAsync(() => workspaces.listWorkspaces({}), []);
+  const providers = useAsync(() => settings.getSettings({}), []);
   const [busy, setBusy] = useState<string | undefined>();
   const [failure, setFailure] = useState<string | undefined>();
-  const [connectMenu, setConnectMenu] = useState<HTMLElement | null>(null);
 
   const act = async (what: string, run: () => Promise<unknown>, done: string) => {
     setBusy(what);
@@ -40,7 +38,6 @@ export function Workspaces({ operator, onDone }: { operator: boolean; onDone: (m
   };
 
   const connect = async (backend: Backend) => {
-    setConnectMenu(null);
     setFailure(undefined);
     try {
       const started = await workspaces.beginConnect({ backend });
@@ -61,17 +58,31 @@ export function Workspaces({ operator, onDone }: { operator: boolean; onDone: (m
             Every directory this hub holds a credential for. Domains are discovered, never typed.
           </Typography>
         </Box>
-        <Button variant="contained" disabled={!operator} onClick={(e) => setConnectMenu(e.currentTarget)}>
-          Connect a workspace
-        </Button>
-        <Menu anchorEl={connectMenu} open={Boolean(connectMenu)} onClose={() => setConnectMenu(null)}>
-          <MenuItem onClick={() => void connect(Backend.GOOGLE)}>Google Workspace</MenuItem>
-          <MenuItem onClick={() => void connect(Backend.DEMO)}>Demonstration tenant</MenuItem>
-        </Menu>
+        <Stack direction="row" spacing={1}>
+          {(providers.value?.connectors ?? []).map((backend) => (
+            <Button
+              key={backend}
+              variant="contained"
+              disabled={!operator}
+              onClick={() => void connect(backend)}
+            >
+              Connect {backendName(backend)}
+            </Button>
+          ))}
+          {providers.value && providers.value.connectors.length === 0 ? (
+            <Tooltip title="No backend is configured to connect with. Set the OAuth client in Settings first.">
+              <span>
+                <Button variant="contained" disabled>
+                  Connect a workspace
+                </Button>
+              </span>
+            </Tooltip>
+          ) : null}
+        </Stack>
       </Stack>
 
-      <Loading busy={list.loading || Boolean(busy)} />
-      <Failure error={failure ?? list.error} />
+      <Loading busy={list.loading || providers.loading || Boolean(busy)} />
+      <Failure error={failure ?? list.error ?? providers.error} />
 
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
         <Table size="small">

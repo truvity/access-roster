@@ -20,9 +20,15 @@ export { Backend, Role };
 export type Me = {
   status: "signed-in" | "signed-out";
   email?: string;
+  name?: string;
+  givenName?: string;
+  familyName?: string;
   roles?: string[];
   source?: string;
-  matchedRules?: string[];
+  /** the internal groups the policy puts the caller in */
+  groups?: string[];
+  /** the build this hub is running */
+  version?: string;
   signOutUrl?: string;
 };
 
@@ -68,6 +74,13 @@ export function backendName(b: Backend): string {
     default:
       return "unknown";
   }
+}
+
+/** A duration, in the words an operator uses. */
+export function forHowLong(d?: { seconds: bigint }): string {
+  if (!d) return "—";
+  const hours = Number(d.seconds) / 3600;
+  return hours >= 1 ? `${Math.round(hours)}h` : `${Math.round(Number(d.seconds) / 60)}m`;
 }
 
 export function roleName(r: Role): string {

@@ -15,9 +15,10 @@ import { whoami, type Me } from "./api";
 import { useAsync, useHashView } from "./hooks";
 import { Workspaces } from "./Workspaces";
 import { AccessView } from "./Access";
+import { MeView } from "./Me";
 import { SettingsView } from "./Settings";
 
-const views = ["workspaces", "access", "settings"] as const;
+const views = ["workspaces", "access", "me", "settings"] as const;
 
 export function App() {
   const [view, setView] = useHashView("workspaces");
@@ -33,15 +34,27 @@ export function App() {
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
       <AppBar position="static" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
         <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            directory-roster
-          </Typography>
+          <Typography variant="h6">directory-roster</Typography>
+          {identity?.version ? (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={identity.version}
+              sx={{ ml: 1, fontFamily: "monospace" }}
+            />
+          ) : null}
+          <Box sx={{ flexGrow: 1 }} />
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             {identity?.status === "signed-in" ? (
               <>
-                <Typography variant="body2" color="text.secondary">
-                  {identity.email}
-                </Typography>
+                <Box sx={{ textAlign: "right", lineHeight: 1.2 }}>
+                  <Typography variant="body2">{identity.name || identity.email}</Typography>
+                  {identity.name && identity.name !== identity.email ? (
+                    <Typography variant="caption" color="text.secondary">
+                      {identity.email}
+                    </Typography>
+                  ) : null}
+                </Box>
                 {roles.length ? (
                   <Chip size="small" label={roles[0]} color={operator ? "primary" : "default"} />
                 ) : (
@@ -61,6 +74,7 @@ export function App() {
         <Tabs value={current} onChange={(_, next: string) => setView(next)} sx={{ px: 2 }}>
           <Tab value="workspaces" label="Workspaces" />
           <Tab value="access" label="Access" />
+          <Tab value="me" label="Effective access" />
           <Tab value="settings" label="Settings" />
         </Tabs>
       </AppBar>
@@ -68,8 +82,9 @@ export function App() {
       <Container maxWidth="lg" sx={{ py: 3 }}>
         {identity?.status === "signed-in" && roles.length === 0 ? (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            You are signed in as {identity.email}, and no rule grants you access. An operator can add one
-            on the Access tab; on a fresh installation, sign in with the break-glass admin account first.
+            You are signed in as {identity.email}, and no group grants you access. An operator can attach a
+            directory group to one on the Access tab; on a fresh installation, sign in with the break-glass
+            admin account first.
           </Alert>
         ) : null}
         {banner ? (
@@ -80,6 +95,7 @@ export function App() {
 
         {current === "workspaces" ? <Workspaces operator={operator} onDone={setBanner} /> : null}
         {current === "access" ? <AccessView operator={operator} onDone={setBanner} /> : null}
+        {current === "me" ? <MeView operator={operator} /> : null}
         {current === "settings" ? <SettingsView operator={operator} onDone={setBanner} /> : null}
       </Container>
     </Box>
