@@ -443,4 +443,9 @@ func TestDirectoryGroupResolvesMembersAndPeopleFilterByTenant(t *testing.T) {
 	if err != nil || len(none) != 0 {
 		t.Errorf("People(carol in one) = %+v, %v", none, err)
 	}
+	suspended := false
+	gone, _, err := h.hub.People(ctx, hub.PeopleQuery{Live: &suspended}, 0)
+	if err != nil || len(gone) != 1 || gone[0].Email != "alice@one.example" {
+		t.Errorf("People(suspended) = %+v, %v", gone, err)
+	}
 }

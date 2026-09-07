@@ -42,8 +42,15 @@ type GroupView struct {
 	Name     string
 	Members  []Member
 	Matchers []string
+	Rules    []MatcherView
 	Claims   Fragment
 	Lifetime time.Duration
+}
+
+// MatcherView is one declared rule, structured for a list.
+type MatcherView struct {
+	Kind string
+	Rule string
 }
 
 // Set is the policy in force: the declared layer, plus the memberships a
@@ -171,6 +178,7 @@ func (s *Set) Groups() []GroupView {
 		}
 		for _, matcher := range s.declared.Groups[name].Matchers {
 			view.Matchers = append(view.Matchers, matcher.Describe())
+			view.Rules = append(view.Rules, MatcherView{Kind: matcher.Kind(), Rule: matcher.Rule()})
 		}
 		out = append(out, view)
 	}

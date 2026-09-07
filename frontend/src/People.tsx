@@ -1,38 +1,64 @@
 import { useState } from "react";
 import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import TextField from "@mui/material/TextField";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 
-import { access, personName } from "./api";
+import { access, personName, workspaces } from "./api";
+import { AccountFilter } from "./gen/directoryroster/v1/access_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Mono, Nothing, Page, Ref, State } from "./ui";
 
-/** The identity-side leaf: every account the hub has snapshotted. Search
- *  is the usual way to a person; this list is for the reviewer who wants
- *  to scan rather than to ask. */
+/** The identity-side leaf: every account the hub has snapshotted. The
+ *  header search is how you reach one person; this list is for the
+ *  reviewer who scans, so it filters by the two things a reviewer scans
+ *  for — which directory, and whether the account is live. */
 export function People() {
-  const [query, setQuery] = useState("");
-  const found = useAsync(() => access.searchPeople({ query, limit: 200 }), [query]);
+  const [directory, setDirectory] = useState("");
+  const [account, setAccount] = useState<AccountFilter>(AccountFilter.UNSPECIFIED);
+  const tenants = useAsync(() => workspaces.listWorkspaces({}), []);
+  const found = useAsync(() => access.searchPeople({ workspaceId: directory, account, limit: 200 }), [directory, account]);
   const people = found.value?.people ?? [];
+  const list = tenants.value?.workspaces ?? [];
 
   return (
     <Page
       title="People"
       lede="Every account in every connected directory, as the last snapshot has it. A person's page shows the chain from their directory groups to the clients they reach."
-      actions={<TextField label="Filter by name or address" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ minWidth: 280 }} />}
     >
+      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
+        {list.length > 1 ? (
+          <ToggleButtonGroup size="small" exclusive value={directory} onChange={(_, next: string | null) => next !== null && setDirectory(next)}>
+            <ToggleButton value="">Every directory</ToggleButton>
+            {list.map((tenant) => (
+              <ToggleButton key={tenant.id} value={tenant.id} sx={{ fontFamily: "monospace", textTransform: "none" }}>
+                {tenant.id}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        ) : null}
+        <ToggleButtonGroup size="small" exclusive value={account} onChange={(_, next: AccountFilter | null) => next !== null && setAccount(next)}>
+          <ToggleButton value={AccountFilter.UNSPECIFIED}>Any account</ToggleButton>
+          <ToggleButton value={AccountFilter.LIVE}>Live</ToggleButton>
+          <ToggleButton value={AccountFilter.SUSPENDED}>Suspended</ToggleButton>
+        </ToggleButtonGroup>
+      </Stack>
+
       <Loading busy={found.loading} />
       <Failure error={found.error} />
 
       {!found.loading && people.length === 0 ? (
-        <Nothing>{query ? "Nobody matches. The filter looks at the address and the name." : "No accounts snapshotted yet: add a directory first."}</Nothing>
+        <Nothing>
+          {directory || account !== AccountFilter.UNSPECIFIED ? "Nobody matches the filter." : "No accounts snapshotted yet: add a directory first."}
+        </Nothing>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
           <Table size="small">
@@ -69,7 +95,7 @@ export function People() {
       )}
       {found.value?.truncated ? (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-          Showing the first {people.length}. Narrow the filter to see the rest.
+          Showing the first {people.length}. Narrow the filter, or search by name in the header, to reach the rest.
         </Typography>
       ) : null}
     </Page>

@@ -8,7 +8,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, forHowLong, people as peopleCount, personName } from "./api";
+import { access, forHowLong, matcherKind, people as peopleCount, personName } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
@@ -67,13 +67,17 @@ export function Clients() {
   );
 }
 
-/** One client: who may reach it, and who does. */
+/** One client: who may reach it, and who does — people through their
+ *  directory groups, machines through the rules that admit them. */
 export function Client({ id }: { id: string }) {
   const policy = useAsync(() => access.getPolicy({}), []);
   const holders = useAsync(() => access.listHolders({ client: id }), [id]);
 
   const client = (policy.value?.clients ?? []).find((c) => c.id === id);
   const people = holders.value?.holders ?? [];
+  const machines = (policy.value?.groups ?? [])
+    .filter((g) => client?.requires.includes(g.name))
+    .flatMap((g) => g.rules.map((rule) => ({ key: `${g.name}:${rule.rule}`, kind: rule.kind, rule: rule.rule, group: g.name })));
 
   if (!client) {
     return (
@@ -85,15 +89,17 @@ export function Client({ id }: { id: string }) {
     );
   }
 
+  const rules = `${machines.length} ${machines.length === 1 ? "rule" : "rules"}`;
+
   return (
     <Page
       title={client.id}
       mono
-      lede={`A ${client.kind} client. Tokens issued for it carry this id as their audience; ${peopleCount(people.length)} reach it right now.`}
+      lede={`Opened by ${client.requires.length} internal ${client.requires.length === 1 ? "group" : "groups"}; reached right now by ${peopleCount(people.length)} and ${rules}.`}
       facts={[
         { label: "Kind", value: client.kind },
         { label: "Token cap", value: client.ttlCap ? forHowLong(client.ttlCap) : "none" },
-        { label: "Secret", value: client.secret ? <Mono>{client.secret}</Mono> : undefined },
+        { label: "Secret, as a Kubernetes Secret name", value: client.secret ? <Mono>{client.secret}</Mono> : undefined },
       ]}
     >
       <Loading busy={policy.loading || holders.loading} />
@@ -113,12 +119,12 @@ export function Client({ id }: { id: string }) {
       </Section>
 
       {client.redirects.length ? (
-        <Section title="Redirects" hint="where a login may return to">
+        <Section title="Redirects">
           <Rows items={client.redirects} keyOf={(uri) => uri} primary={(uri) => <Mono>{uri}</Mono>} empty="" />
         </Section>
       ) : null}
 
-      <Section title="Who reaches it now" hint={`resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}>
+      <Section title="People who reach it now" hint={`resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}>
         <Rows
           items={people}
           keyOf={(h) => h.email}
@@ -135,6 +141,28 @@ export function Client({ id }: { id: string }) {
             </>
           )}
           empty="Nobody. Attach a directory group to one of the internal groups above, and the people in it reach this client."
+        />
+      </Section>
+
+      <Section title="Machines that reach it" hint="the rules that admit a proof into one of the groups above">
+        <Rows
+          items={machines}
+          keyOf={(m) => m.key}
+          primary={(m) => (
+            <>
+              {matcherKind(m.kind)} <Mono>{m.rule}</Mono>
+            </>
+          )}
+          secondary={(m) => (
+            <>
+              through{" "}
+              <Ref to={paths.group(m.group)} mono>
+                {m.group}
+              </Ref>
+            </>
+          )}
+          right={() => <State kind="declared" />}
+          empty="No rule admits a machine into any of the groups above."
         />
       </Section>
     </Page>

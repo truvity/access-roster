@@ -256,8 +256,8 @@ with one adjective each, so that "group" never means two things:
 | | Identity — where people come from | Access — what they get |
 |---|---|---|
 | container | a **directory**: one connected tenant | the policy and its layers, in Settings |
-| group | a **directory group** | an **internal group** |
-| leaf | a **person**, or a **machine** proving itself without a directory | a **client** |
+| group | a **directory group**, feeding by membership; a **matcher**, feeding by shape | an **internal group** |
+| leaf | a **person**; a machine's proof exists only while it runs, so it is simulated rather than listed | a **client** |
 
 The membership joins the two group levels, and it is the one edge the
 console edits — from either end.
@@ -268,10 +268,10 @@ console edits — from either end.
 | Overview | is anything broken: failing directories, domains on hold or contested, directory groups attached to nothing, internal groups nobody feeds, the break-glass state |
 | Directories, and one page per directory | which tenants we read, their domains and standing, the actions on the tenant itself, and the groups and accounts it holds — every one a link. **Add a directory** offers both ways in, admin consent and an uploaded key, and only the ways this deployment can take |
 | Directory groups, and one page per group | what the directories say exists, and which of it the policy uses. A group's page reads along the chain: its members as the directory reports them, the internal groups it feeds, the clients that therefore open |
-| People, and one page per person | every account, as the last snapshot has it. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why |
-| Machines | the same chain for a CI job or a workload, which cannot be searched for because they do not exist until one runs |
+| People, and one page per person | every account, as the last snapshot has it, filtered by directory and by whether it is live. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why |
+| Matchers | every rule that admits a proof by its shape — a CI job, a workload, a verified sign-in — with the internal group it feeds and the clients that opens. The identity side's second way in: a directory group feeds by membership, a matcher by pattern. Below the list, a simulator for a concrete proof, because a CI run exists only while it runs and cannot be listed |
 | Internal groups, and one page per group | the vocabulary of access. A group's page mirrors a directory group's: the directory groups that feed it, the people that puts in it now, what it adds to a token, the clients it opens |
-| Clients, and one page per client | kind, redirects, cap, the internal groups that open it, and the people who therefore reach it |
+| Clients, and one page per client | kind, redirects, cap, the internal groups that open it, the people who therefore reach it, and the rules that admit machines into it |
 | Settings | the OAuth client, the policy layers with their export, the intervals |
 
 Every page reads in the same direction, from the identity side toward
@@ -373,8 +373,9 @@ person, a CI job and a workload are one question: every proof resolves to
 internal groups and stops being anything else. So one component renders
 it, in two places. A person is a thing with a name, so their answer is
 their page, reached by searching for them. A CI job and a workload have
-no name to search for — they do not exist until one runs — so Machines
-keeps the proof picker for exactly those two.
+no name to search for — they do not exist until one runs — so the
+Matchers page keeps the proof picker for exactly those two, under the
+list of rules a proof is checked against.
 
 The answer opens with a sentence: their role here, how many internal
 groups they hold, how many clients they reach. Then what they reach, one

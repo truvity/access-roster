@@ -33,9 +33,12 @@ repository, not the order it arrived in.
   each — directory groups and internal groups — and a page at every level
   of both: a directory group's page mirrors an internal group's, and the
   membership that joins them is editable from either end. A person's page
-  is the chain, one row per internal group held. Machines keeps the proofs
-  nobody can search for, a CI job and a workload, because they do not
-  exist until one runs. **Add a directory** offers both ways in and only
+  is the chain, one row per internal group held. Matchers lists every
+  declared rule — the identity side's second way in, by shape rather than
+  by membership — and keeps the proof simulator for a CI job or a
+  workload, because a run exists only while it runs. A client's page
+  lists the machines that reach it beside the people. People filters by
+  directory and by whether an account is live. **Add a directory** offers both ways in and only
   the ways the deployment can take. The visual layer follows Material's
   guidance for a console: a navigation rail with the two sides as groups
   and a header kept for search and identity, a denser lowercase theme,

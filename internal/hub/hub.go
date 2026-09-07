@@ -791,6 +791,8 @@ type PeopleQuery struct {
 	Text string
 	// Workspace restricts the answer to one tenant's accounts.
 	Workspace string
+	// Live, when set, keeps only live (true) or suspended (false) accounts.
+	Live *bool
 }
 
 // People returns the accounts every snapshot holds, filtered by a
@@ -833,6 +835,9 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 		for _, email := range slices.Sorted(maps.Keys(snap.Accounts)) {
 			account := snap.Accounts[email]
 			if text != "" && !matchesPerson(account, text) {
+				continue
+			}
+			if query.Live != nil && account.Live != *query.Live {
 				continue
 			}
 			out = append(out, Person{
