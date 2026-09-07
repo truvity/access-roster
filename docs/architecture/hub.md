@@ -1,7 +1,9 @@
 # Architecture
 
-The hub in four views, from the outside in. The diagrams are C4 in
-Mermaid; GitHub renders them inline. The design rationale is
+The hub in four views, from the outside in. The static views follow the
+C4 model (context, containers, components) and are drawn as Mermaid
+flowcharts with C4 styling — Mermaid's native C4 renderer overlaps labels
+— so GitHub renders them inline. The design rationale is
 [../design/hub.md](../design/hub.md); the contracts are
 [../reference/contracts.md](../reference/contracts.md).
 
@@ -11,29 +13,33 @@ Who talks to the hub, and what the hub talks to. Consumers hold no
 directory credential; the hub holds all of them.
 
 ```mermaid
-C4Context
-  title System context — the directory hub
+flowchart TB
+  operator["Operator<br/>[Person]<br/>connects and watches workspaces<br/>through the console"]:::person
+  admin["Directory admin<br/>[Person]<br/>a role account of one tenant,<br/>consents once"]:::person
 
-  Person(operator, "Operator", "Connects and watches workspaces through the console")
-  Person(admin, "Directory admin", "A role account of one tenant, consents once")
+  hub["directory-roster<br/>[Software System]<br/>is this account live, who is in this group,<br/>for every connected directory, routed by email domain,<br/>with a per-domain authoritative flag"]:::system
 
-  System(hub, "directory-roster", "Answers 'is this account live' and 'who is in this group' for every connected directory, routed by email domain, with a per-domain authoritative flag")
+  webhook["Authorization webhook<br/>[Software System]<br/>at login: groups → roles"]:::system
+  teamsync["Team-sync service<br/>[Software System]<br/>keeps a code-hosting org's teams<br/>equal to directory groups"]:::system
 
-  System(webhook, "Authorization webhook", "At login: groups → roles. Calls ResolveUser")
-  System(teamsync, "Team-sync service", "Keeps a code-hosting org's teams equal to directory groups. Calls GetGroup, ListGroups, ResolveAccounts")
-  System_Ext(google, "Google Workspace", "Admin SDK Directory API — users, groups, members, domains (read-only)")
-  System_Ext(entra, "Microsoft Entra", "Next backend, same record, same contracts")
-  System_Ext(gateway, "Gateway + authentication", "Terminates TLS, runs the login, forwards identity and roles")
+  gateway["Gateway + authentication<br/>[External]<br/>terminates TLS, runs the login,<br/>forwards identity and roles"]:::ext
+  google["Google Workspace<br/>[External]<br/>Admin SDK Directory API:<br/>users, groups, members, domains"]:::ext
+  entra["Microsoft Entra<br/>[External, next]<br/>same record, same contracts"]:::ext
 
-  Rel(operator, gateway, "console", "HTTPS")
-  Rel(gateway, hub, "console listener", "HTTP + identity headers")
-  Rel(admin, google, "consents to the hub's OAuth client", "browser")
-  Rel(hub, google, "reads users, groups, members, domains", "Admin SDK, read-only scopes")
-  Rel(hub, entra, "later", "Graph, read-only")
-  Rel(webhook, hub, "ResolveUser", "ConnectRPC, cluster network")
-  Rel(teamsync, hub, "GetGroup / ListGroups / ResolveAccounts", "ConnectRPC, cluster network")
+  operator -- "console<br/>[HTTPS]" --> gateway
+  gateway -- "console listener<br/>[HTTP + identity headers]" --> hub
+  admin -. "consents to the hub's OAuth client<br/>[browser]" .-> google
+  webhook -- "ResolveUser<br/>[ConnectRPC, cluster network]" --> hub
+  teamsync -- "GetGroup, ListGroups, ResolveAccounts<br/>[ConnectRPC, cluster network]" --> hub
+  hub -- "reads users, groups, members, domains<br/>[Admin SDK, read-only scopes]" --> google
+  hub -. "later<br/>[Graph, read-only]" .-> entra
 
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+  classDef person fill:#08427b,stroke:#052e56,color:#fff
+  classDef system fill:#1168bd,stroke:#0b4884,color:#fff
+  classDef ext fill:#999999,stroke:#6b6b6b,color:#fff
+  classDef container fill:#438dd5,stroke:#2e6295,color:#fff
+  classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
+  classDef store fill:#438dd5,stroke:#2e6295,color:#fff
 ```
 
 ## 2. Containers
@@ -41,30 +47,35 @@ C4Context
 One process, two listeners, two stores, in a namespace of its own.
 
 ```mermaid
-C4Container
-  title Containers — the hub namespace
+flowchart TB
+  operator["Operator<br/>[Person]"]:::person
+  gateway["Gateway + authentication<br/>[External]"]:::ext
+  consumers["Consumers<br/>[Software Systems]<br/>authorization webhook, team-sync service"]:::system
+  google["Google Workspace<br/>[External]<br/>Admin SDK"]:::ext
 
-  Person(operator, "Operator")
-  System_Ext(gateway, "Gateway + authentication")
-  System_Ext(google, "Google Workspace", "Admin SDK")
-  System(consumers, "Consumers", "authorization webhook, team-sync service")
+  subgraph ns["namespace: directory-roster"]
+    direction TB
+    hub["hub<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: WorkspaceService, SettingsService, SPA<br/>refresher, prober, router by domain"]:::container
+    spa["console<br/>[Container: React SPA, served by the hub]<br/>Workspaces and Settings views,<br/>Connect / Reconnect / Disconnect"]:::container
+    k8s[("Kubernetes API, this namespace<br/>[Secrets + ConfigMaps]<br/>workspace records, credentials,<br/>the OAuth client, the state key,<br/>written by the hub")]:::store
+    valkey[("Valkey<br/>[external to the chart]<br/>one snapshot per workspace,<br/>refresh locks, negative cache,<br/>never a credential")]:::store
+  end
 
-  Container_Boundary(ns, "namespace: directory-roster") {
-    Container(hub, "hub", "Go, ConnectRPC", "API listener (DirectoryService) and console listener (WorkspaceService, SettingsService, SPA). Refresher, prober, router by domain")
-    Container(spa, "console", "React SPA, served by the hub", "Workspaces and Settings views, Connect / Reconnect / Disconnect")
-    ContainerDb(k8s, "Kubernetes API (this namespace)", "Secrets + ConfigMaps", "workspace records, credentials, the OAuth client, the state key. Written by the hub")
-    ContainerDb(valkey, "Valkey", "external to the chart", "one snapshot per workspace, refresh locks, negative cache. Never a credential")
-  }
+  operator -- "[HTTPS]" --> gateway
+  gateway -- "console listener :8081<br/>[HTTP, identity headers]" --> hub
+  consumers -- "API listener :8080<br/>[ConnectRPC]" --> hub
+  hub -- "serves<br/>[same origin]" --> spa
+  hub -- "get / watch / write<br/>[namespaced Role]" --> k8s
+  hub -- "snapshots, locks<br/>[RESP]" --> valkey
+  hub -- "reads<br/>[Admin SDK, read-only]" --> google
 
-  Rel(operator, gateway, "HTTPS")
-  Rel(gateway, hub, "console listener :8081", "HTTP, identity headers")
-  Rel(hub, spa, "serves", "same origin")
-  Rel(consumers, hub, "API listener :8080", "ConnectRPC")
-  Rel(hub, k8s, "get / watch / write", "namespaced Role")
-  Rel(hub, valkey, "snapshots, locks", "RESP")
-  Rel(hub, google, "reads", "Admin SDK, read-only")
-
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+  classDef person fill:#08427b,stroke:#052e56,color:#fff
+  classDef system fill:#1168bd,stroke:#0b4884,color:#fff
+  classDef ext fill:#999999,stroke:#6b6b6b,color:#fff
+  classDef container fill:#438dd5,stroke:#2e6295,color:#fff
+  classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
+  classDef store fill:#438dd5,stroke:#2e6295,color:#fff
+  style ns fill:none,stroke:#444,stroke-dasharray:5 5
 ```
 
 The two listeners are the privilege boundary: a consumer on the cluster
@@ -77,35 +88,40 @@ both.
 Inside the hub process.
 
 ```mermaid
-C4Component
-  title Components — inside the hub
+flowchart TB
+  subgraph hub["hub [Container]"]
+    direction TB
+    dirapi["DirectoryService handlers<br/>[connect-go]<br/>Describe, Probe, GetGroup, ListGroups,<br/>GetAccount, ResolveAccounts, ResolveUser"]:::component
+    opapi["Operator handlers<br/>[connect-go]<br/>WorkspaceService, SettingsService,<br/>role gate from identity headers"]:::component
+    connect["Connect flow<br/>[HTTP]<br/>BeginConnect and callback: state cookie,<br/>code exchange, tenant + domain discovery, first probe"]:::component
+    router["Router<br/>[domain → workspace]<br/>email domain to the workspace serving it,<br/>conflict detection, authoritative per domain"]:::component
+    fresh["Freshness<br/>[max_age policy]<br/>serve / refresh single-flight /<br/>point read live / miss goes live once"]:::component
+    refresher["Refresher + prober<br/>[background loops]<br/>new snapshot every refresh interval,<br/>probe + domain re-read every probe interval,<br/>shared lock"]:::component
+    wsstore[("Workspace store<br/>[Kubernetes]<br/>records in ConfigMaps, credentials in Secrets,<br/>overlay merged read-only")]:::component
+    backend["Backend: Google<br/>[Admin SDK client]<br/>users.list, groups.list, members.list (atomic per group),<br/>domains.list, token from refresh token or SA key"]:::component
+    snap[("Snapshot store<br/>[Valkey or memory]<br/>per-workspace snapshot, snapshot_at,<br/>negative cache")]:::component
+  end
 
-  Container_Boundary(hub, "hub") {
-    Component(dirapi, "DirectoryService handlers", "connect-go", "Describe, Probe, GetGroup, ListGroups, GetAccount, ResolveAccounts, ResolveUser")
-    Component(opapi, "Operator handlers", "connect-go", "WorkspaceService, SettingsService, role gate from identity headers")
-    Component(connect, "Connect flow", "HTTP", "BeginConnect / callback: state cookie, code exchange, tenant + domain discovery, first probe")
-    Component(router, "Router", "domain → workspace", "email domain to the workspace serving it, conflict detection, authoritative per domain")
-    Component(fresh, "Freshness", "max_age policy", "serve / refresh single-flight / point read live / miss goes live once")
-    Component(refresher, "Refresher + prober", "background loops", "new snapshot every refresh interval, probe + domain re-read every probe interval, shared lock")
-    Component(snap, "Snapshot store", "Valkey or memory", "per-workspace snapshot, snapshot_at, negative cache")
-    Component(wsstore, "Workspace store", "Kubernetes", "records in ConfigMaps, credentials in Secrets, overlay merged read-only")
-    Component(backend, "Backend: Google", "Admin SDK client", "users.list, groups.list, members.list (atomic per group), domains.list, token from refresh token or SA key")
-  }
+  opapi -- "BeginConnect" --> connect
+  opapi -- "list / upsert / delete" --> wsstore
+  connect -- "store credential + record" --> wsstore
+  connect -- "exchange code, discover" --> backend
+  dirapi -- "which workspace" --> router
+  dirapi -- "how fresh" --> fresh
+  router -- "domain claims" --> wsstore
+  refresher -- "health, domains" --> wsstore
+  refresher -- "full read, probe" --> backend
+  refresher -- "replace" --> snap
+  fresh -- "full read or point read" --> backend
+  fresh -- "read / replace" --> snap
 
-  Rel(dirapi, router, "which workspace")
-  Rel(dirapi, fresh, "how fresh")
-  Rel(fresh, snap, "read / replace")
-  Rel(fresh, backend, "full read or point read")
-  Rel(refresher, backend, "full read, probe")
-  Rel(refresher, snap, "replace")
-  Rel(refresher, wsstore, "health, domains")
-  Rel(opapi, wsstore, "list / upsert / delete")
-  Rel(opapi, connect, "BeginConnect")
-  Rel(connect, backend, "exchange code, discover")
-  Rel(connect, wsstore, "store credential + record")
-  Rel(router, wsstore, "domain claims")
-
-  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+  classDef person fill:#08427b,stroke:#052e56,color:#fff
+  classDef system fill:#1168bd,stroke:#0b4884,color:#fff
+  classDef ext fill:#999999,stroke:#6b6b6b,color:#fff
+  classDef container fill:#438dd5,stroke:#2e6295,color:#fff
+  classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
+  classDef store fill:#438dd5,stroke:#2e6295,color:#fff
+  style hub fill:none,stroke:#444,stroke-dasharray:5 5
 ```
 
 ## 4. Dynamics
