@@ -3,12 +3,15 @@ package google
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	directory "google.golang.org/api/admin/directory/v1"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
 
 	"github.com/truvity/access-roster/backend"
 )
@@ -158,5 +161,76 @@ func TestRevokeIsUnsupported(t *testing.T) {
 	err := (&Backend{}).Revoke(context.Background())
 	if !errors.Is(err, backend.ErrUnsupported) {
 		t.Errorf("revoke = %v, want ErrUnsupported", err)
+	}
+}
+
+// The customer id is read from the admin's own user record.
+//
+// Customers.Get returns the same id but needs a FIFTH scope,
+// `admin.directory.customer.readonly`, which is not in [Scopes] — so
+// calling it means every administrator who has already consented has to
+// consent again. Found live: Google granted the consent, and the first
+// read failed with "Request had insufficient authentication scopes",
+// naming no scope.
+func TestTheCustomerIdComesFromTheAdminNotTheCustomersEndpoint(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/users/"):
+			_, _ = io.WriteString(w, `{"primaryEmail":"ada@north.example","customerId":"C0north"}`)
+		case strings.HasSuffix(r.URL.Path, "/domains"):
+			_, _ = io.WriteString(w, `{"domains":[{"domainName":"north.example","verified":true},`+
+				`{"domainName":"unverified.example","verified":false}]}`)
+		default:
+			// Customers.Get would land here. In production it is a 403
+			// that names no scope; here it is a failure with a name.
+			http.Error(w, `{"error":{"code":403,"message":"insufficient scopes"}}`, http.StatusForbidden)
+		}
+	}))
+	defer server.Close()
+
+	svc, err := directory.NewService(ctx,
+		option.WithEndpoint(server.URL), option.WithoutAuthentication())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &Backend{svc: svc, admin: "ada@north.example"}
+
+	tenant, err := b.Tenant(ctx)
+	if err != nil {
+		t.Fatalf("reading the tenant: %v", err)
+	}
+	if tenant.ID != "C0north" {
+		t.Errorf("customer id = %q, want C0north", tenant.ID)
+	}
+	// Unverified domains are refused: a domain anyone may claim in a
+	// console is not evidence of anything.
+	if len(tenant.Domains) != 1 || tenant.Domains[0] != "north.example" {
+		t.Errorf("domains = %v, want just the verified one", tenant.Domains)
+	}
+	var askedTheAdmin bool
+	for _, path := range paths {
+		if strings.Contains(path, "customers") {
+			t.Errorf("Tenant called %q, which needs a scope the hub does not ask for", path)
+		}
+		askedTheAdmin = askedTheAdmin || strings.Contains(path, "/users/")
+	}
+	if !askedTheAdmin {
+		t.Errorf("Tenant never read the admin's user record; it called %v", paths)
+	}
+}
+
+// A backend with no admin has nothing to read the customer id from, and
+// must say so rather than asking about the empty user.
+func TestTheTenantNeedsAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	if _, err := (&Backend{}).Tenant(context.Background()); err == nil {
+		t.Error("a backend with no admin read a tenant")
 	}
 }

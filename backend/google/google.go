@@ -29,6 +29,13 @@ import (
 // four the console shows for pasting; if this list and that one drift,
 // an operator grants the wrong thing and the failure arrives later, at
 // the first read, as a 403 that names nothing useful.
+//
+// The drift that actually happened was not between two lists but between
+// this list and a CALL: Tenant read the customer through Customers.Get,
+// which needs a fifth scope nobody had granted. Every read below must be
+// covered by exactly these four — adding a scope is not a code change,
+// it is asking every administrator who has already consented to consent
+// again.
 var Scopes = []string{
 	directory.AdminDirectoryUserReadonlyScope,
 	directory.AdminDirectoryGroupReadonlyScope,
@@ -177,7 +184,23 @@ func (b *Backend) Admin() string { return b.admin }
 // wrong the day a domain is added and silently answers "no opinion" about
 // everyone in it.
 func (b *Backend) Tenant(ctx context.Context) (backend.Tenant, error) {
-	customer, err := b.svc.Customers.Get(myCustomer).Context(ctx).Do()
+	// The customer id comes from the admin's OWN user record, not from
+	// Customers.Get.
+	//
+	// They return the same id, but they are not covered by the same
+	// grant: Customers.Get needs `admin.directory.customer.readonly`,
+	// which is a FIFTH scope, and asking for it would mean every
+	// administrator who has already consented has to consent again. A
+	// User carries `customerId` and is covered by the user scope the hub
+	// already has, so the id is free.
+	//
+	// This was found the only way it can be found — a live consent that
+	// Google granted and the first read then refused with "Request had
+	// insufficient authentication scopes", naming no scope.
+	if b.admin == "" {
+		return backend.Tenant{}, errors.New("google: no admin to read the customer id from")
+	}
+	admin, err := b.svc.Users.Get(b.admin).Context(ctx).Do()
 	if err != nil {
 		return backend.Tenant{}, fmt.Errorf("google: read the customer: %w", reason(err))
 	}
@@ -186,7 +209,7 @@ func (b *Backend) Tenant(ctx context.Context) (backend.Tenant, error) {
 	if err != nil {
 		return backend.Tenant{}, fmt.Errorf("google: list the domains: %w", reason(err))
 	}
-	out := backend.Tenant{ID: customer.Id, Domains: make([]string, 0, len(domains.Domains))}
+	out := backend.Tenant{ID: admin.CustomerId, Domains: make([]string, 0, len(domains.Domains))}
 	for _, domain := range domains.Domains {
 		// Unverified domains are refused rather than served. A domain
 		// anyone may claim in a console is not evidence of anything, and
