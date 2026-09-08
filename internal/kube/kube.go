@@ -174,6 +174,29 @@ func (c *Client) meta(kind, id string) metav1.ObjectMeta {
 	}
 }
 
+// upsert writes an object that may or may not exist yet.
+//
+// The obvious two-step — update, and create if it was not there — has a
+// gap between its halves, and two replicas starting together fall into
+// it: both find nothing, both create, and one is told the object already
+// exists. That is not a failure, it is the state being asked for, so it
+// updates instead. Without this, a second replica's first write of a
+// workspace record or a credential fails on a race it can neither see nor
+// retry.
+func upsert(update, create func() error) error {
+	err := update()
+	if apierrors.IsNotFound(err) {
+		// Deliberately not a loop: one more attempt covers the race, and
+		// anything that keeps flipping between the two is a cluster
+		// problem an operator should be told about rather than one this
+		// code should spin on.
+		if err = create(); apierrors.IsAlreadyExists(err) {
+			err = update()
+		}
+	}
+	return err
+}
+
 // ignoreNotFound turns "it was already gone" into success, which is what
 // every delete here wants.
 func ignoreNotFound(err error) error {

@@ -8,6 +8,7 @@
     "govulncheck": "1.7.0",
     "just-lsp": "latest",
     "just": "latest",
+    "kind": "latest",
     "ko": "latest",
     "kubernetes-helm": "latest",
     "lefthook": "latest",

@@ -62,6 +62,27 @@ being read and never set, and the worst of them built every OAuth redirect
 from `http://localhost:8081` — invisible in every local run, fatal in the
 first deployment.
 
+## Against a real API server
+
+`just acceptance` creates a throwaway kind cluster, runs `cmd/acceptance`
+in it and deletes it again. The fakes are honest about most things and
+silent about three, and all three are load-bearing here: a real API server
+validates object names, refuses a create that raced another, and is the
+only thing that can answer a TokenReview — which is what recovery and the
+API listener's guard are made of.
+
+So it checks that a workspace and its credential survive a restart and
+that disconnecting takes both away; that every tenant id a backend might
+hand us produces an object name the API server accepts; that two replicas
+share one session key; that a recovery token admits the recovery account
+and refuses another account's, a forged one and one minted for a different
+audience; and the same three questions for a consumer on the API listener.
+
+It is a command rather than a `go test` package because it needs a
+cluster, and `go test ./...` should not assume one. Point it at any
+cluster and namespace you may create objects in; it cleans up by the
+labels it wrote, including when a check fails.
+
 ## Issuer, proxy and CLI
 
 The issuer's verifiers run against recorded tokens with rotated keys and
