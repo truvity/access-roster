@@ -5,7 +5,11 @@ git history.
 
 ## Unreleased
 
-Nothing yet.
+- **Revocation always reaches the shared state.** It took a hit in the
+  per-process session index as proof that revocation was done and
+  returned — so a token revoked on the replica that happened to hold the
+  session stayed valid at every replica, including that one. Both now
+  happen, always, in that order.
 
 ## v0.1.0
 

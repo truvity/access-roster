@@ -453,13 +453,14 @@ func (s *Storage) RevokeToken(_ context.Context, tokenOrTokenID, _, _ string) *o
 	// Both have to work, or revocation silently succeeds while the
 	// session lives on — which is the worst possible outcome for a
 	// security control whose entire job is to end access.
-	if s.iss.Sessions().RevokeToken(tokenOrTokenID) || s.iss.Sessions().RevokeID(tokenOrTokenID) {
-		return nil
-	}
-	// Deleted from the shared state, so a token revoked at one replica is
-	// revoked at all of them. A revocation that only reached the replica
-	// that answered would be the worst kind of security control: one that
-	// reports success and leaves access in place.
+	// Both, always, and in that order — never one *or* the other. The
+	// session index is per-process, so it only ever knows the sessions
+	// this replica recorded; taking a hit there as proof that revocation
+	// is done would leave the token itself in the shared state, valid at
+	// every replica including this one. A security control that reports
+	// success and leaves access in place is worse than one that fails.
+	s.iss.Sessions().RevokeToken(tokenOrTokenID)
+	s.iss.Sessions().RevokeID(tokenOrTokenID)
 	if err := s.state.Delete(context.Background(), tokenKey(tokenOrTokenID)); err != nil {
 		return oidc.ErrServerError().WithDescription("%s", err)
 	}
