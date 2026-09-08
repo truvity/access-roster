@@ -36,7 +36,7 @@ jobs:
       packages: write
     uses: truvity/ci-workflows/.github/workflows/release-public.yaml@eb317bdb3240d43404665cc943d1c00e8946f733 # v2.18.0
     with:
-      charts: '["directory-roster", "access-issuer"]'
+      charts: '["directory-roster", "access-issuer", "access-proxy"]'
       # Nest the images under the repo namespace (INF-574 / INF-584 N1):
       # ko names each artifact after its cmd dir, so the published slugs
       # are ghcr.io/truvity/access-roster/{directory-roster,access-issuer}.
