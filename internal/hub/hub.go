@@ -33,6 +33,10 @@ var ErrTenantMismatch = errors.New("hub: the credential opens a different tenant
 // its tenant does not own.
 var ErrUnknownDomain = errors.New("hub: the tenant does not own that domain")
 
+// ErrUnknownGroup is returned when a workspace is asked to sync a group
+// the last read of its directory did not hold.
+var ErrUnknownGroup = errors.New("hub: the tenant does not hold that group")
+
 // Default intervals, used for any zero value in [Config].
 const (
 	DefaultRefreshInterval = 15 * time.Minute
@@ -820,12 +824,20 @@ func (h *Hub) Refresh(ctx context.Context, workspaceID string) (time.Time, error
 		if err != nil {
 			return time.Time{}, fmt.Errorf("read groups: %w", err)
 		}
+		// Every group the directory held, before narrowing: it is what an
+		// operator picks from when choosing which to sync, and a picker
+		// that could only offer what was already synced could never widen
+		// the choice. Names only — the cost is a line per group.
+		discovered := make([]string, 0, len(groups))
+		for _, g := range groups {
+			discovered = append(discovered, g.Email)
+		}
 		// Narrowed to Serve as written rather than to the domains
 		// discovery currently returns: a probe that failed a minute ago
 		// must not turn a good full read into an empty snapshot. Routing
 		// uses the intersection, so nothing unowned is answered either way.
-		accounts, groups = restrict(accounts, groups, ws.Serve)
-		snap := NewSnapshot(workspaceID, h.now(), accounts, groups)
+		accounts, groups = restrict(accounts, groups, ws.Serve, ws.SyncGroups)
+		snap := NewSnapshot(workspaceID, h.now(), accounts, groups, discovered)
 		if err = h.snapshots.Put(ctx, snap); err != nil {
 			return time.Time{}, fmt.Errorf("store snapshot: %w", err)
 		}
@@ -833,7 +845,7 @@ func (h *Hub) Refresh(ctx context.Context, workspaceID string) (time.Time, error
 		// slow, and it is measured on the wall clock rather than the hub's
 		// so that a test with a frozen clock still reports the truth.
 		h.log.InfoContext(ctx, "snapshot taken", "workspace", workspaceID,
-			"accounts", len(accounts), "groups", len(groups),
+			"accounts", len(accounts), "groups", len(groups), "discovered", len(discovered),
 			"took", time.Since(started).Round(time.Millisecond).String())
 		return snap.TakenAt, nil
 	})
@@ -1065,6 +1077,51 @@ func (h *Hub) SetServed(ctx context.Context, workspaceID string, domains []strin
 	return h.store.Get(ctx, workspaceID)
 }
 
+// SetSynced narrows a workspace to a subset of its groups, or widens it
+// back. An empty list means every group in the served domains.
+//
+// It is bounded by discovery for the same reason SetServed is: only a
+// group the directory reported on the last pass may be named, so the
+// ceiling is the tenant's own list and every setting is a subtraction
+// from it. A declared workspace refuses — the deployment states its list.
+func (h *Hub) SetSynced(ctx context.Context, workspaceID string, groups []string) (Workspace, error) {
+	ws, err := h.store.Get(ctx, workspaceID)
+	if err != nil {
+		return Workspace{}, err
+	}
+	if ws.Declared {
+		return Workspace{}, fmt.Errorf("%w: %s", ErrDeclared, workspaceID)
+	}
+	sync := normaliseGroups(groups)
+	if len(sync) > 0 {
+		snap, snapErr := h.snapshots.Get(ctx, workspaceID)
+		if snapErr != nil || snap == nil {
+			return Workspace{}, fmt.Errorf(
+				"%w: %s has not been read yet, so its groups are not known", ErrUnknownGroup, workspaceID)
+		}
+		for _, g := range sync {
+			if !slices.Contains(snap.Discovered, g) {
+				return Workspace{}, fmt.Errorf("%w: %s does not hold %s", ErrUnknownGroup, workspaceID, g)
+			}
+		}
+	}
+	ws.SyncGroups = sync
+	if err = h.store.Put(ctx, ws); err != nil {
+		return Workspace{}, fmt.Errorf("store workspace: %w", err)
+	}
+	// Excluded now, from what is already in memory, for the same reason
+	// narrowing the domains is: what an operator has just said to stop
+	// keeping must stop being answerable whether or not a read succeeds.
+	if snap, snapErr := h.snapshots.Get(ctx, workspaceID); snapErr == nil && snap != nil {
+		if err = h.snapshots.Put(ctx, snap.narrowGroups(sync)); err != nil {
+			h.log.WarnContext(ctx, "narrowing the snapshot's groups failed",
+				"workspace", workspaceID, "error", err)
+		}
+	}
+	h.refreshSoon(ctx, workspaceID, "refresh after narrowing the groups failed")
+	return h.store.Get(ctx, workspaceID)
+}
+
 // Disconnect revokes the credential at the backend, then forgets the
 // workspace. A declared workspace refuses: it is removed from the
 // deployment instead.
@@ -1170,6 +1227,9 @@ type WorkspaceView struct {
 	Workspace  Workspace
 	Domains    []DomainStanding
 	SnapshotAt time.Time
+	// Discovered is every group the last full read of this tenant held,
+	// synced or not. It is what the sync chooser offers.
+	Discovered []string
 }
 
 // WorkspaceViews returns every workspace with its domains resolved.
@@ -1209,7 +1269,11 @@ func (h *Hub) WorkspaceViews(ctx context.Context) ([]WorkspaceView, error) {
 			}
 			domains = append(domains, standing)
 		}
-		out = append(out, WorkspaceView{Workspace: ws, Domains: domains, SnapshotAt: snapshotAt(snap)})
+		view := WorkspaceView{Workspace: ws, Domains: domains, SnapshotAt: snapshotAt(snap)}
+		if snap != nil {
+			view.Discovered = snap.Discovered
+		}
+		out = append(out, view)
 	}
 	return out, nil
 }

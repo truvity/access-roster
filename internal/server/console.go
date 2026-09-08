@@ -292,6 +292,32 @@ func (c *Console) SetServedDomains(
 	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%w: %s", hub.ErrNotFound, id))
 }
 
+// SetSyncedGroups implements the operator contract: which of a tenant's
+// groups this hub keeps.
+func (c *Console) SetSyncedGroups(
+	ctx context.Context, req *connect.Request[directoryrosterv1.SetSyncedGroupsRequest],
+) (*connect.Response[directoryrosterv1.SetSyncedGroupsResponse], error) {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+		return nil, err
+	}
+	id := req.Msg.GetWorkspaceId()
+	if _, err := c.deps.Hub.SetSynced(ctx, id, req.Msg.GetGroups()); err != nil {
+		return nil, rpcError(err)
+	}
+	views, err := c.deps.Hub.WorkspaceViews(ctx)
+	if err != nil {
+		return nil, rpcError(err)
+	}
+	for i := range views {
+		if views[i].Workspace.ID == id {
+			return connect.NewResponse(&directoryrosterv1.SetSyncedGroupsResponse{
+				Workspace: workspaceProto(&views[i]),
+			}), nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%w: %s", hub.ErrNotFound, id))
+}
+
 // Probe implements the operator contract.
 func (c *Console) Probe(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ProbeRequest],

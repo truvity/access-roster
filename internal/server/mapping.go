@@ -105,8 +105,10 @@ func workspaceProto(v *hub.WorkspaceView) *directoryrosterv1.Workspace {
 			Ok:       ws.Health.OK,
 			Error:    ws.Health.Error,
 		},
-		SnapshotAt: stamp(v.SnapshotAt),
-		Declared:   ws.Declared,
+		SnapshotAt:       stamp(v.SnapshotAt),
+		Declared:         ws.Declared,
+		SyncGroups:       ws.SyncGroups,
+		DiscoveredGroups: v.Discovered,
 	}
 }
 

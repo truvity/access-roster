@@ -444,3 +444,83 @@ func TestConnectingChoosesTheAdministratorsOwnDomain(t *testing.T) {
 	}
 	directory.Wait()
 }
+
+// An operator chooses which of a directory's groups this hub keeps.
+//
+// A company's directory holds every mailing list it ever made; an
+// installation's policy speaks about a handful. The list to pick FROM is
+// what the last read held, not what is currently kept — a chooser that
+// could only offer what was already chosen could never widen the choice.
+func TestSyncingKeepsOnlyTheGroupsAnOperatorNamed(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	directory, store := newDetachedHub(t)
+	tenant := fake.New("C0sync", "north.example").
+		WithAccount("ada@north.example", "Ada", "North").
+		WithGroup("platform@north.example", "ada@north.example").
+		WithGroup("social@north.example", "ada@north.example").
+		WithGroup("lunch@north.example", "ada@north.example")
+	if _, err := directory.Adopt(ctx, hub.Workspace{Admin: "admin@north.example"}, tenant); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	directory.Wait()
+
+	// A group the last read did not hold cannot be named: the ceiling is
+	// the tenant's own list, exactly as it is for domains.
+	if _, err := directory.SetSynced(ctx, "C0sync", []string{"invented@north.example"}); !errors.Is(err, hub.ErrUnknownGroup) {
+		t.Errorf("naming a group the tenant does not hold = %v, want ErrUnknownGroup", err)
+	}
+
+	if _, err := directory.SetSynced(ctx, "C0sync", []string{"platform@north.example"}); err != nil {
+		t.Fatalf("SetSynced: %v", err)
+	}
+	// Excluded at once, before any re-read.
+	groups, _, err := directory.ListGroups(ctx, "", nil)
+	if err != nil {
+		t.Fatalf("ListGroups: %v", err)
+	}
+	if len(groups) != 1 || groups[0].Email != "platform@north.example" {
+		t.Errorf("groups = %+v, want only the one named", groups)
+	}
+	// And a person's answer follows: the excluded groups are not theirs
+	// any more as far as this hub is concerned.
+	if got, err := directory.ResolveUser(ctx, "ada@north.example", nil); err != nil {
+		t.Fatalf("ResolveUser: %v", err)
+	} else if len(got.Groups) != 1 || got.Groups[0] != "platform@north.example" {
+		t.Errorf("groups = %v, want only the synced one", got.Groups)
+	}
+
+	directory.Wait()
+	// The chooser can still offer what was dropped, or nothing could ever
+	// be widened again.
+	views, err := directory.WorkspaceViews(ctx)
+	if err != nil {
+		t.Fatalf("WorkspaceViews: %v", err)
+	}
+	if len(views[0].Discovered) != 3 {
+		t.Errorf("discovered = %v, want every group the tenant holds", views[0].Discovered)
+	}
+
+	// Widening back, and surviving a reconnect.
+	if _, err = directory.SetSynced(ctx, "C0sync", nil); err != nil {
+		t.Fatalf("SetSynced(all): %v", err)
+	}
+	directory.Wait()
+	if groups, _, err = directory.ListGroups(ctx, "", nil); err != nil {
+		t.Fatalf("ListGroups: %v", err)
+	} else if len(groups) != 3 {
+		t.Errorf("groups = %d, want all three back", len(groups))
+	}
+	if _, err = directory.SetSynced(ctx, "C0sync", []string{"lunch@north.example"}); err != nil {
+		t.Fatalf("SetSynced: %v", err)
+	}
+	if _, err = directory.Adopt(ctx, hub.Workspace{ID: "C0sync", Admin: "admin@north.example"}, tenant); err != nil {
+		t.Fatalf("re-Adopt: %v", err)
+	}
+	if stored, err := store.Get(ctx, "C0sync"); err != nil {
+		t.Fatalf("Get: %v", err)
+	} else if len(stored.SyncGroups) != 1 || stored.SyncGroups[0] != "lunch@north.example" {
+		t.Errorf("after a reconnect: syncGroups = %v, want the choice to survive", stored.SyncGroups)
+	}
+	directory.Wait()
+}

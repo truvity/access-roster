@@ -599,6 +599,7 @@ func adoptDeclared(
 			Admin:      declared.Admin,
 			Credential: hub.CredentialServiceAccountKey,
 			Serve:      declared.Serve,
+			SyncGroups: declared.SyncGroups,
 			Declared:   true,
 		}, reader)
 		if err != nil {

@@ -40,6 +40,13 @@ service WorkspaceService {
   // workspace refuses — the deployment states its list. Operator.
   rpc SetServedDomains(SetServedDomainsRequest) returns (SetServedDomainsResponse);
 
+  // SetSyncedGroups narrows a workspace to a subset of its groups, or
+  // widens it back. An empty list keeps every group in the served
+  // domains, which is the default. Only a group the last read of the
+  // directory held may be named, so the ceiling is the tenant's own list.
+  // A declared workspace refuses. Operator.
+  rpc SetSyncedGroups(SetSyncedGroupsRequest) returns (SetSyncedGroupsResponse);
+
   // Probe checks one workspace's credential now and re-reads its domain
   // list. Operator.
   rpc Probe(ProbeRequest) returns (ProbeResponse);
@@ -94,6 +101,12 @@ message Workspace {
   // true when the deployment declared it (overlay): read-only in the
   // console, wins on conflict.
   bool declared = 10;
+  // which of the tenant's groups this hub keeps. Empty is all of them in
+  // the served domains, which is the default.
+  repeated string sync_groups = 11;
+  // every group the last full read of this tenant held, synced or not:
+  // what a chooser offers. Empty before the first snapshot.
+  repeated string discovered_groups = 12;
 }
 
 // DomainReason says WHY a served domain is not authoritative.
@@ -200,6 +213,15 @@ message SetServedDomainsRequest {
   repeated string domains = 2;
 }
 message SetServedDomainsResponse {
+  Workspace workspace = 1;
+}
+
+message SetSyncedGroupsRequest {
+  string workspace_id = 1;
+  // the groups to keep; empty keeps every group in the served domains.
+  repeated string groups = 2;
+}
+message SetSyncedGroupsResponse {
   Workspace workspace = 1;
 }
 

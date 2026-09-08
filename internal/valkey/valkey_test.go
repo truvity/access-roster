@@ -31,7 +31,11 @@ func sample(taken time.Time) *hub.Snapshot {
 		[]backend.Group{
 			{Email: "engineering@north.example", Members: []string{"ada@north.example"}},
 			{Email: "everyone@north.example", Members: []string{"ada@north.example", "cleo@north.example"}},
-		})
+		},
+		// One group the tenant holds and this hub does not keep: the
+		// chooser's list has to survive the round trip too, or an
+		// operator could never widen the choice back.
+		[]string{"engineering@north.example", "everyone@north.example", "social@north.example"})
 }
 
 // Everything a snapshot answers must come back: liveness decides whether
@@ -57,6 +61,11 @@ func TestASnapshotComesBackWhole(t *testing.T) {
 	}
 	// A leaver read back as live would keep access for someone who has
 	// gone: the one field worth naming in an assertion.
+	// The chooser's list is part of the snapshot: without it an operator
+	// could narrow the synced groups and never widen them back.
+	if len(got.Discovered) != 3 || got.Discovered[2] != "social@north.example" {
+		t.Errorf("discovered = %v, want every group the tenant held", got.Discovered)
+	}
 	if got.Accounts["cleo@north.example"].Live {
 		t.Error("a suspended account came back live")
 	}

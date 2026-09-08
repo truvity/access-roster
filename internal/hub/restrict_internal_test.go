@@ -25,7 +25,7 @@ func TestRestrictKeepsOnlyWhatAServedAnswerNeeds(t *testing.T) {
 		{Email: "theirs@other.example", Members: []string{"otto@other.example"}},
 	}
 
-	keptAccounts, keptGroups := restrict(accounts, groups, []string{"kept.example"})
+	keptAccounts, keptGroups := restrict(accounts, groups, []string{"kept.example"}, nil)
 
 	if len(keptAccounts) != 1 || keptAccounts[0].Email != "ada@kept.example" {
 		t.Errorf("accounts = %+v, want only the served domain's", keptAccounts)
@@ -51,7 +51,7 @@ func TestRestrictKeepsOnlyWhatAServedAnswerNeeds(t *testing.T) {
 
 	// No narrowing means no filtering at all, including for a workspace
 	// whose domains have not been discovered yet.
-	sameA, sameG := restrict(accounts, groups, nil)
+	sameA, sameG := restrict(accounts, groups, nil, nil)
 	if len(sameA) != len(accounts) || len(sameG) != len(groups) {
 		t.Errorf("an unnarrowed workspace lost data: %d accounts, %d groups", len(sameA), len(sameG))
 	}

@@ -28,16 +28,35 @@ type Snapshot struct {
 	Groups map[string]backend.Group
 	// MemberOf maps a lower-cased address to the groups it is in.
 	MemberOf map[string][]string
+	// Discovered is every group address the directory returned on this
+	// pass, before narrowing — the list an operator picks from when
+	// choosing which groups to sync. Names only: it is what a chooser
+	// needs and nothing more, so keeping it costs a line per group rather
+	// than a membership.
+	Discovered []string
 }
 
-// NewSnapshot indexes a full read into a snapshot.
-func NewSnapshot(workspace string, takenAt time.Time, accounts []backend.Account, groups []backend.Group) *Snapshot {
+// NewSnapshot indexes a full read into a snapshot. Discovered is every
+// group the directory returned before narrowing; passing nil means the
+// kept groups are all there were.
+func NewSnapshot(
+	workspace string, takenAt time.Time,
+	accounts []backend.Account, groups []backend.Group, discovered []string,
+) *Snapshot {
 	s := &Snapshot{
-		Workspace: workspace,
-		TakenAt:   takenAt,
-		Accounts:  make(map[string]backend.Account, len(accounts)),
-		Groups:    make(map[string]backend.Group, len(groups)),
-		MemberOf:  map[string][]string{},
+		Workspace:  workspace,
+		TakenAt:    takenAt,
+		Accounts:   make(map[string]backend.Account, len(accounts)),
+		Groups:     make(map[string]backend.Group, len(groups)),
+		MemberOf:   map[string][]string{},
+		Discovered: normaliseGroups(discovered),
+	}
+	if len(s.Discovered) == 0 {
+		names := make([]string, 0, len(groups))
+		for _, g := range groups {
+			names = append(names, g.Email)
+		}
+		s.Discovered = normaliseGroups(names)
 	}
 	for _, a := range accounts {
 		a.Email = strings.ToLower(a.Email)
@@ -58,56 +77,96 @@ func NewSnapshot(workspace string, takenAt time.Time, accounts []backend.Account
 	return s
 }
 
-// restrict drops from a full read everything a workspace narrowed to a
-// subset of its domains has no business keeping.
+// normaliseGroups lower-cases, trims, de-duplicates and sorts group
+// addresses, so that two reads of one tenant compare equal.
+func normaliseGroups(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(in))
+	for _, g := range in {
+		g = strings.ToLower(strings.TrimSpace(g))
+		if g != "" {
+			seen[g] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(seen))
+}
+
+// restrict drops from a full read everything a workspace has no business
+// keeping — narrowed to a subset of its domains, of its groups, or both.
 //
-// Two rules, and the second is the one worth stating. An account is kept
-// when its address is at a served domain: nothing routes to the others, so
-// holding their names and liveness is a liability with no reader. A group
-// is kept when it is *at* a served domain — a served group must be
-// answerable in full, and one dropped for having no served member today
-// would come back as "found: false", which a consumer reads as gone —
-// or when it holds at least one served member, because that group is part
-// of a served person's answer even though it lives at another domain.
+// Domains first. An account is kept when its address is at a served
+// domain: nothing routes to the others, so holding their names and
+// liveness is a liability with no reader. A group is kept when it is *at*
+// a served domain — a served group must be answerable in full, and one
+// dropped for having no served member today would come back as
+// "found: false", which a consumer reads as gone — or when it holds at
+// least one served member, because that group is part of a served
+// person's answer even though it lives at another domain.
+//
+// Then groups. A named sync list is an operator saying which groups this
+// installation's policy actually speaks about, and everything else is
+// noise a directory happens to contain: a company with hundreds of
+// mailing lists has no reason to have them cached, listed and offered in
+// a picker. It is a subtraction from what the domains already allowed,
+// never an addition.
 //
 // Members are never filtered. A group returned short is a partial list
 // presented as a whole, which is the one thing this hub never does.
 func restrict(
-	accounts []backend.Account, groups []backend.Group, serve []string,
+	accounts []backend.Account, groups []backend.Group, serve, sync []string,
 ) ([]backend.Account, []backend.Group) {
-	if len(serve) == 0 {
-		return accounts, groups
-	}
-	served := make(map[string]struct{}, len(serve))
-	for _, d := range serve {
-		served[strings.ToLower(d)] = struct{}{}
-	}
-	inServed := func(address string) bool {
-		at := strings.LastIndex(address, "@")
-		if at < 0 {
-			return false
+	if len(serve) > 0 {
+		served := make(map[string]struct{}, len(serve))
+		for _, d := range serve {
+			served[strings.ToLower(d)] = struct{}{}
 		}
-		_, ok := served[strings.ToLower(address[at+1:])]
-		return ok
+		inServed := func(address string) bool {
+			at := strings.LastIndex(address, "@")
+			if at < 0 {
+				return false
+			}
+			_, ok := served[strings.ToLower(address[at+1:])]
+			return ok
+		}
+
+		keptAccounts := make([]backend.Account, 0, len(accounts))
+		for _, a := range accounts {
+			if inServed(a.Email) {
+				keptAccounts = append(keptAccounts, a)
+			}
+		}
+		keptGroups := make([]backend.Group, 0, len(groups))
+		for _, g := range groups {
+			keep := inServed(g.Email)
+			for i := 0; !keep && i < len(g.Members); i++ {
+				keep = inServed(g.Members[i])
+			}
+			if keep {
+				keptGroups = append(keptGroups, g)
+			}
+		}
+		accounts, groups = keptAccounts, keptGroups
 	}
 
-	keptAccounts := make([]backend.Account, 0, len(accounts))
-	for _, a := range accounts {
-		if inServed(a.Email) {
-			keptAccounts = append(keptAccounts, a)
+	if len(sync) > 0 {
+		wanted := make(map[string]struct{}, len(sync))
+		for _, g := range sync {
+			wanted[strings.ToLower(strings.TrimSpace(g))] = struct{}{}
 		}
+		keptGroups := make([]backend.Group, 0, len(sync))
+		for _, g := range groups {
+			if _, ok := wanted[strings.ToLower(g.Email)]; ok {
+				keptGroups = append(keptGroups, g)
+			}
+		}
+		groups = keptGroups
 	}
-	keptGroups := make([]backend.Group, 0, len(groups))
-	for _, g := range groups {
-		keep := inServed(g.Email)
-		for i := 0; !keep && i < len(g.Members); i++ {
-			keep = inServed(g.Members[i])
-		}
-		if keep {
-			keptGroups = append(keptGroups, g)
-		}
-	}
-	return keptAccounts, keptGroups
+	return accounts, groups
 }
 
 // narrow returns the snapshot as it would have been read under a smaller
@@ -130,8 +189,26 @@ func (s *Snapshot) narrow(serve []string) *Snapshot {
 	for _, key := range slices.Sorted(maps.Keys(s.Groups)) {
 		groups = append(groups, s.Groups[key])
 	}
-	accounts, groups = restrict(accounts, groups, serve)
-	return NewSnapshot(s.Workspace, s.TakenAt, accounts, groups)
+	accounts, groups = restrict(accounts, groups, serve, nil)
+	return NewSnapshot(s.Workspace, s.TakenAt, accounts, groups, s.Discovered)
+}
+
+// narrowGroups drops the groups a newly narrowed sync list no longer
+// covers. Like narrow, it touches no directory and carries TakenAt over.
+func (s *Snapshot) narrowGroups(sync []string) *Snapshot {
+	if len(sync) == 0 {
+		return s
+	}
+	accounts := make([]backend.Account, 0, len(s.Accounts))
+	for _, key := range slices.Sorted(maps.Keys(s.Accounts)) {
+		accounts = append(accounts, s.Accounts[key])
+	}
+	groups := make([]backend.Group, 0, len(s.Groups))
+	for _, key := range slices.Sorted(maps.Keys(s.Groups)) {
+		groups = append(groups, s.Groups[key])
+	}
+	_, groups = restrict(accounts, groups, nil, sync)
+	return NewSnapshot(s.Workspace, s.TakenAt, accounts, groups, s.Discovered)
 }
 
 // Age reports how old the snapshot is at now.
@@ -146,11 +223,12 @@ func (s *Snapshot) GroupsOf(email string) []string {
 // reader is holding.
 func (s *Snapshot) clone() *Snapshot {
 	out := &Snapshot{
-		Workspace: s.Workspace,
-		TakenAt:   s.TakenAt,
-		Accounts:  maps.Clone(s.Accounts),
-		Groups:    make(map[string]backend.Group, len(s.Groups)),
-		MemberOf:  make(map[string][]string, len(s.MemberOf)),
+		Workspace:  s.Workspace,
+		TakenAt:    s.TakenAt,
+		Accounts:   maps.Clone(s.Accounts),
+		Groups:     make(map[string]backend.Group, len(s.Groups)),
+		MemberOf:   make(map[string][]string, len(s.MemberOf)),
+		Discovered: slices.Clone(s.Discovered),
 	}
 	for k, g := range s.Groups {
 		g.Members = slices.Clone(g.Members)

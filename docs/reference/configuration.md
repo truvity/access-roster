@@ -78,6 +78,8 @@ workspaces:
     secretKey: key.json        # which key of it holds the JSON; this is the default
     serve:                     # optional; omitted serves every domain it owns
       - example.com
+    syncGroups:                # optional; omitted keeps every group in them
+      - platform@example.com
 ```
 
 The chart renders the list into a ConfigMap and mounts each named Secret
@@ -95,7 +97,18 @@ that is how one installation reads a single domain of a company whose
 other domains are none of its business. A domain named here that the
 tenant does not own routes nothing and is reported as no longer owned,
 which makes it safe to declare a domain that is about to move between
-tenants. For a workspace connected through the console the choice is made
+tenants.
+
+`syncGroups` is the same subtraction applied to groups. A company's
+directory holds every mailing list it ever made and an installation's
+policy speaks about a handful; naming them keeps the rest out of the
+cache, out of the pickers and off the pages. It narrows what is **kept**,
+not what is read — the hub still lists the tenant's groups, because that
+list is what an operator chooses from, so the saving is in storage and
+attention rather than in the directory's quota. Only a group the last
+read held may be named. Empty keeps every group in the served domains.
+
+For a workspace connected through the console the choice is made
 **at connect time** *(0.8)*, before the first snapshot: the consenting
 administrator's own domain is pre-selected, the tenant's other domains
 are listed and off, and *all, including ones added later* is an explicit

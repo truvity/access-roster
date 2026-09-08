@@ -25,5 +25,11 @@ data:
           - {{ . | quote }}
         {{- end }}
       {{- end }}
+      {{- with .syncGroups }}
+        syncGroups:
+        {{- range . }}
+          - {{ . | quote }}
+        {{- end }}
+      {{- end }}
     {{- end }}
 {{- end }}

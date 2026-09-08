@@ -247,7 +247,7 @@ func rpcError(err error) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, hub.ErrDeclared):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
-	case errors.Is(err, hub.ErrUnknownDomain):
+	case errors.Is(err, hub.ErrUnknownDomain), errors.Is(err, hub.ErrUnknownGroup):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)
