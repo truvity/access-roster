@@ -94,6 +94,14 @@ release:
     | Issuer image | `ghcr.io/truvity/access-roster/access-issuer:{{ .Version }}` |
     | Hub chart | `oci://ghcr.io/truvity/charts/directory-roster:{{ .Version }}` |
     | Issuer chart | `oci://ghcr.io/truvity/charts/access-issuer:{{ .Version }}` |
+    | TypeScript | `npm install github:truvity/access-roster#{{ .Tag }}` |
+    | Go | `go get github.com/truvity/access-roster@{{ .Tag }}` |
+
+    The TypeScript package installs from this tag with its `dist`
+    committed, so it needs no registry and no toolchain. The Go module at
+    this tag is the policy engine and the backend interface; the console
+    libraries (`identity`, `authz`, `directory`, `tokens`) are not built
+    yet, and `docs/reference/go-module.md` says so.
 
 changelog:
   use: github
