@@ -52,6 +52,8 @@ spec:
           kind: Service
           name: {{ include "access-proxy.fullname" $ }}
           port: {{ $.Values.proxy.port }}
+          # Same reason as the route's: written out, not defaulted.
+          weight: 1
       headersToBackend:
         - x-auth-request-access-token
         - x-auth-request-email

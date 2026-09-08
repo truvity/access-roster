@@ -7,6 +7,15 @@ git history.
 
 Nothing yet.
 
+## v0.6.4
+
+- **access-proxy writes `weight` out on every `backendRefs` entry.** The
+  API server defaults it, ArgoCD normalises core-API defaults but not
+  CRDs, and the child Application was therefore permanently OutOfSync —
+  the third field in this family after the route's `matches` and
+  `certificateRefs.group`, and the only chart of the three that had not
+  learnt it. The lint now counts one `weight` per backend.
+
 ## v0.6.3
 
 - **The gateway now sends the proxy the session cookie.** An HTTP

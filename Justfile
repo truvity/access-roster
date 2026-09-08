@@ -151,6 +151,11 @@ chart-lint:
     # forever through a login that succeeds and is never seen again.
     helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml > /tmp/access-proxy-routes.yaml
     test "$(grep -c '^kind: SecurityPolicy$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^      - cookie$' /tmp/access-proxy-routes.yaml)"
+    # Every backendRefs entry must write `weight` out. ArgoCD normalises
+    # core-API defaults but NOT CRDs, so a field the API server fills in
+    # is a PERMANENT OutOfSync -- which counts unhealthy and gates every
+    # later wave. One `weight` per backend, in routes and policies alike.
+    test "$(grep -c '^      backendRefs:$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^          weight: 1$' /tmp/access-proxy-routes.yaml)"
 
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —
