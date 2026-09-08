@@ -57,6 +57,24 @@ func credentialEnum(c hub.CredentialType) directoryrosterv1.CredentialType {
 	}
 }
 
+// reasonEnum turns the hub's reason into the contract's.
+func reasonEnum(r hub.DomainReason) directoryrosterv1.DomainReason {
+	switch r {
+	case hub.ReasonContested:
+		return directoryrosterv1.DomainReason_DOMAIN_REASON_CONTESTED
+	case hub.ReasonFirstSnapshotPending:
+		return directoryrosterv1.DomainReason_DOMAIN_REASON_FIRST_SNAPSHOT_PENDING
+	case hub.ReasonProbeFailed:
+		return directoryrosterv1.DomainReason_DOMAIN_REASON_PROBE_FAILED
+	case hub.ReasonSnapshotStale:
+		return directoryrosterv1.DomainReason_DOMAIN_REASON_SNAPSHOT_STALE
+	case hub.ReasonNone:
+		return directoryrosterv1.DomainReason_DOMAIN_REASON_UNSPECIFIED
+	default:
+		return directoryrosterv1.DomainReason_DOMAIN_REASON_UNSPECIFIED
+	}
+}
+
 func domainsProto(domains []hub.DomainStanding) []*directoryrosterv1.WorkspaceDomain {
 	out := make([]*directoryrosterv1.WorkspaceDomain, 0, len(domains))
 	for _, d := range domains {
@@ -66,6 +84,7 @@ func domainsProto(domains []hub.DomainStanding) []*directoryrosterv1.WorkspaceDo
 			Conflict:      d.Conflict,
 			Served:        d.Served,
 			Owned:         d.Owned,
+			Reason:        reasonEnum(d.Reason),
 		})
 	}
 	return out

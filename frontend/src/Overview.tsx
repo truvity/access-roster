@@ -7,7 +7,8 @@ import { access, ago, at, settings, workspaces, type Me } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { incomplete, Setup, type Progress } from "./Setup";
-import { Failure, Loading, Names, Nothing, Page, Ref, Section } from "./ui";
+import { DomainReason } from "./gen/directoryroster/v1/workspace_pb";
+import { domainReason, Failure, Loading, Names, Nothing, Page, Ref, Section } from "./ui";
 
 /** The first question anyone has is whether something is broken. This
  *  page answers it, and every count is a link to the thing it counts. */
@@ -22,9 +23,15 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
   const clients = policy.value?.clients ?? [];
 
   const failing = list.filter((w) => !w.health?.ok);
-  const domains = list.flatMap((w) => w.domains.map((d) => ({ ...d, workspace: w.id })));
+  // Only a SERVED domain has a standing. One this hub was told not to
+  // read is not a degraded answer, it is no answer — and counting those
+  // as problems is what put "0/7 served, 7 on hold" on this page while
+  // the directory's own page correctly said six of them were simply not
+  // served.
+  const domains = list.flatMap((w) => w.domains.filter((d) => d.served).map((d) => ({ ...d, workspace: w.id })));
+  const unserved = list.reduce((n, w) => n + w.domains.filter((d) => !d.served).length, 0);
   const contested = domains.filter((d) => d.conflict);
-  const held = domains.filter((d) => !d.authoritative && !d.conflict);
+  const provisional = domains.filter((d) => !d.authoritative && !d.conflict);
   const emptyGroups = groups.filter((g) => g.members.length === 0 && g.rules.length === 0);
   const attached = new Set(groups.flatMap((g) => g.members.map((m) => m.address)));
   const allDirectoryGroups = directoryGroups.value?.groups ?? [];
@@ -36,7 +43,7 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
     .filter(Boolean)
     .sort((a, b) => (a && b ? a.getTime() - b.getTime() : 0))[0];
 
-  const clean = failing.length + contested.length + held.length === 0 && list.length > 0;
+  const clean = failing.length + contested.length + provisional.length === 0 && list.length > 0;
 
   // An installation that is not finished is not "broken", and the counts
   // below cannot say anything useful about it yet. What it needs is the
@@ -66,9 +73,17 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
         <Tile label="Directories" value={`${list.length - failing.length}/${list.length}`} hint={failing.length ? `${failing.length} failing` : "all healthy"} bad={failing.length > 0} to={paths.directories()} />
         <Tile
           label="Domains served"
-          value={`${domains.length - contested.length - held.length}/${domains.length}`}
-          hint={contested.length ? `${contested.length} contested` : held.length ? `${held.length} on hold` : "all authoritative"}
-          bad={contested.length + held.length > 0}
+          value={`${domains.length - contested.length - provisional.length}/${domains.length}`}
+          hint={
+            contested.length
+              ? `${contested.length} contested`
+              : provisional.length
+                ? `${provisional.length} provisional`
+                : unserved
+                  ? `all authoritative, ${unserved} not served`
+                  : "all authoritative"
+          }
+          bad={contested.length + provisional.length > 0}
           to={paths.directories()}
         />
         <Tile label="Directory groups" value={`${usedDirectoryGroups.length}/${allDirectoryGroups.length}`} hint="attached to an internal group" to={paths.directoryGroups()} />
@@ -79,7 +94,7 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
 
       <Section title="Needs attention" hint="everything else is working">
         {clean && emptyGroups.length === 0 && unusedGroups.length === 0 && !standingPassword ? (
-          <Nothing>Nothing. Every domain is authoritative and every group leads somewhere.</Nothing>
+          <Nothing>Nothing. Every served domain is authoritative and every group leads somewhere.</Nothing>
         ) : (
           <Stack spacing={1}>
             {standingPassword && !settingUp ? (
@@ -90,17 +105,22 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
             ) : null}
             {failing.map((w) => (
               <Row key={w.id} severity="error" title={`${w.id} is not answering`}>
-                {w.health?.error || "the last probe failed"}. Its domains are a hold until it recovers. <Ref to={paths.directory(w.id)}>Open it</Ref>.
+                {w.health?.error || "the last probe failed"}. Its domains are provisional until it recovers. <Ref to={paths.directory(w.id)}>Open it</Ref>.
               </Row>
             ))}
             {contested.map((d) => (
-              <Row key={d.name} severity="warning" title={`${d.name} is claimed twice`}>
-                Authoritative for neither directory until one of them drops it. <Ref to={paths.directory(d.workspace)}>Open {d.workspace}</Ref>.
+              <Row key={d.name} severity="warning" title={`${d.name} is served by two directories`}>
+                Authoritative for neither until one of them stops serving it. <Ref to={paths.directory(d.workspace)}>Open {d.workspace}</Ref>.
               </Row>
             ))}
-            {held.map((d) => (
-              <Row key={d.name} severity="warning" title={`${d.name} is on hold`}>
-                Its snapshot is stale or its probe failed. Consumers add but never remove. <Ref to={paths.directory(d.workspace)}>Open {d.workspace}</Ref>.
+            {provisional.map((d) => (
+              <Row
+                key={d.name}
+                severity={d.reason === DomainReason.FIRST_SNAPSHOT_PENDING ? "info" : "warning"}
+                title={`${d.name} is provisional${domainReason[d.reason] ? ` — ${domainReason[d.reason].short}` : ""}`}
+              >
+                {domainReason[d.reason]?.why ?? "Its answers may not be acted on for removals."} Consumers add but never remove.{" "}
+                <Ref to={paths.directory(d.workspace)}>Open {d.workspace}</Ref>.
               </Row>
             ))}
             {emptyGroups.map((g) => (

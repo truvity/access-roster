@@ -89,7 +89,7 @@ export function Directories({ operator, onDone }: { operator: boolean; onDone: (
                         <Typography variant="body2" color={domain.served ? undefined : "text.secondary"}>
                           {domain.name}
                         </Typography>
-                        <Authority authoritative={domain.authoritative} conflict={domain.conflict} served={domain.served} owned={domain.owned} />
+                        <Authority authoritative={domain.authoritative} conflict={domain.conflict} served={domain.served} owned={domain.owned} reason={domain.reason} />
                       </Stack>
                     ))}
                   </Stack>
@@ -475,7 +475,7 @@ function Domains({
             items={tenant.domains}
             keyOf={(d) => d.name}
             primary={(d) => d.name}
-            right={(d) => <Authority authoritative={d.authoritative} conflict={d.conflict} served={d.served} owned={d.owned} />}
+            right={(d) => <Authority authoritative={d.authoritative} conflict={d.conflict} served={d.served} owned={d.owned} reason={d.reason} />}
             empty="None discovered yet. Probe once the credential works."
           />
           {operator && !tenant.declared && tenant.domains.length > 1 ? (

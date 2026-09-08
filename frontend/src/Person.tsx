@@ -69,7 +69,7 @@ export function Explanation({ value, directory, signedInVia }: { value: ExplainR
         },
         {
           label: "Answer",
-          value: !value.inDomain ? undefined : value.authoritative ? <State kind="authoritative" /> : <State kind="hold" />,
+          value: !value.inDomain ? undefined : value.authoritative ? <State kind="authoritative" /> : <State kind="provisional" />,
         },
         { label: "In this console", value: roleName(identity?.role ?? 0) },
         { label: "Signed in", value: signedInVia },

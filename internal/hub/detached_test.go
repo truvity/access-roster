@@ -298,3 +298,71 @@ func TestAWorkspaceConnectedOnOneReplicaIsServedByTheOther(t *testing.T) {
 		t.Errorf("Refresh after disconnect = %v, want ErrNotFound", err)
 	}
 }
+
+// A served domain that is not authoritative says WHY.
+//
+// "Not authoritative" covers a workspace connected ten seconds ago and one
+// whose credential was revoked last week. Live, the console told an
+// operator that seven freshly-connected domains had a "stale snapshot or
+// a failed probe" — beside a green health chip — when the truth was that
+// the first read had not finished. An unserved domain has no reason at
+// all: it is not a degraded answer, it is no answer.
+func TestAProvisionalDomainSaysWhy(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	directory, _ := newDetachedHub(t)
+	clock := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	directory.SetClock(func() time.Time { return clock })
+
+	tenant := fake.New("C0why", "served.example", "quiet.example").
+		WithAccount("ada@served.example", "Ada", "Served")
+	slow := newSlowBackend(tenant)
+	if _, err := directory.Adopt(ctx, hub.Workspace{
+		Admin: "admin@served.example", Serve: []string{"served.example"},
+	}, slow); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+
+	standing := func() map[string]hub.DomainStanding {
+		t.Helper()
+		views, err := directory.WorkspaceViews(ctx)
+		if err != nil {
+			t.Fatalf("WorkspaceViews: %v", err)
+		}
+		out := map[string]hub.DomainStanding{}
+		for _, d := range views[0].Domains {
+			out[d.Name] = d
+		}
+		return out
+	}
+
+	// Nothing read yet.
+	if got := standing()["served.example"]; got.Reason != hub.ReasonFirstSnapshotPending {
+		t.Errorf("before the first read: reason = %q, want %q", got.Reason, hub.ReasonFirstSnapshotPending)
+	}
+	// A domain this hub does not serve is not provisional at all.
+	if got := standing()["quiet.example"]; got.Served || got.Reason != hub.ReasonNone {
+		t.Errorf("an unserved domain = %+v, want no standing to explain", got)
+	}
+
+	slow.release()
+	directory.Wait()
+	if got := standing()["served.example"]; !got.Authoritative || got.Reason != hub.ReasonNone {
+		t.Errorf("after the first read: %+v, want authoritative with nothing to explain", got)
+	}
+
+	// Old enough to stop being current.
+	clock = clock.Add(2 * hub.DefaultFreshnessWindow)
+	if got := standing()["served.example"]; got.Reason != hub.ReasonSnapshotStale {
+		t.Errorf("past the freshness window: reason = %q, want %q", got.Reason, hub.ReasonSnapshotStale)
+	}
+
+	// A failed probe outranks staleness: it is the one an operator fixes.
+	tenant.Fail(fake.OpProbe, errors.New("the credential was revoked"))
+	if _, err := directory.Probe(ctx, "C0why"); err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if got := standing()["served.example"]; got.Reason != hub.ReasonProbeFailed {
+		t.Errorf("after a failed probe: reason = %q, want %q", got.Reason, hub.ReasonProbeFailed)
+	}
+}
