@@ -32,6 +32,29 @@
         "paths": { "type": "array", "items": { "type": "string" } },
         "proxyPrefix": { "type": "string", "pattern": "^/" },
         "attachRouteName": { "type": "string" },
+        "routes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "attachRouteName": { "type": "string" },
+              "backend": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "port": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "paths": { "type": "array", "items": { "type": "string" } },
+              "posture": { "enum": ["groups", "authenticated"] },
+              "allow": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
         "forward": {
           "type": "object",
           "additionalProperties": false,
@@ -125,6 +148,7 @@
         "resources": { "type": "object" },
         "nodeSelector": { "type": "object" },
         "tolerations": { "type": "array" },
+        "topologySpreadConstraints": { "type": "array" },
         "podAnnotations": { "type": "object" }
       }
     },

@@ -31,17 +31,18 @@ spec:
           kind: Service
           name: {{ include "access-proxy.fullname" . }}
           port: {{ .Values.proxy.port }}
-{{- if not $e.attachRouteName }}
+{{- range $route := (include "access-proxy.routes" $ | fromYamlArray) }}
+{{- if not $route.attachRouteName }}
 ---
-# The console's own route. Rendered only when nothing else owns one: a
-# console whose chart already routes itself sets exposure.attachRouteName
-# instead, and two charts never both claim the hostname.
+# This route's own HTTPRoute. Rendered only when nothing else owns one: a
+# console whose chart already routes itself names that route instead, and
+# two charts never both claim the hostname.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: {{ include "access-proxy.fullname" . }}
+  name: {{ include "access-proxy.routeName" (dict "root" $ "route" $route) }}
   labels:
-    {{- include "access-proxy.labels" . | nindent 4 }}
+    {{- include "access-proxy.labels" $ | nindent 4 }}
 spec:
   parentRefs:
     - group: gateway.networking.k8s.io
@@ -54,7 +55,7 @@ spec:
   hostnames:
     - {{ $e.hostname | quote }}
   rules:
-    {{- range $e.paths }}
+    {{- range ($route.paths | default (list "/")) }}
     - matches:
         - path:
             type: PathPrefix
@@ -62,7 +63,8 @@ spec:
       backendRefs:
         - group: ""
           kind: Service
-          name: {{ required "exposure.backend.name is required unless exposure.attachRouteName names a route that already exists" $.Values.exposure.backend.name }}
-          port: {{ $.Values.exposure.backend.port }}
+          name: {{ required (printf "route %q needs backend.name, or attachRouteName to bind to a route that already exists" $route.name) $route.backend.name }}
+          port: {{ $route.backend.port | default 8080 }}
     {{- end }}
+{{- end }}
 {{- end }}

@@ -16,6 +16,8 @@
 | `client.secret.name`, `.keys.clientId`, `.keys.clientSecret` | `""`, `client-id`, `client-secret` | a Secret holding the client, and what its keys are called — the same shape the hub and the issuer use |
 | `session.cookieSecret.name`, `.key` | required, `cookie-secret` | **an existing Secret; this chart will not mint one.** A generated cookie secret would be regenerated on every render that cannot read cluster state — which is what ArgoCD does — and every sync would sign everyone out |
 | `exposure.attachRouteName` | `""` | ATTACH mode: bind the `SecurityPolicy` to an `HTTPRoute` another chart owns, and render no app route here. The normal case for a console whose own chart routes its hostname |
+| `exposure.routes[]` | `[]` | more than one protected route on the same host, each `{name, attachRouteName \| backend+paths, posture, allow}` — a surface where a demo path is open to any employee and the app behind it is not. **Mutually exclusive** with the single-route fields above, which describe one route between them; setting both is refused, because the ignored one would be the protection somebody thought they had configured |
+| `proxy.topologySpreadConstraints` | `[]` | passthrough |
 | `exposure.proxyPrefix` | `/oauth2` | the paths this proxy owns; must agree with the client's registered redirect |
 | `issuer.jwksUri` | derived | `{issuer}/keys`. Zitadel is the exception at `/oauth/v2/keys` |
 | `session.scopes` | `""` | empty asks for openid, profile and email, plus `groups` when `allow` is set and `offline_access` when `refresh` is. Setting it by hand alongside `refresh` without `offline_access` **fails the render**: refresh cannot work without a refresh token, and the install would otherwise look correct and silently never refresh |
