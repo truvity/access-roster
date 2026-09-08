@@ -83,6 +83,7 @@ lifetimes: { default: 12h }
 		t.Fatalf("sessions: %v", err)
 	}
 	return &ConsoleServer{
+		signIn:     true,
 		authz:      access.NewAuthorizer(set, directoryHub, time.Hour),
 		sessions:   sessions,
 		state:      access.NewStateCodec(key, 10*time.Minute),
@@ -230,5 +231,42 @@ func TestSomebodyWithNoMembershipStillSignsIn(t *testing.T) {
 	// browser's redirect — the same session either way.
 	if done.Code != http.StatusNoContent {
 		t.Errorf("callback = %d (%s), want them signed in", done.Code, done.Body.String())
+	}
+}
+
+// A console reached only through a gateway that has already run the login
+// wants one door, not two. Turning the hub's own sign-in off must close
+// the routes, not merely hide the buttons — and it must leave connecting a
+// directory alone, which is an operator granting this hub access rather
+// than a way in.
+func TestTheHubsOwnSignInCanBeTurnedOff(t *testing.T) {
+	t.Parallel()
+	server := signInHarness(t, "ada@north.example")
+	server.signIn = false
+
+	for _, path := range []string{"/login/demo/start", "/login/demo/callback"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.SetPathValue("backend", "demo")
+		if strings.HasSuffix(path, "start") {
+			server.signInStart(recorder, request)
+		} else {
+			server.signInCallback(recorder, request)
+		}
+		if recorder.Code != http.StatusNotFound {
+			t.Errorf("%s = %d, want it closed", path, recorder.Code)
+		}
+	}
+
+	page := httptest.NewRecorder()
+	server.loginPage(page, httptest.NewRequest(http.MethodGet, "/login", nil))
+	if strings.Contains(page.Body.String(), "Continue with") {
+		t.Error("the page still offers a button for a route that is closed")
+	}
+
+	// The connector is still there for Connect: an operator adding a
+	// directory is not signing in.
+	if _, ok := server.connectors["demo"]; !ok {
+		t.Error("turning off sign-in also removed the way to connect a directory")
 	}
 }

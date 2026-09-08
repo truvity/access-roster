@@ -221,18 +221,7 @@
             "directory": {
               "type": "boolean"
             },
-            "oidc": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "issuer": {
-                  "type": "string"
-                },
-                "clientSecretName": {
-                  "type": "string"
-                }
-              }
-            },
+
             "forwardedBearer": {
               "type": "object",
               "additionalProperties": false,

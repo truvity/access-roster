@@ -231,6 +231,7 @@ func TestTheSignInPageShowsTheRealCommand(t *testing.T) {
 
 	page := func(recovery Recovery) string {
 		server := &ConsoleServer{
+			signIn:     true,
 			recovery:   recovery,
 			connectors: map[string]Connector{"google": stubSignIn{}},
 			log:        slog.New(slog.NewTextHandler(io.Discard, nil)),

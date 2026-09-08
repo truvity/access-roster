@@ -68,6 +68,7 @@ type config struct {
 	recoveryAudience string
 	apiAudience      string
 	apiConsumers     []string
+	loginDirectory   bool
 	adminPassword    string
 	sessionLifetime  time.Duration
 	secureCookies    bool
@@ -95,6 +96,7 @@ func load() (config, error) {
 		recoveryAudience: envString("RECOVERY_AUDIENCE", "directory-roster-recovery"),
 		apiAudience:      envString("API_AUDIENCE", "directory-roster"),
 		apiConsumers:     envList("API_CONSUMERS"),
+		loginDirectory:   envBool("LOGIN_DIRECTORY", true),
 		adminPassword:    envString("ADMIN_PASSWORD", ""),
 		secureCookies:    envBool("SECURE_COOKIES", false),
 		forwardedHeader:  envString("FORWARDED_EMAIL_HEADER", ""),
@@ -373,6 +375,10 @@ func run() error {
 	if cfg.demo {
 		connectors = append(connectors, seedDemo(ctx, directory, cfg.publicURL, log))
 	}
+	if !cfg.loginDirectory {
+		log.InfoContext(ctx, "the hub's own sign-in is off: the ways in are a gateway that "+
+			"forwards an identity, and recovery. Connecting a directory is unaffected")
+	}
 	adopted, err := adoptDeclared(ctx, directory, cfg.overlayPath, log)
 	if err != nil {
 		return err
@@ -385,6 +391,9 @@ func run() error {
 	}
 	if cfg.recoveryEnabled {
 		loginSources = append(loginSources, "recovery")
+	}
+	if cfg.loginDirectory {
+		loginSources = append(loginSources, "directory")
 	}
 
 	console, err := server.NewConsole(ctx, server.ConsoleDeps{
@@ -415,8 +424,9 @@ func run() error {
 			Issuer:      cfg.forwardedIssuer,
 			EmailHeader: cfg.forwardedHeader,
 		},
-		Log: log,
-		UI:  frontend.FS(),
+		SignIn: cfg.loginDirectory,
+		Log:    log,
+		UI:     frontend.FS(),
 	})
 
 	apiMux := http.NewServeMux()
