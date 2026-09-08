@@ -3,11 +3,14 @@ package google
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	directory "google.golang.org/api/admin/directory/v1"
 	"google.golang.org/api/googleapi"
@@ -232,5 +235,89 @@ func TestTheTenantNeedsAnAdmin(t *testing.T) {
 
 	if _, err := (&Backend{}).Tenant(context.Background()); err == nil {
 		t.Error("a backend with no admin read a tenant")
+	}
+}
+
+// A tenant's groups are read concurrently, and the pass is still atomic.
+//
+// One round trip per group means a tenant with sixty of them is sixty
+// sequential reads; the first live workspace had sixty-two, and a full
+// pass was minutes of wall clock. The bound is deliberate — the Admin
+// SDK's quota is per tenant, not per reader — so this asserts that the
+// reads overlap, that the order is the directory's however they finish,
+// and that one failure still fails the whole pass.
+func TestGroupMembersAreReadConcurrentlyAndAtomically(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	const groupCount = 40
+	const delay = 20 * time.Millisecond
+	var inFlight, peak int64
+	var failing string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/groups"):
+			var entries []string
+			for i := range groupCount {
+				entries = append(entries, fmt.Sprintf(`{"email":"g%02d@north.example"}`, i))
+			}
+			_, _ = io.WriteString(w, `{"groups":[`+strings.Join(entries, ",")+`]}`)
+		case strings.Contains(r.URL.Path, "/members"):
+			now := atomic.AddInt64(&inFlight, 1)
+			for {
+				was := atomic.LoadInt64(&peak)
+				if now <= was || atomic.CompareAndSwapInt64(&peak, was, now) {
+					break
+				}
+			}
+			time.Sleep(delay)
+			atomic.AddInt64(&inFlight, -1)
+			if failing != "" && strings.Contains(r.URL.Path, failing) {
+				http.Error(w, `{"error":{"code":503,"message":"nope"}}`, http.StatusServiceUnavailable)
+				return
+			}
+			_, _ = io.WriteString(w, `{"members":[{"email":"ada@north.example","type":"USER"}]}`)
+		default:
+			http.Error(w, `{"error":{"code":404}}`, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	svc, err := directory.NewService(ctx, option.WithEndpoint(server.URL), option.WithoutAuthentication())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &Backend{svc: svc, admin: "ada@north.example"}
+
+	start := time.Now()
+	groups, err := b.Groups(ctx)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Groups: %v", err)
+	}
+	if len(groups) != groupCount {
+		t.Fatalf("groups = %d, want %d", len(groups), groupCount)
+	}
+	// Sequential would be groupCount*delay; concurrent is a fraction of it.
+	if elapsed > groupCount*delay/2 {
+		t.Errorf("a full pass took %v, want the member reads to overlap", elapsed)
+	}
+	if got := atomic.LoadInt64(&peak); got < 2 || got > memberReaders {
+		t.Errorf("peak concurrency = %d, want between 2 and the bound of %d", got, memberReaders)
+	}
+	// The directory's order, however the reads finished.
+	for i := range groups {
+		if want := fmt.Sprintf("g%02d@north.example", i); groups[i].Email != want {
+			t.Fatalf("groups[%d] = %q, want %q — the order follows completion, not the directory", i, groups[i].Email, want)
+		}
+	}
+
+	// One group failing fails the pass: a snapshot short of a group would
+	// drop people out of their access with nothing having changed.
+	failing = "g07"
+	if _, err = b.Groups(ctx); err == nil {
+		t.Error("one failing group did not fail the pass")
 	}
 }

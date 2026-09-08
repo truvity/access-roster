@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/oauth2"
 	googleauth "golang.org/x/oauth2/google"
+	"golang.org/x/sync/errgroup"
 	directory "google.golang.org/api/admin/directory/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -52,6 +53,11 @@ const myCustomer = "my_customer"
 // pages is the difference between one refresh and several for a tenant of
 // any size.
 const pageSize = 500
+
+// memberReaders is how many group-membership reads may be in flight at
+// once. See [Backend.Groups] for why it is bounded rather than one per
+// group.
+const memberReaders = 8
 
 // Backend reads one Google Workspace.
 type Backend struct {
@@ -268,13 +274,33 @@ func (b *Backend) Groups(ctx context.Context) ([]backend.Group, error) {
 		return nil, fmt.Errorf("google: list the groups: %w", reason(err))
 	}
 
-	out := make([]backend.Group, 0, len(groups))
-	for _, group := range groups {
-		members, err := b.membersOf(ctx, group.Email)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, backend.Group{Email: strings.ToLower(group.Email), Members: members})
+	// One round trip per group, so a tenant with sixty groups is sixty
+	// sequential reads unless they overlap. The bound is not politeness:
+	// the Admin SDK's quota is per TENANT, not per reader, so a hub that
+	// opened one connection per group would spend a customer's whole
+	// budget racing itself — and during a migration there is a second
+	// reader on the same tenant.
+	//
+	// The pass stays atomic: the first failure cancels the rest and the
+	// whole read fails, because a snapshot short of one group would drop
+	// people out of their access without anything having changed.
+	// Positions are assigned before the reads start, so the result is in
+	// the directory's order however the reads finish.
+	out := make([]backend.Group, len(groups))
+	readers, rctx := errgroup.WithContext(ctx)
+	readers.SetLimit(memberReaders)
+	for i, group := range groups {
+		readers.Go(func() error {
+			members, err := b.membersOf(rctx, group.Email)
+			if err != nil {
+				return err
+			}
+			out[i] = backend.Group{Email: strings.ToLower(group.Email), Members: members}
+			return nil
+		})
+	}
+	if err = readers.Wait(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
