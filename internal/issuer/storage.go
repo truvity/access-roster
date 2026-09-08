@@ -108,7 +108,7 @@ type Storage struct {
 
 	iss     *Issuer
 	verify  Verifier
-	key     *signingKey
+	key     *SigningKey
 	secrets func(clientID string) (string, bool)
 
 	mu       sync.Mutex
@@ -125,13 +125,21 @@ var (
 	_ op.DeviceAuthorizationStorage         = (*Storage)(nil)
 )
 
-// NewStorage returns the storage over an issuer. secrets resolves a
-// confidential client's secret, which lives in a Kubernetes Secret and
-// never in the policy file.
-func NewStorage(iss *Issuer, verify Verifier, secrets func(string) (string, bool)) (*Storage, error) {
-	key, err := newSigningKey()
-	if err != nil {
-		return nil, err
+// NewStorage returns the storage over an issuer.
+//
+// secrets resolves a confidential client's secret, which lives in a
+// Kubernetes Secret and never in the policy file. key is the signing key;
+// a nil one is generated, which is right for a local run and wrong for a
+// deployment — see [SigningKey].
+func NewStorage(
+	iss *Issuer, verify Verifier, secrets func(string) (string, bool), key *SigningKey,
+) (*Storage, error) {
+	if key == nil {
+		generated, err := NewSigningKey()
+		if err != nil {
+			return nil, err
+		}
+		key = generated
 	}
 	if secrets == nil {
 		secrets = func(string) (string, bool) { return "", false }

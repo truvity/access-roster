@@ -150,6 +150,7 @@ so the hash carries the uniqueness the readable part may have lost.
 | `Secret <release>-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.existingSecret`, and then read-only |
 | `ConfigMap <release>-memberships` | memberships added in the console | the hub |
 | `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
+| `Secret <release>-signing-key` | the issuer's token signing key, with its key id in the PEM | the issuer, generated on first start; deleting it distrusts every token it ever signed |
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 

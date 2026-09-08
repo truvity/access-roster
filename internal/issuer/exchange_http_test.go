@@ -63,7 +63,7 @@ func serveIssuer(t *testing.T) (*httptest.Server, *issuer.Issuer) {
 	}
 	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, &fakeDirectory{})
 
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
