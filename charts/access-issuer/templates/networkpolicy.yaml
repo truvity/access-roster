@@ -1,0 +1,35 @@
+{{- if .Values.networkPolicy.enabled }}
+# Ingress only. Everything with a browser arrives through the gateway;
+# these are the in-cluster callers — the proxies verifying tokens and the
+# workloads exchanging them.
+#
+# No egress rules: this service has to reach the API server, the hub and
+# whichever directory a person signs in with, and a chart that guessed at
+# that list would be a chart that breaks a login the day a provider adds
+# a hostname. The fleet's own egress policy is where that belongs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "access-issuer.fullname" . }}
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "access-issuer.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- if .Values.networkPolicy.gatewayNamespace }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gatewayNamespace }}
+        {{- end }}
+        {{- range .Values.networkPolicy.clients }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+      ports:
+        - port: {{ .Values.listeners.port }}
+{{- end }}

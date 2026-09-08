@@ -1,0 +1,32 @@
+{{- if not .Values.signingKey.existingSecret }}
+# The signing key, issued by cert-manager.
+#
+# The certificate is a by-product: only the key is used. cert-manager is
+# here because it generates the key in the cluster, keeps it out of every
+# other system, and rotates it on a schedule the platform already
+# understands — none of which is true of a key this service minted for
+# itself, and the last of which is the reason it does not.
+#
+# `rotationPolicy: Always` makes a renewal a *new key*, which is the
+# point: a renewed certificate over the same key would rotate nothing.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "access-issuer.fullname" . }}-signing-key
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "access-issuer.signingKeySecret" . }}
+  commonName: {{ include "access-issuer.fullname" . }}
+  duration: {{ .Values.signingKey.certificate.duration | quote }}
+  renewBefore: {{ .Values.signingKey.certificate.renewBefore | quote }}
+  privateKey:
+    algorithm: RSA
+    size: {{ .Values.signingKey.certificate.size }}
+    encoding: PKCS1
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ .Values.signingKey.certificate.issuerName | quote }}
+    kind: {{ .Values.signingKey.certificate.issuerKind | quote }}
+    group: cert-manager.io
+{{- end }}

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: access-issuer
+description: >-
+  The token service: it verifies proofs produced elsewhere, applies the
+  shared policy, and issues tokens. It authenticates nobody itself and
+  holds no user records. See docs/design/access-issuer.md.
+type: application
+# Placeholder. The git tag is the sole version authority — the release
+# workflow stamps `--version`/`--app-version` from it at package time.
+version: 0.0.0
+appVersion: "0.0.0"

@@ -44,6 +44,19 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **The release publishes both services.** `.goreleaser.yaml` was missing
+  entirely — the workflow would have failed at its GoReleaser step on the
+  first tag ever cut. It now builds the hub, the issuer and the acceptance
+  binary for linux and darwin on both architectures, publishes two images
+  under `ghcr.io/truvity/access-roster/`, and stamps the git tag into each
+  binary's version. `just release-check` validates it without cutting one.
+- **access-issuer has a chart**, so the release has both to publish: the
+  Deployment, the TokenReview permission the exchange needs, the policy
+  ConfigMap, the route, and the cert-manager `Certificate` that produces
+  the signing key with `rotationPolicy: Always` — a renewal has to be a
+  new key, because a renewed certificate over the same key rotates
+  nothing. `issuerURL` and `hub.address` fail the *render* when unset,
+  rather than the pod.
 - **People can sign in to the issuer.** `/login` is the chooser the
   library sends a browser to, `/login/<provider>/start` and `/callback`
   are the round trip, and `/signed-out` is where a logout lands. One

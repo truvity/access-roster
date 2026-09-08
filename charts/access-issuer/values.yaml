@@ -1,0 +1,138 @@
+# access-issuer — the token service.
+#
+# What this chart renders: a Deployment, a Service, a ServiceAccount with
+# the one cluster-scoped permission the exchange needs, a NetworkPolicy,
+# the policy ConfigMap, the Gateway API route for its host, and the
+# cert-manager Certificate that produces its signing key.
+#
+# What it expects to exist: a directory hub to ask about people, and an
+# issuer for that Certificate. The signing key is deliberately not this
+# service's to create — see `signingKey` below.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/truvity/access-roster/access-issuer
+  # Empty uses the chart's appVersion, which the release stamps from the
+  # git tag. Pin it here only to run something other than the chart's own
+  # release.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# The public issuer URL. **It is baked into every token this service signs
+# and into every relying party's trust**, so it must be stable for the
+# life of the installation: changing it invalidates every token and every
+# configured client at once. The service refuses to start without it.
+issuerURL: ""
+
+listeners:
+  # OIDC, the exchange, and this service's own three pages.
+  port: 8080
+  # liveness/readiness only.
+  healthPort: 7070
+
+# The directory hub. This service asks it about every person who signs in
+# and every refresh, and holds no directory credential of its own.
+hub:
+  # host:port of the hub's API listener.
+  address: ""
+  # The audience the hub expects on the projected token this service
+  # presents. Empty means `directory-roster`, the hub's own default.
+  audience: ""
+
+# The key this service signs tokens with.
+#
+# It is provisioned, never minted here: a service that creates its own
+# credential is an exception to how every other credential in this estate
+# is provisioned, and it would put the rotation of the most sensitive key
+# we hold outside the machinery that rotates everything else. It also has
+# to be the same key in every replica — two replicas with two keys hand
+# out tokens half the fleet cannot verify.
+#
+# Either let cert-manager issue one (the default: it generates in the
+# cluster, rotates on its own schedule, and the key never leaves), or
+# point `existingSecret` at one external-secrets delivers.
+signingKey:
+  # Name a Secret that already holds the key, and no Certificate is
+  # rendered. It must carry a PEM RSA private key under `key`.
+  existingSecret: ""
+  key: tls.key
+  certificate:
+    # cert-manager Issuer or ClusterIssuer that produces the key. A
+    # self-signed issuer is the usual answer: the certificate is a
+    # by-product and only the key is used.
+    issuerName: selfsigned
+    issuerKind: ClusterIssuer
+    # RSA because this issuer signs RS256. An EC key is refused at start,
+    # by name, rather than failing somewhere later.
+    size: 2048
+    # How long before expiry cert-manager replaces it. A new key is a new
+    # key id, so tokens signed with the old one keep verifying only while
+    # the old public key is still published — keep this comfortably longer
+    # than `tokenLifetime`.
+    renewBefore: 720h
+    duration: 8760h
+
+# The OAuth client people sign in with. The same client the hub uses,
+# with this service's own redirect URI added to it — one project, one
+# client — or a client of this service's own, if revoking sign-in and
+# revoking directory access should be separate acts.
+#
+# Empty means nobody can sign in and this service issues tokens to
+# machines only, which is a real posture and is said out loud at start.
+oauthClient:
+  clientId: ""
+  # A Secret holding the client secret under the key below.
+  existingSecret: ""
+  key: client-secret
+
+# Token exchange: turning somebody else's token into one of ours.
+exchange:
+  # Verify Kubernetes ServiceAccount tokens with a TokenReview, for the
+  # in-cluster workload that needs a token another system trusts. This is
+  # the one cluster-scoped permission this chart creates.
+  workloadTokens: true
+  # The audience such a token must be minted for. Without one, every
+  # mounted ServiceAccount token in the cluster would be an exchange
+  # proof. Empty means the release name.
+  audience: ""
+
+# Lifetimes. The policy may ask for shorter; these are the caps.
+lifetimes:
+  token: 1h
+  refresh: 12h
+  # How long an identity keeps its last-known groups while the hub cannot
+  # be reached. Zero means no hold, and an unreachable hub then refuses
+  # every login.
+  hold: 4h
+
+# The declared policy: groups, claims, lifetimes, clients. One file,
+# shared with the hub. See docs/reference/policy.md.
+policy: {}
+
+# The issuer's hostname on the gateway. Empty renders no route, which is
+# right for a hub reached by port-forward while it is being tried.
+route:
+  host: ""
+  gatewayClassName: internal
+  certificate:
+    issuerName: internal-ca
+    issuerKind: ClusterIssuer
+
+networkPolicy:
+  enabled: false
+  # Namespaces allowed to reach the issuer. Everything with a browser
+  # reaches it through the gateway, so this is for in-cluster callers:
+  # the proxies verifying tokens and the workloads exchanging them.
+  clients: []
+  gatewayNamespace: ""
+
+serviceAccount:
+  name: ""
+
+logLevel: info
+
+resources: {}
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []

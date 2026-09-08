@@ -1,5 +1,38 @@
 # access-issuer — configuration and endpoints
 
+## What the chart renders, and what it expects
+
+| Renders | Expects to exist |
+|---|---|
+| Deployment, Service, ServiceAccount, the TokenReview ClusterRole, NetworkPolicy, the policy ConfigMap, the Gateway API route for its host, and the cert-manager `Certificate` that produces its signing key | a directory hub to ask about people; a cert-manager issuer; the Secret holding the OAuth client, if people sign in here |
+
+Two things it will not do. **It does not create the signing key** —
+cert-manager issues one, or `signingKey.existingSecret` names one
+external-secrets delivered — because a service that mints its own
+credential is an exception to how every other credential in this estate is
+provisioned. And **it puts no authenticating proxy in front**: this is the
+thing that authenticates, and a proxy would have nowhere to send anyone.
+
+| Value | Default | |
+|---|---|---|
+| `issuerURL` | — | **required.** Baked into every token and every relying party's trust, so it must be stable for the life of the installation |
+| `hub.address` | — | **required.** The hub's API listener; this service asks it about every person |
+| `hub.audience` | `directory-roster` | the audience of the projected token it presents to the hub |
+| `signingKey.existingSecret` | `""` | a Secret external-secrets delivered; empty renders a cert-manager `Certificate` instead |
+| `signingKey.certificate.issuerName` / `.issuerKind` | `selfsigned` / `ClusterIssuer` | the certificate is a by-product; only the key is used |
+| `signingKey.certificate.size` | `2048` | RSA, because this issuer signs RS256; an EC key is refused at start by name |
+| `oauthClient.clientId` / `.existingSecret` | `""` | empty means nobody can sign in and this issuer serves token exchange only, which it says at start |
+| `exchange.workloadTokens` | `true` | verify Kubernetes ServiceAccount tokens with a TokenReview — the one cluster-scoped permission this chart creates |
+| `exchange.audience` | the release name | without one, every mounted ServiceAccount token in the cluster would be an exchange proof |
+| `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | caps; the policy may ask for shorter |
+| `policy` | `{}` | the declared layer, same schema as the hub's |
+| `route.host` | `""` | empty renders no route, for an issuer reached by port-forward while it is being tried |
+
+`rotationPolicy: Always` on the Certificate is deliberate: a renewal must
+be a *new key*, because a renewed certificate over the same key rotates
+nothing. A new key is a new key id, so keep `renewBefore` comfortably
+longer than `lifetimes.token`.
+
 ## Endpoints
 
 | Path | Standard | Purpose |

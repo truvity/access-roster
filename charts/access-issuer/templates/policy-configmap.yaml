@@ -1,0 +1,17 @@
+# The declared layer of the policy — the same file the hub reads, and the
+# same schema. See docs/reference/policy.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-issuer.fullname" . }}-policy
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+data:
+  policy.yaml: |
+    # The version belongs to the chart, not to the values: the loader
+    # refuses a document whose version it does not know, so a policy
+    # written without one is a service that will not start.
+    version: 1
+    {{- if .Values.policy }}
+    {{- toYaml (omit .Values.policy "version") | nindent 4 }}
+    {{- end }}
