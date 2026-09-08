@@ -67,10 +67,16 @@ message GetSettingsResponse {
 // rather than prose to translate.
 message ConnectorSetup {
   Backend backend = 1;
-  // the exact redirect URI to register with the backend.
-  string redirect_uri = 2;
+  reserved 2;
+  reserved "redirect_uri";
   // the scopes this hub will ask for, all read-only.
   repeated string scopes = 3;
+  // every redirect URI to register with the backend, exactly as written.
+  // There is more than one because consent and sign-in are answered by
+  // endpoints with opposite authorisation, so they return to different
+  // paths; a client missing one of them works until somebody tries the
+  // flow that uses it.
+  repeated string redirect_uris = 4;
 }
 
 message SetOAuthClientRequest {

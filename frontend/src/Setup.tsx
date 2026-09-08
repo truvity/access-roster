@@ -147,8 +147,9 @@ function Register({ setup }: { setup: ConnectorSetup[] }) {
     <Stack spacing={1}>
       <Typography variant="body2" color="text.secondary">
         Once per installation, never per company: one project holding one OAuth client, its consent screen
-        external and in production, these scopes, and this redirect. The connect runbook has the full
-        walk-through.
+        external and in production, these scopes, and both redirects — one for an administrator granting
+        access to a company, one for a person signing in, and a client missing either works until somebody
+        tries that flow. The connect runbook has the full walk-through.
       </Typography>
       {setup.map((entry) => {
         const key = String(entry.backend);
@@ -160,7 +161,7 @@ function Register({ setup }: { setup: ConnectorSetup[] }) {
             </Button>
             <Collapse in={open}>
               <Stack spacing={1.5} sx={{ mt: 1 }}>
-                <Field label="Authorised redirect URI" values={[entry.redirectUri]} />
+                <Field label="Authorised redirect URIs, both of them" values={entry.redirectUris} />
                 <Field label="Scopes, all read-only" values={entry.scopes} />
               </Stack>
             </Collapse>

@@ -15,11 +15,27 @@ import (
 // revokeURL is where a refresh token is handed back.
 const revokeURL = "https://oauth2.googleapis.com/revoke" //nolint:gosec // an endpoint, not a credential
 
-// CallbackPath is where the consent screen returns, appended to the
-// console's own base URL. It is fixed because an operator has to type the
-// whole redirect URI into a cloud console by hand, and the one thing that
-// must not vary between installations is the part nobody can look up.
-const CallbackPath = "/connect/google/callback"
+// The two paths a Google flow returns to, appended to the console's own
+// base URL. They are fixed because an operator types the whole redirect
+// URI into a cloud console by hand, and the one thing that must not vary
+// between installations is the part nobody can look up.
+//
+// Two, not one, because the two flows are answered by endpoints with
+// opposite authorisation: the consent callback adopts a workspace and so
+// demands an operator, while the sign-in callback is how a person becomes
+// anyone at all and must be reachable by nobody. Sharing a path would
+// mean one endpoint deciding which of those it was, from a parameter, at
+// the moment it matters most.
+const (
+	CallbackPath       = "/connect/google/callback"
+	SignInCallbackPath = "/login/google/callback"
+)
+
+// SignInScopes are what signing a person in asks for: who they are, and
+// nothing else. The directory scopes belong to the consent flow, which an
+// administrator grants once per company; a person signing in grants
+// nothing on their company's behalf.
+var SignInScopes = []string{"openid", "email", "profile"}
 
 // ConsentScopes are what admin consent asks for: the four the hub reads
 // with, plus the two that say who consented.
@@ -38,18 +54,69 @@ var ConsentScopes = append([]string{"openid", "email"}, Scopes...)
 type OAuthClient struct {
 	ID     string
 	Secret string
-	// RedirectURL must match one registered with the client exactly.
-	RedirectURL string
+	// BaseURL is where a browser reaches this console, with no trailing
+	// slash. Both redirect URIs are derived from it rather than given
+	// separately, so the two cannot disagree — and a mismatched redirect
+	// is the failure that arrives late, in a cloud console's own words,
+	// naming nothing useful.
+	BaseURL string
 }
+
+// ConsentRedirect is where the consent flow returns; one of the two URIs
+// to register with the client.
+func (c OAuthClient) ConsentRedirect() string { return c.BaseURL + CallbackPath }
+
+// SignInRedirect is where the sign-in flow returns; the other one.
+func (c OAuthClient) SignInRedirect() string { return c.BaseURL + SignInCallbackPath }
 
 func (c OAuthClient) config() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     c.ID,
 		ClientSecret: c.Secret,
 		Endpoint:     googleauth.Endpoint,
-		RedirectURL:  c.RedirectURL,
+		RedirectURL:  c.ConsentRedirect(),
 		Scopes:       ConsentScopes,
 	}
+}
+
+func (c OAuthClient) signInConfig() *oauth2.Config {
+	return &oauth2.Config{
+		ClientID:     c.ID,
+		ClientSecret: c.Secret,
+		Endpoint:     googleauth.Endpoint,
+		RedirectURL:  c.SignInRedirect(),
+		Scopes:       SignInScopes,
+	}
+}
+
+// SignInURL is where the browser goes to prove who somebody is.
+//
+// No offline access and no forced screen: nothing here is stored, so
+// there is no refresh token to want, and a person who signed in a minute
+// ago should not be asked again. The account chooser is Google's, which
+// is why this hub asks nobody for an address first.
+func (c OAuthClient) SignInURL(state string) string {
+	return c.signInConfig().AuthCodeURL(state)
+}
+
+// Identify turns a sign-in callback's code into the address that
+// authenticated. It is the whole of what the flow is for: the hub decides
+// everything else from the address, through the directory it already
+// reads.
+func Identify(ctx context.Context, client OAuthClient, code string) (string, error) {
+	if code == "" {
+		return "", errors.New("google: the sign-in returned no code")
+	}
+	token, err := client.signInConfig().Exchange(ctx, code)
+	if err != nil {
+		return "", fmt.Errorf("google: exchange the sign-in code: %w", err)
+	}
+	email := consentingAccount(token)
+	if email == "" {
+		return "", errors.New("google: the sign-in did not say which account it was; " +
+			"the OAuth client must be allowed the openid and email scopes")
+	}
+	return email, nil
 }
 
 // AuthURL is where the browser goes to consent.

@@ -21,7 +21,7 @@ import (
 func TestAuthURLAsksForAGrantThatCanBeRenewed(t *testing.T) {
 	t.Parallel()
 
-	client := OAuthClient{ID: "id.apps", Secret: "shh", RedirectURL: "https://hub.example/connect/google/callback"}
+	client := OAuthClient{ID: "id.apps", Secret: "shh", BaseURL: "https://hub.example"}
 	raw := client.AuthURL("state-123")
 	parsed, err := url.Parse(raw)
 	if err != nil {
@@ -37,7 +37,7 @@ func TestAuthURLAsksForAGrantThatCanBeRenewed(t *testing.T) {
 	if got := query.Get("state"); got != "state-123" {
 		t.Errorf("state = %q", got)
 	}
-	if got := query.Get("redirect_uri"); got != client.RedirectURL {
+	if got := query.Get("redirect_uri"); got != "https://hub.example/connect/google/callback" {
 		t.Errorf("redirect_uri = %q", got)
 	}
 
@@ -126,5 +126,53 @@ func TestTheConsentingAccountIsRead(t *testing.T) {
 		if got := consentingAccount((&oauth2.Token{}).WithExtra(extra)); got != "" {
 			t.Errorf("id_token %v yielded %q, want empty", bad, got)
 		}
+	}
+}
+
+// Signing a person in and granting this hub access to a company are
+// different flows, and the difference has to survive: the sign-in asks
+// for nothing but an address, and returns to an endpoint that has to be
+// reachable by somebody who is nobody yet.
+func TestSignInAsksForNothingButAnAddress(t *testing.T) {
+	t.Parallel()
+
+	client := OAuthClient{ID: "id.apps", Secret: "shh", BaseURL: "https://hub.example"}
+	parsed, err := url.Parse(client.SignInURL("state-9"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	query := parsed.Query()
+
+	if got := query.Get("redirect_uri"); got != "https://hub.example/login/google/callback" {
+		t.Errorf("redirect_uri = %q, want the sign-in callback", got)
+	}
+	if got := strings.Fields(query.Get("scope")); !slices.Equal(got, SignInScopes) {
+		t.Errorf("scope = %v, want only %v: a person grants nothing on their company's behalf", got, SignInScopes)
+	}
+	for _, scope := range query["scope"] {
+		if strings.Contains(scope, "admin.directory") {
+			t.Errorf("signing in asked for a directory scope: %q", scope)
+		}
+	}
+	// No offline access and no forced screen: nothing is stored, so there
+	// is no refresh token to want, and somebody who signed in a minute ago
+	// should not be asked again.
+	if query.Get("access_type") == "offline" || query.Get("prompt") == "consent" {
+		t.Errorf("sign-in asked for a stored grant: access_type=%q prompt=%q",
+			query.Get("access_type"), query.Get("prompt"))
+	}
+	if got := query.Get("state"); got != "state-9" {
+		t.Errorf("state = %q", got)
+	}
+
+	// The two redirect URIs are derived from one base, so they cannot
+	// disagree — a mismatched one fails late, in a cloud console's own
+	// words, naming nothing useful.
+	if client.ConsentRedirect() == client.SignInRedirect() {
+		t.Error("the two flows share a redirect URI")
+	}
+
+	if _, err = Identify(context.Background(), client, ""); err == nil {
+		t.Error("a callback with no code was accepted")
 	}
 }

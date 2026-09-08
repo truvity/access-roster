@@ -31,7 +31,15 @@ installation, never per company. About fifteen minutes.
    scopes trigger Google's verification process; these four are
    "sensitive", which only produces the unverified-app interstitial.
 4. **The OAuth client** (Clients → Create → Web application):
-   - Authorised redirect URI: `https://<hub host>/connect/google/callback`.
+   - Authorised redirect URIs, **both** of them:
+     - `https://<hub host>/connect/google/callback` — an administrator
+       granting this hub read access to a company.
+     - `https://<hub host>/login/google/callback` — a person signing in.
+
+     They are separate because the two endpoints have opposite
+     authorisation: the first adopts a workspace and demands an operator,
+     the second is how a person becomes anyone at all. A client missing
+     the second one works perfectly until somebody tries to sign in.
    - While the hub is being tried on a workstation, a second URI
      `http://localhost:8080/connect/google/callback` may be added; remove
      it once the hub runs behind its real host.

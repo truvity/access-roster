@@ -44,6 +44,17 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **Signing in with a directory works.** `GET /login/<backend>/start` →
+  `/callback` asks the provider for `openid email profile` and nothing
+  else: the address is all that is taken from it, and whether the account
+  is live, which company it belongs to and what it may do are answered by
+  the directory this hub already reads. An address in no served domain is
+  refused at the door rather than given a session with no role, while a
+  person of a served company who is in no group signs in fine — their own
+  page explains what they have. One button per directory *kind* on the
+  sign-in page, never one per company, which would publish the tenant list
+  to anyone who loads it. The OAuth client now needs **two** redirect
+  URIs, and the setup step shows both.
 - **Recovery replaces the break-glass account.** In a cluster the hub
   stores no credential at all: recovery is a ServiceAccount token minted
   for one audience and a few minutes, checked with a TokenReview, so the

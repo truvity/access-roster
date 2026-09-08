@@ -30,8 +30,7 @@ request. Roles come from membership of two declared policy groups:
 | Route | Does |
 |---|---|
 | `GET /login` | the login page: the enabled sources as buttons |
-| `GET /login/directory/start` → `GET /login/directory/callback` | sign in with a connected directory: its OAuth client, openid scopes only; the address must be live in a served domain |
-| `GET /login/oidc/start` → `GET /login/oidc/callback` | sign in with the configured external issuer |
+| `GET /login/<backend>/start` → `GET /login/<backend>/callback` | sign in with a directory: this installation's OAuth client, `openid email profile` and nothing else. The address it returns is all that is taken from the provider; whether it is live, which company it belongs to and what it may do are answered by the directory and the policy. An address in no served domain, or one the directory authoritatively does not have, is refused at the door rather than given a session with no role |
 | `POST /login/recovery` | the recovery sign-in, while a deployment has one. In a cluster the proof is a ServiceAccount token minted for the recovery audience, verified by TokenReview; elsewhere it is the generated password. The proof may come in the form, as JSON, or as a bearer, so a runbook can be one curl |
 | `POST /logout` | clears the session |
 | `GET /connect/<backend>/callback` | the admin-consent callback, authenticated like any page |
@@ -165,7 +164,7 @@ for a key that does not parse or an admin address without a domain.
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `GetSettings` | viewer | — | `oauth_client{client_id, configured, source}`, `refresh_interval`, `freshness_window`, `probe_interval`, `cache_backend`, `connectors[]`, `key_connectors[]`, `version`, `setup[]{backend, redirect_uri, scopes[]}` | never the client secret. `setup` is the one-time cloud-console step as values to copy: the redirect URI is this installation's own hostname, which a document can only describe. `connectors` are the backends this deployment can add a directory from; `key_connectors` the subset that also take an uploaded key |
+| `GetSettings` | viewer | — | `oauth_client{client_id, configured, source}`, `refresh_interval`, `freshness_window`, `probe_interval`, `cache_backend`, `connectors[]`, `key_connectors[]`, `version`, `setup[]{backend, redirect_uris[], scopes[]}` | never the client secret. `setup` is the one-time cloud-console step as values to copy: the redirect URIs are this installation's own hostname, which a document can only describe; there are two because consent and sign-in return to endpoints with opposite authorisation, and a client missing one works until somebody tries that flow. `connectors` are the backends this deployment can add a directory from; `key_connectors` the subset that also take an uploaded key |
 | `SetOAuthClient` | operator | `client_id`, `client_secret` | — | `failed_precondition` when the deployment declared the client |
 
 The intervals are chart values. The console shows them so an operator

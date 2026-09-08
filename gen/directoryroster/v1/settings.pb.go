@@ -298,10 +298,14 @@ func (x *GetSettingsResponse) GetSetup() []*ConnectorSetup {
 type ConnectorSetup struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Backend Backend                `protobuf:"varint,1,opt,name=backend,proto3,enum=directoryroster.v1.Backend" json:"backend,omitempty"`
-	// the exact redirect URI to register with the backend.
-	RedirectUri string `protobuf:"bytes,2,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
 	// the scopes this hub will ask for, all read-only.
-	Scopes        []string `protobuf:"bytes,3,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	Scopes []string `protobuf:"bytes,3,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	// every redirect URI to register with the backend, exactly as written.
+	// There is more than one because consent and sign-in are answered by
+	// endpoints with opposite authorisation, so they return to different
+	// paths; a client missing one of them works until somebody tries the
+	// flow that uses it.
+	RedirectUris  []string `protobuf:"bytes,4,rep,name=redirect_uris,json=redirectUris,proto3" json:"redirect_uris,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -343,16 +347,16 @@ func (x *ConnectorSetup) GetBackend() Backend {
 	return Backend_BACKEND_UNSPECIFIED
 }
 
-func (x *ConnectorSetup) GetRedirectUri() string {
-	if x != nil {
-		return x.RedirectUri
-	}
-	return ""
-}
-
 func (x *ConnectorSetup) GetScopes() []string {
 	if x != nil {
 		return x.Scopes
+	}
+	return nil
+}
+
+func (x *ConnectorSetup) GetRedirectUris() []string {
+	if x != nil {
+		return x.RedirectUris
 	}
 	return nil
 }
@@ -468,11 +472,11 @@ const file_directoryroster_v1_settings_proto_rawDesc = "" +
 	"connectors\x12B\n" +
 	"\x0ekey_connectors\x18\b \x03(\x0e2\x1b.directoryroster.v1.BackendR\rkeyConnectors\x12\x18\n" +
 	"\aversion\x18\a \x01(\tR\aversion\x128\n" +
-	"\x05setup\x18\t \x03(\v2\".directoryroster.v1.ConnectorSetupR\x05setup\"\x82\x01\n" +
+	"\x05setup\x18\t \x03(\v2\".directoryroster.v1.ConnectorSetupR\x05setup\"\x98\x01\n" +
 	"\x0eConnectorSetup\x125\n" +
-	"\abackend\x18\x01 \x01(\x0e2\x1b.directoryroster.v1.BackendR\abackend\x12!\n" +
-	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x16\n" +
-	"\x06scopes\x18\x03 \x03(\tR\x06scopes\"Y\n" +
+	"\abackend\x18\x01 \x01(\x0e2\x1b.directoryroster.v1.BackendR\abackend\x12\x16\n" +
+	"\x06scopes\x18\x03 \x03(\tR\x06scopes\x12#\n" +
+	"\rredirect_uris\x18\x04 \x03(\tR\fredirectUrisJ\x04\b\x02\x10\x03R\fredirect_uri\"Y\n" +
 	"\x15SetOAuthClientRequest\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12#\n" +
 	"\rclient_secret\x18\x02 \x01(\tR\fclientSecret\"\x18\n" +

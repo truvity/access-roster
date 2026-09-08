@@ -174,6 +174,28 @@ func (c *Connector) AuthURL(state string) (string, error) {
 	return fmt.Sprintf("%s/connect/demo/callback?code=demo-consent&state=%s", c.base, url.QueryEscape(state)), nil
 }
 
+// SignInAs is the address a demonstration sign-in authenticates as. It is
+// an operator in the demonstration policy, so the whole console can be
+// walked without touching the recovery path — which is what a
+// demonstration is for.
+const SignInAs = "ada@north.example"
+
+// SignInURL implements [server.SignInConnector]. There is no provider to
+// send anyone to, so it points straight back at the callback; the state
+// cookie and the rest of the flow are exactly the real one's.
+func (c *Connector) SignInURL(state string) (string, error) {
+	return fmt.Sprintf("%s/login/demo/callback?code=demo-sign-in&state=%s",
+		c.base, url.QueryEscape(state)), nil
+}
+
+// Identify implements [server.SignInConnector].
+func (c *Connector) Identify(_ context.Context, code string) (string, error) {
+	if code == "" {
+		return "", fmt.Errorf("demo: the callback carried no code")
+	}
+	return SignInAs, nil
+}
+
 // FromKey implements [server.KeyConnector], so the second way in is
 // walkable too. The key must at least be JSON naming a client_email, as a
 // real service-account key does; the tenant it opens takes its domain
