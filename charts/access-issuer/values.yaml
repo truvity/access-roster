@@ -107,6 +107,35 @@ exchange:
   # proof. Empty means the release name.
   audience: ""
 
+# The way in when no directory can vouch for anybody.
+#
+# It exists because of a deadlock that is otherwise complete: a console
+# behind this issuer asks it for a token, this issuer asks the hub who the
+# caller is, the hub cannot say because no directory is connected yet, and
+# the directory is connected FROM that console. Every installation starts
+# there.
+#
+# The proof is a ServiceAccount token minted for the audience below and a
+# few minutes, checked by the API server -- the same proof this issuer
+# already takes from workloads. So the authority is the cluster's RBAC:
+# who may mint a token for that account, which is revocable by removing a
+# binding and lands in the audit log.
+#
+# It grants NOTHING by itself. A recovered sign-in completes as the
+# ServiceAccount subject, and the policy's `service_account` matchers
+# decide what that is in -- so an installation that turns this on and
+# names no matcher has an account that can sign in and is admitted
+# nowhere, which is the correct default.
+recovery:
+  enabled: true
+  # Left empty, `<release>-recovery`, created by this chart. Nobody is
+  # bound to it: granting `create` on `serviceaccounts/token` for this
+  # account is how an installation says who may recover.
+  serviceAccountName: ""
+  # The audience the token must be minted for. Without one, every mounted
+  # ServiceAccount token in the cluster would be a proof.
+  audience: ""
+
 # Lifetimes. The policy may ask for shorter; these are the caps.
 lifetimes:
   token: 1h

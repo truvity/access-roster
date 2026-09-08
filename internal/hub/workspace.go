@@ -63,6 +63,17 @@ type Workspace struct {
 	// how an installation takes one domain out of a tenant that holds
 	// several it has no business reading. See [Workspace.Served].
 	Serve []string
+	// SyncGroups narrows which of the workspace's groups the hub keeps.
+	// Empty means all of them, which is the ordinary case; a subset is
+	// how an installation reads a directory with hundreds of groups and
+	// keeps the handful its policy actually names. See
+	// [Workspace.SyncesGroup].
+	//
+	// It narrows what is KEPT, not what is read: the hub still lists the
+	// directory's groups, because that list is what an operator picks
+	// from. The saving is in what is stored, cached and shown -- not in
+	// the directory's API quota.
+	SyncGroups []string
 	// Admin is the account the credential acts as.
 	Admin string
 	// Credential is how the hub authenticates.
@@ -98,6 +109,21 @@ func (w Workspace) Served() []string {
 		}
 	}
 	return out
+}
+
+// SyncesGroup reports whether a group address is kept. Empty SyncGroups
+// keeps everything, exactly as an empty Serve serves every domain.
+func (w Workspace) SyncesGroup(address string) bool {
+	if len(w.SyncGroups) == 0 {
+		return true
+	}
+	address = strings.ToLower(address)
+	for _, g := range w.SyncGroups {
+		if strings.ToLower(g) == address {
+			return true
+		}
+	}
+	return false
 }
 
 // Unowned returns the entries of Serve the tenant does not (or no longer)

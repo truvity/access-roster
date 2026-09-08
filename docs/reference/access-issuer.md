@@ -28,6 +28,8 @@ thing that authenticates, and a proxy would have nowhere to send anyone.
 | `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | caps; the policy may ask for shorter |
 | `policy` | `{}` | the declared layer, same schema as the hub's |
 | `route.host` | `""` | empty renders no route, for an issuer reached by port-forward while it is being tried |
+| `recovery.enabled` | `true` | the way in when no directory can vouch for anybody. A ServiceAccount token checked by the API server — the same proof this issuer takes from workloads. It grants **nothing by itself**: a recovered sign-in completes as the ServiceAccount *subject*, and the policy's `service_account` matchers decide what that is in, so an installation that names no matcher has an account that can sign in and is admitted nowhere |
+| `recovery.serviceAccountName` / `.audience` | `<release>-recovery` | the account a token must be minted for and the audience it must carry. Without an audience every mounted token in the cluster would be a proof. The chart creates the account bound to **nothing**: granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
 
 `rotationPolicy: Always` on the Certificate is deliberate: a renewal must
 be a *new key*, because a renewed certificate over the same key rotates
@@ -65,6 +67,7 @@ longer than `lifetimes.token`.
 | `proofs.github[]` | `{organisation}` — accepted CI organisations |
 | `proofs.corporate.backends[]` | `google`, later `entra`; tenants come from the hub |
 | `tokens.idLifetime`, `tokens.refreshLifetime`, `tokens.holdWindow` | token lifetimes the policy does not set, and how long an identity keeps its last grant while the hub cannot be vouched for |
+| `recovery.*` | the way in when no directory can vouch for anybody — see the table above |
 | `networkPolicy.*` | who may reach `/token` and `/register` from inside the cluster |
 
 ## What the chart renders and expects

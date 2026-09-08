@@ -84,6 +84,14 @@ spec:
             - name: EXCHANGE_AUDIENCE
               value: {{ include "access-issuer.exchangeAudience" . | quote }}
             {{- end }}
+            - name: RECOVERY_ENABLED
+              value: {{ .Values.recovery.enabled | quote }}
+            {{- if .Values.recovery.enabled }}
+            - name: RECOVERY_SERVICE_ACCOUNT
+              value: {{ include "access-issuer.recoveryServiceAccountName" . | quote }}
+            - name: RECOVERY_AUDIENCE
+              value: {{ include "access-issuer.recoveryAudience" . | quote }}
+            {{- end }}
             {{- with .Values.oauthClient.secret }}
             {{- if .name }}
             - name: OAUTH_CLIENT_ID_FILE

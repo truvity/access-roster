@@ -72,6 +72,15 @@
         }
       }
     },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "serviceAccountName": { "type": "string" },
+        "audience": { "type": "string" }
+      }
+    },
     "exchange": {
       "type": "object",
       "additionalProperties": false,
