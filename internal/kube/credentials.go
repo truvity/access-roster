@@ -65,10 +65,10 @@ func (s *Credentials) Save(ctx context.Context, workspaceID string, cred backend
 		},
 	}
 	api := s.c.api.CoreV1().Secrets(s.c.namespace)
-	_, err := api.Update(ctx, secret, metav1.UpdateOptions{})
-	if apierrors.IsNotFound(err) {
-		_, err = api.Create(ctx, secret, metav1.CreateOptions{})
-	}
+	err := upsert(
+		func() error { _, e := api.Update(ctx, secret, metav1.UpdateOptions{}); return e },
+		func() error { _, e := api.Create(ctx, secret, metav1.CreateOptions{}); return e },
+	)
 	if err != nil {
 		return fmt.Errorf("kube: store the credential of %s: %w", workspaceID, err)
 	}

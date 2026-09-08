@@ -44,6 +44,13 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **An acceptance suite against a real API server** (`just acceptance`, a
+  throwaway kind cluster). It covers the three things a fake clientset is
+  silent about and the hub leans on: name validation, a create that raced
+  another — now handled rather than failed — and TokenReview, which is
+  what recovery and the API listener's guard are made of. Running it
+  showed that the audience is enforced by *asking* for it: a token minted
+  for another audience comes back not authenticated at all.
 - **The wiring is testable.** Everything `main()` decided moved to
   `internal/app`, with an acceptance suite that boots a whole hub from the
   environment and walks the use cases over the real handlers, and a test

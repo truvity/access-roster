@@ -93,10 +93,10 @@ func (s *Settings) SetOAuthClient(ctx context.Context, id, secret string) error 
 		Data: map[string][]byte{clientIDKey: []byte(id), clientSecretKey: []byte(secret)},
 	}
 	api := s.c.api.CoreV1().Secrets(s.c.namespace)
-	_, err := api.Update(ctx, object, metav1.UpdateOptions{})
-	if apierrors.IsNotFound(err) {
-		_, err = api.Create(ctx, object, metav1.CreateOptions{})
-	}
+	err := upsert(
+		func() error { _, e := api.Update(ctx, object, metav1.UpdateOptions{}); return e },
+		func() error { _, e := api.Create(ctx, object, metav1.CreateOptions{}); return e },
+	)
 	if err != nil {
 		return fmt.Errorf("kube: store the OAuth client: %w", err)
 	}
@@ -150,10 +150,10 @@ func (s *Settings) SetMemberships(ctx context.Context, memberships map[string][]
 		Data: map[string]string{membershipsKey: string(body)},
 	}
 	api := s.c.api.CoreV1().ConfigMaps(s.c.namespace)
-	_, err = api.Update(ctx, cm, metav1.UpdateOptions{})
-	if apierrors.IsNotFound(err) {
-		_, err = api.Create(ctx, cm, metav1.CreateOptions{})
-	}
+	err = upsert(
+		func() error { _, e := api.Update(ctx, cm, metav1.UpdateOptions{}); return e },
+		func() error { _, e := api.Create(ctx, cm, metav1.CreateOptions{}); return e },
+	)
 	if err != nil {
 		return fmt.Errorf("kube: store the memberships: %w", err)
 	}

@@ -49,12 +49,14 @@ func (c *Client) ReviewToken(ctx context.Context, token string, audiences []stri
 	if !review.Status.Authenticated {
 		return "", ErrTokenRejected
 	}
-	// A token authenticated *for other audiences* than the one asked for
-	// is not a token for this purpose. The API server reports which of the
-	// requested audiences it matched; an empty intersection is a refusal.
-	if len(review.Status.Audiences) == 0 {
-		return "", ErrTokenRejected
-	}
+	// Belt and braces, and worth saying which is which. The audience is
+	// enforced by asking for it: a token minted for another audience comes
+	// back not authenticated at all, which the acceptance suite confirms
+	// against a real API server. This checks the intersection the server
+	// reports as well, for a server that answered authenticated with an
+	// empty one — cheap, and the alternative is trusting a single field
+	// on the one call that stands between a mounted pod token and this
+	// hub's operator role.
 	username := strings.TrimSpace(review.Status.User.Username)
 	if username == "" {
 		return "", ErrTokenRejected

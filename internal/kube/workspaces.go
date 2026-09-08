@@ -138,10 +138,10 @@ func (w *Workspaces) Put(ctx context.Context, ws hub.Workspace) error {
 		Data:       map[string]string{recordKey: string(body)},
 	}
 	api := w.c.api.CoreV1().ConfigMaps(w.c.namespace)
-	_, err = api.Update(ctx, cm, metav1.UpdateOptions{})
-	if apierrors.IsNotFound(err) {
-		_, err = api.Create(ctx, cm, metav1.CreateOptions{})
-	}
+	err = upsert(
+		func() error { _, e := api.Update(ctx, cm, metav1.UpdateOptions{}); return e },
+		func() error { _, e := api.Create(ctx, cm, metav1.CreateOptions{}); return e },
+	)
 	if err != nil {
 		return fmt.Errorf("kube: store workspace %s: %w", ws.ID, err)
 	}

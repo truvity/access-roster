@@ -33,6 +33,19 @@ generate:
     buf lint
     buf generate
 
+# Acceptance against a real API server, in a throwaway kind cluster.
+#
+# Everything else runs against fakes, and the fakes are silent about the
+# three things this checks: a real API server validates object names,
+# refuses a create that raced another, and is the only thing that can
+# answer a TokenReview — which is what recovery and the API listener's
+# guard are built on.
+acceptance:
+    kind create cluster --name access-roster-acceptance
+    kubectl --context kind-access-roster-acceptance create namespace acceptance
+    go run ./cmd/acceptance -namespace acceptance -kubeconfig ""
+    kind delete cluster --name access-roster-acceptance
+
 # Run go mod tidy
 tidy:
     go mod tidy
