@@ -13,7 +13,12 @@ installation, never per company. About fifteen minutes.
 
 1. **A Google Cloud project owned by the installation.** Any name; it will
    hold exactly one OAuth client and nothing else. Enable the
-   **Admin SDK API** on it.
+   **Admin SDK API** on it. Missing this step does not fail where you would
+   look for it: the consent screen appears, the administrator grants it,
+   and the *first read* is refused. The console says so on the consent
+   page, quoting Google's own message — which names the project number and
+   links the page that enables the API — so the fix is a click from the
+   failure rather than a search from it.
 2. **The consent screen** (Google Auth Platform → Branding / Audience):
    - Audience: **External**. Internal accepts only the tenant that owns the
      project; an installation serves several.

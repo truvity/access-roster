@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,13 +49,13 @@ func TestTheConsentCallbackTakesItsOperatorFromTheSignedState(t *testing.T) {
 		log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 
-	call := func(state string) int {
+	call := func(state string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(http.MethodGet, "/connect/google/callback?state="+state+"&code=x", nil)
 		request.SetPathValue("backend", "google")
 		request.AddCookie(&http.Cookie{Name: access.ConnectCookieName, Value: state})
 		recorder := httptest.NewRecorder()
 		server.connectCallback(recorder, request)
-		return recorder.Code
+		return recorder
 	}
 
 	// A state a signed-in operator started: no identity on the request,
@@ -64,9 +65,16 @@ func TestTheConsentCallbackTakesItsOperatorFromTheSignedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := call(started); got != http.StatusBadGateway {
+	got := call(started)
+	if got.Code != http.StatusConflict {
 		t.Errorf("a callback for a flow an operator started = %d, want %d (it was refused)",
-			got, http.StatusBadGateway)
+			got.Code, http.StatusConflict)
+	}
+	// The exchange's own words must reach the page. This is the whole
+	// point of the page: the diagnosis was previously written to a 502
+	// that the CDN replaced with its own, and survived only in the log.
+	if body := got.Body.String(); !strings.Contains(body, "got past the authority check") {
+		t.Errorf("the page does not carry what the directory said:\n%s", body)
 	}
 
 	// A state naming nobody authorises nobody. Signed by this hub and
@@ -75,8 +83,8 @@ func TestTheConsentCallbackTakesItsOperatorFromTheSignedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := call(anonymous); got != http.StatusForbidden {
-		t.Errorf("a callback for a flow nobody started = %d, want %d", got, http.StatusForbidden)
+	if got := call(anonymous); got.Code != http.StatusForbidden {
+		t.Errorf("a callback for a flow nobody started = %d, want %d", got.Code, http.StatusForbidden)
 	}
 
 	// The cookie is still what makes it this browser's flow: a valid
@@ -109,5 +117,59 @@ func TestWhoNamesAnIdentityThatHasNoAddress(t *testing.T) {
 	person := access.Identity{Email: "ada@north.example", Subject: "ada@north.example"}
 	if got := person.Who(); got != "ada@north.example" {
 		t.Errorf("a person is written down as %q, want the address", got)
+	}
+}
+
+// A 5xx from this handler never reaches the person who can act on it:
+// the CDN in front of the console replaces it with its own page. Observed
+// live — six kilobytes of "Bad gateway" where the hub had written the
+// exact Google project and the exact API to enable.
+//
+// So no failure the browser is meant to READ may answer 5xx.
+func TestTheConsentPageIsNeverA5xx(t *testing.T) {
+	t.Parallel()
+
+	codec := access.NewStateCodec([]byte("the hub's session key"), time.Minute)
+	server := &ConsoleServer{
+		state:      codec,
+		sessions:   &access.Sessions{},
+		connectors: map[string]Connector{"google": stubConsent{}},
+		log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	operator, err := codec.IssueAs(access.Binding{Actor: "ada@north.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		state   string
+		cookie  string
+		backend string
+	}{
+		{"the directory refused the credential it granted", operator, operator, "google"},
+		{"no cookie", operator, "", "google"},
+		{"a forged state", "not-a-state.nope", "not-a-state.nope", "google"},
+		{"an unknown backend", operator, operator, "entra"},
+	} {
+		request := httptest.NewRequest(http.MethodGet,
+			"/connect/"+tc.backend+"/callback?state="+tc.state+"&code=x", nil)
+		request.SetPathValue("backend", tc.backend)
+		if tc.cookie != "" {
+			request.AddCookie(&http.Cookie{Name: access.ConnectCookieName, Value: tc.cookie})
+		}
+		recorder := httptest.NewRecorder()
+		server.connectCallback(recorder, request)
+
+		if recorder.Code >= 500 {
+			t.Errorf("%s answered %d; a 5xx is replaced by the CDN and never read",
+				tc.name, recorder.Code)
+		}
+		if got := recorder.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+			t.Errorf("%s answered %q, not a page", tc.name, got)
+		}
+		if body := recorder.Body.String(); !strings.Contains(body, "Back to the console") {
+			t.Errorf("%s left the operator with no way on:\n%s", tc.name, body)
+		}
 	}
 }
