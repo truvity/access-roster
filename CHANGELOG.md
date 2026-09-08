@@ -7,6 +7,26 @@ git history.
 
 Nothing yet.
 
+## v0.7.0
+
+- **The consent callback takes its operator from the signed state.** It is
+  a redirect from Google and it lands on the bootstrap route — the one
+  that exists precisely so a callback is not swallowed by a login prompt,
+  which means the gateway adds no identity to it. Insisting on an identity
+  in that request refused the one flow the route exists to finish: a live
+  403, `this needs the operator role`, on the first workspace anyone tried
+  to connect. The authorisation still happens where it always did, when an
+  operator asks for the consent; the state now carries the answer, signed
+  by the hub and pinned to the browser by the cookie the callback already
+  checked. `docs/reference/configuration.md` had described this shape all
+  along.
+- `Identity.Who()` — the address where there is one, the subject where
+  there is not. A recovery sign-in completes as a ServiceAccount and has
+  no address, so `ConnectedBy` recorded a blank for exactly the sign-in
+  whose actions most need a name against them.
+- Dependencies: typescript 7, vite 8 with @vitejs/plugin-react 6, MUI 9.4,
+  vitest 5. React stays on 18.
+
 ## v0.6.4
 
 - **access-proxy writes `weight` out on every `backendRefs` entry.** The

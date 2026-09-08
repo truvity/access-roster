@@ -97,6 +97,11 @@ spec:
 # gateway swallows, which reads as a second login prompt rather than as a
 # refusal.
 #
+# The corollary, which cost a live 403: a request on THIS route carries no
+# gateway identity, by design. The consent callback therefore takes its
+# operator from the signed state instead -- established at the start of
+# the flow, on a request the gateway did authenticate.
+#
 # Longer path prefixes win in the Gateway API, so these take precedence
 # over the `/` the main route matches.
 apiVersion: gateway.networking.k8s.io/v1

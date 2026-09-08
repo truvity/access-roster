@@ -499,11 +499,6 @@ func (s *ConsoleServer) logout(w http.ResponseWriter, r *http.Request) {
 // connectCallback finishes an admin-consent flow: it checks the state
 // against the cookie, exchanges the code, and adopts the workspace.
 func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) {
-	id, ok := IdentityFrom(r.Context())
-	if !ok || !id.Can(access.RoleOperator) {
-		http.Error(w, "this needs the operator role", http.StatusForbidden)
-		return
-	}
 	conn, ok := s.connectors[r.PathValue("backend")]
 	if !ok {
 		http.Error(w, "unknown backend", http.StatusNotFound)
@@ -516,9 +511,32 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "this consent did not start in this browser", http.StatusBadRequest)
 		return
 	}
-	bind, err := s.state.Verify(state)
+	binding, err := s.state.VerifyBinding(state)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	bind := binding.Bind
+
+	// Who authorised this consent.
+	//
+	// This request is a redirect from Google, and it does NOT arrive on
+	// the route the gateway authenticates: the bootstrap surface exists
+	// precisely so a callback is not swallowed by a login prompt, which
+	// means the proxy adds no identity to it. So the operator is the one
+	// the signed state names — established at the start of the flow, on a
+	// request the gateway did authenticate, and pinned to this browser by
+	// the cookie checked just above.
+	//
+	// A request that does carry an identity is still preferred, because a
+	// standalone installation signs in with this hub's own session and has
+	// one here.
+	actor := binding.Actor
+	if id, ok := IdentityFrom(r.Context()); ok && id.Can(access.RoleOperator) {
+		actor = id.Who()
+	}
+	if actor == "" {
+		http.Error(w, "this needs the operator role", http.StatusForbidden)
 		return
 	}
 	http.SetCookie(w, access.ConnectCookie("", s.sessions.Secure(), 0))
@@ -534,13 +552,13 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 			http.StatusConflict)
 		return
 	}
-	ws.ConnectedBy = id.Email
+	ws.ConnectedBy = actor
 	if _, err = s.hub.Adopt(r.Context(), ws, b); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.log.InfoContext(r.Context(), "workspace connected",
-		"workspace", ws.ID, "backend", b.Kind(), "by", id.Email)
+		"workspace", ws.ID, "backend", b.Kind(), "by", logsafe.Value(actor))
 	http.Redirect(w, r, "/#workspaces", http.StatusFound)
 }
 
