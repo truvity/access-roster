@@ -28,7 +28,7 @@ hub writes *itself*, where it is the producer and gets to choose.
 
 | Value | Default | Meaning |
 |---|---|---|
-| `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory cache |
+| `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory cache. Every replica serves every workspace, including one connected through the console on the other replica: a reader missing locally is opened from the stored credential on first use *(0.8)* |
 | `image.repository` / `tag` | `ghcr.io/truvity/access-roster/directory-roster` / app version | |
 | `listeners.api.port` | `8080` | `DirectoryService` — consumers |
 | `listeners.api.audience` | the release name | the audience a consumer's projected token must carry |
@@ -46,7 +46,7 @@ hub writes *itself*, where it is the producer and gets to choose.
 | `workspaces[]` | `[]` | declared workspaces, see below |
 | `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener, verified by TokenReview. **Empty admits nobody** |
 | `route.host` | `""` | the console's hostname on the gateway, and only the console's: the API listener never gets a route, because a consumer that could arrive over the gateway could reach an operator call. Empty renders no Gateway, HTTPRoute or Certificate, which is right for a hub reached by port-forward |
-| `route.bootstrapPaths` | `[/login, /connect]` | paths served on a **second HTTPRoute**, so a gateway policy attached to the main one does not cover them. This is what makes a console behind an authenticating gateway bootstrappable at all: the operator who connects the FIRST directory is by definition one no directory can vouch for, so a gateway that gates `/login` sends them away to prove themselves against the thing that does not exist yet — and the consent they start comes back to a callback the gateway swallows, which reads as a second login prompt rather than a refusal. None of these is protected *by* the gateway anyway: recovery needs a token the API server vouches for, and an OAuth callback carries a signed state this hub issued. Empty gates everything |
+| `route.bootstrapPaths` | `[/login, /connect]` | paths served on a **second HTTPRoute**, so a gateway policy attached to the main one does not cover them. This is what makes a console behind an authenticating gateway bootstrappable at all: the operator who connects the FIRST directory is by definition one no directory can vouch for, so a gateway that gates `/login` sends them away to prove themselves against the thing that does not exist yet — and the consent they start comes back to a callback the gateway swallows, which reads as a second login prompt rather than a refusal. None of these is protected *by* the gateway anyway: recovery needs a token the API server vouches for, and an OAuth callback carries a signed state this hub issued. **The corollary: a request on this route carries no gateway identity, by design**, so the consent callback takes its operator from that signed state — established when an operator started the flow on a request the gateway did authenticate. Empty gates everything |
 | `route.gatewayClassName`, `route.certificate.*` | `internal`, `internal-ca` | which class the Gateway joins, and who issues its certificate. An empty `issuerName` renders none, for a gateway that brings its own |
 | `access.recovery.enabled` | `true` | the way in for the day the ordinary one is broken. In a cluster it stores nothing: recovery is a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. On by default because it no longer costs a standing credential |
 | `access.recovery.serviceAccountName` | `<release>-recovery` | the account recovery proves access as; the chart creates it, bound to nobody. Granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
@@ -95,8 +95,11 @@ that is how one installation reads a single domain of a company whose
 other domains are none of its business. A domain named here that the
 tenant does not own routes nothing and is reported as no longer owned,
 which makes it safe to declare a domain that is about to move between
-tenants. For a workspace connected through the console the same choice is
-made there, on the directory's page.
+tenants. For a workspace connected through the console the choice is made
+**at connect time** *(0.8)*, before the first snapshot: the consenting
+administrator's own domain is pre-selected, the tenant's other domains
+are listed and off, and *all, including ones added later* is an explicit
+option. It can be changed afterwards on the directory's page.
 
 This is how an installation that already holds service-account keys goes
 live on day one, and connects through consent later at its own pace.

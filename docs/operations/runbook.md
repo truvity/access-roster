@@ -81,8 +81,11 @@ delete `Secret <release>-session-key`; the hub generates a new one on restart.
 
 | Symptom (console) | Cause | Action |
 |---|---|---|
-| Health: error, domains not authoritative | probe failed: token revoked, admin suspended, tenant policy changed, scopes withdrawn | **Reconnect** (consent) or upload a new key. Nothing is lost meanwhile: the last snapshot is served, non-authoritative |
-| Health ok, domains not authoritative, snapshot old | refresher cannot complete a full read (a page fails, quota, timeouts) | check the hub logs for the failing page; **Refresh** to retry now; the snapshot recovers on the next successful pass |
+| Health: error, domains *provisional — probe failed* | token revoked, admin suspended, tenant policy changed, scopes withdrawn | **Reconnect** (consent) or upload a new key. Nothing is lost meanwhile: the last snapshot is served, non-authoritative |
+| Health ok, domains *provisional — snapshot stale* | refresher cannot complete a full read (a page fails, quota, timeouts) | check the hub logs for the failing page; **Refresh** to retry now; the snapshot recovers on the next successful pass |
+| Health ok, domains *provisional — first snapshot pending* | the workspace was connected moments ago, or its served list was just changed; the first snapshot runs detached | wait — seconds for a small tenant, a minute or two for a large one. Longer than a refresh interval: read the log for the failing page |
+| One replica answers *workspace not found* for a directory the other serves | before 0.8 the reader map was filled only at start, so a workspace connected on one replica was unknown to the other | restart the replica; from 0.8 a missing reader is opened from the stored credential on first use |
+| The consent callback shows the CDN's own *Bad gateway* page | the hub answered 5xx and the CDN replaced it — since 0.7.2 the callback never answers 5xx, so the request did not reach the hub | the gateway, the route, or the egress policy; the hub's log has nothing because nothing arrived |
 | One domain not authoritative on two workspaces, marked *conflict* | both tenants list the domain **and both serve it** — a move in progress, or a misconfiguration | wait for the move to complete, or narrow one of them: *Choose which to serve* on the directory's page, leaving the domain out of the tenant that should not answer for it |
 | A domain shows *not served* | this hub was narrowed to a subset of the tenant's domains, so nothing routes to it and its accounts are not cached | intended in most cases; *Choose which to serve* changes it. A declared workspace says so in the values (`workspaces[].serve`) |
 | A domain shows *no longer owned* | the served list names a domain the directory no longer lists — it has moved to another tenant | the hand-over already happened: the other workspace serves it as soon as its own discovery returns it. Drop the entry here so the list matches reality |
@@ -129,6 +132,9 @@ Two replicas are the default; the shared Valkey makes them answer from
 the same snapshot and lets one refresher run for both. A single replica
 may run without Valkey (`valkey.address` empty), at the cost of a cold
 cache on every restart. Memory in Valkey is the size of the directories.
+Every replica serves every workspace: one connected through the console
+on the other replica is opened from its stored credential on first use
+*(0.8; before that, only a restart taught a replica about it)*.
 
 ## Logs
 

@@ -25,6 +25,13 @@ presents as a second account picker, not as a refusal. directory-roster
 renders those paths on a second HTTPRoute (`route.bootstrapPaths`) and the
 proxy attaches only to the main one.
 
+The corollary, learned 2026-09-09 on the second real install step: a
+request on the bootstrap surface carries **no identity from the gateway**,
+so the consent callback cannot demand one — it takes its operator from
+the state the hub signed when an operator started the flow. A callback
+that checked the request instead refused the one flow the surface exists
+to finish.
+
 **Decided 2026-09-08:** its first consumer is the **directory-roster
 console**, in the `authenticated` posture. The hub resolves viewer/operator
 from the directory it owns, so the gateway gates on "signed in" and the

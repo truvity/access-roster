@@ -153,6 +153,56 @@ A domain is authoritative when its workspace's last probe succeeded, its
 snapshot is younger than the freshness window (default twice the refresh
 interval) and no domain conflict exists.
 
+A served domain that is not authoritative is **provisional**, and the
+console says why: *first snapshot pending*, *snapshot stale*, or *probe
+failed*; a domain two workspaces both serve is *contested*. The wire
+contract is unchanged — consumers read the `authoritative` boolean and
+nothing else — the word is the console's. It replaced *hold* on
+2026-09-09: *hold* named what a consumer does, not what the domain is,
+and on a tenant connected ten seconds earlier it read as an alarm beside
+a green health chip. An unserved domain is neither: it is simply not
+read. *(0.8: the reason is carried on the domain entry; the Overview
+counts served domains only — it counted unserved ones as held.)*
+
+### Nothing slow on the request path
+
+Decided 2026-09-09, after the first live connect. Three things had crept
+onto the request path, and all three met a gateway's fifteen-second route
+timeout: `Adopt` took the first snapshot before answering the consent
+callback; a console list call with no snapshot yet read the directory
+under the request's own context; and narrowing a workspace refreshed it
+before returning. Each was cancelled mid-read, each restarted from zero
+on the next request, and the callback reported a failure on a connect
+that had succeeded.
+
+The rule: **a request never waits on the directory.** Adopting a
+workspace stores it and returns; the first snapshot runs detached, under
+the hub's own context, single-flight. A read with no snapshot answers
+*first snapshot pending* — provisional and empty — and lets the
+refresher fill it. Narrowing stores the new list, drops what is now
+excluded from the snapshot at once, and refreshes detached. The only
+request-scoped read that remains is the point lookup, which is one
+account and bounded. Raising the gateway's timeout is not the fix: after
+this nothing on the console path approaches it, and a longer timeout
+would only hide the next thing that does. *(0.8)*
+
+A full read is also bounded in wall-clock: group members are listed with
+bounded concurrency — a handful in flight per workspace, because the
+directory's quota is per tenant, not per reader — and every pass logs
+its duration. *(0.8; today the members of every group are read one
+group after another.)*
+
+### Every replica knows every workspace
+
+Also 2026-09-09. Readers were opened from stored credentials once, at
+start. A workspace adopted on one replica did not exist on the other
+until it restarted, so half of all requests answered *workspace not
+found* for a directory that had just been connected — and a narrowing
+that landed on the wrong replica dropped the snapshot. The store is the
+truth and the reader map is a cache of it: a replica that has no reader
+for a workspace the store knows opens one from the stored credential on
+first use. *(0.8)*
+
 ### The cache
 
 Snapshots live in **Valkey**, which is external to the hub: the chart takes
@@ -229,11 +279,31 @@ removes the interstitial.
    and the last is the one a narrower role tends not to satisfy. It is
    who consents, not what the token can do -- the token stays bounded by
    the four read-only scopes.
-4. Consent, redirect back. The browser carries the gateway session, so the
-   callback is authenticated like any other page.
+4. Consent, redirect back. The callback lands on the **bootstrap
+   surface** — the route a gateway policy does not cover, so that a
+   redirect from the directory is never swallowed by a login prompt —
+   and therefore carries **no gateway identity**. Its authority is the
+   signed state: issued when an operator asked for the consent on a
+   request the gateway did authenticate, pinned to this browser by a
+   cookie, and naming who asked. Decided 2026-09-09: a callback that
+   insisted on an identity in the request refused the one flow it exists
+   to finish.
 5. The hub exchanges the code, records the consenting account, reads the
-   customer id and domain list, runs a first probe, and stores the
-   workspace. Its domains are served from that moment.
+   tenant id **from the consenting administrator's own user record** —
+   `Customers.Get` returns the same id but needs a fifth scope nobody
+   granted — and the domain list, and stores the workspace. If any of
+   this fails, the page says so in the directory's own words; never a
+   5xx, which a CDN in front replaces with a page of its own.
+6. **Which domains?** *(0.8)* Before anything is read, the console asks.
+   The consenting administrator's own domain is pre-selected; every
+   other domain the tenant owns is listed and off; *all of them,
+   including ones added later* is an explicit choice. The first
+   installation connected a tenant with seven domains, most of them not
+   employee domains, and the default of serving all of them read every
+   one immediately and showed seven provisional domains before the
+   operator had done anything. The first snapshot starts after the
+   choice, detached; the page shows *first snapshot pending* until it
+   lands.
 
 ### The second way in
 
@@ -245,9 +315,9 @@ prefer a robot identity or cannot publish an external consent screen.
 
 Access tokens are minted from the refresh token; the workspace is probed on
 an interval. A revoked token, a suspended admin account or a tenant policy
-change fails the probe: the workspace shows unhealthy, its domains stop
-being authoritative, consumers hold their removals, and the console offers
-**Reconnect**, which is the same button again.
+change fails the probe: the workspace shows unhealthy, its domains turn
+provisional (*probe failed*), consumers hold their removals, and the
+console offers **Reconnect**, which is the same button again.
 
 ## The store
 
@@ -333,7 +403,7 @@ console edits — from either end.
 | Surface | Answers |
 |---|---|
 | Search, on every page | almost every task starts with a name: a person, a group on either side, a client, a directory. One field resolves any of them |
-| Overview | is anything broken: failing directories, domains on hold or contested, directory groups attached to nothing, internal groups nobody feeds, a recovery password if one is kept. On an installation that is not finished it leads with what is left to do instead, because the counts cannot say anything useful yet |
+| Overview | is anything broken: failing directories, provisional or contested domains with the reason for each, directory groups attached to nothing, internal groups nobody feeds, a recovery password if one is kept. On an installation that is not finished it leads with what is left to do instead, because the counts cannot say anything useful yet |
 | Directories, and one page per directory | which tenants we read, their domains and standing, the actions on the tenant itself, and the groups and accounts it holds — every one a link. **Add a directory** offers both ways in, admin consent and an uploaded key, and only the ways this deployment can take |
 | Directory groups, and one page per group | what the directories say exists, and which of it the policy uses. A group's page reads along the chain: its members as the directory reports them, the internal groups it feeds, the clients that therefore open |
 | People, and one page per person | every account, as the last snapshot has it, filtered by directory and by whether it is live. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why. Once the issuer exists it gains **Active sessions** with Revoke, and your own page **Sign out everywhere** |

@@ -343,13 +343,15 @@ sequenceDiagram
   Hub-->>Op: consent URL + state cookie
   Op->>G: consent screen, signed in as the tenant's admin role account
   G-->>Op: redirect to /connect/google/callback with code and state
-  Op->>Hub: callback (same session)
-  Hub->>Hub: verify state cookie
+  Op->>Hub: callback on the bootstrap surface (no gateway identity)
+  Hub->>Hub: verify the state cookie; the signed state names the operator
   Hub->>G: exchange code → refresh token (offline, forced consent)
-  Hub->>G: customers.get → tenant id, domains.list → domains
-  Hub->>G: first probe (users.list page, groups.list page)
+  Hub->>G: users.get(admin) → tenant id, domains.list → domains
   Hub->>K: Secret workspace-{id} (refresh token), ConfigMap workspace-{id} (record)
-  Hub-->>Op: the tenant's page: domains served, authoritative after the first snapshot
+  Hub-->>Op: which domains to serve? (the admin's own pre-selected)
+  Op->>Hub: the choice
+  Note over Hub,G: first probe and first snapshot run detached - a request never waits on the directory
+  Hub-->>Op: the tenant's page: first snapshot pending → authoritative when it lands
 ```
 
 ### 5.7 A login-time lookup with freshness
@@ -386,7 +388,7 @@ sequenceDiagram
   actor O as Operator
   participant H as directory-roster console
   participant G as Google Workspace
-  O->>H: port-forward, sign in as admin (password from the generated Secret)
+  O->>H: port-forward, recovery sign-in (a ServiceAccount token the API server vouches for)
   O->>H: Settings: OAuth client (or declared by the chart)
   O->>H: Connect Google Workspace
   H-->>O: consent URL
@@ -398,7 +400,7 @@ sequenceDiagram
   H->>G: OIDC sign-in with the same client, openid scopes only
   H->>H: email → workspace → live and in group → operator
   O->>H: disable admin (chart value)
-  Note over O,H: with a proxy in front, steps 1 and 9-11 are replaced by the proxy's login - the memberships are the same, and recovery stays reachable by port-forward
+  Note over O,H: with a proxy in front, steps 1 and 9-11 are replaced by the proxy's login against the issuer - and the first operator recovers AT THE ISSUER, completing as a ServiceAccount subject the policy's service_account matcher puts in hub-operators
 ```
 
 ## 6. Failure semantics, in one table
@@ -412,12 +414,15 @@ sequenceDiagram
 | Address in no served domain | `in_domain=false`: no opinion |
 | Account missing from the snapshot | one live read first; `found=false` only after the backend said so |
 | Valkey unreachable | every domain non-authoritative until it returns; the in-memory fallback is for a single replica only |
-| Credential revoked or admin suspended | probe fails → non-authoritative; Reconnect is the recovery |
+| Credential revoked or admin suspended | probe fails → provisional (*probe failed*); Reconnect is the recovery |
+| A request would wait on the directory: the first snapshot, a list with no snapshot yet, a narrowing | it does not *(0.8)*: the work runs detached and the answer is *first snapshot pending* — provisional, never a timeout at the gateway |
+| A replica has no reader for a workspace the store knows (connected on another replica) | it opens one from the stored credential on first use *(0.8)*; the store is the truth, the reader map a cache |
+| A consent the directory granted fails on the first read | a page in the console's own style: the directory's message verbatim and the usual causes, most common first — never a 5xx, which the CDN in front replaces with its own page |
 | A signed-in operator's own account turns non-authoritative | last granted role kept for a bounded window; no new identity granted anything |
 | Consumer presents no token, a wrong audience, or a foreign ServiceAccount | `unauthenticated`; NetworkPolicy would have stopped most of these earlier |
 | access-issuer is down | no new logins anywhere; existing sessions and tokens live to expiry; break-glass is outside it |
 | The hub is down | access-issuer keeps last-known groups within its hold window; github-roster holds removals |
 
 The rule under all of them: **a consumer removes access only on an
-authoritative answer.** Everything that can go wrong degrades to "hold",
-never to "gone".
+authoritative answer.** Everything that can go wrong degrades to
+*provisional*, never to "gone".

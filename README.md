@@ -11,9 +11,14 @@ authenticates anyone.** Sign-in stays with the corporate identity
 providers; this repository verifies the result, knows the directory, and
 applies the policy.
 
-> **Status: design under review; nothing runs yet.** Documentation first,
-> services second. The directory hub is built first; the issuer and the
-> batteries follow.
+> **Status: running; the first directory is connected.** The hub and the
+> issuer are deployed, and the hub's own console sits behind `access-proxy`
+> against the issuer — the first consumer of both. One Google Workspace is
+> connected. The Go module, the TypeScript package and the three charts
+> are published from every tag; `accessctl` and the Action are still to
+> come. [CHANGELOG.md](CHANGELOG.md) says what exists at each version.
+> The design documents describe the target state and mark, as *(0.8)*,
+> what the first live connect showed still has to change.
 >
 > Start with [why this exists](docs/why.md), then the
 > [helicopter view of every integration](docs/integrations.md), then
@@ -66,7 +71,8 @@ console sits behind `access-proxy` and reads the forwarded bearer through
 the Go or TypeScript library; a cluster trusts the issuer and a client id;
 a cloud account trusts the issuer and an audience; a workflow exchanges
 its own token; a person runs `accessctl`. Anything that goes wrong on the
-directory side degrades to "not authoritative", never to "gone".
+directory side degrades to "not authoritative" — *provisional*, in the
+console's word — never to "gone".
 
 ## Documentation
 
