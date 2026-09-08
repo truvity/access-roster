@@ -96,6 +96,27 @@ message Workspace {
   bool declared = 10;
 }
 
+// DomainReason says WHY a served domain is not authoritative.
+//
+// The consumer-facing contract is unchanged and is the `authoritative`
+// boolean alone (see directory.v1). This is for the operator looking at
+// the console, because "not authoritative" covers a workspace connected
+// ten seconds ago and one whose credential was revoked last week, and
+// telling an operator the wrong one of those reads as an alarm.
+enum DomainReason {
+  // authoritative, or not served at all — there is nothing to explain.
+  DOMAIN_REASON_UNSPECIFIED = 0;
+  // no snapshot has ever been taken. The ordinary state of a workspace
+  // connected moments ago; it clears by itself.
+  DOMAIN_REASON_FIRST_SNAPSHOT_PENDING = 1;
+  // there is a snapshot and it is older than the freshness window.
+  DOMAIN_REASON_SNAPSHOT_STALE = 2;
+  // the last probe of the credential failed.
+  DOMAIN_REASON_PROBE_FAILED = 3;
+  // another workspace serves the same domain.
+  DOMAIN_REASON_CONTESTED = 4;
+}
+
 // WorkspaceDomain is one domain a workspace holds, and its standing.
 message WorkspaceDomain {
   string name = 1;
@@ -114,6 +135,10 @@ message WorkspaceDomain {
   // a domain moves to another tenant, say. It routes nothing and should
   // be dropped from the list.
   bool owned = 5;
+  // why a served domain is not authoritative. Unspecified when it is, and
+  // for a domain this hub does not serve — an unserved domain is not a
+  // degraded answer, it is no answer.
+  DomainReason reason = 6;
 }
 
 // Health is the outcome of the last probe.

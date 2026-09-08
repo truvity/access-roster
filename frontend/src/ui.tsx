@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+
+import { DomainReason } from "./gen/directoryroster/v1/workspace_pb";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -73,8 +75,8 @@ export type StateKind =
   | "live"
   | "suspended"
   | "authoritative"
-  | "hold"
-  | "conflict"
+  | "provisional"
+  | "contested"
   | "declared"
   | "console"
   | "matcher"
@@ -90,8 +92,8 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   live: { label: "live", color: "success", title: "The directory reports this account as active." },
   suspended: { label: "suspended", color: "warning", filled: true, title: "The directory says this account is not live. A consumer acts on that only when the answer is authoritative." },
   authoritative: { label: "authoritative", color: "success", title: "The last probe succeeded, the snapshot is fresh and no one else claims this domain. Consumers may act on removals." },
-  hold: { label: "hold", color: "warning", title: "Answers about this are a hold, not a fact: consumers add but never remove." },
-  conflict: { label: "conflict", color: "warning", filled: true, title: "Another directory claims this domain too. It is authoritative for neither until one of them drops it." },
+  provisional: { label: "provisional", color: "warning", title: "Answers about this may not be acted on for removals: consumers add but never remove." },
+  contested: { label: "contested", color: "warning", filled: true, title: "Another directory serves this domain too. It is authoritative for neither until one of them stops." },
   declared: { label: "declared", color: "secondary", title: "Declared by the deployment: change it in the values." },
   console: { label: "console", color: "default", title: "Added in this console." },
   matcher: { label: "matcher", color: "secondary", title: "Admits a proof by its shape rather than through a directory: a CI job, a workload, a verified sign-in. Declared only." },
@@ -112,32 +114,59 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   },
 };
 
-/** The one thing a chip means here: a state. */
-export function State({ kind, title }: { kind: StateKind; title?: string }) {
+/** The one thing a chip means here: a state. A state that has a reason
+ *  carries it in the label — "provisional" on its own is the answer that
+ *  sent an operator looking for a fault that was not there. */
+export function State({ kind, title, label }: { kind: StateKind; title?: string; label?: string }) {
   const s = states[kind];
-  const chip = <Chip label={s.label} color={s.color} variant={s.filled ? "filled" : "outlined"} />;
+  const chip = <Chip label={label ? `${s.label} · ${label}` : s.label} color={s.color} variant={s.filled ? "filled" : "outlined"} />;
   const tip = title ?? s.title;
   return tip ? <Tooltip title={tip}>{chip}</Tooltip> : chip;
 }
 
+/** Why a domain is provisional, in the operator's words. The wire says
+ *  only "not authoritative", which covers a directory connected ten
+ *  seconds ago and one whose credential was revoked last week — and
+ *  showing the wrong one of those reads as an alarm on a directory that
+ *  is perfectly fine. */
+export const domainReason: Record<number, { short: string; why: string }> = {
+  [DomainReason.FIRST_SNAPSHOT_PENDING]: {
+    short: "first snapshot",
+    why: "This directory has not been read yet. The first snapshot is running; it clears by itself.",
+  },
+  [DomainReason.SNAPSHOT_STALE]: {
+    short: "stale",
+    why: "The last snapshot is older than the freshness window, so its answers are no longer current enough to act on.",
+  },
+  [DomainReason.PROBE_FAILED]: {
+    short: "probe failed",
+    why: "The credential did not work at the last probe. Reconnect, or upload a new key.",
+  },
+};
+
 /** Whether a domain's answers may be acted on — or, before that question
  *  arises, whether the hub answers for it at all. A domain left out of the
- *  served list has no authority to report and never gets a "hold": it is
+ *  served list has no authority to report and is never provisional: it is
  *  not a degraded answer, it is no answer. */
 export function Authority({
   authoritative,
   conflict,
   served,
   owned,
+  reason,
 }: {
   authoritative: boolean;
   conflict?: boolean;
   served?: boolean;
   owned?: boolean;
+  reason?: DomainReason;
 }) {
   if (owned === false) return <State kind="unowned" />;
   if (served === false) return <State kind="unserved" />;
-  return <State kind={conflict ? "conflict" : authoritative ? "authoritative" : "hold"} />;
+  if (conflict) return <State kind="contested" />;
+  if (authoritative) return <State kind="authoritative" />;
+  const explained = reason !== undefined ? domainReason[reason] : undefined;
+  return <State kind="provisional" label={explained?.short} title={explained?.why} />;
 }
 
 export type Fact = { label: string; value: ReactNode };

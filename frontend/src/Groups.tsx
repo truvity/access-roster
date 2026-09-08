@@ -237,7 +237,7 @@ export function Group({
           right={(h) => (
             <>
               {!h.live ? <State kind="suspended" /> : null}
-              {!h.authoritative ? <State kind="hold" /> : null}
+              {!h.authoritative ? <State kind="provisional" /> : null}
             </>
           )}
           empty={

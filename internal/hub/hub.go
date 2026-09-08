@@ -1045,12 +1045,42 @@ func (h *Hub) Disconnect(ctx context.Context, workspaceID string) error {
 	return h.store.Delete(ctx, workspaceID)
 }
 
+// DomainReason says why a served domain is not authoritative.
+//
+// The consumer contract is the Authoritative boolean and nothing else.
+// This exists for the operator reading the console, because "not
+// authoritative" covers a workspace connected ten seconds ago and one
+// whose credential was revoked last week — and showing an operator the
+// wrong one of those reads as an alarm on a directory that is fine.
+type DomainReason string
+
+// The reasons, in the order they are decided.
+const (
+	// ReasonNone is an authoritative domain, or one this hub does not
+	// serve: an unserved domain is not a degraded answer, it is no answer.
+	ReasonNone DomainReason = ""
+	// ReasonContested is another workspace serving the same domain. It
+	// comes first because it is the only one an operator resolves by
+	// changing configuration rather than by waiting.
+	ReasonContested DomainReason = "contested"
+	// ReasonFirstSnapshotPending is a workspace that has never been read.
+	// The ordinary state of one connected moments ago; it clears itself.
+	ReasonFirstSnapshotPending DomainReason = "first_snapshot_pending"
+	// ReasonProbeFailed is a credential the last probe could not use.
+	ReasonProbeFailed DomainReason = "probe_failed"
+	// ReasonSnapshotStale is a snapshot older than the freshness window.
+	ReasonSnapshotStale DomainReason = "snapshot_stale"
+)
+
 // DomainStanding is one domain of one workspace, as an operator sees it.
 type DomainStanding struct {
 	// Name is the domain.
 	Name string
 	// Authoritative reports whether answers about it may be acted on.
 	Authoritative bool
+	// Reason says why not, when Authoritative is false and the domain is
+	// served. Empty otherwise.
+	Reason DomainReason
 	// Conflict reports that another workspace claims it too, which is why
 	// it is authoritative for neither until one of them drops it.
 	Conflict bool
@@ -1061,6 +1091,26 @@ type DomainStanding struct {
 	// only possible for a domain Serve names and discovery no longer
 	// returns: it routes nothing, and an operator should drop it.
 	Owned bool
+}
+
+// reasonFor explains a served domain that is not authoritative.
+//
+// The order is what an operator can act on, most actionable first:
+// contested is a decision to make, a missing first snapshot is a wait, a
+// failed probe is a credential to fix, and staleness is what is left.
+func (h *Hub) reasonFor(ws Workspace, res resolution, snap *Snapshot) DomainReason {
+	switch {
+	case res.conflict:
+		return ReasonContested
+	case snap == nil:
+		return ReasonFirstSnapshotPending
+	case !ws.Health.OK:
+		return ReasonProbeFailed
+	case snap.Age(h.now()) >= h.cfg.FreshnessWindow:
+		return ReasonSnapshotStale
+	default:
+		return ReasonNone
+	}
 }
 
 // WorkspaceView is a workspace record with the standing of each of its
@@ -1102,6 +1152,9 @@ func (h *Hub) WorkspaceViews(ctx context.Context) ([]WorkspaceView, error) {
 			if routed && standing.Served {
 				standing.Conflict = res.conflict
 				standing.Authoritative = res.workspace == id && h.authoritative(ws, res, snap)
+				if !standing.Authoritative {
+					standing.Reason = h.reasonFor(ws, res, snap)
+				}
 			}
 			domains = append(domains, standing)
 		}
