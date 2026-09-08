@@ -64,6 +64,10 @@ exposure:
     # identity headers, so a backend can verify it against the issuer's
     # keys instead of trusting a header.
     authorizationHeader: true
+    # Extra client request headers Envoy includes in the check request it
+    # sends this proxy. The headers a session needs are not configurable
+    # and are always sent -- see the SecurityPolicy template for why.
+    extraExtAuthHeaders: []
 
 issuer:
   url: ""
