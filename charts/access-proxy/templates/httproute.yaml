@@ -31,6 +31,10 @@ spec:
           kind: Service
           name: {{ include "access-proxy.fullname" . }}
           port: {{ .Values.proxy.port }}
+          # Explicit, matching the API default: ArgoCD normalises core-API
+          # defaults but NOT CRDs, so an unwritten one is a permanent
+          # OutOfSync that gates every later wave.
+          weight: 1
 {{- range $route := (include "access-proxy.routes" $ | fromYamlArray) }}
 {{- if not $route.attachRouteName }}
 ---
@@ -65,6 +69,7 @@ spec:
           kind: Service
           name: {{ required (printf "route %q needs backend.name, or attachRouteName to bind to a route that already exists" $route.name) $route.backend.name }}
           port: {{ $route.backend.port | default 8080 }}
+          weight: 1
     {{- end }}
 {{- end }}
 {{- end }}
