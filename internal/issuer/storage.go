@@ -57,47 +57,53 @@ func (v Verifiers) Verify(ctx context.Context, token, tokenType string) (Proof, 
 // token is one issued access token, remembered so that userinfo and
 // revocation can find it.
 type token struct {
-	id       string
-	subject  string
-	clientID string
-	audience []string
-	scopes   []string
-	claims   map[string]any
-	expires  time.Time
+	ID       string         `json:"id"`
+	Subject  string         `json:"subject"`
+	ClientID string         `json:"clientID"`
+	Audience []string       `json:"audience,omitempty"`
+	Scopes   []string       `json:"scopes,omitempty"`
+	Claims   map[string]any `json:"claims,omitempty"`
+	Expires  time.Time      `json:"expires"`
 }
 
-// authRequest is a login in progress. The spike keeps them in memory;
-// a deployment keeps them in Valkey, where they expire on their own.
+// authRequest is a login in progress: a browser part-way between the
+// application that sent it and the directory that will say who it is.
+//
+// It is written down rather than held, because the browser that starts at
+// one replica comes back at another. The library's own request travels
+// with it: everything the protocol decided at /authorize — the scopes,
+// the redirect, the PKCE challenge — has to survive to the moment the
+// code is redeemed, and re-deriving any of it would be deciding it twice.
 type authRequest struct {
-	id       string
-	req      *oidc.AuthRequest
-	subject  string
-	authTime time.Time
-	done     bool
+	ID       string            `json:"id"`
+	Req      *oidc.AuthRequest `json:"request"`
+	Subject  string            `json:"subject,omitempty"`
+	AuthTime time.Time         `json:"authTime,omitempty"`
+	IsDone   bool              `json:"done,omitempty"`
 }
 
 var _ op.AuthRequest = (*authRequest)(nil)
 
-func (a *authRequest) GetID() string          { return a.id }
+func (a *authRequest) GetID() string          { return a.ID }
 func (a *authRequest) GetACR() string         { return "" }
 func (a *authRequest) GetAMR() []string       { return []string{"pwd"} }
-func (a *authRequest) GetAudience() []string  { return []string{a.req.ClientID} }
-func (a *authRequest) GetAuthTime() time.Time { return a.authTime }
-func (a *authRequest) GetClientID() string    { return a.req.ClientID }
+func (a *authRequest) GetAudience() []string  { return []string{a.Req.ClientID} }
+func (a *authRequest) GetAuthTime() time.Time { return a.AuthTime }
+func (a *authRequest) GetClientID() string    { return a.Req.ClientID }
 func (a *authRequest) GetCodeChallenge() *oidc.CodeChallenge {
-	if a.req.CodeChallenge == "" {
+	if a.Req.CodeChallenge == "" {
 		return nil
 	}
-	return &oidc.CodeChallenge{Challenge: a.req.CodeChallenge, Method: a.req.CodeChallengeMethod}
+	return &oidc.CodeChallenge{Challenge: a.Req.CodeChallenge, Method: a.Req.CodeChallengeMethod}
 }
-func (a *authRequest) GetNonce() string                   { return a.req.Nonce }
-func (a *authRequest) GetRedirectURI() string             { return a.req.RedirectURI }
-func (a *authRequest) GetResponseType() oidc.ResponseType { return a.req.ResponseType }
-func (a *authRequest) GetResponseMode() oidc.ResponseMode { return a.req.ResponseMode }
-func (a *authRequest) GetScopes() []string                { return a.req.Scopes }
-func (a *authRequest) GetState() string                   { return a.req.State }
-func (a *authRequest) GetSubject() string                 { return a.subject }
-func (a *authRequest) Done() bool                         { return a.done }
+func (a *authRequest) GetNonce() string                   { return a.Req.Nonce }
+func (a *authRequest) GetRedirectURI() string             { return a.Req.RedirectURI }
+func (a *authRequest) GetResponseType() oidc.ResponseType { return a.Req.ResponseType }
+func (a *authRequest) GetResponseMode() oidc.ResponseMode { return a.Req.ResponseMode }
+func (a *authRequest) GetScopes() []string                { return a.Req.Scopes }
+func (a *authRequest) GetState() string                   { return a.Req.State }
+func (a *authRequest) GetSubject() string                 { return a.Subject }
+func (a *authRequest) Done() bool                         { return a.IsDone }
 
 // Storage is the shell the OpenID library needs, over the issuer's
 // decision core. It stores; it does not decide. Every question about
@@ -111,12 +117,35 @@ type Storage struct {
 	key     *SigningKey
 	secrets func(clientID string) (string, bool)
 
-	mu       sync.Mutex
-	requests map[string]*authRequest
-	codes    map[string]string // code → auth request id
-	tokens   map[string]*token
-	grants   sync.Map // op.TokenExchangeRequest → Grant
+	// state is shared by every replica, because a login is not: a browser
+	// starts at /authorize on one, comes back from the provider at
+	// another, and the client redeems the code at a third.
+	state State
+
+	// grants is per-process on purpose. It carries an exchange decision
+	// between two calls the library makes about the *same* request, in
+	// the same handler, microseconds apart — writing that down would be
+	// storing something that never outlives the function that made it.
+	grants sync.Map // op.TokenExchangeRequest → Grant
 }
+
+// How long each kind of thing in a login flow is worth keeping. Nothing
+// here is state a person would miss: an abandoned login is abandoned, and
+// a code nobody redeemed is a browser that closed.
+const (
+	// authRequestTTL bounds a login from /authorize to the redirect back.
+	// Generous, because it spans a person reading a consent screen.
+	authRequestTTL = 30 * time.Minute
+	// authCodeTTL bounds the moment between the redirect and the token
+	// call, which is a machine talking to a machine.
+	authCodeTTL = 5 * time.Minute
+)
+
+// Keys. The prefix is what tells one kind from another in a store shared
+// with the hub's snapshots.
+func requestKey(id string) string { return "issuer:request:" + id }
+func codeKey(code string) string  { return "issuer:code:" + code }
+func tokenKey(id string) string   { return "issuer:token:" + id }
 
 var (
 	_ op.Storage                            = (*Storage)(nil)
@@ -130,9 +159,12 @@ var (
 // secrets resolves a confidential client's secret, which lives in a
 // Kubernetes Secret and never in the policy file. key is the signing key;
 // a nil one is generated, which is right for a local run and wrong for a
-// deployment — see [SigningKey].
+// deployment — see [SigningKey]. state is where a login in progress
+// lives; a nil one is kept in this process, which is right for one
+// replica and wrong for more — see [State].
 func NewStorage(
-	iss *Issuer, verify Verifier, secrets func(string) (string, bool), key *SigningKey,
+	iss *Issuer, verify Verifier, secrets func(string) (string, bool),
+	key *SigningKey, state State,
 ) (*Storage, error) {
 	if key == nil {
 		generated, err := NewSigningKey()
@@ -144,15 +176,16 @@ func NewStorage(
 	if secrets == nil {
 		secrets = func(string) (string, bool) { return "", false }
 	}
+	if state == nil {
+		state = NewMemoryState()
+	}
 	return &Storage{
-		Devices:  NewDevices(),
-		iss:      iss,
-		verify:   verify,
-		key:      key,
-		secrets:  secrets,
-		requests: map[string]*authRequest{},
-		codes:    map[string]string{},
-		tokens:   map[string]*token{},
+		Devices: NewDevices(state),
+		iss:     iss,
+		verify:  verify,
+		key:     key,
+		secrets: secrets,
+		state:   state,
 	}, nil
 }
 
@@ -214,81 +247,77 @@ func (s *Storage) AuthorizeClientIDSecret(_ context.Context, clientID, secret st
 // --------------------------------------------------------- auth requests
 
 // CreateAuthRequest implements [op.AuthStorage].
-func (s *Storage) CreateAuthRequest(_ context.Context, req *oidc.AuthRequest, subject string) (op.AuthRequest, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	out := &authRequest{id: uuid.NewString(), req: req, subject: subject, authTime: time.Now()}
-	s.requests[out.id] = out
+func (s *Storage) CreateAuthRequest(
+	ctx context.Context, req *oidc.AuthRequest, subject string,
+) (op.AuthRequest, error) {
+	out := &authRequest{ID: uuid.NewString(), Req: req, Subject: subject, AuthTime: time.Now()}
+	if err := setJSON(ctx, s.state, requestKey(out.ID), out, authRequestTTL); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 // AuthRequestByID implements [op.AuthStorage].
-func (s *Storage) AuthRequestByID(_ context.Context, id string) (op.AuthRequest, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *Storage) AuthRequestByID(ctx context.Context, id string) (op.AuthRequest, error) {
+	req, err := s.request(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return req, nil
+}
 
-	req, ok := s.requests[id]
-	if !ok {
+func (s *Storage) request(ctx context.Context, id string) (*authRequest, error) {
+	req, err := getJSON[authRequest](ctx, s.state, requestKey(id))
+	switch {
+	case err != nil:
+		return nil, err
+	case req == nil:
+		// Expired or never existed, and the two are the same answer to
+		// the caller: there is nothing to continue.
 		return nil, errors.New("no such authorization request")
 	}
 	return req, nil
 }
 
 // AuthRequestByCode implements [op.AuthStorage].
-func (s *Storage) AuthRequestByCode(_ context.Context, code string) (op.AuthRequest, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	id, ok := s.codes[code]
-	if !ok {
+func (s *Storage) AuthRequestByCode(ctx context.Context, code string) (op.AuthRequest, error) {
+	raw, found, err := s.state.Get(ctx, codeKey(code))
+	if err != nil {
+		return nil, err
+	}
+	if !found {
 		return nil, errors.New("no such authorization code")
 	}
-	req, ok := s.requests[id]
-	if !ok {
-		return nil, errors.New("no such authorization request")
-	}
-	return req, nil
+	return s.AuthRequestByID(ctx, string(raw))
 }
 
 // SaveAuthCode implements [op.AuthStorage].
-func (s *Storage) SaveAuthCode(_ context.Context, id, code string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.requests[id]; !ok {
-		return errors.New("no such authorization request")
+func (s *Storage) SaveAuthCode(ctx context.Context, id, code string) error {
+	if _, err := s.request(ctx, id); err != nil {
+		return err
 	}
-	s.codes[code] = id
-	return nil
+	return s.state.Set(ctx, codeKey(code), []byte(id), authCodeTTL)
 }
 
 // DeleteAuthRequest implements [op.AuthStorage].
-func (s *Storage) DeleteAuthRequest(_ context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.requests, id)
-	for code, forID := range s.codes {
-		if forID == id {
-			delete(s.codes, code)
-		}
-	}
-	return nil
+//
+// The code is not deleted with it, and does not need to be: it expires on
+// its own, and it resolves to a request that is already gone. Hunting for
+// it would mean an index from request to code kept only to tidy up.
+func (s *Storage) DeleteAuthRequest(ctx context.Context, id string) error {
+	return s.state.Delete(ctx, requestKey(id))
 }
 
 // Complete marks a login as finished, which is what the issuer's own
 // sign-in page calls once an identity provider has said who is there.
 func (s *Storage) Complete(id, subject string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	req, ok := s.requests[id]
-	if !ok {
-		return errors.New("no such authorization request")
+	ctx := context.Background()
+	req, err := s.request(ctx, id)
+	if err != nil {
+		return err
 	}
-	req.subject, req.done, req.authTime = strings.ToLower(subject), true, time.Now()
-	return nil
+	req.Subject, req.IsDone, req.AuthTime = strings.ToLower(subject), true, time.Now()
+	return setJSON(ctx, s.state, requestKey(id), req, authRequestTTL)
 }
 
 // --------------------------------------------------------------- tokens
@@ -299,7 +328,7 @@ func (s *Storage) CreateAccessToken(ctx context.Context, request op.TokenRequest
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	return issued.id, issued.expires, nil
+	return issued.ID, issued.Expires, nil
 }
 
 // CreateAccessAndRefreshTokens implements [op.AuthStorage].
@@ -319,15 +348,15 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 		if _, ok := s.iss.Sessions().Refreshed(currentRefreshToken, refresh); !ok {
 			return "", "", time.Time{}, oidc.ErrInvalidGrant().WithDescription("the refresh token is not live")
 		}
-		return issued.id, refresh, issued.expires, nil
+		return issued.ID, refresh, issued.Expires, nil
 	}
 
 	how := HowCode
 	if _, ok := request.(op.TokenExchangeRequest); ok {
 		how = HowExchange
 	}
-	s.iss.Sessions().Record(issued.subject, clientOf(request), how, refresh)
-	return issued.id, refresh, issued.expires, nil
+	s.iss.Sessions().Record(issued.Subject, clientOf(request), how, refresh)
+	return issued.ID, refresh, issued.Expires, nil
 }
 
 // issue records one access token and returns it.
@@ -346,17 +375,20 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 	}
 
 	issued := &token{
-		id:       uuid.NewString(),
-		subject:  request.GetSubject(),
-		clientID: clientOf(request),
-		audience: request.GetAudience(),
-		scopes:   request.GetScopes(),
-		claims:   claims,
-		expires:  time.Now().Add(lifetime),
+		ID:       uuid.NewString(),
+		Subject:  request.GetSubject(),
+		ClientID: clientOf(request),
+		Audience: request.GetAudience(),
+		Scopes:   request.GetScopes(),
+		Claims:   claims,
+		Expires:  time.Now().Add(lifetime),
 	}
-	s.mu.Lock()
-	s.tokens[issued.id] = issued
-	s.mu.Unlock()
+	// Kept only until it expires: an access token past its lifetime
+	// answers nothing, and a store that has to be swept is a store that
+	// grows when the sweeper stops.
+	if err = setJSON(ctx, s.state, tokenKey(issued.ID), issued, time.Until(issued.Expires)); err != nil {
+		return nil, err
+	}
 	return issued, nil
 }
 
@@ -424,9 +456,13 @@ func (s *Storage) RevokeToken(_ context.Context, tokenOrTokenID, _, _ string) *o
 	if s.iss.Sessions().RevokeToken(tokenOrTokenID) || s.iss.Sessions().RevokeID(tokenOrTokenID) {
 		return nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.tokens, tokenOrTokenID)
+	// Deleted from the shared state, so a token revoked at one replica is
+	// revoked at all of them. A revocation that only reached the replica
+	// that answered would be the worst kind of security control: one that
+	// reports success and leaves access in place.
+	if err := s.state.Delete(context.Background(), tokenKey(tokenOrTokenID)); err != nil {
+		return oidc.ErrServerError().WithDescription("%s", err)
+	}
 	// A token that was already gone is a success: revocation is
 	// idempotent, and saying otherwise tells a caller whether a token
 	// they do not hold ever existed.
@@ -451,13 +487,14 @@ func (s *Storage) SetUserinfoFromScopes(context.Context, *oidc.UserInfo, string,
 
 // SetUserinfoFromToken implements [op.OPStorage].
 func (s *Storage) SetUserinfoFromToken(ctx context.Context, info *oidc.UserInfo, tokenID, _, _ string) error {
-	s.mu.Lock()
-	issued, ok := s.tokens[tokenID]
-	s.mu.Unlock()
-	if !ok {
+	issued, err := getJSON[token](ctx, s.state, tokenKey(tokenID))
+	if err != nil {
+		return err
+	}
+	if issued == nil {
 		return errors.New("no such token")
 	}
-	return s.fill(ctx, info, issued.subject, issued.claims)
+	return s.fill(ctx, info, issued.Subject, issued.Claims)
 }
 
 // SetIntrospectionFromToken implements [op.OPStorage].

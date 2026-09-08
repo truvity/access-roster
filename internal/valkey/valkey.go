@@ -77,11 +77,11 @@ var (
 	_ hub.Locker        = (*Snapshots)(nil)
 )
 
-// Open connects and proves it can talk, so that a misconfigured address
+// dial connects and proves it can talk, so that a misconfigured address
 // is a startup failure rather than a first-request one.
-func Open(ctx context.Context, cfg Config) (*Snapshots, error) {
+func dial(ctx context.Context, cfg Config) (redis.UniversalClient, string, error) {
 	if cfg.Address == "" {
-		return nil, errors.New("valkey: no address")
+		return nil, "", errors.New("valkey: no address")
 	}
 	options := &redis.UniversalOptions{
 		Addrs:    []string{cfg.Address},
@@ -101,15 +101,24 @@ func Open(ctx context.Context, cfg Config) (*Snapshots, error) {
 
 	if err := client.Ping(ctx).Err(); err != nil {
 		_ = client.Close()
-		return nil, fmt.Errorf("valkey: %s does not answer: %w", cfg.Address, err)
-	}
-	ttl := cfg.TTL
-	if ttl <= 0 {
-		ttl = DefaultTTL
+		return nil, "", fmt.Errorf("valkey: %s does not answer: %w", cfg.Address, err)
 	}
 	prefix := cfg.Prefix
 	if prefix == "" {
 		prefix = "directory-roster"
+	}
+	return client, prefix, nil
+}
+
+// Open connects a snapshot store.
+func Open(ctx context.Context, cfg Config) (*Snapshots, error) {
+	client, prefix, err := dial(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	ttl := cfg.TTL
+	if ttl <= 0 {
+		ttl = DefaultTTL
 	}
 	return &Snapshots{client: client, prefix: prefix, ttl: ttl}, nil
 }

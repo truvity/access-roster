@@ -3,7 +3,6 @@ package issuer
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/zitadel/oidc/v3/pkg/op"
@@ -13,15 +12,15 @@ import (
 // a token and is polling while a person types the user code into a
 // browser somewhere else.
 type device struct {
-	clientID string
-	userCode string
-	scopes   []string
-	expires  time.Time
+	ClientID string    `json:"clientID"`
+	UserCode string    `json:"userCode"`
+	Scopes   []string  `json:"scopes,omitempty"`
+	Expires  time.Time `json:"expires"`
 
-	done     bool
-	denied   bool
-	subject  string
-	authTime time.Time
+	Done     bool      `json:"done,omitempty"`
+	Denied   bool      `json:"denied,omitempty"`
+	Subject  string    `json:"subject,omitempty"`
+	AuthTime time.Time `json:"authTime,omitempty"`
 }
 
 // Devices holds device authorizations. Their codes are low-entropy by
@@ -29,55 +28,73 @@ type device struct {
 // short-lived and swept, or the chance of two colliding stops being
 // negligible.
 type Devices struct {
-	mu     sync.Mutex
-	byCode map[string]*device // device code → flow
-	byUser map[string]string  // user code → device code
-	now    func() time.Time
+	state State
+	now   func() time.Time
 }
 
-// NewDevices returns an empty set of device authorizations.
-func NewDevices() *Devices {
-	return &Devices{byCode: map[string]*device{}, byUser: map[string]string{}, now: time.Now}
+// NewDevices returns device authorizations over a shared state, because a
+// terminal polls whichever replica answers and the browser approving it
+// reaches another.
+func NewDevices(state State) *Devices {
+	if state == nil {
+		state = NewMemoryState()
+	}
+	return &Devices{state: state, now: time.Now}
 }
+
+// SetClock replaces the clock. For tests.
+func (d *Devices) SetClock(now func() time.Time) { d.now = now }
+
+func deviceKey(code string) string   { return "issuer:device:" + code }
+func userCodeKey(code string) string { return "issuer:usercode:" + code }
 
 // StoreDeviceAuthorization implements [op.DeviceAuthorizationStorage].
 func (d *Devices) StoreDeviceAuthorization(
-	_ context.Context, clientID, deviceCode, userCode string, expires time.Time, scopes []string,
+	ctx context.Context, clientID, deviceCode, userCode string, expires time.Time, scopes []string,
 ) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if _, taken := d.byUser[userCode]; taken {
+	ttl := time.Until(expires)
+	if ttl <= 0 {
+		return errors.New("that device authorization has already expired")
+	}
+	// Claimed atomically, because two replicas minting the same short
+	// code at the same moment must not both believe they own it. The
+	// codes are low-entropy by design — a person reads one aloud — so a
+	// check-then-set would collide often enough to matter.
+	claimed, err := d.state.SetIfAbsent(ctx, userCodeKey(userCode), []byte(deviceCode), ttl)
+	if err != nil {
+		return err
+	}
+	if !claimed {
 		// The library's contract: say so and it will try another code.
 		return op.ErrDuplicateUserCode
 	}
-	d.byCode[deviceCode] = &device{clientID: clientID, userCode: userCode, scopes: scopes, expires: expires}
-	d.byUser[userCode] = deviceCode
-	return nil
+	return setJSON(ctx, d.state, deviceKey(deviceCode), &device{
+		ClientID: clientID, UserCode: userCode, Scopes: scopes, Expires: expires,
+	}, ttl)
 }
 
 // GetDeviceAuthorizatonState implements [op.DeviceAuthorizationStorage].
 // The spelling is the library's.
 func (d *Devices) GetDeviceAuthorizatonState(
-	_ context.Context, clientID, deviceCode string,
+	ctx context.Context, clientID, deviceCode string,
 ) (*op.DeviceAuthorizationState, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	flow, ok := d.byCode[deviceCode]
-	if !ok || flow.clientID != clientID {
+	flow, err := getJSON[device](ctx, d.state, deviceKey(deviceCode))
+	if err != nil {
+		return nil, err
+	}
+	if flow == nil || flow.ClientID != clientID {
 		return nil, errors.New("no such device authorization")
 	}
 	return &op.DeviceAuthorizationState{
-		ClientID: flow.clientID,
-		Audience: []string{flow.clientID},
-		Scopes:   flow.scopes,
-		Expires:  flow.expires,
-		Done:     flow.done,
-		Denied:   flow.denied,
-		Subject:  flow.subject,
+		ClientID: flow.ClientID,
+		Audience: []string{flow.ClientID},
+		Scopes:   flow.Scopes,
+		Expires:  flow.Expires,
+		Done:     flow.Done,
+		Denied:   flow.Denied,
+		Subject:  flow.Subject,
 		AMR:      []string{"pwd"},
-		AuthTime: flow.authTime,
+		AuthTime: flow.AuthTime,
 	}, nil
 }
 
@@ -96,38 +113,30 @@ func (d *Devices) Deny(userCode string) error {
 }
 
 func (d *Devices) settle(userCode, subject string, denied bool) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	deviceCode, ok := d.byUser[userCode]
-	if !ok {
+	ctx := context.Background()
+	deviceCode, found, err := d.state.Get(ctx, userCodeKey(userCode))
+	if err != nil {
+		return err
+	}
+	if !found {
 		return errors.New("no such user code")
 	}
-	flow, ok := d.byCode[deviceCode]
-	if !ok {
+	key := deviceKey(string(deviceCode))
+	flow, err := getJSON[device](ctx, d.state, key)
+	if err != nil {
+		return err
+	}
+	if flow == nil {
 		return errors.New("no such device authorization")
 	}
-	if d.now().After(flow.expires) {
+	if d.now().After(flow.Expires) {
 		return errors.New("this code has expired")
 	}
-	flow.done, flow.denied, flow.subject, flow.authTime = true, denied, subject, d.now()
-	return nil
+	flow.Done, flow.Denied, flow.Subject, flow.AuthTime = true, denied, subject, d.now()
+	return setJSON(ctx, d.state, key, flow, time.Until(flow.Expires))
 }
 
-// Sweep drops expired flows and returns how many, which is what keeps
-// low-entropy user codes from colliding as they accumulate.
-func (d *Devices) Sweep() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	now := d.now()
-	gone := 0
-	for code := range d.byCode {
-		if flow := d.byCode[code]; now.After(flow.expires) {
-			delete(d.byUser, flow.userCode)
-			delete(d.byCode, code)
-			gone++
-		}
-	}
-	return gone
-}
+// Nothing sweeps. Every flow is stored for exactly as long as it is
+// valid and disappears on its own, which is also what keeps low-entropy
+// user codes from colliding as they accumulate — a sweeper that stops is
+// a store that fills with codes nobody can use.

@@ -26,6 +26,7 @@ import (
 	"github.com/truvity/access-roster/internal/hubclient"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/valkey"
 	"github.com/truvity/access-roster/internal/verify"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
@@ -51,6 +52,7 @@ type Config struct {
 	oauthClientSecret string
 	secureCookies     bool
 	oauthSecretFile   string
+	valkey            valkey.Config
 	audience          string
 	signingKeyFile    string
 
@@ -79,9 +81,16 @@ func Load() (Config, error) {
 		oauthClientSecret: envString("OAUTH_CLIENT_SECRET", ""),
 		secureCookies:     envBool("SECURE_COOKIES", false),
 		oauthSecretFile:   envString("OAUTH_CLIENT_SECRET_FILE", ""),
-		signingKeyFile:    envString("SIGNING_KEY_FILE", ""),
-		release:           envString("RELEASE_NAME", "access-issuer"),
-		audience:          envString("EXCHANGE_AUDIENCE", ""),
+		valkey: valkey.Config{
+			Address:  envString("VALKEY_ADDRESS", ""),
+			Password: envString("VALKEY_PASSWORD", ""),
+			TLS:      envBool("VALKEY_TLS", false),
+			Cluster:  envBool("VALKEY_CLUSTER", true),
+			Prefix:   envString("RELEASE_NAME", "access-issuer"),
+		},
+		signingKeyFile: envString("SIGNING_KEY_FILE", ""),
+		release:        envString("RELEASE_NAME", "access-issuer"),
+		audience:       envString("EXCHANGE_AUDIENCE", ""),
 	}
 	var err error
 	if c.tokenLifetime, err = envDuration("TOKEN_LIFETIME", issuer.DefaultTokenLifetime); err != nil {
@@ -173,7 +182,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 
-	storage, err := issuer.NewStorage(core, verifiers, nil, key)
+	shared, err := openState(ctx, cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	storage, err := issuer.NewStorage(core, verifiers, nil, key, shared)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +315,30 @@ func readClientSecret(cfg *Config) error {
 	}
 	cfg.oauthClientSecret = strings.TrimSpace(string(raw))
 	return nil
+}
+
+// openState decides where a login in progress lives.
+//
+// In memory unless a Valkey is configured, and at more than one replica
+// that difference is not a nicety: a browser starts at /authorize on one
+// replica, comes back from the provider at another, and the client
+// redeems the code at a third. Each of those is a coin toss that looks
+// like an intermittent failure, so a deployment running more than one
+// replica without a Valkey is a mistake worth saying out loud.
+func openState(ctx context.Context, cfg Config, log *slog.Logger) (issuer.State, error) {
+	if cfg.valkey.Address == "" {
+		log.WarnContext(ctx, "keeping logins in progress in memory: correct for one replica, "+
+			"and at more than one a browser that comes back to a different pod finds nothing",
+			"state", "memory")
+		return issuer.NewMemoryState(), nil
+	}
+	shared, err := valkey.OpenState(ctx, cfg.valkey)
+	if err != nil {
+		return nil, err
+	}
+	log.InfoContext(ctx, "sharing logins in progress",
+		"state", "valkey", "address", cfg.valkey.Address, "cluster", cfg.valkey.Cluster)
+	return shared, nil
 }
 
 // openVerifiers builds what can turn somebody else's token into a proof.

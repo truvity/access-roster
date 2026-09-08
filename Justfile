@@ -92,6 +92,7 @@ chart-lint:
         --set oauthClient.clientId=1234.apps.googleusercontent.com \
         --set oauthClient.existingSecret=oauth-client \
         --set signingKey.existingSecret=delivered-by-eso \
+        --set valkey.address=valkey.example.svc:6379 \
         --set 'policy.groups.platform.members[0]=platform@example.com' >/dev/null
     ! helm template access-issuer charts/access-issuer --set bogusKey=1 >/dev/null 2>&1
     # The two settings without which the service refuses to start must
