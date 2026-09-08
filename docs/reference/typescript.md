@@ -1,5 +1,13 @@
 # TypeScript package `access-roster`
 
+> **Not built yet, as of v0.1.0.** This page is the design of the package,
+> written in the present tense because that is how the interface will
+> read. What exists at that tag is the policy engine (`policy`) and the
+> backend interface (`backend`); the rest is the work that replaces
+> gateway-auth in the consoles. Nothing in the hub's rollout depends on
+> it.
+
+
 ```sh
 npm install github:truvity/access-roster#v1
 ```
