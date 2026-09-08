@@ -386,23 +386,28 @@ other console, and the **forwarded bearer** is the identity: the hub
 verifies it against the configured issuer and resolves the address
 through the directory like any other, so the same memberships grant the
 same role. The hub's **own login page** exists for two situations only: a
-standalone installation with no proxy and no issuer, where operators sign
-in with the connected directory itself (the workspace's OAuth client with
-the openid, email and profile scopes; the address must be live in a served
-domain), and recovery. An external OIDC issuer can also drive the own
-login page, for the rare installation with an issuer but no proxy.
+standalone installation with no proxy, where operators sign in with a
+connected directory itself (this installation's OAuth client, asking for
+openid, email and profile and nothing else; the address must be in a
+served domain), and recovery.
+
+There is deliberately no third: an external OIDC issuer does not drive the
+hub's own login page. An installation that has an issuer has access-proxy
+in front of it — that is what the issuer is for — and the proxy's
+forwarded identity is the path. Building a second OIDC client here would
+be a login flow with no user, on the service that must keep working when
+the issuer does not.
 
 | Source | Normal for |
 |---|---|
 | forwarded bearer | an installation with a proxy in front of every console |
 | the connected directory, own login | a standalone installation; also what makes day one work before any issuer exists |
-| an external OIDC issuer, own login | an issuer but no proxy |
 | recovery | day one and the day the rest is broken, by port-forward |
 
 Whichever source, the result is one HttpOnly cookie signed with the
 hub's session key, short-lived, revoked only by rotating the key. The
 console never sees a token. The routes are HTTP, not RPC: `/login`,
-`/login/<backend>/start` and `/callback`, `/login/oidc/start` and
+`/login/<backend>/start` and `/callback`,
 `/callback`, `/logout`, and `/admin/login`.
 
 ### Recovery

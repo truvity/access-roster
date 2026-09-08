@@ -106,6 +106,8 @@ spec:
             - name: SECURE_COOKIES
               value: "true"
             {{- end }}
+            - name: LOGIN_DIRECTORY
+              value: {{ .Values.access.login.directory | quote }}
             {{- if .Values.access.login.forwardedBearer.emailHeader }}
             - name: FORWARDED_EMAIL_HEADER
               value: {{ .Values.access.login.forwardedBearer.emailHeader | quote }}

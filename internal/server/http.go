@@ -43,6 +43,7 @@ type ConsoleServer struct {
 	connectors map[string]Connector
 	hub        *hub.Hub
 	recovery   Recovery
+	signIn     bool
 	forwarded  ForwardedIdentity
 	log        *slog.Logger
 	consoleUI  fs.FS
@@ -58,7 +59,12 @@ type ConsoleServerDeps struct {
 	Hub        *hub.Hub
 	// Recovery is the way in when the ordinary one is broken. Nil is a
 	// deployment with no recovery path at all.
-	Recovery  Recovery
+	Recovery Recovery
+	// SignIn offers the hub's own sign-in page. A console reached only
+	// through a gateway that has already run the login wants one door,
+	// not two. It does not affect connecting a directory, which is an
+	// operator granting this hub access rather than a way in.
+	SignIn    bool
 	Forwarded ForwardedIdentity
 	Log       *slog.Logger
 	// UI is the built console. Nil serves no UI, which is what a
@@ -79,6 +85,7 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		connectors: map[string]Connector{},
 		hub:        deps.Hub,
 		recovery:   deps.Recovery,
+		signIn:     deps.SignIn,
 		forwarded:  deps.Forwarded,
 		log:        deps.Log,
 		consoleUI:  deps.UI,
@@ -396,10 +403,11 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 	redirectOrOK(w, r, "/")
 }
 
-// signInConnector is the connector for a kind, if it can sign a person in.
+// signInConnector is the connector for a kind, if it can sign a person in
+// and this deployment offers its own sign-in at all.
 func (s *ConsoleServer) signInConnector(kind string) (SignInConnector, bool) {
 	connector, ok := s.connectors[kind]
-	if !ok {
+	if !ok || !s.signIn {
 		return nil, false
 	}
 	signIn, ok := connector.(SignInConnector)

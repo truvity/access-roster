@@ -44,6 +44,13 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **The hub's own sign-in is a switch** (`access.login.directory`), and
+  turning it off closes the routes rather than hiding the buttons —
+  connecting a directory is unaffected, because an operator granting this
+  hub access is not a way in. The external-OIDC login the values gestured
+  at is **removed** rather than built: an installation that has an issuer
+  has access-proxy in front of it, and the proxy's forwarded identity is
+  that path.
 - **Four chart values that did nothing now do something.** `PUBLIC_URL`
   was never set, so a deployed hub built both OAuth redirect URIs — and
   the values its setup steps tell an operator to paste — from

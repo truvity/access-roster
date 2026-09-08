@@ -42,8 +42,7 @@ external-secrets is at the end of this page.
 | `access.recovery.serviceAccountName` | `<release>-recovery` | the account recovery proves access as; the chart creates it, bound to nobody. Granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
 | `access.recovery.audience` | `<release>-recovery` | the audience the token must be minted for. Without one, every mounted ServiceAccount token in the cluster would be a recovery token |
 | `access.holdWindow` | `4h` | how long a signed-in identity keeps its last granted role while the directory cannot be vouched for |
-| `access.login.directory` | `true` | "Sign in with <directory>" using a connected workspace's OAuth client |
-| `access.login.oidc.issuer` / `.clientSecretName` | `""` | an external issuer for the hub's own login page; Secret keys `client-id`, `client-secret` |
+| `access.login.directory` | `true` | the hub's own sign-in page. Off closes the routes, not just the buttons; connecting a directory is unaffected |
 | `access.login.forwardedBearer.emailHeader` | `""` | trust the address in this header, set by an authenticating gateway in front of the console (`X-Auth-Request-Email` for oauth2-proxy and the fleet's gateway-auth). Empty turns the path off. Only set it where a gateway really does strip and set the header on every request |
 | `access.login.forwardedBearer.issuer` | `""` | recorded on the session, so an operator can see where an identity came from |
 | `access.sessionLifetime` | `12h` | how long a console session lasts |

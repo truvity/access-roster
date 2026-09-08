@@ -147,14 +147,14 @@ access:
     # token; empty means `<release>-recovery`.
     audience: ""
   login:
-    # "Sign in with <directory>" using a connected workspace's OAuth client
-    # with openid scopes only. Works as soon as one workspace is connected.
+    # "Continue with <directory>" on the hub's own sign-in page, using
+    # this installation's OAuth client and asking for openid, email and
+    # profile — nothing else. Works as soon as a client is registered.
+    #
+    # Turn it off for a console reached only through a gateway that has
+    # already run the login: one door is easier to reason about than two,
+    # and the second one is then answering nobody.
     directory: true
-    # An external OIDC issuer for the hub's own login page (optional).
-    oidc:
-      issuer: ""
-      # Secret with keys client-id and client-secret.
-      clientSecretName: ""
     # Trust an identity forwarded by an authenticating gateway in front of
     # the console (oauth2-proxy and the like). The gateway has already run
     # the login; the hub reads the address out of a header and resolves it
