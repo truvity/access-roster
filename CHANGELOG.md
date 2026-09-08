@@ -44,6 +44,15 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **A login in progress is shared across replicas.** The authorization
+  request, the code, the tokens and the device flow were four maps in one
+  process — so a browser that started at `/authorize` on one replica and
+  came back from the provider at another found nothing, and a terminal
+  polling the device endpoint reached whichever pod answered. All four now
+  live in Valkey when one is configured, each carrying its own expiry so
+  nothing sweeps, with the user code claimed by a single atomic write
+  because two replicas minting the same short code must not both believe
+  they own it. Memory remains the default and says so at start.
 - **The release publishes both services.** `.goreleaser.yaml` was missing
   entirely — the workflow would have failed at its GoReleaser step on the
   first tag ever cut. It now builds the hub, the issuer and the acceptance

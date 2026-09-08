@@ -196,8 +196,23 @@ experience at this issuer rather than a different doorway per console.
 
 ## State
 
-No database. The signing key comes from a Secret **this service does not
-create** — cert-manager issuing one, or external-secrets delivering one —
+No database. A login in progress — the authorization request a browser is
+part-way through, the code it comes back with, the tokens that follow, the
+device flow a CLI is polling — lives in Valkey, shared by every replica.
+It has to: a browser starts at `/authorize` on one replica, comes back
+from the provider at another, and the client redeems the code at a third,
+while a terminal polls whichever answers. Held in one process, each of
+those is a coin toss that looks like an intermittent failure and only
+appears above one replica.
+
+Everything there carries its own expiry and nothing sweeps: a store that
+has to be swept is a store that grows when the sweeper stops, and
+low-entropy device codes accumulating is exactly how they start
+colliding. A user code is claimed with a single atomic write, because two
+replicas minting the same short code at the same moment must not both
+believe they own it.
+
+The signing key comes from a Secret **this service does not create** — cert-manager issuing one, or external-secrets delivering one —
 mounted as a file. It holds no permission to read Secrets at all.
 
 Two reasons, and the second is the one that decides it. A key minted per

@@ -106,6 +106,24 @@ lifetimes:
   # every login.
   hold: 4h
 
+# Where a login in progress lives: the authorization request a browser is
+# part-way through, the code it comes back with, the tokens that follow,
+# the device flow a CLI is polling.
+#
+# **More than one replica needs this.** A browser starts at /authorize on
+# one replica, comes back from the provider at another, and the client
+# redeems the code at a third; a CLI polls whichever answers. Kept in one
+# process, each of those is a coin toss that looks like an intermittent
+# failure. Empty keeps it in memory, which the service says at start.
+valkey:
+  address: ""
+  passwordSecret:
+    name: ""
+    key: password
+  tls: false
+  # The fleet's Valkeys are ValkeyClusters even at one shard.
+  cluster: true
+
 # The declared policy: groups, claims, lifetimes, clients. One file,
 # shared with the hub. See docs/reference/policy.md.
 policy: {}

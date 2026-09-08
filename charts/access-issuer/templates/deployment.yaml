@@ -53,6 +53,23 @@ spec:
             # Provisioned, never minted here — see values.yaml.
             - name: SIGNING_KEY_FILE
               value: /var/run/access-issuer/signing-key/{{ .Values.signingKey.key }}
+            {{- if .Values.valkey.address }}
+            - name: VALKEY_ADDRESS
+              value: {{ .Values.valkey.address | quote }}
+            - name: VALKEY_TLS
+              value: {{ .Values.valkey.tls | quote }}
+            - name: VALKEY_CLUSTER
+              value: {{ .Values.valkey.cluster | quote }}
+            {{- if .Values.valkey.passwordSecret.name }}
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.valkey.passwordSecret.name }}
+                  key: {{ .Values.valkey.passwordSecret.key }}
+            {{- end }}
+            {{- end }}
+            - name: RELEASE_NAME
+              value: {{ include "access-issuer.fullname" . }}
             - name: POLICY_DIR
               value: /var/run/access-issuer/policy
             - name: TOKEN_LIFETIME

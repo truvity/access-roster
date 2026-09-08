@@ -78,6 +78,23 @@
         "hold": { "$ref": "#/definitions/duration" }
       }
     },
+    "valkey": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "address": { "type": "string" },
+        "passwordSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "key": { "type": "string", "minLength": 1 }
+          }
+        },
+        "tls": { "type": "boolean" },
+        "cluster": { "type": "boolean" }
+      }
+    },
     "policy": { "type": "object" },
     "route": {
       "type": "object",
