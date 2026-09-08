@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,11 @@ clients:
   console: { kind: public, requires: [platform], redirects: ["https://console.example/callback"] }
 `), 0o600); err != nil {
 		t.Fatalf("write the policy: %v", err)
+	}
+	// The hub admits nobody without a projected token, and the client
+	// reads it fresh on every call.
+	if err := os.WriteFile(filepath.Join(policyDir, "token"), []byte("a-projected-token"), 0o600); err != nil {
+		t.Fatalf("write the token: %v", err)
 	}
 	base := map[string]string{
 		"ISSUER_URL":     "https://issuer.example",
@@ -267,4 +273,84 @@ func mustWrite(t *testing.T, dir, name, content string) string {
 		t.Fatalf("write: %v", err)
 	}
 	return path
+}
+
+// The sign-in round trip, with a directory that answers instantly and a
+// hub that says the person is real. This is the path every human login in
+// the estate takes, and until now the issuer had no way to establish who
+// anybody was.
+func TestAPersonSignsInAndTheRequestIsCompleted(t *testing.T) {
+	// A provider that redirects straight back, the way the demonstration
+	// connector does: the round trip and its state cookie are the real
+	// ones, only the screen at the far end is missing.
+	var issuerURL string
+	directory := &stubProvider{email: "ada@north.example", back: func(state string) string {
+		return issuerURL + "/login/stub/callback?code=x&state=" + url.QueryEscape(state)
+	}}
+	hub := stubHub(t, true, false)
+
+	app := bootWithSignIn(t, hub, directory, &issuerURL)
+	client, at := browser(t, app.Handler())
+	issuerURL = at
+
+	// The library sends a browser here with the request it is in the
+	// middle of; one provider means no question to ask.
+	code, body := follow(t, client, at+"/login?auth=req-123")
+	if code != http.StatusOK {
+		t.Fatalf("sign-in = %d, %q", code, body)
+	}
+	if !strings.Contains(body, "the application continues here") {
+		t.Errorf("the browser did not land back at the application: %q", body)
+	}
+	if directory.completed != "req-123" {
+		t.Fatalf("the authorization request was not completed: %q", directory.completed)
+	}
+	if directory.subject != "ada@north.example" {
+		t.Errorf("completed as %q", directory.subject)
+	}
+}
+
+// The hub's no is the only place a person reads it. Everywhere downstream
+// they would simply find themselves admitted nowhere, with nothing that
+// explained why.
+func TestASuspendedPersonIsRefusedAtTheDoor(t *testing.T) {
+	var issuerURL string
+	directory := &stubProvider{email: "cleo@north.example", back: func(state string) string {
+		return issuerURL + "/login/stub/callback?code=x&state=" + url.QueryEscape(state)
+	}}
+	hub := stubHub(t, true, true)
+
+	app := bootWithSignIn(t, hub, directory, &issuerURL)
+	client, at := browser(t, app.Handler())
+	issuerURL = at
+
+	code, body := follow(t, client, at+"/login?auth=req-456")
+	if code != http.StatusForbidden {
+		t.Fatalf("a suspended person = %d, want it refused (%q)", code, body)
+	}
+	if !strings.Contains(body, "cleo@north.example") {
+		t.Errorf("the refusal does not say who was refused: %q", body)
+	}
+	if directory.completed != "" {
+		t.Error("a refused sign-in completed the request anyway")
+	}
+}
+
+// A callback that did not start here finishes nothing: without it, a
+// provider's redirect could be replayed at anyone's browser and complete
+// somebody else's half-finished login.
+func TestASignInCallbackMustBeTheBrowserThatStarted(t *testing.T) {
+	var issuerURL string
+	directory := &stubProvider{email: "ada@north.example"}
+	app := bootWithSignIn(t, stubHub(t, true, false), directory, &issuerURL)
+	client, at := browser(t, app.Handler())
+	issuerURL = at
+
+	code, _ := follow(t, client, at+"/login/stub/callback?code=x&state=forged")
+	if code != http.StatusBadRequest {
+		t.Errorf("a callback with no cookie = %d, want it refused", code)
+	}
+	if directory.completed != "" {
+		t.Error("a forged callback completed a request")
+	}
 }

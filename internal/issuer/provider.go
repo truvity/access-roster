@@ -76,11 +76,40 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 // Handler is the provider as an http.Handler, which is all a deployment
 // needs to serve it, with its discovery document corrected.
 func Handler(iss *Issuer, storage op.Storage) (http.Handler, error) {
+	return HandlerWithSignIn(iss, storage, SignInDeps{})
+}
+
+// HandlerWithSignIn is the same, with this service's own pages in front
+// of it: the chooser a browser is sent to, the provider round trip, and
+// the page a sign-out lands on.
+//
+// They sit in one mux with the protocol endpoints because the library
+// hands a browser to `client.LoginURL` on the same host, and because a
+// person meeting two hostnames during one login has met two services.
+func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http.Handler, error) {
 	provider, err := Provider(iss, storage)
 	if err != nil {
 		return nil, err
 	}
-	return truthfulDiscovery(provider), nil
+	if len(signIn.Providers) == 0 {
+		return truthfulDiscovery(provider), nil
+	}
+
+	signIn.Issuer = iss
+	if signIn.Return == nil {
+		signIn.Return = op.AuthCallbackURL(provider)
+	}
+	if completer, ok := storage.(Completer); ok && signIn.Storage == nil {
+		signIn.Storage = completer
+	}
+
+	mux := http.NewServeMux()
+	SignInRoutes(mux, signIn)
+	// Everything not ours is the protocol's. A catch-all rather than a
+	// list, so that a library endpoint added by an upgrade keeps working
+	// instead of turning into a 404 nobody expected.
+	mux.Handle("/", truthfulDiscovery(provider))
+	return mux, nil
 }
 
 // discoveryPath is where a relying party looks first.
