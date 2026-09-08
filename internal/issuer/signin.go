@@ -41,7 +41,12 @@ type Completer interface {
 
 // SignInDeps is what the sign-in routes need.
 type SignInDeps struct {
-	Issuer *Issuer
+	// Recovery is the way in when no directory can vouch for anybody, and
+	// nil is a deployment with none. It is offered alongside the
+	// providers rather than instead of them: a directory that cannot
+	// answer yet is only the first of the days it exists for.
+	Recovery Recovery
+	Issuer   *Issuer
 	// Providers a person may choose. One button per *kind* is rendered,
 	// never one per company: an anonymous page that lists the companies
 	// an installation serves has published them to anyone who loads it.
@@ -80,6 +85,7 @@ func SignInRoutes(mux *http.ServeMux, deps SignInDeps) {
 	mux.HandleFunc("GET /login", s.chooser)
 	mux.HandleFunc("GET /login/{provider}/start", s.start)
 	mux.HandleFunc("GET /login/{provider}/callback", s.callback)
+	mux.HandleFunc("POST /login/recovery", s.recover)
 	mux.HandleFunc("GET /signed-out", s.signedOut)
 }
 
@@ -98,19 +104,31 @@ func (s *signIn) chooser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kinds := slices.Sorted(maps.Keys(s.providers))
-	switch len(kinds) {
-	case 0:
-		s.page(w, "Nobody can sign in", `<p>This installation has no directory configured to sign in with.</p>`)
-		return
-	case 1:
+	recovery := s.recoveryForm(request)
+
+	// One provider and no recovery is the only case with a single way in,
+	// and skipping a page with one button on it is a kindness. With
+	// recovery there are two, and forwarding to a provider that may not
+	// be able to help -- which is exactly the state a fresh installation
+	// is in -- would hide the one that can.
+	if len(kinds) == 1 && recovery == "" {
 		http.Redirect(w, r, s.startURL(kinds[0], request), http.StatusFound)
 		return
 	}
+	if len(kinds) == 0 && recovery == "" {
+		s.page(w, "Nobody can sign in", `<p>This installation has no directory configured to sign in with.</p>`)
+		return
+	}
+
 	var buttons strings.Builder
 	for _, kind := range kinds {
 		fmt.Fprintf(&buttons, `<p><a class="btn" href="%s">Continue with %s</a></p>`,
 			html.EscapeString(s.startURL(kind, request)), html.EscapeString(providerName(kind)))
 	}
+	if len(kinds) == 0 {
+		buttons.WriteString(`<p>No directory is configured to sign in with yet.</p>`)
+	}
+	buttons.WriteString(recovery)
 	s.page(w, "Sign in", buttons.String())
 }
 
@@ -146,6 +164,78 @@ func (s *signIn) start(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, access.LoginCookie(state, s.deps.Secure, signInWindow))
 	http.Redirect(w, r, where, http.StatusFound)
+}
+
+// recoveryForm renders the recovery block, or nothing when a deployment
+// has no recovery at all.
+//
+// The pending authorization request travels in a signed state, exactly as
+// it does through a provider round trip: a POST carrying somebody else's
+// request id would otherwise finish their sign-in as this person.
+func (s *signIn) recoveryForm(request string) string {
+	if s.deps.Recovery == nil {
+		return ""
+	}
+	state, err := s.deps.State.Issue(request)
+	if err != nil {
+		return ""
+	}
+	prompt := s.deps.Recovery.Prompt()
+	command := ""
+	if prompt.Command != "" {
+		command = "<pre>" + html.EscapeString(prompt.Command) + "</pre>"
+	}
+	return fmt.Sprintf(`<details><summary>Recovery sign-in</summary>
+	<p>%s</p>%s
+	<form method="post" action="/login/recovery">
+		<input type="hidden" name="state" value="%s">
+		<p><label>%s<br><input type="password" name="proof" autocomplete="off"></label></p>
+		<p><button type="submit">Recover access</button></p>
+	</form>
+	<p class="warn">%s</p></details>`,
+		html.EscapeString(prompt.Intro), command, html.EscapeString(state),
+		html.EscapeString(prompt.Label), html.EscapeString(prompt.Caution))
+}
+
+// recover completes a sign-in with a ServiceAccount the cluster vouches
+// for, when no directory can vouch for anybody.
+//
+// It completes as the SUBJECT, not as an address: what that subject is
+// entitled to is the policy's `service_account` matchers, the same table
+// that decides what a workload gets. Nothing here grants anything.
+func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Recovery == nil {
+		http.Error(w, "this issuer has no recovery", http.StatusNotFound)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "that form could not be read", http.StatusBadRequest)
+		return
+	}
+	request, err := s.deps.State.Verify(r.PostFormValue("state"))
+	if err != nil || request == "" {
+		http.Error(w, "this sign-in is not valid any more; start again", http.StatusBadRequest)
+		return
+	}
+
+	subject, err := s.deps.Recovery.Verify(r.Context(), r.PostFormValue("proof"))
+	if err != nil {
+		// One message for every reason, and the reason in the log: a
+		// caller told which part of its proof failed is a caller helped
+		// to produce a better one.
+		s.deps.Log.WarnContext(r.Context(), "recovery refused", "error", logsafe.Error(err))
+		http.Error(w, "that proof was not accepted", http.StatusForbidden)
+		return
+	}
+
+	if err = s.deps.Storage.Complete(request, subject); err != nil {
+		http.Error(w, "that sign-in is no longer waiting to be completed", http.StatusBadRequest)
+		return
+	}
+	// WARN, not INFO: this is the way in that bypasses the directory, and
+	// it should be as loud in a log as it is rare.
+	s.deps.Log.WarnContext(r.Context(), "recovery sign-in", "subject", logsafe.Value(subject))
+	http.Redirect(w, r, s.deps.Return(r.Context(), request), http.StatusFound)
 }
 
 // callback finishes it: the provider says who, the hub says whether we

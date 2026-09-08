@@ -508,11 +508,34 @@ func (s *Storage) SetIntrospectionFromToken(context.Context, *oidc.Introspection
 
 // GetPrivateClaimsFromScopes implements [op.OPStorage].
 func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, subject, _ string, _ []string) (map[string]any, error) {
+	// A ServiceAccount subject is a recovery sign-in, and the hub is the
+	// wrong place to ask about it: it holds directories, and this is not
+	// a person in one. The policy's `service_account` matchers decide,
+	// exactly as they do for a workload exchanging a token -- one table,
+	// one evaluation, and nothing here that a matcher did not grant.
+	if namespace, name, ok := serviceAccountSubject(subject); ok {
+		return Claims(s.iss.Policy().Evaluate(policy.Input{
+			ServiceAccount: &policy.ServiceAccountRef{Namespace: namespace, Name: name},
+		})), nil
+	}
 	resolved, err := s.iss.resolver.Resolve(ctx, subject)
 	if err != nil {
 		return nil, err
 	}
 	return Claims(s.iss.Policy().Evaluate(resolved.Input(subject))), nil
+}
+
+// serviceAccountSubject splits the API server's spelling of one.
+func serviceAccountSubject(subject string) (namespace, name string, ok bool) {
+	rest, found := strings.CutPrefix(subject, "system:serviceaccount:")
+	if !found {
+		return "", "", false
+	}
+	namespace, name, found = strings.Cut(rest, ":")
+	if !found || namespace == "" || name == "" {
+		return "", "", false
+	}
+	return namespace, name, true
 }
 
 func (s *Storage) fill(_ context.Context, info *oidc.UserInfo, subject string, claims map[string]any) error {

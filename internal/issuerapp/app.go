@@ -53,6 +53,9 @@ type Config struct {
 	secureCookies     bool
 	oauthSecretFile   string
 	oauthIDFile       string
+	recoveryEnabled   bool
+	recoveryAccount   string
+	recoveryAudience  string
 	valkey            valkey.Config
 	audience          string
 	signingKeyFile    string
@@ -83,6 +86,9 @@ func Load() (Config, error) {
 		secureCookies:     envBool("SECURE_COOKIES", false),
 		oauthSecretFile:   envString("OAUTH_CLIENT_SECRET_FILE", ""),
 		oauthIDFile:       envString("OAUTH_CLIENT_ID_FILE", ""),
+		recoveryEnabled:   envBool("RECOVERY_ENABLED", false),
+		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", ""),
+		recoveryAudience:  envString("RECOVERY_AUDIENCE", ""),
 		valkey: valkey.Config{
 			Address:  envString("VALKEY_ADDRESS", ""),
 			Password: envString("VALKEY_PASSWORD", ""),
@@ -198,6 +204,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	handler, err := issuer.HandlerWithSignIn(core, storage, issuer.SignInDeps{
 		Providers: signIn,
+		Recovery:  openRecovery(ctx, cfg, log),
 		State:     access.NewStateCodec(key.Derive("access-roster/sign-in-state"), signInWindow),
 		Secure:    cfg.secureCookies,
 		Log:       log,
@@ -228,6 +235,39 @@ func (a *App) Run(ctx context.Context) error {
 	group.Go(func() error { return serve(gctx, a.cfg.port, a.handler, "issuer", a.log) })
 	group.Go(func() error { return serve(gctx, a.cfg.healthPort, a.health, "health", a.log) })
 	return group.Wait()
+}
+
+// openRecovery builds the way in that needs no directory, or nothing.
+//
+// Out of a cluster there is no API server to prove access to, so there is
+// nothing to build: unlike the hub, this service has no password shape to
+// fall back on, and inventing one would be inventing a standing
+// credential for a service whose whole point is not to hold any.
+func openRecovery(ctx context.Context, cfg Config, log *slog.Logger) issuer.Recovery {
+	if !cfg.recoveryEnabled {
+		return nil
+	}
+	if !cfg.inCluster || cfg.recoveryAccount == "" || cfg.recoveryAudience == "" {
+		log.WarnContext(ctx, "recovery is asked for but cannot be built: it proves access to "+
+			"a cluster, and this service is not running in one with an account and audience named")
+		return nil
+	}
+	client, err := kube.InCluster(cfg.release)
+	if err != nil {
+		log.WarnContext(ctx, "recovery could not be built", "error", err)
+		return nil
+	}
+	namespace := client.Namespace()
+	log.InfoContext(ctx, "recovery sign-in is available: a token for this account signs in "+
+		"without a directory, and the policy's service_account matchers decide what it gets",
+		"namespace", namespace, "account", cfg.recoveryAccount, "audience", cfg.recoveryAudience)
+	return &issuer.TokenRecovery{
+		Review:    client.ReviewToken,
+		Namespace: namespace,
+		Account:   cfg.recoveryAccount,
+		Audience:  cfg.recoveryAudience,
+		Subjects:  []string{kube.ServiceAccountSubject(namespace, cfg.recoveryAccount)},
+	}
 }
 
 // signInWindow is how long a person has to finish signing in, and the

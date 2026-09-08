@@ -46,3 +46,16 @@ exchange proofs.
 {{- define "access-issuer.hubAudience" -}}
 {{- .Values.hub.audience | default "directory-roster" }}
 {{- end }}
+
+{{/*
+The account a recovery token must be minted for, and the audience it must
+carry. Both default to the release's own name so that an installation
+that turns recovery on gets working names without choosing any.
+*/}}
+{{- define "access-issuer.recoveryServiceAccountName" -}}
+{{- .Values.recovery.serviceAccountName | default (printf "%s-recovery" (include "access-issuer.fullname" .)) }}
+{{- end }}
+
+{{- define "access-issuer.recoveryAudience" -}}
+{{- .Values.recovery.audience | default (printf "%s-recovery" (include "access-issuer.fullname" .)) }}
+{{- end }}
