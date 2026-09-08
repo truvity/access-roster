@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -234,8 +235,6 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
 	// One button per directory kind, never one per company: an anonymous
 	// page that lists the companies an installation serves has published
 	// them to anyone who loads it. Which tenant a person belongs to is
@@ -285,9 +284,9 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 			html.EscapeString(prompt.Intro), command,
 			html.EscapeString(prompt.Label), html.EscapeString(prompt.Caution))
 	}
-	if _, err := fmt.Fprintf(w, loginHTML, sources.String(), recovery); err != nil {
-		s.log.WarnContext(r.Context(), "login page could not be written", "error", err)
-	}
+	s.writePage(w, r, http.StatusOK, "Sign in", `<h1>directory-roster</h1>
+<p class="note">The directory hub. Sign in to connect workspaces and grant access.</p>`+
+		sources.String()+recovery)
 }
 
 // providerName is what a person calls the directory, rather than what the
@@ -305,22 +304,39 @@ func providerName(kind string) string {
 	}
 }
 
-const loginHTML = `<!doctype html><meta charset="utf-8"><title>Sign in — directory-roster</title>
-<style>
+// consoleCSS is the style the hub's plain pages share. It is written
+// here once because a second copy is a second page that stops looking
+// like this one the first time either is touched.
+//
+// Note the single `%` — this is a plain string, not a Printf format. The
+// pages build their bodies separately and hand them to writePage, which
+// is what keeps the CSS out of a format string.
+const consoleCSS = `
  body{font:16px/1.5 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f3f5f8;color:#1b2230}
- main{background:#fff;padding:32px 36px;border-radius:8px;border:1px solid #d9dee6;max-width:26rem}
+ main{background:#fff;padding:32px 36px;border-radius:8px;border:1px solid #d9dee6;max-width:34rem}
  h1{font-size:20px;margin:0 0 4px} p{margin:12px 0}
- input{width:100%%;padding:8px;border:1px solid #d9dee6;border-radius:4px;font:inherit}
+ input{width:100%;padding:8px;border:1px solid #d9dee6;border-radius:4px;font:inherit}
  button,.btn{display:inline-block;padding:8px 14px;border:0;border-radius:4px;background:#0e7c7b;color:#fff;font:inherit;text-decoration:none;cursor:pointer}
  .note{font-size:14px;color:#6b7383}
  .warn{font-size:13px;color:#8a4b21;background:#fdf3e7;border:1px solid #f0d9c0;border-radius:4px;padding:8px 10px}
  pre{font-size:13px;background:#f3f5f8;border:1px solid #d9dee6;border-radius:4px;padding:10px;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
  details{margin-top:20px;border-top:1px solid #e6eaef;padding-top:12px}
  summary{cursor:pointer}
-</style>
-<main><h1>directory-roster</h1>
-<p class="note">The directory hub. Sign in to connect workspaces and grant access.</p>
-%s%s</main>`
+ ul{margin:12px 0;padding-left:20px} li{margin:8px 0}
+`
+
+// writePage writes one of the hub's plain pages. The body is already
+// HTML: every caller escapes what it interpolates.
+func (s *ConsoleServer) writePage(w http.ResponseWriter, r *http.Request, status int, title, body string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_, err := io.WriteString(w, `<!doctype html><meta charset="utf-8"><title>`+
+		html.EscapeString(title)+` — directory-roster</title><style>`+consoleCSS+`</style><main>`+body+`</main>`)
+	if err != nil {
+		s.log.WarnContext(r.Context(), "page could not be written", "title", title, "error", err)
+	}
+}
 
 // signInStart sends the browser to a directory's own sign-in screen.
 func (s *ConsoleServer) signInStart(w http.ResponseWriter, r *http.Request) {
@@ -496,24 +512,85 @@ func (s *ConsoleServer) logout(w http.ResponseWriter, r *http.Request) {
 	redirectOrOK(w, r, "/login")
 }
 
+// consentProblem renders what went wrong on the page the operator is
+// looking at, instead of a status code nobody sees.
+//
+// The status is deliberately NOT 5xx. The CDN in front of this console
+// replaces a 502 with its own "Bad gateway" page — observed: six
+// kilobytes of Cloudflare HTML where the hub had written one line naming
+// the exact Google project and the exact API to enable. The diagnosis
+// survived only in the log, which is the one place the person who can
+// act on it was not looking. A 4xx is delivered intact, and 409 is what
+// this handler already returns for the other consent that cannot be
+// adopted as it stands.
+//
+// `detail` is whatever the provider said, verbatim. It is escaped, and
+// it is the most useful line on the page: Google's own messages name the
+// project, the API and the console URL that fixes it.
+func (s *ConsoleServer) consentProblem(
+	w http.ResponseWriter, r *http.Request, status int, summary, detail string, causes []string,
+) {
+	var body strings.Builder
+	body.WriteString(`<h1>The consent could not be completed</h1>`)
+	fmt.Fprintf(&body, `<p>%s</p>`, html.EscapeString(summary))
+	if detail != "" {
+		fmt.Fprintf(&body, `<p class="note">What the directory said:</p><pre>%s</pre>`,
+			html.EscapeString(detail))
+	}
+	if len(causes) > 0 {
+		body.WriteString(`<p class="note">The usual causes, most common first:</p><ul>`)
+		for _, cause := range causes {
+			fmt.Fprintf(&body, `<li>%s</li>`, html.EscapeString(cause))
+		}
+		body.WriteString(`</ul>`)
+	}
+	body.WriteString(`<p><a class="btn" href="/">Back to the console</a></p>`)
+	s.writePage(w, r, status, "Consent", body.String())
+}
+
+// consentCauses is what to check when a directory refuses the credential
+// its own consent screen has just granted. Ordered by how often each one
+// is the answer, because a list read top-down is a list whose order is a
+// claim about likelihood.
+var consentCauses = []string{
+	"The directory API is not enabled in the cloud project that owns this hub's OAuth client. " +
+		"The message above names the project and the page that enables it.",
+	"The API was enabled moments ago. Enabling propagates over a few minutes; try again.",
+	"The account that consented is not an administrator of the workspace, or lacks the " +
+		"privileges to read users and groups.",
+	"The consent was granted with a personal account, or with an account in a different " +
+		"workspace than the one intended. The account chooser remembers the last one used.",
+}
+
 // connectCallback finishes an admin-consent flow: it checks the state
 // against the cookie, exchanges the code, and adopts the workspace.
 func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) {
 	conn, ok := s.connectors[r.PathValue("backend")]
 	if !ok {
-		http.Error(w, "unknown backend", http.StatusNotFound)
+		s.consentProblem(w, r, http.StatusNotFound,
+			"This hub has no connector for that directory.", "", nil)
 		return
 	}
 
 	state := r.URL.Query().Get("state")
 	cookie, err := r.Cookie(access.ConnectCookieName)
 	if err != nil || cookie.Value == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
-		http.Error(w, "this consent did not start in this browser", http.StatusBadRequest)
+		s.consentProblem(w, r, http.StatusBadRequest,
+			"This consent did not start in this browser.", "", []string{
+				"The consent was started in another browser, or another profile or private window.",
+				"More than ten minutes passed between starting the consent and returning from it.",
+				"The browser is refusing the cookie this flow is pinned to.",
+			})
 		return
 	}
 	binding, err := s.state.VerifyBinding(state)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.consentProblem(w, r, http.StatusBadRequest,
+			"This consent cannot be finished.", err.Error(), []string{
+				"More than ten minutes passed between starting the consent and returning from it.",
+				"The hub's session key was rotated while the consent was in progress, which " +
+					"invalidates every flow that was open at the time.",
+			})
 		return
 	}
 	bind := binding.Bind
@@ -536,7 +613,8 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 		actor = id.Who()
 	}
 	if actor == "" {
-		http.Error(w, "this needs the operator role", http.StatusForbidden)
+		s.consentProblem(w, r, http.StatusForbidden,
+			"Connecting a directory needs the operator role.", "", nil)
 		return
 	}
 	http.SetCookie(w, access.ConnectCookie("", s.sessions.Secure(), 0))
@@ -544,17 +622,25 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 	ws, b, err := conn.Exchange(r.Context(), r.URL.Query().Get("code"), bind)
 	if err != nil {
 		s.log.WarnContext(r.Context(), "consent exchange failed", "backend", conn.Kind(), "error", err)
-		http.Error(w, "the consent could not be completed: "+err.Error(), http.StatusBadGateway)
+		s.consentProblem(w, r, http.StatusConflict,
+			providerName(conn.Kind())+" granted the consent, and then refused the first read with it.",
+			err.Error(), consentCauses)
 		return
 	}
 	if bind != "" && ws.ID != bind {
-		http.Error(w, "that consent is for a different tenant than the workspace being reconnected",
-			http.StatusConflict)
+		s.consentProblem(w, r, http.StatusConflict,
+			"That consent is for a different tenant than the workspace being reconnected.", "", []string{
+				"The account chooser offered the account last used rather than the one this " +
+					"workspace belongs to.",
+			})
 		return
 	}
 	ws.ConnectedBy = actor
 	if _, err = s.hub.Adopt(r.Context(), ws, b); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		s.log.ErrorContext(r.Context(), "the workspace could not be adopted",
+			"workspace", ws.ID, "error", err)
+		s.consentProblem(w, r, http.StatusConflict,
+			"The consent worked, but the workspace could not be saved.", err.Error(), nil)
 		return
 	}
 	s.log.InfoContext(r.Context(), "workspace connected",

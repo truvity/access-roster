@@ -7,6 +7,18 @@ git history.
 
 Nothing yet.
 
+## v0.7.2
+
+- **A consent that fails says so on a page.** The callback answered 502
+  and the CDN in front of the console replaced it with its own "Bad
+  gateway" — six kilobytes of Cloudflare HTML in place of the line naming
+  the exact Google project and the exact API to enable. The diagnosis
+  survived only in the log, which is the one place the person who could
+  act on it was not looking. Every browser-facing outcome of the consent
+  callback now renders a page in the console's own style, carrying what
+  the directory said verbatim and the usual causes in order of
+  likelihood, and none of them answers 5xx. A test asserts that.
+
 ## v0.7.1
 
 - **The customer id is read from the admin's own user record.** `Tenant`
