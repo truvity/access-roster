@@ -5,8 +5,24 @@ git history.
 
 ## Unreleased
 
-The first release has not been cut. This section describes what is in the
-repository, not the order it arrived in.
+Nothing yet.
+
+## v0.1.0
+
+The first release: enough to stand the hub up on a cluster, connect the
+companies it serves, and let people in. The issuer is here and runnable
+but has not carried a relying party yet.
+
+**Not in it**, though the reference documents describe them: the
+TypeScript package (`docs/reference/typescript.md`) and most of the Go
+module for consoles (`docs/reference/go-module.md` — `identity`,
+`authz`, `directory`, `tokens`). What a `go get` at this tag gets is the
+policy engine and the backend interface. Both libraries belong to the
+work that replaces gateway-auth, and nothing in the hub's rollout needs
+them.
+
+This section describes what is in the release, not the order it arrived
+in.
 
 - **directory-roster**, the directory hub: workspaces whose domains are
   discovered, snapshots with the freshness policy (`max_age`, the
