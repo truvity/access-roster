@@ -190,7 +190,8 @@ func (c *Console) Reconnect(
 func (c *Console) beginFlow(
 	ctx context.Context, want directoryrosterv1.Backend, bind string,
 ) (consentURL, setCookie string, err error) {
-	if _, err = requireRole(ctx, access.RoleOperator); err != nil {
+	id, err := requireRole(ctx, access.RoleOperator)
+	if err != nil {
 		return "", "", err
 	}
 	conn, ok := c.connectors[backendKind(want)]
@@ -198,7 +199,10 @@ func (c *Console) beginFlow(
 		return "", "", connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("no connector for that backend: configure the OAuth client in Settings first"))
 	}
-	state, err := c.deps.State.Issue(bind)
+	// The state carries who asked. This request is the one the gateway
+	// authenticates; the callback is a redirect from Google that need not
+	// land on a route the gateway covers at all.
+	state, err := c.deps.State.IssueAs(access.Binding{Bind: bind, Actor: id.Who()})
 	if err != nil {
 		return "", "", connect.NewError(connect.CodeInternal, err)
 	}

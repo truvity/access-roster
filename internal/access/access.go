@@ -111,12 +111,25 @@ type Identity struct {
 // Can reports whether the identity holds at least the given role.
 func (i Identity) Can(role Role) bool { return i.Role.Implies(role) }
 
-// Name is the person's name as the directory has it, or the address when
+// Who is the identity as it should be written down: the address where
+// there is one, the subject where there is not.
+//
+// A recovery sign-in completes as a ServiceAccount and has NO address —
+// so every line that reached for Email alone recorded a blank for exactly
+// the sign-in whose actions most need a name against them.
+func (i Identity) Who() string {
+	if i.Email != "" {
+		return i.Email
+	}
+	return i.Subject
+}
+
+// Name is the person's name as the directory has it, or who they are when
 // it has none.
 func (i Identity) Name() string {
 	name := strings.TrimSpace(i.GivenName + " " + i.FamilyName)
 	if name == "" {
-		return i.Email
+		return i.Who()
 	}
 	return name
 }

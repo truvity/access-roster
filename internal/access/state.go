@@ -84,16 +84,40 @@ func NewStateCodec(key []byte, ttl time.Duration) *StateCodec {
 // SetClock replaces the clock. For tests.
 func (c *StateCodec) SetClock(now func() time.Time) { c.now = now }
 
-// Issue returns a signed state. Bind carries what the callback must know —
-// the workspace being reconnected, or empty for a new connection.
+// Binding is what a state carries from the start of a flow to its
+// callback.
+type Binding struct {
+	// Bind is the workspace being reconnected, empty for a new one.
+	Bind string
+	// Actor is the identity that was authorised when the flow began.
+	//
+	// It is here because a third-party callback is the one request in a
+	// flow whose identity cannot be assumed: it arrives as a redirect from
+	// Google, and the route it lands on need not be the one the gateway
+	// authenticates. The state is signed by this hub and pinned to the
+	// browser by a cookie the callback checks, so it can say who started
+	// the flow when nothing else in the request can.
+	//
+	// The authorisation itself still happens at the start, where an
+	// operator asked for the consent. This only carries the answer.
+	Actor string
+}
+
+// Issue returns a signed state bound to a workspace and to nobody.
 func (c *StateCodec) Issue(bind string) (string, error) {
+	return c.IssueAs(Binding{Bind: bind})
+}
+
+// IssueAs returns a signed state carrying the whole binding.
+func (c *StateCodec) IssueAs(b Binding) (string, error) {
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("access: generate state: %w", err)
 	}
 	body := strings.Join([]string{
 		base64.RawURLEncoding.EncodeToString(nonce),
-		base64.RawURLEncoding.EncodeToString([]byte(bind)),
+		base64.RawURLEncoding.EncodeToString([]byte(b.Bind)),
+		base64.RawURLEncoding.EncodeToString([]byte(b.Actor)),
 		strconv.FormatInt(c.now().Add(c.ttl).Unix(), 10),
 	}, ":")
 	return body + "." + c.sign(body), nil
@@ -101,29 +125,39 @@ func (c *StateCodec) Issue(bind string) (string, error) {
 
 // Verify checks a state and returns what it was bound to.
 func (c *StateCodec) Verify(state string) (string, error) {
+	b, err := c.VerifyBinding(state)
+	return b.Bind, err
+}
+
+// VerifyBinding checks a state and returns everything it carries.
+func (c *StateCodec) VerifyBinding(state string) (Binding, error) {
 	body, signature, ok := strings.Cut(state, ".")
 	if !ok {
-		return "", ErrBadState
+		return Binding{}, ErrBadState
 	}
 	if subtle.ConstantTimeCompare([]byte(signature), []byte(c.sign(body))) != 1 {
-		return "", fmt.Errorf("%w: signature", ErrBadState)
+		return Binding{}, fmt.Errorf("%w: signature", ErrBadState)
 	}
 	parts := strings.Split(body, ":")
-	if len(parts) != 3 {
-		return "", ErrBadState
+	if len(parts) != 4 {
+		return Binding{}, ErrBadState
 	}
-	expires, err := strconv.ParseInt(parts[2], 10, 64)
+	expires, err := strconv.ParseInt(parts[3], 10, 64)
 	if err != nil {
-		return "", fmt.Errorf("%w: expiry", ErrBadState)
+		return Binding{}, fmt.Errorf("%w: expiry", ErrBadState)
 	}
 	if c.now().Unix() >= expires {
-		return "", fmt.Errorf("%w: expired", ErrBadState)
+		return Binding{}, fmt.Errorf("%w: expired", ErrBadState)
 	}
 	bind, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return "", fmt.Errorf("%w: binding", ErrBadState)
+		return Binding{}, fmt.Errorf("%w: binding", ErrBadState)
 	}
-	return string(bind), nil
+	actor, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return Binding{}, fmt.Errorf("%w: actor", ErrBadState)
+	}
+	return Binding{Bind: string(bind), Actor: string(actor)}, nil
 }
 
 func (c *StateCodec) sign(body string) string {

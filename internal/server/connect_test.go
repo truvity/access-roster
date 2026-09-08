@@ -1,0 +1,113 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/truvity/access-roster/backend"
+	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/hub"
+)
+
+// stubConsent is a connector whose exchange always fails, so a test can
+// see whether the handler got past the authority check without needing a
+// hub to adopt into.
+type stubConsent struct{}
+
+func (stubConsent) Kind() string                   { return "google" }
+func (stubConsent) AuthURL(string) (string, error) { return "https://consent.example", nil }
+func (stubConsent) Exchange(context.Context, string, string) (hub.Workspace, backend.Backend, error) {
+	return hub.Workspace{}, nil, errors.New("got past the authority check")
+}
+
+// The consent callback is a redirect from Google, and it does NOT arrive
+// on the route the gateway authenticates: the bootstrap surface exists so
+// that a callback is not swallowed by a login prompt, which means the
+// proxy adds no identity to it. A callback that insisted on an identity in
+// the request therefore refused the one flow it exists to finish —
+// observed live as a 403 "this needs the operator role" on the first
+// workspace anyone tried to connect.
+//
+// So the operator is the one the SIGNED STATE names, established at the
+// start of the flow on a request the gateway did authenticate, and pinned
+// to this browser by the cookie the callback checks.
+func TestTheConsentCallbackTakesItsOperatorFromTheSignedState(t *testing.T) {
+	t.Parallel()
+
+	codec := access.NewStateCodec([]byte("the hub's session key"), time.Minute)
+	server := &ConsoleServer{
+		state:      codec,
+		sessions:   &access.Sessions{},
+		connectors: map[string]Connector{"google": stubConsent{}},
+		log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	call := func(state string) int {
+		request := httptest.NewRequest(http.MethodGet, "/connect/google/callback?state="+state+"&code=x", nil)
+		request.SetPathValue("backend", "google")
+		request.AddCookie(&http.Cookie{Name: access.ConnectCookieName, Value: state})
+		recorder := httptest.NewRecorder()
+		server.connectCallback(recorder, request)
+		return recorder.Code
+	}
+
+	// A state a signed-in operator started: no identity on the request,
+	// and the flow still finishes. StatusBadGateway is the stub's failed
+	// exchange, which only happens after the authority check passed.
+	started, err := codec.IssueAs(access.Binding{Actor: "system:serviceaccount:access-issuer:access-issuer-recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := call(started); got != http.StatusBadGateway {
+		t.Errorf("a callback for a flow an operator started = %d, want %d (it was refused)",
+			got, http.StatusBadGateway)
+	}
+
+	// A state naming nobody authorises nobody. Signed by this hub and
+	// pinned to this browser is not the same as authorised.
+	anonymous, err := codec.Issue("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := call(anonymous); got != http.StatusForbidden {
+		t.Errorf("a callback for a flow nobody started = %d, want %d", got, http.StatusForbidden)
+	}
+
+	// The cookie is still what makes it this browser's flow: a valid
+	// signed state carried by a browser that did not start it is refused
+	// before anything else is read.
+	request := httptest.NewRequest(http.MethodGet, "/connect/google/callback?state="+started, nil)
+	request.SetPathValue("backend", "google")
+	recorder := httptest.NewRecorder()
+	server.connectCallback(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Errorf("a callback with no cookie = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+// The actor written against a connected workspace must name somebody. A
+// recovery sign-in completes as a ServiceAccount and has no address, so
+// the field that recorded `Email` recorded a blank for exactly the
+// sign-in whose actions most need a name against them.
+func TestWhoNamesAnIdentityThatHasNoAddress(t *testing.T) {
+	t.Parallel()
+
+	recovered := access.Identity{Subject: "system:serviceaccount:access-issuer:access-issuer-recovery"}
+	if got := recovered.Who(); got != recovered.Subject {
+		t.Errorf("a recovered identity is written down as %q, want the subject", got)
+	}
+	if got := recovered.Name(); got != recovered.Subject {
+		t.Errorf("a recovered identity is named %q, want the subject", got)
+	}
+
+	person := access.Identity{Email: "ada@north.example", Subject: "ada@north.example"}
+	if got := person.Who(); got != "ada@north.example" {
+		t.Errorf("a person is written down as %q, want the address", got)
+	}
+}
