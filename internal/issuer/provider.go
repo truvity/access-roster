@@ -92,6 +92,22 @@ const discoveryPath = "/.well-known/openid-configuration"
 // needing.
 var servedResponseTypes = []string{"code"}
 
+// servedGrantTypes is the same correction one field along, and it is the
+// one that matters more. A relying party reads `grant_types_supported`
+// and picks; offered `implicit`, a library will happily use it, and the
+// refusal arrives in a browser redirect where nobody sees the reason.
+//
+// The list is what this issuer implements: the code flow and its refresh,
+// token exchange for CI and workloads, the device flow for the CLIs, and
+// the JWT profile a service account uses to assert itself.
+var servedGrantTypes = []string{
+	"authorization_code",
+	"refresh_token",
+	"urn:ietf:params:oauth:grant-type:token-exchange",
+	"urn:ietf:params:oauth:grant-type:jwt-bearer",
+	"urn:ietf:params:oauth:grant-type:device_code",
+}
+
 // truthfulDiscovery corrects the one place the library over-promises.
 //
 // It composes `response_types_supported` from a hardcoded list rather
@@ -120,6 +136,7 @@ func truthfulDiscovery(next http.Handler) http.Handler {
 			return
 		}
 		doc["response_types_supported"] = servedResponseTypes
+		doc["grant_types_supported"] = servedGrantTypes
 
 		corrected, err := json.Marshal(doc)
 		if err != nil {

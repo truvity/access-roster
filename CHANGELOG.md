@@ -44,6 +44,17 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **access-issuer is a service.** `cmd/access-issuer` and
+  `internal/issuerapp` assemble it from the environment — policy, the door
+  to the hub, the signing key, the verifiers — and serve discovery, the
+  JWKS, the code flow, exchange, revocation and the device flow, with
+  health beside them. It refuses to start without an issuer URL, because
+  that string is baked into every token and every relying party's trust
+  and a default would be a value nobody chose spread across an estate.
+- **Discovery stopped advertising the implicit grant.** `response_types`
+  was already corrected; `grant_types_supported` was not, and a relying
+  party reads that one and picks — offered implicit, a library uses it,
+  and the refusal arrives in a browser redirect where nobody sees why.
 - **The chart has been installed and run**, in kind, with the real
   Kubernetes store and token recovery: two replicas, recovery by a minted
   token straight into the console, the API listener admitting the declared
