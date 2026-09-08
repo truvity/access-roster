@@ -160,7 +160,7 @@ flowchart TB
     dirapi["DirectoryService handlers<br/>[connect-go]<br/>Describe, Probe, GetGroup, ListGroups,<br/>GetAccount, ResolveAccounts, ResolveUser"]:::component
     consauth["Consumer authentication<br/>[TokenReview]<br/>SA token, audience, allow-list"]:::component
     opapi["Operator handlers<br/>[connect-go]<br/>WorkspaceService, SettingsService,<br/>AccessService, role gate from the session"]:::component
-    access["Access<br/>[session, policy, login routes]<br/>forwarded bearer, or standalone sign-in,<br/>or admin; internal groups to roles"]:::component
+    access["Access<br/>[session, policy, login routes]<br/>forwarded bearer, or standalone sign-in,<br/>or recovery, internal groups to roles"]:::component
     connect["Connect flow<br/>[HTTP]<br/>BeginConnect and callback: state cookie,<br/>code exchange, tenant + domain discovery, first probe"]:::component
     router["Router<br/>[domain → workspace]<br/>email domain to the workspace serving it,<br/>conflict detection, authoritative per domain"]:::component
     fresh["Freshness<br/>[max_age policy]<br/>serve / refresh single-flight /<br/>point read live / miss goes live once"]:::component
@@ -344,7 +344,7 @@ sequenceDiagram
   Op->>G: consent screen, signed in as the tenant's admin role account
   G-->>Op: redirect to /connect/google/callback with code and state
   Op->>Hub: callback on the bootstrap surface (no gateway identity)
-  Hub->>Hub: verify the state cookie; the signed state names the operator
+  Hub->>Hub: verify the state cookie, and read the operator from the signed state
   Hub->>G: exchange code → refresh token (offline, forced consent)
   Hub->>G: users.get(admin) → tenant id, domains.list → domains
   Hub->>K: Secret workspace-{id} (refresh token), ConfigMap workspace-{id} (record)

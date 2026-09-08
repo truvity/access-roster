@@ -21,6 +21,13 @@ test:
 lint:
     golangci-lint config verify
     golangci-lint run ./...
+    # A `;` inside a mermaid sequenceDiagram is a STATEMENT SEPARATOR, not
+    # punctuation: it splits the message text in half, the second half
+    # parses as a statement with no arrow, and GitHub renders "Unable to
+    # render rich display" in place of the whole diagram. Nothing in the
+    # normal build reads these files, so the first reader to notice is
+    # somebody looking at the documentation.
+    ! grep -rn --include=*.md -E '^[[:space:]]*[A-Za-z][A-Za-z0-9_]*[[:space:]]*-?->>?.*;' docs/
 
 # Run Go vulnerability check
 vuln:
