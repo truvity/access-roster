@@ -155,11 +155,26 @@ access:
       issuer: ""
       # Secret with keys client-id and client-secret.
       clientSecretName: ""
-    # Trust a bearer forwarded by an authenticating gateway in front of the
-    # console (oauth2-proxy and the like); the hub verifies it against this
-    # issuer. Optional.
+    # Trust an identity forwarded by an authenticating gateway in front of
+    # the console (oauth2-proxy and the like). The gateway has already run
+    # the login; the hub reads the address out of a header and resolves it
+    # through the directory like any other. This is the normal posture for
+    # a console behind the fleet's gateway-auth.
+    #
+    # Only enable it where a gateway really does strip and set the header
+    # on every request: a header the hub trusts is an identity anyone who
+    # can reach the pod can claim, which is what the NetworkPolicy on the
+    # console listener is for.
     forwardedBearer:
+      # The header carrying the address. oauth2-proxy's own name for it,
+      # which is what the fleet's gateway-auth sets. Empty turns the whole
+      # path off.
+      emailHeader: ""
+      # Recorded on the session so an operator can see where an identity
+      # came from. Optional.
       issuer: ""
+  # How long a console session lasts before it has to sign in again.
+  sessionLifetime: 12h
   # The hold window: how long a signed-in identity keeps its last granted
   # role while the directory cannot vouch for its membership. Zero means
   # no hold, and an uncertain directory then grants nothing.
@@ -202,3 +217,6 @@ resources:
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []
+
+# debug | info | warn | error.
+logLevel: info

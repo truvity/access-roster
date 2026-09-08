@@ -92,6 +92,30 @@ spec:
             - name: RECOVERY_AUDIENCE
               value: {{ include "directory-roster.recoveryAudience" . | quote }}
             {{- end }}
+            # Where a browser reaches this console. Everything that has
+            # to name itself to somebody else is built from it: both
+            # OAuth redirect URIs, and the values the setup steps tell an
+            # operator to paste into a cloud console. Unset, it falls
+            # back to localhost — which is right for a workstation and
+            # silently wrong everywhere else, because the redirect would
+            # be registered against a hostname no browser will reach.
+            {{- if .Values.route.host }}
+            - name: PUBLIC_URL
+              value: https://{{ .Values.route.host }}
+            # The console is served over TLS, so its cookies say so.
+            - name: SECURE_COOKIES
+              value: "true"
+            {{- end }}
+            {{- if .Values.access.login.forwardedBearer.emailHeader }}
+            - name: FORWARDED_EMAIL_HEADER
+              value: {{ .Values.access.login.forwardedBearer.emailHeader | quote }}
+            - name: FORWARDED_ISSUER
+              value: {{ .Values.access.login.forwardedBearer.issuer | quote }}
+            {{- end }}
+            - name: SESSION_LIFETIME
+              value: {{ .Values.access.sessionLifetime | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
             # Who may call the API listener. Empty admits nobody: a hub
             # that answered everyone by default would be one forgotten
             # value away from serving a company's directory to the

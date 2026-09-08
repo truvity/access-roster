@@ -166,6 +166,14 @@
         }
       }
     },
+    "logLevel": {
+      "enum": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ]
+    },
     "consumers": {
       "type": "array",
       "items": {
@@ -229,12 +237,18 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
+                "emailHeader": {
+                  "type": "string"
+                },
                 "issuer": {
                   "type": "string"
                 }
               }
             }
           }
+        },
+        "sessionLifetime": {
+          "$ref": "#/definitions/duration"
         },
         "holdWindow": {
           "$ref": "#/definitions/duration"

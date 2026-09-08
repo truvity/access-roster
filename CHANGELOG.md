@@ -44,6 +44,14 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **Four chart values that did nothing now do something.** `PUBLIC_URL`
+  was never set, so a deployed hub built both OAuth redirect URIs — and
+  the values its setup steps tell an operator to paste — from
+  `http://localhost:8081`; it now comes from `route.host`, and the session
+  cookie is marked Secure with it. The forwarded-identity path a console
+  behind the fleet's gateway has been documented as using was never
+  rendered either; it now is, with the header name as a value. Session
+  lifetime and log level joined them.
 - **The API listener authenticates its callers.** It was open: anything
   that could reach the port got every account and group of every company
   the hub serves. Callers now present a projected ServiceAccount token

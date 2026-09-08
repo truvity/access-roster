@@ -44,7 +44,10 @@ external-secrets is at the end of this page.
 | `access.holdWindow` | `4h` | how long a signed-in identity keeps its last granted role while the directory cannot be vouched for |
 | `access.login.directory` | `true` | "Sign in with <directory>" using a connected workspace's OAuth client |
 | `access.login.oidc.issuer` / `.clientSecretName` | `""` | an external issuer for the hub's own login page; Secret keys `client-id`, `client-secret` |
-| `access.login.forwardedBearer.issuer` | `""` | verify a bearer forwarded by a gateway against this issuer |
+| `access.login.forwardedBearer.emailHeader` | `""` | trust the address in this header, set by an authenticating gateway in front of the console (`X-Auth-Request-Email` for oauth2-proxy and the fleet's gateway-auth). Empty turns the path off. Only set it where a gateway really does strip and set the header on every request |
+| `access.login.forwardedBearer.issuer` | `""` | recorded on the session, so an operator can see where an identity came from |
+| `access.sessionLifetime` | `12h` | how long a console session lasts |
+| `logLevel` | `info` | debug, info, warn, error |
 | `policy` | `{}` | the declared layer of the policy, see below |
 | `networkPolicy.enabled` | `false` | |
 | `networkPolicy.apiClients[]` | `[]` | namespaces allowed to reach the API listener |
@@ -193,6 +196,11 @@ from the values above.
 | `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_CLUSTER`, `VALKEY_PASSWORD` | `valkey.*` (no address = in-memory snapshots, which is correct for one replica and wasteful for more) |
 | `OAUTH_CLIENT_SECRET_NAME` | `oauthClient.existingSecret` |
 | `OVERLAY_FILE` | set when `workspaces` is non-empty |
+| `PUBLIC_URL` | `https://<route.host>` — where a browser reaches the console. **Both OAuth redirect URIs and the setup values are built from it**, so a deployment without `route.host` falls back to localhost and registers a redirect no browser will reach |
+| `SECURE_COOKIES` | `true` when `route.host` is set |
+| `FORWARDED_EMAIL_HEADER`, `FORWARDED_ISSUER` | `access.login.forwardedBearer.*` |
+| `SESSION_LIFETIME` | `access.sessionLifetime` |
+| `LOG_LEVEL` | `logLevel` |
 | `POLICY_DIR` | the directory the declared layer is mounted in; every YAML file in it merges |
 | `HOLD_WINDOW` | `access.holdWindow` |
 
