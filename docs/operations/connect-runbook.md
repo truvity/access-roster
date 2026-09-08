@@ -40,9 +40,10 @@ installation, never per company. About fifteen minutes.
      authorisation: the first adopts a workspace and demands an operator,
      the second is how a person becomes anyone at all. A client missing
      the second one works perfectly until somebody tries to sign in.
-   - While the hub is being tried on a workstation, a second URI
-     `http://localhost:8080/connect/google/callback` may be added; remove
-     it once the hub runs behind its real host.
+   - While the hub is being tried on a workstation, the same **pair** on
+     `http://localhost:8081` may sit on the client — 8081 is the console
+     listener, which is where both flows return. Remove them once the hub
+     runs behind its real host.
 5. **Hand the client to the hub**, one of two ways:
    - paste the client id and secret into the console's Settings once; or
    - create a Secret with keys `client-id` and `client-secret` in the hub's
