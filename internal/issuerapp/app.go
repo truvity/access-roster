@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +57,7 @@ type Config struct {
 	recoveryEnabled   bool
 	recoveryAccount   string
 	recoveryAudience  string
+	clientSecretsDir  string
 	valkey            valkey.Config
 	audience          string
 	signingKeyFile    string
@@ -89,6 +91,7 @@ func Load() (Config, error) {
 		recoveryEnabled:   envBool("RECOVERY_ENABLED", false),
 		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", ""),
 		recoveryAudience:  envString("RECOVERY_AUDIENCE", ""),
+		clientSecretsDir:  envString("CLIENT_SECRETS_DIR", ""),
 		valkey: valkey.Config{
 			Address:  envString("VALKEY_ADDRESS", ""),
 			Password: envString("VALKEY_PASSWORD", ""),
@@ -194,7 +197,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	storage, err := issuer.NewStorage(core, verifiers, nil, key, shared)
+	storage, err := issuer.NewStorage(core, verifiers, clientSecrets(cfg, log), key, shared)
 	if err != nil {
 		return nil, err
 	}
@@ -235,6 +238,40 @@ func (a *App) Run(ctx context.Context) error {
 	group.Go(func() error { return serve(gctx, a.cfg.port, a.handler, "issuer", a.log) })
 	group.Go(func() error { return serve(gctx, a.cfg.healthPort, a.health, "health", a.log) })
 	return group.Wait()
+}
+
+// clientSecrets resolves a confidential client's secret from the files
+// the deployment mounted, one per client id.
+//
+// From FILES and not from the API, for the same reason the signing key
+// comes from one: this service holds no RBAC to read a Secret, so a
+// compromise of it cannot become a read of every credential in its
+// namespace. The chart projects each declared client's Secret to a file
+// named after the client.
+//
+// Read per call rather than once at start, so that rotating a client's
+// Secret takes effect when the kubelet refreshes the mount instead of
+// needing a restart.
+func clientSecrets(cfg Config, log *slog.Logger) func(string) (string, bool) {
+	if cfg.clientSecretsDir == "" {
+		return nil
+	}
+	return func(clientID string) (string, bool) {
+		// A client id is a path SEGMENT here. One containing a separator
+		// would read a file the deployment never mounted, so it is
+		// refused rather than cleaned: there is no reading of "../" that
+		// the author could have meant.
+		if clientID == "" || strings.ContainsAny(clientID, `/\`) || clientID == "." || clientID == ".." {
+			return "", false
+		}
+		raw, err := os.ReadFile(filepath.Join(cfg.clientSecretsDir, clientID)) //nolint:gosec // the id is checked above and the directory is deployment configuration
+		if err != nil {
+			log.Warn("a declared client's secret could not be read; that client cannot authenticate",
+				"client", clientID, "error", err)
+			return "", false
+		}
+		return strings.TrimSpace(string(raw)), true
+	}
 }
 
 // openRecovery builds the way in that needs no directory, or nothing.

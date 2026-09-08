@@ -84,6 +84,10 @@ spec:
             - name: EXCHANGE_AUDIENCE
               value: {{ include "access-issuer.exchangeAudience" . | quote }}
             {{- end }}
+            {{- if include "access-issuer.confidentialClients" . }}
+            - name: CLIENT_SECRETS_DIR
+              value: /var/run/access-issuer/clients
+            {{- end }}
             - name: RECOVERY_ENABLED
               value: {{ .Values.recovery.enabled | quote }}
             {{- if .Values.recovery.enabled }}
@@ -117,6 +121,11 @@ spec:
             - name: hub-token
               mountPath: /var/run/access-issuer/hub
               readOnly: true
+            {{- if include "access-issuer.confidentialClients" . }}
+            - name: client-secrets
+              mountPath: /var/run/access-issuer/clients
+              readOnly: true
+            {{- end }}
             {{- if .Values.oauthClient.secret.name }}
             - name: oauth-client
               mountPath: /var/run/access-issuer/oauth-client
@@ -146,6 +155,24 @@ spec:
                   audience: {{ include "access-issuer.hubAudience" . }}
                   expirationSeconds: 3600
                   path: token
+        {{- if include "access-issuer.confidentialClients" . }}
+        # One file per confidential client, named after the client id, so
+        # the service resolves a secret by reading a path and never by
+        # holding RBAC to read Secrets -- the same reason the signing key
+        # is a file.
+        - name: client-secrets
+          projected:
+            sources:
+              {{- range $id, $client := .Values.policy.clients }}
+              {{- if $client.secret }}
+              - secret:
+                  name: {{ $client.secret }}
+                  items:
+                    - key: {{ $client.secretKey | default "client-secret" }}
+                      path: {{ $id }}
+              {{- end }}
+              {{- end }}
+        {{- end }}
         {{- if .Values.oauthClient.secret.name }}
         - name: oauth-client
           secret:

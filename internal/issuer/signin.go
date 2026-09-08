@@ -121,6 +121,11 @@ func (s *signIn) chooser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var buttons strings.Builder
+	// Say where this is. A person arrives here redirected from somewhere
+	// else, on a hostname they may never have seen, and being asked to
+	// sign in by a page that does not identify itself is the shape of
+	// every phishing page there has ever been.
+	buttons.WriteString(`<p class="note">Sign in to continue to the application that sent you here.</p>`)
 	for _, kind := range kinds {
 		fmt.Fprintf(&buttons, `<p><a class="btn" href="%s">Continue with %s</a></p>`,
 			html.EscapeString(s.startURL(kind, request)), html.EscapeString(providerName(kind)))
@@ -185,8 +190,8 @@ func (s *signIn) recoveryForm(request string) string {
 	if prompt.Command != "" {
 		command = "<pre>" + html.EscapeString(prompt.Command) + "</pre>"
 	}
-	return fmt.Sprintf(`<details><summary>Recovery sign-in</summary>
-	<p>%s</p>%s
+	return fmt.Sprintf(`<details><summary class="note">Recovery sign-in</summary>
+	<p class="note">%s</p>%s
 	<form method="post" action="/login/recovery">
 		<input type="hidden" name="state" value="%s">
 		<p><label>%s<br><input type="password" name="proof" autocomplete="off"></label></p>
@@ -336,7 +341,12 @@ const pageHTML = `<!doctype html><meta charset="utf-8"><title>%s</title>
  body{font:16px/1.5 system-ui,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f3f5f8;color:#1b2230}
  main{background:#fff;padding:32px 36px;border-radius:8px;border:1px solid #d9dee6;max-width:26rem}
  h1{font-size:20px;margin:0 0 4px} p{margin:12px 0}
- .btn{display:inline-block;padding:8px 14px;border-radius:4px;background:#0e7c7b;color:#fff;text-decoration:none}
+ input{width:100%%;padding:8px;border:1px solid #d9dee6;border-radius:4px;font:inherit}
+ button,.btn{display:inline-block;padding:8px 14px;border:0;border-radius:4px;background:#0e7c7b;color:#fff;font:inherit;text-decoration:none;cursor:pointer}
  .note{font-size:14px;color:#6b7383}
+ .warn{font-size:13px;color:#8a4b21;background:#fdf3e7;border:1px solid #f0d9c0;border-radius:4px;padding:8px 10px}
+ pre{font-size:13px;background:#f3f5f8;border:1px solid #d9dee6;border-radius:4px;padding:10px;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+ details{margin-top:20px;border-top:1px solid #e6eaef;padding-top:12px}
+ summary{cursor:pointer}
 </style>
 <main><h1>%s</h1>%s</main>`
