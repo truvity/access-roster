@@ -425,6 +425,14 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err = reopenStored(ctx, directory, kept, adopted, oauthClient, log); err != nil {
 		return nil, err
 	}
+	// And from here the hub can open a workspace on its own. Reopening at
+	// start covers what existed at start; this covers a workspace another
+	// replica connected a minute ago, which start-up cannot know about.
+	if kept.credentials != nil {
+		directory.UseReopener(func(ctx context.Context, ws hub.Workspace, cred backend.Credential) (backend.Backend, error) {
+			return openStored(ctx, ws.Backend, cred, oauthClient)
+		})
+	}
 	// Two forwarded paths, reported apart: an operator reading the start-up
 	// line should be able to tell a console that VERIFIES a gateway's token
 	// from one that TRUSTS a gateway's header, because the second is only

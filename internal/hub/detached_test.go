@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -191,4 +192,109 @@ func TestNarrowingExcludesAtOnceAndRereadsLater(t *testing.T) {
 		t.Error("a group at an excluded domain is still answerable")
 	}
 	directory.Wait()
+}
+
+// memoryCredentials is a CredentialStore two hubs share, the way two
+// replicas share the Kubernetes objects behind one.
+type memoryCredentials struct {
+	mu   sync.Mutex
+	byID map[string]backend.Credential
+}
+
+func newMemoryCredentials() *memoryCredentials {
+	return &memoryCredentials{byID: map[string]backend.Credential{}}
+}
+
+func (m *memoryCredentials) Load(_ context.Context, id string) (backend.Credential, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cred, ok := m.byID[id]
+	return cred, ok, nil
+}
+
+func (m *memoryCredentials) Save(_ context.Context, id string, cred backend.Credential) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.byID[id] = cred
+	return nil
+}
+
+func (m *memoryCredentials) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.byID, id)
+	return nil
+}
+
+// A workspace connected on one replica is served by the other.
+//
+// Readers used to be opened only at start, so a workspace adopted through
+// the console on one replica did not exist on the other until it
+// restarted. Live, with two replicas, that was half of every request
+// answering "workspace not found" for a directory connected a minute
+// earlier — and the operator's narrowing landed on the ignorant replica
+// and dropped the snapshot.
+func TestAWorkspaceConnectedOnOneReplicaIsServedByTheOther(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	// One store, one credential store, one snapshot store: what the two
+	// replicas actually share.
+	store := hub.NewMemoryStore()
+	creds := newMemoryCredentials()
+	snaps := hub.NewMemorySnapshots()
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	directories := make([]*hub.Hub, 2)
+	readers := map[string]*fake.Backend{}
+	var readerMu sync.Mutex
+	for i := range directories {
+		directories[i] = hub.New(store, snaps, hub.Config{}, quiet)
+		directories[i].UseCredentials(creds)
+		directories[i].UseReopener(func(_ context.Context, ws hub.Workspace, _ backend.Credential) (backend.Backend, error) {
+			readerMu.Lock()
+			defer readerMu.Unlock()
+			b, ok := readers[ws.ID]
+			if !ok {
+				return nil, errors.New("this build cannot open it")
+			}
+			return b, nil
+		})
+	}
+	first, second := directories[0], directories[1]
+
+	tenant := fake.New("C0shared", "shared.example").
+		WithAccount("ada@shared.example", "Ada", "Shared").
+		WithGroup("team@shared.example", "ada@shared.example")
+	readerMu.Lock()
+	readers["C0shared"] = tenant
+	readerMu.Unlock()
+
+	// Connected on the first replica only.
+	if _, err := first.Adopt(ctx, hub.Workspace{Admin: "admin@shared.example"}, tenant); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	first.Wait()
+
+	// The second replica has never heard of it, and must not say so.
+	if _, err := second.Refresh(ctx, "C0shared"); err != nil {
+		t.Errorf("Refresh on the other replica: %v, want it to open the workspace itself", err)
+	}
+	if _, err := second.SetServed(ctx, "C0shared", []string{"shared.example"}); err != nil {
+		t.Errorf("SetServed on the other replica: %v", err)
+	}
+	second.Wait()
+	if got, err := second.ResolveUser(ctx, "ada@shared.example", nil); err != nil {
+		t.Fatalf("ResolveUser: %v", err)
+	} else if !got.Found || got.Workspace != "C0shared" {
+		t.Errorf("result = %+v, want the other replica to answer for it", got)
+	}
+
+	// Disconnected on one, gone on both: a miss must not resurrect a
+	// reader from a credential that is no longer there.
+	if err := first.Disconnect(ctx, "C0shared"); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	if _, err := second.Refresh(ctx, "C0shared"); !errors.Is(err, hub.ErrNotFound) {
+		t.Errorf("Refresh after disconnect = %v, want ErrNotFound", err)
+	}
 }
