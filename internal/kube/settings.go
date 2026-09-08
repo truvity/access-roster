@@ -14,14 +14,46 @@ import (
 	"github.com/truvity/access-roster/internal/settings"
 )
 
-// The keys of the OAuth client Secret. They are the names the chart's
-// documentation gives, so that a Secret delivered by external-secrets and
-// one written here are the same object.
+// The keys of the OAuth client Secret the hub writes ITSELF, when a
+// console sets the client. The hub owns that object, so it names the
+// keys; they are the names the chart's documentation gives.
+//
+// A DECLARED Secret is a different matter — see [DeclaredClient].
 const (
 	clientIDKey     = "client-id"
 	clientSecretKey = "client-secret"
 	membershipsKey  = "memberships.json"
 )
+
+// DeclaredClient names a Secret the deployment delivers, and the keys to
+// read out of it.
+//
+// The keys are configurable because the hub does not produce this object
+// and must not dictate its shape. Whatever put it there — external-secrets
+// from a parameter store, a 1Password operator, sealed-secrets, a hand
+// `kubectl create secret` — already had an opinion about what the keys are
+// called, and a hub that insisted on two particular names would be a hub
+// that could not read a Secret already sitting in the namespace.
+type DeclaredClient struct {
+	// Name of the Secret. Empty leaves the client for the console to set,
+	// and the hub then owns the object and the key names above.
+	Name string
+	// IDKey and SecretKey default to the names the hub uses for its own.
+	IDKey     string
+	SecretKey string
+}
+
+// keys returns the key names to read, with the defaults applied.
+func (d DeclaredClient) keys() (id, secret string) {
+	id, secret = d.IDKey, d.SecretKey
+	if id == "" {
+		id = clientIDKey
+	}
+	if secret == "" {
+		secret = clientSecretKey
+	}
+	return id, secret
+}
 
 // Settings stores the two things an operator changes from the console.
 //
@@ -30,19 +62,19 @@ const (
 // person should be able to read without being able to use it.
 type Settings struct {
 	c *Client
-	// declaredSecret names a Secret the deployment delivers. When it is
-	// set the client is read from there and the console cannot change it:
-	// a value the chart states must not be editable in a UI, or the next
+	// declared names a Secret the deployment delivers. When it is set the
+	// client is read from there and the console cannot change it: a value
+	// the chart states must not be editable in a UI, or the next
 	// deployment silently undoes the edit.
-	declaredSecret string
+	declared DeclaredClient
 }
 
 var _ settings.Store = (*Settings)(nil)
 
-// NewSettings returns the store. An empty declaredSecret leaves the
+// NewSettings returns the store. A DeclaredClient with no name leaves the
 // client for the console to set.
-func NewSettings(c *Client, declaredSecret string) *Settings {
-	return &Settings{c: c, declaredSecret: declaredSecret}
+func NewSettings(c *Client, declared DeclaredClient) *Settings {
+	return &Settings{c: c, declared: declared}
 }
 
 // The two objects, named for what they hold rather than for the code
@@ -53,9 +85,11 @@ func (s *Settings) membershipsName() string { return s.c.prefix + "-memberships"
 
 // OAuthClient implements [settings.Store].
 func (s *Settings) OAuthClient(ctx context.Context) (settings.OAuthClient, error) {
-	name, declared := s.declaredSecret, true
+	name, declared := s.declared.Name, true
+	idKey, secretKey := s.declared.keys()
 	if name == "" {
 		name, declared = s.clientName(), false
+		idKey, secretKey = clientIDKey, clientSecretKey
 	}
 	secret, err := s.c.api.CoreV1().Secrets(s.c.namespace).Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
@@ -69,15 +103,15 @@ func (s *Settings) OAuthClient(ctx context.Context) (settings.OAuthClient, error
 		return settings.OAuthClient{}, fmt.Errorf("kube: read the OAuth client: %w", err)
 	}
 	return settings.OAuthClient{
-		ID:       string(secret.Data[clientIDKey]),
-		Secret:   string(secret.Data[clientSecretKey]),
+		ID:       string(secret.Data[idKey]),
+		Secret:   string(secret.Data[secretKey]),
 		Declared: declared,
 	}, nil
 }
 
 // SetOAuthClient implements [settings.Store].
 func (s *Settings) SetOAuthClient(ctx context.Context, id, secret string) error {
-	if s.declaredSecret != "" {
+	if s.declared.Name != "" {
 		return settings.ErrDeclared
 	}
 	if id == "" || secret == "" {

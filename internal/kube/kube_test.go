@@ -180,7 +180,7 @@ func TestADeclaredOAuthClientIsReadOnly(t *testing.T) {
 		Data:       map[string][]byte{"client-id": []byte("declared.apps"), "client-secret": []byte("s3cret")},
 	})
 
-	store := kube.NewSettings(client, "chart-delivered")
+	store := kube.NewSettings(client, kube.DeclaredClient{Name: "chart-delivered"})
 	got, err := store.OAuthClient(ctx)
 	if err != nil {
 		t.Fatalf("OAuthClient: %v", err)
@@ -195,9 +195,44 @@ func TestADeclaredOAuthClientIsReadOnly(t *testing.T) {
 	// A declared Secret that has not arrived yet is "not configured", not
 	// an error: on a fresh install the hub starts before external-secrets
 	// has written it, and the console's setup steps say exactly that.
-	empty := kube.NewSettings(newClient(), "not-there-yet")
+	empty := kube.NewSettings(newClient(), kube.DeclaredClient{Name: "not-there-yet"})
 	if got, err = empty.OAuthClient(ctx); err != nil || got.Configured() || !got.Declared {
 		t.Errorf("a missing declared client = %+v, %v", got, err)
+	}
+}
+
+// Whatever delivered the declared Secret already had an opinion about
+// what its keys are called. A hub that insisted on its own two names
+// could not read a Secret already sitting in the namespace, so the names
+// are configuration — and the defaults are only defaults.
+func TestADeclaredClientCanUseOtherKeyNames(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	client := newClient(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "from-elsewhere", Namespace: namespace},
+		Data: map[string][]byte{
+			"oidc.clientID":     []byte("elsewhere.apps"),
+			"oidc.clientSecret": []byte("s3cret"),
+			// The hub's own names are present too, holding something
+			// else entirely: reading those would look like success.
+			"client-id":     []byte("WRONG"),
+			"client-secret": []byte("WRONG"),
+		},
+	})
+
+	store := kube.NewSettings(client, kube.DeclaredClient{
+		Name:      "from-elsewhere",
+		IDKey:     "oidc.clientID",
+		SecretKey: "oidc.clientSecret",
+	})
+
+	got, err := store.OAuthClient(ctx)
+	if err != nil {
+		t.Fatalf("OAuthClient: %v", err)
+	}
+	if got.ID != "elsewhere.apps" || got.Secret != "s3cret" {
+		t.Errorf("client = %+v, want the keys the deployment named", got)
 	}
 }
 
@@ -207,7 +242,7 @@ func TestMembershipsRoundTrip(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	client := newClient()
-	store := kube.NewSettings(client, "")
+	store := kube.NewSettings(client, kube.DeclaredClient{})
 
 	if got, err := store.Memberships(ctx); err != nil || len(got) != 0 {
 		t.Fatalf("a fresh install = %v, %v; want empty and no error", got, err)
@@ -219,7 +254,7 @@ func TestMembershipsRoundTrip(t *testing.T) {
 	if err := store.SetMemberships(ctx, want); err != nil {
 		t.Fatalf("SetMemberships: %v", err)
 	}
-	got, err := kube.NewSettings(client, "").Memberships(ctx)
+	got, err := kube.NewSettings(client, kube.DeclaredClient{}).Memberships(ctx)
 	if err != nil {
 		t.Fatalf("Memberships: %v", err)
 	}
@@ -234,7 +269,7 @@ func TestMembershipsRoundTrip(t *testing.T) {
 	if err = store.SetOAuthClient(ctx, "console.apps", "shh"); err != nil {
 		t.Fatalf("SetOAuthClient: %v", err)
 	}
-	client2, err := kube.NewSettings(client, "").OAuthClient(ctx)
+	client2, err := kube.NewSettings(client, kube.DeclaredClient{}).OAuthClient(ctx)
 	if err != nil || client2.ID != "console.apps" || client2.Declared {
 		t.Errorf("client = %+v, %v", client2, err)
 	}
