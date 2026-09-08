@@ -15,6 +15,16 @@ and that one is not interim. A chart that generated it would generate a new
 one on every render that cannot read cluster state — which is what ArgoCD
 does — and every sync would sign everyone out.
 
+**Decided 2026-09-08:** a console behind this proxy must publish a
+**bootstrap surface** the proxy does not cover — its sign-in page, recovery,
+and the consent callback. Found the hard way on the first real install: the
+operator connecting the first directory is one no directory can vouch for, so
+the gateway sent them to sign in against a directory that did not exist, and
+Google's consent redirect came back to a callback the proxy swallowed. It
+presents as a second account picker, not as a refusal. directory-roster
+renders those paths on a second HTTPRoute (`route.bootstrapPaths`) and the
+proxy attaches only to the main one.
+
 **Decided 2026-09-08:** its first consumer is the **directory-roster
 console**, in the `authenticated` posture. The hub resolves viewer/operator
 from the directory it owns, so the gateway gates on "signed in" and the

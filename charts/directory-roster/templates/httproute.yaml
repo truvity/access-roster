@@ -84,4 +84,47 @@ spec:
           name: {{ include "directory-roster.fullname" . }}-console
           port: {{ .Values.listeners.console.port }}
           weight: 1
+{{- with .Values.route.bootstrapPaths }}
+---
+# The bootstrap surface, on its own HTTPRoute so that a gateway policy
+# attached to the route above does not cover it.
+#
+# Without this a console behind an authenticating gateway cannot be
+# bootstrapped from a browser at all. The operator who connects the FIRST
+# directory is, by definition, one no directory can vouch for yet -- so
+# the gateway sends them away to prove themselves against the thing that
+# does not exist. And the consent they start comes back to a callback the
+# gateway swallows, which reads as a second login prompt rather than as a
+# refusal.
+#
+# Longer path prefixes win in the Gateway API, so these take precedence
+# over the `/` the main route matches.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "directory-roster.fullname" $ }}-bootstrap
+  labels:
+    {{- include "directory-roster.labels" $ | nindent 4 }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ include "directory-roster.fullname" $ }}
+      sectionName: console
+  hostnames:
+    - {{ $.Values.route.host | quote }}
+  rules:
+    - matches:
+        {{- range . }}
+        - path:
+            type: PathPrefix
+            value: {{ . | quote }}
+        {{- end }}
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "directory-roster.fullname" $ }}-console
+          port: {{ $.Values.listeners.console.port }}
+          weight: 1
+{{- end }}
 {{- end }}

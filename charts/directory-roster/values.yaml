@@ -131,6 +131,32 @@ route:
     # its own.
     issuerName: internal-ca
     issuerKind: ClusterIssuer
+  # Paths served WITHOUT whatever authenticates the rest of this host.
+  #
+  # They are how somebody gets in BEFORE there is anything to
+  # authenticate against, and a console that gates them cannot be
+  # bootstrapped from a browser at all: the first directory is connected
+  # by an operator who, by definition, no directory can vouch for yet.
+  #
+  # Rendered as a second HTTPRoute, so a gateway policy attached to the
+  # main one does not cover them. Longer path prefixes win in the Gateway
+  # API, so these take precedence over the `/` the main route matches.
+  #
+  # What this exposes is safe, and none of it is protected BY the gateway
+  # in the first place:
+  #   /login          the sign-in page, which offers recovery
+  #   /login/recovery a token the API server has to vouch for -- that IS
+  #                   the authentication, and the gateway never was
+  #   /connect/...    an OAuth callback, carrying a signed state this hub
+  #                   issued, and completing only into a consent it
+  #                   started. The proxy's own callback is unauthenticated
+  #                   for exactly the same reason.
+  #
+  # Empty gates everything, for an installation that never recovers or
+  # connects through a browser.
+  bootstrapPaths:
+    - /login
+    - /connect
 
 # Who may call the API listener: ServiceAccounts, verified by TokenReview
 # (the one cluster-scoped permission the chart creates, and it reads

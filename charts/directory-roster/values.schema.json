@@ -334,6 +334,13 @@
               "type": "string"
             }
           }
+        },
+        "bootstrapPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/"
+          }
         }
       }
     }
