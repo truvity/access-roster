@@ -37,9 +37,25 @@ stop and reconsider, not to extend.
 
 | Proof | From | How |
 |---|---|---|
-| a corporate sign-in | Google Workspace, Microsoft Entra | an OIDC authorization-code flow the issuer starts and finishes, routed by email domain; the address is then resolved through the hub |
+| a corporate sign-in | Google Workspace, Microsoft Entra | an OIDC authorization-code flow the issuer starts and finishes; the address it returns is then resolved through the hub |
 | a CI identity token | GitHub Actions, per organisation | RFC 8693 token exchange; verified against the platform's keys, the organisation checked against an allow-list, claims such as repository and ref matched by a machine group's matchers |
 | a workload token | a Kubernetes ServiceAccount | token exchange verified with TokenReview, for the rare in-cluster service that needs a token another system trusts |
+
+The OAuth client it signs people in with is configuration, not a
+decision this service makes: it is given a client id, a secret and its own
+base URL. Pointing it at the same Secret the hub reads keeps the
+installation's rule — one project, one client — and costs one more
+redirect URI on that client, for the issuer's host. Giving it a client of
+its own works identically and is what an installation would do if it
+wanted revoking sign-in and revoking directory access to be separate
+acts.
+
+The hub is reached over its API listener with a projected ServiceAccount
+token, read fresh on every call because a projected token is rotated
+under the pod. A failure to reach it is an error and never an empty
+answer: the issuer holds a last-known standing for the hold window, and
+it can only do that if "I could not ask" is distinguishable from "the
+directory says nothing".
 
 Every human login and refresh asks the hub `ResolveUser`: is the account
 live, which groups, and is that answer authoritative. A suspended account
