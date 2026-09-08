@@ -3,12 +3,16 @@ import { useEffect, useState } from "react";
 /** One place in the console: a view and, for a detail page, the thing it
  *  is about. Views live in the URL fragment, so deep links, the back
  *  button and a refresh all work without a server route. */
-export type Route = { view: string; id?: string };
+export type Route = { view: string; id?: string; query: URLSearchParams };
 
 export function parse(hash: string): Route {
-  const path = hash.replace(/^#/, "") || "/";
+  const raw = hash.replace(/^#/, "") || "/";
+  // A query after the fragment path is how a page is opened in a
+  // particular state — the consent callback landing on a directory with
+  // its domain chooser open, rather than the operator having to find it.
+  const [path, search = ""] = raw.split("?");
   const [, view, id] = path.split("/");
-  return { view: view || "overview", id: id ? decodeURIComponent(id) : undefined };
+  return { view: view || "overview", id: id ? decodeURIComponent(id) : undefined, query: new URLSearchParams(search) };
 }
 
 export function useRoute(): Route {
@@ -36,6 +40,8 @@ export const paths = {
   // identity
   directories: () => "/directories",
   directory: (id: string) => `/directories/${encodeURIComponent(id)}`,
+  // A directory opened on the question a connect leaves behind.
+  directoryChoosing: (id: string) => `/directories/${encodeURIComponent(id)}?choose=domains`,
   directoryGroups: () => "/directory-groups",
   directoryGroup: (email: string) => `/directory-groups/${encodeURIComponent(email)}`,
   people: () => "/people",

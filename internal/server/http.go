@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -645,7 +646,11 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 	}
 	s.log.InfoContext(r.Context(), "workspace connected",
 		"workspace", ws.ID, "backend", b.Kind(), "by", logsafe.Value(actor))
-	http.Redirect(w, r, "/#workspaces", http.StatusFound)
+	// Straight to the question the connect leaves behind: which of this
+	// tenant's domains this hub should answer for. Asking here, once, is
+	// the difference between an operator choosing and an operator
+	// discovering afterwards what was chosen for them.
+	http.Redirect(w, r, "/#/directories/"+url.PathEscape(ws.ID)+"?choose=domains", http.StatusFound)
 }
 
 // whoamiBody is the shape every adapter of the Go module serves, so that a

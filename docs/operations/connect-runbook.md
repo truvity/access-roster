@@ -123,7 +123,10 @@ impersonate. Same record, different credential type. A declared
 - **Disconnect** revokes the token at Google and deletes the credential
   and the record. The domains stop being served — consumers get
   `in_domain=false`, no opinion, for those addresses.
-- **A domain moves** to another tenant: connect the new workspace; on its
-  next probe the old one stops listing the domain and the new one lists
-  it. During the overlap the domain is authoritative for neither; the
-  console shows the conflict.
+- **A domain moves** to another tenant: connect the new workspace and set
+  it to serve **all of them, including ones added later**; on its next
+  probe the old one stops listing the domain and the new one lists it,
+  with no edit at the moment of the hand-over. A workspace narrowed to
+  named domains will not pick the moved one up on its own — that is the
+  point of narrowing — so add it there instead. During the overlap the
+  domain is authoritative for neither; the console shows it contested.

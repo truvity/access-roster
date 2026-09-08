@@ -262,6 +262,14 @@ func TestAServedDomainTheTenantLosesIsHandedOverAndFlagged(t *testing.T) {
 	if _, err := directory.Adopt(ctx, hub.Workspace{ID: "C0new", Admin: "a@new.example"}, fresh); err != nil {
 		t.Fatalf("Adopt new: %v", err)
 	}
+	// The new tenant is set to serve every domain it owns, including ones
+	// it does not own yet. That is what makes the hand-over need no edit
+	// at the moment it happens — and since a connect now defaults to the
+	// consenting administrator's own domain, it is a choice somebody
+	// makes rather than one they inherit.
+	if _, err := directory.SetServed(ctx, "C0new", nil); err != nil {
+		t.Fatalf("SetServed new: %v", err)
+	}
 	directory.Wait()
 	if got, err := directory.ResolveUser(ctx, "pat@moving.example", nil); err != nil {
 		t.Fatalf("ResolveUser: %v", err)
