@@ -1,0 +1,28 @@
+{{- if .Values.networkPolicy.enabled }}
+# Who may reach the proxy, and where the proxy may go.
+#
+# Not the trust boundary -- the backend verifies the forwarded token
+# against the issuer's keys, so reaching a port proves nothing. This is
+# the second layer, and it is worth having precisely because the first one
+# no longer depends on it.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "access-proxy.fullname" . }}
+  labels:
+    {{- include "access-proxy.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "access-proxy.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ required "networkPolicy.gatewayNamespace is required when the NetworkPolicy is enabled" .Values.networkPolicy.gatewayNamespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.proxy.port }}
+{{- end }}

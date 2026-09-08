@@ -109,6 +109,26 @@ chart-lint:
     # fail the render too, not the pod.
     ! helm template access-issuer charts/access-issuer >/dev/null 2>&1
 
+    # access-proxy: the shipped values must satisfy their own schema, and
+    # every guard that exists to stop a working-looking install that locks
+    # everyone out must fail the RENDER.
+    helm lint charts/access-proxy
+    helm template access-proxy charts/access-proxy \
+        --set exposure.hostname=console.example \
+        --set exposure.gateway.name=internal --set exposure.gateway.namespace=envoy-gateway-system \
+        --set exposure.posture=authenticated --set exposure.attachRouteName=console \
+        --set issuer.url=https://issuer.example --set client.secret.name=client \
+        --set session.cookieSecret.name=cookie --set session.valkey.address=valkey.example.svc:6379 >/dev/null
+    # `groups` with an empty allow-list renders a policy that admits
+    # NOBODY. `required` does not catch an empty list.
+    ! helm template access-proxy charts/access-proxy \
+        --set exposure.hostname=console.example \
+        --set exposure.gateway.name=internal --set exposure.gateway.namespace=envoy-gateway-system \
+        --set exposure.backend.name=console \
+        --set issuer.url=https://issuer.example --set client.secret.name=client \
+        --set session.cookieSecret.name=cookie --set session.valkey.address=valkey.example.svc:6379 >/dev/null 2>&1
+    ! helm template access-proxy charts/access-proxy --set bogusKey=1 >/dev/null 2>&1
+
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —
 # the same reason frontend/dist is.

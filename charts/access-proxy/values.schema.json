@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "access-proxy",
+  "type": "object",
+  "additionalProperties": false,
+  "_comment": "Nothing is required here that the template does not already refuse to render without. The schema catches typos and wrong types; `required` and `fail` in the templates catch an unset value, with a sentence saying why it matters.",
+  "properties": {
+    "exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hostname": { "type": "string" },
+        "backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "port": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "posture": { "enum": ["groups", "authenticated"] },
+        "allow": { "type": "array", "items": { "type": "string" } },
+        "gateway": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "namespace": { "type": "string" },
+            "sectionName": { "type": "string" }
+          }
+        },
+        "paths": { "type": "array", "items": { "type": "string" } },
+        "proxyPrefix": { "type": "string", "pattern": "^/" },
+        "attachRouteName": { "type": "string" },
+        "forward": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "authorizationHeader": { "type": "boolean" } }
+        }
+      }
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string", "pattern": "^(https?://.*)?$" },
+        "jwksUri": { "type": "string" }
+      }
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "secret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "keys": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "clientId": { "type": "string", "minLength": 1 },
+                "clientSecret": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "registration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "enabled": { "type": "boolean" } }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "valkey": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "address": { "type": "string" },
+            "cluster": { "type": "boolean" },
+            "username": { "type": "string" },
+            "passwordSecret": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "key": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "cookieSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "key": { "type": "string", "minLength": 1 }
+          }
+        },
+        "lifetime": { "type": "string", "minLength": 1 },
+        "refresh": { "type": "string" },
+        "scopes": { "type": "string" }
+      }
+    },
+    "proxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string", "minLength": 1 },
+            "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "port": { "type": "integer", "minimum": 1 },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "podAnnotations": { "type": "object" }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "gatewayNamespace": { "type": "string" }
+      }
+    }
+  }
+}
