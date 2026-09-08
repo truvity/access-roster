@@ -63,7 +63,10 @@ func TestOnlyDeclaredConsumersReachTheAPI(t *testing.T) {
 		{"another workload's token", "Bearer somebody-else", http.StatusUnauthorized},
 		{"a token the cluster rejects", "Bearer forged", http.StatusUnauthorized},
 		{"no header at all", "", http.StatusUnauthorized},
-		{"not a bearer", "Basic dXNlcjpwYXNz", http.StatusUnauthorized},
+		// Deliberately not a base64 credential: the scheme is the whole
+		// point of the case, and a literal shaped like a Basic credential
+		// is a secret scanner's alert on every clone for ever.
+		{"not a bearer", "Basic not-the-scheme-this-listener-takes", http.StatusUnauthorized},
 		{"the word bearer and nothing else", "Bearer ", http.StatusUnauthorized},
 	} {
 		*arrived = false
