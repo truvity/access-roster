@@ -100,8 +100,7 @@ chart-lint:
         --set route.host=issuer.example \
         --set networkPolicy.enabled=true \
         --set 'networkPolicy.clients[0]=example-ns' \
-        --set oauthClient.clientId=1234.apps.googleusercontent.com \
-        --set oauthClient.existingSecret=oauth-client \
+        --set oauthClient.secret.name=oauth-client \
         --set signingKey.existingSecret=delivered-by-eso \
         --set valkey.address=valkey.example.svc:6379 \
         --set 'policy.groups.platform.members[0]=platform@example.com' >/dev/null

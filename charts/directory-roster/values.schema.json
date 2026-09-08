@@ -123,8 +123,26 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "existingSecret": {
-          "type": "string"
+        "secret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "keys": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "clientId": {
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -225,7 +243,6 @@
             "directory": {
               "type": "boolean"
             },
-
             "forwardedBearer": {
               "type": "object",
               "additionalProperties": false,

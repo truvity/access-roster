@@ -52,6 +52,7 @@ type Config struct {
 	oauthClientSecret string
 	secureCookies     bool
 	oauthSecretFile   string
+	oauthIDFile       string
 	valkey            valkey.Config
 	audience          string
 	signingKeyFile    string
@@ -81,6 +82,7 @@ func Load() (Config, error) {
 		oauthClientSecret: envString("OAUTH_CLIENT_SECRET", ""),
 		secureCookies:     envBool("SECURE_COOKIES", false),
 		oauthSecretFile:   envString("OAUTH_CLIENT_SECRET_FILE", ""),
+		oauthIDFile:       envString("OAUTH_CLIENT_ID_FILE", ""),
 		valkey: valkey.Config{
 			Address:  envString("VALKEY_ADDRESS", ""),
 			Password: envString("VALKEY_PASSWORD", ""),
@@ -174,7 +176,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = readClientSecret(&cfg); err != nil {
+	if err = readClient(&cfg); err != nil {
 		return nil, err
 	}
 	verifiers, err := openVerifiers(ctx, cfg, log)
@@ -301,19 +303,35 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 	return key, nil
 }
 
-// readClientSecret takes the OAuth client's secret from the file a Secret
-// is mounted at, for the same reason the signing key comes from one: a
-// credential in an environment variable is a credential in every process
-// listing and every crash dump. The variable stays for a local run.
-func readClientSecret(cfg *Config) error {
-	if cfg.oauthSecretFile == "" {
-		return nil
+// readClient takes the OAuth client from the files a Secret is mounted
+// at, for the same reason the signing key comes from one: a credential in
+// an environment variable is a credential in every process listing and
+// every crash dump. The variables stay for a local run.
+//
+// The ID comes from the same Secret as the secret, rather than from a
+// chart value, so that both halves of one credential travel together and
+// the hub and this service read it the same way. It is not itself a
+// secret -- every browser sent to the provider carries it -- but a client
+// whose halves are configured in two places is a client that can be half
+// rotated.
+func readClient(cfg *Config) error {
+	for _, from := range []struct {
+		path string
+		into *string
+		what string
+	}{
+		{cfg.oauthIDFile, &cfg.oauthClientID, "id"},
+		{cfg.oauthSecretFile, &cfg.oauthClientSecret, "secret"},
+	} {
+		if from.path == "" {
+			continue
+		}
+		raw, err := os.ReadFile(from.path) //nolint:gosec // the path is deployment configuration
+		if err != nil {
+			return fmt.Errorf("read the OAuth client %s: %w", from.what, err)
+		}
+		*from.into = strings.TrimSpace(string(raw))
 	}
-	raw, err := os.ReadFile(cfg.oauthSecretFile) //nolint:gosec // the path is deployment configuration
-	if err != nil {
-		return fmt.Errorf("read the OAuth client secret: %w", err)
-	}
-	cfg.oauthClientSecret = strings.TrimSpace(string(raw))
 	return nil
 }
 

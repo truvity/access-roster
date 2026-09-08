@@ -16,6 +16,14 @@ cloud parameter store or a backup mechanism. Delivering a *declared* Secret
 into the namespace is the deployment's business; an example with
 external-secrets is at the end of this page.
 
+**The convention that follows from that** (decided 2026-09-08): every value
+that consumes a Secret this chart did not create lets you name both **the
+Secret and the keys inside it**. The producer is free — external-secrets, a
+1Password operator, sealed-secrets, a hand `kubectl create secret`, a Job —
+because a chart that dictated key names could not read a Secret already
+sitting in the namespace. Key names are only ever fixed for a Secret the
+hub writes *itself*, where it is the producer and gets to choose.
+
 ## Values
 
 | Value | Default | Meaning |
@@ -33,7 +41,8 @@ external-secrets is at the end of this page.
 | `freshness.refreshInterval` | `15m` | how often the refresher takes a new snapshot per workspace |
 | `freshness.freshnessWindow` | `30m` | how old a snapshot may be before its domains stop being authoritative |
 | `freshness.probeInterval` | `5m` | how often a credential is probed and the domain list re-read |
-| `oauthClient.existingSecret` | `""` | a Secret with `client-id` and `client-secret`; set, the console shows the client read-only |
+| `oauthClient.secret.name` | `""` | a Secret holding the client; set, the console shows it read-only, because a value the deployment states must not be editable in a UI |
+| `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the hub does not produce this object: whatever delivers it — external-secrets, a 1Password operator, sealed-secrets, `kubectl create secret` — already had an opinion, and a hub that insisted on two particular names could not read a Secret already in the namespace |
 | `workspaces[]` | `[]` | declared workspaces, see below |
 | `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener, verified by TokenReview. **Empty admits nobody** |
 | `route.host` | `""` | the console's hostname on the gateway, and only the console's: the API listener never gets a route, because a consumer that could arrive over the gateway could reach an operator call. Empty renders no Gateway, HTTPRoute or Certificate, which is right for a hub reached by port-forward |
@@ -148,7 +157,7 @@ so the hash carries the uniqueness the readable part may have lost.
 |---|---|---|
 | `ConfigMap <release>-workspace-<tenant>` | backend, domains, served domains, admin, connected by/at, last health, credential type | the hub |
 | `Secret <release>-credential-<tenant>` | the credential: refresh token, or service-account key | the hub (Connect, UploadKey) |
-| `Secret <release>-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.existingSecret`, and then read-only |
+| `Secret <release>-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.secret.name`, and then read-only. The hub names the keys only in the one it writes itself |
 | `ConfigMap <release>-memberships` | memberships added in the console | the hub |
 | `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
 | the issuer's signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it and holds no permission to read Secrets; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
@@ -196,7 +205,7 @@ from the values above.
 | `API_PORT`, `CONSOLE_PORT`, `HEALTH_PORT` | `listeners.*` |
 | `REFRESH_INTERVAL`, `FRESHNESS_WINDOW`, `PROBE_INTERVAL` | `freshness.*` |
 | `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_CLUSTER`, `VALKEY_PASSWORD` | `valkey.*` (no address = in-memory snapshots, which is correct for one replica and wasteful for more) |
-| `OAUTH_CLIENT_SECRET_NAME` | `oauthClient.existingSecret` |
+| `OAUTH_CLIENT_SECRET_NAME`, `OAUTH_CLIENT_ID_KEY`, `OAUTH_CLIENT_SECRET_KEY` | `oauthClient.secret.*` |
 | `OVERLAY_FILE` | set when `workspaces` is non-empty |
 | `PUBLIC_URL` | `https://<route.host>` — where a browser reaches the console. **Both OAuth redirect URIs and the setup values are built from it**, so a deployment without `route.host` falls back to localhost and registers a redirect no browser will reach |
 | `SECURE_COOKIES` | `true` when `route.host` is set |

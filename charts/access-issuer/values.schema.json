@@ -55,9 +55,21 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "clientId": { "type": "string" },
-        "existingSecret": { "type": "string" },
-        "key": { "type": "string", "minLength": 1 }
+        "secret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "keys": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "clientId": { "type": "string", "minLength": 1 },
+                "clientSecret": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
       }
     },
     "exchange": {

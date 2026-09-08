@@ -81,12 +81,22 @@ signingKey:
 # Empty means nobody can sign in and this service issues tokens to
 # machines only, which is a real posture and is said out loud at start.
 oauthClient:
-  clientId: ""
-  # A Secret holding the client secret under the key below.
-  existingSecret: ""
-  key: client-secret
-
-# Token exchange: turning somebody else's token into one of ours.
+  # The same shape the hub uses, for the same credential: name a Secret
+  # and say what its keys are called. Both halves come from that one
+  # Secret so they travel together -- a client whose id and secret are
+  # configured in two places is a client that can be half rotated.
+  #
+  # The id is not itself a secret; every browser sent to the provider
+  # carries it. It lives here anyway because it belongs to the same
+  # credential.
+  #
+  # Empty name means nobody can sign in and this service issues tokens to
+  # machines only, which is a real posture and is said out loud at start.
+  secret:
+    name: ""
+    keys:
+      clientId: client-id
+      clientSecret: client-secret
 exchange:
   # Verify Kubernetes ServiceAccount tokens with a TokenReview, for the
   # in-cluster workload that needs a token another system trusts. This is

@@ -81,6 +81,8 @@ type Config struct {
 	store             string
 	release           string
 	oauthSecretName   string
+	oauthIDKey        string
+	oauthSecretKey    string
 	valkey            valkey.Config
 	holdWindow        time.Duration
 	logLevel          slog.Level
@@ -110,6 +112,8 @@ func Load() (Config, error) {
 		store:             envString("STORE", "memory"),
 		release:           envString("RELEASE_NAME", "directory-roster"),
 		oauthSecretName:   envString("OAUTH_CLIENT_SECRET_NAME", ""),
+		oauthIDKey:        envString("OAUTH_CLIENT_ID_KEY", ""),
+		oauthSecretKey:    envString("OAUTH_CLIENT_SECRET_KEY", ""),
 	}
 	c.valkey = valkey.Config{
 		Address:  envString("VALKEY_ADDRESS", ""),
@@ -308,7 +312,11 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 	return stores{
 		workspaces:  kube.NewWorkspaces(client),
 		credentials: kube.NewCredentials(client),
-		settings:    kube.NewSettings(client, cfg.oauthSecretName),
+		settings: kube.NewSettings(client, kube.DeclaredClient{
+			Name:      cfg.oauthSecretName,
+			IDKey:     cfg.oauthIDKey,
+			SecretKey: cfg.oauthSecretKey,
+		}),
 		sessionKey:  key,
 		reviewToken: client.ReviewToken,
 		namespace:   client.Namespace(),

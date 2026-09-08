@@ -84,11 +84,13 @@ spec:
             - name: EXCHANGE_AUDIENCE
               value: {{ include "access-issuer.exchangeAudience" . | quote }}
             {{- end }}
-            {{- if .Values.oauthClient.clientId }}
-            - name: OAUTH_CLIENT_ID
-              value: {{ .Values.oauthClient.clientId | quote }}
+            {{- with .Values.oauthClient.secret }}
+            {{- if .name }}
+            - name: OAUTH_CLIENT_ID_FILE
+              value: /var/run/access-issuer/oauth-client/{{ .keys.clientId }}
             - name: OAUTH_CLIENT_SECRET_FILE
-              value: /var/run/access-issuer/oauth-client/{{ .Values.oauthClient.key }}
+              value: /var/run/access-issuer/oauth-client/{{ .keys.clientSecret }}
+            {{- end }}
             {{- end }}
             {{- if .Values.route.host }}
             # Served over TLS, so its cookies say so.
@@ -107,7 +109,7 @@ spec:
             - name: hub-token
               mountPath: /var/run/access-issuer/hub
               readOnly: true
-            {{- if .Values.oauthClient.clientId }}
+            {{- if .Values.oauthClient.secret.name }}
             - name: oauth-client
               mountPath: /var/run/access-issuer/oauth-client
               readOnly: true
@@ -136,10 +138,10 @@ spec:
                   audience: {{ include "access-issuer.hubAudience" . }}
                   expirationSeconds: 3600
                   path: token
-        {{- if .Values.oauthClient.clientId }}
+        {{- if .Values.oauthClient.secret.name }}
         - name: oauth-client
           secret:
-            secretName: {{ required "oauthClient.existingSecret is required when a client id is set" .Values.oauthClient.existingSecret }}
+            secretName: {{ .Values.oauthClient.secret.name }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

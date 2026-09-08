@@ -80,9 +80,15 @@ spec:
                   key: {{ .Values.valkey.passwordSecret.key }}
             {{- end }}
             {{- end }}
-            {{- if .Values.oauthClient.existingSecret }}
+            {{- with .Values.oauthClient.secret }}
+            {{- if .name }}
             - name: OAUTH_CLIENT_SECRET_NAME
-              value: {{ .Values.oauthClient.existingSecret | quote }}
+              value: {{ .name | quote }}
+            - name: OAUTH_CLIENT_ID_KEY
+              value: {{ .keys.clientId | quote }}
+            - name: OAUTH_CLIENT_SECRET_KEY
+              value: {{ .keys.clientSecret | quote }}
+            {{- end }}
             {{- end }}
             - name: RECOVERY_ENABLED
               value: {{ .Values.access.recovery.enabled | quote }}

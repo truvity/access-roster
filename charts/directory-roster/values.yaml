@@ -65,11 +65,26 @@ freshness:
   # how often a workspace's credential is probed and its domains re-read.
   probeInterval: 5m
 
-# The OAuth client for the admin-consent flow. Either name a Secret that
-# already holds it (keys: client-id, client-secret) — then the console
-# shows it read-only — or leave empty and paste it into Settings once.
+# The OAuth client for the admin-consent flow and for signing people in.
+#
+# Either name a Secret that already holds it — then the console shows the
+# client read-only, because a value the deployment states must not be
+# editable in a UI or the next deploy silently undoes the edit — or leave
+# the name empty and paste it into Settings once.
+#
+# The KEY NAMES are configurable because the hub does not produce this
+# object. Whatever delivers it — external-secrets, a 1Password operator,
+# sealed-secrets, a hand `kubectl create secret` — already had an opinion
+# about what the keys are called, and a hub that insisted on two
+# particular names could not read a Secret already sitting in the
+# namespace. The defaults are the names the hub uses for the one it
+# writes itself.
 oauthClient:
-  existingSecret: ""
+  secret:
+    name: ""
+    keys:
+      clientId: client-id
+      clientSecret: client-secret
 
 # Declared (overlay) workspaces: how an existing installation moves without
 # a Connect step. Each names a Secret in this namespace holding a
