@@ -7,6 +7,17 @@ git history.
 
 Nothing yet.
 
+## v0.7.1
+
+- **The customer id is read from the admin's own user record.** `Tenant`
+  called `Customers.Get`, which needs a *fifth* scope,
+  `admin.directory.customer.readonly`, that is not among the four the hub
+  asks for. Google granted the consent and the first read then failed with
+  `Request had insufficient authentication scopes` — naming no scope, and
+  arriving as a 502 on the callback. A `User` carries `customerId` and is
+  covered by the user scope already granted, so the id is free and no
+  administrator has to consent again.
+
 ## v0.7.0
 
 - **The consent callback takes its operator from the signed state.** It is
