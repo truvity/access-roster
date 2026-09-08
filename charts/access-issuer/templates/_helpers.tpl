@@ -59,3 +59,14 @@ that turns recovery on gets working names without choosing any.
 {{- define "access-issuer.recoveryAudience" -}}
 {{- .Values.recovery.audience | default (printf "%s-recovery" (include "access-issuer.fullname" .)) }}
 {{- end }}
+
+{{/*
+Non-empty when any declared client carries a secret, which is what decides
+whether the client-secrets volume is rendered at all. A deployment whose
+clients are all public or exchange-only mounts nothing.
+*/}}
+{{- define "access-issuer.confidentialClients" -}}
+{{- range $id, $client := (.Values.policy.clients | default dict) }}
+{{- if $client.secret }}yes{{ end }}
+{{- end }}
+{{- end }}

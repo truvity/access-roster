@@ -165,6 +165,23 @@ valkey:
 
 # The declared policy: groups, claims, lifetimes, clients. One file,
 # shared with the hub. See docs/reference/policy.md.
+#
+# A confidential client names the Secret holding its secret:
+#
+#   policy:
+#     clients:
+#       my-console:
+#         kind: confidential
+#         secret: my-console-client   # a Secret in this namespace
+#         secretKey: client-secret    # its key; this is the default
+#         redirects: [https://console.example/oauth2/callback]
+#         requires: [operators]
+#
+# Each one is projected to a file named after the client id, and the
+# service resolves a secret by reading that path -- never by holding RBAC
+# to read Secrets, which is the same reason the signing key is a file. A
+# client declared confidential whose Secret is missing cannot
+# authenticate, and says so in the log rather than at the token endpoint.
 policy: {}
 
 # The issuer's hostname on the gateway. Empty renders no route, which is
