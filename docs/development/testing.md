@@ -79,7 +79,13 @@ and refuses another account's, a forged one and one minted for a different
 audience; and the same three questions for a consumer on the API listener.
 
 It is a command rather than a `go test` package because it needs a
-cluster, and `go test ./...` should not assume one. Point it at any
+cluster, and `go test ./...` should not assume one.
+
+Installing the chart is the other half, and neither `helm lint` nor a
+render can do it: they check that the YAML is well formed, not that the
+thing it describes starts. The first real install refused to boot because
+the rendered policy carried no `version`. Build an image with `ko build
+--local`, load it, and install into the same throwaway cluster. Point it at any
 cluster and namespace you may create objects in; it cleans up by the
 labels it wrote, including when a check fails.
 
