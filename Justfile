@@ -77,6 +77,14 @@ chart-lint:
         --set 'policy.version=1' \
         --set 'policy.groups.hub-operators.members[0]=platform-admins@example.com' >/dev/null
     ! helm template directory-roster charts/directory-roster --set bogusKey=1 >/dev/null 2>&1
+    # A forwarded issuer without an audience accepts every token that
+    # issuer mints, for every service it serves. That must fail the
+    # RENDER, not be discovered in the console's logs.
+    ! helm template directory-roster charts/directory-roster \
+        --set access.login.forwardedBearer.issuer=https://issuer.example >/dev/null 2>&1
+    helm template directory-roster charts/directory-roster \
+        --set access.login.forwardedBearer.issuer=https://issuer.example \
+        --set access.login.forwardedBearer.audience=directory-console >/dev/null
     # Bare first: the shipped values must satisfy their own schema, or
     # anyone who lints the chart as published gets a failure.
     helm lint charts/access-issuer

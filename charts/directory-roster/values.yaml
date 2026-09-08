@@ -171,13 +171,28 @@ access:
     # can reach the pod can claim, which is what the NetworkPolicy on the
     # console listener is for.
     forwardedBearer:
-      # The header carrying the address. oauth2-proxy's own name for it,
-      # which is what the fleet's gateway-auth sets. Empty turns the whole
-      # path off.
-      emailHeader: ""
-      # Recorded on the session so an operator can see where an identity
-      # came from. Optional.
+      # VERIFIED: the issuer whose published keys the forwarded token is
+      # checked against, as a URL. This is the path to use. The console
+      # reads the token the gateway forwards
+      # (`X-Auth-Request-Access-Token`, or an ordinary bearer), fetches
+      # the issuer's discovery document and key set once, and checks the
+      # signature, the issuer and the expiry itself. Empty turns it off.
       issuer: ""
+      # The audience the token must name -- this console's client id at
+      # that issuer. Required whenever `issuer` is set, and the render
+      # fails without it: a token minted for another audience is a
+      # perfectly valid token, and accepting it would make every service
+      # the issuer serves a way in here.
+      audience: ""
+      # TRUSTED, and weaker: the header the proxy puts the caller's
+      # address in, unverified. oauth2-proxy's own name for it is
+      # `X-Auth-Request-Email`. This asks "who can reach this port"
+      # rather than "who signed this", so it is only as good as the
+      # promise that nothing but the gateway can -- one NetworkPolicy
+      # edit, one port-forward or one sidecar away from false. Prefer
+      # `issuer` above; leave this empty wherever that is set, and where
+      # both are set a signature decides and the header is never read.
+      emailHeader: ""
   # How long a console session lasts before it has to sign in again.
   sessionLifetime: 12h
   # The hold window: how long a signed-in identity keeps its last granted

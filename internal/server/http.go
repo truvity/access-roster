@@ -24,13 +24,24 @@ import (
 
 // ForwardedIdentity configures how a bearer forwarded by an authenticating
 // gateway becomes a principal.
+//
+// Two paths, and they are not equals. VERIFYING the bearer against the
+// issuer's published keys is the one to use: it answers "who signed this"
+// rather than "who can reach this port". TRUSTING a header is the fallback
+// for a gateway that forwards no token, and it is only ever as good as the
+// promise that nothing else can reach the listener -- a promise one
+// NetworkPolicy edit, one port-forward or one sidecar away from false.
 type ForwardedIdentity struct {
-	// Issuer the bearer is verified against. Empty disables the source.
+	// Issuer the bearer is verified against, as a URL. Set with Audience,
+	// this turns on the verified path.
 	Issuer string
+	// Audience the token must name -- the console's client id at the
+	// issuer. Empty accepts any audience the issuer mints, which makes
+	// every other service it serves a way in here.
+	Audience string
 	// EmailHeader is the header the proxy puts the caller's address in.
-	// Trusting a header is only safe where nothing but the proxy can reach
-	// this listener, which is what the NetworkPolicy is for; the
-	// verified-bearer path replaces it in the built service.
+	// Empty turns the trusted-header path off, which is the right setting
+	// wherever the verified path is configured.
 	EmailHeader string
 }
 
@@ -46,6 +57,7 @@ type ConsoleServer struct {
 	recovery   Recovery
 	signIn     bool
 	forwarded  ForwardedIdentity
+	bearer     *forwardedBearer
 	log        *slog.Logger
 	consoleUI  fs.FS
 }
@@ -88,6 +100,7 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		recovery:   deps.Recovery,
 		signIn:     deps.SignIn,
 		forwarded:  deps.Forwarded,
+		bearer:     newForwardedBearer(deps.Forwarded, deps.Log),
 		log:        deps.Log,
 		consoleUI:  deps.UI,
 	}
@@ -172,6 +185,13 @@ func (s *ConsoleServer) withIdentity(next http.Handler) http.Handler {
 func (s *ConsoleServer) principal(r *http.Request) (access.Principal, bool) {
 	if p, err := s.sessions.Read(r); err == nil {
 		return p, true
+	}
+	// Verified before trusted: where both are configured, a signature
+	// decides and a header is never consulted.
+	if s.bearer != nil {
+		if p, ok := s.bearer.identity(r); ok {
+			return p, true
+		}
 	}
 	if s.forwarded.EmailHeader != "" {
 		email := strings.ToLower(strings.TrimSpace(r.Header.Get(s.forwarded.EmailHeader)))
