@@ -320,11 +320,7 @@ func run() error {
 			return google.OAuthClient{}, errors.New(
 				"no OAuth client is registered yet: add one in Settings, or declare it in the deployment")
 		}
-		return google.OAuthClient{
-			ID:          stored.ID,
-			Secret:      stored.Secret,
-			RedirectURL: cfg.publicURL + google.CallbackPath,
-		}, nil
+		return google.OAuthClient{ID: stored.ID, Secret: stored.Secret, BaseURL: cfg.publicURL}, nil
 	}
 
 	connectors := []server.Connector{connector.NewGoogle(oauthClient)}

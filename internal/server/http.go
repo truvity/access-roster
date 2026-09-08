@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
@@ -105,6 +106,8 @@ func (s *ConsoleServer) Handler() http.Handler {
 	}
 
 	mux.HandleFunc("GET /login", s.loginPage)
+	mux.HandleFunc("GET /login/{backend}/start", s.signInStart)
+	mux.HandleFunc("GET /login/{backend}/callback", s.signInCallback)
 	mux.HandleFunc("POST /login/recovery", s.recoveryLogin)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /connect/{backend}/callback", s.connectCallback)
@@ -208,6 +211,12 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 	// first — the provider's own account chooser has already asked.
 	var sources strings.Builder
 	for _, kind := range slices.Sorted(maps.Keys(s.connectors)) {
+		// Only a connector that can sign somebody in gets a button. One
+		// that cannot would be a link to a 404 on the page a person
+		// reaches when they are already having trouble.
+		if _, ok := s.signInConnector(kind); !ok {
+			continue
+		}
 		fmt.Fprintf(&sources,
 			`<p><a class="btn" href="/login/%s/start">Continue with %s</a></p>`,
 			html.EscapeString(kind), html.EscapeString(providerName(kind)))
@@ -280,6 +289,122 @@ const loginHTML = `<!doctype html><meta charset="utf-8"><title>Sign in — direc
 <main><h1>directory-roster</h1>
 <p class="note">The directory hub. Sign in to connect workspaces and grant access.</p>
 %s%s</main>`
+
+// signInStart sends the browser to a directory's own sign-in screen.
+func (s *ConsoleServer) signInStart(w http.ResponseWriter, r *http.Request) {
+	connector, ok := s.signInConnector(r.PathValue("backend"))
+	if !ok {
+		http.Error(w, "this hub cannot sign in with that directory", http.StatusNotFound)
+		return
+	}
+	state, err := s.state.Issue("")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	url, err := connector.SignInURL(state)
+	if err != nil {
+		// Almost always "no OAuth client is registered yet", which is a
+		// setup step rather than a fault, so it says so instead of
+		// failing with a stack of OAuth vocabulary.
+		http.Error(w, err.Error(), http.StatusFailedDependency)
+		return
+	}
+	http.SetCookie(w, access.LoginCookie(state, s.sessions.Secure(), signInWindow))
+	http.Redirect(w, r, url, http.StatusFound)
+}
+
+// signInWindow is how long a person has to finish signing in.
+const signInWindow = 10 * time.Minute
+
+// signInCallback finishes a directory sign-in.
+//
+// The address it establishes is the whole of what is taken from the
+// provider. Everything else — whether the account is live, which company
+// it belongs to, what it may do here — is answered by the directory this
+// hub already reads and by the policy, because a provider saying who
+// somebody is must not also decide what they get.
+func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
+	connector, ok := s.signInConnector(r.PathValue("backend"))
+	if !ok {
+		http.Error(w, "this hub cannot sign in with that directory", http.StatusNotFound)
+		return
+	}
+	cookie, err := r.Cookie(access.LoginCookieName)
+	state := r.URL.Query().Get("state")
+	if err != nil || cookie.Value == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
+		http.Error(w, "this sign-in did not start in this browser", http.StatusBadRequest)
+		return
+	}
+	if _, err = s.state.Verify(state); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	http.SetCookie(w, access.LoginCookie("", s.sessions.Secure(), 0))
+
+	email, err := connector.Identify(r.Context(), r.URL.Query().Get("code"))
+	if err != nil {
+		s.log.WarnContext(r.Context(), "sign-in exchange failed",
+			"backend", connector.Kind(), "error", err)
+		http.Error(w, "the sign-in could not be completed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	// An address the hub has no opinion about is refused here rather than
+	// given a session with no role. The line is not "has a role" — a
+	// person of a company we do serve who is in no group signs in fine,
+	// and their own page explains what they have and why. It is whether
+	// this hub knows them at all: a stranger from a domain nobody here
+	// serves would get a session, see nothing, and have nothing to read
+	// that explained it.
+	known, err := s.hub.ResolveUser(r.Context(), email, nil)
+	switch {
+	case err != nil:
+		s.log.ErrorContext(r.Context(), "sign-in could not be resolved", "email", email, "error", err)
+		http.Error(w, "signed in as "+email+", but the directory could not be read: "+err.Error(),
+			http.StatusServiceUnavailable)
+		return
+	case !known.InDomain:
+		http.Error(w, "signed in as "+email+", but no directory connected to this hub serves that domain",
+			http.StatusForbidden)
+		return
+	case !known.Found && known.Authoritative:
+		http.Error(w, "signed in as "+email+", but that account is not in the directory",
+			http.StatusForbidden)
+		return
+	}
+
+	identity, err := s.authz.Authorize(r.Context(),
+		access.Principal{Email: email, Subject: email, Source: access.SourceDirectory, Issuer: connector.Kind()})
+	if err != nil {
+		// The one Authorize refuses outright is an account the directory
+		// authoritatively says is not live.
+		s.log.WarnContext(r.Context(), "sign-in refused", "email", email, "error", err)
+		http.Error(w, "signed in as "+email+", but this hub cannot serve that address: "+err.Error(),
+			http.StatusForbidden)
+		return
+	}
+
+	if err = s.sessions.Issue(w, access.Principal{
+		Email: email, Subject: email, Source: access.SourceDirectory, Issuer: connector.Kind(),
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.log.InfoContext(r.Context(), "signed in",
+		"email", email, "backend", connector.Kind(), "role", identity.Role)
+	redirectOrOK(w, r, "/")
+}
+
+// signInConnector is the connector for a kind, if it can sign a person in.
+func (s *ConsoleServer) signInConnector(kind string) (SignInConnector, bool) {
+	connector, ok := s.connectors[kind]
+	if !ok {
+		return nil, false
+	}
+	signIn, ok := connector.(SignInConnector)
+	return signIn, ok
+}
 
 // recoveryLogin is the way in when the ordinary one is broken.
 //

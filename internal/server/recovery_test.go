@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/truvity/access-roster/backend"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
 )
 
@@ -230,7 +232,7 @@ func TestTheSignInPageShowsTheRealCommand(t *testing.T) {
 	page := func(recovery Recovery) string {
 		server := &ConsoleServer{
 			recovery:   recovery,
-			connectors: map[string]Connector{"google": nil},
+			connectors: map[string]Connector{"google": stubSignIn{}},
 			log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 		}
 		recorder := httptest.NewRecorder()
@@ -270,4 +272,18 @@ func TestTheSignInPageShowsTheRealCommand(t *testing.T) {
 	if none := page(nil); strings.Contains(none, "Recovery sign-in") {
 		t.Error("a deployment with no recovery path still offered one")
 	}
+}
+
+// stubSignIn is a connector that can sign somebody in, which is what
+// earns a button on the page.
+type stubSignIn struct{}
+
+func (stubSignIn) Kind() string                     { return "google" }
+func (stubSignIn) AuthURL(string) (string, error)   { return "https://consent.example", nil }
+func (stubSignIn) SignInURL(string) (string, error) { return "https://signin.example", nil }
+func (stubSignIn) Identify(context.Context, string) (string, error) {
+	return "ada@north.example", nil
+}
+func (stubSignIn) Exchange(context.Context, string, string) (hub.Workspace, backend.Backend, error) {
+	return hub.Workspace{}, nil, nil
 }

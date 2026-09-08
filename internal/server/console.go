@@ -47,6 +47,25 @@ type KeyConnector interface {
 	FromKey(ctx context.Context, key []byte, admin string) (hub.Workspace, backend.Backend, error)
 }
 
+// SignInConnector is a connector that can also say who somebody is.
+//
+// It is a different flow from [Connector], not a parameter of it: consent
+// is an administrator granting this hub read access to a company, and
+// asks for the directory scopes; sign-in is a person proving who they
+// are, and asks for nothing but their address. They return to different
+// endpoints because the two endpoints have opposite authorisation — one
+// adopts a workspace and demands an operator, the other is how a person
+// becomes anyone at all.
+type SignInConnector interface {
+	Connector
+	// SignInURL is where the browser goes to prove who somebody is.
+	SignInURL(state string) (string, error)
+	// Identify turns the callback's code into the address that
+	// authenticated. Nothing else is taken from it: what that address may
+	// do is decided by the directory and the policy.
+	Identify(ctx context.Context, code string) (string, error)
+}
+
 // ConsoleDeps is everything the operator services need.
 type ConsoleDeps struct {
 	Hub        *hub.Hub
@@ -375,6 +394,15 @@ func (c *Console) connectorKinds() []directoryrosterv1.Backend {
 	return out
 }
 
+// backendRedirects is every redirect URI a backend's flows return to,
+// relative to the console's own base URL. Read from the backend for the
+// same reason the scopes are: a copy here would drift, and the drift
+// surfaces in a cloud console's own words, much later, naming nothing
+// useful.
+var backendRedirects = map[string][]string{
+	"google": {google.CallbackPath, google.SignInCallbackPath},
+}
+
 // backendScopes is what each backend is asked for, all read-only.
 //
 // It reads the list from the backend rather than repeating it. A copy
@@ -394,10 +422,14 @@ var backendScopes = map[string][]string{
 func (c *Console) setupGuidance() []*directoryrosterv1.ConnectorSetup {
 	out := make([]*directoryrosterv1.ConnectorSetup, 0, len(backendScopes))
 	for _, kind := range slices.Sorted(maps.Keys(backendScopes)) {
+		uris := make([]string, 0, len(backendRedirects[kind]))
+		for _, path := range backendRedirects[kind] {
+			uris = append(uris, c.deps.PublicURL+path)
+		}
 		out = append(out, &directoryrosterv1.ConnectorSetup{
-			Backend:     backendEnum(kind),
-			RedirectUri: c.deps.PublicURL + "/connect/" + kind + "/callback",
-			Scopes:      backendScopes[kind],
+			Backend:      backendEnum(kind),
+			RedirectUris: uris,
+			Scopes:       backendScopes[kind],
 		})
 	}
 	return out

@@ -46,6 +46,24 @@ func (g *Google) AuthURL(state string) (string, error) {
 	return client.AuthURL(state), nil
 }
 
+// SignInURL implements the console's sign-in contract.
+func (g *Google) SignInURL(state string) (string, error) {
+	client, err := g.client()
+	if err != nil {
+		return "", err
+	}
+	return client.SignInURL(state), nil
+}
+
+// Identify implements the console's sign-in contract.
+func (g *Google) Identify(ctx context.Context, code string) (string, error) {
+	client, err := g.client()
+	if err != nil {
+		return "", err
+	}
+	return google.Identify(ctx, client, code)
+}
+
 // Exchange implements the console's connector contract: the callback's
 // code becomes a workspace and the backend that reads it.
 //

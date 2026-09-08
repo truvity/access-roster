@@ -14,9 +14,18 @@ import (
 	"time"
 )
 
-// ConnectCookieName carries the consent flow's state alongside the URL, so
-// that a callback proves it belongs to the browser that started the flow.
-const ConnectCookieName = "access_roster_connect"
+// The two flows' state cookies. Each carries its flow's state alongside
+// the URL, so that a callback proves it belongs to the browser that
+// started the flow.
+//
+// Two names, because the flows are different in the way that matters:
+// consent is an operator granting this hub access to a company, sign-in
+// is a person proving who they are. One cookie would let a callback
+// finish a flow the browser did not start.
+const (
+	ConnectCookieName = "access_roster_connect"
+	LoginCookieName   = "access_roster_login"
+)
 
 // ErrBadState is returned for a state that is forged, stale or malformed.
 var ErrBadState = errors.New("access: state is not valid")
@@ -31,8 +40,17 @@ var ErrBadState = errors.New("access: state is not valid")
 // only ever speaks HTTPS is the kind of difference that stops being
 // harmless the moment someone copies it.
 func ConnectCookie(value string, secure bool, ttl time.Duration) *http.Cookie {
+	return flowCookie(ConnectCookieName, value, secure, ttl)
+}
+
+// LoginCookie is the same for the sign-in flow.
+func LoginCookie(value string, secure bool, ttl time.Duration) *http.Cookie {
+	return flowCookie(LoginCookieName, value, secure, ttl)
+}
+
+func flowCookie(name, value string, secure bool, ttl time.Duration) *http.Cookie {
 	cookie := &http.Cookie{
-		Name:     ConnectCookieName,
+		Name:     name,
 		Value:    value,
 		Path:     "/",
 		MaxAge:   int(ttl.Seconds()),

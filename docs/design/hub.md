@@ -197,10 +197,14 @@ done once per installation, never per company.
    would go stale silently.
 3. Scopes, all read-only: Admin SDK user, group, group member, and domain.
    The domain scope is what makes discovery possible.
-4. One OAuth client, type Web application, redirect URI
-   `https://<hub host>/connect/google/callback`. While the hub is being
-   tried on a workstation a second URI, `http://localhost:8080/connect/
-   google/callback`, may sit on the same client; remove it afterwards.
+4. One OAuth client, type Web application, with **two** redirect URIs:
+   `https://<hub host>/connect/google/callback` for an administrator
+   granting access to a company, and `https://<hub host>/login/google/callback`
+   for a person signing in. They are separate because the endpoints have
+   opposite authorisation, and a client missing the second works until
+   somebody tries to sign in. While the hub is being tried on a
+   workstation the `http://localhost:8081/...` pair may sit on the same
+   client; remove them afterwards.
 5. Paste the client id and secret into the hub's Settings once, or hand the
    chart the name of a Secret that already holds them. Nothing else reads
    them.
@@ -398,7 +402,7 @@ login page, for the rare installation with an issuer but no proxy.
 Whichever source, the result is one HttpOnly cookie signed with the
 hub's session key, short-lived, revoked only by rotating the key. The
 console never sees a token. The routes are HTTP, not RPC: `/login`,
-`/login/directory/start` and `/callback`, `/login/oidc/start` and
+`/login/<backend>/start` and `/callback`, `/login/oidc/start` and
 `/callback`, `/logout`, and `/admin/login`.
 
 ### Recovery
