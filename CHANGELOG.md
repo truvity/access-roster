@@ -44,6 +44,14 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **Nothing untrusted reaches a log line unsanitised.** Addresses,
+  request paths and the errors built from them now pass through
+  `internal/logsafe`, which removes what a reader or a parser would take
+  for the end of a record. Structured handlers escaped these already —
+  none of it was forgeable in practice — but it is now true by
+  construction rather than by the handler's choice, and named where it can
+  be seen. The address stays in the line: an audit record that does not
+  say who was refused is not one.
 - **A login in progress is shared across replicas.** The authorization
   request, the code, the tokens and the device flow were four maps in one
   process — so a browser that started at `/authorize` on one replica and

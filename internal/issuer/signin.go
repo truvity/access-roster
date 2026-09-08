@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // SignIn is a directory a person can prove who they are with.
@@ -172,7 +173,7 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 	email, err := provider.Identify(r.Context(), r.URL.Query().Get("code"))
 	if err != nil {
 		s.deps.Log.WarnContext(r.Context(), "sign-in exchange failed",
-			"provider", provider.Kind(), "error", err)
+			"provider", provider.Kind(), "error", logsafe.Error(err))
 		http.Error(w, "the sign-in could not be completed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -188,11 +189,11 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 		// The directory has an opinion and it is no. Saying so here is
 		// the only place a person will read it: everywhere downstream
 		// they would simply find themselves admitted nowhere.
-		s.deps.Log.WarnContext(r.Context(), "sign-in refused", "email", email, "reason", refused.Reason)
+		s.deps.Log.WarnContext(r.Context(), "sign-in refused", "email", logsafe.Value(email), "reason", logsafe.Value(refused.Reason))
 		http.Error(w, "signed in as "+email+", but "+refused.Reason, http.StatusForbidden)
 		return
 	case err != nil:
-		s.deps.Log.ErrorContext(r.Context(), "the hub could not be asked", "email", email, "error", err)
+		s.deps.Log.ErrorContext(r.Context(), "the hub could not be asked", "email", logsafe.Value(email), "error", logsafe.Error(err))
 		http.Error(w, "signed in as "+email+", but the directory could not be reached",
 			http.StatusServiceUnavailable)
 		return
@@ -203,7 +204,7 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.deps.Log.InfoContext(r.Context(), "signed in",
-		"email", email, "provider", provider.Kind(), "groups", len(standing.Groups))
+		"email", logsafe.Value(email), "provider", provider.Kind(), "groups", len(standing.Groups))
 	http.Redirect(w, r, s.deps.Return(r.Context(), request), http.StatusFound)
 }
 

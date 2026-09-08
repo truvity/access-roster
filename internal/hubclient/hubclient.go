@@ -21,6 +21,7 @@ import (
 	directoryv1 "github.com/truvity/access-roster/gen/directory/v1"
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/issuer"
+	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // TokenPath is where Kubernetes projects a ServiceAccount token when a
@@ -112,7 +113,7 @@ func (c *Client) ResolveUser(ctx context.Context, email string) (issuer.Standing
 
 	answer, err := c.directory.ResolveUser(ctx, request)
 	if err != nil {
-		return issuer.Standing{}, fmt.Errorf("ask the hub about %s: %w", email, err)
+		return issuer.Standing{}, fmt.Errorf("ask the hub about %s: %w", logsafe.Value(email), err)
 	}
 	msg := answer.Msg
 	// An address in no served domain is not a refusal and not a person
