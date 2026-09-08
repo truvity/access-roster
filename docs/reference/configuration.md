@@ -63,7 +63,8 @@ workspaces:
   - id: C0example              # the backend's tenant id (Google: the customer id)
     backend: google
     admin: admin@example.com   # the account the key impersonates
-    secretName: example-sa-key # a Secret in this namespace; key `key.json`
+    secretName: example-sa-key # a Secret in this namespace
+    secretKey: key.json        # which key of it holds the JSON; this is the default
     serve:                     # optional; omitted serves every domain it owns
       - example.com
 ```

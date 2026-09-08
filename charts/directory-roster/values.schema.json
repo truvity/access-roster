@@ -156,6 +156,10 @@
             "type": "string",
             "minLength": 1
           },
+          "secretKey": {
+            "type": "string",
+            "minLength": 1
+          },
           "serve": {
             "type": "array",
             "items": {

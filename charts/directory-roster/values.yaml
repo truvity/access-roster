@@ -80,7 +80,12 @@ oauthClient:
 workspaces: []
 #  - backend: google
 #    admin: admin@example.com     # the account the key impersonates
-#    secretName: example-sa-key   # holds key.json in this namespace
+#    secretName: example-sa-key   # a Secret in this namespace
+#    # Which key of that Secret holds the JSON. Defaults to key.json;
+#    # name it when the Secret already exists and calls it something
+#    # else, which is the usual case when an installation is moving an
+#    # existing credential rather than minting one.
+#    secretKey: key.json
 #    # id is optional: the credential opens exactly one tenant and that
 #    # tenant knows its own id, so the hub discovers it. Supply it and
 #    # adoption becomes a check — a credential that opens a different

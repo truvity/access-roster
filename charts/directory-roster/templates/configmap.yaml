@@ -18,7 +18,7 @@ data:
       - backend: {{ .backend | quote }}
       {{- end }}
         admin: {{ .admin | quote }}
-        keyFile: /var/run/directory-roster/keys/{{ .secretName }}/key.json
+        keyFile: /var/run/directory-roster/keys/{{ .secretName }}/{{ .secretKey | default "key.json" }}
       {{- with .serve }}
         serve:
         {{- range . }}
