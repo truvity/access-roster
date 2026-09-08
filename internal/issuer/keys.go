@@ -2,8 +2,10 @@ package issuer
 
 import (
 	"crypto"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -109,6 +111,24 @@ func (k *SigningKey) Key() any { return k.key }
 // ID is the key id, published in the JWKS and put in every token's header
 // so that a verifier knows which key to check it with.
 func (k *SigningKey) ID() string { return k.id }
+
+// Derive returns a key for a purpose that is not signing tokens — the
+// short-lived state a half-finished login carries, and anything else that
+// must be the same in every replica.
+//
+// Derived rather than configured, because the alternative is a second
+// Secret that must be provisioned, rotated and kept in step with this
+// one, to protect something that lives for ten minutes. Rotating the
+// signing key changes it, which invalidates logins that are part-way
+// through and nothing else.
+//
+// The label separates purposes: two derivations of the same key are
+// unrelated, so a value one of them signs cannot be replayed at another.
+func (k *SigningKey) Derive(label string) []byte {
+	mac := hmac.New(sha256.New, x509.MarshalPKCS1PrivateKey(k.key))
+	mac.Write([]byte(label))
+	return mac.Sum(nil)
+}
 
 // publicKey is the published half.
 type publicKey struct{ *SigningKey }

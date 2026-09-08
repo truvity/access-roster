@@ -21,6 +21,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/truvity/access-roster/backend/google"
+	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/hubclient"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
@@ -43,10 +45,14 @@ type Config struct {
 
 	policyPath string
 
-	inCluster      bool
-	release        string
-	audience       string
-	signingKeyFile string
+	inCluster         bool
+	release           string
+	oauthClientID     string
+	oauthClientSecret string
+	secureCookies     bool
+	oauthSecretFile   string
+	audience          string
+	signingKeyFile    string
 
 	tokenLifetime   time.Duration
 	refreshLifetime time.Duration
@@ -61,17 +67,21 @@ func (c Config) LogLevel() slog.Level { return c.logLevel }
 // Load reads the configuration from the environment.
 func Load() (Config, error) {
 	c := Config{
-		port:           envInt("PORT", 8080),
-		healthPort:     envInt("HEALTH_PORT", 7070),
-		issuerURL:      strings.TrimSuffix(envString("ISSUER_URL", ""), "/"),
-		allowInsecure:  envBool("ALLOW_INSECURE", false),
-		hubAddress:     envString("HUB_ADDRESS", ""),
-		hubTokenFile:   envString("HUB_TOKEN_FILE", ""),
-		policyPath:     envString("POLICY_DIR", ""),
-		inCluster:      envBool("IN_CLUSTER", false),
-		signingKeyFile: envString("SIGNING_KEY_FILE", ""),
-		release:        envString("RELEASE_NAME", "access-issuer"),
-		audience:       envString("EXCHANGE_AUDIENCE", ""),
+		port:              envInt("PORT", 8080),
+		healthPort:        envInt("HEALTH_PORT", 7070),
+		issuerURL:         strings.TrimSuffix(envString("ISSUER_URL", ""), "/"),
+		allowInsecure:     envBool("ALLOW_INSECURE", false),
+		hubAddress:        envString("HUB_ADDRESS", ""),
+		hubTokenFile:      envString("HUB_TOKEN_FILE", ""),
+		policyPath:        envString("POLICY_DIR", ""),
+		inCluster:         envBool("IN_CLUSTER", false),
+		oauthClientID:     envString("OAUTH_CLIENT_ID", ""),
+		oauthClientSecret: envString("OAUTH_CLIENT_SECRET", ""),
+		secureCookies:     envBool("SECURE_COOKIES", false),
+		oauthSecretFile:   envString("OAUTH_CLIENT_SECRET_FILE", ""),
+		signingKeyFile:    envString("SIGNING_KEY_FILE", ""),
+		release:           envString("RELEASE_NAME", "access-issuer"),
+		audience:          envString("EXCHANGE_AUDIENCE", ""),
 	}
 	var err error
 	if c.tokenLifetime, err = envDuration("TOKEN_LIFETIME", issuer.DefaultTokenLifetime); err != nil {
@@ -155,6 +165,9 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err = readClientSecret(&cfg); err != nil {
+		return nil, err
+	}
 	verifiers, err := openVerifiers(ctx, cfg, log)
 	if err != nil {
 		return nil, err
@@ -164,7 +177,16 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	handler, err := issuer.Handler(core, storage)
+	signIn, err := openSignIn(ctx, cfg, log)
+	if err != nil {
+		return nil, err
+	}
+	handler, err := issuer.HandlerWithSignIn(core, storage, issuer.SignInDeps{
+		Providers: signIn,
+		State:     access.NewStateCodec(key.Derive("access-roster/sign-in-state"), signInWindow),
+		Secure:    cfg.secureCookies,
+		Log:       log,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +215,43 @@ func (a *App) Run(ctx context.Context) error {
 	return group.Wait()
 }
 
+// signInWindow is how long a person has to finish signing in, and the
+// life of the state that carries their half-finished request.
+const signInWindow = 10 * time.Minute
+
+// openSignIn builds the directories a person may prove themselves with.
+//
+// A deployment with none issues tokens to machines and to nobody else,
+// which is a real posture — a cluster's workload exchange with no human
+// login — and says so rather than serving a chooser with no buttons.
+func openSignIn(ctx context.Context, cfg Config, log *slog.Logger) ([]issuer.SignIn, error) {
+	if cfg.oauthClientID == "" || cfg.oauthClientSecret == "" {
+		log.WarnContext(ctx, "nobody can sign in: no OAuth client is configured, so this issuer "+
+			"serves token exchange and nothing else")
+		return nil, nil
+	}
+	client := google.OAuthClient{
+		ID:      cfg.oauthClientID,
+		Secret:  cfg.oauthClientSecret,
+		BaseURL: cfg.issuerURL,
+	}
+	log.InfoContext(ctx, "people sign in with Google", "redirect", client.SignInRedirect())
+	return []issuer.SignIn{&googleSignIn{client: client}}, nil
+}
+
+// googleSignIn adapts the backend's client to what the issuer's pages
+// need. It is three lines because the issuer's half of a login is three
+// things: where to send them, what came back, and nothing else.
+type googleSignIn struct{ client google.OAuthClient }
+
+func (g *googleSignIn) Kind() string { return "google" }
+
+func (g *googleSignIn) URL(state string) (string, error) { return g.client.SignInURL(state), nil }
+
+func (g *googleSignIn) Identify(ctx context.Context, code string) (string, error) {
+	return google.Identify(ctx, g.client, code)
+}
+
 // signingKey reads the key this installation was given.
 //
 // It is a mounted file, not a Secret this service reads through the API,
@@ -210,7 +269,7 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 		log.WarnContext(ctx, "generating a signing key for this process: every restart invalidates "+
 			"every token it signed, and two replicas would sign with two keys. "+
 			"A deployment sets SIGNING_KEY_FILE")
-		return nil, nil //nolint:nilnil // nil means "generate one", which is the storage's contract
+		return issuer.NewSigningKey()
 	}
 	encoded, err := os.ReadFile(cfg.signingKeyFile) //nolint:gosec // the path is deployment configuration
 	if err != nil {
@@ -227,6 +286,22 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 	log.InfoContext(ctx, "signing with the key this installation was given",
 		"file", cfg.signingKeyFile, "kid", key.ID())
 	return key, nil
+}
+
+// readClientSecret takes the OAuth client's secret from the file a Secret
+// is mounted at, for the same reason the signing key comes from one: a
+// credential in an environment variable is a credential in every process
+// listing and every crash dump. The variable stays for a local run.
+func readClientSecret(cfg *Config) error {
+	if cfg.oauthSecretFile == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(cfg.oauthSecretFile) //nolint:gosec // the path is deployment configuration
+	if err != nil {
+		return fmt.Errorf("read the OAuth client secret: %w", err)
+	}
+	cfg.oauthClientSecret = strings.TrimSpace(string(raw))
+	return nil
 }
 
 // openVerifiers builds what can turn somebody else's token into a proof.

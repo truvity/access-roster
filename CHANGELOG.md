@@ -44,6 +44,17 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **People can sign in to the issuer.** `/login` is the chooser the
+  library sends a browser to, `/login/<provider>/start` and `/callback`
+  are the round trip, and `/signed-out` is where a logout lands. One
+  button per provider kind, never one per company; with one provider it
+  redirects rather than asking a question with one answer. The address is
+  all that is taken from the provider — the hub decides whether it is
+  anybody here, and refuses on that page, naming the address, because
+  everywhere downstream the person would just be admitted nowhere. The
+  half-finished request travels in signed state, so a callback cannot
+  finish somebody else's login, and that state's key is derived from the
+  signing key rather than being a second Secret to provision.
 - **The issuer's signing key is provisioned, not minted.** It reads a PEM
   a Secret carries — cert-manager issuing one, external-secrets delivering
   one — mounted as a file, and holds no permission to read Secrets at all.

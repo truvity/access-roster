@@ -163,9 +163,30 @@ console's origin, which is one value in its chart.
 There is no second console. The whole surface is the one graph the hub
 serves, with two sections in it that happen to be answered from here.
 
-The issuer serves three pages of its own, minimal HTML from the same
-theme, because each runs before any session exists: the sign-in chooser
-by email domain, the device-code entry page, and the signed-out page.
+The issuer serves three pages of its own, minimal HTML and no
+JavaScript, because each runs before any session exists: the sign-in
+chooser, the device-code entry page, and the signed-out page.
+
+The chooser follows the same rule as the hub's — one button per provider
+*kind*, never one per company, because an anonymous page that lists the
+companies an installation serves has published them to anyone who loads
+it. With one provider configured there is no question to ask, so it does
+not ask: it redirects, and a click is saved on every login in the estate.
+
+The address the provider returns is the whole of what is taken from it.
+The hub decides whether that address is anybody here, and a refusal is
+delivered *there*, on that page, naming the address — everywhere
+downstream the person would simply find themselves admitted nowhere with
+nothing that explained why. The half-finished authorization request
+travels in the signed state, so a callback carrying somebody else's
+request id cannot finish their login as this person.
+
+The state is signed with a key derived from the signing key rather than a
+second Secret of its own: it protects something that lives ten minutes,
+and a rotated signing key invalidating half-finished logins is nothing to
+recover from. The signed-out page says what did and did not happen —
+"signed out" on a page that ended one session and left three running is
+the kind of half-truth people plan around.
 They are not the console, and they cannot be: each runs before there is
 anyone to authorize.
 
