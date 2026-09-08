@@ -5,6 +5,20 @@ git history.
 
 ## Unreleased
 
+Nothing yet.
+
+## v0.2.0
+
+- **The TypeScript package exists.** `@truvity/access-roster`, installed
+  from git at a tag with `ts/dist` committed so it needs no toolchain and
+  no registry: `fetchIdentity`, `useIdentity()` and `<UserBadge>`, with
+  react and MUI as optional peers. It parses no token — the browser asks
+  the application it is already talking to. Its reference page described
+  three states and the endpoint's real shape had different fields; both
+  now match what is served, and there is a **fourth state**, `unknown`,
+  for when the question could not be asked. A console that showed a
+  sign-in button because one request failed would send a signed-in person
+  to authenticate again for nothing.
 - **Revocation always reaches the shared state.** It took a hit in the
   per-process session index as proof that revocation was done and
   returned — so a token revoked on the replica that happened to hold the

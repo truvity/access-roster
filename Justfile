@@ -102,6 +102,12 @@ chart-lint:
     # fail the render too, not the pod.
     ! helm template access-issuer charts/access-issuer >/dev/null 2>&1
 
+# Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
+# that `npm install github:truvity/access-roster#vX` needs no toolchain —
+# the same reason frontend/dist is.
+ts:
+    cd ts && npm ci && npx tsc --noEmit && npx vitest run && npx tsc -p tsconfig.build.json
+
 # Rebuild the console SPA into frontend/dist (committed). Needs Node; CI
 # does not run this, which is why dist/ is in the repository.
 console:

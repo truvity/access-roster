@@ -1,5 +1,8 @@
 # Binaries
 bin/
+# The TypeScript package's dist IS committed (a git install has no
+# toolchain); its node_modules is not.
+ts/node_modules/
 # `go build ./cmd/<name>` drops the binary here, named for the command.
 /directory-roster
 /acceptance
