@@ -9,31 +9,33 @@
 #                   from a directory it owns; putting the same decision
 #                   here too would be a second copy of it, and this one
 #                   would be the stale copy.
+{{- range $route := (include "access-proxy.routes" $ | fromYamlArray) }}
+{{- $posture := $route.posture | default "groups" }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
-  name: {{ include "access-proxy.fullname" . }}
+  name: {{ include "access-proxy.policyName" (dict "root" $ "route" $route) }}
   labels:
-    {{- include "access-proxy.labels" . | nindent 4 }}
+    {{- include "access-proxy.labels" $ | nindent 4 }}
 spec:
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      name: {{ include "access-proxy.targetRoute" . }}
+      name: {{ $route.attachRouteName | default (include "access-proxy.routeName" (dict "root" $ "route" $route)) }}
   extAuth:
     http:
       backendRefs:
         - group: ""
           kind: Service
-          name: {{ include "access-proxy.fullname" . }}
-          port: {{ .Values.proxy.port }}
+          name: {{ include "access-proxy.fullname" $ }}
+          port: {{ $.Values.proxy.port }}
       headersToBackend:
         - x-auth-request-access-token
         - x-auth-request-email
         - x-auth-request-user
         - authorization
-{{- if eq $e.posture "groups" }}
+{{- if eq $posture "groups" }}
 {{- /*
   An empty allow-list renders `values: []` under defaultAction Deny --
   which the CRD accepts and which admits NOBODY. `required` does not catch
@@ -41,15 +43,15 @@ spec:
   neither. So the render refuses here instead of shipping a policy that
   locks everyone out of a console that looks correctly configured.
 */ -}}
-{{- if not $e.allow }}
-{{- fail "exposure.allow must list at least one group for the `groups` posture: an empty list denies everyone (use posture `authenticated` if the application authorizes itself)" }}
+{{- if not $route.allow }}
+{{- fail (printf "route %q uses the `groups` posture with an empty allow-list: that denies everyone (use posture `authenticated` if the application authorizes itself)" $route.name) }}
 {{- end }}
   jwt:
     providers:
       - name: issuer
-        issuer: {{ trimSuffix "/" .Values.issuer.url | quote }}
+        issuer: {{ trimSuffix "/" $.Values.issuer.url | quote }}
         remoteJWKS:
-          uri: {{ include "access-proxy.jwksUri" . | quote }}
+          uri: {{ include "access-proxy.jwksUri" $ | quote }}
           # Explicit, matching the CRD default: the API server injects it,
           # and an undeclared default is a permanent ArgoCD OutOfSync.
           cacheDuration: "300s"
@@ -70,9 +72,10 @@ spec:
               - name: groups
                 valueType: StringArray
                 values:
-                  {{- range $e.allow }}
+                  {{- range $route.allow }}
                   - {{ . | quote }}
                   {{- end }}
-{{- else if ne $e.posture "authenticated" }}
-{{- fail (printf "exposure.posture must be `groups` or `authenticated`, not %q" $e.posture) }}
+{{- else if ne $posture "authenticated" }}
+{{- fail (printf "route %q: posture must be `groups` or `authenticated`, not %q" $route.name $posture) }}
+{{- end }}
 {{- end }}

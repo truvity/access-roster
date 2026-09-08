@@ -128,6 +128,15 @@ chart-lint:
         --set issuer.url=https://issuer.example --set client.secret.name=client \
         --set session.cookieSecret.name=cookie --set session.valkey.address=valkey.example.svc:6379 >/dev/null 2>&1
     ! helm template access-proxy charts/access-proxy --set bogusKey=1 >/dev/null 2>&1
+    # Several protected routes on one host, each attaching to a route
+    # something else owns -- the shape a business surface needs, where a
+    # demo path is open to any employee and the app behind it is not.
+    helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml >/dev/null
+    # Describing one route twice, once with the single-route fields and
+    # once in the list, silently ignores one of them -- and the ignored
+    # one would be the protection somebody thought they configured.
+    ! helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml \
+        --set exposure.backend.name=app >/dev/null 2>&1
 
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —

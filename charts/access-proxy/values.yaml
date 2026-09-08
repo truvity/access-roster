@@ -41,6 +41,24 @@ exposure:
   # the SecurityPolicy to it, rendering no app route of its own. That is
   # the normal case for a console whose chart already routes itself.
   attachRouteName: ""
+  # More than one protected route on the same host, each with its own
+  # posture and its own route to attach to -- a surface where, say, a demo
+  # path is open to any employee and the console behind it is not.
+  #
+  # Mutually exclusive with the five fields above, which describe one
+  # route between them; setting both is refused rather than silently
+  # preferring one. Each entry takes the same fields plus a `name`, which
+  # names the policy so two of them do not collide:
+  #
+  #   routes:
+  #     - name: demo
+  #       attachRouteName: url-shortener-demo
+  #       posture: authenticated
+  #     - name: app
+  #       attachRouteName: url-shortener
+  #       posture: groups
+  #       allow: [url-shortener:operator]
+  routes: []
   forward:
     # Forward the bearer as `Authorization` besides the proxy's own
     # identity headers, so a backend can verify it against the issuer's
@@ -109,6 +127,7 @@ proxy:
   resources: {}
   nodeSelector: {}
   tolerations: []
+  topologySpreadConstraints: []
   podAnnotations: {}
 
 networkPolicy:

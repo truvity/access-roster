@@ -1,0 +1,30 @@
+# A multi-route access-proxy exposure, for chart-lint. Two protected
+# routes on one host with different postures, each attached to an
+# HTTPRoute another chart owns -- the url-shortener / eudi shape.
+exposure:
+  hostname: surface.example
+  gateway:
+    name: tenants
+    namespace: envoy-gateway-system
+    sectionName: tenants
+  # Hydra owns /oauth2 on a shared host, so the proxy takes another prefix.
+  proxyPrefix: /_gwauth
+  routes:
+    - name: demo
+      attachRouteName: surface-demo
+      posture: authenticated
+    - name: app
+      attachRouteName: surface-app
+      posture: groups
+      allow:
+        - surface:operator
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: surface-client
+session:
+  valkey:
+    address: access-proxy-sessions.access-system.svc:6379
+  cookieSecret:
+    name: surface-cookie
