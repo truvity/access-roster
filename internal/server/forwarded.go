@@ -18,6 +18,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/emailaddr"
 	"github.com/truvity/access-roster/internal/logsafe"
+	"github.com/truvity/access-roster/policy"
 )
 
 // Headers a gateway forwards a token in.
@@ -94,12 +95,26 @@ func (b *forwardedBearer) verify(ctx context.Context, token string) (access.Prin
 	// email claim is only present when the scope asked for it. Prefer the
 	// claim, fall back to the subject, and insist the result is an address
 	// either way: everything above this routes by the domain after the '@'.
+	// A ServiceAccount subject is a recovery sign-in at the issuer, which
+	// completes as the account rather than as an address. It is not a
+	// person and there is no directory to ask about it: the policy's
+	// `service_account` matchers decide, exactly as they do for a
+	// workload exchanging a token.
+	if namespace, name, ok := serviceAccount(claims.Subject); ok {
+		return access.Principal{
+			Subject:        claims.Subject,
+			Source:         access.SourceForwarded,
+			Issuer:         b.issuer,
+			ServiceAccount: &policy.ServiceAccountRef{Namespace: namespace, Name: name},
+		}, nil
+	}
+
 	address := strings.ToLower(strings.TrimSpace(stringClaim(claims.Claims, "email")))
 	if address == "" {
 		address = strings.ToLower(strings.TrimSpace(claims.Subject))
 	}
 	if _, ok := emailaddr.Domain(address); !ok || strings.ContainsFunc(address, unwritable) {
-		return access.Principal{}, errors.New("the token names no address this hub could answer about")
+		return access.Principal{}, errors.New("the token names neither an address nor a ServiceAccount this hub could answer about")
 	}
 
 	return access.Principal{
@@ -175,4 +190,17 @@ func slicesContains(haystack []string, needle string) bool {
 func stringClaim(claims map[string]any, name string) string {
 	value, _ := claims[name].(string)
 	return value
+}
+
+// serviceAccount splits the API server's spelling of one.
+func serviceAccount(subject string) (namespace, name string, ok bool) {
+	rest, found := strings.CutPrefix(subject, "system:serviceaccount:")
+	if !found {
+		return "", "", false
+	}
+	namespace, name, found = strings.Cut(rest, ":")
+	if !found || namespace == "" || name == "" {
+		return "", "", false
+	}
+	return namespace, name, true
 }

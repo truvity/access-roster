@@ -127,7 +127,8 @@
         },
         "lifetime": { "type": "string", "minLength": 1 },
         "refresh": { "type": "string" },
-        "scopes": { "type": "string" }
+        "scopes": { "type": "string" },
+        "identityClaim": { "type": "string", "minLength": 1 }
       }
     },
     "proxy": {
