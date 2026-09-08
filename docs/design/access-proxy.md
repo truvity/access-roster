@@ -1,6 +1,25 @@
 # access-proxy — the console exposure
 
-**Status:** designed 2026-09-07; built with the issuer.
+**Status:** designed 2026-09-07; chart built 2026-09-08.
+
+**Decided 2026-09-08:** built with a **static client**, not a self-registered
+one. `/register` is designed (see *Self-registration* below) and the issuer
+does not serve it yet, so `registration.enabled` defaults to `false` and an
+installation names a Secret holding the client. This is an interim with an
+end: when the issuer serves `/register`, the default flips and no client
+appears in any values file. Recorded here rather than discovered later,
+because a static client is the thing this component exists to remove.
+
+**Decided 2026-09-08:** the chart never mints the **cookie secret** either,
+and that one is not interim. A chart that generated it would generate a new
+one on every render that cannot read cluster state — which is what ArgoCD
+does — and every sync would sign everyone out.
+
+**Decided 2026-09-08:** its first consumer is the **directory-roster
+console**, in the `authenticated` posture. The hub resolves viewer/operator
+from the directory it owns, so the gateway gates on "signed in" and the
+application decides the rest; a `groups` rule here would be a second copy of
+that decision, and the stale one.
 
 ## Purpose
 

@@ -1,0 +1,68 @@
+{{- $e := .Values.exposure -}}
+{{- $gw := $e.gateway -}}
+# The proxy's own endpoints -- sign_in, start, callback, sign-out -- on the
+# console's hostname. Always rendered: they are this chart's, whether or
+# not it also routes the console itself.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "access-proxy.fullname" . }}-prefix
+  labels:
+    {{- include "access-proxy.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ required "exposure.gateway.name is required" $gw.name }}
+      namespace: {{ required "exposure.gateway.namespace is required" $gw.namespace }}
+      {{- with $gw.sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+  hostnames:
+    - {{ required "exposure.hostname is required" $e.hostname | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $e.proxyPrefix | quote }}
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "access-proxy.fullname" . }}
+          port: {{ .Values.proxy.port }}
+{{- if not $e.attachRouteName }}
+---
+# The console's own route. Rendered only when nothing else owns one: a
+# console whose chart already routes itself sets exposure.attachRouteName
+# instead, and two charts never both claim the hostname.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "access-proxy.fullname" . }}
+  labels:
+    {{- include "access-proxy.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $gw.name }}
+      namespace: {{ $gw.namespace }}
+      {{- with $gw.sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+  hostnames:
+    - {{ $e.hostname | quote }}
+  rules:
+    {{- range $e.paths }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ . | quote }}
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ required "exposure.backend.name is required unless exposure.attachRouteName names a route that already exists" $.Values.exposure.backend.name }}
+          port: {{ $.Values.exposure.backend.port }}
+    {{- end }}
+{{- end }}

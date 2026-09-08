@@ -1,0 +1,12 @@
+apiVersion: v2
+name: access-proxy
+description: >-
+  Login, session and forwarded bearer in front of one console. Upstream
+  oauth2-proxy as Envoy Gateway's external authorization backend, with
+  sessions in Valkey and the caller's token handed to the backend. No
+  request passes through code written here: the chart contributes the
+  wiring (routes, policies, config) and the conventions, and the console
+  implements none of it.
+type: application
+version: 0.4.0
+appVersion: "0.4.0"

@@ -1,0 +1,101 @@
+{{- $client := .Values.client.secret -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "access-proxy.fullname" . }}
+  labels:
+    {{- include "access-proxy.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.proxy.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "access-proxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "access-proxy.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Restart on a config change: the proxy reads its file once at
+        # start, so without this a changed issuer or scope list sits in a
+        # ConfigMap that nothing has re-read.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.proxy.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oauth2-proxy
+          image: "{{ .Values.proxy.image.repository }}:{{ .Values.proxy.image.tag }}"
+          imagePullPolicy: {{ .Values.proxy.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          args: ["--config=/etc/oauth2-proxy/oauth2-proxy.cfg"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.proxy.port }}
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "client.secret.name is required until registration.enabled works (the issuer serves no /register yet)" $client.name }}
+                  key: {{ $client.keys.clientId }}
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $client.name }}
+                  key: {{ $client.keys.clientSecret }}
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "session.cookieSecret.name is required: this chart will not mint one, because a render that cannot read cluster state would mint a new one every sync and log everyone out" .Values.session.cookieSecret.name }}
+                  key: {{ .Values.session.cookieSecret.key }}
+            {{- with .Values.session.valkey.passwordSecret.name }}
+            - name: OAUTH2_PROXY_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.session.valkey.passwordSecret.key }}
+            {{- end }}
+          livenessProbe:
+            httpGet: { path: /ping, port: http }
+          readinessProbe:
+            httpGet: { path: /ping, port: http }
+          resources:
+            {{- toYaml .Values.proxy.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/oauth2-proxy
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "access-proxy.fullname" . }}
+      {{- with .Values.proxy.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.proxy.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "access-proxy.fullname" . }}
+  labels:
+    {{- include "access-proxy.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "access-proxy.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.proxy.port }}
+      targetPort: http

@@ -1,0 +1,117 @@
+# access-proxy — login, session and forwarded bearer in front of one
+# console. See docs/reference/access-proxy.md.
+#
+# A console's own values are the few lines under `exposure`. Everything
+# else is what an installation sets once, for every exposure it has.
+
+exposure:
+  # The console host. It is also the cookie domain and, once
+  # self-registration exists, the client id -- one name, so there is
+  # nothing to keep in step.
+  hostname: ""
+  # The console's Service. Required unless attachRouteName is set, in
+  # which case the route that already exists names its own backend.
+  backend:
+    name: ""
+    port: 8080
+  # `groups`        — only callers whose token carries one of `allow`
+  #                   passes; the bearer is forwarded.
+  # `authenticated` — any signed-in identity passes and the application
+  #                   authorizes itself, which is right where the
+  #                   application already resolves roles from a directory
+  #                   it owns. Putting the same decision at the gateway
+  #                   too would be two copies of it, and the gateway's
+  #                   would be the stale one.
+  posture: groups
+  allow: []
+  # The Gateway listener to attach to.
+  gateway:
+    name: ""
+    namespace: ""
+    sectionName: ""
+  # Paths to protect. Anything unlisted gets no route from this chart and
+  # so no policy: unprotected by omission is a decision, and it should
+  # look like one.
+  paths:
+    - /
+  # The prefix this proxy owns: sign_in, start, callback, sign-out. It
+  # must agree with the client's registered redirect URI.
+  proxyPrefix: /oauth2
+  # ATTACH mode. Name an HTTPRoute another chart owns and this chart binds
+  # the SecurityPolicy to it, rendering no app route of its own. That is
+  # the normal case for a console whose chart already routes itself.
+  attachRouteName: ""
+  forward:
+    # Forward the bearer as `Authorization` besides the proxy's own
+    # identity headers, so a backend can verify it against the issuer's
+    # keys instead of trusting a header.
+    authorizationHeader: true
+
+issuer:
+  url: ""
+  # Overrides the key set URI. Empty derives {issuer}/keys, which is what
+  # access-issuer serves; Zitadel uses /oauth/v2/keys.
+  jwksUri: ""
+
+client:
+  # The OAuth client this proxy is. Same shape as everywhere else in this
+  # family: name a Secret and say what its keys are called, so whatever
+  # delivered it chose the names.
+  secret:
+    name: ""
+    keys:
+      clientId: client-id
+      clientSecret: client-secret
+
+registration:
+  # Self-register at start, so no client is minted by hand and none
+  # appears in any values file. OFF until the issuer serves /register
+  # (RFC 7591); until then `client.secret.name` must name a static one.
+  enabled: false
+
+session:
+  valkey:
+    # External to this chart, exactly as for the hub and the issuer. One
+    # Valkey per cluster shared by every proxy is the recommendation:
+    # sessions are keyed by random tickets, so proxies cannot collide.
+    address: ""
+    cluster: true
+    username: ""
+    passwordSecret:
+      name: ""
+      key: password
+  # The cookie signing secret. An EXISTING Secret, never generated here:
+  # a chart that minted it would mint a new one on every render that
+  # cannot read cluster state -- which is what ArgoCD does -- and every
+  # sync would log everyone out.
+  cookieSecret:
+    name: ""
+    key: cookie-secret
+  # How long a session lasts, and how often the access token behind it is
+  # renewed. `refresh` MUST be shorter than `lifetime`: the other way
+  # round the cookie dies before a refresh is ever attempted, and the
+  # configuration looks correct while behaving as if refresh were unset.
+  lifetime: 12h
+  refresh: 5m
+  # Scopes to request. Empty asks for openid, profile and email, plus
+  # `groups` when an allow-list is configured, plus `offline_access` when
+  # `refresh` is set. Setting this by hand overrides all of that.
+  scopes: ""
+
+proxy:
+  image:
+    # Override to a mirror where egress to quay is not wanted.
+    repository: quay.io/oauth2-proxy/oauth2-proxy
+    tag: v7.15.4
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  port: 4180
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  podAnnotations: {}
+
+networkPolicy:
+  # Gateway to proxy, proxy to the issuer and the backend.
+  enabled: false
+  gatewayNamespace: ""

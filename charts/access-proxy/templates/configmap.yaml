@@ -1,0 +1,91 @@
+{{- $e := .Values.exposure -}}
+{{- $hostname := required "exposure.hostname is required" $e.hostname -}}
+{{- $issuer := required "issuer.url is required" .Values.issuer.url -}}
+{{- $session := .Values.session -}}
+{{- /*
+  Scopes. `groups` is asked for only when an allow-list is configured:
+  Zitadel returns the claim regardless, but a standards-compliant provider
+  omits it when unasked, and `groups` on a large directory can inflate the
+  token past the 4KB chunk oauth2-proxy splits sessions on -- for installs
+  that never authorize on groups at all.
+*/ -}}
+{{- $scopes := $session.scopes -}}
+{{- if not $scopes -}}
+{{- $scopes = "openid profile email" -}}
+{{- if $e.allow -}}
+{{- $scopes = printf "%s groups" $scopes -}}
+{{- end -}}
+{{- if $session.refresh -}}
+{{- $scopes = printf "%s offline_access" $scopes -}}
+{{- end -}}
+{{- else if and $session.refresh (not (contains "offline_access" $scopes)) -}}
+{{- /*
+  An explicit scope list overrides the offline_access this chart would
+  have added, and without it the provider issues no refresh token: the
+  install renders cleanly, cookie_refresh is present, and the proxy simply
+  never refreshes. Fail instead -- there is no reading of these two values
+  together that the author could have meant.
+*/ -}}
+{{- fail "session.scopes is set alongside session.refresh but omits offline_access; refresh cannot work without a refresh token, so add offline_access to the scope list or unset one of the two" -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-proxy.fullname" . }}
+  labels:
+    {{- include "access-proxy.labels" . | nindent 4 }}
+data:
+  oauth2-proxy.cfg: |
+    provider = "oidc"
+    oidc_issuer_url = "{{ trimSuffix "/" $issuer }}"
+    redirect_url = "https://{{ $hostname }}{{ $e.proxyPrefix }}/callback"
+    proxy_prefix = "{{ $e.proxyPrefix }}"
+
+    http_address = "0.0.0.0:{{ .Values.proxy.port }}"
+    reverse_proxy = true
+    # static://200, not 202: Envoy's ext_authz treats ONLY a 200 from the
+    # authorization service as "allow" and forwards the original request
+    # to the real backend. Anything else is a deny, and the authorization
+    # response body is what the browser gets.
+    upstreams = ["static://200"]
+
+    cookie_domains = ["{{ $hostname }}"]
+    whitelist_domains = ["{{ $hostname }}"]
+    cookie_secure = true
+    cookie_samesite = "lax"
+    # The session outlives the access token because the token is renewed
+    # underneath it. Without `refresh`, a session outliving its token
+    # strands the caller on Envoy's raw "Jwt is expired" 401 until the
+    # cookie dies -- so if you unset refresh, bring lifetime back under
+    # the issuer's token lifetime.
+    cookie_expire = {{ $session.lifetime | quote }}
+    {{- with $session.refresh }}
+    cookie_refresh = {{ . | quote }}
+    {{- end }}
+
+    scope = {{ $scopes | quote }}
+    code_challenge_method = "S256"
+    skip_provider_button = true
+
+    # Who may pass is decided at the gateway (or by the application), not
+    # here: this proxy accepts any identity the issuer vouches for.
+    email_domains = ["*"]
+
+    # Hand the token downstream. The backend verifies it against the
+    # issuer's keys rather than trusting that only the gateway can reach
+    # it -- "we are only reachable through the gateway" is a property of a
+    # NetworkPolicy, one file away from being wrong.
+    set_xauthrequest = true
+    pass_access_token = true
+    set_authorization_header = {{ $e.forward.authorizationHeader }}
+
+    session_store_type = "redis"
+    redis_use_cluster = {{ $session.valkey.cluster }}
+    {{- if $session.valkey.cluster }}
+    redis_cluster_connection_urls = ["redis://{{ required "session.valkey.address is required" $session.valkey.address }}"]
+    {{- else }}
+    redis_connection_url = "redis://{{ required "session.valkey.address is required" $session.valkey.address }}"
+    {{- end }}
+    {{- with $session.valkey.username }}
+    redis_username = {{ . | quote }}
+    {{- end }}
