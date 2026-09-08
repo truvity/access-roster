@@ -47,6 +47,9 @@ type record struct {
 	// recognise as stale and delete, rather than a directory nobody can
 	// disconnect.
 	Declared bool `json:"declared,omitempty"`
+	// SyncGroups narrows which of the tenant's groups are kept. Empty is
+	// all of them, so an omitted field reads as the ordinary case.
+	SyncGroups []string `json:"syncGroups,omitempty"`
 }
 
 func toRecord(ws hub.Workspace) record {
@@ -63,6 +66,7 @@ func toRecord(ws hub.Workspace) record {
 		Healthy:     ws.Health.OK,
 		Error:       ws.Health.Error,
 		Declared:    ws.Declared,
+		SyncGroups:  ws.SyncGroups,
 	}
 }
 
@@ -78,6 +82,7 @@ func (r record) workspace() hub.Workspace {
 		ConnectedAt: r.ConnectedAt,
 		Health:      hub.Health{ProbedAt: r.ProbedAt, OK: r.Healthy, Error: r.Error},
 		Declared:    r.Declared,
+		SyncGroups:  r.SyncGroups,
 	}
 }
 

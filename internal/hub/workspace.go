@@ -143,6 +143,7 @@ func (w Workspace) Unowned() []string {
 func (w Workspace) clone() Workspace {
 	w.Domains = slices.Clone(w.Domains)
 	w.Serve = slices.Clone(w.Serve)
+	w.SyncGroups = slices.Clone(w.SyncGroups)
 	return w
 }
 

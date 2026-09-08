@@ -324,6 +324,17 @@ export function Directory({
           );
         }}
       />
+      <SyncedGroups
+        tenant={tenant}
+        operator={operator}
+        busy={busy}
+        onSave={(groups) => {
+          void act(
+            () => workspaces.setSyncedGroups({ workspaceId: tenant.id, groups }),
+            groups.length === 0 ? "Keeping every group in the served domains." : `Keeping ${groups.length} of its groups.`,
+          );
+        }}
+      />
         </>
       }
       actions={
@@ -524,6 +535,131 @@ function Domains({
           {tenant.declared && narrowed ? (
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
               The deployment states which domains this directory serves.
+            </Typography>
+          ) : null}
+        </>
+      )}
+    </Section>
+  );
+}
+
+/** Which of a directory's groups this hub keeps.
+ *
+ *  A company's directory holds every mailing list it has ever made, and
+ *  an installation's policy speaks about a handful of them. Keeping the
+ *  rest costs a cache, a picker full of noise, and a page of groups that
+ *  attach to nothing — so an operator may name the ones that matter.
+ *
+ *  The list to pick from is what the last read of the directory HELD,
+ *  not what is currently kept: a chooser that could only offer what was
+ *  already chosen could never widen the choice again. It is why the
+ *  snapshot carries the discovered names even for groups it drops.
+ *
+ *  Narrowing here is not a saving in the directory's quota. The hub
+ *  still reads the tenant's groups — that list is what this picker is —
+ *  and the saving is in what is stored, answered and shown. */
+function SyncedGroups({
+  tenant,
+  operator,
+  busy,
+  onSave,
+}: {
+  tenant: Workspace;
+  operator: boolean;
+  busy: boolean;
+  onSave: (groups: string[]) => void;
+}) {
+  const discovered = tenant.discoveredGroups;
+  const [choice, setChoice] = useState<string[] | undefined>();
+  const editing = choice !== undefined;
+  const narrowed = tenant.syncGroups.length > 0;
+  const mayChoose = operator && !tenant.declared && discovered.length > 0;
+
+  if (discovered.length === 0 && !narrowed) return null;
+
+  const toggle = (name: string) =>
+    setChoice((current) => {
+      const now = current ?? [];
+      return now.includes(name) ? now.filter((g) => g !== name) : [...now, name];
+    });
+
+  return (
+    <Section
+      title="Groups it syncs"
+      hint={
+        editing
+          ? "tick the groups this hub should keep. The rest stays in the directory and is simply not read back"
+          : narrowed
+            ? `${tenant.syncGroups.length} of ${discovered.length} groups this directory holds`
+            : "every group in the served domains"
+      }
+    >
+      {editing ? (
+        <Stack spacing={0.5}>
+          {discovered.map((group) => (
+            <FormControlLabel
+              key={group}
+              control={<Checkbox size="small" checked={choice.includes(group)} onChange={() => toggle(group)} />}
+              label={<Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.85em" }}>{group}</Typography>}
+            />
+          ))}
+          <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={busy || choice.length === 0}
+              onClick={() => {
+                onSave(choice.length === discovered.length ? [] : choice);
+                setChoice(undefined);
+              }}
+            >
+              Save
+            </Button>
+            <Tooltip title="Including groups the company makes later, without anyone coming back here.">
+              <span>
+                <Button
+                  size="small"
+                  disabled={busy}
+                  onClick={() => {
+                    onSave([]);
+                    setChoice(undefined);
+                  }}
+                >
+                  Keep all of them
+                </Button>
+              </span>
+            </Tooltip>
+            <Button size="small" disabled={busy} onClick={() => setChoice(undefined)}>
+              Cancel
+            </Button>
+          </Stack>
+        </Stack>
+      ) : (
+        <>
+          {narrowed ? (
+            <Rows
+              items={tenant.syncGroups}
+              keyOf={(g) => g}
+              primary={(g) => (
+                <Ref to={paths.directoryGroup(g)} mono>
+                  {g}
+                </Ref>
+              )}
+              empty="None."
+            />
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Every group in the served domains is kept.
+            </Typography>
+          )}
+          {mayChoose ? (
+            <Button size="small" sx={{ ml: -1, mt: 0.5 }} onClick={() => setChoice(tenant.syncGroups.length ? [...tenant.syncGroups] : [...discovered])}>
+              Choose which to sync
+            </Button>
+          ) : null}
+          {tenant.declared && narrowed ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+              The deployment states which groups this directory syncs.
             </Typography>
           ) : null}
         </>

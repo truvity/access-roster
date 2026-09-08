@@ -152,6 +152,11 @@ type wire struct {
 	TakenAt   time.Time         `json:"takenAt"`
 	Accounts  []backend.Account `json:"accounts"`
 	Groups    []backend.Group   `json:"groups"`
+	// Discovered is every group the read held before narrowing. It is
+	// omitempty so that a snapshot written by an older replica during a
+	// rollout decodes into "the kept groups are all there were", which is
+	// what it meant.
+	Discovered []string `json:"discovered,omitempty"`
 }
 
 // Get implements [hub.SnapshotStore].
@@ -236,7 +241,7 @@ func encode(snap *hub.Snapshot) ([]byte, error) {
 	if snap == nil {
 		return nil, errors.New("valkey: nothing to store")
 	}
-	out := wire{Workspace: snap.Workspace, TakenAt: snap.TakenAt}
+	out := wire{Workspace: snap.Workspace, TakenAt: snap.TakenAt, Discovered: snap.Discovered}
 	for _, email := range sortedKeys(snap.Accounts) {
 		out.Accounts = append(out.Accounts, snap.Accounts[email])
 	}
@@ -269,7 +274,7 @@ func decode(blob []byte) (*hub.Snapshot, error) {
 	}
 	// Rebuilt through the ordinary constructor, so a snapshot read back
 	// is indexed exactly like one just taken.
-	return hub.NewSnapshot(in.Workspace, in.TakenAt, in.Accounts, in.Groups), nil
+	return hub.NewSnapshot(in.Workspace, in.TakenAt, in.Accounts, in.Groups, in.Discovered), nil
 }
 
 // maxSnapshotBytes bounds what one decompression may produce. The value

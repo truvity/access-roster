@@ -31,6 +31,11 @@ type Declared struct {
 	// such, which is what makes a domain moving between tenants safe to
 	// declare ahead of the move.
 	Serve []string `yaml:"serve,omitempty"`
+	// SyncGroups narrows the tenant to a subset of its groups. Optional:
+	// empty keeps every group in the served domains. Unlike Serve there
+	// is no discovery to check it against at start, so a group named here
+	// that the tenant does not hold simply never appears.
+	SyncGroups []string `yaml:"syncGroups,omitempty"`
 }
 
 // Overlay is the declared layer of workspaces.

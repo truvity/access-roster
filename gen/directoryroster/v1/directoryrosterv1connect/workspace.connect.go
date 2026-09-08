@@ -54,6 +54,9 @@ const (
 	// WorkspaceServiceSetServedDomainsProcedure is the fully-qualified name of the WorkspaceService's
 	// SetServedDomains RPC.
 	WorkspaceServiceSetServedDomainsProcedure = "/directoryroster.v1.WorkspaceService/SetServedDomains"
+	// WorkspaceServiceSetSyncedGroupsProcedure is the fully-qualified name of the WorkspaceService's
+	// SetSyncedGroups RPC.
+	WorkspaceServiceSetSyncedGroupsProcedure = "/directoryroster.v1.WorkspaceService/SetSyncedGroups"
 	// WorkspaceServiceProbeProcedure is the fully-qualified name of the WorkspaceService's Probe RPC.
 	WorkspaceServiceProbeProcedure = "/directoryroster.v1.WorkspaceService/Probe"
 	// WorkspaceServiceRefreshProcedure is the fully-qualified name of the WorkspaceService's Refresh
@@ -89,6 +92,12 @@ type WorkspaceServiceClient interface {
 	// a subtraction from what the directory itself allows. A declared
 	// workspace refuses — the deployment states its list. Operator.
 	SetServedDomains(context.Context, *connect.Request[v1.SetServedDomainsRequest]) (*connect.Response[v1.SetServedDomainsResponse], error)
+	// SetSyncedGroups narrows a workspace to a subset of its groups, or
+	// widens it back. An empty list keeps every group in the served
+	// domains, which is the default. Only a group the last read of the
+	// directory held may be named, so the ceiling is the tenant's own list.
+	// A declared workspace refuses. Operator.
+	SetSyncedGroups(context.Context, *connect.Request[v1.SetSyncedGroupsRequest]) (*connect.Response[v1.SetSyncedGroupsResponse], error)
 	// Probe checks one workspace's credential now and re-reads its domain
 	// list. Operator.
 	Probe(context.Context, *connect.Request[v1.ProbeRequest]) (*connect.Response[v1.ProbeResponse], error)
@@ -142,6 +151,12 @@ func NewWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(workspaceServiceMethods.ByName("SetServedDomains")),
 			connect.WithClientOptions(opts...),
 		),
+		setSyncedGroups: connect.NewClient[v1.SetSyncedGroupsRequest, v1.SetSyncedGroupsResponse](
+			httpClient,
+			baseURL+WorkspaceServiceSetSyncedGroupsProcedure,
+			connect.WithSchema(workspaceServiceMethods.ByName("SetSyncedGroups")),
+			connect.WithClientOptions(opts...),
+		),
 		probe: connect.NewClient[v1.ProbeRequest, v1.ProbeResponse](
 			httpClient,
 			baseURL+WorkspaceServiceProbeProcedure,
@@ -170,6 +185,7 @@ type workspaceServiceClient struct {
 	reconnect        *connect.Client[v1.ReconnectRequest, v1.ReconnectResponse]
 	uploadKey        *connect.Client[v1.UploadKeyRequest, v1.UploadKeyResponse]
 	setServedDomains *connect.Client[v1.SetServedDomainsRequest, v1.SetServedDomainsResponse]
+	setSyncedGroups  *connect.Client[v1.SetSyncedGroupsRequest, v1.SetSyncedGroupsResponse]
 	probe            *connect.Client[v1.ProbeRequest, v1.ProbeResponse]
 	refresh          *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
 	disconnect       *connect.Client[v1.DisconnectRequest, v1.DisconnectResponse]
@@ -198,6 +214,11 @@ func (c *workspaceServiceClient) UploadKey(ctx context.Context, req *connect.Req
 // SetServedDomains calls directoryroster.v1.WorkspaceService.SetServedDomains.
 func (c *workspaceServiceClient) SetServedDomains(ctx context.Context, req *connect.Request[v1.SetServedDomainsRequest]) (*connect.Response[v1.SetServedDomainsResponse], error) {
 	return c.setServedDomains.CallUnary(ctx, req)
+}
+
+// SetSyncedGroups calls directoryroster.v1.WorkspaceService.SetSyncedGroups.
+func (c *workspaceServiceClient) SetSyncedGroups(ctx context.Context, req *connect.Request[v1.SetSyncedGroupsRequest]) (*connect.Response[v1.SetSyncedGroupsResponse], error) {
+	return c.setSyncedGroups.CallUnary(ctx, req)
 }
 
 // Probe calls directoryroster.v1.WorkspaceService.Probe.
@@ -240,6 +261,12 @@ type WorkspaceServiceHandler interface {
 	// a subtraction from what the directory itself allows. A declared
 	// workspace refuses — the deployment states its list. Operator.
 	SetServedDomains(context.Context, *connect.Request[v1.SetServedDomainsRequest]) (*connect.Response[v1.SetServedDomainsResponse], error)
+	// SetSyncedGroups narrows a workspace to a subset of its groups, or
+	// widens it back. An empty list keeps every group in the served
+	// domains, which is the default. Only a group the last read of the
+	// directory held may be named, so the ceiling is the tenant's own list.
+	// A declared workspace refuses. Operator.
+	SetSyncedGroups(context.Context, *connect.Request[v1.SetSyncedGroupsRequest]) (*connect.Response[v1.SetSyncedGroupsResponse], error)
 	// Probe checks one workspace's credential now and re-reads its domain
 	// list. Operator.
 	Probe(context.Context, *connect.Request[v1.ProbeRequest]) (*connect.Response[v1.ProbeResponse], error)
@@ -289,6 +316,12 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 		connect.WithSchema(workspaceServiceMethods.ByName("SetServedDomains")),
 		connect.WithHandlerOptions(opts...),
 	)
+	workspaceServiceSetSyncedGroupsHandler := connect.NewUnaryHandler(
+		WorkspaceServiceSetSyncedGroupsProcedure,
+		svc.SetSyncedGroups,
+		connect.WithSchema(workspaceServiceMethods.ByName("SetSyncedGroups")),
+		connect.WithHandlerOptions(opts...),
+	)
 	workspaceServiceProbeHandler := connect.NewUnaryHandler(
 		WorkspaceServiceProbeProcedure,
 		svc.Probe,
@@ -319,6 +352,8 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 			workspaceServiceUploadKeyHandler.ServeHTTP(w, r)
 		case WorkspaceServiceSetServedDomainsProcedure:
 			workspaceServiceSetServedDomainsHandler.ServeHTTP(w, r)
+		case WorkspaceServiceSetSyncedGroupsProcedure:
+			workspaceServiceSetSyncedGroupsHandler.ServeHTTP(w, r)
 		case WorkspaceServiceProbeProcedure:
 			workspaceServiceProbeHandler.ServeHTTP(w, r)
 		case WorkspaceServiceRefreshProcedure:
@@ -352,6 +387,10 @@ func (UnimplementedWorkspaceServiceHandler) UploadKey(context.Context, *connect.
 
 func (UnimplementedWorkspaceServiceHandler) SetServedDomains(context.Context, *connect.Request[v1.SetServedDomainsRequest]) (*connect.Response[v1.SetServedDomainsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.WorkspaceService.SetServedDomains is not implemented"))
+}
+
+func (UnimplementedWorkspaceServiceHandler) SetSyncedGroups(context.Context, *connect.Request[v1.SetSyncedGroupsRequest]) (*connect.Response[v1.SetSyncedGroupsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.WorkspaceService.SetSyncedGroups is not implemented"))
 }
 
 func (UnimplementedWorkspaceServiceHandler) Probe(context.Context, *connect.Request[v1.ProbeRequest]) (*connect.Response[v1.ProbeResponse], error) {
