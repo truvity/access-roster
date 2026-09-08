@@ -175,15 +175,28 @@ experience at this issuer rather than a different doorway per console.
 
 ## State
 
-No database. The signing key is in a Secret, read at start and shared by
-every replica — a key minted per process invalidates every token it
-signed on every rollout, and two replicas with two keys hand out tokens
-that half the fleet cannot verify, which reads as an intermittent outage
-and is really a coin toss. Its id travels inside the PEM rather than
-beside it, so a key and the id it is published under cannot separate.
-Rotation, when it comes, leaves the previous public key in the JWKS for
-one token lifetime; deleting the Secret is the deliberate "distrust
-everything we ever signed" lever. Authorization codes,
+No database. The signing key comes from a Secret **this service does not
+create** — cert-manager issuing one, or external-secrets delivering one —
+mounted as a file. It holds no permission to read Secrets at all.
+
+Two reasons, and the second is the one that decides it. A key minted per
+process invalidates every token it signed on every rollout, and two
+replicas with two keys hand out tokens half the fleet cannot verify,
+which reads as an intermittent outage and is really a coin toss on which
+pod answered. And a service that creates its own credential is an
+exception to how every other credential in this estate is provisioned;
+exceptions are what make an estate hard to reason about, and this one
+would put the rotation of the most sensitive key we hold outside the
+machinery that rotates everything else.
+
+The key id is the key's own RFC 7638 thumbprint rather than a name given
+to it. That is what lets the key arrive from anywhere: nothing has to
+carry an id beside it, every replica computes the same one, and a key and
+its id cannot separate because the id is a function of the key. Rotation
+follows from the same property — a new key is a new id, so the previous
+public key can stay in the JWKS for one token lifetime without either
+being mistaken for the other. PKCS#1 and PKCS#8 are both read, because
+both are what cert-manager writes depending on its issuer. Authorization codes,
 refresh tokens with their per-identity session index, device codes and
 the last-known groups per identity in Valkey, external to the chart.
 Static clients and the policy from the deployment; dynamic registrations

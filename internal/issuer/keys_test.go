@@ -1,64 +1,96 @@
 package issuer_test
 
 import (
-	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"testing"
 
 	"github.com/truvity/access-roster/internal/issuer"
 )
 
-// The key has to outlive the process, and outlive it identically in every
-// replica: one minted per start invalidates every token it signed, and two
-// replicas with two keys hand out tokens half the fleet cannot verify.
-func TestASigningKeySurvivesBeingWrittenDown(t *testing.T) {
+// The key arrives from somewhere else — cert-manager issuing one,
+// external-secrets delivering one — so it has to be readable in whichever
+// encoding that somewhere else wrote, and its id has to come from the key
+// itself rather than from anything travelling beside it.
+func TestASigningKeyIsReadWhicheverWayItWasWritten(t *testing.T) {
 	t.Parallel()
 
-	key, err := issuer.NewSigningKey()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		t.Fatalf("NewSigningKey: %v", err)
+		t.Fatalf("generate: %v", err)
 	}
-	stored := key.PEM()
-	if !bytes.Contains(stored, []byte("PRIVATE KEY")) {
-		t.Fatalf("the stored key is not PEM: %q", stored)
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal PKCS#8: %v", err)
+	}
+	encodings := map[string][]byte{
+		"PKCS#1, as cert-manager and openssl often write it": pem.EncodeToMemory(
+			&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}),
+		"PKCS#8, as cert-manager also writes it": pem.EncodeToMemory(
+			&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8}),
 	}
 
-	same, err := issuer.ParseSigningKey(stored)
-	if err != nil {
-		t.Fatalf("ParseSigningKey: %v", err)
+	ids := map[string]string{}
+	for name, encoded := range encodings {
+		parsed, parseErr := issuer.ParseSigningKey(encoded)
+		if parseErr != nil {
+			t.Fatalf("%s: %v", name, parseErr)
+		}
+		ids[name] = parsed.ID()
+		if parsed.ID() == "" {
+			t.Errorf("%s: no key id", name)
+		}
 	}
-	// The id travels with the key. Published under a new one, every token
-	// signed before this moment stops verifying — which is the failure
-	// storing the key at all exists to prevent.
-	if same.ID() != key.ID() {
-		t.Errorf("id = %q, want %q: the key and its id must not separate", same.ID(), key.ID())
-	}
-	if same.SignatureAlgorithm() != key.SignatureAlgorithm() {
-		t.Errorf("algorithm changed on the way back")
+	// One key is one id however it was written down. Anything else and a
+	// re-encoded Secret would republish the same key under a new id, and
+	// every token signed before that stops verifying.
+	var seen string
+	for name, id := range ids {
+		if seen == "" {
+			seen = id
+			continue
+		}
+		if id != seen {
+			t.Errorf("%s gave a different id for the same key", name)
+		}
 	}
 
-	// Two keys are two keys.
+	// And two keys are two ids, which is what makes rotation possible:
+	// the previous public key can stay in the JWKS without either being
+	// mistaken for the other.
 	other, err := issuer.NewSigningKey()
 	if err != nil {
 		t.Fatalf("NewSigningKey: %v", err)
 	}
-	if other.ID() == key.ID() {
-		t.Error("two generated keys share an id")
+	if other.ID() == seen {
+		t.Error("two keys share an id")
 	}
 }
 
-// What cannot be read must not be guessed at: a key with no id, or none
-// at all, is a service that should refuse to start rather than sign with
-// something nobody can verify against.
+// What cannot be read must not be guessed at: signing with a key nobody
+// else has produces tokens that look fine and verify nowhere, which is
+// worse than refusing to start.
 func TestAnUnreadableSigningKeyIsRefused(t *testing.T) {
 	t.Parallel()
 
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	ecBytes, err := x509.MarshalPKCS8PrivateKey(ec)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
 	for name, encoded := range map[string][]byte{
 		"not PEM at all":  []byte("hello"),
 		"empty":           nil,
 		"PEM with no key": []byte("-----BEGIN PRIVATE KEY-----\nZm9v\n-----END PRIVATE KEY-----\n"),
-		"no key id": []byte("-----BEGIN PRIVATE KEY-----\n" +
-			"MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu\n" +
-			"-----END PRIVATE KEY-----\n"),
+		"an EC key, which this issuer does not sign with": pem.EncodeToMemory(
+			&pem.Block{Type: "PRIVATE KEY", Bytes: ecBytes}),
 	} {
 		if _, err := issuer.ParseSigningKey(encoded); err == nil {
 			t.Errorf("%s was accepted as a signing key", name)

@@ -29,16 +29,6 @@ import (
 	"github.com/truvity/access-roster/policy"
 )
 
-// The two places the signing key can live.
-const (
-	// storeMemory generates one per process: every restart invalidates
-	// every token it signed, which is right for a local run and an outage
-	// anywhere else.
-	storeMemory = "memory"
-	// storeKubernetes reads it from a Secret, shared by every replica.
-	storeKubernetes = "kubernetes"
-)
-
 // Config is what a deployment decides. It is read from the environment,
 // which is what the chart sets.
 type Config struct {
@@ -53,9 +43,10 @@ type Config struct {
 
 	policyPath string
 
-	store    string
-	release  string
-	audience string
+	inCluster      bool
+	release        string
+	audience       string
+	signingKeyFile string
 
 	tokenLifetime   time.Duration
 	refreshLifetime time.Duration
@@ -70,16 +61,17 @@ func (c Config) LogLevel() slog.Level { return c.logLevel }
 // Load reads the configuration from the environment.
 func Load() (Config, error) {
 	c := Config{
-		port:          envInt("PORT", 8080),
-		healthPort:    envInt("HEALTH_PORT", 7070),
-		issuerURL:     strings.TrimSuffix(envString("ISSUER_URL", ""), "/"),
-		allowInsecure: envBool("ALLOW_INSECURE", false),
-		hubAddress:    envString("HUB_ADDRESS", ""),
-		hubTokenFile:  envString("HUB_TOKEN_FILE", ""),
-		policyPath:    envString("POLICY_DIR", ""),
-		store:         envString("STORE", storeMemory),
-		release:       envString("RELEASE_NAME", "access-issuer"),
-		audience:      envString("EXCHANGE_AUDIENCE", ""),
+		port:           envInt("PORT", 8080),
+		healthPort:     envInt("HEALTH_PORT", 7070),
+		issuerURL:      strings.TrimSuffix(envString("ISSUER_URL", ""), "/"),
+		allowInsecure:  envBool("ALLOW_INSECURE", false),
+		hubAddress:     envString("HUB_ADDRESS", ""),
+		hubTokenFile:   envString("HUB_TOKEN_FILE", ""),
+		policyPath:     envString("POLICY_DIR", ""),
+		inCluster:      envBool("IN_CLUSTER", false),
+		signingKeyFile: envString("SIGNING_KEY_FILE", ""),
+		release:        envString("RELEASE_NAME", "access-issuer"),
+		audience:       envString("EXCHANGE_AUDIENCE", ""),
 	}
 	var err error
 	if c.tokenLifetime, err = envDuration("TOKEN_LIFETIME", issuer.DefaultTokenLifetime); err != nil {
@@ -103,8 +95,6 @@ func Load() (Config, error) {
 		return Config{}, errors.New("ISSUER_URL is required: it is baked into every token and every relying party")
 	case c.hubAddress == "":
 		return Config{}, errors.New("HUB_ADDRESS is required: this service asks the hub about every person")
-	case c.store != storeMemory && c.store != storeKubernetes:
-		return Config{}, fmt.Errorf("STORE: %q is neither %q nor %q", c.store, storeMemory, storeKubernetes)
 	}
 	if c.audience == "" {
 		c.audience = c.release
@@ -184,7 +174,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	health.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 
 	log.InfoContext(ctx, "access-issuer assembled",
-		"issuer", cfg.issuerURL, "hub", cfg.hubAddress, "store", cfg.store,
+		"issuer", cfg.issuerURL, "hub", cfg.hubAddress, "inCluster", cfg.inCluster,
 		"exchangeAudience", cfg.audience, "port", cfg.port, "health", cfg.healthPort,
 		"tokenLifetime", cfg.tokenLifetime, "refreshLifetime", cfg.refreshLifetime,
 		"holdWindow", cfg.holdWindow, "version", version.String())
@@ -203,33 +193,39 @@ func (a *App) Run(ctx context.Context) error {
 	return group.Wait()
 }
 
-// signingKey reads the key a deployment keeps, or generates one.
+// signingKey reads the key this installation was given.
+//
+// It is a mounted file, not a Secret this service reads through the API,
+// and that is deliberate twice over. The issuer needs no permission to
+// read Secrets at all — the one credential it holds arrives the way every
+// other credential in this estate arrives, from cert-manager or from
+// external-secrets, and this service only opens the file. And it does not
+// mint one: a key generated here would be a different key in every
+// replica and after every restart, and a service that creates its own
+// credential is an exception to how everything else here gets one.
+//
+// No file configured means a local run, which generates one and says so.
 func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.SigningKey, error) {
-	if cfg.store == storeMemory {
+	if cfg.signingKeyFile == "" {
 		log.WarnContext(ctx, "generating a signing key for this process: every restart invalidates "+
-			"every token it signed, and two replicas would sign with two keys", "store", storeMemory)
+			"every token it signed, and two replicas would sign with two keys. "+
+			"A deployment sets SIGNING_KEY_FILE")
 		return nil, nil //nolint:nilnil // nil means "generate one", which is the storage's contract
 	}
-	client, err := kube.InCluster(cfg.release)
+	encoded, err := os.ReadFile(cfg.signingKeyFile) //nolint:gosec // the path is deployment configuration
+	if err != nil {
+		// Starting without it would mean signing with a key nobody else
+		// has, which is worse than not starting: the tokens would look
+		// fine and verify nowhere.
+		return nil, fmt.Errorf("read the signing key: %w — a deployment provides it as a Secret, "+
+			"issued by cert-manager or delivered by external-secrets, mounted at that path", err)
+	}
+	key, err := issuer.ParseSigningKey(encoded)
 	if err != nil {
 		return nil, err
 	}
-	stored, err := client.SigningKey(ctx, func() ([]byte, error) {
-		fresh, genErr := issuer.NewSigningKey()
-		if genErr != nil {
-			return nil, genErr
-		}
-		return fresh.PEM(), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	key, err := issuer.ParseSigningKey(stored)
-	if err != nil {
-		return nil, err
-	}
-	log.InfoContext(ctx, "signing with the key this installation keeps",
-		"secret", client.SigningKeyName(), "kid", key.ID())
+	log.InfoContext(ctx, "signing with the key this installation was given",
+		"file", cfg.signingKeyFile, "kid", key.ID())
 	return key, nil
 }
 
@@ -240,7 +236,7 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 // everything with "unverified" is indistinguishable from one that is
 // misconfigured.
 func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (issuer.Verifiers, error) {
-	if cfg.store != storeKubernetes {
+	if !cfg.inCluster {
 		log.WarnContext(ctx, "no proof can be verified: token exchange will refuse everything")
 		return nil, nil
 	}

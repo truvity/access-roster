@@ -1,79 +1,102 @@
 package issuer
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
 
 	jose "github.com/go-jose/go-jose/v4"
-	"github.com/google/uuid"
 )
 
 // SigningKey is one RSA key with an id, satisfying both of the library's
 // key interfaces: the private half signs, the public half is published in
 // the JWKS.
 //
-// It has to outlive the process, and outlive it identically in every
-// replica. A key minted per start invalidates every token it signed on
+// **The issuer does not create it.** It reads a key some other part of
+// the platform put in a Secret — cert-manager issuing one, or
+// external-secrets delivering one — mounted as a file. A service that
+// mints its own credential is an exception to how everything else here
+// gets one, and exceptions are what make an estate hard to reason about.
+// It also has to be the same key in every replica and across every
+// restart: one minted per process invalidates every token it signed on
 // every rollout, and two replicas with two keys hand out tokens that half
-// the fleet cannot verify — which looks like an intermittent outage and
-// is really a coin toss. So a deployment reads it from a Secret through
-// [ParseSigningKey], and only a local run generates one.
+// the fleet cannot verify.
 //
-// Rotation is not here yet. When it comes, the previous public key stays
-// in the JWKS for one token lifetime so that tokens already issued keep
-// verifying, which is why the id travels with the key rather than being
-// derived from it.
+// The id is the key's own RFC 7638 thumbprint rather than a name given to
+// it. That is what lets a key arrive from anywhere: nothing has to carry
+// an id beside it, two services reading the same Secret compute the same
+// one, and a key and its id cannot be separated because the id is a
+// function of the key. Rotation follows from the same property — a new
+// key is a new id, so the previous public key can stay in the JWKS for one
+// token lifetime without either being mistaken for the other.
 type SigningKey struct {
 	id  string
 	key *rsa.PrivateKey
 }
 
-// NewSigningKey generates one.
+// NewSigningKey generates one, for a local run. A deployment reads the
+// key it was given; see [ParseSigningKey].
 func NewSigningKey() (*SigningKey, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, fmt.Errorf("generate a signing key: %w", err)
 	}
-	return &SigningKey{id: uuid.NewString(), key: key}, nil
+	return newSigningKey(key)
 }
 
-// PEM encodes the key for storage. The id is carried in a header rather
-// than beside the file, so that a key and its id cannot be separated: a
-// key published under the wrong id verifies nothing.
-func (k *SigningKey) PEM() []byte {
-	return pem.EncodeToMemory(&pem.Block{
-		Type:    "PRIVATE KEY",
-		Headers: map[string]string{keyIDHeader: k.id},
-		Bytes:   x509.MarshalPKCS1PrivateKey(k.key),
-	})
-}
-
-// ParseSigningKey reads one back.
+// ParseSigningKey reads a PEM private key as some other part of the
+// platform wrote it.
+//
+// Both encodings are accepted because both are what turns up: cert-manager
+// writes PKCS#1 or PKCS#8 depending on its issuer, and a key put in a
+// store by hand is usually whichever openssl produced that day. Refusing
+// one of them would be a service that will not start for a reason nobody
+// would guess from the message.
 func ParseSigningKey(encoded []byte) (*SigningKey, error) {
 	block, _ := pem.Decode(encoded)
 	if block == nil {
-		return nil, errors.New("issuer: the stored signing key is not PEM")
+		return nil, errors.New("issuer: the signing key is not PEM")
 	}
-	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return newSigningKey(key)
+	}
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("issuer: read the stored signing key: %w", err)
+		return nil, fmt.Errorf("issuer: read the signing key: %w", err)
 	}
-	id := block.Headers[keyIDHeader]
-	if id == "" {
-		// A key with no id would be published under a new one on every
-		// start, so every token signed before this moment stops
-		// verifying — the failure the storage exists to prevent.
-		return nil, errors.New("issuer: the stored signing key carries no key id")
+	key, ok := parsed.(*rsa.PrivateKey)
+	if !ok {
+		// An EC key is a perfectly good signing key and this issuer does
+		// not sign with one yet, so say which it got rather than failing
+		// on a type assertion.
+		return nil, fmt.Errorf("issuer: the signing key is %T; this issuer signs RS256 and needs an RSA key", parsed)
+	}
+	return newSigningKey(key)
+}
+
+func newSigningKey(key *rsa.PrivateKey) (*SigningKey, error) {
+	id, err := thumbprint(key)
+	if err != nil {
+		return nil, err
 	}
 	return &SigningKey{id: id, key: key}, nil
 }
 
-// keyIDHeader is where the id rides in the PEM.
-const keyIDHeader = "kid"
+// thumbprint is the RFC 7638 JWK thumbprint of the public half, which is
+// what every JWKS consumer already knows how to compute.
+func thumbprint(key *rsa.PrivateKey) (string, error) {
+	jwk := jose.JSONWebKey{Key: &key.PublicKey, Algorithm: string(jose.RS256), Use: "sig"}
+	sum, err := jwk.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return "", fmt.Errorf("issuer: derive the key id: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(sum), nil
+}
 
 // SignatureAlgorithm is what this key signs with. RS256 because every
 // relying party understands it, including the ones this replaces.

@@ -60,7 +60,6 @@ const (
 const (
 	sessionKeyKey    = "key"
 	adminPasswordKey = "password"
-	signingKeyKey    = "key.pem"
 )
 
 // Namespace returns the namespace the hub runs in, which the chart passes
@@ -225,38 +224,6 @@ func (c *Client) SessionKeyName() string { return c.prefix + "-session-key" }
 
 // AdminPasswordName is the Secret holding the break-glass password.
 func (c *Client) AdminPasswordName() string { return c.prefix + "-admin" }
-
-// SigningKeyName is the Secret holding the issuer's signing key.
-func (c *Client) SigningKeyName() string { return c.prefix + "-signing-key" }
-
-// SigningKey returns the key the issuer signs tokens with, creating one
-// on first start.
-//
-// The same reasoning as the session key and more of it: a key minted per
-// process invalidates every token it signed on every rollout, and two
-// replicas with two keys hand out tokens that half the fleet cannot
-// verify — which reads as an intermittent outage and is really a coin
-// toss. Deleting this Secret invalidates every token in flight, which is
-// the deliberate "distrust everything we ever signed" lever.
-func (c *Client) SigningKey(ctx context.Context, generate func() ([]byte, error)) ([]byte, error) {
-	return c.keep(ctx, c.SigningKeyName(), signingKeyKey, generate)
-}
-
-// AdminPassword returns the break-glass password, generating one on first
-// start.
-//
-// Stored rather than minted per process because a recovery account whose
-// password changes on every rollout is not a recovery account: the one
-// time it is needed, the directory is broken and nobody is reading logs
-// from three deployments ago. It is never logged — an operator reads it
-// with kubectl, which is an access they must already have.
-func (c *Client) AdminPassword(ctx context.Context, generate func() (string, error)) (string, error) {
-	value, err := c.keep(ctx, c.AdminPasswordName(), adminPasswordKey, func() ([]byte, error) {
-		password, err := generate()
-		return []byte(password), err
-	})
-	return string(value), err
-}
 
 // keep reads one key of one Secret, creating the Secret with a generated
 // value if it is not there. Two replicas starting together is the case

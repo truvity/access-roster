@@ -150,7 +150,7 @@ so the hash carries the uniqueness the readable part may have lost.
 | `Secret <release>-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.existingSecret`, and then read-only |
 | `ConfigMap <release>-memberships` | memberships added in the console | the hub |
 | `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
-| `Secret <release>-signing-key` | the issuer's token signing key, with its key id in the PEM | the issuer, generated on first start; deleting it distrusts every token it ever signed |
+| the issuer's signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it and holds no permission to read Secrets; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 

@@ -44,6 +44,14 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **The issuer's signing key is provisioned, not minted.** It reads a PEM
+  a Secret carries — cert-manager issuing one, external-secrets delivering
+  one — mounted as a file, and holds no permission to read Secrets at all.
+  A service that creates its own credential is an exception to how every
+  other credential here is provisioned. The key id is now the key's own
+  RFC 7638 thumbprint rather than a name travelling beside it, which is
+  what lets the key arrive from anywhere and makes rotation a matter of a
+  new key having a new id.
 - **access-issuer is a service.** `cmd/access-issuer` and
   `internal/issuerapp` assemble it from the environment — policy, the door
   to the hub, the signing key, the verifiers — and serve discovery, the
