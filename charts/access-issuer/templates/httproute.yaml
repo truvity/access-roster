@@ -62,7 +62,15 @@ spec:
   hostnames:
     - {{ .Values.route.host | quote }}
   rules:
-    - backendRefs:
+      {{- /* Written out although it is also the API server's default: a
+             rule without one comes back WITH one, and a GitOps controller
+             then sees a field it never sent and reports OutOfSync
+             forever. */}}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
         - group: ""
           kind: Service
           name: {{ include "access-issuer.fullname" . }}

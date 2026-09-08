@@ -62,7 +62,18 @@ spec:
   hostnames:
     - {{ .Values.route.host | quote }}
   rules:
-    - backendRefs:
+      {{- /* The path match is written out although it is also the API
+             server's default. A rule without one comes back from the
+             cluster WITH one, and a GitOps controller comparing desired
+             to live then sees a field it never sent: permanently
+             OutOfSync, on an object that is in fact correct -- and, in an
+             app-of-apps, one that never goes healthy and gates every wave
+             behind it. */}}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
         - group: ""
           kind: Service
           name: {{ include "directory-roster.fullname" . }}-console
