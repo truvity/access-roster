@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "access-issuer.fullname" . }}
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "access-issuer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "access-issuer.selectorLabels" . | nindent 8 }}
+      annotations:
+        # A policy change is a rollout: the file is read at start.
+        checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "access-issuer.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: access-issuer
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: issuer
+              containerPort: {{ .Values.listeners.port }}
+            - name: health
+              containerPort: {{ .Values.listeners.healthPort }}
+          env:
+            - name: ISSUER_URL
+              value: {{ required "issuerURL is required: it is baked into every token and every relying party's trust" .Values.issuerURL | quote }}
+            - name: PORT
+              value: {{ .Values.listeners.port | quote }}
+            - name: HEALTH_PORT
+              value: {{ .Values.listeners.healthPort | quote }}
+            - name: HUB_ADDRESS
+              value: {{ required "hub.address is required: this service asks the hub about every person" .Values.hub.address | quote }}
+            - name: HUB_TOKEN_FILE
+              value: /var/run/access-issuer/hub/token
+            # Provisioned, never minted here — see values.yaml.
+            - name: SIGNING_KEY_FILE
+              value: /var/run/access-issuer/signing-key/{{ .Values.signingKey.key }}
+            - name: POLICY_DIR
+              value: /var/run/access-issuer/policy
+            - name: TOKEN_LIFETIME
+              value: {{ .Values.lifetimes.token | quote }}
+            - name: REFRESH_LIFETIME
+              value: {{ .Values.lifetimes.refresh | quote }}
+            - name: HOLD_WINDOW
+              value: {{ .Values.lifetimes.hold | quote }}
+            {{- if .Values.exchange.workloadTokens }}
+            - name: IN_CLUSTER
+              value: "true"
+            - name: EXCHANGE_AUDIENCE
+              value: {{ include "access-issuer.exchangeAudience" . | quote }}
+            {{- end }}
+            {{- if .Values.oauthClient.clientId }}
+            - name: OAUTH_CLIENT_ID
+              value: {{ .Values.oauthClient.clientId | quote }}
+            - name: OAUTH_CLIENT_SECRET_FILE
+              value: /var/run/access-issuer/oauth-client/{{ .Values.oauthClient.key }}
+            {{- end }}
+            {{- if .Values.route.host }}
+            # Served over TLS, so its cookies say so.
+            - name: SECURE_COOKIES
+              value: "true"
+            {{- end }}
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+          volumeMounts:
+            - name: signing-key
+              mountPath: /var/run/access-issuer/signing-key
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/access-issuer/policy
+              readOnly: true
+            - name: hub-token
+              mountPath: /var/run/access-issuer/hub
+              readOnly: true
+            {{- if .Values.oauthClient.clientId }}
+            - name: oauth-client
+              mountPath: /var/run/access-issuer/oauth-client
+              readOnly: true
+            {{- end }}
+          livenessProbe:
+            httpGet: { path: /healthz, port: health }
+          readinessProbe:
+            httpGet: { path: /readyz, port: health }
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: signing-key
+          secret:
+            secretName: {{ include "access-issuer.signingKeySecret" . }}
+        - name: policy
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-policy
+        # A projected token, not a mounted Secret: it is short-lived and
+        # rotated under the pod, and the hub admits nobody without one.
+        - name: hub-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: {{ include "access-issuer.hubAudience" . }}
+                  expirationSeconds: 3600
+                  path: token
+        {{- if .Values.oauthClient.clientId }}
+        - name: oauth-client
+          secret:
+            secretName: {{ required "oauthClient.existingSecret is required when a client id is set" .Values.oauthClient.existingSecret }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -36,8 +36,8 @@ jobs:
       packages: write
     uses: truvity/ci-workflows/.github/workflows/release-public.yaml@eb317bdb3240d43404665cc943d1c00e8946f733 # v2.18.0
     with:
-      charts: '["directory-roster"]'
-      # Nest the image under the repo namespace (INF-574 / INF-584 N1):
-      # ko names the artifact after the cmd dir (cmd/directory-roster), so the
-      # published slug is ghcr.io/truvity/access-roster/directory-roster.
+      charts: '["directory-roster", "access-issuer"]'
+      # Nest the images under the repo namespace (INF-574 / INF-584 N1):
+      # ko names each artifact after its cmd dir, so the published slugs
+      # are ghcr.io/truvity/access-roster/{directory-roster,access-issuer}.
       ko-docker-repo: ghcr.io/truvity/access-roster

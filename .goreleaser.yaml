@@ -1,0 +1,113 @@
+# Release: two service images and their binaries, from one tag.
+#
+# The tag is the sole version authority. The chart's own version field is
+# a placeholder the release workflow stamps, and this file stamps the
+# same tag into the binaries, so a console, an image label and a chart
+# never disagree about which build is running.
+project_name: access-roster
+
+version: 2
+
+builds:
+  - id: directory-roster
+    main: ./cmd/directory-roster
+    binary: directory-roster
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
+
+  - id: access-issuer
+    main: ./cmd/access-issuer
+    binary: access-issuer
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
+
+  # Not an image: it is run by a person against a cluster they chose, and
+  # a container that needs a kubeconfig and a namespace argument is a
+  # worse way to hand somebody a command than a binary is.
+  - id: acceptance
+    main: ./cmd/acceptance
+    binary: access-roster-acceptance
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
+
+archives:
+  - id: binaries
+    ids: [directory-roster, access-issuer, acceptance]
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+kos:
+  # base_import_paths appends the cmd directory's basename, so with the
+  # caller's ko-docker-repo ghcr.io/truvity/access-roster the published
+  # slugs nest as access-roster/{directory-roster,access-issuer}.
+  - id: directory-roster
+    build: directory-roster
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: true
+    base_image: gcr.io/distroless/static:nonroot
+    sbom: none
+    labels:
+      org.opencontainers.image.title: directory-roster
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/truvity/access-roster
+
+  - id: access-issuer
+    build: access-issuer
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: true
+    base_image: gcr.io/distroless/static:nonroot
+    sbom: none
+    labels:
+      org.opencontainers.image.title: access-issuer
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/truvity/access-roster
+
+release:
+  github:
+    owner: truvity
+    name: access-roster
+  header: |
+    ## access-roster {{ .Tag }}
+
+    | | |
+    |---|---|
+    | Hub image | `ghcr.io/truvity/access-roster/directory-roster:{{ .Version }}` |
+    | Issuer image | `ghcr.io/truvity/access-roster/access-issuer:{{ .Version }}` |
+    | Hub chart | `oci://ghcr.io/truvity/charts/directory-roster:{{ .Version }}` |
+    | Issuer chart | `oci://ghcr.io/truvity/charts/access-issuer:{{ .Version }}` |
+
+changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: '^feat'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^fix'
+      order: 1
+    - title: Other
+      order: 99
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'

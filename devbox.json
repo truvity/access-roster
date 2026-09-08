@@ -3,6 +3,7 @@
     "buf": "latest",
     "go": "1.27.0",
     "golangci-lint": "2.13.1",
+    "goreleaser": "latest",
     "gopls": "latest",
     
     "govulncheck": "1.7.0",

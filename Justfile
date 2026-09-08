@@ -46,6 +46,11 @@ acceptance:
     go run ./cmd/acceptance -namespace acceptance -kubeconfig ""
     kind delete cluster --name access-roster-acceptance
 
+# Check the release configuration without cutting one.
+release-check:
+    goreleaser check
+    goreleaser build --snapshot --clean --single-target
+
 # Run go mod tidy
 tidy:
     go mod tidy
@@ -72,6 +77,26 @@ chart-lint:
         --set 'policy.version=1' \
         --set 'policy.groups.hub-operators.members[0]=platform-admins@example.com' >/dev/null
     ! helm template directory-roster charts/directory-roster --set bogusKey=1 >/dev/null 2>&1
+    helm lint charts/access-issuer \
+        --set issuerURL=https://issuer.example \
+        --set hub.address=http://directory-roster.example.svc:8080
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://issuer.example \
+        --set hub.address=http://directory-roster.example.svc:8080 >/dev/null
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://issuer.example \
+        --set hub.address=http://directory-roster.example.svc:8080 \
+        --set route.host=issuer.example \
+        --set networkPolicy.enabled=true \
+        --set 'networkPolicy.clients[0]=example-ns' \
+        --set oauthClient.clientId=1234.apps.googleusercontent.com \
+        --set oauthClient.existingSecret=oauth-client \
+        --set signingKey.existingSecret=delivered-by-eso \
+        --set 'policy.groups.platform.members[0]=platform@example.com' >/dev/null
+    ! helm template access-issuer charts/access-issuer --set bogusKey=1 >/dev/null 2>&1
+    # The two settings without which the service refuses to start must
+    # fail the render too, not the pod.
+    ! helm template access-issuer charts/access-issuer >/dev/null 2>&1
 
 # Rebuild the console SPA into frontend/dist (committed). Needs Node; CI
 # does not run this, which is why dist/ is in the repository.

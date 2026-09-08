@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "access-issuer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["issuerURL", "hub"],
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "issuerURL": { "type": "string", "pattern": "^https?://" },
+    "listeners": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "healthPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "hub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address"],
+      "properties": {
+        "address": { "type": "string", "minLength": 1 },
+        "audience": { "type": "string" }
+      }
+    },
+    "signingKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "key": { "type": "string", "minLength": 1 },
+        "certificate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuerName": { "type": "string", "minLength": 1 },
+            "issuerKind": { "enum": ["Issuer", "ClusterIssuer"] },
+            "size": { "type": "integer", "enum": [2048, 3072, 4096] },
+            "renewBefore": { "$ref": "#/definitions/duration" },
+            "duration": { "$ref": "#/definitions/duration" }
+          }
+        }
+      }
+    },
+    "oauthClient": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clientId": { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "exchange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workloadTokens": { "type": "boolean" },
+        "audience": { "type": "string" }
+      }
+    },
+    "lifetimes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "token": { "$ref": "#/definitions/duration" },
+        "refresh": { "$ref": "#/definitions/duration" },
+        "hold": { "$ref": "#/definitions/duration" }
+      }
+    },
+    "policy": { "type": "object" },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string" },
+        "gatewayClassName": { "type": "string" },
+        "certificate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuerName": { "type": "string" },
+            "issuerKind": { "enum": ["Issuer", "ClusterIssuer"] }
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "clients": { "type": "array", "items": { "type": "string" } },
+        "gatewayNamespace": { "type": "string" }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "name": { "type": "string" } }
+    },
+    "logLevel": { "enum": ["debug", "info", "warn", "error"] },
+    "resources": { "type": "object" },
+    "podAnnotations": { "type": "object" },
+    "nodeSelector": { "type": "object" },
+    "tolerations": { "type": "array" }
+  },
+  "definitions": {
+    "duration": {
+      "type": "string",
+      "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$"
+    }
+  }
+}

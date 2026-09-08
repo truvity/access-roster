@@ -1,0 +1,71 @@
+{{- if .Values.route.host }}
+{{- /*
+  The issuer's hostname. Everything is on it — discovery, the keys, the
+  token endpoint, this service's three pages — because a relying party
+  anchors its trust on one URL and a person meeting two hostnames during
+  one login has met two services.
+
+  No authenticating proxy in front: this IS the thing that authenticates,
+  and a proxy would have nowhere to send anyone.
+*/}}
+{{- if .Values.route.certificate.issuerName }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "access-issuer.fullname" . }}-tls
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "access-issuer.fullname" . }}-tls
+  dnsNames:
+    - {{ .Values.route.host | quote }}
+  issuerRef:
+    name: {{ .Values.route.certificate.issuerName | quote }}
+    kind: {{ .Values.route.certificate.issuerKind | quote }}
+    group: cert-manager.io
+---
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ include "access-issuer.fullname" . }}
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.route.gatewayClassName | quote }}
+  listeners:
+    - name: issuer
+      protocol: HTTPS
+      port: 443
+      hostname: {{ .Values.route.host | quote }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ include "access-issuer.fullname" . }}-tls
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "access-issuer.fullname" . }}
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ include "access-issuer.fullname" . }}
+      sectionName: issuer
+  hostnames:
+    - {{ .Values.route.host | quote }}
+  rules:
+    - backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "access-issuer.fullname" . }}
+          port: {{ .Values.listeners.port }}
+          weight: 1
+{{- end }}
