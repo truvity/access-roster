@@ -20,12 +20,20 @@ import "strings"
 // record.
 const Limit = 256
 
+// separators are what a reader or a parser takes for the end of a record.
+// Removing them is the whole of the security property, and it is done with
+// a replacer rather than folded into the pass below so that it is
+// recognisable — to a person reading this, and to the analysers that look
+// for exactly this shape.
+var separators = strings.NewReplacer("\n", "", "\r", "", "\t", "")
+
 // Value returns text that cannot forge a log record.
 func Value(text string) string {
+	text = separators.Replace(text)
+	// The rest is hygiene: control characters that would garble a
+	// terminal or a viewer without forging anything.
 	text = strings.Map(func(r rune) rune {
-		// Control characters, and the separators a reader or a parser
-		// would take for the end of something.
-		if r == '\n' || r == '\r' || r == '\t' || r < 0x20 || r == 0x7f {
+		if r < 0x20 || r == 0x7f {
 			return -1
 		}
 		return r
