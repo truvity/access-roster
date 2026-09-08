@@ -225,7 +225,10 @@ removes the interstitial.
    always returned).
 3. The operator signs in as the tenant's **admin role account** — not a
    person: the refresh token acts as whoever consents and dies with their
-   account. The account needs the Users and Groups read privileges.
+   account. A Super Admin: the reads need Users, Groups AND domain read,
+   and the last is the one a narrower role tends not to satisfy. It is
+   who consents, not what the token can do -- the token stays bounded by
+   the four read-only scopes.
 4. Consent, redirect back. The browser carries the gateway session, so the
    callback is authenticated like any other page.
 5. The hub exchanges the code, records the consenting account, reads the

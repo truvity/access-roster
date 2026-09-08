@@ -65,10 +65,21 @@ and only removes the interstitial.
    Nothing to fill in.
 2. The browser lands on Google's consent screen. Sign in as the tenant's
    **admin role account** — a role account, not a person: the refresh
-   token acts as whoever consents and dies with that account. It needs the
-   Admin console privileges *Users → Read* and *Groups → Read*, and
-   *Domain management → Read* for discovery. A Super Admin has them; a
-   custom admin role with exactly those is better.
+   token acts as whoever consents and dies with that account.
+
+   Use a **Super Admin**. The reads need *Users → Read*, *Groups → Read*
+   and *Domain management → Read*, and the last of those is the one a
+   narrower role tends not to satisfy: Google treats reading a customer's
+   domain list as a super-admin act, and domain discovery is not optional
+   here — it is what decides which addresses this hub answers for at all.
+   A custom role carrying exactly the three may work; it fails as a 403 on
+   the first read rather than at consent, which is a bad place to find
+   out. This is also what Tailscale asks for, for the same scope.
+
+   Super Admin is who CONSENTS, not what the token can do. The refresh
+   token stays bounded by the four read-only scopes granted: it can read
+   users, groups, memberships and domains, and nothing else — not mail,
+   not drive, and nothing writable.
 3. Click through the unverified-app interstitial if it appears, then
    consent. The redirect brings the browser back to the hub.
 4. The hub records the consenting account, reads the customer id and the
