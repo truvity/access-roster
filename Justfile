@@ -77,6 +77,9 @@ chart-lint:
         --set 'policy.version=1' \
         --set 'policy.groups.hub-operators.members[0]=platform-admins@example.com' >/dev/null
     ! helm template directory-roster charts/directory-roster --set bogusKey=1 >/dev/null 2>&1
+    # Bare first: the shipped values must satisfy their own schema, or
+    # anyone who lints the chart as published gets a failure.
+    helm lint charts/access-issuer
     helm lint charts/access-issuer \
         --set issuerURL=https://issuer.example \
         --set hub.address=http://directory-roster.example.svc:8080

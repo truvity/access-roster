@@ -3,7 +3,7 @@
   "title": "access-issuer",
   "type": "object",
   "additionalProperties": false,
-  "required": ["issuerURL", "hub"],
+  "_comment": "Nothing is required here that the template already refuses to render without. The schema catches typos and wrong types; `required` in the template catches an unset value, with a sentence saying why it matters. Duplicating it would only mean the shipped values.yaml — which is deliberately empty — fails its own lint.",
   "properties": {
     "replicaCount": { "type": "integer", "minimum": 1 },
     "image": {
@@ -15,7 +15,7 @@
         "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
       }
     },
-    "issuerURL": { "type": "string", "pattern": "^https?://" },
+    "issuerURL": { "type": "string", "pattern": "^(https?://.*)?$" },
     "listeners": {
       "type": "object",
       "additionalProperties": false,
@@ -27,9 +27,8 @@
     "hub": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["address"],
       "properties": {
-        "address": { "type": "string", "minLength": 1 },
+        "address": { "type": "string" },
         "audience": { "type": "string" }
       }
     },
