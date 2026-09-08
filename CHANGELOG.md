@@ -7,6 +7,69 @@ git history.
 
 Nothing yet.
 
+## v0.6.3
+
+- **The gateway now sends the proxy the session cookie.** An HTTP
+  ext_authz service is sent only `Host`, `Method`, `Path`,
+  `Content-Length` and `Authorization` unless the `SecurityPolicy` says
+  otherwise, so the proxy answered every check without ever seeing the
+  cookie it had just written: sign-in completed, the callback returned
+  its 302, and the next request began a fresh login — forever. The chart
+  names `cookie` itself and will not let a value take it away; the lint
+  asserts every rendered policy carries it.
+
+## v0.6.2
+
+- A recovered sign-in has no email address. It completes as a
+  ServiceAccount **subject** and is carried as one end to end, instead of
+  failing where an address was assumed.
+
+## v0.6.1
+
+- The issuer reads a confidential client's secret. It was constructed
+  with no resolver at all, so every confidential client got
+  `invalid_client`.
+
+## v0.6.0
+
+- **Recovery sign-in**, so a first installation can be bootstrapped:
+  a ServiceAccount token checked by the API server against a mandatory
+  audience. It stores no credential and grants nothing by itself — the
+  policy's `service_account` matchers decide what it is in.
+
+## v0.5.0
+
+- A bootstrap surface on the hub the gateway does not cover, so the
+  console that connects the first directory is reachable before any
+  directory exists.
+
+## v0.4.3
+
+- `certificateRefs.group` written out — the last Gateway API field the
+  API server defaulted and ArgoCD would not normalise, which left the
+  child Application permanently OutOfSync and gated every later wave.
+
+## v0.4.2
+
+- The HTTPRoute path match written out, for the same reason.
+
+## v0.4.1
+
+- Several protected routes on one host, each with its own posture — the
+  shape a surface needs where a demo path is open to any employee and the
+  application behind it is not.
+
+## v0.4.0
+
+- **The access-proxy chart is published.** oauth2-proxy, a Valkey session
+  store and the Gateway API resources that put them in front of one
+  console, for applications that cannot run the code flow themselves.
+
+## v0.3.0
+
+- The hub verifies the gateway's forwarded token against the issuer's
+  keys instead of trusting a header.
+
 ## v0.2.0
 
 - **The TypeScript package exists.** `@truvity/access-roster`, installed

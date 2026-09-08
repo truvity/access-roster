@@ -58,7 +58,10 @@
         "forward": {
           "type": "object",
           "additionalProperties": false,
-          "properties": { "authorizationHeader": { "type": "boolean" } }
+          "properties": {
+            "authorizationHeader": { "type": "boolean" },
+            "extraExtAuthHeaders": { "type": "array", "items": { "type": "string" } }
+          }
         }
       }
     },

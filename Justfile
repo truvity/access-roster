@@ -145,6 +145,12 @@ chart-lint:
     # one would be the protection somebody thought they configured.
     ! helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml \
         --set exposure.backend.name=app >/dev/null 2>&1
+    # EVERY policy must ask Envoy for the session cookie. An HTTP ext_authz
+    # service is sent only Host, Method, Path, Content-Length and
+    # Authorization by default, and a policy missing `cookie` loops
+    # forever through a login that succeeds and is never seen again.
+    helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml > /tmp/access-proxy-routes.yaml
+    test "$(grep -c '^kind: SecurityPolicy$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^      - cookie$' /tmp/access-proxy-routes.yaml)"
 
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —

@@ -9,6 +9,7 @@
 | `exposure.gateway.name`, `.namespace`, `.sectionName` | from the fleet values | the Gateway listener to attach the HTTPRoute to |
 | `exposure.paths[]` | `["/"]` | routes to protect; anything unlisted gets no route |
 | `exposure.forward.authorizationHeader` | `true` | forward the bearer as `Authorization` besides the proxy's identity headers |
+| `exposure.forward.extraExtAuthHeaders[]` | `[]` | extra client request headers Envoy includes in the *check* request to this proxy. The ones a session needs are always sent and are not configurable — see below |
 | `issuer.url` | from the fleet values | |
 | `session.valkey.address` | from the fleet values | external to the chart: one Valkey per cluster shared by every proxy (recommended), or one per exposure |
 | `session.valkey.username`, `.passwordSecret` | `""` | an ACL user per proxy for isolation inside a shared instance, optional |
@@ -50,3 +51,19 @@ spec:
 Point every exposure's fleet values at
 `access-proxy-sessions.access-system.svc:6379`. Persistence is optional:
 losing the store logs everyone out once.
+
+## The headers Envoy sends the proxy
+
+An HTTP ext_authz service is sent only `Host`, `Method`, `Path`,
+`Content-Length` and `Authorization` unless the `SecurityPolicy` names
+more, and **`Cookie` is not in that set**. This chart therefore always
+names `cookie` — along with `x-forwarded-proto`, `x-forwarded-host`,
+`x-forwarded-for`, `accept` and `user-agent` — and does not let a value
+take it away.
+
+The failure it prevents does not look like a missing header. Sign-in
+completes, the callback returns a 302 with a `Set-Cookie`, and the very
+next request logs `No valid authentication in request. Initiating
+login.` — an endless loop through a login that works every time. The
+tell is the access log: the looping request has an **empty user-agent**,
+because it is not the browser's request at all, it is Envoy's check.

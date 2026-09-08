@@ -24,6 +24,28 @@ spec:
       kind: HTTPRoute
       name: {{ $route.attachRouteName | default (include "access-proxy.routeName" (dict "root" $ "route" $route)) }}
   extAuth:
+    # Envoy sends the check request to this proxy, and an HTTP ext_authz
+    # service is sent ONLY Host, Method, Path, Content-Length and
+    # Authorization unless the policy names more. The session cookie is
+    # not in that set. Omit this block and the proxy answers every check
+    # without ever seeing the cookie it just wrote: sign-in completes,
+    # the callback returns a 302 with a Set-Cookie, and the very next
+    # request logs "No valid authentication in request. Initiating
+    # login." -- an endless loop through a login that works.
+    #
+    # `cookie` is therefore not a value. The rest carry the scheme and
+    # host the proxy builds its redirect from, and the fields its access
+    # log would otherwise record as empty.
+    headersToExtAuth:
+      - cookie
+      - x-forwarded-proto
+      - x-forwarded-host
+      - x-forwarded-for
+      - accept
+      - user-agent
+      {{- range $.Values.exposure.forward.extraExtAuthHeaders }}
+      - {{ . | quote }}
+      {{- end }}
     http:
       backendRefs:
         - group: ""
