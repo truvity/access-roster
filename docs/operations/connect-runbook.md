@@ -87,11 +87,22 @@ and only removes the interstitial.
    not drive, and nothing writable.
 3. Click through the unverified-app interstitial if it appears, then
    consent. The redirect brings the browser back to the hub.
-4. The hub records the consenting account, reads the customer id and the
-   domain list, runs a first probe and stores the workspace. The
-   The tenant's page shows the discovered domains; they become
-   authoritative as soon as the first snapshot lands (seconds to a
-   minute, depending on directory size).
+4. The hub records the consenting account, reads the tenant id and the
+   domain list, and stores the workspace. If anything goes wrong here the
+   console says so on a page, quoting the directory's own message. A
+   consent Google granted and then refused on the first read is almost
+   always the Admin SDK API not being enabled on the project (step 1 of
+   the one-time setup); the message names the project and links the page
+   that enables it.
+5. **Choose the domains** *(0.8)*. The consenting administrator's own
+   domain is pre-selected; the tenant's other domains are listed and off;
+   *all, including ones added later* is an explicit option. Pick what
+   this hub should answer for — the rest stays discovered and visible,
+   but nothing routes to it and its accounts are never read.
+6. The first snapshot runs in the background. The tenant's page shows
+   *first snapshot pending* until it lands — seconds for a small tenant,
+   a minute or two for a large one — then the served domains turn
+   authoritative.
 
 ### The second way in: a service-account key
 

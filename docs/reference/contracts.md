@@ -42,6 +42,7 @@ request. Roles come from membership of two declared policy groups:
 | `GET /login` | the login page: the enabled sources as buttons |
 | `GET /login/<backend>/start` → `GET /login/<backend>/callback` | sign in with a directory: this installation's OAuth client, `openid email profile` and nothing else. The address it returns is all that is taken from the provider; whether it is live, which company it belongs to and what it may do are answered by the directory and the policy. An address in no served domain, or one the directory authoritatively does not have, is refused at the door rather than given a session with no role |
 | `POST /login/recovery` | the recovery sign-in, while a deployment has one. In a cluster the proof is a ServiceAccount token minted for the recovery audience, verified by TokenReview; elsewhere it is the generated password. The proof may come in the form, as JSON, or as a bearer, so a runbook can be one curl |
+| `GET /connect/<backend>/callback` | the consent callback, on the bootstrap surface. Its authority is the signed state (cookie-pinned, ten minutes, naming the operator who started the flow), not an identity on the request — there is none there by design. Every failure renders a page in the console's style with the directory's message verbatim and the usual causes, with a **4xx — never a 5xx**, which a CDN in front replaces with a page of its own; a consent that worked redirects to the directory's page |
 | `POST /logout` | clears the session |
 | `GET /connect/<backend>/callback` | the admin-consent callback, authenticated like any page |
 
@@ -121,6 +122,13 @@ The contract with consumers: **act on removals only when
 `authoritative=true`.** A non-authoritative "suspended", "not found" or
 "not a member" is a hold, not a change.
 
+That boolean is the whole wire contract. The console's word for a served
+domain whose flag is `false` is **provisional**, and it carries a reason —
+`first_snapshot_pending`, `snapshot_stale`, `probe_failed` — on the
+operator-facing `ListWorkspaces` only *(0.8)*; a domain two workspaces
+both serve is `conflict` there. Nothing about the consumer-facing
+`DirectoryService` changes with the rename.
+
 ## `directory.v1.DirectoryService`
 
 | RPC | Request | Response | Notes |
@@ -151,11 +159,11 @@ not an error; it is a non-authoritative answer.
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `ListWorkspaces` | viewer | — | `workspaces[]` | id, backend, domains with authoritative/conflict/served/owned flags, admin, credential type, connected_by/at, health, snapshot_at, declared |
-| `BeginConnect` | operator | `backend` | `consent_url` | sets the state cookie; the browser navigates to the URL |
+| `ListWorkspaces` | viewer | — | `workspaces[]` | id, backend, domains with authoritative/conflict/served/owned flags and — when served and not authoritative — a `reason` (`first_snapshot_pending`, `snapshot_stale`, `probe_failed`) *(0.8)*, admin, credential type, connected_by/at, health, snapshot_at, declared |
+| `BeginConnect` | operator | `backend` | `consent_url` | sets the state cookie; the browser navigates to the URL. The state is signed by the hub and **names the operator who asked**: the callback lands on the bootstrap surface with no gateway identity, and the state is its authority |
 | `Reconnect` | operator | `workspace_id` | `consent_url` | the callback checks the consenting tenant is the same, then replaces the credential |
 | `UploadKey` | operator | `backend`, `key` (bytes), `admin` | `workspace` | service-account key with domain-wide delegation; creates or re-credentials |
-| `SetServedDomains` | operator | `workspace_id`, `domains[]` | `workspace` | which of the tenant's domains this hub answers for; empty = all of them, including ones added later. Only discovered domains may be named (`InvalidArgument` otherwise); a declared workspace refuses (`FailedPrecondition`) — its list is in the values. A new snapshot is taken so that what was excluded stops being cached |
+| `SetServedDomains` | operator | `workspace_id`, `domains[]` | `workspace` | which of the tenant's domains this hub answers for; empty = all of them, including ones added later. Only discovered domains may be named (`InvalidArgument` otherwise); a declared workspace refuses (`FailedPrecondition`) — its list is in the values. What was excluded is dropped from the snapshot at once and a new one is taken **detached**: the call returns without waiting on the directory *(0.8)*. Called at connect time *(0.8)* with the operator's choice, before the first snapshot |
 | `Probe` | operator | `workspace_id` | `health`, `domains[]` | credential check now, domain list re-read |
 | `Refresh` | operator | `workspace_id` | `snapshot_at` | a full snapshot now |
 | `Disconnect` | operator | `workspace_id` | — | revokes at the backend, deletes the Secret and the record. `failed_precondition` for a declared workspace |

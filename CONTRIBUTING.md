@@ -7,11 +7,11 @@ importable alone:
 
 ```
 cmd/directory-roster      the directory hub
-cmd/access-issuer         the token service (later)
+cmd/access-issuer         the token service
 cmd/accessctl             the CLI (later)
 charts/directory-roster   the hub's chart
-charts/access-issuer      the issuer's chart (later)
-charts/access-proxy       the console exposure chart (later)
+charts/access-issuer      the issuer's chart
+charts/access-proxy       the console exposure chart
 action.yml                the GitHub Action, at the root so `uses: truvity/access-roster@v1` works (later)
 policy/ backend/          the Go module's public packages today: the
                           five-table policy, the directory backend
@@ -24,7 +24,8 @@ internal/                 the hub: hub (snapshots, routing, authority),
                           (ConnectRPC handlers, HTTP), demo (fixtures)
 frontend/                 the console: Vite + React + MUI, committed
                           dist/ embedded into the binary by go:embed
-ts/                       the TypeScript package (later)
+ts/                       the TypeScript package; dist/ committed so a
+                          git install needs no toolchain
 proto/  gen/              contracts and committed generated code
 docs/                     why, concepts, architecture, design per
                           battery, reference, connect guides,
@@ -102,11 +103,16 @@ The documents are the authority and the Linear issues carry the
 decisions and their dates; when the two disagree, the document wins and
 the issue gets a comment. `docs/design/*` says what each battery is and
 why; `docs/reference/*` says exactly what it exposes; `CHANGELOG.md`
-says what exists today. The prototype's remaining items are a walkthrough
-and the real Connect flow, which waits on a Google Cloud project; the
-issuer spike and the proxy prototype come next, then the 1.0
-implementations, then rewiring and decommission — one issue each under
-the project's epic.
+says what exists today. As of 2026-09-09 the hub and the issuer run on a
+cluster, the hub's console is behind `access-proxy`, and the first
+directory is connected. What the first live connect showed still has to
+change is marked *(0.8)* in the design and reference documents — nothing
+slow on the request path, every replica knowing every workspace, the
+connect-time domain choice, *provisional* with a reason — and the
+ordered backlog lives with the project's issues, one issue each, the
+worst-first order stated there. Two things are not fixes and must not be
+reached for: raising the gateway's route timeout, and asking for a
+fifth Google scope.
 
 ## Releasing
 

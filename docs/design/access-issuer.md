@@ -20,13 +20,20 @@ It is a **security token service**, not an identity provider. The line:
 - it holds no passwords, no user records, no MFA, no consent screens, no
   self-registration, no second way in;
 - break-glass lives outside it, in the cloud account and the cluster's
-  own access mechanisms. **The issuer has no recovery sign-in of its
-  own, by rule** (decided 2026-09-08): the hub's recovery gets a person
-  into one console, where they can fix a membership, and it is already
-  gated by cluster RBAC; a standing way into the issuer would be a
-  skeleton key to every cluster, account and console it mints for. When
-  the issuer itself is what is broken, recovery is the cloud account and
-  kubectl, which is where that privilege is meant to live;
+  own access mechanisms. It does carry a **recovery sign-in** (decided
+  2026-09-08, late, superseding the same morning's rule that it would
+  have none): a Kubernetes ServiceAccount token checked by the API server
+  against a mandatory audience. It stores no credential and grants
+  **nothing by itself** — the sign-in completes as the ServiceAccount
+  *subject*, and only a `service_account` matcher in the policy puts that
+  subject in any group; an installation that names no such matcher has
+  an account that can sign in and is admitted nowhere. Why the rule
+  changed: with the hub's console behind a proxy that authenticates
+  against this issuer, the first operator — the one no directory can
+  vouch for yet, because the directory is connected *from* that console
+  — had no way in at all; the hub's own recovery yields a cookie the
+  proxy never sees. What stays true: when the issuer itself is what is
+  broken, recovery is the cloud account and kubectl;
 - its console surface grants nothing: the only write is revoking a
   session or a registration; policy changes are commits.
 
