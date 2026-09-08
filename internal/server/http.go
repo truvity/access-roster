@@ -18,6 +18,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/emailaddr"
 	"github.com/truvity/access-roster/internal/hub"
+	"github.com/truvity/access-roster/internal/logsafe"
 	"github.com/truvity/access-roster/internal/version"
 )
 
@@ -154,8 +155,12 @@ func (s *ConsoleServer) withIdentity(next http.Handler) http.Handler {
 		}
 		id, err := s.authz.Authorize(r.Context(), principal)
 		if err != nil {
+			// The address is the point of the line — an audit record that
+			// does not say who was refused is not one — and it is safe to
+			// write by construction rather than by the handler's choice.
 			s.log.InfoContext(r.Context(), "authorization refused",
-				"email", principal.Email, "source", principal.Source, "error", err)
+				"email", logsafe.Value(principal.Email),
+				"source", principal.Source, "error", logsafe.Error(err))
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -352,7 +357,7 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 	email, err := connector.Identify(r.Context(), r.URL.Query().Get("code"))
 	if err != nil {
 		s.log.WarnContext(r.Context(), "sign-in exchange failed",
-			"backend", connector.Kind(), "error", err)
+			"backend", connector.Kind(), "error", logsafe.Error(err))
 		http.Error(w, "the sign-in could not be completed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -367,7 +372,7 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 	known, err := s.hub.ResolveUser(r.Context(), email, nil)
 	switch {
 	case err != nil:
-		s.log.ErrorContext(r.Context(), "sign-in could not be resolved", "email", email, "error", err)
+		s.log.ErrorContext(r.Context(), "sign-in could not be resolved", "email", logsafe.Value(email), "error", logsafe.Error(err))
 		http.Error(w, "signed in as "+email+", but the directory could not be read: "+err.Error(),
 			http.StatusServiceUnavailable)
 		return
@@ -386,7 +391,7 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// The one Authorize refuses outright is an account the directory
 		// authoritatively says is not live.
-		s.log.WarnContext(r.Context(), "sign-in refused", "email", email, "error", err)
+		s.log.WarnContext(r.Context(), "sign-in refused", "email", logsafe.Value(email), "error", logsafe.Error(err))
 		http.Error(w, "signed in as "+email+", but this hub cannot serve that address: "+err.Error(),
 			http.StatusForbidden)
 		return
@@ -399,7 +404,7 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.InfoContext(r.Context(), "signed in",
-		"email", email, "backend", connector.Kind(), "role", identity.Role)
+		"email", logsafe.Value(email), "backend", connector.Kind(), "role", identity.Role)
 	redirectOrOK(w, r, "/")
 }
 
@@ -439,7 +444,7 @@ func (s *ConsoleServer) recoveryLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many attempts; wait a minute", http.StatusTooManyRequests)
 		return
 	case errors.Is(err, ErrRecoveryRefused):
-		s.log.WarnContext(r.Context(), "recovery refused", "remote", r.RemoteAddr, "reason", err)
+		s.log.WarnContext(r.Context(), "recovery refused", "remote", r.RemoteAddr, "reason", logsafe.Error(err))
 		http.Error(w, "that proof was not accepted", http.StatusUnauthorized)
 		return
 	case err != nil:
@@ -460,7 +465,7 @@ func (s *ConsoleServer) recoveryLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.log.WarnContext(r.Context(), "recovery sign-in", "subject", subject, "kind", s.recovery.Kind())
+	s.log.WarnContext(r.Context(), "recovery sign-in", "subject", logsafe.Value(subject), "kind", s.recovery.Kind())
 	redirectOrOK(w, r, "/")
 }
 

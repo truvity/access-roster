@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+
+	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // Consumers is who may call the API listener.
@@ -63,13 +65,14 @@ func (c *Consumers) Middleware(next http.Handler) http.Handler {
 			// could not run. The caller is unauthenticated; which of the
 			// two it was is in the hub's log, where an operator can see
 			// it and a caller cannot.
-			log.WarnContext(r.Context(), "API call refused", "path", r.URL.Path, "error", err)
+			log.WarnContext(r.Context(), "API call refused",
+				"path", logsafe.Value(r.URL.Path), "error", logsafe.Error(err))
 			refuse(w, "that token was not accepted")
 			return
 		}
 		if !slices.Contains(c.Allowed, subject) {
 			log.WarnContext(r.Context(), "API call refused: not a consumer",
-				"path", r.URL.Path, "subject", subject)
+				"path", logsafe.Value(r.URL.Path), "subject", logsafe.Value(subject))
 			refuse(w, subject+" is not a consumer of this hub")
 			return
 		}

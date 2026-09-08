@@ -15,6 +15,7 @@ import (
 
 	"github.com/truvity/access-roster/backend"
 	"github.com/truvity/access-roster/internal/emailaddr"
+	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // ErrInvalidAddress is returned for an address the hub cannot route.
@@ -431,7 +432,11 @@ func (h *Hub) pointLive(
 		groups, err = b.GroupsOf(ctx, email)
 	}
 	if err != nil {
-		h.log.WarnContext(ctx, "live account read failed", "workspace", ws.ID, "error", err)
+		// The backend's error names the address it was asked about, which
+		// is the whole reason the line is useful and the reason it needs
+		// sanitising: an address is a caller's input.
+		h.log.WarnContext(ctx, "live account read failed",
+			"workspace", ws.ID, "error", logsafe.Error(err))
 		return pointResult{}, false
 	}
 
