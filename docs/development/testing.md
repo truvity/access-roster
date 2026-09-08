@@ -41,6 +41,27 @@ Handler tests are at the join level, not the unit level: they call the
 Connect handler and assert the response, so a rule that exists but is
 never wired shows up as a failing test.
 
+## The wiring
+
+`internal/app` assembles the service from its configuration — which
+store, which shape of recovery, who may call the API listener, what URL
+the OAuth redirects are built from — and every one of those is somewhere a
+deployment can be quietly wrong. It is a package rather than the body of
+`main` for exactly that reason: `main()` cannot be tested and this can.
+
+Two suites live there. The **acceptance** tests boot a whole hub from the
+environment, the way the chart configures one, and walk the use cases
+over the real handlers: a person signs in through a directory and reaches
+the console with the role their membership grants; recovery reaches it
+without any membership at all; turning either off closes routes rather
+than hiding buttons; the setup steps carry this installation's own
+redirect URIs. The **environment** test compares every variable the binary
+reads against every one the chart sets, reading both lists from the source
+so neither can be restated wrongly. It exists because five settings were
+being read and never set, and the worst of them built every OAuth redirect
+from `http://localhost:8081` — invisible in every local run, fatal in the
+first deployment.
+
 ## Issuer, proxy and CLI
 
 The issuer's verifiers run against recorded tokens with rotated keys and

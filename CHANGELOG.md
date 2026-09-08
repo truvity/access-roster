@@ -44,6 +44,13 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **The wiring is testable.** Everything `main()` decided moved to
+  `internal/app`, with an acceptance suite that boots a whole hub from the
+  environment and walks the use cases over the real handlers, and a test
+  that compares every variable the binary reads against every one the
+  chart sets — reading both from the source, because the five settings
+  that were read and never set were exactly the kind of thing a restated
+  list gets wrong.
 - **The hub's own sign-in is a switch** (`access.login.directory`), and
   turning it off closes the routes rather than hiding the buttons —
   connecting a directory is unaffected, because an operator granting this
