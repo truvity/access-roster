@@ -77,6 +77,14 @@ chart-lint:
         --set 'policy.version=1' \
         --set 'policy.groups.hub-operators.members[0]=platform-admins@example.com' >/dev/null
     ! helm template directory-roster charts/directory-roster --set bogusKey=1 >/dev/null 2>&1
+    # An exposed console renders TWO routes: the gated one, and the
+    # bootstrap surface a gateway policy must not cover -- or the first
+    # directory can never be connected from a browser.
+    test "$(helm template directory-roster charts/directory-roster \
+        --set route.host=console.example | grep -c '^kind: HTTPRoute')" = "2"
+    test "$(helm template directory-roster charts/directory-roster \
+        --set route.host=console.example --set 'route.bootstrapPaths=null' \
+        | grep -c '^kind: HTTPRoute')" = "1"
     # A forwarded issuer without an audience accepts every token that
     # issuer mints, for every service it serves. That must fail the
     # RENDER, not be discovered in the console's logs.
