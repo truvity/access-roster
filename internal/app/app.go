@@ -62,52 +62,54 @@ type Config struct {
 
 	freshness hub.Config
 
-	demo             bool
-	publicURL        string
-	recoveryEnabled  bool
-	recoveryAccount  string
-	recoveryAudience string
-	apiAudience      string
-	apiConsumers     []string
-	loginDirectory   bool
-	adminPassword    string
-	sessionLifetime  time.Duration
-	secureCookies    bool
-	forwardedHeader  string
-	forwardedIssuer  string
-	policyPath       string
-	overlayPath      string
-	store            string
-	release          string
-	oauthSecretName  string
-	valkey           valkey.Config
-	holdWindow       time.Duration
-	logLevel         slog.Level
+	demo              bool
+	publicURL         string
+	recoveryEnabled   bool
+	recoveryAccount   string
+	recoveryAudience  string
+	apiAudience       string
+	apiConsumers      []string
+	loginDirectory    bool
+	adminPassword     string
+	sessionLifetime   time.Duration
+	secureCookies     bool
+	forwardedHeader   string
+	forwardedIssuer   string
+	forwardedAudience string
+	policyPath        string
+	overlayPath       string
+	store             string
+	release           string
+	oauthSecretName   string
+	valkey            valkey.Config
+	holdWindow        time.Duration
+	logLevel          slog.Level
 }
 
 // Load reads the configuration from the environment.
 func Load() (Config, error) {
 	c := Config{
-		apiPort:          envInt("API_PORT", 8080),
-		consolePort:      envInt("CONSOLE_PORT", 8081),
-		healthPort:       envInt("HEALTH_PORT", 7070),
-		demo:             envBool("DEMO", false),
-		publicURL:        strings.TrimSuffix(envString("PUBLIC_URL", ""), "/"),
-		recoveryEnabled:  envBool("RECOVERY_ENABLED", true),
-		recoveryAccount:  envString("RECOVERY_SERVICE_ACCOUNT", "directory-roster-recovery"),
-		recoveryAudience: envString("RECOVERY_AUDIENCE", "directory-roster-recovery"),
-		apiAudience:      envString("API_AUDIENCE", "directory-roster"),
-		apiConsumers:     envList("API_CONSUMERS"),
-		loginDirectory:   envBool("LOGIN_DIRECTORY", true),
-		adminPassword:    envString("ADMIN_PASSWORD", ""),
-		secureCookies:    envBool("SECURE_COOKIES", false),
-		forwardedHeader:  envString("FORWARDED_EMAIL_HEADER", ""),
-		forwardedIssuer:  envString("FORWARDED_ISSUER", ""),
-		policyPath:       envString("POLICY_DIR", ""),
-		overlayPath:      envString("OVERLAY_FILE", ""),
-		store:            envString("STORE", "memory"),
-		release:          envString("RELEASE_NAME", "directory-roster"),
-		oauthSecretName:  envString("OAUTH_CLIENT_SECRET_NAME", ""),
+		apiPort:           envInt("API_PORT", 8080),
+		consolePort:       envInt("CONSOLE_PORT", 8081),
+		healthPort:        envInt("HEALTH_PORT", 7070),
+		demo:              envBool("DEMO", false),
+		publicURL:         strings.TrimSuffix(envString("PUBLIC_URL", ""), "/"),
+		recoveryEnabled:   envBool("RECOVERY_ENABLED", true),
+		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", "directory-roster-recovery"),
+		recoveryAudience:  envString("RECOVERY_AUDIENCE", "directory-roster-recovery"),
+		apiAudience:       envString("API_AUDIENCE", "directory-roster"),
+		apiConsumers:      envList("API_CONSUMERS"),
+		loginDirectory:    envBool("LOGIN_DIRECTORY", true),
+		adminPassword:     envString("ADMIN_PASSWORD", ""),
+		secureCookies:     envBool("SECURE_COOKIES", false),
+		forwardedHeader:   envString("FORWARDED_EMAIL_HEADER", ""),
+		forwardedIssuer:   envString("FORWARDED_ISSUER", ""),
+		forwardedAudience: envString("FORWARDED_AUDIENCE", ""),
+		policyPath:        envString("POLICY_DIR", ""),
+		overlayPath:       envString("OVERLAY_FILE", ""),
+		store:             envString("STORE", "memory"),
+		release:           envString("RELEASE_NAME", "directory-roster"),
+		oauthSecretName:   envString("OAUTH_CLIENT_SECRET_NAME", ""),
 	}
 	c.valkey = valkey.Config{
 		Address:  envString("VALKEY_ADDRESS", ""),
@@ -415,8 +417,15 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err = reopenStored(ctx, directory, kept, adopted, oauthClient, log); err != nil {
 		return nil, err
 	}
+	// Two forwarded paths, reported apart: an operator reading the start-up
+	// line should be able to tell a console that VERIFIES a gateway's token
+	// from one that TRUSTS a gateway's header, because the second is only
+	// as strong as whatever keeps other pods off this port.
+	if cfg.forwardedIssuer != "" {
+		loginSources = append(loginSources, "forwarded-bearer:"+cfg.forwardedIssuer)
+	}
 	if cfg.forwardedHeader != "" {
-		loginSources = append(loginSources, "forwarded:"+cfg.forwardedIssuer)
+		loginSources = append(loginSources, "forwarded-header:"+cfg.forwardedHeader)
 	}
 	if cfg.recoveryEnabled {
 		loginSources = append(loginSources, "recovery")
@@ -451,6 +460,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		Recovery:   recovery,
 		Forwarded: server.ForwardedIdentity{
 			Issuer:      cfg.forwardedIssuer,
+			Audience:    cfg.forwardedAudience,
 			EmailHeader: cfg.forwardedHeader,
 		},
 		SignIn: cfg.loginDirectory,

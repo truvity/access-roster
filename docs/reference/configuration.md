@@ -43,8 +43,9 @@ external-secrets is at the end of this page.
 | `access.recovery.audience` | `<release>-recovery` | the audience the token must be minted for. Without one, every mounted ServiceAccount token in the cluster would be a recovery token |
 | `access.holdWindow` | `4h` | how long a signed-in identity keeps its last granted role while the directory cannot be vouched for |
 | `access.login.directory` | `true` | the hub's own sign-in page. Off closes the routes, not just the buttons; connecting a directory is unaffected |
-| `access.login.forwardedBearer.emailHeader` | `""` | trust the address in this header, set by an authenticating gateway in front of the console (`X-Auth-Request-Email` for oauth2-proxy and the fleet's gateway-auth). Empty turns the path off. Only set it where a gateway really does strip and set the header on every request |
-| `access.login.forwardedBearer.issuer` | `""` | recorded on the session, so an operator can see where an identity came from |
+| `access.login.forwardedBearer.issuer` | `""` | **the path to use.** The issuer whose published keys the gateway's forwarded token is verified against. The console reads `X-Auth-Request-Access-Token` (or an ordinary bearer), fetches discovery and the key set once, and checks signature, issuer and expiry itself |
+| `access.login.forwardedBearer.audience` | `""` | this console's client id at that issuer. **Required whenever `issuer` is set — the render fails without it**, because a token minted for another audience is a perfectly valid token, and accepting it would make every service the issuer serves a way in here |
+| `access.login.forwardedBearer.emailHeader` | `""` | the weaker path: trust an address read from this header, unverified (`X-Auth-Request-Email` for oauth2-proxy and the fleet's gateway-auth). It asks who can reach the port rather than who signed the token, so it is only as good as the promise that nothing but the gateway can — one NetworkPolicy edit, one port-forward or one sidecar away from false. Where both are set, the signature decides and the header is never read |
 | `access.sessionLifetime` | `12h` | how long a console session lasts |
 | `logLevel` | `info` | debug, info, warn, error |
 | `policy` | `{}` | the declared layer of the policy, see below |
@@ -199,7 +200,8 @@ from the values above.
 | `OVERLAY_FILE` | set when `workspaces` is non-empty |
 | `PUBLIC_URL` | `https://<route.host>` — where a browser reaches the console. **Both OAuth redirect URIs and the setup values are built from it**, so a deployment without `route.host` falls back to localhost and registers a redirect no browser will reach |
 | `SECURE_COOKIES` | `true` when `route.host` is set |
-| `FORWARDED_EMAIL_HEADER`, `FORWARDED_ISSUER` | `access.login.forwardedBearer.*` |
+| `FORWARDED_ISSUER`, `FORWARDED_AUDIENCE` | `access.login.forwardedBearer.{issuer,audience}` — the **verified** path: the console checks the gateway's forwarded token against this issuer's published keys, and refuses one minted for another audience. Setting an issuer without an audience fails the render |
+| `FORWARDED_EMAIL_HEADER` | `access.login.forwardedBearer.emailHeader` — the **trusted** path, and weaker: an address read out of a header, unverified. It asks who can reach the port rather than who signed the token. Where both are set, the signature decides and the header is never read |
 | `SESSION_LIFETIME` | `access.sessionLifetime` |
 | `LOG_LEVEL` | `logLevel` |
 | `POLICY_DIR` | the directory the declared layer is mounted in; every YAML file in it merges |

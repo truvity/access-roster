@@ -108,11 +108,22 @@ spec:
             {{- end }}
             - name: LOGIN_DIRECTORY
               value: {{ .Values.access.login.directory | quote }}
-            {{- if .Values.access.login.forwardedBearer.emailHeader }}
-            - name: FORWARDED_EMAIL_HEADER
-              value: {{ .Values.access.login.forwardedBearer.emailHeader | quote }}
+            {{- with .Values.access.login.forwardedBearer }}
+            {{- if .issuer }}
             - name: FORWARDED_ISSUER
-              value: {{ .Values.access.login.forwardedBearer.issuer | quote }}
+              value: {{ .issuer | quote }}
+            {{- /* An issuer without an audience accepts every token that
+                   issuer mints -- for every other service it serves. The
+                   render refuses rather than the pod: a console reachable
+                   with a token meant for something else is not a thing to
+                   discover from its logs. */}}
+            - name: FORWARDED_AUDIENCE
+              value: {{ required "access.login.forwardedBearer.audience is required when issuer is set: without it any token this issuer mints, for any service, is accepted here" .audience | quote }}
+            {{- end }}
+            {{- if .emailHeader }}
+            - name: FORWARDED_EMAIL_HEADER
+              value: {{ .emailHeader | quote }}
+            {{- end }}
             {{- end }}
             - name: SESSION_LIFETIME
               value: {{ .Values.access.sessionLifetime | quote }}
