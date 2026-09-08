@@ -15,10 +15,20 @@ idempotent calls over `GET`, so `curl` works without a generated client.
 ## Authentication
 
 **API listener.** Callers present a Kubernetes ServiceAccount token as a
-bearer, projected with audience `directory-roster`. The hub verifies it
-with a TokenReview and checks the `namespace/serviceAccount` pair against
-the chart's `consumers` allow-list. Anything else is `unauthenticated`.
+bearer, projected with the audience `listeners.api.audience` names — the
+release name by default, so two hubs in one cluster cannot accept each
+other's callers. The hub verifies it with a TokenReview and checks the
+subject against the chart's `consumers` allow-list; anything else is 401
+with `WWW-Authenticate`, and which of "not a real token" or "not a
+consumer" it was is in the hub's log rather than in the answer.
 NetworkPolicy is the second layer, never the only one.
+
+A deployment that declares no consumers admits **nobody**: this listener
+answers everything the hub knows about every company it serves, and one
+that answered everyone by default would be a forgotten value away from
+serving a directory to the whole cluster. Outside a cluster there is
+nothing to verify a token against, so the listener is open and the
+process says so at start — a development posture, never a deployed one.
 
 **Console listener.** One session cookie, HttpOnly, signed with the hub's
 session key, obtained through one of the login routes below or — behind

@@ -92,6 +92,17 @@ spec:
             - name: RECOVERY_AUDIENCE
               value: {{ include "directory-roster.recoveryAudience" . | quote }}
             {{- end }}
+            # Who may call the API listener. Empty admits nobody: a hub
+            # that answered everyone by default would be one forgotten
+            # value away from serving a company's directory to the
+            # cluster. The NetworkPolicy is the second layer, never the
+            # only one.
+            - name: API_AUDIENCE
+              value: {{ include "directory-roster.apiAudience" . }}
+            {{- if .Values.consumers }}
+            - name: API_CONSUMERS
+              value: {{ include "directory-roster.apiConsumers" . | quote }}
+            {{- end }}
             - name: POLICY_DIR
               value: /var/run/directory-roster/policy
             - name: HOLD_WINDOW

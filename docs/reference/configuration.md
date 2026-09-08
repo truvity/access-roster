@@ -23,6 +23,7 @@ external-secrets is at the end of this page.
 | `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory cache |
 | `image.repository` / `tag` | `ghcr.io/truvity/access-roster/directory-roster` / app version | |
 | `listeners.api.port` | `8080` | `DirectoryService` — consumers |
+| `listeners.api.audience` | the release name | the audience a consumer's projected token must carry |
 | `listeners.console.port` | `8081` | `WorkspaceService`, `SettingsService`, `AccessService`, the SPA, the login routes, the consent callback — operators, own login or a gateway in front |
 | `listeners.health.port` | `7070` | `/healthz`, `/readyz` |
 | `valkey.address` | `""` | host:port of the snapshot cache; empty selects the in-memory backend |
@@ -34,7 +35,7 @@ external-secrets is at the end of this page.
 | `freshness.probeInterval` | `5m` | how often a credential is probed and the domain list re-read |
 | `oauthClient.existingSecret` | `""` | a Secret with `client-id` and `client-secret`; set, the console shows the client read-only |
 | `workspaces[]` | `[]` | declared workspaces, see below |
-| `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener; verified by TokenReview |
+| `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener, verified by TokenReview. **Empty admits nobody** |
 | `route.host` | `""` | the console's hostname on the gateway, and only the console's: the API listener never gets a route, because a consumer that could arrive over the gateway could reach an operator call. Empty renders no Gateway, HTTPRoute or Certificate, which is right for a hub reached by port-forward |
 | `route.gatewayClassName`, `route.certificate.*` | `internal`, `internal-ca` | which class the Gateway joins, and who issues its certificate. An empty `issuerName` renders none, for a gateway that brings its own |
 | `access.recovery.enabled` | `true` | the way in for the day the ordinary one is broken. In a cluster it stores nothing: recovery is a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. On by default because it no longer costs a standing credential |
@@ -97,7 +98,7 @@ volumes:
     projected:
       sources:
         - serviceAccountToken:
-            audience: directory-roster
+            audience: directory-roster   # listeners.api.audience
             expirationSeconds: 3600
             path: token
 ```

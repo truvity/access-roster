@@ -55,7 +55,18 @@
       "additionalProperties": false,
       "properties": {
         "api": {
-          "$ref": "#/definitions/listener"
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "audience": {
+              "type": "string"
+            }
+          }
         },
         "console": {
           "$ref": "#/definitions/listener"
