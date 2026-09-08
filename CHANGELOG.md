@@ -44,6 +44,13 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **The chart has been installed and run**, in kind, with the real
+  Kubernetes store and token recovery: two replicas, recovery by a minted
+  token straight into the console, the API listener admitting the declared
+  consumer and refusing every other identity, and no standing credential
+  anywhere in the namespace. The first attempt would not start at all —
+  the rendered policy carried no `version`, so the loader refused it. The
+  version belongs to the chart now, not to the values.
 - **An acceptance suite against a real API server** (`just acceptance`, a
   throwaway kind cluster). It covers the three things a fake clientset is
   silent about and the hub leans on: name validation, a create that raced

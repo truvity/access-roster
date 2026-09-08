@@ -9,10 +9,14 @@ metadata:
     {{- include "directory-roster.labels" . | nindent 4 }}
 data:
   policy.yaml: |
-    {{- if .Values.policy }}
-    {{- toYaml .Values.policy | nindent 4 }}
-    {{- else }}
+    # The version belongs to the chart, not to the values. The loader
+    # refuses a document whose version it does not know, so a policy
+    # written without one is a hub that will not start — which is exactly
+    # what happened the first time this chart was installed anywhere.
     version: 1
+    {{- if .Values.policy }}
+    {{- toYaml (omit .Values.policy "version") | nindent 4 }}
+    {{- else }}
     groups:
       hub-operators: {}
       hub-viewers: {}
