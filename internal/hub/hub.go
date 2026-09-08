@@ -86,6 +86,15 @@ type CredentialStore interface {
 	Delete(ctx context.Context, workspaceID string) error
 }
 
+// Reopener turns a stored credential back into a reader. It is the same
+// operation a restart performs, made available while the hub is running.
+//
+// It lives here as a function rather than as a method because opening a
+// backend needs things this package deliberately does not have: the
+// deployment's OAuth client, and the registry of which backends this
+// build can even open.
+type Reopener func(ctx context.Context, ws Workspace, cred backend.Credential) (backend.Backend, error)
+
 // Hub answers the two directory questions for every connected workspace.
 // It is safe for concurrent use.
 type Hub struct {
@@ -110,6 +119,11 @@ type Hub struct {
 	refreshing sync.Map
 	// pending counts detached work in flight. Only Wait reads it.
 	pending sync.WaitGroup
+
+	// reopener opens a workspace this replica has no reader for yet.
+	reopener Reopener
+	// opens collapses concurrent misses on one workspace into one open.
+	opens singleflight.Group
 }
 
 // detachedTimeout bounds work that no longer has a request to be
@@ -137,6 +151,21 @@ func New(store Store, snapshots SnapshotStore, cfg Config, log *slog.Logger) *Hu
 // Call it before serving. Without it nothing is persisted, which is what
 // a prototype and the tests want.
 func (h *Hub) UseCredentials(store CredentialStore) { h.credentials = store }
+
+// UseReopener lets the hub open a workspace it has no reader for, from
+// the credential stored beside the record.
+//
+// Without it the readers a replica has are the ones it opened at start
+// plus the ones it adopted itself, which is wrong the moment there is
+// more than one replica: a workspace connected through the console on
+// one of them did not exist on the other until it restarted. Live, that
+// was half of every request answering "workspace not found" for a
+// directory that had just been connected, and a narrowing that landed on
+// the wrong replica dropping the snapshot.
+//
+// The store is the truth and the reader map is a cache of it. Call it
+// before serving.
+func (h *Hub) UseReopener(open Reopener) { h.reopener = open }
 
 // Attach registers the reader for a workspace already in the store: what
 // a restart does, once a credential has been read back.
@@ -350,12 +379,68 @@ func snapshotAt(snap *Snapshot) time.Time {
 	return snap.TakenAt
 }
 
-// backendFor returns the backend reading a workspace.
-func (h *Hub) backendFor(id string) (backend.Backend, bool) {
+// backendFor returns the backend reading a workspace, opening one from
+// the stored credential when this replica has none.
+func (h *Hub) backendFor(ctx context.Context, id string) (backend.Backend, bool) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
 	b, ok := h.backends[id]
-	return b, ok
+	h.mu.RUnlock()
+	if ok {
+		return b, true
+	}
+	return h.reopen(ctx, id)
+}
+
+// reopen opens a workspace the store knows and this replica does not.
+//
+// A miss is not evidence of absence: it means only that this process has
+// not opened the workspace yet. The record decides whether it exists, and
+// a record with no usable credential is a workspace with no reader —
+// which the hub already reports as unhealthy, and which is a different
+// thing from a workspace that is gone.
+func (h *Hub) reopen(ctx context.Context, id string) (backend.Backend, bool) {
+	if h.credentials == nil || h.reopener == nil {
+		return nil, false
+	}
+	opened, err, _ := h.opens.Do(id, func() (any, error) {
+		// Another caller may have opened it while this one waited.
+		h.mu.RLock()
+		b, ok := h.backends[id]
+		h.mu.RUnlock()
+		if ok {
+			return b, nil
+		}
+		ws, err := h.store.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		cred, found, err := h.credentials.Load(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("read the credential: %w", err)
+		}
+		if !found {
+			return nil, errors.New("no credential is stored for it")
+		}
+		reader, err := h.reopener(ctx, ws, cred)
+		if err != nil {
+			return nil, err
+		}
+		h.mu.Lock()
+		h.backends[id] = reader
+		h.mu.Unlock()
+		h.log.InfoContext(ctx, "opened a workspace this replica had not seen",
+			"workspace", id, "backend", ws.Backend, "credential", cred.Type)
+		return reader, nil
+	})
+	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			h.log.WarnContext(ctx, "a workspace could not be opened",
+				"workspace", id, "error", err)
+		}
+		return nil, false
+	}
+	reader, ok := opened.(backend.Backend)
+	return reader, ok
 }
 
 // ---------------------------------------------------------------- reading
@@ -468,7 +553,7 @@ func (h *Hub) point(ctx context.Context, v view, email string, maxAge *time.Dura
 func (h *Hub) pointLive(
 	ctx context.Context, ws Workspace, res resolution, email string, snap *Snapshot, wantGroups bool,
 ) (pointResult, bool) {
-	b, ok := h.backendFor(ws.ID)
+	b, ok := h.backendFor(ctx, ws.ID)
 	if !ok {
 		return pointResult{}, false
 	}
@@ -719,7 +804,7 @@ func (h *Hub) ensureFresh(ctx context.Context, workspaceID string, maxAge *time.
 func (h *Hub) Refresh(ctx context.Context, workspaceID string) (time.Time, error) {
 	started := time.Now()
 	taken, err, _ := h.refreshes.Do(workspaceID, func() (any, error) {
-		b, ok := h.backendFor(workspaceID)
+		b, ok := h.backendFor(ctx, workspaceID)
 		if !ok {
 			return time.Time{}, fmt.Errorf("%w: %s", ErrNotFound, workspaceID)
 		}
@@ -789,7 +874,7 @@ func (h *Hub) probeOne(ctx context.Context, ws Workspace) WorkspaceHealth {
 	now := h.now()
 	health := WorkspaceHealth{Workspace: ws.ID, ProbedAt: now}
 
-	b, ok := h.backendFor(ws.ID)
+	b, ok := h.backendFor(ctx, ws.ID)
 	if !ok {
 		health.Detail = "no backend: the credential is not loaded"
 	} else if err := b.Probe(ctx); err != nil {
@@ -940,7 +1025,7 @@ func (h *Hub) Disconnect(ctx context.Context, workspaceID string) error {
 	if ws.Declared {
 		return fmt.Errorf("%w: %s", ErrDeclared, workspaceID)
 	}
-	if b, ok := h.backendFor(workspaceID); ok {
+	if b, ok := h.backendFor(ctx, workspaceID); ok {
 		if err = b.Revoke(ctx); err != nil && !errors.Is(err, backend.ErrUnsupported) {
 			h.log.WarnContext(ctx, "revoking the credential failed; removing it anyway",
 				"workspace", workspaceID, "error", err)
