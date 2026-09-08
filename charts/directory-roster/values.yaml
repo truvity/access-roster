@@ -27,6 +27,10 @@ listeners:
   # DirectoryService — consumers over the cluster network.
   api:
     port: 8080
+    # The audience a consumer's projected token must carry. Empty means
+    # the release name, so two hubs in one cluster cannot accept each
+    # other's callers.
+    audience: ""
   # WorkspaceService, SettingsService and the SPA — operators through the
   # gateway.
   console:

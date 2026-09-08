@@ -66,6 +66,8 @@ type config struct {
 	recoveryEnabled  bool
 	recoveryAccount  string
 	recoveryAudience string
+	apiAudience      string
+	apiConsumers     []string
 	adminPassword    string
 	sessionLifetime  time.Duration
 	secureCookies    bool
@@ -91,6 +93,8 @@ func load() (config, error) {
 		recoveryEnabled:  envBool("RECOVERY_ENABLED", true),
 		recoveryAccount:  envString("RECOVERY_SERVICE_ACCOUNT", "directory-roster-recovery"),
 		recoveryAudience: envString("RECOVERY_AUDIENCE", "directory-roster-recovery"),
+		apiAudience:      envString("API_AUDIENCE", "directory-roster"),
+		apiConsumers:     envList("API_CONSUMERS"),
 		adminPassword:    envString("ADMIN_PASSWORD", ""),
 		secureCookies:    envBool("SECURE_COOKIES", false),
 		forwardedHeader:  envString("FORWARDED_EMAIL_HEADER", ""),
@@ -209,6 +213,47 @@ func openRecovery(ctx context.Context, cfg config, kept stores, log *slog.Logger
 		Audience:  cfg.recoveryAudience,
 		Subjects:  []string{subject},
 	}, nil
+}
+
+// consumers builds the API listener's guard.
+//
+// The listener answers everything the hub knows about every company it
+// serves, so who may call it is not a detail. Outside a cluster there is
+// nothing to verify a token against and the listener is open — a
+// development posture, said out loud at start rather than discovered. In
+// a cluster it admits exactly the ServiceAccounts the deployment names,
+// and a deployment that names none admits nobody, because a hub that
+// answered everyone by default would be one forgotten value away from
+// serving a directory to the whole cluster.
+func consumers(ctx context.Context, cfg config, kept stores, log *slog.Logger) *server.Consumers {
+	if kept.reviewToken == nil {
+		log.WarnContext(ctx, "the API listener is unauthenticated: nothing here can verify a "+
+			"ServiceAccount token, so anything that can reach it gets every account and group "+
+			"this hub reads", "port", cfg.apiPort)
+		return nil
+	}
+	allowed := make([]string, 0, len(cfg.apiConsumers))
+	for _, consumer := range cfg.apiConsumers {
+		namespace, name, found := strings.Cut(consumer, "/")
+		if !found || namespace == "" || name == "" {
+			log.WarnContext(ctx, "ignoring a consumer that is not namespace/serviceaccount",
+				"consumer", consumer)
+			continue
+		}
+		allowed = append(allowed, kube.ServiceAccountSubject(namespace, name))
+	}
+	if len(allowed) == 0 {
+		log.WarnContext(ctx, "the API listener admits nobody: no consumers are declared", "port", cfg.apiPort)
+	} else {
+		log.InfoContext(ctx, "the API listener admits the declared consumers",
+			"audience", cfg.apiAudience, "consumers", allowed)
+	}
+	return &server.Consumers{
+		Review:   kept.reviewToken,
+		Audience: cfg.apiAudience,
+		Allowed:  allowed,
+		Log:      log,
+	}
 }
 
 // stores is everything the hub writes down, and where.
@@ -376,6 +421,7 @@ func run() error {
 
 	apiMux := http.NewServeMux()
 	apiMux.Handle(directoryv1connect.NewDirectoryServiceHandler(server.NewDirectory(directory)))
+	apiHandler := consumers(ctx, cfg, kept, log).Middleware(apiMux)
 
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
@@ -387,7 +433,7 @@ func run() error {
 		"version", version.String(), "policy", policySource(cfg.policyPath, cfg.demo))
 
 	group, gctx := errgroup.WithContext(ctx)
-	group.Go(func() error { return serve(gctx, cfg.apiPort, apiMux, "api", log) })
+	group.Go(func() error { return serve(gctx, cfg.apiPort, apiHandler, "api", log) })
 	group.Go(func() error { return serve(gctx, cfg.consolePort, consoleServer.Handler(), "console", log) })
 	group.Go(func() error { return serve(gctx, cfg.healthPort, healthMux, "health", log) })
 	group.Go(func() error { return directory.Run(gctx) })
@@ -649,6 +695,18 @@ func announceRecoveryPassword(password string) {
 	fmt.Fprintf(os.Stderr, "\n  recovery password (generated for this run): %s\n"+
 		"  Sign in at /login, under Recovery sign-in.\n\n",
 		password)
+}
+
+// envList reads a comma-separated list, ignoring blanks and spacing, so
+// that a chart may render one entry per line without it mattering.
+func envList(name string) []string {
+	var out []string
+	for _, item := range strings.Split(os.Getenv(name), ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func envString(name, fallback string) string {

@@ -44,6 +44,13 @@ repository, not the order it arrived in.
   directory once per interval — a quota is per tenant, not per reader —
   while a failed pass hands its lease straight back. No address configured
   keeps snapshots in memory, which the hub says at start.
+- **The API listener authenticates its callers.** It was open: anything
+  that could reach the port got every account and group of every company
+  the hub serves. Callers now present a projected ServiceAccount token
+  with the hub's audience, verified by TokenReview against the declared
+  `consumers`. A deployment declaring none admits nobody; outside a
+  cluster there is nothing to verify against, so it stays open and the
+  process says so at start.
 - **Signing in with a directory works.** `GET /login/<backend>/start` →
   `/callback` asks the provider for `openid email profile` and nothing
   else: the address is all that is taken from it, and whether the account
