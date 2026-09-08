@@ -1,0 +1,25 @@
+{
+  "name": "@truvity/access-roster",
+  "version": "0.2.0",
+  "description": "What a console needs from the identity it is behind: who the caller is, what that gets them, and the way out. Install from git: npm install github:truvity/access-roster#v0.2.0",
+  "type": "module",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/truvity/access-roster.git" },
+  "main": "./ts/dist/index.js",
+  "types": "./ts/dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./ts/dist/index.d.ts", "import": "./ts/dist/index.js" },
+    "./react": { "types": "./ts/dist/react/index.d.ts", "import": "./ts/dist/react/index.js" }
+  },
+  "files": ["ts/dist/**"],
+  "engines": { "node": ">=20" },
+  "sideEffects": false,
+  "peerDependencies": {
+    "react": ">=18",
+    "@mui/material": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true },
+    "@mui/material": { "optional": true }
+  }
+}
