@@ -191,7 +191,7 @@ export function App() {
             </Alert>
           ) : null}
 
-          <PageFor view={route.view} id={route.id} operator={operator} onDone={setBanner} me={identityInfo} />
+          <PageFor view={route.view} id={route.id} query={route.query} operator={operator} onDone={setBanner} me={identityInfo} />
         </Container>
       </Box>
     </Box>
@@ -211,19 +211,25 @@ function NavItem({ item, current, onPick }: { item: Item; current: string; onPic
 function PageFor({
   view,
   id,
+  query,
   operator,
   onDone,
   me,
 }: {
   view: string;
   id?: string;
+  query: URLSearchParams;
   operator: boolean;
   onDone: (message: string) => void;
   me?: Me;
 }) {
   switch (view) {
     case "directories":
-      return id ? <Directory id={id} operator={operator} onDone={onDone} /> : <Directories operator={operator} onDone={onDone} />;
+      return id ? (
+        <Directory id={id} operator={operator} onDone={onDone} choosing={query.get("choose") === "domains"} />
+      ) : (
+        <Directories operator={operator} onDone={onDone} />
+      );
     case "directory-groups":
       return id ? <DirectoryGroup email={id} operator={operator} onDone={onDone} /> : <DirectoryGroups />;
     case "people":

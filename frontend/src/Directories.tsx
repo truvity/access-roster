@@ -242,7 +242,19 @@ function AddDirectory({
  *  serves, the groups it contributes and the accounts it holds. Every
  *  group and every account is a link, because a directory is the top of
  *  the identity side and everything below it is reachable from here. */
-export function Directory({ id, operator, onDone }: { id: string; operator: boolean; onDone: (message: string) => void }) {
+export function Directory({
+  id,
+  operator,
+  onDone,
+  choosing,
+}: {
+  id: string;
+  operator: boolean;
+  onDone: (message: string) => void;
+  /** True when the consent that just connected this directory left the
+   *  question of which domains to serve open. */
+  choosing?: boolean;
+}) {
   const list = useAsync(() => workspaces.listWorkspaces({}), []);
   const groups = useAsync(() => access.listDirectoryGroups({}), []);
   const policy = useAsync(() => access.getPolicy({}), []);
@@ -304,6 +316,7 @@ export function Directory({ id, operator, onDone }: { id: string; operator: bool
         tenant={tenant}
         operator={operator}
         busy={busy}
+        choosing={choosing}
         onSave={(domains) => {
           void act(
             () => workspaces.setServedDomains({ workspaceId: tenant.id, domains }),
@@ -399,20 +412,31 @@ export function Directory({ id, operator, onDone }: { id: string; operator: bool
  *
  *  Ticking every box means "all of them", not "these ones", so a domain
  *  the company adds later is served without anyone remembering to come
- *  back here. */
+ *  back here.
+ *
+ *  A connect opens this straight away. The tenant it was built against
+ *  owned seven domains, most of them not domains anybody works at, and a
+ *  connect that quietly served all seven read every one before the
+ *  operator had done anything. So the question is asked once, at the
+ *  moment somebody is standing in front of the answer, with the domain
+ *  they consented from already ticked. */
 function Domains({
   tenant,
   operator,
   busy,
+  choosing,
   onSave,
 }: {
   tenant: Workspace;
   operator: boolean;
   busy: boolean;
+  choosing?: boolean;
   onSave: (domains: string[]) => void;
 }) {
   const owned = tenant.domains.filter((d) => d.owned).map((d) => d.name);
-  const [choice, setChoice] = useState<string[] | undefined>();
+  const served = tenant.domains.filter((d) => d.served).map((d) => d.name);
+  const mayChoose = operator && !tenant.declared && tenant.domains.length > 1;
+  const [choice, setChoice] = useState<string[] | undefined>(choosing && mayChoose ? served : undefined);
   const editing = choice !== undefined;
   const narrowed = tenant.domains.some((d) => !d.served);
 
@@ -427,7 +451,7 @@ function Domains({
       title="Domains"
       hint={
         editing
-          ? "tick the ones this hub should answer for; all of them means later ones too"
+          ? "tick the ones this hub should answer for. The rest stays discovered and visible, but nothing routes to it and its accounts are never read"
           : narrowed
             ? "discovered from the directory; only the served ones are routed and kept"
             : "discovered from the directory and re-read on every probe"
@@ -459,6 +483,20 @@ function Domains({
             >
               Save
             </Button>
+            <Tooltip title="Including domains the company adds later, without anyone coming back here.">
+              <span>
+                <Button
+                  size="small"
+                  disabled={busy}
+                  onClick={() => {
+                    onSave([]);
+                    setChoice(undefined);
+                  }}
+                >
+                  Serve all of them
+                </Button>
+              </span>
+            </Tooltip>
             <Button size="small" disabled={busy} onClick={() => setChoice(undefined)}>
               Cancel
             </Button>
@@ -478,8 +516,8 @@ function Domains({
             right={(d) => <Authority authoritative={d.authoritative} conflict={d.conflict} served={d.served} owned={d.owned} reason={d.reason} />}
             empty="None discovered yet. Probe once the credential works."
           />
-          {operator && !tenant.declared && tenant.domains.length > 1 ? (
-            <Button size="small" sx={{ ml: -1, mt: 0.5 }} onClick={() => setChoice(tenant.domains.filter((d) => d.served).map((d) => d.name))}>
+          {mayChoose ? (
+            <Button size="small" sx={{ ml: -1, mt: 0.5 }} onClick={() => setChoice(served)}>
               Choose which to serve
             </Button>
           ) : null}

@@ -941,9 +941,6 @@ func (h *Hub) Adopt(ctx context.Context, ws Workspace, b backend.Backend) (Works
 
 	ws.Backend = b.Kind()
 	ws.Serve = normaliseDomains(ws.Serve)
-	if ws.ConnectedAt.IsZero() {
-		ws.ConnectedAt = h.now()
-	}
 	// The tenant read above IS a probe: it exercised the credential and
 	// returned the domain list, which is everything probeOne records. So
 	// the record is complete before it is stored — the domains are there
@@ -957,6 +954,36 @@ func (h *Hub) Adopt(ctx context.Context, ws Workspace, b backend.Backend) (Works
 		ws.Domains = normaliseDomains(tenant.Domains)
 		ws.Health = Health{ProbedAt: now, OK: true}
 	}
+
+	// What the console decided about a workspace outlives the credential
+	// it was decided under. A reconnect brings a new refresh token, not a
+	// new configuration, and the connector that built this record knows
+	// only what the consent told it — so it arrives with an empty served
+	// list, which would otherwise read as "serve everything" and quietly
+	// widen a tenant an operator had narrowed. Declared workspaces are
+	// the exception on purpose: there the values ARE the decision, and an
+	// emptied list in them means all of them again.
+	if !ws.Declared {
+		if existing, known := h.store.Get(ctx, ws.ID); known == nil {
+			if len(ws.Serve) == 0 {
+				ws.Serve = existing.Serve
+			}
+			if len(ws.SyncGroups) == 0 {
+				ws.SyncGroups = existing.SyncGroups
+			}
+			if ws.ConnectedAt.IsZero() {
+				ws.ConnectedAt = existing.ConnectedAt
+			}
+			if ws.ConnectedBy == "" {
+				ws.ConnectedBy = existing.ConnectedBy
+			}
+		} else if len(ws.Serve) == 0 {
+			ws.Serve = defaultServe(ws)
+		}
+	}
+	if ws.ConnectedAt.IsZero() {
+		ws.ConnectedAt = now
+	}
 	if err := h.store.Put(ctx, ws); err != nil {
 		return Workspace{}, fmt.Errorf("store workspace: %w", err)
 	}
@@ -964,6 +991,30 @@ func (h *Hub) Adopt(ctx context.Context, ws Workspace, b backend.Backend) (Works
 	// tenant, and the caller is a browser finishing a consent.
 	h.refreshSoon(ctx, ws.ID, "first snapshot failed")
 	return h.store.Get(ctx, ws.ID)
+}
+
+// defaultServe is what a newly connected workspace serves until somebody
+// says otherwise: the consenting administrator's own domain.
+//
+// Not every domain the tenant owns. The first real tenant owned seven,
+// most of them not domains anybody works at, and defaulting to all of
+// them meant the hub read all seven before the operator had done
+// anything — and then showed seven provisional domains on a console
+// nobody had finished setting up. The domain the administrator consented
+// FROM is the one they were certainly thinking of.
+//
+// "All of them, including ones added later" is still available and is
+// still the empty list. The difference is that it is now chosen rather
+// than defaulted into. A tenant with one domain gets the same answer
+// either way; an administrator whose own domain the tenant does not list
+// falls back to all of them, because narrowing to nothing would serve
+// nobody.
+func defaultServe(ws Workspace) []string {
+	domain, ok := emailaddr.Domain(ws.Admin)
+	if !ok || !slices.Contains(ws.Domains, domain) {
+		return nil
+	}
+	return []string{domain}
 }
 
 // SetServed narrows a workspace to a subset of its domains, or widens it

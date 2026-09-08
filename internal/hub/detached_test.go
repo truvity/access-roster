@@ -163,6 +163,12 @@ func TestNarrowingExcludesAtOnceAndRereadsLater(t *testing.T) {
 	if _, err := directory.Adopt(ctx, hub.Workspace{Admin: "admin@kept.example"}, both); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
+	// Connecting defaults to the administrator's own domain, so widen it
+	// to everything first: this test is about what narrowing does, not
+	// about what a connect starts from.
+	if _, err := directory.SetServed(ctx, "C0both", nil); err != nil {
+		t.Fatalf("SetServed: %v", err)
+	}
 	directory.Wait()
 	if people, _, err := directory.People(ctx, hub.PeopleQuery{}, 0); err != nil {
 		t.Fatalf("People: %v", err)
@@ -365,4 +371,76 @@ func TestAProvisionalDomainSaysWhy(t *testing.T) {
 	if got := standing()["served.example"]; got.Reason != hub.ReasonProbeFailed {
 		t.Errorf("after a failed probe: reason = %q, want %q", got.Reason, hub.ReasonProbeFailed)
 	}
+}
+
+// A connect serves the domain the administrator consented from, and a
+// reconnect does not undo whatever was chosen afterwards.
+//
+// The first real tenant owned seven domains, most of them not domains
+// anybody works at. Defaulting to all of them read every one before the
+// operator had done anything. And the connector that builds the record
+// from a consent knows nothing about served lists, so a reconnect
+// arriving with an empty one used to read as "serve everything" and
+// silently widen a tenant somebody had narrowed.
+func TestConnectingChoosesTheAdministratorsOwnDomain(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	directory, store := newDetachedHub(t)
+	many := fake.New("C0many", "work.example", "parked.example", "brand.example").
+		WithAccount("ada@work.example", "Ada", "Works").
+		WithAccount("otto@parked.example", "Otto", "Parked")
+
+	if _, err := directory.Adopt(ctx, hub.Workspace{Admin: "admin@work.example"}, many); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	directory.Wait()
+
+	stored, err := store.Get(ctx, "C0many")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(stored.Serve) != 1 || stored.Serve[0] != "work.example" {
+		t.Errorf("serve = %v, want only the administrator's own domain", stored.Serve)
+	}
+	// The others are discovered and visible, and simply not read.
+	if len(stored.Domains) != 3 {
+		t.Errorf("domains = %v, want all three discovered", stored.Domains)
+	}
+	if people, _, err := directory.People(ctx, hub.PeopleQuery{}, 0); err != nil {
+		t.Fatalf("People: %v", err)
+	} else if len(people) != 1 || people[0].Email != "ada@work.example" {
+		t.Errorf("people = %+v, want only the served domain's accounts", people)
+	}
+
+	// An operator widens to all of them, including ones added later.
+	if _, err = directory.SetServed(ctx, "C0many", nil); err != nil {
+		t.Fatalf("SetServed: %v", err)
+	}
+	// A reconnect brings a new credential and nothing else. The connector
+	// hands over a record with no served list at all; that must not read
+	// as "serve everything" — nor, here, undo the operator's "all".
+	if _, err = directory.Adopt(ctx, hub.Workspace{ID: "C0many", Admin: "admin@work.example"}, many); err != nil {
+		t.Fatalf("re-Adopt: %v", err)
+	}
+	if stored, err = store.Get(ctx, "C0many"); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(stored.Serve) != 0 {
+		t.Errorf("after a reconnect: serve = %v, want the operator's choice of all", stored.Serve)
+	}
+
+	// Narrow, reconnect again: the narrowing survives.
+	if _, err = directory.SetServed(ctx, "C0many", []string{"brand.example"}); err != nil {
+		t.Fatalf("SetServed: %v", err)
+	}
+	if _, err = directory.Adopt(ctx, hub.Workspace{ID: "C0many", Admin: "admin@work.example"}, many); err != nil {
+		t.Fatalf("re-Adopt: %v", err)
+	}
+	if stored, err = store.Get(ctx, "C0many"); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(stored.Serve) != 1 || stored.Serve[0] != "brand.example" {
+		t.Errorf("after a reconnect: serve = %v, want the narrowing to survive", stored.Serve)
+	}
+	directory.Wait()
 }
