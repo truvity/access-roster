@@ -81,6 +81,12 @@ type Principal struct {
 	Source  Source
 	Issuer  string
 	Claims  map[string][]string
+	// ServiceAccount is set when the forwarded token names a cluster
+	// workload rather than a person -- a recovery sign-in at the issuer,
+	// which completes as the account and not as an address. What it is
+	// entitled to is the policy's `service_account` matchers, the same
+	// table that answers for a workload exchanging a token.
+	ServiceAccount *policy.ServiceAccountRef
 }
 
 // Identity is an authorized caller: a principal, the internal groups the
@@ -178,7 +184,13 @@ func (a *Authorizer) Authorize(ctx context.Context, p Principal) (Identity, erro
 		}, nil
 	}
 
-	explained, err := a.explain(ctx, Proof{Email: p.Email}, true)
+	// A workload proof is not a person: there is no directory to ask, and
+	// the policy's matchers are the whole answer.
+	proof := Proof{Email: p.Email}
+	if p.ServiceAccount != nil {
+		proof = Proof{ServiceAccount: p.ServiceAccount}
+	}
+	explained, err := a.explain(ctx, proof, true)
 	if err != nil {
 		return Identity{}, err
 	}

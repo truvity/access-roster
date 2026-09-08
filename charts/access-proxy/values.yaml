@@ -111,6 +111,12 @@ session:
   # configuration looks correct while behaving as if refresh were unset.
   lifetime: 12h
   refresh: 5m
+  # Which claim is the caller's identity. `sub` suits an issuer whose
+  # subject is the address for a person and a ServiceAccount for a
+  # recovery sign-in; `email` suits a provider that always sets one.
+  # Getting this wrong locks recovery out with "neither the id_token nor
+  # the profileURL set an email".
+  identityClaim: sub
   # Scopes to request. Empty asks for openid, profile and email, plus
   # `groups` when an allow-list is configured, plus `offline_access` when
   # `refresh` is set. Setting this by hand overrides all of that.

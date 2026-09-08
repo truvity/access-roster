@@ -63,6 +63,14 @@ data:
     cookie_refresh = {{ . | quote }}
     {{- end }}
 
+    # The identity claim. `sub` and not `email`, because this issuer's
+    # subject IS the address for a person -- and for a recovery sign-in it
+    # is a ServiceAccount, which has no address and must still be able to
+    # sign in. Left at the default, oauth2-proxy refuses that with
+    # "neither the id_token nor the profileURL set an email", which is the
+    # bootstrap locked out of the console it exists to open.
+    oidc_email_claim = {{ .Values.session.identityClaim | quote }}
+
     scope = {{ $scopes | quote }}
     code_challenge_method = "S256"
     skip_provider_button = true
