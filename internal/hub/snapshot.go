@@ -110,6 +110,30 @@ func restrict(
 	return keptAccounts, keptGroups
 }
 
+// narrow returns the snapshot as it would have been read under a smaller
+// served list. It touches no directory: narrowing is a subtraction, and
+// what an operator has just excluded must stop being answerable now
+// rather than whenever the next read completes.
+//
+// TakenAt is carried over unchanged. The snapshot is no fresher for
+// holding less, and pretending otherwise would buy back authority that
+// the directory has not been asked about.
+func (s *Snapshot) narrow(serve []string) *Snapshot {
+	if len(serve) == 0 {
+		return s
+	}
+	accounts := make([]backend.Account, 0, len(s.Accounts))
+	for _, key := range slices.Sorted(maps.Keys(s.Accounts)) {
+		accounts = append(accounts, s.Accounts[key])
+	}
+	groups := make([]backend.Group, 0, len(s.Groups))
+	for _, key := range slices.Sorted(maps.Keys(s.Groups)) {
+		groups = append(groups, s.Groups[key])
+	}
+	accounts, groups = restrict(accounts, groups, serve)
+	return NewSnapshot(s.Workspace, s.TakenAt, accounts, groups)
+}
+
 // Age reports how old the snapshot is at now.
 func (s *Snapshot) Age(now time.Time) time.Duration { return now.Sub(s.TakenAt) }
 

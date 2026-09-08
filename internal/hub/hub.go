@@ -103,7 +103,19 @@ type Hub struct {
 
 	// refreshes collapses concurrent full reads of one workspace into one.
 	refreshes singleflight.Group
+
+	// refreshing names the workspaces a detached refresh is already
+	// running for, so that a hundred requests arriving at a cold hub start
+	// one read rather than a hundred.
+	refreshing sync.Map
+	// pending counts detached work in flight. Only Wait reads it.
+	pending sync.WaitGroup
 }
+
+// detachedTimeout bounds work that no longer has a request to be
+// cancelled by. A full read of a large tenant is minutes, not seconds;
+// this is the ceiling past which something is wrong rather than slow.
+const detachedTimeout = 15 * time.Minute
 
 // New returns a hub over the given stores.
 func New(store Store, snapshots SnapshotStore, cfg Config, log *slog.Logger) *Hub {
@@ -148,6 +160,40 @@ func (h *Hub) SetClock(now func() time.Time) { h.now = now }
 
 // Config returns the freshness knobs in force.
 func (h *Hub) Config() Config { return h.cfg }
+
+// Wait blocks until every detached refresh this hub started has finished.
+// A graceful shutdown uses it so that a snapshot in flight is not thrown
+// away; a test uses it to make the first snapshot observable.
+func (h *Hub) Wait() { h.pending.Wait() }
+
+// refreshSoon takes a snapshot outside the request that asked for it.
+//
+// Nothing a browser or a consumer waits on may wait on a directory. A
+// first snapshot is a full read of a whole tenant — minutes for a large
+// one — and a request-scoped one meets the gateway's route timeout,
+// gets cancelled, reports a failure for work that had in fact succeeded,
+// and starts again from nothing on the next attempt. Found live: a
+// consent that had already stored its workspace answered the browser
+// with a 502.
+//
+// The work therefore runs on a context derived from the caller's — so
+// that its logs still carry the request's values — with the caller's
+// cancellation removed and a ceiling of its own.
+func (h *Hub) refreshSoon(ctx context.Context, workspaceID, why string) {
+	if _, already := h.refreshing.LoadOrStore(workspaceID, struct{}{}); already {
+		return
+	}
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedTimeout)
+	h.pending.Add(1)
+	go func() {
+		defer h.pending.Done()
+		defer cancel()
+		defer h.refreshing.Delete(workspaceID)
+		if _, err := h.Refresh(detached, workspaceID); err != nil {
+			h.log.WarnContext(detached, why, "workspace", workspaceID, "error", err)
+		}
+	}()
+}
 
 // ---------------------------------------------------------------- results
 
@@ -640,10 +686,19 @@ func (h *Hub) ensureFresh(ctx context.Context, workspaceID string, maxAge *time.
 	if err != nil {
 		h.log.WarnContext(ctx, "snapshot unreadable", "workspace", workspaceID, "error", err)
 	}
-	if maxAge == nil && snap != nil {
+	// No freshness demand, no directory read. The contract is that an
+	// omitted max_age serves the snapshot, and "there is no snapshot yet"
+	// is an answer — a provisional, empty one — not a reason to hold a
+	// request open for a full tenant read. A refresh is started instead,
+	// so the first console page after a connect fills in by itself rather
+	// than waiting for the next scheduled pass.
+	if maxAge == nil {
+		if snap == nil {
+			h.refreshSoon(ctx, workspaceID, "first snapshot failed")
+		}
 		return snap
 	}
-	if snap != nil && maxAge != nil && snap.Age(h.now()) <= *maxAge {
+	if snap != nil && snap.Age(h.now()) <= *maxAge {
 		return snap
 	}
 	if _, err = h.Refresh(ctx, workspaceID); err != nil {
@@ -662,6 +717,7 @@ func (h *Hub) ensureFresh(ctx context.Context, workspaceID string, maxAge *time.
 // Refresh takes a new snapshot of one workspace now. Concurrent callers
 // share the one read in flight.
 func (h *Hub) Refresh(ctx context.Context, workspaceID string) (time.Time, error) {
+	started := time.Now()
 	taken, err, _ := h.refreshes.Do(workspaceID, func() (any, error) {
 		b, ok := h.backendFor(workspaceID)
 		if !ok {
@@ -688,8 +744,12 @@ func (h *Hub) Refresh(ctx context.Context, workspaceID string) (time.Time, error
 		if err = h.snapshots.Put(ctx, snap); err != nil {
 			return time.Time{}, fmt.Errorf("store snapshot: %w", err)
 		}
-		h.log.InfoContext(ctx, "snapshot taken",
-			"workspace", workspaceID, "accounts", len(accounts), "groups", len(groups))
+		// The duration is the number an operator needs when a tenant feels
+		// slow, and it is measured on the wall clock rather than the hub's
+		// so that a test with a frozen clock still reports the truth.
+		h.log.InfoContext(ctx, "snapshot taken", "workspace", workspaceID,
+			"accounts", len(accounts), "groups", len(groups),
+			"took", time.Since(started).Round(time.Millisecond).String())
 		return snap.TakenAt, nil
 	})
 	if err != nil {
@@ -799,17 +859,25 @@ func (h *Hub) Adopt(ctx context.Context, ws Workspace, b backend.Backend) (Works
 	if ws.ConnectedAt.IsZero() {
 		ws.ConnectedAt = h.now()
 	}
+	// The tenant read above IS a probe: it exercised the credential and
+	// returned the domain list, which is everything probeOne records. So
+	// the record is complete before it is stored — the domains are there
+	// for the operator to choose among, and the health says the
+	// credential works — and no second round trip is spent proving it
+	// again while a browser waits.
+	now := h.now()
+	if err != nil {
+		ws.Health = Health{ProbedAt: now, OK: false, Error: err.Error()}
+	} else {
+		ws.Domains = normaliseDomains(tenant.Domains)
+		ws.Health = Health{ProbedAt: now, OK: true}
+	}
 	if err := h.store.Put(ctx, ws); err != nil {
 		return Workspace{}, fmt.Errorf("store workspace: %w", err)
 	}
-	if _, err := h.Probe(ctx, ws.ID); err != nil {
-		return Workspace{}, err
-	}
-	if _, err := h.Refresh(ctx, ws.ID); err != nil {
-		// A first snapshot that fails is not fatal: the workspace exists,
-		// its domains are simply not authoritative until one lands.
-		h.log.WarnContext(ctx, "first snapshot failed", "workspace", ws.ID, "error", err)
-	}
+	// The first snapshot does not run here. It is a full read of a whole
+	// tenant, and the caller is a browser finishing a consent.
+	h.refreshSoon(ctx, ws.ID, "first snapshot failed")
 	return h.store.Get(ctx, ws.ID)
 }
 
@@ -840,18 +908,24 @@ func (h *Hub) SetServed(ctx context.Context, workspaceID string, domains []strin
 		return Workspace{}, fmt.Errorf("store workspace: %w", err)
 	}
 	// The snapshot was taken under the old list, so it holds accounts this
-	// hub has just been told not to read. Take a new one; if that fails,
-	// delete the old rather than leave the excluded people cached — the
-	// cost is answers that are stale and therefore not authoritative,
-	// which removes nobody's access, and the refresher will fill it in.
-	if _, err = h.Refresh(ctx, workspaceID); err != nil {
-		h.log.WarnContext(ctx, "refresh after narrowing failed; dropping the snapshot",
-			"workspace", workspaceID, "error", err)
-		if delErr := h.snapshots.Delete(ctx, workspaceID); delErr != nil {
-			h.log.WarnContext(ctx, "dropping the snapshot failed",
-				"workspace", workspaceID, "error", delErr)
+	// hub has just been told not to read. They stop being answerable at
+	// once, from what is already in memory: waiting for a fresh read would
+	// leave excluded people cached for as long as the directory takes, and
+	// failing that read would leave them cached until the next pass.
+	// Narrowing an existing snapshot needs no directory at all — it is a
+	// subtraction — so it happens here, and the re-read that fills in
+	// whatever the wider list had excluded happens detached.
+	if snap, snapErr := h.snapshots.Get(ctx, workspaceID); snapErr == nil && snap != nil {
+		if err = h.snapshots.Put(ctx, snap.narrow(ws.Served())); err != nil {
+			h.log.WarnContext(ctx, "narrowing the snapshot failed; dropping it",
+				"workspace", workspaceID, "error", err)
+			if delErr := h.snapshots.Delete(ctx, workspaceID); delErr != nil {
+				h.log.WarnContext(ctx, "dropping the snapshot failed",
+					"workspace", workspaceID, "error", delErr)
+			}
 		}
 	}
+	h.refreshSoon(ctx, workspaceID, "refresh after narrowing failed")
 	return h.store.Get(ctx, workspaceID)
 }
 

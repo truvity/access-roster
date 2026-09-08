@@ -63,6 +63,7 @@ func TestOneReplicaReadsPerScheduledPass(t *testing.T) {
 	if _, err := one.Adopt(ctx, hub.Workspace{Admin: "admin@north.example"}, directory); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
+	one.Wait()
 	two := hub.New(store, snapshots, hub.Config{}, quiet)
 	if err := two.Attach(ctx, "C0north", directory); err != nil {
 		t.Fatalf("Attach: %v", err)
@@ -107,6 +108,7 @@ func TestAFailedPassHandsTheLeaseBack(t *testing.T) {
 	if _, err := first.Adopt(ctx, hub.Workspace{Admin: "admin@north.example"}, directory); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
+	first.Wait()
 	second := hub.New(store, snapshots, hub.Config{}, quiet)
 	if err := second.Attach(ctx, "C0north", directory); err != nil {
 		t.Fatalf("Attach: %v", err)
@@ -139,6 +141,7 @@ func TestARefusedLeaseStopsAPassButABrokenOneDoesNot(t *testing.T) {
 	if _, err := directoryHub.Adopt(ctx, hub.Workspace{Admin: "admin@north.example"}, directory); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
+	directoryHub.Wait()
 
 	// Somebody else holds it: this replica does nothing.
 	release, taken, err := snapshots.Lock(ctx, "refresh:C0north", time.Minute)
