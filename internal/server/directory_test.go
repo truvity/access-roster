@@ -33,6 +33,7 @@ func serve(t *testing.T) (directoryv1connect.DirectoryServiceClient, *fake.Backe
 	if _, err := h.Adopt(context.Background(), hub.Workspace{ID: "C0test", Admin: "admin@example.com"}, b); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
+	h.Wait()
 
 	mux := http.NewServeMux()
 	mux.Handle(directoryv1connect.NewDirectoryServiceHandler(server.NewDirectory(h)))

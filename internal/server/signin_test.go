@@ -59,6 +59,7 @@ func signInHarness(t *testing.T, email string) *ConsoleServer {
 	if _, err := directoryHub.Adopt(ctx, hub.Workspace{Admin: "admin@north.example"}, directory); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
+	directoryHub.Wait()
 	declared, err := policy.Parse([]byte(`
 version: 1
 groups:

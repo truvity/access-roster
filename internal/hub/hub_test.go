@@ -56,6 +56,10 @@ func newHarness(t *testing.T) *harness {
 			t.Fatalf("Adopt %s: %v", ws.id, err)
 		}
 	}
+	// Adopting does not take the first snapshot on the caller's context —
+	// a browser finishing a consent must not wait on a whole tenant — so
+	// a test that wants to see one waits for it here rather than racing.
+	h.hub.Wait()
 	return h
 }
 

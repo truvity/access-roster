@@ -51,6 +51,7 @@ func newServedHarness(t *testing.T, serve ...string) *servedHarness {
 	}, h.both); err != nil {
 		t.Fatalf("Adopt: %v", err)
 	}
+	h.hub.Wait()
 	return h
 }
 
@@ -177,6 +178,7 @@ func TestServeKeepsOnlyWhatAServedAnswerNeeds(t *testing.T) {
 	if _, err = h.hub.SetServed(ctx, bothID, nil); err != nil {
 		t.Fatalf("SetServed: %v", err)
 	}
+	h.hub.Wait()
 	shared, err := h.hub.Group(ctx, "shared@other.example", nil)
 	if err != nil {
 		t.Fatalf("Group: %v", err)
@@ -212,6 +214,7 @@ func TestOnlyTwoServingWorkspacesContestADomain(t *testing.T) {
 	if _, err := directory.Adopt(ctx, hub.Workspace{ID: "C0server", Admin: "a@shared.example"}, server); err != nil {
 		t.Fatalf("Adopt server: %v", err)
 	}
+	directory.Wait()
 
 	got, err := directory.ResolveUser(ctx, "live@shared.example", nil)
 	if err != nil {
@@ -225,6 +228,7 @@ func TestOnlyTwoServingWorkspacesContestADomain(t *testing.T) {
 	if _, err = directory.SetServed(ctx, "C0holder", []string{"holder.example", "shared.example"}); err != nil {
 		t.Fatalf("SetServed: %v", err)
 	}
+	directory.Wait()
 	if got, err = directory.ResolveUser(ctx, "live@shared.example", nil); err != nil {
 		t.Fatalf("ResolveUser: %v", err)
 	} else if got.Authoritative {
@@ -258,6 +262,7 @@ func TestAServedDomainTheTenantLosesIsHandedOverAndFlagged(t *testing.T) {
 	if _, err := directory.Adopt(ctx, hub.Workspace{ID: "C0new", Admin: "a@new.example"}, fresh); err != nil {
 		t.Fatalf("Adopt new: %v", err)
 	}
+	directory.Wait()
 	if got, err := directory.ResolveUser(ctx, "pat@moving.example", nil); err != nil {
 		t.Fatalf("ResolveUser: %v", err)
 	} else if got.Workspace != "C0old" || !got.Authoritative {
@@ -323,6 +328,7 @@ func TestSetServedIsBoundedByDiscoveryAndByTheDeployment(t *testing.T) {
 	if _, err := h.hub.SetServed(ctx, bothID, []string{"KEPT.example ", "kept.example"}); err != nil {
 		t.Fatalf("SetServed: %v", err)
 	}
+	h.hub.Wait()
 	if got := h.standing(bothID, "other.example"); got.Served {
 		t.Errorf("other.example = %+v, want it no longer served", got)
 	}
