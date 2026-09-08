@@ -60,6 +60,7 @@ const (
 const (
 	sessionKeyKey    = "key"
 	adminPasswordKey = "password"
+	signingKeyKey    = "key.pem"
 )
 
 // Namespace returns the namespace the hub runs in, which the chart passes
@@ -224,6 +225,22 @@ func (c *Client) SessionKeyName() string { return c.prefix + "-session-key" }
 
 // AdminPasswordName is the Secret holding the break-glass password.
 func (c *Client) AdminPasswordName() string { return c.prefix + "-admin" }
+
+// SigningKeyName is the Secret holding the issuer's signing key.
+func (c *Client) SigningKeyName() string { return c.prefix + "-signing-key" }
+
+// SigningKey returns the key the issuer signs tokens with, creating one
+// on first start.
+//
+// The same reasoning as the session key and more of it: a key minted per
+// process invalidates every token it signed on every rollout, and two
+// replicas with two keys hand out tokens that half the fleet cannot
+// verify — which reads as an intermittent outage and is really a coin
+// toss. Deleting this Secret invalidates every token in flight, which is
+// the deliberate "distrust everything we ever signed" lever.
+func (c *Client) SigningKey(ctx context.Context, generate func() ([]byte, error)) ([]byte, error) {
+	return c.keep(ctx, c.SigningKeyName(), signingKeyKey, generate)
+}
 
 // AdminPassword returns the break-glass password, generating one on first
 // start.

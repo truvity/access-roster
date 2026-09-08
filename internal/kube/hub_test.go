@@ -113,3 +113,32 @@ func TestTheSessionKeyIsStableAcrossRestarts(t *testing.T) {
 		t.Errorf("keys differ: %q vs %q", first, second)
 	}
 }
+
+// The issuer's signing key is the session key's argument with more at
+// stake: a key minted per process invalidates every token it signed, and
+// two replicas with two keys hand out tokens half the fleet cannot verify.
+func TestTheSigningKeyIsStableAcrossRestarts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	client := newClient()
+
+	first, err := client.SigningKey(ctx, func() ([]byte, error) { return []byte("-----BEGIN-----"), nil })
+	if err != nil {
+		t.Fatalf("SigningKey: %v", err)
+	}
+	second, err := client.SigningKey(ctx, func() ([]byte, error) {
+		t.Error("a second start minted a new signing key instead of reading the stored one")
+		return []byte("different"), nil
+	})
+	if err != nil {
+		t.Fatalf("SigningKey: %v", err)
+	}
+	if string(first) != string(second) {
+		t.Errorf("keys differ: %q vs %q", first, second)
+	}
+	// It is its own Secret, not sharing one with the session key: they
+	// are rotated for different reasons and one deletion must not do both.
+	if client.SigningKeyName() == client.SessionKeyName() {
+		t.Error("the signing key and the session key share a Secret")
+	}
+}

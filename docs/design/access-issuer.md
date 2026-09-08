@@ -175,7 +175,15 @@ experience at this issuer rather than a different doorway per console.
 
 ## State
 
-No database. Signing keys in Secrets, rotated. Authorization codes,
+No database. The signing key is in a Secret, read at start and shared by
+every replica — a key minted per process invalidates every token it
+signed on every rollout, and two replicas with two keys hand out tokens
+that half the fleet cannot verify, which reads as an intermittent outage
+and is really a coin toss. Its id travels inside the PEM rather than
+beside it, so a key and the id it is published under cannot separate.
+Rotation, when it comes, leaves the previous public key in the JWKS for
+one token lifetime; deleting the Secret is the deliberate "distrust
+everything we ever signed" lever. Authorization codes,
 refresh tokens with their per-identity session index, device codes and
 the last-known groups per identity in Valkey, external to the chart.
 Static clients and the policy from the deployment; dynamic registrations
