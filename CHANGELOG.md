@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.7
 
 - **The issuer holds a session with the browser, so a second console
   costs no login.** It held only a login-round-trip cookie: every console
