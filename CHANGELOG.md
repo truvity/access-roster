@@ -5,6 +5,17 @@ git history.
 
 ## Unreleased
 
+- **The issuer answers what sessions it is holding, and ends them.**
+  `SessionService` (`ListSessions`, `RevokeSessions`) over the shared
+  index, served only when `console.origin` names the one browser origin
+  allowed to call it. It can only ever **remove**: no call here grants
+  anything, which is what makes it safe to point a console at. Your own
+  sessions are yours to list and end; somebody else's need an operator;
+  listing a client names everybody on it, so that is an operator's too.
+  A request that narrows to neither an identity nor a client is refused —
+  "everything" names every person signed in. A session id alone is never
+  enough to end somebody else's, and a mismatch answers exactly as an
+  absent session does, so an id cannot be probed. (INF-682)
 - **A token names the person, not only the address.** `ResolveUser`
   carries the account's given and family names (additive fields 7 and 8),
   the issuer puts them in `userinfo` and the ID token as `name`,
