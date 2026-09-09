@@ -24,6 +24,9 @@ export type Me = {
   givenName?: string;
   familyName?: string;
   roles?: string[];
+  /** roles held over ONE directory each, keyed by its id. `roles` is the
+   *  installation-wide answer and is not a summary of these. */
+  scopes?: Record<string, string[]>;
   source?: string;
   /** the internal groups the policy puts the caller in */
   groups?: string[];

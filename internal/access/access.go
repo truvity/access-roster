@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -106,10 +107,64 @@ type Identity struct {
 	Claims map[string]any
 	// Lifetime is how long such a token would live.
 	Lifetime time.Duration
+	// Scopes are roles held over ONE workspace each, keyed by workspace
+	// id. They exist because the hub is built for several companies and
+	// the roles above are not: without them every tenant's administrator
+	// administers every other tenant's directory, including disconnecting
+	// it and reading its credential state.
+	//
+	// A scope never widens the global role and never narrows it. An
+	// identity with a global role may act on every workspace; an identity
+	// with only scopes may act on the ones it names.
+	Scopes map[string]Role
 }
 
-// Can reports whether the identity holds at least the given role.
+// Can reports whether the identity holds at least the given role over the
+// whole installation. Scopes do not count: they are about one workspace,
+// and everything that asks this is about all of them — the policy, the
+// OAuth client, connecting a directory that does not exist yet.
 func (i Identity) Can(role Role) bool { return i.Role.Implies(role) }
+
+// CanFor reports whether the identity may act on one workspace: because
+// it holds the role over the installation, or because it holds it there.
+func (i Identity) CanFor(role Role, workspace string) bool {
+	if i.Role.Implies(role) {
+		return true
+	}
+	return i.Scopes[workspace].Implies(role)
+}
+
+// CanAnywhere reports whether the identity holds the role over the
+// installation or over any single workspace. It is the gate on a page
+// that then shows only what the identity may see.
+func (i Identity) CanAnywhere(role Role) bool {
+	if i.Role.Implies(role) {
+		return true
+	}
+	for _, scoped := range i.Scopes {
+		if scoped.Implies(role) {
+			return true
+		}
+	}
+	return false
+}
+
+// Workspaces returns the workspace ids this identity may act on at the
+// given role, or nil when it may act on all of them. Nil is "everything",
+// not "nothing": a global role is not a list.
+func (i Identity) Workspaces(role Role) []string {
+	if i.Role.Implies(role) {
+		return nil
+	}
+	out := make([]string, 0, len(i.Scopes))
+	for workspace, scoped := range i.Scopes {
+		if scoped.Implies(role) {
+			out = append(out, workspace)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
 
 // Who is the identity as it should be written down: the address where
 // there is one, the subject where there is not.
@@ -187,6 +242,10 @@ func (a *Authorizer) Policy() *policy.Set { return a.set }
 // "not live" is a refusal rather than an empty role — a suspended account
 // must not reach the console at all.
 func (a *Authorizer) Authorize(ctx context.Context, p Principal) (Identity, error) {
+	// Recovery is global by construction, and stays that way: it exists
+	// for the day the directory or the policy is what is broken, and a
+	// recovery scoped to one workspace could not repair the workspace
+	// whose absence caused it.
 	if p.Source == SourceRecovery {
 		return Identity{
 			Email:   p.Email,
@@ -218,6 +277,7 @@ func (a *Authorizer) Authorize(ctx context.Context, p Principal) (Identity, erro
 		Held:       explained.Result.Held,
 		Claims:     explained.Result.Claims,
 		Lifetime:   explained.Result.Lifetime,
+		Scopes:     scopesOf(explained.Result),
 	}, nil
 }
 
@@ -330,6 +390,30 @@ func roleOf(result policy.Result) Role {
 	default:
 		return RoleNone
 	}
+}
+
+// scopesOf reads the roles held over one workspace each, from the same
+// table and by the same rule: an identity administers C0example because
+// it is in `hub-operators@C0example`.
+func scopesOf(result policy.Result) map[string]Role {
+	var out map[string]Role
+	for _, name := range result.Groups {
+		group, workspace, scoped := policy.SplitScopedGroup(name)
+		if !scoped {
+			continue
+		}
+		role := RoleViewer
+		if group == policy.GroupOperators {
+			role = RoleOperator
+		}
+		if out == nil {
+			out = map[string]Role{}
+		}
+		if role.Implies(out[workspace]) {
+			out[workspace] = role
+		}
+	}
+	return out
 }
 
 // evaluate runs the policy and applies the hold window: while the

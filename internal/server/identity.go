@@ -36,3 +36,36 @@ func requireRole(ctx context.Context, want access.Role) (access.Identity, error)
 	}
 	return id, nil
 }
+
+// requireWorkspace is requireRole for something done TO one workspace: it
+// passes for an installation-wide role, and for a role held over that
+// workspace alone.
+//
+// The refusal names the workspace. An operator of one tenant told simply
+// "this needs the operator role" would reasonably think their role had
+// been lost, rather than that they had acted on somebody else's directory.
+func requireWorkspace(ctx context.Context, want access.Role, workspace string) (access.Identity, error) {
+	id, ok := IdentityFrom(ctx)
+	if !ok {
+		return access.Identity{}, connect.NewError(connect.CodeUnauthenticated, errors.New("sign in first"))
+	}
+	if !id.CanFor(want, workspace) {
+		return access.Identity{}, connect.NewError(connect.CodePermissionDenied,
+			fmt.Errorf("this needs the %s role over %s", want, workspace))
+	}
+	return id, nil
+}
+
+// requireAnywhere is the gate on a page that lists workspaces and then
+// shows only the ones the caller may see.
+func requireAnywhere(ctx context.Context, want access.Role) (access.Identity, error) {
+	id, ok := IdentityFrom(ctx)
+	if !ok {
+		return access.Identity{}, connect.NewError(connect.CodeUnauthenticated, errors.New("sign in first"))
+	}
+	if !id.CanAnywhere(want) {
+		return access.Identity{}, connect.NewError(connect.CodePermissionDenied,
+			fmt.Errorf("this needs the %s role", want))
+	}
+	return id, nil
+}

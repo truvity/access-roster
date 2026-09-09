@@ -1296,6 +1296,10 @@ type PeopleQuery struct {
 	Text string
 	// Workspace restricts the answer to one tenant's accounts.
 	Workspace string
+	// Workspaces restricts the answer to a set of tenants. Nil is every
+	// tenant; an EMPTY, non-nil slice is none of them, which is what a
+	// caller scoped to no workspace at all must see.
+	Workspaces []string
 	// Live, when set, keeps only live (true) or suspended (false) accounts.
 	Live *bool
 }
@@ -1322,6 +1326,9 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 	var out []Person
 	for _, id := range slices.Sorted(maps.Keys(v.workspaces)) {
 		if query.Workspace != "" && id != query.Workspace {
+			continue
+		}
+		if query.Workspaces != nil && !slices.Contains(query.Workspaces, id) {
 			continue
 		}
 		ws := v.workspaces[id]

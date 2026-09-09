@@ -143,17 +143,24 @@ func (c *Console) persist(ctx context.Context) error {
 func (c *Console) ListWorkspaces(
 	ctx context.Context, _ *connect.Request[directoryrosterv1.ListWorkspacesRequest],
 ) (*connect.Response[directoryrosterv1.ListWorkspacesResponse], error) {
-	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+	id, err := requireAnywhere(ctx, access.RoleViewer)
+	if err != nil {
 		return nil, err
 	}
 	views, err := c.deps.Hub.WorkspaceViews(ctx)
 	if err != nil {
 		return nil, rpcError(err)
 	}
+	visible := id.Workspaces(access.RoleViewer)
 	out := &directoryrosterv1.ListWorkspacesResponse{
 		Workspaces: make([]*directoryrosterv1.Workspace, 0, len(views)),
 	}
 	for i := range views {
+		// A nil list is every workspace: an installation-wide role is not
+		// a list of tenants and must not be turned into one.
+		if visible != nil && !slices.Contains(visible, views[i].Workspace.ID) {
+			continue
+		}
 		out.Workspaces = append(out.Workspaces, workspaceProto(&views[i]))
 	}
 	return connect.NewResponse(out), nil
@@ -179,6 +186,9 @@ func (c *Console) Reconnect(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ReconnectRequest],
 ) (*connect.Response[directoryrosterv1.ReconnectResponse], error) {
 	id := req.Msg.GetWorkspaceId()
+	if _, err := requireWorkspace(ctx, access.RoleOperator, id); err != nil {
+		return nil, err
+	}
 	views, err := c.deps.Hub.WorkspaceViews(ctx)
 	if err != nil {
 		return nil, rpcError(err)
@@ -304,10 +314,10 @@ func (c *Console) adopt(ctx context.Context, ws hub.Workspace, b backend.Backend
 func (c *Console) SetServedDomains(
 	ctx context.Context, req *connect.Request[directoryrosterv1.SetServedDomainsRequest],
 ) (*connect.Response[directoryrosterv1.SetServedDomainsResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	id := req.Msg.GetWorkspaceId()
+	if _, err := requireWorkspace(ctx, access.RoleOperator, id); err != nil {
 		return nil, err
 	}
-	id := req.Msg.GetWorkspaceId()
 	if _, err := c.deps.Hub.SetServed(ctx, id, req.Msg.GetDomains()); err != nil {
 		return nil, rpcError(err)
 	}
@@ -330,10 +340,10 @@ func (c *Console) SetServedDomains(
 func (c *Console) SetSyncedGroups(
 	ctx context.Context, req *connect.Request[directoryrosterv1.SetSyncedGroupsRequest],
 ) (*connect.Response[directoryrosterv1.SetSyncedGroupsResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	id := req.Msg.GetWorkspaceId()
+	if _, err := requireWorkspace(ctx, access.RoleOperator, id); err != nil {
 		return nil, err
 	}
-	id := req.Msg.GetWorkspaceId()
 	if _, err := c.deps.Hub.SetSynced(ctx, id, req.Msg.GetGroups()); err != nil {
 		return nil, rpcError(err)
 	}
@@ -355,10 +365,10 @@ func (c *Console) SetSyncedGroups(
 func (c *Console) Probe(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ProbeRequest],
 ) (*connect.Response[directoryrosterv1.ProbeResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	id := req.Msg.GetWorkspaceId()
+	if _, err := requireWorkspace(ctx, access.RoleOperator, id); err != nil {
 		return nil, err
 	}
-	id := req.Msg.GetWorkspaceId()
 	healths, err := c.deps.Hub.Probe(ctx, id)
 	if err != nil {
 		return nil, rpcError(err)
@@ -387,7 +397,7 @@ func (c *Console) Probe(
 func (c *Console) Refresh(
 	ctx context.Context, req *connect.Request[directoryrosterv1.RefreshRequest],
 ) (*connect.Response[directoryrosterv1.RefreshResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	if _, err := requireWorkspace(ctx, access.RoleOperator, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
 	at, err := c.deps.Hub.Refresh(ctx, req.Msg.GetWorkspaceId())
@@ -401,7 +411,7 @@ func (c *Console) Refresh(
 func (c *Console) Disconnect(
 	ctx context.Context, req *connect.Request[directoryrosterv1.DisconnectRequest],
 ) (*connect.Response[directoryrosterv1.DisconnectResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	if _, err := requireWorkspace(ctx, access.RoleOperator, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, err
 	}
 	if err := c.deps.Hub.Disconnect(ctx, req.Msg.GetWorkspaceId()); err != nil {
@@ -671,7 +681,8 @@ func (c *Console) RemoveMembership(
 func (c *Console) ListDirectoryGroups(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ListDirectoryGroupsRequest],
 ) (*connect.Response[directoryrosterv1.ListDirectoryGroupsResponse], error) {
-	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+	id, err := requireAnywhere(ctx, access.RoleViewer)
+	if err != nil {
 		return nil, err
 	}
 	groups, served, err := c.deps.Hub.ListGroups(ctx, req.Msg.GetDomain(), nil)
@@ -682,10 +693,14 @@ func (c *Console) ListDirectoryGroups(
 	for _, s := range served {
 		workspaceOf[s.Name] = s.Workspace
 	}
+	visible := id.Workspaces(access.RoleViewer)
 	out := &directoryrosterv1.ListDirectoryGroupsResponse{
 		Groups: make([]*directoryrosterv1.DirectoryGroupSummary, 0, len(groups)),
 	}
 	for _, g := range groups {
+		if visible != nil && !slices.Contains(visible, workspaceOf[g.Domain]) {
+			continue
+		}
 		out.Groups = append(out.Groups, &directoryrosterv1.DirectoryGroupSummary{
 			Email:       g.Email,
 			Domain:      g.Domain,
@@ -701,7 +716,8 @@ func (c *Console) ListDirectoryGroups(
 func (c *Console) ListHolders(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ListHoldersRequest],
 ) (*connect.Response[directoryrosterv1.ListHoldersResponse], error) {
-	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+	caller, err := requireAnywhere(ctx, access.RoleViewer)
+	if err != nil {
 		return nil, err
 	}
 	group, client := req.Msg.GetGroup(), req.Msg.GetClient()
@@ -717,7 +733,8 @@ func (c *Console) ListHolders(
 	// Every account is examined, because holding a group is a property of
 	// the whole policy rather than of one table; the limit bounds what is
 	// returned, not what is considered.
-	people, _, err := c.deps.Hub.People(ctx, hub.PeopleQuery{}, maxExamined)
+	people, _, err := c.deps.Hub.People(ctx,
+		hub.PeopleQuery{Workspaces: caller.Workspaces(access.RoleViewer)}, maxExamined)
 	if err != nil {
 		return nil, rpcError(err)
 	}
@@ -742,14 +759,20 @@ func (c *Console) ListHolders(
 func (c *Console) SearchPeople(
 	ctx context.Context, req *connect.Request[directoryrosterv1.SearchPeopleRequest],
 ) (*connect.Response[directoryrosterv1.SearchPeopleResponse], error) {
-	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+	id, err := requireAnywhere(ctx, access.RoleViewer)
+	if err != nil {
 		return nil, err
 	}
 	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 20
 	}
-	query := hub.PeopleQuery{Text: req.Msg.GetQuery(), Workspace: req.Msg.GetWorkspaceId()}
+	query := hub.PeopleQuery{
+		Text:      req.Msg.GetQuery(),
+		Workspace: req.Msg.GetWorkspaceId(),
+		// Nil for an installation-wide role, so it stays every tenant.
+		Workspaces: id.Workspaces(access.RoleViewer),
+	}
 	switch req.Msg.GetAccount() {
 	case directoryrosterv1.AccountFilter_ACCOUNT_FILTER_LIVE:
 		live := true
