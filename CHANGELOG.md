@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.4
 
 - **The issuer answers what sessions it is holding, and ends them.**
   `SessionService` (`ListSessions`, `RevokeSessions`) over the shared
