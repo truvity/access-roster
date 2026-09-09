@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 
 	"golang.org/x/oauth2"
@@ -184,4 +187,64 @@ func consentingAccount(token *oauth2.Token) string {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(claims.Email))
+}
+
+// VerifyClient reports whether this OAuth client's id and secret are the
+// ones Google holds, without needing a person.
+//
+// It exists because the alternative is finding out after an administrator
+// has already consented: a wrong secret fails at the exchange, which is
+// the step AFTER the consent screen, so a real Super Admin has granted a
+// real credential to an installation that cannot collect it.
+//
+// The method is the one OAuth actually offers. There is no "check my
+// client" endpoint, so this presents a code that cannot be valid and
+// reads which complaint comes back: `invalid_client` is about the client,
+// and anything else — `invalid_grant`, for the code — means the client
+// itself was accepted. Nothing is minted either way.
+//
+// Everything inconclusive passes. A refusal here stops an operator from
+// connecting, so it is made only when Google has named the client as the
+// problem; a timeout, a proxy, an unexpected shape are all "proceed".
+func VerifyClient(ctx context.Context, client OAuthClient) error {
+	if client.ID == "" || client.Secret == "" {
+		return errors.New("google: the OAuth client id and secret are both required")
+	}
+	form := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {"access-roster-client-check"},
+		"client_id":     {client.ID},
+		"client_secret": {client.Secret},
+		"redirect_uri":  {client.ConsentRedirect()},
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		googleauth.Endpoint.TokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil //nolint:nilerr // inconclusive is not a refusal
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil //nolint:nilerr // inconclusive is not a refusal
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	var body struct {
+		Error       string `json:"error"`
+		Description string `json:"error_description"`
+	}
+	if err = json.NewDecoder(io.LimitReader(response.Body, 1<<16)).Decode(&body); err != nil {
+		return nil //nolint:nilerr // inconclusive is not a refusal
+	}
+	if body.Error != "invalid_client" {
+		return nil
+	}
+	detail := body.Description
+	if detail == "" {
+		detail = "Google did not recognise this client id and secret"
+	}
+	return fmt.Errorf("google: the OAuth client was refused (%s). "+
+		"Check the client id and secret against the Google Cloud project that owns them, "+
+		"and that the client is a Web application with %s among its authorised redirect URIs",
+		detail, client.ConsentRedirect())
 }

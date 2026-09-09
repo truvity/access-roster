@@ -461,6 +461,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		CacheBackend: cacheName(cfg),
 		SecureCookie: cfg.secureCookies,
 		PublicURL:    cfg.publicURL,
+		IssuerURL:    cfg.forwardedIssuer,
+		SignIn:       cfg.loginDirectory,
 	})
 	if err != nil {
 		return nil, err

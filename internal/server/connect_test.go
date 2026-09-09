@@ -7,11 +7,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"github.com/truvity/access-roster/backend"
+	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/hub"
 )
@@ -171,5 +175,90 @@ func TestTheConsentPageIsNeverA5xx(t *testing.T) {
 		if body := recorder.Body.String(); !strings.Contains(body, "Back to the console") {
 			t.Errorf("%s left the operator with no way on:\n%s", tc.name, body)
 		}
+	}
+}
+
+// stubVerifier is a connector whose client check answers as told.
+type stubVerifier struct {
+	stubConsent
+	refuse error
+}
+
+func (s stubVerifier) VerifyClient(context.Context) error { return s.refuse }
+
+// The redirect URIs an operator must register are read from where each
+// flow actually LANDS.
+//
+// With one OAuth client shared by the hub and the issuer — one secret to
+// rotate rather than two — the consent comes back to this console and the
+// sign-in comes back to the ISSUER. Showing this console's own host for
+// both is how an operator registers a URI nothing ever returns to, and
+// hears about it from Google, much later, in Google's words.
+func TestTheSetupNamesWhereEachFlowActuallyLands(t *testing.T) {
+	t.Parallel()
+
+	guidance := func(deps ConsoleDeps) []string {
+		t.Helper()
+		console := &Console{deps: deps, connectors: map[string]Connector{"google": stubConsent{}}}
+		for _, setup := range console.setupGuidance() {
+			if setup.GetBackend() == directoryrosterv1.Backend_BACKEND_GOOGLE {
+				return setup.GetRedirectUris()
+			}
+		}
+		return nil
+	}
+
+	// Behind an issuer: the sign-in redirect is the issuer's.
+	got := guidance(ConsoleDeps{PublicURL: "https://dir.example", IssuerURL: "https://iss.example/"})
+	want := []string{"https://dir.example/connect/google/callback", "https://iss.example/login/google/callback"}
+	if !slices.Equal(got, want) {
+		t.Errorf("behind an issuer: %v, want %v", got, want)
+	}
+
+	// Standalone, signing people in itself: both are this console's.
+	got = guidance(ConsoleDeps{PublicURL: "https://dir.example", SignIn: true})
+	want = []string{"https://dir.example/connect/google/callback", "https://dir.example/login/google/callback"}
+	if !slices.Equal(got, want) {
+		t.Errorf("standalone: %v, want %v", got, want)
+	}
+
+	// Nobody signs in with this backend: only the consent redirect, so an
+	// operator is not told to register one nothing returns to.
+	got = guidance(ConsoleDeps{PublicURL: "https://dir.example"})
+	want = []string{"https://dir.example/connect/google/callback"}
+	if !slices.Equal(got, want) {
+		t.Errorf("no sign-in anywhere: %v, want %v", got, want)
+	}
+}
+
+// A consent is a real administrator's real grant. Spending one on a
+// client the provider will refuse costs that person a second trip, so the
+// check happens before they are sent — and only ever refuses when the
+// provider named the client, never because an answer was slow.
+func TestAConsentIsNotStartedWithARefusedClient(t *testing.T) {
+	t.Parallel()
+	ctx := WithIdentity(context.Background(), access.Identity{
+		Email: "ada@north.example", Subject: "ada@north.example", Role: access.RoleOperator,
+	})
+
+	begin := func(conn Connector) error {
+		t.Helper()
+		console := &Console{
+			deps:       ConsoleDeps{State: access.NewStateCodec([]byte("k"), time.Minute)},
+			connectors: map[string]Connector{"google": conn},
+		}
+		_, _, err := console.beginFlow(ctx, directoryrosterv1.Backend_BACKEND_GOOGLE, "")
+		return err
+	}
+
+	if err := begin(stubVerifier{refuse: errors.New("the OAuth client was refused")}); err == nil {
+		t.Error("a consent was started with a client the provider refuses")
+	} else if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("refusal code = %v, want FailedPrecondition", connect.CodeOf(err))
+	}
+	// Inconclusive proceeds: a refusal here stops an operator connecting,
+	// so it is made only when the provider named the client.
+	if err := begin(stubVerifier{}); err != nil {
+		t.Errorf("a client the check could not fault was refused anyway: %v", err)
 	}
 }
