@@ -3,6 +3,7 @@ package issuer
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -26,6 +27,13 @@ import (
 // the issuer's own host and the hub's code learns nothing about it.
 type SessionsService struct {
 	sessions *Sessions
+	// sso is the browser-session store, for two things: authorizing a
+	// same-origin call from the account page by cookie, and ending the
+	// sign-in when a revoke means "everywhere".
+	sso *SSO
+	// groups is what the policy puts an identity in. A bearer carries its
+	// own; a cookie says only who, so this answers the rest.
+	groups func(ctx context.Context, identity string) ([]string, error)
 	// verify turns the caller's own bearer into who they are. It is this
 	// issuer's token, verified against this issuer's key: the one caller
 	// whose identity it can establish without asking anyone.
@@ -38,6 +46,25 @@ var _ accessissuerv1connect.SessionServiceHandler = (*SessionsService)(nil)
 func NewSessionsService(iss *Issuer, verifier *op.AccessTokenVerifier) *SessionsService {
 	return &SessionsService{
 		sessions: iss.Sessions(),
+		sso:      iss.SSO(),
+		groups: func(ctx context.Context, identity string) ([]string, error) {
+			// The same evaluation a token gets, so a cookie and a bearer
+			// cannot come to mean different things. A ServiceAccount
+			// subject is a recovery sign-in: no directory to ask, and the
+			// policy's matchers decide it exactly as for a workload.
+			if namespace, name, ok := serviceAccountSubject(identity); ok {
+				return iss.Policy().Evaluate(policy.Input{
+					ServiceAccount: &policy.ServiceAccountRef{Namespace: namespace, Name: name},
+				}).Groups, nil
+			}
+
+			resolved, err := iss.resolver.Resolve(ctx, identity)
+			if err != nil {
+				return nil, err
+			}
+
+			return iss.Policy().Evaluate(resolved.Input(identity)).Groups, nil
+		},
 		verify: func(ctx context.Context, bearer string) (string, []string, error) {
 			claims, err := op.VerifyAccessToken[*oidc.AccessTokenClaims](ctx, bearer, verifier)
 			if err != nil {
@@ -88,12 +115,26 @@ func (c caller) may(identity string) bool {
 	return c.operator || strings.EqualFold(c.identity, identity)
 }
 
-// who verifies the caller's bearer.
-func (s *SessionsService) who(ctx context.Context, header string) (caller, error) {
-	bearer := strings.TrimSpace(header)
+// who establishes the caller, from either of the two ways a browser or a
+// console can prove itself here.
+//
+// The cookie is first because it is the primary path: the account page is
+// served by this issuer at this host, so the browser already holds this
+// issuer's session and needs no bearer, no CORS and no token in
+// JavaScript. The bearer is the cross-origin path, for a console that
+// weaves the operator's view into its own pages.
+func (s *SessionsService) who(ctx context.Context, header http.Header) (caller, error) {
+	if id := cookieIn(header, SSOCookieName); id != "" && s.sso != nil {
+		session, live, err := s.sso.Get(ctx, id)
+		if err == nil && live {
+			return s.hold(ctx, session.Identity)
+		}
+	}
+
+	bearer := strings.TrimSpace(header.Get("Authorization"))
 	if len(bearer) < 7 || !strings.EqualFold(bearer[:7], "bearer ") {
 		return caller{}, connect.NewError(connect.CodeUnauthenticated,
-			errors.New("this service needs a token from this issuer"))
+			errors.New("this service needs a token from this issuer, or its session"))
 	}
 
 	identity, groups, err := s.verify(ctx, strings.TrimSpace(bearer[7:]))
@@ -105,6 +146,26 @@ func (s *SessionsService) who(ctx context.Context, header string) (caller, error
 			errors.New("that token was not accepted"))
 	}
 
+	return withGroups(identity, groups), nil
+}
+
+// hold answers who a cookie's holder is. A browser session carries no
+// groups of its own -- it says who, and the policy says what -- so the
+// groups are evaluated the same way a token's would be.
+func (s *SessionsService) hold(ctx context.Context, identity string) (caller, error) {
+	groups, err := s.groups(ctx, identity)
+	if err != nil {
+		// Whoever they are, they are themselves: a directory that cannot
+		// be reached must not turn a person's own account page into an
+		// error, and it grants nothing extra either way.
+		return caller{identity: identity}, nil
+	}
+
+	return withGroups(identity, groups), nil
+}
+
+// withGroups is the one place a group list becomes a decision.
+func withGroups(identity string, groups []string) caller {
 	held := caller{identity: identity}
 
 	for _, group := range groups {
@@ -115,14 +176,25 @@ func (s *SessionsService) who(ctx context.Context, header string) (caller, error
 		}
 	}
 
-	return held, nil
+	return held
+}
+
+// cookieIn reads one cookie out of a header, which is all a Connect
+// request exposes.
+func cookieIn(header http.Header, name string) string {
+	cookie, err := (&http.Request{Header: header}).Cookie(name)
+	if err != nil {
+		return ""
+	}
+
+	return cookie.Value
 }
 
 // ListSessions implements the contract.
 func (s *SessionsService) ListSessions(
 	ctx context.Context, req *connect.Request[accessissuerv1.ListSessionsRequest],
 ) (*connect.Response[accessissuerv1.ListSessionsResponse], error) {
-	who, err := s.who(ctx, req.Header().Get("Authorization"))
+	who, err := s.who(ctx, req.Header())
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +243,7 @@ func (s *SessionsService) ListSessions(
 func (s *SessionsService) RevokeSessions(
 	ctx context.Context, req *connect.Request[accessissuerv1.RevokeSessionsRequest],
 ) (*connect.Response[accessissuerv1.RevokeSessionsResponse], error) {
-	who, err := s.who(ctx, req.Header().Get("Authorization"))
+	who, err := s.who(ctx, req.Header())
 	if err != nil {
 		return nil, err
 	}
@@ -210,12 +282,22 @@ func (s *SessionsService) RevokeSessions(
 		return connect.NewResponse(&accessissuerv1.RevokeSessionsResponse{Ended: boolToCount(gone)}), nil
 	}
 
-	ended, err := s.sessions.Revoke(ctx, Query{
-		Identity: identity,
-		ClientID: strings.TrimSpace(req.Msg.GetClientId()),
-	})
+	clientID := strings.TrimSpace(req.Msg.GetClientId())
+
+	ended, err := s.sessions.Revoke(ctx, Query{Identity: identity, ClientID: clientID})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Naming no client means everywhere, and everywhere includes the
+	// sign-in itself. Ending only the running sessions would leave the
+	// browser able to open new ones with no password, which is the
+	// half-sign-out that looks exactly like a whole one. Naming a client
+	// is narrower on purpose and leaves the sign-in alone.
+	if clientID == "" && s.sso != nil {
+		if _, err = s.sso.EndFor(ctx, identity); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
 	}
 
 	return connect.NewResponse(&accessissuerv1.RevokeSessionsResponse{Ended: int32(ended)}), nil

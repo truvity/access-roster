@@ -105,6 +105,9 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	if signIn.Return == nil {
 		signIn.Return = op.AuthCallbackURL(provider)
 	}
+	if signIn.SSO == nil {
+		signIn.SSO = iss.SSO()
+	}
 	if completer, ok := storage.(Completer); ok && signIn.Storage == nil {
 		signIn.Storage = completer
 	}
@@ -124,8 +127,41 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
-	mux.Handle("/", truthfulDiscovery(provider))
+	mux.Handle("/", endsTheBrowserSession(signIn, truthfulDiscovery(provider)))
+
 	return mux, nil
+}
+
+// endsTheBrowserSession makes RP-initiated logout end the sign-in, not
+// just one application's session.
+//
+// The library serves `/end_session` and ends what it knows about: the
+// client's tokens. It knows nothing of the browser session this issuer
+// holds, and leaving that behind is the half-sign-out that looks exactly
+// like a whole one -- the person clicks "sign out", lands on the signed-out
+// page, opens another console and is admitted with no password, because
+// the issuer still recognises the browser. So the cookie is cleared and
+// the record deleted on the way through, before the library writes its
+// redirect.
+func endsTheBrowserSession(signIn SignInDeps, next http.Handler) http.Handler {
+	if signIn.SSO == nil {
+		return next
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/end_session" {
+			if id := SSOFromRequest(r); id != "" {
+				if err := signIn.SSO.End(r.Context(), id); err != nil && signIn.Log != nil {
+					signIn.Log.WarnContext(r.Context(), "browser session could not be ended",
+						"error", err)
+				}
+
+				http.SetCookie(w, signIn.SSO.Cookie("", signIn.Secure))
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // discoveryPath is where a relying party looks first.

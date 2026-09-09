@@ -246,7 +246,7 @@ func TestRevokeForgetsTheHeldAnswer(t *testing.T) {
 	if _, err := iss.Exchange(ctx, ada, "aws:1111:power"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if _, err := iss.Sessions().Record(ctx, "ada@north.example", "argocd", issuer.HowCode, "token-1", nil); err != nil {
+	if _, err := iss.Sessions().Record(ctx, issuer.Opened{Identity: "ada@north.example", ClientID: "argocd", How: issuer.HowCode, Token: "token-1"}); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
@@ -280,7 +280,7 @@ func TestSessions(t *testing.T) {
 	record := func(identity, client string, how issuer.How, token string) issuer.Session {
 		t.Helper()
 
-		session, err := sessions.Record(ctx, identity, client, how, token, nil)
+		session, err := sessions.Record(ctx, issuer.Opened{Identity: identity, ClientID: client, How: how, Token: token})
 		if err != nil {
 			t.Fatalf("record %s at %s: %v", identity, client, err)
 		}
@@ -371,7 +371,7 @@ func TestSessionsAreSharedBetweenReplicas(t *testing.T) {
 	replicaA := issuer.NewSessions(shared, time.Hour)
 	replicaB := issuer.NewSessions(shared, time.Hour)
 
-	recorded, err := replicaA.Record(ctx, "ada@north.example", "console", issuer.HowCode, "t-1", nil)
+	recorded, err := replicaA.Record(ctx, issuer.Opened{Identity: "ada@north.example", ClientID: "console", How: issuer.HowCode, Token: "t-1"})
 	if err != nil {
 		t.Fatalf("record: %v", err)
 	}

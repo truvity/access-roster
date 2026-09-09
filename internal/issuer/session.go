@@ -46,7 +46,17 @@ type Session struct {
 	// recorded before this field existed has none, and a refresh on one
 	// of those is answered with the scopes it asks for or with none —
 	// which is what the code did for every session until now.
-	Scopes        []string  `json:"scopes,omitempty"`
+	Scopes []string `json:"scopes,omitempty"`
+	// SSO is the browser session this one was opened from, empty for a
+	// flow with no browser (an exchange, a device code redeemed by a
+	// CLI). It is what makes *sign out everywhere* one operation on the
+	// parent rather than a loop the console has to get right.
+	SSO string `json:"sso,omitempty"`
+	// AuthTime is when the person authenticated, carried down from the
+	// SSO session so that a refresh an hour from now mints the same
+	// `auth_time` and a fresh `iat` — without a second store read on the
+	// hottest path.
+	AuthTime      time.Time `json:"auth_time,omitempty"`
 	IssuedAt      time.Time `json:"issued_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
 	LastRefreshed time.Time `json:"last_refreshed,omitempty"`
@@ -114,6 +124,25 @@ func sessionTokenKey(token string) string {
 // what expire.
 const sessionAllKey = "issuer:sessions"
 
+// Opened is one session about to be recorded. It is a struct rather than
+// a row of arguments because the last three are easy to swap by mistake
+// and impossible to notice afterwards: a session filed under the wrong
+// client is one an operator cannot find and cannot end.
+type Opened struct {
+	Identity string
+	ClientID string
+	How      How
+	// Token is the refresh token; it is hashed into its key, never stored.
+	Token string
+	// Scopes are what was consented to.
+	Scopes []string
+	// SSO is the browser session this was opened from, if any.
+	SSO string
+	// AuthTime is when the person authenticated; zero for a flow where
+	// nobody did.
+	AuthTime time.Time
+}
+
 // Record files a newly issued refresh token and returns the session it
 // created.
 //
@@ -121,16 +150,16 @@ const sessionAllKey = "issuer:sessions"
 // the only place they survive: a refresh arrives an hour later carrying
 // a token and nothing else, and what a relying party may ask for then is
 // what it was granted at sign-in, not what it asks for now.
-func (s *Sessions) Record(
-	ctx context.Context, identity, clientID string, how How, token string, scopes []string,
-) (Session, error) {
+func (s *Sessions) Record(ctx context.Context, o Opened) (Session, error) {
 	now := s.now()
 	session := Session{
 		ID:        s.newID(),
-		Identity:  strings.ToLower(identity),
-		ClientID:  clientID,
-		How:       how,
-		Scopes:    scopes,
+		Identity:  strings.ToLower(o.Identity),
+		ClientID:  o.ClientID,
+		How:       o.How,
+		Scopes:    o.Scopes,
+		SSO:       o.SSO,
+		AuthTime:  o.AuthTime,
 		IssuedAt:  now,
 		ExpiresAt: now.Add(s.lifetime),
 	}
@@ -139,7 +168,7 @@ func (s *Sessions) Record(
 		return Session{}, err
 	}
 
-	if err := s.state.Set(ctx, sessionTokenKey(token), []byte(session.ID), s.lifetime); err != nil {
+	if err := s.state.Set(ctx, sessionTokenKey(o.Token), []byte(session.ID), s.lifetime); err != nil {
 		return Session{}, err
 	}
 

@@ -152,7 +152,7 @@ kubelogin, accessctl, and every proxy actually hold. The hub's own cookie
 exists only in standalone day-one mode and lists nothing.
 
 **The SSO session is first-class state the issuer holds, and it is the
-keystone** (to build: INF-685). A cookie at the issuer's host, HttpOnly,
+keystone.** A cookie at the issuer's host, HttpOnly,
 backed by a record in the shared store — identity, `auth_time`, how they
 authenticated. `/authorize` completes **silently** when it is live, so
 signing in at one console and opening a second is a redirect with no
@@ -212,10 +212,11 @@ CORS.
 So:
 
 - **Self-service** — *your sessions*, *sign out everywhere* — is an
-  **account page the issuer serves at its own host**. The directory
-  console deep-links to it. It is not one of the three pre-session pages
-  below: it runs *with* a session, and it is the one issuer-served page
-  that may use the console's own UI vocabulary.
+  **account page the issuer serves at its own host**, `/account`. The
+  directory console deep-links to it. It is not one of the three
+  pre-session pages below: it runs *with* a session. It needs no
+  JavaScript — its buttons are form posts, and the session cookie's
+  `SameSite=Lax` is what makes them safe without a token of their own.
 - **The operator's cross-user view** — revoke another identity's session,
   see who is on a client — may live on that same issuer page, gated on
   the operator group, **or** be woven into the directory console's person

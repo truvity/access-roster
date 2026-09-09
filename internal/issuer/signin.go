@@ -33,10 +33,35 @@ type SignIn interface {
 	Identify(ctx context.Context, code string) (string, error)
 }
 
+// Authenticated is who a sign-in established, and when.
+//
+// The "when" is separate from "now" on purpose: a request completed
+// silently against a browser session established this morning
+// authenticated this morning, and `auth_time` has to say so.
+type Authenticated struct {
+	Subject  string
+	AuthTime time.Time
+	// SSO is the browser session it was established against or by.
+	SSO string
+}
+
+// Pending is what an authorization request asks of a sign-in, expressed
+// so that the sign-in pages can answer it without knowing the protocol.
+type Pending struct {
+	// ForcesLogin is `prompt=login` or `prompt=select_account`: a live
+	// browser session is not enough, authenticate again.
+	ForcesLogin bool
+	// ForbidsUI is `prompt=none`: complete silently or not at all.
+	ForbidsUI bool
+	// MaxAge, when set, is how old the authentication may be.
+	MaxAge time.Duration
+}
+
 // Completer is the part of the storage a sign-in finishes against: an
 // authorization request waiting for somebody to be established.
 type Completer interface {
-	Complete(id, subject string) error
+	Complete(id string, who Authenticated) error
+	Pending(id string) (Pending, error)
 }
 
 // SignInDeps is what the sign-in routes need.
@@ -57,6 +82,11 @@ type SignInDeps struct {
 	// State signs the flow's state, which carries the authorization
 	// request the browser is in the middle of.
 	State *access.StateCodec
+	// SSO is the browser's session with this issuer: what makes a second
+	// console cost no login, and what `end_session` ends. Nil serves no
+	// single sign-on at all — every authorization request then goes to a
+	// provider, which is what this issuer did before it had one.
+	SSO *SSO
 	// ConsoleOrigin is the one origin allowed to call SessionService from
 	// a browser. Empty serves it not at all, which is right for an
 	// installation with no console: an endpoint nobody calls is surface
@@ -92,6 +122,15 @@ func SignInRoutes(mux *http.ServeMux, deps SignInDeps) {
 	mux.HandleFunc("GET /login/{provider}/callback", s.callback)
 	mux.HandleFunc("POST /login/recovery", s.recover)
 	mux.HandleFunc("GET /signed-out", s.signedOut)
+
+	// The account page. Unlike the three above it runs WITH a session,
+	// which is what lets it be same-origin with the session service and
+	// need no bearer, no CORS and no console.
+	if deps.SSO != nil {
+		mux.HandleFunc("GET /account", s.account)
+		mux.HandleFunc("POST /account/revoke", s.accountRevoke)
+		mux.HandleFunc("POST /account/sign-out", s.accountSignOut)
+	}
 }
 
 type signIn struct {
@@ -108,6 +147,29 @@ func (s *signIn) chooser(w http.ResponseWriter, r *http.Request) {
 		s.page(w, "Sign in", `<p>This page is reached from an application asking you to sign in.</p>`)
 		return
 	}
+	// A live browser session is what makes the second console cost no
+	// login, so it is tried before anything is rendered: the page below
+	// is the fallback, not the normal path.
+	pending, err := s.deps.Storage.Pending(request)
+	if err != nil {
+		http.Error(w, "this sign-in is not valid any more; start again", http.StatusBadRequest)
+		return
+	}
+
+	if s.silent(w, r, request, pending) {
+		return
+	}
+
+	if pending.ForbidsUI {
+		// `prompt=none` asked for no interface and there was no session to
+		// answer from. Saying so beats showing the very page it asked us
+		// not to show. (Conformance wants this as a `login_required`
+		// redirect to the client — INF-683.)
+		s.page(w, "Sign-in required", `<p>This application asked to continue without prompting, and there is no active sign-in here to continue from.</p>
+	<p class="note">Open the application again, or sign in first.</p>`)
+		return
+	}
+
 	kinds := slices.Sorted(maps.Keys(s.providers))
 	recovery := s.recoveryForm(request)
 
@@ -238,7 +300,7 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = s.deps.Storage.Complete(request, subject); err != nil {
+	if err = s.deps.Storage.Complete(request, s.established(w, r, subject, "recovery")); err != nil {
 		http.Error(w, "that sign-in is no longer waiting to be completed", http.StatusBadRequest)
 		return
 	}
@@ -299,7 +361,7 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = s.deps.Storage.Complete(request, email); err != nil {
+	if err = s.deps.Storage.Complete(request, s.established(w, r, email, provider.Kind())); err != nil {
 		http.Error(w, "that sign-in is no longer waiting to be completed", http.StatusBadRequest)
 		return
 	}
@@ -312,9 +374,9 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 // not happen, because "signed out" on a page that ended one session and
 // left three others running is the kind of half-truth people plan around.
 func (s *signIn) signedOut(w http.ResponseWriter, _ *http.Request) {
-	s.page(w, "Signed out", `<p>This application has signed you out.</p>
-	<p class="note">Other applications you signed into keep their own sessions until they expire.
-	To end every one of them, sign out everywhere from your own page in the directory console.</p>`)
+	s.page(w, "Signed out", `<p>This application has signed you out, and ended your sign-in here.</p>
+	<p class="note">Other applications you opened keep their own sessions until they next refresh.
+	To end every one of them now, use <a href="/account">your account page</a>.</p>`)
 }
 
 // providerName is what a person calls the directory, rather than what the
@@ -355,3 +417,215 @@ const pageHTML = `<!doctype html><meta charset="utf-8"><title>%s</title>
  summary{cursor:pointer}
 </style>
 <main><h1>%s</h1>%s</main>`
+
+// silent completes the authorization request from a browser session that
+// already exists, and reports whether it did.
+//
+// This is single sign-on, and it is one function: the second console's
+// request completes here instead of making a round trip to the corporate
+// directory. Everything it will not do is as important as what it will.
+func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, pending Pending) bool {
+	if s.deps.SSO == nil || pending.ForcesLogin {
+		return false
+	}
+
+	session, live, err := s.deps.SSO.Get(r.Context(), SSOFromRequest(r))
+	if err != nil || !live || !session.Fresh(time.Now(), pending.MaxAge) {
+		return false
+	}
+
+	// The browser proved who it is; the DIRECTORY still decides whether
+	// that account is live. Without this a suspended person would keep
+	// signing in silently for as long as their browser session lasted --
+	// the one failure single sign-on can introduce that the login path
+	// does not have, and the one an identity service least wants. A
+	// ServiceAccount subject (a recovery sign-in) has no directory to ask:
+	// the policy's matchers decide it at token time, exactly as they do
+	// for a workload.
+	if strings.Contains(session.Identity, "@") {
+		if _, err = s.deps.Issuer.resolver.Resolve(r.Context(), session.Identity); err != nil {
+			s.deps.Log.WarnContext(r.Context(), "browser session is no longer admitted",
+				"identity", logsafe.Value(session.Identity), "error", logsafe.Error(err))
+			_ = s.deps.SSO.End(r.Context(), session.ID)
+			http.SetCookie(w, s.deps.SSO.Cookie("", s.deps.Secure))
+
+			return false
+		}
+	}
+
+	if err = s.deps.Storage.Complete(request, Authenticated{
+		Subject:  session.Identity,
+		AuthTime: session.AuthTime,
+		SSO:      session.ID,
+	}); err != nil {
+		return false
+	}
+
+	s.deps.Log.InfoContext(r.Context(), "signed in from an existing browser session",
+		"identity", logsafe.Value(session.Identity), "how", session.How)
+	http.Redirect(w, r, s.deps.Return(r.Context(), request), http.StatusFound)
+
+	return true
+}
+
+// established records a fresh authentication as a browser session and
+// hands the browser its cookie.
+//
+// A deployment with no SSO store still signs people in; it just asks the
+// provider every time, which is what this issuer did before it had one.
+func (s *signIn) established(w http.ResponseWriter, r *http.Request, identity, how string) Authenticated {
+	who := Authenticated{Subject: identity, AuthTime: time.Now()}
+	if s.deps.SSO == nil {
+		return who
+	}
+
+	session, err := s.deps.SSO.Begin(r.Context(), identity, how)
+	if err != nil {
+		// A sign-in that worked must not fail because the browser session
+		// could not be filed. The person is authenticated either way; the
+		// only cost is that the next console asks again.
+		s.deps.Log.WarnContext(r.Context(), "browser session could not be recorded",
+			"identity", logsafe.Value(identity), "error", logsafe.Error(err))
+
+		return who
+	}
+
+	http.SetCookie(w, s.deps.SSO.Cookie(session.ID, s.deps.Secure))
+	who.AuthTime, who.SSO = session.AuthTime, session.ID
+
+	return who
+}
+
+// account is the person's own page: who they are here, what they have
+// open, and the one button that ends all of it.
+//
+// It is served BY the issuer, at the issuer's host, which is the whole
+// point: the browser already holds this issuer's session cookie here, so
+// the page needs no bearer, no CORS and no console. Session management
+// belongs to the thing that holds the sessions.
+func (s *signIn) account(w http.ResponseWriter, r *http.Request) {
+	session, live, err := s.deps.SSO.Get(r.Context(), SSOFromRequest(r))
+	if err != nil || !live {
+		s.page(w, "Not signed in", `<p>You are not signed in to this issuer in this browser.</p>
+	<p class="note">Open one of your applications and sign in. This page will then show everything you have open.</p>`)
+
+		return
+	}
+
+	open, err := s.deps.Issuer.Sessions().List(r.Context(), Query{Identity: session.Identity})
+	if err != nil {
+		s.deps.Log.ErrorContext(r.Context(), "sessions could not be listed",
+			"identity", logsafe.Value(session.Identity), "error", logsafe.Error(err))
+		s.page(w, "Your account", `<p>Your sessions could not be read just now.</p>`)
+
+		return
+	}
+
+	slices.SortFunc(open, func(a, b Session) int { return b.IssuedAt.Compare(a.IssuedAt) })
+
+	var body strings.Builder
+
+	fmt.Fprintf(&body, `<p>Signed in as <strong>%s</strong>, with %s, at %s.</p>`,
+		html.EscapeString(session.Identity), html.EscapeString(providerName(session.How)),
+		html.EscapeString(when(session.AuthTime)))
+
+	if len(open) == 0 {
+		body.WriteString(`<p class="note">No applications are holding a session for you.</p>`)
+	} else {
+		body.WriteString(`<table><tr><th>Application</th><th>Opened</th><th>How</th><th>Last used</th><th></th></tr>`)
+
+		for i := range open {
+			one := &open[i]
+
+			used := when(one.LastRefreshed)
+			if one.LastRefreshed.IsZero() {
+				used = "not since it opened"
+			}
+
+			fmt.Fprintf(&body, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td>`+
+				`<td><form method="post" action="/account/revoke">`+
+				`<input type="hidden" name="session" value="%s">`+
+				`<button type="submit">Revoke</button></form></td></tr>`,
+				html.EscapeString(one.ClientID), html.EscapeString(when(one.IssuedAt)),
+				html.EscapeString(string(one.How)), html.EscapeString(used),
+				html.EscapeString(one.ID))
+		}
+
+		body.WriteString(`</table>`)
+	}
+
+	// Both halves, and the page says so: revoking what is running is not
+	// the same as ending the sign-in that would silently start more.
+	body.WriteString(`<form method="post" action="/account/sign-out">
+	<p><button type="submit">Sign out everywhere</button></p>
+	</form>
+	<p class="note">Signing out everywhere ends every session above and your sign-in here, so the next application asks who you are again.</p>`)
+
+	s.page(w, "Your account", body.String())
+}
+
+// accountRevoke ends one of your own sessions.
+//
+// There is no token in this form and none is needed: the session cookie
+// is SameSite=Lax, so a cross-site POST does not carry it, and a request
+// without it is refused below.
+func (s *signIn) accountRevoke(w http.ResponseWriter, r *http.Request) {
+	session, live, err := s.deps.SSO.Get(r.Context(), SSOFromRequest(r))
+	if err != nil || !live {
+		http.Error(w, "you are not signed in here", http.StatusForbidden)
+		return
+	}
+
+	if err = r.ParseForm(); err != nil {
+		http.Error(w, "that form could not be read", http.StatusBadRequest)
+		return
+	}
+
+	// Your own, and only your own. The id is checked against the identity
+	// that asked, and somebody else's answers exactly as an absent one
+	// does -- so an id cannot be probed for whose it is.
+	if one, found, err := s.deps.Issuer.Sessions().ByID(r.Context(), r.PostFormValue("session")); err == nil &&
+		found && strings.EqualFold(one.Identity, session.Identity) {
+		if _, err = s.deps.Issuer.Sessions().RevokeID(r.Context(), one.ID); err != nil {
+			s.deps.Log.ErrorContext(r.Context(), "session could not be revoked", "error", logsafe.Error(err))
+		}
+	}
+
+	http.Redirect(w, r, "/account", http.StatusSeeOther)
+}
+
+// accountSignOut ends everything: the sessions already running, and the
+// browser session that would silently open more.
+func (s *signIn) accountSignOut(w http.ResponseWriter, r *http.Request) {
+	session, live, err := s.deps.SSO.Get(r.Context(), SSOFromRequest(r))
+	if err != nil || !live {
+		http.Error(w, "you are not signed in here", http.StatusForbidden)
+		return
+	}
+
+	ended, err := s.deps.Issuer.Sessions().Revoke(r.Context(), Query{Identity: session.Identity})
+	if err != nil {
+		s.deps.Log.ErrorContext(r.Context(), "sessions could not be revoked",
+			"identity", logsafe.Value(session.Identity), "error", logsafe.Error(err))
+	}
+
+	if _, err = s.deps.SSO.EndFor(r.Context(), session.Identity); err != nil {
+		s.deps.Log.ErrorContext(r.Context(), "browser sessions could not be ended",
+			"identity", logsafe.Value(session.Identity), "error", logsafe.Error(err))
+	}
+
+	s.deps.Log.WarnContext(r.Context(), "signed out everywhere",
+		"identity", logsafe.Value(session.Identity), "sessions", ended)
+	http.SetCookie(w, s.deps.SSO.Cookie("", s.deps.Secure))
+	http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
+}
+
+// when is a timestamp a person can read, in UTC because an issuer serves
+// several countries and a local time would be somebody else's.
+func when(t time.Time) string {
+	if t.IsZero() {
+		return "—"
+	}
+
+	return t.UTC().Format("2006-01-02 15:04 UTC")
+}

@@ -37,10 +37,11 @@ func TestATokenNamesItsSessionAndWhenTheySignedIn(t *testing.T) {
 	}})
 
 	signedIn := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
-	opened, err := iss.Sessions().Record(
-		t.Context(), "ada@north.example", "local-dev", issuer.HowCode, "refresh-sid",
-		[]string{"openid", "profile", "email"},
-	)
+	opened, err := iss.Sessions().Record(t.Context(), issuer.Opened{
+		Identity: "ada@north.example", ClientID: "local-dev", How: issuer.HowCode,
+		Token:  "refresh-sid",
+		Scopes: []string{"openid", "profile", "email"},
+	})
 	if err != nil {
 		t.Fatalf("record the session: %v", err)
 	}
@@ -142,10 +143,11 @@ func TestARefreshMayNarrowItsScopesAndNotWidenThem(t *testing.T) {
 		"ada@north.example": {Found: true, Authoritative: true, Groups: []string{"engineering@north.example"}},
 	}})
 
-	if _, err := iss.Sessions().Record(
-		t.Context(), "ada@north.example", "local-dev", issuer.HowCode, "refresh-narrow",
-		[]string{"openid", "profile", "email"},
-	); err != nil {
+	if _, err := iss.Sessions().Record(t.Context(), issuer.Opened{
+		Identity: "ada@north.example", ClientID: "local-dev", How: issuer.HowCode,
+		Token:  "refresh-narrow",
+		Scopes: []string{"openid", "profile", "email"},
+	}); err != nil {
 		t.Fatalf("record the session: %v", err)
 	}
 

@@ -39,9 +39,15 @@ func (p *stubProvider) URL(state string) (string, error) { return p.back(state),
 func (p *stubProvider) Identify(context.Context, string) (string, error) { return p.email, nil }
 
 // Complete implements issuer.Completer, standing in for the storage.
-func (p *stubProvider) Complete(id, subject string) error {
-	p.completed, p.subject = id, subject
+func (p *stubProvider) Complete(id string, who issuer.Authenticated) error {
+	p.completed, p.subject = id, who.Subject
 	return nil
+}
+
+// Pending is the other half of issuer.Completer: this stand-in asks
+// nothing of a sign-in.
+func (p *stubProvider) Pending(string) (issuer.Pending, error) {
+	return issuer.Pending{}, nil
 }
 
 // stubHub answers the one question the issuer asks about a person.
