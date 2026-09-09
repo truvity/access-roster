@@ -22,6 +22,19 @@ import (
 // backend's own console rather than through an API.
 var ErrUnsupported = errors.New("backend: unsupported operation")
 
+// ErrUnavailable marks a failure that means "could not ask", as opposed
+// to "asked, and was refused".
+//
+// The distinction is the whole of whether a retry is honest. A directory
+// that answers 503 has told us nothing about the credential, and
+// recording that as a failed probe says a credential is broken when a
+// provider was briefly down. A directory that answers 403 HAS told us
+// something, and retrying it would only delay the truth.
+//
+// A backend wraps its transient failures with this; everything else is
+// taken at its word.
+var ErrUnavailable = errors.New("backend: the directory could not be asked")
+
 // Account is one address's standing in a directory.
 //
 // A suspended account is present with Live false. A deleted account is

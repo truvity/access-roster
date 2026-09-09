@@ -426,7 +426,19 @@ func isNotFound(err error) bool {
 func reason(err error) error {
 	var api *googleapi.Error
 	if !errors.As(err, &api) {
+		// No HTTP answer at all: a refused connection, a timeout, a DNS
+		// failure. The directory was never asked, so nothing here says
+		// anything about the credential.
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("%w: %w", backend.ErrUnavailable, err)
+		}
 		return err
+	}
+	// 5xx is the provider apologising, not refusing. Google's Admin SDK
+	// returns 503 often enough that treating one as a broken credential
+	// would tell an operator a directory is failing several times a week.
+	if api.Code >= http.StatusInternalServerError {
+		return fmt.Errorf("%w: %d: %s", backend.ErrUnavailable, api.Code, api.Message)
 	}
 	switch api.Code {
 	case http.StatusUnauthorized:

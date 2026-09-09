@@ -882,20 +882,56 @@ func (h *Hub) Probe(ctx context.Context, workspaceID string) ([]WorkspaceHealth,
 	return out, nil
 }
 
+// probeAttempts is how many times a probe asks before it writes down a
+// failure. Only a failure that means "could not ask" is retried, so a
+// revoked credential still surfaces on the first attempt.
+const probeAttempts = 3
+
+// probeBackoff separates those attempts. It is deliberately far inside
+// the probe interval: a probe that outlived its own schedule would leave
+// the loop overlapping itself. A var so that a test of the policy does
+// not have to spend the wall clock proving it.
+var probeBackoff = 2 * time.Second
+
 func (h *Hub) probeOne(ctx context.Context, ws Workspace) WorkspaceHealth {
 	now := h.now()
 	health := WorkspaceHealth{Workspace: ws.ID, ProbedAt: now}
 
 	b, ok := h.backendFor(ctx, ws.ID)
-	if !ok {
+	switch {
+	case !ok:
 		health.Detail = "no backend: the credential is not loaded"
-	} else if err := b.Probe(ctx); err != nil {
-		health.Detail = err.Error()
-	} else if tenant, err := b.Tenant(ctx); err != nil {
-		health.Detail = fmt.Sprintf("read domains: %v", err)
-	} else {
-		health.OK = true
-		ws.Domains = normaliseDomains(tenant.Domains)
+	default:
+		// A directory that could not be asked has said nothing about the
+		// credential, so asking again is not optimism — it is the
+		// difference between "this is broken" and "Google was briefly
+		// down". Live, one 503 from domains.list flipped a healthy
+		// tenant to failing for a whole probe interval.
+		for attempt := 1; ; attempt++ {
+			err := b.Probe(ctx)
+			var tenant backend.Tenant
+			if err == nil {
+				tenant, err = b.Tenant(ctx)
+				if err != nil {
+					err = fmt.Errorf("read domains: %w", err)
+				}
+			}
+			if err == nil {
+				health.OK = true
+				ws.Domains = normaliseDomains(tenant.Domains)
+				break
+			}
+			if attempt == probeAttempts || !errors.Is(err, backend.ErrUnavailable) || ctx.Err() != nil {
+				health.Detail = err.Error()
+				break
+			}
+			h.log.InfoContext(ctx, "the directory could not be asked; trying again",
+				"workspace", ws.ID, "attempt", attempt, "error", logsafe.Error(err))
+			select {
+			case <-ctx.Done():
+			case <-time.After(probeBackoff):
+			}
+		}
 	}
 
 	// A probe that was cancelled did not happen, and must not be written

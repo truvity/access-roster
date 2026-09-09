@@ -123,10 +123,30 @@ func TestErrorsExplainTheLikelyCause(t *testing.T) {
 	if !strings.Contains(forbidden.Error(), "privileges") {
 		t.Errorf("403 = %q, want it to name the missing privilege", forbidden)
 	}
-	// Anything else is passed through rather than reinterpreted.
+	// A transport failure keeps its own words AND is marked as one the
+	// directory never answered: nothing was asked, so nothing was learned
+	// about the credential, and a probe may honestly try again.
 	plain := errors.New("dial: connection refused")
-	if reason(plain).Error() != plain.Error() {
-		t.Errorf("a transport error was rewritten: %v", reason(plain))
+	transport := reason(plain)
+	if !strings.Contains(transport.Error(), plain.Error()) {
+		t.Errorf("a transport error lost its words: %v", transport)
+	}
+	if !errors.Is(transport, backend.ErrUnavailable) {
+		t.Errorf("a transport error = %v, want it marked unavailable", transport)
+	}
+	// So is a 5xx: the provider apologising, not refusing.
+	unavailable := reason(&googleapi.Error{Code: http.StatusServiceUnavailable, Message: "try later"})
+	if !errors.Is(unavailable, backend.ErrUnavailable) {
+		t.Errorf("503 = %v, want it marked unavailable", unavailable)
+	}
+	// A refusal is NOT: retrying it would only delay the truth.
+	if errors.Is(forbidden, backend.ErrUnavailable) {
+		t.Error("403 was marked unavailable; a refusal is an answer")
+	}
+	// Nor is a cancellation, which is this process stopping rather than
+	// the directory failing.
+	if errors.Is(reason(context.Canceled), backend.ErrUnavailable) {
+		t.Error("a cancellation was marked unavailable")
 	}
 }
 

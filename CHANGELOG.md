@@ -7,6 +7,17 @@ git history.
 
 Nothing yet.
 
+## v0.8.4
+
+- **A probe retries what it could not ask, and not what was refused.**
+  One transient `503` from Google's `domains.list` — seen live, during a
+  rollout — flipped a directory whose credential is fine to *failing*,
+  and with 0.8.0's reasons attached it told the operator its domains were
+  *provisional — probe failed*. A directory that answers 503 has said
+  nothing about the credential; one that answers 403 has. Backends now
+  mark the first kind `ErrUnavailable`, the hub retries only that, and a
+  revoked credential still surfaces on the first attempt.
+
 ## v0.8.3
 
 - **React 19**, and the console bundle rebuilt on it. The major itself was
