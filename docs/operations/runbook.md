@@ -6,7 +6,7 @@ console and in `Describe`; nothing needs a shell except the export.
 ## Day one
 
 **A deployment that declares its own way in has no day one.** Values that
-carry a workspace and a non-empty operators group (`hub-operators`; `all:access-roster:operator` after INF-684) are signed into through
+carry a workspace and a non-empty operators group are signed into through
 the directory from the first boot. Nothing below applies; go to
 [the connect runbook](connect-runbook.md) when you add the next tenant.
 

@@ -69,17 +69,14 @@ is on (a subsystem such as `k8s`, a project such as `eudi`, an application
 such as `access-roster`); `role` is from that thing's own ladder. The two
 exceptions are not grants and are two segments on purpose: `rung:<name>`
 carries a session lifetime, `emp:<slug>` is a person. The loader warns on
-a name in neither shape *(INF-684)*.
+a name in neither shape.
 
-Decided 2026-09-09 (evening). Until INF-684 lands the code reads the
-hub's own roles as `hub-operators` / `hub-viewers` with an `@<workspace>`
-suffix for a scope; this page describes where it is going.
+Decided 2026-09-09 (evening); in force since v0.9.3.
 
 ## The hub's own two groups, and scoping them
 
 `all:access-roster:operator` and `all:access-roster:viewer` are the only
-names the hub reads out of the policy for itself *(the code says
-`hub-operators` / `hub-viewers` until INF-684)*. It holds no role
+names the hub reads out of the policy for itself. It holds no role
 vocabulary of its own: an identity is an operator because the policy puts
 it in the operators group, exactly as any other relying party's roles
 work.

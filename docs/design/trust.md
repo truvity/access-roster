@@ -99,9 +99,7 @@ name is the whole of what it adds.
 
 ### Naming
 
-Decided 2026-09-09 (evening); lands with INF-684 — until then the code
-spells the hub's two roles `hub-operators` / `hub-viewers`, and the
-places that matters are marked.
+Decided 2026-09-09 (evening); in force since v0.9.3.
 
 Every grant is **`<scope>:<thing>:<role>`** — three segments, `:`
 between, lowercase. *Role, on thing, in scope.*

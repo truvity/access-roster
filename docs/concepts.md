@@ -34,7 +34,7 @@ The words this repository uses precisely.
 | **claim fragment** | what an internal group adds to a token. Every held group's fragment is deep-merged: lists union, maps recurse, and two groups setting one scalar differently is refused when the policy loads |
 | **lifetime** | how long a token lives: the shortest across the caller's groups, then the client's cap. A property of the privilege, never of where the person signed in |
 | **client** | a relying party. Its id is the token's audience, its `requires` is who may be issued one, and it is declared or self-registered — never created in a console |
-| **scope** | a role held over one workspace rather than the installation, written `<workspace id>:access-roster:operator` in the groups table — the first segment of every grant's `<scope>:<thing>:<role>` name ([design/trust.md](design/trust.md#naming); the code spells it `hub-operators@<workspace id>` until INF-684). It gates every action done TO that workspace and filters what its holder lists; it never widens or narrows the installation-wide role, and recovery is never scoped |
+| **scope** | a role held over one workspace rather than the installation, written `<workspace id>:access-roster:operator` in the groups table — the first segment of every grant's `<scope>:<thing>:<role>` name ([design/trust.md](design/trust.md#naming)). It gates every action done TO that workspace and filters what its holder lists; it never widens or narrows the installation-wide role, and recovery is never scoped |
 | **layer** | where a fact came from: `declared` by the deployment, or `console`. They merge additively and declared wins, so a console can add a membership and never widen one it did not add |
 
 ## The console

@@ -559,7 +559,7 @@ Recovery earns its keep by having the fewest moving parts.
 ### Roles come from the policy, membership from the console
 
 The hub is a relying party of the family's own [policy](../reference/policy.md):
-`all:access-roster:operator` and `all:access-roster:viewer` — `hub-operators` / `hub-viewers` in the code until INF-684 — are two declared internal groups, and
+`all:access-roster:operator` and `all:access-roster:viewer` are two declared internal groups, and
 an identity holds a role by being in one of them. Who is in them is the
 one thing the console edits: a group's page attaches a directory group,
 picked from the hub's own snapshots, to a declared internal group, and
@@ -619,7 +619,7 @@ definition.
 
 ### Day one
 
-A deployment that declares a workspace and a non-empty operators group (`all:access-roster:operator`; `hub-operators` until INF-684)
+A deployment that declares a workspace and a non-empty operators group
 has no day one: it is signed into through the directory from its first
 boot. That is the gitops path, and it is the common one.
 

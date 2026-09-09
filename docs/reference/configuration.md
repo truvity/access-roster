@@ -160,8 +160,8 @@ the same YAML:
 ```yaml
 policy:
   groups:
-    hub-operators: { members: [platform-admins@example.com] }   # all:access-roster:operator after INF-684
-    hub-viewers:   { members: [all@example.com] }               # all:access-roster:viewer after INF-684
+    hub-operators: { members: [platform-admins@example.com] }
+    hub-viewers:   { members: [all@example.com] }
   lifetimes: { default: 12h }
 ```
 
@@ -242,8 +242,8 @@ Two roles, held by membership of two declared internal groups.
 
 | Role | Group | May |
 |---|---|---|
-| viewer | `hub-viewers` (`all:access-roster:viewer` after INF-684) | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders` — the whole console, read-only |
-| operator | `hub-operators` (`all:access-roster:operator` after INF-684) | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient, AddMembership, RemoveMembership |
+| viewer | `hub-viewers` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders` — the whole console, read-only |
+| operator | `hub-operators` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient, AddMembership, RemoveMembership |
 
 Behind a gateway that forwards a token, the forwarded identity's email is
 resolved through the hub like any other; the groups in the token itself
