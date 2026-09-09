@@ -294,6 +294,17 @@
           "description": "GitHub organisations whose workflows may exchange a token. Empty verifies no CI token at all."
         }
       }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The console allowed to call SessionService from a browser.",
+      "properties": {
+        "origin": {
+          "type": "string",
+          "description": "One origin, e.g. https://dir.example. Empty serves SessionService not at all."
+        }
+      }
     }
   },
   "definitions": {

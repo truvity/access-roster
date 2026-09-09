@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+// Package accessissuer.v1 is what the issuer answers ABOUT itself, as
+// opposed to the OpenID surface it answers protocol on. Today that is one
+// service: the sessions it is holding, and ending them.
+//
+// The browser calls this at the issuer's own host, directly. The hub
+// serves the console and must not depend on this service — it answers
+// "is this account live" for consumers, and that has to keep working when
+// the issuer is down — so the console speaks to the issuer itself and the
+// hub's code learns nothing about it. The cost is one value: the origin
+// the issuer allows.
+package accessissuer.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// SessionService lists and ends what this issuer is holding.
+//
+// It can only ever REMOVE. There is no call here that grants anything,
+// which is the whole reason a console may be pointed at it: the worst a
+// stolen operator session can do through this surface is sign people out.
+service SessionService {
+  // ListSessions answers what is open. Narrow it to one identity or one
+  // client; a request that narrows to neither is refused, because
+  // "everything" names every person signed in and this service will not
+  // answer that.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  // RevokeSessions ends a set of them and says how many it ended.
+  rpc RevokeSessions(RevokeSessionsRequest) returns (RevokeSessionsResponse);
+}
+
+// How a session began. It is not decoration: "revoke Ada's kubectl login"
+// and "revoke the console she left open" are different acts, and an
+// operator can only tell them apart if the issuer remembers which was
+// which.
+enum How {
+  HOW_UNSPECIFIED = 0;
+  // A browser sign-in: OIDC code with PKCE.
+  HOW_CODE = 1;
+  // A terminal with no browser to redirect: the device flow.
+  HOW_DEVICE = 2;
+  // A workload or a CI job trading a token it already had.
+  HOW_EXCHANGE = 3;
+}
+
+// Session is one refresh token, described. The token itself is never
+// here: this is the index that makes them listable and revocable, and an
+// index that carried the credential would be a second place to steal it
+// from.
+message Session {
+  string id = 1;
+  // The identity it belongs to — an address for a person, a
+  // ServiceAccount subject for a recovery sign-in.
+  string identity = 2;
+  // The client it was issued for. A session belongs to one identity AND
+  // one client: that pairing is the unit of revocation, so that ending
+  // somebody's ArgoCD session does not end their kubectl session.
+  string client_id = 3;
+  How how = 4;
+  google.protobuf.Timestamp issued_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+  // Unset when it has never been refreshed.
+  google.protobuf.Timestamp last_refreshed = 7;
+}
+
+message ListSessionsRequest {
+  // At least one of these. Both narrows to their intersection: "Ada's
+  // ArgoCD sessions".
+  string identity = 1;
+  string client_id = 2;
+}
+
+message ListSessionsResponse {
+  // Newest first.
+  repeated Session sessions = 1;
+}
+
+message RevokeSessionsRequest {
+  // The identity whose sessions to end. Required, always: revocation is
+  // about somebody, and a call that could omit them is a call that could
+  // sign out the installation by mistake.
+  string identity = 1;
+  // Narrow to one client, or to one session. Empty means every session
+  // this identity holds — "sign out everywhere".
+  string client_id = 2;
+  string session_id = 3;
+}
+
+message RevokeSessionsResponse {
+  // How many ended. Zero is a success: revocation is idempotent, and
+  // saying otherwise tells a caller whether a session they do not hold
+  // ever existed.
+  int32 ended = 1;
+}

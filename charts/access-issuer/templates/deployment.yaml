@@ -88,6 +88,10 @@ spec:
             - name: CLIENT_SECRETS_DIR
               value: /var/run/access-issuer/clients
             {{- end }}
+            {{- with .Values.console.origin }}
+            - name: CONSOLE_ORIGIN
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.github.owners }}
             - name: GITHUB_OWNERS
               value: {{ join "," . | quote }}

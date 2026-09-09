@@ -230,3 +230,21 @@ github:
   # minted for a cloud provider being replayed here.
   owners: []
 
+# The console that shows this issuer's sessions.
+console:
+  # The ONE origin allowed to call SessionService from a browser — the
+  # hub's console, which renders the sessions sections on a person's page
+  # and a client's.
+  #
+  # The browser calls this issuer directly rather than the hub calling it
+  # for them, so that the hub's code stays independent of this service:
+  # the hub answers "is this account live" for consumers, and that has to
+  # keep working when this issuer is down.
+  #
+  # Empty serves SessionService not at all, which is right for an
+  # installation with no console: an endpoint nobody calls is surface with
+  # no consumer. A wildcard is not offered — the alternative to one origin
+  # is every page on the internet being able to list and end a signed-in
+  # person's sessions through their own browser.
+  origin: ""
+
