@@ -898,6 +898,20 @@ func (h *Hub) probeOne(ctx context.Context, ws Workspace) WorkspaceHealth {
 		ws.Domains = normaliseDomains(tenant.Domains)
 	}
 
+	// A probe that was cancelled did not happen, and must not be written
+	// down as one that failed. Otherwise every rolling restart leaves its
+	// directories looking broken until the next pass — and with a reason
+	// attached, saying "probe failed" about a credential that is fine.
+	// Observed on the 0.8.0 rollout: a token request cancelled by the
+	// pod's own shutdown, stored as the workspace's health.
+	if ctx.Err() != nil {
+		return WorkspaceHealth{
+			Workspace: ws.ID,
+			OK:        ws.Health.OK,
+			Detail:    ws.Health.Error,
+			ProbedAt:  ws.Health.ProbedAt,
+		}
+	}
 	ws.Health = Health{ProbedAt: now, OK: health.OK, Error: health.Detail}
 	if err := h.store.Put(ctx, ws); err != nil {
 		h.log.WarnContext(ctx, "storing probe outcome failed", "workspace", ws.ID, "error", err)

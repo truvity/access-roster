@@ -7,6 +7,16 @@ git history.
 
 Nothing yet.
 
+## v0.8.1
+
+- **A probe cancelled by the hub's own shutdown is no longer written down
+  as a probe that failed.** Seen on the 0.8.0 rollout: the pod stopped
+  mid-probe, the token request returned `context canceled`, and that
+  became the workspace's health — so a directory whose credential is
+  fine showed as failing, and its domains as *provisional — probe
+  failed*, until the next pass. A probe that did not happen is not a
+  probe that failed.
+
 ## v0.8.0
 
 Everything the first live connect exposed, and the two choices it showed
