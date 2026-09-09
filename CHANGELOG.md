@@ -5,6 +5,10 @@ git history.
 
 ## Unreleased
 
+Nothing yet.
+
+## v0.9.0
+
 - **Sign out ends the sign-in, not just the cookie.** Clearing the
   proxy's session cookie ends the session with one application; the
   issuer still holds the person's sign-in, so the next click — that
