@@ -249,6 +249,32 @@ access:
   # derived, because the path belongs to the proxy and where it goes
   # afterwards is the installation's to decide.
   signOutURL: ""
+  # Or let the chart build the whole chain. `true` renders signOutURL as
+  # the proxy's own sign-out with the ISSUER's RP-initiated logout as its
+  # `rd`, landing back on this console's front page:
+  #
+  #   /oauth2/sign_out?rd=<issuer>/end_session?post_logout_redirect_uri=<host>/
+  #
+  # Both halves are needed and they end different things. The proxy's half
+  # clears the session cookie for THIS application; the issuer's half ends
+  # the sign-in itself. Stop after the first and the person is still
+  # signed in at the issuer, so the next click -- this console, or any
+  # other behind the same issuer -- admits them again with no password.
+  # That reads as "sign out is broken", and it is the one failure a person
+  # cannot see, because the screen looks exactly like success.
+  #
+  # Needs `route.host` (this console's own hostname, where the person
+  # lands) and `access.login.forwardedBearer.issuer` (whose session is
+  # being ended). Refused at render without them, rather than silently
+  # producing half a chain. An explicit signOutURL always wins.
+  #
+  # The issuer must also list this console's front page in its client's
+  # `signed_out` -- a post_logout_redirect_uri it does not know is
+  # ignored, and the person lands on the issuer's own signed-out page.
+  signOutThroughIssuer: false
+  # The proxy prefix, when the chain above is built. oauth2-proxy's own
+  # default; access-proxy exposes it as `exposure.proxyPrefix`.
+  proxyPrefix: /oauth2
   # The hold window: how long a signed-in identity keeps its last granted
   # role while the directory cannot vouch for its membership. Zero means
   # no hold, and an uncertain directory then grants nothing.

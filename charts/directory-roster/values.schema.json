@@ -267,12 +267,22 @@
             }
           }
         },
-        "signOutURL": { "type": "string" },
+        "signOutURL": {
+          "type": "string"
+        },
         "sessionLifetime": {
           "$ref": "#/definitions/duration"
         },
         "holdWindow": {
           "$ref": "#/definitions/duration"
+        },
+        "signOutThroughIssuer": {
+          "type": "boolean",
+          "description": "Render signOutURL as the proxy's sign-out chained to the issuer's RP-initiated logout. Needs route.host and access.login.forwardedBearer.issuer."
+        },
+        "proxyPrefix": {
+          "type": "string",
+          "description": "The proxy's path prefix, when the sign-out chain is built. oauth2-proxy's default is /oauth2."
         }
       }
     },

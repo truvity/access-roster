@@ -25,7 +25,14 @@ func (c *client) GetID() string { return c.id }
 
 func (c *client) RedirectURIs() []string { return c.declared.Redirects }
 
-func (c *client) PostLogoutRedirectURIs() []string { return c.declared.Redirects }
+// PostLogoutRedirectURIs is where this client may put a person down after
+// their session is ended. It is `signed_out` in the policy and NOT the
+// redirect URIs: a redirect URI starts a sign-in, so landing there after
+// a sign-out begins the login the person just ended. A client that
+// declares none accepts no post_logout_redirect_uri, and the library
+// serves its own signed-out page instead -- which is the safe default,
+// not an error.
+func (c *client) PostLogoutRedirectURIs() []string { return c.declared.SignedOut }
 
 // ApplicationType decides how strictly the library treats the redirect
 // URI. A public client is a native one: it holds no secret, so PKCE is
