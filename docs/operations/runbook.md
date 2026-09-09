@@ -6,7 +6,7 @@ console and in `Describe`; nothing needs a shell except the export.
 ## Day one
 
 **A deployment that declares its own way in has no day one.** Values that
-carry a workspace and a non-empty `hub-operators` are signed into through
+carry a workspace and a non-empty operators group (`hub-operators`; `all:access-roster:operator` after INF-684) are signed into through
 the directory from the first boot. Nothing below applies; go to
 [the connect runbook](connect-runbook.md) when you add the next tenant.
 
@@ -31,7 +31,7 @@ setup goes wrong.
    `/login`, expand **Recovery sign-in** and paste the token.
 4. Follow Overview. It walks the four steps: register an OAuth client with
    the directory, give it to the hub, connect the first directory, and
-   attach a directory group to `hub-operators`. Each disappears as it
+   attach a directory group to the operators group. Each disappears as it
    completes.
 5. Sign out; sign in with the directory as yourself. Search for yourself:
    your page shows operator and the membership that granted it.

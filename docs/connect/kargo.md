@@ -11,10 +11,10 @@ clients:
     secret: kargo-oidc-client
     redirects:  [https://kargo.example.internal/login]
     signed_out: [https://kargo.example.internal/]
-    requires:   [cluster-kernel:cluster:admin, cluster-kernel:cluster:viewer]
+    requires:   [kernel:k8s:admin, kernel:k8s:viewer]
   kargo-cli:
     kind: public              # device flow + PKCE
-    requires:   [cluster-kernel:cluster:admin, cluster-kernel:cluster:viewer]
+    requires:   [kernel:k8s:admin, kernel:k8s:viewer]
 ```
 
 Kargo's values:
@@ -27,8 +27,10 @@ api:
     clientID: kargo
     cliClientID: kargo-cli
     additionalScopes: [groups]
-    admins: { claims: { groups: [platform:admins] } }
+    admins: { claims: { groups: [kernel:k8s:admin] } }   # the cluster tier, reused
 ```
 
-Per-project roles bind on the `groups` claim through Kargo's own RBAC.
+Per-project roles bind on the `groups` claim through Kargo's own RBAC —
+`<env>:<project>:approver` is the promotion gate, the same name the
+policy mints for the project's approver unit.
 Keep Kargo's admin account until a policy-granted admin has logged in.

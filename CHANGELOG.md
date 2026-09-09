@@ -5,7 +5,11 @@ git history.
 
 ## Unreleased
 
-Nothing yet.
+- **Docs: the naming rule.** Every grant is `<scope>:<thing>:<role>` —
+  `kernel:k8s:admin`, `prod:eudi:deployer`, `all:access-roster:operator`
+  — with `rung:` and `emp:` the only two-segment families and neither a
+  grant. The reasoning is in `docs/design/trust.md`; the code follows in
+  INF-684, and every place it does not yet is marked.
 
 ## v0.9.2
 

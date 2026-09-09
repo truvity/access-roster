@@ -90,7 +90,7 @@ result := set.Evaluate(policy.Input{
     DirectoryGroups: groups,   // what the hub confirmed
     Authoritative:   true,     // membership grants nothing without it
 })
-result.Has("hub-operators")  // the internal groups held
+result.Has("all:access-roster:operator")  // the internal groups held, <scope>:<thing>:<role>
 result.Claims                // the deep-merged fragments
 result.Lifetime              // shortest across the held groups
 ```
