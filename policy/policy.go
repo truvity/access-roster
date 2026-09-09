@@ -31,6 +31,37 @@ const (
 	GroupViewers   = "hub-viewers"
 )
 
+// ScopeSeparator divides one of those group names from the workspace it
+// is scoped to: `hub-operators@C0example` administers that one tenant and
+// no other.
+//
+// It is a naming convention over the ordinary groups table rather than a
+// column in it, because the table is already the place an installation
+// says who is in what, and the hub already reads two names out of it by
+// convention. A scope is a third. Nothing in the policy's schema, its
+// merge or its validation has to know.
+const ScopeSeparator = "@"
+
+// ScopedGroup names the group that grants a role over one workspace.
+func ScopedGroup(group, workspace string) string {
+	return group + ScopeSeparator + workspace
+}
+
+// SplitScopedGroup reads a scoped group name back. The bool is false for
+// an ordinary group, including one that merely contains the separator: a
+// scope is only a scope when the part before it is a group the hub is a
+// relying party of.
+func SplitScopedGroup(name string) (group, workspace string, scoped bool) {
+	group, workspace, found := strings.Cut(name, ScopeSeparator)
+	if !found || workspace == "" {
+		return "", "", false
+	}
+	if group != GroupOperators && group != GroupViewers {
+		return "", "", false
+	}
+	return group, workspace, true
+}
+
 // The client kinds.
 const (
 	// KindPublic has no secret: kubelogin per cluster, a CLI, a

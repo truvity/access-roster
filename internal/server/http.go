@@ -665,6 +665,12 @@ type whoamiBody struct {
 	Source     string   `json:"source,omitempty"`
 	// Groups are the internal groups the policy puts the caller in.
 	Groups []string `json:"groups,omitempty"`
+	// Scopes are roles held over ONE workspace each, keyed by workspace
+	// id. Roles above is the installation-wide answer and is not a
+	// summary of these: an identity with a global role carries no scopes,
+	// and a console reading this must treat "no scopes" as "everywhere"
+	// only when Roles says so.
+	Scopes map[string][]string `json:"scopes,omitempty"`
 	// Version is the build the hub is running, so that a console can show
 	// it without a second call.
 	Version    string `json:"version"`
@@ -681,6 +687,7 @@ func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
 			GivenName:  id.GivenName,
 			FamilyName: id.FamilyName,
 			Roles:      rolesOf(id.Role),
+			Scopes:     scopesBody(id.Scopes),
 			Source:     string(id.Source),
 			Groups:     id.Groups,
 			Version:    version.String(),
@@ -696,6 +703,19 @@ func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
 
 // rolesOf expands a role into every role it implies, so that a UI can ask
 // for one without knowing the hierarchy.
+// scopesBody renders the per-workspace roles the same way rolesOf renders
+// the global one, so a console asks the same question of both.
+func scopesBody(scopes map[string]access.Role) map[string][]string {
+	if len(scopes) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(scopes))
+	for workspace, role := range scopes {
+		out[workspace] = rolesOf(role)
+	}
+	return out
+}
+
 func rolesOf(r access.Role) []string {
 	switch r {
 	case access.RoleOperator:

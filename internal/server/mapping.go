@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -141,7 +142,7 @@ func sourceEnum(s access.Source) directoryrosterv1.IdentitySource {
 }
 
 func identityProto(id access.Identity) *directoryrosterv1.Identity {
-	return &directoryrosterv1.Identity{
+	out := &directoryrosterv1.Identity{
 		Email:      id.Email,
 		Subject:    id.Subject,
 		Source:     sourceEnum(id.Source),
@@ -150,6 +151,13 @@ func identityProto(id access.Identity) *directoryrosterv1.Identity {
 		GivenName:  id.GivenName,
 		FamilyName: id.FamilyName,
 	}
+	for _, workspace := range slices.Sorted(maps.Keys(id.Scopes)) {
+		out.Scopes = append(out.Scopes, &directoryrosterv1.WorkspaceScope{
+			WorkspaceId: workspace,
+			Role:        roleEnum(id.Scopes[workspace]),
+		})
+	}
+	return out
 }
 
 func heldProto(held []policy.Held) []*directoryrosterv1.HeldGroup {

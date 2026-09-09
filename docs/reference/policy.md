@@ -57,6 +57,50 @@ memberships:                   # the one table a console may extend — the same
 The hub loads `groups`, `claims`, `lifetimes` and `memberships`. The issuer
 loads all five. Same parser, same validation, same layers.
 
+## The hub's own two groups, and scoping them
+
+`hub-operators` and `hub-viewers` are the only names the hub reads out of
+the policy for itself. It holds no role vocabulary of its own: an identity
+is an operator because the policy puts it in the operators group, exactly
+as any other relying party's roles work.
+
+Suffix either with `@<workspace id>` and the role is held over **that one
+tenant**:
+
+```yaml
+groups:
+  hub-operators:                                  # the whole installation
+    members: [platform-admins@a.example]
+  hub-operators@C0northern:                       # one directory only
+    members: [it-admins@north.example]
+  hub-viewers@C0northern:
+    matchers: [{ email_domain: north.example }]
+```
+
+A scope is a naming convention over the ordinary table rather than a
+column in it, because the table is already where an installation says who
+is in what, and the hub already reads two names out of it by convention.
+A scope is a third: nothing in the schema, the merge or the validation has
+to know. Only those two names carry one, so `team@north.example` is an
+ordinary group and grants nothing over a workspace called
+`north.example`.
+
+What a scope means, exactly:
+
+| | Installation-wide role | Scoped role |
+|---|---|---|
+| connect a new directory, upload a key | yes | **no** — the workspace does not exist yet, so there is nothing to be scoped to |
+| edit the policy, the memberships, the OAuth client | yes | **no** |
+| reconnect, probe, refresh, choose domains or groups, disconnect | every workspace | the named one |
+| list directories, groups and people | every workspace | only the named ones |
+
+A scope never widens the installation-wide role and never narrows it: an
+identity holding one may act everywhere and carries no scopes at all.
+
+**Recovery is not scoped**, by construction. It exists for the day the
+directory or the policy is what is broken, and a recovery scoped to one
+workspace could not repair the workspace whose absence caused it.
+
 ## Proof → groups
 
 Every caller arrives with a proof the service verifies but did not

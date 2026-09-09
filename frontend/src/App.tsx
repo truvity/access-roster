@@ -70,7 +70,14 @@ export function App() {
 
   const identityInfo = me.value;
   const roles = identityInfo?.roles ?? [];
+  // Installation-wide, and deliberately not "operator of something". A
+  // scoped operator administers its own directory and nothing else — the
+  // pages that change the policy, the OAuth client or connect a directory
+  // that does not exist yet all ask this one.
   const operator = roles.includes("operator");
+  // Per-directory, for the pages that act on one. A global operator is
+  // an operator of every directory without naming any.
+  const operatorFor = (workspace: string) => operator || (identityInfo?.scopes?.[workspace] ?? []).includes("operator");
 
   const nav = (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -191,7 +198,7 @@ export function App() {
             </Alert>
           ) : null}
 
-          <PageFor view={route.view} id={route.id} query={route.query} operator={operator} onDone={setBanner} me={identityInfo} />
+          <PageFor view={route.view} id={route.id} query={route.query} operator={operator} operatorFor={operatorFor} onDone={setBanner} me={identityInfo} />
         </Container>
       </Box>
     </Box>
@@ -213,6 +220,7 @@ function PageFor({
   id,
   query,
   operator,
+  operatorFor,
   onDone,
   me,
 }: {
@@ -220,13 +228,14 @@ function PageFor({
   id?: string;
   query: URLSearchParams;
   operator: boolean;
+  operatorFor: (workspace: string) => boolean;
   onDone: (message: string) => void;
   me?: Me;
 }) {
   switch (view) {
     case "directories":
       return id ? (
-        <Directory id={id} operator={operator} onDone={onDone} choosing={query.get("choose") === "domains"} />
+        <Directory id={id} operator={operatorFor(id)} onDone={onDone} choosing={query.get("choose") === "domains"} />
       ) : (
         <Directories operator={operator} onDone={onDone} />
       );

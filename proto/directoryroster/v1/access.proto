@@ -107,6 +107,18 @@ message Identity {
   // does not, so callers must tolerate that.
   string given_name = 6;
   string family_name = 7;
+  // roles held over ONE workspace each. `role` above is the
+  // installation-wide one and is not a list of these: an identity with a
+  // global role may act on every workspace and carries no scopes at all.
+  repeated WorkspaceScope scopes = 8;
+}
+
+// WorkspaceScope is a role held over one workspace: what an administrator
+// of one company gets, so that connecting a second company's directory
+// does not hand its administrator the first one.
+message WorkspaceScope {
+  string workspace_id = 1;
+  Role role = 2;
 }
 
 message WhoAmIRequest {}
