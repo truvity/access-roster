@@ -77,6 +77,13 @@ sign-in is what is broken:
 Sessions are stateless signed cookies. To log everyone out at once,
 delete `Secret <release>-session-key`; the hub generates a new one on restart.
 
+Behind a proxy those cookies are not what signs anybody in, so neither is
+what signs them out: set `access.signOutURL` to the proxy's own sign-out
+(`/oauth2/sign_out`). Without it the console's sign-out clears a cookie
+nothing was using, and the person comes back signed in — the symptom is
+"sign out does nothing", and the page it lands on has no way in because
+this hub's own sign-in is deliberately off.
+
 ## What "unhealthy" means and what to do
 
 | Symptom (console) | Cause | Action |

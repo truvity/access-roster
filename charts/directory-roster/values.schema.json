@@ -267,6 +267,7 @@
             }
           }
         },
+        "signOutURL": { "type": "string" },
         "sessionLifetime": {
           "$ref": "#/definitions/duration"
         },

@@ -75,6 +75,7 @@ type Config struct {
 	secureCookies     bool
 	forwardedHeader   string
 	forwardedIssuer   string
+	signOutURL        string
 	forwardedAudience string
 	policyPath        string
 	overlayPath       string
@@ -106,6 +107,7 @@ func Load() (Config, error) {
 		secureCookies:     envBool("SECURE_COOKIES", false),
 		forwardedHeader:   envString("FORWARDED_EMAIL_HEADER", ""),
 		forwardedIssuer:   envString("FORWARDED_ISSUER", ""),
+		signOutURL:        envString("SIGN_OUT_URL", ""),
 		forwardedAudience: envString("FORWARDED_AUDIENCE", ""),
 		policyPath:        envString("POLICY_DIR", ""),
 		overlayPath:       envString("OVERLAY_FILE", ""),
@@ -481,9 +483,10 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			Audience:    cfg.forwardedAudience,
 			EmailHeader: cfg.forwardedHeader,
 		},
-		SignIn: cfg.loginDirectory,
-		Log:    log,
-		UI:     frontend.FS(),
+		SignIn:     cfg.loginDirectory,
+		SignOutURL: cfg.signOutURL,
+		Log:        log,
+		UI:         frontend.FS(),
 	})
 
 	apiMux := http.NewServeMux()
