@@ -3,6 +3,29 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **A ServiceAccount's subject names its cluster.** `sub` was
+  `k8s:<namespace>:<name>`, and the same namespace and name exist on every
+  cluster in an estate — so two different machines were one subject, which
+  is the collision `sub` exists to prevent. It is now
+  `<cluster>:k8s:<namespace>:<name>`, from the issuer's new `cluster`
+  value; scope first, like every group name. An installation that names no
+  cluster keeps the unqualified form, so nothing changes until it is set.
+  A `service_account` matcher may name a `cluster` to narrow to one, and
+  naming none matches any — every rule written so far still means what it
+  meant. (INF-681)
+- **One spelling for a ServiceAccount, and one reader for all three.**
+  A recovery sign-in completed as the API server's
+  `system:serviceaccount:<ns>:<name>` while a token exchange minted
+  `k8s:<ns>:<name>`, so the same machine had two subjects and a
+  `service_account` matcher could admit one and not the other. Recovery
+  now completes as the issuer's own spelling. Every spelling the estate
+  has minted is still **read** — by one function, in `policy` — because a
+  reader that knew only its own would refuse a token from a release either
+  side of it, and for recovery that is exactly the day it is the only way
+  in. (INF-681)
+
 ## v0.9.7
 
 - **The issuer holds a session with the browser, so a second console

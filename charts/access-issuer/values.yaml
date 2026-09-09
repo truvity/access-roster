@@ -97,6 +97,20 @@ oauthClient:
     keys:
       clientId: client-id
       clientSecret: client-secret
+# What this cluster is called, which becomes part of a ServiceAccount's
+# subject: `<cluster>:k8s:<namespace>:<name>`.
+#
+# A pod cannot discover the name of the cluster it runs in, and the same
+# namespace and name exist on every cluster in an estate — so without this
+# two different machines are one `sub`, and an audit log cannot tell them
+# apart. Use the name the estate already uses for the cluster (`kernel`,
+# `prod`), the same word that is the scope of a group name.
+#
+# Empty keeps the older unqualified subject, `k8s:<namespace>:<name>`,
+# which is right for a single-cluster installation and is what every
+# subject minted before this value looked like.
+cluster: ""
+
 exchange:
   # Verify Kubernetes ServiceAccount tokens with a TokenReview, for the
   # in-cluster workload that needs a token another system trusts. This is

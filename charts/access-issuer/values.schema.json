@@ -305,6 +305,10 @@
           "description": "One origin, e.g. https://dir.example. Empty serves SessionService not at all."
         }
       }
+    },
+    "cluster": {
+      "type": "string",
+      "description": "What this cluster is called; becomes part of a ServiceAccount's subject. Empty keeps the unqualified form."
     }
   },
   "definitions": {

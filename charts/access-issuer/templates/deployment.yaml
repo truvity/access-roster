@@ -78,6 +78,10 @@ spec:
               value: {{ .Values.lifetimes.refresh | quote }}
             - name: HOLD_WINDOW
               value: {{ .Values.lifetimes.hold | quote }}
+            {{- with .Values.cluster }}
+            - name: CLUSTER
+              value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.exchange.workloadTokens }}
             - name: IN_CLUSTER
               value: "true"

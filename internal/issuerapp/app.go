@@ -56,6 +56,7 @@ type Config struct {
 	oauthIDFile       string
 	recoveryEnabled   bool
 	recoveryAccount   string
+	cluster           string
 	recoveryAudience  string
 	clientSecretsDir  string
 	valkey            valkey.Config
@@ -94,8 +95,13 @@ func Load() (Config, error) {
 		githubOwners:      envList("GITHUB_OWNERS"),
 		consoleOrigin:     envString("CONSOLE_ORIGIN", ""),
 		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", ""),
-		recoveryAudience:  envString("RECOVERY_AUDIENCE", ""),
-		clientSecretsDir:  envString("CLIENT_SECRETS_DIR", ""),
+		// Names this cluster in a ServiceAccount's subject. A pod cannot
+		// discover it, and the same namespace and name exist on every
+		// cluster, so an installation that leaves it empty keeps the older
+		// unqualified subject rather than an invented one.
+		cluster:          envString("CLUSTER", ""),
+		recoveryAudience: envString("RECOVERY_AUDIENCE", ""),
+		clientSecretsDir: envString("CLIENT_SECRETS_DIR", ""),
 		valkey: valkey.Config{
 			Address:  envString("VALKEY_ADDRESS", ""),
 			Password: envString("VALKEY_PASSWORD", ""),
@@ -311,6 +317,7 @@ func openRecovery(ctx context.Context, cfg Config, log *slog.Logger) issuer.Reco
 		Account:   cfg.recoveryAccount,
 		Audience:  cfg.recoveryAudience,
 		Subjects:  []string{kube.ServiceAccountSubject(namespace, cfg.recoveryAccount)},
+		Cluster:   cfg.cluster,
 	}
 }
 
@@ -460,7 +467,9 @@ func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (issuer.Ve
 	}
 	log.InfoContext(ctx, "workload tokens are verified against this cluster", "audience", cfg.audience)
 
-	verifiers := issuer.Verifiers{&verify.Workload{Review: client.ReviewToken, Audience: cfg.audience}}
+	verifiers := issuer.Verifiers{
+		&verify.Workload{Review: client.ReviewToken, Audience: cfg.audience, Cluster: cfg.cluster},
+	}
 
 	// GitHub, only when this installation has said whose repositories it
 	// runs jobs for. There is no default and there cannot be one: anybody

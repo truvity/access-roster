@@ -179,10 +179,12 @@ working.
 > address — readable in every audit log, no second lookup, and what the
 > hub already keys by; a rename becomes a new `sub` whose old sessions
 > end, which for a controlled directory is acceptable, arguably correct.
-> A ServiceAccount is **`<cluster>:k8s:<namespace>:<name>`**. The earlier
-> *workspace id plus the backend's user id* is retired. The cluster
-> qualifier is the one part not yet in the code (`k8s:<ns>:<name>` today);
-> INF-681 adds it before cross-cluster consumers exist.
+> A ServiceAccount is **`<cluster>:k8s:<namespace>:<name>`**, from the
+> issuer's `cluster` value; an installation that names no cluster keeps
+> the unqualified `k8s:<namespace>:<name>`. The earlier *workspace id plus
+> the backend's user id* is retired. A `service_account` matcher may name
+> a `cluster` to narrow to one; naming none matches any, so every rule
+> written before clusters were named still means what it meant.
 
 | Kind | Merge rule |
 |---|---|
