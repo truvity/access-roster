@@ -1,15 +1,25 @@
 # Connect GitHub Actions
 
-A workflow holds no secret. It requests its identity token, exchanges it
-at the issuer for the clients its groups admit it to, and uses the result.
+**Anchor:** the issuer, by exchange. A workflow holds no secret. It
+requests its identity token, exchanges it at the issuer for the clients
+its groups admit it to, and uses the result.
 
 ## Issuer side
 
 ```yaml
-proofs:
-  github:
-    - organisation: example-org
+github:
+  owners: [example-org]
 ```
+
+That list is the trust boundary, not tuning. Anybody may run a workflow
+in their own repository and get a perfectly valid token from GitHub's
+issuer, so a signature and an expiry prove only that *a* job ran
+somewhere; the owner allow-list is the whole of what makes one of them
+ours, and an empty list verifies nothing rather than everything. The
+audience a workflow must request is the issuer's own URL, and that is not
+configurable: a token minted for a cloud provider is a valid GitHub
+token, and one audience per relying party is what stops it being
+replayed here.
 
 ## Policy
 
@@ -33,6 +43,10 @@ clients:
 permissions:
   id-token: write
 steps:
+  - uses: actions/github-script@v7      # until the action below exists: request the token for the issuer's audience
+    id: token
+    with:
+      script: core.setOutput('t', await core.getIDToken('https://issuer.example.internal'))
   - uses: truvity/access-roster@v1
     with:
       issuer: https://issuer.example.internal

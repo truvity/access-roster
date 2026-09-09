@@ -672,9 +672,20 @@ token: the consumer mounts a projected token with audience
 TokenReview, and an allow-list of `namespace/serviceAccount` pairs in the
 chart decides who may read. Bound tokens die with their pod. It is the
 one cluster-scoped permission the chart creates, and it reads nothing.
-NetworkPolicy stays as the second layer, never the only one. A consumer
-outside the cluster, if one ever exists, presents an OIDC token through
-the same verifier the console uses.
+NetworkPolicy stays as the second layer, never the only one.
+
+That is the **cluster anchor**, and it is the right one for the
+consumers the hub has — the issuer and github-roster, both next door.
+There is no exchange in front of a same-cluster call: the issuer would
+verify the same token and re-sign it, on the hottest path in the system,
+and the issuer *calls this listener*, so a hub that required issuer
+tokens would deadlock the estate on cold start. A consumer **outside the
+cluster** — another cluster's workload, a laptop, a person — presents an
+issuer token on the same port, verified by the verifier the console
+already has; and the grant is then keyed by the **principal**, not the
+anchor, so one consumer table stands behind both doors. The rule and its
+reasons are [trust.md](trust.md); the how-to for a consumer is
+[../connect/service-to-service.md](../connect/service-to-service.md).
 
 ## Two boundaries worth naming
 
@@ -688,13 +699,15 @@ provider's job, and the two compose behind one screen. The boundary is
 kept from day one because it is cheap then and expensive later.
 
 **The issuer.** The second service of this repository, access-issuer, is a
-security token service: it verifies proofs — corporate sign-ins, workload
-tokens — applies the policy, and issues tokens that clusters, cloud accounts
-and consoles trust. It is the hub's first consumer and shares its
-verifiers, backends and policy engine. It is designed in
-[access-issuer.md](access-issuer.md) and built after the hub. Nothing in
+security token service: it verifies proofs — corporate sign-ins, CI
+tokens, workload tokens — applies the policy, and issues tokens that
+clusters, cloud accounts and consoles trust. It is the hub's first
+consumer and shares its policy engine. It is designed in
+[access-issuer.md](access-issuer.md) and runs beside the hub. Nothing in
 the hub depends on it; an installation that only wants the sync model
-never deploys it.
+never deploys it. The hub's two listeners are the two trust anchors made
+physical, which is why the hub is the pattern every service with a
+console and an API should follow ([trust.md](trust.md)).
 
 ## Failure semantics
 

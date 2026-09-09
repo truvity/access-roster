@@ -11,17 +11,21 @@ authenticates anyone.** Sign-in stays with the corporate identity
 providers; this repository verifies the result, knows the directory, and
 applies the policy.
 
-> **Status: running.** The hub and the issuer are deployed, and the hub's
-> own console sits behind `access-proxy` against the issuer — the first
-> consumer of both. Three Google Workspaces are connected. The Go module,
-> the TypeScript package and the three charts are published from every
-> tag; `accessctl` and the Action are still to come.
+> **Status: running, approaching 1.0.** The hub and the issuer are
+> deployed, and the hub's own console sits behind `access-proxy` against
+> the issuer — the first consumer of both. Three Google Workspaces are
+> connected; the policy is rendered from the installation's own access
+> matrix; sign-out ends the issuer session; CI tokens verify. The Go
+> module (`policy`, `backend`), the TypeScript package and the three
+> charts are published from every tag; the rest of the Go module,
+> `accessctl` and the Action are the road to 1.0.
 > [CHANGELOG.md](CHANGELOG.md) says what exists at each version, and the
 > documents below describe what is built rather than what is planned.
 >
-> Start with [why this exists](docs/why.md), then the
-> [helicopter view of every integration](docs/integrations.md), then
-> [the architecture](docs/architecture.md).
+> Start with [why this exists](docs/why.md), then
+> [**the rule under everything: two trust anchors**](docs/design/trust.md),
+> then the [helicopter view of every integration](docs/integrations.md),
+> then [the architecture](docs/architecture.md).
 
 ## The batteries
 
@@ -45,6 +49,8 @@ what is in [docs/integrations.md](docs/integrations.md#the-batteries-by-kind-of-
 |---|---|
 | connect a corporate directory (Google Workspace) | [operations/connect-runbook.md](docs/operations/connect-runbook.md) |
 | put a console behind the gateway | [connect/console-app.md](docs/connect/console-app.md) |
+| call another service as a workload — and know when to use a ServiceAccount token and when the issuer | [connect/service-to-service.md](docs/connect/service-to-service.md) |
+| build a service that accepts both people and workloads | [design/trust.md](docs/design/trust.md), then [connect/service-to-service.md](docs/connect/service-to-service.md) |
 | let people `kubectl` into a cluster | [connect/kubernetes-cluster.md](docs/connect/kubernetes-cluster.md) |
 | give people and jobs cloud credentials without SSO | [connect/aws-account.md](docs/connect/aws-account.md) |
 | let a workflow deploy with no stored secret | [connect/github-actions.md](docs/connect/github-actions.md) |
@@ -81,6 +87,7 @@ console's word — never to "gone".
 | [docs/integrations.md](docs/integrations.md) | the helicopter view: fourteen integration points, case by case — parties, trust, flow, what you configure, what you get |
 | [docs/concepts.md](docs/concepts.md) | the ten words used precisely |
 | [docs/architecture.md](docs/architecture.md) | context, containers, the hub's components, who owns what, use cases, failure semantics |
+| [docs/design/trust.md](docs/design/trust.md) | the rule under every design: two trust anchors chosen by scope, `groups` as the one vocabulary, recovery as the floor, two listeners |
 | [docs/design/](docs/design/) | one design per battery: [hub](docs/design/hub.md), [issuer](docs/design/access-issuer.md), [proxy](docs/design/access-proxy.md), [libraries](docs/design/libraries.md), [CLI and action](docs/design/accessctl.md) |
 | [docs/reference/](docs/reference/) | contracts, the policy, values of each chart, the Go module, the TypeScript package, the CLI |
 | [docs/connect/](docs/connect/) | one guide per kind of relying party |

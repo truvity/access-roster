@@ -1,5 +1,10 @@
 # Connect a console
 
+**Anchor:** the issuer, through `access-proxy` — a console is for
+people. If the same service also has an API that workloads call, that
+API is a second listener on the other anchor:
+[service-to-service.md](service-to-service.md).
+
 A web UI with a service API, behind the gateway, with two roles. What you
 write, what you deploy, what you never implement.
 
@@ -26,12 +31,26 @@ exposure:
   allow: [myconsole:operator, myconsole:viewer]
 ```
 
-and two lines of policy that mint those values:
+and the policy that puts people in those groups and admits them to the
+client — the group's **name** is the value in the token, so name it what
+the console checks:
 
 ```yaml
-groups: { myconsole-admins: { members: [myconsole-admins@example.com] } }
-claims: { myconsole-admins: { groups: [myconsole:operator] } }
+groups:
+  myconsole:operator: { members: [myconsole-admins@example.com] }
+  myconsole:viewer:   { members: [everyone@example.com] }
+clients:
+  myconsole.example.internal:
+    kind: confidential
+    secret: myconsole-client
+    redirects:  [https://myconsole.example.internal/oauth2/callback]
+    signed_out: [https://myconsole.example.internal/]
+    requires:   [myconsole:operator, myconsole:viewer]
 ```
+
+`requires` is the primary gate — nobody outside those groups gets a
+token, so the proxy never sees a session. The proxy's `allow` above is
+defence in depth and the place to narrow one route further.
 
 DNS for the hostname, and the namespace label the fleet egress policy
 selects, are the deployment's two remaining edits.

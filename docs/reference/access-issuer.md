@@ -26,7 +26,8 @@ thing that authenticates, and a proxy would have nowhere to send anyone.
 | `exchange.workloadTokens` | `true` | verify Kubernetes ServiceAccount tokens with a TokenReview — the one cluster-scoped permission this chart creates |
 | `exchange.audience` | the release name | without one, every mounted ServiceAccount token in the cluster would be an exchange proof |
 | `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | caps; the policy may ask for shorter |
-| `policy` | `{}` | the declared layer, same schema as the hub's |
+| `policy` | `{}` | the declared layer, same schema as the hub's; `clients` carry `redirects` **and** `signed_out` |
+| `github.owners[]` | `[]` | the GitHub organisations (or users) whose workflows may exchange a token. **The trust boundary, not tuning:** anybody may run a workflow in their own repository and get a valid token from GitHub, so signature and expiry prove only that a job ran somewhere; this list is the whole of what makes one of them ours. Empty verifies no CI token at all. The audience a workflow must request is `issuerURL` and is not configurable |
 | `route.host` | `""` | empty renders no route, for an issuer reached by port-forward while it is being tried |
 | `recovery.enabled` | `true` | the way in when no directory can vouch for anybody. A ServiceAccount token checked by the API server — the same proof this issuer takes from workloads. It grants **nothing by itself**: a recovered sign-in completes as the ServiceAccount *subject*, and the policy's `service_account` matchers decide what that is in, so an installation that names no matcher has an account that can sign in and is admitted nowhere |
 | `recovery.serviceAccountName` / `.audience` | `<release>-recovery` | the account a token must be minted for and the audience it must carry. Without an audience every mounted token in the cluster would be a proof. The chart creates the account bound to **nothing**: granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
@@ -51,28 +52,3 @@ longer than `lifetimes.token`.
 | `/.access/simulate` | ours | what would this identity get. Read-only |
 | `SessionService` (ConnectRPC): `ListSessions{identity? \| client?}`, `RevokeSessions{identity, client?, session_id?}` | ours | sessions per identity and per client, with client, how obtained, issued, expires, last refreshed; revoke per identity, per client, or one. Listing and revoking others is operator; listing and revoking your own is any signed-in identity |
 | not served | RFC 7662 introspection, implicit and hybrid flows, back-channel logout, session-management iframe | JWT access tokens are verified offline; the rest has no consumer here |
-
-## Values
-
-| Value | Meaning |
-|---|---|
-| `issuer.url` | the public issuer URL; must be stable for the life of the installation |
-| `console.origin` | the console's origin, allowed to call `SessionService` from a browser. It is what lets sessions show on a person's page while the hub's own code stays independent of this service |
-| `hub.address` | the hub's API Service, `directory-roster.directory-roster.svc:8080` |
-| `valkey.address`, `valkey.passwordSecret` | token state; external to the chart |
-| `signingKeys.rotation` | rotation period; previous keys stay in JWKS for one token lifetime |
-| `policy.configMaps[]` | the declared layer: one or several ConfigMaps in the issuer's namespace, merged |
-| `clients.static[]` | `{id, secretName?, redirectUris[], public: bool, audiences[]}` — ArgoCD, Kargo, one per cluster |
-| `clients.registration[]` | `{namespace, hostPattern}` — which namespaces may self-register clients for which hosts |
-| `proofs.github[]` | `{organisation}` — accepted CI organisations |
-| `proofs.corporate.backends[]` | `google`, later `entra`; tenants come from the hub |
-| `tokens.idLifetime`, `tokens.refreshLifetime`, `tokens.holdWindow` | token lifetimes the policy does not set, and how long an identity keeps its last grant while the hub cannot be vouched for |
-| `recovery.*` | the way in when no directory can vouch for anybody — see the table above |
-| `networkPolicy.*` | who may reach `/token` and `/register` from inside the cluster |
-
-## What the chart renders and expects
-
-Renders the Deployment, Services, ServiceAccount, the ClusterRole for
-TokenReview, the HTTPRoute for the issuer host, NetworkPolicy, and the
-ConfigMap/Secret pair per dynamic registration it manages. Expects a
-Gateway, a Valkey, DNS and TLS for the issuer host, and the hub.

@@ -1,15 +1,18 @@
 # Connect ArgoCD
 
-ArgoCD reads groups from the ID token and maps them in its own policy;
+**Anchor:** the issuer; ArgoCD runs its own OIDC code flow, so no proxy.
+It reads groups from the ID token and maps them in its own policy;
 nothing about that policy changes when the issuer does.
 
-1. A static client in the issuer's values:
+1. A client in the issuer's policy:
    ```yaml
    clients:
-     static:
-       - id: argocd
-         secretName: argocd-oidc-client
-         redirectUris: [https://argocd.example.internal/auth/callback]
+     argocd:
+       kind: confidential
+       secret: argocd-oidc-client
+       redirects:  [https://argocd.example.internal/auth/callback]
+       signed_out: [https://argocd.example.internal/]
+       requires:   [cluster-kernel:cluster:admin, cluster-kernel:cluster:viewer]
    ```
 2. ArgoCD's `oidc.config`:
    ```yaml
@@ -20,9 +23,9 @@ nothing about that policy changes when the issuer does.
    requestedScopes: [openid, profile, email, groups]
    logoutURL: https://issuer.example.internal/end_session?id_token_hint={{token}}&post_logout_redirect_uri=https://argocd.example.internal
    ```
-3. `policy.csv` keeps its `g, <group>, role:<x>` lines: the `groups` values
-   come from the claim fragments and can be identical to the ones ArgoCD reads
-   today.
+3. `policy.csv` keeps its `g, <group>, role:<x>` lines: the `groups`
+   values are the internal group names themselves, so name the groups
+   what the lines already say and nothing here changes.
 4. Keep ArgoCD's local admin until a policy-granted identity has signed in
    as an admin, then `admin.enabled: "false"`.
 

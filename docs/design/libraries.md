@@ -15,7 +15,7 @@ package gives a UI the first without parsing a token.
 
 | Package | Gives |
 |---|---|
-| `identity` | `Identity{Subject, Email, Name, Groups, Roles, Source, Expiry}`; verifiers for a bearer from the issuer (JWKS, audience, issuer) and for a Kubernetes ServiceAccount token (TokenReview, audience, allow-list); a header-trust source for the proxy's identity headers; `FromContext` |
+| `identity` | `Identity{Subject, Email, Name, Groups, Roles, Source, Expiry}` and **exactly two verifiers**, one per anchor ([trust.md](trust.md)): `Issuer` (a bearer or forwarded token: JWKS, issuer URL, audience) and `Cluster` (a ServiceAccount token: TokenReview, audience, allow-list). A listener composes the one or two it needs; both yield the same `Identity`, so a handler never learns which anchor proved the caller. A header-trust source exists for a local run and nothing else; `FromContext` |
 | `identity/httpmw`, `identity/fibermw`, `identity/grpcmw`, `identity/connectmw` | the same verification as middleware for net/http, fiber v3, gRPC unary and stream interceptors, and connect interceptors; every adapter also serves `GET /.access/whoami` for the UI |
 | `authz` | `Require(role)` and `RequireAny(...)` per handler; role mapping from `groups` values or from the policy, so a two-role console needs no code of its own |
 | `directory` | a typed `DirectoryService` client with the ServiceAccount token source built in and the authoritative rule enforced: `Live(email)` and `Members(group)` return a value and an `Authoritative` flag, and a helper `RemoveOnlyIf(authoritative)` for reconcilers |
@@ -24,9 +24,15 @@ package gives a UI the first without parsing a token.
 | `connect` | the admin-consent flow and the backends behind storage interfaces, importable by a product that connects its customers' directories |
 
 Design rules for the module: no framework leaks across packages, every
-verifier is constructed from an issuer URL and an audience and nothing
-else, no global state, and the `Identity` is the only thing handlers ever
-see.
+verifier is constructed from an anchor's coordinates (an issuer URL and
+an audience; or an audience and an allow-list) and nothing else, no
+global state, no third verifier and no group re-mapping anywhere, and
+the `Identity` is the only thing handlers ever see. The module is where
+the two-anchor rule stops being documentation and becomes the shape a
+service is given: a service that serves people and workloads gets two
+listeners because it constructs two verifiers, not because a page told
+it to. The worked example is
+[../connect/service-to-service.md](../connect/service-to-service.md).
 
 ## TypeScript package `access-roster`
 

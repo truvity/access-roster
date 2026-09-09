@@ -1,5 +1,7 @@
 # Expose a business surface to employees for testing
 
+**Anchor:** the issuer, through `access-proxy`.
+
 A product surface on a test tier, opened to employees instead of the
 product's end-user identity provider, without teaching the product about
 the issuer.

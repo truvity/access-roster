@@ -26,6 +26,15 @@ git history.
   of expiry, and a listing repairs the sets it walks. A refresh token is
   hashed into its key rather than written into the keyspace: an index that
   can be read must not be an index that can be replayed. (INF-646)
+- **The rule under everything is written down.** `docs/design/trust.md`:
+  a service trusts exactly two anchors — the cluster for a workload next
+  door, the issuer for everything further away — chosen by scope, never
+  a third; `groups` is the one vocabulary; recovery is the cluster anchor
+  used as the floor; a service with a console and an API has two
+  listeners. `docs/connect/service-to-service.md` is the how-to. Every
+  connect guide names its anchor; the policy examples use the built
+  syntax (`clients:` with `signed_out`, `github.owners`) instead of the
+  design-era one.
 
 ## v0.9.0
 

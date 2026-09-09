@@ -20,11 +20,26 @@ connect / revoke / domain move against the fake.
 
 ## 2. A proof kind (another CI platform, a cloud's workload identity)
 
-`pkg/proof`: implement `Verifier` — given a token, return a verified
-`Proof{Issuer, Subject, Claims}` or an error — and a subject kind in the
-matcher kind that reads its claims. GitHub is the first; GitLab or a cloud's
-instance identity are the same shape. Ship: fixtures of real tokens with
-rotated keys, and a policy test.
+`internal/verify`: implement `issuer.Verifier` — `Verify(ctx, token,
+tokenType) (issuer.Proof, error)` — and, if the proof carries attributes
+no matcher reads yet, a matcher kind in `policy` for them. `Workload`
+(TokenReview) and `GitHub` (the platform's JWKS, an owner allow-list, the
+issuer's own URL as the required audience) are the two that exist; GitLab
+or a cloud's instance identity are the same shape.
+
+Two rules the existing ones keep and a new one must. **Recognition and
+refusal are different answers**: a token this verifier does not own comes
+back `issuer.ErrUnverified` so the next verifier may try it, and a token
+it owns and rejects is final — never retried as something else. **The
+trust boundary is configuration the verifier refuses to run without**
+(an owner list, an audience), never a default: anybody can obtain a valid
+token from a public platform for their own repository, so signature and
+expiry alone prove that *a* job ran somewhere. A verifier adds a proof to
+the issuer's estate anchor; it never adds a third anchor to a service
+([../design/trust.md](../design/trust.md)). Ship: a fake issuer minting
+real signatures in the test, the refusal cases (a stranger's owner, a
+foreign audience, a forged signature, an empty allow-list), and a policy
+test.
 
 ## 3. A matcher kind, or a table
 

@@ -5,6 +5,13 @@ repository, numbered once here and explained case by case below. The
 structural drawing is [architecture.md](architecture.md); the how-to per
 relying party is under [connect/](connect/).
 
+Every arrow below rests on one of **two trust anchors**, and the choice is
+made by scope, never by preference ([design/trust.md](design/trust.md)):
+**the cluster** — a ServiceAccount token the API server checks — for a
+workload calling a service in the same cluster; **the issuer** — a token
+signed by access-issuer — for everything further away: another cluster,
+a laptop, a person, a CI job. Each case names its anchor.
+
 ```mermaid
 flowchart TB
   subgraph in["Identity comes from"]
@@ -64,16 +71,16 @@ flowchart TB
 
 | Kind | Name | What it is | Who deploys or uses it | Status |
 |---|---|---|---|---|
-| **Service** | directory-roster | the directory hub | the platform, once per installation | design under review, prototype next |
-| **Service** | access-issuer | the token service | the platform, once per installation | designed, after the hub |
-| **Helm chart** | `directory-roster` | the hub's chart; expects a Valkey | the platform | with the hub |
-| **Helm chart** | `access-issuer` | the issuer's chart; expects a Valkey and the hub | the platform | with the issuer |
-| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console; self-registers at the issuer; expects a Valkey | every team that ships a console, one release per console | with the issuer |
-| **Go module** | `github.com/truvity/access-roster` | `identity` with net/http, fiber v3, gRPC and connect adapters; `authz`; `directory`; `tokens`; `policy`; `connect` | every Go service and console | `identity` core with the hub, the rest with the issuer |
-| **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>`, generated clients | every console UI | with the hub's console |
-| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `policy test` | people, on laptops; never machines | with the issuer |
-| **GitHub Action** | `truvity/access-roster@v1` (root `action.yml`) | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | with the issuer |
-| **File format** | the policy | groups, claims, lifetimes, clients, memberships — one schema for both services | the platform, in gitops; memberships also from the console | with the hub's console, extended by the issuer |
+| **Service** | directory-roster | the directory hub | the platform, once per installation | **running** since 0.6; three directories connected |
+| **Service** | access-issuer | the token service | the platform, once per installation | **running** since 0.6; conformance run pending ([1.0 gate](design/access-issuer.md)) |
+| **Helm chart** | `directory-roster` | the hub's chart; expects a Valkey | the platform | published per tag |
+| **Helm chart** | `access-issuer` | the issuer's chart; expects a Valkey and the hub | the platform | published per tag |
+| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console; expects a Valkey; a static client until `/register` exists | every team that ships a console, one release per console | published per tag; in front of the hub's console |
+| **Go module** | `github.com/truvity/access-roster` | `policy`, `backend` today; `identity` with the two verifiers and the adapters, `authz`, `directory`, `tokens` to come | every Go service and console | `policy` + `backend` published; the rest with 1.0 |
+| **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>` over `/.access/whoami` | every console UI | published per tag |
+| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `policy test` | people, on laptops; never machines | designed, not built |
+| **GitHub Action** | `truvity/access-roster@v1` (root `action.yml`) | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | designed, not built; the issuer side (the GitHub verifier) is built |
+| **File format** | the policy | groups, claims, lifetimes, clients, memberships — one schema for both services | the platform, in gitops, rendered from its access matrix; memberships also from the console | in force |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the hub's console services | consumers of the hub | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
 
@@ -90,6 +97,7 @@ configure and where, what you get.
 
 ### ① A corporate directory → the hub
 
+- **Anchor:** none of ours — the directory's own OAuth; the hub is the client.
 - **Parties:** a Workspace admin (role account), directory-roster.
 - **Trust:** the Workspace grants the hub's OAuth client read-only Admin
   SDK scopes by admin consent, or a service-account key with domain-wide
@@ -105,6 +113,7 @@ configure and where, what you get.
 
 ### ② A person signs in → the issuer
 
+- **Anchor:** this *produces* the issuer anchor; the corporate IdP is the proof.
 - **Parties:** a person, their corporate IdP, access-issuer.
 - **Trust:** the issuer is an ordinary OIDC client of the corporate IdP,
   openid scopes only.
@@ -118,9 +127,13 @@ configure and where, what you get.
 
 ### ③ A CI job → the issuer
 
+- **Anchor:** produces the issuer anchor; GitHub's token is the proof.
 - **Parties:** a GitHub Actions job, access-issuer.
-- **Trust:** the issuer verifies GitHub's token against GitHub's keys and
-  an organisation allow-list; nothing trusts GitHub directly.
+- **Trust:** the issuer verifies GitHub's token against GitHub's keys, an
+  **owner allow-list** (anybody gets a valid token for their own
+  repository, so the list is the whole of what makes a job ours) and the
+  issuer's own URL as the required audience; nothing trusts GitHub
+  directly.
 - **Flow:** the job requests its identity token → the action exchanges it
   at the issuer for each requested audience → matchers on repository,
   ref and workflow decide → the job gets tokens for ⑥ and ⑦.
@@ -132,6 +145,8 @@ configure and where, what you get.
 
 ### ④ A workload → the hub
 
+- **Anchor:** the cluster. Same cluster, so no issuer in the path — the
+  issuer would verify the same token and re-sign it.
 - **Parties:** an in-cluster consumer (the issuer, github-roster), the
   hub's API listener.
 - **Trust:** the consumer presents a projected ServiceAccount token with
@@ -140,7 +155,21 @@ configure and where, what you get.
 - **You configure:** a projected volume in the consumer, a
   `namespace/serviceAccount` line in the hub's values.
 - **You get:** no API keys; a token that dies with the pod.
-- Guide: [reference/configuration.md](reference/configuration.md#consumers).
+- Guide: [connect/service-to-service.md](connect/service-to-service.md).
+
+### ④b A remote workload, a laptop or a person → the hub's API
+
+- **Anchor:** the issuer. A ServiceAccount token does not cross clusters,
+  and a service that verified N clusters' key sets directly would be the
+  N×M problem the issuer exists to collapse.
+- **Flow:** the caller exchanges its own proof at the issuer for a token
+  whose audience is the hub (`accessctl exchange` on a laptop) → the API
+  listener verifies it against the issuer's JWKS and its audience.
+- **Grant:** keyed by the principal, not the anchor — one consumer table
+  behind both doors; a caller proven either way gets the same answer.
+- Status: the verifier exists (it is the console's); admitting it on the
+  API listener with per-consumer grants is the open work.
+- Guide: [connect/service-to-service.md](connect/service-to-service.md).
 
 ### ⑤ The issuer asks the hub
 
@@ -151,6 +180,8 @@ configure and where, what you get.
 
 ### ⑥ The issuer → a Kubernetes cluster
 
+- **Anchor:** the issuer; the API server reads `groups` and binds the
+  names as they are.
 - **Parties:** an EKS API server, access-issuer, kubelogin or accessctl
   or a job's token.
 - **Trust:** the cluster's single OIDC provider is the issuer, client id
@@ -167,6 +198,7 @@ configure and where, what you get.
 
 ### ⑦ The issuer → an AWS account
 
+- **Anchor:** the issuer; the trust policy reads `aud`.
 - **Parties:** an AWS account, access-issuer, `accessctl aws` or a job's
   token.
 - **Trust:** one IAM OIDC provider for the issuer per account; per role a
@@ -184,6 +216,7 @@ configure and where, what you get.
 
 ### ⑧ The issuer → ArgoCD and Kargo
 
+- **Anchor:** the issuer.
 - **Trust:** a static client each, plus a public one for Kargo's CLI.
 - **Flow:** their own OIDC login against the issuer; they read `groups`
   and apply their own policy, unchanged.
@@ -194,6 +227,10 @@ configure and where, what you get.
 
 ### ⑨ + ⑩ A console behind access-proxy
 
+- **Anchor:** the issuer, only. A console is for people; nothing in a
+  cluster opens a web page, so the proxy never accepts a ServiceAccount
+  token. Two gates: the client's `requires` at the issuer is primary (no
+  token, no session); the proxy's `groups` posture is defence in depth.
 - **Parties:** a person, the gateway, access-proxy, the console.
 - **Trust:** the proxy self-registers as a client of the issuer with its
   ServiceAccount token; the gateway routes the hostname to the proxy as
@@ -212,6 +249,9 @@ configure and where, what you get.
 
 ### ⑪ An application reads who is calling
 
+- **Anchor:** whichever its listener was built for — the module offers
+  exactly two verifiers, `Issuer` and `Cluster`, and a handler sees one
+  `Identity{Groups}` either way.
 - **Go:** `identity` verifier + one of four middleware adapters
   (net/http, fiber v3, gRPC, connect) puts an `Identity` in the context
   and serves `/.access/whoami`; `authz.Role("operator")` gates a handler.
@@ -222,6 +262,7 @@ configure and where, what you get.
 
 ### ⑫ A person's laptop
 
+- **Anchor:** the issuer.
 - `accessctl login` once; `accessctl kubeconfig` and `aws-config` write
   the files for everything the policy grants; kubectl and the AWS CLI then
   work as usual through the exec plugin and the credential process.
@@ -230,18 +271,21 @@ configure and where, what you get.
 
 ### ⑬ A workflow
 
+- **Anchor:** the issuer, by exchange of the platform's token (③).
 - One shell-only step exchanges the job's token at the issuer and writes
   a kubeconfig and an AWS profile. Policy is in the policy file, not in the
   workflow.
 
 ### ⑭ GitHub teams
 
+- **Anchor:** the cluster (this is ④).
 - github-roster, a sibling service, reads the hub over ④ every tick and
   keeps bound teams equal to directory groups, removing only on
   authoritative answers. No issuer involved: this is the sync model.
 
 ### ⑮ Registries, artifacts and every other AWS service
 
+- **Anchor:** none of ours; an AWS credential from ⑦.
 - **Parties:** ECR, CodeArtifact, anything on AWS; the profiles ⑦ and ⑫ or
   ⑬ prepared.
 - **Trust:** none of their own; they consume an AWS credential.
@@ -254,6 +298,17 @@ configure and where, what you get.
   login, with the entitlement decided in the policy.
 - Guide: [connect/registries-and-artifacts.md](connect/registries-and-artifacts.md).
 
+### ⑯ Break-glass
+
+- **Anchor:** the cluster, used deliberately as the floor. A person
+  mints a ServiceAccount token (`kubectl create token <release>-recovery
+  --audience …`) and signs in with it at the hub or the issuer. In the
+  scenario it exists for, the directory is what is broken and the issuer
+  depends on the directory, so the estate anchor is unavailable by
+  construction. Authorization is cluster RBAC: who may mint that token.
+  Not a third anchor, and the only human path that bypasses the issuer.
+- Guide: [operations/runbook.md](operations/runbook.md#lost-operator-access).
+
 ## Reading the two models together
 
 Cases ⑥ ⑦ ⑧ ⑩ ⑮ are the **claims model**: the decision rides in a token,
@@ -262,3 +317,7 @@ Case ⑭ is the **sync model**: the decision is materialized where it is
 enforced, because GitHub can be written to. Both draw from the same hub
 and the same policy; the choice per relying party is dictated by what that
 relying party can consume, never by preference.
+
+And underneath both, the **two anchors**: ④ ⑭ ⑯ stand on the cluster,
+everything else on the issuer, and ④b is the one door that admits both —
+with the grant keyed by who is asking, not by how they proved it.

@@ -30,13 +30,18 @@ Only the latest release is supported with security updates.
   Consumers that remove access act only on authoritative answers; a failed
   probe, a partial read, a stale snapshot or a domain conflict all read as
   "not authoritative", never as "gone".
-- The consumer API authenticates callers by Kubernetes ServiceAccount
-  token (TokenReview, audience-bound, allow-listed) on a ClusterIP Service
-  gated by NetworkPolicy. The operator API and console sit on a separate
-  listener with its own session, established by a corporate sign-in, an
-  external issuer, a bearer forwarded by an authenticating gateway, or —
-  for day one and break-glass — a local admin account whose password is
-  generated into a Secret and shown nowhere else.
+- Every service here trusts **exactly two anchors** and never a third
+  ([docs/design/trust.md](docs/design/trust.md)): the cluster (a
+  ServiceAccount token checked by TokenReview, audience-bound,
+  allow-listed) for workloads in the same cluster, and the issuer (its
+  JWKS, an audience) for everything else. The hub's consumer API sits on
+  one listener under the first; its operator API and console on a
+  separate listener under the second, reached through an authenticating
+  proxy. NetworkPolicy gates both as the second layer, never the only
+  one. Break-glass is the cluster anchor used as the floor: a
+  ServiceAccount token a person mints with cluster RBAC, no stored
+  credential in a cluster; outside one, a generated password held only
+  as an Argon2id digest.
 - The hub **authenticates nobody and issues nothing.** Sign-in is always
   delegated to an identity provider; the hub verifies the result and
   applies the policy. access-issuer, the second service designed for this

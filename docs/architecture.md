@@ -31,6 +31,26 @@ The hub also carries its **own login page**, for exactly two situations:
 It is drawn dotted, once, and it is never a third parallel path in an
 installation that has a proxy.
 
+## Two trust anchors — the rule under every arrow
+
+Every solid arrow below rests on one of exactly two roots of trust, and
+which one is decided by **scope**, never by preference
+([design/trust.md](design/trust.md)):
+
+| Anchor | Proves | Used by |
+|---|---|---|
+| **the cluster** — a ServiceAccount token, checked by TokenReview, bound to an audience | a workload running *here* | a workload calling a service in the same cluster: the issuer → the hub, github-roster → the hub; and break-glass, deliberately, as the floor |
+| **the issuer** — access-issuer's signing key, published as JWKS | an identity the policy has resolved to internal groups | everything further away: people, CI, another cluster, a laptop, every relying party |
+
+The issuer is *built on* the cluster (its workload verifier turns a
+ServiceAccount token into an issuer token), so accepting both is one
+layering seen from two heights, not two authorities. A service with a
+console and an API has **two listeners, one anchor each** — the hub is
+the pattern — and whichever anchor proved a caller, what the service acts
+on is the same thing: a flat list of **internal group names**, the
+`groups` claim, never re-mapped. There is no third anchor and no second
+vocabulary.
+
 ## 1. Context
 
 ```mermaid
@@ -39,7 +59,7 @@ flowchart TB
   admin["Directory admin<br/>[Person]<br/>a role account of one tenant,<br/>consents once"]:::person
   ci["CI job<br/>[External workload]<br/>a signed identity token per run"]:::ext
 
-  ts["access-issuer<br/>[Software System, later]<br/>verifies proofs, asks the hub,<br/>applies the policy, issues tokens"]:::token
+  ts["access-issuer<br/>[Software System]<br/>verifies proofs, asks the hub,<br/>applies the policy, issues tokens"]:::token
   hub["directory-roster<br/>[Software System]<br/>who exists, who is live, who is in which group,<br/>per connected directory, with an authoritative flag"]:::hub
   teamsync["github-roster<br/>[Software System]<br/>directory groups → GitHub teams"]:::system
 
@@ -87,12 +107,12 @@ flowchart TB
   idp["Corporate IdPs<br/>[External]<br/>Admin SDK reads · OIDC sign-in"]:::ext
   kapi["Kubernetes API server<br/>[External]<br/>TokenReview"]:::ext
 
-  subgraph nsTs["namespace: access-issuer (later)"]
+  subgraph nsTs["namespace: access-issuer"]
     direction TB
-    ts["access-issuer<br/>[Container: Go, OpenID Provider library]<br/>verifiers: corporate OIDC, workload OIDC, k8s SA<br/>policy engine · client registry · device flow"]:::token
+    ts["access-issuer<br/>[Container: Go, OpenID Provider library]<br/>verifiers: corporate OIDC, GitHub Actions, k8s SA<br/>policy engine · clients · device flow · sessions"]:::token
     policyStore[("policy: groups · claims · lifetimes · clients<br/>[ConfigMaps from the deployment]<br/>self-registrations [own namespace]")]:::tokenStore
     keys[("signing keys<br/>[Secrets]")]:::tokenStore
-    tsv[("Valkey<br/>[external to the chart]<br/>codes, refresh, device codes,<br/>last-known groups")]:::tokenStore
+    tsv[("Valkey<br/>[external to the chart]<br/>codes, refresh, device codes,<br/>the session index, last-known groups")]:::tokenStore
   end
 
   subgraph nsHub["namespace: directory-roster"]
@@ -144,12 +164,16 @@ flowchart TB
   style rp fill:none,stroke:#8A93A3,stroke-dasharray:5 5
 ```
 
-The two hub listeners are the privilege boundary. The API listener admits
-only allow-listed ServiceAccount tokens, verified by TokenReview, and
-carries DirectoryService alone. The console listener carries the operator
-services and the SPA behind the hub's session, which is minted from the
-forwarded bearer on the first request or, standalone, by the hub's own
-login. NetworkPolicy enforces both as the second layer.
+The two hub listeners are the privilege boundary, and they are the two
+anchors made physical. The API listener admits only allow-listed
+ServiceAccount tokens, verified by TokenReview — the cluster anchor — and
+carries DirectoryService alone; when it admits remote callers too, it
+verifies their issuer tokens on the same port and keys the grant by the
+principal. The console listener carries the operator services and the
+SPA behind the hub's session, minted from the forwarded bearer — the
+issuer anchor — on the first request or, standalone, by the hub's own
+login. NetworkPolicy enforces both as the second layer, never the only
+one.
 
 ## 3. Components of the hub
 
@@ -239,9 +263,9 @@ sequenceDiagram
   Note over P,H: when the console is the hub's own, it verifies the forwarded bearer and resolves the address itself, so the same memberships grant the role
 ```
 
-Until the access-issuer exists, the issuer in this flow is whatever
-identity provider the installation already runs; nothing about the hub's
-side changes.
+In an installation that has not yet moved to access-issuer, the issuer
+in this flow is whatever identity provider it already runs; nothing
+about the hub's side changes.
 
 ### 5.2 kubectl on a cluster
 
@@ -420,6 +444,7 @@ sequenceDiagram
 | A consent the directory granted fails on the first read | a page in the console's own style: the directory's message verbatim and the usual causes, most common first — never a 5xx, which the CDN in front replaces with its own page |
 | A signed-in operator's own account turns non-authoritative | last granted role kept for a bounded window; no new identity granted anything |
 | Consumer presents no token, a wrong audience, or a foreign ServiceAccount | `unauthenticated`; NetworkPolicy would have stopped most of these earlier |
+| A caller presents the wrong anchor — a ServiceAccount token at a console, an issuer token at a listener that admits only local workloads | refused; the two anchors are never mixed on one port, and reaching a port proves nothing |
 | access-issuer is down | no new logins anywhere; existing sessions and tokens live to expiry; break-glass is outside it |
 | The hub is down | access-issuer keeps last-known groups within its hold window; github-roster holds removals |
 

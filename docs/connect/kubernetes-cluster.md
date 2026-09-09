@@ -1,8 +1,12 @@
 # Connect a Kubernetes cluster
 
-The API server trusts the issuer with one client id per cluster and reads
-the `groups` claim into RBAC. People use kubelogin or `accessctl`; jobs use
-`accessctl kube-token` from their exchanged token.
+**Anchor:** the issuer. The API server trusts it with one client id per
+cluster and reads the `groups` claim into RBAC, binding the internal
+group names exactly as the policy spells them. People use kubelogin or
+`accessctl`; jobs use `accessctl kube-token` from their exchanged token.
+(A workload *inside* the cluster calling a service inside the cluster
+is the other anchor and does not come here:
+[service-to-service.md](service-to-service.md).)
 
 ## Cluster side
 
@@ -11,22 +15,28 @@ the `groups` claim into RBAC. People use kubelogin or `accessctl`; jobs use
   kubeadm: `--oidc-*` flags): issuer URL, client id `k8s:<cluster>`,
   username claim `email`, groups claim `groups`, a groups prefix if you
   want one.
-- RBAC bindings by group name, unchanged if the claim fragments mint the
-  same values as before.
+- RBAC bindings by group name — the internal group's name, as it stands
+  in the policy. Name the groups after what the bindings already say and
+  the cutover changes no binding.
 
 ## Policy
 
-The cluster is a public client; the group values its RBAC binds come from
-the claim fragments:
+The cluster is a public client. The group names its RBAC binds **are**
+the internal groups; nothing is re-mapped on the way:
 
 ```yaml
-groups:  { sre: { members: [role-sre@example.com] } }
-claims:  { sre: { groups: [cluster-kernel:admin] } }
-clients: { k8s:kernel: { kind: public, requires: [sre, it] } }
+groups:
+  cluster-kernel:cluster:admin: { members: [role-sre@example.com, role-admin@example.com] }
+  cluster-kernel:cluster:viewer: { members: [team-eng@example.com] }
+clients:
+  k8s:kernel: { kind: public, requires: [cluster-kernel:cluster:admin, cluster-kernel:cluster:viewer] }
 ```
 
 `requires` is what lets `accessctl kubeconfig` know this person may use
-this cluster; the `groups` value is what the cluster's RBAC binds.
+this cluster; the group names in the token are what the cluster's RBAC
+binds. An installation that renders its policy from an access matrix
+(see the gitops repository) mints these names from one function, so the
+binding and the token cannot drift apart.
 
 ## Person side
 
