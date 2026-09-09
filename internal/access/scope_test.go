@@ -21,13 +21,13 @@ func TestARoleMayBeHeldOverOneWorkspace(t *testing.T) {
 	set, err := policy.Parse([]byte(`
 version: 1
 groups:
-  hub-operators:
+  all:access-roster:operator:
     matchers:
       - email: boss@north.example
-  hub-operators@C0north:
+  C0north:access-roster:operator:
     matchers:
       - email: ada@north.example
-  hub-viewers@C0south:
+  C0south:access-roster:viewer:
     matchers:
       - email: ada@north.example
 `))
@@ -119,23 +119,35 @@ func TestRecoveryIsNotScoped(t *testing.T) {
 // anything over a workspace called north.example.
 func TestOnlyTheHubsOwnGroupsCarryAScope(t *testing.T) {
 	t.Parallel()
+
 	for _, tc := range []struct {
-		name    string
-		group   string
-		scoped  bool
-		wants   string
-		wantsWS string
+		name      string
+		group     string
+		mine      bool
+		wantRole  string
+		wantScope string
 	}{
-		{"operators", policy.ScopedGroup(policy.GroupOperators, "C0north"), true, policy.GroupOperators, "C0north"},
-		{"viewers", policy.ScopedGroup(policy.GroupViewers, "C0north"), true, policy.GroupViewers, "C0north"},
-		{"an ordinary group", "platform", false, "", ""},
-		{"an address-shaped group", "team@north.example", false, "", ""},
-		{"a scope with no workspace", "hub-operators@", false, "", ""},
+		{"a scoped operator", policy.ScopedGroup("C0north", policy.RoleOperator), true, policy.RoleOperator, "C0north"},
+		{"a scoped viewer", policy.ScopedGroup("C0north", policy.RoleViewer), true, policy.RoleViewer, "C0north"},
+		// Installation-wide is the ABSENCE of a scope, not a workspace
+		// called "all": it is this hub's role, held everywhere.
+		{"installation-wide", policy.GroupOperators, true, policy.RoleOperator, ""},
+		// Another relying party's grant has the same shape and is not
+		// this hub's to read.
+		{"another thing's grant", "kernel:k8s:admin", false, "", ""},
+		{"a project grant", "prod:eudi:deployer", false, "", ""},
+		// Two segments are never a grant.
+		{"a rung", "rung:sre", false, "", ""},
+		{"an employee", "emp:otsar", false, "", ""},
+		{"an ordinary name", "platform", false, "", ""},
+		{"an address", "team@north.example", false, "", ""},
+		{"a role this hub does not have", "C0north:access-roster:auditor", false, "", ""},
+		{"an empty scope", ":access-roster:operator", false, "", ""},
 	} {
-		group, workspace, scoped := policy.SplitScopedGroup(tc.group)
-		if scoped != tc.scoped || group != tc.wants || workspace != tc.wantsWS {
+		scope, role, mine := policy.SplitScopedGroup(tc.group)
+		if mine != tc.mine || role != tc.wantRole || scope != tc.wantScope {
 			t.Errorf("%s: %q → (%q, %q, %v), want (%q, %q, %v)",
-				tc.name, tc.group, group, workspace, scoped, tc.wants, tc.wantsWS, tc.scoped)
+				tc.name, tc.group, scope, role, mine, tc.wantScope, tc.wantRole, tc.mine)
 		}
 	}
 }

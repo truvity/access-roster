@@ -46,50 +46,52 @@ type Tenant struct {
 const Policy = `
 version: 1
 groups:
-  platform:      { members: [directory-admins@north.example] }
-  engineering:   { members: [engineering@north.example, engineering@south.example] }
-  security:      { members: [security@south.example] }
-  hub-operators: { members: [directory-admins@north.example] }
-  hub-viewers:   {}
-  ci-gitops:
+  kernel:k8s:admin:    { members: [directory-admins@north.example] }
+  devel:k8s:admin:     { members: [directory-admins@north.example] }
+  devel:k8s:viewer:    { members: [engineering@north.example, engineering@south.example] }
+  kernel:k8s:auditor:  { members: [security@south.example] }
+  rung:platform:       { members: [directory-admins@north.example] }
+  rung:engineering:    { members: [engineering@north.example, engineering@south.example] }
+  rung:security:       { members: [security@south.example] }
+  all:access-roster:operator: { members: [directory-admins@north.example] }
+  all:access-roster:viewer:   {}
+  all:gitops:deployer:
     matchers:
       - github: { repository: example-org/gitops, ref: refs/heads/master }
-  ci-any-branch:
+  all:gitops:builder:
     matchers:
       - github: { owner: example-org }
-  cluster-agent:
+  all:directory-roster:reader:
     matchers:
       - service_account: { namespace: identity-system, name: authorization-webhook }
 claims:
-  platform:      { groups: [cluster-kernel:admin, cluster-devel:admin], tailnet: { tiers: [vpc, service] } }
-  engineering:   { groups: [cluster-devel:developer], tailnet: { tiers: [vpc] } }
-  security:      { groups: [cluster-kernel:auditor] }
-  hub-operators: { groups: [hub:operator] }
-  hub-viewers:   { groups: [hub:viewer] }
+  kernel:k8s:admin:   { tailnet: { tiers: [vpc, service] } }
+  devel:k8s:viewer:   { tailnet: { tiers: [vpc] } }
 lifetimes:
   default: 12h
-  platform: 4h
-  security: 8h
-  ci-gitops: 1h
-  ci-any-branch: 30m
+  rung:platform: 4h
+  rung:security: 8h
+  all:gitops:deployer: 1h
+  all:gitops:builder: 30m
 clients:
-  k8s:kernel:        { kind: public, requires: [platform, security] }
-  k8s:devel:         { kind: public, requires: [platform, engineering, ci-gitops] }
-  aws:1111:power:    { kind: exchange, requires: [platform] }
-  aws:1111:deployer: { kind: exchange, requires: [ci-gitops] }
-  directory-roster:  { kind: exchange, requires: [cluster-agent] }
+  k8s:kernel:        { kind: public, requires: [kernel:k8s:admin, kernel:k8s:auditor] }
+  k8s:devel:         { kind: public, requires: [devel:k8s:admin, devel:k8s:viewer, all:gitops:deployer] }
+  aws:1111:power:    { kind: exchange, requires: [kernel:k8s:admin] }
+  aws:1111:deployer: { kind: exchange, requires: [all:gitops:deployer] }
+  directory-roster:  { kind: exchange, requires: [all:directory-roster:reader] }
   argocd:
     kind: confidential
     secret: argocd-oidc-client
     redirects: [https://argocd.demo.example/auth/callback]
-    requires: [platform, engineering, security]
+    signed_out: [https://argocd.demo.example/]
+    requires: [kernel:k8s:admin, devel:k8s:viewer, kernel:k8s:auditor]
     ttl_cap: 2h
   local-dev:
     kind: public
     redirects: [http://localhost:8000/callback]
-    requires: [engineering]
+    requires: [devel:k8s:viewer]
 memberships:
-  hub-viewers: [everyone@north.example, everyone@south.example]
+  all:access-roster:viewer: [everyone@north.example, everyone@south.example]
 `
 
 // Tenants returns the two workspaces the prototype starts with: one

@@ -15,27 +15,27 @@ groups:
     members: [role-sre@a.example, role-sre@b.example]
   dpo:
     members: [role-security@a.example]
-  hub-operators:
+  all:access-roster:operator:
     members: [directory-admins@a.example]
-  hub-viewers:
+  all:access-roster:viewer:
     matchers: [{ email_domain: a.example }]
-  ci-gitops:
+  all:gitops:deployer:
     matchers:
       - github: { repository: example-org/gitops, ref: refs/heads/master }
 claims:
-  sre: { groups: [cluster-kernel:admin, cluster-prod:admin], tailnet: { tiers: [vpc, service] } }
-  dpo: { groups: [cluster-kernel:auditor], tailnet: { tiers: [vpc] } }
-  hub-operators: { groups: [hub:operator] }
+  sre: { groups: [kernel:k8s:admin, prod:k8s:admin], tailnet: { tiers: [vpc, service] } }
+  dpo: { groups: [kernel:k8s:auditor], tailnet: { tiers: [vpc] } }
+  all:access-roster:operator: { groups: [hub:operator] }
 lifetimes:
   default: 12h
   sre: 8h
-  ci-gitops: 1h
+  all:gitops:deployer: 1h
 clients:
   k8s:kernel:        { kind: public, requires: [sre, dpo] }
-  aws:1111:deployer: { kind: exchange, requires: [ci-gitops] }
+  aws:1111:deployer: { kind: exchange, requires: [all:gitops:deployer] }
   argocd:            { kind: confidential, secret: argocd-oidc, redirects: [https://argo.example/cb], requires: [sre, dpo], ttl_cap: 4h }
 memberships:
-  hub-viewers: [all@a.example]
+  all:access-roster:viewer: [all@a.example]
 `
 
 func set(t *testing.T) *policy.Set {
@@ -61,19 +61,19 @@ func TestDirectoryMembershipNeedsAuthority(t *testing.T) {
 	}
 
 	got := s.Evaluate(in)
-	if !got.Has("sre") || !got.Has("hub-operators") {
-		t.Fatalf("groups = %v, want sre and hub-operators", got.Groups)
+	if !got.Has("sre") || !got.Has("all:access-roster:operator") {
+		t.Fatalf("groups = %v, want sre and all:access-roster:operator", got.Groups)
 	}
-	if !got.Has("hub-viewers") {
+	if !got.Has("all:access-roster:viewer") {
 		t.Error("the email-domain matcher should hold regardless of the directory")
 	}
 
 	in.Authoritative = false
 	got = s.Evaluate(in)
-	if got.Has("sre") || got.Has("hub-operators") {
+	if got.Has("sre") || got.Has("all:access-roster:operator") {
 		t.Errorf("groups = %v, want no directory-derived group when the answer is not authoritative", got.Groups)
 	}
-	if !got.Has("hub-viewers") {
+	if !got.Has("all:access-roster:viewer") {
 		t.Error("a matcher on a verified sign-in does not need the directory")
 	}
 }
@@ -88,8 +88,8 @@ func TestClaimsDeepMerge(t *testing.T) {
 
 	groups, _ := got.Claims["groups"].([]any)
 	want := []string{
-		"cluster-kernel:admin", "cluster-kernel:auditor", "cluster-prod:admin",
-		"dpo", "hub-viewers", "sre",
+		"all:access-roster:viewer", "dpo", "kernel:k8s:admin",
+		"kernel:k8s:auditor", "prod:k8s:admin", "sre",
 	}
 	if len(groups) != len(want) {
 		t.Fatalf("groups claim = %v, want %v", groups, want)
@@ -144,8 +144,8 @@ func TestMachineGroupsAndClientGate(t *testing.T) {
 	job := s.Evaluate(policy.Input{GitHub: &policy.GitHubClaims{
 		Repository: "example-org/gitops", Ref: "refs/heads/master",
 	}})
-	if !job.Has("ci-gitops") || job.Lifetime != time.Hour {
-		t.Errorf("job = %+v, want ci-gitops for an hour", job)
+	if !job.Has("all:gitops:deployer") || job.Lifetime != time.Hour {
+		t.Errorf("job = %+v, want all:gitops:deployer for an hour", job)
 	}
 
 	fork := s.Evaluate(policy.Input{GitHub: &policy.GitHubClaims{
@@ -168,24 +168,24 @@ func TestConsoleLayerIsAdditiveAndLabelled(t *testing.T) {
 	t.Parallel()
 	s := set(t)
 
-	added, err := s.AddMembership("hub-operators", "platform@b.example")
+	added, err := s.AddMembership("all:access-roster:operator", "platform@b.example")
 	if err != nil || !added {
 		t.Fatalf("AddMembership: %v, %v", added, err)
 	}
-	if again, _ := s.AddMembership("hub-operators", "platform@b.example"); again {
+	if again, _ := s.AddMembership("all:access-roster:operator", "platform@b.example"); again {
 		t.Error("adding the same membership twice must be a no-op")
 	}
 
 	got := s.Evaluate(policy.Input{
 		Email: "bob@b.example", DirectoryGroups: []string{"platform@b.example"}, Authoritative: true,
 	})
-	if !got.Has("hub-operators") {
+	if !got.Has("all:access-roster:operator") {
 		t.Errorf("groups = %v, want the console membership to count", got.Groups)
 	}
 
 	var operators policy.GroupView
 	for _, view := range s.Groups() {
-		if view.Name == "hub-operators" {
+		if view.Name == "all:access-roster:operator" {
 			operators = view
 		}
 	}
@@ -200,13 +200,13 @@ func TestConsoleLayerIsAdditiveAndLabelled(t *testing.T) {
 		t.Errorf("console member reported as %q", layers["platform@b.example"])
 	}
 
-	if err = s.RemoveMembership("hub-operators", "directory-admins@a.example"); err == nil {
+	if err = s.RemoveMembership("all:access-roster:operator", "directory-admins@a.example"); err == nil {
 		t.Error("removing a declared membership must be refused")
 	}
-	if err = s.RemoveMembership("hub-operators", "platform@b.example"); err != nil {
+	if err = s.RemoveMembership("all:access-roster:operator", "platform@b.example"); err != nil {
 		t.Errorf("removing a console membership: %v", err)
 	}
-	if err = s.RemoveMembership("hub-viewers", "all@a.example"); err == nil {
+	if err = s.RemoveMembership("all:access-roster:viewer", "all@a.example"); err == nil {
 		t.Error("a membership declared in the memberships table is still declared")
 	}
 	if _, err = s.AddMembership("nobody", "x@y.example"); err == nil {

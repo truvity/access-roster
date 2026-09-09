@@ -5,6 +5,19 @@ git history.
 
 ## Unreleased
 
+- **Every grant is named `<scope>:<thing>:<role>`.** The hub's own two
+  roles are `all:access-roster:operator` and `…:viewer`; a role over one
+  directory is `<workspace id>:access-roster:<role>`, the scope in the
+  first position like every other name, where it used to be an `@`
+  suffix. `policy.ScopedGroup` and `SplitScopedGroup` follow, and the
+  loader **warns** at start on a name that is neither a grant nor one of
+  the two families that deliberately are not grants (`rung:<name>`,
+  `emp:<slug>`) — a convention is worth saying out loud where an operator
+  sees it, and worth not refusing, since an installation mid-rename holds
+  both shapes at once. The demonstration policy is written in the shape
+  it documents. **This must be pinned in the same window as the
+  installation's own policy rename**, or the console stops recognising
+  its operators. (INF-684)
 - **Docs: the naming rule.** Every grant is `<scope>:<thing>:<role>` —
   `kernel:k8s:admin`, `prod:eudi:deployer`, `all:access-roster:operator`
   — with `rung:` and `emp:` the only two-segment families and neither a

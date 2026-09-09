@@ -59,7 +59,7 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
   // An installation that is not finished is not "broken", and the counts
   // below cannot say anything useful about it yet. What it needs is the
   // next step, so that is what the page leads with until there is none.
-  const operators = groups.find((g) => g.name === "hub-operators");
+  const operators = groups.find((g) => g.name === "all:access-roster:operator");
   const progress: Progress | undefined = policy.value && current.value
     ? {
         clientConfigured: Boolean(current.value.oauthClient?.configured),
@@ -67,7 +67,7 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
         operators: (operators?.members.length ?? 0) + (operators?.rules.length ?? 0),
         standingPassword: policy.value.recoveryKind === "password",
         setup: current.value.setup,
-        operatorGroup: operators?.name ?? "hub-operators",
+        operatorGroup: operators?.name ?? "all:access-roster:operator",
       }
     : undefined;
   const settingUp = progress !== undefined && incomplete(progress);

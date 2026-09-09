@@ -208,7 +208,7 @@ func TestTokenExchangeMintsTheGatedAudience(t *testing.T) {
 	for _, g := range groups {
 		names = append(names, g.(string))
 	}
-	if !contains(names, "ci-gitops") || !contains(names, "ci-any-branch") {
+	if !contains(names, "all:gitops:deployer") || !contains(names, "all:gitops:builder") {
 		t.Errorf("groups = %v, want both rules the job matches", names)
 	}
 	for _, name := range names {
@@ -217,7 +217,7 @@ func TestTokenExchangeMintsTheGatedAudience(t *testing.T) {
 		}
 	}
 
-	// ci-any-branch says 30 minutes and is the shortest the job holds, so
+	// all:gitops:builder says 30 minutes and is the shortest the job holds, so
 	// the token lives that long and not the hour the issuer would default
 	// to.
 	if expires, ok := body["expires_in"].(float64); !ok || expires > 30*60 || expires < 29*60 {
@@ -254,7 +254,7 @@ func TestTokenExchangeRefusesAnUngatedAudience(t *testing.T) {
 	if got, _ := body["error"].(string); got != "invalid_target" {
 		t.Errorf("error = %q, want invalid_target", got)
 	}
-	if desc, _ := body["error_description"].(string); !strings.Contains(desc, "ci-gitops") {
+	if desc, _ := body["error_description"].(string); !strings.Contains(desc, "all:gitops:deployer") {
 		t.Errorf("error_description = %q, want it to name what would have admitted the job", desc)
 	}
 

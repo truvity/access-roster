@@ -386,6 +386,20 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// A name is a convention, not a rule, so this is said and not
+	// refused: the policy works either way, and an installation mid-
+	// rename holds both shapes at once. What the convention buys is that
+	// a reader tells a grant from an identity by looking, and the place
+	// to notice a name that broke it is here, at load, rather than in a
+	// token six months later.
+	if odd := declared.UnconventionalGroups(); len(odd) > 0 {
+		log.WarnContext(ctx, "some group names are neither a grant nor an identity",
+			"groups", odd,
+			"grant", "<scope>:<thing>:<role>",
+			"identity", "rung:<name>, emp:<slug>")
+	}
+
 	authorizer := access.NewAuthorizer(set, directory, cfg.holdWindow)
 
 	sessionKey := kept.sessionKey
@@ -554,11 +568,8 @@ func serve(ctx context.Context, port int, handler http.Handler, name string, log
 const builtinPolicy = `
 version: 1
 groups:
-  hub-operators: {}
-  hub-viewers: {}
-claims:
-  hub-operators: { groups: [hub:operator] }
-  hub-viewers: { groups: [hub:viewer] }
+  all:access-roster:operator: {}
+  all:access-roster:viewer: {}
 lifetimes:
   default: 12h
 `
