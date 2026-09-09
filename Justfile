@@ -169,11 +169,26 @@ chart-lint:
 # the same reason frontend/dist is.
 ts:
     cd ts && npm ci && npx tsc --noEmit && npx vitest run && npx tsc -p tsconfig.build.json
+    # Committed for the same reason and drifts the same way: the package
+    # is installed straight from a git tag, so what ships is whatever is
+    # in the tree rather than whatever a build would produce.
+    git diff --exit-code -- ts/dist
+    git diff --cached --exit-code -- ts/dist
+    test -z "$(git ls-files --others --exclude-standard ts/dist)"
 
 # Rebuild the console SPA into frontend/dist (committed). Needs Node; CI
 # does not run this, which is why dist/ is in the repository.
 console:
     cd frontend && npm ci && npm run build
+    # The bundle is COMMITTED, and the Go binary embeds it. So a build
+    # that changes it and is not committed ships a console nobody's
+    # package.json describes -- which is exactly what a dependency bump
+    # does, because a bot edits package.json and package-lock.json and
+    # has no way to rebuild what they produce. Found after react 19 went
+    # in: the repository declared 19 and carried an 18 bundle.
+    git diff --exit-code -- frontend/dist
+    git diff --cached --exit-code -- frontend/dist
+    test -z "$(git ls-files --others --exclude-standard frontend/dist)"
 
 # Run all checks (build + test + lint + chart-lint + vuln)
 check: build test lint chart-lint vuln
