@@ -5,6 +5,10 @@ git history.
 
 ## Unreleased
 
+Nothing yet.
+
+## v0.9.3
+
 - **Every grant is named `<scope>:<thing>:<role>`.** The hub's own two
   roles are `all:access-roster:operator` and `…:viewer`; a role over one
   directory is `<workspace id>:access-roster:<role>`, the scope in the
