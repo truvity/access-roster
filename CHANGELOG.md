@@ -5,7 +5,17 @@ git history.
 
 ## Unreleased
 
-Nothing yet.
+- **A token names the person, not only the address.** `ResolveUser`
+  carries the account's given and family names (additive fields 7 and 8),
+  the issuer puts them in `userinfo` and the ID token as `name`,
+  `given_name`, `family_name` and `preferred_username`, and a relying
+  party's UI shows somebody rather than an address — which is what ArgoCD
+  and Kargo render after a cutover. Identity, never authorization:
+  `groups` decides, as before, and every one of these is absent for a
+  workload or a recovery sign-in, which have no names to give. A **held**
+  answer carries the last known grants and no names: the hold window
+  exists for authorization, and a name recovered from memory would be a
+  claim the issuer cannot currently vouch for. (INF-681)
 
 ## v0.9.3
 

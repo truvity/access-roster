@@ -23,6 +23,12 @@ type Standing struct {
 	Suspended     bool
 	Groups        []string
 	Authoritative bool
+	// GivenName and FamilyName are the account's own, when the directory
+	// supplies them. Identity, never authorization: they shape what a
+	// relying party's UI shows and nothing that it decides. Empty is
+	// normal and a consumer falls back to the address.
+	GivenName  string
+	FamilyName string
 }
 
 // lastKnown is what the issuer remembers about an identity so that a hub
@@ -71,6 +77,13 @@ type Resolution struct {
 	// from a fresh authoritative answer. A token is still issued; the
 	// distinction is for the audit trail and for the console.
 	Held bool
+	// GivenName and FamilyName travel with the answer when the directory
+	// supplied them, so a token can name a person rather than an address.
+	// They are NOT remembered through the hold window: a held answer is
+	// the last known GRANTS and nothing else, and a name recovered from
+	// memory would be a claim this issuer could not currently vouch for.
+	GivenName  string
+	FamilyName string
 }
 
 // Refused reports that no token may be issued, with the reason.
@@ -99,7 +112,12 @@ func (r *Resolver) Resolve(ctx context.Context, email string) (Resolution, error
 			return Resolution{}, &Refused{Reason: "the directory says this account is not live"}
 		}
 		r.seen[email] = lastKnown{groups: standing.Groups, at: now}
-		return Resolution{Groups: standing.Groups}, nil
+
+		return Resolution{
+			Groups:     standing.Groups,
+			GivenName:  standing.GivenName,
+			FamilyName: standing.FamilyName,
+		}, nil
 	}
 
 	// Either the hub could not be reached, or it answered without being

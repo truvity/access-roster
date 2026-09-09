@@ -125,5 +125,7 @@ func (c *Client) ResolveUser(ctx context.Context, email string) (issuer.Standing
 		Suspended:     msg.GetSuspended(),
 		Groups:        msg.GetGroups(),
 		Authoritative: msg.GetAuthoritative(),
+		GivenName:     msg.GetGivenName(),
+		FamilyName:    msg.GetFamilyName(),
 	}, nil
 }

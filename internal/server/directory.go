@@ -186,6 +186,8 @@ func (d *Directory) ResolveUser(
 		Found:         got.Found,
 		Authoritative: got.Authoritative,
 		SnapshotAt:    stamp(got.SnapshotAt),
+		GivenName:     got.GivenName,
+		FamilyName:    got.FamilyName,
 	}), nil
 }
 
