@@ -415,12 +415,11 @@ func (s *Storage) SetUserinfoFromRequest(
 ) error {
 	subject := request.GetSubject()
 
-	claims, err := s.GetPrivateClaimsFromScopes(ctx, subject, request.GetClientID(), request.GetScopes())
+	claims, given, family, err := s.identityOf(ctx, subject)
 	if err != nil {
 		return err
 	}
 
-	given, family := s.namesOf(ctx, subject)
 	if err = s.fill(ctx, info, subject, claims, given, family); err != nil {
 		return err
 	}
@@ -447,7 +446,7 @@ func sessionOf(request op.IDTokenRequest) string {
 
 // issue records one access token and returns it.
 func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, error) {
-	claims, err := s.claimsFor(ctx, request)
+	claims, given, family, err := s.claimsFor(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +468,7 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 		Claims:   claims,
 		Expires:  time.Now().Add(lifetime),
 	}
-	issued.GivenName, issued.FamilyName = s.namesOf(ctx, issued.Subject)
+	issued.GivenName, issued.FamilyName = given, family
 	// Kept only until it expires: an access token past its lifetime
 	// answers nothing, and a store that has to be swept is a store that
 	// grows when the sweeper stops.
@@ -488,12 +487,27 @@ func clientOf(request op.TokenRequest) string {
 	return ""
 }
 
-// claimsFor is what a token carries beyond its identity fields.
-func (s *Storage) claimsFor(ctx context.Context, request op.TokenRequest) (map[string]any, error) {
+// claimsFor is what a token carries beyond its identity fields, and what
+// the account is called — from ONE answer, because they come from one.
+func (s *Storage) claimsFor(
+	ctx context.Context, request op.TokenRequest,
+) (claims map[string]any, given, family string, err error) {
 	if exchange, ok := request.(op.TokenExchangeRequest); ok {
-		return s.GetPrivateClaimsFromTokenExchangeRequest(ctx, exchange)
+		// An exchange is usually a job or a workload, which has no name.
+		// A person trading one of their own tokens does, and the grant
+		// decided what they may have without asking the directory what
+		// they are called — so that stays a separate question here.
+		claims, err = s.GetPrivateClaimsFromTokenExchangeRequest(ctx, exchange)
+		if err != nil {
+			return nil, "", "", err
+		}
+
+		given, family = s.namesOf(ctx, request.GetSubject())
+
+		return claims, given, family, nil
 	}
-	return s.GetPrivateClaimsFromScopes(ctx, request.GetSubject(), clientOf(request), request.GetScopes())
+
+	return s.identityOf(ctx, request.GetSubject())
 }
 
 // TokenRequestByRefreshToken implements [op.AuthStorage].
@@ -627,21 +641,43 @@ func (s *Storage) SetIntrospectionFromToken(context.Context, *oidc.Introspection
 
 // GetPrivateClaimsFromScopes implements [op.OPStorage].
 func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, subject, _ string, _ []string) (map[string]any, error) {
-	// A ServiceAccount subject is a recovery sign-in, and the hub is the
-	// wrong place to ask about it: it holds directories, and this is not
-	// a person in one. The policy's `service_account` matchers decide,
-	// exactly as they do for a workload exchanging a token -- one table,
-	// one evaluation, and nothing here that a matcher did not grant.
+	claims, _, _, err := s.identityOf(ctx, subject)
+
+	return claims, err
+}
+
+// identityOf asks the directory ONCE and returns everything one answer
+// contains: what the policy grants this identity, and what the directory
+// calls it.
+//
+// Once matters. The hub call behind this is the issuer's hottest, and
+// every claim a token carries comes from the same answer — so asking
+// twice is not only two round trips where the design counted on one, it
+// is two answers that can disagree, with the grants from before a change
+// and the name from after.
+//
+// A ServiceAccount subject is a recovery sign-in, and the hub is the
+// wrong place to ask about it: it holds directories, and this is not a
+// person in one. The policy's `service_account` matchers decide, exactly
+// as they do for a workload exchanging a token -- one table, one
+// evaluation, and nothing here that a matcher did not grant. It has no
+// name, which is the truthful answer rather than a missing one.
+func (s *Storage) identityOf(
+	ctx context.Context, subject string,
+) (claims map[string]any, given, family string, err error) {
 	if namespace, name, ok := serviceAccountSubject(subject); ok {
 		return Claims(s.iss.Policy().Evaluate(policy.Input{
 			ServiceAccount: &policy.ServiceAccountRef{Namespace: namespace, Name: name},
-		})), nil
+		})), "", "", nil
 	}
+
 	resolved, err := s.iss.resolver.Resolve(ctx, subject)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
-	return Claims(s.iss.Policy().Evaluate(resolved.Input(subject))), nil
+
+	return Claims(s.iss.Policy().Evaluate(resolved.Input(subject))),
+		resolved.GivenName, resolved.FamilyName, nil
 }
 
 // serviceAccountSubject splits the API server's spelling of one.
