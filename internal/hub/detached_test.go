@@ -3,8 +3,10 @@ package hub_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -560,5 +562,62 @@ func TestACancelledProbeIsNotAFailedProbe(t *testing.T) {
 	}
 	if !ws.Health.OK || ws.Health.Error != "" {
 		t.Errorf("health = %+v, want the last real probe kept rather than a cancellation stored", ws.Health)
+	}
+}
+
+// "Could not ask" is retried; "was refused" is not.
+//
+// One 503 from Google's domains.list flipped a live tenant to failing for
+// a whole probe interval, and — with reasons attached — told the operator
+// its domains were "provisional, probe failed" about a credential nobody
+// had found fault with. A directory that answers 503 has said nothing
+// about the credential. A directory that answers 403 has.
+func TestAProbeRetriesWhatItCouldNotAskAndNotWhatWasRefused(t *testing.T) {
+	// Not parallel: it swaps a package-level backoff.
+	defer hub.SetProbeBackoff(time.Millisecond)()
+	ctx := context.Background()
+	directory, store := newDetachedHub(t)
+	tenant := fake.New("C0flaky", "north.example")
+	if _, err := directory.Adopt(ctx, hub.Workspace{Admin: "admin@north.example"}, tenant); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	directory.Wait()
+
+	healthy := func() (bool, string) {
+		t.Helper()
+		ws, err := store.Get(ctx, "C0flaky")
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		return ws.Health.OK, ws.Health.Error
+	}
+
+	// A provider that is briefly down: it recovers within the attempts,
+	// so nothing is written down as broken.
+	tenant.FailTimes(fake.OpProbe, fmt.Errorf("%w: 503: the service is currently unavailable", backend.ErrUnavailable), 2)
+	if _, err := directory.Probe(ctx, "C0flaky"); err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if ok, detail := healthy(); !ok {
+		t.Errorf("a transient 503 was recorded as a broken credential: %q", detail)
+	}
+	if got := tenant.Calls(fake.OpProbe); got < 3 {
+		t.Errorf("probe was attempted %d times, want it to try again after a 503", got)
+	}
+
+	// A credential that is genuinely refused fails on the first attempt:
+	// a revoked one must not take three probe intervals to surface.
+	before := tenant.Calls(fake.OpProbe)
+	tenant.Fail(fake.OpProbe, errors.New("forbidden (403): the admin lacks the privileges"))
+	if _, err := directory.Probe(ctx, "C0flaky"); err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if ok, detail := healthy(); ok {
+		t.Error("a refusal was not recorded")
+	} else if !strings.Contains(detail, "403") {
+		t.Errorf("detail = %q, want the provider's own words", detail)
+	}
+	if got := tenant.Calls(fake.OpProbe) - before; got != 1 {
+		t.Errorf("a refusal was asked %d times, want exactly one", got)
 	}
 }

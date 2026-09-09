@@ -43,6 +43,7 @@ type Backend struct {
 	accounts map[string]backend.Account
 	groups   map[string]backend.Group
 	fail     map[Op]error
+	failFor  map[Op]int
 	calls    map[Op]int
 	revoked  bool
 }
@@ -140,6 +141,21 @@ func (b *Backend) Fail(op Op, err error) {
 	b.fail[op] = err
 }
 
+// FailTimes makes op fail for the next n calls and succeed after that:
+// a provider that is briefly down rather than one that is refusing.
+func (b *Backend) FailTimes(op Op, err error, n int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err == nil {
+		err = ErrScripted
+	}
+	b.fail[op] = err
+	if b.failFor == nil {
+		b.failFor = map[Op]int{}
+	}
+	b.failFor[op] = n
+}
+
 // Heal stops op from failing.
 func (b *Backend) Heal(op Op) {
 	b.mu.Lock()
@@ -165,7 +181,20 @@ func (b *Backend) Revoked() bool {
 // enter records the call and returns the scripted error, if any.
 func (b *Backend) enter(op Op) error {
 	b.calls[op]++
-	return b.fail[op]
+	err := b.fail[op]
+	if err == nil {
+		return nil
+	}
+	// A counted failure heals itself once it has been served n times.
+	if left, counted := b.failFor[op]; counted {
+		if left <= 1 {
+			delete(b.failFor, op)
+			delete(b.fail, op)
+		} else {
+			b.failFor[op] = left - 1
+		}
+	}
+	return err
 }
 
 // Kind implements [backend.Backend].
