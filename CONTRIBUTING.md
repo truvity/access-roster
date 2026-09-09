@@ -104,15 +104,18 @@ decisions and their dates; when the two disagree, the document wins and
 the issue gets a comment. `docs/design/*` says what each battery is and
 why; `docs/reference/*` says exactly what it exposes; `CHANGELOG.md`
 says what exists today. As of 2026-09-09 the hub and the issuer run on a
-cluster, the hub's console is behind `access-proxy`, and the first
-directory is connected. What the first live connect showed still has to
-change is marked *(0.8)* in the design and reference documents — nothing
-slow on the request path, every replica knowing every workspace, the
-connect-time domain choice, *provisional* with a reason — and the
-ordered backlog lives with the project's issues, one issue each, the
-worst-first order stated there. Two things are not fixes and must not be
-reached for: raising the gateway's route timeout, and asking for a
-fifth Google scope.
+cluster, the hub's console is behind `access-proxy`, and three
+directories are connected. Everything the first live connect showed is
+built and released: nothing slow on the request path, every replica
+knowing every workspace, the connect-time domain choice, *provisional*
+with a reason, a role scoped to one workspace. The remaining work lives
+with the project's issues.
+
+Four things are not fixes and must not be reached for, each because it
+was the first idea and the wrong one: raising the gateway's route
+timeout, asking for a fifth Google scope, answering a browser with a 5xx
+it will never see, and clearing this hub's own cookie to sign somebody
+out of a session the proxy holds.
 
 ## Releasing
 

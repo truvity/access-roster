@@ -125,7 +125,7 @@ The contract with consumers: **act on removals only when
 That boolean is the whole wire contract. The console's word for a served
 domain whose flag is `false` is **provisional**, and it carries a reason —
 `first_snapshot_pending`, `snapshot_stale`, `probe_failed` — on the
-operator-facing `ListWorkspaces` only *(0.8)*; a domain two workspaces
+operator-facing `ListWorkspaces` only; a domain two workspaces
 both serve is `conflict` there. Nothing about the consumer-facing
 `DirectoryService` changes with the rename.
 
@@ -159,12 +159,12 @@ not an error; it is a non-authoritative answer.
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `ListWorkspaces` | viewer | — | `workspaces[]` | id, backend, `sync_groups` and `discovered_groups` (what a sync chooser offers), domains with authoritative/conflict/served/owned flags and — when served and not authoritative — a `reason` (`first_snapshot_pending`, `snapshot_stale`, `probe_failed`) *(0.8)*, admin, credential type, connected_by/at, health, snapshot_at, declared |
+| `ListWorkspaces` | viewer | — | `workspaces[]` | id, backend, `sync_groups` and `discovered_groups` (what a sync chooser offers), domains with authoritative/conflict/served/owned flags and — when served and not authoritative — a `reason` (`first_snapshot_pending`, `snapshot_stale`, `probe_failed`), admin, credential type, connected_by/at, health, snapshot_at, declared |
 | `BeginConnect` | operator | `backend` | `consent_url` | sets the state cookie; the browser navigates to the URL. The state is signed by the hub and **names the operator who asked**: the callback lands on the bootstrap surface with no gateway identity, and the state is its authority |
 | `Reconnect` | operator | `workspace_id` | `consent_url` | the callback checks the consenting tenant is the same, then replaces the credential |
 | `UploadKey` | operator | `backend`, `key` (bytes), `admin` | `workspace` | service-account key with domain-wide delegation; creates or re-credentials |
-| `SetServedDomains` | operator | `workspace_id`, `domains[]` | `workspace` | which of the tenant's domains this hub answers for; empty = all of them, including ones added later. Only discovered domains may be named (`InvalidArgument` otherwise); a declared workspace refuses (`FailedPrecondition`) — its list is in the values. What was excluded is dropped from the snapshot at once and a new one is taken **detached**: the call returns without waiting on the directory *(0.8)*. Called at connect time *(0.8)* with the operator's choice, before the first snapshot |
-| `SetSyncedGroups` | operator | `workspace_id`, `groups[]` | `workspace` | which of the tenant's groups this hub keeps; empty keeps every group in the served domains. Only a group the last read held may be named (`InvalidArgument` otherwise); a declared workspace refuses (`FailedPrecondition`). Excluded groups leave the snapshot at once and the re-read is detached *(0.8)* |
+| `SetServedDomains` | operator | `workspace_id`, `domains[]` | `workspace` | which of the tenant's domains this hub answers for; empty = all of them, including ones added later. Only discovered domains may be named (`InvalidArgument` otherwise); a declared workspace refuses (`FailedPrecondition`) — its list is in the values. What was excluded is dropped from the snapshot at once and a new one is taken **detached**: the call returns without waiting on the directory. Called at connect time with the operator's choice, before the first snapshot |
+| `SetSyncedGroups` | operator | `workspace_id`, `groups[]` | `workspace` | which of the tenant's groups this hub keeps; empty keeps every group in the served domains. Only a group the last read held may be named (`InvalidArgument` otherwise); a declared workspace refuses (`FailedPrecondition`). Excluded groups leave the snapshot at once and the re-read is detached |
 | `Probe` | operator | `workspace_id` | `health`, `domains[]` | credential check now, domain list re-read |
 | `Refresh` | operator | `workspace_id` | `snapshot_at` | a full snapshot now |
 | `Disconnect` | operator | `workspace_id` | — | revokes at the backend, deletes the Secret and the record. `failed_precondition` for a declared workspace |

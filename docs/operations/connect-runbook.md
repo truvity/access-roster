@@ -104,7 +104,7 @@ and only removes the interstitial.
    always the Admin SDK API not being enabled on the project (step 1 of
    the one-time setup); the message names the project and links the page
    that enables it.
-5. **Choose the domains** *(0.8)*. The consenting administrator's own
+5. **Choose the domains**. The consenting administrator's own
    domain is pre-selected; the tenant's other domains are listed and off;
    *all, including ones added later* is an explicit option. Pick what
    this hub should answer for — the rest stays discovered and visible,
