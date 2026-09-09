@@ -73,15 +73,25 @@ for, rather than skipped into a URL that ends only the near half.
 {{- $access.signOutURL -}}
 {{- else if $access.signOutThroughIssuer -}}
 {{- $issuer := "" -}}
-{{- with $access.login.forwardedBearer }}{{ $issuer = trimSuffix "/" (.issuer | default "") }}{{ end -}}
+{{- $client := "" -}}
+{{- with $access.login.forwardedBearer }}{{ $issuer = trimSuffix "/" (.issuer | default "") }}{{ $client = .audience | default "" }}{{ end -}}
 {{- if not $issuer -}}
 {{- fail "access.signOutThroughIssuer needs access.login.forwardedBearer.issuer: without it the chain would clear this console's cookie and leave the person signed in at the issuer, which looks exactly like a sign-out and is not one" -}}
 {{- end -}}
 {{- if not .Values.route.host -}}
 {{- fail "access.signOutThroughIssuer needs route.host: it is where the person lands once their session is gone" -}}
 {{- end -}}
+{{- if not $client -}}
+{{- fail "access.signOutThroughIssuer needs access.login.forwardedBearer.audience: it is this console's client id at the issuer, and without it the issuer cannot tell whose landing page it is being handed, so it drops the person on its own signed-out page instead of back here" -}}
+{{- end -}}
 {{- $home := printf "https://%s/" .Values.route.host -}}
-{{- $end := printf "%s/end_session?post_logout_redirect_uri=%s" $issuer (urlquery $home) -}}
+{{/* client_id, because there is no id_token_hint to carry: oauth2-proxy's
+     `rd` is a plain redirect and adds nothing of its own. Without it the
+     issuer has no client whose `signed_out` list to match, so it ends the
+     session -- the half that matters -- and then lands the person on its
+     OWN page rather than this console's. RP-Initiated Logout allows
+     either; this is the one we can send. */}}
+{{- $end := printf "%s/end_session?client_id=%s&post_logout_redirect_uri=%s" $issuer (urlquery $client) (urlquery $home) -}}
 {{- printf "%s/sign_out?rd=%s" (trimSuffix "/" ($access.proxyPrefix | default "/oauth2")) (urlquery $end) -}}
 {{- end -}}
 {{- end -}}

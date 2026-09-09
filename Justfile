@@ -178,6 +178,13 @@ chart-lint:
     # the chain without the issuer it would end must fail the RENDER.
     ! helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true >/dev/null 2>&1
     helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example --set access.login.forwardedBearer.audience=console | grep -q 'end_session'
+    # And it must carry client_id. There is no id_token_hint in a plain
+    # `rd` redirect, so without a client the issuer has no `signed_out`
+    # list to match: it ends the session and lands the person on its OWN
+    # page. Verified live on 2026-09-09 -- the first render did exactly
+    # that.
+    helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example --set access.login.forwardedBearer.audience=console | grep -q 'client_id'
+    ! helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example >/dev/null 2>&1
 
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —
