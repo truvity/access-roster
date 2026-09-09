@@ -32,7 +32,7 @@ func (p Proof) Subject() string {
 	case p.GitHub != nil:
 		return "github:" + p.GitHub.Repository
 	case p.ServiceAccount != nil:
-		return "k8s:" + p.ServiceAccount.Namespace + ":" + p.ServiceAccount.Name
+		return p.ServiceAccount.Subject()
 	default:
 		return ""
 	}

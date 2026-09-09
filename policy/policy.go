@@ -212,6 +212,10 @@ type GitHubMatcher struct {
 
 // ServiceAccountMatcher matches a Kubernetes ServiceAccount.
 type ServiceAccountMatcher struct {
+	// Cluster narrows the rule to one cluster's account. Empty matches
+	// any, which is what every rule written before clusters were named
+	// means — and what a single-cluster installation wants.
+	Cluster   string `yaml:"cluster,omitempty"`
 	Namespace string `yaml:"namespace"`
 	Name      string `yaml:"name"`
 }
@@ -289,7 +293,12 @@ func (m Matcher) Describe() string {
 		slices.Sort(parts)
 		return "CI job with " + strings.Join(parts, ", ")
 	case m.ServiceAccount != nil:
-		return "ServiceAccount " + m.ServiceAccount.Namespace + "/" + m.ServiceAccount.Name
+		where := ""
+		if m.ServiceAccount.Cluster != "" {
+			where = " on " + m.ServiceAccount.Cluster
+		}
+
+		return "ServiceAccount " + m.ServiceAccount.Namespace + "/" + m.ServiceAccount.Name + where
 	case m.Email != "":
 		return "signed in as " + m.Email
 	case m.EmailDomain != "":
@@ -346,7 +355,11 @@ func (m Matcher) matches(in Input) bool {
 		if in.ServiceAccount == nil {
 			return false
 		}
-		return m.ServiceAccount.Namespace == in.ServiceAccount.Namespace &&
+		// An empty cluster in the rule matches any, so a rule written
+		// before clusters were named keeps meaning what it meant.
+		return (m.ServiceAccount.Cluster == "" ||
+			m.ServiceAccount.Cluster == in.ServiceAccount.Cluster) &&
+			m.ServiceAccount.Namespace == in.ServiceAccount.Namespace &&
 			m.ServiceAccount.Name == in.ServiceAccount.Name
 	case m.Email != "":
 		return in.Email != "" && strings.EqualFold(m.Email, in.Email)

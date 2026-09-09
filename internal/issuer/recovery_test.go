@@ -29,11 +29,26 @@ func TestRecoveryRefuses(t *testing.T) {
 		want     string
 	}{
 		{
-			name: "the named account is accepted",
+			// Accepted, and completed as the ONE spelling this issuer uses
+			// for a ServiceAccount -- not the API server's. A recovery
+			// sign-in and a workload exchange establish the same kind of
+			// thing, and two spellings meant a `service_account` matcher
+			// could admit one and not the other.
+			name: "the named account is accepted, as this issuer spells it",
 			recovery: issuer.TokenRecovery{
 				Review: review(good, nil), Audience: "aud", Subjects: []string{good},
 			},
-			proof: "token", want: good,
+			proof: "token", want: "k8s:access-issuer:access-issuer-recovery",
+		},
+		{
+			// And with the cluster named, the subject says which cluster
+			// vouched: the same namespace and name exist on every one.
+			name: "a named cluster is carried into the subject",
+			recovery: issuer.TokenRecovery{
+				Review: review(good, nil), Audience: "aud", Subjects: []string{good},
+				Cluster: "kernel",
+			},
+			proof: "token", want: "kernel:k8s:access-issuer:access-issuer-recovery",
 		},
 		{
 			// Any workload in the cluster can mint itself a token. If

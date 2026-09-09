@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
@@ -38,6 +37,10 @@ type Workload struct {
 	// Audience the token must have been minted for. Without one, every
 	// mounted ServiceAccount token in the cluster is an exchange proof.
 	Audience string
+	// Cluster names the cluster whose API server this reviews against, so
+	// that the account it proves is distinguishable from the same
+	// namespace and name on another one. Empty keeps the older subject.
+	Cluster string
 }
 
 var _ issuer.Verifier = (*Workload)(nil)
@@ -64,7 +67,7 @@ func (w *Workload) Verify(ctx context.Context, token, tokenType string) (issuer.
 		return issuer.Proof{}, fmt.Errorf("verify a workload token: %w", err)
 	}
 
-	namespace, name, ok := serviceAccount(subject)
+	account, ok := serviceAccount(subject)
 	if !ok {
 		// The API server authenticated somebody who is not a
 		// ServiceAccount — a person's kubeconfig, a node. A person
@@ -72,18 +75,12 @@ func (w *Workload) Verify(ctx context.Context, token, tokenType string) (issuer.
 		// bypass every rule this service applies to people.
 		return issuer.Proof{}, fmt.Errorf("%w: %s is not a ServiceAccount", issuer.ErrUnverified, subject)
 	}
-	return issuer.Proof{ServiceAccount: &policy.ServiceAccountRef{Namespace: namespace, Name: name}}, nil
+	account.Cluster = w.Cluster
+
+	return issuer.Proof{ServiceAccount: &account}, nil
 }
 
 // serviceAccount splits the API server's spelling of one.
-func serviceAccount(subject string) (namespace, name string, ok bool) {
-	rest, found := strings.CutPrefix(subject, "system:serviceaccount:")
-	if !found {
-		return "", "", false
-	}
-	namespace, name, found = strings.Cut(rest, ":")
-	if !found || namespace == "" || name == "" {
-		return "", "", false
-	}
-	return namespace, name, true
+func serviceAccount(subject string) (policy.ServiceAccountRef, bool) {
+	return policy.ParseServiceAccountSubject(subject)
 }

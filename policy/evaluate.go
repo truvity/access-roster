@@ -35,8 +35,59 @@ type GitHubClaims struct {
 
 // ServiceAccountRef is a verified Kubernetes ServiceAccount.
 type ServiceAccountRef struct {
+	// Cluster names which cluster's API server vouched for it. The same
+	// namespace and name exist on every cluster, so without it two
+	// different machines are one subject — which is the collision `sub`
+	// exists to prevent. Empty where a deployment has not named its
+	// cluster, and empty in a matcher means any.
+	Cluster   string
 	Namespace string
 	Name      string
+}
+
+// Subject is how a ServiceAccount is spelled as a token's `sub`:
+// `<cluster>:k8s:<namespace>:<name>`, scope first like every group name.
+//
+// A ref with no cluster renders the older three-part form, so an
+// installation that has not named its cluster keeps the subjects it
+// already mints.
+func (r ServiceAccountRef) Subject() string {
+	if r.Cluster == "" {
+		return "k8s:" + r.Namespace + ":" + r.Name
+	}
+
+	return r.Cluster + ":k8s:" + r.Namespace + ":" + r.Name
+}
+
+// ParseServiceAccountSubject reads every spelling this estate has minted
+// for a ServiceAccount, and is the only place that knows there is more
+// than one.
+//
+// Three exist because they arrived from different directions: the API
+// server's own `system:serviceaccount:<ns>:<name>`, which a recovery
+// sign-in completed as; this issuer's older `k8s:<ns>:<name>`, from a
+// token exchange; and the cluster-qualified form above. A reader that
+// knows one of them refuses a token minted by a release either side of
+// its own, so they are all read here and only the last is written.
+func ParseServiceAccountSubject(subject string) (ServiceAccountRef, bool) {
+	if rest, found := strings.CutPrefix(subject, "system:serviceaccount:"); found {
+		namespace, name, ok := strings.Cut(rest, ":")
+		if !ok || namespace == "" || name == "" {
+			return ServiceAccountRef{}, false
+		}
+
+		return ServiceAccountRef{Namespace: namespace, Name: name}, true
+	}
+
+	parts := strings.Split(subject, ":")
+	switch {
+	case len(parts) == 3 && parts[0] == "k8s" && parts[1] != "" && parts[2] != "":
+		return ServiceAccountRef{Namespace: parts[1], Name: parts[2]}, true
+	case len(parts) == 4 && parts[1] == "k8s" && parts[0] != "" && parts[2] != "" && parts[3] != "":
+		return ServiceAccountRef{Cluster: parts[0], Namespace: parts[2], Name: parts[3]}, true
+	default:
+		return ServiceAccountRef{}, false
+	}
 }
 
 // Held is one internal group a caller is in, and why.

@@ -760,9 +760,9 @@ func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, subject, _ str
 func (s *Storage) identityOf(
 	ctx context.Context, subject string,
 ) (claims map[string]any, given, family string, err error) {
-	if namespace, name, ok := serviceAccountSubject(subject); ok {
+	if account, ok := serviceAccountSubject(subject); ok {
 		return Claims(s.iss.Policy().Evaluate(policy.Input{
-			ServiceAccount: &policy.ServiceAccountRef{Namespace: namespace, Name: name},
+			ServiceAccount: &account,
 		})), "", "", nil
 	}
 
@@ -775,17 +775,11 @@ func (s *Storage) identityOf(
 		resolved.GivenName, resolved.FamilyName, nil
 }
 
-// serviceAccountSubject splits the API server's spelling of one.
-func serviceAccountSubject(subject string) (namespace, name string, ok bool) {
-	rest, found := strings.CutPrefix(subject, "system:serviceaccount:")
-	if !found {
-		return "", "", false
-	}
-	namespace, name, found = strings.Cut(rest, ":")
-	if !found || namespace == "" || name == "" {
-		return "", "", false
-	}
-	return namespace, name, true
+// serviceAccountSubject reads a ServiceAccount out of a subject, in
+// whichever spelling minted it. [policy.ParseServiceAccountSubject] is
+// the one place that knows there is more than one.
+func serviceAccountSubject(subject string) (policy.ServiceAccountRef, bool) {
+	return policy.ParseServiceAccountSubject(subject)
 }
 
 func (s *Storage) fill(

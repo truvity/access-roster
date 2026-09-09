@@ -52,10 +52,8 @@ func NewSessionsService(iss *Issuer, verifier *op.AccessTokenVerifier) *Sessions
 			// cannot come to mean different things. A ServiceAccount
 			// subject is a recovery sign-in: no directory to ask, and the
 			// policy's matchers decide it exactly as for a workload.
-			if namespace, name, ok := serviceAccountSubject(identity); ok {
-				return iss.Policy().Evaluate(policy.Input{
-					ServiceAccount: &policy.ServiceAccountRef{Namespace: namespace, Name: name},
-				}).Groups, nil
+			if account, ok := serviceAccountSubject(identity); ok {
+				return iss.Policy().Evaluate(policy.Input{ServiceAccount: &account}).Groups, nil
 			}
 
 			resolved, err := iss.resolver.Resolve(ctx, identity)

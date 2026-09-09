@@ -100,12 +100,12 @@ func (b *forwardedBearer) verify(ctx context.Context, token string) (access.Prin
 	// person and there is no directory to ask about it: the policy's
 	// `service_account` matchers decide, exactly as they do for a
 	// workload exchanging a token.
-	if namespace, name, ok := serviceAccount(claims.Subject); ok {
+	if account, ok := serviceAccount(claims.Subject); ok {
 		return access.Principal{
 			Subject:        claims.Subject,
 			Source:         access.SourceForwarded,
 			Issuer:         b.issuer,
-			ServiceAccount: &policy.ServiceAccountRef{Namespace: namespace, Name: name},
+			ServiceAccount: &account,
 		}, nil
 	}
 
@@ -192,15 +192,13 @@ func stringClaim(claims map[string]any, name string) string {
 	return value
 }
 
-// serviceAccount splits the API server's spelling of one.
-func serviceAccount(subject string) (namespace, name string, ok bool) {
-	rest, found := strings.CutPrefix(subject, "system:serviceaccount:")
-	if !found {
-		return "", "", false
-	}
-	namespace, name, found = strings.Cut(rest, ":")
-	if !found || namespace == "" || name == "" {
-		return "", "", false
-	}
-	return namespace, name, true
+// serviceAccount reads a ServiceAccount out of a token's subject, in
+// whichever spelling the issuer that minted it used.
+//
+// It reads more than one on purpose: the issuer's spelling gained a
+// cluster, and a hub that knew only the older one would refuse a recovery
+// sign-in from a newer issuer -- on exactly the day recovery is what is
+// left. [policy.ParseServiceAccountSubject] holds them all.
+func serviceAccount(subject string) (policy.ServiceAccountRef, bool) {
+	return policy.ParseServiceAccountSubject(subject)
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/truvity/access-roster/policy"
 )
 
 // Recovery is the way in when no directory can vouch for anybody.
@@ -72,6 +74,10 @@ type TokenRecovery struct {
 	// admits none: a recovery that accepted any account the cluster could
 	// mint for would be every workload's back door into the console.
 	Subjects []string
+	// Cluster names this cluster, so that a recovery completes as the
+	// same kind of subject a workload exchange produces. Empty keeps the
+	// older spelling.
+	Cluster string
 }
 
 var _ Recovery = (*TokenRecovery)(nil)
@@ -106,9 +112,23 @@ func (t *TokenRecovery) Verify(ctx context.Context, proof string) (string, error
 		return "", ErrRecoveryRefused
 	}
 	for _, allowed := range t.Subjects {
-		if subject == allowed {
-			return subject, nil
+		if subject != allowed {
+			continue
 		}
+
+		// Complete as the ONE spelling this issuer uses for a
+		// ServiceAccount, not the API server's. A recovery sign-in and a
+		// workload exchange establish the same kind of thing, and two
+		// spellings for it meant a `service_account` matcher could admit
+		// one and not the other.
+		if account, ok := policy.ParseServiceAccountSubject(subject); ok {
+			account.Cluster = t.Cluster
+
+			return account.Subject(), nil
+		}
+
+		return subject, nil
 	}
+
 	return "", ErrRecoveryRefused
 }
