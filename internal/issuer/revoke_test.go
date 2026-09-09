@@ -56,7 +56,7 @@ func TestRevocationReachesTheSharedStateEitherWay(t *testing.T) {
 			}
 			if recorded {
 				if _, err := iss.Sessions().Record(
-					context.Background(), "ada@north.example", "console", issuer.HowCode, id,
+					context.Background(), "ada@north.example", "console", issuer.HowCode, id, nil,
 				); err != nil {
 					t.Fatalf("record: %v", err)
 				}

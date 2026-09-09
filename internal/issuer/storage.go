@@ -86,6 +86,13 @@ type authRequest struct {
 	Subject  string            `json:"subject,omitempty"`
 	AuthTime time.Time         `json:"authTime,omitempty"`
 	IsDone   bool              `json:"done,omitempty"`
+
+	// Session is the session this request opened, learned when the code
+	// is redeemed and used one step later to put `sid` in the ID token.
+	// It is not written down with the rest: the library hands the SAME
+	// request object to the token creation and to the ID token creation
+	// within one exchange, and after that the request is deleted.
+	Session string `json:"-"`
 }
 
 var _ op.AuthRequest = (*authRequest)(nil)
@@ -368,11 +375,74 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 	if _, ok := request.(op.TokenExchangeRequest); ok {
 		how = HowExchange
 	}
-	if _, err = s.iss.Sessions().Record(ctx, issued.Subject, clientOf(request), how, refresh); err != nil {
+	session, err := s.iss.Sessions().Record(ctx, issued.Subject, clientOf(request), how, refresh, request.GetScopes())
+	if err != nil {
 		return "", "", time.Time{}, oidc.ErrServerError().WithDescription("%s", err)
 	}
 
+	// The ID token minted a moment from now names this session. The
+	// library passes this very request object on to CreateIDToken, which
+	// is the only reason the id can travel without a second lookup.
+	if opened, ok := request.(*authRequest); ok {
+		opened.Session = session.ID
+	}
+
 	return issued.ID, refresh, issued.Expires, nil
+}
+
+// SetUserinfoFromRequest implements [op.CanSetUserinfoFromRequest]: it is
+// what puts a person INTO the ID token.
+//
+// The library's older hook, SetUserinfoFromScopes, is deprecated and
+// empty here — and that emptiness was quietly load-bearing. Every client
+// asserts userinfo claims in its ID token, so the library assembles one
+// from whatever this storage supplies and assigns the result wholesale.
+// Supplying nothing did not leave the ID token's own claims alone; it
+// OVERWROTE them, so an ID token arrived carrying no `sub`, no `email`,
+// no name and no `groups` — a token that is not merely thin but invalid,
+// since `sub` is required of every one. A relying party reading the ID
+// token, which is what ArgoCD and Kargo do, saw nobody.
+//
+// So this fills the same answer the userinfo endpoint gives, plus the one
+// claim that belongs to the exchange rather than to the person: `sid`,
+// the session this token belongs to. It lets a relying party say WHICH
+// of a person's sessions it is holding — the same id the console lists
+// and revokes — instead of only that it holds one. A token with no
+// session behind it (a workload trading a proof, which opens none)
+// carries no `sid` rather than an empty one.
+func (s *Storage) SetUserinfoFromRequest(
+	ctx context.Context, info *oidc.UserInfo, request op.IDTokenRequest, _ []string,
+) error {
+	subject := request.GetSubject()
+
+	claims, err := s.GetPrivateClaimsFromScopes(ctx, subject, request.GetClientID(), request.GetScopes())
+	if err != nil {
+		return err
+	}
+
+	given, family := s.namesOf(ctx, subject)
+	if err = s.fill(ctx, info, subject, claims, given, family); err != nil {
+		return err
+	}
+
+	if id := sessionOf(request); id != "" {
+		info.AppendClaims("sid", id)
+	}
+
+	return nil
+}
+
+// sessionOf is the session a token request belongs to: the one just
+// opened for a redeemed code, or the one being renewed.
+func sessionOf(request op.IDTokenRequest) string {
+	switch req := request.(type) {
+	case *authRequest:
+		return req.Session
+	case *refreshRequest:
+		return req.session.ID
+	default:
+		return ""
+	}
 }
 
 // issue records one access token and returns it.
@@ -451,9 +521,25 @@ func (r *refreshRequest) GetAMR() []string            { return []string{"pwd"} }
 func (r *refreshRequest) GetAudience() []string       { return []string{r.session.ClientID} }
 func (r *refreshRequest) GetAuthTime() time.Time      { return r.session.IssuedAt }
 func (r *refreshRequest) GetClientID() string         { return r.session.ClientID }
-func (r *refreshRequest) GetScopes() []string         { return r.scopes }
 func (r *refreshRequest) GetSubject() string          { return r.session.Identity }
 func (r *refreshRequest) SetCurrentScopes(s []string) { r.scopes = s }
+
+// GetScopes is what this session was granted, until a narrower set is
+// asked for and accepted.
+//
+// Answering nil here was wrong twice over: a refresh naming any scope at
+// all was refused as though it had asked for more than it held, and one
+// naming none produced an ID token with no `email` and no name, because
+// the library assembles those from the scopes it is given. A relying
+// party that shows who is signed in would have shown an address for an
+// hour and then nothing.
+func (r *refreshRequest) GetScopes() []string {
+	if r.scopes != nil {
+		return r.scopes
+	}
+
+	return r.session.Scopes
+}
 
 // GetRefreshTokenInfo implements [op.AuthStorage].
 func (s *Storage) GetRefreshTokenInfo(ctx context.Context, _ string, tok string) (string, string, error) {

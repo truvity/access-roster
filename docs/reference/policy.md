@@ -150,6 +150,19 @@ The token's claims are the fixed identity claims — `sub`, `email`,
 `name`, and `groups` with the internal group names — plus the deep merge
 of the `claims` fragments of every group the caller is in.
 
+| Claim | What it says |
+| -- | -- |
+| `sub` | the account. For a person it is the address; for a recovery sign-in, the ServiceAccount |
+| `email`, `email_verified`, `preferred_username` | the address again, so that no consumer needs a fallback |
+| `name`, `given_name`, `family_name` | who they are, when the directory says. Absent for a workload |
+| `groups` | **the whole of the authorization** |
+| `auth_time` | when the person signed in. Not when the token was minted: a refresh an hour later carries the same `auth_time` and a fresh `iat`, which is what a re-authenticate rule reads |
+| `sid` | the session this token belongs to — the same id the console lists and revokes. Absent on a token no session backs, such as a workload's |
+
+The ID token carries all of them, because a relying party that reads the
+ID token (ArgoCD and Kargo both do) must not have to make a second call
+to learn who signed in. The userinfo endpoint answers the same set.
+
 **`groups` is the whole of the authorization a token carries** (decided
 2026-09-09, [../design/trust.md](../design/trust.md)): flat, one string
 per internal group, never a structured roles claim beside it. Every
