@@ -17,6 +17,15 @@ git history.
   replayed here. A token from another issuer comes back *unrecognised* so
   the next verifier may try it; one this verifier owns and refuses is
   final. (INF-646)
+- **The session index is shared, not per-process.** It answered from
+  whatever one replica happened to record: a listing was arbitrary rather
+  than wrong, and a revocation reported success while the session went on
+  working at the pod next door — the worst failure available to a control
+  whose whole job is to end access. It now lives in the same store as the
+  logins in progress. Sets make it findable, the record's TTL is the whole
+  of expiry, and a listing repairs the sets it walks. A refresh token is
+  hashed into its key rather than written into the keyspace: an index that
+  can be read must not be an index that can be replayed. (INF-646)
 
 ## v0.9.0
 

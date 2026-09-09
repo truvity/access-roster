@@ -37,6 +37,18 @@ type State interface {
 	SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
 	// Delete removes it. Deleting what is not there is not an error.
 	Delete(ctx context.Context, key string) error
+
+	// Add records a member of an unordered set, and refreshes the set's
+	// own expiry. A set exists because the session index has to answer
+	// "everything this person has open", and a key-value store can only
+	// answer "this one thing" -- listing by scanning keys is a promise
+	// that breaks the first time the store holds anything else.
+	Add(ctx context.Context, key, member string, ttl time.Duration) error
+	// Remove drops a member. Removing what is not there is not an error.
+	Remove(ctx context.Context, key, member string) error
+	// Members lists them, in no order. A set nobody has written is empty,
+	// not missing: "this person has no sessions" is an answer.
+	Members(ctx context.Context, key string) ([]string, error)
 }
 
 // getJSON reads a value and decodes it.
@@ -66,7 +78,12 @@ func setJSON(ctx context.Context, state State, key string, value any, ttl time.D
 type MemoryState struct {
 	mu     sync.Mutex
 	values map[string]memoryValue
-	now    func() time.Time
+	// sets back [State.Add]; setExpiry holds their TTLs separately,
+	// because a set's members and its lifetime expire together and
+	// storing the deadline per member would let half a set survive.
+	sets      map[string]map[string]struct{}
+	setExpiry map[string]time.Time
+	now       func() time.Time
 }
 
 type memoryValue struct {
@@ -78,7 +95,12 @@ var _ State = (*MemoryState)(nil)
 
 // NewMemoryState returns an empty store.
 func NewMemoryState() *MemoryState {
-	return &MemoryState{values: map[string]memoryValue{}, now: time.Now}
+	return &MemoryState{
+		values:    map[string]memoryValue{},
+		sets:      map[string]map[string]struct{}{},
+		setExpiry: map[string]time.Time{},
+		now:       time.Now,
+	}
 }
 
 // SetClock replaces the clock. For tests.
@@ -124,6 +146,61 @@ func (m *MemoryState) set(key string, value []byte, ttl time.Duration) {
 		held.expires = m.now().Add(ttl)
 	}
 	m.values[key] = held
+}
+
+// Add implements [State].
+func (m *MemoryState) Add(_ context.Context, key, member string, ttl time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	held := m.sets[key]
+	if held == nil {
+		held = map[string]struct{}{}
+		m.sets[key] = held
+	}
+
+	held[member] = struct{}{}
+
+	if ttl > 0 {
+		m.setExpiry[key] = m.now().Add(ttl)
+	}
+
+	return nil
+}
+
+// Remove implements [State].
+func (m *MemoryState) Remove(_ context.Context, key, member string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.sets[key], member)
+
+	if len(m.sets[key]) == 0 {
+		delete(m.sets, key)
+		delete(m.setExpiry, key)
+	}
+
+	return nil
+}
+
+// Members implements [State].
+func (m *MemoryState) Members(_ context.Context, key string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if expires, ok := m.setExpiry[key]; ok && !m.now().Before(expires) {
+		delete(m.sets, key)
+		delete(m.setExpiry, key)
+
+		return nil, nil
+	}
+
+	out := make([]string, 0, len(m.sets[key]))
+	for member := range m.sets[key] {
+		out = append(out, member)
+	}
+
+	return out, nil
 }
 
 // SetIfAbsent implements [State].

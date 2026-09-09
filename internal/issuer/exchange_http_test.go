@@ -61,7 +61,7 @@ func serveIssuer(t *testing.T) (*httptest.Server, *issuer.Issuer) {
 	if err != nil {
 		t.Fatalf("policy set: %v", err)
 	}
-	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, &fakeDirectory{})
+	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, &fakeDirectory{}, issuer.NewMemoryState())
 
 	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
 	if err != nil {
@@ -230,7 +230,12 @@ func TestTokenExchangeMintsTheGatedAudience(t *testing.T) {
 	// ends when the token expires, half an hour from now, whether or not
 	// anyone remembers to end it. A CI job holding a refresh token would
 	// be a standing credential on a machine that should have none.
-	if sessions := iss.Sessions().List(issuer.Query{}); len(sessions) != 0 {
+	sessions, err := iss.Sessions().List(context.Background(), issuer.Query{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(sessions) != 0 {
 		t.Errorf("an exchange left %d sessions behind, want none", len(sessions))
 	}
 }
@@ -330,7 +335,12 @@ func TestRevocationEndsTheSession(t *testing.T) {
 	t.Parallel()
 	server, iss := serveIssuer(t)
 	sessions := iss.Sessions()
-	sessions.Record("ada@north.example", "argocd", issuer.HowCode, "refresh-1")
+
+	if _, err := sessions.Record(
+		t.Context(), "ada@north.example", "argocd", issuer.HowCode, "refresh-1",
+	); err != nil {
+		t.Fatalf("record: %v", err)
+	}
 
 	post := func(token string) int {
 		form := url.Values{"token": {token}}
@@ -352,8 +362,13 @@ func TestRevocationEndsTheSession(t *testing.T) {
 	if status := post("refresh-1"); status != http.StatusOK {
 		t.Fatalf("revoke: %d", status)
 	}
-	if got := len(sessions.List(issuer.Query{Identity: "ada@north.example"})); got != 0 {
-		t.Errorf("the session survived revocation: %d left", got)
+	left, err := sessions.List(t.Context(), issuer.Query{Identity: "ada@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(left) != 0 {
+		t.Errorf("the session survived revocation: %d left", len(left))
 	}
 	// Revoking again must succeed: telling a caller whether a token they
 	// do not hold ever existed is itself a disclosure.

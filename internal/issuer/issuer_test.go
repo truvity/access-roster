@@ -37,7 +37,7 @@ func newIssuer(t *testing.T, dir issuer.Directory) *issuer.Issuer {
 	if err != nil {
 		t.Fatalf("policy set: %v", err)
 	}
-	return issuer.New(issuer.Config{URL: "https://issuer.example"}, set, dir)
+	return issuer.New(issuer.Config{URL: "https://issuer.example"}, set, dir, issuer.NewMemoryState())
 }
 
 func live(groups ...string) issuer.Standing {
@@ -246,9 +246,16 @@ func TestRevokeForgetsTheHeldAnswer(t *testing.T) {
 	if _, err := iss.Exchange(ctx, ada, "aws:1111:power"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	iss.Sessions().Record("ada@north.example", "argocd", issuer.HowCode, "token-1")
+	if _, err := iss.Sessions().Record(ctx, "ada@north.example", "argocd", issuer.HowCode, "token-1"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
 
-	if ended := iss.Revoke("ada@north.example"); ended != 1 {
+	ended, err := iss.Revoke(ctx, "ada@north.example")
+	if err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+
+	if ended != 1 {
 		t.Errorf("revoked %d sessions, want 1", ended)
 	}
 	dir.standing["ada@north.example"] = issuer.Standing{Found: true, Authoritative: false}
@@ -258,60 +265,133 @@ func TestRevokeForgetsTheHeldAnswer(t *testing.T) {
 }
 
 // Sessions are the index that makes "what is open right now" answerable
-// and revocable, per identity and per client.
+// and revocable, per identity and per client. It lives in the shared
+// store, so what one replica records another can list and end.
 func TestSessions(t *testing.T) {
 	t.Parallel()
+
+	ctx := context.Background()
 	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
-	sessions := issuer.NewSessions(12 * time.Hour)
+	state := issuer.NewMemoryState()
+	state.SetClock(func() time.Time { return now })
+	sessions := issuer.NewSessions(state, 12*time.Hour)
 	sessions.SetClock(func() time.Time { return now })
 
-	sessions.Record("ada@north.example", "argocd", issuer.HowCode, "t-argocd")
-	kubectl := sessions.Record("ada@north.example", "k8s:kernel", issuer.HowDevice, "t-kubectl")
-	sessions.Record("eli@south.example", "argocd", issuer.HowCode, "t-eli")
+	record := func(identity, client string, how issuer.How, token string) issuer.Session {
+		t.Helper()
 
-	if got := len(sessions.List(issuer.Query{})); got != 3 {
+		session, err := sessions.Record(ctx, identity, client, how, token)
+		if err != nil {
+			t.Fatalf("record %s at %s: %v", identity, client, err)
+		}
+
+		return session
+	}
+
+	counted := func(q issuer.Query) int {
+		t.Helper()
+
+		listed, err := sessions.List(ctx, q)
+		if err != nil {
+			t.Fatalf("list %+v: %v", q, err)
+		}
+
+		return len(listed)
+	}
+
+	record("ada@north.example", "argocd", issuer.HowCode, "t-argocd")
+	kubectl := record("ada@north.example", "k8s:kernel", issuer.HowDevice, "t-kubectl")
+	record("eli@south.example", "argocd", issuer.HowCode, "t-eli")
+
+	if got := counted(issuer.Query{}); got != 3 {
 		t.Errorf("all = %d, want 3", got)
 	}
-	if got := len(sessions.List(issuer.Query{Identity: "Ada@North.Example"})); got != 2 {
+
+	if got := counted(issuer.Query{Identity: "Ada@North.Example"}); got != 2 {
 		t.Errorf("ada's = %d, want 2 and an address matched case-insensitively", got)
 	}
-	if got := len(sessions.List(issuer.Query{ClientID: "argocd"})); got != 2 {
+
+	if got := counted(issuer.Query{ClientID: "argocd"}); got != 2 {
 		t.Errorf("argocd's = %d, want 2", got)
 	}
 
 	// A refresh spends the old token and carries the session on.
-	if _, ok := sessions.Refreshed("t-kubectl", "t-kubectl-2"); !ok {
-		t.Fatalf("refresh did not find the session")
+	if _, ok, err := sessions.Refreshed(ctx, "t-kubectl", "t-kubectl-2"); err != nil || !ok {
+		t.Fatalf("refresh did not find the session: ok=%v err=%v", ok, err)
 	}
-	if _, ok := sessions.ByToken("t-kubectl"); ok {
+
+	if _, ok, _ := sessions.ByToken(ctx, "t-kubectl"); ok {
 		t.Errorf("the spent token still works")
 	}
-	if s, ok := sessions.ByToken("t-kubectl-2"); !ok || s.ID != kubectl.ID {
+
+	if session, ok, _ := sessions.ByToken(ctx, "t-kubectl-2"); !ok || session.ID != kubectl.ID {
 		t.Errorf("the new token does not carry the same session")
 	}
 
 	// Ending one client's session must not end the others: an operator
 	// dealing with one incident should not cut off unrelated work.
-	if ended := sessions.Revoke(issuer.Query{Identity: "ada@north.example", ClientID: "argocd"}); ended != 1 {
+	ended, err := sessions.Revoke(ctx, issuer.Query{Identity: "ada@north.example", ClientID: "argocd"})
+	if err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+
+	if ended != 1 {
 		t.Errorf("revoked %d, want 1", ended)
 	}
-	if got := len(sessions.List(issuer.Query{Identity: "ada@north.example"})); got != 1 {
+
+	if got := counted(issuer.Query{Identity: "ada@north.example"}); got != 1 {
 		t.Errorf("ada keeps %d sessions, want her kubectl one", got)
 	}
-	if !sessions.RevokeID(kubectl.ID) {
-		t.Errorf("revoking by id found nothing")
+
+	if gone, err := sessions.RevokeID(ctx, kubectl.ID); err != nil || !gone {
+		t.Errorf("revoking by id found nothing: %v", err)
 	}
-	if got := len(sessions.List(issuer.Query{Identity: "ada@north.example"})); got != 0 {
+
+	if got := counted(issuer.Query{Identity: "ada@north.example"}); got != 0 {
 		t.Errorf("ada keeps %d sessions, want none", got)
 	}
 
 	// Expiry is not revocation: a session that ran out stops being live
-	// on its own, and the sweep is what removes it.
+	// on its own, and nothing has to sweep for it to stop counting.
 	now = now.Add(13 * time.Hour)
-	if got := len(sessions.List(issuer.Query{})); got != 0 {
+
+	if got := counted(issuer.Query{}); got != 0 {
 		t.Errorf("expired sessions are still listed: %d", got)
 	}
-	if swept := sessions.Sweep(); swept != 1 {
-		t.Errorf("swept %d, want the one remaining", swept)
+}
+
+// The index is shared, so a session one replica records is one another
+// can list and end. An index per process would answer with whatever that
+// pod happened to see, and revoke only there.
+func TestSessionsAreSharedBetweenReplicas(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	shared := issuer.NewMemoryState()
+	replicaA := issuer.NewSessions(shared, time.Hour)
+	replicaB := issuer.NewSessions(shared, time.Hour)
+
+	recorded, err := replicaA.Record(ctx, "ada@north.example", "console", issuer.HowCode, "t-1")
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	listed, err := replicaB.List(ctx, issuer.Query{Identity: "ada@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(listed) != 1 || listed[0].ID != recorded.ID {
+		t.Fatalf("the other replica lists %d sessions, want the one just recorded", len(listed))
+	}
+
+	if gone, err := replicaB.RevokeToken(ctx, "t-1"); err != nil || !gone {
+		t.Fatalf("the other replica could not end it: gone=%v err=%v", gone, err)
+	}
+
+	// And the replica that recorded it agrees, which is the half that
+	// makes revocation mean anything.
+	if _, ok, err := replicaA.ByToken(ctx, "t-1"); err != nil || ok {
+		t.Errorf("the recording replica still honours a revoked token")
 	}
 }

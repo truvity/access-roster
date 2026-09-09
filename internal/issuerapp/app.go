@@ -175,13 +175,20 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 
+	// The shared store first: the issuer's session index lives in it, so
+	// there is no issuer to build until it is open.
+	shared, err := openState(ctx, cfg, log)
+	if err != nil {
+		return nil, err
+	}
+
 	core := issuer.New(issuer.Config{
 		URL:             cfg.issuerURL,
 		TokenLifetime:   cfg.tokenLifetime,
 		RefreshLifetime: cfg.refreshLifetime,
 		HoldWindow:      cfg.holdWindow,
 		AllowInsecure:   cfg.allowInsecure,
-	}, set, directory)
+	}, set, directory, shared)
 
 	key, err := signingKey(ctx, cfg, log)
 	if err != nil {
@@ -191,11 +198,6 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 	verifiers, err := openVerifiers(ctx, cfg, log)
-	if err != nil {
-		return nil, err
-	}
-
-	shared, err := openState(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}

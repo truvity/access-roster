@@ -99,3 +99,46 @@ func (s *State) Delete(ctx context.Context, key string) error {
 	}
 	return nil
 }
+
+// Add implements [issuer.State].
+//
+// SADD then EXPIRE, and the expiry is refreshed on every add: a set of
+// sessions should outlive its newest member, not its oldest. Without the
+// refresh an identity that signs in daily would have its whole index
+// vanish on the anniversary of its first login.
+func (s *State) Add(ctx context.Context, key, member string, ttl time.Duration) error {
+	if err := s.client.SAdd(ctx, s.key(key), member).Err(); err != nil {
+		return fmt.Errorf("valkey: add to %s: %w", key, err)
+	}
+
+	if ttl > 0 {
+		if err := s.client.Expire(ctx, s.key(key), ttl).Err(); err != nil {
+			return fmt.Errorf("valkey: expire %s: %w", key, err)
+		}
+	}
+
+	return nil
+}
+
+// Remove implements [issuer.State].
+func (s *State) Remove(ctx context.Context, key, member string) error {
+	if err := s.client.SRem(ctx, s.key(key), member).Err(); err != nil {
+		return fmt.Errorf("valkey: remove from %s: %w", key, err)
+	}
+
+	return nil
+}
+
+// Members implements [issuer.State].
+func (s *State) Members(ctx context.Context, key string) ([]string, error) {
+	members, err := s.client.SMembers(ctx, s.key(key)).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("valkey: read %s: %w", key, err)
+	}
+
+	return members, nil
+}
