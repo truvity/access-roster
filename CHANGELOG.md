@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.6
 
 - **One question to the directory per token, not four.** Every claim a
   token carries comes from one answer, and the code was asking for it up
