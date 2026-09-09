@@ -7,6 +7,15 @@ git history.
 
 Nothing yet.
 
+## v0.8.5
+
+- **A person's page reads down the column.** The 300px rail was carrying
+  the two longest things on the page — every directory group the person
+  is in, and the JSON a token would carry — so on a real directory they
+  had to be read sideways while the main column ended halfway down. Both
+  now sit in the main column, in the order the page already reads; the
+  rail keeps the seven short facts, which is what a rail is for.
+
 ## v0.8.4
 
 - **A probe retries what it could not ask, and not what was refused.**
