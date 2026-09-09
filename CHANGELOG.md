@@ -7,6 +7,21 @@ git history.
 
 Nothing yet.
 
+## v0.8.6
+
+- **A policy change is a rollout, not a reload.** The declared layer is
+  read once at start, and the hub's Deployment carried no checksum of it:
+  the ConfigMap changed, kubelet wrote the file a minute later, and every
+  replica went on answering from the policy it booted with — a grant
+  visible in git, in the ConfigMap and in ArgoCD's *Synced*, and nowhere
+  in the running service. Seen live rolling out the derived policy
+  (INF-662). The issuer has carried `checksum/policy` since its first
+  release; the hub reads the same file the same way and now does too, and
+  `just chart-lint` fails either chart that loses it.
+- The console's account block is three lines — name, address, roles —
+  with the roles held over a single directory named beside the
+  installation-wide one.
+
 ## v0.8.5
 
 - **A person's page reads down the column.** The 300px rail was carrying

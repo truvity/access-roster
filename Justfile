@@ -163,6 +163,15 @@ chart-lint:
     # is a PERMANENT OutOfSync -- which counts unhealthy and gates every
     # later wave. One `weight` per backend, in routes and policies alike.
     test "$(grep -c '^      backendRefs:$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^          weight: 1$' /tmp/access-proxy-routes.yaml)"
+    # BOTH services read their policy file once, at start. A chart that
+    # renders a policy ConfigMap and no checksum annotation is a chart
+    # where a grant lands in git, in the ConfigMap and in ArgoCD's
+    # "Synced" -- and never in the running service, until something
+    # unrelated restarts it. Found live on 2026-09-09: the issuer had the
+    # annotation, the hub did not, and the hub answered from the policy it
+    # booted with for as long as its pods lived.
+    test "$(helm template t charts/directory-roster --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
+    test "$(helm template t charts/access-issuer --set issuerURL=https://i.example --set hub.address=http://h.example:8080 --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
 
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —
