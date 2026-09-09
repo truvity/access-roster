@@ -5,6 +5,10 @@ git history.
 
 ## Unreleased
 
+Nothing yet.
+
+## v0.9.2
+
 - **A GitHub Actions workflow can prove what it is.** `verify.GitHub`
   turns a workflow identity token into a proof carrying repository, owner,
   ref, workflow and environment — the five things a `github:` matcher pins
