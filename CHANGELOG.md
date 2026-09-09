@@ -7,6 +7,48 @@ git history.
 
 Nothing yet.
 
+## v0.8.0
+
+Everything the first live connect exposed, and the two choices it showed
+the console was making for the operator.
+
+- **A request never waits on the directory.** The first snapshot ran
+  inside the consent callback and met the gateway's fifteen-second route
+  timeout: a 502 for a workspace that had already been stored. A console
+  listing with no snapshot read the directory under the request's own
+  context. Narrowing refreshed before returning. All three now run
+  detached; a read that did not ask for freshness never fetches; and
+  narrowing excludes from what is already in memory, so it does not
+  depend on a read succeeding.
+- **The store is the truth and the reader map is a cache of it.** With
+  two replicas, a workspace connected on one was "not found" on the other
+  until it restarted. A miss now opens the workspace from the credential
+  stored beside the record.
+- **Group members are read with bounded concurrency** — eight in flight,
+  atomic, in the directory's order — and every pass logs how long it took.
+- **`hold` is now `provisional`, and says why**: first snapshot, stale,
+  probe failed, contested. The Overview also counted *unserved* domains
+  as held, which is how one record read "0/7 served, 7 on hold" on one
+  page and "six not served, one hold" on another.
+- **A connect asks which domains to serve**, with the consenting
+  administrator's own domain pre-selected, instead of quietly serving all
+  seven a tenant happened to own. "All of them, including ones added
+  later" is still the empty list — now chosen rather than defaulted into.
+  And a **reconnect keeps the answer**: it brings a new credential, not a
+  new configuration.
+- **An operator chooses which groups to sync.** `Workspace.SyncGroups`
+  existed and was wired to nothing — not the refresh, not either store,
+  not the contract, not the console, and `clone` did not even copy it.
+- **The setup panel names the redirect URIs where each flow lands.** With
+  one shared OAuth client the sign-in returns to the *issuer*, not here,
+  so an operator was registering a URI nothing returns to. And the client
+  is checked before an administrator is sent to spend a real consent on
+  one the provider will refuse.
+- **A role may be held over one workspace** (`hub-operators@C0example`),
+  so connecting a second company's directory does not hand its
+  administrator the first one. Recovery stays installation-wide by
+  construction.
+
 ## v0.7.2
 
 - **A consent that fails says so on a page.** The callback answered 502
