@@ -5,6 +5,7 @@
 package issuer
 
 import (
+	"context"
 	"time"
 
 	"github.com/truvity/access-roster/policy"
@@ -61,14 +62,19 @@ type Issuer struct {
 	sessions *Sessions
 }
 
-// New returns an issuer over a policy set and a directory.
-func New(cfg Config, set *policy.Set, dir Directory) *Issuer {
+// New returns an issuer over a policy set, a directory and the shared
+// store its session index lives in. The store is not optional: an index
+// per process lists what one replica happened to record and revokes only
+// there, which is a security control that reports success and leaves
+// access in place.
+func New(cfg Config, set *policy.Set, dir Directory, state State) *Issuer {
 	cfg = cfg.withDefaults()
+
 	return &Issuer{
 		cfg:      cfg,
 		set:      set,
 		resolver: NewResolver(dir, cfg.HoldWindow),
-		sessions: NewSessions(cfg.RefreshLifetime),
+		sessions: NewSessions(state, cfg.RefreshLifetime),
 	}
 }
 
@@ -90,7 +96,8 @@ func (i *Issuer) Config() Config { return i.cfg }
 // proxy ending its own session, and the issuer refusing the next refresh
 // once the directory catches up. Without it, cutting someone off means
 // waiting for a refresh that may be minutes away.
-func (i *Issuer) Revoke(identity string) int {
+func (i *Issuer) Revoke(ctx context.Context, identity string) (int, error) {
 	i.resolver.Forget(identity)
-	return i.sessions.Revoke(Query{Identity: identity})
+
+	return i.sessions.Revoke(ctx, Query{Identity: identity})
 }

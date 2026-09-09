@@ -33,7 +33,7 @@ func TestRevocationReachesTheSharedStateEitherWay(t *testing.T) {
 		standing: map[string]issuer.Standing{
 			"ada@north.example": {Found: true, Authoritative: true, Groups: []string{"directory-admins@north.example"}},
 		},
-	})
+	}, shared)
 	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, shared)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
@@ -55,7 +55,11 @@ func TestRevocationReachesTheSharedStateEitherWay(t *testing.T) {
 				t.Fatal("the token has no expiry")
 			}
 			if recorded {
-				iss.Sessions().Record("ada@north.example", "console", issuer.HowCode, id)
+				if _, err := iss.Sessions().Record(
+					context.Background(), "ada@north.example", "console", issuer.HowCode, id,
+				); err != nil {
+					t.Fatalf("record: %v", err)
+				}
 			}
 
 			if oidcErr := storage.RevokeToken(ctx, id, "", "console"); oidcErr != nil {

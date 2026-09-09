@@ -345,9 +345,16 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 	// credential does not, so a stolen refresh token is good for one use
 	// before its rightful holder's next refresh reveals the theft.
 	if currentRefreshToken != "" {
-		if _, ok := s.iss.Sessions().Refreshed(currentRefreshToken, refresh); !ok {
+		live, ok, err := s.iss.Sessions().Refreshed(ctx, currentRefreshToken, refresh)
+		if err != nil {
+			return "", "", time.Time{}, oidc.ErrServerError().WithDescription("%s", err)
+		}
+
+		if !ok {
 			return "", "", time.Time{}, oidc.ErrInvalidGrant().WithDescription("the refresh token is not live")
 		}
+
+		_ = live
 		return issued.ID, refresh, issued.Expires, nil
 	}
 
@@ -355,7 +362,10 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 	if _, ok := request.(op.TokenExchangeRequest); ok {
 		how = HowExchange
 	}
-	s.iss.Sessions().Record(issued.Subject, clientOf(request), how, refresh)
+	if _, err = s.iss.Sessions().Record(ctx, issued.Subject, clientOf(request), how, refresh); err != nil {
+		return "", "", time.Time{}, oidc.ErrServerError().WithDescription("%s", err)
+	}
+
 	return issued.ID, refresh, issued.Expires, nil
 }
 
@@ -410,8 +420,12 @@ func (s *Storage) claimsFor(ctx context.Context, request op.TokenRequest) (map[s
 }
 
 // TokenRequestByRefreshToken implements [op.AuthStorage].
-func (s *Storage) TokenRequestByRefreshToken(_ context.Context, refreshToken string) (op.RefreshTokenRequest, error) {
-	session, ok := s.iss.Sessions().ByToken(refreshToken)
+func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken string) (op.RefreshTokenRequest, error) {
+	session, ok, err := s.iss.Sessions().ByToken(ctx, refreshToken)
+	if err != nil {
+		return nil, oidc.ErrServerError().WithDescription("%s", err)
+	}
+
 	if !ok {
 		return nil, op.ErrInvalidRefreshToken
 	}
@@ -435,8 +449,12 @@ func (r *refreshRequest) GetSubject() string          { return r.session.Identit
 func (r *refreshRequest) SetCurrentScopes(s []string) { r.scopes = s }
 
 // GetRefreshTokenInfo implements [op.AuthStorage].
-func (s *Storage) GetRefreshTokenInfo(_ context.Context, _ string, tok string) (string, string, error) {
-	session, ok := s.iss.Sessions().ByToken(tok)
+func (s *Storage) GetRefreshTokenInfo(ctx context.Context, _ string, tok string) (string, string, error) {
+	session, ok, err := s.iss.Sessions().ByToken(ctx, tok)
+	if err != nil {
+		return "", "", oidc.ErrServerError().WithDescription("%s", err)
+	}
+
 	if !ok {
 		return "", "", op.ErrInvalidRefreshToken
 	}
@@ -446,22 +464,27 @@ func (s *Storage) GetRefreshTokenInfo(_ context.Context, _ string, tok string) (
 // RevokeToken ends a session or an access token. It is RFC 7009, and it
 // is the mechanism under both Revoke in the console and a person's own
 // sign-out-everywhere.
-func (s *Storage) RevokeToken(_ context.Context, tokenOrTokenID, _, _ string) *oidc.Error {
+func (s *Storage) RevokeToken(ctx context.Context, tokenOrTokenID, _, _ string) *oidc.Error {
 	// The library resolves a refresh token through GetRefreshTokenInfo
 	// first and then hands back what that returned, so this is the
 	// session id for a refresh token and the raw value for anything else.
 	// Both have to work, or revocation silently succeeds while the
 	// session lives on — which is the worst possible outcome for a
 	// security control whose entire job is to end access.
-	// Both, always, and in that order — never one *or* the other. The
-	// session index is per-process, so it only ever knows the sessions
-	// this replica recorded; taking a hit there as proof that revocation
-	// is done would leave the token itself in the shared state, valid at
-	// every replica including this one. A security control that reports
-	// success and leaves access in place is worse than one that fails.
-	s.iss.Sessions().RevokeToken(tokenOrTokenID)
-	s.iss.Sessions().RevokeID(tokenOrTokenID)
-	if err := s.state.Delete(context.Background(), tokenKey(tokenOrTokenID)); err != nil {
+	// Both, always, and in that order — never one *or* the other. A hit
+	// on either is not proof that revocation is done: the access token
+	// lives under its own key, and leaving it there would keep it valid
+	// at every replica. A security control that reports success and
+	// leaves access in place is worse than one that fails.
+	if _, err := s.iss.Sessions().RevokeToken(ctx, tokenOrTokenID); err != nil {
+		return oidc.ErrServerError().WithDescription("%s", err)
+	}
+
+	if _, err := s.iss.Sessions().RevokeID(ctx, tokenOrTokenID); err != nil {
+		return oidc.ErrServerError().WithDescription("%s", err)
+	}
+
+	if err := s.state.Delete(ctx, tokenKey(tokenOrTokenID)); err != nil {
 		return oidc.ErrServerError().WithDescription("%s", err)
 	}
 	// A token that was already gone is a success: revocation is
@@ -472,8 +495,11 @@ func (s *Storage) RevokeToken(_ context.Context, tokenOrTokenID, _, _ string) *o
 
 // TerminateSession ends what an identity holds at one client, which is
 // where RP-initiated logout arrives after the proxy has ended its own.
-func (s *Storage) TerminateSession(_ context.Context, identity, clientID string) error {
-	s.iss.Sessions().Revoke(Query{Identity: identity, ClientID: clientID})
+func (s *Storage) TerminateSession(ctx context.Context, identity, clientID string) error {
+	if _, err := s.iss.Sessions().Revoke(ctx, Query{Identity: identity, ClientID: clientID}); err != nil {
+		return oidc.ErrServerError().WithDescription("%s", err)
+	}
+
 	return nil
 }
 
