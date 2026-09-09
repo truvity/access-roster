@@ -38,10 +38,15 @@ const (
 // kubectl session, or an operator dealing with one incident would cut off
 // work they never meant to touch.
 type Session struct {
-	ID            string    `json:"id"`
-	Identity      string    `json:"identity"`
-	ClientID      string    `json:"client_id"`
-	How           How       `json:"how"`
+	ID       string `json:"id"`
+	Identity string `json:"identity"`
+	ClientID string `json:"client_id"`
+	How      How    `json:"how"`
+	// Scopes are what this session was granted at sign-in. A session
+	// recorded before this field existed has none, and a refresh on one
+	// of those is answered with the scopes it asks for or with none —
+	// which is what the code did for every session until now.
+	Scopes        []string  `json:"scopes,omitempty"`
 	IssuedAt      time.Time `json:"issued_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
 	LastRefreshed time.Time `json:"last_refreshed,omitempty"`
@@ -111,8 +116,13 @@ const sessionAllKey = "issuer:sessions"
 
 // Record files a newly issued refresh token and returns the session it
 // created.
+//
+// The scopes are the ones the person consented to, and the session is
+// the only place they survive: a refresh arrives an hour later carrying
+// a token and nothing else, and what a relying party may ask for then is
+// what it was granted at sign-in, not what it asks for now.
 func (s *Sessions) Record(
-	ctx context.Context, identity, clientID string, how How, token string,
+	ctx context.Context, identity, clientID string, how How, token string, scopes []string,
 ) (Session, error) {
 	now := s.now()
 	session := Session{
@@ -120,6 +130,7 @@ func (s *Sessions) Record(
 		Identity:  strings.ToLower(identity),
 		ClientID:  clientID,
 		How:       how,
+		Scopes:    scopes,
 		IssuedAt:  now,
 		ExpiresAt: now.Add(s.lifetime),
 	}

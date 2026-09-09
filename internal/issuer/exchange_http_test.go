@@ -53,6 +53,14 @@ func (fakeVerifier) Verify(_ context.Context, token, _ string) (issuer.Proof, er
 func serveIssuer(t *testing.T) (*httptest.Server, *issuer.Issuer) {
 	t.Helper()
 
+	return serveIssuerFor(t, &fakeDirectory{})
+}
+
+// serveIssuerFor is the same over a named directory, for the tests whose
+// subject is what the issuer says about a person it can vouch for.
+func serveIssuerFor(t *testing.T, dir issuer.Directory) (*httptest.Server, *issuer.Issuer) {
+	t.Helper()
+
 	declared, err := policy.Parse([]byte(demo.Policy))
 	if err != nil {
 		t.Fatalf("parse the demonstration policy: %v", err)
@@ -61,7 +69,7 @@ func serveIssuer(t *testing.T) (*httptest.Server, *issuer.Issuer) {
 	if err != nil {
 		t.Fatalf("policy set: %v", err)
 	}
-	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, &fakeDirectory{}, issuer.NewMemoryState())
+	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, dir, issuer.NewMemoryState())
 
 	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
 	if err != nil {
@@ -337,7 +345,7 @@ func TestRevocationEndsTheSession(t *testing.T) {
 	sessions := iss.Sessions()
 
 	if _, err := sessions.Record(
-		t.Context(), "ada@north.example", "argocd", issuer.HowCode, "refresh-1",
+		t.Context(), "ada@north.example", "argocd", issuer.HowCode, "refresh-1", nil,
 	); err != nil {
 		t.Fatalf("record: %v", err)
 	}

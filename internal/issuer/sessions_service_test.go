@@ -77,7 +77,7 @@ func TestYourOwnSessionsAreYours(t *testing.T) {
 	sessions := issuer.NewSessions(state, time.Hour)
 	svc := service(t, state)
 
-	if _, err := sessions.Record(ctx, "ada@north.example", "argocd", issuer.HowCode, "t-ada"); err != nil {
+	if _, err := sessions.Record(ctx, "ada@north.example", "argocd", issuer.HowCode, "t-ada", nil); err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
@@ -140,7 +140,7 @@ func TestRevokeNarrowsToOneClient(t *testing.T) {
 	svc := service(t, state)
 
 	for _, client := range []string{"argocd", "k8s:kernel"} {
-		if _, err := sessions.Record(ctx, "ada@north.example", client, issuer.HowCode, "t-"+client); err != nil {
+		if _, err := sessions.Record(ctx, "ada@north.example", client, issuer.HowCode, "t-"+client, nil); err != nil {
 			t.Fatalf("record: %v", err)
 		}
 	}
@@ -177,7 +177,7 @@ func TestASessionIdIsNotEnoughOnItsOwn(t *testing.T) {
 	sessions := issuer.NewSessions(state, time.Hour)
 	svc := service(t, state)
 
-	ada, err := sessions.Record(ctx, "ada@north.example", "argocd", issuer.HowCode, "t-ada")
+	ada, err := sessions.Record(ctx, "ada@north.example", "argocd", issuer.HowCode, "t-ada", nil)
 	if err != nil {
 		t.Fatalf("record: %v", err)
 	}

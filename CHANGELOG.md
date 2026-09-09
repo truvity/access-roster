@@ -3,6 +3,34 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **An ID token names who signed in.** It carried no `sub` at all, which
+  makes it invalid, and no `email`, `name` or `groups` either. Every
+  client asserts userinfo claims in its ID token, so the library
+  assembles one from this storage and assigns the result **wholesale** —
+  and the hook it assembles from was empty here, deprecated in favour of
+  the one the userinfo *endpoint* uses. Supplying nothing did not leave
+  the ID token's own claims alone; it overwrote them. A relying party
+  that reads the ID token rather than calling userinfo — ArgoCD and Kargo
+  both do — saw nobody. (INF-681)
+- **A token says which session it belongs to, and when the person signed
+  in.** `sid` is the session id the console lists and revokes, so a
+  relying party can say WHICH of a person's sessions it holds rather than
+  only that it holds one; a token no session backs, such as a workload's,
+  carries none rather than an empty one. `auth_time` is the sign-in, not
+  the minting: a refresh an hour later carries the same `auth_time` and a
+  fresh `iat`, and that difference is the whole of what a
+  "re-authenticate for this action" rule reads. Both are identity;
+  `groups` still decides. (INF-681)
+- **A session remembers the scopes it was granted.** It did not, and a
+  refresh arrives carrying a token and nothing else — so the answer to
+  "what may this session ask for" was *nothing*. Two consequences, both
+  live: a refresh naming any scope at all was refused as though it had
+  asked for more than it held, and one naming none minted an ID token
+  the library assembled from an empty scope set. A session recorded
+  before this release has no scopes and behaves exactly as they all did.
+
 ## v0.9.4
 
 - **The issuer answers what sessions it is holding, and ends them.**
