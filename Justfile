@@ -185,6 +185,13 @@ chart-lint:
     # that.
     helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example --set access.login.forwardedBearer.audience=console | grep -q 'client_id'
     ! helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example >/dev/null 2>&1
+    # CI identity is opt-in by naming the organisations. A chart that
+    # rendered GITHUB_OWNERS from nothing would admit every repository on
+    # GitHub, because anybody may run a workflow in their own and get a
+    # valid token: the verifier refuses to run without the list, and the
+    # chart must not invent one.
+    ! helm template t charts/access-issuer --set issuerURL=https://iss.example --set hub.address=http://h:8080 | grep -q GITHUB_OWNERS
+    helm template t charts/access-issuer --set issuerURL=https://iss.example --set hub.address=http://h:8080 --set 'github.owners={truvity}' | grep -q GITHUB_OWNERS
 
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —

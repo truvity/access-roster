@@ -210,3 +210,23 @@ resources: {}
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []
+
+# GitHub Actions as a source of CI identity. A workflow trades its
+# workflow identity token for one of this issuer's, and a `github:` matcher
+# in the policy decides what that job may reach.
+github:
+  # Whose repositories this installation runs jobs for: the GitHub
+  # organisations (or users) whose `repository_owner` is admitted.
+  #
+  # There is no default and there cannot be one. Anybody may run a
+  # workflow in their own repository and get a perfectly valid token from
+  # GitHub's issuer, so a signature and an expiry prove only that the job
+  # ran somewhere -- this list is the whole of what makes one of them
+  # ours. Empty means CI tokens are not verified at all, which is the
+  # right posture for an installation with no CI rather than a gap.
+  #
+  # The audience a workflow must request is this issuer's URL, and it is
+  # not configurable: one audience per relying party is what stops a token
+  # minted for a cloud provider being replayed here.
+  owners: []
+

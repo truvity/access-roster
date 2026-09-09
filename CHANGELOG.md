@@ -5,7 +5,18 @@ git history.
 
 ## Unreleased
 
-Nothing yet.
+- **A GitHub Actions workflow can prove what it is.** `verify.GitHub`
+  turns a workflow identity token into a proof carrying repository, owner,
+  ref, workflow and environment — the five things a `github:` matcher pins
+  a job to — so CI can trade its token for one of this issuer's. Two
+  settings are the trust boundary, not tuning: `github.owners` (anybody
+  may run a workflow in their own repository and get a valid token, so the
+  owner allow-list is the whole of what makes one of them ours — empty
+  verifies nothing) and the audience, which is this issuer's URL and is
+  not configurable, so a token minted for a cloud provider cannot be
+  replayed here. A token from another issuer comes back *unrecognised* so
+  the next verifier may try it; one this verifier owns and refuses is
+  final. (INF-646)
 
 ## v0.9.0
 
