@@ -55,9 +55,9 @@ func TestRevocationReachesTheSharedStateEitherWay(t *testing.T) {
 				t.Fatal("the token has no expiry")
 			}
 			if recorded {
-				if _, err := iss.Sessions().Record(
-					context.Background(), "ada@north.example", "console", issuer.HowCode, id, nil,
-				); err != nil {
+				if _, err := iss.Sessions().Record(context.Background(), issuer.Opened{
+					Identity: "ada@north.example", ClientID: "console", How: issuer.HowCode, Token: id,
+				}); err != nil {
 					t.Fatalf("record: %v", err)
 				}
 			}

@@ -87,6 +87,12 @@ type authRequest struct {
 	AuthTime time.Time         `json:"authTime,omitempty"`
 	IsDone   bool              `json:"done,omitempty"`
 
+	// SSO is the browser session this request was completed against,
+	// whether it was established just now or already existed. It travels
+	// down into the per-client session so that ending the browser session
+	// can find everything opened from it.
+	SSO string `json:"sso,omitempty"`
+
 	// Session is the session this request opened, learned when the code
 	// is redeemed and used one step later to put `sid` in the ID token.
 	// It is not written down with the rest: the library hands the SAME
@@ -323,14 +329,59 @@ func (s *Storage) DeleteAuthRequest(ctx context.Context, id string) error {
 
 // Complete marks a login as finished, which is what the issuer's own
 // sign-in page calls once an identity provider has said who is there.
-func (s *Storage) Complete(id, subject string) error {
+func (s *Storage) Complete(id string, who Authenticated) error {
 	ctx := context.Background()
 	req, err := s.request(ctx, id)
 	if err != nil {
 		return err
 	}
-	req.Subject, req.IsDone, req.AuthTime = strings.ToLower(subject), true, time.Now()
+
+	authTime := who.AuthTime
+	if authTime.IsZero() {
+		authTime = time.Now()
+	}
+
+	req.Subject, req.IsDone = strings.ToLower(who.Subject), true
+	// NOT time.Now(): a request completed silently against a session
+	// established an hour ago authenticated an hour ago, and `auth_time`
+	// is the one claim that has to say so — it is what a
+	// re-authenticate-for-this-action rule reads.
+	req.AuthTime, req.SSO = authTime, who.SSO
+
 	return setJSON(ctx, s.state, requestKey(id), req, authRequestTTL)
+}
+
+// Pending reports what an authorization request asks of a sign-in, so
+// that the sign-in pages can answer it without knowing the protocol.
+func (s *Storage) Pending(id string) (Pending, error) {
+	req, err := s.request(context.Background(), id)
+	if err != nil {
+		return Pending{}, err
+	}
+
+	out := Pending{}
+
+	for _, prompt := range req.Req.Prompt {
+		switch prompt {
+		case oidc.PromptLogin, oidc.PromptSelectAccount:
+			out.ForcesLogin = true
+		case oidc.PromptNone:
+			out.ForbidsUI = true
+		}
+	}
+
+	if req.Req.MaxAge != nil {
+		out.MaxAge = time.Duration(*req.Req.MaxAge) * time.Second
+		// `max_age=0` is "authenticate now" -- the same demand
+		// `prompt=login` makes, said with a different word. Reading it as
+		// "no maximum" (which a zero duration otherwise means here) would
+		// answer a request for a fresh authentication with an old one.
+		if *req.Req.MaxAge == 0 {
+			out.ForcesLogin = true
+		}
+	}
+
+	return out, nil
 }
 
 // --------------------------------------------------------------- tokens
@@ -375,7 +426,15 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 	if _, ok := request.(op.TokenExchangeRequest); ok {
 		how = HowExchange
 	}
-	session, err := s.iss.Sessions().Record(ctx, issued.Subject, clientOf(request), how, refresh, request.GetScopes())
+	session, err := s.iss.Sessions().Record(ctx, Opened{
+		Identity: issued.Subject,
+		ClientID: clientOf(request),
+		How:      how,
+		Token:    refresh,
+		Scopes:   request.GetScopes(),
+		SSO:      ssoOf(request),
+		AuthTime: authTimeOf(request),
+	})
 	if err != nil {
 		return "", "", time.Time{}, oidc.ErrServerError().WithDescription("%s", err)
 	}
@@ -429,6 +488,30 @@ func (s *Storage) SetUserinfoFromRequest(
 	}
 
 	return nil
+}
+
+// authTimeOf is when the person behind a token request authenticated, and
+// the zero time for a request no person is behind. Not every kind of
+// token request carries one, which is why it is asked for by shape.
+func authTimeOf(request op.TokenRequest) time.Time {
+	if with, ok := request.(interface{ GetAuthTime() time.Time }); ok {
+		return with.GetAuthTime()
+	}
+
+	return time.Time{}
+}
+
+// ssoOf is the browser session a token request was authorized from, and
+// nothing for a flow where no browser was involved.
+func ssoOf(request op.TokenRequest) string {
+	switch req := request.(type) {
+	case *authRequest:
+		return req.SSO
+	case *refreshRequest:
+		return req.session.SSO
+	default:
+		return ""
+	}
 }
 
 // sessionOf is the session a token request belongs to: the one just
@@ -533,10 +616,22 @@ var _ op.RefreshTokenRequest = (*refreshRequest)(nil)
 
 func (r *refreshRequest) GetAMR() []string            { return []string{"pwd"} }
 func (r *refreshRequest) GetAudience() []string       { return []string{r.session.ClientID} }
-func (r *refreshRequest) GetAuthTime() time.Time      { return r.session.IssuedAt }
 func (r *refreshRequest) GetClientID() string         { return r.session.ClientID }
 func (r *refreshRequest) GetSubject() string          { return r.session.Identity }
 func (r *refreshRequest) SetCurrentScopes(s []string) { r.scopes = s }
+
+// GetAuthTime is when the person behind this session authenticated —
+// carried down from the browser session at sign-in, not the moment this
+// session was opened and never the moment of this refresh. A session
+// recorded before the field existed falls back to when it was issued,
+// which is what the code answered for every session until now.
+func (r *refreshRequest) GetAuthTime() time.Time {
+	if !r.session.AuthTime.IsZero() {
+		return r.session.AuthTime
+	}
+
+	return r.session.IssuedAt
+}
 
 // GetScopes is what this session was granted, until a narrower set is
 // asked for and accepted.

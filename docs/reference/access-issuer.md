@@ -48,7 +48,7 @@ longer than `lifetimes.token`.
 | `/revoke` | RFC 7009 | revokes a refresh token; what Revoke and "sign out everywhere" call underneath |
 | `/register` | RFC 7591 | dynamic client registration, authenticated by a ServiceAccount token |
 | `/login`, `/device`, `/signed-out` | ours | the three pages the issuer serves itself: sign-in chooser by domain, device-code entry, signed out. Minimal HTML, same theme; not the console |
-| `/account` | ours | the signed-in person's own page: their sessions, and *sign out everywhere*. Unlike the three above it runs **with** a session, same-origin with `SessionService`, so it needs no cross-origin bearer; it may use the console's UI (INF-685) |
+| `/account` | ours | the signed-in person's own page: their sessions, and *sign out everywhere*. Unlike the three above it runs **with** a session, same-origin with `SessionService`, so it needs no cross-origin bearer; its buttons are form posts, so it needs no JavaScript |
 | `/.access/grants` | ours | the clients the caller's groups admit it to; read by `accessctl kubeconfig` and `aws-config` |
 | `/.access/simulate` | ours | what would this identity get. Read-only |
 | `SessionService` (ConnectRPC): `ListSessions{identity? \| client?}`, `RevokeSessions{identity, client?, session_id?}` | ours | sessions per identity and per client, with client, how obtained, issued, expires, last refreshed; revoke per identity, per client, or one. Listing and revoking others is operator; listing and revoking your own is any signed-in identity. Reached same-origin from `/account` (the SSO cookie); the `console.origin` CORS gate is the optional path for a console-embedded operator view |

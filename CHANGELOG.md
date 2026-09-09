@@ -5,6 +5,29 @@ git history.
 
 ## Unreleased
 
+- **The issuer holds a session with the browser, so a second console
+  costs no login.** It held only a login-round-trip cookie: every console
+  bounced the person back through the corporate directory, and *global
+  sign-out* had almost nothing to end. Now an authorization request
+  completes against that session — silently — and `auth_time` comes from
+  where the person actually authenticated rather than from the moment a
+  token was minted. `prompt=login` and `max_age` are honoured, including
+  `max_age=0`, which is a request for a fresh authentication and not, as
+  a zero duration would otherwise read, no requirement at all. The
+  directory still decides: a silent sign-in re-asks the hub, so a
+  suspended account stops being admitted instead of coasting on a browser
+  session. `end_session` ends the sign-in, not only one application's
+  tokens — the half-sign-out that looks exactly like a whole one.
+  (INF-685)
+- **An account page, served by the issuer at its own host.** `/account`
+  lists what you have open and ends all of it. Being same-origin with the
+  session service is the point: the browser already holds this issuer's
+  session there, so the page needs no bearer, no CORS and no console, and
+  its buttons are form posts rather than JavaScript. *Sign out
+  everywhere* ends both halves — the sessions already running and the
+  sign-in that would silently open more. Per-client sessions now record
+  the browser session that parented them and the time it authenticated.
+  (INF-685)
 - **Docs: the SSO session and where session management lives.** The
   design now says plainly that the issuer holds a first-class **SSO
   session** (to build, INF-685) and that session management is served at

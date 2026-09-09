@@ -60,6 +60,7 @@ type Issuer struct {
 	set      *policy.Set
 	resolver *Resolver
 	sessions *Sessions
+	sso      *SSO
 }
 
 // New returns an issuer over a policy set, a directory and the shared
@@ -75,12 +76,17 @@ func New(cfg Config, set *policy.Set, dir Directory, state State) *Issuer {
 		set:      set,
 		resolver: NewResolver(dir, cfg.HoldWindow),
 		sessions: NewSessions(state, cfg.RefreshLifetime),
+		sso:      NewSSO(state, cfg.RefreshLifetime),
 	}
 }
 
 // Sessions is the index of what this issuer has outstanding: what the
 // console lists on a person's page and a client's, and revokes.
 func (i *Issuer) Sessions() *Sessions { return i.sessions }
+
+// SSO is the browser's session with this issuer -- what makes a second
+// console cost no login, and the parent of the sessions above.
+func (i *Issuer) SSO() *SSO { return i.sso }
 
 // Policy is the set in force, shared with the hub.
 func (i *Issuer) Policy() *policy.Set { return i.set }
