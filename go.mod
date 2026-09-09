@@ -2,6 +2,8 @@ module github.com/truvity/access-roster
 
 go 1.27.0
 
+toolchain go1.27.1
+
 require (
 	connectrpc.com/connect v1.20.0
 	github.com/alicebob/miniredis/v2 v2.39.0
