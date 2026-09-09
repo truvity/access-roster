@@ -1070,6 +1070,13 @@ type ResolveUserResponse struct {
 	// grants only when this is true.
 	Authoritative bool                   `protobuf:"varint,5,opt,name=authoritative,proto3" json:"authoritative,omitempty"`
 	SnapshotAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=snapshot_at,json=snapshotAt,proto3" json:"snapshot_at,omitempty"`
+	// The account's own names, when the directory supplies them. Identity,
+	// never authorization: a relying party's UI shows a person rather than
+	// an address, and its policy reads `groups` as before. Empty is normal
+	// -- a backend that does not carry them, or an address in no served
+	// domain -- so a consumer falls back to the address.
+	GivenName     string `protobuf:"bytes,7,opt,name=given_name,json=givenName,proto3" json:"given_name,omitempty"`
+	FamilyName    string `protobuf:"bytes,8,opt,name=family_name,json=familyName,proto3" json:"family_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1144,6 +1151,20 @@ func (x *ResolveUserResponse) GetSnapshotAt() *timestamppb.Timestamp {
 		return x.SnapshotAt
 	}
 	return nil
+}
+
+func (x *ResolveUserResponse) GetGivenName() string {
+	if x != nil {
+		return x.GivenName
+	}
+	return ""
+}
+
+func (x *ResolveUserResponse) GetFamilyName() string {
+	if x != nil {
+		return x.FamilyName
+	}
+	return ""
 }
 
 var File_directory_v1_directory_proto protoreflect.FileDescriptor
@@ -1221,7 +1242,7 @@ const file_directory_v1_directory_proto_rawDesc = "" +
 	"\rauthoritative\x18\a \x01(\bR\rauthoritative\"^\n" +
 	"\x12ResolveUserRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x122\n" +
-	"\amax_age\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x06maxAge\"\xe1\x01\n" +
+	"\amax_age\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x06maxAge\"\xa1\x02\n" +
 	"\x13ResolveUserResponse\x12\x16\n" +
 	"\x06groups\x18\x01 \x03(\tR\x06groups\x12\x1c\n" +
 	"\tsuspended\x18\x02 \x01(\bR\tsuspended\x12\x1b\n" +
@@ -1229,7 +1250,11 @@ const file_directory_v1_directory_proto_rawDesc = "" +
 	"\x05found\x18\x04 \x01(\bR\x05found\x12$\n" +
 	"\rauthoritative\x18\x05 \x01(\bR\rauthoritative\x12;\n" +
 	"\vsnapshot_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"snapshotAt2\xc0\x04\n" +
+	"snapshotAt\x12\x1d\n" +
+	"\n" +
+	"given_name\x18\a \x01(\tR\tgivenName\x12\x1f\n" +
+	"\vfamily_name\x18\b \x01(\tR\n" +
+	"familyName2\xc0\x04\n" +
 	"\x10DirectoryService\x12I\n" +
 	"\bDescribe\x12\x1d.directory.v1.DescribeRequest\x1a\x1e.directory.v1.DescribeResponse\x12@\n" +
 	"\x05Probe\x12\x1a.directory.v1.ProbeRequest\x1a\x1b.directory.v1.ProbeResponse\x12I\n" +

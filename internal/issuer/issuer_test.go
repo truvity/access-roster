@@ -395,3 +395,72 @@ func TestSessionsAreSharedBetweenReplicas(t *testing.T) {
 		t.Errorf("the recording replica still honours a revoked token")
 	}
 }
+
+// A token names the person, not only the address: the directory supplies
+// given and family names, and the issuer carries them into `userinfo` and
+// the ID token so a relying party's UI shows somebody rather than an
+// address. None of it is authorization.
+func TestATokenNamesThePerson(t *testing.T) {
+	t.Parallel()
+
+	dir := &fakeDirectory{standing: map[string]issuer.Standing{
+		"ada@north.example": {
+			Found: true, Authoritative: true,
+			Groups:     []string{"directory-admins@north.example"},
+			GivenName:  "Ada",
+			FamilyName: "North",
+		},
+	}}
+
+	resolved, err := issuer.NewResolver(dir, time.Hour).Resolve(context.Background(), "ada@north.example")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	if resolved.GivenName != "Ada" || resolved.FamilyName != "North" {
+		t.Errorf("names = %q %q, want Ada North", resolved.GivenName, resolved.FamilyName)
+	}
+}
+
+// A held answer carries the last known GRANTS and nothing else. A name
+// recovered from memory would be a claim the issuer cannot currently
+// vouch for, and the hold window exists for authorization, not for
+// cosmetics.
+func TestAHeldAnswerCarriesNoNames(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dir := &fakeDirectory{standing: map[string]issuer.Standing{
+		"ada@north.example": {
+			Found: true, Authoritative: true,
+			Groups:     []string{"directory-admins@north.example"},
+			GivenName:  "Ada",
+			FamilyName: "North",
+		},
+	}}
+	resolver := issuer.NewResolver(dir, time.Hour)
+
+	if _, err := resolver.Resolve(ctx, "ada@north.example"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// The directory can no longer vouch for anything.
+	dir.standing["ada@north.example"] = issuer.Standing{Found: true, Authoritative: false}
+
+	held, err := resolver.Resolve(ctx, "ada@north.example")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	if !held.Held {
+		t.Fatal("the answer was not held")
+	}
+
+	if len(held.Groups) == 0 {
+		t.Error("a held answer lost the grants, which is the thing it is for")
+	}
+
+	if held.GivenName != "" || held.FamilyName != "" {
+		t.Errorf("a held answer carried names: %q %q", held.GivenName, held.FamilyName)
+	}
+}

@@ -201,4 +201,11 @@ message ResolveUserResponse {
   // grants only when this is true.
   bool authoritative = 5;
   google.protobuf.Timestamp snapshot_at = 6;
+  // The account's own names, when the directory supplies them. Identity,
+  // never authorization: a relying party's UI shows a person rather than
+  // an address, and its policy reads `groups` as before. Empty is normal
+  // -- a backend that does not carry them, or an address in no served
+  // domain -- so a consumer falls back to the address.
+  string given_name = 7;
+  string family_name = 8;
 }

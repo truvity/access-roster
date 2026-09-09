@@ -64,6 +64,12 @@ type token struct {
 	Scopes   []string       `json:"scopes,omitempty"`
 	Claims   map[string]any `json:"claims,omitempty"`
 	Expires  time.Time      `json:"expires"`
+	// The account's own names, as the directory gave them at the moment
+	// this token was minted. Identity and not authorization: they are
+	// what `userinfo` and an ID token say so that a relying party's UI
+	// shows a person rather than an address. Empty is normal.
+	GivenName  string `json:"givenName,omitempty"`
+	FamilyName string `json:"familyName,omitempty"`
 }
 
 // authRequest is a login in progress: a browser part-way between the
@@ -393,6 +399,7 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 		Claims:   claims,
 		Expires:  time.Now().Add(lifetime),
 	}
+	issued.GivenName, issued.FamilyName = s.namesOf(ctx, issued.Subject)
 	// Kept only until it expires: an access token past its lifetime
 	// answers nothing, and a store that has to be swept is a store that
 	// grows when the sweeper stops.
@@ -521,7 +528,7 @@ func (s *Storage) SetUserinfoFromToken(ctx context.Context, info *oidc.UserInfo,
 	if issued == nil {
 		return errors.New("no such token")
 	}
-	return s.fill(ctx, info, issued.Subject, issued.Claims)
+	return s.fill(ctx, info, issued.Subject, issued.Claims, issued.GivenName, issued.FamilyName)
 }
 
 // SetIntrospectionFromToken implements [op.OPStorage].
@@ -564,16 +571,59 @@ func serviceAccountSubject(subject string) (namespace, name string, ok bool) {
 	return namespace, name, true
 }
 
-func (s *Storage) fill(_ context.Context, info *oidc.UserInfo, subject string, claims map[string]any) error {
+func (s *Storage) fill(
+	_ context.Context, info *oidc.UserInfo, subject string, claims map[string]any, given, family string,
+) error {
 	info.Subject = subject
+
 	if strings.Contains(subject, "@") {
 		info.Email = subject
 		info.EmailVerified = true
+		// The address is also the username a relying party shows when it
+		// has nothing better, and it is what this issuer's subject IS for
+		// a person -- so saying it twice costs nothing and spares every
+		// consumer a fallback.
+		info.PreferredUsername = subject
 	}
+
+	// A person, when the directory said so. `name` is the whole of what a
+	// UI usually renders, and given/family are there for the ones that
+	// want the halves; none of it is authorization, and all of it is
+	// absent for a workload or a recovery sign-in, which have no names to
+	// give.
+	info.GivenName, info.FamilyName = given, family
+
+	switch {
+	case given != "" && family != "":
+		info.Name = given + " " + family
+	case given != "":
+		info.Name = given
+	case family != "":
+		info.Name = family
+	}
+
 	for name, value := range claims {
 		info.AppendClaims(name, value)
 	}
+
 	return nil
+}
+
+// namesOf asks the directory what this account is called, for the claims
+// that name a person. A failure is not one: the token is about what the
+// identity may do, and a UI that shows an address instead of a name is a
+// smaller thing than a login that did not happen.
+func (s *Storage) namesOf(ctx context.Context, subject string) (given, family string) {
+	if !strings.Contains(subject, "@") {
+		return "", ""
+	}
+
+	resolved, err := s.iss.resolver.Resolve(ctx, subject)
+	if err != nil {
+		return "", ""
+	}
+
+	return resolved.GivenName, resolved.FamilyName
 }
 
 // GetKeyByIDAndClientID implements [op.OPStorage].
@@ -728,5 +778,10 @@ func (s *Storage) SetUserinfoFromTokenExchangeRequest(
 	if !ok {
 		return errors.New("the exchange was not validated")
 	}
-	return s.fill(ctx, info, grant.Subject, grant.Claims)
+
+	// An exchange is usually a job or a workload, which has no names. A
+	// person exchanging one of their own tokens does, so ask the same way.
+	given, family := s.namesOf(ctx, grant.Subject)
+
+	return s.fill(ctx, info, grant.Subject, grant.Claims, given, family)
 }
