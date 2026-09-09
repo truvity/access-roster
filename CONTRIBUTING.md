@@ -113,10 +113,12 @@ As of 2026-09-09 (evening) the hub and the issuer run on a cluster at
 connected, the policy is rendered from the installation's access matrix,
 sign-out ends the issuer session, CI tokens verify, and the session
 index is shared across replicas. The road to 1.0 is written as issues
-under the issuer's 1.0 epic — sessions in the console, identity claims,
-`/register`, the conformance run — and **1.0 is not tagged without a
-conversation first.** The rewiring order after it is consoles, then
-clusters, then AWS, then CI.
+under the issuer's 1.0 epic — the group rename to `<scope>:<thing>:<role>`
+(INF-684, folded into the open gitops PR; the hub's two constants move
+with it), sessions in the console, identity claims, `/register`, the
+conformance run — and **1.0 is not tagged without a conversation
+first.** The rewiring order after it is consoles, then clusters, then
+AWS, then CI.
 
 Things that are not fixes and must not be reached for, each because it
 was the first idea and the wrong one: raising the gateway's route
@@ -125,7 +127,9 @@ it will never see; clearing this hub's own cookie to sign somebody out of
 a session the proxy holds; putting an exchange in front of a same-cluster
 call; verifying another cluster's key set directly; minting a structured
 roles claim beside `groups`; re-mapping group names in a library; a
-ConfigMap watch instead of a `checksum/policy` rollout.
+ConfigMap watch instead of a `checksum/policy` rollout; a group name that
+is not `<scope>:<thing>:<role>` (or `rung:`/`emp:`, which are not
+grants).
 
 ## Releasing
 

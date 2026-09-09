@@ -26,17 +26,21 @@ the internal groups; nothing is re-mapped on the way:
 
 ```yaml
 groups:
-  cluster-kernel:cluster:admin: { members: [role-sre@example.com, role-admin@example.com] }
-  cluster-kernel:cluster:viewer: { members: [team-eng@example.com] }
+  kernel:k8s:admin:  { members: [role-sre@example.com, role-admin@example.com] }
+  kernel:k8s:viewer: { members: [team-eng@example.com] }
 clients:
-  k8s:kernel: { kind: public, requires: [cluster-kernel:cluster:admin, cluster-kernel:cluster:viewer] }
+  k8s:kernel: { kind: public, requires: [kernel:k8s:admin, kernel:k8s:viewer] }
 ```
 
 `requires` is what lets `accessctl kubeconfig` know this person may use
 this cluster; the group names in the token are what the cluster's RBAC
-binds. An installation that renders its policy from an access matrix
-(see the gitops repository) mints these names from one function, so the
-binding and the token cannot drift apart.
+binds — `<env>:k8s:<role>`, the cluster tier of the
+[naming rule](../design/trust.md#naming). An installation that renders
+its policy from an access matrix (see the gitops repository) mints these
+names from one function, so the binding and the token cannot drift
+apart. Renaming an installation's existing bindings is safe to do
+gradually: RBAC binds any number of group names to one ClusterRole, so
+the old and the new spelling coexist until the old issuer is gone.
 
 ## Person side
 

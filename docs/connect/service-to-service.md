@@ -88,14 +88,18 @@ policy, with `requires` naming the internal groups that may call it:
 
 ```yaml
 groups:
-  team-sync:
+  all:directory-roster:reader:
     matchers:
       - service_account: { namespace: team-sync, name: team-sync }   # a workload, this or any cluster the issuer trusts
 clients:
   directory-roster:
     kind: public
-    requires: [team-sync, hub-operators]
+    requires: [all:directory-roster:reader, all:access-roster:operator]
 ```
+
+The group is named for what it is a role *on* — `<scope>:<thing>:<role>`,
+here a reader of the directory across the installation — not for who is
+in it ([naming](../design/trust.md#naming)).
 
 ## Building a service that accepts callers
 

@@ -28,7 +28,7 @@ exposure:
   hostname: myconsole.example.internal
   backend: { name: myconsole, port: 8080 }
   posture: groups
-  allow: [myconsole:operator, myconsole:viewer]
+  allow: [all:myconsole:operator, all:myconsole:viewer]
 ```
 
 and the policy that puts people in those groups and admits them to the
@@ -37,16 +37,22 @@ the console checks:
 
 ```yaml
 groups:
-  myconsole:operator: { members: [myconsole-admins@example.com] }
-  myconsole:viewer:   { members: [everyone@example.com] }
+  all:myconsole:operator: { members: [myconsole-admins@example.com] }
+  all:myconsole:viewer:   { members: [everyone@example.com] }
 clients:
   myconsole.example.internal:
     kind: confidential
     secret: myconsole-client
     redirects:  [https://myconsole.example.internal/oauth2/callback]
     signed_out: [https://myconsole.example.internal/]
-    requires:   [myconsole:operator, myconsole:viewer]
+    requires:   [all:myconsole:operator, all:myconsole:viewer]
 ```
+
+`all:<app>:<role>` is an application role under the
+[naming rule](../design/trust.md#naming): scoped to the tenant the app
+serves, and `all` until the app can tell tenants apart. A console that
+is really a view onto one cluster binds that cluster's tier instead
+(`kernel:k8s:viewer`), the way ArgoCD does.
 
 `requires` is the primary gate — nobody outside those groups gets a
 token, so the proxy never sees a session. The proxy's `allow` above is

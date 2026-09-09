@@ -13,37 +13,40 @@ survives only as the matchers inside machine groups.
 ```yaml
 version: 1
 
-groups:                        # internal groups — the vocabulary
-  sre:
+groups:                        # internal groups — the vocabulary, named <scope>:<thing>:<role>
+  kernel:k8s:admin:
     members: [role-sre@a.example, role-sre@b.example]   # directory groups, any workspace
-  dpo:
+  kernel:k8s:auditor:
     members: [role-security@a.example]
-  ci-gitops:
-    matchers:                                             # matched, not listed
+  prod:eudi:deployer:
+    members: [team-eudi@a.example]
+  rung:sre:                                             # two segments: a lifetime carrier, not a grant
+    members: [role-sre@a.example, role-sre@b.example]
+  ci:gitops:deployer:
+    matchers:                                           # matched, not listed
       - github: { repository: example-org/gitops, ref: refs/heads/master }
-  hub-viewers:
-    matchers: [{ email_domain: a.example }]                # the escape hatch, see below
-  hub-operators:
+  all:access-roster:viewer:
+    matchers: [{ email_domain: a.example }]              # the escape hatch, see below
+  all:access-roster:operator:
     members: [directory-admins@a.example]
 
-claims:                        # what a group adds to a token — sparse
-  sre: { groups: [cluster-kernel:admin, cluster-prod:admin] }
-  dpo: { groups: [cluster-kernel:auditor], tailnet: { tiers: [vpc] } }
+claims:                        # what a group adds beyond its own name — sparse, usually empty
+  kernel:k8s:auditor: { tailnet: { tiers: [vpc] } }
 
-lifetimes:                     # how long — default plus exceptions
-  default: 12h
-  sre: 8h
-  ci-gitops: 1h
+lifetimes:                     # how long — default plus the rungs
+  default: 4h
+  rung:sre: 8h
+  ci:gitops:deployer: 1h
 
 clients:                       # who may be issued a token for what; the id is the audience
-  k8s:kernel:        { kind: public,       requires: [sre, dpo, it] }
-  aws:1111:power:    { kind: exchange,     requires: [sre] }
-  aws:1111:deployer: { kind: exchange,     requires: [ci-gitops] }
-  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [sre, dpo, engineer], ttl_cap: 12h }
-  local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [engineer] }
+  k8s:kernel:        { kind: public,       requires: [kernel:k8s:admin, kernel:k8s:auditor] }
+  aws:1111:power:    { kind: exchange,     requires: [kernel:k8s:admin] }
+  aws:1111:deployer: { kind: exchange,     requires: [ci:gitops:deployer] }
+  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [kernel:k8s:admin, kernel:k8s:auditor], ttl_cap: 12h }
+  local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [prod:eudi:deployer] }
 
 memberships:                   # the one table a console may extend — the same shape as groups.*.members
-  hub-operators: [platform-admins@b.example]
+  all:access-roster:operator: [platform-admins@b.example]
 ```
 
 | Table | Key | Holds | Who writes it |
@@ -57,23 +60,40 @@ memberships:                   # the one table a console may extend — the same
 The hub loads `groups`, `claims`, `lifetimes` and `memberships`. The issuer
 loads all five. Same parser, same validation, same layers.
 
+## Naming
+
+Every grant is named **`<scope>:<thing>:<role>`** — *role, on thing, in
+scope* — and the reasoning is in [design/trust.md](../design/trust.md#naming).
+`scope` is an environment, a tenant id, or `all`; `thing` is what the role
+is on (a subsystem such as `k8s`, a project such as `eudi`, an application
+such as `access-roster`); `role` is from that thing's own ladder. The two
+exceptions are not grants and are two segments on purpose: `rung:<name>`
+carries a session lifetime, `emp:<slug>` is a person. The loader warns on
+a name in neither shape *(INF-684)*.
+
+Decided 2026-09-09 (evening). Until INF-684 lands the code reads the
+hub's own roles as `hub-operators` / `hub-viewers` with an `@<workspace>`
+suffix for a scope; this page describes where it is going.
+
 ## The hub's own two groups, and scoping them
 
-`hub-operators` and `hub-viewers` are the only names the hub reads out of
-the policy for itself. It holds no role vocabulary of its own: an identity
-is an operator because the policy puts it in the operators group, exactly
-as any other relying party's roles work.
+`all:access-roster:operator` and `all:access-roster:viewer` are the only
+names the hub reads out of the policy for itself *(the code says
+`hub-operators` / `hub-viewers` until INF-684)*. It holds no role
+vocabulary of its own: an identity is an operator because the policy puts
+it in the operators group, exactly as any other relying party's roles
+work.
 
-Suffix either with `@<workspace id>` and the role is held over **that one
-tenant**:
+Put a **workspace id** in the scope position and the role is held over
+**that one tenant**:
 
 ```yaml
 groups:
-  hub-operators:                                  # the whole installation
+  all:access-roster:operator:                     # the whole installation
     members: [platform-admins@a.example]
-  hub-operators@C0northern:                       # one directory only
+  C0northern:access-roster:operator:              # one directory only
     members: [it-admins@north.example]
-  hub-viewers@C0northern:
+  C0northern:access-roster:viewer:
     matchers: [{ email_domain: north.example }]
 ```
 
@@ -81,9 +101,9 @@ A scope is a naming convention over the ordinary table rather than a
 column in it, because the table is already where an installation says who
 is in what, and the hub already reads two names out of it by convention.
 A scope is a third: nothing in the schema, the merge or the validation has
-to know. Only those two names carry one, so `team@north.example` is an
-ordinary group and grants nothing over a workspace called
-`north.example`.
+to know. Only the hub's two roles read a workspace out of the scope
+position; `north.example:k8s:admin` would be an ordinary group and grants
+nothing over a workspace.
 
 What a scope means, exactly:
 
@@ -142,7 +162,8 @@ them. A group's name is therefore the whole of what it usually adds; the
 `claims` table is for the rare relying party that reads something that
 is not a group. Where provenance must travel — which company's
 directory vouched for this — it goes into the string
-(`hub-viewers@<workspace id>`), where every consumer keeps working.
+(`<workspace id>:access-roster:viewer`), where every consumer keeps
+working.
 
 > **`sub` is an open decision.** This page said *workspace id plus the
 > backend's user id*; the issuer mints **the address**. Both are

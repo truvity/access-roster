@@ -90,11 +90,63 @@ disagree and two things a consumer can accidentally depend on.
 
 When a fact about *where* a grant came from has to travel — which
 company's directory vouched for this role — it goes **into the string**,
-where every consumer keeps working: `hub-viewers@<workspace id>` is that
-convention, already in force for the hub's own roles. The `claims`
+where every consumer keeps working: `<workspace id>:access-roster:viewer`
+is that convention — a role over one directory with the scope in the
+first position, like every other grant (see *Naming*). The `claims`
 fragment table stays for the rare relying party that needs a claim that
 is not a group (cloud session tags, say); the default is that a group's
 name is the whole of what it adds.
+
+### Naming
+
+Decided 2026-09-09 (evening); lands with INF-684 — until then the code
+spells the hub's two roles `hub-operators` / `hub-viewers`, and the
+places that matters are marked.
+
+Every grant is **`<scope>:<thing>:<role>`** — three segments, `:`
+between, lowercase. *Role, on thing, in scope.*
+
+| Segment | Is | Examples |
+|---|---|---|
+| `scope` | an environment, a tenant id, or `all` | `kernel`, `prod`, `C03fwo7gy`, `all` |
+| `thing` | what the role is **on**: a subsystem, a project, an application | `k8s`, `eudi`, `github-roster`, `access-roster` |
+| `role` | from that thing's own ladder | `admin`, `viewer`, `auditor`, `deployer`, `approver`, `operator` |
+
+So: `kernel:k8s:admin`, `prod:eudi:deployer`, `all:access-roster:operator`,
+`C03fwo7gy:access-roster:viewer` — the last being a role held over one
+directory rather than the installation, with the scope where every other
+name has it and the **workspace id** as the scope, never a domain.
+
+Two rules that follow from the shape:
+
+- **Two-segment names are not grants, deliberately.** `rung:<name>`
+  carries a session lifetime; `emp:<slug>` is a person, which per-scope
+  bindings attach to. Neither is *a role on a thing*. A reader who sees
+  two segments knows it is not a grant; there are no other two-segment
+  families.
+- **A cluster-scoped consumer binds `<env>:k8s:<role>` by default.**
+  Being admin of the cluster is the qualification for being admin of the
+  ArgoCD that manages it, and the installation's matrix decides rung ×
+  scope → a generic role that each system translates in its own RBAC. A
+  consumer owns a `thing` of its own only when its ladder genuinely
+  diverges. That is an escape hatch; the default keeps a token at a few
+  dozen groups rather than a few dozen per subsystem.
+
+Why the shape and not the one before it: `cluster-kernel:cluster:admin`
+said "cluster" twice because the two occurrences meant different things.
+The prefix was the identity provider's project name leaking through the
+mapper that flattened it — residue of the thing being decommissioned —
+and the tier meant *Kubernetes*, which `k8s` says. The old shape also
+put an application role (`cluster-kernel:roster:operator`) under a
+cluster scope it had nothing to do with, so nothing could tell an app
+role from a project role from a tier role by looking. The new one is
+parseable in three positions, sorts scope-first, and carries none of the
+old provider's vocabulary.
+
+The rename is safe because RBAC binds any number of names to one role:
+during the migration the bindings carry both spellings, the issuer
+mints only the new, the old provider only the old, and the old bindings
+go when it does.
 
 Identity claims travel beside `groups` and are not authorization:
 `sub`, `email`, `name`, `given_name`, `family_name`,

@@ -419,7 +419,7 @@ sequenceDiagram
   O->>G: consent as the admin role account
   G-->>H: callback: refresh token, tenant id, domains
   H->>G: first snapshot
-  O->>H: Access: directory-admins joins hub-operators (picker over snapshotted groups)
+  O->>H: Access: directory-admins joins the operators group (picker over snapshotted groups)
   O->>H: sign out, "Sign in with Google"
   H->>G: OIDC sign-in with the same client, openid scopes only
   H->>H: email → workspace → live and in group → operator

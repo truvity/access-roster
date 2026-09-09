@@ -34,7 +34,7 @@ process says so at start — a development posture, never a deployed one.
 session key, obtained through one of the login routes below or — behind
 an authenticating gateway — minted from the forwarded bearer on the first
 request. Roles come from membership of two declared policy groups:
-`hub-viewers` reads, `hub-operators` writes. Unauthenticated RPCs get `unauthenticated`; a missing role gets
+the viewers group reads, the operators group writes (`hub-viewers` / `hub-operators`; `all:access-roster:viewer` / `operator` after INF-684). Unauthenticated RPCs get `unauthenticated`; a missing role gets
 `permission_denied`.
 
 | Route | Does |
@@ -221,7 +221,7 @@ adapter of the Go module serves:
   "familyName": "Ant",
   "roles": ["operator", "viewer"],
   "source": "forwarded",
-  "groups": ["engineering", "hub-operators"],
+  "groups": ["kernel:k8s:viewer", "all:access-roster:operator"],
   "version": "v1.0.0",
   "signOutUrl": "/logout"
 }
