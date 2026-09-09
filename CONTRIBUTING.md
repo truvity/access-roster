@@ -101,21 +101,31 @@ rather than the pixels for anything animated.
 
 The documents are the authority and the Linear issues carry the
 decisions and their dates; when the two disagree, the document wins and
-the issue gets a comment. `docs/design/*` says what each battery is and
-why; `docs/reference/*` says exactly what it exposes; `CHANGELOG.md`
-says what exists today. As of 2026-09-09 the hub and the issuer run on a
-cluster, the hub's console is behind `access-proxy`, and three
-directories are connected. Everything the first live connect showed is
-built and released: nothing slow on the request path, every replica
-knowing every workspace, the connect-time domain choice, *provisional*
-with a reason, a role scoped to one workspace. The remaining work lives
-with the project's issues.
+the issue gets a comment. Read in this order: `docs/design/trust.md`
+(the rule under everything — two trust anchors chosen by scope, `groups`
+as the one vocabulary), `docs/connect/service-to-service.md` (the how-to
+that rule produces), `docs/integrations.md` (every case with its
+anchor), then the design of whatever you touch. `docs/reference/*` says
+exactly what each battery exposes; `CHANGELOG.md` says what exists today.
 
-Four things are not fixes and must not be reached for, each because it
+As of 2026-09-09 (evening) the hub and the issuer run on a cluster at
+0.9.x, the hub's console is behind `access-proxy`, three directories are
+connected, the policy is rendered from the installation's access matrix,
+sign-out ends the issuer session, CI tokens verify, and the session
+index is shared across replicas. The road to 1.0 is written as issues
+under the issuer's 1.0 epic — sessions in the console, identity claims,
+`/register`, the conformance run — and **1.0 is not tagged without a
+conversation first.** The rewiring order after it is consoles, then
+clusters, then AWS, then CI.
+
+Things that are not fixes and must not be reached for, each because it
 was the first idea and the wrong one: raising the gateway's route
-timeout, asking for a fifth Google scope, answering a browser with a 5xx
-it will never see, and clearing this hub's own cookie to sign somebody
-out of a session the proxy holds.
+timeout; asking for a fifth Google scope; answering a browser with a 5xx
+it will never see; clearing this hub's own cookie to sign somebody out of
+a session the proxy holds; putting an exchange in front of a same-cluster
+call; verifying another cluster's key set directly; minting a structured
+roles claim beside `groups`; re-mapping group names in a library; a
+ConfigMap watch instead of a `checksum/policy` rollout.
 
 ## Releasing
 

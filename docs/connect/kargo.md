@@ -1,16 +1,20 @@
 # Connect Kargo
 
-Kargo maps OIDC subjects and claims to its own roles and has a CLI that
-uses the device flow, so it needs two clients:
+**Anchor:** the issuer; Kargo runs its own OIDC flow. It maps claims to
+its own roles and has a CLI that uses the device flow, so it needs two
+clients:
 
 ```yaml
 clients:
-  static:
-    - id: kargo
-      secretName: kargo-oidc-client
-      redirectUris: [https://kargo.example.internal/login]
-    - id: kargo-cli
-      public: true            # device flow + PKCE
+  kargo:
+    kind: confidential
+    secret: kargo-oidc-client
+    redirects:  [https://kargo.example.internal/login]
+    signed_out: [https://kargo.example.internal/]
+    requires:   [cluster-kernel:cluster:admin, cluster-kernel:cluster:viewer]
+  kargo-cli:
+    kind: public              # device flow + PKCE
+    requires:   [cluster-kernel:cluster:admin, cluster-kernel:cluster:viewer]
 ```
 
 Kargo's values:

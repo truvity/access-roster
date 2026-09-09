@@ -78,11 +78,20 @@ Sessions are stateless signed cookies. To log everyone out at once,
 delete `Secret <release>-session-key`; the hub generates a new one on restart.
 
 Behind a proxy those cookies are not what signs anybody in, so neither is
-what signs them out: set `access.signOutURL` to the proxy's own sign-out
-(`/oauth2/sign_out`). Without it the console's sign-out clears a cookie
-nothing was using, and the person comes back signed in — the symptom is
-"sign out does nothing", and the page it lands on has no way in because
-this hub's own sign-in is deliberately off.
+what signs them out: set `access.signOutThroughIssuer: true`, and the
+chart builds the whole chain — the proxy's `/oauth2/sign_out`, then the
+issuer's `end_session` with this console's client id, then back to the
+front page. Without it the console's sign-out clears a cookie nothing was
+using and the person comes back signed in ("sign out does nothing");
+with only the proxy's half, the issuer keeps the session and the next
+click at any console signs them straight back in, which looks exactly
+like success. The issuer's client must list the console's front page in
+`signed_out`, or the person lands on the issuer's own page instead.
+
+Recovery, for the record, is the **cluster anchor used as the floor**
+([../design/trust.md](../design/trust.md)): the issuer depends on the
+directory, the directory is what this section assumes is broken, so the
+only thing left to trust is the API server.
 
 ## What "unhealthy" means and what to do
 

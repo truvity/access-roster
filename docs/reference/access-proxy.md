@@ -30,6 +30,15 @@ The fleet values file carries everything an installation sets once for
 every exposure; a console's own values are the four lines under
 `exposure`.
 
+Two things the chart does without being asked. `whitelist_domains`
+always carries the **issuer's host** beside the console's, so a sign-out
+can continue from the proxy's `/oauth2/sign_out` to the issuer's
+`end_session` — without it oauth2-proxy refuses the redirect and a
+sign-out ends one cookie while the issuer keeps the session. And the
+proxy accepts **the issuer's tokens only**: a console is for people, and
+a ServiceAccount token has no business at one
+([../design/trust.md](../design/trust.md)).
+
 ## A Valkey for the proxies
 
 With the valkey.io operator, one per cluster is enough:

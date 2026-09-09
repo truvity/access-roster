@@ -1,7 +1,10 @@
 # access-issuer — the token service
 
-**Status:** designed 2026-09-07; **built after the hub**, as the second
-service of access-roster. Nothing in the hub depends on it.
+**Status:** designed 2026-09-07; **running since 0.6** as the second
+service of access-roster, in front of the hub's own console. Nothing in
+the hub depends on it. The rule it stands on — two trust anchors, one
+vocabulary — is [trust.md](trust.md); this document is the issuer's half
+of it.
 
 ## Purpose
 
@@ -45,8 +48,8 @@ stop and reconsider, not to extend.
 | Proof | From | How |
 |---|---|---|
 | a corporate sign-in | Google Workspace, Microsoft Entra | an OIDC authorization-code flow the issuer starts and finishes; the address it returns is then resolved through the hub |
-| a CI identity token | GitHub Actions, per organisation | RFC 8693 token exchange; verified against the platform's keys, the organisation checked against an allow-list, claims such as repository and ref matched by a machine group's matchers |
-| a workload token | a Kubernetes ServiceAccount | token exchange verified with TokenReview, for the rare in-cluster service that needs a token another system trusts |
+| a CI identity token | GitHub Actions, per organisation | RFC 8693 token exchange; verified against the platform's keys, the **owner** checked against an allow-list that is the whole trust boundary (anybody gets a valid token for their own repository; an empty list verifies nothing), the audience required to be this issuer's own URL so a token minted for a cloud provider cannot be replayed here; claims such as repository and ref matched by a machine group's matchers. Built 0.9.x |
+| a workload token | a Kubernetes ServiceAccount | token exchange verified with TokenReview, for a workload that needs a token something *outside its cluster* trusts — a cloud role, a service on another cluster. A workload calling a service next door presents its ServiceAccount token directly and never comes here ([trust.md](trust.md)) |
 
 The OAuth client it signs people in with is configuration, not a
 decision this service makes: it is given a client id, a secret and its own
@@ -122,8 +125,21 @@ from there a person and a job are the same thing. The token is the fixed
 identity claims plus the deep merge of the groups' claim fragments;
 lifetime is the shortest across the groups, capped by the client. The
 `clients` table is the audience: its id is `aud`, its `requires` is the
-gate, its kind says whether there is a secret. AWS roles are clients of
-kind `exchange`, which is where the earlier audience table went.
+gate, its kind says whether there is a secret, its `redirects` start a
+sign-in and its `signed_out` pages are where a person lands after one
+ends. AWS roles are clients of kind `exchange`, which is where the
+earlier audience table went.
+
+**What a token says, decided 2026-09-09:** `groups` — the internal group
+names, flat, one string each — is the whole of the authorization it
+carries. No structured roles claim beside it: a live token from the
+provider being replaced carried the same facts three times and nothing
+in the estate read the nested two, because Kubernetes can only consume a
+flat array and ArgoCD and AWS read `groups` and `aud`. Identity claims
+travel beside it — `sub`, `email`, `name`, and (to come) `given_name`,
+`family_name`, `preferred_username`, `sid`, `auth_time` — and are never
+authorization. The reasoning is in [trust.md](trust.md), "The
+vocabulary".
 
 ## Sessions and sign-out
 
@@ -139,7 +155,14 @@ Sessions are first-class issuer state, not opaque tokens in a store: the
 issuer keeps a per-identity index — client, how it was obtained (code,
 device, exchange), issued, expires, last refreshed — so that they can be
 **listed** per identity and per client and **revoked** per identity, per
-client, or one at a time. Revocation is RFC 7009 underneath and the only
+client, or one at a time. The index lives in the **shared** store with
+the logins in progress (built 0.9.x): an index per process listed what
+one replica happened to record and revoked only there, which for a
+control whose whole job is to end access is the worst failure available.
+Sets make it findable, the record's TTL is the whole of expiry, a listing
+repairs the sets it walks, and a refresh token is hashed into its key so
+that an index that can be read is not an index that can be replayed.
+Revocation is RFC 7009 underneath and the only
 write the console has against the issuer; it removes access and can never
 grant it, which is why it may live in a console at all.
 

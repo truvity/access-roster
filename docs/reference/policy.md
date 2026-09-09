@@ -39,7 +39,7 @@ clients:                       # who may be issued a token for what; the id is t
   k8s:kernel:        { kind: public,       requires: [sre, dpo, it] }
   aws:1111:power:    { kind: exchange,     requires: [sre] }
   aws:1111:deployer: { kind: exchange,     requires: [ci-gitops] }
-  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], requires: [sre, dpo, engineer], ttl_cap: 12h }
+  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [sre, dpo, engineer], ttl_cap: 12h }
   local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [engineer] }
 
 memberships:                   # the one table a console may extend — the same shape as groups.*.members
@@ -51,7 +51,7 @@ memberships:                   # the one table a console may extend — the same
 | `groups` | internal group name | directory `members`, or `matchers`; a group with neither is one nobody is in yet, which is where a fresh installation starts | declared |
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
-| `clients` | client id | kind, secret ref, redirects, `requires`, `ttl_cap` | declared, plus self-registration |
+| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap` | declared, plus self-registration |
 | `memberships` | internal group name | extra directory groups | declared baseline, console additions |
 
 The hub loads `groups`, `claims`, `lifetimes` and `memberships`. The issuer
@@ -129,10 +129,26 @@ is a consumer's concern (github-roster's), never the issuer's.
 
 ## Groups → token, by deep merge
 
-The token's claims are the fixed identity claims — `sub` (stable per
-account: workspace id plus the backend's user id), `email`, `name`,
-`groups` with the internal group names — plus the deep merge of the
-`claims` fragments of every group the caller is in.
+The token's claims are the fixed identity claims — `sub`, `email`,
+`name`, and `groups` with the internal group names — plus the deep merge
+of the `claims` fragments of every group the caller is in.
+
+**`groups` is the whole of the authorization a token carries** (decided
+2026-09-09, [../design/trust.md](../design/trust.md)): flat, one string
+per internal group, never a structured roles claim beside it. Every
+relying party binds those strings as they are — a `ClusterRoleBinding`
+subject, an ArgoCD `g,` line, a `requires` here — and nothing re-maps
+them. A group's name is therefore the whole of what it usually adds; the
+`claims` table is for the rare relying party that reads something that
+is not a group. Where provenance must travel — which company's
+directory vouched for this — it goes into the string
+(`hub-viewers@<workspace id>`), where every consumer keeps working.
+
+> **`sub` is an open decision.** This page said *workspace id plus the
+> backend's user id*; the issuer mints **the address**. Both are
+> defensible — the address is readable in every audit log and needs no
+> second lookup; an opaque id survives a rename. Decided before 1.0
+> (INF-681); until then the code is the truth.
 
 | Kind | Merge rule |
 |---|---|
@@ -160,6 +176,14 @@ which admits a caller; a caller in none is refused before a token exists.
 | `public` | kubelogin per cluster, accessctl, Kargo's CLI, `local-dev` | no |
 | `confidential` | ArgoCD, Kargo, a self-registered access-proxy | yes: a Secret in the issuer's namespace |
 | `exchange` | AWS roles reached by token exchange | no |
+
+`redirects` are where a code is delivered — a path that *starts* a
+sign-in. `signed_out` are the pages a person may land on after an
+RP-initiated logout — the application's front page. They are two lists
+because putting somebody on a redirect URI after signing out begins the
+login they just ended; one address in both fails the load, and an
+`exchange` client, which nobody signs into, may declare no `signed_out`
+at all.
 
 Clients are declared or **self-registered** by an in-cluster workload
 presenting its ServiceAccount token, within the host pattern allowed for

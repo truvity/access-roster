@@ -12,12 +12,17 @@ logins.
    `authoritative`. Nothing user-visible changes; the per-tenant readers
    retire.
 2. **Issuer beside the IdP.** Deploy access-issuer with the policy
-   seeded from the login hook's policy, minting the same `groups` values
-   the IdP mints today. Run the spike list from its design. No relying
-   party trusts it yet.
+   rendered from the same access matrix the login hook reads, so the
+   internal group **names** are the strings the IdP mints today —
+   **decode a live token from each and diff the two `groups` lists
+   before anything is rewired.** The differences are what would turn a
+   provider flip into a rebind; fix them in the derivation, not in the
+   bindings. No relying party trusts the issuer yet.
 3. **One console as the pilot.** Put it behind access-proxy pointed at the
    new issuer. Its role checks do not change, because the `groups` values
-   did not. Watch a day of logins.
+   did not. Make sure sign-out ends the issuer session, not only the
+   proxy's, before the second console — or the first report from every
+   pilot is "it signed me straight back in". Watch a day of logins.
 4. **Clusters.** Add the new issuer as the API server's OIDC provider; on
    platforms that allow one provider per cluster, this is a flip per
    cluster, non-production first. Distribute kubeconfigs with

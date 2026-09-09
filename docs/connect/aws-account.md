@@ -1,5 +1,7 @@
 # Connect an AWS account, without Identity Center
 
+**Anchor:** the issuer; the account trusts its JWKS and reads `aud`.
+
 ## Account side, once
 
 An IAM OIDC identity provider for the issuer URL, and per role a trust

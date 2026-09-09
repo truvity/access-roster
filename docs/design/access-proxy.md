@@ -78,15 +78,30 @@ from a values file the deployment shares across every exposure, and the
 session store is either a Valkey the chart is pointed at or one shared per
 cluster by every proxy.
 
+## One anchor, two gates
+
+A console is for people, so the proxy lives on the **issuer anchor only**
+([trust.md](trust.md)): it never accepts a ServiceAccount token, and
+there is no reason it should — nothing in a cluster opens a web page.
+
+Two gates decide who gets in, and they are not duplicates. The
+**issuer's `requires`** on the console's client is primary: a caller in
+none of its groups is refused before a token exists, so the proxy never
+sees a session at all. The **proxy's posture** is defence in depth and
+route-level narrowing — *this path needs a stricter group than the client
+as a whole*. Keep both; know which is which, so nobody maintains two
+allow-lists believing one of them is dead.
+
 ## Two postures
 
 | Posture | Passes | For |
 |---|---|---|
 | `groups` | only callers whose token carries one of the listed `groups` values; the bearer is forwarded | platform consoles that gate on roles |
-| `authenticated` | any signed-in identity; the bearer is forwarded and the application authorizes itself | business surfaces opened to employees for testing, where the application's own rules apply |
+| `authenticated` | any signed-in identity; the bearer is forwarded and the application authorizes itself | business surfaces opened to employees for testing, where the application's own rules apply; and a console that already resolves roles from a directory it owns, where a `groups` rule here would be the stale copy |
 
 Both forward the bearer in the `Authorization` header and the proxy's
-own identity headers; the Go module's `identity` package reads either.
+own identity headers; the Go module's `identity` package reads the
+bearer and verifies it — the headers are for a local run.
 
 ## Self-registration
 
@@ -124,10 +139,29 @@ operator. Nothing else is needed to make them work together.
 
 ## Sign-out
 
-`/oauth2/sign_out` ends the proxy session and redirects to the issuer's
-end-session endpoint, which ends the issuer session too. A revoked person
-is stopped by the issuer refusing to refresh, with the hub's liveness
-signal behind it; the proxy's session then dies at its next refresh.
+Two halves, and both are needed. `/oauth2/sign_out` ends **this
+proxy's** session — one application's cookie. The issuer still holds the
+sign-in, so on its own that half leaves the next click, here or at any
+other console, admitted again with no password; the screen says signed
+out either way, which is why the near half alone is worse than none. So
+its `rd` continues to the issuer's `end_session`, which ends the sign-in
+itself, and lands the person back on the console's front page.
+
+Built 0.9.x, and three things were learned building it. The proxy's
+`whitelist_domains` must name the issuer's host or oauth2-proxy refuses
+the redirect. The chain must carry **`client_id`**: a plain `rd` has no
+`id_token_hint`, so without a client the issuer has no `signed_out` list
+to match the landing page against and puts the person on its own page
+instead. And the landing page is the policy client's `signed_out`, a
+list kept **separate from `redirects`**, because a redirect URI starts a
+sign-in and landing there after a sign-out begins the login just ended.
+The console's own chart builds the whole chain from what it already
+knows (`access.signOutThroughIssuer` in directory-roster) and refuses to
+render half of it.
+
+A revoked person is stopped by the issuer refusing to refresh, with the
+hub's liveness signal behind it; the proxy's session then dies at its
+next refresh.
 
 ## Why not something else
 
