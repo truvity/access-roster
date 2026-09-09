@@ -172,6 +172,12 @@ chart-lint:
     # booted with for as long as its pods lived.
     test "$(helm template t charts/directory-roster --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
     test "$(helm template t charts/access-issuer --set issuerURL=https://i.example --set hub.address=http://h.example:8080 --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
+    # Half a sign-out is worse than none: the proxy's cookie goes, the
+    # issuer keeps the session, and the next click is admitted with no
+    # password -- a failure that looks exactly like success. So asking for
+    # the chain without the issuer it would end must fail the RENDER.
+    ! helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true >/dev/null 2>&1
+    helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example --set access.login.forwardedBearer.audience=console | grep -q 'end_session'
 
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —

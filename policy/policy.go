@@ -181,6 +181,17 @@ type Client struct {
 	Secret string `yaml:"secret,omitempty"`
 	// Redirects are the allowed redirect URIs.
 	Redirects []string `yaml:"redirects,omitempty"`
+	// SignedOut are the allowed landing pages after an RP-initiated
+	// sign-out (OIDC RP-Initiated Logout `post_logout_redirect_uri`).
+	//
+	// A separate list from Redirects on purpose. A redirect URI is where
+	// a code is delivered -- `/oauth2/callback`, a path that starts a
+	// sign-in; a post-logout URI is where a person is put down once their
+	// session is gone, which is the application's front page. Sending
+	// somebody to the callback after signing out starts the login they
+	// just ended, and an open-redirect check that accepts either list
+	// checks nothing about the difference.
+	SignedOut []string `yaml:"signed_out,omitempty"`
 	// Requires lists internal groups, any one of which admits a caller. A
 	// caller in none is refused before a token exists.
 	Requires []string `yaml:"requires,omitempty"`
@@ -391,6 +402,19 @@ func (c Client) validate(id string, groups map[string]Group) error {
 	}
 	if c.Kind == KindExchange && len(c.Redirects) > 0 {
 		return fmt.Errorf("client %q is an exchange target and needs no redirects", id)
+	}
+	if c.Kind == KindExchange && len(c.SignedOut) > 0 {
+		return fmt.Errorf("client %q is an exchange target: nobody signs into it, so nobody signs out of it", id)
+	}
+	// A post-logout URI that is also a redirect URI sends the person
+	// straight back into the login they just ended. It is the one mistake
+	// this pair of lists exists to prevent, so it fails the load.
+	for _, out := range c.SignedOut {
+		if slices.Contains(c.Redirects, out) {
+			return fmt.Errorf(
+				"client %q lists %q as both a redirect and a signed-out landing page: "+
+					"landing on a redirect URI starts the sign-in the person just ended", id, out)
+		}
 	}
 	if len(c.Requires) == 0 {
 		return fmt.Errorf("client %q requires no group, so nobody may use it", id)

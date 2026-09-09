@@ -5,7 +5,18 @@ git history.
 
 ## Unreleased
 
-Nothing yet.
+- **Sign out ends the sign-in, not just the cookie.** Clearing the
+  proxy's session cookie ends the session with one application; the
+  issuer still holds the person's sign-in, so the next click — that
+  console or any other behind the same issuer — admits them again with no
+  password. The screen said signed out and they were not, which is the
+  one failure a person cannot see. `access.signOutThroughIssuer` now
+  renders both halves (proxy sign-out → the issuer's RP-initiated logout
+  → back to the console's front page), and refuses to render half a chain.
+  A client's landing pages are a new `signed_out` list in the policy,
+  separate from `redirects`: a redirect URI *starts* a sign-in, so landing
+  there after signing out begins the login just ended — and listing one
+  address as both now fails the load. (INF-676)
 
 ## v0.8.6
 

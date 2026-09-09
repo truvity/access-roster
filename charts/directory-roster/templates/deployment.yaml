@@ -123,7 +123,7 @@ spec:
             {{- end }}
             - name: LOGIN_DIRECTORY
               value: {{ .Values.access.login.directory | quote }}
-            {{- with .Values.access.signOutURL }}
+            {{- with include "directory-roster.signOutURL" . }}
             - name: SIGN_OUT_URL
               value: {{ . | quote }}
             {{- end }}

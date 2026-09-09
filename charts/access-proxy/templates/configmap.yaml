@@ -50,7 +50,14 @@ data:
     upstreams = ["static://200"]
 
     cookie_domains = ["{{ $hostname }}"]
-    whitelist_domains = ["{{ $hostname }}"]
+    # The issuer's host is whitelisted so sign-out can CONTINUE to it.
+    # Clearing this proxy's cookie ends the session with this application
+    # and nothing else: the issuer still holds the person's sign-in, so
+    # the next console -- or a reload of this one -- is admitted again
+    # without a password, which everyone reads as "sign out is broken".
+    # The second half is an RP-initiated logout at the issuer, and
+    # oauth2-proxy refuses to redirect anywhere not named here.
+    whitelist_domains = ["{{ $hostname }}", "{{ (urlParse (trimSuffix "/" $issuer)).host }}"]
     cookie_secure = true
     cookie_samesite = "lax"
     # The session outlives the access token because the token is renewed

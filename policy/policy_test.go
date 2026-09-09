@@ -271,3 +271,49 @@ claims:
 		t.Errorf("error = %v, want it to name the conflicting path", err)
 	}
 }
+
+// A post-logout URI that is also a redirect URI would send the person
+// back into the login they just ended.
+func TestASignedOutURIMayNotBeARedirect(t *testing.T) {
+	refused(t, `
+version: 1
+groups:
+  team: { members: [team@example.com] }
+clients:
+  console:
+    kind: confidential
+    secret: console-secret
+    requires: [team]
+    redirects: ["https://console.example/oauth2/callback"]
+    signed_out: ["https://console.example/oauth2/callback"]
+`, "a redirect URI was accepted as a signed-out landing page")
+}
+
+// An exchange target is reached by a workload trading a token. Nobody
+// signs in, so nobody signs out.
+func TestAnExchangeClientHasNoSignedOutPage(t *testing.T) {
+	refused(t, `
+version: 1
+groups:
+  team: { members: [team@example.com] }
+clients:
+  aws-role:
+    kind: exchange
+    requires: [team]
+    signed_out: ["https://console.example/"]
+`, "an exchange client was given a signed-out page")
+}
+
+// refused parses a policy that must not load, and says what got through.
+func refused(t *testing.T, document, complaint string) {
+	t.Helper()
+
+	parsed, err := policy.Parse([]byte(document))
+	if err != nil {
+		return
+	}
+
+	if err = parsed.Validate(); err == nil {
+		t.Fatal(complaint)
+	}
+}
