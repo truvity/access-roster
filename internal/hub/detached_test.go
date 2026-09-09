@@ -524,3 +524,41 @@ func TestSyncingKeepsOnlyTheGroupsAnOperatorNamed(t *testing.T) {
 	}
 	directory.Wait()
 }
+
+// A probe cancelled by the hub's own shutdown is not a probe that failed.
+//
+// Observed on a rollout: the pod stopped mid-probe, the token request
+// came back "context canceled", and that was written down as the
+// workspace's health — so a directory whose credential is perfectly fine
+// showed as failing, and its domains as "provisional — probe failed",
+// until the next pass five minutes later.
+func TestACancelledProbeIsNotAFailedProbe(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	directory, store := newDetachedHub(t)
+	tenant := fake.New("C0probe", "north.example")
+	if _, err := directory.Adopt(ctx, hub.Workspace{Admin: "admin@north.example"}, tenant); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	directory.Wait()
+	if ws, err := store.Get(ctx, "C0probe"); err != nil {
+		t.Fatalf("Get: %v", err)
+	} else if !ws.Health.OK {
+		t.Fatalf("health = %+v, want the adoption's tenant read to count as a good probe", ws.Health)
+	}
+
+	// The process is going away: the probe's context is already done.
+	stopping, stop := context.WithCancel(ctx)
+	stop()
+	if _, err := directory.Probe(stopping, "C0probe"); err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+
+	ws, err := store.Get(ctx, "C0probe")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !ws.Health.OK || ws.Health.Error != "" {
+		t.Errorf("health = %+v, want the last real probe kept rather than a cancellation stored", ws.Health)
+	}
+}
