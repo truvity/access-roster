@@ -149,7 +149,10 @@ go when it does.
 Identity claims travel beside `groups` and are not authorization:
 `sub`, `email`, `name`, `given_name`, `family_name`,
 `preferred_username`, `sid`, `auth_time`. A relying party's UI shows
-them; its policy never reads them.
+them; its policy never reads them. A person's `sub` is their email; a
+ServiceAccount's is `<cluster>:k8s:<namespace>:<name>` — the cluster
+first, like every scope, so the same account on two clusters is two
+subjects, not one (INF-681).
 
 ## Recovery is the root, not a back door
 

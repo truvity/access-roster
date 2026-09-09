@@ -3,6 +3,20 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **Docs: the SSO session and where session management lives.** The
+  design now says plainly that the issuer holds a first-class **SSO
+  session** (to build, INF-685) and that session management is served at
+  the **issuer's own host** — an account page, same-origin with the
+  session service — rather than through a cross-origin bearer from each
+  console. The v0.9.4 `console.origin` CORS path becomes the optional way
+  to weave the operator view into the directory console. `docs/design/access-issuer.md`.
+- **Docs: `sub` is decided.** A person is their email; a ServiceAccount is
+  `<cluster>:k8s:<namespace>:<name>` (the cluster qualifier is the one part
+  still to land in code, INF-681). `docs/reference/policy.md`,
+  `docs/design/trust.md`.
+
 ## v0.9.6
 
 - **One question to the directory per token, not four.** Every claim a

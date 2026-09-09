@@ -242,8 +242,11 @@ configure and where, what you get.
   DNS; an internal group whose fragment mints the console's values; the namespace label the
   fleet egress policy selects.
 - **You get:** login, session, refresh in the background, global sign-out
-  and a posture (`groups` or `authenticated`) without a line of console
-  code.
+  (one issuer SSO session behind every console — sign in once, and a
+  second console opens with no prompt) and a posture (`groups` or
+  `authenticated`) without a line of console code. Self-service session
+  management is the issuer's own account page, which every console
+  deep-links to.
 - Guides: [connect/console-app.md](connect/console-app.md),
   [connect/business-surface.md](connect/business-surface.md).
 

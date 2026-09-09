@@ -152,7 +152,7 @@ of the `claims` fragments of every group the caller is in.
 
 | Claim | What it says |
 | -- | -- |
-| `sub` | the account. For a person it is the address; for a recovery sign-in, the ServiceAccount |
+| `sub` | the account. A person is their **email**; a ServiceAccount (a workload, or a recovery sign-in) is **`<cluster>:k8s:<namespace>:<name>`** — the cluster included so the same namespace and name on two clusters are two subjects |
 | `email`, `email_verified`, `preferred_username` | the address again, so that no consumer needs a fallback |
 | `name`, `given_name`, `family_name` | who they are, when the directory says. Absent for a workload |
 | `groups` | **the whole of the authorization** |
@@ -175,11 +175,14 @@ directory vouched for this — it goes into the string
 (`<workspace id>:access-roster:viewer`), where every consumer keeps
 working.
 
-> **`sub` is an open decision.** This page said *workspace id plus the
-> backend's user id*; the issuer mints **the address**. Both are
-> defensible — the address is readable in every audit log and needs no
-> second lookup; an opaque id survives a rename. Decided before 1.0
-> (INF-681); until then the code is the truth.
+> **`sub`, decided 2026-09-09 (INF-681).** A person is their **email**
+> address — readable in every audit log, no second lookup, and what the
+> hub already keys by; a rename becomes a new `sub` whose old sessions
+> end, which for a controlled directory is acceptable, arguably correct.
+> A ServiceAccount is **`<cluster>:k8s:<namespace>:<name>`**. The earlier
+> *workspace id plus the backend's user id* is retired. The cluster
+> qualifier is the one part not yet in the code (`k8s:<ns>:<name>` today);
+> INF-681 adds it before cross-cluster consumers exist.
 
 | Kind | Merge rule |
 |---|---|
