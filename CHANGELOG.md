@@ -7,6 +7,24 @@ git history.
 
 Nothing yet.
 
+## v0.8.3
+
+- **React 19**, and the console bundle rebuilt on it. The major itself was
+  a deliberate, human-merged update; what a bot cannot do is rebuild what
+  `package.json` produces, so the repository declared 19 and carried a
+  bundle built against 18. `frontend/dist` is embedded in the binary and
+  `ts/dist` is what a git-tag install gets, so a stale one ships a console
+  nobody's manifest describes. CI now runs `console` and both bundle
+  recipes fail when a fresh build differs from what is committed.
+- An empty **Directories** page offers the action it names, instead of
+  saying "Add one to start serving its domains" with the only control in
+  the page header.
+- The connect runbook says what an unpublished consent screen actually
+  does: in Testing it admits only listed test users, so the first tenant
+  connects and the next company's administrator is refused before the
+  request reaches the hub — with the seven-day refresh-token expiry as
+  the half that bites later.
+
 ## v0.8.2
 
 - **Sign-out ends the session that actually signed you in.** Behind a
