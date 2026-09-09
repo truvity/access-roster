@@ -415,8 +415,8 @@ sequenceDiagram
 | Account missing from the snapshot | one live read first; `found=false` only after the backend said so |
 | Valkey unreachable | every domain non-authoritative until it returns; the in-memory fallback is for a single replica only |
 | Credential revoked or admin suspended | probe fails → provisional (*probe failed*); Reconnect is the recovery |
-| A request would wait on the directory: the first snapshot, a list with no snapshot yet, a narrowing | it does not *(0.8)*: the work runs detached and the answer is *first snapshot pending* — provisional, never a timeout at the gateway |
-| A replica has no reader for a workspace the store knows (connected on another replica) | it opens one from the stored credential on first use *(0.8)*; the store is the truth, the reader map a cache |
+| A request would wait on the directory: the first snapshot, a list with no snapshot yet, a narrowing | it does not: the work runs detached and the answer is *first snapshot pending* — provisional, never a timeout at the gateway |
+| A replica has no reader for a workspace the store knows (connected on another replica) | it opens one from the stored credential on first use; the store is the truth, the reader map a cache |
 | A consent the directory granted fails on the first read | a page in the console's own style: the directory's message verbatim and the usual causes, most common first — never a 5xx, which the CDN in front replaces with its own page |
 | A signed-in operator's own account turns non-authoritative | last granted role kept for a bounded window; no new identity granted anything |
 | Consumer presents no token, a wrong audience, or a foreign ServiceAccount | `unauthenticated`; NetworkPolicy would have stopped most of these earlier |

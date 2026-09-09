@@ -161,8 +161,7 @@ nothing else — the word is the console's. It replaced *hold* on
 2026-09-09: *hold* named what a consumer does, not what the domain is,
 and on a tenant connected ten seconds earlier it read as an alarm beside
 a green health chip. An unserved domain is neither: it is simply not
-read. *(0.8: the reason is carried on the domain entry; the Overview
-counts served domains only — it counted unserved ones as held.)*
+read.
 
 ### Nothing slow on the request path
 
@@ -184,7 +183,7 @@ excluded from the snapshot at once, and refreshes detached. The only
 request-scoped read that remains is the point lookup, which is one
 account and bounded. Raising the gateway's timeout is not the fix: after
 this nothing on the console path approaches it, and a longer timeout
-would only hide the next thing that does. *(0.8)*
+would only hide the next thing that does.
 
 A full read is also bounded in wall-clock: group members are listed with
 bounded concurrency — a handful in flight per workspace, because the
@@ -201,7 +200,7 @@ found* for a directory that had just been connected — and a narrowing
 that landed on the wrong replica dropped the snapshot. The store is the
 truth and the reader map is a cache of it: a replica that has no reader
 for a workspace the store knows opens one from the stored credential on
-first use. *(0.8)*
+first use.
 
 ### The cache
 
@@ -294,7 +293,7 @@ removes the interstitial.
    granted — and the domain list, and stores the workspace. If any of
    this fails, the page says so in the directory's own words; never a
    5xx, which a CDN in front replaces with a page of its own.
-6. **Which domains?** *(0.8)* Before anything is read, the console asks.
+6. **Which domains?** Before anything is read, the console asks.
    The consenting administrator's own domain is pre-selected; every
    other domain the tenant owns is listed and off; *all of them,
    including ones added later* is an explicit choice. The first

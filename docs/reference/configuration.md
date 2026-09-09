@@ -28,7 +28,7 @@ hub writes *itself*, where it is the producer and gets to choose.
 
 | Value | Default | Meaning |
 |---|---|---|
-| `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory cache. Every replica serves every workspace, including one connected through the console on the other replica: a reader missing locally is opened from the stored credential on first use *(0.8)* |
+| `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory cache. Every replica serves every workspace, including one connected through the console on the other replica: a reader missing locally is opened from the stored credential on first use |
 | `image.repository` / `tag` | `ghcr.io/truvity/access-roster/directory-roster` / app version | |
 | `listeners.api.port` | `8080` | `DirectoryService` — consumers |
 | `listeners.api.audience` | the release name | the audience a consumer's projected token must carry |
@@ -110,7 +110,7 @@ attention rather than in the directory's quota. Only a group the last
 read held may be named. Empty keeps every group in the served domains.
 
 For a workspace connected through the console the choice is made
-**at connect time** *(0.8)*, before the first snapshot: the consenting
+**at connect time**, before the first snapshot: the consenting
 administrator's own domain is pre-selected, the tenant's other domains
 are listed and off, and *all, including ones added later* is an explicit
 option. It can be changed afterwards on the directory's page.

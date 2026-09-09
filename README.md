@@ -11,14 +11,13 @@ authenticates anyone.** Sign-in stays with the corporate identity
 providers; this repository verifies the result, knows the directory, and
 applies the policy.
 
-> **Status: running; the first directory is connected.** The hub and the
-> issuer are deployed, and the hub's own console sits behind `access-proxy`
-> against the issuer — the first consumer of both. One Google Workspace is
-> connected. The Go module, the TypeScript package and the three charts
-> are published from every tag; `accessctl` and the Action are still to
-> come. [CHANGELOG.md](CHANGELOG.md) says what exists at each version.
-> The design documents describe the target state and mark, as *(0.8)*,
-> what the first live connect showed still has to change.
+> **Status: running.** The hub and the issuer are deployed, and the hub's
+> own console sits behind `access-proxy` against the issuer — the first
+> consumer of both. Three Google Workspaces are connected. The Go module,
+> the TypeScript package and the three charts are published from every
+> tag; `accessctl` and the Action are still to come.
+> [CHANGELOG.md](CHANGELOG.md) says what exists at each version, and the
+> documents below describe what is built rather than what is planned.
 >
 > Start with [why this exists](docs/why.md), then the
 > [helicopter view of every integration](docs/integrations.md), then
