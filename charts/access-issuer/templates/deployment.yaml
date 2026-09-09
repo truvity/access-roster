@@ -88,6 +88,10 @@ spec:
             - name: CLIENT_SECRETS_DIR
               value: /var/run/access-issuer/clients
             {{- end }}
+            {{- with .Values.github.owners }}
+            - name: GITHUB_OWNERS
+              value: {{ join "," . | quote }}
+            {{- end }}
             - name: RECOVERY_ENABLED
               value: {{ .Values.recovery.enabled | quote }}
             {{- if .Values.recovery.enabled }}

@@ -60,6 +60,7 @@ type Config struct {
 	clientSecretsDir  string
 	valkey            valkey.Config
 	audience          string
+	githubOwners      []string
 	signingKeyFile    string
 
 	tokenLifetime   time.Duration
@@ -89,6 +90,7 @@ func Load() (Config, error) {
 		oauthSecretFile:   envString("OAUTH_CLIENT_SECRET_FILE", ""),
 		oauthIDFile:       envString("OAUTH_CLIENT_ID_FILE", ""),
 		recoveryEnabled:   envBool("RECOVERY_ENABLED", false),
+		githubOwners:      envList("GITHUB_OWNERS"),
 		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", ""),
 		recoveryAudience:  envString("RECOVERY_AUDIENCE", ""),
 		clientSecretsDir:  envString("CLIENT_SECRETS_DIR", ""),
@@ -452,7 +454,30 @@ func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (issuer.Ve
 		return nil, err
 	}
 	log.InfoContext(ctx, "workload tokens are verified against this cluster", "audience", cfg.audience)
-	return issuer.Verifiers{&verify.Workload{Review: client.ReviewToken, Audience: cfg.audience}}, nil
+
+	verifiers := issuer.Verifiers{&verify.Workload{Review: client.ReviewToken, Audience: cfg.audience}}
+
+	// GitHub, only when this installation has said whose repositories it
+	// runs jobs for. There is no default and there cannot be one: anybody
+	// may run a workflow in their own repository and get a valid token
+	// from GitHub, so an empty list would admit every repository there is
+	// rather than none.
+	if len(cfg.githubOwners) > 0 {
+		log.InfoContext(ctx, "CI tokens are verified against GitHub",
+			"owners", cfg.githubOwners, "audience", cfg.issuerURL)
+		verifiers = append(verifiers, &verify.GitHub{
+			Owners: cfg.githubOwners,
+			// The audience a workflow must request is this issuer's own
+			// URL. A token minted for a cloud provider is a valid GitHub
+			// token, and one audience per relying party is what keeps it
+			// from being replayed here.
+			Audience: cfg.issuerURL,
+		})
+	} else {
+		log.InfoContext(ctx, "no CI token can be verified: GITHUB_OWNERS names no organisation")
+	}
+
+	return verifiers, nil
 }
 
 // serve runs one listener until the context is done, then drains it.
@@ -482,6 +507,20 @@ func envString(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// envList reads a comma-separated setting, dropping the empty entries a
+// templated values file leaves behind.
+func envList(name string) []string {
+	var out []string
+
+	for _, item := range strings.Split(os.Getenv(name), ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+
+	return out
 }
 
 func envInt(name string, fallback int) int {
