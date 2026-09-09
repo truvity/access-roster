@@ -113,11 +113,9 @@ As of 2026-09-09 (evening) the hub and the issuer run on a cluster at
 connected, the policy is rendered from the installation's access matrix,
 sign-out ends the issuer session, CI tokens verify, and the session
 index is shared across replicas. The road to 1.0 is written as issues
-under the issuer's 1.0 epic — the group rename to `<scope>:<thing>:<role>`
-(INF-684, folded into the open gitops PR; the hub's two constants move
-with it), sessions in the console, identity claims, `/register`, the
-conformance run — and **1.0 is not tagged without a conversation
-first.** The rewiring order after it is consoles, then clusters, then
+under the issuer's 1.0 epic — sessions in the console, identity claims,
+`/register`, the conformance run — and **1.0 is not tagged without a
+conversation first.** The rewiring order after it is consoles, then clusters, then
 AWS, then CI.
 
 Things that are not fixes and must not be reached for, each because it
