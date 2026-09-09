@@ -103,9 +103,20 @@ export function Directories({ operator, onDone }: { operator: boolean; onDone: (
             {!list.loading && rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5}>
-                  <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                    No directories yet. Add one to start serving its domains.
-                  </Typography>
+                  {/* An empty state that names an action offers it. This
+                      page is reached with nothing on it twice: on day one,
+                      and straight after disconnecting the last directory
+                      — and on both the only way on is a control in the
+                      header, which is where somebody reading a sentence
+                      in the middle of the page is not looking. */}
+                  <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", gap: 1, py: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No directories yet. Add one to start serving its domains.
+                    </Typography>
+                    <Button size="small" disabled={!operator || adding} onClick={() => setAdding(true)}>
+                      Add a directory
+                    </Button>
+                  </Stack>
                 </TableCell>
               </TableRow>
             ) : null}
