@@ -40,6 +40,13 @@ type Connector interface {
 	Exchange(ctx context.Context, code, bind string) (hub.Workspace, backend.Backend, error)
 }
 
+// ClientVerifier is a connector that can say whether this installation's
+// registered client would be accepted, without a person. A connector that
+// cannot simply does not implement it, and the flow starts unchecked.
+type ClientVerifier interface {
+	VerifyClient(ctx context.Context) error
+}
+
 // KeyConnector is the second way in: a service-account key uploaded
 // instead of a consent flow. A connector that cannot do it simply does not
 // implement this.
@@ -85,6 +92,13 @@ type ConsoleDeps struct {
 	// plus this path", and an operator retyping a hostname into a cloud
 	// console is exactly where a day-one setup goes wrong.
 	PublicURL string
+	// IssuerURL is the token service this console is behind, when it is
+	// behind one. With a shared OAuth client the sign-in redirect belongs
+	// to that host rather than this one, and only this side knows it.
+	IssuerURL string
+	// SignIn reports whether this console signs people in itself, which
+	// is the other place a sign-in redirect can land.
+	SignIn bool
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on
@@ -199,6 +213,20 @@ func (c *Console) beginFlow(
 		return "", "", connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("no connector for that backend: configure the OAuth client in Settings first"))
 	}
+	// Check the client before sending anyone to consent with it. A wrong
+	// secret fails at the exchange, which is the step AFTER the consent
+	// screen — so without this a real Super Admin grants a real
+	// credential to an installation that cannot collect it, and has to be
+	// asked to do it again. The check refuses only when the provider
+	// names the client as the problem; anything inconclusive proceeds.
+	if verifier, checkable := conn.(ClientVerifier); checkable {
+		checking, done := context.WithTimeout(ctx, clientCheckTimeout)
+		err = verifier.VerifyClient(checking)
+		done()
+		if err != nil {
+			return "", "", connect.NewError(connect.CodeFailedPrecondition, err)
+		}
+	}
 	// The state carries who asked. This request is the one the gateway
 	// authenticates; the callback is a redirect from Google that need not
 	// land on a route the gateway covers at all.
@@ -213,6 +241,11 @@ func (c *Console) beginFlow(
 	}
 	return url, cookie.String(), nil
 }
+
+// clientCheckTimeout bounds the pre-flight check. It is on the operator's
+// request path, so it is short: an answer that has not arrived by now is
+// inconclusive, and inconclusive proceeds.
+const clientCheckTimeout = 5 * time.Second
 
 // UploadKey implements the operator contract.
 func (c *Console) UploadKey(
@@ -424,13 +457,24 @@ func (c *Console) connectorKinds() []directoryrosterv1.Backend {
 	return out
 }
 
-// backendRedirects is every redirect URI a backend's flows return to,
-// relative to the console's own base URL. Read from the backend for the
-// same reason the scopes are: a copy here would drift, and the drift
-// surfaces in a cloud console's own words, much later, naming nothing
-// useful.
-var backendRedirects = map[string][]string{
-	"google": {google.CallbackPath, google.SignInCallbackPath},
+// consentRedirects is where a backend's CONSENT flow comes back: always
+// this console, because connecting a directory is this console's job.
+//
+// Read from the backend for the same reason the scopes are: a copy here
+// would drift, and the drift surfaces in a cloud console's own words,
+// much later, naming nothing useful.
+var consentRedirects = map[string]string{
+	"google": google.CallbackPath,
+}
+
+// signInRedirects is where a backend's SIGN-IN flow comes back, which is
+// a different service. With one shared OAuth client — one client for the
+// hub and the issuer, so there is one secret to rotate — the sign-in
+// redirect belongs to the ISSUER's hostname, not this one. Showing this
+// console's own host there is how an operator registers a URI nothing
+// ever returns to, and finds out from Google, later, in Google's words.
+var signInRedirects = map[string]string{
+	"google": google.SignInCallbackPath,
 }
 
 // backendScopes is what each backend is asked for, all read-only.
@@ -452,9 +496,22 @@ var backendScopes = map[string][]string{
 func (c *Console) setupGuidance() []*directoryrosterv1.ConnectorSetup {
 	out := make([]*directoryrosterv1.ConnectorSetup, 0, len(backendScopes))
 	for _, kind := range slices.Sorted(maps.Keys(backendScopes)) {
-		uris := make([]string, 0, len(backendRedirects[kind]))
-		for _, path := range backendRedirects[kind] {
+		var uris []string
+		if path, ok := consentRedirects[kind]; ok {
 			uris = append(uris, c.deps.PublicURL+path)
+		}
+		// The sign-in redirect, at whichever host actually runs the
+		// sign-in: the issuer this console is behind, or this console
+		// itself where it signs people in on its own. Neither, where
+		// nobody signs in with this backend at all — and an operator is
+		// then not told to register a URI nothing returns to.
+		if path, ok := signInRedirects[kind]; ok {
+			switch {
+			case c.deps.IssuerURL != "":
+				uris = append(uris, strings.TrimSuffix(c.deps.IssuerURL, "/")+path)
+			case c.deps.SignIn:
+				uris = append(uris, c.deps.PublicURL+path)
+			}
 		}
 		out = append(out, &directoryrosterv1.ConnectorSetup{
 			Backend:      backendEnum(kind),

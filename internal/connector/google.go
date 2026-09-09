@@ -46,6 +46,17 @@ func (g *Google) AuthURL(state string) (string, error) {
 	return client.AuthURL(state), nil
 }
 
+// VerifyClient implements the console's pre-flight check: it says whether
+// this installation's OAuth client is one Google will accept, before an
+// administrator is sent to spend a real consent on it.
+func (g *Google) VerifyClient(ctx context.Context) error {
+	client, err := g.client()
+	if err != nil {
+		return err
+	}
+	return google.VerifyClient(ctx, client)
+}
+
 // SignInURL implements the console's sign-in contract.
 func (g *Google) SignInURL(state string) (string, error) {
 	client, err := g.client()
