@@ -41,10 +41,12 @@ export function Person({ email, me }: { email: string; me?: Me }) {
 }
 
 /** The shared body of a person's page and of a machine's. The main
- *  column is the chain; the aside is who this is, what the directory
- *  says, and the claims. */
+ *  column reads top to bottom: what they reach, what they do not, the
+ *  directory groups behind it, and the claims a token would carry. The
+ *  aside carries only the identity facts — short lines that stay in
+ *  view while the column is read. */
 export function Explanation({ value, directory, signedInVia }: { value: ExplainResponse; directory?: string; signedInVia?: string }) {
-  const [showClaims, setShowClaims] = useState(false);
+  const [showClaims, setShowClaims] = useState(true);
   const identity = value.identity;
   const isPerson = Boolean(identity?.email);
   const admitted = value.clients.filter((client) => client.admitted);
@@ -77,37 +79,12 @@ export function Explanation({ value, directory, signedInVia }: { value: ExplainR
       ]
     : [{ label: "Token lifetime", value: forHowLong(value.lifetime) }];
 
-  const aside = (
-    <>
-      {isPerson ? (
-        <Section title="Directory groups" hint="before the policy">
-          <Names
-            items={value.directoryGroups.map((group) => ({ label: group, to: paths.directoryGroup(group), mono: true }))}
-            empty={value.inDomain ? "In no directory group, so no membership can put them anywhere." : "No connected directory reads this address."}
-          />
-        </Section>
-      ) : null}
-      <Box>
-        <Button size="small" onClick={() => setShowClaims(!showClaims)} sx={{ ml: -1 }}>
-          {showClaims ? "Hide" : "Show"} the claims a token would carry
-        </Button>
-        <Collapse in={showClaims}>
-          <Paper variant="outlined" sx={{ p: 1.5, mt: 1, maxHeight: 360, overflow: "auto" }}>
-            <Typography component="pre" variant="caption" sx={{ m: 0, fontFamily: "monospace", fontSize: "0.75rem" }}>
-              {JSON.stringify(value.claims ?? {}, null, 2)}
-            </Typography>
-          </Paper>
-        </Collapse>
-      </Box>
-    </>
-  );
-
   return (
     <Page
       title={name || "A machine identity"}
       lede={`In ${plural(value.held.length, "internal group", "internal groups")}, reaching ${admitted.length} of ${plural(value.clients.length, "client", "clients")}.`}
       facts={facts}
-      aside={aside}
+      aside={null}
     >
       {isPerson && value.inDomain && !value.found ? (
         <Alert severity="warning" sx={{ mb: 3 }}>
@@ -190,6 +167,35 @@ export function Explanation({ value, directory, signedInVia }: { value: ExplainR
           </TableContainer>
         </Section>
       ) : null}
+
+      {isPerson ? (
+        <Section title="Directory groups" hint="every group the directory puts them in, before the policy looks at any of it">
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Names
+              items={value.directoryGroups.map((group) => ({ label: group, to: paths.directoryGroup(group), mono: true }))}
+              empty={value.inDomain ? "In no directory group, so no membership can put them anywhere." : "No connected directory reads this address."}
+            />
+          </Paper>
+        </Section>
+      ) : null}
+
+      <Section
+        title="The claims a token would carry"
+        hint="what a client would read out of a token minted for this identity right now"
+        action={
+          <Button size="small" onClick={() => setShowClaims(!showClaims)}>
+            {showClaims ? "Hide" : "Show"}
+          </Button>
+        }
+      >
+        <Collapse in={showClaims}>
+          <Paper variant="outlined" sx={{ p: 2, overflowX: "auto" }}>
+            <Typography component="pre" variant="body2" sx={{ m: 0, fontFamily: "monospace" }}>
+              {JSON.stringify(value.claims ?? {}, null, 2)}
+            </Typography>
+          </Paper>
+        </Collapse>
+      </Section>
     </Page>
   );
 }
