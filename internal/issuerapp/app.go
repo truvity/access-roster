@@ -61,6 +61,7 @@ type Config struct {
 	valkey            valkey.Config
 	audience          string
 	githubOwners      []string
+	consoleOrigin     string
 	signingKeyFile    string
 
 	tokenLifetime   time.Duration
@@ -91,6 +92,7 @@ func Load() (Config, error) {
 		oauthIDFile:       envString("OAUTH_CLIENT_ID_FILE", ""),
 		recoveryEnabled:   envBool("RECOVERY_ENABLED", false),
 		githubOwners:      envList("GITHUB_OWNERS"),
+		consoleOrigin:     envString("CONSOLE_ORIGIN", ""),
 		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", ""),
 		recoveryAudience:  envString("RECOVERY_AUDIENCE", ""),
 		clientSecretsDir:  envString("CLIENT_SECRETS_DIR", ""),
@@ -210,11 +212,12 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 	handler, err := issuer.HandlerWithSignIn(core, storage, issuer.SignInDeps{
-		Providers: signIn,
-		Recovery:  openRecovery(ctx, cfg, log),
-		State:     access.NewStateCodec(key.Derive("access-roster/sign-in-state"), signInWindow),
-		Secure:    cfg.secureCookies,
-		Log:       log,
+		Providers:     signIn,
+		Recovery:      openRecovery(ctx, cfg, log),
+		State:         access.NewStateCodec(key.Derive("access-roster/sign-in-state"), signInWindow),
+		ConsoleOrigin: cfg.consoleOrigin,
+		Secure:        cfg.secureCookies,
+		Log:           log,
 	})
 	if err != nil {
 		return nil, err

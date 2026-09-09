@@ -57,6 +57,11 @@ type SignInDeps struct {
 	// State signs the flow's state, which carries the authorization
 	// request the browser is in the middle of.
 	State *access.StateCodec
+	// ConsoleOrigin is the one origin allowed to call SessionService from
+	// a browser. Empty serves it not at all, which is right for an
+	// installation with no console: an endpoint nobody calls is surface
+	// with no consumer.
+	ConsoleOrigin string
 	// Return is op.AuthCallbackURL(provider): where to send the browser
 	// once the request is complete.
 	Return func(ctx context.Context, requestID string) string

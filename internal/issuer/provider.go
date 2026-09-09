@@ -2,13 +2,19 @@ package issuer
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 
+	"github.com/go-jose/go-jose/v4"
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"github.com/zitadel/oidc/v3/pkg/op"
+
+	"github.com/truvity/access-roster/gen/accessissuer/v1/accessissuerv1connect"
 )
 
 // Provider assembles the OpenID surface over the storage: discovery, the
@@ -105,6 +111,16 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 
 	mux := http.NewServeMux()
 	SignInRoutes(mux, signIn)
+
+	// The issuer's own contract: what sessions it is holding, and ending
+	// them. Mounted here rather than in a service of its own because it
+	// belongs to this issuer's state and to nothing else, and because a
+	// second listener would be a second thing to expose.
+	if signIn.ConsoleOrigin != "" {
+		path, handler := accessissuerv1connect.NewSessionServiceHandler(
+			NewSessionsService(iss, op.NewAccessTokenVerifier(iss.Config().URL, keySetOf(storage))))
+		mux.Handle(path, browserAllowed(signIn.ConsoleOrigin, handler))
+	}
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
@@ -210,4 +226,62 @@ func (c *captured) WriteHeader(status int) {
 	if c.status == 0 {
 		c.status = status
 	}
+}
+
+// keySetOf is this issuer's own published keys, for verifying its own
+// tokens. It is the one caller whose identity this service can establish
+// without asking anybody: the token it is being shown, it signed.
+func keySetOf(storage op.Storage) oidc.KeySet {
+	return &localKeys{storage: storage}
+}
+
+type localKeys struct{ storage op.Storage }
+
+// VerifySignature implements [oidc.KeySet] against the local key.
+func (l *localKeys) VerifySignature(ctx context.Context, jws *jose.JSONWebSignature) ([]byte, error) {
+	keys, err := l.storage.KeySet(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, key := range keys {
+		if payload, err := jws.Verify(&jose.JSONWebKey{
+			KeyID:     key.ID(),
+			Algorithm: string(key.Algorithm()),
+			Use:       key.Use(),
+			Key:       key.Key(),
+		}); err == nil {
+			return payload, nil
+		}
+	}
+
+	return nil, errors.New("no published key verified that signature")
+}
+
+// browserAllowed lets ONE origin call this from a browser: the console
+// the installation configured, and nothing else.
+//
+// It is a value rather than a wildcard because the alternative is every
+// page on the internet being able to make a signed-in person's browser
+// list and end their sessions. Credentials are not allowed either: the
+// caller sends a bearer it holds, never a cookie this issuer set, so
+// there is nothing here for a cross-site request to ride on.
+func browserAllowed(origin string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Origin") == origin {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Connect-Protocol-Version, Connect-Timeout-Ms")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Max-Age", "600")
+		}
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

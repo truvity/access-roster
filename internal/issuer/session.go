@@ -364,6 +364,13 @@ func (s *Sessions) collect(ctx context.Context, q Query) ([]Session, error) {
 	return out, nil
 }
 
+// ByID reads one session. Exported because a caller acting on a session
+// id must be able to check whose it is BEFORE ending it: an id alone is
+// otherwise enough to end somebody else's.
+func (s *Sessions) ByID(ctx context.Context, id string) (Session, bool, error) {
+	return s.byID(ctx, id)
+}
+
 // byID reads one record. An expired record is absent, which is what makes
 // the TTL the whole of expiry.
 func (s *Sessions) byID(ctx context.Context, id string) (Session, bool, error) {
