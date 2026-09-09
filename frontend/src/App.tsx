@@ -27,7 +27,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import ShieldIcon from "@mui/icons-material/Shield";
 import RuleIcon from "@mui/icons-material/Rule";
 
-import { whoami, type Me } from "./api";
+import { personName, whoami, type Me } from "./api";
 import { useAsync } from "./hooks";
 import { paths, useRoute } from "./router";
 import { Search } from "./Search";
@@ -75,6 +75,12 @@ export function App() {
   // pages that change the policy, the OAuth client or connect a directory
   // that does not exist yet all ask this one.
   const operator = roles.includes("operator");
+  // One line of roles: the installation-wide one, then any held over a
+  // single directory (INF-665), which the wide answer does not include.
+  const roleLine =
+    [roles[0], ...Object.entries(identityInfo?.scopes ?? {}).map(([workspace, held]) => (held[0] ? `${held[0]} of ${workspace}` : ""))]
+      .filter(Boolean)
+      .join(" · ") || "no access";
   // Per-directory, for the pages that act on one. A global operator is
   // an operator of every directory without naming any.
   const operatorFor = (workspace: string) => operator || (identityInfo?.scopes?.[workspace] ?? []).includes("operator");
@@ -121,11 +127,13 @@ export function App() {
               sx={{ mx: 0, px: 1.25, py: 0.75, flexGrow: 1, minWidth: 0, display: "block" }}
             >
               <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
-                {identityInfo.name || identityInfo.email}
+                {personName(identityInfo.givenName, identityInfo.familyName, identityInfo.email) || identityInfo.name}
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", wordBreak: "break-all", lineHeight: 1.3 }}>
-                {roles.length ? roles[0] : "no access"}
-                {identityInfo.email && identityInfo.email !== (identityInfo.name || identityInfo.email) ? ` · ${identityInfo.email}` : ""}
+              <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", fontFamily: "monospace", fontSize: "0.72rem", lineHeight: 1.4 }}>
+                {identityInfo.email}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", lineHeight: 1.4 }}>
+                {roleLine}
               </Typography>
             </ListItemButton>
           </Tooltip>
