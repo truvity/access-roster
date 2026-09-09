@@ -11,6 +11,13 @@ ts/node_modules/
 /dist/
 !frontend/dist/
 
+# TypeScript's incremental-build cache. NOT committed: `tsc -b` rewrites
+# it on every build, so a tracked copy makes every build dirty the working
+# tree -- which CI reads as "the recipe modified the tree" and fails,
+# correctly. It carries no information anybody else needs; the artifact
+# that matters is frontend/dist, above.
+frontend/tsconfig.tsbuildinfo
+
 # IDE
 .idea/
 .vscode/
