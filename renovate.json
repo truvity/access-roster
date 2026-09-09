@@ -6,7 +6,16 @@
   "automerge": true,
   "automergeType": "pr",
   "automergeStrategy": "rebase",
-  "platformAutomerge": true,
+  "description": [
+    "platformAutomerge MUST stay false, the same as bar and for the same reason",
+    "(INF-551): a ruleset bypass keys on the actor that PERFORMS the merge, and",
+    "GitHub-native auto-merge does not carry it. The pr-approval ruleset arriving",
+    "on master grants bypass to truvity-renovate-public as an Integration actor,",
+    "so renovate has to merge through its own API call -- as the App the bypass",
+    "names -- or its green batch sits waiting for a human approval that the",
+    "bypass was supposed to make unnecessary."
+  ],
+  "platformAutomerge": false,
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": [
