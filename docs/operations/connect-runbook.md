@@ -22,8 +22,18 @@ installation, never per company. About fifteen minutes.
 2. **The consent screen** (Google Auth Platform → Branding / Audience):
    - Audience: **External**. Internal accepts only the tenant that owns the
      project; an installation serves several.
-   - Publishing status: **In production**. In Testing, refresh tokens
-     expire after seven days and the workspace goes stale silently.
+   - Publishing status: **In production**, and press *Publish app* even
+     though everything appears to work without it. In Testing, a consent
+     screen admits only the accounts listed as test users — so the FIRST
+     tenant connects (the project's own account is one) and the second is
+     refused before the request ever reaches the hub, with Google's
+     `Error 403: access_denied` and *"can only be accessed by
+     developer-approved testers"*. Adding the admin as a test user
+     unblocks that one consent and leaves the other half in place:
+     in Testing, refresh tokens expire after seven days, so a workspace
+     that connected fine goes stale a week later without a word.
+     Publishing is not verification — the four scopes below are
+     "sensitive", not "restricted", so no Google review is required.
    - App name, support email, developer contact: whatever identifies the
      installation to the admins who will consent.
 3. **Scopes** (Data access), all read-only:
