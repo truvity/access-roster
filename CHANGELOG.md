@@ -3,6 +3,15 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **One question to the directory per token, not four.** Every claim a
+  token carries comes from one answer, and the code was asking for it up
+  to four times over one exchange — the hub call behind it being the
+  issuer's hottest. Asking twice is not only two round trips where the
+  design counted on one; it is two answers that can disagree, with the
+  grants from before a change and the name from after.
+
 ## v0.9.5
 
 - **An ID token names who signed in.** It carried no `sub` at all, which
