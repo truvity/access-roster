@@ -24,13 +24,13 @@ func (d *directory) ResolveUser(_ context.Context, email string, _ *time.Duratio
 const declared = `
 version: 1
 groups:
-  hub-operators: { members: [platform@example.com] }
-  hub-viewers:   { matchers: [{ email_domain: example.com }] }
+  all:access-roster:operator: { members: [platform@example.com] }
+  all:access-roster:viewer:   { matchers: [{ email_domain: example.com }] }
 claims:
-  hub-operators: { groups: [hub:operator] }
+  all:access-roster:operator: { groups: [hub:operator] }
 lifetimes:
   default: 12h
-  hub-operators: 4h
+  all:access-roster:operator: 4h
 `
 
 func setup(t *testing.T, result hub.UserResult) (*access.Authorizer, *directory, *time.Time) {
@@ -75,7 +75,7 @@ func TestMembershipGrantsOperator(t *testing.T) {
 		t.Errorf("lifetime = %v, want the operators' exception", got.Lifetime)
 	}
 	// Both internal group names, plus the one fragment that adds to the
-	// claim: hub-viewers contributes only its own name.
+	// claim: all:access-roster:viewer contributes only its own name.
 	if groups, _ := got.Claims["groups"].([]any); len(groups) != 3 {
 		t.Errorf("claims groups = %v, want the two group names and the operators' fragment", groups)
 	}
@@ -171,7 +171,7 @@ func TestExplainReportsWhyAndDoesNotRefuse(t *testing.T) {
 	}
 	var via []string
 	for _, held := range got.Result.Held {
-		if held.Group == "hub-operators" {
+		if held.Group == "all:access-roster:operator" {
 			via = held.Via
 		}
 	}
@@ -185,14 +185,14 @@ func TestExplainAMachineProof(t *testing.T) {
 	const withMachines = `
 version: 1
 groups:
-  ci-gitops:
+  all:gitops:deployer:
     matchers: [{ github: { repository: example-org/gitops, ref: refs/heads/master } }]
-  hub-operators: { members: [platform@example.com] }
-  hub-viewers: {}
-lifetimes: { default: 12h, ci-gitops: 1h }
+  all:access-roster:operator: { members: [platform@example.com] }
+  all:access-roster:viewer: {}
+lifetimes: { default: 12h, all:gitops:deployer: 1h }
 clients:
-  aws:1111:deployer: { kind: exchange, requires: [ci-gitops] }
-  k8s:kernel:        { kind: public, requires: [hub-operators], ttl_cap: 30m }
+  aws:1111:deployer: { kind: exchange, requires: [all:gitops:deployer] }
+  k8s:kernel:        { kind: public, requires: [all:access-roster:operator], ttl_cap: 30m }
 `
 	p, err := policy.Parse([]byte(withMachines))
 	if err != nil {
@@ -210,8 +210,8 @@ clients:
 	if err != nil {
 		t.Fatalf("Explain: %v", err)
 	}
-	if !master.Result.Has("ci-gitops") || master.Result.Lifetime != time.Hour {
-		t.Errorf("master = %+v, want ci-gitops for an hour", master.Result)
+	if !master.Result.Has("all:gitops:deployer") || master.Result.Lifetime != time.Hour {
+		t.Errorf("master = %+v, want all:gitops:deployer for an hour", master.Result)
 	}
 	admitted := map[string]time.Duration{}
 	for _, client := range master.Clients {

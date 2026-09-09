@@ -66,10 +66,10 @@ func TestExchangeGatesTheAudience(t *testing.T) {
 	if grant.Subject != "github:example-org/gitops" {
 		t.Errorf("subject = %q, want the repository and never a person", grant.Subject)
 	}
-	if !grant.Result.Has("ci-gitops") {
-		t.Errorf("groups = %v, want ci-gitops", grant.Result.Groups)
+	if !grant.Result.Has("all:gitops:deployer") {
+		t.Errorf("groups = %v, want all:gitops:deployer", grant.Result.Groups)
 	}
-	// ci-gitops says 1h and ci-any-branch 30m; the job matches both, and
+	// all:gitops:deployer says 1h and all:gitops:builder 30m; the job matches both, and
 	// the shortest wins.
 	if got := time.Duration(iss.Lifetime(grant)); got != 30*time.Minute {
 		t.Errorf("lifetime = %s, want the shortest across the groups it holds", got)
@@ -133,8 +133,8 @@ func TestExchangeMergesClaimsAndCapsLifetime(t *testing.T) {
 	}
 	groups, _ := grant.Claims["groups"].([]any)
 	want := map[string]bool{
-		"platform": true, "engineering": true, "hub-operators": true,
-		"cluster-kernel:admin": true, "cluster-devel:admin": true, "cluster-devel:developer": true,
+		"rung:platform": true, "rung:engineering": true, "all:access-roster:operator": true,
+		"kernel:k8s:admin": true, "devel:k8s:admin": true, "devel:k8s:viewer": true,
 	}
 	for _, g := range groups {
 		delete(want, g.(string))
@@ -192,7 +192,7 @@ func TestHoldWindow(t *testing.T) {
 	if !held.Held {
 		t.Errorf("grant does not say it was held")
 	}
-	if !held.Result.Has("platform") {
+	if !held.Result.Has("rung:platform") {
 		t.Errorf("held groups = %v, want the last known", held.Result.Groups)
 	}
 

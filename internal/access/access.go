@@ -394,25 +394,35 @@ func roleOf(result policy.Result) Role {
 
 // scopesOf reads the roles held over one workspace each, from the same
 // table and by the same rule: an identity administers C0example because
-// it is in `hub-operators@C0example`.
+// it is in `C0example:access-roster:operator`.
+//
+// An installation-wide name reports no workspace and is skipped here —
+// it is the identity's ordinary role, read elsewhere, and a scope map
+// that also carried it would make "everywhere" look like one more
+// tenant.
 func scopesOf(result policy.Result) map[string]Role {
 	var out map[string]Role
+
 	for _, name := range result.Groups {
-		group, workspace, scoped := policy.SplitScopedGroup(name)
-		if !scoped {
+		workspace, role, mine := policy.SplitScopedGroup(name)
+		if !mine || workspace == "" {
 			continue
 		}
-		role := RoleViewer
-		if group == policy.GroupOperators {
-			role = RoleOperator
+
+		held := RoleViewer
+		if role == policy.RoleOperator {
+			held = RoleOperator
 		}
+
 		if out == nil {
 			out = map[string]Role{}
 		}
-		if role.Implies(out[workspace]) {
-			out[workspace] = role
+
+		if held.Implies(out[workspace]) {
+			out[workspace] = held
 		}
 	}
+
 	return out
 }
 

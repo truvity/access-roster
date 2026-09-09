@@ -23,43 +23,92 @@ import (
 	"github.com/truvity/access-roster/internal/emailaddr"
 )
 
-// The groups the hub itself is a relying party of. The hub holds no role
-// vocabulary of its own: an identity is an operator because it is in the
-// operators group, like any other relying party's.
+// Every grant in this policy is named `<scope>:<thing>:<role>` — role,
+// on thing, in scope. `kernel:k8s:admin` is admin of kernel's Kubernetes;
+// `prod:eudi:deployer` deploys the eudi project on prod;
+// `all:access-roster:operator` operates this hub across every directory
+// it serves. The reasoning is in docs/design/trust.md under "Naming";
+// what matters here is that the name is the whole of the fact, carried
+// verbatim into a token's `groups` claim and out of it into a relying
+// party's own bindings, re-mapped nowhere in between.
+//
+// Two-segment names are deliberately NOT grants: `rung:<name>` carries a
+// session lifetime and `emp:<slug>` is a person, neither being a role on
+// a thing. A reader who sees two segments knows.
 const (
-	GroupOperators = "hub-operators"
-	GroupViewers   = "hub-viewers"
+	// ThingSelf is what this hub calls itself in the `thing` position.
+	// It holds no role vocabulary of its own — an identity is an operator
+	// because the policy puts it in the operators group, exactly as any
+	// other relying party's roles work — so its own two roles are named
+	// by the same rule as everyone else's.
+	ThingSelf = "access-roster"
+
+	// ScopeAll is the scope of a role over the whole installation rather
+	// than one directory in it. A real answer, not a placeholder:
+	// `all:access-roster:operator` operates every connected directory,
+	// which is exactly what the name says.
+	ScopeAll = "all"
+
+	// RoleOperator and RoleViewer are the two roles this hub reads.
+	RoleOperator = "operator"
+	RoleViewer   = "viewer"
+
+	// Separator divides a grant's three segments.
+	Separator = ":"
 )
 
-// ScopeSeparator divides one of those group names from the workspace it
-// is scoped to: `hub-operators@C0example` administers that one tenant and
-// no other.
-//
-// It is a naming convention over the ordinary groups table rather than a
-// column in it, because the table is already the place an installation
-// says who is in what, and the hub already reads two names out of it by
-// convention. A scope is a third. Nothing in the policy's schema, its
-// merge or its validation has to know.
-const ScopeSeparator = "@"
+// The two names the hub reads out of the policy for itself, installation
+// wide.
+var (
+	GroupOperators = ScopedGroup(ScopeAll, RoleOperator)
+	GroupViewers   = ScopedGroup(ScopeAll, RoleViewer)
+)
 
-// ScopedGroup names the group that grants a role over one workspace.
-func ScopedGroup(group, workspace string) string {
-	return group + ScopeSeparator + workspace
+// ScopedGroup names the group that grants one of this hub's roles over
+// one workspace — `C0example:access-roster:operator` administers that
+// tenant and no other — or over the whole installation, with [ScopeAll].
+//
+// The scope is a naming convention over the ordinary groups table rather
+// than a column in it, because the table is already the place an
+// installation says who is in what, and the hub already reads two names
+// out of it by convention. A scope is the first segment of those names,
+// so nothing in the policy's schema, its merge or its validation has to
+// know.
+//
+// It is a workspace **id**, never a domain: a tenant is identified by
+// what its backend calls it, and a domain can move between tenants.
+func ScopedGroup(workspace, role string) string {
+	return workspace + Separator + ThingSelf + Separator + role
 }
 
-// SplitScopedGroup reads a scoped group name back. The bool is false for
-// an ordinary group, including one that merely contains the separator: a
-// scope is only a scope when the part before it is a group the hub is a
-// relying party of.
-func SplitScopedGroup(name string) (group, workspace string, scoped bool) {
-	group, workspace, found := strings.Cut(name, ScopeSeparator)
-	if !found || workspace == "" {
+// SplitScopedGroup reads one of this hub's group names back into the
+// workspace it is scoped to and the role it grants. The bool is false
+// for any other name — another relying party's grant, a rung, an
+// employee — which is what keeps this hub from reading a role out of a
+// name that was never about it.
+//
+// [ScopeAll] in the scope position is reported as the empty workspace:
+// installation-wide, which is the absence of a scope rather than a scope
+// named "all".
+func SplitScopedGroup(name string) (workspace, role string, mine bool) {
+	parts := strings.Split(name, Separator)
+	if len(parts) != 3 || parts[1] != ThingSelf {
 		return "", "", false
 	}
-	if group != GroupOperators && group != GroupViewers {
+
+	if parts[0] == "" || parts[2] == "" {
 		return "", "", false
 	}
-	return group, workspace, true
+
+	if parts[2] != RoleOperator && parts[2] != RoleViewer {
+		return "", "", false
+	}
+
+	if parts[0] == ScopeAll {
+		return "", parts[2], true
+	}
+
+	return parts[0], parts[2], true
 }
 
 // The client kinds.
@@ -451,4 +500,51 @@ func (p Policy) checkFragments() error {
 		}
 	}
 	return nil
+}
+
+// UnconventionalGroups are the declared group names that are neither a
+// grant (`<scope>:<thing>:<role>`) nor one of the two families that
+// deliberately are not grants (`rung:<name>`, `emp:<slug>`), sorted.
+//
+// It is a WARNING and not a validation error, on purpose. A name is only
+// a convention: the policy works with any of them, relying parties bind
+// what the token carries, and an installation mid-rename legitimately
+// holds both shapes at once. What the convention buys is that a reader
+// can tell a grant from an identity by looking, and that is worth saying
+// out loud at load — where an operator sees it — rather than never.
+func (p Policy) UnconventionalGroups() []string {
+	var out []string
+
+	for _, name := range slices.Sorted(maps.Keys(p.Groups)) {
+		if conventional(name) {
+			continue
+		}
+
+		out = append(out, name)
+	}
+
+	return out
+}
+
+// conventional reports whether a name follows the family's shapes.
+func conventional(name string) bool {
+	if strings.HasPrefix(name, "rung:") || strings.HasPrefix(name, "emp:") {
+		// Two segments, and the second must say something.
+		rest := name[strings.Index(name, ":")+1:]
+
+		return rest != "" && !strings.Contains(rest, ":")
+	}
+
+	parts := strings.Split(name, Separator)
+	if len(parts) != 3 {
+		return false
+	}
+
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+	}
+
+	return true
 }
