@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.5
 
 - **An ID token names who signed in.** It carried no `sub` at all, which
   makes it invalid, and no `email`, `name` or `groups` either. Every
