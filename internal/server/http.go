@@ -58,6 +58,7 @@ type ConsoleServer struct {
 	hub        *hub.Hub
 	recovery   Recovery
 	signIn     bool
+	signOutURL string
 	forwarded  ForwardedIdentity
 	bearer     *forwardedBearer
 	log        *slog.Logger
@@ -79,9 +80,14 @@ type ConsoleServerDeps struct {
 	// through a gateway that has already run the login wants one door,
 	// not two. It does not affect connecting a directory, which is an
 	// operator granting this hub access rather than a way in.
-	SignIn    bool
-	Forwarded ForwardedIdentity
-	Log       *slog.Logger
+	SignIn bool
+	// SignOutURL is where the console's sign-out control goes. Empty is
+	// this hub's own `/logout`, which is right only where this hub's own
+	// cookie is what signed the person in. Behind a proxy it is the
+	// proxy's sign-out path.
+	SignOutURL string
+	Forwarded  ForwardedIdentity
+	Log        *slog.Logger
 	// UI is the built console. Nil serves no UI, which is what a
 	// deployment that only wants the API does.
 	UI fs.FS
@@ -101,6 +107,7 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		hub:        deps.Hub,
 		recovery:   deps.Recovery,
 		signIn:     deps.SignIn,
+		signOutURL: deps.SignOutURL,
 		forwarded:  deps.Forwarded,
 		bearer:     newForwardedBearer(deps.Forwarded, deps.Log),
 		log:        deps.Log,
@@ -285,9 +292,19 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 			html.EscapeString(prompt.Intro), command,
 			html.EscapeString(prompt.Label), html.EscapeString(prompt.Caution))
 	}
+	// With no way in of its own, this page is otherwise a card with a
+	// heading and nothing under it — which is what somebody who has just
+	// signed out lands on, wondering where the button went.
+	elsewhere := ""
+	if sources.Len() == 0 {
+		elsewhere = `<p class="note">This console does not sign anyone in itself: the gateway in
+		front of it does, and sending you somewhere else to sign in would be a second door to the
+		same room. <a href="/">Go to the console</a> and it will take you to the right one.</p>
+		<p class="note">Recovery below is the way in when the gateway is what is broken.</p>`
+	}
 	s.writePage(w, r, http.StatusOK, "Sign in", `<h1>directory-roster</h1>
 <p class="note">The directory hub. Sign in to connect workspaces and grant access.</p>`+
-		sources.String()+recovery)
+		elsewhere+sources.String()+recovery)
 }
 
 // providerName is what a person calls the directory, rather than what the
@@ -513,6 +530,25 @@ func (s *ConsoleServer) logout(w http.ResponseWriter, r *http.Request) {
 	redirectOrOK(w, r, "/login")
 }
 
+// signOut is where the console's sign-out control goes.
+//
+// This hub's own `/logout` clears this hub's own cookie, and behind a
+// proxy that cookie is not what signed anybody in: the proxy holds the
+// session and forwards a bearer. Clearing ours there ends nothing, drops
+// the person on a sign-in page with no way in — the hub's own sign-in
+// being off is the whole point of having a proxy — and the next request
+// arrives authenticated exactly as before. So a deployment behind a proxy
+// names the proxy's sign-out, and it is a value rather than something
+// derived: the path belongs to the proxy, and where it should go
+// afterwards — an issuer's end-session, a landing page — is the
+// installation's to decide without a release here.
+func (s *ConsoleServer) signOut() string {
+	if s.signOutURL != "" {
+		return s.signOutURL
+	}
+	return "/logout"
+}
+
 // consentProblem renders what went wrong on the page the operator is
 // looking at, instead of a status code nobody sees.
 //
@@ -691,7 +727,7 @@ func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
 			Source:     string(id.Source),
 			Groups:     id.Groups,
 			Version:    version.String(),
-			SignOutURL: "/logout",
+			SignOutURL: s.signOut(),
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

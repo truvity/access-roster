@@ -17,7 +17,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { Backend, access, ago, at, backendName, personName, reason, settings, workspaces } from "./api";
-import { useAsync } from "./hooks";
+import { useAsync, useWhile } from "./hooks";
 import type { Workspace } from "./gen/directoryroster/v1/workspace_pb";
 import { paths } from "./router";
 import { Authority, Failure, Loading, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
@@ -272,6 +272,18 @@ export function Directory({
   }
   const people = accounts.value?.people ?? [];
 
+  // A directory that has never been read. The first snapshot runs
+  // detached — a connect must not hold a browser open for a whole tenant
+  // — so this page opens on a workspace with nothing in it yet, and would
+  // otherwise stay that way: it fetches once, and the read it is waiting
+  // for lands seconds later behind it.
+  const firstSnapshot = tenant !== undefined && at(tenant.snapshotAt) === undefined;
+  useWhile(firstSnapshot, 2000, () => {
+    list.reload();
+    groups.reload();
+    accounts.reload();
+  });
+
   const act = async (run: () => Promise<unknown>, done: string) => {
     setBusy(true);
     setFailure(undefined);
@@ -302,7 +314,11 @@ export function Directory({
     <Page
       title={tenant.id}
       mono
-      lede={`A ${backendName(tenant.backend)} directory holding ${accounts.value?.total ?? people.length} accounts and ${contributed.length} groups.`}
+      lede={
+        firstSnapshot
+          ? `A ${backendName(tenant.backend)} directory. Its first snapshot is running; this page fills in by itself when it lands.`
+          : `A ${backendName(tenant.backend)} directory holding ${accounts.value?.total ?? people.length} accounts and ${contributed.length} groups.`
+      }
       facts={[
         { label: "Acting as", value: tenant.admin || "—" },
         { label: "Connected by", value: tenant.connectedBy || undefined },
@@ -374,7 +390,7 @@ export function Directory({
         </>
       }
     >
-      <Loading busy={busy || list.loading || groups.loading || accounts.loading} />
+      <Loading busy={busy || firstSnapshot || list.loading || groups.loading || accounts.loading} />
       <Failure error={failure ?? groups.error ?? accounts.error} />
 
       <Section title="Directory groups it contributes" hint="what a membership can attach to an internal group">
@@ -391,7 +407,7 @@ export function Directory({
               {g.members} members · feeds <Names items={(feeds.get(g.email) ?? []).map((name) => ({ label: name, to: paths.group(name), mono: true }))} empty="nothing" muted />
             </>
           )}
-          empty="No groups snapshotted from this directory yet."
+          empty={firstSnapshot ? "Reading them now — the first snapshot is still running." : "No groups snapshotted from this directory yet."}
         />
       </Section>
 
@@ -402,7 +418,7 @@ export function Directory({
           primary={(p) => <Ref to={paths.person(p.email)}>{personName(p.givenName, p.familyName, p.email)}</Ref>}
           secondary={(p) => p.email}
           right={(p) => <State kind={p.live ? "live" : "suspended"} />}
-          empty="No accounts snapshotted from this directory yet."
+          empty={firstSnapshot ? "Reading them now — the first snapshot is still running." : "No accounts snapshotted from this directory yet."}
         />
       </Section>
     </Page>

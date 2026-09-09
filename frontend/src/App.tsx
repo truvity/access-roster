@@ -256,11 +256,20 @@ function PageFor({
   }
 }
 
-/** Sign-out is a POST: a link that logs you out would be a link anyone
- *  could put in a page. */
+/** This hub's own sign-out is a POST: a link that logs you out would be a
+ *  link anyone could put in a page.
+ *
+ *  A sign-out that belongs to the proxy in front is a NAVIGATION. The
+ *  session being ended is the proxy's, only the proxy can end it, and it
+ *  answers by redirecting — which a fetch would swallow, leaving the
+ *  person signed in and looking at a page that said they were not. */
 function signOut(event: React.MouseEvent<HTMLElement>) {
   event.preventDefault();
   const url = event.currentTarget.getAttribute("href") ?? "/logout";
+  if (url !== "/logout") {
+    window.location.href = url;
+    return;
+  }
   void fetch(url, { method: "POST" }).then(() => {
     window.location.href = "/login";
   });

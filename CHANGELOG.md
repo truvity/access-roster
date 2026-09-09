@@ -7,6 +7,24 @@ git history.
 
 Nothing yet.
 
+## v0.8.2
+
+- **Sign-out ends the session that actually signed you in.** Behind a
+  proxy the console's sign-out cleared this hub's own cookie — which
+  nothing was using, because the proxy holds the session and forwards a
+  bearer. So sign-out did nothing, and it landed on a sign-in page with
+  no way in, this hub's own sign-in being off by design. `access.signOutURL`
+  names the proxy's own sign-out, the console navigates to it rather than
+  POSTing (a redirect a fetch would swallow), and the login page now says
+  where the door is instead of showing an empty card.
+- **A page waiting for a first snapshot fills in when it lands.** The
+  first snapshot runs detached, so a directory's page opens on a
+  workspace with nothing in it and used to stay that way — a photograph
+  of the first two hundred milliseconds, while the read it was waiting
+  for finished five seconds later behind it. The directory and Overview
+  pages now say the first snapshot is running and refresh themselves
+  until it is not.
+
 ## v0.8.1
 
 - **A probe cancelled by the hub's own shutdown is no longer written down

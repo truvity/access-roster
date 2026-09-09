@@ -236,6 +236,19 @@ access:
       emailHeader: ""
   # How long a console session lasts before it has to sign in again.
   sessionLifetime: 12h
+  # Where the console's sign-out control goes. Empty is this hub's own
+  # /logout, which is right only where this hub's own cookie is what
+  # signed the person in.
+  #
+  # Behind a proxy it is not: the proxy holds the session and forwards a
+  # bearer, so clearing this hub's cookie ends nothing, lands the person
+  # on a sign-in page with no way in -- this hub's own sign-in being off
+  # is the point of having a proxy -- and the next request arrives
+  # authenticated exactly as before. Name the proxy's own sign-out
+  # instead, e.g. "/oauth2/sign_out". A value rather than something
+  # derived, because the path belongs to the proxy and where it goes
+  # afterwards is the installation's to decide.
+  signOutURL: ""
   # The hold window: how long a signed-in identity keeps its last granted
   # role while the directory cannot vouch for its membership. Zero means
   # no hold, and an uncertain directory then grants nothing.

@@ -4,7 +4,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import { access, ago, at, settings, workspaces, type Me } from "./api";
-import { useAsync } from "./hooks";
+import { useAsync, useWhile } from "./hooks";
 import { paths } from "./router";
 import { incomplete, Setup, type Progress } from "./Setup";
 import { DomainReason } from "./gen/directoryroster/v1/workspace_pb";
@@ -45,6 +45,17 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
 
   const clean = failing.length + contested.length + provisional.length === 0 && list.length > 0;
 
+  // A directory connected moments ago has no snapshot yet, and its first
+  // read lands seconds later. Without this the counts on the page that
+  // exists to say whether anything is broken are a photograph of the
+  // moment before anything had been read. It stops when the snapshot
+  // lands: nothing here polls a steady state.
+  const firstSnapshot = list.some((w) => at(w.snapshotAt) === undefined);
+  useWhile(firstSnapshot, 2000, () => {
+    tenants.reload();
+    directoryGroups.reload();
+  });
+
   // An installation that is not finished is not "broken", and the counts
   // below cannot say anything useful about it yet. What it needs is the
   // next step, so that is what the page leads with until there is none.
@@ -64,7 +75,7 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
 
   return (
     <Page title="Overview" lede="Whether anything is broken, and the counts behind it. Every number is a link to the thing it counts.">
-      <Loading busy={tenants.loading || policy.loading || current.loading} />
+      <Loading busy={firstSnapshot || tenants.loading || policy.loading || current.loading} />
       <Failure error={tenants.error ?? policy.error} />
 
       {settingUp && progress ? <Setup progress={progress} operator={operator} /> : null}

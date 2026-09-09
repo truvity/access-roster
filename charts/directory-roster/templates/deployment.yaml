@@ -114,6 +114,10 @@ spec:
             {{- end }}
             - name: LOGIN_DIRECTORY
               value: {{ .Values.access.login.directory | quote }}
+            {{- with .Values.access.signOutURL }}
+            - name: SIGN_OUT_URL
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.access.login.forwardedBearer }}
             {{- if .issuer }}
             - name: FORWARDED_ISSUER
