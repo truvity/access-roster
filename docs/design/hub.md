@@ -89,7 +89,7 @@ Two listeners, so a consumer can never reach an operator call:
 
 | Port | Services | Reached by |
 |---|---|---|
-| API | `DirectoryService` | consumers over the cluster network (ClusterIP, NetworkPolicy) |
+| API | `DirectoryService` | consumers over the cluster network (ClusterIP, NetworkPolicy), each holding a grant |
 | console | `WorkspaceService`, `SettingsService`, `AccessService`, the SPA, the login routes | operators, through the hub's own login or a gateway in front |
 
 - **`DirectoryService`** — google-group-sync's proto plus **additive**

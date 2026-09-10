@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -75,7 +76,7 @@ type Config struct {
 	recoveryAccount   string
 	recoveryAudience  string
 	apiAudience       string
-	apiConsumers      []string
+	consumersPath     string
 	loginDirectory    bool
 	adminPassword     string
 	sessionLifetime   time.Duration
@@ -109,7 +110,7 @@ func Load() (Config, error) {
 		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", "directory-roster-recovery"),
 		recoveryAudience:  envString("RECOVERY_AUDIENCE", "directory-roster-recovery"),
 		apiAudience:       envString("API_AUDIENCE", "directory-roster"),
-		apiConsumers:      envList("API_CONSUMERS"),
+		consumersPath:     envString("CONSUMERS_FILE", ""),
 		loginDirectory:    envBool("LOGIN_DIRECTORY", true),
 		adminPassword:     envString("ADMIN_PASSWORD", ""),
 		secureCookies:     envBool("SECURE_COOKIES", false),
@@ -245,33 +246,50 @@ func openRecovery(ctx context.Context, cfg Config, kept stores, log *slog.Logger
 // and a deployment that names none admits nobody, because a hub that
 // answered everyone by default would be one forgotten value away from
 // serving a directory to the whole cluster.
-func consumers(ctx context.Context, cfg Config, kept stores, log *slog.Logger) *server.Consumers {
+func consumers(
+	ctx context.Context, cfg Config, kept stores, declared *server.ConsumerFile, log *slog.Logger,
+) *server.Consumers {
 	if kept.reviewToken == nil {
 		log.WarnContext(ctx, "the API listener is unauthenticated: nothing here can verify a "+
 			"ServiceAccount token, so anything that can reach it gets every account and group "+
 			"this hub reads", "port", cfg.apiPort)
 		return nil
 	}
-	allowed := make([]string, 0, len(cfg.apiConsumers))
-	for _, consumer := range cfg.apiConsumers {
-		namespace, name, found := strings.Cut(consumer, "/")
-		if !found || namespace == "" || name == "" {
-			log.WarnContext(ctx, "ignoring a consumer that is not namespace/serviceaccount",
-				"consumer", consumer)
-			continue
+	// One spelling for who may call: the mounted file (INF-679). It
+	// replaced a comma-separated environment list, which could name a
+	// consumer and could not describe what that consumer may ask -- and
+	// keeping both would have been one place to add a consumer and
+	// another place to forget to.
+	allowed := make([]string, 0)
+	grants := map[string]*server.Grant{}
+	if declared != nil {
+		for _, consumer := range declared.Consumers {
+			subject := kube.ServiceAccountSubject(consumer.Namespace, consumer.ServiceAccount)
+			allowed = append(allowed, subject)
+			if grant := consumer.Grant(); grant != nil {
+				grants[subject] = grant
+			}
 		}
-		allowed = append(allowed, kube.ServiceAccountSubject(namespace, name))
 	}
 	if len(allowed) == 0 {
 		log.WarnContext(ctx, "the API listener admits nobody: no consumers are declared", "port", cfg.apiPort)
 	} else {
+		// The scoped ones by name: a grant an operator cannot see at
+		// start is one they have to reconstruct from a ConfigMap when a
+		// consumer says it cannot see something.
+		scoped := make([]string, 0, len(grants))
+		for subject := range grants {
+			scoped = append(scoped, subject)
+		}
+		sort.Strings(scoped)
 		log.InfoContext(ctx, "the API listener admits the declared consumers",
-			"audience", cfg.apiAudience, "consumers", allowed)
+			"audience", cfg.apiAudience, "consumers", allowed, "scoped", scoped)
 	}
 	return &server.Consumers{
 		Review:   kept.reviewToken,
 		Audience: cfg.apiAudience,
 		Allowed:  allowed,
+		Grants:   grants,
 		Log:      log,
 	}
 }
@@ -514,7 +532,14 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 
 	apiMux := http.NewServeMux()
 	apiMux.Handle(directoryv1connect.NewDirectoryServiceHandler(server.NewDirectory(directory)))
-	apiHandler := consumers(ctx, cfg, kept, log).Middleware(apiMux)
+	// Loaded before the listener is built: a malformed grant is a
+	// start-up failure, because a hub that ignored one would run with a
+	// wider grant than the deployment declared.
+	declaredConsumers, err := server.LoadConsumers(cfg.consumersPath)
+	if err != nil {
+		return nil, err
+	}
+	apiHandler := consumers(ctx, cfg, kept, declaredConsumers, log).Middleware(apiMux)
 
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })

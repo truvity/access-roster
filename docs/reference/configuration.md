@@ -44,7 +44,7 @@ hub writes *itself*, where it is the producer and gets to choose.
 | `oauthClient.secret.name` | `""` | a Secret holding the client; set, the console shows it read-only, because a value the deployment states must not be editable in a UI |
 | `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the hub does not produce this object: whatever delivers it — external-secrets, a 1Password operator, sealed-secrets, `kubectl create secret` — already had an opinion, and a hub that insisted on two particular names could not read a Secret already in the namespace |
 | `workspaces[]` | `[]` | declared workspaces, see below |
-| `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener, verified by TokenReview — the cluster anchor, for workloads in this cluster. **Empty admits nobody.** A caller from further away presents an issuer token instead: [../design/trust.md](../design/trust.md), [../connect/service-to-service.md](../connect/service-to-service.md) |
+| `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener, verified by TokenReview — the cluster anchor, for workloads in this cluster. **Empty admits nobody.** Each entry may carry a grant (`workspaces`/`domains`, `groups`, `reads`) narrowing what that consumer may ask; no grant is full read. A caller from further away presents an issuer token instead: [../design/trust.md](../design/trust.md), [../connect/service-to-service.md](../connect/service-to-service.md) |
 | `route.host` | `""` | the console's hostname on the gateway, and only the console's: the API listener never gets a route, because a consumer that could arrive over the gateway could reach an operator call. Empty renders no Gateway, HTTPRoute or Certificate, which is right for a hub reached by port-forward |
 | `route.pathPrefix` | `""` | mount the console under a path of the host — `/console` — with the gateway rewriting the prefix away, so the hub's own SPA routes (`GET /assets/`, `GET /{$}`) do not change. This is how the console shares its issuer's hostname: the issuer must sit at the origin root (its `iss` claim and discovery are there), so the console takes the path. `PUBLIC_URL` and every setup value built from it carry the prefix. **`bootstrapPaths` are the one exception and are never moved under it** — see below. Empty is today's shape *(INF-687)* |
 | bare `<pathPrefix>` (no trailing slash) | — | redirects to `<pathPrefix>/`, rendered whenever a prefix is set. The console's assets are referenced **relatively**, so one committed bundle serves at any mount point — and `./assets/…` on a page reached without the slash resolves against the host root and asks whoever owns it. An `Exact` match outranks the prefix rule, so it takes only that one address |
@@ -150,6 +150,52 @@ consumers:
 The chart then creates the one cluster-scoped permission it ever needs, a
 ClusterRole allowing `create` on `tokenreviews`, bound to the hub's
 ServiceAccount. It reads nothing.
+
+### What a consumer may ask
+
+An entry that names only a consumer is **full read**, which is what every
+consumer had before grants existed and what the issuer genuinely needs:
+it answers for every address in every company the hub serves. The next
+consumer usually does not. A grant narrows an admitted caller along three
+axes:
+
+```yaml
+consumers:
+  - namespace: access-issuer
+    serviceAccount: access-issuer          # no grant: full read
+
+  - namespace: team-sync
+    serviceAccount: team-sync
+    domains: [example.com]                 # or workspaces: [C0300000]
+    groups: ["team-*"]                     # exact address, or a * suffix
+    reads: [resolve]                       # resolve | groups | describe | probe
+```
+
+| read | procedures | what it exposes |
+| -- | -- | -- |
+| `resolve` | `ResolveUser`, `GetAccount`, `ResolveAccounts` | what one address, already known to the caller, resolves to |
+| `groups` | `GetGroup`, `ListGroups` | what the directory contains — the enumeration a resolve-only consumer must not have |
+| `describe` | `Describe` | which domains this hub serves |
+| `probe` | `Probe` | whether a workspace's last read succeeded |
+
+Three properties are worth stating, because each is a decision:
+
+**Outside the grant is indistinguishable from unserved.** An address in a
+withheld domain answers *not found, not in domain, no groups* — exactly
+as an address in a domain this hub does not serve. A refusal would
+confirm that the domain exists, which is the fact the grant is there to
+withhold, and consumers already read the unserved answer fail-safe.
+
+**Discovery is scoped too.** `Describe` lists only the granted domains,
+so a consumer given one directory is not told the others exist.
+
+**The API listener is read-only, whatever a grant says.** There is no
+read class that can be spelled to reach a write. Writes live on the
+console listener, behind operator sessions.
+
+Grants are read once, at start: the chart puts a checksum of them on the
+Deployment, because a narrowed grant that does not restart the pods is
+one an operator has applied and not applied at the same time.
 
 ## The policy
 

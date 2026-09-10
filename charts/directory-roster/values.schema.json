@@ -220,6 +220,39 @@
           "serviceAccount": {
             "type": "string",
             "minLength": 1
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "reads": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "resolve",
+                "groups",
+                "describe",
+                "probe"
+              ]
+            }
           }
         }
       }

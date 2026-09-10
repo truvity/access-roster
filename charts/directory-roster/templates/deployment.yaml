@@ -23,6 +23,12 @@ spec:
         # has carried this since its first release; the hub reads the same
         # file the same way and did not.
         checksum/policy: {{ include (print $.Template.BasePath "/access-configmap.yaml") . | sha256sum }}
+        {{- if .Values.consumers }}
+        # Who may call, and what they may ask, is read once at start. A
+        # narrowed grant that does not restart the pods is one an
+        # operator has applied and not applied at the same time.
+        checksum/consumers: {{ include (print $.Template.BasePath "/consumers.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -173,8 +179,13 @@ spec:
             - name: API_AUDIENCE
               value: {{ include "directory-roster.apiAudience" . }}
             {{- if .Values.consumers }}
-            - name: API_CONSUMERS
-              value: {{ include "directory-roster.apiConsumers" . | quote }}
+            # The mounted file, not API_CONSUMERS: only a file can carry
+            # a per-consumer grant (INF-679), and two sources for who may
+            # call would be one place to add a consumer and another place
+            # to forget to. API_CONSUMERS is still read when no file is
+            # mounted, for a hub configured by environment alone.
+            - name: CONSUMERS_FILE
+              value: /var/run/directory-roster/consumers.yaml
             {{- end }}
             - name: POLICY_DIR
               value: /var/run/directory-roster/policy
@@ -200,6 +211,12 @@ spec:
             - name: policy
               mountPath: /var/run/directory-roster/policy
               readOnly: true
+            {{- if .Values.consumers }}
+            - name: consumers
+              mountPath: /var/run/directory-roster/consumers.yaml
+              subPath: consumers.yaml
+              readOnly: true
+            {{- end }}
             {{- if .Values.workspaces }}
             - name: overlay
               mountPath: /var/run/directory-roster/overlay.yaml
@@ -220,6 +237,11 @@ spec:
             items:
               - key: policy.yaml
                 path: policy.yaml
+        {{- if .Values.consumers }}
+        - name: consumers
+          configMap:
+            name: {{ include "directory-roster.fullname" . }}-consumers
+        {{- end }}
         {{- if .Values.workspaces }}
         - name: overlay
           configMap:
