@@ -60,6 +60,7 @@ type Config struct {
 	cluster           string
 	recoveryAudience  string
 	clientSecretsDir  string
+	clustersPath      string
 	valkey            valkey.Config
 	audience          string
 	githubOwners      []string
@@ -103,6 +104,7 @@ func Load() (Config, error) {
 		cluster:          envString("CLUSTER", ""),
 		recoveryAudience: envString("RECOVERY_AUDIENCE", ""),
 		clientSecretsDir: envString("CLIENT_SECRETS_DIR", ""),
+		clustersPath:     envString("CLUSTERS_FILE", ""),
 		valkey: valkey.Config{
 			Address:  envString("VALKEY_ADDRESS", ""),
 			Password: envString("VALKEY_PASSWORD", ""),
@@ -532,18 +534,31 @@ func openState(ctx context.Context, cfg Config, log *slog.Logger) (issuer.State,
 // everything with "unverified" is indistinguishable from one that is
 // misconfigured.
 func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (issuer.Verifiers, error) {
-	if !cfg.inCluster {
-		log.WarnContext(ctx, "no proof can be verified: token exchange will refuse everything")
-		return nil, nil
-	}
-	client, err := kube.InCluster(cfg.release)
+	var verifiers issuer.Verifiers
+
+	// Clusters, by their own published key set and NEVER by asking them
+	// (INF-692). The other way to check a ServiceAccount token is a
+	// TokenReview, which means holding a kubeconfig for every cluster
+	// whose workloads may exchange — inside the service whose whole point
+	// is to hold almost no credential. A key set is public, so a remote
+	// cluster's workload proves itself exactly the way a GitHub job does,
+	// and adding a cluster is one row naming a URL.
+	//
+	// This service's OWN cluster is a row like any other. There is no
+	// special case for it, because a special case is a second code path
+	// that only one installation exercises.
+	federation, err := verify.LoadFederation(cfg.clustersPath)
 	if err != nil {
 		return nil, err
 	}
-	log.InfoContext(ctx, "workload tokens are verified against this cluster", "audience", cfg.audience)
-
-	verifiers := issuer.Verifiers{
-		&verify.Workload{Review: client.ReviewToken, Audience: cfg.audience, Cluster: cfg.cluster},
+	for _, cluster := range federation.Verifiers(cfg.audience, nil) {
+		verifiers = append(verifiers, cluster)
+	}
+	if len(federation.Clusters) > 0 {
+		log.InfoContext(ctx, "workload tokens are verified against each cluster's own key set",
+			"clusters", federation.Names(), "audience", cfg.audience)
+	} else {
+		log.InfoContext(ctx, "no workload token can be verified: no cluster's key set is declared")
 	}
 
 	// GitHub, only when this installation has said whose repositories it
@@ -564,6 +579,13 @@ func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (issuer.Ve
 		})
 	} else {
 		log.InfoContext(ctx, "no CI token can be verified: GITHUB_OWNERS names no organisation")
+	}
+
+	// An exchange endpoint that refuses everything with "unverified" is
+	// indistinguishable from one that is misconfigured, so a deployment
+	// that can verify nothing says so rather than looking broken later.
+	if len(verifiers) == 0 {
+		log.WarnContext(ctx, "no proof can be verified: token exchange will refuse everything")
 	}
 
 	return verifiers, nil

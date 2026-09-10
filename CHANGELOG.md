@@ -22,6 +22,28 @@ git history.
 
 ## Unreleased
 
+- **One issuer, many clusters, access to none of them.** A workload's
+  ServiceAccount token is verified against the key set its own cluster
+  publishes, never by asking the cluster (INF-692). Asking meant a
+  TokenReview, and a TokenReview against a cluster elsewhere meant holding
+  a kubeconfig for it — inside the service whose whole design is to hold
+  almost no credential. A key set is public: EKS publishes one per cluster
+  (it is what IRSA rests on) and Talos serves the same keys at the API
+  server's `/openid/v1/jwks`. So a remote cluster's workload proves itself
+  exactly the way a GitHub job does, and connecting one is a row of
+  `exchange.clusters` naming a URL.
+
+  This service's own cluster is a row like any other. There is no special
+  case for it, because a special case is a second code path that only one
+  installation exercises. The TokenReview verifier is deleted, and the
+  cluster-scoped permission the chart creates now belongs to recovery
+  alone — on the day everything else is broken it should depend on
+  nothing but the API server.
+
+  What this gives up, plainly: a TokenReview notices a deleted
+  ServiceAccount and a key set does not, so a token stays usable until it
+  expires. Bound tokens are short-lived, so the window is minutes.
+
 - **Six grants, and the four that were served are gone.** The issuer
   serves the code flow with PKCE, refresh, userinfo, `end_session`,
   revocation and token exchange, and nothing else (INF-693). The device

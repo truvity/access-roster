@@ -140,11 +140,34 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "workloadTokens": {
-          "type": "boolean"
-        },
         "audience": {
           "type": "string"
+        },
+        "clusters": {
+          "type": "array",
+          "description": "Clusters whose workloads may exchange, each verified against the key set that cluster publishes. No secret in any row.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "issuer"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The estate's word for the cluster; what a workload matcher names."
+              },
+              "issuer": {
+                "type": "string",
+                "description": "The `iss` its ServiceAccount tokens carry."
+              },
+              "jwksUri": {
+                "type": "string",
+                "description": "Where its public keys are. Empty discovers it from the issuer."
+              }
+            }
+          }
         }
       }
     },

@@ -159,14 +159,40 @@ oauthClient:
 cluster: ""
 
 exchange:
-  # Verify Kubernetes ServiceAccount tokens with a TokenReview, for the
-  # in-cluster workload that needs a token another system trusts. This is
-  # the one cluster-scoped permission this chart creates.
-  workloadTokens: true
-  # The audience such a token must be minted for. Without one, every
-  # mounted ServiceAccount token in the cluster would be an exchange
+  # The audience a ServiceAccount token must be minted for. Without one,
+  # every mounted token in every federated cluster would be an exchange
   # proof. Empty means the release name.
   audience: ""
+
+  # The clusters whose workloads may exchange, each verified against the
+  # key set that cluster publishes for its own ServiceAccount tokens
+  # (INF-692).
+  #
+  # This is what makes ONE issuer serve MANY clusters. The other way to
+  # check such a token is a TokenReview, which means asking the cluster —
+  # and asking means holding a kubeconfig for every one of them, inside
+  # the service whose whole point is to hold almost no credential. A key
+  # set is public: EKS publishes one per cluster (it is what IRSA rests
+  # on) and Talos serves the same keys at the API server's
+  # `/openid/v1/jwks`. So there is no secret in any of these rows, and
+  # this issuer needs no access to any cluster, including the one it runs
+  # in — which is a row here like any other, because a special case is a
+  # second code path only one installation exercises.
+  #
+  # What is given up is TokenReview's deletion check: a token stays valid
+  # until it expires even if the ServiceAccount is deleted. Bound tokens
+  # are short-lived, so the window is minutes. Recovery deliberately
+  # keeps TokenReview — on the day everything else is broken it should
+  # depend on nothing but the API server.
+  clusters: []
+  #  - name: kernel          # the estate's own word for it, and what a
+  #                          # `workload` matcher names. Renaming a row
+  #                          # changes every rule about that cluster.
+  #    issuer: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE
+  #    # Where its public keys are. Omitted, it is discovered from the
+  #    # issuer, which works wherever the cluster publishes a discovery
+  #    # document at an address this service can reach.
+  #    jwksUri: ""
 
 # The way in when no directory can vouch for anybody.
 #

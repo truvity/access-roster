@@ -215,6 +215,29 @@ chart-lint:
         --set issuerURL=https://access.example --set route.host=access.example \
         --set console.mount= | grep -q 'PUBLIC_URL'
 
+    # Federated clusters (INF-692). No row is a secret, and the point of
+    # the render is that the service ends up holding no cluster access at
+    # all: IN_CLUSTER is recovery's, never a workload's.
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example \
+        --set 'exchange.clusters[0].name=devel' \
+        --set 'exchange.clusters[0].issuer=https://oidc.eks.example/id/ABC' \
+        > /tmp/access-issuer-federated.yaml
+    grep -q 'name: CLUSTERS_FILE' /tmp/access-issuer-federated.yaml
+    grep -q 'checksum/clusters:' /tmp/access-issuer-federated.yaml
+    grep -q 'issuer: "https://oidc.eks.example/id/ABC"' /tmp/access-issuer-federated.yaml
+    # No cluster declared, no file and no ConfigMap: a mount of nothing is
+    # a pod that will not start.
+    ! helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example | grep -q 'CLUSTERS_FILE'
+    # The TokenReview permission belongs to recovery and to nothing else.
+    test "$(helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example --set recovery.enabled=false \
+        | grep -c 'tokenreviews')" = "0"
+    test "$(helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example --set recovery.enabled=false \
+        | grep -c 'name: IN_CLUSTER')" = "0"
+
     # route.sharedWith (INF-687): the other half of the console's
     # pathPrefix. Empty keeps `from: Same`; naming a namespace renders a
     # Selector over it AND this issuer's own -- dropping its own would
