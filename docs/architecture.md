@@ -130,7 +130,7 @@ flowchart TB
   subgraph nsHub["namespace: directory-roster"]
     direction TB
     hub["directory-roster<br/>[Container: Go, ConnectRPC]<br/>API listener: DirectoryService<br/>console listener: operator services, SPA, login routes<br/>refresher, prober, router by domain"]:::hub
-    spa["console<br/>[Container: React SPA, served by the hub]<br/>identity side: directories · directory groups · matchers · people<br/>access side: internal groups · clients"]:::hub
+    spa["console<br/>[Container: React SPA, served by the hub]<br/>identity side: directories · directory groups · rules · people<br/>access side: internal groups · clients"]:::hub
     k8s[("workspace records + credentials<br/>[Secrets + ConfigMaps, this namespace]<br/>refresh tokens, SA keys, OAuth client,<br/>session key, admin password, console memberships")]:::hubStore
     hv[("Valkey<br/>[external to the chart]<br/>one snapshot per workspace, locks")]:::hubStore
   end
