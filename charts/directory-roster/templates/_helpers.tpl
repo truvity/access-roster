@@ -36,21 +36,16 @@ the day recovery is needed.
 {{- end }}
 
 {{/*
-The audience a consumer's projected token must carry, and the consumers
-themselves as `namespace/serviceaccount` pairs. The audience defaults to
-the release name rather than to a fixed string, so two hubs in one
-cluster cannot accept each other's callers.
+The audience a consumer's projected token must carry. It defaults to the
+release name rather than to a fixed string, so two hubs in one cluster
+cannot accept each other's callers.
+
+The consumers themselves are no longer rendered here: a grant does not
+fit in an environment variable (INF-679), so they go in a mounted file
+and the file is the only spelling the chart produces.
 */}}
 {{- define "directory-roster.apiAudience" -}}
 {{- .Values.listeners.api.audience | default (include "directory-roster.fullname" .) }}
-{{- end }}
-
-{{- define "directory-roster.apiConsumers" -}}
-{{- $pairs := list -}}
-{{- range .Values.consumers -}}
-{{- $pairs = append $pairs (printf "%s/%s" .namespace .serviceAccount) -}}
-{{- end -}}
-{{- join "," $pairs }}
 {{- end }}
 
 {{/*

@@ -211,6 +211,32 @@ on that one port, and **the grant is keyed by the principal, not by the
 anchor**: a consumer proven either way is the same consumer and gets the
 same answer. One grant table, two doors.
 
+### Admission is not authorization
+
+Being a consumer and being a consumer of *everything* were one decision,
+and that was the gap. A caller admitted at all could enumerate every
+group of every company the hub reads. One consumer — the issuer — needs
+exactly that; the next one needs one directory and one question.
+
+So a consumer is declared with a grant along three axes: **which
+directory** (workspaces, or the domains they serve), **which groups**,
+and **which questions** (`resolve`, `groups`, `describe`, `probe`). No
+grant is full read, so nothing that predates them changes meaning.
+
+Two properties follow, and both are deliberate:
+
+- **Outside the grant answers as unserved does.** Not found, not in
+  domain, no groups — identical to an address in a domain this hub never
+  serves. A refusal would confirm the domain exists, which is what the
+  grant withholds; and consumers already read the unserved answer
+  fail-safe, so nothing has to learn a new failure mode.
+- **Discovery is itself scoped.** `Describe` lists only granted domains.
+  A grant on the questions alone would still hand every admitted caller
+  the shape of every company the hub serves.
+
+The API listener stays read-only whatever a grant says: there is no read
+class that can be spelled to reach a write.
+
 ## The libraries are where the rule becomes shape
 
 The Go module offers **two verifiers and nothing else**: `Issuer`
@@ -241,7 +267,7 @@ a local run. See [libraries.md](libraries.md).
 
 - [access-issuer.md](access-issuer.md) — what the estate anchor verifies
   and mints.
-- [hub.md](hub.md) — the two listeners, recovery, consumers.
+- [hub.md](hub.md) — the two listeners, recovery, consumers and their grants.
 - [access-proxy.md](access-proxy.md) — the console exposure.
 - [libraries.md](libraries.md) — the two verifiers.
 - [../connect/service-to-service.md](../connect/service-to-service.md) —

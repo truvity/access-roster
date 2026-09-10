@@ -5,6 +5,23 @@ git history.
 
 ## Unreleased
 
+- **The API listener's consumers hold a grant.** Admission and
+  authorization were one decision: a consumer admitted at all could
+  enumerate every group of every company the hub reads. One consumer —
+  the issuer — needs exactly that; a team-sync or a cross-cluster hook
+  needs one directory and one question. A consumer is now declared with
+  a grant along three axes — which directory (`workspaces` or `domains`),
+  which `groups`, which `reads` (`resolve`, `groups`, `describe`,
+  `probe`). No grant is full read, so nothing declared before this
+  changes meaning. Outside the grant answers exactly as an unserved
+  domain does, because a refusal would confirm what the grant withholds;
+  `Describe` lists only granted domains, so discovery is scoped too; and
+  the listener stays read-only whatever a grant says. **Breaking for a
+  hub configured by environment alone:** `API_CONSUMERS` is gone and
+  consumers are declared in a mounted file, because a grant does not fit
+  in a comma-separated list in any spelling an operator could read. The
+  chart renders and mounts it from the same `consumers[]` values.
+
 - **The console's Matchers page becomes Rules.** It listed only
   rules that admit a proof by its *shape* and silently omitted those that
   admit by directory membership — 30 of 73 groups on the first real

@@ -212,9 +212,43 @@ route:
 # nothing). Consumers mount a projected token with audience `directory-roster`.
 # Empty = the API listener accepts no caller (NetworkPolicy is the second
 # layer, never the only one).
+# A consumer may also be GRANTED less than everything (INF-679). An entry
+# with no grant keeps full read, so nothing declared before this existed
+# changes meaning -- and the issuer, which genuinely needs every question
+# about every workspace, is written exactly that way.
+#
+# Three axes:
+#   workspaces / domains  which directory. Either spelling; a consumer
+#                         that cares about a tenant says the tenant, one
+#                         that cares about a mail domain says the domain.
+#   groups                which groups, by address or a `*` suffix.
+#   reads                 which questions:
+#                           resolve   ResolveUser, GetAccount, ResolveAccounts
+#                           groups    GetGroup, ListGroups
+#                           describe  which domains this hub serves
+#                           probe     whether a workspace's last read worked
+#
+# What a scoped consumer sees outside its grant is exactly what it would
+# see for a domain this hub does not serve: not found, not in domain, no
+# groups. A refusal would confirm the thing the grant withholds, and
+# consumers already read the unserved answer fail-safe.
+#
+# Discovery is scoped too: `describe` lists only the granted domains, so
+# a consumer given one directory is not told the others exist.
+#
+# The API listener is read-only whatever a grant says. No read class can
+# be spelled to reach a write; writes live on the console listener behind
+# operator sessions.
 consumers: []
 #  - namespace: identity-system
 #    serviceAccount: authorization-webhook
+#  # One directory, one question: this consumer can resolve an address in
+#  # example.com and cannot enumerate anything.
+#  - namespace: team-sync
+#    serviceAccount: team-sync
+#    domains: [example.com]
+#    groups: ["team-*"]
+#    reads: [resolve]
 
 # Access to the console and the operator API.
 access:

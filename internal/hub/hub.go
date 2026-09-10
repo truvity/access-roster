@@ -450,6 +450,25 @@ func (h *Hub) reopen(ctx context.Context, id string) (backend.Backend, bool) {
 // ---------------------------------------------------------------- reading
 
 // Describe returns every served domain with its authority and origin.
+// Routing maps every claimed domain to the workspace that serves it.
+//
+// Describe answers the same question with a snapshot read per workspace,
+// which is the right cost for a caller that wants freshness and the
+// wrong one for a caller that only wants to know which tenant a domain
+// belongs to. A per-consumer grant written in workspaces needs exactly
+// that and nothing else (INF-679), and it needs it on the request path.
+func (h *Hub) Routing(ctx context.Context) (map[string]string, error) {
+	v, err := h.view(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(v.routing))
+	for domain, res := range v.routing {
+		out[domain] = res.workspace
+	}
+	return out, nil
+}
+
 func (h *Hub) Describe(ctx context.Context) ([]ServedDomain, error) {
 	v, err := h.view(ctx)
 	if err != nil {

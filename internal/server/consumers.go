@@ -32,7 +32,12 @@ type Consumers struct {
 	Audience string
 	// Allowed subjects, as the API server spells them.
 	Allowed []string
-	Log     *slog.Logger
+	// Grants is what each admitted subject may ask, keyed the same way
+	// as Allowed (INF-679). A subject with no entry keeps full read, so
+	// a deployment that declares consumers and no grants behaves exactly
+	// as it did.
+	Grants map[string]*Grant
+	Log    *slog.Logger
 }
 
 // Middleware guards a handler.
@@ -76,7 +81,32 @@ func (c *Consumers) Middleware(next http.Handler) http.Handler {
 			refuse(w, subject+" is not a consumer of this hub")
 			return
 		}
-		next.ServeHTTP(w, r)
+		grant := c.Grants[subject]
+		read, known := readOf(r.URL.Path)
+		if !known {
+			// A path that is not a procedure of this service. Refused
+			// rather than admitted: the read table is what decides what
+			// a caller may see, and a call it has no entry for is one
+			// nobody has decided about.
+			log.WarnContext(r.Context(), "API call refused: not a procedure of this service",
+				"path", logsafe.Value(r.URL.Path), "subject", logsafe.Value(subject))
+			deny(w, "this listener serves directory.v1.DirectoryService and nothing else")
+			return
+		}
+		if !grant.Allows(read) {
+			log.WarnContext(r.Context(), "API call refused: outside the grant",
+				"path", logsafe.Value(r.URL.Path), "subject", logsafe.Value(subject),
+				"read", string(read), "granted", grantedReads(grant))
+			deny(w, "this consumer may not "+string(read))
+			return
+		}
+		// One line per admitted call, naming the rule that let it
+		// through. A grant nobody can see the effect of is one an
+		// operator has to reason about from the declaration alone.
+		log.DebugContext(r.Context(), "API call admitted",
+			"path", logsafe.Value(r.URL.Path), "subject", logsafe.Value(subject),
+			"read", string(read), "scoped", !grant.Everything())
+		next.ServeHTTP(w, r.WithContext(WithGrant(r.Context(), grant)))
 	})
 }
 
@@ -94,4 +124,26 @@ func refuse(w http.ResponseWriter, reason string) {
 	// rather than a bare transport failure.
 	w.Header().Set("WWW-Authenticate", `Bearer realm="directory-roster"`)
 	http.Error(w, reason, http.StatusUnauthorized)
+}
+
+// deny refuses a call the caller is authenticated for and not permitted.
+// Distinct from [refuse] on purpose: 401 tells a client library to go and
+// get a credential, and a consumer whose grant does not cover a read has
+// the right credential already — sending it back for another one is how a
+// permission problem gets diagnosed as an authentication one.
+func deny(w http.ResponseWriter, reason string) {
+	http.Error(w, reason, http.StatusForbidden)
+}
+
+// grantedReads names what a grant does allow, for the refusal's log line.
+// Empty means every read, which is not a state that reaches here.
+func grantedReads(grant *Grant) []string {
+	if grant == nil {
+		return nil
+	}
+	out := make([]string, 0, len(grant.Reads))
+	for _, read := range grant.Reads {
+		out = append(out, string(read))
+	}
+	return out
 }
