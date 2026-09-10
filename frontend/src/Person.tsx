@@ -12,7 +12,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, forHowLong, personName, reason, roleName, sessions, sourceName, type Me } from "./api";
+import { access, forHowLong, issuerIsSameOrigin, personName, reason, roleName, sessions, sourceName, type Me } from "./api";
 import type { ExplainRequest, ExplainResponse } from "./gen/directoryroster/v1/access_pb";
 import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { useAsync } from "./hooks";
@@ -50,7 +50,7 @@ export function Person({
           value={explained.value}
           directory={explained.value.workspaceId || undefined}
           signedInVia={self ? sourceName(me?.source) : undefined}
-          sessionsOf={me?.issuerUrl && (self || operator) ? email : undefined}
+          sessionsOf={issuerIsSameOrigin(me?.issuerUrl) && (self || operator) ? email : undefined}
           onDone={onDone}
         />
       ) : null}
