@@ -711,10 +711,22 @@ type whoamiBody struct {
 	// it without a second call.
 	Version    string `json:"version"`
 	SignOutURL string `json:"signOutUrl,omitempty"`
+	// IssuerURL is where this console's shared issuer sits (INF-687),
+	// same origin as the console, so the browser reaches its
+	// SessionService directly with the SSO cookie. Empty for a hub
+	// deployed alone with no issuer -- which is what every deployment
+	// that sets nothing new here still gets -- and the console's
+	// sessions sections render only when it is set.
+	//
+	// It is the forwarded bearer's issuer: the same URL this hub already
+	// verifies a gateway-forwarded token against
+	// (access.login.forwardedBearer.issuer), which on one origin IS the
+	// issuer the console shares its host with.
+	IssuerURL string `json:"issuerUrl,omitempty"`
 }
 
 func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
-	body := whoamiBody{Status: "signed-out", Version: version.String()}
+	body := whoamiBody{Status: "signed-out", Version: version.String(), IssuerURL: s.forwarded.Issuer}
 	if id, ok := IdentityFrom(r.Context()); ok {
 		body = whoamiBody{
 			Status:     "signed-in",
@@ -728,6 +740,7 @@ func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
 			Groups:     id.Groups,
 			Version:    version.String(),
 			SignOutURL: s.signOut(),
+			IssuerURL:  s.forwarded.Issuer,
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

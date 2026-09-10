@@ -7,14 +7,36 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import { WorkspaceService, Backend } from "./gen/directoryroster/v1/workspace_pb";
 import { SettingsService } from "./gen/directoryroster/v1/settings_pb";
 import { AccessService, Role } from "./gen/directoryroster/v1/access_pb";
+import { SessionService, How } from "./gen/accessissuer/v1/session_pb";
 
-const transport = createConnectTransport({ baseUrl: "/" });
+// The hub's own services, reached under wherever this console is
+// mounted. `import.meta.env.BASE_URL` is "/" by default and carries
+// `route.pathPrefix` (INF-687, e.g. "/console/") when the build sets one
+// — see vite.config.ts. A bare "/" would resolve to the ORIGIN root
+// regardless of that prefix, which is right for the issuer below and
+// wrong for the hub: its services live only under the console's own
+// path, behind the gateway rule that rewrites the prefix away before
+// the hub ever sees it.
+const transport = createConnectTransport({ baseUrl: import.meta.env.BASE_URL });
 
 export const workspaces = createClient(WorkspaceService, transport);
 export const settings = createClient(SettingsService, transport);
 export const access = createClient(AccessService, transport);
 
-export { Backend, Role };
+// The issuer's SessionService, same-origin at the domain root (INF-687,
+// INF-682) — never under this console's own path, however it is
+// mounted. A plain "/" is exactly that root, unaffected by the prefix
+// above. The fetch override is what carries the browser's issuer SSO
+// cookie on a same-origin call, the same cookie `/account` on the issuer
+// itself would read, so a call here needs no bearer and no CORS.
+const issuerTransport = createConnectTransport({
+  baseUrl: "/",
+  fetch: (input, init) => globalThis.fetch(input, { ...init, credentials: "include" }),
+});
+
+export const sessions = createClient(SessionService, issuerTransport);
+
+export { Backend, Role, How };
 
 /** WhoAmI, as the standard endpoint every adapter serves. */
 export type Me = {
@@ -33,6 +55,11 @@ export type Me = {
   /** the build this hub is running */
   version?: string;
   signOutUrl?: string;
+  /** the issuer this console shares its origin with (INF-687), or empty
+   *  for a hub deployed alone with no issuer. Sessions sections render
+   *  only when this is set, because there is nothing to read or end
+   *  otherwise. */
+  issuerUrl?: string;
 };
 
 export async function whoami(): Promise<Me> {
@@ -66,6 +93,18 @@ export function ago(when?: Date): string {
   return `${Math.round(seconds / 86400)}d ago`;
 }
 
+/** How long until, the mirror of `ago` for something still ahead — a
+ *  session's expiry rather than its birth. */
+export function until(when?: Date): string {
+  if (!when) return "—";
+  const seconds = Math.round((when.getTime() - Date.now()) / 1000);
+  if (seconds <= 0) return "expired";
+  if (seconds < 60) return `in ${seconds}s`;
+  if (seconds < 3600) return `in ${Math.round(seconds / 60)}m`;
+  if (seconds < 86400) return `in ${Math.round(seconds / 3600)}h`;
+  return `in ${Math.round(seconds / 86400)}d`;
+}
+
 /** "1 person", "3 people": a count a reader does not have to translate. */
 export function people(n: number): string {
   return n === 1 ? "1 person" : `${n} people`;
@@ -95,6 +134,22 @@ export function sourceName(source?: string): string | undefined {
       return "recovery sign-in";
     default:
       return source || undefined;
+  }
+}
+
+/** How a session began, in words -- "revoke Ada's kubectl login" and
+ *  "revoke the console she left open" are different acts, and this is
+ *  what tells them apart on a row. */
+export function howName(how: How): string {
+  switch (how) {
+    case How.CODE:
+      return "browser sign-in";
+    case How.DEVICE:
+      return "device sign-in";
+    case How.EXCHANGE:
+      return "token exchange";
+    default:
+      return "unknown";
   }
 }
 
