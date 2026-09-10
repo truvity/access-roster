@@ -119,11 +119,24 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// them. Mounted here rather than in a service of its own because it
 	// belongs to this issuer's state and to nothing else, and because a
 	// second listener would be a second thing to expose.
+	// ALWAYS mounted. `console.origin` answers a different question — may
+	// a DIFFERENT origin call this — and gating the mount on it meant
+	// that turning CORS off turned the service off. That is exactly how
+	// the console's sessions sections came to answer 404 while
+	// `/account`, server-rendered beside them off the same store, worked
+	// perfectly: on one origin there is no CORS to configure, so nobody
+	// set the value, so the service was never there.
+	//
+	// A console sharing this issuer's origin reaches it with the
+	// browser's own session cookie and needs no CORS at all; the wrapper
+	// below is for the other shape, a console on a host of its own.
+	path, sessions := accessissuerv1connect.NewSessionServiceHandler(
+		NewSessionsService(iss, op.NewAccessTokenVerifier(iss.Config().URL, keySetOf(storage))))
 	if signIn.ConsoleOrigin != "" {
-		path, handler := accessissuerv1connect.NewSessionServiceHandler(
-			NewSessionsService(iss, op.NewAccessTokenVerifier(iss.Config().URL, keySetOf(storage))))
-		mux.Handle(path, browserAllowed(signIn.ConsoleOrigin, handler))
+		sessions = browserAllowed(signIn.ConsoleOrigin, sessions)
 	}
+
+	mux.Handle(path, sessions)
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.

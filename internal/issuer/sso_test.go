@@ -319,3 +319,40 @@ func TestTheAccountPageNeedsASession(t *testing.T) {
 		t.Errorf("signing out without a session = %d, want it refused", status)
 	}
 }
+
+// The session service is there whether or not a cross-origin console was
+// configured.
+//
+// It used to be mounted only when `console.origin` was set — a value that
+// answers a DIFFERENT question, whether some other origin may call it. On
+// one origin there is no CORS to configure, so nobody sets it, so the
+// service was not mounted and every sessions section in the console
+// answered 404 while `/account`, server-rendered beside them off the same
+// store, worked perfectly. That is a bad failure to have: the half a
+// person is most likely to try works, and the half a console shows does
+// not.
+func TestTheSessionServiceIsMountedWithoutAConsoleOrigin(t *testing.T) {
+	t.Parallel()
+	server, _ := signInServer(t, "ada@north.example")
+
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
+		server.URL+"/accessissuer.v1.SessionService/ListSessions", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("build the request: %v", err)
+	}
+
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+
+	defer func() { _ = response.Body.Close() }()
+
+	// Unauthenticated, so it refuses — but it must be THERE to refuse.
+	// A 404 means the route does not exist at all.
+	if response.StatusCode == http.StatusNotFound {
+		t.Fatal("the session service is not mounted without console.origin")
+	}
+}
