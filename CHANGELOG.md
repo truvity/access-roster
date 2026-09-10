@@ -22,6 +22,15 @@ git history.
 
 ## Unreleased
 
+- **Both halves of the merged service act on one policy**, loaded once
+  and handed to the issuer rather than loaded twice. They read the same
+  file in a real deployment, so the disagreement stayed hidden — but
+  their fallbacks differ, and two halves that *can* disagree about the
+  policy is exactly the class of failure the merge existed to end. Found
+  by booting the merged binary: with `DEMO=1` the directory half built a
+  demonstration policy and the issuer half refused to start on an empty
+  `POLICY_DIR`.
+
 - **One design document.** `docs/design/hub.md` and
   `docs/design/access-issuer.md` fold into
   `docs/design/access-roster.md` — the directory model, freshness, the
