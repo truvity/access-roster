@@ -111,6 +111,11 @@ type Session struct {
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	// Unset when it has never been refreshed.
 	LastRefreshed *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_refreshed,json=lastRefreshed,proto3" json:"last_refreshed,omitempty"`
+	// The browser (SSO) session this one was opened from, empty for a flow
+	// with no browser -- a device code redeemed by a CLI, an exchange. A
+	// console groups a person's sessions under this so that "this laptop"
+	// reads as one thing, and *sign out everywhere* is what ends it.
+	Sso           string `protobuf:"bytes,8,opt,name=sso,proto3" json:"sso,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -194,12 +199,28 @@ func (x *Session) GetLastRefreshed() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Session) GetSso() string {
+	if x != nil {
+		return x.Sso
+	}
+	return ""
+}
+
 type ListSessionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// At least one of these. Both narrows to their intersection: "Ada's
-	// ArgoCD sessions".
-	Identity      string `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
-	ClientId      string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	// Narrows to their intersection: "Ada's ArgoCD sessions". Naming
+	// neither is the global listing — every session in the installation —
+	// which is operator-only (INF-682): the two questions anybody else has
+	// are "what does this person have open" and "who is on this client".
+	Identity string `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
+	ClientId string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	// How many to return. Zero picks a server default; the server caps it
+	// regardless of what is asked for, so a client can always ask for more
+	// than it needs.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Opaque; pass back next_page_token from the previous response to
+	// continue a listing. Empty starts from the newest session.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -248,10 +269,26 @@ func (x *ListSessionsRequest) GetClientId() string {
 	return ""
 }
 
+func (x *ListSessionsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListSessionsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListSessionsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Newest first.
-	Sessions      []*Session `protobuf:"bytes,1,rep,name=sessions,proto3" json:"sessions,omitempty"`
+	Sessions []*Session `protobuf:"bytes,1,rep,name=sessions,proto3" json:"sessions,omitempty"`
+	// Non-empty when more sessions follow this page.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -291,6 +328,13 @@ func (x *ListSessionsResponse) GetSessions() []*Session {
 		return x.Sessions
 	}
 	return nil
+}
+
+func (x *ListSessionsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 type RevokeSessionsRequest struct {
@@ -409,7 +453,7 @@ var File_accessissuer_v1_session_proto protoreflect.FileDescriptor
 
 const file_accessissuer_v1_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1daccessissuer/v1/session.proto\x12\x0faccessissuer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb1\x02\n" +
+	"\x1daccessissuer/v1/session.proto\x12\x0faccessissuer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc3\x02\n" +
 	"\aSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\bidentity\x18\x02 \x01(\tR\bidentity\x12\x1b\n" +
@@ -418,12 +462,17 @@ const file_accessissuer_v1_session_proto_rawDesc = "" +
 	"\tissued_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x129\n" +
 	"\n" +
 	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12A\n" +
-	"\x0elast_refreshed\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\rlastRefreshed\"N\n" +
+	"\x0elast_refreshed\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\rlastRefreshed\x12\x10\n" +
+	"\x03sso\x18\b \x01(\tR\x03sso\"\x8a\x01\n" +
 	"\x13ListSessionsRequest\x12\x1a\n" +
 	"\bidentity\x18\x01 \x01(\tR\bidentity\x12\x1b\n" +
-	"\tclient_id\x18\x02 \x01(\tR\bclientId\"L\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"t\n" +
 	"\x14ListSessionsResponse\x124\n" +
-	"\bsessions\x18\x01 \x03(\v2\x18.accessissuer.v1.SessionR\bsessions\"o\n" +
+	"\bsessions\x18\x01 \x03(\v2\x18.accessissuer.v1.SessionR\bsessions\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"o\n" +
 	"\x15RevokeSessionsRequest\x12\x1a\n" +
 	"\bidentity\x18\x01 \x01(\tR\bidentity\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x1d\n" +
