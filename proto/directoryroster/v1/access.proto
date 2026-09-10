@@ -320,6 +320,12 @@ message SearchPeopleRequest {
   string workspace_id = 3;
   // account restricts by state, so a review can list the suspended.
   AccountFilter account = 4;
+  // domain restricts the answer to accounts whose address is in one
+  // domain. A tenant with several served domains is several companies
+  // to the person reviewing it, and the filter has to be server-side:
+  // narrowing a truncated page in the browser would say "nobody" while
+  // the snapshot holds hundreds.
+  string domain = 5;
 }
 
 enum AccountFilter {

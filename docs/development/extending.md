@@ -14,7 +14,7 @@ backend says exactly what it lacks rather than starting up empty.
 `Groups`, `Members` (atomic per group), plus `Consent` for the
 admin-consent flow or `KeyCredential` for an uploaded key — and register
 it under a name. The hub's record, routing, snapshots, freshness and
-console need no change; Directories gains a button. Ship: the
+console need no change; Providers gains a button. Ship: the
 backend's fake, a consent-runbook page, and the acceptance scenarios
 connect / revoke / domain move against the fake.
 

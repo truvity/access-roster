@@ -68,7 +68,7 @@ export function Attach({
         <TextField
           select
           size="small"
-          label={pickDirectoryGroup ? "Directory group" : "Internal group"}
+          label={pickDirectoryGroup ? "Provider group" : "Internal group"}
           value={chosen}
           onChange={(e) => setChosen(e.target.value)}
           sx={{ minWidth: 360 }}
@@ -82,8 +82,8 @@ export function Attach({
                 : loading
                   ? "Loading."
                   : pickDirectoryGroup
-                    ? "No directory groups snapshotted yet: add a directory first."
-                    : "Every declared internal group already has this directory group."
+                    ? "No provider groups snapshotted yet: add a provider first."
+                    : "Every declared internal group already has this provider group."
           }
         >
           {options.map((option) => (

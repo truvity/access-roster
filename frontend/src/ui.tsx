@@ -22,9 +22,20 @@ import Typography from "@mui/material/Typography";
  *   two-column data is a list, tabular data is a table. */
 
 /** Every name in the console is a link to the page about that thing. */
-export function Ref({ to, children, mono }: { to: string; children: ReactNode; mono?: boolean }) {
+export function Ref({ to, children, mono, dim }: { to: string; children: ReactNode; mono?: boolean; dim?: boolean }) {
   return (
-    <Link href={`#${to}`} underline="hover" sx={{ fontFamily: mono ? "monospace" : undefined, fontSize: mono ? "0.85em" : undefined }}>
+    <Link
+      href={`#${to}`}
+      underline="hover"
+      sx={{
+        fontFamily: mono ? "monospace" : undefined,
+        fontSize: mono ? "0.85em" : undefined,
+        // `dim` is for a name repeated down a run of rows: still the same
+        // link, but the eye should land on the first of the run and read
+        // the rest as continuation rather than as new information.
+        opacity: dim ? 0.55 : undefined,
+      }}
+    >
       {children}
     </Link>
   );
@@ -89,8 +100,8 @@ export type StateKind =
   | "unowned";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
-  live: { label: "live", color: "success", title: "The directory reports this account as active." },
-  suspended: { label: "suspended", color: "warning", filled: true, title: "The directory says this account is not live. A consumer acts on that only when the answer is authoritative." },
+  live: { label: "live", color: "success", title: "The provider reports this account as active." },
+  suspended: { label: "suspended", color: "warning", filled: true, title: "The provider says this account is not live. A consumer acts on that only when the answer is authoritative." },
   authoritative: { label: "authoritative", color: "success", title: "The last probe succeeded, the snapshot is fresh and no one else claims this domain. Consumers may act on removals." },
   provisional: { label: "provisional", color: "warning", title: "Answers about this may not be acted on for removals: consumers add but never remove." },
   contested: { label: "contested", color: "warning", filled: true, title: "Another directory serves this domain too. It is authoritative for neither until one of them stops." },

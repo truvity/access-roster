@@ -129,7 +129,7 @@ export function Explanation({
     ? [
         { label: "Address", value: <Mono>{identity?.email}</Mono> },
         {
-          label: "Directory",
+          label: "Provider",
           value: directory ? (
             <Ref to={paths.directory(directory)} mono>
               {directory}
@@ -159,7 +159,7 @@ export function Explanation({
     >
       {isPerson && value.inDomain && !value.found ? (
         <Alert severity="warning" sx={{ mb: 3 }}>
-          The directory does not know this address.
+          The provider does not know this address.
         </Alert>
       ) : null}
 
@@ -167,14 +167,14 @@ export function Explanation({
         {value.held.length === 0 ? (
           <Nothing>
             In no internal group, so nothing opens.{" "}
-            {isPerson ? "Attaching one of their directory groups to an internal group is what changes that." : "No matcher admits this proof."}
+            {isPerson ? "Attaching one of their provider groups to an internal group is what changes that." : "No matcher admits this proof."}
           </Nothing>
         ) : (
           <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ width: "36%" }}>{isPerson ? "Directory group" : "Matcher"}</TableCell>
+                  <TableCell sx={{ width: "36%" }}>{isPerson ? "Provider group" : "Matcher"}</TableCell>
                   <TableCell sx={{ width: "22%" }}>Internal group</TableCell>
                   <TableCell>Opens</TableCell>
                 </TableRow>
@@ -240,11 +240,11 @@ export function Explanation({
       ) : null}
 
       {isPerson ? (
-        <Section title="Directory groups" hint="every group the directory puts them in, before the policy looks at any of it">
+        <Section title="Provider groups" hint="every group the provider puts them in, before the policy looks at any of it">
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Names
               items={value.directoryGroups.map((group) => ({ label: group, to: paths.directoryGroup(group), mono: true }))}
-              empty={value.inDomain ? "In no directory group, so no membership can put them anywhere." : "No connected directory reads this address."}
+              empty={value.inDomain ? "In no provider group, so no membership can put them anywhere." : "No connected provider reads this address."}
             />
           </Paper>
         </Section>
