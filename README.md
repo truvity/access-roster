@@ -72,9 +72,10 @@ Adding one of anything is one row and one trust registration. The
 issuer URL, the policy file and the console never multiply.
 
 Built today: three Google Workspaces on one cluster, three relying
-parties. Designed and ticketed, not yet built: the second directory
-connector, workloads on other clusters proving themselves by their
-cluster's key set, and the GitHub controller across organisations.
+parties, and workloads on any cluster proving themselves by that
+cluster's published key set. Designed and ticketed, not yet built: the
+second directory connector, and the GitHub controller across
+organisations.
 [architecture.md](docs/architecture.md#fan-in-and-fan-out) says which
 is which, per row.
 
@@ -100,16 +101,16 @@ flowchart LR
   iss -- "trusted by" --> apps
 ```
 
-One service and one Valkey. The proxy is upstream oauth2-proxy in a
-chart, for applications that cannot run an OpenID flow themselves;
-anything that can, such as ArgoCD or Kargo, talks to the issuer directly.
+One service and one Valkey. A login makes no network call except to the
+corporate directory. The proxy is upstream oauth2-proxy in a chart, for
+applications that cannot run an OpenID flow themselves; anything that can,
+such as ArgoCD or Kargo, talks to the issuer directly.
 
 > **Status.** Running on one cluster with three Google Workspaces
 > connected, three relying parties on the issuer, and the OpenID
-> Foundation Config profile passing. The repository still ships the
-> directory and the issuer as two services; folding them into one is
-> the next release. [CHANGELOG.md](CHANGELOG.md) says what exists at
-> each version, and the documents below describe what is built.
+> Foundation Config profile passing. [CHANGELOG.md](CHANGELOG.md) says
+> what exists at each version, and the documents below describe what is
+> built.
 
 ## Read next
 
@@ -129,8 +130,7 @@ anything that can, such as ArgoCD or Kargo, talks to the issuer directly.
 
 | Artifact | For |
 |---|---|
-| `access-issuer` service and chart | the installation, once |
-| `directory-roster` service and chart | the installation, once; folds into the issuer next release |
+| `access-issuer` service and chart | the installation, once. One process: the directory, the policy, the OpenID provider, the login page and the console |
 | `access-proxy` chart | every console with no OpenID flow of its own |
 | Go module `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups |
 | TypeScript package `access-roster` | console UIs: `useIdentity()` over `/.access/whoami` |

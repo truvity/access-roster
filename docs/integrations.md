@@ -5,6 +5,16 @@ repository, numbered once here and explained case by case below. The
 structural drawing is [architecture.md](architecture.md); the how-to per
 relying party is under [connect/](connect/).
 
+> **Cases ④, ④b and ⑤ describe a shape that is gone.** The directory and
+> the issuer became one process in 0.12, so ⑤ is a function call rather
+> than an arrow, and the API listener ④ and ④b reach does not exist: a
+> workload that needs a token something outside its cluster trusts uses
+> token exchange (case ③), verified against its own cluster's published
+> key set. This page is rewritten as one set with the rest of the
+> documentation under INF-698; until then read those three cases as
+> history and [design/access-roster.md](design/access-roster.md) as what
+> runs.
+
 Every arrow below rests on one of **two trust anchors**, and the choice is
 made by scope, never by preference ([design/trust.md](design/trust.md)):
 **the cluster** — a ServiceAccount token the API server checks — for a
@@ -71,10 +81,9 @@ flowchart TB
 
 | Kind | Name | What it is | Who deploys or uses it | Status |
 |---|---|---|---|---|
-| **Service** | directory-roster | the directory hub | the platform, once per installation | **running** since 0.6; three directories connected; folds into the issuer next release |
-| **Service** | access-issuer | the issuer | the platform, once per installation | **running** since 0.6; Config profile green, two attended profiles pending ([1.0 gate](design/access-issuer.md)); absorbs the hub next release |
-| **Helm chart** | `directory-roster` | the hub's chart; expects a Valkey | the platform | published per tag |
-| **Helm chart** | `access-issuer` | the issuer's chart; expects a Valkey and the hub | the platform | published per tag |
+| **Service** | access-issuer | the whole of access-roster | the platform, once per installation | **running** since 0.6; the directory folded in at 0.12 ([design](design/access-roster.md)); Config profile green, two attended profiles pending |
+| **Helm chart** | `access-issuer` | the whole service; expects a Valkey | the platform | published per tag |
+| **Helm chart** | `directory-roster` | the pre-0.12 directory service, kept so an installation can move back | nobody new | published per tag; removed once nothing points at it |
 | **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console with no OpenID flow of its own; expects a Valkey; its client is one declared row | every team that ships a console, one release per console | published per tag; in front of the hub's console and hubble |
 | **Go module** | `github.com/truvity/access-roster` | `policy`, `backend` today; `identity` with the two verifiers and the adapters, `authz`, `directory`, `tokens` to come | every Go service and console | `policy` + `backend` published; the rest with 1.0 |
 | **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>` over `/.access/whoami` | every console UI | published per tag |
