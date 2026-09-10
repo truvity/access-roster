@@ -90,10 +90,20 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	if err != nil {
 		return nil, err
 	}
-	if len(signIn.Providers) == 0 {
-		return challenges(truthfulDiscovery(provider)), nil
-	}
-
+	// No early return for "this deployment signs nobody in". It used to
+	// take that shortcut, and it took the SESSION SERVICE and the
+	// signed-out page with it — the same mistake, in a new shape, as
+	// gating the session service on `console.origin` once did.
+	//
+	// The posture where it bites is day one: RECOVERY is available with
+	// no OAuth client configured — that is the whole point of it, the way
+	// in before any directory is connected — and a recovery sign-in opens
+	// a session like any other. An operator who has just recovered could
+	// not then list or revoke anything, which is the one control whose
+	// whole job is to end access.
+	//
+	// The chooser renders with no provider buttons and says so, which is
+	// the honest page for an installation that signs nobody in yet.
 	signIn.Issuer = iss
 	if signIn.Return == nil {
 		signIn.Return = op.AuthCallbackURL(provider)
