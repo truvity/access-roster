@@ -60,6 +60,9 @@ func signInServer(t *testing.T, email string) (*httptest.Server, *issuer.Issuer)
 	handler, err := issuer.HandlerWithSignIn(iss, storage, issuer.SignInDeps{
 		Providers: []issuer.SignIn{oneProvider{email: email}},
 		State:     access.NewStateCodec([]byte("a-test-key-for-signing-state"), 0),
+		// Where an old /account bookmark is sent, now that the page it
+		// named lives in the console (INF-695).
+		ConsoleMount: "/console",
 	})
 	if err != nil {
 		t.Fatalf("handler: %v", err)
@@ -242,81 +245,55 @@ func TestSigningOutEndsTheBrowserSession(t *testing.T) {
 	}
 }
 
-// The account page is served BY the issuer, at the issuer's host, which
-// is what lets it need no bearer and no CORS: the browser already holds
-// this issuer's session here.
-func TestTheAccountPageListsAndEndsYourSessions(t *testing.T) {
+// `/account` was the person's own page here — their sessions, and the
+// button that ends all of them. It has moved into the console (INF-695),
+// which is same-origin with this issuer and now the same process, and
+// whose page for a person already shows both. One directory UI; this
+// service's UI is the login form.
+//
+// The address stays as a redirect and not as a 404, because it was
+// linked to and bookmarked, and a person following an old link wants the
+// page rather than the news that it moved.
+func TestTheAccountAddressSendsYouToTheConsole(t *testing.T) {
 	t.Parallel()
-	server, iss := signInServer(t, "ada@north.example")
+	server, _ := signInServer(t, "ada@north.example")
 	b := newBrowser(t, server)
 	b.signIn()
 
-	// Something to list: a session on a client, as a redeemed code would
-	// have left behind.
-	if _, err := iss.Sessions().Record(t.Context(), issuer.Opened{
-		Identity: "ada@north.example", ClientID: "argocd", How: issuer.HowCode, Token: "t-1",
-	}); err != nil {
-		t.Fatalf("record a session: %v", err)
+	status, to, _ := b.do(http.MethodGet, "/account")
+	if status != http.StatusFound {
+		t.Fatalf("/account = %d, want a redirect into the console", status)
+	}
+	// The console routes in the FRAGMENT, so the path is the console and
+	// the page is what follows the hash.
+	if to != "/console/#/people/ada@north.example" {
+		t.Errorf("/account went to %q, want the console's page for the signed-in person", to)
 	}
 
-	status, _, page := b.do(http.MethodGet, "/account")
-	if status != http.StatusOK {
-		t.Fatalf("/account: %d", status)
-	}
-
-	if !strings.Contains(page, "ada@north.example") {
-		t.Error("the account page does not say who is signed in")
-	}
-
-	if !strings.Contains(page, "argocd") {
-		t.Error("the account page does not list the session that is open")
-	}
-
-	if !strings.Contains(page, "Sign out everywhere") {
-		t.Error("the account page offers no way to end everything")
-	}
-
-	// Ending everything ends the sign-in too, so the next request is a
-	// fresh authentication.
-	status, _, _ = b.do(http.MethodPost, "/account/sign-out")
-	if status != http.StatusSeeOther {
-		t.Fatalf("sign out everywhere: %d", status)
-	}
-
-	if b.cookies[issuer.SSOCookieName] != "" {
-		t.Error("signing out everywhere left the browser session behind")
-	}
-
-	// Both halves: the sessions that were running are gone, not only the
-	// sign-in that would have opened more.
-	left, err := iss.Sessions().List(t.Context(), issuer.Query{Identity: "ada@north.example"})
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-
-	if len(left) != 0 {
-		t.Errorf("%d session(s) survived signing out everywhere", len(left))
-	}
-
-	if where := b.authorize(""); !strings.Contains(where, "/login/google/start") {
-		t.Errorf("after signing out everywhere the next request went to %q, want the provider", where)
+	// The page it moved to is not the only thing that moved: the two
+	// POSTs behind it are gone as well, because the console does both
+	// through SessionService. An endpoint that answers after the page
+	// using it is deleted is surface nobody is keeping honest.
+	for _, path := range []string{"/account/sign-out", "/account/revoke"} {
+		if status, _, _ = b.do(http.MethodPost, path); status == http.StatusSeeOther || status == http.StatusOK {
+			t.Errorf("POST %s still answers: %d", path, status)
+		}
 	}
 }
 
-// Somebody who is not signed in gets a page, not a stack trace and not
-// somebody else's sessions.
-func TestTheAccountPageNeedsASession(t *testing.T) {
+// Somebody not signed in has no page about themselves to be sent to, so
+// they get the console itself rather than a URL naming an empty identity.
+func TestTheAccountAddressWithoutASessionGoesToTheConsole(t *testing.T) {
 	t.Parallel()
 	server, _ := signInServer(t, "ada@north.example")
 	b := newBrowser(t, server)
 
-	status, _, page := b.do(http.MethodGet, "/account")
-	if status != http.StatusOK || !strings.Contains(page, "not signed in") {
-		t.Errorf("/account without a session = %d %q, want a page saying so", status, page)
+	status, to, _ := b.do(http.MethodGet, "/account")
+	if status != http.StatusFound {
+		t.Fatalf("/account without a session = %d, want a redirect", status)
 	}
-
-	if status, _, _ = b.do(http.MethodPost, "/account/sign-out"); status != http.StatusForbidden {
-		t.Errorf("signing out without a session = %d, want it refused", status)
+	if to != "/console/" {
+		t.Errorf("/account without a session went to %q, want the console's root", to)
 	}
 }
 

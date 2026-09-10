@@ -251,8 +251,12 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		Recovery:      openRecovery(ctx, cfg, log),
 		State:         access.NewStateCodec(key.Derive("access-roster/sign-in-state"), signInWindow),
 		ConsoleOrigin: cfg.consoleOrigin,
-		Secure:        cfg.secureCookies,
-		Log:           log,
+		// Where an old /account bookmark is sent. Empty when this
+		// deployment serves no console, and then the route is not served
+		// at all rather than redirecting somebody to a 404.
+		ConsoleMount: consoleMount(deps),
+		Secure:       cfg.secureCookies,
+		Log:          log,
 	})
 	if err != nil {
 		return nil, err
@@ -287,6 +291,17 @@ func directorySource(deps Deps, cfg Config) string {
 		return "in-process"
 	}
 	return cfg.hubAddress
+}
+
+// consoleMount is where the console sits when there is one. It is a
+// constant because the mount is not configurable: the issuer owns the
+// origin ROOT — discovery must sit there — and the console takes this
+// path beside it.
+func consoleMount(deps Deps) string {
+	if deps.Console == nil {
+		return ""
+	}
+	return "/console"
 }
 
 // mount puts the console under /console/ on the issuer's own origin.
