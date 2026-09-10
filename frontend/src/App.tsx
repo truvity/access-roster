@@ -20,6 +20,7 @@ import AppsIcon from "@mui/icons-material/Apps";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import DomainIcon from "@mui/icons-material/Domain";
 import GroupsIcon from "@mui/icons-material/Groups";
+import KeyIcon from "@mui/icons-material/Key";
 import MenuIcon from "@mui/icons-material/Menu";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PeopleIcon from "@mui/icons-material/People";
@@ -39,6 +40,7 @@ import { Person } from "./Person";
 import { Matchers } from "./Matchers";
 import { Groups, Group } from "./Groups";
 import { Clients, Client } from "./Clients";
+import { SessionsPage } from "./Sessions";
 import { SettingsView } from "./Settings";
 
 const drawerWidth = 236;
@@ -59,6 +61,10 @@ const accessSide: Item[] = [
   { value: "groups", label: "Internal groups", to: paths.groups(), icon: <ShieldIcon fontSize="small" /> },
   { value: "clients", label: "Clients", to: paths.clients(), icon: <AppsIcon fontSize="small" /> },
 ];
+// Every open session in the installation (INF-682). It only exists once
+// an issuer shares this console's origin, and even then it is
+// operator-only: the rail entry must not render for a viewer.
+const sessionsItem: Item = { value: "sessions", label: "Sessions", to: paths.sessions(), icon: <KeyIcon fontSize="small" /> };
 
 export function App() {
   const route = useRoute();
@@ -109,6 +115,9 @@ export function App() {
         {accessSide.map((item) => (
           <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
         ))}
+        {operator && identityInfo?.issuerUrl ? (
+          <NavItem item={sessionsItem} current={route.view} onPick={() => setOpen(false)} />
+        ) : null}
       </List>
       <Box sx={{ flexGrow: 1 }} />
       <Divider />
@@ -250,13 +259,15 @@ function PageFor({
     case "directory-groups":
       return id ? <DirectoryGroup email={id} operator={operator} onDone={onDone} /> : <DirectoryGroups />;
     case "people":
-      return id ? <Person email={id} me={me} /> : <People />;
+      return id ? <Person email={id} me={me} operator={operator} onDone={onDone} /> : <People />;
     case "matchers":
       return <Matchers />;
     case "groups":
       return id ? <Group name={id} operator={operator} onDone={onDone} /> : <Groups />;
     case "clients":
-      return id ? <Client id={id} /> : <Clients />;
+      return id ? <Client id={id} issuerUrl={me?.issuerUrl} operator={operator} onDone={onDone} /> : <Clients />;
+    case "sessions":
+      return <SessionsPage operator={operator} />;
     case "settings":
       return <SettingsView operator={operator} onDone={onDone} />;
     default:

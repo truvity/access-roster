@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
@@ -8,10 +9,12 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, forHowLong, matcherKind, people as peopleCount, personName } from "./api";
+import { access, forHowLong, matcherKind, people as peopleCount, personName, reason, sessions } from "./api";
+import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
+import { SessionsPanel } from "./Sessions";
 
 /** What the internal groups buy: the relying parties a token can be
  *  issued for. */
@@ -68,10 +71,43 @@ export function Clients() {
 }
 
 /** One client: who may reach it, and who does — people through their
- *  directory groups, machines through the rules that admit them. */
-export function Client({ id }: { id: string }) {
+ *  directory groups, machines through the rules that admit them, and
+ *  once an issuer shares this console's origin, who is on it right now. */
+export function Client({
+  id,
+  issuerUrl,
+  operator,
+  onDone,
+}: {
+  id: string;
+  issuerUrl?: string;
+  operator?: boolean;
+  onDone?: (message: string) => void;
+}) {
   const policy = useAsync(() => access.getPolicy({}), []);
   const holders = useAsync(() => access.listHolders({ client: id }), [id]);
+  const [busy, setBusy] = useState<string | undefined>();
+  const [sessionFailure, setSessionFailure] = useState<string | undefined>();
+
+  const showSessions = Boolean(issuerUrl && operator);
+  const found = useAsync(
+    () => (showSessions ? sessions.listSessions({ clientId: id }) : Promise.resolve(undefined)),
+    [id, showSessions],
+  );
+
+  const revoke = async (session: Session) => {
+    setBusy(session.id);
+    setSessionFailure(undefined);
+    try {
+      await sessions.revokeSessions({ identity: session.identity, clientId: session.clientId, sessionId: session.id });
+      onDone?.(`Ended ${session.identity}'s session on ${id}.`);
+      found.reload();
+    } catch (error) {
+      setSessionFailure(reason(error));
+    } finally {
+      setBusy(undefined);
+    }
+  };
 
   const client = (policy.value?.clients ?? []).find((c) => c.id === id);
   const people = holders.value?.holders ?? [];
@@ -168,6 +204,20 @@ export function Client({ id }: { id: string }) {
           empty="No rule admits a machine into any of the groups above."
         />
       </Section>
+
+      {showSessions ? (
+        <Section title="Open sessions" hint="who is on this client right now">
+          <Loading busy={found.loading} />
+          <Failure error={found.error ?? sessionFailure} />
+          <SessionsPanel
+            sessions={found.value?.sessions ?? []}
+            showIdentity
+            onRevoke={revoke}
+            revoking={busy}
+            empty="Nobody is on this client right now."
+          />
+        </Section>
+      ) : null}
     </Page>
   );
 }
