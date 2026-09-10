@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.11
 
 - **One Gateway can be shared between the hub and its issuer.** Both
   charts rendered their own for `route.host`, so pointing them at one
