@@ -2,6 +2,7 @@ package issuer_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -38,11 +39,21 @@ func (fakeVerifier) Verify(_ context.Context, token, _ string) (issuer.Proof, er
 		owner, _, _ := strings.Cut(repo, "/")
 		return issuer.Proof{GitHub: &policy.GitHubClaims{Repository: repo, Owner: owner, Ref: ref}}, nil
 	case strings.HasPrefix(token, "k8s:"):
-		ns, name, ok := strings.Cut(strings.TrimPrefix(token, "k8s:"), "/")
-		if !ok {
+		// "k8s:<namespace>/<name>", or "k8s:<cluster>/<namespace>/<name>"
+		// when the row that verified it knows which cluster it came from.
+		parts := strings.Split(strings.TrimPrefix(token, "k8s:"), "/")
+		switch len(parts) {
+		case 2:
+			return issuer.Proof{ServiceAccount: &policy.ServiceAccountRef{
+				Namespace: parts[0], Name: parts[1],
+			}}, nil
+		case 3:
+			return issuer.Proof{ServiceAccount: &policy.ServiceAccountRef{
+				Cluster: parts[0], Namespace: parts[1], Name: parts[2],
+			}}, nil
+		default:
 			return issuer.Proof{}, issuer.ErrUnverified
 		}
-		return issuer.Proof{ServiceAccount: &policy.ServiceAccountRef{Namespace: ns, Name: name}}, nil
 	default:
 		return issuer.Proof{}, issuer.ErrUnverified
 	}
@@ -467,4 +478,50 @@ func TestTheWithdrawnGrantsDoNotAnswer(t *testing.T) {
 	if resp.StatusCode == http.StatusOK {
 		t.Errorf("the device authorization endpoint still answers: %s", body)
 	}
+}
+
+// The cluster a workload's token came from has to survive the whole
+// exchange, and it very nearly does not: the verified proof travels
+// through the library as a map of claims and is rebuilt on the other
+// side, so a field missing from that round trip is dropped in silence.
+//
+// Both halves of the loss matter. The subject stops naming the cluster,
+// and the same namespace and name exist on every cluster — so two
+// different machines become one `sub`, which is the collision the
+// qualifier exists to prevent. And a `service_account` matcher that
+// narrows to one cluster is compared against an empty string, so it
+// matches nothing at all, silently, and an operator sees a rule that
+// grants nothing with no reason visible.
+func TestTheClusterSurvivesTheExchange(t *testing.T) {
+	t.Parallel()
+	server, _ := serveIssuer(t)
+
+	status, body := exchange(t, server, "k8s:devel/identity-system/authorization-webhook", "directory-roster")
+	if status != http.StatusOK {
+		t.Fatalf("exchange = %d, %v", status, body)
+	}
+
+	claims := accessTokenClaims(t, body)
+	if got, _ := claims["sub"].(string); got != "devel:k8s:identity-system:authorization-webhook" {
+		t.Errorf("sub = %q, want the cluster-qualified subject", got)
+	}
+}
+
+// accessTokenClaims reads the payload of the minted access token.
+func accessTokenClaims(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+	raw, _ := body["access_token"].(string)
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		t.Fatalf("access_token is not a JWT: %q", raw)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode the payload: %v", err)
+	}
+	var claims map[string]any
+	if err = json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("parse the payload: %v", err)
+	}
+	return claims
 }
