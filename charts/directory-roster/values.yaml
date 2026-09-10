@@ -49,11 +49,21 @@ valkey:
     name: ""
     key: password
   tls: false
-  # The fleet's Valkeys are ValkeyClusters even at one shard, so the
-  # cluster protocol is the usual answer. A plain single server needs
-  # this off; a mismatch is refused at start rather than surfacing later
-  # as a puzzling command error.
-  cluster: true
+  # Cluster protocol. **Off by default, and the default is the answer
+  # for a single-node Valkey.**
+  #
+  # In cluster mode the client runs CLUSTER SLOTS, learns the NODE
+  # addresses, and talks to those from then on. The Kubernetes Service --
+  # the one mechanism whose entire job is to survive a pod moving -- is
+  # used once as a seed and then bypassed, so a Valkey that moves takes
+  # the client with it and it never comes back. That happened on
+  # 2026-09-10: two services dialled a dead pod address for half an hour
+  # and a human had to restart them.
+  #
+  # Turn it on only for a Valkey with more than one shard, where the
+  # protocol earns its keep. A mismatch is refused at start rather than
+  # surfacing later as a puzzling command error.
+  cluster: false
 
 # Freshness knobs. Operational configuration belongs to the deployment;
 # the console shows these read-only.

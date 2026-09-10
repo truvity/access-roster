@@ -41,6 +41,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
+	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/server"
@@ -542,9 +543,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	apiHandler := consumers(ctx, cfg, kept, declaredConsumers, log).Middleware(apiMux)
 
-	healthMux := http.NewServeMux()
-	healthMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
-	healthMux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
+	// Readiness follows the snapshot store; liveness does not. A hub
+	// that cannot read a snapshot cannot answer anything, and saying
+	// ready through that is how a moved Valkey became a half-hour of
+	// hanging requests on 2026-09-10 with every pod green.
+	healthMux := health.Mux(0, health.Follow("the snapshot store", snapshots))
 
 	log.InfoContext(ctx, "directory-roster assembled",
 		"api", cfg.apiPort, "console", cfg.consolePort, "health", cfg.healthPort,

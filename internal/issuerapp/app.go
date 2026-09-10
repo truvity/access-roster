@@ -24,6 +24,7 @@ import (
 
 	"github.com/truvity/access-roster/backend/google"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hubclient"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
@@ -229,9 +230,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 
-	health := http.NewServeMux()
-	health.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
-	health.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
+	// Readiness follows the state store; liveness does not. An issuer
+	// that cannot reach it can neither mint nor find a session, and
+	// reporting ready through that is how a moved Valkey became a
+	// fifteen-second hang at every callback on 2026-09-10.
+	healthMux := health.Mux(0, health.Follow("the session store", shared))
 
 	log.InfoContext(ctx, "access-issuer assembled",
 		"issuer", cfg.issuerURL, "hub", cfg.hubAddress, "inCluster", cfg.inCluster,
@@ -242,7 +245,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		log.WarnContext(ctx, "the issuer URL may be plaintext: every token this service signs is a "+
 			"bearer credential, and an issuer reached over http can be impersonated by anyone on the path")
 	}
-	return &App{handler: handler, health: health, issuer: core, cfg: cfg, log: log}, nil
+	return &App{handler: handler, health: healthMux, issuer: core, cfg: cfg, log: log}, nil
 }
 
 // Run serves the two listeners until the context is done.

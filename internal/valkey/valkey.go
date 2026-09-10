@@ -292,3 +292,19 @@ func sortedKeys[V any](m map[string]V) []string {
 	slices.Sort(out)
 	return out
 }
+
+// Ping reports whether the store answers.
+//
+// Readiness calls it. A process that cannot reach its Valkey cannot do
+// the thing it exists to do -- the hub cannot read a snapshot, the
+// issuer cannot mint or find a session -- and saying "ready" through
+// that is how a fault becomes a fifteen-second hang at the gateway
+// instead of a fast refusal and a red line in `kubectl get pods`.
+//
+// Deliberately NOT wired to liveness. A Valkey blip would then restart
+// every consumer at once, turning a degraded minute into an outage.
+// Readiness stops traffic; liveness kills processes; only the first
+// should follow a dependency.
+func (s *Snapshots) Ping(ctx context.Context) error {
+	return s.client.Ping(ctx).Err()
+}
