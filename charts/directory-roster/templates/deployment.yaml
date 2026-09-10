@@ -200,9 +200,20 @@ spec:
               path: /healthz
               port: health
           readinessProbe:
-            httpGet:
-              path: /readyz
-              port: health
+            # Readiness follows the shared store; liveness deliberately
+            # does not. A replica that cannot reach it leaves the
+            # rotation, and the gateway answers fast instead of hanging;
+            # nothing is restarted, so one blip cannot restart the fleet.
+            #
+            # timeoutSeconds exceeds the service's own 2s check so the
+            # answer is the reason ("the session store does not answer:
+            # i/o timeout") rather than the kubelet's timeout. Three
+            # failures at ten seconds is thirty seconds of trouble before
+            # a replica leaves, which a reconnect comfortably beats.
+            httpGet: { path: /readyz, port: health }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

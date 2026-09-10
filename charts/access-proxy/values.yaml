@@ -92,7 +92,10 @@ session:
     # Valkey per cluster shared by every proxy is the recommendation:
     # sessions are keyed by random tickets, so proxies cannot collide.
     address: ""
-    cluster: true
+    # Off by default; see the hub's and the issuer's charts for why. In
+    # cluster mode the client pins to node addresses and a Valkey that
+    # moves never comes back without a restart.
+    cluster: false
     username: ""
     passwordSecret:
       name: ""

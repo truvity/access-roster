@@ -142,3 +142,9 @@ func (s *State) Members(ctx context.Context, key string) ([]string, error) {
 
 	return members, nil
 }
+
+// Ping reports whether the store answers. See [Snapshots.Ping] for why
+// this is readiness and never liveness.
+func (s *State) Ping(ctx context.Context) error {
+	return s.client.Ping(ctx).Err()
+}

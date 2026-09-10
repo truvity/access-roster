@@ -20,6 +20,24 @@ git history.
   and the two design documents carry a banner saying which of their
   sections are current and which are history. No code changes.
 
+## Unreleased
+
+- **A moved Valkey no longer needs a human.** On 2026-09-10 a Valkey pod
+  was rescheduled onto a new address; the issuer and hubble's proxy went
+  on dialling the old one for half an hour, reported **Ready**
+  throughout, and had to be restarted by hand. Three things were wrong
+  and all three are fixed. **Cluster mode is off by default**: with one
+  shard it makes the client learn node addresses from `CLUSTER SLOTS`
+  and talk to those, bypassing the Kubernetes Service — the one
+  mechanism whose whole job is to survive a pod moving. **Readiness now
+  follows the shared store** and liveness deliberately does not, so a
+  replica that cannot reach it leaves the gateway's rotation and answers
+  fast instead of hanging, while one blip cannot restart the fleet; the
+  refusal names the dependency and the reason. And **a test proves the
+  recovery** rather than assuming it: stop the server, start it again,
+  and the client must work without being reconstructed. It recovers in
+  about two seconds.
+
 ## v0.10.0
 
 - **A runbook for the conformance run.** `docs/operations/conformance.md`:
