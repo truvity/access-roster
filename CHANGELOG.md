@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.9
 
 - **Docs: one domain, and where session management lives.** Decided with
   Oleg 2026-09-10: the issuer, the directory's console and the shared UI
