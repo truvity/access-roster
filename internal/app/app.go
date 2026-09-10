@@ -263,7 +263,8 @@ func consumers(
 	allowed := make([]string, 0)
 	grants := map[string]*server.Grant{}
 	if declared != nil {
-		for _, consumer := range declared.Consumers {
+		for i := range declared.Consumers {
+			consumer := &declared.Consumers[i]
 			subject := kube.ServiceAccountSubject(consumer.Namespace, consumer.ServiceAccount)
 			allowed = append(allowed, subject)
 			if grant := consumer.Grant(); grant != nil {
@@ -826,18 +827,6 @@ func announceRecoveryPassword(password string) {
 	fmt.Fprintf(os.Stderr, "\n  recovery password (generated for this run): %s\n"+
 		"  Sign in at /login, under Recovery sign-in.\n\n",
 		password)
-}
-
-// envList reads a comma-separated list, ignoring blanks and spacing, so
-// that a chart may render one entry per line without it mattering.
-func envList(name string) []string {
-	var out []string
-	for _, item := range strings.Split(os.Getenv(name), ",") {
-		if item = strings.TrimSpace(item); item != "" {
-			out = append(out, item)
-		}
-	}
-	return out
 }
 
 func envString(name, fallback string) string {
