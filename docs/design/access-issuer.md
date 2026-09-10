@@ -82,7 +82,10 @@ every grant below except dynamic registration; the issuer implements the
 library's storage interfaces over Valkey and the policy, and nothing
 else of the protocol. "Fully implement" means one thing here: the
 profiles named as *in* pass the OpenID Foundation conformance suite in
-the acceptance run, and nothing named as *out* is served.
+the acceptance run, and nothing named as *out* is served. How to run it
+is [../operations/conformance.md](../operations/conformance.md); the
+Config profile passes today, unattended, and the two that sign somebody
+in need a person at a browser because that is what they are for.
 
 The list below is one thing, not ten: an OpenID Connect provider from a
 library. It is grouped by what someone is doing, because that is what
