@@ -3,6 +3,19 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **The sign-out chain moves with the console.** Mounted under a path,
+  the console's sign-out link still pointed at `/oauth2/sign_out` at the
+  root — which belongs to the issuer, not the proxy — and its
+  `post_logout_redirect_uri` was the host root rather than the console's
+  own page, so it matched no `signed_out` entry and the issuer landed the
+  person on its own page. Both halves fail quietly: one is a button that
+  404s, the other is a sign-out that worked and reads as though it did
+  not. The proxy prefix now derives from `route.pathPrefix` when unset,
+  so the two cannot drift, and three guards hold the chain. No prefix
+  renders exactly what it always did. (INF-687)
+
 ## v0.9.11
 
 - **One Gateway can be shared between the hub and its issuer.** Both
