@@ -27,6 +27,8 @@ func (h *Hub) Run(ctx context.Context) error {
 	h.log.InfoContext(ctx, "background loops started",
 		"refresh", h.cfg.RefreshInterval, "probe", h.cfg.ProbeInterval, "freshness", h.cfg.FreshnessWindow)
 
+	h.catchUp(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -50,6 +52,52 @@ type Locker interface {
 	// the lease was taken and a release to call when the work is done;
 	// release is safe to call on a lease that has already expired.
 	Lock(ctx context.Context, key string, ttl time.Duration) (release func(context.Context), acquired bool, err error)
+}
+
+// catchUp refreshes what is ALREADY stale, before the first tick.
+//
+// A ticker's first tick is a whole interval away, so a process that
+// starts serves whatever the last one left for fifteen minutes — and a
+// deployment rolling more often than that never reaches a tick at all.
+// The stored snapshot then ages past the freshness window and every
+// domain reads as *provisional*, which is a release cadence showing up
+// to an operator as a loss of authority. Seen exactly that way on
+// 2026-09-10, across an afternoon of pinning releases.
+//
+// Only what is already stale. A snapshot taken four minutes ago by the
+// process this one replaced is fine, and re-reading it would spend
+// somebody's API quota to learn nothing — Google's is per tenant, not
+// per reader. The lease in refreshOne still applies, so replicas
+// starting together still read once between them.
+func (h *Hub) catchUp(ctx context.Context) {
+	workspaces, err := h.store.List(ctx)
+	if err != nil {
+		h.log.WarnContext(ctx, "start-up refresh could not list workspaces", "error", err)
+
+		return
+	}
+
+	now := time.Now()
+
+	for i := range workspaces {
+		id := workspaces[i].ID
+
+		snap, err := h.snapshots.Get(ctx, id)
+		if err != nil {
+			h.log.WarnContext(ctx, "start-up refresh could not read the snapshot",
+				"workspace", id, "error", err)
+
+			continue
+		}
+
+		if snap != nil && snap.Age(now) < h.cfg.FreshnessWindow {
+			continue
+		}
+
+		h.log.InfoContext(ctx, "the stored snapshot is past its freshness window at start; refreshing now",
+			"workspace", id, "hadSnapshot", snap != nil)
+		h.refreshOne(ctx, id)
+	}
 }
 
 // refreshAll takes a new snapshot of every workspace. A workspace that

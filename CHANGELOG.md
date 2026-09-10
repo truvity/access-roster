@@ -3,6 +3,26 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **The console asked the wrong host who it was.** `/.access/whoami` was
+  fetched as an absolute path, so mounted under `/console/` it resolved
+  against the **origin** — the issuer — which serves no such endpoint.
+  The console concluded nobody was signed in: it offered *Sign in* to
+  somebody already authenticated and disabled every operator control,
+  while the Connect calls beside it worked, because those had been
+  fixed for the mount point and this had not. Every path the console asks
+  for now goes through one `mounted()` helper, so there is one place to
+  get it right rather than one per call site.
+- **A snapshot already past its freshness window is refreshed at start.**
+  A ticker's first tick is a whole interval away, so a restart served the
+  previous process's snapshot for fifteen minutes — and a deployment
+  rolling more often than that never reached a tick at all. The snapshot
+  aged past the window and every domain read *provisional*, which is a
+  release cadence showing up to an operator as a loss of authority. Only
+  what is already stale is re-read, and the existing lease still means
+  replicas starting together read once between them.
+
 ## v0.9.13
 
 - **The console's assets are referenced relatively, so one bundle serves
