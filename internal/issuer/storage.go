@@ -894,6 +894,15 @@ func proofClaims(proof Proof) map[string]any {
 	}
 	if sa := proof.ServiceAccount; sa != nil {
 		out["namespace"], out["serviceaccount"] = sa.Namespace, sa.Name
+		// WHICH cluster, and it has to survive this round trip. The same
+		// namespace and name exist on every cluster, so a subject without
+		// it is the collision the qualifier exists to prevent — and a
+		// `service_account` matcher that narrows to one cluster would
+		// match nothing at all, silently, because the rule would be
+		// compared against an empty string.
+		if sa.Cluster != "" {
+			out["cluster"] = sa.Cluster
+		}
 	}
 	return out
 }
@@ -949,7 +958,9 @@ func proofFrom(claims map[string]any) Proof {
 		}
 	}
 	if ns := str("namespace"); ns != "" {
-		proof.ServiceAccount = &policy.ServiceAccountRef{Namespace: ns, Name: str("serviceaccount")}
+		proof.ServiceAccount = &policy.ServiceAccountRef{
+			Cluster: str("cluster"), Namespace: ns, Name: str("serviceaccount"),
+		}
 	}
 	return proof
 }

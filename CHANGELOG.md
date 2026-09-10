@@ -22,6 +22,21 @@ git history.
 
 ## Unreleased
 
+- **A workload's cluster survives the exchange.** The verified proof
+  travels through the OpenID library as a map of claims and is rebuilt on
+  the other side, and the cluster was not among them — so it was dropped
+  in silence. Two halves of that loss: the subject stopped naming the
+  cluster, and the same namespace and name exist on every cluster, so two
+  different machines became one `sub` — exactly the collision the
+  qualifier exists to prevent. And a `service_account` matcher narrowed
+  to one cluster was compared against an empty string, so it matched
+  nothing at all and an operator would see a rule granting nothing with
+  no reason visible.
+
+  It predates the federation work — the qualifier never reached a token
+  through exchange — but federation is what makes it reachable, because
+  until now there was one cluster.
+
 - **Both halves of the merged service act on one policy**, loaded once
   and handed to the issuer rather than loaded twice. They read the same
   file in a real deployment, so the disagreement stayed hidden — but
