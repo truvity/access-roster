@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"sort"
@@ -361,6 +362,7 @@ type App struct {
 	api     http.Handler
 	console http.Handler
 	health  http.Handler
+	ready   health.Dependency
 	hub     *hub.Hub
 	cfg     Config
 	log     *slog.Logger
@@ -378,6 +380,19 @@ func (a *App) HealthHandler() http.Handler { return a.health }
 
 // Hub is the directory hub itself, for a caller that drives it directly.
 func (a *App) Hub() *hub.Hub { return a.hub }
+
+// Readiness is the snapshot store as a dependency, for a caller that
+// assembles a health endpoint of its own. The merged service has one
+// /readyz answering for both halves, and a half that cannot read a
+// snapshot cannot answer anything.
+func (a *App) Readiness() health.Dependency { return a.ready }
+
+// RunLoops drives the refresher and the probes, and serves nothing.
+//
+// It is what the merged service runs (INF-691): one process, one set of
+// listeners, and this half contributing its background work rather than
+// three listeners of its own.
+func (a *App) RunLoops(ctx context.Context) error { return a.hub.Run(ctx) }
 
 // Close releases what New opened.
 func (a *App) Close() {
@@ -528,8 +543,14 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		},
 		SignIn:     cfg.loginDirectory,
 		SignOutURL: cfg.signOutURL,
-		Log:        log,
-		UI:         frontend.FS(),
+		// Where this console sits on its origin, read from the address it
+		// is published at rather than configured twice. The handlers
+		// never see the prefix — the gateway strips it, and so does the
+		// merged process — but every link they hand a browser has to
+		// carry it.
+		Mount: mountOf(cfg.publicURL),
+		Log:   log,
+		UI:    frontend.FS(),
 	})
 
 	apiMux := http.NewServeMux()
@@ -547,7 +568,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	// that cannot read a snapshot cannot answer anything, and saying
 	// ready through that is how a moved Valkey became a half-hour of
 	// hanging requests on 2026-09-10 with every pod green.
-	healthMux := health.Mux(0, health.Follow("the snapshot store", snapshots))
+	ready := health.Follow("the snapshot store", snapshots)
+	healthMux := health.Mux(0, ready)
 
 	log.InfoContext(ctx, "directory-roster assembled",
 		"api", cfg.apiPort, "console", cfg.consolePort, "health", cfg.healthPort,
@@ -559,6 +581,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		api:     apiHandler,
 		console: consoleServer.Handler(),
 		health:  healthMux,
+		ready:   ready,
 		hub:     directory,
 		cfg:     cfg,
 		log:     log,
@@ -596,6 +619,20 @@ func serve(ctx context.Context, port int, handler http.Handler, name string, log
 		return fmt.Errorf("%s listener: %w", name, err)
 	}
 	return nil
+}
+
+// mountOf is the path part of the address the console is published at:
+// "/console" from https://access.example/console, and empty from
+// https://console.example, which is a console with an origin to itself.
+//
+// An unparseable address yields no prefix, which is the standalone shape
+// and the one that was right before any of this existed.
+func mountOf(publicURL string) string {
+	parsed, err := url.Parse(publicURL)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSuffix(parsed.Path, "/")
 }
 
 // builtinPolicy is what a hub with no declared policy starts from: the two

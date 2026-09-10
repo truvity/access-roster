@@ -128,19 +128,38 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
 	}
 
-	switch {
-	case c.issuerURL == "":
-		// Every relying party's trust is anchored on this string, and it
-		// goes into every token. A default would be a value nobody chose
-		// baked into an installation's whole estate.
+	// Every relying party's trust is anchored on this string, and it goes
+	// into every token. A default would be a value nobody chose baked
+	// into an installation's whole estate.
+	if c.issuerURL == "" {
 		return Config{}, errors.New("ISSUER_URL is required: it is baked into every token and every relying party")
-	case c.hubAddress == "":
-		return Config{}, errors.New("HUB_ADDRESS is required: this service asks the hub about every person")
 	}
 	if c.audience == "" {
 		c.audience = c.release
 	}
 	return c, nil
+}
+
+// Deps are the things a caller supplies instead of letting this package
+// build them. Both are how the merged service is assembled (INF-691):
+// one process holds the directory, so the issuer calls it rather than
+// dialling it, and the console is served from the issuer's own origin
+// instead of a listener of its own.
+//
+// A zero Deps is the split deployment: the directory is reached over the
+// network at HUB_ADDRESS, and nothing is mounted under /console/.
+type Deps struct {
+	// Directory answers "who is this address". Nil builds a network
+	// client, and then HUB_ADDRESS is required.
+	Directory issuer.Directory
+	// Ready are dependencies the caller's half of the process needs
+	// answering for, added to this one's on /readyz. The merged service
+	// has one readiness endpoint and two stores behind it.
+	Ready []health.Dependency
+	// Console is the operator UI, written as if it were at the root of an
+	// origin. It is mounted under /console/ with the prefix stripped,
+	// which is exactly what the gateway used to do for it.
+	Console http.Handler
 }
 
 // App is an assembled issuer.
@@ -163,7 +182,7 @@ func (a *App) HealthHandler() http.Handler { return a.health }
 func (a *App) Issuer() *issuer.Issuer { return a.issuer }
 
 // New assembles the issuer.
-func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
+func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -177,11 +196,18 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		return nil, err
 	}
 
-	directory, err := hubclient.New(hubclient.Options{
-		BaseURL: cfg.hubAddress, TokenFile: cfg.hubTokenFile,
-	})
-	if err != nil {
-		return nil, err
+	directory := deps.Directory
+	if directory == nil {
+		if cfg.hubAddress == "" {
+			return nil, errors.New(
+				"HUB_ADDRESS is required: this service asks the directory about every person, " +
+					"and no directory was supplied in-process")
+		}
+		if directory, err = hubclient.New(hubclient.Options{
+			BaseURL: cfg.hubAddress, TokenFile: cfg.hubTokenFile,
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	// The shared store first: the issuer's session index lives in it, so
@@ -229,15 +255,18 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	handler = mount(handler, deps.Console)
 
 	// Readiness follows the state store; liveness does not. An issuer
 	// that cannot reach it can neither mint nor find a session, and
 	// reporting ready through that is how a moved Valkey became a
 	// fifteen-second hang at every callback on 2026-09-10.
-	healthMux := health.Mux(0, health.Follow("the session store", shared))
+	healthMux := health.Mux(0, append([]health.Dependency{
+		health.Follow("the session store", shared),
+	}, deps.Ready...)...)
 
 	log.InfoContext(ctx, "access-issuer assembled",
-		"issuer", cfg.issuerURL, "hub", cfg.hubAddress, "inCluster", cfg.inCluster,
+		"issuer", cfg.issuerURL, "directory", directorySource(deps, cfg), "inCluster", cfg.inCluster,
 		"exchangeAudience", cfg.audience, "port", cfg.port, "health", cfg.healthPort,
 		"tokenLifetime", cfg.tokenLifetime, "refreshLifetime", cfg.refreshLifetime,
 		"holdWindow", cfg.holdWindow, "version", version.String())
@@ -246,6 +275,49 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			"bearer credential, and an issuer reached over http can be impersonated by anyone on the path")
 	}
 	return &App{handler: handler, health: healthMux, issuer: core, cfg: cfg, log: log}, nil
+}
+
+// directorySource says where the answer about a person comes from, in a
+// word an operator can act on: the address of another service, or this
+// process.
+func directorySource(deps Deps, cfg Config) string {
+	if deps.Directory != nil {
+		return "in-process"
+	}
+	return cfg.hubAddress
+}
+
+// mount puts the console under /console/ on the issuer's own origin.
+//
+// Same origin is the point, not a convenience: the console's session
+// pages then call the issuer with the browser's own cookie and no bearer
+// in JavaScript, and discovery keeps the origin ROOT, which is where
+// every relying party's `iss` says it is. The console's handler is
+// written as if it were at a root, so the prefix is stripped here —
+// exactly what the gateway's URLRewrite used to do for it.
+func mount(issuerHandler, console http.Handler) http.Handler {
+	if console == nil {
+		return issuerHandler
+	}
+	mux := http.NewServeMux()
+	// "/console" without the trailing slash is a DIFFERENT page to a
+	// browser: the bundle references its assets relatively so that one
+	// build serves at any mount point, and "./assets/..." on a page at
+	// "/console" resolves against the root — where every asset asks the
+	// issuer and gets a 404.
+	mux.HandleFunc("GET /console", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/console/", http.StatusFound)
+	})
+	mux.Handle("/console/", http.StripPrefix("/console", console))
+	// The admin-consent callback stays at the origin ROOT, because it is
+	// the one flow that runs before anybody can be signed in: the
+	// operator who connects the FIRST directory is by definition one no
+	// directory can vouch for yet. Its redirect URI is registered with
+	// the corporate IdP, so moving it would mean re-registering it in
+	// every tenant.
+	mux.Handle("/connect/", console)
+	mux.Handle("/", issuerHandler)
+	return mux
 }
 
 // Run serves the two listeners until the context is done.

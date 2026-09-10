@@ -22,6 +22,24 @@ git history.
 
 ## Unreleased
 
+- **One service.** The directory hub and the issuer are one process
+  (INF-691). The issuer asks the directory by calling a function instead
+  of dialling a service, so a login now makes no network call except to
+  the corporate directory: gone from every single sign-in are a
+  ConnectRPC round trip, a TokenReview, a NetworkPolicy hop, and the
+  class of failure where the two halves disagree about the same person.
+  The console is served on the issuer's own origin under `/console/`,
+  which is what lets its session pages use the browser's cookie with no
+  bearer in JavaScript, and one `/readyz` answers for both stores. The
+  split was built so that several things could ask the directory; the
+  issuer became its only consumer, and the endpoint comes back on the
+  merged service when the GitHub controller needs it.
+
+  The console is now told where it sits, because a prefix that used to be
+  stripped by the gateway also has to appear in every link the console
+  hands a browser: `/login` resolves against the origin, where the
+  issuer's page is.
+
 - **The console says *provider*, and the tables split domain out.** What
   the code calls a workspace the console now calls a **provider**, and
   the groups it holds **provider groups**; both sides of the rail then

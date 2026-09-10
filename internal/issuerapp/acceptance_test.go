@@ -62,7 +62,7 @@ clients:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	app, err := issuerapp.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	app, err := issuerapp.New(context.Background(), cfg, issuerapp.Deps{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -157,7 +157,6 @@ func TestTheKeysAreServedAndCarryAnId(t *testing.T) {
 func TestImpossibleConfigurationIsRefused(t *testing.T) {
 	for _, tc := range []struct{ name, key, value string }{
 		{"no issuer URL", "ISSUER_URL", ""},
-		{"no hub", "HUB_ADDRESS", ""},
 		{"a lifetime that is not a duration", "TOKEN_LIFETIME", "a while"},
 		{"a log level that is not one", "LOG_LEVEL", "chatty"},
 	} {
@@ -169,6 +168,23 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 		if _, err := issuerapp.Load(); err == nil {
 			t.Errorf("%s was accepted", tc.name)
 		}
+	}
+
+	// Where the answer about a person comes from is checked at ASSEMBLY,
+	// not at load, because there are now two ways to supply it: an
+	// address to dial, or a directory in this process (INF-691). Neither
+	// is a failure on its own; having neither is.
+	t.Setenv("ISSUER_URL", "https://issuer.example")
+	t.Setenv("HUB_ADDRESS", "")
+	t.Setenv("TOKEN_LIFETIME", "")
+	t.Setenv("LOG_LEVEL", "")
+	cfg, err := issuerapp.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, err = issuerapp.New(context.Background(), cfg, issuerapp.Deps{},
+		slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+		t.Error("an issuer with no directory at all was accepted")
 	}
 }
 
@@ -259,7 +275,7 @@ func TestAMissingSigningKeyStopsTheService(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
-		if _, err = issuerapp.New(context.Background(), cfg,
+		if _, err = issuerapp.New(context.Background(), cfg, issuerapp.Deps{},
 			slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
 			t.Errorf("%s was accepted as a signing key", name)
 		}
