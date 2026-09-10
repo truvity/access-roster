@@ -321,8 +321,8 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 		same room. <a href="%s/">Go to the console</a> and it will take you to the right one.</p>
 		<p class="note">Recovery below is the way in when the gateway is what is broken.</p>`, s.mount)
 	}
-	s.writePage(w, r, http.StatusOK, "Sign in", `<h1>directory-roster</h1>
-<p class="note">The directory hub. Sign in to connect workspaces and grant access.</p>`+
+	s.writePage(w, r, http.StatusOK, "Sign in", `<h1>access-roster</h1>
+<p class="note">The console. Sign in to see who holds what, and why.</p>`+
 		elsewhere+sources.String()+recovery)
 }
 
@@ -369,7 +369,7 @@ func (s *ConsoleServer) writePage(w http.ResponseWriter, r *http.Request, status
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_, err := io.WriteString(w, `<!doctype html><meta charset="utf-8"><title>`+
-		html.EscapeString(title)+` — directory-roster</title><style>`+consoleCSS+`</style><main>`+body+`</main>`)
+		html.EscapeString(title)+` — access-roster</title><style>`+consoleCSS+`</style><main>`+body+`</main>`)
 	if err != nil {
 		s.log.WarnContext(r.Context(), "page could not be written", "title", title, "error", err)
 	}
@@ -379,7 +379,7 @@ func (s *ConsoleServer) writePage(w http.ResponseWriter, r *http.Request, status
 func (s *ConsoleServer) signInStart(w http.ResponseWriter, r *http.Request) {
 	connector, ok := s.signInConnector(r.PathValue("backend"))
 	if !ok {
-		http.Error(w, "this hub cannot sign in with that directory", http.StatusNotFound)
+		http.Error(w, "this installation cannot sign in with that provider", http.StatusNotFound)
 		return
 	}
 	state, err := s.state.Issue("")
@@ -412,7 +412,7 @@ const signInWindow = 10 * time.Minute
 func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 	connector, ok := s.signInConnector(r.PathValue("backend"))
 	if !ok {
-		http.Error(w, "this hub cannot sign in with that directory", http.StatusNotFound)
+		http.Error(w, "this installation cannot sign in with that provider", http.StatusNotFound)
 		return
 	}
 	cookie, err := r.Cookie(access.LoginCookieName)
@@ -450,7 +450,7 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 			http.StatusServiceUnavailable)
 		return
 	case !known.InDomain:
-		http.Error(w, "signed in as "+email+", but no directory connected to this hub serves that domain",
+		http.Error(w, "signed in as "+email+", but no connected provider serves that domain",
 			http.StatusForbidden)
 		return
 	case !known.Found && known.Authoritative:
@@ -465,7 +465,7 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 		// The one Authorize refuses outright is an account the directory
 		// authoritatively says is not live.
 		s.log.WarnContext(r.Context(), "sign-in refused", "email", logsafe.Value(email), "error", logsafe.Error(err))
-		http.Error(w, "signed in as "+email+", but this hub cannot serve that address: "+err.Error(),
+		http.Error(w, "signed in as "+email+", but that address cannot be served: "+err.Error(),
 			http.StatusForbidden)
 		return
 	}

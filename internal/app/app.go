@@ -584,7 +584,10 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	ready := health.Follow("the snapshot store", snapshots)
 	healthMux := health.Mux(0, ready)
 
-	log.InfoContext(ctx, "directory-roster assembled",
+	// "the directory", not the old service name: in the merged process
+	// this is one half of one deployment, and a line naming a service
+	// reads as a second one having started.
+	log.InfoContext(ctx, "the directory is assembled",
 		"api", cfg.apiPort, "console", cfg.consolePort, "health", cfg.healthPort,
 		"demo", cfg.demo, "recovery", recoveryKind(recovery), "public", cfg.publicURL,
 		"signIn", cfg.loginDirectory, "cache", cacheName(cfg), "store", cfg.store,
