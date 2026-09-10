@@ -22,6 +22,22 @@ git history.
 
 ## Unreleased
 
+- **An installation that signs nobody in yet still serves its sessions.**
+  The handler returned early on "no sign-in providers" and took the
+  session service and the signed-out page with it. The posture where that
+  bites is day one: recovery is available with no OAuth client configured
+  — that is the whole point of it, the way in before any directory is
+  connected — and a recovery sign-in opens a session like any other. An
+  operator who had just recovered could not then list or revoke anything.
+  The same mistake, in a new shape, as gating the session service on
+  `console.origin` once did.
+
+- **The endpoint reference no longer promises two endpoints that do not
+  exist.** `/.access/grants` and `/.access/simulate` were listed as
+  served. Neither is implemented; both belong to `accessctl` (INF-649),
+  and the table now says so and names what answers the same question
+  today.
+
 - **A workload's cluster survives the exchange.** The verified proof
   travels through the OpenID library as a map of claims and is rebuilt on
   the other side, and the cluster was not among them — so it was dropped

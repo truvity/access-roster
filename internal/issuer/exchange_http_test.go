@@ -525,3 +525,60 @@ func accessTokenClaims(t *testing.T, body map[string]any) map[string]any {
 	}
 	return claims
 }
+
+// An installation that signs nobody in yet still serves its session
+// service and its signed-out page.
+//
+// It used to return early on "no sign-in providers" and take both with
+// it. The posture where that bites is day one: recovery is available
+// with no OAuth client configured — that is the whole point of it, the
+// way in before any directory is connected — and a recovery sign-in
+// opens a session like any other. An operator who had just recovered
+// could not then list or revoke anything.
+func TestAnIssuerThatSignsNobodyInStillServesItsSessions(t *testing.T) {
+	t.Parallel()
+
+	declared, err := policy.Parse([]byte(demo.Policy))
+	if err != nil {
+		t.Fatalf("parse the demonstration policy: %v", err)
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("policy set: %v", err)
+	}
+	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true},
+		set, &fakeDirectory{}, issuer.NewMemoryState())
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+
+	// No providers at all, which is the posture under test.
+	handler, err := issuer.HandlerWithSignIn(iss, storage, issuer.SignInDeps{})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	for _, tc := range []struct {
+		name, method, path string
+	}{
+		{"the signed-out page", http.MethodGet, "/signed-out"},
+		{"the chooser", http.MethodGet, "/login"},
+		{"the session service", http.MethodPost, "/accessissuer.v1.SessionService/ListSessions"},
+	} {
+		req, reqErr := http.NewRequestWithContext(t.Context(), tc.method, server.URL+tc.path, nil)
+		if reqErr != nil {
+			t.Fatalf("%s: %v", tc.name, reqErr)
+		}
+		resp, doErr := server.Client().Do(req)
+		if doErr != nil {
+			t.Fatalf("%s: %v", tc.name, doErr)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			t.Errorf("%s is not served when nobody can sign in", tc.name)
+		}
+	}
+}
