@@ -32,11 +32,11 @@ export function Directories({ operator, onDone }: { operator: boolean; onDone: (
 
   return (
     <Page
-      title="Directories"
-      lede="Every directory this hub holds a credential for. Its domains are discovered, never typed, and its groups and accounts are what memberships and people are made of."
+      title="Providers"
+      lede="Every identity provider this hub holds a credential for, one row per domain it serves. Domains are discovered, never typed, and the groups and accounts behind them are what memberships and people are made of."
       actions={
         <Button variant="contained" disabled={!operator || adding} onClick={() => setAdding(true)}>
-          Add a directory
+          Add a provider
         </Button>
       }
     >
@@ -59,62 +59,83 @@ export function Directories({ operator, onDone }: { operator: boolean; onDone: (
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Directory</TableCell>
+              <TableCell>Provider</TableCell>
               <TableCell>Backend</TableCell>
-              <TableCell>Domains</TableCell>
+              <TableCell>Domain</TableCell>
               <TableCell>Health</TableCell>
               <TableCell>Snapshot</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((tenant) => (
-              <TableRow key={tenant.id} hover>
-                <TableCell>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                    <Ref to={paths.directory(tenant.id)} mono>
-                      {tenant.id}
-                    </Ref>
-                    {tenant.declared ? <State kind="declared" /> : null}
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2" color="text.secondary">
-                    {backendName(tenant.backend)}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Stack spacing={0.5}>
-                    {tenant.domains.map((domain) => (
-                      <Stack key={domain.name} direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            {rows.flatMap((tenant) =>
+              // ONE ROW PER DOMAIN, repeating the provider. A stack of
+              // domains inside one cell cannot be scanned down, and a
+              // provider with seven of them towers over one with two.
+              // The duplication is the price of the row being the unit a
+              // reader compares.
+              (tenant.domains.length ? tenant.domains : [undefined]).map((domain, index) => (
+                <TableRow key={`${tenant.id}:${domain?.name ?? ""}`} hover>
+                  <TableCell>
+                    {index === 0 ? (
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                        <Ref to={paths.directory(tenant.id)} mono>
+                          {tenant.id}
+                        </Ref>
+                        {tenant.declared ? <State kind="declared" /> : null}
+                      </Stack>
+                    ) : (
+                      // Repeated, but quietly: the eye should land on the
+                      // first of a run and read the rest as the same one.
+                      <Ref to={paths.directory(tenant.id)} mono dim>
+                        {tenant.id}
+                      </Ref>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {index === 0 ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {backendName(tenant.backend)}
+                      </Typography>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    {domain ? (
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                         <Typography variant="body2" color={domain.served ? undefined : "text.secondary"}>
                           {domain.name}
                         </Typography>
                         <Authority authoritative={domain.authoritative} conflict={domain.conflict} served={domain.served} owned={domain.owned} reason={domain.reason} />
                       </Stack>
-                    ))}
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <State kind={tenant.health?.ok ? "healthy" : "failing"} title={tenant.health?.ok ? undefined : (tenant.health?.error ?? "not probed yet")} />
-                </TableCell>
-                <TableCell>{ago(at(tenant.snapshotAt))}</TableCell>
-              </TableRow>
-            ))}
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        no domain discovered yet
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {index === 0 ? (
+                      <State kind={tenant.health?.ok ? "healthy" : "failing"} title={tenant.health?.ok ? undefined : (tenant.health?.error ?? "not probed yet")} />
+                    ) : null}
+                  </TableCell>
+                  <TableCell>{index === 0 ? ago(at(tenant.snapshotAt)) : null}</TableCell>
+                </TableRow>
+              )),
+            )}
             {!list.loading && rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5}>
                   {/* An empty state that names an action offers it. This
                       page is reached with nothing on it twice: on day one,
-                      and straight after disconnecting the last directory
+                      and straight after disconnecting the last provider
                       — and on both the only way on is a control in the
                       header, which is where somebody reading a sentence
                       in the middle of the page is not looking. */}
                   <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", gap: 1, py: 1 }}>
                     <Typography variant="body2" color="text.secondary">
-                      No directories yet. Add one to start serving its domains.
+                      No providers yet. Add one to start serving its domains.
                     </Typography>
                     <Button size="small" disabled={!operator || adding} onClick={() => setAdding(true)}>
-                      Add a directory
+                      Add a provider
                     </Button>
                   </Stack>
                 </TableCell>
@@ -167,7 +188,7 @@ function AddDirectory({
     setBusy(true);
     try {
       const done = await workspaces.uploadKey({ backend: chosenKeyBackend, key: key.bytes, admin: admin.trim() });
-      onAdded(`${done.workspace?.id ?? "The directory"} added from ${key.name}.`);
+      onAdded(`${done.workspace?.id ?? "The provider"} added from ${key.name}.`);
     } catch (error) {
       onFailure(reason(error));
     } finally {
@@ -189,10 +210,10 @@ function AddDirectory({
       <Failure error={providers.error} />
       {providers.value && connectors.length === 0 ? (
         <Stack spacing={1}>
-          <Typography variant="body2">This deployment has no directory backend wired, so there is nothing to connect to yet.</Typography>
+          <Typography variant="body2">This deployment has no provider backend wired, so there is nothing to connect to yet.</Typography>
           <Typography variant="body2" color="text.secondary">
             Connecting a Google Workspace needs the Google connector and an OAuth client in <Ref to={paths.settings()}>Settings</Ref>; a deployment can
-            also declare a directory in its values with a service-account key.
+            also declare a provider in its values with a service-account key.
           </Typography>
         </Stack>
       ) : (
@@ -200,7 +221,7 @@ function AddDirectory({
           <Box>
             <Typography variant="subtitle2">Through admin consent</Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.25 }}>
-              The directory's own consent screen, signed in as its admin. Domains, accounts and groups are discovered from what it grants.
+              The provider's own consent screen, signed in as its admin. Domains, accounts and groups are discovered from what it grants.
             </Typography>
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
               {connectors.map((which) => (
@@ -215,11 +236,11 @@ function AddDirectory({
             <Box>
               <Typography variant="subtitle2">With a service-account key</Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.25 }}>
-                The key the directory issued, and the admin account it should act as. The key is stored in the hub's namespace and never shown again.
+                The key the provider issued, and the admin account it should act as. The key is stored in the hub's namespace and never shown again.
               </Typography>
               <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start", flexWrap: "wrap", gap: 1 }}>
                 {keyConnectors.length > 1 ? (
-                  <TextField select label="Directory" value={chosenKeyBackend ?? ""} onChange={(e) => setBackend(Number(e.target.value) as Backend)} sx={{ minWidth: 200 }}>
+                  <TextField select label="Provider" value={chosenKeyBackend ?? ""} onChange={(e) => setBackend(Number(e.target.value) as Backend)} sx={{ minWidth: 200 }}>
                     {keyConnectors.map((which) => (
                       <MenuItem key={which} value={which}>
                         {backendName(which)}
@@ -316,7 +337,7 @@ export function Directory({
       <Box>
         <Loading busy={list.loading} />
         <Failure error={list.error} />
-        {!list.loading ? <Nothing>No directory with that id. It may have been disconnected.</Nothing> : null}
+        {!list.loading ? <Nothing>No provider with that id. It may have been disconnected.</Nothing> : null}
       </Box>
     );
   }
@@ -327,8 +348,8 @@ export function Directory({
       mono
       lede={
         firstSnapshot
-          ? `A ${backendName(tenant.backend)} directory. Its first snapshot is running; this page fills in by itself when it lands.`
-          : `A ${backendName(tenant.backend)} directory holding ${accounts.value?.total ?? people.length} accounts and ${contributed.length} groups.`
+          ? `A ${backendName(tenant.backend)} provider. Its first snapshot is running; this page fills in by itself when it lands.`
+          : `A ${backendName(tenant.backend)} provider holding ${accounts.value?.total ?? people.length} accounts and ${contributed.length} groups.`
       }
       facts={[
         { label: "Acting as", value: tenant.admin || "—" },
@@ -347,7 +368,7 @@ export function Directory({
         onSave={(domains) => {
           void act(
             () => workspaces.setServedDomains({ workspaceId: tenant.id, domains }),
-            domains.length === 0 ? "Serving every domain this directory owns." : `Serving ${domains.length} of its domains.`,
+            domains.length === 0 ? "Serving every domain this provider owns." : `Serving ${domains.length} of its domains.`,
           );
         }}
       />
@@ -386,7 +407,7 @@ export function Directory({
           >
             Reconnect
           </Button>
-          <Tooltip title={tenant.declared ? "Declared by the deployment: remove it from the values instead." : "Revoke the credential and forget this directory."}>
+          <Tooltip title={tenant.declared ? "Declared by the deployment: remove it from the values instead." : "Revoke the credential and forget this provider."}>
             <span>
               <Button
                 size="small"
@@ -404,7 +425,7 @@ export function Directory({
       <Loading busy={busy || firstSnapshot || list.loading || groups.loading || accounts.loading} />
       <Failure error={failure ?? groups.error ?? accounts.error} />
 
-      <Section title="Directory groups it contributes" hint="what a membership can attach to an internal group">
+      <Section title="Groups it contributes" hint="what a membership can attach to an internal group">
         <Rows
           items={contributed}
           keyOf={(g) => g.email}
@@ -418,7 +439,7 @@ export function Directory({
               {g.members} members · feeds <Names items={(feeds.get(g.email) ?? []).map((name) => ({ label: name, to: paths.group(name), mono: true }))} empty="nothing" muted />
             </>
           )}
-          empty={firstSnapshot ? "Reading them now — the first snapshot is still running." : "No groups snapshotted from this directory yet."}
+          empty={firstSnapshot ? "Reading them now — the first snapshot is still running." : "No groups snapshotted from this provider yet."}
         />
       </Section>
 
@@ -429,7 +450,7 @@ export function Directory({
           primary={(p) => <Ref to={paths.person(p.email)}>{personName(p.givenName, p.familyName, p.email)}</Ref>}
           secondary={(p) => p.email}
           right={(p) => <State kind={p.live ? "live" : "suspended"} />}
-          empty={firstSnapshot ? "Reading them now — the first snapshot is still running." : "No accounts snapshotted from this directory yet."}
+          empty={firstSnapshot ? "Reading them now — the first snapshot is still running." : "No accounts snapshotted from this provider yet."}
         />
       </Section>
     </Page>
@@ -491,8 +512,8 @@ function Domains({
         editing
           ? "tick the ones this hub should answer for. The rest stays discovered and visible, but nothing routes to it and its accounts are never read"
           : narrowed
-            ? "discovered from the directory; only the served ones are routed and kept"
-            : "discovered from the directory and re-read on every probe"
+            ? "discovered from the provider; only the served ones are routed and kept"
+            : "discovered from the provider and re-read on every probe"
       }
     >
       {editing ? (
@@ -541,7 +562,7 @@ function Domains({
           </Stack>
           {choice.length === 0 ? (
             <Typography variant="caption" color="text.secondary">
-              A directory that serves nothing answers for nobody. Disconnect it instead.
+              A provider that serves nothing answers for nobody. Disconnect it instead.
             </Typography>
           ) : null}
         </Stack>
@@ -561,7 +582,7 @@ function Domains({
           ) : null}
           {tenant.declared && narrowed ? (
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-              The deployment states which domains this directory serves.
+              The deployment states which domains this provider serves.
             </Typography>
           ) : null}
         </>
@@ -615,9 +636,9 @@ function SyncedGroups({
       title="Groups it syncs"
       hint={
         editing
-          ? "tick the groups this hub should keep. The rest stays in the directory and is simply not read back"
+          ? "tick the groups this hub should keep. The rest stays in the provider and is simply not read back"
           : narrowed
-            ? `${tenant.syncGroups.length} of ${discovered.length} groups this directory holds`
+            ? `${tenant.syncGroups.length} of ${discovered.length} groups this provider holds`
             : "every group in the served domains"
       }
     >
@@ -686,7 +707,7 @@ function SyncedGroups({
           ) : null}
           {tenant.declared && narrowed ? (
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-              The deployment states which groups this directory syncs.
+              The deployment states which groups this provider syncs.
             </Typography>
           ) : null}
         </>

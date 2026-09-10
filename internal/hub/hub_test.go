@@ -460,6 +460,25 @@ func TestDirectoryGroupResolvesMembersAndPeopleFilterByTenant(t *testing.T) {
 	if err != nil || len(gone) != 1 || gone[0].Email != "alice@one.example" {
 		t.Errorf("People(suspended) = %+v, %v", gone, err)
 	}
+
+	// The domain filter is what the console's Domain column offers, and
+	// it has to be applied HERE rather than over the page the console
+	// received: a truncated page filtered in the browser answers "nobody"
+	// while the snapshot holds hundreds. It also crosses tenants, because
+	// a domain is what a reviewer thinks in, not a workspace id.
+	inTwo, total, err := h.hub.People(ctx, hub.PeopleQuery{Domain: "TWO.example"}, 0)
+	if err != nil || total != 1 || len(inTwo) != 1 || inTwo[0].Email != "carol@two.example" {
+		t.Errorf("People(domain two.example) = %+v, %v, %v", inTwo, total, err)
+	}
+	if _, total, err = h.hub.People(ctx, hub.PeopleQuery{Domain: "elsewhere.example"}, 0); err != nil || total != 0 {
+		t.Errorf("People(domain nobody serves) = %d, %v", total, err)
+	}
+	// The domain narrows within a tenant rather than replacing it: a
+	// domain of another tenant and a workspace of this one is empty, not
+	// everyone in either.
+	if _, total, err = h.hub.People(ctx, hub.PeopleQuery{Workspace: oneID, Domain: "two.example"}, 0); err != nil || total != 0 {
+		t.Errorf("People(one, domain of two) = %d, %v", total, err)
+	}
 }
 
 func TestAdoptDiscoversAndChecksTheTenantID(t *testing.T) {

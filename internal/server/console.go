@@ -798,6 +798,7 @@ func (c *Console) SearchPeople(
 	query := hub.PeopleQuery{
 		Text:      req.Msg.GetQuery(),
 		Workspace: req.Msg.GetWorkspaceId(),
+		Domain:    req.Msg.GetDomain(),
 		// Nil for an installation-wide role, so it stays every tenant.
 		Workspaces: id.Workspaces(access.RoleViewer),
 	}

@@ -19,28 +19,50 @@ import { Failure, Loading, Mono, Nothing, Page, Ref, State } from "./ui";
 
 /** The identity-side leaf: every account the hub has snapshotted. The
  *  header search is how you reach one person; this list is for the
- *  reviewer who scans, so it filters by the two things a reviewer scans
- *  for — which directory, and whether the account is live. */
+ *  reviewer who scans, so it filters by the three things a reviewer
+ *  scans for — which provider, which domain, and whether the account is
+ *  live. */
 export function People() {
-  const [directory, setDirectory] = useState("");
+  const [provider, setProvider] = useState("");
+  const [domain, setDomain] = useState("");
   const [account, setAccount] = useState<AccountFilter>(AccountFilter.UNSPECIFIED);
   const tenants = useAsync(() => workspaces.listWorkspaces({}), []);
-  const found = useAsync(() => access.searchPeople({ workspaceId: directory, account, limit: 200 }), [directory, account]);
+  // The domain filter is applied by the hub, not here: this page shows
+  // the first 200 of a match, and narrowing that page in the browser
+  // would answer "nobody" while the snapshot holds hundreds.
+  const found = useAsync(
+    () => access.searchPeople({ workspaceId: provider, domain, account, limit: 200 }),
+    [provider, domain, account],
+  );
   const people = found.value?.people ?? [];
   const list = tenants.value?.workspaces ?? [];
+  // Every domain any provider serves, deduplicated: a domain belongs to
+  // one provider, so choosing a domain while a different provider is
+  // selected is the one combination that can hold nobody.
+  const domains = [...new Set(list.flatMap((tenant) => tenant.domains.map((each) => each.name)))].sort();
 
   return (
     <Page
       title="People"
-      lede="Every account in every connected directory, as the last snapshot has it. A person's page shows the chain from their directory groups to the clients they reach."
+      lede="Every account in every connected provider, as the last snapshot has it. A person's page shows the chain from their provider groups to the clients they reach."
     >
       <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
         {list.length > 1 ? (
-          <ToggleButtonGroup size="small" exclusive value={directory} onChange={(_, next: string | null) => next !== null && setDirectory(next)}>
-            <ToggleButton value="">Every directory</ToggleButton>
+          <ToggleButtonGroup size="small" exclusive value={provider} onChange={(_, next: string | null) => next !== null && setProvider(next)}>
+            <ToggleButton value="">Every provider</ToggleButton>
             {list.map((tenant) => (
               <ToggleButton key={tenant.id} value={tenant.id} sx={{ fontFamily: "monospace", textTransform: "none" }}>
                 {tenant.id}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        ) : null}
+        {domains.length > 1 ? (
+          <ToggleButtonGroup size="small" exclusive value={domain} onChange={(_, next: string | null) => next !== null && setDomain(next)}>
+            <ToggleButton value="">Every domain</ToggleButton>
+            {domains.map((name) => (
+              <ToggleButton key={name} value={name} sx={{ fontFamily: "monospace", textTransform: "none" }}>
+                {name}
               </ToggleButton>
             ))}
           </ToggleButtonGroup>
@@ -57,7 +79,7 @@ export function People() {
 
       {!found.loading && people.length === 0 ? (
         <Nothing>
-          {directory || account !== AccountFilter.UNSPECIFIED ? "Nobody matches the filter." : "No accounts snapshotted yet: add a directory first."}
+          {provider || domain || account !== AccountFilter.UNSPECIFIED ? "Nobody matches the filter." : "No accounts snapshotted yet: add a provider first."}
         </Nothing>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
@@ -66,7 +88,8 @@ export function People() {
               <TableRow>
                 <TableCell>Person</TableCell>
                 <TableCell>Address</TableCell>
-                <TableCell>Directory</TableCell>
+                <TableCell>Provider</TableCell>
+                <TableCell>Domain</TableCell>
                 <TableCell>Account</TableCell>
               </TableRow>
             </TableHead>
@@ -85,6 +108,9 @@ export function People() {
                     </Ref>
                   </TableCell>
                   <TableCell>
+                    <Mono>{domainOf(person.email)}</Mono>
+                  </TableCell>
+                  <TableCell>
                     <State kind={person.live ? "live" : "suspended"} />
                   </TableCell>
                 </TableRow>
@@ -100,4 +126,12 @@ export function People() {
       ) : null}
     </Page>
   );
+}
+
+/** The domain half of an address. It is the column and the filter both,
+ *  and it is read here rather than carried in the response because the
+ *  address already is the answer. */
+function domainOf(email: string): string {
+  const at = email.lastIndexOf("@");
+  return at < 0 ? "" : email.slice(at + 1);
 }

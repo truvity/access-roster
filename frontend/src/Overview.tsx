@@ -81,7 +81,7 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
       {settingUp && progress ? <Setup progress={progress} operator={operator} /> : null}
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }, gap: 1.5, mb: 4 }}>
-        <Tile label="Directories" value={`${list.length - failing.length}/${list.length}`} hint={failing.length ? `${failing.length} failing` : "all healthy"} bad={failing.length > 0} to={paths.directories()} />
+        <Tile label="Providers" value={`${list.length - failing.length}/${list.length}`} hint={failing.length ? `${failing.length} failing` : "all healthy"} bad={failing.length > 0} to={paths.directories()} />
         <Tile
           label="Domains served"
           value={`${domains.length - contested.length - provisional.length}/${domains.length}`}
@@ -97,10 +97,10 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
           bad={contested.length + provisional.length > 0}
           to={paths.directories()}
         />
-        <Tile label="Directory groups" value={`${usedDirectoryGroups.length}/${allDirectoryGroups.length}`} hint="attached to an internal group" to={paths.directoryGroups()} />
+        <Tile label="Provider groups" value={`${usedDirectoryGroups.length}/${allDirectoryGroups.length}`} hint="attached to an internal group" to={paths.directoryGroups()} />
         <Tile label="Internal groups" value={String(groups.length)} hint={`${emptyGroups.length} with nobody in them`} to={paths.groups()} />
         <Tile label="Clients" value={String(clients.length)} hint="what the internal groups buy" to={paths.clients()} />
-        <Tile label="Last snapshot" value={ago(staleSnapshot)} hint="oldest across directories" to={paths.directories()} />
+        <Tile label="Last snapshot" value={ago(staleSnapshot)} hint="oldest across providers" to={paths.directories()} />
       </Box>
 
       <Section title="Needs attention" hint="everything else is working">
@@ -120,7 +120,7 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
               </Row>
             ))}
             {contested.map((d) => (
-              <Row key={d.name} severity="warning" title={`${d.name} is served by two directories`}>
+              <Row key={d.name} severity="warning" title={`${d.name} is served by two providers`}>
                 Authoritative for neither until one of them stops serving it. <Ref to={paths.directory(d.workspace)}>Open {d.workspace}</Ref>.
               </Row>
             ))}

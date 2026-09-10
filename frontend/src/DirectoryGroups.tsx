@@ -3,12 +3,15 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 
 import { access, ago, at, forHowLong, people as peopleCount, personName, reason } from "./api";
 import { Attach } from "./attach";
@@ -16,11 +19,13 @@ import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Authority, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
 
-/** The identity-side groups: what the directories say exists, and which
+/** The identity-side groups: what the providers say exists, and which
  *  of it the policy uses. */
 export function DirectoryGroups() {
   const groups = useAsync(() => access.listDirectoryGroups({}), []);
   const policy = useAsync(() => access.getPolicy({}), []);
+  const [provider, setProvider] = useState("");
+  const [domain, setDomain] = useState("");
 
   const feeds = new Map<string, string[]>();
   for (const group of policy.value?.groups ?? []) {
@@ -28,25 +33,54 @@ export function DirectoryGroups() {
       feeds.set(member.address, [...(feeds.get(member.address) ?? []), group.name]);
     }
   }
-  const rows = groups.value?.groups ?? [];
+  const all = groups.value?.groups ?? [];
+  // This list is not truncated, so unlike the people page it can filter
+  // where it stands.
+  const rows = all.filter((group) => (!provider || group.workspaceId === provider) && (!domain || group.domain === domain));
+  const providers = [...new Set(all.map((group) => group.workspaceId))].sort();
+  const domains = [...new Set(all.map((group) => group.domain))].filter(Boolean).sort();
 
   return (
     <Page
-      title="Directory groups"
-      lede="Every group in every connected directory, as the last snapshot has it. A directory group grants nothing by itself: it does so by being attached to an internal group, and that attachment is the one thing this console edits."
+      title="Groups"
+      lede="Every group in every connected provider, as the last snapshot has it. A group here grants nothing by itself: it does so by being attached to an internal group, and that attachment is the one thing this console edits."
     >
+      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
+        {providers.length > 1 ? (
+          <ToggleButtonGroup size="small" exclusive value={provider} onChange={(_, next: string | null) => next !== null && setProvider(next)}>
+            <ToggleButton value="">Every provider</ToggleButton>
+            {providers.map((id) => (
+              <ToggleButton key={id} value={id} sx={{ fontFamily: "monospace", textTransform: "none" }}>
+                {id}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        ) : null}
+        {domains.length > 1 ? (
+          <ToggleButtonGroup size="small" exclusive value={domain} onChange={(_, next: string | null) => next !== null && setDomain(next)}>
+            <ToggleButton value="">Every domain</ToggleButton>
+            {domains.map((name) => (
+              <ToggleButton key={name} value={name} sx={{ fontFamily: "monospace", textTransform: "none" }}>
+                {name}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        ) : null}
+      </Stack>
+
       <Loading busy={groups.loading || policy.loading} />
       <Failure error={groups.error ?? policy.error} />
 
       {!groups.loading && rows.length === 0 ? (
-        <Nothing>No directory groups snapshotted yet: add a directory first.</Nothing>
+        <Nothing>{all.length === 0 ? "No groups snapshotted yet: add a provider first." : "No group matches the filter."}</Nothing>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Directory group</TableCell>
-                <TableCell>Directory</TableCell>
+                <TableCell>Group</TableCell>
+                <TableCell>Provider</TableCell>
+                <TableCell>Domain</TableCell>
                 <TableCell align="right">Members</TableCell>
                 <TableCell>Feeds</TableCell>
               </TableRow>
@@ -63,6 +97,9 @@ export function DirectoryGroups() {
                     <Ref to={paths.directory(group.workspaceId)} mono>
                       {group.workspaceId}
                     </Ref>
+                  </TableCell>
+                  <TableCell>
+                    <Mono>{group.domain}</Mono>
                   </TableCell>
                   <TableCell align="right">{group.members}</TableCell>
                   <TableCell>
@@ -131,13 +168,13 @@ export function DirectoryGroup({
       lede={
         served
           ? `${peopleCount(members.length)} in it, feeding ${plural(feeds.length, "internal group", "internal groups")} and opening ${plural(clients.length, "client", "clients")}.`
-          : "No connected directory serves this domain, so the hub has no opinion about it."
+          : "No connected provider serves this domain, so the hub has no opinion about it."
       }
       facts={
         served
           ? [
               {
-                label: "Directory",
+                label: "Provider",
                 value: (
                   <Ref to={paths.directory(value.workspaceId)} mono>
                     {value.workspaceId}
@@ -156,11 +193,11 @@ export function DirectoryGroup({
 
       {served && !value.found ? (
         <Alert severity="warning" sx={{ mb: 3 }}>
-          The directory does not have a group by this address. If the policy names it, the membership grants nothing until the group exists.
+          The provider does not have a group by this address. If the policy names it, the membership grants nothing until the group exists.
         </Alert>
       ) : null}
 
-      <Section title="Members" hint={`as the directory reports them, before the policy: ${live} of ${members.length} live`}>
+      <Section title="Members" hint={`as the provider reports them, before the policy: ${live} of ${members.length} live`}>
         <Rows
           items={members}
           keyOf={(m) => m.email}
@@ -173,7 +210,7 @@ export function DirectoryGroup({
           }
           secondary={(m) => (m.known ? m.email : undefined)}
           right={(m) => <State kind={!m.known ? "unknown" : m.live ? "live" : "suspended"} />}
-          empty="The directory reports nobody in it."
+          empty="The provider reports nobody in it."
         />
       </Section>
 

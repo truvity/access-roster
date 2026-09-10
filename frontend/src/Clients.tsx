@@ -179,7 +179,7 @@ export function Client({
               <span>token {forHowLong(h.lifetime)}</span>
             </>
           )}
-          empty="Nobody. Attach a directory group to one of the internal groups above, and the people in it reach this client."
+          empty="Nobody. Attach a provider group to one of the internal groups above, and the people in it reach this client."
         />
       </Section>
 

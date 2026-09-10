@@ -1371,6 +1371,10 @@ type PeopleQuery struct {
 	Workspaces []string
 	// Live, when set, keeps only live (true) or suspended (false) accounts.
 	Live *bool
+	// Domain keeps only accounts whose address is in that domain. A
+	// tenant serving several domains is several companies to whoever is
+	// reviewing it.
+	Domain string
 }
 
 // People returns the accounts every snapshot holds, filtered by a
@@ -1391,6 +1395,7 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 		return nil, 0, err
 	}
 	text := strings.ToLower(strings.TrimSpace(query.Text))
+	domain := strings.ToLower(strings.TrimSpace(query.Domain))
 
 	var out []Person
 	for _, id := range slices.Sorted(maps.Keys(v.workspaces)) {
@@ -1424,6 +1429,9 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 			if query.Live != nil && account.Live != *query.Live {
 				continue
 			}
+			if domain != "" && !inDomain(account.Email, domain) {
+				continue
+			}
 			out = append(out, Person{
 				Email:           account.Email,
 				GivenName:       account.GivenName,
@@ -1440,6 +1448,13 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 		return out[:limit], total, nil
 	}
 	return out, total, nil
+}
+
+// inDomain reports whether an address is in a domain. The domain is
+// already lowercase; the address is whatever the directory returned.
+func inDomain(email, domain string) bool {
+	at := strings.LastIndex(email, "@")
+	return at >= 0 && strings.EqualFold(email[at+1:], domain)
 }
 
 // matchesPerson reports whether an account matches a search term.

@@ -47,7 +47,7 @@ export function Setup({ progress, operator }: { progress: Progress; operator: bo
   const steps = [
     {
       done: progress.clientConfigured,
-      title: "Register an OAuth client with your directory",
+      title: "Register an OAuth client with your provider",
       body: <Register setup={progress.setup} />,
     },
     {
@@ -62,7 +62,7 @@ export function Setup({ progress, operator }: { progress: Progress; operator: bo
     },
     {
       done: progress.directories > 0,
-      title: "Connect the first directory",
+      title: "Connect the first provider",
       body: (
         <Typography variant="body2" color="text.secondary">
           One click, on <Ref to={paths.directories()}>Directories</Ref>, signed in as that tenant's admin
@@ -75,7 +75,7 @@ export function Setup({ progress, operator }: { progress: Progress; operator: bo
       title: "Say who operates this hub",
       body: (
         <Typography variant="body2" color="text.secondary">
-          Attach a directory group to{" "}
+          Attach a provider group to{" "}
           <Ref to={paths.group(progress.operatorGroup)} mono>
             {progress.operatorGroup}
           </Ref>

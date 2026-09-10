@@ -51,14 +51,21 @@ type Item = { value: string; label: string; to: string; icon: React.ReactNode };
  *  the membership. A rail with grouped destinations is what Material
  *  recommends for this many, and it keeps the header for the two things
  *  that belong there — search and who you are. */
+// Two sides, and the SECTION is the adjective. Both sides have groups —
+// one kind comes from a provider, the other is ours — and naming them
+// "Directory groups" and "Internal groups" made the reader carry the
+// distinction in the label when the heading above already says it.
+//
+// The URLs are unchanged. `directories`, `directory-groups` and `groups`
+// stay as they are, because a bookmark is a URL and operators have them.
 const identity: Item[] = [
-  { value: "directories", label: "Directories", to: paths.directories(), icon: <DomainIcon fontSize="small" /> },
-  { value: "directory-groups", label: "Directory groups", to: paths.directoryGroups(), icon: <GroupsIcon fontSize="small" /> },
+  { value: "directories", label: "Providers", to: paths.directories(), icon: <DomainIcon fontSize="small" /> },
+  { value: "directory-groups", label: "Groups", to: paths.directoryGroups(), icon: <GroupsIcon fontSize="small" /> },
   { value: "people", label: "People", to: paths.people(), icon: <PeopleIcon fontSize="small" /> },
   { value: "rules", label: "Rules", to: paths.rules(), icon: <RuleIcon fontSize="small" /> },
 ];
-const accessSide: Item[] = [
-  { value: "groups", label: "Internal groups", to: paths.groups(), icon: <ShieldIcon fontSize="small" /> },
+const internalSide: Item[] = [
+  { value: "groups", label: "Groups", to: paths.groups(), icon: <ShieldIcon fontSize="small" /> },
   { value: "clients", label: "Clients", to: paths.clients(), icon: <AppsIcon fontSize="small" /> },
 ];
 // Every open session in the installation (INF-682). It only exists once
@@ -109,10 +116,10 @@ export function App() {
         {identity.map((item) => (
           <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
         ))}
-        <ListSubheader disableSticky sx={{ mt: 1.5 }} title="What they get">
-          Access
+        <ListSubheader disableSticky sx={{ mt: 1.5 }} title="What they get here">
+          Internal
         </ListSubheader>
-        {accessSide.map((item) => (
+        {internalSide.map((item) => (
           <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
         ))}
         {operator && issuerIsSameOrigin(identityInfo?.issuerUrl) ? (
@@ -205,7 +212,7 @@ export function App() {
           {identityInfo?.status === "signed-in" && roles.length === 0 ? (
             <Alert severity="warning" sx={{ mb: 2 }}>
               You are signed in as {identityInfo.email}, and no internal group grants you access. An operator
-              can attach a directory group to one on either group's page; on a fresh installation, sign in with
+              can attach a provider group to one on either group's page; on a fresh installation, sign in with
               the break-glass admin account first.
             </Alert>
           ) : null}
