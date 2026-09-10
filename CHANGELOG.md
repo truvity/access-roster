@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.8
 
 - **A ServiceAccount's subject names its cluster.** `sub` was
   `k8s:<namespace>:<name>`, and the same namespace and name exist on every
