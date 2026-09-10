@@ -67,6 +67,39 @@ issuer still holds the session, and the next click is admitted with no
 password. So the two inputs the chain needs are REQUIRED when it is asked
 for, rather than skipped into a URL that ends only the near half.
 */}}
+{{/*
+directory-roster.gatewayParentRef renders the one parentRefs entry both
+HTTPRoutes this chart owns share.
+
+Default: this chart's own Gateway, named "console" -- today's shape.
+
+Set route.gateway.name (INF-687): an EXISTING Gateway instead, in
+route.gateway.namespace, with route.gateway.sectionName if given. This is
+how the console attaches to the ISSUER's Gateway rather than rendering
+its own for the same route.host: Envoy Gateway merges every Gateway of
+one gatewayClassName into a single deployment, so two Gateways each
+declaring a listener for the same hostname collide on that listener
+rather than coexisting as two independent routes. Exactly one of the two
+charts may own the Gateway for a shared hostname; the other attaches --
+the same shape access-proxy's exposure.gateway already has, one level up
+(a Gateway rather than a route).
+*/}}
+{{- define "directory-roster.gatewayParentRef" -}}
+{{- $gw := .Values.route.gateway -}}
+- group: gateway.networking.k8s.io
+  kind: Gateway
+{{- if $gw.name }}
+  name: {{ $gw.name }}
+  namespace: {{ required "route.gateway.namespace is required when route.gateway.name is set: the Gateway it names lives in another chart's namespace" $gw.namespace }}
+  {{- with $gw.sectionName }}
+  sectionName: {{ . }}
+  {{- end }}
+{{- else }}
+  name: {{ include "directory-roster.fullname" . }}
+  sectionName: console
+{{- end }}
+{{- end }}
+
 {{- define "directory-roster.signOutURL" -}}
 {{- $access := .Values.access -}}
 {{- if $access.signOutURL -}}

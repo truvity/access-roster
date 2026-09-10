@@ -128,9 +128,33 @@ route:
   gatewayClassName: internal
   certificate:
     # Empty issuerName renders no Certificate, for a gateway that brings
-    # its own.
+    # its own. Ignored when gateway.name below is set -- there is then no
+    # Gateway of this chart's own for a Certificate to attach to.
     issuerName: internal-ca
     issuerKind: ClusterIssuer
+  # Attach to an EXISTING Gateway instead of rendering one -- the other
+  # half of pathPrefix below, and the same shape access-proxy's
+  # exposure.gateway already has, one level up (a Gateway rather than a
+  # route).
+  #
+  # pathPrefix puts the console on a path of its issuer's hostname, but
+  # putting two charts' Gateways on the SAME route.host is a
+  # duplicate-listener collision, not two independent routes: Envoy
+  # Gateway merges every Gateway of one gatewayClassName into a single
+  # deployment. So exactly one of the two charts may own the Gateway for
+  # a shared hostname, and the other attaches to it instead -- name is
+  # the issuer's `access-issuer.fullname`, namespace is wherever that
+  # chart is installed (they live in different namespaces, hence the
+  # issuer's `route.sharedWith` has to name this one), and sectionName is
+  # the issuer's listener name ("issuer", if it has not been changed).
+  #
+  # Empty renders this chart's own Certificate + Gateway, today's shape
+  # exactly. route.host is still required either way: both HTTPRoutes
+  # still carry it as their hostnames regardless of who owns the Gateway.
+  gateway:
+    name: ""
+    namespace: ""
+    sectionName: ""
   # Mount the console under a path of the host -- "/console" -- rather
   # than at its root. This is how the console shares its issuer's
   # hostname (INF-687, docs/design/access-issuer.md "One origin"): the

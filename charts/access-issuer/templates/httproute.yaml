@@ -40,7 +40,34 @@ spec:
       hostname: {{ .Values.route.host | quote }}
       allowedRoutes:
         namespaces:
+            {{- /* Gateway-level admission, not a ReferenceGrant: a
+                   ReferenceGrant governs a route's backendRefs reaching
+                   INTO another namespace, and has nothing to do with a
+                   route's parentRefs reaching a Gateway. Whether a
+                   Gateway accepts a route from another namespace at all
+                   is decided entirely here.
+
+                   route.sharedWith (INF-687) is how the directory
+                   console attaches its own HTTPRoutes to THIS Gateway
+                   instead of rendering its own for the same route.host
+                   -- two Gateways declaring a listener for one hostname
+                   collide, they do not coexist as two independent
+                   routes. Its routes live in the hub chart's own
+                   namespace, hence naming it here. Empty keeps
+                   `from: Same`, today's shape exactly. */}}
+          {{- if .Values.route.sharedWith }}
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                    {{- range (list .Release.Namespace | concat .Values.route.sharedWith | uniq) }}
+                  - {{ . | quote }}
+                    {{- end }}
+          {{- else }}
           from: Same
+          {{- end }}
       tls:
         mode: Terminate
         certificateRefs:

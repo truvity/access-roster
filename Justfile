@@ -130,6 +130,30 @@ chart-lint:
         --set route.host=console.example --set route.pathPrefix=/console/ >/dev/null 2>&1
     ! helm template directory-roster charts/directory-roster \
         --set route.host=console.example --set route.pathPrefix=/ >/dev/null 2>&1
+    # route.gateway (INF-687): the other half of pathPrefix. Unset, this
+    # chart still owns exactly one Gateway (and one Certificate) as
+    # today. Set, it owns NEITHER -- two Gateways declaring a listener
+    # for the same route.host is a duplicate-listener collision, not two
+    # independent routes -- and both HTTPRoutes' parentRefs point at the
+    # named one instead, across namespaces.
+    helm template directory-roster charts/directory-roster \
+        --set route.host=console.example > /tmp/directory-roster-owngw.yaml
+    test "$(grep -c '^kind: Gateway$' /tmp/directory-roster-owngw.yaml)" = "1"
+    test "$(grep -c '^kind: Certificate$' /tmp/directory-roster-owngw.yaml)" = "1"
+    helm template directory-roster charts/directory-roster \
+        --set route.host=console.example \
+        --set route.gateway.name=access-issuer --set route.gateway.namespace=issuer-ns --set route.gateway.sectionName=issuer \
+        > /tmp/directory-roster-attach.yaml
+    test "$(grep -c '^kind: Gateway$' /tmp/directory-roster-attach.yaml)" = "0"
+    test "$(grep -c '^kind: Certificate$' /tmp/directory-roster-attach.yaml)" = "0"
+    test "$(grep -c '      name: access-issuer$' /tmp/directory-roster-attach.yaml)" = "2"
+    test "$(grep -c '      namespace: issuer-ns$' /tmp/directory-roster-attach.yaml)" = "2"
+    # A Gateway in another namespace with no namespace given is a render
+    # that looks fine and a parentRef that resolves inside THIS chart's
+    # own namespace instead -- silently attaching to nothing, or to
+    # something else entirely that happens to share the name.
+    ! helm template directory-roster charts/directory-roster \
+        --set route.host=console.example --set route.gateway.name=access-issuer >/dev/null 2>&1
     # A forwarded issuer without an audience accepts every token that
     # issuer mints, for every service it serves. That must fail the
     # RENDER, not be discovered in the console's logs.
@@ -157,6 +181,24 @@ chart-lint:
         --set signingKey.existingSecret=delivered-by-eso \
         --set valkey.address=valkey.example.svc:6379 \
         --set 'policy.groups.platform.members[0]=platform@example.com' >/dev/null
+    # route.sharedWith (INF-687): the other half of the console's
+    # pathPrefix. Empty keeps `from: Same`; naming a namespace renders a
+    # Selector over it AND this issuer's own -- dropping its own would
+    # lock this chart's own HTTPRoute out of the Gateway it just rendered.
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://issuer.example --set hub.address=http://h:8080 \
+        --set route.host=issuer.example --namespace issuer-ns \
+        > /tmp/access-issuer-noshare.yaml
+    grep -q 'from: Same' /tmp/access-issuer-noshare.yaml
+    ! grep -q 'from: Selector' /tmp/access-issuer-noshare.yaml
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://issuer.example --set hub.address=http://h:8080 \
+        --set route.host=issuer.example --set 'route.sharedWith[0]=hub-ns' --namespace issuer-ns \
+        > /tmp/access-issuer-shared.yaml
+    grep -q 'from: Selector' /tmp/access-issuer-shared.yaml
+    ! grep -q 'from: Same' /tmp/access-issuer-shared.yaml
+    grep -q '"hub-ns"' /tmp/access-issuer-shared.yaml
+    grep -q '"issuer-ns"' /tmp/access-issuer-shared.yaml
     ! helm template access-issuer charts/access-issuer --set bogusKey=1 >/dev/null 2>&1
     # The two settings without which the service refuses to start must
     # fail the render too, not the pod.

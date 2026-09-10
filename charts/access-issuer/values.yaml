@@ -206,6 +206,30 @@ route:
   certificate:
     issuerName: internal-ca
     issuerKind: ClusterIssuer
+  # Namespaces, besides this issuer's own, allowed to attach an HTTPRoute
+  # to this Gateway.
+  #
+  # This is the other half of the one-origin console (INF-687): the
+  # directory console shares this issuer's HOSTNAME, so it also has to
+  # share this issuer's GATEWAY -- two Gateways declaring a listener for
+  # the same route.host collide (Envoy Gateway merges every Gateway of
+  # one class into one deployment), they do not coexist as two
+  # independent routes. The console's own HTTPRoutes live in the hub
+  # chart's namespace, which is why this needs naming at all.
+  #
+  # Renders allowedRoutes.namespaces as a Selector matching this
+  # namespace plus every one named here, rather than the default
+  # `from: Same`.
+  #
+  # NOTE, because it is the thing everyone gets wrong once: this is a
+  # GATEWAY-level admission, not a ReferenceGrant. A ReferenceGrant
+  # governs a route's backendRefs reaching INTO another namespace; it has
+  # nothing to do with a route's parentRefs reaching a Gateway. Whether a
+  # Gateway accepts a route from another namespace at all is entirely
+  # its own allowedRoutes -- which is what this value renders.
+  #
+  # Empty keeps `from: Same`, today's shape exactly.
+  sharedWith: []
 
 networkPolicy:
   enabled: false
