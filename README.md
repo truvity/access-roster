@@ -48,6 +48,7 @@ what is in [docs/integrations.md](docs/integrations.md#the-batteries-by-kind-of-
 | Goal | Read |
 |---|---|
 | connect a corporate directory (Google Workspace) | [operations/connect-runbook.md](docs/operations/connect-runbook.md) |
+| run the OpenID Foundation conformance suite against an installation | [operations/conformance.md](docs/operations/conformance.md) |
 | put a console behind the gateway | [connect/console-app.md](docs/connect/console-app.md) |
 | call another service as a workload — and know when to use a ServiceAccount token and when the issuer | [connect/service-to-service.md](docs/connect/service-to-service.md) |
 | build a service that accepts both people and workloads | [design/trust.md](docs/design/trust.md), then [connect/service-to-service.md](docs/connect/service-to-service.md) |

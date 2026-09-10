@@ -5,6 +5,13 @@ git history.
 
 ## v0.10.0
 
+- **A runbook for the conformance run.** `docs/operations/conformance.md`:
+  the suite from published images so there is no Java build, the Config
+  profile as a script that needs no client and no browser, and the two
+  attended profiles as a checklist — including the two temporary clients
+  they need and the step to remove them afterwards, which is the one
+  that gets forgotten.
+
 - **A refused bearer at `/userinfo` now carries a challenge.** RFC 6750
   requires a `WWW-Authenticate` header on a 401 from a bearer-protected
   endpoint; the library answers an unusable access token with a bare

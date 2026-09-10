@@ -749,6 +749,7 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 | `docs/operations/connect-runbook.md` | the one-time GCP prerequisites, the per-workspace flow, trusting the client, verification |
 | `docs/operations/runbook.md` | day one, health, reconnect as the recovery, lost operator access, domain moves and conflicts, export |
 | `docs/operations/migration-from-google-group-sync.md` | overlay first, consumers moved to the ConnectRPC client, Connect later, archive |
+| `docs/operations/conformance.md` | running the OpenID Foundation suite against an installation: the unattended profile as a script, the two attended ones as a checklist, and the temporary clients to remove afterwards |
 | `docs/development/testing.md` | fakes for the backend and the store |
 | `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, chart README, `values.schema.json` | estate-standard |
 
