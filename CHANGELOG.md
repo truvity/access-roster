@@ -18,6 +18,35 @@ git history.
   console. `docs/design/access-issuer.md` *One origin*, `docs/design/hub.md`,
   `docs/architecture.md`, the references. (INF-687, INF-682)
 
+## Unreleased
+
+- **The console can be mounted under a path of its host, so it can share
+  its issuer's origin.** `route.pathPrefix` on the hub's chart: the
+  console's own route matches the prefix and the gateway rewrites it
+  away, so the hub's own routes never learn it exists. The **bootstrap
+  surface stays at the host root** — `/login` and `/connect` are
+  registered OAuth redirect URIs, and a provider returns to the literal
+  address on file, so a prefixed one would be a callback nothing points
+  at. Two chart guards hold both halves. Empty is exactly today's shape.
+  (INF-687)
+- **The global session listing exists, for an operator.** A request
+  naming neither an identity nor a client used to be refused outright;
+  it now answers for an operator and is refused for everyone else. It is
+  the incident case: the one where you do not know *whose* session to
+  look for. Paged by a cursor that is the last session seen rather than
+  an offset, because an offset is invalidated by every session that opens
+  or closes between two calls and this index is precisely the thing that
+  changes constantly. Capped, and a session now reports the browser
+  session that parented it. (INF-682)
+- **Sessions in the console.** *Active sessions* with Revoke on a
+  person's page and *Sign out everywhere* on your own; *Open sessions* on
+  a client's page; and a new operator-only **Sessions** page listing the
+  installation, filterable by person and client. Rows opened from one
+  browser group together. They call the issuer's session service
+  same-origin with the browser's own session cookie — no bearer, no CORS
+  — and render only when the console knows of an issuer. Removal only,
+  never a grant. (INF-682)
+
 ## v0.9.8
 
 - **A ServiceAccount's subject names its cluster.** `sub` was

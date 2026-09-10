@@ -38,3 +38,6 @@ vendor/
 config.yaml
 config.local.yaml
 frontend/node_modules/
+
+# Agent worktrees live here; they are checkouts, not sources.
+.claude/
