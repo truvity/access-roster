@@ -3,6 +3,18 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## v0.9.10
+
+- **The console's sessions sections need the issuer to share the origin,
+  not merely to exist.** They were gated on an issuer being configured at
+  all. But the session service is called **same-origin**, with the
+  browser's issuer cookie and no bearer — that is the whole point of
+  putting the console under its issuer's host — so wherever the two are
+  still separate hosts the sections rendered and then called the
+  console's own origin, which serves no such service. A 404 per section,
+  on every deployment that has not done the cutover. Supersedes v0.9.9,
+  which carried the bug.
+
 ## v0.9.9
 
 - **Docs: one domain, and where session management lives.** Decided with
