@@ -156,8 +156,12 @@ v0.10.0.
 
 ## What is deliberately not in the target
 
-Token exchange, the device flow, JWT bearer and client credentials are
-served and are **not** part of any profile claimed here. The reverse
-also has to hold: nothing this family's design names as *out* may be
-found served. See
-[../design/access-issuer.md](../design/access-issuer.md).
+Token exchange is served and is **not** part of any profile claimed
+here. It is now the only one: the device flow, JWT bearer and client
+credentials were served through 0.11 and are gone (INF-693).
+
+The reverse also has to hold, and since 0.11 it is the half worth
+running: nothing this family's design names as *out* may be found
+served. A grant withdrawn from discovery that goes on ANSWERING is the
+failure that hides, because the metadata looks right. See
+[../reference/access-issuer.md](../reference/access-issuer.md#endpoints).

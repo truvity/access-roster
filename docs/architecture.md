@@ -168,9 +168,17 @@ against a key set the issuer trusts and holding no credential for:
 
 That is what makes one issuer serve many clusters cheaply: a new cluster
 is one row naming its key set, not a credential held anywhere. Device
-flow, client credentials, introspection and JWT bearer were served
-through 0.10 and are removed next release
-([why](design/access-issuer.md#what-it-issues-and-to-whom)).
+flow, client credentials and JWT bearer were served through 0.11 and are
+gone; introspection never applied, because these are JWTs verified
+offline ([why](reference/access-issuer.md#endpoints)).
+
+Three of the six are grants and three are endpoints, so
+`grant_types_supported` prints three: `authorization_code`,
+`refresh_token` and token exchange. Userinfo, `end_session` and
+revocation are advertised in fields of their own. They are counted
+together because they answer one question — what does this issuer serve
+— and listing an endpoint as a grant type would be the metadata lying in
+a new way.
 
 ## Where each decision is made
 

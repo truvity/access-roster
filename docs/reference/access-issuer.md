@@ -42,16 +42,23 @@ longer than `lifetimes.token`.
 
 ## Endpoints
 
+**Three grants, and the six things they add up to.** `grant_types_supported`
+names exactly `authorization_code`, `refresh_token` and token exchange,
+because those are the three grants. The other three of the six — userinfo,
+`end_session` and revocation — are ENDPOINTS, and discovery advertises them
+in their own fields. They are counted together because they answer the same
+question, *what does this issuer serve*, but listing an endpoint under
+`grant_types_supported` would be the metadata lying in a new way.
+
 | Path | Standard | Purpose |
 |---|---|---|
 | `/.well-known/openid-configuration`, `/keys` | OIDC discovery, JWKS | what relying parties read |
 | `/authorize`, `/token`, `/userinfo`, `/end_session` | OIDC | login, tokens, RP-initiated logout |
-| `/device_authorization` | RFC 8628 | served through 0.10, **removed next release** (INF-693): kubelogin, `accessctl` and the Kargo CLI all use code + PKCE on a loopback port, and no human signs in from a machine without a browser |
 | `/token` with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange` | RFC 8693 | CI and workload exchange; the requested `audience` is a client, gated by its `requires` |
 | `/revoke` | RFC 7009 | revokes a refresh token; what Revoke and "sign out everywhere" call underneath |
-| `/login`, `/signed-out` | ours | the two pages the issuer serves itself: the sign-in chooser by domain, and where a person lands after a sign-out when the client declares no page of its own. Minimal HTML, same theme; not the console. `/device` goes with the device flow |
+| `/login`, `/signed-out` | ours | the two pages the issuer serves itself: the sign-in chooser by domain, and where a person lands after a sign-out when the client declares no page of its own. Minimal HTML, same theme; not the console |
 | `/account` | ours | the signed-in person's own page: their sessions, and *sign out everywhere*. Served through 0.10; **moves into the console's *Your access* page next release** (INF-695), which is same-origin with the issuer and already lists the same sessions |
 | `/.access/grants` | ours | the clients the caller's groups admit it to; read by `accessctl kubeconfig` and `aws-config` |
 | `/.access/simulate` | ours | what would this identity get. Read-only |
 | `SessionService` (ConnectRPC): `ListSessions{identity? \| client?}`, `RevokeSessions{identity, client?, session_id?}` | ours | sessions per identity and per client, with client, how obtained, issued, expires, last refreshed; revoke per identity, per client, or one. Listing and revoking others is operator; listing and revoking your own is any signed-in identity; listing **every** session (neither identity nor client named) is operator-only, paged by `page_size`/`page_token`, and audited *(INF-682)*. Authorized by the browser's SSO cookie on a same-origin call — the console on one domain, or `/account` — or by a bearer. The `console.origin` CORS gate is obsolete on one domain and is removed with the cutover |
-| not served | RFC 7662 introspection, implicit and hybrid flows, back-channel logout, session-management iframe, RFC 7591 dynamic client registration; and from next release (INF-693) device flow, client credentials and RFC 7523 JWT bearer | JWT access tokens are verified offline. Registration is deliberate: every client is declared, so the set of them is answerable by reading the repository. Client credentials would be a machine with a stored secret; JWT bearer is a subset of token exchange with a different spelling; device flow is for a machine with no browser, and nobody signs in from one |
+| not served | RFC 8628 device flow, client credentials, RFC 7523 JWT bearer, RFC 7662 introspection, implicit and hybrid flows, back-channel logout, session-management iframe, RFC 7591 dynamic client registration | The first three were served through 0.11 and are gone (INF-693): the device flow is for a machine with no browser, and both headless cases here — a CI job and a workload — are token exchange; client credentials is a machine with a stored secret, which is the thing this design exists not to have; JWT bearer is token exchange with a different spelling, and two ways to say one thing is two things to keep truthful. Introspection never applied — these are JWTs, verified offline against the key set. Registration is deliberate: every client is declared, so the set of them is answerable by reading the repository |
