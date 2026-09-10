@@ -28,7 +28,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import ShieldIcon from "@mui/icons-material/Shield";
 import RuleIcon from "@mui/icons-material/Rule";
 
-import { issuerIsSameOrigin, personName, whoami, type Me } from "./api";
+import { issuerIsSameOrigin, mounted, personName, whoami, type Me } from "./api";
 import { useAsync } from "./hooks";
 import { paths, useRoute } from "./router";
 import { Search } from "./Search";
@@ -290,7 +290,7 @@ function signOut(event: React.MouseEvent<HTMLElement>) {
     return;
   }
   void fetch(url, { method: "POST" }).then(() => {
-    window.location.href = "/login";
+    window.location.href = mounted("login");
   });
 }
 

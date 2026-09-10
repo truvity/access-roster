@@ -22,7 +22,16 @@ import { SessionService, How } from "./gen/accessissuer/v1/session_pb";
 // point, so BASE_URL is "./" and the mount point is only knowable at
 // runtime. `new URL(".", href)` is that mount point — "/console/" or "/"
 // — and an absolute URL leaves nothing for a transport to guess.
-const transport = createConnectTransport({ baseUrl: new URL(".", window.location.href).href });
+// Where this console is mounted, resolved from the page. The bundle is
+// built with a relative base so one artifact serves at any mount point,
+// so the prefix is only knowable at runtime — and EVERY path the console
+// asks for has to go through here. An absolute "/..." resolves against
+// the ORIGIN, which under a shared host is the issuer, not this console.
+export function mounted(path: string): string {
+  return new URL(path, window.location.href).href;
+}
+
+const transport = createConnectTransport({ baseUrl: mounted(".") });
 
 export const workspaces = createClient(WorkspaceService, transport);
 export const settings = createClient(SettingsService, transport);
@@ -86,7 +95,7 @@ export function issuerIsSameOrigin(issuerUrl?: string): boolean {
 }
 
 export async function whoami(): Promise<Me> {
-  const response = await fetch("/.access/whoami", { headers: { accept: "application/json" } });
+  const response = await fetch(mounted(".access/whoami"), { headers: { accept: "application/json" } });
   if (!response.ok) return { status: "signed-out" };
   return (await response.json()) as Me;
 }
