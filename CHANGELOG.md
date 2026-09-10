@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.15
 
 - **The session service is mounted whether or not a cross-origin console
   was configured.** It was gated on `console.origin` — a value that
