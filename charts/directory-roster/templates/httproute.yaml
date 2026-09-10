@@ -8,6 +8,11 @@
   Rendered only when a host is set. A hub reached by port-forward needs no
   route, and a hostname that resolves nowhere is worse than none at all.
 */}}
+{{- if not .Values.route.gateway.name }}
+{{- /* Own Gateway, today's shape. Skipped entirely when route.gateway.name
+       points at one that already exists -- e.g. the issuer's, for the
+       one-origin console (INF-687) -- so the two charts never render two
+       Gateways declaring a listener for the same hostname. */}}
 {{- if .Values.route.certificate.issuerName }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -52,6 +57,7 @@ spec:
             kind: Secret
             name: {{ include "directory-roster.fullname" . }}-tls
 ---
+{{- end }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -60,10 +66,7 @@ metadata:
     {{- include "directory-roster.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: {{ include "directory-roster.fullname" . }}
-      sectionName: console
+    {{- include "directory-roster.gatewayParentRef" . | nindent 4 }}
   hostnames:
     - {{ .Values.route.host | quote }}
   rules:
@@ -134,10 +137,7 @@ metadata:
     {{- include "directory-roster.labels" $ | nindent 4 }}
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: {{ include "directory-roster.fullname" $ }}
-      sectionName: console
+    {{- include "directory-roster.gatewayParentRef" $ | nindent 4 }}
   hostnames:
     - {{ $.Values.route.host | quote }}
   rules:
