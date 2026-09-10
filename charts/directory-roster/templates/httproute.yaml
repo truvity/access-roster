@@ -77,7 +77,19 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /
+            value: {{ printf "%s/" .Values.route.pathPrefix }}
+      {{- with .Values.route.pathPrefix }}
+      {{- /* The console shares its issuer's hostname (INF-687): the
+             issuer keeps the origin root and the console takes a path
+             instead, so the gateway strips it here and the hub's own
+             routes (GET /assets/, GET /{$}) never learn it exists. */}}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      {{- end }}
       backendRefs:
         - group: ""
           kind: Service
@@ -103,7 +115,17 @@ spec:
 # the flow, on a request the gateway did authenticate.
 #
 # Longer path prefixes win in the Gateway API, so these take precedence
-# over the `/` the main route matches.
+# over the console rule above.
+#
+# ALWAYS at the host's root, NEVER under route.pathPrefix (INF-687),
+# whatever the console's own path is. These are registered OAuth
+# redirect URIs -- the admin-consent callback google.CallbackPath, and
+# this hub's own /login when it signs people in itself -- and a
+# provider redirects to the literal URI on file. A rewrite here would
+# only be reachable at a path nothing registered points at. So this
+# route carries no URLRewrite filter, ever: the hub's own routes
+# (GET /login, GET /connect/{backend}/callback) see exactly the request
+# path a browser or a provider sent.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

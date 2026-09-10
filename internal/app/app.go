@@ -62,8 +62,15 @@ type Config struct {
 
 	freshness hub.Config
 
-	demo              bool
-	publicURL         string
+	demo      bool
+	publicURL string
+	// publicRootURL is the host's root, never carrying route.pathPrefix
+	// (INF-687) even where publicURL does: the bootstrap surface -- the
+	// admin-consent callback, and this hub's own sign-in when it runs
+	// one -- stays at the domain root on its own HTTPRoute. Empty falls
+	// back to publicURL in the console, which is exactly right wherever
+	// no prefix is configured.
+	publicRootURL     string
 	recoveryEnabled   bool
 	recoveryAccount   string
 	recoveryAudience  string
@@ -97,6 +104,7 @@ func Load() (Config, error) {
 		healthPort:        envInt("HEALTH_PORT", 7070),
 		demo:              envBool("DEMO", false),
 		publicURL:         strings.TrimSuffix(envString("PUBLIC_URL", ""), "/"),
+		publicRootURL:     strings.TrimSuffix(envString("PUBLIC_ROOT_URL", ""), "/"),
 		recoveryEnabled:   envBool("RECOVERY_ENABLED", true),
 		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", "directory-roster-recovery"),
 		recoveryAudience:  envString("RECOVERY_AUDIENCE", "directory-roster-recovery"),
@@ -477,6 +485,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		CacheBackend: cacheName(cfg),
 		SecureCookie: cfg.secureCookies,
 		PublicURL:    cfg.publicURL,
+		RootURL:      cfg.publicRootURL,
 		IssuerURL:    cfg.forwardedIssuer,
 		SignIn:       cfg.loginDirectory,
 	})

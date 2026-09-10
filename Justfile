@@ -92,6 +92,44 @@ chart-lint:
     test "$(helm template directory-roster charts/directory-roster \
         --set route.host=console.example --set 'route.bootstrapPaths=null' \
         | grep -c '^kind: HTTPRoute')" = "1"
+    # route.pathPrefix (INF-687): empty is today's shape exactly -- no
+    # URLRewrite filter anywhere, and the console matches "/" same as
+    # before.
+    helm template directory-roster charts/directory-roster \
+        --set route.host=console.example > /tmp/directory-roster-noprefix.yaml
+    ! grep -q 'type: URLRewrite' /tmp/directory-roster-noprefix.yaml
+    ! grep -q 'PUBLIC_ROOT_URL' /tmp/directory-roster-noprefix.yaml
+    grep -q 'value: /$' /tmp/directory-roster-noprefix.yaml
+    # Set, ONLY the console's own route gains the filter that strips it.
+    # The bootstrap surface -- /login, /connect -- keeps matching the
+    # host's ROOT with NO rewrite: their OAuth redirect URIs are
+    # registered with the provider at that literal, unprefixed address
+    # (the real Google client registered exactly
+    # https://.../connect/google/callback at the root), and a prefixed
+    # bootstrap route would render fine and fail only the first time
+    # somebody connects a directory. PUBLIC_URL, the console's own
+    # address, carries the prefix; PUBLIC_ROOT_URL, printed in the setup
+    # steps for the bootstrap redirects, does not.
+    helm template directory-roster charts/directory-roster \
+        --set route.host=console.example --set route.pathPrefix=/console \
+        > /tmp/directory-roster-prefix.yaml
+    test "$(grep -c 'type: URLRewrite' /tmp/directory-roster-prefix.yaml)" = "1"
+    test "$(grep -c 'replacePrefixMatch: /$' /tmp/directory-roster-prefix.yaml)" = "1"
+    grep -q 'value: /console/$' /tmp/directory-roster-prefix.yaml
+    grep -q 'value: "/login"' /tmp/directory-roster-prefix.yaml
+    grep -q 'value: "/connect"' /tmp/directory-roster-prefix.yaml
+    ! grep -q '/console/login\|/console/connect' /tmp/directory-roster-prefix.yaml
+    grep -q 'value: https://console.example/console$' /tmp/directory-roster-prefix.yaml
+    grep -q 'PUBLIC_ROOT_URL' /tmp/directory-roster-prefix.yaml
+    grep -q 'value: https://console.example$' /tmp/directory-roster-prefix.yaml
+    # A trailing slash or a bare "/" is not a path prefix worth having --
+    # it is either what empty already means or a double slash away from
+    # one, and the schema is the contract: a typo here must fail the
+    # RENDER, not be discovered as a 404 behind the gateway.
+    ! helm template directory-roster charts/directory-roster \
+        --set route.host=console.example --set route.pathPrefix=/console/ >/dev/null 2>&1
+    ! helm template directory-roster charts/directory-roster \
+        --set route.host=console.example --set route.pathPrefix=/ >/dev/null 2>&1
     # A forwarded issuer without an audience accepts every token that
     # issuer mints, for every service it serves. That must fail the
     # RENDER, not be discovered in the console's logs.

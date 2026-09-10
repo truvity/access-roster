@@ -115,8 +115,25 @@ spec:
             # silently wrong everywhere else, because the redirect would
             # be registered against a hostname no browser will reach.
             {{- if .Values.route.host }}
+            # route.pathPrefix (INF-687) carries through: the console
+            # shares its issuer's hostname under a path, the gateway
+            # rewrites the prefix away before this hub sees the request,
+            # and PUBLIC_URL has to carry it anyway because it is what
+            # a browser types, not what the hub receives.
             - name: PUBLIC_URL
+              value: https://{{ .Values.route.host }}{{ .Values.route.pathPrefix }}
+            {{- if .Values.route.pathPrefix }}
+            # The bootstrap surface (route.bootstrapPaths: /login,
+            # /connect) is deliberately never moved under pathPrefix --
+            # its registered OAuth redirect URIs are at the domain root,
+            # on their own HTTPRoute. PUBLIC_ROOT_URL is that root, for
+            # the admin-consent callback and this hub's own /login, so
+            # the setup steps print a URI a provider actually redirects
+            # to. Only emitted once a prefix makes it differ from
+            # PUBLIC_URL; the console falls back to PUBLIC_URL otherwise.
+            - name: PUBLIC_ROOT_URL
               value: https://{{ .Values.route.host }}
+            {{- end }}
             # The console is served over TLS, so its cookies say so.
             - name: SECURE_COOKIES
               value: "true"

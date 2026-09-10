@@ -229,6 +229,16 @@ func TestTheSetupNamesWhereEachFlowActuallyLands(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("no sign-in anywhere: %v, want %v", got, want)
 	}
+
+	// The console mounted under a path (INF-687): the registered
+	// redirects are at the host ROOT (RootURL), never under
+	// route.pathPrefix -- a provider redirects to the literal URI on
+	// file, and PublicURL is the console's own, prefixed address.
+	got = guidance(ConsoleDeps{PublicURL: "https://dir.example/console", RootURL: "https://dir.example", SignIn: true})
+	want = []string{"https://dir.example/connect/google/callback", "https://dir.example/login/google/callback"}
+	if !slices.Equal(got, want) {
+		t.Errorf("mounted under a path: %v, want %v", got, want)
+	}
 }
 
 // A consent is a real administrator's real grant. Spending one on a
