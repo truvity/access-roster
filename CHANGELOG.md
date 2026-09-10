@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.10.0
 
 - **The API listener's consumers hold a grant.** Admission and
   authorization were one decision: a consumer admitted at all could

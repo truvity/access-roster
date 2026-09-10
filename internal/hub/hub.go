@@ -449,7 +449,6 @@ func (h *Hub) reopen(ctx context.Context, id string) (backend.Backend, bool) {
 
 // ---------------------------------------------------------------- reading
 
-// Describe returns every served domain with its authority and origin.
 // Routing maps every claimed domain to the workspace that serves it.
 //
 // Describe answers the same question with a snapshot read per workspace,
@@ -469,6 +468,7 @@ func (h *Hub) Routing(ctx context.Context) (map[string]string, error) {
 	return out, nil
 }
 
+// Describe returns every served domain with its authority and origin.
 func (h *Hub) Describe(ctx context.Context) ([]ServedDomain, error) {
 	v, err := h.view(ctx)
 	if err != nil {
