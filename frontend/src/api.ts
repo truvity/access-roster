@@ -62,6 +62,24 @@ export type Me = {
   issuerUrl?: string;
 };
 
+/** Whether the issuer shares this page's origin.
+ *
+ *  The session service is called SAME-ORIGIN, with the browser's issuer
+ *  cookie and no bearer — that is the whole design (INF-687). So a console
+ *  served from a different host than its issuer cannot reach it, and must
+ *  not render sections that would call its own origin and 404. This is
+ *  true of every deployment until the console is mounted under its
+ *  issuer's host, and of any installation that chooses to keep them
+ *  apart. */
+export function issuerIsSameOrigin(issuerUrl?: string): boolean {
+  if (!issuerUrl) return false;
+  try {
+    return new URL(issuerUrl, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 export async function whoami(): Promise<Me> {
   const response = await fetch("/.access/whoami", { headers: { accept: "application/json" } });
   if (!response.ok) return { status: "signed-out" };

@@ -28,7 +28,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import ShieldIcon from "@mui/icons-material/Shield";
 import RuleIcon from "@mui/icons-material/Rule";
 
-import { personName, whoami, type Me } from "./api";
+import { issuerIsSameOrigin, personName, whoami, type Me } from "./api";
 import { useAsync } from "./hooks";
 import { paths, useRoute } from "./router";
 import { Search } from "./Search";
@@ -115,7 +115,7 @@ export function App() {
         {accessSide.map((item) => (
           <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
         ))}
-        {operator && identityInfo?.issuerUrl ? (
+        {operator && issuerIsSameOrigin(identityInfo?.issuerUrl) ? (
           <NavItem item={sessionsItem} current={route.view} onPick={() => setOpen(false)} />
         ) : null}
       </List>
@@ -265,7 +265,7 @@ function PageFor({
     case "groups":
       return id ? <Group name={id} operator={operator} onDone={onDone} /> : <Groups />;
     case "clients":
-      return id ? <Client id={id} issuerUrl={me?.issuerUrl} operator={operator} onDone={onDone} /> : <Clients />;
+      return id ? <Client id={id} issuerUrl={issuerIsSameOrigin(me?.issuerUrl) ? me?.issuerUrl : undefined} operator={operator} onDone={onDone} /> : <Clients />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "settings":
