@@ -94,6 +94,27 @@ spec:
   hostnames:
     - {{ .Values.route.host | quote }}
   rules:
+      {{- with .Values.route.rootRedirect }}
+      {{- /* The issuer owns this host's ROOT, and has nothing to serve
+             there: everything it answers is a named endpoint, so "/" is
+             a 404 for anyone who simply types the domain. Where a console
+             shares the host under a path (INF-687), sending them there
+             is kinder than that 404 and costs nothing -- an Exact match
+             outranks the catch-all below, so it takes only "/" itself
+             and no endpoint moves. Empty serves the 404, which is the
+             honest answer for an issuer deployed alone. */}}
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: {{ . | quote }}
+            statusCode: 302
+      {{- end }}
       {{- /* Written out although it is also the API server's default: a
              rule without one comes back WITH one, and a GitOps controller
              then sees a field it never sent and reports OutOfSync

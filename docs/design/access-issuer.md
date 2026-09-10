@@ -21,7 +21,7 @@ It is a **security token service**, not an identity provider. The line:
 
 - it never proves who anyone is; it verifies proofs produced elsewhere;
 - it holds no passwords, no user records, no MFA, no consent screens, no
-  self-registration, no second way in;
+  client self-registration, no second way in;
 - break-glass lives outside it, in the cloud account and the cluster's
   own access mechanisms. It does carry a **recovery sign-in** (decided
   2026-09-08, late, superseding the same morning's rule that it would
@@ -95,17 +95,21 @@ decides whether a row costs us anything.
 | a CI job or a workload swapping its own token for ours, or an exchange for an AWS role | token exchange (RFC 8693) | the library, plus **our verifier** for the incoming proof: GitHub's keys and the organisation allow-list, or TokenReview |
 | an operator revoking someone, or a person signing out everywhere | token revocation (RFC 7009) | the library, plus **our session index**, so there is something to list and to revoke |
 | a person signing in when no directory can vouch for anybody | recovery: a ServiceAccount token, checked by TokenReview | **us**, and it is the same primitive as the row below. The deadlock it breaks is total: a console asks this issuer for a token, this issuer asks the hub, the hub cannot answer because no directory is connected, and the directory is connected FROM that console. It grants nothing by itself -- the sign-in completes as the ServiceAccount subject and the policy's `service_account` matchers decide |
-| a proxy registering itself when it starts | dynamic client registration (RFC 7591) | **us**, one endpoint. The library does not have it, and the rule — ServiceAccount token, per-namespace host pattern — is ours anyway |
 | a confidential client proving itself with a key rather than a secret; an in-cluster service that is its own client | JWT client authentication (RFC 7523); client credentials | the library, switched on |
 | a relying party checking a token it received | the access token is a JWT (RFC 9068), verified offline against the JWKS | the library, switched on; it is why there is no introspection endpoint |
 
 What the issuer itself is, then, is not protocol: the storage behind the
 library in Valkey; the mapping from the policy to the claims in a token;
-the three verifiers; the registration endpoint; the session index; and
-three small HTML pages. The conformance suite proves the library is
+the three verifiers; the session index; and its own small HTML pages. The conformance suite proves the library is
 wired correctly, not that we wrote a protocol.
 
 **Deliberately not served**, so nobody adds them later without a reason:
+**dynamic client registration** (RFC 7591 — dropped 2026-09-10, INF-664;
+every client is declared, so the set of them is answerable by reading the
+repository rather than by querying the running service, and the issuer
+carries no endpoint that mints trust. Only our own proxy could ever have
+called it, and the drift it would have prevented is closed by generating
+a console's client from one row instead — INF-688);
 introspection (RFC 7662; JWT access tokens make it unnecessary and an
 endpoint nobody calls is attack surface); the implicit and hybrid flows
 (superseded by code with PKCE; the library supports implicit and it is

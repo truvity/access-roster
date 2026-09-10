@@ -5,8 +5,8 @@
 # else is what an installation sets once, for every exposure it has.
 
 exposure:
-  # The console host. It is also the cookie domain and, once
-  # self-registration exists, the client id -- one name, so there is
+  # The console host. It is also the cookie domain, and the name a
+  # client is conventionally called after -- one name, so there is
   # nothing to keep in step.
   hostname: ""
   # The console's Service. Required unless attachRouteName is set, in
@@ -85,11 +85,6 @@ client:
       clientId: client-id
       clientSecret: client-secret
 
-registration:
-  # Self-register at start, so no client is minted by hand and none
-  # appears in any values file. OFF until the issuer serves /register
-  # (RFC 7591); until then `client.secret.name` must name a static one.
-  enabled: false
 
 session:
   valkey:

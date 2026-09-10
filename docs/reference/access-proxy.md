@@ -22,7 +22,6 @@
 | `exposure.proxyPrefix` | `/oauth2` | the paths this proxy owns; must agree with the client's registered redirect. For a console mounted under a path of its host (the directory console at `/console/`), the prefix moves under it: `/console/oauth2` |
 | `issuer.jwksUri` | derived | `{issuer}/keys`. Zitadel is the exception at `/oauth/v2/keys` |
 | `session.scopes` | `""` | empty asks for openid, profile and email, plus `groups` when `allow` is set and `offline_access` when `refresh` is. Setting it by hand alongside `refresh` without `offline_access` **fails the render**: refresh cannot work without a refresh token, and the install would otherwise look correct and silently never refresh |
-| `registration.enabled` | `false` | self-register at start. **Off, because the issuer does not serve `/register` yet** (RFC 7591); until it does, `client.secret.name` must name a static client |
 | `proxy.image`, `proxy.replicaCount`, `proxy.resources`, `proxy.nodeSelector`, `proxy.tolerations` | from the fleet values | |
 | `networkPolicy.enabled`, `.gatewayNamespace` | `false`, `""` | admits only the gateway to the proxy. Off by default, like the family's other charts: it is the second layer, not the trust boundary — the backend verifies the forwarded token, so reaching a port proves nothing |
 

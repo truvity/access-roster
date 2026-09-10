@@ -5,22 +5,29 @@ import react from "@vitejs/plugin-react";
 // API needs no base URL and no CORS. `dev` proxies to a hub run locally
 // with DEMO=1.
 //
-// `base` is where the BUILT ASSETS are referenced from — index.html's
-// script/link tags, and every `import.meta.env.BASE_URL`-relative fetch
-// Vite itself makes. It defaults to "/", today's shape: the console at
-// its host's root. Set CONSOLE_BASE_PATH (a trailing slash, as Vite
-// requires) to build for the console mounted under a path instead —
-// "/console/", to match `route.pathPrefix: /console` in the hub chart
-// (INF-687). The hub's own routes (GET /assets/, GET /{$}) do not
-// change: the gateway strips the prefix before a request reaches the
-// hub, so the hub still sees "/assets/..." and "/" exactly as it always
-// has. Only the HTML this build emits needs to know the prefix, because
-// that HTML is what the browser resolves relative URLs against.
+// `base` is RELATIVE, and that is the whole trick. The built bundle is
+// committed and embedded in the hub's binary, so one build has to work
+// wherever the chart mounts it: at its host's root, or under a path when
+// the console shares its issuer's origin (`route.pathPrefix`, INF-687).
+// An absolute "/assets/..." cannot do that — served under /console/ the
+// browser resolves it against the ORIGIN, asks the issuer at the root,
+// and gets a 404 for every asset. A build-time env var cannot do it
+// either: it would bake one deployment's prefix into an artifact that
+// ships to all of them.
+//
+// "./" resolves against the page instead, so index.html served at
+// /console/ asks for /console/assets/..., and at / asks for /assets/... .
+// The gateway strips the prefix before the hub sees it, so the hub's own
+// routes (GET /assets/, GET /{$}) never learn it exists.
+//
+// It does require the console to be reached WITH a trailing slash —
+// "/console" alone would resolve "./" against the root — which the chart
+// guarantees with a redirect.
 //
 // The console's OWN routing lives in the URL fragment (router.ts), which
-// `base` never touches — a hash is resolved against whatever page it is
+// `base` never touches: a hash resolves against whatever page it is
 // already on, prefixed or not.
-const base = process.env.CONSOLE_BASE_PATH || "/";
+const base = "./";
 
 export default defineConfig({
   base,

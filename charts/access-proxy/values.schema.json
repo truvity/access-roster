@@ -9,49 +9,109 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "hostname": { "type": "string" },
+        "hostname": {
+          "type": "string"
+        },
         "backend": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "name": { "type": "string" },
-            "port": { "type": "integer", "minimum": 1 }
+            "name": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
-        "posture": { "enum": ["groups", "authenticated"] },
-        "allow": { "type": "array", "items": { "type": "string" } },
+        "posture": {
+          "enum": [
+            "groups",
+            "authenticated"
+          ]
+        },
+        "allow": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "gateway": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "name": { "type": "string" },
-            "namespace": { "type": "string" },
-            "sectionName": { "type": "string" }
+            "name": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": "string"
+            },
+            "sectionName": {
+              "type": "string"
+            }
           }
         },
-        "paths": { "type": "array", "items": { "type": "string" } },
-        "proxyPrefix": { "type": "string", "pattern": "^/" },
-        "attachRouteName": { "type": "string" },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "proxyPrefix": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "attachRouteName": {
+          "type": "string"
+        },
         "routes": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
-              "attachRouteName": { "type": "string" },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "attachRouteName": {
+                "type": "string"
+              },
               "backend": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
-                  "name": { "type": "string" },
-                  "port": { "type": "integer", "minimum": 1 }
+                  "name": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
                 }
               },
-              "paths": { "type": "array", "items": { "type": "string" } },
-              "posture": { "enum": ["groups", "authenticated"] },
-              "allow": { "type": "array", "items": { "type": "string" } }
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "posture": {
+                "enum": [
+                  "groups",
+                  "authenticated"
+                ]
+              },
+              "allow": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         },
@@ -59,8 +119,15 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "authorizationHeader": { "type": "boolean" },
-            "extraExtAuthHeaders": { "type": "array", "items": { "type": "string" } }
+            "authorizationHeader": {
+              "type": "boolean"
+            },
+            "extraExtAuthHeaders": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       }
@@ -69,8 +136,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "url": { "type": "string", "pattern": "^(https?://.*)?$" },
-        "jwksUri": { "type": "string" }
+        "url": {
+          "type": "string",
+          "pattern": "^(https?://.*)?$"
+        },
+        "jwksUri": {
+          "type": "string"
+        }
       }
     },
     "client": {
@@ -81,23 +153,26 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "name": { "type": "string" },
+            "name": {
+              "type": "string"
+            },
             "keys": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "clientId": { "type": "string", "minLength": 1 },
-                "clientSecret": { "type": "string", "minLength": 1 }
+                "clientId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "clientSecret": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           }
         }
       }
-    },
-    "registration": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": { "enabled": { "type": "boolean" } }
     },
     "session": {
       "type": "object",
@@ -107,15 +182,26 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "address": { "type": "string" },
-            "cluster": { "type": "boolean" },
-            "username": { "type": "string" },
+            "address": {
+              "type": "string"
+            },
+            "cluster": {
+              "type": "boolean"
+            },
+            "username": {
+              "type": "string"
+            },
             "passwordSecret": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "name": { "type": "string" },
-                "key": { "type": "string", "minLength": 1 }
+                "name": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           }
@@ -124,14 +210,29 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "name": { "type": "string" },
-            "key": { "type": "string", "minLength": 1 }
+            "name": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
-        "lifetime": { "type": "string", "minLength": 1 },
-        "refresh": { "type": "string" },
-        "scopes": { "type": "string" },
-        "identityClaim": { "type": "string", "minLength": 1 }
+        "lifetime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "refresh": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "string"
+        },
+        "identityClaim": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "proxy": {
@@ -142,26 +243,58 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "repository": { "type": "string", "minLength": 1 },
-            "tag": { "type": "string", "minLength": 1 },
-            "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pullPolicy": {
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
           }
         },
-        "replicaCount": { "type": "integer", "minimum": 1 },
-        "port": { "type": "integer", "minimum": 1 },
-        "resources": { "type": "object" },
-        "nodeSelector": { "type": "object" },
-        "tolerations": { "type": "array" },
-        "topologySpreadConstraints": { "type": "array" },
-        "podAnnotations": { "type": "object" }
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "resources": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "topologySpreadConstraints": {
+          "type": "array"
+        },
+        "podAnnotations": {
+          "type": "object"
+        }
       }
     },
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean" },
-        "gatewayNamespace": { "type": "string" }
+        "enabled": {
+          "type": "boolean"
+        },
+        "gatewayNamespace": {
+          "type": "string"
+        }
       }
     }
   }

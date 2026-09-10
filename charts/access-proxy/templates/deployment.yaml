@@ -44,7 +44,7 @@ spec:
             - name: OAUTH2_PROXY_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "client.secret.name is required until registration.enabled works (the issuer serves no /register yet)" $client.name }}
+                  name: {{ required "client.secret.name is required: every client is declared, so name the Secret holding this one" $client.name }}
                   key: {{ $client.keys.clientId }}
             - name: OAUTH2_PROXY_CLIENT_SECRET
               valueFrom:

@@ -3,6 +3,32 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **The console's assets are referenced relatively, so one bundle serves
+  at any mount point.** Mounted under a path they were requested from the
+  origin root — where the issuer answers — so every asset 404'd and the
+  console did not load. A build-time base path could not fix it either:
+  the bundle is committed and embedded, so baking one deployment's prefix
+  into it would ship that prefix to all of them. `./assets/…` resolves
+  against the page instead. It requires the trailing slash, so the bare
+  prefix now redirects to itself with one, and the Connect transport
+  resolves its base from the page rather than a literal. (INF-687)
+- **A bare GET of the issuer's host can land somewhere useful.**
+  `route.rootRedirect` on the issuer — the issuer serves nothing at `/`,
+  every endpoint it answers being a named one, so a person who types the
+  domain got a 404. Empty keeps that 404, which is honest for an issuer
+  deployed alone.
+- **`/register` is dropped, and every client is declared.** Only our own
+  proxy could ever have called it; an endpoint that mints clients is the
+  one surface an issuer least wants; and declaring them keeps *who can
+  obtain tokens for which audience* answerable by reading a repository
+  rather than by querying the running service. `registration.enabled`
+  leaves the access-proxy chart, `/register` leaves the issuer's surface,
+  and the console's Clients page is read-only by construction rather than
+  by policy. The drift it would have prevented is closed by generating a
+  console's client from one row instead. (INF-664, INF-688)
+
 ## v0.9.12
 
 - **The sign-out chain moves with the console.** Mounted under a path,

@@ -2,13 +2,21 @@
 
 **Status:** designed 2026-09-07; chart built 2026-09-08.
 
-**Decided 2026-09-08:** built with a **static client**, not a self-registered
-one. `/register` is designed (see *Self-registration* below) and the issuer
-does not serve it yet, so `registration.enabled` defaults to `false` and an
-installation names a Secret holding the client. This is an interim with an
-end: when the issuer serves `/register`, the default flips and no client
-appears in any values file. Recorded here rather than discovered later,
-because a static client is the thing this component exists to remove.
+**Decided 2026-09-10 (supersedes 2026-09-08):** the client is **declared**,
+and that is permanent. Self-registration was designed and then dropped
+(INF-664): only this proxy could ever have called such an endpoint, an
+endpoint that mints clients is the one surface an issuer least wants, and
+declaring them keeps *who can obtain tokens for which audience* answerable
+by reading a repository. So an installation names a Secret holding the
+client, and `registration.enabled` is gone rather than waiting for a
+default to flip.
+
+What self-registration would have given for free is that the redirect URI
+a proxy uses and the one the issuer has on file cannot drift. That is a
+real property — drift broke sign-in twice and sign-out once during the
+one-domain cutover — and it is recovered by generating a console's
+hostname, proxy configuration and client entry from a single row of the
+access matrix (INF-688), rather than by an endpoint.
 
 **Decided 2026-09-08:** the chart never mints the **cookie secret** either,
 and that one is not interim. A chart that generated it would generate a new
@@ -51,14 +59,13 @@ implement.
 upstream oauth2-proxy image, deployed as Envoy Gateway's external
 authorization backend with sessions in Valkey — the shape that earned its
 place. The chart contributes the wiring around it (routes, policies,
-labels), the conventions (client from hostname, fleet values, postures),
-and one small init step that registers the proxy as a client at the
-issuer. No request ever passes through code written here. That shape was
-chosen over the gateway's native OIDC filter for four properties a token
-in a cookie cannot give — real session management, room for large
+labels) and the conventions (client from hostname, fleet values,
+postures). No request ever passes through code written here. That shape
+was chosen over the gateway's native OIDC filter for four properties a
+token in a cookie cannot give — real session management, room for large
 tokens, global logout, and token refresh in the background — and the
-issuer changes none of them. What changes is the issuer it talks to and
-how it gets a client: it **registers itself**.
+issuer changes none of them. What changes is only the issuer it talks
+to; the client it presents is declared alongside it.
 
 ## One exposure, eight lines
 
@@ -103,20 +110,11 @@ Both forward the bearer in the `Authorization` header and the proxy's
 own identity headers; the Go module's `identity` package reads the
 bearer and verifies it — the headers are for a local run.
 
-## Self-registration
-
-At start, an init step presents the proxy's ServiceAccount token to the
-issuer's registration endpoint with its redirect URI. The issuer checks
-the token with TokenReview, checks the hostname against the pattern
-allowed for that namespace, and answers with a client id and secret, the
-same on every restart. Rotation is a re-registration. No per-console
-client appears in any values file, and no operator mints one anywhere.
-
 ## What the chart renders and expects
 
 | Renders | Expects |
 |---|---|
-| the proxy Deployment and Service, the registration init step, the HTTPRoute for the hostname, the gateway SecurityPolicy pointing the route's external authorization at the proxy, a NetworkPolicy admitting the gateway to the proxy and the proxy to the backend, and the namespace label a fleet-wide egress policy can select | a Gateway to attach to, the issuer, a Valkey, DNS for the hostname |
+| the proxy Deployment and Service, the HTTPRoute for the hostname, the gateway SecurityPolicy pointing the route's external authorization at the proxy, a NetworkPolicy admitting the gateway to the proxy and the proxy to the backend, and the namespace label a fleet-wide egress policy can select | a Gateway to attach to, the issuer, a Valkey, DNS for the hostname |
 
 The namespace label is the convention that removes one hand edit per
 console: a fleet egress policy that selects namespaces labelled
@@ -183,4 +181,3 @@ next refresh.
 |---|---|
 | the issuer is down | existing sessions keep working until their token refresh is due; no new logins |
 | Valkey is down | every caller is logged out; sessions rebuild on login |
-| registration refused | the proxy does not start; the log names the host and the pattern |

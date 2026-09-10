@@ -202,6 +202,13 @@ policy: {}
 # right for a hub reached by port-forward while it is being tried.
 route:
   host: ""
+  # Where a bare GET of this host's root goes. The issuer serves nothing
+  # at "/" -- every endpoint it answers is a named one -- so a person who
+  # types the domain gets a 404. Where a console shares this host under a
+  # path, point this at it ("/console/") and they land somewhere useful.
+  # Empty keeps the 404, which is the honest answer for an issuer with no
+  # console beside it.
+  rootRedirect: ""
   gatewayClassName: internal
   certificate:
     issuerName: internal-ca

@@ -38,11 +38,12 @@ one on every render that cannot read cluster state — which is what ArgoCD
 does — and every sync would sign everyone out. Name an existing Secret;
 what produced it is your business.
 
-**Mint the client**, yet. `registration.enabled` is the design's
-answer — the proxy presents its ServiceAccount token to the issuer's
-`/register` and gets a client back, so none appears in any values file. The
-issuer does not serve that endpoint yet, so today `client.secret.name` must
-name a static one.
+**Mint the client.** Every client of the issuer is **declared**, so that
+the set of them is answerable by reading a repository rather than by
+querying the running service. Name the Secret holding this one in
+`client.secret.name`. Self-registration was designed and dropped
+(INF-664): only a proxy could ever have called such an endpoint, and an
+endpoint that mints clients is the one surface an issuer least wants.
 
 See [docs/reference/access-proxy.md](../../docs/reference/access-proxy.md)
 for every value, and [docs/design/access-proxy.md](../../docs/design/access-proxy.md)
