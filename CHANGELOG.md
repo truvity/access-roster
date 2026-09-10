@@ -3,6 +3,22 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **One Gateway can be shared between the hub and its issuer.** Both
+  charts rendered their own for `route.host`, so pointing them at one
+  hostname produced two Gateways each declaring a listener for it — and
+  Envoy Gateway merges every Gateway of a class into one deployment, so
+  they collide on that listener rather than coexisting. Exactly one may
+  own it now: the hub's `route.gateway.{name,namespace,sectionName}`
+  attaches to an existing one instead of rendering a Gateway and a
+  Certificate, and the issuer's `route.sharedWith[]` admits routes from
+  the namespaces named (its own always included — a selector, unlike
+  `from: Same`, does not imply it). Both default to today's shape.
+  Whether a Gateway accepts a route from another namespace is decided
+  there and not by a ReferenceGrant, which governs `backendRefs` and has
+  nothing to say about `parentRefs`. (INF-687)
+
 ## v0.9.10
 
 - **The console's sessions sections need the issuer to share the origin,
