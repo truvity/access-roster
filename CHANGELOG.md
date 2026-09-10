@@ -3,6 +3,18 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **The session service is mounted whether or not a cross-origin console
+  was configured.** It was gated on `console.origin` — a value that
+  answers a different question, *may some other origin call this* — so on
+  one origin, where there is no CORS to configure and nobody sets it, the
+  service was never mounted. Every sessions section in the console
+  answered 404 while `/account`, server-rendered beside them off the same
+  store, worked perfectly: the half a person is most likely to try
+  working, and the half a console shows not. The value now decides only
+  whether the CORS wrapper goes on. (INF-682)
+
 ## v0.9.14
 
 - **The console asked the wrong host who it was.** `/.access/whoami` was
