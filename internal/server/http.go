@@ -63,6 +63,12 @@ type ConsoleServer struct {
 	bearer     *forwardedBearer
 	log        *slog.Logger
 	consoleUI  fs.FS
+	// mount is the path this console is served under, without a trailing
+	// slash, or empty at an origin root. Its handlers never see it — it
+	// is stripped before they run — but every path they hand a BROWSER
+	// has to carry it, because the browser resolves them against the
+	// origin. See [ConsoleServerDeps.Mount].
+	mount string
 }
 
 // ConsoleServerDeps is what the console listener needs.
@@ -87,7 +93,15 @@ type ConsoleServerDeps struct {
 	// proxy's sign-out path.
 	SignOutURL string
 	Forwarded  ForwardedIdentity
-	Log        *slog.Logger
+	// Mount is where this console sits on its origin: "/console" when it
+	// shares the issuer's hostname, empty when it has an origin of its
+	// own. It is not a route — the prefix is stripped before any of these
+	// handlers run, whether by the gateway or by the merged process — it
+	// is what every link and redirect they EMIT has to be prefixed with,
+	// because a browser resolves "/login" against the origin and would
+	// land on the issuer's page instead of this one's.
+	Mount string
+	Log   *slog.Logger
 	// UI is the built console. Nil serves no UI, which is what a
 	// deployment that only wants the API does.
 	UI fs.FS
@@ -112,6 +126,7 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		bearer:     newForwardedBearer(deps.Forwarded, deps.Log),
 		log:        deps.Log,
 		consoleUI:  deps.UI,
+		mount:      strings.TrimSuffix(strings.TrimSpace(deps.Mount), "/"),
 	}
 	for _, c := range deps.Connectors {
 		s.connectors[c.Kind()] = c
@@ -146,11 +161,15 @@ func (s *ConsoleServer) Handler() http.Handler {
 	return s.withIdentity(mux)
 }
 
+// at turns a path of this console's into one a browser can follow. Every
+// redirect and every link in a page goes through it.
+func (s *ConsoleServer) at(path string) string { return s.mount + path }
+
 // index serves the console shell. Views live in the URL fragment, so one
 // route is enough: no catch-all, and every API path stays clean.
 func (s *ConsoleServer) index(w http.ResponseWriter, r *http.Request) {
 	if _, ok := IdentityFrom(r.Context()); !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		http.Redirect(w, r, s.at("/login"), http.StatusFound)
 		return
 	}
 	page, err := fs.ReadFile(s.consoleUI, "index.html")
@@ -240,7 +259,7 @@ func unwritable(r rune) bool { return r < 0x20 || r == 0x7f || r == ' ' }
 // run the login and forwards the bearer.
 func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 	if id, ok := IdentityFrom(r.Context()); ok && id.Role != access.RoleNone {
-		http.Redirect(w, r, "/", http.StatusFound)
+		http.Redirect(w, r, s.at("/"), http.StatusFound)
 		return
 	}
 	// One button per directory kind, never one per company: an anonymous
@@ -257,8 +276,8 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		fmt.Fprintf(&sources,
-			`<p><a class="btn" href="/login/%s/start">Continue with %s</a></p>`,
-			html.EscapeString(kind), html.EscapeString(providerName(kind)))
+			`<p><a class="btn" href="%s/login/%s/start">Continue with %s</a></p>`,
+			s.mount, html.EscapeString(kind), html.EscapeString(providerName(kind)))
 	}
 
 	// Recovery is behind a disclosure rather than on the page. It is the
@@ -284,12 +303,12 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 		// nobody should ever run it because they were asked to.
 		recovery = fmt.Sprintf(`<details><summary class="note">Recovery sign-in</summary>
 		<p class="note">For the day the directory is what is broken. %s</p>
-		%s<form method="post" action="/login/recovery">
+		%s<form method="post" action="%s/login/recovery">
 			<p><label>%s<br><input type="password" name="proof" autocomplete="off"></label></p>
 			<p><button type="submit">Recover access</button></p>
 		</form>
 		<p class="warn">%s</p></details>`,
-			html.EscapeString(prompt.Intro), command,
+			html.EscapeString(prompt.Intro), command, s.mount,
 			html.EscapeString(prompt.Label), html.EscapeString(prompt.Caution))
 	}
 	// With no way in of its own, this page is otherwise a card with a
@@ -297,10 +316,10 @@ func (s *ConsoleServer) loginPage(w http.ResponseWriter, r *http.Request) {
 	// signed out lands on, wondering where the button went.
 	elsewhere := ""
 	if sources.Len() == 0 {
-		elsewhere = `<p class="note">This console does not sign anyone in itself: the gateway in
+		elsewhere = fmt.Sprintf(`<p class="note">This console does not sign anyone in itself: the gateway in
 		front of it does, and sending you somewhere else to sign in would be a second door to the
-		same room. <a href="/">Go to the console</a> and it will take you to the right one.</p>
-		<p class="note">Recovery below is the way in when the gateway is what is broken.</p>`
+		same room. <a href="%s/">Go to the console</a> and it will take you to the right one.</p>
+		<p class="note">Recovery below is the way in when the gateway is what is broken.</p>`, s.mount)
 	}
 	s.writePage(w, r, http.StatusOK, "Sign in", `<h1>directory-roster</h1>
 <p class="note">The directory hub. Sign in to connect workspaces and grant access.</p>`+
@@ -459,7 +478,7 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.InfoContext(r.Context(), "signed in",
 		"email", logsafe.Value(email), "backend", connector.Kind(), "role", identity.Role)
-	redirectOrOK(w, r, "/")
+	redirectOrOK(w, r, s.at("/"))
 }
 
 // signInConnector is the connector for a kind, if it can sign a person in
@@ -520,14 +539,14 @@ func (s *ConsoleServer) recoveryLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.WarnContext(r.Context(), "recovery sign-in", "subject", logsafe.Value(subject), "kind", s.recovery.Kind())
-	redirectOrOK(w, r, "/")
+	redirectOrOK(w, r, s.at("/"))
 }
 
 // logout clears the session. It cannot end a session elsewhere: rotating
 // the session key is what does that, and it logs everyone out at once.
 func (s *ConsoleServer) logout(w http.ResponseWriter, r *http.Request) {
 	s.sessions.Clear(w)
-	redirectOrOK(w, r, "/login")
+	redirectOrOK(w, r, s.at("/login"))
 }
 
 // signOut is where the console's sign-out control goes.
@@ -581,7 +600,7 @@ func (s *ConsoleServer) consentProblem(
 		}
 		body.WriteString(`</ul>`)
 	}
-	body.WriteString(`<p><a class="btn" href="/">Back to the console</a></p>`)
+	body.WriteString(`<p><a class="btn" href="` + s.at("/") + `">Back to the console</a></p>`)
 	s.writePage(w, r, status, "Consent", body.String())
 }
 
