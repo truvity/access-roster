@@ -264,19 +264,19 @@ function PageFor({
         <Directories operator={operator} onDone={onDone} />
       );
     case "directory-groups":
-      return id ? <DirectoryGroup email={id} operator={operator} onDone={onDone} /> : <DirectoryGroups />;
+      return id ? <DirectoryGroup email={id} /> : <DirectoryGroups />;
     case "people":
       return id ? <Person email={id} me={me} operator={operator} onDone={onDone} /> : <People />;
     case "rules":
       return <Rules />;
     case "groups":
-      return id ? <Group name={id} operator={operator} onDone={onDone} /> : <Groups />;
+      return id ? <Group name={id} /> : <Groups />;
     case "clients":
       return id ? <Client id={id} issuerUrl={issuerIsSameOrigin(me?.issuerUrl) ? me?.issuerUrl : undefined} operator={operator} onDone={onDone} /> : <Clients />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "settings":
-      return <SettingsView operator={operator} onDone={onDone} />;
+      return <SettingsView />;
     default:
       return <Overview me={me} operator={operator} />;
   }

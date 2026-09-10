@@ -44,9 +44,6 @@ clients:                       # who may be issued a token for what; the id is t
   aws:1111:deployer: { kind: exchange,     requires: [ci:gitops:deployer] }
   argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [kernel:k8s:admin, kernel:k8s:auditor], ttl_cap: 12h }
   local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [prod:eudi:deployer] }
-
-memberships:                   # the one table a console may extend — the same shape as groups.*.members
-  all:access-roster:operator: [platform-admins@b.example]
 ```
 
 | Table | Key | Holds | Who writes it |
@@ -55,10 +52,12 @@ memberships:                   # the one table a console may extend — the same
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
 | `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap` | declared |
-| `memberships` | internal group name | extra directory groups | declared baseline, console additions |
 
-The hub loads `groups`, `claims`, `lifetimes` and `memberships`. The issuer
-loads all five. Same parser, same validation, same layers.
+Four tables, one writer. There was a fifth, `memberships`, which a
+console could extend; it is gone with the read-only console (INF-694),
+and the key is now refused like any other unknown one rather than
+ignored. A directory group that should feed an internal group is named
+in that group's `members`, here, in git.
 
 ## Naming
 
@@ -107,7 +106,7 @@ What a scope means, exactly:
 | | Installation-wide role | Scoped role |
 |---|---|---|
 | connect a new directory, upload a key | yes | **no** — the workspace does not exist yet, so there is nothing to be scoped to |
-| edit the policy, the memberships, the OAuth client | yes | **no** |
+| edit the policy or the OAuth client | **nobody**: the policy is a file in git and the client is a Secret |  |
 | reconnect, probe, refresh, choose domains or groups, disconnect | every workspace | the named one |
 | list directories, groups and people | every workspace | only the named ones |
 
@@ -126,7 +125,7 @@ point a person and a job are the same thing.
 
 | Proof | Becomes the groups… |
 |---|---|
-| a corporate sign-in | whose `members` (or `memberships`) contain a directory group the hub confirms the account is in, **authoritatively** |
+| a corporate sign-in | whose `members` contain a directory group the hub confirms the account is in, **authoritatively** |
 | a CI identity token | whose `matchers` the token's claims satisfy |
 | a Kubernetes ServiceAccount token | whose `matchers` name that namespace and ServiceAccount |
 
@@ -248,9 +247,9 @@ The deployment's ConfigMap(s), rendered from the installation's own
 access model. Several may exist and merge additively; a key present
 twice is refused.
 
-Through 0.10 a second, console-written layer carried `memberships`
-attached in the console, merged under the declared one. It goes with the
-read-only console (INF-694): who is in which internal group is this
+Through 0.11 a second, console-written layer carried `memberships`
+attached in the console, merged under the declared one. It is gone with
+the read-only console (INF-694): who is in which internal group is this
 file and nothing else, and `git log` is the complete history of access.
 
 ## Not in this file
@@ -262,8 +261,8 @@ its own directory is uncertain. It is a chart value.
 
 ## Validation at load
 
-Unknown keys refused. Every key in `claims`, `lifetimes` and
-`memberships` names a declared group. Every `requires` entry names one.
+Unknown keys refused, `memberships` among them. Every key in `claims`
+and `lifetimes` names a declared group. Every `requires` entry names one.
 Every member address has a domain. No scalar conflict across any two
 fragments. A matcher has at least one field. A typo fails the rollout,
 not a login.

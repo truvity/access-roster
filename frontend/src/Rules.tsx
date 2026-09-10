@@ -82,7 +82,7 @@ export function Rules() {
       rule: m.address,
       group: g.name,
       needs: "directory" as const,
-      declared: m.layer === "declared",
+      declared: true,
     })),
     ...g.rules.map((rule) => ({
       key: `${g.name}:${rule.kind}:${rule.rule}`,

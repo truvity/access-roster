@@ -45,12 +45,6 @@ const (
 	AccessServiceSearchPeopleProcedure = "/directoryroster.v1.AccessService/SearchPeople"
 	// AccessServiceGetPolicyProcedure is the fully-qualified name of the AccessService's GetPolicy RPC.
 	AccessServiceGetPolicyProcedure = "/directoryroster.v1.AccessService/GetPolicy"
-	// AccessServiceAddMembershipProcedure is the fully-qualified name of the AccessService's
-	// AddMembership RPC.
-	AccessServiceAddMembershipProcedure = "/directoryroster.v1.AccessService/AddMembership"
-	// AccessServiceRemoveMembershipProcedure is the fully-qualified name of the AccessService's
-	// RemoveMembership RPC.
-	AccessServiceRemoveMembershipProcedure = "/directoryroster.v1.AccessService/RemoveMembership"
 	// AccessServiceListDirectoryGroupsProcedure is the fully-qualified name of the AccessService's
 	// ListDirectoryGroups RPC.
 	AccessServiceListDirectoryGroupsProcedure = "/directoryroster.v1.AccessService/ListDirectoryGroups"
@@ -87,16 +81,15 @@ type AccessServiceClient interface {
 	// than from a navigation tree. Viewer.
 	SearchPeople(context.Context, *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error)
 	// GetPolicy returns every internal group with its members and what each
-	// adds, the state of the break-glass admin, the enabled sign-in
-	// sources, and the console layer as YAML for export. Viewer.
+	// adds, the state of the break-glass admin, and the enabled sign-in
+	// sources. Viewer.
+	//
+	// There is no AddMembership or RemoveMembership beside it any more
+	// (INF-694). Who is in which internal group is the policy, rendered
+	// from the installation's own access model and reviewed in git; a
+	// console that could disagree with git was a second source of truth
+	// and a merge to reconcile them.
 	GetPolicy(context.Context, *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error)
-	// AddMembership records a directory group in an internal group.
-	// Operator.
-	AddMembership(context.Context, *connect.Request[v1.AddMembershipRequest]) (*connect.Response[v1.AddMembershipResponse], error)
-	// RemoveMembership drops one the console added. A membership the
-	// deployment declared refuses (failed_precondition): change the values
-	// instead. Operator.
-	RemoveMembership(context.Context, *connect.Request[v1.RemoveMembershipRequest]) (*connect.Response[v1.RemoveMembershipResponse], error)
 	// ListDirectoryGroups returns the groups the hub has snapshotted, so
 	// that a membership is a click rather than a typed address that may be
 	// a typo. Viewer.
@@ -152,18 +145,6 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(accessServiceMethods.ByName("GetPolicy")),
 			connect.WithClientOptions(opts...),
 		),
-		addMembership: connect.NewClient[v1.AddMembershipRequest, v1.AddMembershipResponse](
-			httpClient,
-			baseURL+AccessServiceAddMembershipProcedure,
-			connect.WithSchema(accessServiceMethods.ByName("AddMembership")),
-			connect.WithClientOptions(opts...),
-		),
-		removeMembership: connect.NewClient[v1.RemoveMembershipRequest, v1.RemoveMembershipResponse](
-			httpClient,
-			baseURL+AccessServiceRemoveMembershipProcedure,
-			connect.WithSchema(accessServiceMethods.ByName("RemoveMembership")),
-			connect.WithClientOptions(opts...),
-		),
 		listDirectoryGroups: connect.NewClient[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse](
 			httpClient,
 			baseURL+AccessServiceListDirectoryGroupsProcedure,
@@ -186,8 +167,6 @@ type accessServiceClient struct {
 	listHolders         *connect.Client[v1.ListHoldersRequest, v1.ListHoldersResponse]
 	searchPeople        *connect.Client[v1.SearchPeopleRequest, v1.SearchPeopleResponse]
 	getPolicy           *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
-	addMembership       *connect.Client[v1.AddMembershipRequest, v1.AddMembershipResponse]
-	removeMembership    *connect.Client[v1.RemoveMembershipRequest, v1.RemoveMembershipResponse]
 	listDirectoryGroups *connect.Client[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse]
 	getDirectoryGroup   *connect.Client[v1.GetDirectoryGroupRequest, v1.GetDirectoryGroupResponse]
 }
@@ -215,16 +194,6 @@ func (c *accessServiceClient) SearchPeople(ctx context.Context, req *connect.Req
 // GetPolicy calls directoryroster.v1.AccessService.GetPolicy.
 func (c *accessServiceClient) GetPolicy(ctx context.Context, req *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error) {
 	return c.getPolicy.CallUnary(ctx, req)
-}
-
-// AddMembership calls directoryroster.v1.AccessService.AddMembership.
-func (c *accessServiceClient) AddMembership(ctx context.Context, req *connect.Request[v1.AddMembershipRequest]) (*connect.Response[v1.AddMembershipResponse], error) {
-	return c.addMembership.CallUnary(ctx, req)
-}
-
-// RemoveMembership calls directoryroster.v1.AccessService.RemoveMembership.
-func (c *accessServiceClient) RemoveMembership(ctx context.Context, req *connect.Request[v1.RemoveMembershipRequest]) (*connect.Response[v1.RemoveMembershipResponse], error) {
-	return c.removeMembership.CallUnary(ctx, req)
 }
 
 // ListDirectoryGroups calls directoryroster.v1.AccessService.ListDirectoryGroups.
@@ -265,16 +234,15 @@ type AccessServiceHandler interface {
 	// than from a navigation tree. Viewer.
 	SearchPeople(context.Context, *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error)
 	// GetPolicy returns every internal group with its members and what each
-	// adds, the state of the break-glass admin, the enabled sign-in
-	// sources, and the console layer as YAML for export. Viewer.
+	// adds, the state of the break-glass admin, and the enabled sign-in
+	// sources. Viewer.
+	//
+	// There is no AddMembership or RemoveMembership beside it any more
+	// (INF-694). Who is in which internal group is the policy, rendered
+	// from the installation's own access model and reviewed in git; a
+	// console that could disagree with git was a second source of truth
+	// and a merge to reconcile them.
 	GetPolicy(context.Context, *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error)
-	// AddMembership records a directory group in an internal group.
-	// Operator.
-	AddMembership(context.Context, *connect.Request[v1.AddMembershipRequest]) (*connect.Response[v1.AddMembershipResponse], error)
-	// RemoveMembership drops one the console added. A membership the
-	// deployment declared refuses (failed_precondition): change the values
-	// instead. Operator.
-	RemoveMembership(context.Context, *connect.Request[v1.RemoveMembershipRequest]) (*connect.Response[v1.RemoveMembershipResponse], error)
 	// ListDirectoryGroups returns the groups the hub has snapshotted, so
 	// that a membership is a click rather than a typed address that may be
 	// a typo. Viewer.
@@ -326,18 +294,6 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(accessServiceMethods.ByName("GetPolicy")),
 		connect.WithHandlerOptions(opts...),
 	)
-	accessServiceAddMembershipHandler := connect.NewUnaryHandler(
-		AccessServiceAddMembershipProcedure,
-		svc.AddMembership,
-		connect.WithSchema(accessServiceMethods.ByName("AddMembership")),
-		connect.WithHandlerOptions(opts...),
-	)
-	accessServiceRemoveMembershipHandler := connect.NewUnaryHandler(
-		AccessServiceRemoveMembershipProcedure,
-		svc.RemoveMembership,
-		connect.WithSchema(accessServiceMethods.ByName("RemoveMembership")),
-		connect.WithHandlerOptions(opts...),
-	)
 	accessServiceListDirectoryGroupsHandler := connect.NewUnaryHandler(
 		AccessServiceListDirectoryGroupsProcedure,
 		svc.ListDirectoryGroups,
@@ -362,10 +318,6 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 			accessServiceSearchPeopleHandler.ServeHTTP(w, r)
 		case AccessServiceGetPolicyProcedure:
 			accessServiceGetPolicyHandler.ServeHTTP(w, r)
-		case AccessServiceAddMembershipProcedure:
-			accessServiceAddMembershipHandler.ServeHTTP(w, r)
-		case AccessServiceRemoveMembershipProcedure:
-			accessServiceRemoveMembershipHandler.ServeHTTP(w, r)
 		case AccessServiceListDirectoryGroupsProcedure:
 			accessServiceListDirectoryGroupsHandler.ServeHTTP(w, r)
 		case AccessServiceGetDirectoryGroupProcedure:
@@ -397,14 +349,6 @@ func (UnimplementedAccessServiceHandler) SearchPeople(context.Context, *connect.
 
 func (UnimplementedAccessServiceHandler) GetPolicy(context.Context, *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.GetPolicy is not implemented"))
-}
-
-func (UnimplementedAccessServiceHandler) AddMembership(context.Context, *connect.Request[v1.AddMembershipRequest]) (*connect.Response[v1.AddMembershipResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.AddMembership is not implemented"))
-}
-
-func (UnimplementedAccessServiceHandler) RemoveMembership(context.Context, *connect.Request[v1.RemoveMembershipRequest]) (*connect.Response[v1.RemoveMembershipResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.RemoveMembership is not implemented"))
 }
 
 func (UnimplementedAccessServiceHandler) ListDirectoryGroups(context.Context, *connect.Request[v1.ListDirectoryGroupsRequest]) (*connect.Response[v1.ListDirectoryGroupsResponse], error) {

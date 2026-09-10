@@ -36,20 +36,18 @@ const (
 	// SettingsServiceGetSettingsProcedure is the fully-qualified name of the SettingsService's
 	// GetSettings RPC.
 	SettingsServiceGetSettingsProcedure = "/directoryroster.v1.SettingsService/GetSettings"
-	// SettingsServiceSetOAuthClientProcedure is the fully-qualified name of the SettingsService's
-	// SetOAuthClient RPC.
-	SettingsServiceSetOAuthClientProcedure = "/directoryroster.v1.SettingsService/SetOAuthClient"
 )
 
 // SettingsServiceClient is a client for the directoryroster.v1.SettingsService service.
 type SettingsServiceClient interface {
 	// GetSettings returns the OAuth client's public half and the read-only
 	// knobs. Never the client secret. Viewer.
+	//
+	// There is no SetOAuthClient beside it any more (INF-694): the client
+	// is a Secret, delivered the way every other credential in the estate
+	// is delivered, and a console that could write one was a second way to
+	// provision it.
 	GetSettings(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error)
-	// SetOAuthClient stores the OAuth client id and secret in the hub's own
-	// Secret. Refused (failed_precondition) when the chart declared the
-	// client. Operator.
-	SetOAuthClient(context.Context, *connect.Request[v1.SetOAuthClientRequest]) (*connect.Response[v1.SetOAuthClientResponse], error)
 }
 
 // NewSettingsServiceClient constructs a client for the directoryroster.v1.SettingsService service.
@@ -69,19 +67,12 @@ func NewSettingsServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(settingsServiceMethods.ByName("GetSettings")),
 			connect.WithClientOptions(opts...),
 		),
-		setOAuthClient: connect.NewClient[v1.SetOAuthClientRequest, v1.SetOAuthClientResponse](
-			httpClient,
-			baseURL+SettingsServiceSetOAuthClientProcedure,
-			connect.WithSchema(settingsServiceMethods.ByName("SetOAuthClient")),
-			connect.WithClientOptions(opts...),
-		),
 	}
 }
 
 // settingsServiceClient implements SettingsServiceClient.
 type settingsServiceClient struct {
-	getSettings    *connect.Client[v1.GetSettingsRequest, v1.GetSettingsResponse]
-	setOAuthClient *connect.Client[v1.SetOAuthClientRequest, v1.SetOAuthClientResponse]
+	getSettings *connect.Client[v1.GetSettingsRequest, v1.GetSettingsResponse]
 }
 
 // GetSettings calls directoryroster.v1.SettingsService.GetSettings.
@@ -89,20 +80,16 @@ func (c *settingsServiceClient) GetSettings(ctx context.Context, req *connect.Re
 	return c.getSettings.CallUnary(ctx, req)
 }
 
-// SetOAuthClient calls directoryroster.v1.SettingsService.SetOAuthClient.
-func (c *settingsServiceClient) SetOAuthClient(ctx context.Context, req *connect.Request[v1.SetOAuthClientRequest]) (*connect.Response[v1.SetOAuthClientResponse], error) {
-	return c.setOAuthClient.CallUnary(ctx, req)
-}
-
 // SettingsServiceHandler is an implementation of the directoryroster.v1.SettingsService service.
 type SettingsServiceHandler interface {
 	// GetSettings returns the OAuth client's public half and the read-only
 	// knobs. Never the client secret. Viewer.
+	//
+	// There is no SetOAuthClient beside it any more (INF-694): the client
+	// is a Secret, delivered the way every other credential in the estate
+	// is delivered, and a console that could write one was a second way to
+	// provision it.
 	GetSettings(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error)
-	// SetOAuthClient stores the OAuth client id and secret in the hub's own
-	// Secret. Refused (failed_precondition) when the chart declared the
-	// client. Operator.
-	SetOAuthClient(context.Context, *connect.Request[v1.SetOAuthClientRequest]) (*connect.Response[v1.SetOAuthClientResponse], error)
 }
 
 // NewSettingsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -118,18 +105,10 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 		connect.WithSchema(settingsServiceMethods.ByName("GetSettings")),
 		connect.WithHandlerOptions(opts...),
 	)
-	settingsServiceSetOAuthClientHandler := connect.NewUnaryHandler(
-		SettingsServiceSetOAuthClientProcedure,
-		svc.SetOAuthClient,
-		connect.WithSchema(settingsServiceMethods.ByName("SetOAuthClient")),
-		connect.WithHandlerOptions(opts...),
-	)
 	return "/directoryroster.v1.SettingsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SettingsServiceGetSettingsProcedure:
 			settingsServiceGetSettingsHandler.ServeHTTP(w, r)
-		case SettingsServiceSetOAuthClientProcedure:
-			settingsServiceSetOAuthClientHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -141,8 +120,4 @@ type UnimplementedSettingsServiceHandler struct{}
 
 func (UnimplementedSettingsServiceHandler) GetSettings(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.SettingsService.GetSettings is not implemented"))
-}
-
-func (UnimplementedSettingsServiceHandler) SetOAuthClient(context.Context, *connect.Request[v1.SetOAuthClientRequest]) (*connect.Response[v1.SetOAuthClientResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.SettingsService.SetOAuthClient is not implemented"))
 }
