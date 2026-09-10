@@ -123,6 +123,25 @@ JavaScript.
 
 They collapse into one Valkey with the merge.
 
+## Fan-in and fan-out
+
+One issuer in the middle. Everything to its left is a source of
+identity; everything to its right trusts it. Each row says how it is
+expressed in configuration and whether it is built.
+
+| Many of | Expressed as | Status |
+|---|---|---|
+| corporate directories | one workspace per tenant: credential, served domains, synced groups; Google today, Entra as a second backend behind the same workspace record | **built**, three Workspaces live; Entra designed, not built |
+| clusters, for people | each cluster's identity-provider association names the issuer; RBAC binds `<env>:k8s:<role>` | designed (INF-652); bindings dual-bound and ready |
+| clusters, for workloads | one row per cluster naming its ServiceAccount-token key set; token exchange | designed (INF-692); today only the issuer's own cluster, by TokenReview |
+| AWS accounts | the issuer registered once per account as an IAM OIDC provider; a `requires` list per role client | designed (INF-653) |
+| GitHub organisations | one controller App per org; `github team` rules in the policy; links in a ConfigMap the controller maintains | designed (INF-696, INF-697) |
+| CI platforms | one federated issuer row; `ci` rules on repository and ref | verifier built; the action designed (INF-654) |
+| consoles and applications | one client row each; a proxy for those with no OpenID flow of their own | **built**: the directory console, hubble, Kargo |
+
+What never multiplies: the issuer URL, the signing key, the policy file,
+the console, the login page.
+
 ## The six grants
 
 The issuer serves these and nothing else. Each exists for one of three

@@ -59,6 +59,25 @@ every person, every directory group, every internal group, every rule
 that grants one, and every open session. A leaver disappears from the
 directory and, within the freshness window, from everything downstream.
 
+## Many in, many out, one point in the middle
+
+| Fans in | Fans out |
+|---|---|
+| corporate directories: several Google Workspaces, Entra next — each a workspace with its own credential and its own served domains | Kubernetes clusters: each trusts the one issuer as its identity provider |
+| GitHub Actions: one federated issuer, an owner allow-list | AWS accounts: each trusts the one issuer as an OIDC provider |
+| every cluster's own ServiceAccount tokens: one row per cluster naming its key set | GitHub organisations: one controller App each, bindings in the same policy |
+| | consoles and applications: one client row each |
+
+Adding one of anything is one row and one trust registration. The
+issuer URL, the policy file and the console never multiply.
+
+Built today: three Google Workspaces on one cluster, three relying
+parties. Designed and ticketed, not yet built: the second directory
+connector, workloads on other clusters proving themselves by their
+cluster's key set, and the GitHub controller across organisations.
+[architecture.md](docs/architecture.md#fan-in-and-fan-out) says which
+is which, per row.
+
 ## The shape
 
 ```mermaid
