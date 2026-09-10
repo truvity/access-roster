@@ -92,6 +92,11 @@ type SignInDeps struct {
 	// installation with no console: an endpoint nobody calls is surface
 	// with no consumer.
 	ConsoleOrigin string
+	// ConsoleMount is where the console sits on this origin, e.g.
+	// "/console". It is what an old `/account` bookmark is sent to, and
+	// empty means there is no console to send anybody to, so the route is
+	// not served at all.
+	ConsoleMount string
 	// Return is op.AuthCallbackURL(provider): where to send the browser
 	// once the request is complete.
 	Return func(ctx context.Context, requestID string) string
@@ -123,13 +128,20 @@ func SignInRoutes(mux *http.ServeMux, deps SignInDeps) {
 	mux.HandleFunc("POST /login/recovery", s.recover)
 	mux.HandleFunc("GET /signed-out", s.signedOut)
 
-	// The account page. Unlike the three above it runs WITH a session,
-	// which is what lets it be same-origin with the session service and
-	// need no bearer, no CORS and no console.
-	if deps.SSO != nil {
+	// `/account` was the person's own page — their sessions, and the one
+	// button that ends all of them. It lived here because it needed to be
+	// same-origin with the session service, and it is not needed here any
+	// more: the console is same-origin with this issuer and is now the
+	// same process, and its own page for a person already shows both
+	// (INF-695). One directory UI; this service's UI is the login form.
+	//
+	// What is left is the redirect, because the address was linked to and
+	// bookmarked, and a 404 is a worse answer than the page somebody
+	// wanted. With no console mounted there is nowhere to send them, so
+	// the route is not served rather than sending them to a 404 of a
+	// different shape.
+	if deps.SSO != nil && deps.ConsoleMount != "" {
 		mux.HandleFunc("GET /account", s.account)
-		mux.HandleFunc("POST /account/revoke", s.accountRevoke)
-		mux.HandleFunc("POST /account/sign-out", s.accountSignOut)
 	}
 }
 
@@ -505,136 +517,25 @@ func (s *signIn) established(w http.ResponseWriter, r *http.Request, identity, h
 	return who
 }
 
-// account is the person's own page: who they are here, what they have
-// open, and the one button that ends all of it.
+// account sends an old bookmark to the console's page for the person.
 //
-// It is served BY the issuer, at the issuer's host, which is the whole
-// point: the browser already holds this issuer's session cookie here, so
-// the page needs no bearer, no CORS and no console. Session management
-// belongs to the thing that holds the sessions.
+// The page itself is gone (INF-695). It lived here because it had to be
+// same-origin with the session service; the console is same-origin with
+// this issuer and now the same process, and its own page for a person
+// already lists their sessions and offers *sign out everywhere*. Two
+// pages showing the same thing is two things to keep true of each other.
+//
+// A person not signed in here is sent to the console's root rather than
+// to a page about themselves, because there is no themselves to name.
 func (s *signIn) account(w http.ResponseWriter, r *http.Request) {
+	to := s.deps.ConsoleMount + "/"
+
 	session, live, err := s.deps.SSO.Get(r.Context(), SSOFromRequest(r))
-	if err != nil || !live {
-		s.page(w, "Not signed in", `<p>You are not signed in to this issuer in this browser.</p>
-	<p class="note">Open one of your applications and sign in. This page will then show everything you have open.</p>`)
-
-		return
+	if err == nil && live && session.Identity != "" {
+		// The console routes in the FRAGMENT, so the path is the console
+		// itself and the page is what follows the hash.
+		to += "#/people/" + url.PathEscape(session.Identity)
 	}
 
-	open, err := s.deps.Issuer.Sessions().List(r.Context(), Query{Identity: session.Identity})
-	if err != nil {
-		s.deps.Log.ErrorContext(r.Context(), "sessions could not be listed",
-			"identity", logsafe.Value(session.Identity), "error", logsafe.Error(err))
-		s.page(w, "Your account", `<p>Your sessions could not be read just now.</p>`)
-
-		return
-	}
-
-	slices.SortFunc(open, func(a, b Session) int { return b.IssuedAt.Compare(a.IssuedAt) })
-
-	var body strings.Builder
-
-	fmt.Fprintf(&body, `<p>Signed in as <strong>%s</strong>, with %s, at %s.</p>`,
-		html.EscapeString(session.Identity), html.EscapeString(providerName(session.How)),
-		html.EscapeString(when(session.AuthTime)))
-
-	if len(open) == 0 {
-		body.WriteString(`<p class="note">No applications are holding a session for you.</p>`)
-	} else {
-		body.WriteString(`<table><tr><th>Application</th><th>Opened</th><th>How</th><th>Last used</th><th></th></tr>`)
-
-		for i := range open {
-			one := &open[i]
-
-			used := when(one.LastRefreshed)
-			if one.LastRefreshed.IsZero() {
-				used = "not since it opened"
-			}
-
-			fmt.Fprintf(&body, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td>`+
-				`<td><form method="post" action="/account/revoke">`+
-				`<input type="hidden" name="session" value="%s">`+
-				`<button type="submit">Revoke</button></form></td></tr>`,
-				html.EscapeString(one.ClientID), html.EscapeString(when(one.IssuedAt)),
-				html.EscapeString(string(one.How)), html.EscapeString(used),
-				html.EscapeString(one.ID))
-		}
-
-		body.WriteString(`</table>`)
-	}
-
-	// Both halves, and the page says so: revoking what is running is not
-	// the same as ending the sign-in that would silently start more.
-	body.WriteString(`<form method="post" action="/account/sign-out">
-	<p><button type="submit">Sign out everywhere</button></p>
-	</form>
-	<p class="note">Signing out everywhere ends every session above and your sign-in here, so the next application asks who you are again.</p>`)
-
-	s.page(w, "Your account", body.String())
-}
-
-// accountRevoke ends one of your own sessions.
-//
-// There is no token in this form and none is needed: the session cookie
-// is SameSite=Lax, so a cross-site POST does not carry it, and a request
-// without it is refused below.
-func (s *signIn) accountRevoke(w http.ResponseWriter, r *http.Request) {
-	session, live, err := s.deps.SSO.Get(r.Context(), SSOFromRequest(r))
-	if err != nil || !live {
-		http.Error(w, "you are not signed in here", http.StatusForbidden)
-		return
-	}
-
-	if err = r.ParseForm(); err != nil {
-		http.Error(w, "that form could not be read", http.StatusBadRequest)
-		return
-	}
-
-	// Your own, and only your own. The id is checked against the identity
-	// that asked, and somebody else's answers exactly as an absent one
-	// does -- so an id cannot be probed for whose it is.
-	if one, found, err := s.deps.Issuer.Sessions().ByID(r.Context(), r.PostFormValue("session")); err == nil &&
-		found && strings.EqualFold(one.Identity, session.Identity) {
-		if _, err = s.deps.Issuer.Sessions().RevokeID(r.Context(), one.ID); err != nil {
-			s.deps.Log.ErrorContext(r.Context(), "session could not be revoked", "error", logsafe.Error(err))
-		}
-	}
-
-	http.Redirect(w, r, "/account", http.StatusSeeOther)
-}
-
-// accountSignOut ends everything: the sessions already running, and the
-// browser session that would silently open more.
-func (s *signIn) accountSignOut(w http.ResponseWriter, r *http.Request) {
-	session, live, err := s.deps.SSO.Get(r.Context(), SSOFromRequest(r))
-	if err != nil || !live {
-		http.Error(w, "you are not signed in here", http.StatusForbidden)
-		return
-	}
-
-	ended, err := s.deps.Issuer.Sessions().Revoke(r.Context(), Query{Identity: session.Identity})
-	if err != nil {
-		s.deps.Log.ErrorContext(r.Context(), "sessions could not be revoked",
-			"identity", logsafe.Value(session.Identity), "error", logsafe.Error(err))
-	}
-
-	if _, err = s.deps.SSO.EndFor(r.Context(), session.Identity); err != nil {
-		s.deps.Log.ErrorContext(r.Context(), "browser sessions could not be ended",
-			"identity", logsafe.Value(session.Identity), "error", logsafe.Error(err))
-	}
-
-	s.deps.Log.WarnContext(r.Context(), "signed out everywhere",
-		"identity", logsafe.Value(session.Identity), "sessions", ended)
-	http.SetCookie(w, s.deps.SSO.Cookie("", s.deps.Secure))
-	http.Redirect(w, r, "/signed-out", http.StatusSeeOther)
-}
-
-// when is a timestamp a person can read, in UTC because an issuer serves
-// several countries and a local time would be somebody else's.
-func when(t time.Time) string {
-	if t.IsZero() {
-		return "—"
-	}
-
-	return t.UTC().Format("2006-01-02 15:04 UTC")
+	http.Redirect(w, r, to, http.StatusFound)
 }
