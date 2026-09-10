@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.12
 
 - **The sign-out chain moves with the console.** Mounted under a path,
   the console's sign-out link still pointed at `/oauth2/sign_out` at the
