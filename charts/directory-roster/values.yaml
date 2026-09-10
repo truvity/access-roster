@@ -131,6 +131,31 @@ route:
     # its own.
     issuerName: internal-ca
     issuerKind: ClusterIssuer
+  # Mount the console under a path of the host -- "/console" -- rather
+  # than at its root. This is how the console shares its issuer's
+  # hostname (INF-687, docs/design/access-issuer.md "One origin"): the
+  # issuer must sit at the origin root, because its `iss` claim and its
+  # discovery document (`/.well-known/openid-configuration`) both live
+  # there and relocating them breaks Kubernetes and AWS OIDC federation.
+  # So the issuer keeps `/` and the console takes the path instead.
+  #
+  # Set, the console HTTPRoute matches "<pathPrefix>/" and carries a
+  # URLRewrite filter that strips the prefix before the request reaches
+  # this hub -- so the hub's own SPA routes (GET /assets/, GET /{$}) never
+  # learn the prefix exists and need no change. PUBLIC_URL carries the
+  # prefix, because it is the console's own address.
+  #
+  # bootstrapPaths below are the ONE exception, and are deliberately left
+  # alone: /login and /connect stay at the host's ROOT, on their own
+  # HTTPRoute with no rewrite, because their OAuth redirect URIs are
+  # registered with a provider at that literal, unprefixed address. A
+  # prefixed bootstrap route would render fine and fail only the first
+  # time somebody connects a directory.
+  #
+  # Empty is today's shape: the console at the host's root, nothing
+  # rewritten. A deployment that sets nothing new here renders exactly
+  # what it always has.
+  pathPrefix: ""
   # Paths served WITHOUT whatever authenticates the rest of this host.
   #
   # They are how somebody gets in BEFORE there is anything to

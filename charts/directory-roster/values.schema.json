@@ -359,6 +359,10 @@
             "type": "string",
             "pattern": "^/"
           }
+        },
+        "pathPrefix": {
+          "type": "string",
+          "pattern": "^$|^(/[^/]+)+$"
         }
       }
     }

@@ -87,11 +87,24 @@ type ConsoleDeps struct {
 	LoginSources []string
 	CacheBackend string
 	SecureCookie bool
-	// PublicURL is where a browser reaches this console. It is what makes
-	// the redirect URI reportable: a runbook can only say "your hostname
-	// plus this path", and an operator retyping a hostname into a cloud
-	// console is exactly where a day-one setup goes wrong.
+	// PublicURL is where a browser reaches this console -- INF-687:
+	// including route.pathPrefix, when one is set, because this is the
+	// console's own address and the console may sit under a path.
+	//
+	// It is what makes the redirect URI reportable: a runbook can only
+	// say "your hostname plus this path", and an operator retyping a
+	// hostname into a cloud console is exactly where a day-one setup goes
+	// wrong.
 	PublicURL string
+	// RootURL is the host's ROOT, never carrying route.pathPrefix even
+	// when PublicURL does. The bootstrap surface (route.bootstrapPaths:
+	// /login, /connect) is deliberately never moved under the console's
+	// path -- it is what the FIRST operator reaches before there is a
+	// console session to authenticate, on its own HTTPRoute, and the
+	// registered OAuth redirect URIs for it are at the domain root. Empty
+	// falls back to PublicURL, which is exactly right wherever no prefix
+	// is configured: the two are then the same address.
+	RootURL string
 	// IssuerURL is the token service this console is behind, when it is
 	// behind one. With a shared OAuth client the sign-in redirect belongs
 	// to that host rather than this one, and only this side knows it.
@@ -468,7 +481,13 @@ func (c *Console) connectorKinds() []directoryrosterv1.Backend {
 }
 
 // consentRedirects is where a backend's CONSENT flow comes back: always
-// this console, because connecting a directory is this console's job.
+// this console, because connecting a directory is this console's job --
+// but at the HOST ROOT (RootURL), never under route.pathPrefix (INF-687).
+// /connect is a bootstrap path, served on its own HTTPRoute precisely so
+// the operator connecting the FIRST directory -- who by definition no
+// directory can vouch for yet -- is not sent through whatever gates the
+// console's own path. A redirect URI registered under the prefix would be
+// one Google never returns to.
 //
 // Read from the backend for the same reason the scopes are: a copy here
 // would drift, and the drift surfaces in a cloud console's own words,
@@ -504,23 +523,32 @@ var backendScopes = map[string][]string{
 // only those already configured: the whole point is to be readable before
 // an OAuth client exists, because registering one is the step it guides.
 func (c *Console) setupGuidance() []*directoryrosterv1.ConnectorSetup {
+	// RootURL falls back to PublicURL: wherever route.pathPrefix is unset
+	// the two are the same address, which is today's shape exactly.
+	root := c.deps.RootURL
+	if root == "" {
+		root = c.deps.PublicURL
+	}
+
 	out := make([]*directoryrosterv1.ConnectorSetup, 0, len(backendScopes))
 	for _, kind := range slices.Sorted(maps.Keys(backendScopes)) {
 		var uris []string
 		if path, ok := consentRedirects[kind]; ok {
-			uris = append(uris, c.deps.PublicURL+path)
+			uris = append(uris, root+path)
 		}
 		// The sign-in redirect, at whichever host actually runs the
 		// sign-in: the issuer this console is behind, or this console
-		// itself where it signs people in on its own. Neither, where
-		// nobody signs in with this backend at all — and an operator is
-		// then not told to register a URI nothing returns to.
+		// itself where it signs people in on its own -- and, on its own,
+		// also at the host ROOT, because /login is a bootstrap path too.
+		// Neither, where nobody signs in with this backend at all — and
+		// an operator is then not told to register a URI nothing returns
+		// to.
 		if path, ok := signInRedirects[kind]; ok {
 			switch {
 			case c.deps.IssuerURL != "":
 				uris = append(uris, strings.TrimSuffix(c.deps.IssuerURL, "/")+path)
 			case c.deps.SignIn:
-				uris = append(uris, c.deps.PublicURL+path)
+				uris = append(uris, root+path)
 			}
 		}
 		out = append(out, &directoryrosterv1.ConnectorSetup{
