@@ -150,10 +150,19 @@ func (s *signIn) chooser(w http.ResponseWriter, r *http.Request) {
 	// A live browser session is what makes the second console cost no
 	// login, so it is tried before anything is rendered: the page below
 	// is the fallback, not the normal path.
-	pending, err := s.deps.Storage.Pending(request)
-	if err != nil {
-		http.Error(w, "this sign-in is not valid any more; start again", http.StatusBadRequest)
-		return
+	//
+	// A deployment with no storage wired can still render the chooser --
+	// this is the login path, and it must not be the thing that panics.
+	var pending Pending
+
+	if s.deps.Storage != nil {
+		asked, err := s.deps.Storage.Pending(request)
+		if err != nil {
+			http.Error(w, "this sign-in is not valid any more; start again", http.StatusBadRequest)
+			return
+		}
+
+		pending = asked
 	}
 
 	if s.silent(w, r, request, pending) {
@@ -425,7 +434,7 @@ const pageHTML = `<!doctype html><meta charset="utf-8"><title>%s</title>
 // request completes here instead of making a round trip to the corporate
 // directory. Everything it will not do is as important as what it will.
 func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, pending Pending) bool {
-	if s.deps.SSO == nil || pending.ForcesLogin {
+	if s.deps.SSO == nil || s.deps.Storage == nil || pending.ForcesLogin {
 		return false
 	}
 
