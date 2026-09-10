@@ -22,6 +22,19 @@ git history.
 
 ## Unreleased
 
+- **One design document.** `docs/design/hub.md` and
+  `docs/design/access-issuer.md` fold into
+  `docs/design/access-roster.md` — the directory model, freshness, the
+  policy, the three proofs, the six grants, sessions and one origin, the
+  console, the store, recovery, failure semantics — and end with an
+  appendix naming everything that was removed and why, so nobody adds one
+  back without a reason. `architecture.md` loses its two-services banner
+  and draws one container. The README no longer promises a merge that has
+  happened.
+
+  `integrations.md` carries a note on the three cases that describe the
+  old shape; it is rewritten with the rest of the documentation at 1.0.
+
 - **The console reads.** It no longer writes who is in which internal
   group (INF-694). A console that could add a membership was a second
   source of truth beside git and a merge layer to reconcile them; who is

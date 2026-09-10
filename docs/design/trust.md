@@ -265,9 +265,9 @@ a local run. See [libraries.md](libraries.md).
 
 ## Related
 
-- [access-issuer.md](access-issuer.md) — what the estate anchor verifies
-  and mints.
-- [hub.md](hub.md) — the two listeners, recovery, consumers and their grants.
+- [access-roster.md](access-roster.md) — the whole service: what the
+  estate anchor verifies and mints, the directory model behind it, and
+  recovery.
 - [access-proxy.md](access-proxy.md) — the console exposure.
 - [libraries.md](libraries.md) — the two verifiers.
 - [../connect/service-to-service.md](../connect/service-to-service.md) —
