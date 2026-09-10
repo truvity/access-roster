@@ -393,7 +393,7 @@ groups with one adjective each, so that "group" never means two things:
 | | Identity — where people come from | Access — what they get |
 |---|---|---|
 | container | a **directory**: one connected tenant | the policy and its layers, in Settings |
-| group | a **directory group**, feeding by membership; a **matcher**, feeding by shape | an **internal group** |
+| group | a **directory group**, feeding by membership; a **matcher**, feeding by shape. Both are **rules**, and the Rules page lists them together: how a rule is evaluated is a property to show in a column, not a reason to split the answer across two pages | an **internal group** |
 | leaf | a **person**; a machine's proof exists only while it runs, so it is simulated rather than listed | a **client** |
 
 The membership joins the two group levels, and it is the one edge the
@@ -406,7 +406,7 @@ console edits — from either end.
 | Directories, and one page per directory | which tenants we read, their domains and standing, the actions on the tenant itself, and the groups and accounts it holds — every one a link. **Add a directory** offers both ways in, admin consent and an uploaded key, and only the ways this deployment can take |
 | Directory groups, and one page per group | what the directories say exists, and which of it the policy uses. A group's page reads along the chain: its members as the directory reports them, the internal groups it feeds, the clients that therefore open |
 | People, and one page per person | every account, as the last snapshot has it, filtered by directory and by whether it is live. A person's page is where the two sides meet: their directory groups, then the chain one row per internal group held — what put them in it and what it opens — then what did not open and why. Once the issuer exists it gains **Active sessions** with Revoke — one row per application, grouped under the browser session they were opened from — and your own page **Sign out everywhere** |
-| Matchers | every rule that admits a proof by its shape — a CI job, a workload, a verified sign-in — with the internal group it feeds and the clients that opens. The identity side's second way in: a directory group feeds by membership, a matcher by pattern. Below the list, a simulator for a concrete proof, because a CI run exists only while it runs and cannot be listed |
+| Rules *(INF-689)* | **every** rule that puts an identity into an internal group, with what it feeds and what that opens: a directory group by membership, and a sign-in, CI job or workload by pattern. One column says what each **depends on** — the directory, or the proof alone — because that is the difference between a grant that degrades to the hold window when the hub cannot vouch and one that does not, and it is why recovery is a `service_account` matcher. Showing only the pattern half made this the one page that answered for part of the estate: 30 of 73 groups on the first real installation, so filtering it by a cluster role returned nothing and read as missing data. Below the list, a simulator for a concrete proof, because a CI run exists only while it runs and cannot be listed |
 | Internal groups, and one page per group | the vocabulary of access. A group's page mirrors a directory group's: the directory groups that feed it, the people that puts in it now, what it adds to a token, the clients it opens |
 | Clients, and one page per client | kind, redirects, cap, the internal groups that open it, the people who therefore reach it, and the rules that admit machines into it; once the issuer exists, **Open sessions** — who is on it now, with Revoke |
 | Sessions | every open session in the installation, newest first, filterable by person and by client, with Revoke. **Operator-only** (the rail entry does not render for a viewer), capped per page, and every read is audited. The global view exists for the incident where you do not know whose session to look for |
@@ -598,7 +598,7 @@ internal groups and stops being anything else. So one component renders
 it, in two places. A person is a thing with a name, so their answer is
 their page, reached by searching for them. A CI job and a workload have
 no name to search for — they do not exist until one runs — so the
-Matchers page keeps the proof picker for exactly those two, under the
+Rules page keeps the proof picker for exactly those two, under the
 list of rules a proof is checked against.
 
 The answer opens with a sentence: their role here, how many internal

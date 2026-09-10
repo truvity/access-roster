@@ -3,6 +3,19 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **Docs: the console's Matchers page becomes Rules.** It listed only
+  rules that admit a proof by its *shape* and silently omitted those that
+  admit by directory membership — 30 of 73 groups on the first real
+  installation — so filtering it by a cluster role returned nothing and
+  read as missing data rather than as the wrong page. How a rule is
+  evaluated is a property to show in a column, not a reason to split the
+  answer: a membership rule needs the directory to vouch and degrades to
+  the hold window when it cannot; a matcher needs only the proof, which
+  is why recovery is one. Design and reference updated; the page itself
+  is INF-689. The policy's `matchers:` field is unchanged.
+
 ## v0.9.15
 
 - **The session service is mounted whether or not a cross-origin console
