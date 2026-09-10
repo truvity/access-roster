@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.14
 
 - **The console asked the wrong host who it was.** `/.access/whoami` was
   fetched as an absolute path, so mounted under `/console/` it resolved
