@@ -117,7 +117,13 @@ the same shape access-proxy's exposure.gateway already has, one level up
 {{- if not $client -}}
 {{- fail "access.signOutThroughIssuer needs access.login.forwardedBearer.audience: it is this console's client id at the issuer, and without it the issuer cannot tell whose landing page it is being handed, so it drops the person on its own signed-out page instead of back here" -}}
 {{- end -}}
-{{- $home := printf "https://%s/" .Values.route.host -}}
+{{/* The console's own front page, INCLUDING route.pathPrefix: mounted
+     under a path, "https://host/" is the ISSUER's page, not this
+     console's. It also has to match the client's `signed_out` entry at
+     the issuer character for character, or the issuer ends the session
+     and lands the person on its own page -- a sign-out that worked and
+     looks like it did not. */}}
+{{- $home := printf "https://%s%s/" .Values.route.host .Values.route.pathPrefix -}}
 {{/* client_id, because there is no id_token_hint to carry: oauth2-proxy's
      `rd` is a plain redirect and adds nothing of its own. Without it the
      issuer has no client whose `signed_out` list to match, so it ends the
@@ -125,7 +131,12 @@ the same shape access-proxy's exposure.gateway already has, one level up
      OWN page rather than this console's. RP-Initiated Logout allows
      either; this is the one we can send. */}}
 {{- $end := printf "%s/end_session?client_id=%s&post_logout_redirect_uri=%s" $issuer (urlquery $client) (urlquery $home) -}}
-{{- printf "%s/sign_out?rd=%s" (trimSuffix "/" ($access.proxyPrefix | default "/oauth2")) (urlquery $end) -}}
+{{/* And the proxy's own paths move with the console: under a prefix the
+     root's /oauth2 belongs to the issuer, not to this proxy. Defaulting
+     it from route.pathPrefix rather than asking a deployment to set both
+     is what stops the two from drifting -- and a sign-out link pointing
+     at a path the proxy does not own is a button that 404s. */}}
+{{- printf "%s/sign_out?rd=%s" (trimSuffix "/" ($access.proxyPrefix | default (printf "%s/oauth2" .Values.route.pathPrefix))) (urlquery $end) -}}
 {{- end -}}
 {{- end -}}
 

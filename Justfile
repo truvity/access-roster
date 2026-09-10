@@ -265,6 +265,19 @@ chart-lint:
     # that.
     helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example --set access.login.forwardedBearer.audience=console | grep -q 'client_id'
     ! helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example >/dev/null 2>&1
+    # Under a path prefix the WHOLE sign-out chain moves with the
+    # console, and both halves are the kind that fail silently. The
+    # proxy's own paths are under the prefix -- /oauth2 at the root
+    # belongs to the issuer -- so a link to the root's /oauth2/sign_out
+    # is a button that 404s. And post_logout_redirect_uri must be the
+    # console's page under the prefix, matching the client's `signed_out`
+    # character for character, or the issuer ends the session and lands
+    # the person on its OWN page: a sign-out that worked and reads as
+    # though it did not.
+    helm template t charts/directory-roster --set route.host=access.example         --set route.pathPrefix=/console         --set route.gateway.name=iss --set route.gateway.namespace=iss         --set access.signOutThroughIssuer=true         --set access.login.forwardedBearer.issuer=https://access.example         --set access.login.forwardedBearer.audience=console         | grep -q '"/console/oauth2/sign_out'
+    helm template t charts/directory-roster --set route.host=access.example         --set route.pathPrefix=/console         --set route.gateway.name=iss --set route.gateway.namespace=iss         --set access.signOutThroughIssuer=true         --set access.login.forwardedBearer.issuer=https://access.example         --set access.login.forwardedBearer.audience=console         | grep -q 'post_logout_redirect_uri%3Dhttps%253A%252F%252Faccess.example%252Fconsole%252F'
+    # And with no prefix it is exactly what it has always been.
+    helm template t charts/directory-roster --set route.host=dir.example         --set access.signOutThroughIssuer=true         --set access.login.forwardedBearer.issuer=https://iss.example         --set access.login.forwardedBearer.audience=console         | grep -q '"/oauth2/sign_out'
     # CI identity is opt-in by naming the organisations. A chart that
     # rendered GITHUB_OWNERS from nothing would admit every repository on
     # GitHub, because anybody may run a workflow in their own and get a

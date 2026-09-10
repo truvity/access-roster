@@ -321,9 +321,16 @@ access:
   # `signed_out` -- a post_logout_redirect_uri it does not know is
   # ignored, and the person lands on the issuer's own signed-out page.
   signOutThroughIssuer: false
-  # The proxy prefix, when the chain above is built. oauth2-proxy's own
-  # default; access-proxy exposes it as `exposure.proxyPrefix`.
-  proxyPrefix: /oauth2
+  # The proxy prefix, when the chain above is built. access-proxy exposes
+  # the same value as `exposure.proxyPrefix`, and the two must agree: a
+  # sign-out link pointing at a path the proxy does not own is a button
+  # that 404s.
+  #
+  # EMPTY derives it from route.pathPrefix -- `/oauth2` at the root,
+  # `<prefix>/oauth2` under one -- which is right for both, because a
+  # console mounted under a path does not own /oauth2 at the root of its
+  # host. Set it only to override that.
+  proxyPrefix: ""
   # The hold window: how long a signed-in identity keeps its last granted
   # role while the directory cannot vouch for its membership. Zero means
   # no hold, and an uncertain directory then grants nothing.
