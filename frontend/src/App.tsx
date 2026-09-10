@@ -37,7 +37,7 @@ import { Directories, Directory } from "./Directories";
 import { DirectoryGroups, DirectoryGroup } from "./DirectoryGroups";
 import { People } from "./People";
 import { Person } from "./Person";
-import { Matchers } from "./Matchers";
+import { Rules } from "./Rules";
 import { Groups, Group } from "./Groups";
 import { Clients, Client } from "./Clients";
 import { SessionsPage } from "./Sessions";
@@ -55,7 +55,7 @@ const identity: Item[] = [
   { value: "directories", label: "Directories", to: paths.directories(), icon: <DomainIcon fontSize="small" /> },
   { value: "directory-groups", label: "Directory groups", to: paths.directoryGroups(), icon: <GroupsIcon fontSize="small" /> },
   { value: "people", label: "People", to: paths.people(), icon: <PeopleIcon fontSize="small" /> },
-  { value: "matchers", label: "Matchers", to: paths.matchers(), icon: <RuleIcon fontSize="small" /> },
+  { value: "rules", label: "Rules", to: paths.rules(), icon: <RuleIcon fontSize="small" /> },
 ];
 const accessSide: Item[] = [
   { value: "groups", label: "Internal groups", to: paths.groups(), icon: <ShieldIcon fontSize="small" /> },
@@ -260,8 +260,8 @@ function PageFor({
       return id ? <DirectoryGroup email={id} operator={operator} onDone={onDone} /> : <DirectoryGroups />;
     case "people":
       return id ? <Person email={id} me={me} operator={operator} onDone={onDone} /> : <People />;
-    case "matchers":
-      return <Matchers />;
+    case "rules":
+      return <Rules />;
     case "groups":
       return id ? <Group name={id} operator={operator} onDone={onDone} /> : <Groups />;
     case "clients":
