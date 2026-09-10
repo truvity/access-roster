@@ -54,7 +54,7 @@ memberships:                   # the one table a console may extend — the same
 | `groups` | internal group name | directory `members`, or `matchers`; a group with neither is one nobody is in yet, which is where a fresh installation starts | declared |
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
-| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap` | declared, plus self-registration |
+| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap` | declared |
 | `memberships` | internal group name | extra directory groups | declared baseline, console additions |
 
 The hub loads `groups`, `claims`, `lifetimes` and `memberships`. The issuer
@@ -209,8 +209,8 @@ which admits a caller; a caller in none is refused before a token exists.
 
 | Kind | Used by | Has a secret |
 |---|---|---|
-| `public` | kubelogin per cluster, accessctl, Kargo's CLI, `local-dev` | no |
-| `confidential` | ArgoCD, Kargo, a self-registered access-proxy | yes: a Secret in the issuer's namespace |
+| `public` | kubelogin per cluster, accessctl, Kargo's web UI and CLI, `local-dev` | no |
+| `confidential` | ArgoCD, every access-proxy | yes: a Secret in the issuer's namespace |
 | `exchange` | AWS roles reached by token exchange | no |
 
 `redirects` are where a code is delivered — a path that *starts* a
@@ -221,24 +221,23 @@ login they just ended; one address in both fails the load, and an
 `exchange` client, which nobody signs into, may declare no `signed_out`
 at all.
 
-Clients are declared or **self-registered** by an in-cluster workload
-presenting its ServiceAccount token, within the host pattern allowed for
-its namespace. Clients are never created in a console. Local development
-uses the one declared `local-dev` client.
+Clients are **declared**, and only declared: one row each in the
+deployment's values, with `requires` mandatory — an empty list means
+nobody, not everyone, and the issuer refuses to start on one. Never
+created in a console, never registered by a workload, so the set of
+them is answerable by reading the repository. Local development uses the
+one declared `local-dev` client.
 
-## Layers
+## One source
 
-Two sources, one schema, merged additively:
+The deployment's ConfigMap(s), rendered from the installation's own
+access model. Several may exist and merge additively; a key present
+twice is refused.
 
-1. the **declared layer**: the deployment's ConfigMap(s), rendered from
-   the installation's own access model; several may exist and merge;
-2. the **console layer**: what the console wrote, `memberships` only for
-   the hub.
-
-A key present in both is shown once, marked declared, and the console's
-copy is ignored rather than merged over it. The console layer exports as
-the same YAML, so an installation that starts standalone moves its
-edits into git by pasting.
+Through 0.10 a second, console-written layer carried `memberships`
+attached in the console, merged under the declared one. It goes with the
+read-only console (INF-694): who is in which internal group is this
+file and nothing else, and `git log` is the complete history of access.
 
 ## Not in this file
 
@@ -257,11 +256,10 @@ not a login.
 
 ## What the console may change
 
-| Area | Console | Declared only |
-|---|---|---|
-| memberships | attach a snapshotted directory group to a declared internal group; detach what the console attached | the baseline |
-| groups, claims, lifetimes, clients, matchers | nothing | all |
-| self-registered clients | revoke one | — |
+Nothing in this file. The console reads the policy and shows it — every
+group, every rule, every client — and its only writes are removals of
+sessions (revoke, *sign out everywhere*). Through 0.10 it could also
+attach directory groups; that goes with INF-694.
 
 ## Testing the file
 

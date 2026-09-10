@@ -35,5 +35,4 @@ nothing about that policy changes when the issuer does.
    as an admin, then `admin.enabled: "false"`.
 
 The `argocd` CLI logs in through the same client with the browser flow;
-no separate client is needed unless you want the device flow, in which
-case add a public client and point the CLI at it.
+no separate client is needed.

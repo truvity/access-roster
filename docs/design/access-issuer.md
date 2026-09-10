@@ -6,6 +6,19 @@ the hub depends on it. The rule it stands on — two trust anchors, one
 vocabulary — is [trust.md](trust.md); this document is the issuer's half
 of it.
 
+> **Reshaped 2026-09-10.** Four decisions narrow this document, and each
+> has a ticket: the directory hub folds into this service (INF-691); the
+> served grants shrink to six — code + PKCE, refresh, userinfo,
+> `end_session`, revocation, token exchange — and device flow, client
+> credentials, introspection and JWT bearer go (INF-693); machines prove
+> themselves by a federated issuer's key set, never by TokenReview, which
+> stays for recovery alone (INF-692); and the issuer's own HTML is the
+> login page and the signed-out page, the account page moving into the
+> console (INF-695). *Purpose*, *The policy*, *Sessions and sign-out* and
+> *One origin* are current. Read *What it verifies* and *What it
+> issues* against the six-grant table in
+> [architecture.md](../architecture.md).
+
 ## Purpose
 
 One issuer that every cluster, cloud account, CD system and console of an
