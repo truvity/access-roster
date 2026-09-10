@@ -6,11 +6,14 @@ One repository, one tag, several deliverables, each installable or
 importable alone:
 
 ```
-cmd/directory-roster      the directory hub
-cmd/access-issuer         the token service
+cmd/access-issuer         the whole service: the directory, the policy,
+                          the OpenID provider, the login page, the console
+cmd/directory-roster      the pre-0.12 directory service, kept so an
+                          installation can move back; goes once nothing
+                          points at it
 cmd/accessctl             the CLI (later)
-charts/directory-roster   the hub's chart
-charts/access-issuer      the issuer's chart
+charts/access-issuer      the chart
+charts/directory-roster   the pre-0.12 chart, kept for the same reason
 charts/access-proxy       the console exposure chart
 action.yml                the GitHub Action, at the root so `uses: truvity/access-roster@v1` works (later)
 policy/ backend/          the Go module's public packages today: the
@@ -19,9 +22,13 @@ policy/ backend/          the Go module's public packages today: the
 identity/ authz/ directory/ tokens/ connect/ proof/
                           the rest of the public module (later);
                           framework adapters under identity/<framework>mw
-internal/                 the hub: hub (snapshots, routing, authority),
+internal/                 hub (snapshots, routing, authority), issuer
+                          (the OpenID surface, sessions, exchange),
                           access (roles, sessions, Explain), server
-                          (ConnectRPC handlers, HTTP), demo (fixtures)
+                          (ConnectRPC handlers, HTTP), verify (the
+                          proofs), demo (fixtures). app and issuerapp
+                          assemble the two halves; rosterapp is the
+                          wiring that makes them one process
 frontend/                 the console: Vite + React + MUI, committed
                           dist/ embedded into the binary by go:embed
 ts/                       the TypeScript package; dist/ committed so a
@@ -69,23 +76,33 @@ in order and skipping one is the usual mistake:
 ```
 just generate              # proto → gen/ (Go) and frontend/src/gen (TS)
 cd frontend && npm ci && npm run build   # → frontend/dist, committed
-go build ./cmd/directory-roster          # embeds frontend/dist
+go build ./cmd/access-issuer             # embeds frontend/dist
 ```
 
 A running `go run` keeps the bundle it started with; restart it after a
 frontend build. To see every mechanic without a credential:
 
 ```
-DEMO=1 FORWARDED_EMAIL_HEADER=X-Auth-Request-Email FORWARDED_ISSUER=https://issuer.example \
-  go run ./cmd/directory-roster
+DEMO=1 STORE=memory ALLOW_INSECURE=true \
+  ISSUER_URL=http://localhost:8099 PUBLIC_URL=http://localhost:8099/console \
+  PORT=8099 HEALTH_PORT=7099 \
+  go run ./cmd/access-issuer
 ```
 
-Behind a real gateway the header carries the caller; in a local run, put
-any reverse proxy that adds `X-Auth-Request-Email: ada@north.example` in
-front of `:8081`, or sign in with the recovery password the process
-prints. The demonstration tenants and policy live in `internal/demo`.
+Then open `http://localhost:8099/console/` and take *Continue with the
+demonstration directory*. Two demonstration tenants are adopted with no
+credential and no network; they live in `internal/demo`, and one account
+is suspended because a leaver is the case the whole design turns on.
 
-The console's rules are in the hub design, under "The console": two
+Discovery and the key set answer at `http://localhost:8099/`, because the
+issuer owns the origin root and the console takes a path beside it. What
+a demonstration run cannot do is sign anybody in **at the issuer**: that
+needs a real corporate OAuth client, so the code flow and token exchange
+are exercised by the tests rather than by hand.
+
+The console's rules are in
+[docs/design/access-roster.md](docs/design/access-roster.md), under "The
+console": two
 mirrored sides, every name a link, one meaning per visual form (a name is
 a link, a chip is a state and nothing else, facts are a label over a
 value, two-column data is a list), list pages explain concepts and object
