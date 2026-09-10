@@ -363,6 +363,7 @@ type App struct {
 	console http.Handler
 	health  http.Handler
 	ready   health.Dependency
+	policy  *policy.Set
 	hub     *hub.Hub
 	cfg     Config
 	log     *slog.Logger
@@ -380,6 +381,18 @@ func (a *App) HealthHandler() http.Handler { return a.health }
 
 // Hub is the directory hub itself, for a caller that drives it directly.
 func (a *App) Hub() *hub.Hub { return a.hub }
+
+// Policy is the policy in force, for a caller that has to act on the
+// SAME one.
+//
+// The merged service loads it once and hands it to both halves
+// (INF-691). Two halves loading it independently is precisely the class
+// of failure the merge existed to end: they read the same file today,
+// but their fallbacks differ, so a deployment that configured neither
+// would run a directory answering from a built-in policy and an issuer
+// refusing to start — or worse, two policies that agree until one of
+// them is changed.
+func (a *App) Policy() *policy.Set { return a.policy }
 
 // Readiness is the snapshot store as a dependency, for a caller that
 // assembles a health endpoint of its own. The merged service has one
@@ -582,6 +595,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		console: consoleServer.Handler(),
 		health:  healthMux,
 		ready:   ready,
+		policy:  set,
 		hub:     directory,
 		cfg:     cfg,
 		log:     log,

@@ -96,6 +96,13 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		Directory: hublocal.New(directory.Hub(), 0),
 		Console:   directory.ConsoleHandler(),
 		Ready:     []health.Dependency{directory.Readiness()},
+		// The SAME policy, loaded once. Both halves read POLICY_DIR, so
+		// they would ordinarily agree — but their fallbacks differ, and
+		// two halves that can disagree about the policy is the class of
+		// failure this merge existed to end. Found by running it: with
+		// DEMO=1 the directory built a demonstration policy and the
+		// issuer refused to start on an empty path.
+		Policy: directory.Policy(),
 	}
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {
