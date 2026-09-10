@@ -169,9 +169,6 @@ type Policy struct {
 	// Clients is who may be issued a token for what. A client's id is the
 	// audience.
 	Clients map[string]Client `yaml:"clients,omitempty"`
-	// Memberships extends a declared group with more directory groups.
-	// It is the one table a console may write.
-	Memberships map[string][]string `yaml:"memberships,omitempty"`
 }
 
 // Group is one internal group: a set of directory groups whose members
@@ -405,16 +402,6 @@ func (p Policy) Validate() error {
 		}
 		if _, ok := p.Groups[name]; !ok {
 			return fmt.Errorf("lifetimes: %q is not a declared group", name)
-		}
-	}
-	for _, name := range slices.Sorted(maps.Keys(p.Memberships)) {
-		if _, ok := p.Groups[name]; !ok {
-			return fmt.Errorf("memberships: %q is not a declared group", name)
-		}
-		for _, address := range p.Memberships[name] {
-			if _, ok := emailaddr.Domain(address); !ok {
-				return fmt.Errorf("memberships: %q in %q has no domain", address, name)
-			}
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(p.Clients)) {

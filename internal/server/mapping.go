@@ -9,7 +9,6 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
-	"gopkg.in/yaml.v3"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
@@ -200,10 +199,7 @@ func policyGroupProto(view *policy.GroupView) (*directoryrosterv1.PolicyGroup, e
 		out.Lifetime = durationpb.New(view.Lifetime)
 	}
 	for _, member := range view.Members {
-		out.Members = append(out.Members, &directoryrosterv1.GroupMember{
-			Address: member.Address,
-			Layer:   member.Layer,
-		})
+		out.Members = append(out.Members, &directoryrosterv1.GroupMember{Address: member.Address})
 	}
 	for _, rule := range view.Rules {
 		out.Rules = append(out.Rules, &directoryrosterv1.PolicyMatcher{Kind: rule.Kind, Rule: rule.Rule})
@@ -322,19 +318,4 @@ func explanationProto(
 		out.Lifetime = durationpb.New(e.Result.Lifetime)
 	}
 	return out
-}
-
-// exportConsoleLayer renders the console layer as the same YAML the
-// declared layer uses, so that an installation which started standalone
-// moves its edits into git by pasting.
-func exportConsoleLayer(memberships map[string][]string) (string, error) {
-	if len(memberships) == 0 {
-		return "", nil
-	}
-	document := map[string]any{"version": 1, "memberships": memberships}
-	out, err := yaml.Marshal(document)
-	if err != nil {
-		return "", fmt.Errorf("export the console layer: %w", err)
-	}
-	return string(out), nil
 }

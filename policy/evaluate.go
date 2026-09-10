@@ -178,11 +178,14 @@ func (p Policy) Evaluate(in Input) Result {
 	return out
 }
 
-// effectiveMembers is a group's declared members plus whatever the
-// memberships table adds to it.
+// effectiveMembers is a group's declared directory groups.
+//
+// It survives the removal of the memberships table (INF-694) because
+// every caller reads a group's members through one function, and one
+// function is where a future second source would have to announce
+// itself.
 func (p Policy) effectiveMembers(name string) []string {
-	out := slices.Clone(p.Groups[name].Members)
-	return append(out, p.Memberships[name]...)
+	return slices.Clone(p.Groups[name].Members)
 }
 
 // lifetimeOf is the shortest lifetime across the held groups, falling

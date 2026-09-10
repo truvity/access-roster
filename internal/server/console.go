@@ -127,27 +127,20 @@ var (
 	_ directoryrosterv1connect.AccessServiceHandler    = (*Console)(nil)
 )
 
-// NewConsole returns the operator services and installs the console layer
-// of the policy, so that a membership added before a restart is in force
-// after it.
-func NewConsole(ctx context.Context, deps ConsoleDeps) (*Console, error) {
+// NewConsole returns the operator services.
+//
+// It used to install a console layer of the policy here, so that a
+// membership added before a restart was in force after it. There is no
+// console layer any more (INF-694): who is in which internal group is
+// the policy, rendered from the installation's own access model and
+// reviewed in git. A console that could disagree with git was a second
+// source of truth and a merge to reconcile them.
+func NewConsole(_ context.Context, deps ConsoleDeps) (*Console, error) {
 	c := &Console{deps: deps, connectors: map[string]Connector{}}
 	for _, conn := range deps.Connectors {
 		c.connectors[conn.Kind()] = conn
 	}
-	stored, err := deps.Settings.Memberships(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("read the console layer: %w", err)
-	}
-	if err = deps.Authorizer.Policy().SetConsole(stored); err != nil {
-		return nil, fmt.Errorf("install the console layer: %w", err)
-	}
 	return c, nil
-}
-
-// persist writes the console layer back after a change.
-func (c *Console) persist(ctx context.Context) error {
-	return c.deps.Settings.SetMemberships(ctx, c.deps.Authorizer.Policy().Console())
 }
 
 // ------------------------------------------------------- WorkspaceService
@@ -572,23 +565,6 @@ func (c *Console) keyConnectorKinds() []directoryrosterv1.Backend {
 	return out
 }
 
-// SetOAuthClient implements the operator contract.
-func (c *Console) SetOAuthClient(
-	ctx context.Context, req *connect.Request[directoryrosterv1.SetOAuthClientRequest],
-) (*connect.Response[directoryrosterv1.SetOAuthClientResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
-		return nil, err
-	}
-	err := c.deps.Settings.SetOAuthClient(ctx, req.Msg.GetClientId(), req.Msg.GetClientSecret())
-	switch {
-	case errors.Is(err, settings.ErrDeclared):
-		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
-	case err != nil:
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	return connect.NewResponse(&directoryrosterv1.SetOAuthClientResponse{}), nil
-}
-
 // ---------------------------------------------------------- AccessService
 
 // WhoAmI implements the operator contract.
@@ -659,48 +635,7 @@ func (c *Console) GetPolicy(
 	for i := range clients {
 		out.Clients = append(out.Clients, clientProto(&clients[i]))
 	}
-	exported, err := exportConsoleLayer(set.Console())
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	out.ConsoleLayer = exported
 	return connect.NewResponse(out), nil
-}
-
-// AddMembership implements the operator contract.
-func (c *Console) AddMembership(
-	ctx context.Context, req *connect.Request[directoryrosterv1.AddMembershipRequest],
-) (*connect.Response[directoryrosterv1.AddMembershipResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
-		return nil, err
-	}
-	if _, err := c.deps.Authorizer.Policy().AddMembership(
-		req.Msg.GetGroup(), strings.ToLower(strings.TrimSpace(req.Msg.GetDirectoryGroup())),
-	); err != nil {
-		return nil, policyError(err)
-	}
-	if err := c.persist(ctx); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	return connect.NewResponse(&directoryrosterv1.AddMembershipResponse{}), nil
-}
-
-// RemoveMembership implements the operator contract.
-func (c *Console) RemoveMembership(
-	ctx context.Context, req *connect.Request[directoryrosterv1.RemoveMembershipRequest],
-) (*connect.Response[directoryrosterv1.RemoveMembershipResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
-		return nil, err
-	}
-	if err := c.deps.Authorizer.Policy().RemoveMembership(
-		req.Msg.GetGroup(), strings.ToLower(strings.TrimSpace(req.Msg.GetDirectoryGroup())),
-	); err != nil {
-		return nil, policyError(err)
-	}
-	if err := c.persist(ctx); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	return connect.NewResponse(&directoryrosterv1.RemoveMembershipResponse{}), nil
 }
 
 // ListDirectoryGroups implements the operator contract: the groups the hub
@@ -870,9 +805,7 @@ func (c *Console) GetDirectoryGroup(
 	for _, view := range c.deps.Authorizer.Policy().Groups() {
 		for _, member := range view.Members {
 			if strings.EqualFold(member.Address, group.Email) {
-				out.Feeds = append(out.Feeds, &directoryrosterv1.DirectoryGroupFeed{
-					Group: view.Name, Layer: member.Layer,
-				})
+				out.Feeds = append(out.Feeds, &directoryrosterv1.DirectoryGroupFeed{Group: view.Name})
 			}
 		}
 	}

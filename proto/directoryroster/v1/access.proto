@@ -44,18 +44,15 @@ service AccessService {
   rpc SearchPeople(SearchPeopleRequest) returns (SearchPeopleResponse);
 
   // GetPolicy returns every internal group with its members and what each
-  // adds, the state of the break-glass admin, the enabled sign-in
-  // sources, and the console layer as YAML for export. Viewer.
+  // adds, the state of the break-glass admin, and the enabled sign-in
+  // sources. Viewer.
+  //
+  // There is no AddMembership or RemoveMembership beside it any more
+  // (INF-694). Who is in which internal group is the policy, rendered
+  // from the installation's own access model and reviewed in git; a
+  // console that could disagree with git was a second source of truth
+  // and a merge to reconcile them.
   rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
-
-  // AddMembership records a directory group in an internal group.
-  // Operator.
-  rpc AddMembership(AddMembershipRequest) returns (AddMembershipResponse);
-
-  // RemoveMembership drops one the console added. A membership the
-  // deployment declared refuses (failed_precondition): change the values
-  // instead. Operator.
-  rpc RemoveMembership(RemoveMembershipRequest) returns (RemoveMembershipResponse);
 
   // ListDirectoryGroups returns the groups the hub has snapshotted, so
   // that a membership is a click rather than a typed address that may be
@@ -200,11 +197,14 @@ message ClientAdmission {
   google.protobuf.Duration lifetime = 5;
 }
 
-// GroupMember is one directory group inside an internal group, and the
-// layer it came from: "declared" or "console".
+// GroupMember is one directory group inside an internal group.
+//
+// Field 2 was `layer`, saying whether the deployment declared it or an
+// operator added it in the console. There is one layer now (INF-694).
 message GroupMember {
   string address = 1;
-  string layer = 2;
+  reserved 2;
+  reserved "layer";
 }
 
 // PolicyGroup is one internal group as the console shows it.
@@ -251,9 +251,8 @@ message GetPolicyResponse {
   bool recovery_enabled = 2;
   // enabled sign-in sources, e.g. "directory", "oidc:<issuer>", "forwarded:<issuer>".
   repeated string login_sources = 3;
-  // the console layer as YAML, so that an installation which started
-  // standalone can move its edits into git by pasting.
-  string console_layer = 4;
+  reserved 4;
+  reserved "console_layer";
   // the declared clients: who may reach what.
   repeated PolicyClient clients = 5;
   // how recovery is proved: "token" (access to the cluster, nothing
@@ -262,20 +261,6 @@ message GetPolicyResponse {
   // credential, so only it is worth telling an operator about.
   string recovery_kind = 6;
 }
-
-message AddMembershipRequest {
-  // the internal group, which must be declared.
-  string group = 1;
-  // the directory group's address.
-  string directory_group = 2;
-}
-message AddMembershipResponse {}
-
-message RemoveMembershipRequest {
-  string group = 1;
-  string directory_group = 2;
-}
-message RemoveMembershipResponse {}
 
 message ListHoldersRequest {
   // exactly one of the two: an internal group, or a client id.
@@ -385,10 +370,12 @@ message DirectoryGroupMember {
 }
 
 // DirectoryGroupFeed is one internal group this directory group is a
-// member of, and which layer put it there.
+// member of. Field 2 was the layer that put it there; there is one
+// layer now (INF-694).
 message DirectoryGroupFeed {
   string group = 1;
-  string layer = 2;
+  reserved 2;
+  reserved "layer";
 }
 
 message GetDirectoryGroupResponse {

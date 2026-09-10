@@ -1,6 +1,4 @@
-import { useState } from "react";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -11,8 +9,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, adds, forHowLong, matcherKind, people as peopleCount, personName, reason } from "./api";
-import { Attach } from "./attach";
+import { access, adds, forHowLong, matcherKind, people as peopleCount, personName } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
@@ -82,34 +79,12 @@ export function Groups() {
  *  feed it, the people that puts in it right now, what it adds to a
  *  token, and the clients it opens. The mirror of a directory group's
  *  page. */
-export function Group({
-  name,
-  operator,
-  onDone,
-}: {
-  name: string;
-  operator: boolean;
-  onDone: (message: string) => void;
-}) {
+export function Group({ name }: { name: string }) {
   const policy = useAsync(() => access.getPolicy({}), []);
   const holders = useAsync(() => access.listHolders({ group: name }), [name]);
-  const [adding, setAdding] = useState(false);
-  const [failure, setFailure] = useState<string | undefined>();
 
   const group = (policy.value?.groups ?? []).find((g) => g.name === name);
   const opens = (policy.value?.clients ?? []).filter((client) => client.requires.includes(name));
-
-  const detach = async (address: string) => {
-    setFailure(undefined);
-    try {
-      await access.removeMembership({ group: name, directoryGroup: address });
-      onDone(`${address} removed from ${name}.`);
-      policy.reload();
-      holders.reload();
-    } catch (error) {
-      setFailure(reason(error));
-    }
-  };
 
   if (!group) {
     return (
@@ -124,9 +99,9 @@ export function Group({
   const people = holders.value?.holders ?? [];
   const claims = group.claims as Record<string, unknown> | undefined;
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  type Feeder = { key: string; address?: string; matcher?: string; layer?: string };
+  type Feeder = { key: string; address?: string; matcher?: string };
   const feeders: Feeder[] = [
-    ...group.members.map((m) => ({ key: m.address, address: m.address, layer: m.layer })),
+    ...group.members.map((m) => ({ key: m.address, address: m.address })),
     ...group.rules.map((r) => ({ key: `${r.kind}:${r.rule}`, matcher: `${matcherKind(r.kind)} ${r.rule}` })),
   ];
 
@@ -172,30 +147,9 @@ export function Group({
       }
     >
       <Loading busy={policy.loading || holders.loading} />
-      <Failure error={failure ?? policy.error ?? holders.error} />
+      <Failure error={policy.error ?? holders.error} />
 
-      <Section
-        title="Fed by"
-        hint="the memberships table: the one thing this console changes"
-        action={
-          <Button size="small" variant="contained" disabled={!operator || adding} onClick={() => setAdding(true)}>
-            Attach a provider group
-          </Button>
-        }
-      >
-        {adding ? (
-          <Attach
-            group={group.name}
-            onCancel={() => setAdding(false)}
-            onAdded={(_, address) => {
-              setAdding(false);
-              onDone(`${address} added to ${group.name}.`);
-              policy.reload();
-              holders.reload();
-            }}
-            onFailure={setFailure}
-          />
-        ) : null}
+      <Section title="Fed by" hint="declared by the deployment; change it in the policy, in git">
         <Rows
           items={feeders}
           keyOf={(f) => f.key}
@@ -208,18 +162,7 @@ export function Group({
               <Mono>{f.matcher}</Mono>
             )
           }
-          right={(f) =>
-            f.address ? (
-              <>
-                <State kind={f.layer === "declared" ? "declared" : "console"} />
-                <Button size="small" color="warning" disabled={!operator || f.layer === "declared"} onClick={() => void detach(f.address!)}>
-                  Remove
-                </Button>
-              </>
-            ) : (
-              <State kind="matcher" />
-            )
-          }
+          right={(f) => (f.address ? null : <State kind="matcher" />)}
           empty="Nothing feeds it yet, so nobody is in it."
         />
       </Section>

@@ -29,7 +29,9 @@ const (
 	ClientSource_CLIENT_SOURCE_UNSPECIFIED ClientSource = 0
 	// a Secret named by the deployment; read-only in the console.
 	ClientSource_CLIENT_SOURCE_DECLARED ClientSource = 1
-	// stored through SetOAuthClient.
+	// stored by a console, which no installation does any more (INF-694).
+	// The value stays so an older stored client still reads back as what
+	// it is rather than as "unspecified".
 	ClientSource_CLIENT_SOURCE_CONSOLE ClientSource = 2
 )
 
@@ -361,94 +363,6 @@ func (x *ConnectorSetup) GetRedirectUris() []string {
 	return nil
 }
 
-type SetOAuthClientRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ClientId      string                 `protobuf:"bytes,1,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	ClientSecret  string                 `protobuf:"bytes,2,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SetOAuthClientRequest) Reset() {
-	*x = SetOAuthClientRequest{}
-	mi := &file_directoryroster_v1_settings_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SetOAuthClientRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SetOAuthClientRequest) ProtoMessage() {}
-
-func (x *SetOAuthClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_settings_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SetOAuthClientRequest.ProtoReflect.Descriptor instead.
-func (*SetOAuthClientRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_settings_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *SetOAuthClientRequest) GetClientId() string {
-	if x != nil {
-		return x.ClientId
-	}
-	return ""
-}
-
-func (x *SetOAuthClientRequest) GetClientSecret() string {
-	if x != nil {
-		return x.ClientSecret
-	}
-	return ""
-}
-
-type SetOAuthClientResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SetOAuthClientResponse) Reset() {
-	*x = SetOAuthClientResponse{}
-	mi := &file_directoryroster_v1_settings_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SetOAuthClientResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SetOAuthClientResponse) ProtoMessage() {}
-
-func (x *SetOAuthClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_settings_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SetOAuthClientResponse.ProtoReflect.Descriptor instead.
-func (*SetOAuthClientResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_settings_proto_rawDescGZIP(), []int{5}
-}
-
 var File_directoryroster_v1_settings_proto protoreflect.FileDescriptor
 
 const file_directoryroster_v1_settings_proto_rawDesc = "" +
@@ -476,18 +390,13 @@ const file_directoryroster_v1_settings_proto_rawDesc = "" +
 	"\x0eConnectorSetup\x125\n" +
 	"\abackend\x18\x01 \x01(\x0e2\x1b.directoryroster.v1.BackendR\abackend\x12\x16\n" +
 	"\x06scopes\x18\x03 \x03(\tR\x06scopes\x12#\n" +
-	"\rredirect_uris\x18\x04 \x03(\tR\fredirectUrisJ\x04\b\x02\x10\x03R\fredirect_uri\"Y\n" +
-	"\x15SetOAuthClientRequest\x12\x1b\n" +
-	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12#\n" +
-	"\rclient_secret\x18\x02 \x01(\tR\fclientSecret\"\x18\n" +
-	"\x16SetOAuthClientResponse*d\n" +
+	"\rredirect_uris\x18\x04 \x03(\tR\fredirectUrisJ\x04\b\x02\x10\x03R\fredirect_uri*d\n" +
 	"\fClientSource\x12\x1d\n" +
 	"\x19CLIENT_SOURCE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CLIENT_SOURCE_DECLARED\x10\x01\x12\x19\n" +
-	"\x15CLIENT_SOURCE_CONSOLE\x10\x022\xda\x01\n" +
+	"\x15CLIENT_SOURCE_CONSOLE\x10\x022q\n" +
 	"\x0fSettingsService\x12^\n" +
-	"\vGetSettings\x12&.directoryroster.v1.GetSettingsRequest\x1a'.directoryroster.v1.GetSettingsResponse\x12g\n" +
-	"\x0eSetOAuthClient\x12).directoryroster.v1.SetOAuthClientRequest\x1a*.directoryroster.v1.SetOAuthClientResponseB\xdb\x01\n" +
+	"\vGetSettings\x12&.directoryroster.v1.GetSettingsRequest\x1a'.directoryroster.v1.GetSettingsResponseB\xdb\x01\n" +
 	"\x16com.directoryroster.v1B\rSettingsProtoP\x01ZIgithub.com/truvity/access-roster/gen/directoryroster/v1;directoryrosterv1\xa2\x02\x03DXX\xaa\x02\x12Directoryroster.V1\xca\x02\x12Directoryroster\\V1\xe2\x02\x1eDirectoryroster\\V1\\GPBMetadata\xea\x02\x13Directoryroster::V1b\x06proto3"
 
 var (
@@ -503,34 +412,30 @@ func file_directoryroster_v1_settings_proto_rawDescGZIP() []byte {
 }
 
 var file_directoryroster_v1_settings_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_directoryroster_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_directoryroster_v1_settings_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_directoryroster_v1_settings_proto_goTypes = []any{
-	(ClientSource)(0),              // 0: directoryroster.v1.ClientSource
-	(*OAuthClient)(nil),            // 1: directoryroster.v1.OAuthClient
-	(*GetSettingsRequest)(nil),     // 2: directoryroster.v1.GetSettingsRequest
-	(*GetSettingsResponse)(nil),    // 3: directoryroster.v1.GetSettingsResponse
-	(*ConnectorSetup)(nil),         // 4: directoryroster.v1.ConnectorSetup
-	(*SetOAuthClientRequest)(nil),  // 5: directoryroster.v1.SetOAuthClientRequest
-	(*SetOAuthClientResponse)(nil), // 6: directoryroster.v1.SetOAuthClientResponse
-	(*durationpb.Duration)(nil),    // 7: google.protobuf.Duration
-	(Backend)(0),                   // 8: directoryroster.v1.Backend
+	(ClientSource)(0),           // 0: directoryroster.v1.ClientSource
+	(*OAuthClient)(nil),         // 1: directoryroster.v1.OAuthClient
+	(*GetSettingsRequest)(nil),  // 2: directoryroster.v1.GetSettingsRequest
+	(*GetSettingsResponse)(nil), // 3: directoryroster.v1.GetSettingsResponse
+	(*ConnectorSetup)(nil),      // 4: directoryroster.v1.ConnectorSetup
+	(*durationpb.Duration)(nil), // 5: google.protobuf.Duration
+	(Backend)(0),                // 6: directoryroster.v1.Backend
 }
 var file_directoryroster_v1_settings_proto_depIdxs = []int32{
 	0,  // 0: directoryroster.v1.OAuthClient.source:type_name -> directoryroster.v1.ClientSource
 	1,  // 1: directoryroster.v1.GetSettingsResponse.oauth_client:type_name -> directoryroster.v1.OAuthClient
-	7,  // 2: directoryroster.v1.GetSettingsResponse.refresh_interval:type_name -> google.protobuf.Duration
-	7,  // 3: directoryroster.v1.GetSettingsResponse.freshness_window:type_name -> google.protobuf.Duration
-	7,  // 4: directoryroster.v1.GetSettingsResponse.probe_interval:type_name -> google.protobuf.Duration
-	8,  // 5: directoryroster.v1.GetSettingsResponse.connectors:type_name -> directoryroster.v1.Backend
-	8,  // 6: directoryroster.v1.GetSettingsResponse.key_connectors:type_name -> directoryroster.v1.Backend
+	5,  // 2: directoryroster.v1.GetSettingsResponse.refresh_interval:type_name -> google.protobuf.Duration
+	5,  // 3: directoryroster.v1.GetSettingsResponse.freshness_window:type_name -> google.protobuf.Duration
+	5,  // 4: directoryroster.v1.GetSettingsResponse.probe_interval:type_name -> google.protobuf.Duration
+	6,  // 5: directoryroster.v1.GetSettingsResponse.connectors:type_name -> directoryroster.v1.Backend
+	6,  // 6: directoryroster.v1.GetSettingsResponse.key_connectors:type_name -> directoryroster.v1.Backend
 	4,  // 7: directoryroster.v1.GetSettingsResponse.setup:type_name -> directoryroster.v1.ConnectorSetup
-	8,  // 8: directoryroster.v1.ConnectorSetup.backend:type_name -> directoryroster.v1.Backend
+	6,  // 8: directoryroster.v1.ConnectorSetup.backend:type_name -> directoryroster.v1.Backend
 	2,  // 9: directoryroster.v1.SettingsService.GetSettings:input_type -> directoryroster.v1.GetSettingsRequest
-	5,  // 10: directoryroster.v1.SettingsService.SetOAuthClient:input_type -> directoryroster.v1.SetOAuthClientRequest
-	3,  // 11: directoryroster.v1.SettingsService.GetSettings:output_type -> directoryroster.v1.GetSettingsResponse
-	6,  // 12: directoryroster.v1.SettingsService.SetOAuthClient:output_type -> directoryroster.v1.SetOAuthClientResponse
-	11, // [11:13] is the sub-list for method output_type
-	9,  // [9:11] is the sub-list for method input_type
+	3,  // 10: directoryroster.v1.SettingsService.GetSettings:output_type -> directoryroster.v1.GetSettingsResponse
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -548,7 +453,7 @@ func file_directoryroster_v1_settings_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_settings_proto_rawDesc), len(file_directoryroster_v1_settings_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   6,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

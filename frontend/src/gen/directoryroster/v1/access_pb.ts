@@ -12,7 +12,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/access.proto.
  */
 export const file_directoryroster_v1_access: GenFile = /*@__PURE__*/
-  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvYWNjZXNzLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEi8wEKCElkZW50aXR5Eg0KBWVtYWlsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSMgoGc291cmNlGAMgASgOMiIuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5U291cmNlEiYKBHJvbGUYBCABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZRIOCgZncm91cHMYBSADKAkSEgoKZ2l2ZW5fbmFtZRgGIAEoCRITCgtmYW1pbHlfbmFtZRgHIAEoCRIyCgZzY29wZXMYCCADKAsyIi5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlU2NvcGUiTgoOV29ya3NwYWNlU2NvcGUSFAoMd29ya3NwYWNlX2lkGAEgASgJEiYKBHJvbGUYAiABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZSIPCg1XaG9BbUlSZXF1ZXN0IlEKDldob0FtSVJlc3BvbnNlEi4KCGlkZW50aXR5GAEgASgLMhwuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5Eg8KB3ZlcnNpb24YAiABKAkiJwoJSGVsZEdyb3VwEg0KBWdyb3VwGAEgASgJEgsKA3ZpYRgCIAMoCSJkCgtHaXRIdWJQcm9vZhISCgpyZXBvc2l0b3J5GAEgASgJEg0KBW93bmVyGAIgASgJEgsKA3JlZhgDIAEoCRIQCgh3b3JrZmxvdxgEIAEoCRITCgtlbnZpcm9ubWVudBgFIAEoCSI2ChNTZXJ2aWNlQWNjb3VudFByb29mEhEKCW5hbWVzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJIpIBCg5FeHBsYWluUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIvCgZnaXRodWIYAiABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViUHJvb2YSQAoPc2VydmljZV9hY2NvdW50GAMgASgLMicuZGlyZWN0b3J5cm9zdGVyLnYxLlNlcnZpY2VBY2NvdW50UHJvb2Yi9gIKD0V4cGxhaW5SZXNwb25zZRIuCghpZGVudGl0eRgBIAEoCzIcLmRpcmVjdG9yeXJvc3Rlci52MS5JZGVudGl0eRIRCglpbl9kb21haW4YAiABKAgSDQoFZm91bmQYAyABKAgSEQoJc3VzcGVuZGVkGAQgASgIEhUKDWF1dGhvcml0YXRpdmUYBSABKAgSGAoQZGlyZWN0b3J5X2dyb3VwcxgGIAMoCRIrCgRoZWxkGAcgAygLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLkhlbGRHcm91cBInCgZjbGFpbXMYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKCGxpZmV0aW1lGAkgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjQKB2NsaWVudHMYCiADKAsyIy5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50QWRtaXNzaW9uEhQKDHdvcmtzcGFjZV9pZBgLIAEoCSJ8Cg9DbGllbnRBZG1pc3Npb24SCgoCaWQYASABKAkSDAoEa2luZBgCIAEoCRIQCghyZXF1aXJlcxgDIAMoCRIQCghhZG1pdHRlZBgEIAEoCBIrCghsaWZldGltZRgFIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbiItCgtHcm91cE1lbWJlchIPCgdhZGRyZXNzGAEgASgJEg0KBWxheWVyGAIgASgJItsBCgtQb2xpY3lHcm91cBIMCgRuYW1lGAEgASgJEjAKB21lbWJlcnMYAiADKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuR3JvdXBNZW1iZXISMAoFcnVsZXMYBiADKAsyIS5kaXJlY3Rvcnlyb3N0ZXIudjEuUG9saWN5TWF0Y2hlchInCgZjbGFpbXMYBCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKCGxpZmV0aW1lGAUgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uSgQIAxAEIisKDVBvbGljeU1hdGNoZXISDAoEa2luZBgBIAEoCRIMCgRydWxlGAIgASgJIokBCgxQb2xpY3lDbGllbnQSCgoCaWQYASABKAkSDAoEa2luZBgCIAEoCRIQCghyZXF1aXJlcxgDIAMoCRIRCglyZWRpcmVjdHMYBCADKAkSKgoHdHRsX2NhcBgFIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIOCgZzZWNyZXQYBiABKAkiEgoQR2V0UG9saWN5UmVxdWVzdCLWAQoRR2V0UG9saWN5UmVzcG9uc2USLwoGZ3JvdXBzGAEgAygLMh8uZGlyZWN0b3J5cm9zdGVyLnYxLlBvbGljeUdyb3VwEhgKEHJlY292ZXJ5X2VuYWJsZWQYAiABKAgSFQoNbG9naW5fc291cmNlcxgDIAMoCRIVCg1jb25zb2xlX2xheWVyGAQgASgJEjEKB2NsaWVudHMYBSADKAsyIC5kaXJlY3Rvcnlyb3N0ZXIudjEuUG9saWN5Q2xpZW50EhUKDXJlY292ZXJ5X2tpbmQYBiABKAkiPgoUQWRkTWVtYmVyc2hpcFJlcXVlc3QSDQoFZ3JvdXAYASABKAkSFwoPZGlyZWN0b3J5X2dyb3VwGAIgASgJIhcKFUFkZE1lbWJlcnNoaXBSZXNwb25zZSJBChdSZW1vdmVNZW1iZXJzaGlwUmVxdWVzdBINCgVncm91cBgBIAEoCRIXCg9kaXJlY3RvcnlfZ3JvdXAYAiABKAkiGgoYUmVtb3ZlTWVtYmVyc2hpcFJlc3BvbnNlIkIKEkxpc3RIb2xkZXJzUmVxdWVzdBINCgVncm91cBgBIAEoCRIOCgZjbGllbnQYAiABKAkSDQoFbGltaXQYAyABKAUinwEKBkhvbGRlchINCgVlbWFpbBgBIAEoCRISCgpnaXZlbl9uYW1lGAIgASgJEhMKC2ZhbWlseV9uYW1lGAMgASgJEgwKBGxpdmUYBCABKAgSFQoNYXV0aG9yaXRhdGl2ZRgFIAEoCBILCgN2aWEYBiADKAkSKwoIbGlmZXRpbWUYByABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24iZwoTTGlzdEhvbGRlcnNSZXNwb25zZRIrCgdob2xkZXJzGAEgAygLMhouZGlyZWN0b3J5cm9zdGVyLnYxLkhvbGRlchIQCghleGFtaW5lZBgCIAEoBRIRCgl0cnVuY2F0ZWQYAyABKAgijQEKE1NlYXJjaFBlb3BsZVJlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFbGltaXQYAiABKAUSFAoMd29ya3NwYWNlX2lkGAMgASgJEjIKB2FjY291bnQYBCABKA4yIS5kaXJlY3Rvcnlyb3N0ZXIudjEuQWNjb3VudEZpbHRlchIOCgZkb21haW4YBSABKAkiawoNUGVyc29uU3VtbWFyeRINCgVlbWFpbBgBIAEoCRISCgpnaXZlbl9uYW1lGAIgASgJEhMKC2ZhbWlseV9uYW1lGAMgASgJEhQKDHdvcmtzcGFjZV9pZBgEIAEoCRIMCgRsaXZlGAUgASgIImsKFFNlYXJjaFBlb3BsZVJlc3BvbnNlEjEKBnBlb3BsZRgBIAMoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5QZXJzb25TdW1tYXJ5EhEKCXRydW5jYXRlZBgCIAEoCBINCgV0b3RhbBgDIAEoBSIsChpMaXN0RGlyZWN0b3J5R3JvdXBzUmVxdWVzdBIOCgZkb21haW4YASABKAkiWAobTGlzdERpcmVjdG9yeUdyb3Vwc1Jlc3BvbnNlEjkKBmdyb3VwcxgBIAMoCzIpLmRpcmVjdG9yeXJvc3Rlci52MS5EaXJlY3RvcnlHcm91cFN1bW1hcnkiXQoVRGlyZWN0b3J5R3JvdXBTdW1tYXJ5Eg0KBWVtYWlsGAEgASgJEg4KBmRvbWFpbhgCIAEoCRIUCgx3b3Jrc3BhY2VfaWQYAyABKAkSDwoHbWVtYmVycxgEIAEoBSIpChhHZXREaXJlY3RvcnlHcm91cFJlcXVlc3QSDQoFZW1haWwYASABKAkiawoURGlyZWN0b3J5R3JvdXBNZW1iZXISDQoFZW1haWwYASABKAkSEgoKZ2l2ZW5fbmFtZRgCIAEoCRITCgtmYW1pbHlfbmFtZRgDIAEoCRINCgVrbm93bhgEIAEoCBIMCgRsaXZlGAUgASgIIjIKEkRpcmVjdG9yeUdyb3VwRmVlZBINCgVncm91cBgBIAEoCRINCgVsYXllchgCIAEoCSKZAgoZR2V0RGlyZWN0b3J5R3JvdXBSZXNwb25zZRINCgVlbWFpbBgBIAEoCRIOCgZkb21haW4YAiABKAkSFAoMd29ya3NwYWNlX2lkGAMgASgJEg0KBWZvdW5kGAQgASgIEhUKDWF1dGhvcml0YXRpdmUYBSABKAgSLwoLc25hcHNob3RfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjkKB21lbWJlcnMYByADKAsyKC5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlyZWN0b3J5R3JvdXBNZW1iZXISNQoFZmVlZHMYCCADKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlyZWN0b3J5R3JvdXBGZWVkKkAKBFJvbGUSFAoQUk9MRV9VTlNQRUNJRklFRBAAEg8KC1JPTEVfVklFV0VSEAESEQoNUk9MRV9PUEVSQVRPUhACKqcBCg5JZGVudGl0eVNvdXJjZRIfChtJREVOVElUWV9TT1VSQ0VfVU5TUEVDSUZJRUQQABIdChlJREVOVElUWV9TT1VSQ0VfRElSRUNUT1JZEAESGAoUSURFTlRJVFlfU09VUkNFX09JREMQAhIdChlJREVOVElUWV9TT1VSQ0VfRk9SV0FSREVEEAMSHAoYSURFTlRJVFlfU09VUkNFX1JFQ09WRVJZEAQqZgoNQWNjb3VudEZpbHRlchIeChpBQ0NPVU5UX0ZJTFRFUl9VTlNQRUNJRklFRBAAEhcKE0FDQ09VTlRfRklMVEVSX0xJVkUQARIcChhBQ0NPVU5UX0ZJTFRFUl9TVVNQRU5ERUQQAjKQBwoNQWNjZXNzU2VydmljZRJPCgZXaG9BbUkSIS5kaXJlY3Rvcnlyb3N0ZXIudjEuV2hvQW1JUmVxdWVzdBoiLmRpcmVjdG9yeXJvc3Rlci52MS5XaG9BbUlSZXNwb25zZRJSCgdFeHBsYWluEiIuZGlyZWN0b3J5cm9zdGVyLnYxLkV4cGxhaW5SZXF1ZXN0GiMuZGlyZWN0b3J5cm9zdGVyLnYxLkV4cGxhaW5SZXNwb25zZRJeCgtMaXN0SG9sZGVycxImLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0SG9sZGVyc1JlcXVlc3QaJy5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdEhvbGRlcnNSZXNwb25zZRJhCgxTZWFyY2hQZW9wbGUSJy5kaXJlY3Rvcnlyb3N0ZXIudjEuU2VhcmNoUGVvcGxlUmVxdWVzdBooLmRpcmVjdG9yeXJvc3Rlci52MS5TZWFyY2hQZW9wbGVSZXNwb25zZRJYCglHZXRQb2xpY3kSJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0UG9saWN5UmVxdWVzdBolLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRQb2xpY3lSZXNwb25zZRJkCg1BZGRNZW1iZXJzaGlwEiguZGlyZWN0b3J5cm9zdGVyLnYxLkFkZE1lbWJlcnNoaXBSZXF1ZXN0GikuZGlyZWN0b3J5cm9zdGVyLnYxLkFkZE1lbWJlcnNoaXBSZXNwb25zZRJtChBSZW1vdmVNZW1iZXJzaGlwEisuZGlyZWN0b3J5cm9zdGVyLnYxLlJlbW92ZU1lbWJlcnNoaXBSZXF1ZXN0GiwuZGlyZWN0b3J5cm9zdGVyLnYxLlJlbW92ZU1lbWJlcnNoaXBSZXNwb25zZRJ2ChNMaXN0RGlyZWN0b3J5R3JvdXBzEi4uZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3REaXJlY3RvcnlHcm91cHNSZXF1ZXN0Gi8uZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3REaXJlY3RvcnlHcm91cHNSZXNwb25zZRJwChFHZXREaXJlY3RvcnlHcm91cBIsLmRpcmVjdG9yeXJvc3Rlci52MS5HZXREaXJlY3RvcnlHcm91cFJlcXVlc3QaLS5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0RGlyZWN0b3J5R3JvdXBSZXNwb25zZULZAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUILQWNjZXNzUHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw", [file_google_protobuf_duration, file_google_protobuf_struct, file_google_protobuf_timestamp]);
+  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvYWNjZXNzLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEi8wEKCElkZW50aXR5Eg0KBWVtYWlsGAEgASgJEg8KB3N1YmplY3QYAiABKAkSMgoGc291cmNlGAMgASgOMiIuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5U291cmNlEiYKBHJvbGUYBCABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZRIOCgZncm91cHMYBSADKAkSEgoKZ2l2ZW5fbmFtZRgGIAEoCRITCgtmYW1pbHlfbmFtZRgHIAEoCRIyCgZzY29wZXMYCCADKAsyIi5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlU2NvcGUiTgoOV29ya3NwYWNlU2NvcGUSFAoMd29ya3NwYWNlX2lkGAEgASgJEiYKBHJvbGUYAiABKA4yGC5kaXJlY3Rvcnlyb3N0ZXIudjEuUm9sZSIPCg1XaG9BbUlSZXF1ZXN0IlEKDldob0FtSVJlc3BvbnNlEi4KCGlkZW50aXR5GAEgASgLMhwuZGlyZWN0b3J5cm9zdGVyLnYxLklkZW50aXR5Eg8KB3ZlcnNpb24YAiABKAkiJwoJSGVsZEdyb3VwEg0KBWdyb3VwGAEgASgJEgsKA3ZpYRgCIAMoCSJkCgtHaXRIdWJQcm9vZhISCgpyZXBvc2l0b3J5GAEgASgJEg0KBW93bmVyGAIgASgJEgsKA3JlZhgDIAEoCRIQCgh3b3JrZmxvdxgEIAEoCRITCgtlbnZpcm9ubWVudBgFIAEoCSI2ChNTZXJ2aWNlQWNjb3VudFByb29mEhEKCW5hbWVzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJIpIBCg5FeHBsYWluUmVxdWVzdBINCgVlbWFpbBgBIAEoCRIvCgZnaXRodWIYAiABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViUHJvb2YSQAoPc2VydmljZV9hY2NvdW50GAMgASgLMicuZGlyZWN0b3J5cm9zdGVyLnYxLlNlcnZpY2VBY2NvdW50UHJvb2Yi9gIKD0V4cGxhaW5SZXNwb25zZRIuCghpZGVudGl0eRgBIAEoCzIcLmRpcmVjdG9yeXJvc3Rlci52MS5JZGVudGl0eRIRCglpbl9kb21haW4YAiABKAgSDQoFZm91bmQYAyABKAgSEQoJc3VzcGVuZGVkGAQgASgIEhUKDWF1dGhvcml0YXRpdmUYBSABKAgSGAoQZGlyZWN0b3J5X2dyb3VwcxgGIAMoCRIrCgRoZWxkGAcgAygLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLkhlbGRHcm91cBInCgZjbGFpbXMYCCABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EisKCGxpZmV0aW1lGAkgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjQKB2NsaWVudHMYCiADKAsyIy5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50QWRtaXNzaW9uEhQKDHdvcmtzcGFjZV9pZBgLIAEoCSJ8Cg9DbGllbnRBZG1pc3Npb24SCgoCaWQYASABKAkSDAoEa2luZBgCIAEoCRIQCghyZXF1aXJlcxgDIAMoCRIQCghhZG1pdHRlZBgEIAEoCBIrCghsaWZldGltZRgFIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbiIrCgtHcm91cE1lbWJlchIPCgdhZGRyZXNzGAEgASgJSgQIAhADUgVsYXllciLbAQoLUG9saWN5R3JvdXASDAoEbmFtZRgBIAEoCRIwCgdtZW1iZXJzGAIgAygLMh8uZGlyZWN0b3J5cm9zdGVyLnYxLkdyb3VwTWVtYmVyEjAKBXJ1bGVzGAYgAygLMiEuZGlyZWN0b3J5cm9zdGVyLnYxLlBvbGljeU1hdGNoZXISJwoGY2xhaW1zGAQgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIrCghsaWZldGltZRgFIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbkoECAMQBCIrCg1Qb2xpY3lNYXRjaGVyEgwKBGtpbmQYASABKAkSDAoEcnVsZRgCIAEoCSKJAQoMUG9saWN5Q2xpZW50EgoKAmlkGAEgASgJEgwKBGtpbmQYAiABKAkSEAoIcmVxdWlyZXMYAyADKAkSEQoJcmVkaXJlY3RzGAQgAygJEioKB3R0bF9jYXAYBSABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24SDgoGc2VjcmV0GAYgASgJIhIKEEdldFBvbGljeVJlcXVlc3Qi1AEKEUdldFBvbGljeVJlc3BvbnNlEi8KBmdyb3VwcxgBIAMoCzIfLmRpcmVjdG9yeXJvc3Rlci52MS5Qb2xpY3lHcm91cBIYChByZWNvdmVyeV9lbmFibGVkGAIgASgIEhUKDWxvZ2luX3NvdXJjZXMYAyADKAkSMQoHY2xpZW50cxgFIAMoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5Qb2xpY3lDbGllbnQSFQoNcmVjb3Zlcnlfa2luZBgGIAEoCUoECAQQBVINY29uc29sZV9sYXllciJCChJMaXN0SG9sZGVyc1JlcXVlc3QSDQoFZ3JvdXAYASABKAkSDgoGY2xpZW50GAIgASgJEg0KBWxpbWl0GAMgASgFIp8BCgZIb2xkZXISDQoFZW1haWwYASABKAkSEgoKZ2l2ZW5fbmFtZRgCIAEoCRITCgtmYW1pbHlfbmFtZRgDIAEoCRIMCgRsaXZlGAQgASgIEhUKDWF1dGhvcml0YXRpdmUYBSABKAgSCwoDdmlhGAYgAygJEisKCGxpZmV0aW1lGAcgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uImcKE0xpc3RIb2xkZXJzUmVzcG9uc2USKwoHaG9sZGVycxgBIAMoCzIaLmRpcmVjdG9yeXJvc3Rlci52MS5Ib2xkZXISEAoIZXhhbWluZWQYAiABKAUSEQoJdHJ1bmNhdGVkGAMgASgIIo0BChNTZWFyY2hQZW9wbGVSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg0KBWxpbWl0GAIgASgFEhQKDHdvcmtzcGFjZV9pZBgDIAEoCRIyCgdhY2NvdW50GAQgASgOMiEuZGlyZWN0b3J5cm9zdGVyLnYxLkFjY291bnRGaWx0ZXISDgoGZG9tYWluGAUgASgJImsKDVBlcnNvblN1bW1hcnkSDQoFZW1haWwYASABKAkSEgoKZ2l2ZW5fbmFtZRgCIAEoCRITCgtmYW1pbHlfbmFtZRgDIAEoCRIUCgx3b3Jrc3BhY2VfaWQYBCABKAkSDAoEbGl2ZRgFIAEoCCJrChRTZWFyY2hQZW9wbGVSZXNwb25zZRIxCgZwZW9wbGUYASADKAsyIS5kaXJlY3Rvcnlyb3N0ZXIudjEuUGVyc29uU3VtbWFyeRIRCgl0cnVuY2F0ZWQYAiABKAgSDQoFdG90YWwYAyABKAUiLAoaTGlzdERpcmVjdG9yeUdyb3Vwc1JlcXVlc3QSDgoGZG9tYWluGAEgASgJIlgKG0xpc3REaXJlY3RvcnlHcm91cHNSZXNwb25zZRI5CgZncm91cHMYASADKAsyKS5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlyZWN0b3J5R3JvdXBTdW1tYXJ5Il0KFURpcmVjdG9yeUdyb3VwU3VtbWFyeRINCgVlbWFpbBgBIAEoCRIOCgZkb21haW4YAiABKAkSFAoMd29ya3NwYWNlX2lkGAMgASgJEg8KB21lbWJlcnMYBCABKAUiKQoYR2V0RGlyZWN0b3J5R3JvdXBSZXF1ZXN0Eg0KBWVtYWlsGAEgASgJImsKFERpcmVjdG9yeUdyb3VwTWVtYmVyEg0KBWVtYWlsGAEgASgJEhIKCmdpdmVuX25hbWUYAiABKAkSEwoLZmFtaWx5X25hbWUYAyABKAkSDQoFa25vd24YBCABKAgSDAoEbGl2ZRgFIAEoCCIwChJEaXJlY3RvcnlHcm91cEZlZWQSDQoFZ3JvdXAYASABKAlKBAgCEANSBWxheWVyIpkCChlHZXREaXJlY3RvcnlHcm91cFJlc3BvbnNlEg0KBWVtYWlsGAEgASgJEg4KBmRvbWFpbhgCIAEoCRIUCgx3b3Jrc3BhY2VfaWQYAyABKAkSDQoFZm91bmQYBCABKAgSFQoNYXV0aG9yaXRhdGl2ZRgFIAEoCBIvCgtzbmFwc2hvdF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASOQoHbWVtYmVycxgHIAMoCzIoLmRpcmVjdG9yeXJvc3Rlci52MS5EaXJlY3RvcnlHcm91cE1lbWJlchI1CgVmZWVkcxgIIAMoCzImLmRpcmVjdG9yeXJvc3Rlci52MS5EaXJlY3RvcnlHcm91cEZlZWQqQAoEUm9sZRIUChBST0xFX1VOU1BFQ0lGSUVEEAASDwoLUk9MRV9WSUVXRVIQARIRCg1ST0xFX09QRVJBVE9SEAIqpwEKDklkZW50aXR5U291cmNlEh8KG0lERU5USVRZX1NPVVJDRV9VTlNQRUNJRklFRBAAEh0KGUlERU5USVRZX1NPVVJDRV9ESVJFQ1RPUlkQARIYChRJREVOVElUWV9TT1VSQ0VfT0lEQxACEh0KGUlERU5USVRZX1NPVVJDRV9GT1JXQVJERUQQAxIcChhJREVOVElUWV9TT1VSQ0VfUkVDT1ZFUlkQBCpmCg1BY2NvdW50RmlsdGVyEh4KGkFDQ09VTlRfRklMVEVSX1VOU1BFQ0lGSUVEEAASFwoTQUNDT1VOVF9GSUxURVJfTElWRRABEhwKGEFDQ09VTlRfRklMVEVSX1NVU1BFTkRFRBACMrsFCg1BY2Nlc3NTZXJ2aWNlEk8KBldob0FtSRIhLmRpcmVjdG9yeXJvc3Rlci52MS5XaG9BbUlSZXF1ZXN0GiIuZGlyZWN0b3J5cm9zdGVyLnYxLldob0FtSVJlc3BvbnNlElIKB0V4cGxhaW4SIi5kaXJlY3Rvcnlyb3N0ZXIudjEuRXhwbGFpblJlcXVlc3QaIy5kaXJlY3Rvcnlyb3N0ZXIudjEuRXhwbGFpblJlc3BvbnNlEl4KC0xpc3RIb2xkZXJzEiYuZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3RIb2xkZXJzUmVxdWVzdBonLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0SG9sZGVyc1Jlc3BvbnNlEmEKDFNlYXJjaFBlb3BsZRInLmRpcmVjdG9yeXJvc3Rlci52MS5TZWFyY2hQZW9wbGVSZXF1ZXN0GiguZGlyZWN0b3J5cm9zdGVyLnYxLlNlYXJjaFBlb3BsZVJlc3BvbnNlElgKCUdldFBvbGljeRIkLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRQb2xpY3lSZXF1ZXN0GiUuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFBvbGljeVJlc3BvbnNlEnYKE0xpc3REaXJlY3RvcnlHcm91cHMSLi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdERpcmVjdG9yeUdyb3Vwc1JlcXVlc3QaLy5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdERpcmVjdG9yeUdyb3Vwc1Jlc3BvbnNlEnAKEUdldERpcmVjdG9yeUdyb3VwEiwuZGlyZWN0b3J5cm9zdGVyLnYxLkdldERpcmVjdG9yeUdyb3VwUmVxdWVzdBotLmRpcmVjdG9yeXJvc3Rlci52MS5HZXREaXJlY3RvcnlHcm91cFJlc3BvbnNlQtkBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQgtBY2Nlc3NQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_duration, file_google_protobuf_struct, file_google_protobuf_timestamp]);
 
 /**
  * @generated from message directoryroster.v1.Identity
@@ -399,8 +399,10 @@ export const ClientAdmissionSchema: GenMessage<ClientAdmission> = /*@__PURE__*/
   messageDesc(file_directoryroster_v1_access, 9);
 
 /**
- * GroupMember is one directory group inside an internal group, and the
- * layer it came from: "declared" or "console".
+ * GroupMember is one directory group inside an internal group.
+ *
+ * Field 2 was `layer`, saying whether the deployment declared it or an
+ * operator added it in the console. There is one layer now (INF-694).
  *
  * @generated from message directoryroster.v1.GroupMember
  */
@@ -409,11 +411,6 @@ export type GroupMember = Message<"directoryroster.v1.GroupMember"> & {
    * @generated from field: string address = 1;
    */
   address: string;
-
-  /**
-   * @generated from field: string layer = 2;
-   */
-  layer: string;
 };
 
 /**
@@ -581,14 +578,6 @@ export type GetPolicyResponse = Message<"directoryroster.v1.GetPolicyResponse"> 
   loginSources: string[];
 
   /**
-   * the console layer as YAML, so that an installation which started
-   * standalone can move its edits into git by pasting.
-   *
-   * @generated from field: string console_layer = 4;
-   */
-  consoleLayer: string;
-
-  /**
    * the declared clients: who may reach what.
    *
    * @generated from field: repeated directoryroster.v1.PolicyClient clients = 5;
@@ -612,80 +601,6 @@ export type GetPolicyResponse = Message<"directoryroster.v1.GetPolicyResponse"> 
  */
 export const GetPolicyResponseSchema: GenMessage<GetPolicyResponse> = /*@__PURE__*/
   messageDesc(file_directoryroster_v1_access, 15);
-
-/**
- * @generated from message directoryroster.v1.AddMembershipRequest
- */
-export type AddMembershipRequest = Message<"directoryroster.v1.AddMembershipRequest"> & {
-  /**
-   * the internal group, which must be declared.
-   *
-   * @generated from field: string group = 1;
-   */
-  group: string;
-
-  /**
-   * the directory group's address.
-   *
-   * @generated from field: string directory_group = 2;
-   */
-  directoryGroup: string;
-};
-
-/**
- * Describes the message directoryroster.v1.AddMembershipRequest.
- * Use `create(AddMembershipRequestSchema)` to create a new message.
- */
-export const AddMembershipRequestSchema: GenMessage<AddMembershipRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 16);
-
-/**
- * @generated from message directoryroster.v1.AddMembershipResponse
- */
-export type AddMembershipResponse = Message<"directoryroster.v1.AddMembershipResponse"> & {
-};
-
-/**
- * Describes the message directoryroster.v1.AddMembershipResponse.
- * Use `create(AddMembershipResponseSchema)` to create a new message.
- */
-export const AddMembershipResponseSchema: GenMessage<AddMembershipResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 17);
-
-/**
- * @generated from message directoryroster.v1.RemoveMembershipRequest
- */
-export type RemoveMembershipRequest = Message<"directoryroster.v1.RemoveMembershipRequest"> & {
-  /**
-   * @generated from field: string group = 1;
-   */
-  group: string;
-
-  /**
-   * @generated from field: string directory_group = 2;
-   */
-  directoryGroup: string;
-};
-
-/**
- * Describes the message directoryroster.v1.RemoveMembershipRequest.
- * Use `create(RemoveMembershipRequestSchema)` to create a new message.
- */
-export const RemoveMembershipRequestSchema: GenMessage<RemoveMembershipRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 18);
-
-/**
- * @generated from message directoryroster.v1.RemoveMembershipResponse
- */
-export type RemoveMembershipResponse = Message<"directoryroster.v1.RemoveMembershipResponse"> & {
-};
-
-/**
- * Describes the message directoryroster.v1.RemoveMembershipResponse.
- * Use `create(RemoveMembershipResponseSchema)` to create a new message.
- */
-export const RemoveMembershipResponseSchema: GenMessage<RemoveMembershipResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 19);
 
 /**
  * @generated from message directoryroster.v1.ListHoldersRequest
@@ -716,7 +631,7 @@ export type ListHoldersRequest = Message<"directoryroster.v1.ListHoldersRequest"
  * Use `create(ListHoldersRequestSchema)` to create a new message.
  */
 export const ListHoldersRequestSchema: GenMessage<ListHoldersRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 20);
+  messageDesc(file_directoryroster_v1_access, 16);
 
 /**
  * Holder is one account that holds a group or reaches a client, and why.
@@ -776,7 +691,7 @@ export type Holder = Message<"directoryroster.v1.Holder"> & {
  * Use `create(HolderSchema)` to create a new message.
  */
 export const HolderSchema: GenMessage<Holder> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 21);
+  messageDesc(file_directoryroster_v1_access, 17);
 
 /**
  * @generated from message directoryroster.v1.ListHoldersResponse
@@ -805,7 +720,7 @@ export type ListHoldersResponse = Message<"directoryroster.v1.ListHoldersRespons
  * Use `create(ListHoldersResponseSchema)` to create a new message.
  */
 export const ListHoldersResponseSchema: GenMessage<ListHoldersResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 22);
+  messageDesc(file_directoryroster_v1_access, 18);
 
 /**
  * @generated from message directoryroster.v1.SearchPeopleRequest
@@ -856,7 +771,7 @@ export type SearchPeopleRequest = Message<"directoryroster.v1.SearchPeopleReques
  * Use `create(SearchPeopleRequestSchema)` to create a new message.
  */
 export const SearchPeopleRequestSchema: GenMessage<SearchPeopleRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 23);
+  messageDesc(file_directoryroster_v1_access, 19);
 
 /**
  * PersonSummary is one account as a search result shows it.
@@ -895,7 +810,7 @@ export type PersonSummary = Message<"directoryroster.v1.PersonSummary"> & {
  * Use `create(PersonSummarySchema)` to create a new message.
  */
 export const PersonSummarySchema: GenMessage<PersonSummary> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 24);
+  messageDesc(file_directoryroster_v1_access, 20);
 
 /**
  * @generated from message directoryroster.v1.SearchPeopleResponse
@@ -925,7 +840,7 @@ export type SearchPeopleResponse = Message<"directoryroster.v1.SearchPeopleRespo
  * Use `create(SearchPeopleResponseSchema)` to create a new message.
  */
 export const SearchPeopleResponseSchema: GenMessage<SearchPeopleResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 25);
+  messageDesc(file_directoryroster_v1_access, 21);
 
 /**
  * @generated from message directoryroster.v1.ListDirectoryGroupsRequest
@@ -944,7 +859,7 @@ export type ListDirectoryGroupsRequest = Message<"directoryroster.v1.ListDirecto
  * Use `create(ListDirectoryGroupsRequestSchema)` to create a new message.
  */
 export const ListDirectoryGroupsRequestSchema: GenMessage<ListDirectoryGroupsRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 26);
+  messageDesc(file_directoryroster_v1_access, 22);
 
 /**
  * @generated from message directoryroster.v1.ListDirectoryGroupsResponse
@@ -961,7 +876,7 @@ export type ListDirectoryGroupsResponse = Message<"directoryroster.v1.ListDirect
  * Use `create(ListDirectoryGroupsResponseSchema)` to create a new message.
  */
 export const ListDirectoryGroupsResponseSchema: GenMessage<ListDirectoryGroupsResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 27);
+  messageDesc(file_directoryroster_v1_access, 23);
 
 /**
  * DirectoryGroupSummary is one group as the membership picker shows it.
@@ -997,7 +912,7 @@ export type DirectoryGroupSummary = Message<"directoryroster.v1.DirectoryGroupSu
  * Use `create(DirectoryGroupSummarySchema)` to create a new message.
  */
 export const DirectoryGroupSummarySchema: GenMessage<DirectoryGroupSummary> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 28);
+  messageDesc(file_directoryroster_v1_access, 24);
 
 /**
  * @generated from message directoryroster.v1.GetDirectoryGroupRequest
@@ -1014,7 +929,7 @@ export type GetDirectoryGroupRequest = Message<"directoryroster.v1.GetDirectoryG
  * Use `create(GetDirectoryGroupRequestSchema)` to create a new message.
  */
 export const GetDirectoryGroupRequestSchema: GenMessage<GetDirectoryGroupRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 29);
+  messageDesc(file_directoryroster_v1_access, 25);
 
 /**
  * DirectoryGroupMember is one member as the directory reports it. A member
@@ -1057,11 +972,12 @@ export type DirectoryGroupMember = Message<"directoryroster.v1.DirectoryGroupMem
  * Use `create(DirectoryGroupMemberSchema)` to create a new message.
  */
 export const DirectoryGroupMemberSchema: GenMessage<DirectoryGroupMember> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 30);
+  messageDesc(file_directoryroster_v1_access, 26);
 
 /**
  * DirectoryGroupFeed is one internal group this directory group is a
- * member of, and which layer put it there.
+ * member of. Field 2 was the layer that put it there; there is one
+ * layer now (INF-694).
  *
  * @generated from message directoryroster.v1.DirectoryGroupFeed
  */
@@ -1070,11 +986,6 @@ export type DirectoryGroupFeed = Message<"directoryroster.v1.DirectoryGroupFeed"
    * @generated from field: string group = 1;
    */
   group: string;
-
-  /**
-   * @generated from field: string layer = 2;
-   */
-  layer: string;
 };
 
 /**
@@ -1082,7 +993,7 @@ export type DirectoryGroupFeed = Message<"directoryroster.v1.DirectoryGroupFeed"
  * Use `create(DirectoryGroupFeedSchema)` to create a new message.
  */
 export const DirectoryGroupFeedSchema: GenMessage<DirectoryGroupFeed> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 31);
+  messageDesc(file_directoryroster_v1_access, 27);
 
 /**
  * @generated from message directoryroster.v1.GetDirectoryGroupResponse
@@ -1137,7 +1048,7 @@ export type GetDirectoryGroupResponse = Message<"directoryroster.v1.GetDirectory
  * Use `create(GetDirectoryGroupResponseSchema)` to create a new message.
  */
 export const GetDirectoryGroupResponseSchema: GenMessage<GetDirectoryGroupResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_access, 32);
+  messageDesc(file_directoryroster_v1_access, 28);
 
 /**
  * Role is what an identity may do in this console. Operator implies
@@ -1313,8 +1224,14 @@ export const AccessService: GenService<{
   },
   /**
    * GetPolicy returns every internal group with its members and what each
-   * adds, the state of the break-glass admin, the enabled sign-in
-   * sources, and the console layer as YAML for export. Viewer.
+   * adds, the state of the break-glass admin, and the enabled sign-in
+   * sources. Viewer.
+   *
+   * There is no AddMembership or RemoveMembership beside it any more
+   * (INF-694). Who is in which internal group is the policy, rendered
+   * from the installation's own access model and reviewed in git; a
+   * console that could disagree with git was a second source of truth
+   * and a merge to reconcile them.
    *
    * @generated from rpc directoryroster.v1.AccessService.GetPolicy
    */
@@ -1322,29 +1239,6 @@ export const AccessService: GenService<{
     methodKind: "unary";
     input: typeof GetPolicyRequestSchema;
     output: typeof GetPolicyResponseSchema;
-  },
-  /**
-   * AddMembership records a directory group in an internal group.
-   * Operator.
-   *
-   * @generated from rpc directoryroster.v1.AccessService.AddMembership
-   */
-  addMembership: {
-    methodKind: "unary";
-    input: typeof AddMembershipRequestSchema;
-    output: typeof AddMembershipResponseSchema;
-  },
-  /**
-   * RemoveMembership drops one the console added. A membership the
-   * deployment declared refuses (failed_precondition): change the values
-   * instead. Operator.
-   *
-   * @generated from rpc directoryroster.v1.AccessService.RemoveMembership
-   */
-  removeMembership: {
-    methodKind: "unary";
-    input: typeof RemoveMembershipRequestSchema;
-    output: typeof RemoveMembershipResponseSchema;
   },
   /**
    * ListDirectoryGroups returns the groups the hub has snapshotted, so

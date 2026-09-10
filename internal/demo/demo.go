@@ -54,7 +54,7 @@ groups:
   rung:engineering:    { members: [engineering@north.example, engineering@south.example] }
   rung:security:       { members: [security@south.example] }
   all:access-roster:operator: { members: [directory-admins@north.example] }
-  all:access-roster:viewer:   {}
+  all:access-roster:viewer:   { members: [everyone@north.example, everyone@south.example] }
   all:gitops:deployer:
     matchers:
       - github: { repository: example-org/gitops, ref: refs/heads/master }
@@ -90,8 +90,6 @@ clients:
     kind: public
     redirects: [http://localhost:8000/callback]
     requires: [devel:k8s:viewer]
-memberships:
-  all:access-roster:viewer: [everyone@north.example, everyone@south.example]
 `
 
 // Tenants returns the two workspaces the prototype starts with: one

@@ -1,6 +1,7 @@
 package policy_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ groups:
   all:access-roster:operator:
     members: [directory-admins@a.example]
   all:access-roster:viewer:
+    members: [all@a.example]
     matchers: [{ email_domain: a.example }]
   all:gitops:deployer:
     matchers:
@@ -34,8 +36,6 @@ clients:
   k8s:kernel:        { kind: public, requires: [sre, dpo] }
   aws:1111:deployer: { kind: exchange, requires: [all:gitops:deployer] }
   argocd:            { kind: confidential, secret: argocd-oidc, redirects: [https://argo.example/cb], requires: [sre, dpo], ttl_cap: 4h }
-memberships:
-  all:access-roster:viewer: [all@a.example]
 `
 
 func set(t *testing.T) *policy.Set {
@@ -164,24 +164,14 @@ func TestMachineGroupsAndClientGate(t *testing.T) {
 	}
 }
 
-func TestConsoleLayerIsAdditiveAndLabelled(t *testing.T) {
+// The policy has ONE layer (INF-694). A console that could add a
+// membership was a second source of truth beside git and a merge to
+// reconcile them, so a group's members are exactly what the deployment
+// declared — and every member reads back the same way, with no layer to
+// tell them apart by.
+func TestAGroupsMembersAreExactlyWhatWasDeclared(t *testing.T) {
 	t.Parallel()
 	s := set(t)
-
-	added, err := s.AddMembership("all:access-roster:operator", "platform@b.example")
-	if err != nil || !added {
-		t.Fatalf("AddMembership: %v, %v", added, err)
-	}
-	if again, _ := s.AddMembership("all:access-roster:operator", "platform@b.example"); again {
-		t.Error("adding the same membership twice must be a no-op")
-	}
-
-	got := s.Evaluate(policy.Input{
-		Email: "bob@b.example", DirectoryGroups: []string{"platform@b.example"}, Authoritative: true,
-	})
-	if !got.Has("all:access-roster:operator") {
-		t.Errorf("groups = %v, want the console membership to count", got.Groups)
-	}
 
 	var operators policy.GroupView
 	for _, view := range s.Groups() {
@@ -189,47 +179,46 @@ func TestConsoleLayerIsAdditiveAndLabelled(t *testing.T) {
 			operators = view
 		}
 	}
-	layers := map[string]string{}
+
+	var addresses []string
 	for _, member := range operators.Members {
-		layers[member.Address] = member.Layer
+		addresses = append(addresses, member.Address)
 	}
-	if layers["directory-admins@a.example"] != policy.LayerDeclared {
-		t.Errorf("declared member reported as %q", layers["directory-admins@a.example"])
-	}
-	if layers["platform@b.example"] != policy.LayerConsole {
-		t.Errorf("console member reported as %q", layers["platform@b.example"])
+	if !slices.Contains(addresses, "directory-admins@a.example") {
+		t.Errorf("members = %v, want the declared one", addresses)
 	}
 
-	if err = s.RemoveMembership("all:access-roster:operator", "directory-admins@a.example"); err == nil {
-		t.Error("removing a declared membership must be refused")
-	}
-	if err = s.RemoveMembership("all:access-roster:operator", "platform@b.example"); err != nil {
-		t.Errorf("removing a console membership: %v", err)
-	}
-	if err = s.RemoveMembership("all:access-roster:viewer", "all@a.example"); err == nil {
-		t.Error("a membership declared in the memberships table is still declared")
-	}
-	if _, err = s.AddMembership("nobody", "x@y.example"); err == nil {
-		t.Error("adding to an undeclared group must be refused")
+	// Nobody outside the declared set is in it, whatever the directory
+	// says they are a member of.
+	got := s.Evaluate(policy.Input{
+		Email: "bob@b.example", DirectoryGroups: []string{"platform@b.example"}, Authoritative: true,
+	})
+	if got.Has("all:access-roster:operator") {
+		t.Errorf("groups = %v: an undeclared directory group granted operator", got.Groups)
 	}
 }
 
 func TestRejectsBadPolicies(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"unknown key":        "version: 1\ntypo: true\n",
-		"wrong version":      "version: 2\n",
-		"member no domain":   "version: 1\ngroups: { a: { members: [nodomain] } }\n",
-		"claims unknown":     "version: 1\ngroups: { a: { members: [g@h.example] } }\nclaims: { b: {} }\n",
-		"lifetime unknown":   "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { b: 1h }\n",
-		"membership unknown": "version: 1\ngroups: { a: { members: [g@h.example] } }\nmemberships: { b: [x@y.example] }\n",
-		"client no kind":     "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { requires: [a] } }\n",
-		"client no group":    "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public, requires: [b] } }\n",
-		"client no require":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public } }\n",
-		"confidential bare":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: confidential, requires: [a] } }\n",
-		"two matchers":       "version: 1\ngroups: { a: { matchers: [{ email: a@b.c, email_domain: b.c }] } }\n",
-		"empty github":       "version: 1\ngroups: { a: { matchers: [{ github: {} }] } }\n",
-		"bad duration":       "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { default: soon }\n",
+		"unknown key":      "version: 1\ntypo: true\n",
+		"wrong version":    "version: 2\n",
+		"member no domain": "version: 1\ngroups: { a: { members: [nodomain] } }\n",
+		"claims unknown":   "version: 1\ngroups: { a: { members: [g@h.example] } }\nclaims: { b: {} }\n",
+		"lifetime unknown": "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { b: 1h }\n",
+		// `memberships` was a second table that could add directory
+		// groups to a declared group, and the one table a console could
+		// write. There is one place a group's members come from now
+		// (INF-694), so the key is not merely ignored — it is refused,
+		// the way any other unknown key is.
+		"memberships table": "version: 1\ngroups: { a: { members: [g@h.example] } }\nmemberships: { a: [x@y.example] }\n",
+		"client no kind":    "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { requires: [a] } }\n",
+		"client no group":   "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public, requires: [b] } }\n",
+		"client no require": "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public } }\n",
+		"confidential bare": "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: confidential, requires: [a] } }\n",
+		"two matchers":      "version: 1\ngroups: { a: { matchers: [{ email: a@b.c, email_domain: b.c }] } }\n",
+		"empty github":      "version: 1\ngroups: { a: { matchers: [{ github: {} }] } }\n",
+		"bad duration":      "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { default: soon }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
