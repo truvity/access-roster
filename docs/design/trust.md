@@ -13,7 +13,7 @@ An installation has **exactly two trust anchors**, and a service accepts
 
 | Anchor | Root of trust | Scope | Proves |
 |---|---|---|---|
-| **the cluster** | the API server: a ServiceAccount token checked with a TokenReview, bound to an audience | this cluster | *a workload running here, in this namespace, under this account* |
+| **the cluster** | the API server: a ServiceAccount token checked with a TokenReview, bound to an audience | this cluster | **recovery alone** since INF-692: *somebody who can mint a token for the recovery account here*. A workload's token is now verified against the key set its own cluster publishes, so it is the issuer anchor and not this one — which is what lets one issuer serve many clusters while holding access to none |
 | **the issuer** | access-issuer's signing key, published as JWKS | the estate: every cluster, every cloud account, CI, people | *an identity this installation's policy has resolved to internal groups* |
 
 They are not two authorities that could disagree. **The issuer is built

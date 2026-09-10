@@ -1,0 +1,25 @@
+{{- if .Values.exchange.clusters }}
+# The clusters whose workloads may exchange a ServiceAccount token for one
+# of this issuer's, each verified against the key set that cluster
+# publishes for itself.
+#
+# Nothing here is a secret: a name and two URLs per cluster. That is the
+# whole point — the alternative is a kubeconfig per cluster held by the
+# service whose design is to hold almost no credential.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-issuer.fullname" . }}-clusters
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+data:
+  clusters.yaml: |
+    clusters:
+    {{- range .Values.exchange.clusters }}
+      - name: {{ .name | quote }}
+        issuer: {{ .issuer | quote }}
+      {{- with .jwksUri }}
+        jwksUri: {{ . | quote }}
+      {{- end }}
+    {{- end }}
+{{- end }}

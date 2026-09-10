@@ -23,7 +23,7 @@ the summary.
 | Anchor | Proves | Used for |
 |---|---|---|
 | **the issuer** — its signing key, published as a key set | an identity the policy has resolved to internal groups | everything: people, CI, workloads, every relying party |
-| **the cluster** — a ServiceAccount token the API server checks | a workload running *here* | recovery, the way in on the day the directory is broken; today also the issuer's own call to the hub |
+| **the cluster** — a ServiceAccount token the API server checks | a workload running *here* | recovery alone: the way in on the day the directory is broken, which should depend on nothing else |
 
 Whichever anchor proved a caller, what a service acts on is one thing: a
 flat list of **internal group names**, the `groups` claim, never
@@ -133,7 +133,7 @@ expressed in configuration and whether it is built.
 |---|---|---|
 | corporate directories | one workspace per tenant: credential, served domains, synced groups; Google today, Entra as a second backend behind the same workspace record | **built**, three Workspaces live; Entra designed, not built |
 | clusters, for people | each cluster's identity-provider association names the issuer; RBAC binds `<env>:k8s:<role>` | designed (INF-652); bindings dual-bound and ready |
-| clusters, for workloads | one row per cluster naming its ServiceAccount-token key set; token exchange | designed (INF-692); today only the issuer's own cluster, by TokenReview |
+| clusters, for workloads | one row per cluster naming its ServiceAccount-token key set; token exchange | **built** (INF-692). The issuer's own cluster is a row like any other, and the issuer holds access to none of them |
 | AWS accounts | the issuer registered once per account as an IAM OIDC provider; a `requires` list per role client | designed (INF-653) |
 | GitHub organisations | one controller App per org; `github team` rules in the policy; links in a ConfigMap the controller maintains | designed (INF-696, INF-697) |
 | CI platforms | one federated issuer row; `ci` rules on repository and ref | verifier built; the action designed (INF-654) |
