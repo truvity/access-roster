@@ -1,6 +1,6 @@
 # directory-roster — contracts
 
-The issuer's endpoints are in [access-issuer.md](access-issuer.md); this page is the hub.
+The issuer's endpoints are in [access-issuer.md](access-issuer.md); this page is the directory half of the same service.
 
 Three ConnectRPC services on two listeners. The proto files under
 [`proto/`](../../proto) are the source of truth; this page is the reading

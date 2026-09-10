@@ -2,16 +2,10 @@
 
 Every container, what it holds, and why the pieces are arranged this way.
 Decisions and their reasons are in the design documents
-([trust](design/trust.md), [issuer](design/access-issuer.md),
-[hub](design/hub.md), [proxy](design/access-proxy.md)); contracts are
+([trust](design/trust.md), [the service](design/access-roster.md),
+[proxy](design/access-proxy.md)); contracts are
 under [reference/](reference/). Diagrams follow the C4 model as Mermaid,
 which GitHub renders inline.
-
-> **Two services today, one next release.** The repository ships the
-> issuer and the directory hub as separate deployments, and that is what
-> this page draws. They fold into one process next release, and where it
-> matters the page says so. The model, the policy, the token and the
-> console do not change.
 
 ## The rule under everything
 
@@ -67,43 +61,43 @@ flowchart TB
   ci["GitHub Actions"]
   gw["Envoy Gateway<br/>one data plane, ext_authz to a proxy per console"]
 
-  subgraph iss["access-issuer"]
+  subgraph ar["access-roster — one Deployment"]
     issuer["the issuer<br/>OpenID provider · six grants<br/>login page · session service"]
-    vki[("Valkey<br/>auth requests, tokens,<br/>sessions, single sign-on")]
-    pol[("policy · clients<br/>ConfigMaps from the chart")]
-    keys[("signing key<br/>Secret")]
+    dir["the directory<br/>snapshots · routing by domain<br/>authoritative per domain"]
+    con["the console<br/>React, mounted at /console/"]
   end
 
-  subgraph hub["directory-roster — folds into the issuer next release"]
-    dir["the directory hub<br/>snapshots · routing by domain<br/>authoritative per domain"]
-    con["the console<br/>React, served by the hub"]
-    vkd[("Valkey<br/>one snapshot per workspace")]
-    ws[("workspace records<br/>and credentials<br/>Secrets, ConfigMaps")]
-  end
+  vk[("Valkey<br/>sessions · single sign-on · auth requests<br/>one snapshot per workspace")]
+  cfg[("policy · clients · federated clusters<br/>ConfigMaps from the chart")]
+  sec[("signing key · workspace credentials<br/>Secrets")]
 
   proxy["access-proxy<br/>oauth2-proxy, one per console<br/>Valkey for sessions"]
   idp["Google Workspace"]
   rp["Kubernetes · AWS · ArgoCD · Kargo"]
 
   browser --> gw
-  gw -- "/ on the issuer's host" --> issuer
-  gw -- "/console/" --> con
+  gw -- "one host: / and /console/" --> issuer
   gw -. "ext_authz" .-> proxy
   proxy -- "code flow" --> issuer
   cli -- "code + PKCE on loopback,<br/>then exchange" --> issuer
   ci -- "exchange" --> issuer
 
-  issuer -- "who is this address<br/>[in-process next release]" --> dir
-  issuer --> vki
-  issuer --> pol
-  issuer --> keys
+  issuer -- "who is this address<br/>[a function call]" --> dir
+  issuer --> vk
+  issuer --> cfg
+  issuer --> sec
   issuer -- "sign-in" --> idp
-  dir --> vkd
-  dir --> ws
+  dir --> vk
+  dir --> sec
   dir -- "reads" --> idp
-  con -. "session pages, same origin" .-> issuer
+  con -. "same origin, the browser's own cookie" .-> issuer
   issuer -. "trusted by" .-> rp
 ```
+
+**A login makes no network call except to the corporate directory.** The
+answer about a person is a function call, so the ConnectRPC hop, the
+TokenReview, the NetworkPolicy hop and the class of failure where two
+halves disagreed about one person are all gone.
 
 **One hostname.** The issuer holds the root of it: the issuer URL is the
 `iss` claim in every token, and discovery must sit at
@@ -116,12 +110,10 @@ JavaScript.
 
 | Store | Holds | Lost means |
 |---|---|---|
-| the issuer's Valkey | auth requests, tokens, per-client sessions, the single sign-on record | everyone signs in again |
-| the directory's Valkey | one snapshot per workspace | a refresh, and a hold window with provisional answers |
+| Valkey | auth requests, tokens, per-client sessions, the single sign-on record, one snapshot per workspace | everyone signs in again, and one refresh per directory |
 | the proxies' Valkey | browser sessions of every proxied console | one silent redirect per console; the issuer still knows the person |
-| ConfigMaps and Secrets | the policy, the clients, directory credentials, the signing key | git, and the connect runbook |
-
-They collapse into one Valkey with the merge.
+| ConfigMaps | the policy, the clients, the federated clusters | git |
+| Secrets | the signing key, the directories' credentials | the connect runbook, or whatever delivered them |
 
 ## Fan-in and fan-out
 
