@@ -23,26 +23,26 @@ The words this repository uses precisely.
 | **anchor** | a root of trust a service verifies a caller against. There are exactly two: the **cluster** (a ServiceAccount token checked by the API server, bound to an audience — proves a workload *here*) and the **issuer** (access-issuer's signing key — proves an identity the policy has resolved, from anywhere). A service accepts one or both, by the scope of who calls it, and never a third. [design/trust.md](design/trust.md) |
 | **proof** | something a service can verify without authenticating anyone: a corporate sign-in's ID token, a CI platform's identity token, a Kubernetes ServiceAccount token. Every proof resolves to internal groups; after that a person and a job are the same thing |
 | **the waist** | the internal group name: the one currency of authorization, whichever anchor proved the caller. In a token it is the flat `groups` claim and nothing else; in a binding, a `requires`, a role check, it is the same string, never re-mapped |
+| **federated issuer** | an OpenID issuer whose tokens access-roster accepts as a proof for token exchange, trusted by its public key set and nothing else: GitHub Actions, and every cluster's own ServiceAccount-token issuer. A new cluster is one row naming its key set. The issuer holds no credential for any of them |
 
 ## The policy
 
 | Term | Means |
 |---|---|
 | **internal group** | the vocabulary of access. A caller is in one by directory **membership** or by a **matcher**; everything downstream speaks these names and never a directory address |
-| **membership** | one directory group inside an internal group. The one table a console may extend, and the reason a group's population changes without a commit |
+| **membership** | one directory group inside an internal group, declared in the policy. Who is *in* the directory group changes without a commit, because the directory owns that; which directory groups feed which internal group does not |
 | **matcher** | a condition on a verified proof: a CI repository and ref, a ServiceAccount, a signed-in address or its domain. Where attributes live, and the only place they do |
 | **claim fragment** | what an internal group adds to a token. Every held group's fragment is deep-merged: lists union, maps recurse, and two groups setting one scalar differently is refused when the policy loads |
 | **lifetime** | how long a token lives: the shortest across the caller's groups, then the client's cap. A property of the privilege, never of where the person signed in |
 | **client** | a relying party. Its id is the token's audience, its `requires` is who may be issued one, and it is **declared** by the deployment — never created by a console and never registered by a workload, so the set of clients is answerable by reading the repository |
 | **scope** | a role held over one workspace rather than the installation, written `<workspace id>:access-roster:operator` in the groups table — the first segment of every grant's `<scope>:<thing>:<role>` name ([design/trust.md](design/trust.md#naming)). It gates every action done TO that workspace and filters what its holder lists; it never widens or narrows the installation-wide role, and recovery is never scoped |
-| **layer** | where a fact came from: `declared` by the deployment, or `console`. They merge additively and declared wins, so a console can add a membership and never widen one it did not add |
 
 ## The console
 
 | Term | Means |
 |---|---|
 | **exposure** | a console placed behind `access-proxy`: a hostname, a backend, a posture. The proxy runs the login against the issuer, keeps the session, forwards the bearer |
-| **posture** | what an exposure enforces: `groups` — only listed claim values pass; `authenticated` — any signed-in employee passes and the application authorizes itself |
+| **posture** | what an exposure enforces: `authenticated` — any identity the issuer would mint for this client passes, and the client's `requires` at the issuer is the gate; `groups` — the gateway itself checks the claim, which suits a caller that already carries a token and cannot serve a browser that does not yet have one |
 | **session** | what the issuer holds for one identity and one client: a refresh token and how it was obtained. Listed on a person's page and a client's page, revocable by an operator, and by the person for their own — "sign out everywhere". A proxy's browser session is one of them, seen from the proxy's side |
 | **bootstrap surface** | the paths a console publishes on a route the proxy does *not* cover: its sign-in page, recovery, and the consent callback — so that a redirect from a directory is never swallowed by a login prompt. A request there carries **no gateway identity, by design**; the consent callback takes its operator from the state the hub signed when an operator started the flow |
 | **recovery** | the way in for the day no directory can vouch for anybody: a Kubernetes ServiceAccount token, checked by the API server against a mandatory audience. Nothing is stored, and it grants nothing by itself — at the issuer it completes as the ServiceAccount *subject*, and only a `service_account` matcher in the policy puts that subject in a group. It is the **cluster anchor used as the floor** — the issuer depends on the directory, and the directory is what is broken — not a third anchor and not a back door |

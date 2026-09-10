@@ -3,104 +3,126 @@
 [![CI](https://github.com/truvity/access-roster/actions/workflows/ci.yaml/badge.svg)](https://github.com/truvity/access-roster/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Identity for infrastructure, self-contained.** Two services and the
-batteries around them, so that an installation with several corporate
-directories can put people and machines in front of clusters, cloud
-accounts, consoles and code hosts — under one rule: **nothing here
-authenticates anyone.** Sign-in stays with the corporate identity
-providers; this repository verifies the result, knows the directory, and
-applies the policy.
+**One small OpenID provider for your infrastructure, configured from a
+Helm chart, with no database and no users of its own.**
 
-> **Status: running, approaching 1.0.** The hub and the issuer are
-> deployed, and the hub's own console sits behind `access-proxy` against
-> the issuer — the first consumer of both. Three Google Workspaces are
-> connected; the policy is rendered from the installation's own access
-> matrix; sign-out ends the issuer session; CI tokens verify. The Go
-> module (`policy`, `backend`), the TypeScript package and the three
-> charts are published from every tag; the rest of the Go module,
-> `accessctl` and the Action are the road to 1.0.
-> [CHANGELOG.md](CHANGELOG.md) says what exists at each version, and the
-> documents below describe what is built rather than what is planned.
->
-> Start with [why this exists](docs/why.md), then
-> [**the rule under everything: two trust anchors**](docs/design/trust.md),
-> then the [helicopter view of every integration](docs/integrations.md),
-> then [the architecture](docs/architecture.md).
+It reads the groups your people already have in the corporate directory
+and puts them in a token. Kubernetes, AWS, ArgoCD, Kargo and every
+console behind your gateway trust that one token. CI jobs and workloads
+get the same treatment from the identity token they already hold. The
+whole policy is one file in git, and a console shows you who holds what
+and why.
 
-## The batteries
+Nothing here authenticates anyone. Sign-in, passwords, MFA and device
+policy stay with Google Workspace or Entra. This verifies the result,
+knows the directory, and applies the policy.
 
-Grouped by kind of artifact. The full table with status and who uses
-what is in [docs/integrations.md](docs/integrations.md#the-batteries-by-kind-of-artifact).
+## The niche
 
-| Kind | Battery | Use it when |
-|---|---|---|
-| Service + chart | **directory-roster** — the directory hub: holds every directory credential, snapshots every tenant, answers *is this account live* and *who is in this group* with an **authoritative** flag | you have corporate directories and anything that must react to leavers and groups |
-| Service + chart | **access-issuer** — the token service: verifies a corporate sign-in, a CI token or a workload token, asks the hub, applies the policy, issues tokens | clusters, cloud accounts, a CD system or consoles must trust one issuer |
-| Helm chart | **access-proxy** — oauth2-proxy and its wiring in front of one console: login against the issuer, sessions, forwarded bearer, two postures, self-registered client | you put a web UI behind the gateway |
-| Go module | `github.com/truvity/access-roster` — `identity` with net/http, fiber v3, gRPC and connect adapters; `authz`; `directory`; `tokens`; `policy` | you write a service or a console in Go |
-| TypeScript package | `access-roster` — `useIdentity()` and `<UserBadge/>` over the standard `/.access/whoami` | you write a console UI |
-| CLI | **accessctl** — `login`, `setup` (kubeconfig contexts and AWS profiles for everything you are granted), `aws` as a credential process, `kube-token`, `whoami`; people only | a person needs kubectl or cloud credentials |
-| GitHub Action | `truvity/access-roster@v1` — shell only: exchanges the job's token at the issuer, writes a kubeconfig and AWS profiles; ECR, CodeArtifact and the rest run on top with AWS's own tooling | a workflow deploys, pushes or installs |
-| File format | **the policy** — groups, claims, lifetimes, clients, memberships; one schema for both services, versioned, tested | always |
+Every mature identity provider can do this. None of them is built for
+it, and the difference is what you run to get it.
 
-## I want to…
+| | dex | Keycloak, Zitadel, Authentik | Okta, Auth0, Entra ID | **access-roster** |
+|---|---|---|---|---|
+| runs on | a ConfigMap | a database, an operator, a login UI you theme | someone else's cloud | a ConfigMap |
+| users | none, federates | its own user store, plus federation | its own user store | none, federates |
+| groups in the token | only if the upstream IdP sends them — Google does not | after you write a mapper or a login hook per IdP | after you configure a sync | read from the directory, always |
+| several corporate IdPs, one issuer | yes | yes | yes | yes |
+| one policy file for people **and** machines | no policy at all | no; roles per client, in the UI or the database | no; per-app assignments | yes, in git |
+| CI and workloads without a stored secret | connectors only for people | machine users, with secrets | machine users, with secrets | token exchange from GitHub's or the cluster's own token |
+| audience gating for cloud roles | no | via custom mappers | via app assignments | a `requires` list per client |
+| who is in this group and why, at a glance | no | the admin UI, eventually | the admin UI | the directory console |
+| operational footprint | tiny | large, and you own it | none, and you rent it | tiny |
 
-| Goal | Read |
+dex is the right shape and stops one step short: it has no idea what
+groups anyone is in unless the upstream provider says, and Google never
+says. The heavy providers can be made to do all of it, at the cost of
+running an identity product to use about a fifth of one. access-roster
+is dex with a directory reader and a policy file.
+
+## What you get
+
+**As a person.** Sign in once, at one page, with your corporate account.
+Every console behind the gateway opens without another login. `kubectl`
+works on every cluster you are granted, through kubelogin. `accessctl`
+gives you AWS credentials for testing, ECR and the rest, with a browser
+confirmation and no long-lived key. Sign out once and it ends everywhere.
+
+**As a machine.** A GitHub Actions job presents the identity token it
+already has and receives one for AWS or a cluster, under a rule that
+names the repository and the ref. A workload in any cluster does the
+same with its ServiceAccount token. No secret is stored anywhere, and
+the rule sits in the same file as the human ones.
+
+**As the operator.** One chart. The policy is values. The console shows
+every person, every directory group, every internal group, every rule
+that grants one, and every open session. A leaver disappears from the
+directory and, within the freshness window, from everything downstream.
+
+## The shape
+
+```mermaid
+flowchart LR
+  idp["Corporate directory<br/>Google Workspace, Entra"]
+  gh["GitHub Actions"]
+  k8s["Any cluster's<br/>ServiceAccount tokens"]
+
+  subgraph ar["access-roster"]
+    iss["the issuer<br/>reads the directory · applies the policy · mints tokens<br/>serves the login page and the console"]
+  end
+
+  proxy["access-proxy<br/>one per console with no OIDC of its own"]
+  apps["Kubernetes · AWS · ArgoCD · Kargo · consoles"]
+
+  idp -- "sign-in, and directory reads" --> iss
+  gh -- "token exchange" --> iss
+  k8s -- "token exchange" --> iss
+  iss --> proxy --> apps
+  iss -- "trusted by" --> apps
+```
+
+One service and one Valkey. The proxy is upstream oauth2-proxy in a
+chart, for applications that cannot run an OpenID flow themselves;
+anything that can, such as ArgoCD or Kargo, talks to the issuer directly.
+
+> **Status.** Running on one cluster with three Google Workspaces
+> connected, three relying parties on the issuer, and the OpenID
+> Foundation Config profile passing. The repository still ships the
+> directory and the issuer as two services; folding them into one is
+> the next release. [CHANGELOG.md](CHANGELOG.md) says what exists at
+> each version, and the documents below describe what is built.
+
+## Read next
+
+| You want to | Read |
 |---|---|
-| connect a corporate directory (Google Workspace) | [operations/connect-runbook.md](docs/operations/connect-runbook.md) |
-| run the OpenID Foundation conformance suite against an installation | [operations/conformance.md](docs/operations/conformance.md) |
-| put a console behind the gateway | [connect/console-app.md](docs/connect/console-app.md) |
-| call another service as a workload — and know when to use a ServiceAccount token and when the issuer | [connect/service-to-service.md](docs/connect/service-to-service.md) |
-| build a service that accepts both people and workloads | [design/trust.md](docs/design/trust.md), then [connect/service-to-service.md](docs/connect/service-to-service.md) |
-| let people `kubectl` into a cluster | [connect/kubernetes-cluster.md](docs/connect/kubernetes-cluster.md) |
-| give people and jobs cloud credentials without SSO | [connect/aws-account.md](docs/connect/aws-account.md) |
-| let a workflow deploy with no stored secret | [connect/github-actions.md](docs/connect/github-actions.md) |
-| push to ECR or install from CodeArtifact, on a laptop or in a job | [connect/registries-and-artifacts.md](docs/connect/registries-and-artifacts.md) |
-| sign in to ArgoCD or Kargo with the issuer | [connect/argocd.md](docs/connect/argocd.md), [connect/kargo.md](docs/connect/kargo.md) |
-| expose a business surface to employees for testing | [connect/business-surface.md](docs/connect/business-surface.md) |
-| keep GitHub teams equal to directory groups | [github-roster](https://github.com/truvity/github-roster), a consumer of the hub |
-| write the policy | [reference/policy.md](docs/reference/policy.md) |
-| add a backend, a proof kind, a matcher, an adapter | [development/extending.md](docs/development/extending.md) |
-| move off an identity provider you run for infrastructure | [operations/migration-from-an-idp.md](docs/operations/migration-from-an-idp.md) |
+| understand the ideas behind it | [docs/why.md](docs/why.md), then [docs/design/trust.md](docs/design/trust.md) |
+| see every piece and how they connect | [docs/architecture.md](docs/architecture.md) |
+| learn the ten words used precisely | [docs/concepts.md](docs/concepts.md) |
+| write the policy | [docs/reference/policy.md](docs/reference/policy.md) |
+| deploy it | [docs/reference/configuration.md](docs/reference/configuration.md), then [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
+| put a console behind the gateway | [docs/connect/console-app.md](docs/connect/console-app.md) |
+| connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
+| run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |
+| build a service that accepts both people and workloads | [docs/connect/service-to-service.md](docs/connect/service-to-service.md) |
 
-## How it fits together, in one paragraph
+## What ships
 
-An operator connects a workspace by clicking through the directory's
-admin consent, or by uploading a service-account key. The hub discovers
-the tenant's domains, snapshots its accounts and groups every fifteen
-minutes, and answers every read from that snapshot, saying which snapshot
-and whether the domain is authoritative right now. The issuer never reads
-a directory: at every login it asks the hub, applies the policy, and mints
-a token whose `groups` name the roles relying parties already read and
-whose audiences carry the decisions a cloud trust policy can see. A
-console sits behind `access-proxy` and reads the forwarded bearer through
-the Go or TypeScript library; a cluster trusts the issuer and a client id;
-a cloud account trusts the issuer and an audience; a workflow exchanges
-its own token; a person runs `accessctl`. Anything that goes wrong on the
-directory side degrades to "not authoritative" — *provisional*, in the
-console's word — never to "gone".
-
-## Documentation
-
-| Read | For |
+| Artifact | For |
 |---|---|
-| [docs/why.md](docs/why.md) | motivation, principles, what it is not |
-| [docs/integrations.md](docs/integrations.md) | the helicopter view: fourteen integration points, case by case — parties, trust, flow, what you configure, what you get |
-| [docs/concepts.md](docs/concepts.md) | the ten words used precisely |
-| [docs/architecture.md](docs/architecture.md) | context, containers, the hub's components, who owns what, use cases, failure semantics |
-| [docs/design/trust.md](docs/design/trust.md) | the rule under every design: two trust anchors chosen by scope, `groups` as the one vocabulary, recovery as the floor, two listeners |
-| [docs/design/](docs/design/) | one design per battery: [hub](docs/design/hub.md), [issuer](docs/design/access-issuer.md), [proxy](docs/design/access-proxy.md), [libraries](docs/design/libraries.md), [CLI and action](docs/design/accessctl.md) |
-| [docs/reference/](docs/reference/) | contracts, the policy, values of each chart, the Go module, the TypeScript package, the CLI |
-| [docs/connect/](docs/connect/) | one guide per kind of relying party |
-| [docs/operations/](docs/operations/) | day one, the connect runbook, the runbook, migrations |
-| [docs/development/](docs/development/) | testing, extension points |
+| `access-issuer` service and chart | the installation, once |
+| `directory-roster` service and chart | the installation, once; folds into the issuer next release |
+| `access-proxy` chart | every console with no OpenID flow of its own |
+| Go module `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups |
+| TypeScript package `access-roster` | console UIs: `useIdentity()` over `/.access/whoami` |
+| `accessctl` | people on laptops: kubeconfigs and AWS credentials |
+| GitHub Action `truvity/access-roster@v1` | workflows: one exchange, then a kubeconfig and AWS profiles |
+| the policy | one file, one schema, both services |
 
 ## Developing
 
 `devbox shell` (or direnv), then `just check`. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the layout, the conventions, the
-console build order and the demonstration mode, and where the next
-phase starts.
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

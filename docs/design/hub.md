@@ -9,6 +9,18 @@ decisions closed 2026-09-07. Successor to
 [google-group-sync](https://github.com/truvity/google-group-sync), which is
 archived once its consumers have moved.
 
+> **Reshaped 2026-09-10.** This document describes the hub as it ships
+> through 0.10: a service of its own with two listeners. Next release it
+> becomes a package inside the issuer — one binary, one chart, one
+> Valkey — and the console becomes read-only. What changes and why is in
+> [architecture.md](../architecture.md) and the tickets INF-691 (one
+> service) and INF-694 (read-only console). **What does not change is
+> everything under *The model*, *Freshness*, *Connecting a workspace*
+> and *Failure semantics*:** the directory model moves; it is not
+> redesigned. Read those sections as current. Read *Contracts* (the API
+> listener), *Consumers*, *Roles come from the policy, membership from
+> the console* and *What the console may change* as history.
+
 ## Purpose
 
 One deployment that answers, for every corporate directory an installation
@@ -741,8 +753,8 @@ moves to the ConnectRPC client and learns `authoritative` at the same time.
 
 | File | Holds |
 |---|---|
-| `README.md` | what it is, the contracts, quick start |
-| `docs/architecture.md` | the family in one page: context, containers, the hub's components, who owns what, use cases, failure semantics |
+| `README.md` | what it is in three sentences, the niche against dex and the heavy providers, what you get, the shape, the map |
+| `docs/architecture.md` | the rule, context, containers with what each store holds, the six grants, where each decision is made, who owns what, use cases in one line each, failure semantics |
 | `docs/design/access-issuer.md` | the issuer's design and its guardrail |
 | `docs/reference/contracts.md` | `DirectoryService`, `WorkspaceService`, `SettingsService`, `AccessService`; `max_age`/`snapshot_at`; the additive fields vs google-group-sync |
 | `docs/reference/configuration.md` | chart values, the overlay format, the policy and consumers, Kubernetes objects, what the chart includes vs expects; a Valkey recommendation; an example of delivering a declared Secret with external-secrets |

@@ -46,15 +46,15 @@ flowchart TB
   entra -. "① Graph reads (later)" .-> hub
   gws -- "② OIDC sign-in<br/>people" --> iss
   gh -- "③ token exchange<br/>jobs" --> iss
-  sa -- "④ TokenReview<br/>workloads" --> hub
+  sa -- "④ token exchange<br/>workloads, by the cluster's key set" --> iss
   iss -- "⑤ ResolveUser" --> hub
   iss -- "⑥ issuer + client id<br/>groups claim" --> eks
   iss -- "⑦ issuer + audience<br/>trust policy per role" --> aws
   iss -- "⑧ static clients<br/>groups claim" --> argo
-  iss -- "⑨ login,<br/>self-registration" --> proxy
+  iss -- "⑨ login" --> proxy
   proxy -- "⑩ forwarded bearer" --> consoles
   lib -. "⑪ reads the bearer,<br/>serves /.access/whoami" .-> consoles
-  ctl -- "⑫ device flow, exchange" --> iss
+  ctl -- "⑫ code + PKCE on loopback,<br/>then exchange" --> iss
   act -- "⑬ exchange, shell only" --> iss
   hub -- "⑭ groups, liveness,<br/>authoritative" --> ghteams
   aws -. "⑮ AWS's own tooling<br/>with --profile" .-> reg
@@ -71,16 +71,16 @@ flowchart TB
 
 | Kind | Name | What it is | Who deploys or uses it | Status |
 |---|---|---|---|---|
-| **Service** | directory-roster | the directory hub | the platform, once per installation | **running** since 0.6; three directories connected |
-| **Service** | access-issuer | the token service | the platform, once per installation | **running** since 0.6; conformance run pending ([1.0 gate](design/access-issuer.md)) |
+| **Service** | directory-roster | the directory hub | the platform, once per installation | **running** since 0.6; three directories connected; folds into the issuer next release |
+| **Service** | access-issuer | the issuer | the platform, once per installation | **running** since 0.6; Config profile green, two attended profiles pending ([1.0 gate](design/access-issuer.md)); absorbs the hub next release |
 | **Helm chart** | `directory-roster` | the hub's chart; expects a Valkey | the platform | published per tag |
 | **Helm chart** | `access-issuer` | the issuer's chart; expects a Valkey and the hub | the platform | published per tag |
-| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console; expects a Valkey; a static client until `/register` exists | every team that ships a console, one release per console | published per tag; in front of the hub's console |
+| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console with no OpenID flow of its own; expects a Valkey; its client is one declared row | every team that ships a console, one release per console | published per tag; in front of the hub's console and hubble |
 | **Go module** | `github.com/truvity/access-roster` | `policy`, `backend` today; `identity` with the two verifiers and the adapters, `authz`, `directory`, `tokens` to come | every Go service and console | `policy` + `backend` published; the rest with 1.0 |
 | **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>` over `/.access/whoami` | every console UI | published per tag |
 | **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `policy test` | people, on laptops; never machines | designed, not built |
 | **GitHub Action** | `truvity/access-roster@v1` (root `action.yml`) | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | designed, not built; the issuer side (the GitHub verifier) is built |
-| **File format** | the policy | groups, claims, lifetimes, clients, memberships — one schema for both services | the platform, in gitops, rendered from its access matrix; memberships also from the console | in force |
+| **File format** | the policy | groups, claims, lifetimes, clients — one schema for both services | the platform, in gitops, rendered from its access matrix | in force |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the hub's console services | consumers of the hub | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
 
@@ -232,7 +232,7 @@ configure and where, what you get.
   token. Two gates: the client's `requires` at the issuer is primary (no
   token, no session); the proxy's `groups` posture is defence in depth.
 - **Parties:** a person, the gateway, access-proxy, the console.
-- **Trust:** the proxy self-registers as a client of the issuer with its
+- **Trust:** the proxy's client is one declared row at the issuer, with its
   ServiceAccount token; the gateway routes the hostname to the proxy as
   external authorization; the console trusts the bearer the proxy
   forwards, verified by the library.
