@@ -129,8 +129,6 @@ func (a *authRequest) Done() bool                         { return a.IsDone }
 // entitlement goes to the [Issuer], so that the console, the token and
 // the audit trail cannot disagree about what someone is allowed.
 type Storage struct {
-	*Devices
-
 	iss     *Issuer
 	verify  Verifier
 	key     *SigningKey
@@ -170,7 +168,6 @@ var (
 	_ op.Storage                            = (*Storage)(nil)
 	_ op.TokenExchangeStorage               = (*Storage)(nil)
 	_ op.TokenExchangeTokensVerifierStorage = (*Storage)(nil)
-	_ op.DeviceAuthorizationStorage         = (*Storage)(nil)
 )
 
 // NewStorage returns the storage over an issuer.
@@ -198,8 +195,12 @@ func NewStorage(
 	if state == nil {
 		state = NewMemoryState()
 	}
+	// Nothing here implements op.DeviceAuthorizationStorage, and that is
+	// the mechanism by which the device flow is not served (INF-693). The
+	// library type-asserts for it and refuses the grant when the
+	// assertion fails, so there is no device state to keep and no way for
+	// a device code to be stored by something that changed its mind.
 	return &Storage{
-		Devices: NewDevices(state),
 		iss:     iss,
 		verify:  verify,
 		key:     key,

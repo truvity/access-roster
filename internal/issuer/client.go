@@ -61,17 +61,31 @@ func (c *client) ResponseTypes() []oidc.ResponseType {
 	return []oidc.ResponseType{oidc.ResponseTypeCode}
 }
 
+// GrantTypes is the whole of what this issuer will honour, for every
+// client, confidential or not (INF-693). Three grants cover the three
+// needs: a browser reaching a web UI, a CLI on a laptop with a browser to
+// confirm in, and a machine that already holds a token.
+//
+// Four are deliberately absent, and each was served through 0.11:
+//
+//   - the DEVICE flow is for a machine with no browser. Nobody signs in
+//     from one here: the two headless cases are a CI job and a workload,
+//     and both are token exchange.
+//   - CLIENT CREDENTIALS is a machine with a stored secret, which is the
+//     thing this whole design exists not to have.
+//   - JWT BEARER is a subset of token exchange with a different spelling,
+//     and two ways to say one thing is two things to keep truthful.
+//   - INTROSPECTION never applied: these are JWTs, verified offline
+//     against the key set.
+//
+// Every endpoint served is surface that has to stay honest, and a
+// relying party picks what it uses from what discovery advertises.
 func (c *client) GrantTypes() []oidc.GrantType {
-	grants := []oidc.GrantType{
+	return []oidc.GrantType{
 		oidc.GrantTypeCode,
 		oidc.GrantTypeRefreshToken,
-		oidc.GrantTypeDeviceCode,
 		oidc.GrantTypeTokenExchange,
 	}
-	if c.declared.Kind == policy.KindConfidential {
-		grants = append(grants, oidc.GrantTypeClientCredentials, oidc.GrantTypeBearer)
-	}
-	return grants
 }
 
 // LoginURL is where the library sends a browser to establish who is

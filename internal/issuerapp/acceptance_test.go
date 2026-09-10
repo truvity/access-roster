@@ -99,11 +99,12 @@ func TestDiscoveryDescribesWhatIsActuallyServed(t *testing.T) {
 			t.Errorf("%s = %q, want it under the issuer URL", field, value)
 		}
 	}
-	// The device flow and token exchange are what the CLIs and CI use;
-	// advertising them wrongly is how a client picks a flow that is not
-	// there.
-	if _, ok := document["device_authorization_endpoint"]; !ok {
-		t.Error("the device flow is served and not advertised")
+	// The device flow is not served (INF-693): nobody signs in from a
+	// machine with no browser here, because both headless cases — a CI
+	// job and a workload — are token exchange. Its address advertised is
+	// a promise to nobody.
+	if _, ok := document["device_authorization_endpoint"]; ok {
+		t.Error("the device flow is advertised and not served")
 	}
 	grants, _ := document["grant_types_supported"].([]any)
 	var offered []string

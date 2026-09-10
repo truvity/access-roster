@@ -3,6 +3,7 @@ package issuer_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -318,11 +319,39 @@ func TestDiscoveryDescribesWhatIsServed(t *testing.T) {
 	}
 	for _, want := range []string{
 		string(oidc.GrantTypeCode), string(oidc.GrantTypeRefreshToken),
-		string(oidc.GrantTypeTokenExchange), string(oidc.GrantTypeDeviceCode),
+		string(oidc.GrantTypeTokenExchange),
 	} {
 		if !contains(grants, want) {
 			t.Errorf("discovery does not advertise %s", want)
 		}
+	}
+	// And nothing else (INF-693). This is the assertion that matters:
+	// a relying party PICKS from this list, so a grant advertised and not
+	// honoured is an error arriving in a browser redirect where nobody
+	// sees the reason. Each of these was served through 0.11.
+	//
+	//   - device: for a machine with no browser. Both headless cases
+	//     here — a CI job and a workload — are token exchange.
+	//   - client credentials: a machine with a stored secret.
+	//   - JWT bearer: token exchange with a different spelling.
+	for _, gone := range []string{
+		string(oidc.GrantTypeDeviceCode),
+		string(oidc.GrantTypeClientCredentials),
+		string(oidc.GrantTypeBearer),
+		"implicit",
+	} {
+		if contains(grants, gone) {
+			t.Errorf("discovery still advertises %s", gone)
+		}
+	}
+	if len(grants) != 3 {
+		t.Errorf("grant_types_supported = %v, want exactly the three that are served", grants)
+	}
+
+	// The device endpoint goes with the grant. An endpoint that answers
+	// after its grant is withdrawn is surface nobody is keeping honest.
+	if _, ok := doc["device_authorization_endpoint"]; ok {
+		t.Error("discovery still advertises a device authorization endpoint")
 	}
 
 	// The implicit flow is deliberately not served: it puts tokens in a
@@ -395,3 +424,47 @@ func contains(list []string, want string) bool {
 }
 
 var _ = time.Second
+
+// A grant withdrawn from discovery has to stop ANSWERING, not merely
+// stop being advertised. The two are different failures and only the
+// second is visible: an endpoint that still works is surface nobody is
+// keeping honest, and a client that already knew the address goes on
+// using it long after the metadata stopped mentioning it.
+func TestTheWithdrawnGrantsDoNotAnswer(t *testing.T) {
+	t.Parallel()
+	server, _ := serveIssuer(t)
+
+	for _, tc := range []struct{ name, grant string }{
+		// A machine with no browser. Both headless cases here — a CI job
+		// and a workload — are token exchange instead.
+		{"device", string(oidc.GrantTypeDeviceCode)},
+		// A machine with a stored secret, which is the thing this design
+		// exists not to have.
+		{"client credentials", string(oidc.GrantTypeClientCredentials)},
+		// Token exchange with a different spelling.
+		{"JWT bearer", string(oidc.GrantTypeBearer)},
+	} {
+		form := url.Values{"grant_type": {tc.grant}, "client_id": {"console"}}
+		resp, err := server.Client().PostForm(server.URL+"/token", form)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			t.Errorf("%s is still granted: %s", tc.name, body)
+		}
+	}
+
+	// The device authorization endpoint itself.
+	resp, err := server.Client().PostForm(server.URL+"/device_authorization",
+		url.Values{"client_id": {"console"}})
+	if err != nil {
+		t.Fatalf("device_authorization: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Errorf("the device authorization endpoint still answers: %s", body)
+	}
+}

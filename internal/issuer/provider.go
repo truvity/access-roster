@@ -48,12 +48,6 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		SupportedClaims: []string{
 			"sub", "aud", "exp", "iat", "iss", "email", "email_verified", "name", "groups",
 		},
-		DeviceAuthorization: op.DeviceAuthorizationConfig{
-			Lifetime:     iss.Config().TokenLifetime,
-			PollInterval: 5,
-			UserFormPath: "/device",
-			UserCode:     op.UserCodeBase20,
-		},
 		// Back-channel logout is not served: the proxy does not consume
 		// it, and a revoked session dies at the proxy's next refresh.
 		BackChannelLogoutSupported: false,
@@ -66,7 +60,6 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		op.WithCustomEndSessionEndpoint(op.NewEndpoint("/end_session")),
 		op.WithCustomRevocationEndpoint(op.NewEndpoint("/revoke")),
 		op.WithCustomKeysEndpoint(op.NewEndpoint("/keys")),
-		op.WithCustomDeviceAuthorizationEndpoint(op.NewEndpoint("/device_authorization")),
 	}
 	if iss.Config().AllowInsecure {
 		options = append(options, op.WithAllowInsecure())
@@ -191,15 +184,20 @@ var servedResponseTypes = []string{"code"}
 // and picks; offered `implicit`, a library will happily use it, and the
 // refusal arrives in a browser redirect where nobody sees the reason.
 //
-// The list is what this issuer implements: the code flow and its refresh,
-// token exchange for CI and workloads, the device flow for the CLIs, and
-// the JWT profile a service account uses to assert itself.
+// Three grants cover the three needs (INF-693): the code flow with PKCE
+// for every browser and every CLI, its refresh, and token exchange for
+// machines that already hold a token. The device flow, client
+// credentials and JWT bearer were served through 0.11 and are gone —
+// [client.GrantTypes] says why each.
+//
+// The six the decision counts are not all grant types: userinfo,
+// end_session and revocation are ENDPOINTS, and discovery advertises
+// them in their own fields. Listing them here would be the metadata
+// lying in a new way, which is the thing this function exists to stop.
 var servedGrantTypes = []string{
 	"authorization_code",
 	"refresh_token",
 	"urn:ietf:params:oauth:grant-type:token-exchange",
-	"urn:ietf:params:oauth:grant-type:jwt-bearer",
-	"urn:ietf:params:oauth:grant-type:device_code",
 }
 
 // truthfulDiscovery corrects the one place the library over-promises.
@@ -231,6 +229,10 @@ func truthfulDiscovery(next http.Handler) http.Handler {
 		}
 		doc["response_types_supported"] = servedResponseTypes
 		doc["grant_types_supported"] = servedGrantTypes
+		// The library advertises a device endpoint from its own defaults,
+		// whatever the configuration says. The grant is gone (INF-693),
+		// so the address of it is a promise to nobody.
+		delete(doc, "device_authorization_endpoint")
 
 		corrected, err := json.Marshal(doc)
 		if err != nil {

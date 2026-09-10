@@ -10,7 +10,10 @@ of it.
 > has a ticket: the directory hub folds into this service (INF-691); the
 > served grants shrink to six — code + PKCE, refresh, userinfo,
 > `end_session`, revocation, token exchange — and device flow, client
-> credentials, introspection and JWT bearer go (INF-693); machines prove
+> credentials, introspection and JWT bearer go (**done**, INF-693, in
+> 0.12: the shipped list is in
+> [reference/access-issuer.md](../reference/access-issuer.md#endpoints));
+> machines prove
 > themselves by a federated issuer's key set, never by TokenReview, which
 > stays for recovery alone (INF-692); and the issuer's own HTML is the
 > login page and the signed-out page, the account page moving into the
