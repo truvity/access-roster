@@ -12,17 +12,29 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, forHowLong, personName, roleName, sourceName, type Me } from "./api";
+import { access, forHowLong, personName, reason, roleName, sessions, sourceName, type Me } from "./api";
 import type { ExplainRequest, ExplainResponse } from "./gen/directoryroster/v1/access_pb";
+import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type Fact } from "./ui";
+import { SessionsPanel } from "./Sessions";
 
 /** One person: the place where the two sides meet. Their identity facts
  *  come from the directory, and from there the chain runs one row per
  *  hop to the clients they reach. Your own page is the same page, with
  *  one more fact: how you signed in. */
-export function Person({ email, me }: { email: string; me?: Me }) {
+export function Person({
+  email,
+  me,
+  operator,
+  onDone,
+}: {
+  email: string;
+  me?: Me;
+  operator?: boolean;
+  onDone?: (message: string) => void;
+}) {
   const explained = useAsync(() => access.explain({ email } as ExplainRequest), [email]);
   const self = me?.status === "signed-in" && me.email?.toLowerCase() === email.toLowerCase();
 
@@ -34,7 +46,13 @@ export function Person({ email, me }: { email: string; me?: Me }) {
       <Loading busy={explained.loading} />
       <Failure error={explained.error} />
       {explained.value ? (
-        <Explanation value={explained.value} directory={explained.value.workspaceId || undefined} signedInVia={self ? sourceName(me?.source) : undefined} />
+        <Explanation
+          value={explained.value}
+          directory={explained.value.workspaceId || undefined}
+          signedInVia={self ? sourceName(me?.source) : undefined}
+          sessionsOf={me?.issuerUrl && (self || operator) ? email : undefined}
+          onDone={onDone}
+        />
       ) : null}
     </Box>
   );
@@ -42,13 +60,66 @@ export function Person({ email, me }: { email: string; me?: Me }) {
 
 /** The shared body of a person's page and of a machine's. The main
  *  column reads top to bottom: what they reach, what they do not, the
- *  directory groups behind it, and the claims a token would carry. The
+ *  directory groups behind it, their active sessions once an issuer
+ *  shares this console's origin, and the claims a token would carry. The
  *  aside carries only the identity facts — short lines that stay in
- *  view while the column is read. */
-export function Explanation({ value, directory, signedInVia }: { value: ExplainResponse; directory?: string; signedInVia?: string }) {
+ *  view while the column is read.
+ *
+ *  sessionsOf is the identity to show sessions for -- set only once an
+ *  issuer is configured AND the viewer may see them (themselves, or an
+ *  operator on anybody's page); Matchers' simulator passes none of this,
+ *  so a machine's explanation renders no sessions section at all. */
+export function Explanation({
+  value,
+  directory,
+  signedInVia,
+  sessionsOf,
+  onDone,
+}: {
+  value: ExplainResponse;
+  directory?: string;
+  signedInVia?: string;
+  sessionsOf?: string;
+  onDone?: (message: string) => void;
+}) {
   const [showClaims, setShowClaims] = useState(true);
+  const [busy, setBusy] = useState<string | undefined>();
+  const [sessionFailure, setSessionFailure] = useState<string | undefined>();
   const identity = value.identity;
   const isPerson = Boolean(identity?.email);
+  const found = useAsync(
+    () => (sessionsOf ? sessions.listSessions({ identity: sessionsOf }) : Promise.resolve(undefined)),
+    [sessionsOf],
+  );
+
+  const revoke = async (session: Session) => {
+    setBusy(session.id);
+    setSessionFailure(undefined);
+    try {
+      await sessions.revokeSessions({ identity: session.identity, sessionId: session.id });
+      onDone?.(`Ended the session on ${session.clientId}.`);
+      found.reload();
+    } catch (error) {
+      setSessionFailure(reason(error));
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
+  const signOutEverywhere = async () => {
+    if (!sessionsOf) return;
+    setBusy("*");
+    setSessionFailure(undefined);
+    try {
+      await sessions.revokeSessions({ identity: sessionsOf });
+      onDone?.(`${sessionsOf} is signed out everywhere.`);
+      found.reload();
+    } catch (error) {
+      setSessionFailure(reason(error));
+    } finally {
+      setBusy(undefined);
+    }
+  };
   const admitted = value.clients.filter((client) => client.admitted);
   const refused = value.clients.filter((client) => !client.admitted);
   const name = personName(identity?.givenName, identity?.familyName, identity?.email);
@@ -176,6 +247,28 @@ export function Explanation({ value, directory, signedInVia }: { value: ExplainR
               empty={value.inDomain ? "In no directory group, so no membership can put them anywhere." : "No connected directory reads this address."}
             />
           </Paper>
+        </Section>
+      ) : null}
+
+      {sessionsOf ? (
+        <Section
+          title="Active sessions"
+          hint="one row per application, grouped under the browser session that opened them"
+          action={
+            <Button size="small" color="warning" disabled={busy === "*"} onClick={signOutEverywhere}>
+              Sign out everywhere
+            </Button>
+          }
+        >
+          <Loading busy={found.loading} />
+          <Failure error={found.error ?? sessionFailure} />
+          <SessionsPanel
+            sessions={found.value?.sessions ?? []}
+            showClient
+            onRevoke={revoke}
+            revoking={busy}
+            empty="No open session."
+          />
         </Section>
       ) : null}
 
