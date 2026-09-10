@@ -22,6 +22,29 @@ git history.
 
 ## Unreleased
 
+- **Six grants, and the four that were served are gone.** The issuer
+  serves the code flow with PKCE, refresh, userinfo, `end_session`,
+  revocation and token exchange, and nothing else (INF-693). The device
+  flow is for a machine with no browser, and both headless cases here — a
+  CI job and a workload — are token exchange. Client credentials is a
+  machine with a stored secret, which is the thing this design exists not
+  to have. JWT bearer is token exchange with a different spelling.
+  Introspection never applied: these are JWTs, verified offline against
+  the key set.
+
+  Withdrawn from discovery *and* from the storage, which is the part that
+  matters. The device flow stops working because nothing implements the
+  library's device interface any more, so there is no device state kept
+  and no way for a code to be stored by something that changed its mind.
+  A test asserts each withdrawn grant is refused at `/token`, because an
+  endpoint that answers after its metadata stops mentioning it is the
+  failure that hides.
+
+  `grant_types_supported` prints three, not six: three of the six are
+  grants and three are endpoints, which discovery advertises in fields of
+  their own. Listing an endpoint as a grant type would be the metadata
+  lying in a new way.
+
 - **One service.** The directory hub and the issuer are one process
   (INF-691). The issuer asks the directory by calling a function instead
   of dialling a service, so a login now makes no network call except to
