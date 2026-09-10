@@ -19,7 +19,7 @@
 | `exposure.attachRouteName` | `""` | ATTACH mode: bind the `SecurityPolicy` to an `HTTPRoute` another chart owns, and render no app route here. The normal case for a console whose own chart routes its hostname |
 | `exposure.routes[]` | `[]` | more than one protected route on the same host, each `{name, attachRouteName \| backend+paths, posture, allow}` — a surface where a demo path is open to any employee and the app behind it is not. **Mutually exclusive** with the single-route fields above, which describe one route between them; setting both is refused, because the ignored one would be the protection somebody thought they had configured |
 | `proxy.topologySpreadConstraints` | `[]` | passthrough |
-| `exposure.proxyPrefix` | `/oauth2` | the paths this proxy owns; must agree with the client's registered redirect |
+| `exposure.proxyPrefix` | `/oauth2` | the paths this proxy owns; must agree with the client's registered redirect. For a console mounted under a path of its host (the directory console at `/console/`), the prefix moves under it: `/console/oauth2` |
 | `issuer.jwksUri` | derived | `{issuer}/keys`. Zitadel is the exception at `/oauth/v2/keys` |
 | `session.scopes` | `""` | empty asks for openid, profile and email, plus `groups` when `allow` is set and `offline_access` when `refresh` is. Setting it by hand alongside `refresh` without `offline_access` **fails the render**: refresh cannot work without a refresh token, and the install would otherwise look correct and silently never refresh |
 | `registration.enabled` | `false` | self-register at start. **Off, because the issuer does not serve `/register` yet** (RFC 7591); until it does, `client.secret.name` must name a static client |

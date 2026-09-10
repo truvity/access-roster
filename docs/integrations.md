@@ -244,9 +244,11 @@ configure and where, what you get.
 - **You get:** login, session, refresh in the background, global sign-out
   (one issuer SSO session behind every console — sign in once, and a
   second console opens with no prompt) and a posture (`groups` or
-  `authenticated`) without a line of console code. Self-service session
-  management is the issuer's own account page, which every console
-  deep-links to.
+  `authenticated`) without a line of console code. Session management —
+  your own, a person's, a client's, the whole installation — lives in the
+  directory console, same-origin with the issuer on one domain; the
+  issuer's plain `/account` page is the fallback when no console is
+  deployed.
 - Guides: [connect/console-app.md](connect/console-app.md),
   [connect/business-surface.md](connect/business-surface.md).
 

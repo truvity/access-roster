@@ -201,6 +201,11 @@ port. The network policy admits the gateway to one and the consumers to
 the other, as the second layer — never the only one, because reaching a
 port proves nothing.
 
+The console listener may share the issuer's hostname under a path — the
+family's own console does, at `/console/`, so that its session pages are
+same-origin with the session service. The API listener never appears on
+any hostname: it is reached by Service DNS or not at all.
+
 When the API listener admits remote callers too, it accepts both anchors
 on that one port, and **the grant is keyed by the principal, not by the
 anchor**: a consumer proven either way is the same consumer and gets the
