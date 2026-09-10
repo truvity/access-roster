@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.11.0
 
 - **The documentation is rewritten around what the product is.** The
   README opens with the idea in three sentences and the niche in one
