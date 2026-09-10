@@ -154,6 +154,12 @@ type Deps struct {
 	// Directory answers "who is this address". Nil builds a network
 	// client, and then HUB_ADDRESS is required.
 	Directory issuer.Directory
+	// Policy is the policy in force. Supplying it is how the merged
+	// service guarantees both halves act on the SAME one: they read the
+	// same file, but their fallbacks differ, and two halves that can
+	// disagree about the policy is the class of failure the merge existed
+	// to end. Nil loads it from POLICY_DIR, which is the split shape.
+	Policy *policy.Set
 	// Ready are dependencies the caller's half of the process needs
 	// answering for, added to this one's on /readyz. The merged service
 	// has one readiness endpoint and two stores behind it.
@@ -189,13 +195,17 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		log = slog.Default()
 	}
 
-	declared, err := policy.LoadDeclared(cfg.policyPath)
-	if err != nil {
-		return nil, err
-	}
-	set, err := policy.NewSet(declared)
-	if err != nil {
-		return nil, err
+	var err error
+
+	set := deps.Policy
+	if set == nil {
+		declared, loadErr := policy.LoadDeclared(cfg.policyPath)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		if set, err = policy.NewSet(declared); err != nil {
+			return nil, err
+		}
 	}
 
 	directory := deps.Directory

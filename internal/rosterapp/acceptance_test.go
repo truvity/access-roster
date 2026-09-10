@@ -122,6 +122,45 @@ func TestTheConsoleIsMountedUnderTheIssuersOrigin(t *testing.T) {
 	}
 }
 
+// Both halves act on ONE policy, loaded once.
+//
+// Found by running the thing: with DEMO=1 the directory half built a
+// demonstration policy and the issuer half refused to start on an empty
+// POLICY_DIR, because each loaded its own. They read the same file in a
+// real deployment, so the disagreement stayed hidden — but two halves
+// that CAN disagree about the policy is exactly the class of failure the
+// merge existed to end.
+func TestBothHalvesActOnOnePolicy(t *testing.T) {
+	for k, v := range map[string]string{
+		"ISSUER_URL":  "https://access.example",
+		"PUBLIC_URL":  "https://access.example/console",
+		"PORT":        "0",
+		"HEALTH_PORT": "0",
+		"HUB_ADDRESS": "",
+		"STORE":       "memory",
+		// No POLICY_DIR at all, and a directory half with something to
+		// fall back on. Before the fix this combination could not start.
+		"POLICY_DIR": "",
+		"DEMO":       "1",
+	} {
+		t.Setenv(k, v)
+	}
+
+	cfg, err := rosterapp.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	app, err := rosterapp.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(app.Close)
+
+	if code, body := get(t, app.Handler(), "/.well-known/openid-configuration"); code != http.StatusOK {
+		t.Fatalf("discovery = %d, %q", code, body)
+	}
+}
+
 // One /readyz answers for both halves. A process that cannot read a
 // snapshot cannot answer who anyone is, and one that cannot reach its
 // session store can neither mint nor find a session; either way it must
