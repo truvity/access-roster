@@ -68,7 +68,7 @@ export function Search() {
         out.push({
           kind: "internal group",
           label: group.name,
-          detail: `fed by ${group.members.length} directory groups`,
+          detail: `fed by ${group.members.length} provider groups`,
           to: paths.group(group.name),
         });
       }
@@ -81,7 +81,7 @@ export function Search() {
     for (const group of directoryGroups.value?.groups ?? []) {
       if (matches(group.email)) {
         out.push({
-          kind: "directory group",
+          kind: "provider group",
           label: group.email,
           detail: `${group.members} members · from ${group.workspaceId}`,
           to: paths.directoryGroup(group.email),
@@ -119,7 +119,7 @@ export function Search() {
       >
         <InputBase
           fullWidth
-          placeholder="Search people, groups, clients, directories"
+          placeholder="Search people, groups, clients, providers"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {

@@ -25,8 +25,8 @@ export function Groups() {
 
   return (
     <Page
-      title="Internal groups"
-      lede="The vocabulary of access. A person is in one through a directory group, a machine through a matcher, and every client and every claim speaks these names. They are declared by the deployment; who is in them is what this console edits."
+      title="Groups"
+      lede="The vocabulary of access. A person is in one through a group in a provider, a machine through a matcher, and every client and every claim speaks these names. They are declared by the deployment; who is in them is what this console edits."
     >
       <Loading busy={policy.loading} />
       <Failure error={policy.error} />
@@ -35,7 +35,7 @@ export function Groups() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Internal group</TableCell>
+              <TableCell>Group</TableCell>
               <TableCell>Fed by</TableCell>
               <TableCell>Adds</TableCell>
               <TableCell>Token</TableCell>
@@ -134,7 +134,7 @@ export function Group({
     <Page
       title={group.name}
       mono
-      lede={`${peopleCount(people.length)} in it, fed by ${plural(group.members.length, "directory group", "directory groups")}${
+      lede={`${peopleCount(people.length)} in it, fed by ${plural(group.members.length, "provider group", "provider groups")}${
         group.rules.length ? ` and ${plural(group.rules.length, "matcher", "matchers")}` : ""
       }, opening ${plural(opens.length, "client", "clients")}.`}
       facts={[{ label: "Token lifetime", value: forHowLong(group.lifetime) }]}
@@ -179,7 +179,7 @@ export function Group({
         hint="the memberships table: the one thing this console changes"
         action={
           <Button size="small" variant="contained" disabled={!operator || adding} onClick={() => setAdding(true)}>
-            Attach a directory group
+            Attach a provider group
           </Button>
         }
       >
@@ -224,7 +224,7 @@ export function Group({
         />
       </Section>
 
-      <Section title="People in it now" hint={`the directory groups above, resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}>
+      <Section title="People in it now" hint={`the provider groups above, resolved against ${holders.value?.examined ?? 0} accounts in the snapshots`}>
         <Rows
           items={people}
           keyOf={(h) => h.email}
@@ -241,7 +241,7 @@ export function Group({
             </>
           )}
           empty={
-            group.rules.length ? "Nobody by membership. Only what the matchers above admit is in it." : "Nobody. Attaching a directory group above is what changes that."
+            group.rules.length ? "Nobody by membership. Only what the matchers above admit is in it." : "Nobody. Attaching a provider group above is what changes that."
           }
         />
       </Section>

@@ -1723,7 +1723,13 @@ type SearchPeopleRequest struct {
 	// what a tenant's page lists. Empty searches every tenant.
 	WorkspaceId string `protobuf:"bytes,3,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
 	// account restricts by state, so a review can list the suspended.
-	Account       AccountFilter `protobuf:"varint,4,opt,name=account,proto3,enum=directoryroster.v1.AccountFilter" json:"account,omitempty"`
+	Account AccountFilter `protobuf:"varint,4,opt,name=account,proto3,enum=directoryroster.v1.AccountFilter" json:"account,omitempty"`
+	// domain restricts the answer to accounts whose address is in one
+	// domain. A tenant with several served domains is several companies
+	// to the person reviewing it, and the filter has to be server-side:
+	// narrowing a truncated page in the browser would say "nobody" while
+	// the snapshot holds hundreds.
+	Domain        string `protobuf:"bytes,5,opt,name=domain,proto3" json:"domain,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1784,6 +1790,13 @@ func (x *SearchPeopleRequest) GetAccount() AccountFilter {
 		return x.Account
 	}
 	return AccountFilter_ACCOUNT_FILTER_UNSPECIFIED
+}
+
+func (x *SearchPeopleRequest) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
 }
 
 // PersonSummary is one account as a search result shows it.
@@ -2476,12 +2489,13 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x13ListHoldersResponse\x124\n" +
 	"\aholders\x18\x01 \x03(\v2\x1a.directoryroster.v1.HolderR\aholders\x12\x1a\n" +
 	"\bexamined\x18\x02 \x01(\x05R\bexamined\x12\x1c\n" +
-	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"\xa1\x01\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"\xb9\x01\n" +
 	"\x13SearchPeopleRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12!\n" +
 	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\x12;\n" +
-	"\aaccount\x18\x04 \x01(\x0e2!.directoryroster.v1.AccountFilterR\aaccount\"\x9c\x01\n" +
+	"\aaccount\x18\x04 \x01(\x0e2!.directoryroster.v1.AccountFilterR\aaccount\x12\x16\n" +
+	"\x06domain\x18\x05 \x01(\tR\x06domain\"\x9c\x01\n" +
 	"\rPersonSummary\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1d\n" +
 	"\n" +

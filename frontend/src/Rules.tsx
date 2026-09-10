@@ -37,12 +37,12 @@ type Kind = "all" | "directory" | "ci" | "workload" | "sign-in";
  *  the day the directory is what is broken. */
 const dependsOn = {
   directory: {
-    label: "the directory",
-    why: "The hub confirms the account really is in this directory group before granting anything. While it cannot read the directory, the last snapshot stands until the hold window runs out, and then this rule grants nothing.",
+    label: "the provider",
+    why: "The hub confirms the account really is in this provider group before granting anything. While it cannot read the provider, the last snapshot stands until the hold window runs out, and then this rule grants nothing.",
   },
   proof: {
     label: "the proof alone",
-    why: "Nothing outside the proof presented has to be reachable for this rule to grant. It still holds on the day the directory is what is broken, which is why the way back in is a rule of this kind.",
+    why: "Nothing outside the proof presented has to be reachable for this rule to grant. It still holds on the day the provider is what is broken, which is why the way back in is a rule of this kind.",
   },
 } as const;
 
@@ -103,7 +103,7 @@ export function Rules() {
   return (
     <Page
       title="Rules"
-      lede="Every rule that puts an identity into an internal group: a directory group somebody is a member of, a verified sign-in, a workload, a CI job. Together they are the whole answer to who is in a group and why. Declared by the deployment, never written here."
+      lede="Every rule that puts an identity into an internal group: a provider group somebody is a member of, a verified sign-in, a workload, a CI job. Together they are the whole answer to who is in a group and why. Declared by the deployment, never written here."
     >
       <Loading busy={policy.loading} />
       <Failure error={policy.error} />
@@ -111,7 +111,7 @@ export function Rules() {
       <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
         <ToggleButtonGroup size="small" exclusive value={kind} onChange={(_, next: Kind | null) => next && setKind(next)}>
           <ToggleButton value="all">All</ToggleButton>
-          <ToggleButton value="directory">Directory groups</ToggleButton>
+          <ToggleButton value="directory">Provider groups</ToggleButton>
           <ToggleButton value="sign-in">Sign-ins</ToggleButton>
           <ToggleButton value="workload">Workloads</ToggleButton>
           <ToggleButton value="ci">CI jobs</ToggleButton>
@@ -189,7 +189,7 @@ export function Rules() {
 /** The kind, in an operator's words. `directory group` is not a matcher
  *  kind and never reaches matcherKind, which is why this wraps it. */
 function ruleKind(kind: Kind): string {
-  return kind === "directory" ? "directory group" : matcherKind(kind);
+  return kind === "directory" ? "provider group" : matcherKind(kind);
 }
 
 /** What an empty table means, which is not one thing.
@@ -207,9 +207,9 @@ function emptiness(kind: Kind, group: string, total: number): string {
     case "workload":
       return "No workload rule is declared.";
     case "sign-in":
-      return "No sign-in rule is declared: everybody arrives through a directory group.";
+      return "No sign-in rule is declared: everybody arrives through a provider group.";
     case "directory":
-      return "No directory group feeds anything: only the rules above admit anyone.";
+      return "No provider group feeds anything: only the rules above admit anyone.";
     default:
       return "No rule matches the filter.";
   }

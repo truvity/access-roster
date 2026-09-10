@@ -22,6 +22,21 @@ git history.
 
 ## Unreleased
 
+- **The console says *provider*, and the tables split domain out.** What
+  the code calls a workspace the console now calls a **provider**, and
+  the groups it holds **provider groups**; both sides of the rail then
+  say simply *Groups*, and the heading above each — *Where people come
+  from*, *Internal* — tells them apart, so the reader no longer carries
+  a qualifier down every page. Providers list one row per *(provider,
+  domain)* pair rather than stacking domains inside a cell, because the
+  row is the unit a reader compares. Groups gain filters by provider and
+  by domain; People gains a **Domain** column and a domain filter, and
+  that one is applied by the hub (`SearchPeopleRequest.domain`) rather
+  than over the page the console received — this list is capped at 200,
+  and narrowing it in the browser would answer *nobody* while the
+  snapshot holds hundreds. URLs and the API keep the old words, so
+  nothing bookmarked or scripted moves.
+
 - **A moved Valkey no longer needs a human.** On 2026-09-10 a Valkey pod
   was rescheduled onto a new address; the issuer and hubble's proxy went
   on dialling the old one for half an hour, reported **Ready**
