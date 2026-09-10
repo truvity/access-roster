@@ -5,7 +5,7 @@ git history.
 
 ## Unreleased
 
-- **Docs: the console's Matchers page becomes Rules.** It listed only
+- **The console's Matchers page becomes Rules.** It listed only
   rules that admit a proof by its *shape* and silently omitted those that
   admit by directory membership — 30 of 73 groups on the first real
   installation — so filtering it by a cluster role returned nothing and
@@ -13,8 +13,14 @@ git history.
   evaluated is a property to show in a column, not a reason to split the
   answer: a membership rule needs the directory to vouch and degrades to
   the hold window when it cannot; a matcher needs only the proof, which
-  is why recovery is one. Design and reference updated; the page itself
-  is INF-689. The policy's `matchers:` field is unchanged.
+  is why recovery is one. The page now shows every rule that puts an
+  identity into an internal group, adds a **directory group** tab and a
+  **depends on** column, and its group filter answers for all 73 groups
+  rather than 30. `#/matchers` still resolves, so a bookmark does not
+  land on the overview. The policy's `matchers:` field is unchanged, and
+  People, Directory groups and Internal groups are untouched: they answer
+  the same graph identity-first, source-first and target-first, and Rules
+  is the fourth direction rather than a replacement for any of them.
 
 ## v0.9.15
 

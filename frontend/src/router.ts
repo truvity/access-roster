@@ -12,8 +12,19 @@ export function parse(hash: string): Route {
   // its domain chooser open, rather than the operator having to find it.
   const [path, search = ""] = raw.split("?");
   const [, view, id] = path.split("/");
-  return { view: view || "overview", id: id ? decodeURIComponent(id) : undefined, query: new URLSearchParams(search) };
+  return { view: renamed[view] ?? view ?? "overview", id: id ? decodeURIComponent(id) : undefined, query: new URLSearchParams(search) };
 }
+
+/** Views that have been renamed, and the name they answer to now.
+ *  An operator's bookmark is a URL; one that silently lands on the
+ *  overview reads as the page having been removed. Normalising here
+ *  rather than in the switch also keeps the rail highlighted, which is
+ *  what makes the old name invisible rather than merely working. */
+const renamed: Record<string, string> = {
+  // Matchers showed the rules that admit a proof by its shape, which was
+  // two thirds of them (INF-689).
+  matchers: "rules",
+};
 
 export function useRoute(): Route {
   const [route, setRoute] = useState(() => parse(window.location.hash));
@@ -32,7 +43,7 @@ export function go(to: string) {
 
 /** Two hierarchies, joined by the membership. The identity side is where
  *  people come from: a directory, its groups, its accounts, and the
- *  matchers that admit a proof by its shape instead. The access side is what
+ *  rules that put them into an internal group. The access side is what
  *  they get: an internal group and the clients it opens. Every level on
  *  either side is a page. */
 export const paths = {
@@ -46,7 +57,7 @@ export const paths = {
   directoryGroup: (email: string) => `/directory-groups/${encodeURIComponent(email)}`,
   people: () => "/people",
   person: (email: string) => `/people/${encodeURIComponent(email)}`,
-  matchers: () => "/matchers",
+  rules: () => "/rules",
   // access
   groups: () => "/groups",
   group: (name: string) => `/groups/${encodeURIComponent(name)}`,

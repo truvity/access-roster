@@ -12,6 +12,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { access, matcherKind } from "./api";
@@ -21,36 +22,88 @@ import { Explanation } from "./Person";
 import { paths } from "./router";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State } from "./ui";
 
-type Kind = "all" | "ci" | "workload" | "sign-in";
+/** The kind of rule, which is also the tab. `directory` is the one this
+ *  page used to omit, and it is the majority of the estate. */
+type Kind = "all" | "directory" | "ci" | "workload" | "sign-in";
 
-/** The identity side's second way in. A directory group feeds an
- *  internal group by membership; a matcher feeds one by shape. This is
- *  the list of every rule in force, and the simulator below it is how a
- *  concrete proof is checked against them, because a CI run exists only
- *  while it runs and cannot be listed. */
-export function Matchers() {
+/** What a rule needs besides itself to grant anything.
+ *
+ *  This is the one thing worth keeping from the split this page used to
+ *  make — as information, rather than as a page boundary an operator had
+ *  to know about before they could find an answer. A membership rule
+ *  needs the directory to vouch, so it degrades to the hold window when
+ *  the hub cannot read one; a matcher needs only the proof presented and
+ *  does not. That is why recovery is a workload rule: it has to work on
+ *  the day the directory is what is broken. */
+const dependsOn = {
+  directory: {
+    label: "the directory",
+    why: "The hub confirms the account really is in this directory group before granting anything. While it cannot read the directory, the last snapshot stands until the hold window runs out, and then this rule grants nothing.",
+  },
+  proof: {
+    label: "the proof alone",
+    why: "Nothing outside the proof presented has to be reachable for this rule to grant. It still holds on the day the directory is what is broken, which is why the way back in is a rule of this kind.",
+  },
+} as const;
+
+type Row = {
+  key: string;
+  kind: Kind;
+  rule: string;
+  group: string;
+  needs: keyof typeof dependsOn;
+  declared: boolean;
+};
+
+/** Every rule that puts an identity into an internal group.
+ *
+ *  It used to be Matchers, and showed only the rules that admit a proof
+ *  by its shape — which is a distinction between how a rule is
+ *  evaluated, not between what an operator is asking. Filtering it by a
+ *  group fed by a directory returned nothing, and nothing reads as
+ *  missing data rather than as the wrong page.
+ *
+ *  The complete set was already in the console one group at a time. This
+ *  is the across-all-groups view that stopped dropping half of it. */
+export function Rules() {
   const policy = useAsync(() => access.getPolicy({}), []);
   const [kind, setKind] = useState<Kind>("all");
   const [group, setGroup] = useState("");
 
   const groups = policy.value?.groups ?? [];
   const clients = policy.value?.clients ?? [];
-  const rows = groups.flatMap((g) =>
-    g.rules.map((rule) => ({
+
+  const rows: Row[] = groups.flatMap((g) => [
+    // Membership: the majority of the estate, and what this page used to
+    // leave out.
+    ...g.members.map((m) => ({
+      key: `${g.name}:directory:${m.address}`,
+      kind: "directory" as Kind,
+      rule: m.address,
+      group: g.name,
+      needs: "directory" as const,
+      declared: m.layer === "declared",
+    })),
+    ...g.rules.map((rule) => ({
       key: `${g.name}:${rule.kind}:${rule.rule}`,
-      kind: rule.kind,
+      kind: rule.kind as Kind,
       rule: rule.rule,
       group: g.name,
-      opens: clients.filter((client) => client.requires.includes(g.name)),
+      needs: "proof" as const,
+      declared: true,
     })),
-  );
+  ]);
+
+  const opens = (name: string) => clients.filter((client) => client.requires.includes(name));
   const shown = rows.filter((row) => (kind === "all" || row.kind === kind) && (!group || row.group === group));
-  const withRules = groups.filter((g) => g.rules.length);
+  // Every group any rule feeds — which is now all of them, rather than
+  // the third that had a matcher.
+  const fed = groups.filter((g) => g.members.length || g.rules.length);
 
   return (
     <Page
-      title="Matchers"
-      lede="Every rule that admits a proof by its shape rather than through a directory: a CI job, a workload, or a verified sign-in. A directory group feeds an internal group by membership; a matcher feeds one by pattern. Declared by the deployment, never written here."
+      title="Rules"
+      lede="Every rule that puts an identity into an internal group: a directory group somebody is a member of, a verified sign-in, a workload, a CI job. Together they are the whole answer to who is in a group and why. Declared by the deployment, never written here."
     >
       <Loading busy={policy.loading} />
       <Failure error={policy.error} />
@@ -58,13 +111,14 @@ export function Matchers() {
       <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
         <ToggleButtonGroup size="small" exclusive value={kind} onChange={(_, next: Kind | null) => next && setKind(next)}>
           <ToggleButton value="all">All</ToggleButton>
-          <ToggleButton value="ci">CI jobs</ToggleButton>
-          <ToggleButton value="workload">Workloads</ToggleButton>
+          <ToggleButton value="directory">Directory groups</ToggleButton>
           <ToggleButton value="sign-in">Sign-ins</ToggleButton>
+          <ToggleButton value="workload">Workloads</ToggleButton>
+          <ToggleButton value="ci">CI jobs</ToggleButton>
         </ToggleButtonGroup>
         <TextField select label="Internal group" value={group} onChange={(e) => setGroup(e.target.value)} sx={{ minWidth: 220 }}>
           <MenuItem value="">Any</MenuItem>
-          {withRules.map((g) => (
+          {fed.map((g) => (
             <MenuItem key={g.name} value={g.name}>
               {g.name}
             </MenuItem>
@@ -73,7 +127,7 @@ export function Matchers() {
       </Stack>
 
       {!policy.loading && shown.length === 0 ? (
-        <Nothing>{rows.length ? "No rule matches the filter." : "No matcher is declared: only directory groups put anyone anywhere."}</Nothing>
+        <Nothing>{emptiness(kind, group, rows.length)}</Nothing>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto", mb: 4 }}>
           <Table size="small">
@@ -83,15 +137,22 @@ export function Matchers() {
                 <TableCell>Rule</TableCell>
                 <TableCell>Feeds</TableCell>
                 <TableCell>Opens</TableCell>
+                <TableCell>Depends on</TableCell>
                 <TableCell />
               </TableRow>
             </TableHead>
             <TableBody>
               {shown.map((row) => (
                 <TableRow key={row.key} hover>
-                  <TableCell>{matcherKind(row.kind)}</TableCell>
+                  <TableCell>{ruleKind(row.kind)}</TableCell>
                   <TableCell>
-                    <Mono>{row.rule}</Mono>
+                    {row.kind === "directory" ? (
+                      <Ref to={paths.directoryGroup(row.rule)} mono>
+                        {row.rule}
+                      </Ref>
+                    ) : (
+                      <Mono>{row.rule}</Mono>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Ref to={paths.group(row.group)} mono>
@@ -99,10 +160,17 @@ export function Matchers() {
                     </Ref>
                   </TableCell>
                   <TableCell>
-                    <Names items={row.opens.map((client) => ({ label: client.id, to: paths.client(client.id), mono: true }))} empty="only claims" />
+                    <Names items={opens(row.group).map((client) => ({ label: client.id, to: paths.client(client.id), mono: true }))} empty="only claims" />
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title={dependsOn[row.needs].why}>
+                      <Typography variant="body2" component="span" sx={{ borderBottom: "1px dotted", cursor: "help" }}>
+                        {dependsOn[row.needs].label}
+                      </Typography>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="right">
-                    <State kind="declared" />
+                    <State kind={row.declared ? "declared" : "console"} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -116,6 +184,35 @@ export function Matchers() {
       </Section>
     </Page>
   );
+}
+
+/** The kind, in an operator's words. `directory group` is not a matcher
+ *  kind and never reaches matcherKind, which is why this wraps it. */
+function ruleKind(kind: Kind): string {
+  return kind === "directory" ? "directory group" : matcherKind(kind);
+}
+
+/** What an empty table means, which is not one thing.
+ *
+ *  On a page claiming to be every rule, an empty CI jobs tab reads as
+ *  "not yet" rather than as broken — and that is the truth: no CI rule
+ *  exists until CI is rewired. Saying so is the whole benefit of the tab
+ *  being here at all. */
+function emptiness(kind: Kind, group: string, total: number): string {
+  if (total === 0) return "No rule is declared: nothing puts anybody into an internal group.";
+  if (group) return "No rule of this kind feeds that group.";
+  switch (kind) {
+    case "ci":
+      return "No CI job rule is declared yet.";
+    case "workload":
+      return "No workload rule is declared.";
+    case "sign-in":
+      return "No sign-in rule is declared: everybody arrives through a directory group.";
+    case "directory":
+      return "No directory group feeds anything: only the rules above admit anyone.";
+    default:
+      return "No rule matches the filter.";
+  }
 }
 
 type ProofKind = "ci" | "workload";
@@ -161,7 +258,7 @@ function Simulator() {
           </Stack>
           {!asked ? (
             <Typography variant="caption" color="text.secondary">
-              A proof can fall into several rules at once; it then holds every group they feed, with the shortest lifetime.
+              A proof can fall into several rules at once; it then holds every group they feed, with the shortest lifetime. A person's own chain is on their page — this is for the proofs nothing can list, because a CI run exists only while it runs.
             </Typography>
           ) : null}
         </Stack>
