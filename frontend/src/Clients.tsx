@@ -25,7 +25,7 @@ export function Clients() {
   return (
     <Page
       title="Clients"
-      lede="A client's id is the audience of the tokens issued for it, and its requirements are who may be issued one. Clients are declared by the deployment or registered by the workload itself, never created here."
+      lede="A client's id is the audience of the tokens issued for it, and its requirements are who may be issued one. Every client is declared by the deployment: one exists because a reviewed change created it, never because something asked, and never from here."
     >
       <Loading busy={policy.loading} />
       <Failure error={policy.error} />

@@ -17,7 +17,12 @@ import { SessionService, How } from "./gen/accessissuer/v1/session_pb";
 // wrong for the hub: its services live only under the console's own
 // path, behind the gateway rule that rewrites the prefix away before
 // the hub ever sees it.
-const transport = createConnectTransport({ baseUrl: import.meta.env.BASE_URL });
+// Resolved from the page rather than taken as a literal: the bundle is
+// built with a relative base so that one artifact serves at any mount
+// point, so BASE_URL is "./" and the mount point is only knowable at
+// runtime. `new URL(".", href)` is that mount point — "/console/" or "/"
+// — and an absolute URL leaves nothing for a transport to guess.
+const transport = createConnectTransport({ baseUrl: new URL(".", window.location.href).href });
 
 export const workspaces = createClient(WorkspaceService, transport);
 export const settings = createClient(SettingsService, transport);

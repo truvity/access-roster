@@ -265,6 +265,29 @@ chart-lint:
     # that.
     helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example --set access.login.forwardedBearer.audience=console | grep -q 'client_id'
     ! helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example >/dev/null 2>&1
+    # The console's assets are referenced RELATIVELY so one committed
+    # bundle serves at any mount point -- which only works on a page
+    # reached WITH the trailing slash, because "./assets/..." at
+    # "/console" resolves against the root and asks the issuer. So the
+    # bare prefix must redirect to itself with the slash, and an Exact
+    # match is what outranks the PathPrefix rule.
+    helm template t charts/directory-roster --set route.host=a.example \
+        --set route.pathPrefix=/console \
+        --set route.gateway.name=iss --set route.gateway.namespace=iss \
+        > /tmp/dr-prefix-redirect.yaml
+    grep -q 'type: Exact' /tmp/dr-prefix-redirect.yaml
+    grep -q 'replaceFullPath: "/console/"' /tmp/dr-prefix-redirect.yaml
+    # And with no prefix there is nothing to redirect.
+    ! helm template t charts/directory-roster --set route.host=dir.example \
+        | grep -q 'RequestRedirect'
+    # The issuer's root: a bare GET of the host lands somewhere useful
+    # when a console shares it, and 404s honestly when one does not.
+    helm template t charts/access-issuer --set issuerURL=https://a.example \
+        --set hub.address=http://h:8080 --set route.host=a.example \
+        --set route.rootRedirect=/console/ | grep -q 'replaceFullPath: "/console/"'
+    ! helm template t charts/access-issuer --set issuerURL=https://a.example \
+        --set hub.address=http://h:8080 --set route.host=a.example \
+        | grep -q 'RequestRedirect'
     # Under a path prefix the WHOLE sign-out chain moves with the
     # console, and both halves are the kind that fail silently. The
     # proxy's own paths are under the prefix -- /oauth2 at the root

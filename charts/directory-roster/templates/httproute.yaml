@@ -70,6 +70,27 @@ spec:
   hostnames:
     - {{ .Values.route.host | quote }}
   rules:
+      {{- with .Values.route.pathPrefix }}
+      {{- /* "/console" alone, without the trailing slash, is a different
+             page to a browser: the console's assets are referenced
+             relatively so that one committed bundle serves at any mount
+             point, and "./assets/..." on a page at "/console" resolves
+             against the ROOT -- every asset then asks the issuer and
+             gets a 404. So the bare prefix redirects to itself with the
+             slash. An Exact match outranks the PathPrefix rule below, so
+             this is the one that answers it. */}}
+    - matches:
+        - path:
+            type: Exact
+            value: {{ . | quote }}
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: {{ printf "%s/" . | quote }}
+            statusCode: 302
+      {{- end }}
       {{- /* The path match is written out although it is also the API
              server's default. A rule without one comes back from the
              cluster WITH one, and a GitOps controller comparing desired
