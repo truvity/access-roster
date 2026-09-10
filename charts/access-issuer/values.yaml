@@ -31,14 +31,61 @@ listeners:
   # liveness/readiness only.
   healthPort: 7070
 
-# The directory hub. This service asks it about every person who signs in
-# and every refresh, and holds no directory credential of its own.
-hub:
-  # host:port of the hub's API listener.
-  address: ""
-  # The audience the hub expects on the projected token this service
-  # presents. Empty means `directory-roster`, the hub's own default.
-  audience: ""
+# The corporate directories this service reads.
+#
+# It reads them ITSELF (INF-691). There is no second deployment to ask:
+# the answer about a person is a function call, so a login makes no
+# network call except to the corporate directory. What that buys is not
+# only a hop — it is the end of a class of failure where two services
+# disagreed about the same person.
+directory:
+  # Where what an operator connected is kept: the workspaces and their
+  # credentials, the memberships, the OAuth client, the session key, as
+  # ConfigMaps and Secrets in this namespace. `memory` makes a restart a
+  # fresh installation, which is right for a laptop and nothing else.
+  store: kubernetes
+
+  freshness:
+    # how often the background refresher takes a new snapshot per
+    # workspace.
+    refreshInterval: 15m
+    # how old a snapshot may be before its domains stop being
+    # authoritative.
+    freshnessWindow: 30m
+    # how often a workspace's credential is probed and its domains are
+    # re-read.
+    probeInterval: 5m
+
+  # How long the console's own session lasts.
+  sessionLifetime: 12h
+
+  # Whether the console offers a sign-in of its own, under /console/login.
+  # The issuer's page at the origin root is the one people use; this is
+  # the door for an installation reached without it.
+  login: true
+
+  # Declared (overlay) workspaces: how an existing installation moves
+  # without a Connect step. Each names a Secret in this namespace holding
+  # a service-account key with domain-wide delegation and the admin to
+  # impersonate. Domains are discovered from the backend like any other
+  # workspace's. Declared workspaces are read-only in the console and win
+  # on conflict.
+  workspaces: []
+  #  - backend: google
+  #    admin: admin@example.com     # the account the key impersonates
+  #    secretName: example-sa-key   # a Secret in this namespace
+  #    # Which key of that Secret holds the JSON. Defaults to key.json.
+  #    secretKey: key.json
+  #    # id is optional: the credential opens exactly one tenant and that
+  #    # tenant knows its own id, so it is discovered. Supply it and
+  #    # adoption becomes a check — a credential that opens a different
+  #    # tenant is refused rather than quietly reading another company's
+  #    # directory.
+  #    id: C0example
+  #    # serve is optional: which of the tenant's domains this service
+  #    # answers for. Omitted, it serves every domain the tenant owns.
+  #    serve:
+  #      - example.com
 
 # The key this service signs tokens with.
 #
@@ -304,5 +351,22 @@ console:
   # no consumer. A wildcard is not offered — the alternative to one origin
   # is every page on the internet being able to list and end a signed-in
   # person's sessions through their own browser.
+  #
+  # Since the merge (INF-691) the console is served by this process on
+  # this origin, so nothing cross-origin is involved and this can stay
+  # empty. It remains for a console served from somewhere else.
   origin: ""
+
+  # Where the console is mounted on this issuer's origin.
+  #
+  # It is a PATH and not a host because discovery must sit at the root of
+  # the origin named in every token's `iss`: the issuer owns "/", and the
+  # console takes a path beside it. Same origin is what lets the console's
+  # session pages call this issuer with the browser's own cookie and no
+  # bearer in JavaScript.
+  #
+  # This value is also what the console prefixes onto every link it hands
+  # a browser, because "/login" resolves against the origin — where the
+  # issuer's own page is, not the console's. Empty serves no console.
+  mount: /console
 
