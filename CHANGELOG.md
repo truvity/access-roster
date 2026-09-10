@@ -22,6 +22,27 @@ git history.
 
 ## Unreleased
 
+- **The console reads.** It no longer writes who is in which internal
+  group (INF-694). A console that could add a membership was a second
+  source of truth beside git and a merge layer to reconcile them; who is
+  in a group is now the policy, rendered from the installation's own
+  access model, and `git log` is the complete history of access. Gone:
+  the `memberships` table (refused now, not ignored), the console layer
+  of the policy, the `layer` field on every member, and `SetOAuthClient`
+  — the OAuth client is a Secret, delivered the way every other
+  credential in the estate is.
+
+  Kept, and each for a stated reason: **connect a provider** by admin
+  consent, because Google's consent genuinely needs a browser and there
+  is no infrastructure-as-code way to obtain that credential; and
+  **revoke a session**, which is a removal and the lever between
+  sign-out and expiry.
+
+  Nothing was lost in the change: no installation had ever attached a
+  membership through the console. Still to come under the same ticket:
+  a provider's `serve` and `synced` are chosen in the console today, and
+  become values once the values can name a consent-connected provider.
+
 - **The issuer's UI is the login page.** `/account` — a person's own
   sessions and *sign out everywhere* — was server-rendered by the issuer
   because it had to be same-origin with the session service (INF-695).

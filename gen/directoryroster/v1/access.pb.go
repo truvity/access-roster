@@ -904,12 +904,13 @@ func (x *ClientAdmission) GetLifetime() *durationpb.Duration {
 	return nil
 }
 
-// GroupMember is one directory group inside an internal group, and the
-// layer it came from: "declared" or "console".
+// GroupMember is one directory group inside an internal group.
+//
+// Field 2 was `layer`, saying whether the deployment declared it or an
+// operator added it in the console. There is one layer now (INF-694).
 type GroupMember struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
-	Layer         string                 `protobuf:"bytes,2,opt,name=layer,proto3" json:"layer,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -947,13 +948,6 @@ func (*GroupMember) Descriptor() ([]byte, []int) {
 func (x *GroupMember) GetAddress() string {
 	if x != nil {
 		return x.Address
-	}
-	return ""
-}
-
-func (x *GroupMember) GetLayer() string {
-	if x != nil {
-		return x.Layer
 	}
 	return ""
 }
@@ -1226,9 +1220,6 @@ type GetPolicyResponse struct {
 	RecoveryEnabled bool `protobuf:"varint,2,opt,name=recovery_enabled,json=recoveryEnabled,proto3" json:"recovery_enabled,omitempty"`
 	// enabled sign-in sources, e.g. "directory", "oidc:<issuer>", "forwarded:<issuer>".
 	LoginSources []string `protobuf:"bytes,3,rep,name=login_sources,json=loginSources,proto3" json:"login_sources,omitempty"`
-	// the console layer as YAML, so that an installation which started
-	// standalone can move its edits into git by pasting.
-	ConsoleLayer string `protobuf:"bytes,4,opt,name=console_layer,json=consoleLayer,proto3" json:"console_layer,omitempty"`
 	// the declared clients: who may reach what.
 	Clients []*PolicyClient `protobuf:"bytes,5,rep,name=clients,proto3" json:"clients,omitempty"`
 	// how recovery is proved: "token" (access to the cluster, nothing
@@ -1291,13 +1282,6 @@ func (x *GetPolicyResponse) GetLoginSources() []string {
 	return nil
 }
 
-func (x *GetPolicyResponse) GetConsoleLayer() string {
-	if x != nil {
-		return x.ConsoleLayer
-	}
-	return ""
-}
-
 func (x *GetPolicyResponse) GetClients() []*PolicyClient {
 	if x != nil {
 		return x.Clients
@@ -1310,184 +1294,6 @@ func (x *GetPolicyResponse) GetRecoveryKind() string {
 		return x.RecoveryKind
 	}
 	return ""
-}
-
-type AddMembershipRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// the internal group, which must be declared.
-	Group string `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
-	// the directory group's address.
-	DirectoryGroup string `protobuf:"bytes,2,opt,name=directory_group,json=directoryGroup,proto3" json:"directory_group,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *AddMembershipRequest) Reset() {
-	*x = AddMembershipRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[16]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AddMembershipRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AddMembershipRequest) ProtoMessage() {}
-
-func (x *AddMembershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[16]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AddMembershipRequest.ProtoReflect.Descriptor instead.
-func (*AddMembershipRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{16}
-}
-
-func (x *AddMembershipRequest) GetGroup() string {
-	if x != nil {
-		return x.Group
-	}
-	return ""
-}
-
-func (x *AddMembershipRequest) GetDirectoryGroup() string {
-	if x != nil {
-		return x.DirectoryGroup
-	}
-	return ""
-}
-
-type AddMembershipResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AddMembershipResponse) Reset() {
-	*x = AddMembershipResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[17]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AddMembershipResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AddMembershipResponse) ProtoMessage() {}
-
-func (x *AddMembershipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[17]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AddMembershipResponse.ProtoReflect.Descriptor instead.
-func (*AddMembershipResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{17}
-}
-
-type RemoveMembershipRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Group          string                 `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
-	DirectoryGroup string                 `protobuf:"bytes,2,opt,name=directory_group,json=directoryGroup,proto3" json:"directory_group,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *RemoveMembershipRequest) Reset() {
-	*x = RemoveMembershipRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[18]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RemoveMembershipRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RemoveMembershipRequest) ProtoMessage() {}
-
-func (x *RemoveMembershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[18]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RemoveMembershipRequest.ProtoReflect.Descriptor instead.
-func (*RemoveMembershipRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{18}
-}
-
-func (x *RemoveMembershipRequest) GetGroup() string {
-	if x != nil {
-		return x.Group
-	}
-	return ""
-}
-
-func (x *RemoveMembershipRequest) GetDirectoryGroup() string {
-	if x != nil {
-		return x.DirectoryGroup
-	}
-	return ""
-}
-
-type RemoveMembershipResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RemoveMembershipResponse) Reset() {
-	*x = RemoveMembershipResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[19]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RemoveMembershipResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RemoveMembershipResponse) ProtoMessage() {}
-
-func (x *RemoveMembershipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[19]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RemoveMembershipResponse.ProtoReflect.Descriptor instead.
-func (*RemoveMembershipResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{19}
 }
 
 type ListHoldersRequest struct {
@@ -1503,7 +1309,7 @@ type ListHoldersRequest struct {
 
 func (x *ListHoldersRequest) Reset() {
 	*x = ListHoldersRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[20]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1515,7 +1321,7 @@ func (x *ListHoldersRequest) String() string {
 func (*ListHoldersRequest) ProtoMessage() {}
 
 func (x *ListHoldersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[20]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1528,7 +1334,7 @@ func (x *ListHoldersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHoldersRequest.ProtoReflect.Descriptor instead.
 func (*ListHoldersRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{20}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListHoldersRequest) GetGroup() string {
@@ -1575,7 +1381,7 @@ type Holder struct {
 
 func (x *Holder) Reset() {
 	*x = Holder{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[21]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1587,7 +1393,7 @@ func (x *Holder) String() string {
 func (*Holder) ProtoMessage() {}
 
 func (x *Holder) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[21]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1600,7 +1406,7 @@ func (x *Holder) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Holder.ProtoReflect.Descriptor instead.
 func (*Holder) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{21}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Holder) GetEmail() string {
@@ -1664,7 +1470,7 @@ type ListHoldersResponse struct {
 
 func (x *ListHoldersResponse) Reset() {
 	*x = ListHoldersResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[22]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1676,7 +1482,7 @@ func (x *ListHoldersResponse) String() string {
 func (*ListHoldersResponse) ProtoMessage() {}
 
 func (x *ListHoldersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[22]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1689,7 +1495,7 @@ func (x *ListHoldersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHoldersResponse.ProtoReflect.Descriptor instead.
 func (*ListHoldersResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{22}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListHoldersResponse) GetHolders() []*Holder {
@@ -1736,7 +1542,7 @@ type SearchPeopleRequest struct {
 
 func (x *SearchPeopleRequest) Reset() {
 	*x = SearchPeopleRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[23]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1748,7 +1554,7 @@ func (x *SearchPeopleRequest) String() string {
 func (*SearchPeopleRequest) ProtoMessage() {}
 
 func (x *SearchPeopleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[23]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1761,7 +1567,7 @@ func (x *SearchPeopleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchPeopleRequest.ProtoReflect.Descriptor instead.
 func (*SearchPeopleRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{23}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SearchPeopleRequest) GetQuery() string {
@@ -1813,7 +1619,7 @@ type PersonSummary struct {
 
 func (x *PersonSummary) Reset() {
 	*x = PersonSummary{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[24]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1825,7 +1631,7 @@ func (x *PersonSummary) String() string {
 func (*PersonSummary) ProtoMessage() {}
 
 func (x *PersonSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[24]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1838,7 +1644,7 @@ func (x *PersonSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PersonSummary.ProtoReflect.Descriptor instead.
 func (*PersonSummary) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{24}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PersonSummary) GetEmail() string {
@@ -1889,7 +1695,7 @@ type SearchPeopleResponse struct {
 
 func (x *SearchPeopleResponse) Reset() {
 	*x = SearchPeopleResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[25]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1901,7 +1707,7 @@ func (x *SearchPeopleResponse) String() string {
 func (*SearchPeopleResponse) ProtoMessage() {}
 
 func (x *SearchPeopleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[25]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1914,7 +1720,7 @@ func (x *SearchPeopleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchPeopleResponse.ProtoReflect.Descriptor instead.
 func (*SearchPeopleResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{25}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SearchPeopleResponse) GetPeople() []*PersonSummary {
@@ -1948,7 +1754,7 @@ type ListDirectoryGroupsRequest struct {
 
 func (x *ListDirectoryGroupsRequest) Reset() {
 	*x = ListDirectoryGroupsRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[26]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1960,7 +1766,7 @@ func (x *ListDirectoryGroupsRequest) String() string {
 func (*ListDirectoryGroupsRequest) ProtoMessage() {}
 
 func (x *ListDirectoryGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[26]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1973,7 +1779,7 @@ func (x *ListDirectoryGroupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirectoryGroupsRequest.ProtoReflect.Descriptor instead.
 func (*ListDirectoryGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{26}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ListDirectoryGroupsRequest) GetDomain() string {
@@ -1992,7 +1798,7 @@ type ListDirectoryGroupsResponse struct {
 
 func (x *ListDirectoryGroupsResponse) Reset() {
 	*x = ListDirectoryGroupsResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[27]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2004,7 +1810,7 @@ func (x *ListDirectoryGroupsResponse) String() string {
 func (*ListDirectoryGroupsResponse) ProtoMessage() {}
 
 func (x *ListDirectoryGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[27]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2017,7 +1823,7 @@ func (x *ListDirectoryGroupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirectoryGroupsResponse.ProtoReflect.Descriptor instead.
 func (*ListDirectoryGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{27}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListDirectoryGroupsResponse) GetGroups() []*DirectoryGroupSummary {
@@ -2041,7 +1847,7 @@ type DirectoryGroupSummary struct {
 
 func (x *DirectoryGroupSummary) Reset() {
 	*x = DirectoryGroupSummary{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[28]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2053,7 +1859,7 @@ func (x *DirectoryGroupSummary) String() string {
 func (*DirectoryGroupSummary) ProtoMessage() {}
 
 func (x *DirectoryGroupSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[28]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2066,7 +1872,7 @@ func (x *DirectoryGroupSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectoryGroupSummary.ProtoReflect.Descriptor instead.
 func (*DirectoryGroupSummary) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{28}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DirectoryGroupSummary) GetEmail() string {
@@ -2106,7 +1912,7 @@ type GetDirectoryGroupRequest struct {
 
 func (x *GetDirectoryGroupRequest) Reset() {
 	*x = GetDirectoryGroupRequest{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[29]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2118,7 +1924,7 @@ func (x *GetDirectoryGroupRequest) String() string {
 func (*GetDirectoryGroupRequest) ProtoMessage() {}
 
 func (x *GetDirectoryGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[29]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2131,7 +1937,7 @@ func (x *GetDirectoryGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDirectoryGroupRequest.ProtoReflect.Descriptor instead.
 func (*GetDirectoryGroupRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{29}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetDirectoryGroupRequest) GetEmail() string {
@@ -2158,7 +1964,7 @@ type DirectoryGroupMember struct {
 
 func (x *DirectoryGroupMember) Reset() {
 	*x = DirectoryGroupMember{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[30]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2170,7 +1976,7 @@ func (x *DirectoryGroupMember) String() string {
 func (*DirectoryGroupMember) ProtoMessage() {}
 
 func (x *DirectoryGroupMember) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[30]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2183,7 +1989,7 @@ func (x *DirectoryGroupMember) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectoryGroupMember.ProtoReflect.Descriptor instead.
 func (*DirectoryGroupMember) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{30}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *DirectoryGroupMember) GetEmail() string {
@@ -2222,18 +2028,18 @@ func (x *DirectoryGroupMember) GetLive() bool {
 }
 
 // DirectoryGroupFeed is one internal group this directory group is a
-// member of, and which layer put it there.
+// member of. Field 2 was the layer that put it there; there is one
+// layer now (INF-694).
 type DirectoryGroupFeed struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Group         string                 `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
-	Layer         string                 `protobuf:"bytes,2,opt,name=layer,proto3" json:"layer,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DirectoryGroupFeed) Reset() {
 	*x = DirectoryGroupFeed{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[31]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2245,7 +2051,7 @@ func (x *DirectoryGroupFeed) String() string {
 func (*DirectoryGroupFeed) ProtoMessage() {}
 
 func (x *DirectoryGroupFeed) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[31]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2258,19 +2064,12 @@ func (x *DirectoryGroupFeed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirectoryGroupFeed.ProtoReflect.Descriptor instead.
 func (*DirectoryGroupFeed) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{31}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DirectoryGroupFeed) GetGroup() string {
 	if x != nil {
 		return x.Group
-	}
-	return ""
-}
-
-func (x *DirectoryGroupFeed) GetLayer() string {
-	if x != nil {
-		return x.Layer
 	}
 	return ""
 }
@@ -2293,7 +2092,7 @@ type GetDirectoryGroupResponse struct {
 
 func (x *GetDirectoryGroupResponse) Reset() {
 	*x = GetDirectoryGroupResponse{}
-	mi := &file_directoryroster_v1_access_proto_msgTypes[32]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2305,7 +2104,7 @@ func (x *GetDirectoryGroupResponse) String() string {
 func (*GetDirectoryGroupResponse) ProtoMessage() {}
 
 func (x *GetDirectoryGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_access_proto_msgTypes[32]
+	mi := &file_directoryroster_v1_access_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2318,7 +2117,7 @@ func (x *GetDirectoryGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDirectoryGroupResponse.ProtoReflect.Descriptor instead.
 func (*GetDirectoryGroupResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{32}
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetDirectoryGroupResponse) GetEmail() string {
@@ -2436,10 +2235,9 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1a\n" +
 	"\brequires\x18\x03 \x03(\tR\brequires\x12\x1a\n" +
 	"\badmitted\x18\x04 \x01(\bR\badmitted\x125\n" +
-	"\blifetime\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\blifetime\"=\n" +
+	"\blifetime\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\blifetime\"4\n" +
 	"\vGroupMember\x12\x18\n" +
-	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x14\n" +
-	"\x05layer\x18\x02 \x01(\tR\x05layer\"\x83\x02\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddressJ\x04\b\x02\x10\x03R\x05layer\"\x83\x02\n" +
 	"\vPolicyGroup\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x129\n" +
 	"\amembers\x18\x02 \x03(\v2\x1f.directoryroster.v1.GroupMemberR\amembers\x127\n" +
@@ -2456,22 +2254,13 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\tredirects\x18\x04 \x03(\tR\tredirects\x122\n" +
 	"\attl_cap\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x06ttlCap\x12\x16\n" +
 	"\x06secret\x18\x06 \x01(\tR\x06secret\"\x12\n" +
-	"\x10GetPolicyRequest\"\xa2\x02\n" +
+	"\x10GetPolicyRequest\"\x92\x02\n" +
 	"\x11GetPolicyResponse\x127\n" +
 	"\x06groups\x18\x01 \x03(\v2\x1f.directoryroster.v1.PolicyGroupR\x06groups\x12)\n" +
 	"\x10recovery_enabled\x18\x02 \x01(\bR\x0frecoveryEnabled\x12#\n" +
-	"\rlogin_sources\x18\x03 \x03(\tR\floginSources\x12#\n" +
-	"\rconsole_layer\x18\x04 \x01(\tR\fconsoleLayer\x12:\n" +
+	"\rlogin_sources\x18\x03 \x03(\tR\floginSources\x12:\n" +
 	"\aclients\x18\x05 \x03(\v2 .directoryroster.v1.PolicyClientR\aclients\x12#\n" +
-	"\rrecovery_kind\x18\x06 \x01(\tR\frecoveryKind\"U\n" +
-	"\x14AddMembershipRequest\x12\x14\n" +
-	"\x05group\x18\x01 \x01(\tR\x05group\x12'\n" +
-	"\x0fdirectory_group\x18\x02 \x01(\tR\x0edirectoryGroup\"\x17\n" +
-	"\x15AddMembershipResponse\"X\n" +
-	"\x17RemoveMembershipRequest\x12\x14\n" +
-	"\x05group\x18\x01 \x01(\tR\x05group\x12'\n" +
-	"\x0fdirectory_group\x18\x02 \x01(\tR\x0edirectoryGroup\"\x1a\n" +
-	"\x18RemoveMembershipResponse\"X\n" +
+	"\rrecovery_kind\x18\x06 \x01(\tR\frecoveryKindJ\x04\b\x04\x10\x05R\rconsole_layer\"X\n" +
 	"\x12ListHoldersRequest\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12\x16\n" +
 	"\x06client\x18\x02 \x01(\tR\x06client\x12\x14\n" +
@@ -2526,10 +2315,9 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\vfamily_name\x18\x03 \x01(\tR\n" +
 	"familyName\x12\x14\n" +
 	"\x05known\x18\x04 \x01(\bR\x05known\x12\x12\n" +
-	"\x04live\x18\x05 \x01(\bR\x04live\"@\n" +
+	"\x04live\x18\x05 \x01(\bR\x04live\"7\n" +
 	"\x12DirectoryGroupFeed\x12\x14\n" +
-	"\x05group\x18\x01 \x01(\tR\x05group\x12\x14\n" +
-	"\x05layer\x18\x02 \x01(\tR\x05layer\"\xe7\x02\n" +
+	"\x05group\x18\x01 \x01(\tR\x05groupJ\x04\b\x02\x10\x03R\x05layer\"\xe7\x02\n" +
 	"\x19GetDirectoryGroupResponse\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x16\n" +
 	"\x06domain\x18\x02 \x01(\tR\x06domain\x12!\n" +
@@ -2553,15 +2341,13 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\rAccountFilter\x12\x1e\n" +
 	"\x1aACCOUNT_FILTER_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACCOUNT_FILTER_LIVE\x10\x01\x12\x1c\n" +
-	"\x18ACCOUNT_FILTER_SUSPENDED\x10\x022\x90\a\n" +
+	"\x18ACCOUNT_FILTER_SUSPENDED\x10\x022\xbb\x05\n" +
 	"\rAccessService\x12O\n" +
 	"\x06WhoAmI\x12!.directoryroster.v1.WhoAmIRequest\x1a\".directoryroster.v1.WhoAmIResponse\x12R\n" +
 	"\aExplain\x12\".directoryroster.v1.ExplainRequest\x1a#.directoryroster.v1.ExplainResponse\x12^\n" +
 	"\vListHolders\x12&.directoryroster.v1.ListHoldersRequest\x1a'.directoryroster.v1.ListHoldersResponse\x12a\n" +
 	"\fSearchPeople\x12'.directoryroster.v1.SearchPeopleRequest\x1a(.directoryroster.v1.SearchPeopleResponse\x12X\n" +
-	"\tGetPolicy\x12$.directoryroster.v1.GetPolicyRequest\x1a%.directoryroster.v1.GetPolicyResponse\x12d\n" +
-	"\rAddMembership\x12(.directoryroster.v1.AddMembershipRequest\x1a).directoryroster.v1.AddMembershipResponse\x12m\n" +
-	"\x10RemoveMembership\x12+.directoryroster.v1.RemoveMembershipRequest\x1a,.directoryroster.v1.RemoveMembershipResponse\x12v\n" +
+	"\tGetPolicy\x12$.directoryroster.v1.GetPolicyRequest\x1a%.directoryroster.v1.GetPolicyResponse\x12v\n" +
 	"\x13ListDirectoryGroups\x12..directoryroster.v1.ListDirectoryGroupsRequest\x1a/.directoryroster.v1.ListDirectoryGroupsResponse\x12p\n" +
 	"\x11GetDirectoryGroup\x12,.directoryroster.v1.GetDirectoryGroupRequest\x1a-.directoryroster.v1.GetDirectoryGroupResponseB\xd9\x01\n" +
 	"\x16com.directoryroster.v1B\vAccessProtoP\x01ZIgithub.com/truvity/access-roster/gen/directoryroster/v1;directoryrosterv1\xa2\x02\x03DXX\xaa\x02\x12Directoryroster.V1\xca\x02\x12Directoryroster\\V1\xe2\x02\x1eDirectoryroster\\V1\\GPBMetadata\xea\x02\x13Directoryroster::V1b\x06proto3"
@@ -2579,7 +2365,7 @@ func file_directoryroster_v1_access_proto_rawDescGZIP() []byte {
 }
 
 var file_directoryroster_v1_access_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_directoryroster_v1_access_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_directoryroster_v1_access_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_directoryroster_v1_access_proto_goTypes = []any{
 	(Role)(0),                           // 0: directoryroster.v1.Role
 	(IdentitySource)(0),                 // 1: directoryroster.v1.IdentitySource
@@ -2600,26 +2386,22 @@ var file_directoryroster_v1_access_proto_goTypes = []any{
 	(*PolicyClient)(nil),                // 16: directoryroster.v1.PolicyClient
 	(*GetPolicyRequest)(nil),            // 17: directoryroster.v1.GetPolicyRequest
 	(*GetPolicyResponse)(nil),           // 18: directoryroster.v1.GetPolicyResponse
-	(*AddMembershipRequest)(nil),        // 19: directoryroster.v1.AddMembershipRequest
-	(*AddMembershipResponse)(nil),       // 20: directoryroster.v1.AddMembershipResponse
-	(*RemoveMembershipRequest)(nil),     // 21: directoryroster.v1.RemoveMembershipRequest
-	(*RemoveMembershipResponse)(nil),    // 22: directoryroster.v1.RemoveMembershipResponse
-	(*ListHoldersRequest)(nil),          // 23: directoryroster.v1.ListHoldersRequest
-	(*Holder)(nil),                      // 24: directoryroster.v1.Holder
-	(*ListHoldersResponse)(nil),         // 25: directoryroster.v1.ListHoldersResponse
-	(*SearchPeopleRequest)(nil),         // 26: directoryroster.v1.SearchPeopleRequest
-	(*PersonSummary)(nil),               // 27: directoryroster.v1.PersonSummary
-	(*SearchPeopleResponse)(nil),        // 28: directoryroster.v1.SearchPeopleResponse
-	(*ListDirectoryGroupsRequest)(nil),  // 29: directoryroster.v1.ListDirectoryGroupsRequest
-	(*ListDirectoryGroupsResponse)(nil), // 30: directoryroster.v1.ListDirectoryGroupsResponse
-	(*DirectoryGroupSummary)(nil),       // 31: directoryroster.v1.DirectoryGroupSummary
-	(*GetDirectoryGroupRequest)(nil),    // 32: directoryroster.v1.GetDirectoryGroupRequest
-	(*DirectoryGroupMember)(nil),        // 33: directoryroster.v1.DirectoryGroupMember
-	(*DirectoryGroupFeed)(nil),          // 34: directoryroster.v1.DirectoryGroupFeed
-	(*GetDirectoryGroupResponse)(nil),   // 35: directoryroster.v1.GetDirectoryGroupResponse
-	(*structpb.Struct)(nil),             // 36: google.protobuf.Struct
-	(*durationpb.Duration)(nil),         // 37: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),       // 38: google.protobuf.Timestamp
+	(*ListHoldersRequest)(nil),          // 19: directoryroster.v1.ListHoldersRequest
+	(*Holder)(nil),                      // 20: directoryroster.v1.Holder
+	(*ListHoldersResponse)(nil),         // 21: directoryroster.v1.ListHoldersResponse
+	(*SearchPeopleRequest)(nil),         // 22: directoryroster.v1.SearchPeopleRequest
+	(*PersonSummary)(nil),               // 23: directoryroster.v1.PersonSummary
+	(*SearchPeopleResponse)(nil),        // 24: directoryroster.v1.SearchPeopleResponse
+	(*ListDirectoryGroupsRequest)(nil),  // 25: directoryroster.v1.ListDirectoryGroupsRequest
+	(*ListDirectoryGroupsResponse)(nil), // 26: directoryroster.v1.ListDirectoryGroupsResponse
+	(*DirectoryGroupSummary)(nil),       // 27: directoryroster.v1.DirectoryGroupSummary
+	(*GetDirectoryGroupRequest)(nil),    // 28: directoryroster.v1.GetDirectoryGroupRequest
+	(*DirectoryGroupMember)(nil),        // 29: directoryroster.v1.DirectoryGroupMember
+	(*DirectoryGroupFeed)(nil),          // 30: directoryroster.v1.DirectoryGroupFeed
+	(*GetDirectoryGroupResponse)(nil),   // 31: directoryroster.v1.GetDirectoryGroupResponse
+	(*structpb.Struct)(nil),             // 32: google.protobuf.Struct
+	(*durationpb.Duration)(nil),         // 33: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),       // 34: google.protobuf.Timestamp
 }
 var file_directoryroster_v1_access_proto_depIdxs = []int32{
 	1,  // 0: directoryroster.v1.Identity.source:type_name -> directoryroster.v1.IdentitySource
@@ -2631,45 +2413,41 @@ var file_directoryroster_v1_access_proto_depIdxs = []int32{
 	9,  // 6: directoryroster.v1.ExplainRequest.service_account:type_name -> directoryroster.v1.ServiceAccountProof
 	3,  // 7: directoryroster.v1.ExplainResponse.identity:type_name -> directoryroster.v1.Identity
 	7,  // 8: directoryroster.v1.ExplainResponse.held:type_name -> directoryroster.v1.HeldGroup
-	36, // 9: directoryroster.v1.ExplainResponse.claims:type_name -> google.protobuf.Struct
-	37, // 10: directoryroster.v1.ExplainResponse.lifetime:type_name -> google.protobuf.Duration
+	32, // 9: directoryroster.v1.ExplainResponse.claims:type_name -> google.protobuf.Struct
+	33, // 10: directoryroster.v1.ExplainResponse.lifetime:type_name -> google.protobuf.Duration
 	12, // 11: directoryroster.v1.ExplainResponse.clients:type_name -> directoryroster.v1.ClientAdmission
-	37, // 12: directoryroster.v1.ClientAdmission.lifetime:type_name -> google.protobuf.Duration
+	33, // 12: directoryroster.v1.ClientAdmission.lifetime:type_name -> google.protobuf.Duration
 	13, // 13: directoryroster.v1.PolicyGroup.members:type_name -> directoryroster.v1.GroupMember
 	15, // 14: directoryroster.v1.PolicyGroup.rules:type_name -> directoryroster.v1.PolicyMatcher
-	36, // 15: directoryroster.v1.PolicyGroup.claims:type_name -> google.protobuf.Struct
-	37, // 16: directoryroster.v1.PolicyGroup.lifetime:type_name -> google.protobuf.Duration
-	37, // 17: directoryroster.v1.PolicyClient.ttl_cap:type_name -> google.protobuf.Duration
+	32, // 15: directoryroster.v1.PolicyGroup.claims:type_name -> google.protobuf.Struct
+	33, // 16: directoryroster.v1.PolicyGroup.lifetime:type_name -> google.protobuf.Duration
+	33, // 17: directoryroster.v1.PolicyClient.ttl_cap:type_name -> google.protobuf.Duration
 	14, // 18: directoryroster.v1.GetPolicyResponse.groups:type_name -> directoryroster.v1.PolicyGroup
 	16, // 19: directoryroster.v1.GetPolicyResponse.clients:type_name -> directoryroster.v1.PolicyClient
-	37, // 20: directoryroster.v1.Holder.lifetime:type_name -> google.protobuf.Duration
-	24, // 21: directoryroster.v1.ListHoldersResponse.holders:type_name -> directoryroster.v1.Holder
+	33, // 20: directoryroster.v1.Holder.lifetime:type_name -> google.protobuf.Duration
+	20, // 21: directoryroster.v1.ListHoldersResponse.holders:type_name -> directoryroster.v1.Holder
 	2,  // 22: directoryroster.v1.SearchPeopleRequest.account:type_name -> directoryroster.v1.AccountFilter
-	27, // 23: directoryroster.v1.SearchPeopleResponse.people:type_name -> directoryroster.v1.PersonSummary
-	31, // 24: directoryroster.v1.ListDirectoryGroupsResponse.groups:type_name -> directoryroster.v1.DirectoryGroupSummary
-	38, // 25: directoryroster.v1.GetDirectoryGroupResponse.snapshot_at:type_name -> google.protobuf.Timestamp
-	33, // 26: directoryroster.v1.GetDirectoryGroupResponse.members:type_name -> directoryroster.v1.DirectoryGroupMember
-	34, // 27: directoryroster.v1.GetDirectoryGroupResponse.feeds:type_name -> directoryroster.v1.DirectoryGroupFeed
+	23, // 23: directoryroster.v1.SearchPeopleResponse.people:type_name -> directoryroster.v1.PersonSummary
+	27, // 24: directoryroster.v1.ListDirectoryGroupsResponse.groups:type_name -> directoryroster.v1.DirectoryGroupSummary
+	34, // 25: directoryroster.v1.GetDirectoryGroupResponse.snapshot_at:type_name -> google.protobuf.Timestamp
+	29, // 26: directoryroster.v1.GetDirectoryGroupResponse.members:type_name -> directoryroster.v1.DirectoryGroupMember
+	30, // 27: directoryroster.v1.GetDirectoryGroupResponse.feeds:type_name -> directoryroster.v1.DirectoryGroupFeed
 	5,  // 28: directoryroster.v1.AccessService.WhoAmI:input_type -> directoryroster.v1.WhoAmIRequest
 	10, // 29: directoryroster.v1.AccessService.Explain:input_type -> directoryroster.v1.ExplainRequest
-	23, // 30: directoryroster.v1.AccessService.ListHolders:input_type -> directoryroster.v1.ListHoldersRequest
-	26, // 31: directoryroster.v1.AccessService.SearchPeople:input_type -> directoryroster.v1.SearchPeopleRequest
+	19, // 30: directoryroster.v1.AccessService.ListHolders:input_type -> directoryroster.v1.ListHoldersRequest
+	22, // 31: directoryroster.v1.AccessService.SearchPeople:input_type -> directoryroster.v1.SearchPeopleRequest
 	17, // 32: directoryroster.v1.AccessService.GetPolicy:input_type -> directoryroster.v1.GetPolicyRequest
-	19, // 33: directoryroster.v1.AccessService.AddMembership:input_type -> directoryroster.v1.AddMembershipRequest
-	21, // 34: directoryroster.v1.AccessService.RemoveMembership:input_type -> directoryroster.v1.RemoveMembershipRequest
-	29, // 35: directoryroster.v1.AccessService.ListDirectoryGroups:input_type -> directoryroster.v1.ListDirectoryGroupsRequest
-	32, // 36: directoryroster.v1.AccessService.GetDirectoryGroup:input_type -> directoryroster.v1.GetDirectoryGroupRequest
-	6,  // 37: directoryroster.v1.AccessService.WhoAmI:output_type -> directoryroster.v1.WhoAmIResponse
-	11, // 38: directoryroster.v1.AccessService.Explain:output_type -> directoryroster.v1.ExplainResponse
-	25, // 39: directoryroster.v1.AccessService.ListHolders:output_type -> directoryroster.v1.ListHoldersResponse
-	28, // 40: directoryroster.v1.AccessService.SearchPeople:output_type -> directoryroster.v1.SearchPeopleResponse
-	18, // 41: directoryroster.v1.AccessService.GetPolicy:output_type -> directoryroster.v1.GetPolicyResponse
-	20, // 42: directoryroster.v1.AccessService.AddMembership:output_type -> directoryroster.v1.AddMembershipResponse
-	22, // 43: directoryroster.v1.AccessService.RemoveMembership:output_type -> directoryroster.v1.RemoveMembershipResponse
-	30, // 44: directoryroster.v1.AccessService.ListDirectoryGroups:output_type -> directoryroster.v1.ListDirectoryGroupsResponse
-	35, // 45: directoryroster.v1.AccessService.GetDirectoryGroup:output_type -> directoryroster.v1.GetDirectoryGroupResponse
-	37, // [37:46] is the sub-list for method output_type
-	28, // [28:37] is the sub-list for method input_type
+	25, // 33: directoryroster.v1.AccessService.ListDirectoryGroups:input_type -> directoryroster.v1.ListDirectoryGroupsRequest
+	28, // 34: directoryroster.v1.AccessService.GetDirectoryGroup:input_type -> directoryroster.v1.GetDirectoryGroupRequest
+	6,  // 35: directoryroster.v1.AccessService.WhoAmI:output_type -> directoryroster.v1.WhoAmIResponse
+	11, // 36: directoryroster.v1.AccessService.Explain:output_type -> directoryroster.v1.ExplainResponse
+	21, // 37: directoryroster.v1.AccessService.ListHolders:output_type -> directoryroster.v1.ListHoldersResponse
+	24, // 38: directoryroster.v1.AccessService.SearchPeople:output_type -> directoryroster.v1.SearchPeopleResponse
+	18, // 39: directoryroster.v1.AccessService.GetPolicy:output_type -> directoryroster.v1.GetPolicyResponse
+	26, // 40: directoryroster.v1.AccessService.ListDirectoryGroups:output_type -> directoryroster.v1.ListDirectoryGroupsResponse
+	31, // 41: directoryroster.v1.AccessService.GetDirectoryGroup:output_type -> directoryroster.v1.GetDirectoryGroupResponse
+	35, // [35:42] is the sub-list for method output_type
+	28, // [28:35] is the sub-list for method input_type
 	28, // [28:28] is the sub-list for extension type_name
 	28, // [28:28] is the sub-list for extension extendee
 	0,  // [0:28] is the sub-list for field type_name
@@ -2686,7 +2464,7 @@ func file_directoryroster_v1_access_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_access_proto_rawDesc), len(file_directoryroster_v1_access_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   33,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

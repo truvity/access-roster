@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/settings.proto.
  */
 export const file_directoryroster_v1_settings: GenFile = /*@__PURE__*/
-  fileDesc("CiFkaXJlY3Rvcnlyb3N0ZXIvdjEvc2V0dGluZ3MucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSJmCgtPQXV0aENsaWVudBIRCgljbGllbnRfaWQYASABKAkSEgoKY29uZmlndXJlZBgCIAEoCBIwCgZzb3VyY2UYAyABKA4yIC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50U291cmNlIhQKEkdldFNldHRpbmdzUmVxdWVzdCKqAwoTR2V0U2V0dGluZ3NSZXNwb25zZRI1CgxvYXV0aF9jbGllbnQYASABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuT0F1dGhDbGllbnQSMwoQcmVmcmVzaF9pbnRlcnZhbBgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIzChBmcmVzaG5lc3Nfd2luZG93GAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjEKDnByb2JlX2ludGVydmFsGAQgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEhUKDWNhY2hlX2JhY2tlbmQYBSABKAkSLwoKY29ubmVjdG9ycxgGIAMoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kEjMKDmtleV9jb25uZWN0b3JzGAggAygOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSDwoHdmVyc2lvbhgHIAEoCRIxCgVzZXR1cBgJIAMoCzIiLmRpcmVjdG9yeXJvc3Rlci52MS5Db25uZWN0b3JTZXR1cCJ5Cg5Db25uZWN0b3JTZXR1cBIsCgdiYWNrZW5kGAEgASgOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSDgoGc2NvcGVzGAMgAygJEhUKDXJlZGlyZWN0X3VyaXMYBCADKAlKBAgCEANSDHJlZGlyZWN0X3VyaSJBChVTZXRPQXV0aENsaWVudFJlcXVlc3QSEQoJY2xpZW50X2lkGAEgASgJEhUKDWNsaWVudF9zZWNyZXQYAiABKAkiGAoWU2V0T0F1dGhDbGllbnRSZXNwb25zZSpkCgxDbGllbnRTb3VyY2USHQoZQ0xJRU5UX1NPVVJDRV9VTlNQRUNJRklFRBAAEhoKFkNMSUVOVF9TT1VSQ0VfREVDTEFSRUQQARIZChVDTElFTlRfU09VUkNFX0NPTlNPTEUQAjLaAQoPU2V0dGluZ3NTZXJ2aWNlEl4KC0dldFNldHRpbmdzEiYuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFNldHRpbmdzUmVxdWVzdBonLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRTZXR0aW5nc1Jlc3BvbnNlEmcKDlNldE9BdXRoQ2xpZW50EikuZGlyZWN0b3J5cm9zdGVyLnYxLlNldE9BdXRoQ2xpZW50UmVxdWVzdBoqLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRPQXV0aENsaWVudFJlc3BvbnNlQtsBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQg1TZXR0aW5nc1Byb3RvUAFaSWdpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9kaXJlY3Rvcnlyb3N0ZXIvdjE7ZGlyZWN0b3J5cm9zdGVydjGiAgNEWFiqAhJEaXJlY3Rvcnlyb3N0ZXIuVjHKAhJEaXJlY3Rvcnlyb3N0ZXJcVjHiAh5EaXJlY3Rvcnlyb3N0ZXJcVjFcR1BCTWV0YWRhdGHqAhNEaXJlY3Rvcnlyb3N0ZXI6OlYxYgZwcm90bzM", [file_directoryroster_v1_workspace, file_google_protobuf_duration]);
+  fileDesc("CiFkaXJlY3Rvcnlyb3N0ZXIvdjEvc2V0dGluZ3MucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSJmCgtPQXV0aENsaWVudBIRCgljbGllbnRfaWQYASABKAkSEgoKY29uZmlndXJlZBgCIAEoCBIwCgZzb3VyY2UYAyABKA4yIC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2xpZW50U291cmNlIhQKEkdldFNldHRpbmdzUmVxdWVzdCKqAwoTR2V0U2V0dGluZ3NSZXNwb25zZRI1CgxvYXV0aF9jbGllbnQYASABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuT0F1dGhDbGllbnQSMwoQcmVmcmVzaF9pbnRlcnZhbBgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIzChBmcmVzaG5lc3Nfd2luZG93GAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEjEKDnByb2JlX2ludGVydmFsGAQgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEhUKDWNhY2hlX2JhY2tlbmQYBSABKAkSLwoKY29ubmVjdG9ycxgGIAMoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kEjMKDmtleV9jb25uZWN0b3JzGAggAygOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSDwoHdmVyc2lvbhgHIAEoCRIxCgVzZXR1cBgJIAMoCzIiLmRpcmVjdG9yeXJvc3Rlci52MS5Db25uZWN0b3JTZXR1cCJ5Cg5Db25uZWN0b3JTZXR1cBIsCgdiYWNrZW5kGAEgASgOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSDgoGc2NvcGVzGAMgAygJEhUKDXJlZGlyZWN0X3VyaXMYBCADKAlKBAgCEANSDHJlZGlyZWN0X3VyaSpkCgxDbGllbnRTb3VyY2USHQoZQ0xJRU5UX1NPVVJDRV9VTlNQRUNJRklFRBAAEhoKFkNMSUVOVF9TT1VSQ0VfREVDTEFSRUQQARIZChVDTElFTlRfU09VUkNFX0NPTlNPTEUQAjJxCg9TZXR0aW5nc1NlcnZpY2USXgoLR2V0U2V0dGluZ3MSJi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0U2V0dGluZ3NSZXF1ZXN0GicuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFNldHRpbmdzUmVzcG9uc2VC2wEKFmNvbS5kaXJlY3Rvcnlyb3N0ZXIudjFCDVNldHRpbmdzUHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw", [file_directoryroster_v1_workspace, file_google_protobuf_duration]);
 
 /**
  * @generated from message directoryroster.v1.OAuthClient
@@ -176,41 +176,6 @@ export const ConnectorSetupSchema: GenMessage<ConnectorSetup> = /*@__PURE__*/
   messageDesc(file_directoryroster_v1_settings, 3);
 
 /**
- * @generated from message directoryroster.v1.SetOAuthClientRequest
- */
-export type SetOAuthClientRequest = Message<"directoryroster.v1.SetOAuthClientRequest"> & {
-  /**
-   * @generated from field: string client_id = 1;
-   */
-  clientId: string;
-
-  /**
-   * @generated from field: string client_secret = 2;
-   */
-  clientSecret: string;
-};
-
-/**
- * Describes the message directoryroster.v1.SetOAuthClientRequest.
- * Use `create(SetOAuthClientRequestSchema)` to create a new message.
- */
-export const SetOAuthClientRequestSchema: GenMessage<SetOAuthClientRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_settings, 4);
-
-/**
- * @generated from message directoryroster.v1.SetOAuthClientResponse
- */
-export type SetOAuthClientResponse = Message<"directoryroster.v1.SetOAuthClientResponse"> & {
-};
-
-/**
- * Describes the message directoryroster.v1.SetOAuthClientResponse.
- * Use `create(SetOAuthClientResponseSchema)` to create a new message.
- */
-export const SetOAuthClientResponseSchema: GenMessage<SetOAuthClientResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_settings, 5);
-
-/**
  * ClientSource says where the OAuth client came from.
  *
  * @generated from enum directoryroster.v1.ClientSource
@@ -229,7 +194,9 @@ export enum ClientSource {
   DECLARED = 1,
 
   /**
-   * stored through SetOAuthClient.
+   * stored by a console, which no installation does any more (INF-694).
+   * The value stays so an older stored client still reads back as what
+   * it is rather than as "unspecified".
    *
    * @generated from enum value: CLIENT_SOURCE_CONSOLE = 2;
    */
@@ -255,24 +222,17 @@ export const SettingsService: GenService<{
    * GetSettings returns the OAuth client's public half and the read-only
    * knobs. Never the client secret. Viewer.
    *
+   * There is no SetOAuthClient beside it any more (INF-694): the client
+   * is a Secret, delivered the way every other credential in the estate
+   * is delivered, and a console that could write one was a second way to
+   * provision it.
+   *
    * @generated from rpc directoryroster.v1.SettingsService.GetSettings
    */
   getSettings: {
     methodKind: "unary";
     input: typeof GetSettingsRequestSchema;
     output: typeof GetSettingsResponseSchema;
-  },
-  /**
-   * SetOAuthClient stores the OAuth client id and secret in the hub's own
-   * Secret. Refused (failed_precondition) when the chart declared the
-   * client. Operator.
-   *
-   * @generated from rpc directoryroster.v1.SettingsService.SetOAuthClient
-   */
-  setOAuthClient: {
-    methodKind: "unary";
-    input: typeof SetOAuthClientRequestSchema;
-    output: typeof SetOAuthClientResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_directoryroster_v1_settings, 0);

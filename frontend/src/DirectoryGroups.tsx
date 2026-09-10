@@ -1,7 +1,6 @@
 import { useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -13,8 +12,7 @@ import TableRow from "@mui/material/TableRow";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 
-import { access, ago, at, forHowLong, people as peopleCount, personName, reason } from "./api";
-import { Attach } from "./attach";
+import { access, ago, at, forHowLong, people as peopleCount, personName } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Authority, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
@@ -115,37 +113,16 @@ export function DirectoryGroups() {
   );
 }
 
-/** One directory group, read along the chain: who the directory says is
- *  in it, the internal groups it feeds, and the clients that therefore
+/** One provider group, read along the chain: who the provider says is in
+ *  it, the internal groups it feeds, and the clients that therefore
  *  open. The mirror of an internal group's page. */
-export function DirectoryGroup({
-  email,
-  operator,
-  onDone,
-}: {
-  email: string;
-  operator: boolean;
-  onDone: (message: string) => void;
-}) {
+export function DirectoryGroup({ email }: { email: string }) {
   const group = useAsync(() => access.getDirectoryGroup({ email }), [email]);
   const policy = useAsync(() => access.getPolicy({}), []);
-  const [adding, setAdding] = useState(false);
-  const [failure, setFailure] = useState<string | undefined>();
 
   const value = group.value;
   const feeds = value?.feeds ?? [];
   const clients = (policy.value?.clients ?? []).filter((client) => client.requires.some((name) => feeds.some((feed) => feed.group === name)));
-
-  const detach = async (name: string) => {
-    setFailure(undefined);
-    try {
-      await access.removeMembership({ group: name, directoryGroup: email });
-      onDone(`${email} removed from ${name}.`);
-      group.reload();
-    } catch (error) {
-      setFailure(reason(error));
-    }
-  };
 
   if (!value) {
     return (
@@ -189,7 +166,7 @@ export function DirectoryGroup({
       aside={null}
     >
       <Loading busy={group.loading || policy.loading} />
-      <Failure error={failure ?? policy.error} />
+      <Failure error={policy.error} />
 
       {served && !value.found ? (
         <Alert severity="warning" sx={{ mb: 3 }}>
@@ -214,27 +191,7 @@ export function DirectoryGroup({
         />
       </Section>
 
-      <Section
-        title="Internal groups it feeds"
-        hint="the memberships table, read backwards"
-        action={
-          <Button size="small" variant="contained" disabled={!operator || adding} onClick={() => setAdding(true)}>
-            Attach to an internal group
-          </Button>
-        }
-      >
-        {adding ? (
-          <Attach
-            directoryGroup={value.email}
-            onCancel={() => setAdding(false)}
-            onAdded={(name) => {
-              setAdding(false);
-              onDone(`${value.email} added to ${name}.`);
-              group.reload();
-            }}
-            onFailure={setFailure}
-          />
-        ) : null}
+      <Section title="Internal groups it feeds" hint="the policy, read backwards">
         <Rows
           items={feeds}
           keyOf={(feed) => feed.group}
@@ -243,15 +200,8 @@ export function DirectoryGroup({
               {feed.group}
             </Ref>
           )}
-          right={(feed) => (
-            <>
-              <State kind={feed.layer === "declared" ? "declared" : "console"} />
-              <Button size="small" color="warning" disabled={!operator || feed.layer === "declared"} onClick={() => void detach(feed.group)}>
-                Remove
-              </Button>
-            </>
-          )}
-          empty="None. Attaching it to an internal group is what makes its members reach anything."
+          right={() => <State kind="declared" />}
+          empty="None. Naming it in an internal group, in the policy, is what makes its members reach anything."
         />
       </Section>
 

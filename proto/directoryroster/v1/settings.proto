@@ -12,12 +12,12 @@ import "google/protobuf/duration.proto";
 service SettingsService {
   // GetSettings returns the OAuth client's public half and the read-only
   // knobs. Never the client secret. Viewer.
+  //
+  // There is no SetOAuthClient beside it any more (INF-694): the client
+  // is a Secret, delivered the way every other credential in the estate
+  // is delivered, and a console that could write one was a second way to
+  // provision it.
   rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
-
-  // SetOAuthClient stores the OAuth client id and secret in the hub's own
-  // Secret. Refused (failed_precondition) when the chart declared the
-  // client. Operator.
-  rpc SetOAuthClient(SetOAuthClientRequest) returns (SetOAuthClientResponse);
 }
 
 // ClientSource says where the OAuth client came from.
@@ -25,7 +25,9 @@ enum ClientSource {
   CLIENT_SOURCE_UNSPECIFIED = 0;
   // a Secret named by the deployment; read-only in the console.
   CLIENT_SOURCE_DECLARED = 1;
-  // stored through SetOAuthClient.
+  // stored by a console, which no installation does any more (INF-694).
+  // The value stays so an older stored client still reads back as what
+  // it is rather than as "unspecified".
   CLIENT_SOURCE_CONSOLE = 2;
 }
 
@@ -79,8 +81,3 @@ message ConnectorSetup {
   repeated string redirect_uris = 4;
 }
 
-message SetOAuthClientRequest {
-  string client_id = 1;
-  string client_secret = 2;
-}
-message SetOAuthClientResponse {}

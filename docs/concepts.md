@@ -39,6 +39,19 @@ The words this repository uses precisely.
 
 ## The console
 
+The console **reads**. It shows every person, every provider group, every
+internal group, every rule that grants one, and every open session — the
+whole chain from a directory to a client, and why each link exists. It
+changes exactly two things, and both are removals or bootstrap rather
+than policy: it **revokes** a session, and it **connects a provider** by
+admin consent, which genuinely needs a browser because there is no
+infrastructure-as-code way to obtain that credential.
+
+It cannot change who is in a group. That is the policy, rendered from the
+installation's own access model and reviewed in git (INF-694), so `git
+log` is the complete history of access and there is nothing for a console
+and a repository to disagree about.
+
 | Term | Means |
 |---|---|
 | **exposure** | a console placed behind `access-proxy`: a hostname, a backend, a posture. The proxy runs the login against the issuer, keeps the session, forwards the bearer |

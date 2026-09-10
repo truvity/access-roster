@@ -19,7 +19,6 @@ import (
 	directoryv1 "github.com/truvity/access-roster/gen/directory/v1"
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/hub"
-	"github.com/truvity/access-roster/policy"
 )
 
 // hubIdentity is what Describe reports as the backend when a hub serves
@@ -337,20 +336,6 @@ func stamp(t time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(t)
-}
-
-// policyError maps the policy's errors onto Connect codes: changing what
-// the deployment declared is a precondition failure, naming a group that
-// does not exist is not-found, and anything else is the caller's fault.
-func policyError(err error) error {
-	switch {
-	case errors.Is(err, policy.ErrDeclared):
-		return connect.NewError(connect.CodeFailedPrecondition, err)
-	case errors.Is(err, policy.ErrUnknownGroup):
-		return connect.NewError(connect.CodeNotFound, err)
-	default:
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	}
 }
 
 // rpcError maps the hub's errors onto Connect codes. A backend read that

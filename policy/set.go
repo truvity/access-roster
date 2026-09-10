@@ -9,31 +9,21 @@ import (
 	"slices"
 	"sync"
 	"time"
-
-	"github.com/truvity/access-roster/internal/emailaddr"
 )
-
-// The layers a fact can come from.
-const (
-	// LayerDeclared is the deployment's: rendered from the installation's
-	// own access model, reviewed in git.
-	LayerDeclared = "declared"
-	// LayerConsole is what an operator added in the console.
-	LayerConsole = "console"
-)
-
-// ErrDeclared is returned when the console tries to change what the
-// deployment owns.
-var ErrDeclared = errors.New("policy: declared by the deployment")
 
 // ErrUnknownGroup is returned for a group name the policy does not have.
 var ErrUnknownGroup = errors.New("policy: not a declared group")
 
-// Member is one directory group in an internal group, and where it came
-// from, so that the console can show what it may remove.
+// Member is one directory group in an internal group.
+//
+// There used to be a Layer here, saying whether the deployment declared
+// it or an operator added it in the console. There is one layer now
+// (INF-694): who is in which internal group is the policy, rendered from
+// the installation's own access model and reviewed in git, and nothing
+// else. A console that could disagree with git was a second source of
+// truth and a merge to reconcile them.
 type Member struct {
 	Address string
-	Layer   string
 }
 
 // GroupView is one internal group as an operator sees it: who is in it,
@@ -53,13 +43,14 @@ type MatcherView struct {
 	Rule string
 }
 
-// Set is the policy in force: the declared layer, plus the memberships a
-// console added. Both load through the same schema and merge additively;
-// a membership the deployment declared cannot be removed here.
+// Set is the policy in force. One layer: what the deployment declared.
+//
+// It stays a type of its own rather than a bare [Policy] because it is
+// read concurrently by every request while a rollout may be replacing
+// it, and because the views the console reads are shaped here.
 type Set struct {
 	mu       sync.RWMutex
 	declared Policy
-	console  map[string][]string
 }
 
 // NewSet validates a declared layer and returns it as the policy in
@@ -68,90 +59,14 @@ func NewSet(declared Policy) (*Set, error) {
 	if err := declared.Validate(); err != nil {
 		return nil, err
 	}
-	return &Set{declared: declared, console: map[string][]string{}}, nil
-}
-
-// SetConsole replaces the console layer.
-func (s *Set) SetConsole(memberships map[string][]string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, name := range slices.Sorted(maps.Keys(memberships)) {
-		if _, ok := s.declared.Groups[name]; !ok {
-			return fmt.Errorf("%w: %s", ErrUnknownGroup, name)
-		}
-		for _, address := range memberships[name] {
-			if _, ok := emailaddr.Domain(address); !ok {
-				return fmt.Errorf("policy: %q in %q has no domain", address, name)
-			}
-		}
-	}
-	s.console = map[string][]string{}
-	for name, members := range memberships {
-		s.console[name] = slices.Clone(members)
-	}
-	return nil
-}
-
-// AddMembership records a directory group in an internal group. It
-// reports whether anything changed.
-func (s *Set) AddMembership(group, address string) (bool, error) {
-	if _, ok := emailaddr.Domain(address); !ok {
-		return false, fmt.Errorf("policy: %q has no domain", address)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.declared.Groups[group]; !ok {
-		return false, fmt.Errorf("%w: %s", ErrUnknownGroup, group)
-	}
-	for _, member := range s.membersLocked(group) {
-		if member.Address == address {
-			return false, nil
-		}
-	}
-	s.console[group] = append(s.console[group], address)
-	return true, nil
-}
-
-// RemoveMembership drops a directory group the console added. A declared
-// one refuses: it is removed from the deployment instead.
-func (s *Set) RemoveMembership(group, address string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.declared.Groups[group]; !ok {
-		return fmt.Errorf("%w: %s", ErrUnknownGroup, group)
-	}
-	if slices.Contains(s.declared.Groups[group].Members, address) ||
-		slices.Contains(s.declared.Memberships[group], address) {
-		return fmt.Errorf("%w: %s in %s", ErrDeclared, address, group)
-	}
-	before := len(s.console[group])
-	s.console[group] = slices.DeleteFunc(s.console[group], func(a string) bool { return a == address })
-	if len(s.console[group]) == before {
-		return fmt.Errorf("policy: %s is not in %s", address, group)
-	}
-	if len(s.console[group]) == 0 {
-		delete(s.console, group)
-	}
-	return nil
-}
-
-// Console returns the console layer, which is what gets persisted and
-// what the export shows.
-func (s *Set) Console() map[string][]string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make(map[string][]string, len(s.console))
-	for name, members := range s.console {
-		out[name] = slices.Clone(members)
-	}
-	return out
+	return &Set{declared: declared}, nil
 }
 
 // Evaluate resolves a proof against the policy in force.
 func (s *Set) Evaluate(in Input) Result {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.effectiveLocked().Evaluate(in)
+	return s.declared.Evaluate(in)
 }
 
 // Client returns a declared client.
@@ -167,14 +82,13 @@ func (s *Set) Groups() []GroupView {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	effective := s.effectiveLocked()
 	out := make([]GroupView, 0, len(s.declared.Groups))
 	for _, name := range slices.Sorted(maps.Keys(s.declared.Groups)) {
 		view := GroupView{
 			Name:     name,
 			Members:  s.membersLocked(name),
 			Claims:   s.declared.Claims[name],
-			Lifetime: effective.lifetimeOf([]string{name}),
+			Lifetime: s.declared.lifetimeOf([]string{name}),
 		}
 		for _, matcher := range s.declared.Groups[name].Matchers {
 			view.Matchers = append(view.Matchers, matcher.Describe())
@@ -210,33 +124,11 @@ func (s *Set) HasGroup(name string) bool {
 	return ok
 }
 
-// membersLocked is a group's members with their layer, declared first.
+// membersLocked is a group's directory groups, in declared order.
 func (s *Set) membersLocked(group string) []Member {
 	var out []Member
 	for _, address := range s.declared.Groups[group].Members {
-		out = append(out, Member{Address: address, Layer: LayerDeclared})
-	}
-	for _, address := range s.declared.Memberships[group] {
-		out = append(out, Member{Address: address, Layer: LayerDeclared})
-	}
-	for _, address := range s.console[group] {
-		if !slices.ContainsFunc(out, func(m Member) bool { return m.Address == address }) {
-			out = append(out, Member{Address: address, Layer: LayerConsole})
-		}
-	}
-	return out
-}
-
-// effectiveLocked folds the console layer into the declared one for
-// evaluation.
-func (s *Set) effectiveLocked() Policy {
-	out := s.declared
-	out.Memberships = make(map[string][]string, len(s.declared.Memberships)+len(s.console))
-	for name, members := range s.declared.Memberships {
-		out.Memberships[name] = slices.Clone(members)
-	}
-	for name, members := range s.console {
-		out.Memberships[name] = append(out.Memberships[name], members...)
+		out = append(out, Member{Address: address})
 	}
 	return out
 }
@@ -292,8 +184,8 @@ func readOne(name string) (Policy, error) {
 }
 
 // mergeLayer folds one declared file into another. Every table merges by
-// key and a repeated key is an error, except memberships, which append —
-// that is what makes "one file per source" work.
+// key and a repeated key is an error — which is what makes "one file per
+// source" work: two files cannot silently disagree about one group.
 func (p *Policy) mergeLayer(other Policy, from string) error {
 	if other.Version != 1 {
 		return fmt.Errorf("%s: version %d is not supported", from, other.Version)
@@ -309,9 +201,6 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 	}
 	if p.Clients == nil {
 		p.Clients = map[string]Client{}
-	}
-	if p.Memberships == nil {
-		p.Memberships = map[string][]string{}
 	}
 	for name, group := range other.Groups {
 		if _, clash := p.Groups[name]; clash {
@@ -336,9 +225,6 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 			return fmt.Errorf("%s: client %q is declared twice", from, id)
 		}
 		p.Clients[id] = client
-	}
-	for name, members := range other.Memberships {
-		p.Memberships[name] = append(p.Memberships[name], members...)
 	}
 	return nil
 }
