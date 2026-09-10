@@ -21,9 +21,9 @@ import "google/protobuf/timestamp.proto";
 // stolen operator session can do through this surface is sign people out.
 service SessionService {
   // ListSessions answers what is open. Narrow it to one identity or one
-  // client; a request that narrows to neither is refused, because
-  // "everything" names every person signed in and this service will not
-  // answer that.
+  // client, which anybody may ask about their own; naming neither is the
+  // global listing, and it is refused unless the caller is an operator
+  // (INF-682), paged by page_size/page_token.
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
   // RevokeSessions ends a set of them and says how many it ended.
   rpc RevokeSessions(RevokeSessionsRequest) returns (RevokeSessionsResponse);
@@ -61,18 +61,34 @@ message Session {
   google.protobuf.Timestamp expires_at = 6;
   // Unset when it has never been refreshed.
   google.protobuf.Timestamp last_refreshed = 7;
+  // The browser (SSO) session this one was opened from, empty for a flow
+  // with no browser -- a device code redeemed by a CLI, an exchange. A
+  // console groups a person's sessions under this so that "this laptop"
+  // reads as one thing, and *sign out everywhere* is what ends it.
+  string sso = 8;
 }
 
 message ListSessionsRequest {
-  // At least one of these. Both narrows to their intersection: "Ada's
-  // ArgoCD sessions".
+  // Narrows to their intersection: "Ada's ArgoCD sessions". Naming
+  // neither is the global listing — every session in the installation —
+  // which is operator-only (INF-682): the two questions anybody else has
+  // are "what does this person have open" and "who is on this client".
   string identity = 1;
   string client_id = 2;
+  // How many to return. Zero picks a server default; the server caps it
+  // regardless of what is asked for, so a client can always ask for more
+  // than it needs.
+  int32 page_size = 3;
+  // Opaque; pass back next_page_token from the previous response to
+  // continue a listing. Empty starts from the newest session.
+  string page_token = 4;
 }
 
 message ListSessionsResponse {
   // Newest first.
   repeated Session sessions = 1;
+  // Non-empty when more sessions follow this page.
+  string next_page_token = 2;
 }
 
 message RevokeSessionsRequest {

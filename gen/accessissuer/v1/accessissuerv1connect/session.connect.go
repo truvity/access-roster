@@ -54,9 +54,9 @@ const (
 // SessionServiceClient is a client for the accessissuer.v1.SessionService service.
 type SessionServiceClient interface {
 	// ListSessions answers what is open. Narrow it to one identity or one
-	// client; a request that narrows to neither is refused, because
-	// "everything" names every person signed in and this service will not
-	// answer that.
+	// client, which anybody may ask about their own; naming neither is the
+	// global listing, and it is refused unless the caller is an operator
+	// (INF-682), paged by page_size/page_token.
 	ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error)
 	// RevokeSessions ends a set of them and says how many it ended.
 	RevokeSessions(context.Context, *connect.Request[v1.RevokeSessionsRequest]) (*connect.Response[v1.RevokeSessionsResponse], error)
@@ -107,9 +107,9 @@ func (c *sessionServiceClient) RevokeSessions(ctx context.Context, req *connect.
 // SessionServiceHandler is an implementation of the accessissuer.v1.SessionService service.
 type SessionServiceHandler interface {
 	// ListSessions answers what is open. Narrow it to one identity or one
-	// client; a request that narrows to neither is refused, because
-	// "everything" names every person signed in and this service will not
-	// answer that.
+	// client, which anybody may ask about their own; naming neither is the
+	// global listing, and it is refused unless the caller is an operator
+	// (INF-682), paged by page_size/page_token.
 	ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error)
 	// RevokeSessions ends a set of them and says how many it ended.
 	RevokeSessions(context.Context, *connect.Request[v1.RevokeSessionsRequest]) (*connect.Response[v1.RevokeSessionsResponse], error)

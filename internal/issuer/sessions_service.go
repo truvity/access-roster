@@ -188,6 +188,16 @@ func cookieIn(header http.Header, name string) string {
 	return cookie.Value
 }
 
+// defaultSessionsPageSize and maxSessionsPageSize bound the global listing
+// (INF-682). Narrowed to one identity or one client a listing is already
+// small — an account or a client does not hold thousands of open
+// sessions — so only the unnarrowed, operator-only listing needs a cap at
+// all; applying the same cap there too keeps one rule rather than two.
+const (
+	defaultSessionsPageSize = 50
+	maxSessionsPageSize     = 500
+)
+
 // ListSessions implements the contract.
 func (s *SessionsService) ListSessions(
 	ctx context.Context, req *connect.Request[accessissuerv1.ListSessionsRequest],
@@ -200,18 +210,20 @@ func (s *SessionsService) ListSessions(
 	identity := strings.TrimSpace(req.Msg.GetIdentity())
 	clientID := strings.TrimSpace(req.Msg.GetClientId())
 
-	// A request that narrows to neither names every person signed in.
-	// This service does not answer that, and refusing is not a
-	// limitation: the two questions an operator actually has are "what
-	// does this person have open" and "who is on this client".
-	if identity == "" && clientID == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument,
-			errors.New("name an identity or a client: this service does not list every session"))
+	// Naming neither is the global listing: every session in the
+	// installation, newest first. It exists for the incident where you do
+	// not know WHOSE session to look for, and it is operator-only: an
+	// operator who can already list any identity by name and read the
+	// whole policy gains no disclosure from it that they could not
+	// already piece together, one identity at a time.
+	if identity == "" && clientID == "" && !who.operator {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("listing every session is an operator's"))
 	}
 
 	// Listing by client alone would name everybody on it, so it is an
 	// operator's question. Listing your own is anyone's.
-	if identity == "" && !who.operator {
+	if identity == "" && clientID != "" && !who.operator {
 		return nil, connect.NewError(connect.CodePermissionDenied,
 			errors.New("listing a client's sessions is an operator's"))
 	}
@@ -226,15 +238,57 @@ func (s *SessionsService) ListSessions(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
+	page, nextToken := paginate(found, int(req.Msg.GetPageSize()), strings.TrimSpace(req.Msg.GetPageToken()))
+
 	out := &accessissuerv1.ListSessionsResponse{
-		Sessions: make([]*accessissuerv1.Session, 0, len(found)),
+		Sessions:      make([]*accessissuerv1.Session, 0, len(page)),
+		NextPageToken: nextToken,
 	}
 
-	for i := range found {
-		out.Sessions = append(out.Sessions, described(found[i]))
+	for i := range page {
+		out.Sessions = append(out.Sessions, described(page[i]))
 	}
 
 	return connect.NewResponse(out), nil
+}
+
+// paginate slices an already-sorted (newest first) list into one page.
+// The token is the id of the last session already seen, not an offset: an
+// offset is invalidated by every session that opens or closes between two
+// calls, and this index is exactly the thing that changes constantly. An
+// id that has since expired or been revoked is simply not found, and the
+// listing falls back to the start rather than erroring on a page an
+// operator is still allowed to ask for.
+func paginate(sessions []Session, size int, token string) ([]Session, string) {
+	switch {
+	case size <= 0:
+		size = defaultSessionsPageSize
+	case size > maxSessionsPageSize:
+		size = maxSessionsPageSize
+	}
+
+	start := 0
+
+	if token != "" {
+		for i := range sessions {
+			if sessions[i].ID == token {
+				start = i + 1
+
+				break
+			}
+		}
+	}
+
+	if start >= len(sessions) {
+		return nil, ""
+	}
+
+	end := start + size
+	if end >= len(sessions) {
+		return sessions[start:], ""
+	}
+
+	return sessions[start:end], sessions[end-1].ID
 }
 
 // RevokeSessions implements the contract.
@@ -318,6 +372,7 @@ func described(s Session) *accessissuerv1.Session {
 		How:       howOf(s.How),
 		IssuedAt:  timestamppb.New(s.IssuedAt),
 		ExpiresAt: timestamppb.New(s.ExpiresAt),
+		Sso:       s.SSO,
 	}
 
 	if !s.LastRefreshed.IsZero() {

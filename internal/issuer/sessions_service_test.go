@@ -2,6 +2,7 @@ package issuer_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -104,15 +105,16 @@ func TestYourOwnSessionsAreYours(t *testing.T) {
 }
 
 // A request that narrows to neither an identity nor a client names every
-// person signed in. This service does not answer that.
+// person signed in. That is the global listing (INF-682), and a
+// non-operator does not get it.
 func TestListingEverythingIsRefused(t *testing.T) {
 	t.Parallel()
 
 	svc := service(t, issuer.NewMemoryState())
 
-	if _, err := list(t, svc, "ops@north.example|"+policy.GroupOperators,
+	if _, err := list(t, svc, "ada@north.example|",
 		&accessissuerv1.ListSessionsRequest{}); err == nil {
-		t.Error("an unnarrowed listing was answered")
+		t.Error("a non-operator's unnarrowed listing was answered")
 	}
 }
 
@@ -162,6 +164,88 @@ func TestRevokeNarrowsToOneClient(t *testing.T) {
 
 	if len(left) != 1 || left[0].ClientID != "k8s:kernel" {
 		t.Errorf("Ada keeps %v, want only her kubectl session", left)
+	}
+}
+
+// The global listing -- neither identity nor client named -- is every
+// session in the installation, and it is operator-only (INF-682): the
+// incident case is the one where you do not know WHOSE session to look
+// for.
+func TestGlobalListingIsOperatorOnly(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+	svc := service(t, state)
+
+	for _, who := range []string{"ada@north.example", "eli@south.example"} {
+		if _, err := sessions.Record(ctx, issuer.Opened{Identity: who, ClientID: "argocd", How: issuer.HowCode, Token: "t-" + who}); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+
+	if _, err := list(t, svc, "ada@north.example|", &accessissuerv1.ListSessionsRequest{}); err == nil {
+		t.Error("a non-operator listed every session")
+	}
+
+	got, err := list(t, svc, "ops@north.example|"+policy.GroupOperators, &accessissuerv1.ListSessionsRequest{})
+	if err != nil {
+		t.Fatalf("an operator could not list every session: %v", err)
+	}
+
+	if len(got.GetSessions()) != 2 {
+		t.Errorf("operator sees %d sessions, want 2", len(got.GetSessions()))
+	}
+}
+
+// Paging the global listing returns a token while sessions remain, and
+// none once the last page is reached; walking every page with it visits
+// each session exactly once.
+func TestGlobalListingPages(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+	svc := service(t, state)
+
+	for i := 0; i < 5; i++ {
+		identity := fmt.Sprintf("person%d@north.example", i)
+		if _, err := sessions.Record(ctx, issuer.Opened{Identity: identity, ClientID: "argocd", How: issuer.HowCode, Token: "t-" + identity}); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+
+	seen := map[string]bool{}
+	token := ""
+
+	for {
+		got, err := list(t, svc, "ops@north.example|"+policy.GroupOperators,
+			&accessissuerv1.ListSessionsRequest{PageSize: 2, PageToken: token})
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+
+		if len(got.GetSessions()) == 0 {
+			t.Fatal("a page came back empty while a token was still outstanding")
+		}
+
+		for _, s := range got.GetSessions() {
+			if seen[s.GetId()] {
+				t.Errorf("session %s returned twice across pages", s.GetId())
+			}
+			seen[s.GetId()] = true
+		}
+
+		token = got.GetNextPageToken()
+		if token == "" {
+			break
+		}
+	}
+
+	if len(seen) != 5 {
+		t.Errorf("paged through %d sessions, want 5", len(seen))
 	}
 }
 

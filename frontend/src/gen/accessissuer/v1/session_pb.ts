@@ -23,7 +23,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file accessissuer/v1/session.proto.
  */
 export const file_accessissuer_v1_session: GenFile = /*@__PURE__*/
-  fileDesc("Ch1hY2Nlc3Npc3N1ZXIvdjEvc2Vzc2lvbi5wcm90bxIPYWNjZXNzaXNzdWVyLnYxIvABCgdTZXNzaW9uEgoKAmlkGAEgASgJEhAKCGlkZW50aXR5GAIgASgJEhEKCWNsaWVudF9pZBgDIAEoCRIhCgNob3cYBCABKA4yFC5hY2Nlc3Npc3N1ZXIudjEuSG93Ei0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoObGFzdF9yZWZyZXNoZWQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIjoKE0xpc3RTZXNzaW9uc1JlcXVlc3QSEAoIaWRlbnRpdHkYASABKAkSEQoJY2xpZW50X2lkGAIgASgJIkIKFExpc3RTZXNzaW9uc1Jlc3BvbnNlEioKCHNlc3Npb25zGAEgAygLMhguYWNjZXNzaXNzdWVyLnYxLlNlc3Npb24iUAoVUmV2b2tlU2Vzc2lvbnNSZXF1ZXN0EhAKCGlkZW50aXR5GAEgASgJEhEKCWNsaWVudF9pZBgCIAEoCRISCgpzZXNzaW9uX2lkGAMgASgJIicKFlJldm9rZVNlc3Npb25zUmVzcG9uc2USDQoFZW5kZWQYASABKAUqSgoDSG93EhMKD0hPV19VTlNQRUNJRklFRBAAEgwKCEhPV19DT0RFEAESDgoKSE9XX0RFVklDRRACEhAKDEhPV19FWENIQU5HRRADMtABCg5TZXNzaW9uU2VydmljZRJbCgxMaXN0U2Vzc2lvbnMSJC5hY2Nlc3Npc3N1ZXIudjEuTGlzdFNlc3Npb25zUmVxdWVzdBolLmFjY2Vzc2lzc3Vlci52MS5MaXN0U2Vzc2lvbnNSZXNwb25zZRJhCg5SZXZva2VTZXNzaW9ucxImLmFjY2Vzc2lzc3Vlci52MS5SZXZva2VTZXNzaW9uc1JlcXVlc3QaJy5hY2Nlc3Npc3N1ZXIudjEuUmV2b2tlU2Vzc2lvbnNSZXNwb25zZULFAQoTY29tLmFjY2Vzc2lzc3Vlci52MUIMU2Vzc2lvblByb3RvUAFaQ2dpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9hY2Nlc3Npc3N1ZXIvdjE7YWNjZXNzaXNzdWVydjGiAgNBWFiqAg9BY2Nlc3Npc3N1ZXIuVjHKAg9BY2Nlc3Npc3N1ZXJcVjHiAhtBY2Nlc3Npc3N1ZXJcVjFcR1BCTWV0YWRhdGHqAhBBY2Nlc3Npc3N1ZXI6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("Ch1hY2Nlc3Npc3N1ZXIvdjEvc2Vzc2lvbi5wcm90bxIPYWNjZXNzaXNzdWVyLnYxIv0BCgdTZXNzaW9uEgoKAmlkGAEgASgJEhAKCGlkZW50aXR5GAIgASgJEhEKCWNsaWVudF9pZBgDIAEoCRIhCgNob3cYBCABKA4yFC5hY2Nlc3Npc3N1ZXIudjEuSG93Ei0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoObGFzdF9yZWZyZXNoZWQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgsKA3NzbxgIIAEoCSJhChNMaXN0U2Vzc2lvbnNSZXF1ZXN0EhAKCGlkZW50aXR5GAEgASgJEhEKCWNsaWVudF9pZBgCIAEoCRIRCglwYWdlX3NpemUYAyABKAUSEgoKcGFnZV90b2tlbhgEIAEoCSJbChRMaXN0U2Vzc2lvbnNSZXNwb25zZRIqCghzZXNzaW9ucxgBIAMoCzIYLmFjY2Vzc2lzc3Vlci52MS5TZXNzaW9uEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSJQChVSZXZva2VTZXNzaW9uc1JlcXVlc3QSEAoIaWRlbnRpdHkYASABKAkSEQoJY2xpZW50X2lkGAIgASgJEhIKCnNlc3Npb25faWQYAyABKAkiJwoWUmV2b2tlU2Vzc2lvbnNSZXNwb25zZRINCgVlbmRlZBgBIAEoBSpKCgNIb3cSEwoPSE9XX1VOU1BFQ0lGSUVEEAASDAoISE9XX0NPREUQARIOCgpIT1dfREVWSUNFEAISEAoMSE9XX0VYQ0hBTkdFEAMy0AEKDlNlc3Npb25TZXJ2aWNlElsKDExpc3RTZXNzaW9ucxIkLmFjY2Vzc2lzc3Vlci52MS5MaXN0U2Vzc2lvbnNSZXF1ZXN0GiUuYWNjZXNzaXNzdWVyLnYxLkxpc3RTZXNzaW9uc1Jlc3BvbnNlEmEKDlJldm9rZVNlc3Npb25zEiYuYWNjZXNzaXNzdWVyLnYxLlJldm9rZVNlc3Npb25zUmVxdWVzdBonLmFjY2Vzc2lzc3Vlci52MS5SZXZva2VTZXNzaW9uc1Jlc3BvbnNlQsUBChNjb20uYWNjZXNzaXNzdWVyLnYxQgxTZXNzaW9uUHJvdG9QAVpDZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2FjY2Vzc2lzc3Vlci92MTthY2Nlc3Npc3N1ZXJ2MaICA0FYWKoCD0FjY2Vzc2lzc3Vlci5WMcoCD0FjY2Vzc2lzc3VlclxWMeICG0FjY2Vzc2lzc3VlclxWMVxHUEJNZXRhZGF0YeoCEEFjY2Vzc2lzc3Vlcjo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
 
 /**
  * Session is one refresh token, described. The token itself is never
@@ -77,6 +77,16 @@ export type Session = Message<"accessissuer.v1.Session"> & {
    * @generated from field: google.protobuf.Timestamp last_refreshed = 7;
    */
   lastRefreshed?: Timestamp | undefined;
+
+  /**
+   * The browser (SSO) session this one was opened from, empty for a flow
+   * with no browser -- a device code redeemed by a CLI, an exchange. A
+   * console groups a person's sessions under this so that "this laptop"
+   * reads as one thing, and *sign out everywhere* is what ends it.
+   *
+   * @generated from field: string sso = 8;
+   */
+  sso: string;
 };
 
 /**
@@ -91,8 +101,10 @@ export const SessionSchema: GenMessage<Session> = /*@__PURE__*/
  */
 export type ListSessionsRequest = Message<"accessissuer.v1.ListSessionsRequest"> & {
   /**
-   * At least one of these. Both narrows to their intersection: "Ada's
-   * ArgoCD sessions".
+   * Narrows to their intersection: "Ada's ArgoCD sessions". Naming
+   * neither is the global listing — every session in the installation —
+   * which is operator-only (INF-682): the two questions anybody else has
+   * are "what does this person have open" and "who is on this client".
    *
    * @generated from field: string identity = 1;
    */
@@ -102,6 +114,23 @@ export type ListSessionsRequest = Message<"accessissuer.v1.ListSessionsRequest">
    * @generated from field: string client_id = 2;
    */
   clientId: string;
+
+  /**
+   * How many to return. Zero picks a server default; the server caps it
+   * regardless of what is asked for, so a client can always ask for more
+   * than it needs.
+   *
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * Opaque; pass back next_page_token from the previous response to
+   * continue a listing. Empty starts from the newest session.
+   *
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
 };
 
 /**
@@ -121,6 +150,13 @@ export type ListSessionsResponse = Message<"accessissuer.v1.ListSessionsResponse
    * @generated from field: repeated accessissuer.v1.Session sessions = 1;
    */
   sessions: Session[];
+
+  /**
+   * Non-empty when more sessions follow this page.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -239,9 +275,9 @@ export const HowSchema: GenEnum<How> = /*@__PURE__*/
 export const SessionService: GenService<{
   /**
    * ListSessions answers what is open. Narrow it to one identity or one
-   * client; a request that narrows to neither is refused, because
-   * "everything" names every person signed in and this service will not
-   * answer that.
+   * client, which anybody may ask about their own; naming neither is the
+   * global listing, and it is refused unless the caller is an operator
+   * (INF-682), paged by page_size/page_token.
    *
    * @generated from rpc accessissuer.v1.SessionService.ListSessions
    */
