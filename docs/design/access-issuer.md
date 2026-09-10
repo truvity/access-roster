@@ -267,11 +267,14 @@ Where they show, organically:
 - Sections render only when an issuer is configured, so a hub deployed
   alone has none.
 
-**The issuer keeps a plain `/account` page of its own** — your sessions
-and *sign out everywhere*, server-rendered, buttons as form posts — as
-the **fallback for an installation with no console**. An issuer on its
-own still needs a way for a person to see and end what they have open.
-It runs *with* a session, unlike the three pre-session pages below.
+**The `/account` page is gone** (INF-695, shipped in 0.12). It was
+server-rendered here because it had to be same-origin with the session
+service; the console is same-origin and now the same process, and its
+page for a person already lists the sessions and offers *sign out
+everywhere*. Two pages showing one thing is two things to keep true of
+each other. The address remains as a redirect into the console, because
+it was linked to and bookmarked, and a person following an old link
+wants the page rather than the news that it moved.
 
 The operator contract underneath is the session service — list and
 revoke — gated like the rest: your own are yours; another identity's, a

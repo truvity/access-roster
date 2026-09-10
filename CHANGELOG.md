@@ -22,6 +22,20 @@ git history.
 
 ## Unreleased
 
+- **The issuer's UI is the login page.** `/account` — a person's own
+  sessions and *sign out everywhere* — was server-rendered by the issuer
+  because it had to be same-origin with the session service (INF-695).
+  The console is same-origin and, since the merge, the same process, and
+  its page for a person already shows both. Two pages showing one thing
+  is two things to keep true of each other, so the issuer's is deleted
+  and the address redirects into the console. The two POSTs behind it go
+  with it: an endpoint that answers after the page using it is deleted is
+  surface nobody is keeping honest.
+
+  What the issuer still renders is `/login` and `/signed-out`, and both
+  stay for the same reason: each runs before there is anyone to
+  authorize, so neither can be a console page.
+
 - **One issuer, many clusters, access to none of them.** A workload's
   ServiceAccount token is verified against the key set its own cluster
   publishes, never by asking the cluster (INF-692). Asking meant a
