@@ -16,6 +16,12 @@ spec:
       annotations:
         # A policy change is a rollout: the file is read at start.
         checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
+        {{- if .Values.directory.workspaces }}
+        # A declared workspace is read once at start, so a workspace added
+        # to the values without a rollout is one an operator can see in
+        # git and nowhere in the running service.
+        checksum/overlay: {{ include (print $.Template.BasePath "/overlay-configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -46,10 +52,47 @@ spec:
               value: {{ .Values.listeners.port | quote }}
             - name: HEALTH_PORT
               value: {{ .Values.listeners.healthPort | quote }}
-            - name: HUB_ADDRESS
-              value: {{ required "hub.address is required: this service asks the hub about every person" .Values.hub.address | quote }}
-            - name: HUB_TOKEN_FILE
-              value: /var/run/access-issuer/hub/token
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # What an operator connected — the workspaces and their
+            # credentials, the memberships, the OAuth client it was
+            # given, the session key — kept as ConfigMaps and Secrets in
+            # this namespace. Anything else and a restart is a fresh
+            # installation.
+            - name: STORE
+              value: {{ .Values.directory.store | quote }}
+            - name: REFRESH_INTERVAL
+              value: {{ .Values.directory.freshness.refreshInterval | quote }}
+            - name: FRESHNESS_WINDOW
+              value: {{ .Values.directory.freshness.freshnessWindow | quote }}
+            - name: PROBE_INTERVAL
+              value: {{ .Values.directory.freshness.probeInterval | quote }}
+            - name: SESSION_LIFETIME
+              value: {{ .Values.directory.sessionLifetime | quote }}
+            - name: LOGIN_DIRECTORY
+              value: {{ .Values.directory.login | quote }}
+            {{- if .Values.directory.workspaces }}
+            - name: OVERLAY_FILE
+              value: /var/run/access-issuer/directory/overlay.yaml
+            {{- end }}
+            {{- if and .Values.route.host .Values.console.mount }}
+            # Where a browser reaches the console, and where this origin's
+            # root is. Everything that has to name itself to somebody else
+            # is built from the first: the admin-consent redirect URI, and
+            # the values the setup steps tell an operator to paste into a
+            # cloud console.
+            - name: PUBLIC_URL
+              value: https://{{ .Values.route.host }}{{ .Values.console.mount }}
+            # The admin-consent callback stays at the origin ROOT. It is
+            # the one flow that runs before anybody can be signed in, and
+            # its redirect URI is registered with every corporate tenant —
+            # so moving it under the console's path would mean
+            # re-registering it in each of them.
+            - name: PUBLIC_ROOT_URL
+              value: https://{{ .Values.route.host }}
+            {{- end }}
             # Provisioned, never minted here — see values.yaml.
             - name: SIGNING_KEY_FILE
               value: /var/run/access-issuer/signing-key/{{ .Values.signingKey.key }}
@@ -110,10 +153,24 @@ spec:
             {{- end }}
             {{- with .Values.oauthClient.secret }}
             {{- if .name }}
+            # ONE credential, read two ways, because the two halves want
+            # different things of it. Signing a person in reads it from a
+            # FILE, so this service holds no RBAC to read Secrets and a
+            # compromise of it cannot become a read of every credential in
+            # the namespace. Connecting a directory reads it through the
+            # API, because that one the console can also WRITE: an
+            # installation with no client yet is bootstrapped by pasting
+            # one into Settings.
             - name: OAUTH_CLIENT_ID_FILE
               value: /var/run/access-issuer/oauth-client/{{ .keys.clientId }}
             - name: OAUTH_CLIENT_SECRET_FILE
               value: /var/run/access-issuer/oauth-client/{{ .keys.clientSecret }}
+            - name: OAUTH_CLIENT_SECRET_NAME
+              value: {{ .name | quote }}
+            - name: OAUTH_CLIENT_ID_KEY
+              value: {{ .keys.clientId | quote }}
+            - name: OAUTH_CLIENT_SECRET_KEY
+              value: {{ .keys.clientSecret | quote }}
             {{- end }}
             {{- end }}
             {{- if .Values.route.host }}
@@ -130,9 +187,19 @@ spec:
             - name: policy
               mountPath: /var/run/access-issuer/policy
               readOnly: true
-            - name: hub-token
-              mountPath: /var/run/access-issuer/hub
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.directory.workspaces }}
+            - name: overlay
+              mountPath: /var/run/access-issuer/directory/overlay.yaml
+              subPath: overlay.yaml
               readOnly: true
+            {{- range .Values.directory.workspaces }}
+            - name: key-{{ .secretName }}
+              mountPath: /var/run/access-issuer/directory/keys/{{ .secretName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
             {{- if include "access-issuer.confidentialClients" . }}
             - name: client-secrets
               mountPath: /var/run/access-issuer/clients
@@ -171,15 +238,20 @@ spec:
         - name: policy
           configMap:
             name: {{ include "access-issuer.fullname" . }}-policy
-        # A projected token, not a mounted Secret: it is short-lived and
-        # rotated under the pod, and the hub admits nobody without one.
-        - name: hub-token
-          projected:
-            sources:
-              - serviceAccountToken:
-                  audience: {{ include "access-issuer.hubAudience" . }}
-                  expirationSeconds: 3600
-                  path: token
+        # The root filesystem is read-only, and the directory backends
+        # want somewhere to write.
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.directory.workspaces }}
+        - name: overlay
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-overlay
+        {{- range .Values.directory.workspaces }}
+        - name: key-{{ .secretName }}
+          secret:
+            secretName: {{ .secretName }}
+        {{- end }}
+        {{- end }}
         {{- if include "access-issuer.confidentialClients" . }}
         # One file per confidential client, named after the client id, so
         # the service resolves a secret by reading a path and never by

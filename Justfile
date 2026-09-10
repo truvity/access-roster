@@ -166,14 +166,11 @@ chart-lint:
     # anyone who lints the chart as published gets a failure.
     helm lint charts/access-issuer
     helm lint charts/access-issuer \
-        --set issuerURL=https://issuer.example \
-        --set hub.address=http://directory-roster.example.svc:8080
+        --set issuerURL=https://issuer.example
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://issuer.example >/dev/null
     helm template access-issuer charts/access-issuer \
         --set issuerURL=https://issuer.example \
-        --set hub.address=http://directory-roster.example.svc:8080 >/dev/null
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://issuer.example \
-        --set hub.address=http://directory-roster.example.svc:8080 \
         --set route.host=issuer.example \
         --set networkPolicy.enabled=true \
         --set 'networkPolicy.clients[0]=example-ns' \
@@ -181,18 +178,55 @@ chart-lint:
         --set signingKey.existingSecret=delivered-by-eso \
         --set valkey.address=valkey.example.svc:6379 \
         --set 'policy.groups.platform.members[0]=platform@example.com' >/dev/null
+    # One service (INF-691). The chart used to render an issuer that
+    # dialled a hub; it now renders the whole of access-roster. Three
+    # things have to be true of that render, and each of them was a way
+    # the split could come back by accident:
+    #
+    #   - nothing dials a hub any more, and no ServiceAccount token is
+    #     projected for one;
+    #   - the directory's own store is wired, so an operator's connected
+    #     workspaces survive a restart;
+    #   - the console is told where it sits, because the prefix the
+    #     gateway used to strip is also what every link the console hands
+    #     a browser has to carry.
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example \
+        --set route.host=access.example \
+        --set 'directory.workspaces[0].backend=google' \
+        --set 'directory.workspaces[0].admin=admin@example.com' \
+        --set 'directory.workspaces[0].secretName=example-key' \
+        > /tmp/access-issuer-merged.yaml
+    ! grep -q 'HUB_ADDRESS\|HUB_TOKEN_FILE\|hub-token' /tmp/access-issuer-merged.yaml
+    grep -q 'name: STORE' /tmp/access-issuer-merged.yaml
+    grep -q 'value: https://access.example/console$' /tmp/access-issuer-merged.yaml
+    grep -q 'value: https://access.example$' /tmp/access-issuer-merged.yaml
+    grep -q 'name: OVERLAY_FILE' /tmp/access-issuer-merged.yaml
+    grep -q 'secretName: example-key' /tmp/access-issuer-merged.yaml
+    # The namespaced Role comes with the Kubernetes store and only with
+    # it: a deployment keeping nothing needs no permission to write.
+    test "$(grep -c '^kind: Role$' /tmp/access-issuer-merged.yaml)" = "1"
+    test "$(helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example --set directory.store=memory \
+        | grep -c '^kind: Role$')" = "0"
+    # The console is not mounted without a mount, and PUBLIC_URL then has
+    # nothing to say.
+    ! helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example --set route.host=access.example \
+        --set console.mount= | grep -q 'PUBLIC_URL'
+
     # route.sharedWith (INF-687): the other half of the console's
     # pathPrefix. Empty keeps `from: Same`; naming a namespace renders a
     # Selector over it AND this issuer's own -- dropping its own would
     # lock this chart's own HTTPRoute out of the Gateway it just rendered.
     helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://issuer.example --set hub.address=http://h:8080 \
+        --set issuerURL=https://issuer.example \
         --set route.host=issuer.example --namespace issuer-ns \
         > /tmp/access-issuer-noshare.yaml
     grep -q 'from: Same' /tmp/access-issuer-noshare.yaml
     ! grep -q 'from: Selector' /tmp/access-issuer-noshare.yaml
     helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://issuer.example --set hub.address=http://h:8080 \
+        --set issuerURL=https://issuer.example \
         --set route.host=issuer.example --set 'route.sharedWith[0]=hub-ns' --namespace issuer-ns \
         > /tmp/access-issuer-shared.yaml
     grep -q 'from: Selector' /tmp/access-issuer-shared.yaml
@@ -251,7 +285,7 @@ chart-lint:
     # annotation, the hub did not, and the hub answered from the policy it
     # booted with for as long as its pods lived.
     test "$(helm template t charts/directory-roster --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
-    test "$(helm template t charts/access-issuer --set issuerURL=https://i.example --set hub.address=http://h.example:8080 --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
+    test "$(helm template t charts/access-issuer --set issuerURL=https://i.example --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
     # Half a sign-out is worse than none: the proxy's cookie goes, the
     # issuer keeps the session, and the next click is admitted with no
     # password -- a failure that looks exactly like success. So asking for
@@ -283,10 +317,10 @@ chart-lint:
     # The issuer's root: a bare GET of the host lands somewhere useful
     # when a console shares it, and 404s honestly when one does not.
     helm template t charts/access-issuer --set issuerURL=https://a.example \
-        --set hub.address=http://h:8080 --set route.host=a.example \
+        --set route.host=a.example \
         --set route.rootRedirect=/console/ | grep -q 'replaceFullPath: "/console/"'
     ! helm template t charts/access-issuer --set issuerURL=https://a.example \
-        --set hub.address=http://h:8080 --set route.host=a.example \
+        --set route.host=a.example \
         | grep -q 'RequestRedirect'
     # Under a path prefix the WHOLE sign-out chain moves with the
     # console, and both halves are the kind that fail silently. The
@@ -306,8 +340,8 @@ chart-lint:
     # GitHub, because anybody may run a workflow in their own and get a
     # valid token: the verifier refuses to run without the list, and the
     # chart must not invent one.
-    ! helm template t charts/access-issuer --set issuerURL=https://iss.example --set hub.address=http://h:8080 | grep -q GITHUB_OWNERS
-    helm template t charts/access-issuer --set issuerURL=https://iss.example --set hub.address=http://h:8080 --set 'github.owners={truvity}' | grep -q GITHUB_OWNERS
+    ! helm template t charts/access-issuer --set issuerURL=https://iss.example | grep -q GITHUB_OWNERS
+    helm template t charts/access-issuer --set issuerURL=https://iss.example --set 'github.owners={truvity}' | grep -q GITHUB_OWNERS
 
 # Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
 # that `npm install github:truvity/access-roster#vX` needs no toolchain —

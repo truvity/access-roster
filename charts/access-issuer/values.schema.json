@@ -49,18 +49,6 @@
         }
       }
     },
-    "hub": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "address": {
-          "type": "string"
-        },
-        "audience": {
-          "type": "string"
-        }
-      }
-    },
     "signingKey": {
       "type": "object",
       "additionalProperties": false,
@@ -314,12 +302,95 @@
         "origin": {
           "type": "string",
           "description": "One origin, e.g. https://dir.example. Empty serves SessionService not at all."
+        },
+        "mount": {
+          "type": "string",
+          "description": "Where the console is mounted on this issuer's origin, e.g. /console. Empty serves no console."
         }
       }
     },
     "cluster": {
       "type": "string",
       "description": "What this cluster is called; becomes part of a ServiceAccount's subject. Empty keeps the unqualified form."
+    },
+    "directory": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The corporate directories this service reads itself.",
+      "properties": {
+        "store": {
+          "type": "string",
+          "enum": [
+            "kubernetes",
+            "memory"
+          ],
+          "description": "Where what an operator connected is kept. `memory` makes a restart a fresh installation."
+        },
+        "freshness": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "refreshInterval": {
+              "type": "string"
+            },
+            "freshnessWindow": {
+              "type": "string"
+            },
+            "probeInterval": {
+              "type": "string"
+            }
+          }
+        },
+        "sessionLifetime": {
+          "type": "string"
+        },
+        "login": {
+          "type": "boolean",
+          "description": "Whether the console offers a sign-in of its own under /console/login."
+        },
+        "workspaces": {
+          "type": "array",
+          "description": "Declared workspaces: each names a Secret holding a service-account key and the admin to impersonate.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "backend",
+              "admin",
+              "secretName"
+            ],
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "admin": {
+                "type": "string"
+              },
+              "secretName": {
+                "type": "string"
+              },
+              "secretKey": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "serve": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "syncGroups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {

@@ -1,0 +1,36 @@
+{{- if .Values.directory.workspaces }}
+# Declared workspaces (the overlay). This service reads the file at start
+# and on change; the credential of each is the named Secret, mounted
+# beside it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-issuer.fullname" . }}-overlay
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+data:
+  overlay.yaml: |
+    workspaces:
+    {{- range .Values.directory.workspaces }}
+      {{- if .id }}
+      - id: {{ .id | quote }}
+        backend: {{ .backend | quote }}
+      {{- else }}
+      - backend: {{ .backend | quote }}
+      {{- end }}
+        admin: {{ .admin | quote }}
+        keyFile: /var/run/access-issuer/directory/keys/{{ .secretName }}/{{ .secretKey | default "key.json" }}
+      {{- with .serve }}
+        serve:
+        {{- range . }}
+          - {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      {{- with .syncGroups }}
+        syncGroups:
+        {{- range . }}
+          - {{ . | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+{{- end }}
