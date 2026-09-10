@@ -5,6 +5,16 @@ git history.
 
 ## v0.10.0
 
+- **A refused bearer at `/userinfo` now carries a challenge.** RFC 6750
+  requires a `WWW-Authenticate` header on a 401 from a bearer-protected
+  endpoint; the library answers an unusable access token with a bare
+  error and no challenge, which is the one shape a conforming client
+  cannot act on — it is told it is unauthenticated and not told what
+  would fix it, so a client library reports a transport failure or
+  retries the same token for ever. Found by the conformance work
+  (INF-683), fixed in a wrapper because the header has to be set before
+  the status is.
+
 - **The API listener's consumers hold a grant.** Admission and
   authorization were one decision: a consumer admitted at all could
   enumerate every group of every company the hub reads. One consumer —
