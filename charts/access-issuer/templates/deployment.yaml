@@ -16,6 +16,12 @@ spec:
       annotations:
         # A policy change is a rollout: the file is read at start.
         checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
+        {{- if .Values.exchange.clusters }}
+        # A federated cluster is read once at start. A row added without a
+        # rollout is a cluster whose workloads go on being refused, with
+        # nothing to see but an error naming the wrong cause.
+        checksum/clusters: {{ include (print $.Template.BasePath "/clusters-configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.directory.workspaces }}
         # A declared workspace is read once at start, so a workspace added
         # to the values without a rollout is one an operator can see in
@@ -125,11 +131,18 @@ spec:
             - name: CLUSTER
               value: {{ . | quote }}
             {{- end }}
-            {{- if .Values.exchange.workloadTokens }}
-            - name: IN_CLUSTER
-              value: "true"
             - name: EXCHANGE_AUDIENCE
               value: {{ include "access-issuer.exchangeAudience" . | quote }}
+            {{- if .Values.exchange.clusters }}
+            - name: CLUSTERS_FILE
+              value: /var/run/access-issuer/clusters.yaml
+            {{- end }}
+            {{- if .Values.recovery.enabled }}
+            # Recovery is the one thing left that asks the API server, and
+            # deliberately so: on the day everything else is broken it
+            # should depend on nothing but the cluster.
+            - name: IN_CLUSTER
+              value: "true"
             {{- end }}
             {{- if include "access-issuer.confidentialClients" . }}
             - name: CLIENT_SECRETS_DIR
@@ -187,6 +200,12 @@ spec:
             - name: policy
               mountPath: /var/run/access-issuer/policy
               readOnly: true
+            {{- if .Values.exchange.clusters }}
+            - name: clusters
+              mountPath: /var/run/access-issuer/clusters.yaml
+              subPath: clusters.yaml
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
             {{- if .Values.directory.workspaces }}
@@ -242,6 +261,11 @@ spec:
         # want somewhere to write.
         - name: tmp
           emptyDir: {}
+        {{- if .Values.exchange.clusters }}
+        - name: clusters
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-clusters
+        {{- end }}
         {{- if .Values.directory.workspaces }}
         - name: overlay
           configMap:

@@ -70,12 +70,33 @@ subject_token_type=urn:ietf:params:oauth:token-type:jwt
 audience=<the service's client id>
 ```
 
-The issuer verifies the subject token with *that* cluster's TokenReview
-(the issuer trusts the clusters; the service trusts the issuer), resolves
-the ServiceAccount through the policy's `service_account` matchers to
-internal groups, checks the client's `requires`, and mints. The service
-verifies the result against the issuer's JWKS and its own audience —
-the same verifier a console uses for a forwarded bearer.
+The issuer verifies the subject token against the **key set that cluster
+publishes** for its own ServiceAccount tokens — never by calling the
+cluster. It then resolves the ServiceAccount through the policy's
+`service_account` matchers to internal groups, checks the client's
+`requires`, and mints. The service verifies the result against the
+issuer's JWKS and its own audience, the same verifier a console uses for
+a forwarded bearer.
+
+Connecting a cluster's workloads is therefore one row and no credential:
+
+```yaml
+exchange:
+  clusters:
+    - name: devel
+      issuer: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE
+```
+
+EKS publishes that key set per cluster — it is what IRSA rests on — and
+Talos serves the same keys at the API server's `/openid/v1/jwks`. The
+issuer's own cluster is a row like any other, and the issuer holds access
+to none of them.
+
+What this gives up, said plainly: a TokenReview would notice a deleted
+ServiceAccount and a key set does not, so a token stays usable until it
+expires. Bound tokens are short-lived, so the window is minutes — and the
+alternative was a kubeconfig per cluster held by the service whose whole
+design is to hold almost no credential.
 
 A **CI job** does the same with its platform token: see
 [github-actions.md](github-actions.md). A **person** — a laptop over

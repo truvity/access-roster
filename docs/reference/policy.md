@@ -186,6 +186,20 @@ working.
 > a `cluster` to narrow to one; naming none matches any, so every rule
 > written before clusters were named still means what it meant.
 
+> **Which clusters, decided 2026-09-10 (INF-692).** The clusters whose
+> ServiceAccount tokens count are **not** in this file. They are chart
+> values — `exchange.clusters`, one row of `{name, issuer, jwksUri}` per
+> cluster — because they are not a statement about who may do what, which
+> is what this file is for. They are where a signature is checked, which
+> is deployment configuration and carries no secret. A `cluster` named in
+> a matcher is the `name` of one of those rows, and renaming a row
+> silently changes what every rule about it matches.</br></br>
+> The check itself is the key set that cluster publishes, never a call to
+> the cluster: EKS exposes one per cluster (it is what IRSA rests on),
+> Talos serves it at the API server's `/openid/v1/jwks`. So one issuer
+> serves many clusters while holding access to none, including its own.
+> TokenReview remains for recovery alone.
+
 | Kind | Merge rule |
 |---|---|
 | lists | union, de-duplicated, sorted |
