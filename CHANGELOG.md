@@ -40,6 +40,19 @@ git history.
   hands a browser: `/login` resolves against the origin, where the
   issuer's page is.
 
+  The `access-issuer` chart renders the whole of it: `directory.*` for the
+  workspaces and their freshness, `console.mount` for where the console
+  sits, a namespaced Role for the store, and no projected token for a hub
+  nobody dials. `hub.address` is gone. The `directory-roster` chart and
+  binary still ship unchanged, so an installation moves when it chooses
+  and can move back; they go once nothing points at them.
+
+  **Moving an installation is not only a chart switch.** What an operator
+  connected — the workspace records and their credentials — lives as
+  ConfigMaps and Secrets in the namespace the hub ran in. Copy them into
+  the issuer's namespace before the cutover, or the new pod starts with no
+  directories connected.
+
 - **The console says *provider*, and the tables split domain out.** What
   the code calls a workspace the console now calls a **provider**, and
   the groups it holds **provider groups**; both sides of the rail then
