@@ -98,7 +98,7 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 		return nil, err
 	}
 	if len(signIn.Providers) == 0 {
-		return truthfulDiscovery(provider), nil
+		return challenges(truthfulDiscovery(provider)), nil
 	}
 
 	signIn.Issuer = iss
@@ -140,7 +140,7 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
-	mux.Handle("/", endsTheBrowserSession(signIn, truthfulDiscovery(provider)))
+	mux.Handle("/", challenges(endsTheBrowserSession(signIn, truthfulDiscovery(provider))))
 
 	return mux, nil
 }
@@ -333,4 +333,63 @@ func browserAllowed(origin string, next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// bearerPaths are the endpoints a caller reaches with an access token
+// rather than with a client credential or a browser session. A 401 from
+// one of them is a bearer-auth failure and owes the caller a challenge.
+var bearerPaths = map[string]bool{
+	"/userinfo": true,
+}
+
+// challenges adds the `WWW-Authenticate` header RFC 6750 requires on a
+// 401 from a bearer-protected endpoint.
+//
+// The library answers an unusable access token at `/userinfo` with a
+// bare `http.Error`, and a 401 with no challenge is the one shape a
+// conforming client cannot act on: it is told it is unauthenticated and
+// not told what would fix it, so a library reports a transport failure
+// or retries the same token for ever. This is the same reasoning the
+// hub's own API guard already applies to its refusals; the difference is
+// only that this 401 is written inside a dependency.
+//
+// Written as a wrapper rather than as a patch upstream because the
+// header has to be set before the status is, and a ResponseWriter that
+// adds it at WriteHeader time is the one place that is always true.
+func challenges(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !bearerPaths[r.URL.Path] {
+			next.ServeHTTP(w, r)
+
+			return
+		}
+
+		next.ServeHTTP(&challenged{ResponseWriter: w}, r)
+	})
+}
+
+// challenged sets the challenge on the way out, and only on a 401 —
+// every other status is somebody else's answer and is passed through
+// untouched.
+type challenged struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (c *challenged) WriteHeader(status int) {
+	if !c.wrote && status == http.StatusUnauthorized && c.Header().Get("WWW-Authenticate") == "" {
+		c.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+	}
+
+	c.wrote = true
+
+	c.ResponseWriter.WriteHeader(status)
+}
+
+func (c *challenged) Write(b []byte) (int, error) {
+	if !c.wrote {
+		c.WriteHeader(http.StatusOK)
+	}
+
+	return c.ResponseWriter.Write(b)
 }
