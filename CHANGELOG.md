@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.9.13
 
 - **The console's assets are referenced relatively, so one bundle serves
   at any mount point.** Mounted under a path they were requested from the
