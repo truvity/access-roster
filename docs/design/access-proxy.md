@@ -149,7 +149,9 @@ itself, and lands the person back on the console's front page.
 
 Built 0.9.x, and three things were learned building it. The proxy's
 `whitelist_domains` must name the issuer's host or oauth2-proxy refuses
-the redirect. The chain must carry **`client_id`**: a plain `rd` has no
+the redirect — and for a console that shares its issuer's hostname on one
+domain (the directory console at `/console/`), that host is its own, so
+the list collapses to one entry. The chain must carry **`client_id`**: a plain `rd` has no
 `id_token_hint`, so without a client the issuer has no `signed_out` list
 to match the landing page against and puts the person on its own page
 instead. And the landing page is the policy client's `signed_out`, a

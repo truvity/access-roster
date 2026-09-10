@@ -3,6 +3,21 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **Docs: one domain, and where session management lives.** Decided with
+  Oleg 2026-09-10: the issuer, the directory's console and the shared UI
+  live on one hostname. The issuer sits at the **root** — its URL is the
+  `iss` claim and discovery lives at the origin root, so it cannot take a
+  path — and the console is mounted under **`/console/`**, the gateway
+  rewriting the prefix away. On one origin the console's session pages
+  call the issuer with the browser's own session cookie, so the
+  cross-origin bearer question stops existing. The global sessions
+  listing **exists**: operator-only, capped, audited. The issuer's plain
+  `/account` page stays as the fallback for an installation with no
+  console. `docs/design/access-issuer.md` *One origin*, `docs/design/hub.md`,
+  `docs/architecture.md`, the references. (INF-687, INF-682)
+
 ## v0.9.8
 
 - **A ServiceAccount's subject names its cluster.** `sub` was

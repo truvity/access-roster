@@ -31,6 +31,11 @@ exposure:
   allow: [all:myconsole:operator, all:myconsole:viewer]
 ```
 
+Your console keeps **its own hostname**. The one exception in the family
+is the directory console itself, which shares its issuer's hostname under
+`/console/` so that its session pages are same-origin with the issuer;
+that is a property of that pair, not a pattern for yours.
+
 and the policy that puts people in those groups and admits them to the
 client — the group's **name** is the value in the token, so name it what
 the console checks:

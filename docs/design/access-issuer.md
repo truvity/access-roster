@@ -189,58 +189,75 @@ consoles' existing cookies — those live until their next refresh. To end
 a session *now*, before its next refresh, is **revocation** — the
 operator's lever, and the person's own *sign out everywhere*.
 
+### One origin: the issuer at the root, the console under a path
+
+Decided 2026-09-10: the issuer, the directory's console listener and the
+shared UI live on **one hostname** (INF-687). Two rules make the shape:
+
+- **The issuer sits at the root of the domain.** That is protocol, not
+  taste. The issuer URL is the `iss` claim in every token and discovery
+  lives at `/.well-known/openid-configuration` at the origin root; an
+  issuer with a path component relocates its discovery URL to a place
+  Kubernetes and AWS handle badly. So the issuer keeps `/`, and the
+  **console takes the path** (`/console/`), with the gateway rewriting
+  the prefix away so the hub's own routes do not change.
+- **The hub's API listener is never on the domain.** It is the cluster
+  anchor, reached by Service DNS, with no route — the two-listener rule
+  does not bend for this.
+
+What the shape buys is that the console is **same-origin with the
+issuer**: a page in the console calls the session service with the
+browser's issuer session cookie, and the whole question of how a console
+reaches sessions in another origin stops existing. Other consoles in an
+installation keep their own hostnames; this is the family's own console
+sharing its issuer's.
+
+Renaming an issuer invalidates every token in circulation, which is why
+the decision was made while exactly one client trusted it and before any
+cluster or cloud account did.
+
 ### Where session management lives
 
-At the **issuer's own host**, same-origin with the session service — not
-woven by default into each console. This is how an identity provider
-places account management (Google, Okta and Auth0 all do), and here it
-also settles a question the two-listener rule would otherwise make
-awkward.
+In the **directory console**, as ordinary pages authorized by the
+browser's issuer session — because, on one origin, that is simply where
+the UI is. Sessions live in the issuer; the console reads and ends them
+through the session service at the origin root, same-origin, with the SSO
+cookie. No bearer in JavaScript, no CORS, and the hub's code still learns
+nothing about the issuer: the browser talks to the issuer, not the hub.
 
-The awkward question is how a browser reaches the session service at all.
-Sessions live in the issuer; the directory console is served by the hub,
-which **must not depend on the issuer** — the hub answers *is this
-account live* for consumers, and that has to keep working when the issuer
-is down. A browser at the console's host holds the proxy's cookie for
-that host, which is meaningless at the issuer's host. Serving session
-management at the issuer's own host dissolves this: the browser already
-holds the issuer's SSO session cookie there, the page is same-origin with
-the session service, and the service authorizes the call from that
-session — no cross-origin bearer, no hub holding an issuer token, no
-CORS.
+Where they show, organically:
 
-So:
+- **A person's page** gains *Active sessions*: one row per application —
+  how it was obtained, opened, last used, expires — with Revoke, grouped
+  under the browser session that parents them so "this laptop" reads as
+  one thing. Your own page carries *Sign out everywhere*; an operator
+  sees the same on anybody's.
+- **A client's page** gains *Open sessions*: who is on it now. Operator.
+- **A Sessions page** in the rail: every open session in the
+  installation, newest first, filterable by person and client.
+  **Operator-only, capped per page, and audited** — "someone listed
+  everyone signed in" is a read the audit stream records. This is the
+  global listing. It exists because the incident case is the one where
+  you do not know *whose* session to look for, and an operator who can
+  already list any identity by name and read the whole policy gains no
+  disclosure from it. (INF-682)
+- Sections render only when an issuer is configured, so a hub deployed
+  alone has none.
 
-- **Self-service** — *your sessions*, *sign out everywhere* — is an
-  **account page the issuer serves at its own host**, `/account`. The
-  directory console deep-links to it. It is not one of the three
-  pre-session pages below: it runs *with* a session. It needs no
-  JavaScript — its buttons are form posts, and the session cookie's
-  `SameSite=Lax` is what makes them safe without a token of their own.
-- **The operator's cross-user view** — revoke another identity's session,
-  see who is on a client — may live on that same issuer page, gated on
-  the operator group, **or** be woven into the directory console's person
-  and client pages. Weaving it into the console is the only case that
-  needs a cross-origin bearer: the hub echoes the token it already
-  verifies onto `/.access/whoami`, the issuer allows the one
-  `console.origin`, and the session service accepts that bearer as well
-  as the SSO cookie. Which of the two is a UX choice, not a correctness
-  one.
+**The issuer keeps a plain `/account` page of its own** — your sessions
+and *sign out everywhere*, server-rendered, buttons as form posts — as
+the **fallback for an installation with no console**. An issuer on its
+own still needs a way for a person to see and end what they have open.
+It runs *with* a session, unlike the three pre-session pages below.
 
-The operator contract underneath is a small session service — list and
-revoke — gated like the rest: your own sessions are yours to list and
-end; another identity's, and a client's listing, need an operator. It can
-only remove. Whether it answers a request that names *neither* an
-identity nor a client — every session in the installation — is
-deliberately unsettled: that listing names every person signed in, and
-the two questions an operator actually asks are *what does this person
-have open* and *who is on this client*.
+The operator contract underneath is the session service — list and
+revoke — gated like the rest: your own are yours; another identity's, a
+client's, and the whole installation need an operator. It can only
+remove, which is why it may live in a console at all.
 
-The `SessionService` and the `console.origin` CORS gate shipped in v0.9.4
-for a two-host model where the console called the issuer cross-origin.
-Under the account-page design that CORS path is the *optional* one, for a
-console-embedded operator view; the primary path is same-origin at the
-issuer.
+The `console.origin` CORS gate shipped in v0.9.4 for a two-host model
+where the console called the issuer cross-origin. On one origin it is
+unnecessary, and it is removed once the cutover lands.
 
 The issuer serves three pages of its own, minimal HTML and no
 JavaScript, because each runs before any session exists: the sign-in

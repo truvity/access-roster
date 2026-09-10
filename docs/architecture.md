@@ -31,6 +31,18 @@ The hub also carries its **own login page**, for exactly two situations:
 It is drawn dotted, once, and it is never a third parallel path in an
 installation that has a proxy.
 
+**One hostname for the family's own console and its issuer** (decided
+2026-09-10, [design/access-issuer.md](design/access-issuer.md) *One
+origin*). The issuer sits at the **root** of the domain — its URL is the
+`iss` claim in every token and discovery lives at the origin root, so it
+cannot take a path — and the hub's console is mounted **under a path**,
+`/console/`, with the gateway rewriting the prefix away. The two are
+therefore same-origin, which is what lets the console's session pages
+call the issuer with the browser's own session cookie and no bearer. The
+hub's **API listener is never on that hostname**: it is the cluster
+anchor, reached by Service DNS, with no route. Every other console in the
+installation keeps its own hostname; this is one pair sharing one.
+
 ## Two trust anchors — the rule under every arrow
 
 Every solid arrow below rests on one of exactly two roots of trust, and
