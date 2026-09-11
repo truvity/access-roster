@@ -29,6 +29,24 @@
 # the cutover is a diff somebody read rather than a command somebody
 # trusted. Pipe it to `kubectl apply -f -` when you have read it.
 #
+# WHEN TO APPLY IT: in the same window as the chart bump, not before.
+# The records are written by the RUNNING service, so a copy taken early
+# goes stale the moment somebody connects or disconnects a Workspace --
+# and a set of objects already sitting in the namespace is exactly what
+# makes the next person skip the re-run.
+#
+# RUN IT FROM THE GITOPS REPO. The kernel context authenticates with
+# `kubectl oidc-login`, which is the kubelogin plugin, and kubectl finds
+# it only under the name `kubectl-oidc_login` -- which is in gitops'
+# devbox profile and not this one. This repo's devbox has `kubelogin`
+# under a name kubectl does not look for, and its own kubectl shadows
+# gitops'. The symptom is:
+#
+#     error: unknown command "oidc-login" for "kubectl"
+#
+#     cd ~/github/truvity/gitops     # direnv brings the plugin and KUBECONFIG
+#     ~/github/truvity/access-roster/hack/migrate-workspaces.sh
+#
 # Usage:
 #   hack/migrate-workspaces.sh [--context CTX] [--from NS] [--to NS] \
 #                              [--from-release NAME] [--to-release NAME]
@@ -49,7 +67,7 @@ while [ $# -gt 0 ]; do
         --to)           TO_NS="$2"; shift 2 ;;
         --from-release) FROM_RELEASE="$2"; shift 2 ;;
         --to-release)   TO_RELEASE="$2"; shift 2 ;;
-        -h|--help)      sed -n '2,33p' "$0"; exit 0 ;;
+        -h|--help)      sed -n '2,52p' "$0"; exit 0 ;;
         *)              echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
