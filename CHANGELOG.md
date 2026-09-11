@@ -22,6 +22,25 @@ git history.
 
 ## Unreleased
 
+- **`accessctl`** (INF-649, the CLI half). `login` runs the browser flow
+  once — authorization code with PKCE on a loopback port, the only
+  browser flow left since the device flow was withdrawn — and caches the
+  refresh token in a 0600 file. Everything else shares that cache:
+  `whoami`, `kubeconfig`, `aws-config`, `setup`, `exchange`, and the two
+  credential helpers `kube-token` and `aws` that kubectl and the AWS SDKs
+  run themselves.
+
+  It writes into two files that belong to somebody else, so it is careful
+  about both. The kubeconfig goes through `kubectl config` rather than
+  being rewritten, because a person's other contexts are none of this
+  tool's business. The AWS config is rewritten only between two markers,
+  so a profile for a role somebody no longer holds does not survive as an
+  entry that fails when used, and nothing outside the block is touched.
+
+  Exit codes are a contract: 2 usage, 3 not signed in, 4 audience not
+  granted, 5 issuer unreachable — so a wrapper can tell *sign in again*
+  from *the issuer is down*, and knows not to retry a refusal.
+
 - **A public `tokens` package**: the RFC 8693 exchange, and the two
   envelopes a credential helper has to speak. It is what `accessctl`
   will run on and what a workload can use directly.
