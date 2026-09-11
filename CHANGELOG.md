@@ -23,7 +23,6 @@
   offering eleven when three can hold an account made the filter mostly
   buttons that return nothing, and hid the ones that work among them.
 
-## Unreleased
 
 - **`hack/cutover-cleanup.sh`**, for the two messes the INF-691 cutover
   leaves that will not resolve on their own.
@@ -43,6 +42,12 @@
   records are both present, because those are what must survive, and it
   names every object rather than selecting by label: a selector here
   would also match what the service itself wrote.
+
+  **In the event neither was needed.** ArgoCD finished the cascade on its
+  own a few minutes later and the operator let the store go. The script
+  stays because the state it describes is real, was live for about twenty
+  minutes, and is not something to diagnose a second time from scratch —
+  and because next time it may not resolve itself.
 
 ## v0.12.2
 
