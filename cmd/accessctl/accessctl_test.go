@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -95,5 +96,29 @@ func TestOnlyOurOwnBlockIsRewritten(t *testing.T) {
 	// take the rest of the file with it.
 	if got := strip(theirs + marker + "\n[profile half]\n"); got != theirs {
 		t.Errorf("an unterminated block left %q", got)
+	}
+}
+
+// The loopback page reflects the issuer's `error_description`, which
+// comes straight off a query string: anyone who can make a browser visit
+// this port while a sign-in is running controls it. Reflecting it
+// unescaped was a real cross-site scripting hole, found by CodeQL.
+func TestTheLoopbackPageEscapesWhatItReflects(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+	page(recorder, "Sign-in refused", `<script>alert(1)</script>`)
+
+	body := recorder.Body.String()
+	if strings.Contains(body, "<script>") {
+		t.Errorf("the page reflected markup unescaped: %s", body)
+	}
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Errorf("the message was not escaped at all: %s", body)
+	}
+	// And nothing on this page loads a script, so it says so: one header
+	// that closes the class rather than this instance of it.
+	if policy := recorder.Header().Get("Content-Security-Policy"); !strings.Contains(policy, "default-src 'none'") {
+		t.Errorf("Content-Security-Policy = %q", policy)
 	}
 }
