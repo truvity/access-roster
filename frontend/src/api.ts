@@ -239,8 +239,19 @@ export function roleName(r: Role): string {
   }
 }
 
-/** The message a failed call should show, without the transport noise. */
+/** The message a failed call should show, without the transport noise.
+ *
+ *  One case is translated rather than passed through: a call refused as
+ *  UNAUTHENTICATED means the session this page was opened with has ended,
+ *  and the issuer's own sentence for it talks about tokens — which is
+ *  true and is not what happened to the person reading it. Seen on the
+ *  Sessions page as "needs a token from this issuer, or its session"
+ *  after signing out in another tab, or after ending the very browser
+ *  session the page was using. */
 export function reason(err: unknown): string {
-  if (err instanceof Error) return err.message.replace(/^\[[a-z_]+\]\s*/, "");
-  return String(err);
+  if (!(err instanceof Error)) return String(err);
+  if (/^\[unauthenticated\]/.test(err.message)) {
+    return "Your sign-in here has ended — reload the page to sign in again.";
+  }
+  return err.message.replace(/^\[[a-z_]+\]\s*/, "");
 }

@@ -51,6 +51,7 @@ export function Person({
           directory={explained.value.workspaceId || undefined}
           signedInVia={self ? sourceName(me?.source) : undefined}
           sessionsOf={issuerIsSameOrigin(me?.issuerUrl) && (self || operator) ? email : undefined}
+          signOutURL={self ? (me?.signOutUrl ?? "/logout") : undefined}
           onDone={onDone}
         />
       ) : null}
@@ -74,12 +75,16 @@ export function Explanation({
   directory,
   signedInVia,
   sessionsOf,
+  signOutURL,
   onDone,
 }: {
   value: ExplainResponse;
   directory?: string;
   signedInVia?: string;
   sessionsOf?: string;
+  /** Where to go when the sessions just ended were the reader's OWN.
+   *  Undefined on somebody else's page. */
+  signOutURL?: string;
   onDone?: (message: string) => void;
 }) {
   const [showClaims, setShowClaims] = useState(true);
@@ -112,6 +117,17 @@ export function Explanation({
     setSessionFailure(undefined);
     try {
       await sessions.revokeSessions({ identity: sessionsOf });
+
+      // "Everywhere" includes HERE. Naming no client ends the sign-in as
+      // well as the sessions, so on your own page this page's own
+      // session is one of the ones that just ended — and staying put
+      // left it acting signed in until the next call failed with a
+      // sentence about tokens. Follow through instead.
+      if (signOutURL) {
+        window.location.href = signOutURL;
+        return;
+      }
+
       onDone?.(`${sessionsOf} is signed out everywhere.`);
       found.reload();
     } catch (error) {

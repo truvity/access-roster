@@ -209,3 +209,28 @@ func TestTheConsoleIsToldWhereTheIssuerIs(t *testing.T) {
 		t.Errorf("issuerUrl = %q, want this process's own issuer", who.IssuerURL)
 	}
 }
+
+// Signing out leads back to signing in.
+//
+// The signed-out page said what had happened and left you there; Oleg
+// asked for the login page instead. Not `/login` itself — its buttons
+// carry the id of a pending authorization request, so without one it is
+// a page that looks like a sign-in and cannot finish. The console's
+// front page sends an unauthenticated browser through `/authorize`,
+// which makes that request, so it is the address that actually reaches
+// a working sign-in.
+func TestSigningOutLeadsBackToSigningIn(t *testing.T) {
+	// Not parallel: boot reads the environment, and t.Setenv forbids it.
+	app := boot(t)
+
+	if to := where(t, app.Handler(), "/logout"); to != "/console/" {
+		t.Errorf("sign-out lands on %q, want the console's front page", to)
+	}
+
+	// And that page is a sign-in a person can finish: it sends them to
+	// the issuer's chooser WITH a request id.
+	to := where(t, app.Handler(), "/console/")
+	if to == "" {
+		t.Fatal("the console's front page did not redirect an unauthenticated browser")
+	}
+}
