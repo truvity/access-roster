@@ -66,3 +66,20 @@ clients are all public or exchange-only mounts nothing.
 {{- if $client.secret }}yes{{ end }}
 {{- end }}
 {{- end }}
+
+{{/*
+The console's mount, with any trailing slash removed.
+
+`/console` and `/console/` are the same place to a person and the chart
+took them as different: the route matched "/console/" exactly and then
+redirected to "/console//", which is a path the console does not serve.
+Nothing rejected it, because both are legal strings.
+
+The value is written both ways across our own configuration -- a declared
+client carries `prefix: /console` and `mount: /console/` -- so normalising
+here is what keeps either spelling working. The Go side already trims it.
+*/}}
+{{- define "access-issuer.consoleMount" -}}
+{{- $mount := .Values.console.mount | default "" | trimSuffix "/" -}}
+{{- $mount -}}
+{{- end -}}

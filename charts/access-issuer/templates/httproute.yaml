@@ -169,18 +169,18 @@ spec:
     - matches:
         - path:
             type: Exact
-            value: {{ .Values.console.mount | quote }}
+            value: {{ include "access-issuer.consoleMount" . | quote }}
       filters:
         - type: RequestRedirect
           requestRedirect:
             path:
               type: ReplaceFullPath
-              replaceFullPath: {{ printf "%s/" .Values.console.mount | quote }}
+              replaceFullPath: {{ printf "%s/" (include "access-issuer.consoleMount" .) | quote }}
             statusCode: 302
     - matches:
         - path:
             type: PathPrefix
-            value: {{ printf "%s/" .Values.console.mount | quote }}
+            value: {{ printf "%s/" (include "access-issuer.consoleMount" .) | quote }}
       backendRefs:
         - group: ""
           kind: Service

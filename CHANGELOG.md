@@ -1,3 +1,16 @@
+## Unreleased
+
+- **`console.mount` accepts `/console/` as well as `/console`.** The
+  chart matched the trailing-slash spelling exactly and then redirected
+  it to `/console//`, a path the console does not serve — from a value
+  nothing rejects, because both are legal strings. Our own configuration
+  writes it both ways: a declared client carries `prefix: /console` and
+  `mount: /console/`. The Go side already trimmed it; now the chart does
+  too, and `just check` renders both spellings and diffs them.
+
+  Found while pointing the live gitops values at the merged chart, which
+  is exactly where it would have bitten.
+
 # Changelog
 
 One line per release; full detail lives in the release notes and the

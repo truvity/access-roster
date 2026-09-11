@@ -90,7 +90,7 @@ spec:
             # the values the setup steps tell an operator to paste into a
             # cloud console.
             - name: PUBLIC_URL
-              value: https://{{ .Values.route.host }}{{ .Values.console.mount }}
+              value: https://{{ .Values.route.host }}{{ include "access-issuer.consoleMount" . }}
             # The admin-consent callback stays at the origin ROOT. It is
             # the one flow that runs before anybody can be signed in, and
             # its redirect URI is registered with every corporate tenant —
