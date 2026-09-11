@@ -171,18 +171,30 @@ def start_chrome():
     sys.exit("chrome did not come up")
 
 
-def visit(cdp, url):
+def shoot(cdp):
+    """One screenshot of the page as it stands, as a data URI."""
+    return "data:image/png;base64," + cdp.call(
+        "Page.captureScreenshot", {"format": "png"}).get("data", "")
+
+
+def visit(cdp, url, pages=None):
     """Follow one URL the suite is waiting on, signing in if asked.
 
     Signing in means submitting the recovery form IN THE PAGE, so the
     browser follows the redirects itself and runs the callback's script —
     which is the whole reason this is a browser and not curl.
+
+    `pages` collects a screenshot of every ISSUER page passed through,
+    because some steps ask for a picture of one the driver does not stop
+    on — see [review].
     """
     cdp.call("Page.navigate", {"url": url})
     time.sleep(2.5)
 
     for _ in range(3):
         here = cdp.eval("window.location.href") or ""
+        if pages is not None and here.startswith(ISSUER):
+            pages.append((here, shoot(cdp)))
         if "/login" not in here or ISSUER not in here:
             return
         token = proof()
@@ -201,7 +213,7 @@ def visit(cdp, url):
         time.sleep(3.5)
 
 
-def review(cdp, test, seen):
+def review(cdp, test, seen, pages):
     """Answer the suite's manual steps with what the browser is showing.
 
     A third of the logout modules end at a page the suite CANNOT see: the
@@ -215,13 +227,22 @@ def review(cdp, test, seen):
     fills the placeholder, and marks the URL visited so the suite stops
     waiting on a callback that is not coming.
 
-    WHERE THE BROWSER IS decides whether the shot is worth taking. The
-    suite logs the review step BEFORE it hands over the end_session URL,
-    so a driver that uploads the moment the placeholder appears
-    photographs the suite's own "processing response" page -- which is
-    what the first run of this uploaded, eight identical times. Every one
-    of these steps ends on a page the ISSUER served, so that is the test:
-    anywhere else and the browser has not arrived yet.
+    WHICH PAGE to photograph is the whole of the difficulty, and there
+    are two kinds of step.
+
+    The logout steps end ON the page in question: the OP must refuse, so
+    the browser stops at the issuer's error page and stays there. But the
+    suite logs its review BEFORE handing over the end_session URL, so a
+    driver that shoots the moment the placeholder appears photographs the
+    suite's own "processing response" page -- which the first run of this
+    uploaded, eight identical times.
+
+    The RE-AUTHENTICATION steps (`prompt=login`, `max_age=1`) ask for a
+    picture of a page the driver does not stop on at all: the login
+    prompt during the second authorization, which it fills in and leaves.
+    By the time the placeholder is logged the browser is back on the
+    suite's callback. So every issuer page passed through is photographed
+    on the way, and the latest one answers.
     """
     outstanding = [e for e in api("/api/log/%s" % test)
                    if e.get("upload") and e.get("upload") not in seen]
@@ -229,29 +250,44 @@ def review(cdp, test, seen):
         return False
 
     here = cdp.eval("window.location.href") or ""
-    if not here.startswith(ISSUER):
+    if here.startswith(ISSUER):
+        where, shot = here, shoot(cdp)
+    elif pages:
+        where, shot = pages[-1]
+    else:
+        # Nothing from the issuer yet: the browser has not arrived, and a
+        # picture of the suite's own page is evidence of nothing.
         return False
 
     for entry in outstanding:
         seen.add(entry["upload"])
-        shot = cdp.call("Page.captureScreenshot", {"format": "png"}).get("data", "")
-        api("/api/log/%s/images/%s" % (test, entry["upload"]), method="POST",
-            text="data:image/png;base64," + shot)
+        api("/api/log/%s/images/%s" % (test, entry["upload"]), method="POST", text=shot)
         # The path, not the URL: these carry a whole id_token_hint and
         # a state of deliberate punctuation, and a screen of that buries
         # the one thing the line is for.
         print("      screenshot of %s for: %s" % (
-            here[len(ISSUER):].split("?")[0] or "/", str(entry.get("msg"))[:80]))
+            where[len(ISSUER):].split("?")[0] or "/", str(entry.get("msg"))[:80]))
     return True
 
 
 def run(cdp, plan, module):
+    # A FRESH BROWSER for every module, which several of them require in
+    # so many words: "please remove any cookies you may have received
+    # from the OpenID Provider before proceeding".
+    #
+    # Without this the driver carries one sign-in through the whole plan
+    # and `oidcc-prompt-none-not-logged-in` fails — the issuer is asked
+    # whether anybody is signed in, a live session says yes, and it
+    # completes silently, which is CORRECT behaviour being marked as a
+    # defect. The modules that need a session establish it themselves.
+    cdp.call("Network.clearBrowserCookies")
+
     started = api("/api/runner?test=%s&plan=%s" % (module, plan), method="POST")
     test = started.get("id")
     if not test:
         return "NOT-STARTED", ""
 
-    seen, filled = set(), set()
+    seen, filled, pages = set(), set(), []
     for _ in range(40):
         info = api("/api/info/%s" % test)
         status = info.get("status")
@@ -263,11 +299,11 @@ def run(cdp, plan, module):
             if url in seen:
                 continue
             seen.add(url)
-            visit(cdp, url)
+            visit(cdp, url, pages)
 
         # Only after the browser has been somewhere: the screenshot has
         # to be of the page the step asked about.
-        if seen and review(cdp, test, filled):
+        if seen and review(cdp, test, filled, pages):
             for url in urls:
                 api("/api/runner/browser/%s/visit?url=%s" % (
                     test, urllib.parse.quote(url, safe="")), method="POST")
@@ -296,6 +332,7 @@ def main():
     print("plan %s: %d module(s)\n" % (args.plan, len(modules)))
     chrome, cdp = start_chrome()
     cdp.call("Page.enable")
+    cdp.call("Network.enable")
 
     results = {}
     try:

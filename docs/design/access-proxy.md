@@ -143,7 +143,13 @@ sign-in, so on its own that half leaves the next click, here or at any
 other console, admitted again with no password; the screen says signed
 out either way, which is why the near half alone is worse than none. So
 its `rd` continues to the issuer's `end_session`, which ends the sign-in
-itself, and lands the person back on the console's front page.
+AND every session that browser opened, and lands the person back on the
+console's front page.
+
+That second half was missing until v0.14.4, and this was the chain where
+it mattered: `end_session` ended the sign-in and left the sessions
+running, so the proxy at another console went on refreshing successfully
+and serving pages after a sign-out that reported success.
 
 Built 0.9.x, and three things were learned building it. The proxy's
 `whitelist_domains` must name the issuer's host or oauth2-proxy refuses
@@ -161,7 +167,8 @@ render half of it.
 
 A revoked person is stopped by the issuer refusing to refresh, with the
 hub's liveness signal behind it; the proxy's session then dies at its
-next refresh.
+next refresh. That delay is why a SIGN-OUT revokes rather than waits: a
+person who signs out means now, and `cookie_refresh` can be hours.
 
 ## Why not something else
 

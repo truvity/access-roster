@@ -183,6 +183,14 @@ performed rather than a server fault. The driver takes the screenshot
 from the browser it is already driving and uploads it, then marks the URL
 visited so the suite stops waiting for a callback that is not coming.
 
+A FRESH BROWSER is started for each module, because several of them say
+so in as many words: *"please remove any cookies you may have received
+from the OpenID Provider before proceeding"*. Without it the driver
+carries one sign-in through the whole plan, and
+`oidcc-prompt-none-not-logged-in` fails — the issuer is asked whether
+anybody is signed in, a live session says yes, and it completes silently,
+which is correct behaviour being recorded as a defect.
+
 *When* it takes that shot is the whole of it. The suite logs the review
 step BEFORE it hands the browser the end_session URL, so a driver that
 uploads the moment the placeholder appears photographs the suite's own
@@ -190,9 +198,18 @@ uploads the moment the placeholder appears photographs the suite's own
 thing, uploaded successfully. Every one of these steps ends on a page the
 ISSUER served, so that is the test the driver applies before shooting.
 
-Those eight finish as **REVIEW**, which is not a failure: it is the suite
-saying a human must look at the evidence. The evidence is attached, and
-signing it off is a person's job at certification time.
+And *which page* is the other half. Two shapes of step, and they want
+opposite things. The logout steps end ON the page in question and the
+browser stays there. The re-authentication steps — `oidcc-prompt-login`
+and `oidcc-max-age-1` — want the login prompt shown during the **second**
+authorization, which is a page the driver fills in and leaves; by the
+time the placeholder is logged the browser is back on the suite's
+callback. So every issuer page passed through is photographed on the way,
+and the latest one answers.
+
+These finish as **REVIEW**, which is not a failure: it is the suite saying
+a human must look at the evidence. The evidence is attached, and signing
+it off is a person's job at certification time.
 
 **`KUBECTL`** overrides how the driver runs kubectl, for the case where
 reaching the cluster needs more than the binary — a context that
