@@ -22,6 +22,32 @@ git history.
 
 ## Unreleased
 
+- **A public `identity` package, and access-roster uses it** (INF-648, the
+  Go half). Two verifiers, one per anchor: `Issuer` for a token this
+  installation signed, `Cluster` for a ServiceAccount token from the pod
+  next door. Both yield one `Verified`, so a handler never learns which
+  anchor proved the caller and cannot come to depend on it — the right
+  anchor is decided by how far away the caller is, and that can change
+  without the handler. No group re-mapping anywhere: the name in the
+  policy is the name in the token is the name in the role check.
+
+  With a `net/http` adapter: `Middleware` establishes the caller and
+  passes the request on, because a listener serves pages that run before
+  anybody is established; `Require` is what refuses, and never names the
+  group that would have worked. `WhoAmI` answers rather than refuses when
+  nobody is signed in, because that is something a console has to render.
+
+  `Cluster` takes a review function rather than building one, so a
+  consumer that only needs the issuer does not inherit Kubernetes client
+  libraries.
+
+  **The service consumes it.** `internal/server/forwarded.go` is now a
+  thin adapter over `identity.Issuer` instead of a copy of the same
+  verification. Doing that caught a narrowing: the lifted reader matched
+  `Bearer ` exactly, and RFC 6750 makes the scheme case-insensitive —
+  real clients send both spellings, and a caller that had done nothing
+  wrong would have been refused.
+
 - **GitHub team bindings are a table in the policy** (INF-696, the
   access-roster half). `github: <org>: <team>: [provider groups]`, read
   exactly like a group's `members`: the people the directory puts in

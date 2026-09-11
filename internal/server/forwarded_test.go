@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/truvity/access-roster/identity"
+
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 )
@@ -167,7 +169,7 @@ func TestForwardedBearer(t *testing.T) {
 			)
 
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
-			request.Header.Set(headerAccessToken, issuer.mint(t, tc.claims, tc.signer))
+			request.Header.Set(identity.HeaderForwarded, issuer.mint(t, tc.claims, tc.signer))
 
 			principal, ok := verifier.identity(request)
 			if tc.want == "" {
@@ -200,7 +202,7 @@ func TestForwardedBearerWithoutAudienceAcceptsAnyAudience(t *testing.T) {
 	)
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set(headerAccessToken,
+	request.Header.Set(identity.HeaderForwarded,
 		issuer.mint(t, map[string]any{"sub": "alice@truvity.com", "aud": []string{"something-else"}}, nil))
 
 	if _, ok := verifier.identity(request); !ok {
@@ -218,6 +220,12 @@ func TestForwardedBearerDisabled(t *testing.T) {
 }
 
 // The Authorization header is the ordinary way in for a direct caller.
+//
+// Reading it is the published package's now, not this service's, so this
+// exercises what a consumer gets. The case-insensitive row is the one
+// that matters: RFC 6750 makes the scheme case-insensitive, real clients
+// send both spellings, and a lift that quietly narrowed it would refuse
+// a caller that had done nothing wrong.
 func TestForwardedTokenSources(t *testing.T) {
 	t.Parallel()
 
@@ -227,20 +235,20 @@ func TestForwardedTokenSources(t *testing.T) {
 		want string
 	}{
 		{"the proxy header is unprefixed", func(r *http.Request) {
-			r.Header.Set(headerAccessToken, "abc")
+			r.Header.Set(identity.HeaderForwarded, "abc")
 		}, "abc"},
 		{"authorization carries a scheme", func(r *http.Request) {
-			r.Header.Set(headerAuthorization, "Bearer abc")
+			r.Header.Set(identity.HeaderAuthorization, "Bearer abc")
 		}, "abc"},
 		{"the scheme is case-insensitive", func(r *http.Request) {
-			r.Header.Set(headerAuthorization, "bearer abc")
+			r.Header.Set(identity.HeaderAuthorization, "bearer abc")
 		}, "abc"},
 		{"a bare authorization value is not a bearer", func(r *http.Request) {
-			r.Header.Set(headerAuthorization, "abc")
+			r.Header.Set(identity.HeaderAuthorization, "abc")
 		}, ""},
 		{"the proxy header wins", func(r *http.Request) {
-			r.Header.Set(headerAccessToken, "proxy")
-			r.Header.Set(headerAuthorization, "Bearer direct")
+			r.Header.Set(identity.HeaderForwarded, "proxy")
+			r.Header.Set(identity.HeaderAuthorization, "Bearer direct")
 		}, "proxy"},
 		{"nothing set", func(*http.Request) {}, ""},
 	} {
@@ -250,7 +258,7 @@ func TestForwardedTokenSources(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
 			tc.set(request)
 
-			if got := forwardedToken(request); got != tc.want {
+			if got := identity.TokenFrom(request); got != tc.want {
 				t.Errorf("token = %q, want %q", got, tc.want)
 			}
 		})
