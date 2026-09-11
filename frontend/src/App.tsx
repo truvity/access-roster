@@ -98,42 +98,14 @@ export function App() {
   // an operator of every directory without naming any.
   const operatorFor = (workspace: string) => operator || (identityInfo?.scopes?.[workspace] ?? []).includes("operator");
 
-  const nav = (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Box sx={{ px: 2.5, pt: 2.25, pb: 1.5 }}>
-        <Typography variant="subtitle1" sx={{ lineHeight: 1.2 }}>
-          access-roster
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
-          {identityInfo?.version ?? ""}
-        </Typography>
-      </Box>
-      <List dense disablePadding sx={{ pb: 1 }}>
-        <NavItem item={{ value: "overview", label: "Overview", to: paths.overview(), icon: <DashboardIcon fontSize="small" /> }} current={route.view} onPick={() => setOpen(false)} />
-        <ListSubheader disableSticky sx={{ mt: 1.5 }} title="Where people come from">
-          Identity
-        </ListSubheader>
-        {identity.map((item) => (
-          <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
-        ))}
-        <ListSubheader disableSticky sx={{ mt: 1.5 }} title="What they get here">
-          Internal
-        </ListSubheader>
-        {internalSide.map((item) => (
-          <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
-        ))}
-        {operator && issuerIsSameOrigin(identityInfo?.issuerUrl) ? (
-          <NavItem item={sessionsItem} current={route.view} onPick={() => setOpen(false)} />
-        ) : null}
-      </List>
-      <Box sx={{ flexGrow: 1 }} />
-      <Divider />
-      <List dense disablePadding sx={{ py: 1 }}>
-        <NavItem item={{ value: "settings", label: "Settings", to: paths.settings(), icon: <SettingsIcon fontSize="small" /> }} current={route.view} onPick={() => setOpen(false)} />
-      </List>
-      <Divider />
+  // Who is signed in. Declared here and rendered near the TOP of the
+  // rail: the first question somebody has in a console that decides
+  // access is which account they are looking at it with, and the foot
+  // of a scrolling column is the last place they look.
+  const account = (
+    <>
       {identityInfo?.status === "signed-in" ? (
-        <Stack direction="row" sx={{ alignItems: "stretch", gap: 0.5, px: 1, py: 1 }}>
+        <Stack sx={{ gap: 0.5, px: 1, py: 1 }}>
           {/* A recovery sign-in has no address: it is a ServiceAccount the
               cluster vouched for, not a person, so there is no person page
               to open and the link went to an empty one. It still shows who
@@ -164,11 +136,15 @@ export function App() {
               </Typography>
             </ListItemButton>
           </Tooltip>
-          <Tooltip title="Sign out">
-            <IconButton aria-label="sign out" href={identityInfo.signOutUrl ?? "/logout"} onClick={signOut} sx={{ alignSelf: "center" }}>
-              <LogoutIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <Button
+            size="small"
+            startIcon={<LogoutIcon fontSize="small" />}
+            href={identityInfo.signOutUrl ?? "/logout"}
+            onClick={signOut}
+            sx={{ justifyContent: "flex-start", textTransform: "none", px: 1.25 }}
+          >
+            Sign out
+          </Button>
         </Stack>
       ) : identityInfo?.status === "unknown" ? (
         // "Could not ask" is not "signed out", and the package draws that
@@ -192,6 +168,46 @@ export function App() {
           </Button>
         </Box>
       )}
+    </>
+  );
+
+  const nav = (
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <Box sx={{ px: 2.5, pt: 2.25, pb: 1.5 }}>
+        <Typography variant="subtitle1" sx={{ lineHeight: 1.2 }}>
+          access-roster
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+          {identityInfo?.version ?? ""}
+        </Typography>
+      </Box>
+      {account}
+      <Divider />
+      <List dense disablePadding sx={{ pb: 1 }}>
+        <NavItem item={{ value: "overview", label: "Overview", to: paths.overview(), icon: <DashboardIcon fontSize="small" /> }} current={route.view} onPick={() => setOpen(false)} />
+        <ListSubheader disableSticky sx={{ mt: 1.5 }} title="Where people come from">
+          Identity
+        </ListSubheader>
+        {identity.map((item) => (
+          <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
+        ))}
+        <ListSubheader disableSticky sx={{ mt: 1.5 }} title="What they get here">
+          Internal
+        </ListSubheader>
+        {internalSide.map((item) => (
+          <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
+        ))}
+        {operator && issuerIsSameOrigin(identityInfo?.issuerUrl) ? (
+          <NavItem item={sessionsItem} current={route.view} onPick={() => setOpen(false)} />
+        ) : null}
+        <Divider sx={{ my: 1 }} />
+        <NavItem
+          item={{ value: "settings", label: "Settings", to: paths.settings(), icon: <SettingsIcon fontSize="small" /> }}
+          current={route.view}
+          onPick={() => setOpen(false)}
+        />
+      </List>
+      <Box sx={{ flexGrow: 1 }} />
     </Box>
   );
 

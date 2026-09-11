@@ -1,5 +1,17 @@
 ## Unreleased
 
+- **The rail puts who you are at the top, and says "Sign out".** The
+  account block sat at the foot of a scrolling column, which is the last
+  place somebody looks for the first question a console like this raises:
+  *which account am I looking at this with*. Settings sat down there too,
+  alone behind two dividers, rather than in the list of places to go.
+
+  Sign-out is a labelled button now instead of a bare icon. An icon alone
+  is a guess, and this is the one control nobody should have to guess at
+  — it was reported as not working when it was both hard to find and, as
+  above, a 404.
+
+
 - **Two directories read `provisional · stale` on a service that was
   working.** The refresh lease was held for the whole refresh interval,
   so the lease and the ticker were the same length and beat against each
