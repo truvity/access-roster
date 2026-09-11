@@ -1,3 +1,36 @@
+## v0.13.1
+
+- **Sign-out did nothing, because nothing served `/logout`.** The
+  console's button pointed there, the issuer answered 404, and the
+  sign-in survived — reported as *"even sign-out button does not work"*,
+  which it did not. The issuer serves `/logout` now: it ends the browser's
+  sign-in, clears the cookie and lands on the signed-out page.
+
+  `/logout` rather than pointing the console at `/end_session`, on Oleg's
+  call and it is the right one: this is the address a person expects and
+  types, `end_session` is a name from a specification, and the console
+  could not supply the `id_token_hint` that endpoint wants anyway — it
+  never redeems the code it gets back, so it holds no ID token. Both end
+  the same thing.
+
+- **The signed-out page stopped linking to a page that was deleted.** It
+  sent people to `/account`, which went with INF-695. It now says what
+  ending a sign-in does and does not reach, and points at the console's
+  Sessions page for the rest.
+
+- **`hack/conformance-drive.sh`** completes the browser half of a run
+  without a browser. Nothing in that flow is JavaScript — a chain of
+  redirects and one form POST — so it follows them with `curl` and signs
+  in through recovery, which is a ServiceAccount token rather than a
+  person at a Google prompt. It signs in fresh each time, because that is
+  what the logout modules exist to check.
+
+  It also treats `INTERRUPTED` as terminal. `conformance-run.sh` did not,
+  which is why an alias conflict looked like a hang: **run one plan at a
+  time**, because the suite serves every plan's callback under its alias
+  and starting a test in a plan that shares one interrupts the running
+  test.
+
 ## v0.13.0
 
 - **Revoking every session left the sign-in standing.** Reported from the
