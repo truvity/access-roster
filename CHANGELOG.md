@@ -3,7 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## Unreleased
+## v0.12.1
 
 - **The v0.12.0 release published nothing**, and the reason is the one
   this repository's own release config warns about: release machinery is
@@ -34,7 +34,6 @@ git history.
   `SECURE_COOKIES` still overrides in both directions, for a TLS
   terminator the URL does not mention.
 
-## v0.12.1
 
 - **The Action's own comment was an expression.** GitHub evaluates
   `${{ ... }}` anywhere inside a `run:` block, including in a shell
