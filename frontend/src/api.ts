@@ -1,6 +1,7 @@
 // The only file that touches the Connect clients. Views call these
 // functions and get view types back, so a contract change is a compile
 // error here rather than a runtime surprise in a table cell.
+import { fetchIdentity, type Identity } from "@truvity/access-roster";
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
@@ -52,27 +53,23 @@ export const sessions = createClient(SessionService, issuerTransport);
 
 export { Backend, Role, How };
 
-/** WhoAmI, as the standard endpoint every adapter serves. */
-export type Me = {
-  status: "signed-in" | "signed-out";
-  email?: string;
-  name?: string;
-  givenName?: string;
-  familyName?: string;
-  roles?: string[];
+/** WhoAmI, as this console reads it: the package's [Identity] plus the
+ *  two fields only this application has.
+ *
+ *  The base type comes from the package we publish rather than being
+ *  declared again here — access-roster uses the library it ships, so the
+ *  contract has exactly one definition and this console is the first
+ *  thing that breaks when it changes. A consumer's whoami may carry
+ *  fields of its own, which is why extending is the shape rather than
+ *  widening the package. */
+export type Me = Identity & {
   /** roles held over ONE directory each, keyed by its id. `roles` is the
    *  installation-wide answer and is not a summary of these. */
   scopes?: Record<string, string[]>;
-  source?: string;
-  /** the internal groups the policy puts the caller in */
-  groups?: string[];
-  /** the build this hub is running */
-  version?: string;
-  signOutUrl?: string;
   /** the issuer this console shares its origin with (INF-687), or empty
-   *  for a hub deployed alone with no issuer. Sessions sections render
-   *  only when this is set, because there is nothing to read or end
-   *  otherwise. */
+   *  for a console deployed alone with no issuer. Sessions sections
+   *  render only when this is set, because there is nothing to read or
+   *  end otherwise. */
   issuerUrl?: string;
 };
 
@@ -94,10 +91,16 @@ export function issuerIsSameOrigin(issuerUrl?: string): boolean {
   }
 }
 
-export async function whoami(): Promise<Me> {
-  const response = await fetch(mounted(".access/whoami"), { headers: { accept: "application/json" } });
-  if (!response.ok) return { status: "signed-out" };
-  return (await response.json()) as Me;
+/** Ask this console's own origin who the caller is.
+ *
+ *  The fetch itself is the package's, which is not only deduplication:
+ *  it tells "could not ask" apart from "signed out", and the copy this
+ *  replaced returned signed-out on any failure. A console that shows a
+ *  signed-in person a sign-in button because one request failed sends
+ *  them to authenticate again for nothing — the same mistake, in a
+ *  browser, that this project refuses to make about a directory. */
+export async function whoami(signal?: AbortSignal): Promise<Me> {
+  return (await fetchIdentity({ path: mounted(".access/whoami"), ...(signal ? { signal } : {}) })) as Me;
 }
 
 /** A protobuf timestamp, as a Date. */
