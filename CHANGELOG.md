@@ -1,3 +1,11 @@
+## Unreleased
+
+- **Every filter on every page wraps now.** Provider groups was still
+  scrolling 73px sideways on a phone after the first pass, because it had
+  its own copy of the control. Rules and its proof simulator are on the
+  shared one too, so there is one filter in the console rather than five
+  spellings of one.
+
 ## v0.12.6
 
 Found by signing in to the live console with a headless browser and
