@@ -1,4 +1,17 @@
-## v0.14.8
+## v0.14.9
+
+- **Charts are published by the release workflow, not by goreleaser**, so
+  the set of shipped artifacts is written down in two places — and the
+  second one kept `directory-roster` after the chart was deleted. v0.14.8
+  built fine and then failed on `copy chart: lstat
+  charts/directory-roster: no such file or directory`.
+
+  Swept the repository for the rest rather than finding them one release
+  at a time. Two were stale instructions that would have wasted
+  somebody's afternoon: the issuer chart's README told you to install
+  with `--set hub.address=...`, naming a service that no longer exists,
+  and the acceptance command's doc comment described the wrong binary.
+
 
 - **The release builds the bundles through `just console`** rather than
   restating the npm commands. v0.14.7 failed on its first release after

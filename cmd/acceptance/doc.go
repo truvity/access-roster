@@ -1,4 +1,4 @@
-// Command acceptance exercises directory-roster against a real Kubernetes
+// Command acceptance exercises access-issuer against a real Kubernetes
 // API server.
 //
 // Everything else in this repository runs against fakes, and the fakes

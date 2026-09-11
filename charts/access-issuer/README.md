@@ -18,6 +18,5 @@ a proxy would have nowhere to send anyone.
 ```sh
 helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \
   --namespace access-issuer --create-namespace \
-  --set issuerURL=https://issuer.example \
-  --set hub.address=http://directory-roster.directory-roster.svc:8080
+  --set issuerURL=https://issuer.example
 ```
