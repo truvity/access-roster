@@ -1,3 +1,24 @@
+## v0.15.3
+
+- **The Sessions page shows one row per identity**, with how it proved
+  itself, how many browsers, and one *Sign out all*. It showed one row
+  per browser, which is the truth and not the answer that page is for: a
+  recovery account with 104 sign-ins rendered 104 rows, 103 of them with
+  an empty name column, and pushed the sessions the table introduces a
+  screen and a half down. Nobody reads 104 rows; they read *104* and act
+  on it. The detail belongs on that identity's own page, where there is
+  one identity and the rows carry information.
+
+- **The column is *Identity*, not *Person*.** The row that made the case
+  reads `kernel:k8s:access-issuer:access-issuer-recovery`, which is a
+  ServiceAccount. People still means people — the directory-backed page
+  is unchanged — but a session listing holds workloads and CI jobs too.
+
+- **The conformance driver signs out between modules.** Clearing cookies
+  drops the browser's copy and leaves the sign-in record alive at the
+  issuer, so a thirty-five module plan abandoned thirty-five of them.
+  That is where the 104 came from.
+
 ## v0.15.2
 
 - **A declared `exchange` client could never authenticate**, so every

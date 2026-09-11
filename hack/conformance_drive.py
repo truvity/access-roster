@@ -348,6 +348,17 @@ def run(cdp, plan, module):
     # whether anybody is signed in, a live session says yes, and it
     # completes silently, which is CORRECT behaviour being marked as a
     # defect. The modules that need a session establish it themselves.
+    # SIGN OUT first, then clear. Clearing alone drops the cookie and
+    # leaves the sign-in RECORD alive at the issuer, so a thirty-five
+    # module plan abandons thirty-five of them -- which is how one
+    # recovery account came to hold 104 open sign-ins and fill the
+    # console's Sessions page with its own litter.
+    try:
+        cdp.call("Page.navigate", {"url": ISSUER + "/logout"})
+        time.sleep(1.5)
+    except Exception:
+        pass
+
     cdp.call("Network.clearBrowserCookies")
 
     started = api("/api/runner?test=%s&plan=%s" % (module, plan), method="POST")

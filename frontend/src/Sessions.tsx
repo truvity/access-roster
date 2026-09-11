@@ -257,41 +257,50 @@ export function SessionsPanel({
  *  sessions are what it went on to open. */
 function SignIns({
     signIns,
-    onSignOut,
+    onSignOutAll,
     busy,
 }: {
     signIns: SignIn[];
-    onSignOut: (id: string, identity: string) => void;
+    onSignOutAll: (identity: string) => void;
     busy?: string;
 }) {
     if (signIns.length === 0) return null;
 
-    // One row per BROWSER still, but the person's name written once.
-    // Fifteen sign-ins by one identity rendered fifteen identical names
-    // down the page and pushed the sessions below the fold -- which is
-    // what this table looked like in practice after a day of testing.
-    const grouped = Array.from(
+    // ONE ROW PER IDENTITY, not per browser.
+    //
+    // Per browser is the truth and it is not the answer this page is
+    // for. A recovery account with 104 sign-ins rendered 104 rows, 103
+    // of them with an empty name column, and the sessions this table
+    // exists to introduce sat a screen and a half below. Nobody reads
+    // 104 rows; they read "104" and act on it.
+    //
+    // What an operator wants here is who is signed in, how much, and one
+    // button that ends it. The detail -- which browser, since when,
+    // until when -- belongs on that identity's own page, where there is
+    // one identity and the rows carry information.
+    const byIdentity = Array.from(
         signIns.reduce((by, signin) => {
             const rows = by.get(signin.identity) ?? [];
             rows.push(signin);
             by.set(signin.identity, rows);
             return by;
-        }, new Map<string, typeof signIns>()),
+        }, new Map<string, SignIn[]>()),
     );
 
     return (
         <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                Sign-ins
+                Signed in now
             </Typography>
             <Typography
                 variant="caption"
                 color="text.secondary"
                 sx={{ display: "block", mb: 1 }}
             >
-                One per browser. Ending one ends every session it opened, and
-                stops the next visit being admitted with no password — which
-                revoking the sessions below does not.
+                One sign-in per browser. Ending them ends every session they
+                opened, and stops the next visit being admitted with no password
+                — which revoking a session does not. Open an identity for the
+                detail.
             </Typography>
             <TableContainer
                 component={Paper}
@@ -301,79 +310,54 @@ function SignIns({
                 <Table size="small">
                     <TableHead>
                         <TableRow>
-                            <TableCell>Person</TableCell>
+                            {/* IDENTITY, not "person". These rows are as
+                                often a ServiceAccount or a CI job as a
+                                human -- the one that made it obvious reads
+                                kernel:k8s:access-issuer:access-issuer-recovery
+                                under a column headed PERSON. */}
+                            <TableCell>Identity</TableCell>
                             <TableCell>Proved by</TableCell>
-                            <TableCell>Signed in</TableCell>
-                            <TableCell>Expires</TableCell>
+                            <TableCell align="right">Browsers</TableCell>
+                            <TableCell>Newest</TableCell>
                             <TableCell align="right" />
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {grouped.map(([identity, rows]) =>
-                            rows.map((signin, i) => (
-                                <TableRow key={signin.id} hover>
-                                    <TableCell
-                                        sx={{
-                                            borderBottom:
-                                                i < rows.length - 1
-                                                    ? "none"
-                                                    : undefined,
-                                        }}
+                        {byIdentity.map(([identity, rows]) => (
+                            <TableRow key={identity} hover>
+                                <TableCell>
+                                    <Ref to={paths.person(identity)}>
+                                        {identity}
+                                    </Ref>
+                                </TableCell>
+                                <TableCell>
+                                    <Typography
+                                        variant="body2"
+                                        color="text.secondary"
                                     >
-                                        {i === 0 ? (
-                                            <>
-                                                <Ref
-                                                    to={paths.person(identity)}
-                                                >
-                                                    {identity}
-                                                </Ref>
-                                                {rows.length > 1 ? (
-                                                    <Typography
-                                                        component="span"
-                                                        variant="caption"
-                                                        color="text.secondary"
-                                                    >
-                                                        {" "}
-                                                        · {rows.length} browsers
-                                                    </Typography>
-                                                ) : null}
-                                            </>
-                                        ) : null}
-                                    </TableCell>
-                                    <TableCell>
-                                        <Typography
-                                            variant="body2"
-                                            color="text.secondary"
-                                        >
-                                            {signin.how === "recovery"
-                                                ? "recovery"
-                                                : signin.how}
-                                        </Typography>
-                                    </TableCell>
-                                    <TableCell>
-                                        {ago(at(signin.authTime))}
-                                    </TableCell>
-                                    <TableCell>
-                                        {until(at(signin.expiresAt))}
-                                    </TableCell>
-                                    <TableCell align="right">
-                                        <Button
-                                            size="small"
-                                            color="warning"
-                                            disabled={busy === signin.id}
-                                            onClick={() =>
-                                                onSignOut(
-                                                    signin.id,
-                                                    signin.identity,
-                                                )
-                                            }
-                                        >
-                                            Sign out
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            )),
-                        )}
+                                        {Array.from(
+                                            new Set(rows.map((r) => r.how)),
+                                        ).join(", ")}
+                                    </Typography>
+                                </TableCell>
+                                <TableCell align="right">
+                                    {rows.length}
+                                </TableCell>
+                                <TableCell>
+                                    {ago(at(rows[0].authTime))}
+                                </TableCell>
+                                <TableCell align="right">
+                                    <Button
+                                        size="small"
+                                        color="warning"
+                                        disabled={busy === identity}
+                                        onClick={() => onSignOutAll(identity)}
+                                    >
+                                        Sign out all
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
                     </TableBody>
                 </Table>
             </TableContainer>
@@ -381,21 +365,6 @@ function SignIns({
     );
 }
 
-/** The installation-wide listing, as a TABLE.
- *
- *  The grouped list above is right in a narrow column on a person's page,
- *  where there are three sessions and the browser grouping is the point.
- *  It is wrong here: four facts per session were stacked into one caption
- *  line, so a page that can hold a hundred rows used a third of its width
- *  and none of its columns lined up. A reader scanning for "whose session
- *  expires soonest" had to read every line.
- *
- *  The browser grouping survives as a COLUMN rather than a heading. Two
- *  rows with the same mark came from the same browser; a blank means the
- *  session has no browser behind it at all, which is what a token
- *  exchange is. A column can be compared down the page, which is the one
- *  thing a run of subheadings cannot.
- */
 function SessionsTable({
     sessions,
     onRevoke,
@@ -607,6 +576,22 @@ export function SessionsPage({ operator }: { operator: boolean }) {
     // standing, so the next visit was admitted with no password — every
     // session gone and access unchanged. This names the browser, and the
     // issuer ends the sign-in with the sessions under it.
+    // Everything this identity has open: every sign-in and every session
+    // under them. `RevokeSessions` with an identity and no narrowing is
+    // exactly that, and it is one call rather than a hundred and four.
+    const signOutEverything = async (identity: string) => {
+        setBusy(identity);
+        setFailure(undefined);
+        try {
+            await sessionsClient.revokeSessions({ identity });
+            load();
+        } catch (error) {
+            setFailure(reason(error));
+        } finally {
+            setBusy(undefined);
+        }
+    };
+
     const signOutBrowser = async (session: Session) => {
         setBusy(session.sso);
         setFailure(undefined);
@@ -676,9 +661,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
 
             <SignIns
                 signIns={signIns}
-                onSignOut={(id, identity) =>
-                    signOutBrowser({ sso: id, identity } as Session)
-                }
+                onSignOutAll={signOutEverything}
                 busy={busy}
             />
 
