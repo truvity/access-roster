@@ -329,6 +329,10 @@
         "mount": {
           "type": "string",
           "description": "Where the console is mounted on this issuer's origin, e.g. /console. Empty serves no console."
+        },
+        "client": {
+          "type": "string",
+          "description": "The declared client id the console signs people in as. Empty keeps the console's own sign-in page."
         }
       }
     },

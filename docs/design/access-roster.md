@@ -324,6 +324,24 @@ the decision was made while exactly one client trusted it.
 
 ## The console
 
+**It signs people in as a client of this issuer.** Somebody with no
+session is sent to `/authorize` with the console's own declared client,
+signs in once at the issuer's login page, and comes back with the
+issuer's session cookie set — which the console then reads, the way it
+reads anybody's. One door, and the console holds nothing special.
+
+Two things fall out of that, and both are the point. There is no proxy
+in front of the console running an OpenID flow against a service in the
+same process, and there is no login of the console's own — the second
+door an installation with a gateway turns off.
+
+The code the flow hands back is **never redeemed**. What the console
+needed was the session the flow established, not a token: it reads the
+directory and the policy in this same process. Redeeming would mean
+holding something it has no use for and either a client secret to keep
+or a verifier to carry across the redirect. The code expires unused and
+is stripped from the URL, so it reaches no bookmark and no referrer.
+
 The console **reads**. It shows every person, every provider group, every
 internal group, every rule that grants one, and every open session — the
 whole chain from a directory to a client, and why each link exists.

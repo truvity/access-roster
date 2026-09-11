@@ -61,6 +61,7 @@ type Config struct {
 	recoveryAudience  string
 	clientSecretsDir  string
 	clustersPath      string
+	consoleClientID   string
 	valkey            valkey.Config
 	audience          string
 	githubOwners      []string
@@ -105,6 +106,7 @@ func Load() (Config, error) {
 		recoveryAudience: envString("RECOVERY_AUDIENCE", ""),
 		clientSecretsDir: envString("CLIENT_SECRETS_DIR", ""),
 		clustersPath:     envString("CLUSTERS_FILE", ""),
+		consoleClientID:  envString("CONSOLE_CLIENT_ID", ""),
 		valkey: valkey.Config{
 			Address:  envString("VALKEY_ADDRESS", ""),
 			Password: envString("VALKEY_PASSWORD", ""),
@@ -160,6 +162,11 @@ type Deps struct {
 	// disagree about the policy is the class of failure the merge existed
 	// to end. Nil loads it from POLICY_DIR, which is the split shape.
 	Policy *policy.Set
+	// UseSignInEntry is called with a function saying where to send a
+	// browser that has NO session. Together with UseSignedIn it is the
+	// whole of how the console authenticates on one origin: one says how
+	// to come by a session, the other reads it.
+	UseSignInEntry func(func() string)
 	// UseSignedIn is called with a reader of the issuer's own browser
 	// session, once this half exists. It is how the console on this
 	// origin learns who is signed in without a proxy in front of it and
@@ -277,6 +284,12 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		return nil, err
 	}
 	handler = mount(handler, deps.Console)
+	if deps.UseSignInEntry != nil {
+		// The console becomes a client of this issuer: one door, and it
+		// holds nothing special. Empty when no client is declared for it,
+		// and then the console keeps a sign-in page of its own.
+		deps.UseSignInEntry(signInEntry(cfg.issuerURL, cfg.consoleClientID, consoleMount(deps)))
+	}
 	if deps.UseSignedIn != nil {
 		// The console is on this origin and in this process, so it reads
 		// the browser's issuer session directly rather than being told by

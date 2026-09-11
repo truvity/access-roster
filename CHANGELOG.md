@@ -22,6 +22,20 @@ git history.
 
 ## Unreleased
 
+- **The console signs people in as a client of the issuer** (INF-701),
+  which is what makes one binary mean one door. Somebody with no session
+  is sent to `/authorize` with the console's declared client, signs in at
+  the issuer's page, and comes back with the issuer's session set. No
+  proxy in front of the console running an OpenID flow against a service
+  in the same process, and no login of the console's own.
+
+  The code that comes back is never redeemed: what the console needed was
+  the session, not a token, and it reads the directory and the policy in
+  this same process. It is stripped from the URL so it reaches no
+  bookmark and no referrer. Set `console.client` to a declared client
+  whose redirects name this origin plus the mount; empty keeps the
+  console's own page.
+
 - **The console gets its own HTTPRoute**, and that is not tidiness. A
   gateway policy attaches to a *route*, so anything put in front of the
   console on a shared route would also sit in front of `/token`, `/keys`
