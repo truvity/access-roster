@@ -115,7 +115,6 @@ func Load() (Config, error) {
 		consumersPath:     envString("CONSUMERS_FILE", ""),
 		loginDirectory:    envBool("LOGIN_DIRECTORY", true),
 		adminPassword:     envString("ADMIN_PASSWORD", ""),
-		secureCookies:     envBool("SECURE_COOKIES", false),
 		forwardedHeader:   envString("FORWARDED_EMAIL_HEADER", ""),
 		forwardedIssuer:   envString("FORWARDED_ISSUER", ""),
 		signOutURL:        envString("SIGN_OUT_URL", ""),
@@ -135,6 +134,15 @@ func Load() (Config, error) {
 		Cluster:  envBool("VALKEY_CLUSTER", true),
 		Prefix:   envString("RELEASE_NAME", "directory-roster"),
 	}
+	// Secure follows the scheme the BROWSER will use, which the service
+	// knows because it is told its own public URL. Defaulting to false
+	// meant an installation that merely forgot to say so served session
+	// cookies a proxy could strip onto a plain-http hop, and the alert
+	// CodeQL raised was about that default rather than about this line.
+	// SECURE_COOKIES still overrides, in either direction, for the local
+	// http listener and for a TLS terminator that is not in the URL.
+	c.secureCookies = envBool("SECURE_COOKIES", strings.HasPrefix(c.publicRootURL, "https://"))
+
 	var err error
 	if c.freshness.RefreshInterval, err = envDuration("REFRESH_INTERVAL", hub.DefaultRefreshInterval); err != nil {
 		return Config{}, err

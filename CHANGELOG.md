@@ -3,6 +3,20 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## Unreleased
+
+- **A session cookie is marked `Secure` by default**, decided by the
+  scheme of the service's own public URL rather than by a flag that
+  defaults to off. It used to default to off, so an installation that
+  simply did not set `SECURE_COOKIES` served its session cookie without
+  the flag and a proxy could carry it over a plain-http hop. The chart
+  always set it, which is why nothing was wrong in our own deployments
+  and why the alert CodeQL raised was about the default rather than
+  about any line it pointed at.
+
+  `SECURE_COOKIES` still overrides in both directions, for a TLS
+  terminator the URL does not mention.
+
 ## v0.12.1
 
 - **The Action's own comment was an expression.** GitHub evaluates
