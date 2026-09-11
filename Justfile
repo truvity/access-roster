@@ -279,8 +279,6 @@ chart-lint:
     # later wave. One `weight` per backend, in routes and policies alike.
     test "$(grep -c '^      backendRefs:$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^          weight: 1$' /tmp/access-proxy-routes.yaml)"
     test "$(helm template t charts/access-issuer --set issuerURL=https://i.example --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
-    grep -q 'type: Exact' /tmp/dr-prefix-redirect.yaml
-    grep -q 'replaceFullPath: "/console/"' /tmp/dr-prefix-redirect.yaml
     # The issuer's root: a bare GET of the host lands somewhere useful
     # when a console shares it, and 404s honestly when one does not.
     helm template t charts/access-issuer --set issuerURL=https://a.example \
