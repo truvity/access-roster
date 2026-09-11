@@ -464,3 +464,64 @@ func TestAHeldAnswerCarriesNoNames(t *testing.T) {
 		t.Errorf("a held answer carried names: %q %q", held.GivenName, held.FamilyName)
 	}
 }
+
+// A client's `ttl_cap` has to reach the tokens a BROWSER gets, which is
+// where it matters most and where it was not applied.
+//
+// The cap was honoured on token exchange and nowhere else, so declaring
+// it on a console did nothing. The window in which a revoked session
+// still works is exactly the access token's remaining life — a client
+// only discovers the revocation when it next has to refresh — so an
+// uncapped console is one that keeps serving for the deployment-wide
+// default after a sign-out.
+func TestClientTTLCapNarrowsTheCodeFlow(t *testing.T) {
+	t.Parallel()
+
+	declared, err := policy.Parse([]byte(`
+version: 1
+lifetimes:
+  default: 1h
+clients:
+  slow:
+    kind: public
+    redirects: ["https://slow.example/cb"]
+    requires: ["all:everyone"]
+  brisk:
+    kind: public
+    ttl_cap: 5m
+    redirects: ["https://brisk.example/cb"]
+    requires: ["all:everyone"]
+groups:
+  all:everyone:
+    matchers:
+      - email: ada@north.example
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("policy set: %v", err)
+	}
+
+	uncapped, ok := set.Client("slow")
+	if !ok {
+		t.Fatal("no such client")
+	}
+
+	capped, ok := set.Client("brisk")
+	if !ok {
+		t.Fatal("no such client")
+	}
+
+	const deployment = time.Hour
+
+	if got := uncapped.Cap(deployment); got != deployment {
+		t.Errorf("a client with no cap got %v, want the deployment's %v", got, deployment)
+	}
+
+	if got, want := capped.Cap(deployment), 5*time.Minute; got != want {
+		t.Errorf("ttl_cap: 5m got %v, want %v", got, want)
+	}
+}

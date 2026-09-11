@@ -122,12 +122,22 @@ Last run 2026-09-11 against the deployed issuer at v0.14.3.
 
 | Profile | Plan | Last run |
 |---|---|---|
-| **Config** | `oidcc-config-certification-test-plan` | **1 passing**, and in CI: it reads the discovery document and the key set, so it needs no client and nobody at a browser |
-| **RP-Initiated Logout** | `oidcc-rp-initiated-logout-certification-test-plan` | **3 passing, 8 in review.** Review is the suite's state for a step a person signs off; each carries a screenshot of the page the issuer served |
-| **Basic OP** | `oidcc-basic-certification-test-plan` | **20 passing**, 6 warning, 4 skipped, 2 in review, 2 unfinished, **1 failing** — `oidcc-prompt-none-not-logged-in`, with `oidcc-prompt-login` and `oidcc-max-age-1` unfinished beside it. All three are about re-authentication, so they are likely one defect rather than three |
+| [**Config OP**](https://openid.net/certification/connect_op_testing/) | `oidcc-config-certification-test-plan` | **1 passing**, and in CI: it reads the discovery document and the key set, so it needs no client and nobody at a browser |
+| [**RP-Initiated Logout OP**](https://openid.net/certification/connect_op_logout_testing/) | `oidcc-rp-initiated-logout-certification-test-plan` | **3 passing, 8 in review.** Review is the suite's state for a step a person signs off; each carries a screenshot of the page the issuer served |
+| [**Basic OP**](https://openid.net/certification/connect_op_testing/) | `oidcc-basic-certification-test-plan` | see below |
 
-A profile is not claimed until its run is green. Basic OP is not green,
-and this table says so rather than rounding up.
+The profile names link to the OpenID Foundation's own testing
+instructions for each.
+
+A profile is not claimed until its run is green, and this table says so
+rather than rounding up.
+
+**Logout cannot be certified on its own.** The Foundation requires a
+logout submission to carry RP-Initiated Logout OP *and at least one of*
+Session Management, Front-Channel or Back-Channel logout. This issuer
+serves none of those three on purpose — each is surface with no consumer
+here — so the RP-Initiated run above is worth having as a correctness
+check and is not a certifiable submission until one of them is built.
 
 The Config profile is the one that guards the surface most likely to
 break by accident: change a provider option and discovery changes with
