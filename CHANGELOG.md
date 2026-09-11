@@ -1,4 +1,4 @@
-## Unreleased
+## v0.12.8
 
 - **Filter rows stopped stepping sideways when they wrap.** MUI's
   `spacing` sets margins on children and `gap` does not, so a row that
