@@ -166,7 +166,7 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
-	mux.Handle("/", neverCached(challenges(endSession(signIn, truthfulDiscovery(provider)))))
+	mux.Handle("/", neverCached(challenges(refusedAuthorize(endSession(signIn, truthfulDiscovery(provider))))))
 
 	return mux, nil
 }
@@ -211,6 +211,7 @@ func neverCached(next http.Handler) http.Handler {
 // endSessionPath is the RP-initiated logout endpoint, and
 // [signedOutPath] is where it lands when the request named nowhere.
 const (
+	authorizePath  = "/authorize"
 	endSessionPath = "/end_session"
 	signedOutPath  = "/signed-out"
 )
@@ -267,6 +268,44 @@ func endSession(signIn SignInDeps, next http.Handler) http.Handler {
 			SignOut(signIn, w, r)
 		}
 		held.release(r)
+	})
+}
+
+// refusedAuthorize renders `/authorize`'s refusals as a page.
+//
+// The refusals that MATTER here are the ones the library will not
+// redirect: an unregistered `redirect_uri`, or a client it does not
+// know. Everything else goes back to the relying party as an error in
+// the redirect, which is the specification's answer and is left alone.
+// What is left is the case where there is nowhere safe to send the
+// person -- so they stay here, looking at whatever this writes.
+//
+// What it wrote was `http.Error` with the library's sentence in it:
+// unstyled, black on white, no indication of which service they had
+// reached. Correct, and it does not look like it. A conformance
+// screenshot of that page is what made it obvious.
+func refusedAuthorize(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != authorizePath || !wantsHTML(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		held := &heldResponse{ResponseWriter: w}
+		next.ServeHTTP(held, r)
+
+		if held.succeeded() {
+			held.release(r)
+			return
+		}
+
+		// The library's own sentence, which already says what is wrong
+		// and is written for the person rather than for a program.
+		w.Header().Del("Content-Length")
+		_ = writePage(w, held.status, "That sign-in request was not valid",
+			`<p>`+html.EscapeString(strings.TrimSpace(held.body.String()))+`</p>
+	<p class="note">Nothing was signed in, and this is not something you can fix from here.
+	Whoever runs the application that sent you will need to correct how it asks.</p>`)
 	})
 }
 

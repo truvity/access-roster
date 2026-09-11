@@ -13,6 +13,31 @@ worth exactly what the suite says about it. This is how to run it.
 | Basic OP | `oidcc-basic-certification-test-plan` | yes |
 | RP-Initiated Logout | `oidcc-rp-initiated-logout-certification-test-plan` | yes |
 
+
+## When to run it
+
+**At every major and minor release**, by a person, as a whole: all three
+profiles, including the steps the suite hands to a human. Not on a
+schedule, and not in CI.
+
+It used to run the Config profile daily and nothing else. That is worse
+than no check, because one profile passing daily reads as "conformance
+passes" while the two that actually sign somebody in have not been run
+for weeks — and those two are where every defect has been. The Config
+workflow is still there for a single click
+([.github/workflows/conformance.yaml](../../.github/workflows/conformance.yaml)),
+because it needs no credential and guards the discovery document, which
+changes silently when a provider option changes.
+
+A patch release does not need a run. A patch that touches the issuing
+path is not a patch.
+
+The run is not done until every module is **PASSED, REVIEW, WARNING or
+SKIPPED** — the Foundation's rule is that only FAILED and INTERRUPTED
+disqualify a profile — and until somebody has *looked at* the evidence
+attached to each REVIEW, which is a screenshot of a page. A REVIEW whose
+screenshot shows the wrong page is a failure that the suite cannot see.
+
 ## The suite
 
 Self-hosted from the published images, so there is no Java build:

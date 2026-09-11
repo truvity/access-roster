@@ -1,32 +1,32 @@
-# The OpenID Foundation Config profile, run against the live issuer.
+# The OpenID Foundation Config profile, on demand only.
 #
-# WHY THIS ONE. Config reads the discovery document and the key set and
-# checks them against the specification. It needs no client, no secret
-# and nobody at a browser, so it is the only one of the three profiles
-# that can run unattended — and it happens to guard the surface most
-# likely to break by accident: change a provider option and discovery
-# changes with it, silently, for every relying party that reads it.
+# WHY NOT ON A SCHEDULE ANY MORE. It ran daily, and a daily run of one
+# of three profiles is a check that reports green while the two that
+# actually sign somebody in have not been run for weeks. That is worse
+# than no check: it reads as "conformance passes". The suite is now run
+# by a person, as a whole, at each major and minor release — all three
+# profiles, including the manual steps a person has to sign off — and
+# docs/operations/conformance.md is the procedure.
 #
-# WHY ON A SCHEDULE AND NOT ON A TAG. A tag is a build, not a
-# deployment: at the moment `v1.2.3` is pushed the cluster is still
-# running whatever it ran before, so a run here would certify the OLD
-# issuer and report it against the NEW version. Testing the tag itself
-# would mean standing its image up in the job with a policy, a signing
-# key and a certificate the suite will accept — worth doing, and not the
-# same job as this one. Until then this runs after a deployment has had
-# time to land, and on demand.
+# WHY IT STAYS AT ALL. Config reads the discovery document and the key
+# set and checks them against the specification. It needs no client, no
+# secret and nobody at a browser, so it is the one profile that can run
+# unattended, and it guards the surface most likely to break by
+# accident: change a provider option and discovery changes with it,
+# silently, for every relying party that reads it. Keeping it one click
+# away is worth more than deleting it.
 #
-# The other two profiles sign somebody in, which is the point of them,
-# and the signing-in needs a credential this workflow should not hold:
-# `hack/conformance_drive.py` gets one from the cluster, and CI has no
-# business with cluster access. They stay a person's job, and the script
-# makes them one command rather than thirty sign-ins.
+# WHY NOT ON A TAG. A tag is a build, not a deployment: at the moment
+# `v1.2.3` is pushed the cluster is still running whatever it ran
+# before, so a run here would certify the OLD issuer and report it
+# against the NEW version.
+#
+# The other two profiles sign somebody in, and the signing-in needs a
+# credential this workflow should not hold: `hack/conformance_drive.py`
+# gets one from the cluster, and CI has no business with cluster access.
 name: Conformance
 
 on:
-  schedule:
-    # Daily, well after any working-hours deployment has settled.
-    - cron: "0 5 * * *"
   workflow_dispatch:
     inputs:
       issuer:
