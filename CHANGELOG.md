@@ -22,6 +22,20 @@ git history.
 
 ## Unreleased
 
+- **The GitHub Action** (INF-649, the other half). One action at the
+  repository root, `curl` and `jq` and two files: nothing of ours is
+  downloaded into a job, and there is no version of ours to bump when
+  Amazon's tooling moves. One exchange per audience, a profile per
+  `aws:<account>:<role>` with `web_identity_token_file`, a kubeconfig
+  context per `k8s:<cluster>`, and every token masked before it is
+  written anywhere.
+
+  Exercised end to end against a stand-in for GitHub's id-token service
+  and the issuer, which found the bug that would have hurt: `printf '%s'`
+  leaves the last line unterminated and `read` drops it, so **the final
+  audience of every job was silently discarded** — surfacing as a missing
+  profile rather than an error.
+
 - **`accessctl`** (INF-649, the CLI half). `login` runs the browser flow
   once — authorization code with PKCE on a loopback port, the only
   browser flow left since the device flow was withdrawn — and caches the

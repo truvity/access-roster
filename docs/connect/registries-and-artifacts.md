@@ -1,12 +1,5 @@
 # Registries and artifacts on top of the profiles
 
-> **The GitHub Action is not built yet (INF-649).** `accessctl` is:
-> `login`, `whoami`, `setup`, `kubeconfig`, `aws-config`, `kube-token`,
-> `aws` and `exchange` all work. What a workflow does on this page is
-> still what it will run — until the action exists, a job does the same
-> thing with `curl` against the token endpoint, which is all the action
-> will do in shell anyway.
-
 
 ECR and CodeArtifact have no trust relationship of their own with the
 issuer. Both are an AWS credential plus a tool-specific handshake, and
