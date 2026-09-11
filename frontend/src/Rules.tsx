@@ -24,7 +24,7 @@ import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State } fro
 
 /** The kind of rule, which is also the tab. `directory` is the one this
  *  page used to omit, and it is the majority of the estate. */
-type Kind = "all" | "directory" | "ci" | "workload" | "sign-in";
+type Kind = "all" | "directory" | "ci" | "workload" | "sign-in" | "github-team";
 
 /** What a rule needs besides itself to grant anything.
  *
@@ -53,6 +53,9 @@ type Row = {
   group: string;
   needs: keyof typeof dependsOn;
   declared: boolean;
+  // A GitHub team binding feeds a team rather than an internal group, so
+  // there is no group page to link to and no client it opens.
+  team?: boolean;
 };
 
 /** Every rule that puts an identity into an internal group.
@@ -72,6 +75,23 @@ export function Rules() {
 
   const groups = policy.value?.groups ?? [];
   const clients = policy.value?.clients ?? [];
+
+  // A GitHub team binding feeds a TEAM rather than an internal group, so
+  // it grants nothing in a token and opens no client. It belongs here
+  // anyway: the question this page answers is "how does somebody come to
+  // be in this, and why", and for a GitHub team the answer is a
+  // directory group exactly as it is for an internal one.
+  const teamRows: Row[] = (policy.value?.teams ?? []).flatMap((t) =>
+    t.members.map((address) => ({
+      key: `${t.org}/${t.team}:${address}`,
+      kind: "github-team" as Kind,
+      rule: address,
+      group: `${t.org}/${t.team}`,
+      needs: "directory" as const,
+      declared: true,
+      team: true,
+    })),
+  );
 
   const rows: Row[] = groups.flatMap((g) => [
     // Membership: the majority of the estate, and what this page used to
@@ -95,7 +115,8 @@ export function Rules() {
   ]);
 
   const opens = (name: string) => clients.filter((client) => client.requires.includes(name));
-  const shown = rows.filter((row) => (kind === "all" || row.kind === kind) && (!group || row.group === group));
+  const all = [...rows, ...teamRows];
+  const shown = all.filter((row) => (kind === "all" || row.kind === kind) && (!group || row.group === group));
   // Every group any rule feeds — which is now all of them, rather than
   // the third that had a matcher.
   const fed = groups.filter((g) => g.members.length || g.rules.length);
@@ -103,7 +124,7 @@ export function Rules() {
   return (
     <Page
       title="Rules"
-      lede="Every rule that puts an identity into an internal group: a provider group somebody is a member of, a verified sign-in, a workload, a CI job. Together they are the whole answer to who is in a group and why. Declared by the deployment, never written here."
+      lede="Every rule that puts an identity somewhere: a provider group somebody is a member of, a verified sign-in, a workload, a CI job, and the provider groups that feed a GitHub team. Together they are the whole answer to who is in what and why. Declared by the deployment, never written here."
     >
       <Loading busy={policy.loading} />
       <Failure error={policy.error} />
@@ -115,6 +136,7 @@ export function Rules() {
           <ToggleButton value="sign-in">Sign-ins</ToggleButton>
           <ToggleButton value="workload">Workloads</ToggleButton>
           <ToggleButton value="ci">CI jobs</ToggleButton>
+          {teamRows.length ? <ToggleButton value="github-team">GitHub teams</ToggleButton> : null}
         </ToggleButtonGroup>
         <TextField select label="Internal group" value={group} onChange={(e) => setGroup(e.target.value)} sx={{ minWidth: 220 }}>
           <MenuItem value="">Any</MenuItem>
@@ -127,7 +149,7 @@ export function Rules() {
       </Stack>
 
       {!policy.loading && shown.length === 0 ? (
-        <Nothing>{emptiness(kind, group, rows.length)}</Nothing>
+        <Nothing>{emptiness(kind, group, all.length)}</Nothing>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto", mb: 4 }}>
           <Table size="small">
@@ -155,12 +177,22 @@ export function Rules() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Ref to={paths.group(row.group)} mono>
-                      {row.group}
-                    </Ref>
+                    {row.team ? (
+                      <Mono>{row.group}</Mono>
+                    ) : (
+                      <Ref to={paths.group(row.group)} mono>
+                        {row.group}
+                      </Ref>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Names items={opens(row.group).map((client) => ({ label: client.id, to: paths.client(client.id), mono: true }))} empty="only claims" />
+                    {row.team ? (
+                      <Typography variant="body2" color="text.secondary">
+                        nothing here
+                      </Typography>
+                    ) : (
+                      <Names items={opens(row.group).map((client) => ({ label: client.id, to: paths.client(client.id), mono: true }))} empty="only claims" />
+                    )}
                   </TableCell>
                   <TableCell>
                     <Tooltip title={dependsOn[row.needs].why}>
@@ -189,7 +221,14 @@ export function Rules() {
 /** The kind, in an operator's words. `directory group` is not a matcher
  *  kind and never reaches matcherKind, which is why this wraps it. */
 function ruleKind(kind: Kind): string {
-  return kind === "directory" ? "provider group" : matcherKind(kind);
+  switch (kind) {
+    case "directory":
+      return "provider group";
+    case "github-team":
+      return "GitHub team";
+    default:
+      return matcherKind(kind);
+  }
 }
 
 /** What an empty table means, which is not one thing.

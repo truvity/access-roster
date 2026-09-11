@@ -52,8 +52,9 @@ clients:                       # who may be issued a token for what; the id is t
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
 | `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap` | declared |
+| `github` | organisation, then team | the provider groups that feed that GitHub team | declared |
 
-Four tables, one writer. There was a fifth, `memberships`, which a
+Five tables, one writer. There was a fifth, `memberships`, which a
 console could extend; it is gone with the read-only console (INF-694),
 and the key is now refused like any other unknown one rather than
 ignored. A directory group that should feed an internal group is named
@@ -240,6 +241,37 @@ nobody, not everyone, and the issuer refuses to start on one. Never
 created in a console, never registered by a workload, so the set of
 them is answerable by reading the repository. Local development uses the
 one declared `local-dev` client.
+
+## GitHub teams
+
+```yaml
+github:
+  truvity:
+    platform: [team-platform@truvity.com, sre@truvity.com]
+    security: [sec@truvity.com]
+  trust-form:
+    platform: [team-platform@trustform.eu]
+```
+
+Read it exactly like a group's `members`: the people the directory puts
+in these groups are the people that team should contain.
+
+**It grants nothing here and appears in no token.** A controller reads it
+and makes the organisation match; this service only holds it and shows
+it. The reason it lives in this file rather than the controller's own is
+the one that decides every question like it — *a reader of the access
+model sees every GitHub team's source without opening another file*, and
+`git log` is the history of who was in what.
+
+The same team name in two organisations is two bindings, not a clash.
+The same team declared twice, in two files that merge, **is** a clash and
+is refused: the second would silently replace the first. A team fed by an
+empty list is refused too, because "remove everyone from platform" is not
+something to express by leaving a list out.
+
+The console's Rules page lists these beside the rest, with the same
+*depends on* column — they depend on the directory, like any membership.
+They feed a team rather than an internal group, so they open no client.
 
 ## One source
 

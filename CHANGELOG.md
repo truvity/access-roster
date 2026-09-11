@@ -22,6 +22,27 @@ git history.
 
 ## Unreleased
 
+- **GitHub team bindings are a table in the policy** (INF-696, the
+  access-roster half). `github: <org>: <team>: [provider groups]`, read
+  exactly like a group's `members`: the people the directory puts in
+  those groups are the people that team should contain. It grants
+  nothing here and appears in no token — a controller reads it and makes
+  the organisation match — and it lives in this file for one reason, that
+  a reader of the access model sees every team's source without opening
+  another file.
+
+  The console's Rules page lists them beside the rest with the same
+  *depends on* column. They feed a team rather than an internal group, so
+  they open no client and the page says so. A team fed by an empty list
+  is refused, because "remove everyone from platform" is not something to
+  express by leaving a list out; the same team declared in two merged
+  files is refused too, because the second would silently replace the
+  first.
+
+  The controller, the read-only GitHub page and the directory endpoint it
+  authenticates against are the other three parts of INF-696 and wait for
+  github-roster.
+
 - **The console signs people in as a client of the issuer** (INF-701),
   which is what makes one binary mean one door. Somebody with no session
   is sent to `/authorize` with the console's declared client, signs in at
