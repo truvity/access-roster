@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -152,6 +153,11 @@ type Storage struct {
 	verify  Verifier
 	key     *SigningKey
 	secrets func(clientID string) (string, bool)
+	// log is for the few things here worth saying out loud. Nothing in
+	// this file logged until a reused authorization code needed to be —
+	// which is either a broken client or a stolen code, and both are
+	// worth seeing.
+	log *slog.Logger
 
 	// state is shared by every replica, because a login is not: a browser
 	// starts at /authorize on one, comes back from the provider at
@@ -223,7 +229,20 @@ const (
 // with the hub's snapshots.
 func requestKey(id string) string { return "issuer:request:" + id }
 func codeKey(code string) string  { return "issuer:code:" + code }
-func tokenKey(id string) string   { return "issuer:token:" + id }
+
+// logger is the storage's, or the default when a caller supplied none.
+func (s *Storage) logger() *slog.Logger {
+	if s.log != nil {
+		return s.log
+	}
+
+	return slog.Default()
+}
+
+// codeSessionKey remembers which session one authorization code opened,
+// so that a reuse of that code can end it.
+func codeSessionKey(request string) string { return "issuer:code-session:" + request }
+func tokenKey(id string) string            { return "issuer:token:" + id }
 
 var (
 	_ op.Storage                            = (*Storage)(nil)
@@ -366,10 +385,53 @@ func (s *Storage) AuthRequestByCode(ctx context.Context, code string) (op.AuthRe
 	if err != nil {
 		return nil, err
 	}
+
 	if !found {
 		return nil, errors.New("no such authorization code")
 	}
-	return s.AuthRequestByID(ctx, string(raw))
+
+	request, err := s.AuthRequestByID(ctx, string(raw))
+	if err != nil {
+		// The code is known and its request is gone, which is what a
+		// SECOND redemption looks like: the first one deleted the
+		// request. RFC 6749 4.1.2 says deny it and revoke what it
+		// already issued, and the second half is the one that matters —
+		// a code presented twice is a code somebody else has, and the
+		// tokens from its first use are the ones now in doubt.
+		s.revokeCodeSession(ctx, string(raw))
+
+		return nil, err
+	}
+
+	return request, nil
+}
+
+// revokeCodeSession ends the session one authorization code opened, on
+// learning that the code was presented a second time.
+//
+// Best effort and silent about it: this runs while answering a request
+// that is being refused anyway, and a failure here must not turn a
+// refusal into a server error.
+func (s *Storage) revokeCodeSession(ctx context.Context, request string) {
+	raw, found, err := s.state.Get(ctx, codeSessionKey(request))
+	if err != nil || !found {
+		return
+	}
+
+	gone, err := s.iss.Sessions().RevokeID(ctx, string(raw))
+	if err != nil {
+		s.logger().WarnContext(ctx, "an authorization code was reused and its session could not be ended",
+			"error", err)
+
+		return
+	}
+
+	// WARN and not INFO: a code presented twice is either a broken client
+	// or a stolen code, and both are worth seeing in a log.
+	s.logger().WarnContext(ctx, "an authorization code was reused; the session it opened has been ended",
+		"ended", gone)
+
+	_ = s.state.Delete(ctx, codeSessionKey(request))
 }
 
 // SaveAuthCode implements [op.AuthStorage].
@@ -506,6 +568,23 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 	// is the only reason the id can travel without a second lookup.
 	if opened, ok := request.(*authRequest); ok {
 		opened.Session = session.ID
+
+		// And remember which session this CODE produced, so that a reuse
+		// of it can end that session. RFC 6749 4.1.2: a code used twice
+		// must be denied and SHOULD revoke the tokens already issued from
+		// it — denying alone leaves a stolen code's first redemption
+		// working while telling us it was stolen.
+		//
+		// Kept only as long as a code lives. After that a second
+		// redemption is impossible anyway, and the note would be a record
+		// of who signed in with nothing to do.
+		if err = s.state.Set(ctx, codeSessionKey(opened.ID), []byte(session.ID), authCodeTTL); err != nil {
+			// Not fatal to the sign-in that just succeeded: the person is
+			// authenticated, and what is lost is a defence against a reuse
+			// that may never come.
+			s.logger().WarnContext(ctx, "could not record which session a code opened; "+
+				"reusing that code will be denied but will revoke nothing", "error", err)
+		}
 	}
 
 	return issued.ID, refresh, issued.Expires, nil

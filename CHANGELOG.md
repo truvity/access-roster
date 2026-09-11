@@ -1,5 +1,23 @@
 ## Unreleased
 
+- **Reusing an authorization code ends the session it opened.** RFC 6749
+  4.1.2 says a code used twice must be denied and SHOULD revoke the
+  tokens already issued from it. We denied the reuse — the first
+  redemption deletes the request — but left the first redemption's tokens
+  working, which conformance saw as a resource endpoint answering 200
+  where it wanted a 4xx.
+
+  Denying alone is the worse half: a code presented twice is a code
+  somebody else has, and the tokens from its first use are the ones now
+  in doubt. PKCE with S256 is required here and already defeats most code
+  interception, so this is defence in depth rather than an open door —
+  and it is the cheap half, because the code arriving twice is the whole
+  signal.
+
+  A reuse is logged at WARN, since it is either a broken client or a
+  stolen code and both are worth seeing.
+
+
 - **A token says how the person was proved.** `acr` was empty, so a
   client asking with `acr_values` got none back — which conformance
   flags, and which matters more than the flag: a recovery sign-in

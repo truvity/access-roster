@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"strings"
+
+	"github.com/zitadel/oidc/v3/pkg/oidc"
 )
 
 // NewSessionsServiceForTest builds the contract over a stubbed verifier,
@@ -32,3 +34,20 @@ var ErrUnverifiedForTest = errors.New("unverified")
 // needs for string handling.
 func CutForTest(s, sep string) (string, string, bool) { return strings.Cut(s, sep) }
 func SplitForTest(s, sep string) []string             { return strings.Split(s, sep) }
+
+// CreateAuthRequestForTest makes a completed authorization request, which
+// is otherwise built by the library from a browser redirect. It returns
+// the request's id.
+func (s *Storage) CreateAuthRequestForTest(ctx context.Context, subject, clientID string) (string, error) {
+	request := &authRequest{
+		ID:  "req-" + subject + "-" + clientID,
+		Req: &oidc.AuthRequest{ClientID: clientID, RedirectURI: "https://rp.example/cb"},
+	}
+	if err := setJSON(ctx, s.state, requestKey(request.ID), request, authRequestTTL); err != nil {
+		return "", err
+	}
+	if err := s.Complete(request.ID, Authenticated{Subject: subject}); err != nil {
+		return "", err
+	}
+	return request.ID, nil
+}
