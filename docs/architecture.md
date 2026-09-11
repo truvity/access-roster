@@ -128,8 +128,8 @@ expressed in configuration and whether it is built.
 | clusters, for workloads | one row per cluster naming its ServiceAccount-token key set; token exchange | **built** (INF-692). The issuer's own cluster is a row like any other, and the issuer holds access to none of them |
 | AWS accounts | the issuer registered once per account as an IAM OIDC provider; a `requires` list per role client | designed (INF-653) |
 | GitHub organisations | one controller App per org; `github` bindings in the policy; links in a ConfigMap the controller maintains | **the bindings are built** and the console lists them (INF-696); the controller that acts on them is not (INF-697) |
-| CI platforms | one federated issuer row; `ci` rules on repository and ref | verifier built; the action designed (INF-654) |
-| consoles and applications | one client row each; a proxy for those with no OpenID flow of their own | **built**: the directory console, hubble, Kargo |
+| CI platforms | one federated issuer row; `ci` rules on repository and ref | **built** (INF-649): the verifier, and the GitHub Action at the repository root — `curl` and `jq`, so nothing of ours is downloaded into a job |
+| consoles and applications | one client row each; a proxy only for those with no OpenID flow of their own | **built**: the directory console (no proxy since 0.12 — it signs in as a client of the issuer it shares an origin with), hubble (proxied), Kargo and its CLI |
 
 What never multiplies: the issuer URL, the signing key, the policy file,
 the console, the login page.

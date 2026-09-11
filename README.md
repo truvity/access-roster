@@ -71,11 +71,12 @@ directory and, within the freshness window, from everything downstream.
 Adding one of anything is one row and one trust registration. The
 issuer URL, the policy file and the console never multiply.
 
-Built today: three Google Workspaces on one cluster, three relying
-parties, and workloads on any cluster proving themselves by that
-cluster's published key set. Designed and ticketed, not yet built: the
-second directory connector, and the GitHub controller across
-organisations.
+Built today: **one service**, three Google Workspaces on one cluster,
+four clients, workloads on any cluster proving themselves by that
+cluster's published key set, a GitHub Action that needs nothing of ours
+downloaded into a job, and `accessctl` for a laptop. Designed and
+ticketed, not yet built: the second directory connector, and the GitHub
+controller across organisations.
 [architecture.md](docs/architecture.md#fan-in-and-fan-out) says which
 is which, per row.
 

@@ -30,32 +30,32 @@ being a credential for every service in it.
 
 ```yaml
 volumes:
-  - name: directory-roster-token
+  - name: my-service-token
     projected:
       sources:
         - serviceAccountToken:
-            audience: directory-roster      # the service's audience, from its values
+            audience: my-service            # the service's audience, from its values
             expirationSeconds: 3600
             path: token
 ```
 
 Read the file on **every call**, not once: the kubelet rotates it under
-the pod. Send it as `Authorization: Bearer …`. The directory's Go client
-does this for you:
-
-```go
-src := tokens.ServiceAccountSource("/var/run/secrets/directory-roster/token")
-dir := directory.New("http://directory-roster.directory-roster.svc:8080", src)
-```
+the pod. Send it as `Authorization: Bearer …` — there is no client
+library for this and none is needed, because it is a file and a header.
 
 On the service side, the caller must be **named**. Reaching the port is
-not being allowed to ask: the directory's `consumers[]` lists
-`namespace/serviceAccount` pairs and an empty list admits nobody. A
-NetworkPolicy admitting the caller's namespace is the second layer,
-never the only one.
+not being allowed to ask: state the callers your listener admits and
+treat an empty list as admitting nobody rather than everybody. A
+NetworkPolicy admitting the caller's namespace is the second layer, never
+the only one.
 
-The issuer calling the hub, and github-roster calling the hub, are both
-exactly this.
+> **access-roster itself no longer has a listener like this.** The
+> directory and the issuer became one process in 0.12, the issuer's
+> question became a function call, and the only consumer of that API
+> disappeared with it. The pattern is documented because it is right for
+> a service with two kinds of caller — it is simply not something we run
+> today, and a guide that implied otherwise would send you looking for a
+> port that is not there.
 
 ## Calling with an issuer token (anywhere else)
 
@@ -133,29 +133,47 @@ the pattern:
 | console, `:8081` | `access-proxy` | `Issuer` (issuer URL + this console's client id) | people |
 | API, `:8080` | Service DNS | `Cluster` (TokenReview + audience + allow-list), and `Issuer` too when remote callers exist | workloads here; anything further away through the issuer |
 
-In Go, both verifiers come from the module and a listener composes what
-it needs:
+In Go, both verifiers come from the module as **structs** and a listener
+composes what it needs:
 
 ```go
-cluster, _ := identity.NewClusterVerifier(ctx, identity.ClusterConfig{
+cluster := &identity.Cluster{
+    Review:   kube.ReviewToken,        // yours, or client-go's
     Audience: "my-service",
-    Allow:    []identity.ServiceAccountRef{{Namespace: "team-sync", Name: "team-sync"}},
-})
-issuer, _ := identity.NewIssuerVerifier(ctx, identity.IssuerConfig{
-    Issuer:   "https://issuer.example.internal",
-    Audience: "my-service",              // this service's client id at the issuer
-})
+    Name:     "kernel",                // so the same namespace on two clusters is two callers
+    Groups:   []string{"kernel:k8s:admin"},
+}
+issuer := &identity.Issuer{
+    URL:      "https://issuer.example.internal",
+    Audience: "my-service",            // this service's client id at the issuer
+}
 
-api.Handle("/", connectmw.Interceptor(cluster, issuer).Wrap(handler))   // either anchor
-console.Handle("/", httpmw.Require(issuer)(ui))                          // people only
+// Either anchor, tried in order, first to answer wins.
+http.ListenAndServe(":8080", identity.Middleware(cluster, issuer)(api))
 ```
 
-Whichever anchor proved the caller, the handler sees one `Principal`
-with `Groups []string`, and **the grant is keyed by the principal, not
-by the anchor**: a consumer proven either way is the same consumer and
-gets the same answer. If your service keeps a grant table of its own —
-which callers may read what — key it by the principal too, so there is
-one table behind both doors.
+**Structs and not constructors, and no `ctx`.** A service must start
+whether or not the issuer is reachable: discovery is lazy and cached, and
+the key set refetches itself when a signature names a key it has not
+seen, which makes rotation a non-event.
+
+**`Review` is supplied, not built**, or every consumer that only needs
+the issuer would inherit Kubernetes client libraries for a path it never
+runs. **`Groups` is stated by the listener**, because a TokenReview says
+*who* and never *what they may do* — a token the issuer signed carries
+its groups, a ServiceAccount token does not.
+
+Whichever anchor proved the caller, the handler sees one
+`identity.Verified` and cannot tell which answered. **The grant is keyed
+by the caller, not by the anchor**: a consumer proven either way is the
+same consumer and gets the same answer. If your service keeps a grant
+table of its own, key it the same way, so there is one table behind both
+doors.
+
+A verifier that could not **reach** the issuer stops the chain rather
+than falling through to the next one, because trying the next would turn
+an outage into *your token is bad* and send a legitimate caller to
+authenticate again, repeatedly.
 
 A service that serves **only workloads next door** needs only the
 cluster verifier and no client at the issuer. A service that serves

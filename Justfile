@@ -71,6 +71,12 @@ release-check:
 archive-check:
     ./hack/check-archives.py
 
+# Every Go symbol the documentation names must exist. Nothing compiles a
+# code block in a Markdown file, so a rename leaves the old name in the
+# guide and the first person to notice is a stranger following it.
+docs-check:
+    ./hack/check-docs-symbols.py
+
 # Run go mod tidy
 tidy:
     go mod tidy
@@ -455,4 +461,4 @@ console:
     test -z "$(git ls-files --others --exclude-standard frontend/dist)"
 
 # Run all checks (build + test + lint + chart-lint + vuln)
-check: build test lint chart-lint archive-check vuln
+check: build test lint chart-lint archive-check docs-check vuln

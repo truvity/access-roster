@@ -5,16 +5,6 @@ repository, numbered once here and explained case by case below. The
 structural drawing is [architecture.md](architecture.md); the how-to per
 relying party is under [connect/](connect/).
 
-> **Cases ④, ④b and ⑤ describe a shape that is gone.** The directory and
-> the issuer became one process in 0.12, so ⑤ is a function call rather
-> than an arrow, and the API listener ④ and ④b reach does not exist: a
-> workload that needs a token something outside its cluster trusts uses
-> token exchange (case ③), verified against its own cluster's published
-> key set. This page is rewritten as one set with the rest of the
-> documentation under INF-698; until then read those three cases as
-> history and [design/access-roster.md](design/access-roster.md) as what
-> runs.
-
 Every arrow below rests on one of **two trust anchors**, and the choice is
 made by scope, never by preference ([design/trust.md](design/trust.md)):
 **the cluster** — a ServiceAccount token the API server checks — for a
@@ -84,13 +74,13 @@ flowchart TB
 | **Service** | access-issuer | the whole of access-roster | the platform, once per installation | **running** since 0.6; the directory folded in at 0.12 ([design](design/access-roster.md)); Config profile green, two attended profiles pending |
 | **Helm chart** | `access-issuer` | the whole service; expects a Valkey | the platform | published per tag |
 | **Helm chart** | `directory-roster` | the pre-0.12 directory service, kept so an installation can move back | nobody new | published per tag; removed once nothing points at it |
-| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console with no OpenID flow of its own; expects a Valkey; its client is one declared row | every team that ships a console, one release per console | published per tag; in front of the hub's console and hubble |
+| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console with no OpenID flow of its own; expects a Valkey; its client is one declared row | every team that ships a console, one release per console | published per tag; in front of hubble; the directory console left it at 0.12, because it signs in as a client of the issuer it shares an origin with |
 | **Go module** | `github.com/truvity/access-roster` | `policy`, `backend` today; `identity` with the two verifiers and the adapters, `authz`, `directory`, `tokens` to come | every Go service and console | `policy` + `backend` published; the rest with 1.0 |
 | **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>` over `/.access/whoami` | every console UI | published per tag |
 | **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `policy test` | people, on laptops; never machines | designed, not built |
 | **GitHub Action** | `truvity/access-roster@v1` (root `action.yml`) | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | designed, not built; the issuer side (the GitHub verifier) is built |
 | **File format** | the policy | groups, claims, lifetimes, clients — one schema for both services | the platform, in gitops, rendered from its access matrix | in force |
-| **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the hub's console services | consumers of the hub | now |
+| **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the console's own services | consumers of access-roster | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
 
 ## What is ours and what is third-party
@@ -104,14 +94,14 @@ flowchart TB
 Each case: who is involved, what trusts what, the flow, what you
 configure and where, what you get.
 
-### ① A corporate directory → the hub
+### ① A corporate directory → access-roster
 
-- **Anchor:** none of ours — the directory's own OAuth; the hub is the client.
+- **Anchor:** none of ours — the directory's own OAuth; access-roster is the client.
 - **Parties:** a Workspace admin (role account), directory-roster.
-- **Trust:** the Workspace grants the hub's OAuth client read-only Admin
+- **Trust:** the Workspace grants our OAuth client read-only Admin
   SDK scopes by admin consent, or a service-account key with domain-wide
   delegation.
-- **Flow:** Connect in the console → consent → the hub stores the refresh
+- **Flow:** Connect in the console → consent → the refresh token is stored
   token, discovers the tenant id and domains, takes the first snapshot,
   then re-reads every 15 minutes and probes every 5.
 - **You configure:** once per installation, the OAuth client; once per
@@ -128,7 +118,7 @@ configure and where, what you get.
   openid scopes only.
 - **Flow:** the person types their email at the issuer → routed by domain
   to the right tenant → signs in there with MFA → back at the issuer, ⑤
-  asks the hub → policy → token.
+  asks the directory → policy → token.
 - **You configure:** one OIDC client per backend (Google, later Entra) in
   the issuer's values. Not per tenant: tenants are discovered.
 - **You get:** one login for every relying party; a suspended account
@@ -152,40 +142,40 @@ configure and where, what you get.
 - **You get:** no stored secret anywhere; a fork branch gets nothing.
 - Guide: [connect/github-actions.md](connect/github-actions.md).
 
-### ④ A workload → the hub
+### ④ A workload proves itself → the issuer
 
-- **Anchor:** the cluster. Same cluster, so no issuer in the path — the
-  issuer would verify the same token and re-sign it.
-- **Parties:** an in-cluster consumer (the issuer, github-roster), the
-  hub's API listener.
-- **Trust:** the consumer presents a projected ServiceAccount token with
-  audience `directory-roster`; the hub verifies it with TokenReview
-  against an allow-list.
-- **You configure:** a projected volume in the consumer, a
-  `namespace/serviceAccount` line in the hub's values.
-- **You get:** no API keys; a token that dies with the pod.
+- **Anchor:** the cluster that issued the token, by its own published key
+  set — not by a TokenReview here, and not by any credential of ours.
+- **Parties:** a workload on any cluster, access-issuer.
+- **Trust:** the workload presents its projected ServiceAccount token;
+  the issuer verifies the signature against the key set that cluster
+  publishes, named in one row per cluster. EKS publishes one over IRSA
+  and Talos serves `/openid/v1/jwks`.
+- **Flow:** token exchange (case ③ with a different subject token) → a
+  token of ours, with the audience the caller asked for and the groups
+  its `workload` rules grant.
+- **You get:** no kubeconfig held anywhere, and a cluster added by one
+  row rather than by a credential.
+- **Why not a TokenReview:** it asks the caller's own API server, which
+  means holding access to every cluster — the N×M problem the issuer
+  exists to collapse. The cluster anchor survives for RECOVERY alone: the
+  way in on the day the directory is broken, which must depend on nothing
+  else (INF-692).
 - Guide: [connect/service-to-service.md](connect/service-to-service.md).
 
-### ④b A remote workload, a laptop or a person → the hub's API
+### ⑤ The issuer asks the directory
 
-- **Anchor:** the issuer. A ServiceAccount token does not cross clusters,
-  and a service that verified N clusters' key sets directly would be the
-  N×M problem the issuer exists to collapse.
-- **Flow:** the caller exchanges its own proof at the issuer for a token
-  whose audience is the hub (`accessctl exchange` on a laptop) → the API
-  listener verifies it against the issuer's JWKS and its audience.
-- **Grant:** keyed by the principal, not the anchor — one consumer table
-  behind both doors; a caller proven either way gets the same answer.
-- Status: the verifier exists (it is the console's); admitting it on the
-  API listener with per-consumer grants is the open work.
-- Guide: [connect/service-to-service.md](connect/service-to-service.md).
-
-### ⑤ The issuer asks the hub
-
-- Every login and refresh: `ResolveUser(email)` → groups, live,
-  authoritative. Non-authoritative answers hold last-known grants for a
-  bounded window; new identities get nothing. This is the second half of
-  global logout and the whole of the leaver story.
+- Every login and refresh: who is this address, and which groups is it
+  in — **a function call**, in one process, since 0.12. Answers that are
+  live and authoritative grant everything the policy says; an answer the
+  directory could not confirm holds last-known grants for a bounded
+  window, and a new identity gets nothing.
+- That distinction is why a failure here is an ERROR and never an empty
+  answer: an empty answer would read as *this person is in no groups*,
+  which is a silent revocation of everybody's access the moment Google is
+  unreachable. The hold window depends on telling the two apart.
+- This is also the second half of global logout, and the whole of the
+  leaver story.
 
 ### ⑥ The issuer → a Kubernetes cluster
 
@@ -292,10 +282,15 @@ configure and where, what you get.
 
 ### ⑭ GitHub teams
 
-- **Anchor:** the cluster (this is ④).
-- github-roster, a sibling service, reads the hub over ④ every tick and
-  keeps bound teams equal to directory groups, removing only on
-  authoritative answers. No issuer involved: this is the sync model.
+- **Anchor:** none of ours yet, and that is the open work (INF-697).
+- The bindings are built: *directory group → GitHub team* lives in the
+  same policy file as every other grant, and the console lists them
+  beside every other rule. The controller that ACTS on them is not.
+- When it exists it will hold a GitHub App per organisation, act with its
+  own credential, and keep bound teams equal to directory groups —
+  removing only on authoritative answers. No issuer is involved: this is
+  the **sync model**, because GitHub can be written to.
+- Guide: [connect/github-organisation.md](connect/github-organisation.md).
 
 ### ⑮ Registries, artifacts and every other AWS service
 
@@ -316,7 +311,7 @@ configure and where, what you get.
 
 - **Anchor:** the cluster, used deliberately as the floor. A person
   mints a ServiceAccount token (`kubectl create token <release>-recovery
-  --audience …`) and signs in with it at the hub or the issuer. In the
+  --audience …`) and signs in with it. In the
   scenario it exists for, the directory is what is broken and the issuer
   depends on the directory, so the estate anchor is unavailable by
   construction. Authorization is cluster RBAC: who may mint that token.
@@ -326,12 +321,15 @@ configure and where, what you get.
 ## Reading the two models together
 
 Cases ⑥ ⑦ ⑧ ⑩ ⑮ are the **claims model**: the decision rides in a token,
-because a cluster, a cloud account or a session cannot call the hub.
+because a cluster, a cloud account or a session cannot call a directory.
 Case ⑭ is the **sync model**: the decision is materialized where it is
-enforced, because GitHub can be written to. Both draw from the same hub
+enforced, because GitHub can be written to. Both draw from the same directory
 and the same policy; the choice per relying party is dictated by what that
 relying party can consume, never by preference.
 
-And underneath both, the **two anchors**: ④ ⑭ ⑯ stand on the cluster,
-everything else on the issuer, and ④b is the one door that admits both —
-with the grant keyed by who is asking, not by how they proved it.
+And underneath both, the **two anchors** — and the split between them
+has moved. ⑯ alone stands on the cluster now: recovery, the way in on the
+day the directory is broken, which must depend on nothing else.
+Everything else stands on the issuer, ④ included, because a workload is
+proven against the key set its OWN cluster publishes rather than by
+asking an API server we would have to hold access to.
