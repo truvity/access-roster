@@ -215,6 +215,28 @@ chart-lint:
         --set issuerURL=https://access.example --set route.host=access.example \
         --set console.mount= | grep -q 'PUBLIC_URL'
 
+    # The console gets its own HTTPRoute, and that is not tidiness: a
+    # gateway policy attaches to a ROUTE, so anything put in front of the
+    # console on a shared route would also sit in front of /token, /keys
+    # and discovery -- every relying party in the estate asked to sign in
+    # to fetch a key set. It renders whether or not anything attaches to
+    # it, because discovering at cutover that there is nothing to attach
+    # to leaves only the bad option.
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example --set route.host=access.example \
+        > /tmp/access-issuer-console-route.yaml
+    test "$(grep -c '^kind: HTTPRoute$' /tmp/access-issuer-console-route.yaml)" = "2"
+    grep -q 'name: access-issuer-console$' /tmp/access-issuer-console-route.yaml
+    grep -q 'value: "/console/"' /tmp/access-issuer-console-route.yaml
+    # The prefix is NOT rewritten away: the service strips it itself, so a
+    # gateway that stripped it too would hand the console a path it never
+    # serves.
+    ! grep -q 'ReplacePrefixMatch' /tmp/access-issuer-console-route.yaml
+    # No console, no second route.
+    test "$(helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example --set route.host=access.example \
+        --set console.mount= | grep -c '^kind: HTTPRoute$')" = "1"
+
     # Federated clusters (INF-692). No row is a secret, and the point of
     # the render is that the service ends up holding no cluster access at
     # all: IN_CLUSTER is recovery's, never a workload's.
@@ -342,8 +364,11 @@ chart-lint:
     helm template t charts/access-issuer --set issuerURL=https://a.example \
         --set route.host=a.example \
         --set route.rootRedirect=/console/ | grep -q 'replaceFullPath: "/console/"'
+    # Said with console.mount emptied, because the console's own route
+    # always redirects its bare prefix to the trailing slash — a different
+    # rule on a different object, and not the root redirect under test.
     ! helm template t charts/access-issuer --set issuerURL=https://a.example \
-        --set route.host=a.example \
+        --set route.host=a.example --set console.mount= \
         | grep -q 'RequestRedirect'
     # Under a path prefix the WHOLE sign-out chain moves with the
     # console, and both halves are the kind that fail silently. The
