@@ -5,6 +5,16 @@ git history.
 
 ## v0.12.0
 
+- **The GitHub Action's `default-profile` is checked against the profiles
+  the run actually wrote.** It reached `GITHUB_ENV`, so a newline in it
+  declared arbitrary environment variables for every later step of the
+  job — the input is trusted only as far as whoever wrote the workflow,
+  and an expression like `${{ github.event.* }}` is not trusted at all.
+  Found by CodeQL. Checking it against what was written closes that and
+  also catches a name that is simply a typo, which would otherwise
+  surface as an AWS error three steps later about a profile that does
+  not exist.
+
 - **The GitHub Action** (INF-649, the other half). One action at the
   repository root, `curl` and `jq` and two files: nothing of ours is
   downloaded into a job, and there is no version of ours to bump when

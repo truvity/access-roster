@@ -170,6 +170,28 @@ runs:
           echo "AWS_CONFIG_FILE=${aws_config}" >> "${GITHUB_ENV}"
         fi
         if [ -n "${DEFAULT_PROFILE}" ]; then
+          # Checked against the profiles actually written, which closes
+          # two things at once.
+          #
+          # A value from the workflow reaches GITHUB_ENV here, and a
+          # newline in it would declare arbitrary environment variables
+          # for every later step of the job — the input is trusted only
+          # as far as whoever wrote the workflow, and an expression like
+          # ${{ github.event.* }} is not trusted at all.
+          #
+          # And a name that is not one of ours is a mistake worth
+          # catching here rather than as an AWS error three steps later
+          # about a profile that does not exist.
+          found=""
+          for written in ${profiles}; do
+            if [ "${written}" = "${DEFAULT_PROFILE}" ]; then
+              found="yes"
+            fi
+          done
+          if [ -z "${found}" ]; then
+            echo "::error::default-profile ${DEFAULT_PROFILE} is not one this run wrote. Written: ${profiles:-none}" >&2
+            exit 1
+          fi
           echo "AWS_PROFILE=${DEFAULT_PROFILE}" >> "${GITHUB_ENV}"
         fi
         if [ -n "${kubeconfig}" ]; then
