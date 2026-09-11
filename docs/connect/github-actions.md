@@ -4,6 +4,12 @@
 requests its identity token, exchanges it at the issuer for the clients
 its groups admit it to, and uses the result.
 
+> **`accessctl` and the GitHub Action are not built yet (INF-649).**
+> Everything on this page that names one describes what it will run, not
+> what you can run today. The issuer side is real and can be set up now;
+> the laptop and workflow side waits for the CLI.
+
+
 ## Issuer side
 
 ```yaml

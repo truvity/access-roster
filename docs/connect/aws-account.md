@@ -2,6 +2,12 @@
 
 **Anchor:** the issuer; the account trusts its JWKS and reads `aud`.
 
+> **`accessctl` and the GitHub Action are not built yet (INF-649).**
+> Everything on this page that names one describes what it will run, not
+> what you can run today. The issuer side is real and can be set up now;
+> the laptop and workflow side waits for the CLI.
+
+
 ## Account side, once
 
 An IAM OIDC identity provider for the issuer URL, and per role a trust

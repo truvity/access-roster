@@ -159,9 +159,24 @@ export function App() {
             </IconButton>
           </Tooltip>
         </Stack>
-      ) : (
+      ) : identityInfo?.status === "unknown" ? (
+        // "Could not ask" is not "signed out", and the package draws that
+        // distinction precisely so a console does not send a signed-in
+        // person to authenticate again because one request failed. The
+        // copy this console used to carry reported every failure as
+        // signed-out, so the button below was shown for a network blip.
         <Box sx={{ px: 2, py: 1.5 }}>
-          <Button size="small" variant="contained" href="/login" fullWidth>
+          <Typography variant="caption" color="text.secondary">
+            Cannot tell who you are right now. This page will say when it can.
+          </Typography>
+        </Box>
+      ) : identityInfo?.status === "loading" ? null : (
+        <Box sx={{ px: 2, py: 1.5 }}>
+          {/* The console's own root, never the issuer's /login: the
+              server sends an unauthenticated visitor through /authorize
+              with this console as the client (INF-701), and /login on its
+              own is a page that cannot sign anybody in. */}
+          <Button size="small" variant="contained" href={mounted(".")} fullWidth>
             Sign in
           </Button>
         </Box>

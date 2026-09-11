@@ -28,7 +28,7 @@ it, and the difference is what you run to get it.
 | users | none, federates | its own user store, plus federation | its own user store | none, federates |
 | groups in the token | only if the upstream IdP sends them — Google does not | after you write a mapper or a login hook per IdP | after you configure a sync | read from the directory, always |
 | several corporate IdPs, one issuer | yes | yes | yes | yes |
-| one policy file for people **and** machines | no policy at all | no; roles per client, in the UI or the database | no; per-app assignments | yes, in git |
+| one policy file for people **and** machines | no policy at all | no; roles per client, in the UI or the database | no; per-app assignments | yes, in git — and GitHub teams in the same file |
 | CI and workloads without a stored secret | connectors only for people | machine users, with secrets | machine users, with secrets | token exchange from GitHub's or the cluster's own token |
 | audience gating for cloud roles | no | via custom mappers | via app assignments | a `requires` list per client |
 | who is in this group and why, at a glance | no | the admin UI, eventually | the admin UI | the directory console |
