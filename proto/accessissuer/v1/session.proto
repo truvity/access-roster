@@ -100,6 +100,17 @@ message RevokeSessionsRequest {
   // this identity holds — "sign out everywhere".
   string client_id = 2;
   string session_id = 3;
+  // One BROWSER, by the sign-on id its sessions carry.
+  //
+  // The distinction this exists for: ending a session ends what a client
+  // holds, and leaves the SIGN-IN that produced it. A browser whose
+  // sessions were all ended one by one can still open new ones with no
+  // password, which is the half sign-out that looks exactly like a whole
+  // one — reported from the console, where every button sent a session
+  // id and none of them touched the sign-in.
+  //
+  // Naming this ends the sign-in and every session under it.
+  string sso = 4;
 }
 
 message RevokeSessionsResponse {

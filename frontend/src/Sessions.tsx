@@ -134,10 +134,12 @@ export function SessionsPanel({
 function SessionsTable({
   sessions,
   onRevoke,
+  onSignOutBrowser,
   revoking,
 }: {
   sessions: Session[];
   onRevoke: (session: Session) => void;
+  onSignOutBrowser: (session: Session) => void;
   revoking?: string;
 }) {
   if (sessions.length === 0) return <Nothing>No open session matches the filter.</Nothing>;
@@ -167,7 +169,7 @@ function SessionsTable({
             <TableCell>Client</TableCell>
             <TableCell>Way in</TableCell>
             <TableCell>
-              <Tooltip title="Sessions with the same mark came from one browser. Blank is a session with no browser behind it.">
+              <Tooltip title="Sessions with the same mark came from one browser. Signing the browser out ends its sign-in too, which revoking the rows does not. Blank is a session with no browser behind it — a token exchange.">
                 <span>Browser</span>
               </Tooltip>
             </TableCell>
@@ -194,10 +196,18 @@ function SessionsTable({
                 </Typography>
               </TableCell>
               <TableCell>
-                {session.sso && (counts.get(session.sso) ?? 0) > 1 ? (
-                  <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                    {marks.get(session.sso)}
-                  </Typography>
+                {session.sso ? (
+                  <Tooltip title="End this browser's sign-in and every session under it. Revoking the rows one by one leaves the sign-in standing, and the next visit is admitted with no password.">
+                    <Button
+                      size="small"
+                      color="warning"
+                      disabled={revoking === session.sso}
+                      onClick={() => onSignOutBrowser(session)}
+                      sx={{ textTransform: "none", minWidth: 0, px: 1 }}
+                    >
+                      {(counts.get(session.sso) ?? 0) > 1 ? `Sign out ${marks.get(session.sso)}` : "Sign out"}
+                    </Button>
+                  </Tooltip>
                 ) : null}
               </TableCell>
               <TableCell>{ago(at(session.issuedAt))}</TableCell>
@@ -281,6 +291,25 @@ export function SessionsPage({ operator }: { operator: boolean }) {
     }
   };
 
+  // Ending a BROWSER, which is not the same act as ending a session.
+  //
+  // Revoking every row of a browser one at a time left its SIGN-IN
+  // standing, so the next visit was admitted with no password — every
+  // session gone and access unchanged. This names the browser, and the
+  // issuer ends the sign-in with the sessions under it.
+  const signOutBrowser = async (session: Session) => {
+    setBusy(session.sso);
+    setFailure(undefined);
+    try {
+      await sessionsClient.revokeSessions({ identity: session.identity, sso: session.sso });
+      load();
+    } catch (error) {
+      setFailure(reason(error));
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
   if (!operator) {
     return <Nothing>Listing every session in the installation is an operator's.</Nothing>;
   }
@@ -320,7 +349,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
       <Loading busy={loading} />
       <Failure error={failure} />
 
-      <SessionsTable sessions={shown} onRevoke={revoke} revoking={busy} />
+      <SessionsTable sessions={shown} onRevoke={revoke} onSignOutBrowser={signOutBrowser} revoking={busy} />
 
       {nextToken ? (
         <Box sx={{ mt: 2 }}>

@@ -1,3 +1,37 @@
+## Unreleased
+
+- **Revoking every session left the sign-in standing.** Reported from the
+  live console: *"I revoked all sessions, but still has access
+  everywhere."* Every Revoke button sent a session id, and that path ends
+  one session and nothing else — so a browser whose rows were all revoked
+  kept its SSO session, the list emptied, and the next `/authorize`
+  completed silently with no password. The half sign-out this design
+  names twice, shipped in the console that was supposed to prevent it.
+
+  The Sessions page now offers **signing the browser out** beside the
+  rows, which ends the sign-in and every session under it. The rows keep
+  their narrow meaning, because ending one session that is not the one
+  you are using is a real thing to want.
+
+  `RevokeSessionsRequest` gains `sso`, and it is checked against the
+  identity before anything is ended — the permission check is against the
+  identity the caller names, so without that an id alone would end
+  somebody else's sign-in. Both properties have tests, and the first was
+  verified to fail without the fix.
+
+  **What this does not reach** is a relying party's own session. A console
+  that ran its own flow holds its own cookie; `end_session` is
+  front-channel and back-channel logout is not built, so Kargo answers
+  until its own session expires however thoroughly you revoke here. Said
+  plainly in `docs/design/access-roster.md` rather than left to be
+  discovered twice.
+
+- **`hack/conformance-run.sh` runs a whole plan.** The suite's page has no
+  *run all* and Basic OP has thirty modules. It starts them in order,
+  waits for each, prints the result, and names the URL to open for the
+  ones that genuinely need a person at a sign-in. `--from` resumes after
+  a failure rather than re-running what passed.
+
 ## v0.12.8
 
 - **Filter rows stopped stepping sideways when they wrap.** MUI's

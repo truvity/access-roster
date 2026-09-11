@@ -19,24 +19,25 @@ import (
 func service(t *testing.T, state issuer.State) *issuer.SessionsService {
 	t.Helper()
 
-	return issuer.NewSessionsServiceForTest(
-		issuer.NewSessions(state, time.Hour),
-		func(_ context.Context, bearer string) (string, []string, error) {
-			// The stub reads "identity|group,group" so a test says who is
-			// calling in one string.
-			identity, rest, _ := issuer.CutForTest(bearer, "|")
-			if identity == "" {
-				return "", nil, issuer.ErrUnverifiedForTest
-			}
+	return issuer.NewSessionsServiceForTest(issuer.NewSessions(state, time.Hour), verifier())
+}
 
-			var groups []string
-			if rest != "" {
-				groups = issuer.SplitForTest(rest, ",")
-			}
+// verifier is the stub the fixtures share: it reads "identity|group,group"
+// so a test says who is calling in one string.
+func verifier() func(context.Context, string) (string, []string, error) {
+	return func(_ context.Context, bearer string) (string, []string, error) {
+		identity, rest, _ := issuer.CutForTest(bearer, "|")
+		if identity == "" {
+			return "", nil, issuer.ErrUnverifiedForTest
+		}
 
-			return identity, groups, nil
-		},
-	)
+		var groups []string
+		if rest != "" {
+			groups = issuer.SplitForTest(rest, ",")
+		}
+
+		return identity, groups, nil
+	}
 }
 
 func list(t *testing.T, s *issuer.SessionsService, as string, req *accessissuerv1.ListSessionsRequest) (*accessissuerv1.ListSessionsResponse, error) {
@@ -284,5 +285,105 @@ func TestASessionIdIsNotEnoughOnItsOwn(t *testing.T) {
 
 	if len(left) != 1 {
 		t.Error("Ada's session was ended by somebody naming its id")
+	}
+}
+
+// Signing a BROWSER out ends the sign-in, not only what it opened.
+//
+// This is the bug behind "I revoked all sessions, but still has access
+// everywhere". The console's Revoke button sent a session id, that path
+// never touched the sign-in, and a browser whose sessions were all ended
+// one by one could still open new ones with no password: every row gone,
+// the next /authorize completed silently.
+func TestSigningABrowserOutEndsTheSignInToo(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+	sso := issuer.NewSSO(state, time.Hour)
+	svc := issuer.NewSessionsServiceWithSSOForTest(sessions, sso, verifier())
+
+	browser, err := sso.Begin(ctx, "ada@north.example", "google")
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+
+	// Two clients opened from that browser, and one opened from another.
+	for _, client := range []string{"argocd", "kargo"} {
+		if _, err = sessions.Record(ctx, issuer.Opened{
+			Identity: "ada@north.example", ClientID: client,
+			How: issuer.HowCode, Token: "t-" + client, SSO: browser.ID,
+		}); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+
+	if _, err = sessions.Record(ctx, issuer.Opened{
+		Identity: "ada@north.example", ClientID: "k8s:kernel",
+		How: issuer.HowCode, Token: "t-laptop", SSO: "another-browser",
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	ended, err := revoke(t, svc, "ada@north.example|",
+		&accessissuerv1.RevokeSessionsRequest{Identity: "ada@north.example", Sso: browser.ID})
+	if err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	if ended != 2 {
+		t.Errorf("ended %d, want the 2 sessions that browser opened", ended)
+	}
+
+	// The sign-in is gone, which is the half that was missing: without
+	// it the browser walks back in with no password.
+	if _, found, err := sso.Get(ctx, browser.ID); err != nil || found {
+		t.Errorf("the sign-in survived: found=%v err=%v", found, err)
+	}
+
+	// And the other browser is untouched — signing one out is not
+	// signing out everywhere.
+	left, err := sessions.List(ctx, issuer.Query{Identity: "ada@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(left) != 1 || left[0].ClientID != "k8s:kernel" {
+		t.Errorf("left with %v, want only the other browser's session", left)
+	}
+}
+
+// A sign-in id alone is not enough, exactly as a session id is not.
+//
+// The permission check is against the IDENTITY the caller names, so
+// without reading the record first, naming your own identity and
+// somebody else's browser would end their sign-in.
+func TestASignInIdIsNotEnoughOnItsOwn(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+	sso := issuer.NewSSO(state, time.Hour)
+	svc := issuer.NewSessionsServiceWithSSOForTest(sessions, sso, verifier())
+
+	hers, err := sso.Begin(ctx, "eli@south.example", "google")
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+
+	ended, err := revoke(t, svc, "ada@north.example|",
+		&accessissuerv1.RevokeSessionsRequest{Identity: "ada@north.example", Sso: hers.ID})
+	if err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	if ended != 0 {
+		t.Errorf("ended %d, want 0", ended)
+	}
+
+	if _, found, err := sso.Get(ctx, hers.ID); err != nil || !found {
+		t.Errorf("Ada ended Eli's sign-in: found=%v err=%v", found, err)
 	}
 }

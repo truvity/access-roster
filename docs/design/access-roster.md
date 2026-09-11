@@ -294,6 +294,28 @@ silent re-authentication everywhere, but does not reach into other
 consoles' existing cookies — those live until their next refresh. To end a
 session *now* is **revocation**.
 
+**And the console got exactly that wrong** (found in production, 0.12.8).
+Every Revoke button on the Sessions page sent a *session id*, and the
+by-id path ends one session and nothing else. Revoking every row of a
+browser therefore left its SSO session standing: the list emptied, the
+person believed they had signed out everywhere, and the next `/authorize`
+completed silently with no password. The half sign-out that looks exactly
+like a whole one — the failure this design names twice and the console
+still shipped.
+
+The page now offers **signing the browser out** beside the rows, which
+ends the SSO session and every session under it. The rows keep their
+narrow meaning, because ending one session that is not the one you are
+using is a real thing to want, and the two acts should not be one button.
+
+What none of this reaches is a relying party's **own** session. A console
+that ran its own flow holds its own cookie, and revoking here does not
+call it: `end_session` is front-channel, and back-channel logout is not
+built. Kargo signed in an hour ago still answers after every session here
+is gone, until its own session expires. That is the honest boundary of
+revocation at an issuer, and the reason a relying party's session
+lifetime is a decision rather than a detail.
+
 ### One origin
 
 The issuer sits at the **root** of the domain and the console takes a path

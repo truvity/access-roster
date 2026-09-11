@@ -334,6 +334,52 @@ func (s *SessionsService) RevokeSessions(
 		return connect.NewResponse(&accessissuerv1.RevokeSessionsResponse{Ended: boolToCount(gone)}), nil
 	}
 
+	// One BROWSER: everything it opened, and the sign-in that let it.
+	//
+	// Ending the sessions alone is what the console was doing one row at
+	// a time, and it is the half sign-out that looks exactly like a whole
+	// one: every session gone, the sign-in intact, and the next
+	// /authorize completed silently with no password. Reported from the
+	// console — "I revoked all sessions, but still has access
+	// everywhere" — and it was right.
+	if sso := strings.TrimSpace(req.Msg.GetSso()); sso != "" {
+		// Whose browser it is, checked before anything is ended. The
+		// permission check above is against the IDENTITY the caller
+		// named, so without this an id alone would end somebody else's
+		// sign-in — the same hole the by-id path above guards, and the
+		// reason that one reads the record before acting on it.
+		//
+		// Absent and somebody else's are one answer, so an id cannot be
+		// probed for existence.
+		if s.sso != nil {
+			record, found, err := s.sso.Get(ctx, sso)
+			if err != nil {
+				return nil, connect.NewError(connect.CodeInternal, err)
+			}
+
+			if !found || !strings.EqualFold(record.Identity, identity) {
+				return connect.NewResponse(&accessissuerv1.RevokeSessionsResponse{}), nil
+			}
+		}
+
+		ended, err := s.sessions.Revoke(ctx, Query{Identity: identity, SSO: sso})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+
+		// The sign-in goes last: if ending the sessions fails halfway,
+		// the sign-in is still there and the person can try again. The
+		// other order would leave sessions running with nothing listing
+		// the browser they belong to.
+		if s.sso != nil {
+			if err = s.sso.End(ctx, sso); err != nil {
+				return nil, connect.NewError(connect.CodeInternal, err)
+			}
+		}
+
+		return connect.NewResponse(&accessissuerv1.RevokeSessionsResponse{Ended: int32(ended)}), nil
+	}
+
 	clientID := strings.TrimSpace(req.Msg.GetClientId())
 
 	ended, err := s.sessions.Revoke(ctx, Query{Identity: identity, ClientID: clientID})

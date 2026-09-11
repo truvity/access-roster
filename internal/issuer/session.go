@@ -234,6 +234,10 @@ func (s *Sessions) ByToken(ctx context.Context, token string) (Session, bool, er
 type Query struct {
 	Identity string
 	ClientID string
+	// SSO narrows to the sessions one BROWSER opened. Ending those is
+	// only half of signing that browser out — the sign-in itself has to
+	// go with them, which [SessionsService.RevokeSessions] does.
+	SSO string
 }
 
 // set is the narrowest set that can answer this query. Asking for one
@@ -396,6 +400,7 @@ func (s *Sessions) collect(ctx context.Context, q Query) ([]Session, error) {
 		switch {
 		case identity != "" && session.Identity != identity:
 		case q.ClientID != "" && session.ClientID != q.ClientID:
+		case q.SSO != "" && session.SSO != q.SSO:
 		default:
 			out = append(out, session)
 		}
