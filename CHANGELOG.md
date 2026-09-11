@@ -1,3 +1,24 @@
+## Unreleased
+
+- **Signing out leads back to signing in.** The signed-out page said what
+  had happened and left you there; sign-out now lands on the console,
+  which is where a sign-in can actually start. Not `/login` itself: its
+  buttons carry the id of a pending authorization request, so visiting it
+  without one is a page that looks like a sign-in and cannot finish. The
+  console's front page sends an unauthenticated browser through
+  `/authorize`, which makes that request. A deployment with no console
+  still gets the signed-out page, which is the honest ending for one.
+
+- **"Sign out everywhere" on your own page follows through.**
+  *Everywhere* includes here: naming no client ends the sign-in as well
+  as the sessions, so the page was left acting signed in until its next
+  call failed with a sentence about tokens — reported as an error on
+  revoke, and it was the trace of the sign-out that had already worked.
+
+- **A refused call says the session ended**, rather than repeating the
+  issuer's sentence about tokens, which is true and is not what happened
+  to the person reading it.
+
 ## v0.13.3
 
 - **Sign-out still did not work, and for a second reason.** The route
