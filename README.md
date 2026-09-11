@@ -139,14 +139,21 @@ serves none of those three on purpose — each is surface with no consumer
 here — so the RP-Initiated run above is worth having as a correctness
 check and is not a certifiable submission until one of them is built.
 
-The Config profile is the one that guards the surface most likely to
-break by accident: change a provider option and discovery changes with
-it, silently, for every relying party that reads it. So it runs on a
-schedule against the deployed issuer rather than only when somebody
-remembers — see
-[.github/workflows/conformance.yaml](.github/workflows/conformance.yaml).
+**The suite is run by a person, at every major and minor release**, as a
+whole. It used to run the Config profile nightly and nothing else, which
+is worse than no check: one profile passing daily reads as *conformance
+passes*, while the two that actually sign somebody in have not run for
+weeks — and those two are where every defect has been. The Config
+workflow is still one click away
+([.github/workflows/conformance.yaml](.github/workflows/conformance.yaml)),
+because it needs no credential and guards the discovery document, which
+changes silently when a provider option changes.
 
-The other two sign somebody in, which is the whole point of them.
+A run is not finished when the suite goes quiet. Modules in **REVIEW**
+are the suite handing a screenshot to a person, and a REVIEW whose
+screenshot shows the wrong page passes silently — two did, and both were
+pages a person meets.
+
 [docs/operations/conformance.md](docs/operations/conformance.md) is the
 procedure, and [hack/conformance_drive.py](hack/conformance_drive.py)
 drives headless Chrome through the browser half — signing in through

@@ -406,10 +406,32 @@ a value; two-column data is a list and tabular data is a table.
 
 ## The issuer's own HTML
 
-Two pages: `/login`, the sign-in chooser, and `/signed-out`, where a
-person lands when a client declares no page of its own. Both stay for one
-reason — each runs before there is anyone to authorize, so neither can be
-a console page. Everything else a person sees is the console.
+Four things, and they exist for one reason: each runs before there is
+anyone to authorize, so none of them can be a console page. Everything
+else a person sees is the console.
+
+| | |
+|---|---|
+| `/login` | the sign-in chooser, by email domain |
+| `/logout` | the sign-out a person follows, needing no `id_token_hint` |
+| `/signed-out` | where a sign-out lands when the client declares no page of its own |
+| a refusal | what `/authorize` and `/end_session` show when they cannot send the person onward |
+
+**The refusals are pages because of where they are reached.** Both
+endpoints redirect a browser back to the relying party when they can, and
+that is the specification's answer. What is left is the case where there
+is nowhere safe to send somebody — an unregistered `redirect_uri`, a
+broken `id_token_hint` — so they stay here, looking at whatever gets
+written. That used to be the library's `http.Error`: correct, and
+unstyled black text on white with nothing on it naming the service they
+had reached.
+
+**And these pages have to be re-read when behaviour changes**, because
+nothing fails when they go stale. The signed-out page told people their
+other consoles kept running *"until those expire"* for two releases after
+sign-out started revoking them — it was describing the design it was
+written against, at the moment it did the opposite. What caught it was
+looking at a conformance screenshot, not a test.
 
 ## The store
 
