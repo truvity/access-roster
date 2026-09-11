@@ -1,4 +1,4 @@
-## Unreleased
+## v0.12.2
 
 - **`console.mount` accepts `/console/` as well as `/console`.** The
   chart matched the trailing-slash spelling exactly and then redirected
