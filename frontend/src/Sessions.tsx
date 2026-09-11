@@ -18,7 +18,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { ago, at, howName, reason, sessions as sessionsClient, until } from "./api";
-import type { Session } from "./gen/accessissuer/v1/session_pb";
+import type { Session, SignIn } from "./gen/accessissuer/v1/session_pb";
 import { paths } from "./router";
 import { Facet, Facets, Failure, Loading, Nothing, Page, Ref } from "./ui";
 
@@ -113,6 +113,80 @@ export function SessionsPanel({
         ))}
       </List>
     </Paper>
+  );
+}
+
+/** The SIGN-INS: one per browser, above the sessions they opened.
+ *
+ *  This is the thing that was missing. A page showing every per-client
+ *  session and no sign-in empties when you revoke the rows and changes
+ *  nothing about who can walk back in — and the console's own sign-in
+ *  opens no session at all, because it never redeems the code it gets
+ *  back, so it appeared nowhere while being the very thing keeping the
+ *  reader signed in.
+ *
+ *  Above rather than below: a sign-in is what admits a browser, and the
+ *  sessions are what it went on to open. */
+function SignIns({
+  signIns,
+  onSignOut,
+  busy,
+}: {
+  signIns: SignIn[];
+  onSignOut: (id: string, identity: string) => void;
+  busy?: string;
+}) {
+  if (signIns.length === 0) return null;
+
+  return (
+    <Box sx={{ mb: 3 }}>
+      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+        Sign-ins
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+        One per browser. Ending one ends every session it opened, and stops the next visit being admitted with no
+        password — which revoking the sessions below does not.
+      </Typography>
+      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Person</TableCell>
+              <TableCell>Proved by</TableCell>
+              <TableCell>Signed in</TableCell>
+              <TableCell>Expires</TableCell>
+              <TableCell align="right" />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {signIns.map((signin) => (
+              <TableRow key={signin.id} hover>
+                <TableCell>
+                  <Ref to={paths.person(signin.identity)}>{signin.identity}</Ref>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2" color="text.secondary">
+                    {signin.how === "recovery" ? "recovery" : signin.how}
+                  </Typography>
+                </TableCell>
+                <TableCell>{ago(at(signin.authTime))}</TableCell>
+                <TableCell>{until(at(signin.expiresAt))}</TableCell>
+                <TableCell align="right">
+                  <Button
+                    size="small"
+                    color="warning"
+                    disabled={busy === signin.id}
+                    onClick={() => onSignOut(signin.id, signin.identity)}
+                  >
+                    Sign out
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
   );
 }
 
@@ -241,6 +315,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
   const [clientId, setClientId] = useState("");
   const [how, setHow] = useState("");
   const [items, setItems] = useState<Session[]>([]);
+  const [signIns, setSignIns] = useState<SignIn[]>([]);
   const [nextToken, setNextToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -254,6 +329,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
       .listSessions({ identity, clientId, pageSize: 100 })
       .then((response) => {
         setItems(response.sessions);
+        setSignIns(response.signIns);
         setNextToken(response.nextPageToken);
       })
       .catch((error: unknown) => setFailure(reason(error)))
@@ -348,6 +424,8 @@ export function SessionsPage({ operator }: { operator: boolean }) {
 
       <Loading busy={loading} />
       <Failure error={failure} />
+
+      <SignIns signIns={signIns} onSignOut={(id, identity) => signOutBrowser({ sso: id, identity } as Session)} busy={busy} />
 
       <SessionsTable sessions={shown} onRevoke={revoke} onSignOutBrowser={signOutBrowser} revoking={busy} />
 

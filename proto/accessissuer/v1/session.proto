@@ -89,6 +89,31 @@ message ListSessionsResponse {
   repeated Session sessions = 1;
   // Non-empty when more sessions follow this page.
   string next_page_token = 2;
+  // The SIGN-INS behind those sessions: one per browser, newest first.
+  //
+  // Listed because leaving them out made the page lie by omission. A
+  // console showed every per-client session and none of the sign-ins, so
+  // revoking every row emptied the page and changed nothing about who
+  // could walk back in — and the console's own sign-in never appears as
+  // a session at all, because it does not redeem the code it gets back.
+  //
+  // Not paged with the sessions above: there are as many of these as a
+  // person has browsers, which is a number you can read.
+  repeated SignIn sign_ins = 3;
+}
+
+// SignIn is one browser's authentication: what `/authorize` completes
+// silently from, and what a session points at when it was opened by one.
+message SignIn {
+  // The id its sessions carry as `sso`, and what ends it.
+  string id = 1;
+  string identity = 2;
+  // What proved it: a provider kind ("google"), or "recovery".
+  string how = 3;
+  // When the person authenticated, never when a token was minted from
+  // it. This is what `max_age` is measured against.
+  google.protobuf.Timestamp auth_time = 4;
+  google.protobuf.Timestamp expires_at = 5;
 }
 
 message RevokeSessionsRequest {

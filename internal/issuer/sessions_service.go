@@ -249,6 +249,32 @@ func (s *SessionsService) ListSessions(
 		out.Sessions = append(out.Sessions, described(page[i]))
 	}
 
+	// The sign-ins behind them, on the FIRST page only: they are not
+	// paged, and repeating them under every page would say a person has
+	// more browsers the further you scroll.
+	//
+	// This is the half the console was missing. Every per-client session
+	// was listed and no sign-in was, so revoking every row emptied the
+	// page and left the thing that admits a browser untouched — and the
+	// console's own sign-in appears as no session at all, because it
+	// never redeems the code it gets back.
+	if s.sso != nil && strings.TrimSpace(req.Msg.GetPageToken()) == "" {
+		signIns, err := s.sso.List(ctx, identity)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
+
+		for i := range signIns {
+			out.SignIns = append(out.SignIns, &accessissuerv1.SignIn{
+				Id:        signIns[i].ID,
+				Identity:  signIns[i].Identity,
+				How:       signIns[i].How,
+				AuthTime:  timestamppb.New(signIns[i].AuthTime),
+				ExpiresAt: timestamppb.New(signIns[i].ExpiresAt),
+			})
+		}
+	}
+
 	return connect.NewResponse(out), nil
 }
 
