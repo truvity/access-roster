@@ -1,16 +1,24 @@
-# directory-roster — contracts
+# The console's contracts
 
-The issuer's endpoints are in [access-issuer.md](access-issuer.md); this page is the directory half of the same service.
+The issuer's endpoints are in [access-issuer.md](access-issuer.md). This
+page is what the **console** calls: the services behind its pages.
 
-Three ConnectRPC services on two listeners. The proto files under
-[`proto/`](../../proto) are the source of truth; this page is the reading
-guide. Connect speaks JSON over plain HTTP as well as gRPC, and serves
-idempotent calls over `GET`, so `curl` works without a generated client.
+The proto files under [`proto/`](../../proto) are the source of truth;
+this page is the reading guide. Connect speaks JSON over plain HTTP as
+well as gRPC, and serves idempotent calls over `GET`, so `curl` works
+without a generated client.
 
-| Listener | Services | Reached by | Path prefix |
-|---|---|---|---|
-| API (`:8080`) | `directory.v1.DirectoryService` | consumers over the cluster network | `/directory.v1.DirectoryService/` |
-| console (`:8081`) | `directoryroster.v1.WorkspaceService`, `SettingsService`, `AccessService`, the SPA, the login routes, `/connect/<backend>/callback` | operators: own login, or through a gateway | `/directoryroster.v1.*/` |
+| Services | Reached by | Path prefix |
+|---|---|---|
+| `directoryroster.v1.WorkspaceService`, `SettingsService`, `AccessService`, the SPA, `/connect/<backend>/callback` | the console, same-origin under `console.mount` | `/directoryroster.v1.*/` |
+
+> **`directory.v1.DirectoryService` is not served.** It had one listener
+> and one consumer — the issuer — and the issuer is now the same process,
+> so the question is a function call (INF-691). The proto stays, and the
+> endpoint returns on this service when something needs it again,
+> authenticated by token exchange like every other machine. The
+> paragraphs below about its audience, its consumers and their grants
+> describe that shape, which is history until then.
 
 ## Authentication
 
