@@ -43,6 +43,10 @@ type Authenticated struct {
 	AuthTime time.Time
 	// SSO is the browser session it was established against or by.
 	SSO string
+	// How this person was proved: a provider kind ("google"), or
+	// "recovery". It becomes the token's `acr`, which is the one claim a
+	// relying party can read to refuse a break-glass sign-in.
+	How string
 }
 
 // Pending is what an authorization request asks of a sign-in, expressed
@@ -392,7 +396,7 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = s.deps.Storage.Complete(request, s.established(w, r, subject, "recovery")); err != nil {
+	if err = s.deps.Storage.Complete(request, s.established(w, r, subject, RecoveryHow)); err != nil {
 		http.Error(w, "that sign-in is no longer waiting to be completed", http.StatusBadRequest)
 		return
 	}
@@ -587,6 +591,10 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 		Subject:  session.Identity,
 		AuthTime: session.AuthTime,
 		SSO:      session.ID,
+		// The session's own, not this request's: completing silently
+		// does not re-prove anybody, so the token must say how they were
+		// proved in the first place.
+		How: session.How,
 	}); err != nil {
 		return false
 	}
@@ -604,7 +612,7 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 // A deployment with no SSO store still signs people in; it just asks the
 // provider every time, which is what this issuer did before it had one.
 func (s *signIn) established(w http.ResponseWriter, r *http.Request, identity, how string) Authenticated {
-	who := Authenticated{Subject: identity, AuthTime: time.Now()}
+	who := Authenticated{Subject: identity, AuthTime: time.Now(), How: how}
 	if s.deps.SSO == nil {
 		return who
 	}

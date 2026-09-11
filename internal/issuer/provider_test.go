@@ -56,3 +56,48 @@ func TestOnlyCredentialResponsesRefuseCaching(t *testing.T) {
 		})
 	}
 }
+
+// A token says HOW the person was proved.
+//
+// `acr` was empty, so a client asking with `acr_values` got none back —
+// which conformance flags, and which matters more than the flag: a
+// recovery sign-in bypasses the directory by design, and a relying party
+// that wants to refuse one needs to be able to see it in the token.
+//
+// `amr` said "pwd" for everything, which is untrue of every sign-in this
+// issuer serves. It is empty now where we were not told, because the
+// provider knows whether there was a second factor and does not say.
+func TestATokenSaysHowThePersonWasProved(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		how string
+		acr string
+		amr []string
+	}{
+		{"google", ACRDirectory, nil},
+		{"entra", ACRDirectory, nil},
+		{"", ACRDirectory, nil},
+		{RecoveryHow, ACRRecovery, []string{"swk"}},
+	} {
+		t.Run(tc.how, func(t *testing.T) {
+			t.Parallel()
+
+			request := &authRequest{How: tc.how}
+
+			if got := request.GetACR(); got != tc.acr {
+				t.Errorf("acr = %q, want %q", got, tc.acr)
+			}
+
+			got := request.GetAMR()
+			if len(got) != len(tc.amr) {
+				t.Fatalf("amr = %v, want %v", got, tc.amr)
+			}
+			for i := range got {
+				if got[i] != tc.amr[i] {
+					t.Errorf("amr = %v, want %v", got, tc.amr)
+				}
+			}
+		})
+	}
+}

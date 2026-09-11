@@ -237,6 +237,11 @@ func endsTheBrowserSession(signIn SignInDeps, next http.Handler) http.Handler {
 // discoveryPath is where a relying party looks first.
 const discoveryPath = "/.well-known/openid-configuration"
 
+// servedACRValues is every authentication context class a token from
+// here can carry, which is exactly two: the directory answered, or
+// recovery bypassed it.
+var servedACRValues = []string{ACRDirectory, ACRRecovery}
+
 // servedResponseTypes is what this issuer will actually honour. Every
 // client declares `code` and nothing else: the implicit and hybrid flows
 // put tokens in a redirect, which is the thing PKCE exists to stop
@@ -293,6 +298,11 @@ func truthfulDiscovery(next http.Handler) http.Handler {
 		}
 		doc["response_types_supported"] = servedResponseTypes
 		doc["grant_types_supported"] = servedGrantTypes
+		// What `acr` can come back as. A client cannot ask for a class it
+		// has no way to learn about, and the one that earns its keep is
+		// RECOVERY: a relying party that wants to refuse a break-glass
+		// sign-in has to know the value to refuse.
+		doc["acr_values_supported"] = servedACRValues
 		// The library advertises a device endpoint from its own defaults,
 		// whatever the configuration says. The grant is gone (INF-693),
 		// so the address of it is a promise to nobody.
