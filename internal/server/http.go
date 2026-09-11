@@ -65,6 +65,11 @@ type ConsoleServer struct {
 	consoleUI  fs.FS
 	signedIn   func(*http.Request) (access.Principal, bool)
 	entry      func() string
+	// issuerURL is the issuer this console shares an origin with, when
+	// the process serving it IS that issuer. Supplied rather than
+	// derived, like signedIn and entry above, and for the same reason:
+	// only whoever assembled the process knows.
+	issuerURL string
 	// mount is the path this console is served under, without a trailing
 	// slash, or empty at an origin root. Its handlers never see it — it
 	// is stripped before they run — but every path they hand a BROWSER
@@ -174,6 +179,31 @@ func (s *ConsoleServer) UseSignedIn(read func(*http.Request) (access.Principal, 
 // the same reason and with the same timing as [ConsoleServer.UseSignedIn].
 func (s *ConsoleServer) UseSignInEntry(where func() string) {
 	s.entry = where
+}
+
+// UseIssuerURL supplies the issuer this console shares an origin with.
+//
+// Without it the console reported only the FORWARDED bearer's issuer,
+// which a proxy in front used to configure. On the merged service there
+// is no proxy, so that was empty and the console concluded it had no
+// issuer to talk to -- hiding the Sessions page and the sessions section
+// of a person's page, on precisely the deployment where they work best,
+// because the SessionService is now a same-origin call carrying the
+// browser's own SSO cookie.
+func (s *ConsoleServer) UseIssuerURL(url string) {
+	s.issuerURL = strings.TrimSuffix(strings.TrimSpace(url), "/")
+}
+
+// issuerOrigin is the issuer a browser on this console can reach.
+//
+// The process's own issuer where it serves one, and otherwise the
+// forwarded bearer's -- which is what a hub behind a proxy has, and the
+// only answer that existed before the merge.
+func (s *ConsoleServer) issuerOrigin() string {
+	if s.issuerURL != "" {
+		return s.issuerURL
+	}
+	return s.forwarded.Issuer
 }
 
 // wayIn is where an unauthenticated browser goes.
@@ -813,15 +843,17 @@ type whoamiBody struct {
 	// that sets nothing new here still gets -- and the console's
 	// sessions sections render only when it is set.
 	//
-	// It is the forwarded bearer's issuer: the same URL this hub already
-	// verifies a gateway-forwarded token against
-	// (access.login.forwardedBearer.issuer), which on one origin IS the
-	// issuer the console shares its host with.
+	// On the merged service it is the process's OWN issuer, supplied by
+	// whoever assembled it. For a hub behind a proxy it is the forwarded
+	// bearer's issuer (access.login.forwardedBearer.issuer), which was
+	// the only source before the merge -- and which is empty once the
+	// proxy is gone, so relying on it alone hid these sections exactly
+	// where they work best.
 	IssuerURL string `json:"issuerUrl,omitempty"`
 }
 
 func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
-	body := whoamiBody{Status: "signed-out", Version: version.String(), IssuerURL: s.forwarded.Issuer}
+	body := whoamiBody{Status: "signed-out", Version: version.String(), IssuerURL: s.issuerOrigin()}
 	if id, ok := IdentityFrom(r.Context()); ok {
 		body = whoamiBody{
 			Status:     "signed-in",
@@ -835,7 +867,7 @@ func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
 			Groups:     id.Groups,
 			Version:    version.String(),
 			SignOutURL: s.signOut(),
-			IssuerURL:  s.forwarded.Issuer,
+			IssuerURL:  s.issuerOrigin(),
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

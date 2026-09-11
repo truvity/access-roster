@@ -2,6 +2,7 @@ package rosterapp_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -171,5 +172,40 @@ func TestOneHealthEndpointAnswersForBothHalves(t *testing.T) {
 		if code, body := get(t, app.HealthHandler(), path); code != http.StatusOK {
 			t.Errorf("%s = %d, %q", path, code, body)
 		}
+	}
+}
+
+// The console tells a browser where the SessionService is.
+//
+// It used to learn that from the FORWARDED bearer's issuer, which the
+// proxy in front configured. On one origin there is no proxy, so the
+// field was empty, and the console reads an empty issuer as "there is no
+// issuer to talk to" — hiding the Sessions page and the sessions section
+// of a person's page, on precisely the deployment where they work best:
+// the call is same-origin and carries the browser's own SSO cookie.
+//
+// Found in production, after the cutover, by somebody noticing the page
+// was gone. Nothing failed and nothing was logged.
+func TestTheConsoleIsToldWhereTheIssuerIs(t *testing.T) {
+	// Not parallel: boot reads the environment, and t.Setenv forbids it.
+	app := boot(t)
+
+	code, body := get(t, app.Handler(), "/console/.access/whoami")
+	if code != http.StatusOK {
+		t.Fatalf("GET /console/.access/whoami = %d, %q", code, body)
+	}
+
+	var who struct {
+		IssuerURL string `json:"issuerUrl"`
+	}
+	if err := json.Unmarshal([]byte(body), &who); err != nil {
+		t.Fatalf("parse whoami: %v", err)
+	}
+	if who.IssuerURL == "" {
+		t.Fatal("whoami reports no issuer: the console will hide its sessions pages")
+	}
+	// Its OWN issuer, which is the same origin the console is served on.
+	if who.IssuerURL != "https://access.example" {
+		t.Errorf("issuerUrl = %q, want this process's own issuer", who.IssuerURL)
 	}
 }
