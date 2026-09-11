@@ -595,3 +595,53 @@ func TestAnIDTokenHintDoesNotRevokeOnItsOwn(t *testing.T) {
 		t.Errorf("another person's sign-out ended %d of Grace's sessions; it must end none", 1-len(left))
 	}
 }
+
+// `/authorize` refusals that cannot be redirected are shown as a page.
+//
+// An unregistered `redirect_uri` is the case: there is nowhere safe to
+// send the person, so they stay at the issuer looking at whatever it
+// writes. That was `http.Error` with the library's sentence in it —
+// correct, and unstyled black text on white with nothing saying which
+// service they had reached. A conformance screenshot of that page is
+// what made it obvious.
+func TestARefusedAuthorizeIsAPage(t *testing.T) {
+	t.Parallel()
+	server, _ := signInServer(t, "ada@north.example")
+
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+		server.URL+"/authorize?client_id=argocd&response_type=code"+
+			"&redirect_uri=https%3A%2F%2Felsewhere.example%2Fcb&scope=openid", nil)
+	if err != nil {
+		t.Fatalf("build the request: %v", err)
+	}
+
+	request.Header.Set("Accept", "text/html,application/xhtml+xml")
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("authorize: %v", err)
+	}
+
+	defer func() { _ = response.Body.Close() }()
+
+	body := make([]byte, 4096)
+	n, _ := response.Body.Read(body)
+	page := string(body[:n])
+
+	if response.StatusCode < http.StatusBadRequest {
+		t.Fatalf("an unregistered redirect_uri was answered %d, want a refusal", response.StatusCode)
+	}
+
+	if !strings.Contains(page, "<!doctype html>") {
+		t.Errorf("a browser got %q, want a page", page)
+	}
+
+	// And it must not have sent the person to the address it refused.
+	if where := response.Header.Get("Location"); strings.Contains(where, "elsewhere.example") {
+		t.Errorf("refused the redirect_uri and then used it: %q", where)
+	}
+}

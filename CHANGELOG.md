@@ -1,3 +1,31 @@
+## v0.14.6
+
+Both of these were found by LOOKING at the screenshots the conformance
+suite had already collected. The suite cannot see what is in them — it
+asks a person — so a module sitting in REVIEW with a picture of the
+wrong thing passes silently. Two did.
+
+- **The signed-out page was telling people the opposite of what had
+  happened.** It said applications they already had open *"keep their OWN
+  sessions until those expire"* and that ending a sign-in here *"cannot
+  reach into them"*. True when it was written, and false since v0.14.2:
+  signing out revokes every session the browser opened. So the page
+  claimed a person's other consoles were still open at the moment it
+  closed them.
+
+  It now says what happens, and keeps the one piece of honesty that is
+  still due: a proxy already holding a valid access token finds out at
+  its next refresh, so a console can serve for a few minutes more. That
+  delay is bounded by the client's `ttl_cap`.
+
+- **`/authorize` refused with the library's bare text.** Unstyled black
+  on white, with nothing on it saying which service had been reached.
+  It is reached exactly when there is nowhere safe to redirect somebody
+  — an unregistered `redirect_uri`, an unknown client — so the person is
+  left looking at it with no way onward. It renders as a page now, in
+  the same voice as the rest, keeping the library's sentence because it
+  already says what is wrong.
+
 ## v0.14.5
 
 - **A client's `ttl_cap` now reaches the tokens a browser gets.** It was

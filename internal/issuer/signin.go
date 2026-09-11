@@ -558,11 +558,23 @@ func (d SignInDeps) log() *slog.Logger {
 // what did and did not happen, because "signed out" on a page that ended
 // one session and left three others running is the kind of half-truth
 // people plan around.
+//
+// It USED TO BE that half-truth in the other direction. The page said
+// applications already opened "keep their OWN sessions until those
+// expire", which was true when it was written and stopped being true in
+// v0.14.2 -- sign-out revokes them now. So the page was telling a person
+// their other consoles were still open at the moment it closed them, and
+// a conformance screenshot of this very page is what showed it.
+//
+// The remaining honesty is the delay: revoking a session does not reach
+// into a proxy that is already holding a valid access token, so a
+// console can serve for up to that token's remaining life. Minutes, and
+// bounded by the client's `ttl_cap`.
 func (s *signIn) signedOut(w http.ResponseWriter, _ *http.Request) {
-	s.page(w, "Signed out", `<p>Your sign-in here has ended. The next application you open will ask again.</p>
-	<p class="note">Applications you already opened keep their OWN sessions until those expire —
-	ending a sign-in here cannot reach into them. To end one now, revoke its session from the
-	console's Sessions page.</p>`)
+	s.page(w, "Signed out", `<p>Your sign-in here has ended, and so has every session it opened.</p>
+	<p class="note">An application you already had open can take a few more minutes to notice:
+	it finds out when it next refreshes. To check, or to end something else, use the console's
+	Sessions page.</p>`)
 }
 
 // providerName is what a person calls the directory, rather than what the
