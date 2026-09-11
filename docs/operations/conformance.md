@@ -149,8 +149,21 @@ curl -sk -X POST "$S/api/plan?planName=oidcc-basic-certification-test-plan&varia
   -H 'Content-Type: application/json' --data-binary @basic.json | jq -r .id
 ```
 
-Then open the suite at `https://localhost.emobix.co.uk:8443`, find the
-plan, and run its modules. Each one that reaches a sign-in stops and
+Then run every module of the plan in order:
+
+```bash
+hack/conformance-run.sh <plan-id>
+```
+
+The suite's own page has no *run all* — each module is a separate click,
+and Basic OP has thirty of them. The script starts them in order, waits
+for each, and prints the result, so the clicking that is left is only the
+part that needs a person. A module waiting for a sign-in says so with the
+URL to open; `--from <module>` resumes after a failure instead of
+re-running what already passed.
+
+Or open the suite at `https://localhost.emobix.co.uk:8443`, find the
+plan, and run its modules by hand. Each one that reaches a sign-in stops and
 waits for you: a browser window opens on the issuer's chooser, you sign
 in with Google as usual, and the test continues on its own.
 

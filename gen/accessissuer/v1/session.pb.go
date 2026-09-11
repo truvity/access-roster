@@ -345,8 +345,19 @@ type RevokeSessionsRequest struct {
 	Identity string `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
 	// Narrow to one client, or to one session. Empty means every session
 	// this identity holds — "sign out everywhere".
-	ClientId      string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	SessionId     string `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	ClientId  string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	SessionId string `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// One BROWSER, by the sign-on id its sessions carry.
+	//
+	// The distinction this exists for: ending a session ends what a client
+	// holds, and leaves the SIGN-IN that produced it. A browser whose
+	// sessions were all ended one by one can still open new ones with no
+	// password, which is the half sign-out that looks exactly like a whole
+	// one — reported from the console, where every button sent a session
+	// id and none of them touched the sign-in.
+	//
+	// Naming this ends the sign-in and every session under it.
+	Sso           string `protobuf:"bytes,4,opt,name=sso,proto3" json:"sso,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -398,6 +409,13 @@ func (x *RevokeSessionsRequest) GetClientId() string {
 func (x *RevokeSessionsRequest) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
+	}
+	return ""
+}
+
+func (x *RevokeSessionsRequest) GetSso() string {
+	if x != nil {
+		return x.Sso
 	}
 	return ""
 }
@@ -472,12 +490,13 @@ const file_accessissuer_v1_session_proto_rawDesc = "" +
 	"page_token\x18\x04 \x01(\tR\tpageToken\"t\n" +
 	"\x14ListSessionsResponse\x124\n" +
 	"\bsessions\x18\x01 \x03(\v2\x18.accessissuer.v1.SessionR\bsessions\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"o\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x81\x01\n" +
 	"\x15RevokeSessionsRequest\x12\x1a\n" +
 	"\bidentity\x18\x01 \x01(\tR\bidentity\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x03 \x01(\tR\tsessionId\".\n" +
+	"session_id\x18\x03 \x01(\tR\tsessionId\x12\x10\n" +
+	"\x03sso\x18\x04 \x01(\tR\x03sso\".\n" +
 	"\x16RevokeSessionsResponse\x12\x14\n" +
 	"\x05ended\x18\x01 \x01(\x05R\x05ended*J\n" +
 	"\x03How\x12\x13\n" +

@@ -15,6 +15,16 @@ func NewSessionsServiceForTest(
 	return &SessionsService{sessions: sessions, verify: verify}
 }
 
+// NewSessionsServiceWithSSOForTest is the same with the sign-in store
+// attached, which is what "sign this browser out" acts on.
+func NewSessionsServiceWithSSOForTest(
+	sessions *Sessions,
+	sso *SSO,
+	verify func(ctx context.Context, bearer string) (string, []string, error),
+) *SessionsService {
+	return &SessionsService{sessions: sessions, sso: sso, verify: verify}
+}
+
 // ErrUnverifiedForTest is what a stub verifier refuses with.
 var ErrUnverifiedForTest = errors.New("unverified")
 
