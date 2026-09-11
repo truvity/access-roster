@@ -16,7 +16,8 @@
     "protoc-gen-connect-go": "latest",
     "protoc-gen-go":         "latest",
     "kubelogin":             "latest",
-    "kubectl":               "latest"
+    "kubectl":               "latest",
+    "git-filter-repo":       "latest"
   },
   "env": {
     "CGO_ENABLED":  "0",
