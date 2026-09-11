@@ -140,7 +140,10 @@ spec:
             - name: PUBLIC_ROOT_URL
               value: https://{{ .Values.route.host }}
             {{- end }}
-            # The console is served over TLS, so its cookies say so.
+            # Served over TLS, so its cookies say so. Stated rather
+            # than left to the binary's default, which reads the same
+            # scheme off the public root url above: a chart that says it
+            # out loud is a chart a reader can check against the route.
             - name: SECURE_COOKIES
               value: "true"
             {{- end }}

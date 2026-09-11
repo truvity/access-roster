@@ -91,7 +91,6 @@ func Load() (Config, error) {
 		inCluster:         envBool("IN_CLUSTER", false),
 		oauthClientID:     envString("OAUTH_CLIENT_ID", ""),
 		oauthClientSecret: envString("OAUTH_CLIENT_SECRET", ""),
-		secureCookies:     envBool("SECURE_COOKIES", false),
 		oauthSecretFile:   envString("OAUTH_CLIENT_SECRET_FILE", ""),
 		oauthIDFile:       envString("OAUTH_CLIENT_ID_FILE", ""),
 		recoveryEnabled:   envBool("RECOVERY_ENABLED", false),
@@ -118,6 +117,15 @@ func Load() (Config, error) {
 		release:        envString("RELEASE_NAME", "access-issuer"),
 		audience:       envString("EXCHANGE_AUDIENCE", ""),
 	}
+	// Secure follows the scheme the BROWSER will use, which the service
+	// knows because it is told its own public URL. Defaulting to false
+	// meant an installation that merely forgot to say so served session
+	// cookies a proxy could strip onto a plain-http hop, and the alert
+	// CodeQL raised was about that default rather than about this line.
+	// SECURE_COOKIES still overrides, in either direction, for the local
+	// http listener and for a TLS terminator that is not in the URL.
+	c.secureCookies = envBool("SECURE_COOKIES", strings.HasPrefix(c.issuerURL, "https://"))
+
 	var err error
 	if c.tokenLifetime, err = envDuration("TOKEN_LIFETIME", issuer.DefaultTokenLifetime); err != nil {
 		return Config{}, err

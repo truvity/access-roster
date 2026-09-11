@@ -238,7 +238,7 @@ from the values above.
 | `CONSOLE_ORIGIN` | `console.origin`, for a console on another host |
 | `PUBLIC_URL` | `https://<route.host><console.mount>` — where a browser reaches the console |
 | `PUBLIC_ROOT_URL` | `https://<route.host>` — the origin root, which is where the **admin-consent callback** stays. Its redirect URI is registered with every corporate tenant, so moving it under the console's path would mean re-registering it in each of them |
-| `SECURE_COOKIES` | `true` when `route.host` is set |
+| `SECURE_COOKIES` | `true` when `route.host` is set. The binary's own default follows the scheme of `ISSUER_URL`, so an https issuer marks its cookies Secure whether or not anything sets this. Set it explicitly only for a TLS terminator the URL does not mention |
 | `EXCHANGE_AUDIENCE` | `exchange.audience` |
 | `GITHUB_OWNERS` | `github.owners` |
 | `CLUSTER` | `cluster` |

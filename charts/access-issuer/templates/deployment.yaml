@@ -191,7 +191,10 @@ spec:
             {{- end }}
             {{- end }}
             {{- if .Values.route.host }}
-            # Served over TLS, so its cookies say so.
+            # Served over TLS, so its cookies say so. Stated rather
+            # than left to the binary's default, which reads the same
+            # scheme off the issuer url above: a chart that says it
+            # out loud is a chart a reader can check against the route.
             - name: SECURE_COOKIES
               value: "true"
             {{- end }}
