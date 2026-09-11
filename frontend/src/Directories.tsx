@@ -257,7 +257,7 @@ function AddDirectory({
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.25 }}>
               The provider's own consent screen, signed in as its admin. Domains, accounts and groups are discovered from what it grants.
             </Typography>
-            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
               {connectors.map((which) => (
                 <Button key={which} variant="contained" disabled={busy} onClick={() => void consent(which)}>
                   Connect {backendName(which)}
@@ -272,7 +272,7 @@ function AddDirectory({
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.25 }}>
                 The key the provider issued, and the admin account it should act as. The key is stored in this service's namespace and never shown again.
               </Typography>
-              <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start", flexWrap: "wrap", gap: 1 }}>
+              <Stack direction="row" sx={{ alignItems: "flex-start", flexWrap: "wrap", gap: 1 }}>
                 {keyConnectors.length > 1 ? (
                   <TextField select label="Provider" value={chosenKeyBackend ?? ""} onChange={(e) => setBackend(Number(e.target.value) as Backend)} sx={{ minWidth: 200 }}>
                     {keyConnectors.map((which) => (

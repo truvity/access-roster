@@ -1,3 +1,11 @@
+## Unreleased
+
+- **Filter rows stopped stepping sideways when they wrap.** MUI's
+  `spacing` sets margins on children and `gap` does not, so a row that
+  declared both wrapped with a stray indent on every line after the
+  first — visible on the Sessions filters on a phone, and latent in three
+  more rows. The rows that wrap now use `gap` alone.
+
 ## v0.12.7
 
 - **Every filter on every page wraps now.** Provider groups was still
