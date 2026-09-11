@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/app"
 )
 
@@ -274,5 +275,44 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 			t.Errorf("%s was accepted", tc.name)
 		}
 		t.Setenv(tc.key, "")
+	}
+}
+
+// The console admits somebody the ISSUER signed in, with no console
+// session of its own and no proxy in front of it.
+//
+// This is what one origin and one process buy (INF-691). Before it, a
+// console on the issuer's own host was authenticated either by a proxy —
+// which ran an OpenID flow against a service in the same process, a
+// network round trip and a second session store to learn something
+// already known — or by a login of its own, which is the second door an
+// installation with a gateway deliberately turns off.
+//
+// It does NOT remove the need for a way to START a sign-in: a person
+// arriving with no session anywhere still has to get one. What it
+// removes is the second session for a person who already has one.
+func TestTheConsoleAdmitsWhoeverTheIssuerSignedIn(t *testing.T) {
+	client, at, assembled := console(t, map[string]string{"LOGIN_DIRECTORY": "false"})
+
+	// Nobody yet: the console has no opinion and sends them to sign in.
+	if code, _ := get(t, client, at+"/.access/whoami"); code != http.StatusOK {
+		t.Fatalf("whoami before signing in = %d", code)
+	}
+
+	// Now the issuer says who the browser is. A real one reads its own
+	// session cookie; what the console depends on is only the answer.
+	assembled.ConsoleServer().UseSignedIn(func(*http.Request) (access.Principal, bool) {
+		return access.Principal{Email: "ada@north.example", Source: access.SourceOIDC}, true
+	})
+
+	code, body := get(t, client, at+"/.access/whoami")
+	if code != http.StatusOK {
+		t.Fatalf("whoami = %d, %q", code, body)
+	}
+	if !strings.Contains(body, "ada@north.example") {
+		t.Errorf("whoami = %q, want the person the issuer signed in", body)
+	}
+	if !strings.Contains(body, `"status":"signed-in"`) {
+		t.Errorf("whoami = %q, want a signed-in status", body)
 	}
 }

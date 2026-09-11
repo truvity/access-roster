@@ -160,6 +160,11 @@ type Deps struct {
 	// disagree about the policy is the class of failure the merge existed
 	// to end. Nil loads it from POLICY_DIR, which is the split shape.
 	Policy *policy.Set
+	// UseSignedIn is called with a reader of the issuer's own browser
+	// session, once this half exists. It is how the console on this
+	// origin learns who is signed in without a proxy in front of it and
+	// without a login of its own.
+	UseSignedIn func(func(*http.Request) (access.Principal, bool))
 	// Ready are dependencies the caller's half of the process needs
 	// answering for, added to this one's on /readyz. The merged service
 	// has one readiness endpoint and two stores behind it.
@@ -272,6 +277,12 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		return nil, err
 	}
 	handler = mount(handler, deps.Console)
+	if deps.UseSignedIn != nil {
+		// The console is on this origin and in this process, so it reads
+		// the browser's issuer session directly rather than being told by
+		// a proxy that ran an OpenID flow against this very service.
+		deps.UseSignedIn(signedIn(core))
+	}
 
 	// Readiness follows the state store; liveness does not. An issuer
 	// that cannot reach it can neither mint nor find a session, and
