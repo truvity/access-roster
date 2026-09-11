@@ -39,6 +39,13 @@ import urllib.request
 SUITE = os.environ.get("SUITE", "https://localhost.emobix.co.uk:8443")
 ISSUER = os.environ.get("ISSUER", "https://access.truvity.xyz")
 CONTEXT = os.environ.get("CONTEXT", "kernel@oidc")
+# How to run kubectl, because reaching the cluster can need more than the
+# binary. A context that authenticates through OIDC needs the
+# `kubectl-oidc_login` credential plugin on PATH, and when it is missing
+# kubectl says so only once its cached token expires -- so the driver
+# runs for a while and then dies mid-plan. Point this at a wrapper that
+# has the plugin.
+KUBECTL = os.environ.get("KUBECTL", "kubectl").split()
 PORT = 9223
 
 
@@ -61,11 +68,18 @@ def api(path, method="GET", body=None, text=None):
 
 def proof():
     """A fresh recovery token. Minted per sign-in and never stored."""
-    return subprocess.run(
-        ["kubectl", "--context", CONTEXT, "-n", "access-issuer", "create", "token",
-         "access-issuer-recovery", "--audience", "access-issuer-recovery",
-         "--duration", "10m"],
-        capture_output=True, text=True, check=True).stdout.strip()
+    minted = subprocess.run(
+        KUBECTL + ["--context", CONTEXT, "-n", "access-issuer", "create", "token",
+                   "access-issuer-recovery", "--audience", "access-issuer-recovery",
+                   "--duration", "10m"],
+        capture_output=True, text=True)
+    if minted.returncode != 0:
+        # The reason, not just the exit status: this fails for exactly
+        # one boring reason -- the cluster credential expired mid-run --
+        # and a traceback that hides kubectl's own sentence sends you
+        # looking at the driver instead of at `kubectl`.
+        sys.exit("could not mint a recovery token:\n%s" % minted.stderr.strip())
+    return minted.stdout.strip()
 
 
 class CDP:
@@ -200,19 +214,35 @@ def review(cdp, test, seen):
     A screenshot is exactly what a browser has. So the driver takes it,
     fills the placeholder, and marks the URL visited so the suite stops
     waiting on a callback that is not coming.
+
+    WHERE THE BROWSER IS decides whether the shot is worth taking. The
+    suite logs the review step BEFORE it hands over the end_session URL,
+    so a driver that uploads the moment the placeholder appears
+    photographs the suite's own "processing response" page -- which is
+    what the first run of this uploaded, eight identical times. Every one
+    of these steps ends on a page the ISSUER served, so that is the test:
+    anywhere else and the browser has not arrived yet.
     """
-    answered = False
-    for entry in api("/api/log/%s" % test):
-        placeholder = entry.get("upload")
-        if not placeholder or placeholder in seen:
-            continue
-        seen.add(placeholder)
+    outstanding = [e for e in api("/api/log/%s" % test)
+                   if e.get("upload") and e.get("upload") not in seen]
+    if not outstanding:
+        return False
+
+    here = cdp.eval("window.location.href") or ""
+    if not here.startswith(ISSUER):
+        return False
+
+    for entry in outstanding:
+        seen.add(entry["upload"])
         shot = cdp.call("Page.captureScreenshot", {"format": "png"}).get("data", "")
-        api("/api/log/%s/images/%s" % (test, placeholder), method="POST",
+        api("/api/log/%s/images/%s" % (test, entry["upload"]), method="POST",
             text="data:image/png;base64," + shot)
-        print("      uploaded a screenshot for: %s" % str(entry.get("msg"))[:90])
-        answered = True
-    return answered
+        # The path, not the URL: these carry a whole id_token_hint and
+        # a state of deliberate punctuation, and a screen of that buries
+        # the one thing the line is for.
+        print("      screenshot of %s for: %s" % (
+            here[len(ISSUER):].split("?")[0] or "/", str(entry.get("msg"))[:80]))
+    return True
 
 
 def run(cdp, plan, module):
@@ -272,10 +302,15 @@ def main():
         for i, module in enumerate(modules, 1):
             result, test = run(cdp, args.plan, module)
             results[module] = result
-            mark = "  " if result in ("PASSED", "WARNING") else "**"
+            # REVIEW is not a failure: it is the suite saying a human
+            # must look at the evidence attached to it. The driver has
+            # attached that evidence, so the module is as done as it can
+            # be without a person -- flagged, because a person still has
+            # to sign it off, but not marked as broken.
+            mark = {"PASSED": "  ", "WARNING": "  ", "REVIEW": "??"}.get(result, "**")
             print("%s %2d/%d %-10s %s%s" % (
                 mark, i, len(modules), result, module,
-                "" if result in ("PASSED", "WARNING") else
+                "" if mark == "  " else
                 "   %s/log-detail.html?log=%s" % (SUITE, test)))
     finally:
         chrome.terminate()
@@ -288,7 +323,7 @@ def main():
     print("plan: %s/plan-detail.html?plan=%s" % (SUITE, args.plan))
     json.dump(results, open("/tmp/conformance-%s.json" % args.plan, "w"), indent=1)
 
-    sys.exit(0 if all(r in ("PASSED", "WARNING") for r in results.values()) else 1)
+    sys.exit(0 if all(r in ("PASSED", "WARNING", "REVIEW") for r in results.values()) else 1)
 
 
 if __name__ == "__main__":

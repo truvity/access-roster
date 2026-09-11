@@ -183,6 +183,23 @@ performed rather than a server fault. The driver takes the screenshot
 from the browser it is already driving and uploads it, then marks the URL
 visited so the suite stops waiting for a callback that is not coming.
 
+*When* it takes that shot is the whole of it. The suite logs the review
+step BEFORE it hands the browser the end_session URL, so a driver that
+uploads the moment the placeholder appears photographs the suite's own
+"processing response" page — eight identical screenshots of the wrong
+thing, uploaded successfully. Every one of these steps ends on a page the
+ISSUER served, so that is the test the driver applies before shooting.
+
+Those eight finish as **REVIEW**, which is not a failure: it is the suite
+saying a human must look at the evidence. The evidence is attached, and
+signing it off is a person's job at certification time.
+
+**`KUBECTL`** overrides how the driver runs kubectl, for the case where
+reaching the cluster needs more than the binary — a context that
+authenticates through OIDC needs the `kubectl-oidc_login` credential
+plugin on PATH, and kubectl only says so once its cached token expires,
+which is a plan that runs for ten minutes and then dies in the middle.
+
 Or open the suite at `https://localhost.emobix.co.uk:8443`, find the
 plan, and run its modules by hand.
 
