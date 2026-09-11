@@ -216,6 +216,20 @@ chart-lint:
     grep -q 'value: https://access.example$' /tmp/access-issuer-merged.yaml
     grep -q 'name: OVERLAY_FILE' /tmp/access-issuer-merged.yaml
     grep -q 'secretName: example-key' /tmp/access-issuer-merged.yaml
+    # "/console" and "/console/" are the same place, and the chart used
+    # to render the second as a route to "/console//" -- a path the
+    # console does not serve, from a value nothing rejects. Our own
+    # configuration writes it both ways, so both must render the same.
+    for mount in /console /console/; do \
+        helm template access-issuer charts/access-issuer \
+            --set issuerURL=https://access.example \
+            --set route.host=access.example \
+            --set console.mount="$mount" \
+            --set console.client=directory-console \
+            > "/tmp/access-issuer-mount$(echo "$mount" | tr / -).yaml"; \
+    done
+    diff /tmp/access-issuer-mount-console.yaml /tmp/access-issuer-mount-console-.yaml
+    ! grep -q 'console//' /tmp/access-issuer-mount-console-.yaml
     # The namespaced Role comes with the Kubernetes store and only with
     # it: a deployment keeping nothing needs no permission to write.
     test "$(grep -c '^kind: Role$' /tmp/access-issuer-merged.yaml)" = "1"
