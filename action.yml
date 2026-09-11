@@ -1,0 +1,180 @@
+# access-roster in a GitHub Actions job.
+#
+# It prepares exactly what is ours to prepare and stops. A job's exchange
+# is one call to the token endpoint, which is why this is `curl` and `jq`
+# rather than a binary: nothing of ours is downloaded into the job, and
+# there is no version of ours to bump when Amazon's tooling moves.
+#
+# Everything downstream of an AWS credential is AWS's own tooling running
+# on top of the profiles below — ECR login, CodeArtifact tokens, anything
+# else. This does not wrap them, on purpose: many registries and many
+# artifact domains are many profiles and many `--profile` flags.
+name: access-roster
+description: Exchange this job's identity token for the clusters and cloud roles its rules grant.
+
+inputs:
+  issuer:
+    description: The access-roster issuer, e.g. https://access.example.
+    required: true
+  audiences:
+    description: >-
+      What to exchange for, comma or newline separated. Each is a client
+      id in the policy — `k8s:<cluster>` or `aws:<account>:<role>` — and
+      that client's `requires` decides whether this job gets it.
+    required: true
+  kubeconfig:
+    description: Write a kubeconfig with a context per `k8s:` audience.
+    required: false
+    default: "false"
+  default-profile:
+    description: A profile name to export as AWS_PROFILE, e.g. deployer@111122223333.
+    required: false
+    default: ""
+  region:
+    description: The region written into every profile.
+    required: false
+    default: ""
+
+outputs:
+  profiles:
+    description: The AWS profile names written, space separated.
+    value: ${{ steps.exchange.outputs.profiles }}
+  kubeconfig:
+    description: The kubeconfig path, when one was written.
+    value: ${{ steps.exchange.outputs.kubeconfig }}
+
+runs:
+  using: composite
+  steps:
+    - id: exchange
+      shell: bash
+      env:
+        ISSUER: ${{ inputs.issuer }}
+        AUDIENCES: ${{ inputs.audiences }}
+        WANT_KUBECONFIG: ${{ inputs.kubeconfig }}
+        DEFAULT_PROFILE: ${{ inputs.default-profile }}
+        REGION: ${{ inputs.region }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "::error::this job has no id-token permission. Add 'permissions: { id-token: write }' to the job." >&2
+          exit 1
+        fi
+
+        # The issuer's OWN url is the audience GitHub must mint for.
+        # A token minted for anything else is a valid GitHub token, and
+        # accepting it would let whoever holds it exchange here — so the
+        # issuer requires this exact value and refuses the rest.
+        subject=$(curl --fail --silent --show-error \
+          -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(printf '%s' "${ISSUER}" | jq -sRr @uri)" \
+          | jq -r '.value')
+
+        if [ -z "${subject}" ] || [ "${subject}" = "null" ]; then
+          echo "::error::GitHub returned no identity token for this job." >&2
+          exit 1
+        fi
+
+        work="${RUNNER_TEMP}/access-roster"
+        mkdir -p "${work}"
+        chmod 700 "${work}"
+
+        profiles=""
+        kubeconfig=""
+        aws_config="${work}/aws-config"
+
+        # Audiences may be comma OR newline separated, because a YAML
+        # list folded into a string arrives as either and a person should
+        # not have to know which.
+        #
+        # The trailing newline matters: `read` drops a final line that is
+        # not terminated, so `printf '%s'` here would silently discard
+        # the LAST audience of every job — the failure being a missing
+        # profile rather than an error.
+        printf '%s\n' "${AUDIENCES}" | tr ',' '\n' | while IFS= read -r audience; do
+          audience=$(printf '%s' "${audience}" | tr -d '[:space:]')
+          [ -n "${audience}" ] || continue
+          printf '%s\n' "${audience}" >> "${work}/wanted"
+        done
+
+        while IFS= read -r audience; do
+          # The exchange. The client is presented in HTTP BASIC and never
+          # as a posted client_id: the issuer reads it from Basic alone,
+          # and a posted one is refused with an error naming the client
+          # rather than the mistake.
+          response=$(curl --fail-with-body --silent --show-error \
+            -u "${audience}:" \
+            -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+            -d "subject_token=${subject}" \
+            -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
+            -d "audience=${audience}" \
+            -d "scope=openid" \
+            "${ISSUER}/token") || {
+              echo "::error::the issuer refused ${audience}: $(printf '%s' "${response}" | jq -r '.error_description // .error // .')" >&2
+              exit 1
+            }
+
+          token=$(printf '%s' "${response}" | jq -r '.access_token')
+          # Masked before it is written anywhere: a token in a build log
+          # is a credential anybody who can read the log now holds.
+          echo "::add-mask::${token}"
+
+          case "${audience}" in
+            k8s:*)
+              [ "${WANT_KUBECONFIG}" = "true" ] || continue
+              cluster="${audience#k8s:}"
+              kubeconfig="${work}/kubeconfig"
+              # The cluster's address and CA are NOT ours to write: they
+              # come from the platform's own kubeconfig or from
+              # `aws eks update-kubeconfig`, and inventing one would be
+              # inventing an address to trust. This writes the credential
+              # and the context that uses it.
+              kubectl config --kubeconfig="${kubeconfig}" \
+                set-credentials "${cluster}" --token="${token}" >/dev/null
+              kubectl config --kubeconfig="${kubeconfig}" \
+                set-context "${cluster}" --user="${cluster}" --cluster="${cluster}" >/dev/null
+              ;;
+            aws:*:*)
+              rest="${audience#aws:}"
+              account="${rest%%:*}"
+              role="${rest#*:}"
+              name="${role}@${account}"
+              # web_identity_token_file rather than a credential process:
+              # inside a job the token is already in hand and lives as
+              # long as the job does, so the SDK reads it directly and
+              # nothing of ours has to stay running.
+              printf '%s\n' "${token}" > "${work}/token-${name}"
+              chmod 600 "${work}/token-${name}"
+              # An `&&` as the last command of this group would be the
+              # group's exit status, and with `set -e` an empty region
+              # would end the job. So it is an `if`.
+              {
+                printf '\n[profile %s]\n' "${name}"
+                printf 'role_arn = arn:aws:iam::%s:role/%s\n' "${account}" "${role}"
+                printf 'web_identity_token_file = %s\n' "${work}/token-${name}"
+                if [ -n "${REGION}" ]; then
+                  printf 'region = %s\n' "${REGION}"
+                fi
+              } >> "${aws_config}"
+              profiles="${profiles}${profiles:+ }${name}"
+              ;;
+            *)
+              echo "::error::${audience} is neither a k8s: nor an aws: audience, so there is nothing to write for it." >&2
+              exit 1
+              ;;
+          esac
+        done < "${work}/wanted"
+
+        if [ -f "${aws_config}" ]; then
+          echo "AWS_CONFIG_FILE=${aws_config}" >> "${GITHUB_ENV}"
+        fi
+        if [ -n "${DEFAULT_PROFILE}" ]; then
+          echo "AWS_PROFILE=${DEFAULT_PROFILE}" >> "${GITHUB_ENV}"
+        fi
+        if [ -n "${kubeconfig}" ]; then
+          echo "KUBECONFIG=${kubeconfig}" >> "${GITHUB_ENV}"
+        fi
+
+        echo "profiles=${profiles}" >> "${GITHUB_OUTPUT}"
+        echo "kubeconfig=${kubeconfig}" >> "${GITHUB_OUTPUT}"
