@@ -128,6 +128,12 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
 /** The one thing a chip means here: a state. A state that has a reason
  *  carries it in the label — "provisional" on its own is the answer that
  *  sent an operator looking for a fault that was not there. */
+/** The word a state is shown as, for a filter that has to say the same
+ *  thing the chip says. One table, read twice. */
+export function stateLabel(kind: string): string {
+  return states[kind as StateKind]?.label ?? kind;
+}
+
 export function State({ kind, title, label }: { kind: StateKind; title?: string; label?: string }) {
   const s = states[kind];
   const chip = <Chip label={label ? `${s.label} · ${label}` : s.label} color={s.color} variant={s.filled ? "filled" : "outlined"} />;
@@ -159,23 +165,32 @@ export const domainReason: Record<number, { short: string; why: string }> = {
  *  arises, whether the hub answers for it at all. A domain left out of the
  *  served list has no authority to report and is never provisional: it is
  *  not a degraded answer, it is no answer. */
-export function Authority({
-  authoritative,
-  conflict,
-  served,
-  owned,
-  reason,
-}: {
+export type AuthorityFacts = {
   authoritative: boolean;
   conflict?: boolean;
   served?: boolean;
   owned?: boolean;
   reason?: DomainReason;
-}) {
-  if (owned === false) return <State kind="unowned" />;
-  if (served === false) return <State kind="unserved" />;
-  if (conflict) return <State kind="contested" />;
-  if (authoritative) return <State kind="authoritative" />;
+};
+
+/** Which one state a domain is in.
+ *
+ *  Exported because a FILTER has to agree with the chip, and the only way
+ *  to guarantee that is for both to ask the same function. The order is
+ *  the point and is not alphabetical: a domain the tenant does not own is
+ *  not merely unserved, and a contested one is not merely provisional, so
+ *  the first match wins and the rest are never reached. */
+export function authorityKind(domain: AuthorityFacts): StateKind {
+  if (domain.owned === false) return "unowned";
+  if (domain.served === false) return "unserved";
+  if (domain.conflict) return "contested";
+  if (domain.authoritative) return "authoritative";
+  return "provisional";
+}
+
+export function Authority({ authoritative, conflict, served, owned, reason }: AuthorityFacts) {
+  const kind = authorityKind({ authoritative, conflict, served, owned, reason });
+  if (kind !== "provisional") return <State kind={kind} />;
   const explained = reason !== undefined ? domainReason[reason] : undefined;
   return <State kind="provisional" label={explained?.short} title={explained?.why} />;
 }

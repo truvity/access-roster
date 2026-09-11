@@ -13,6 +13,8 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
@@ -20,15 +22,33 @@ import { Backend, access, ago, at, backendName, personName, reason, settings, wo
 import { useAsync, useWhile } from "./hooks";
 import type { Workspace } from "./gen/directoryroster/v1/workspace_pb";
 import { paths } from "./router";
-import { Authority, Failure, Loading, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
+import { Authority, Failure, Loading, Names, Nothing, Page, Ref, Rows, Section, State, authorityKind, stateLabel } from "./ui";
 
 /** The identity-side container: every directory this hub reads. */
 export function Directories({ operator, onDone }: { operator: boolean; onDone: (message: string) => void }) {
   const list = useAsync(() => workspaces.listWorkspaces({}), []);
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
+  const [provider, setProvider] = useState("");
+  const [state, setState] = useState("");
 
-  const rows = list.value?.workspaces ?? [];
+  const all = list.value?.workspaces ?? [];
+
+  // The states actually present, in the order the chips rank them, so the
+  // facet never offers a button that returns nothing. A provider with one
+  // contested domain gets that button; an installation with none never
+  // sees the word.
+  const order = ["authoritative", "provisional", "contested", "unserved", "unowned"];
+  const present = order.filter((kind) => all.some((tenant) => tenant.domains.some((domain) => authorityKind(domain) === kind)));
+
+  // Filtering is BY DOMAIN and the row is a domain, so a provider whose
+  // domains all fall away falls away with them. A provider with no
+  // domains at all survives only when no state is being asked for —
+  // there is nothing about it that could match one.
+  const rows = all
+    .filter((tenant) => !provider || tenant.id === provider)
+    .map((tenant) => ({ ...tenant, domains: state ? tenant.domains.filter((domain) => authorityKind(domain) === state) : tenant.domains }))
+    .filter((tenant) => tenant.domains.length > 0 || !state);
 
   return (
     <Page
@@ -54,6 +74,29 @@ export function Directories({ operator, onDone }: { operator: boolean; onDone: (
 
       <Loading busy={list.loading} />
       <Failure error={failure ?? list.error} />
+
+      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
+        {all.length > 1 ? (
+          <ToggleButtonGroup size="small" exclusive value={provider} onChange={(_, next: string | null) => next !== null && setProvider(next)}>
+            <ToggleButton value="">Every provider</ToggleButton>
+            {all.map((tenant) => (
+              <ToggleButton key={tenant.id} value={tenant.id} sx={{ fontFamily: "monospace", textTransform: "none" }}>
+                {tenant.id}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        ) : null}
+        {present.length > 1 ? (
+          <ToggleButtonGroup size="small" exclusive value={state} onChange={(_, next: string | null) => next !== null && setState(next)}>
+            <ToggleButton value="">Any state</ToggleButton>
+            {present.map((kind) => (
+              <ToggleButton key={kind} value={kind} sx={{ textTransform: "none" }}>
+                {stateLabel(kind)}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        ) : null}
+      </Stack>
 
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
         <Table size="small">

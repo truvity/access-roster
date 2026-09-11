@@ -180,6 +180,14 @@ type Deps struct {
 	// origin learns who is signed in without a proxy in front of it and
 	// without a login of its own.
 	UseSignedIn func(func(*http.Request) (access.Principal, bool))
+	// UseIssuerURL is called with this issuer's own URL, so the console
+	// can tell a browser where the SessionService is.
+	//
+	// The console used to learn that from the proxy in front of it, and
+	// on one origin there is no proxy -- so without this it concluded it
+	// had no issuer and hid its sessions pages on the deployment where
+	// they work best.
+	UseIssuerURL func(string)
 	// Ready are dependencies the caller's half of the process needs
 	// answering for, added to this one's on /readyz. The merged service
 	// has one readiness endpoint and two stores behind it.
@@ -297,6 +305,11 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		// holds nothing special. Empty when no client is declared for it,
 		// and then the console keeps a sign-in page of its own.
 		deps.UseSignInEntry(signInEntry(cfg.issuerURL, cfg.consoleClientID, consoleMount(deps)))
+	}
+	if deps.UseIssuerURL != nil {
+		// Same origin, so the browser reaches the SessionService with the
+		// SSO cookie it already holds: no bearer in JavaScript, no CORS.
+		deps.UseIssuerURL(cfg.issuerURL)
 	}
 	if deps.UseSignedIn != nil {
 		// The console is on this origin and in this process, so it reads

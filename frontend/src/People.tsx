@@ -36,10 +36,19 @@ export function People() {
   );
   const people = found.value?.people ?? [];
   const list = tenants.value?.workspaces ?? [];
-  // Every domain any provider serves, deduplicated: a domain belongs to
+  // Every domain any provider SERVES, deduplicated: a domain belongs to
   // one provider, so choosing a domain while a different provider is
   // selected is the one combination that can hold nobody.
-  const domains = [...new Set(list.flatMap((tenant) => tenant.domains.map((each) => each.name)))].sort();
+  //
+  // Unserved domains are left out rather than shown empty. A provider
+  // discovers every domain its tenant owns — eleven of them here, most
+  // of them parked — and only the served ones can hold an account this
+  // page will ever list. Offering the rest makes the filter mostly a row
+  // of buttons that return nothing, and hides the two or three that
+  // work among them.
+  const domains = [
+    ...new Set(list.flatMap((tenant) => tenant.domains.filter((each) => each.served).map((each) => each.name))),
+  ].sort();
 
   return (
     <Page

@@ -1,5 +1,30 @@
 ## Unreleased
 
+- **The Sessions page came back.** It vanished at the cutover, silently:
+  the console learned where its issuer was from the FORWARDED bearer's
+  issuer, which the proxy in front configured, and on one origin there is
+  no proxy. An empty issuer reads as *there is no issuer to talk to*, so
+  the console hid the Sessions page and the sessions section of a
+  person's page — on exactly the deployment where they work best, since
+  the call is now same-origin and carries the browser's own SSO cookie.
+
+  The merged process now tells the console its own issuer URL, the same
+  way it already hands over the session reader and the sign-in entry.
+  Nothing failed and nothing was logged, so the test asserts `whoami`
+  reports an issuer and fails without the wiring.
+
+- **The Providers page filters by provider and by state.** The state
+  facet offers only the states actually present, so it never shows a
+  button that returns nothing — and one function decides a domain's state
+  for both the chip and the filter, because two would drift.
+
+- **The People page's domain filter lists only served domains.** A
+  provider discovers every domain its tenant owns, most of them parked;
+  offering eleven when three can hold an account made the filter mostly
+  buttons that return nothing, and hid the ones that work among them.
+
+## Unreleased
+
 - **`hack/cutover-cleanup.sh`**, for the two messes the INF-691 cutover
   leaves that will not resolve on their own.
 

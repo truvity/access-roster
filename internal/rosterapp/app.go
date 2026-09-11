@@ -111,6 +111,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// an installation with a gateway deliberately turns off.
 		UseSignedIn:    directory.ConsoleServer().UseSignedIn,
 		UseSignInEntry: directory.ConsoleServer().UseSignInEntry,
+		UseIssuerURL:   directory.ConsoleServer().UseIssuerURL,
 	}
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {
