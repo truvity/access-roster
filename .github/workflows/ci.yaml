@@ -29,7 +29,7 @@ jobs:
   recipes:
     uses: truvity/ci-workflows/.github/workflows/check.yaml@eb317bdb3240d43404665cc943d1c00e8946f733 # v2.18.0
     with:
-      recipes: '["build","test","lint","chart-lint","ts","console"]'
+      recipes: '["build","test","lint","chart-lint","archive-check","ts","console"]'
 
   # Stable name for branch protection: the matrix reports as
   # "recipes / build" and so on, so a required context called "check"

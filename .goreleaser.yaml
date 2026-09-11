@@ -55,8 +55,24 @@ builds:
       - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
 
 archives:
+  # TWO archives, because accessctl is the only thing built for Windows.
+  # In one archive that makes the Windows download hold a single binary
+  # where every other holds four, and goreleaser refuses the mix rather
+  # than publishing a set that is different depending on the platform.
+  # It is also the download somebody actually wants on their own laptop,
+  # so it is better on its own with a name that says what it is.
+  - id: accessctl
+    ids: [accessctl]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "accessctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  # The two services and the acceptance runner: what an operator pulls to
+  # run a build outside a container.
   - id: binaries
-    ids: [directory-roster, access-issuer, accessctl, acceptance]
+    ids: [directory-roster, access-issuer, acceptance]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
@@ -114,9 +130,12 @@ release:
 
     The TypeScript package installs from this tag with its `dist`
     committed, so it needs no registry and no toolchain. The Go module at
-    this tag is the policy engine and the backend interface; the console
-    libraries (`identity`, `authz`, `directory`, `tokens`) are not built
-    yet, and `docs/reference/go-module.md` says so.
+    this tag is the policy engine, `identity` and `tokens`; `authz` and
+    `directory` are not built yet, and `docs/reference/go-module.md` says
+    so.
+
+    `accessctl` is its own archive, because it is the one thing here that
+    runs on somebody's own laptop.
 
 changelog:
   use: github
