@@ -293,6 +293,17 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		// deployment serves no console, and then the route is not served
 		// at all rather than redirecting somebody to a 404.
 		ConsoleMount: consoleMount(deps),
+		// Signing out leads back to signing in, where there is a console
+		// to sign in to. Not `/login`: its buttons carry the id of a
+		// pending authorization request, so visiting it without one is a
+		// page that looks like a sign-in and cannot finish. The console's
+		// front page sends an unauthenticated browser through
+		// `/authorize`, which MAKES that request — so this is the address
+		// that actually reaches a working sign-in.
+		//
+		// Empty where no console is mounted, and then the signed-out page
+		// is the honest ending.
+		AfterSignOut: afterSignOut(deps),
 		Secure:       cfg.secureCookies,
 		Log:          log,
 	})
@@ -352,6 +363,18 @@ func directorySource(deps Deps, cfg Config) string {
 // constant because the mount is not configurable: the issuer owns the
 // origin ROOT — discovery must sit there — and the console takes this
 // path beside it.
+// afterSignOut is where a person lands once their sign-in has ended: the
+// console's front page where one is mounted, so that signing out leads
+// back to signing in rather than to a page they have to leave.
+func afterSignOut(deps Deps) string {
+	mount := consoleMount(deps)
+	if mount == "" {
+		return ""
+	}
+
+	return mount + "/"
+}
+
 func consoleMount(deps Deps) string {
 	if deps.Console == nil {
 		return ""

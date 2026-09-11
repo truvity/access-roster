@@ -72,6 +72,18 @@ type SignInDeps struct {
 	// answer yet is only the first of the days it exists for.
 	Recovery Recovery
 	Issuer   *Issuer
+	// AfterSignOut is where a person lands once their sign-in has ended.
+	//
+	// Empty is this service's own signed-out page, which says what did
+	// and did not happen. A deployment with a console sets it to the
+	// console, so that signing out leads back to signing in — and it must
+	// be somewhere a sign-in can actually START. `/login` is not: its
+	// buttons carry the id of a pending authorization request, and
+	// visiting it without one produces a page that looks like a sign-in
+	// and cannot finish. The console's front page has no such problem:
+	// it sends an unauthenticated browser through `/authorize`, which
+	// makes the request the chooser needs.
+	AfterSignOut string
 	// Providers a person may choose. One button per *kind* is rendered,
 	// never one per company: an anonymous page that lists the companies
 	// an installation serves has published them to anyone who loads it.
@@ -426,7 +438,12 @@ func (s *signIn) logout(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, s.deps.SSO.Cookie("", s.deps.Secure))
 	}
 
-	http.Redirect(w, r, "/signed-out", http.StatusFound)
+	where := strings.TrimSpace(s.deps.AfterSignOut)
+	if where == "" {
+		where = "/signed-out"
+	}
+
+	http.Redirect(w, r, where, http.StatusFound)
 }
 
 // signedOut is where sign-out lands, whichever door was used. It says
