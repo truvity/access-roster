@@ -582,3 +582,91 @@ func TestAnIssuerThatSignsNobodyInStillServesItsSessions(t *testing.T) {
 		}
 	}
 }
+
+// What a caller's own groups open, which is what `accessctl kubeconfig`
+// and `aws-config` write a context and a profile from.
+//
+// The alternative to asking is a list kept on every laptop, and that
+// drifts from the policy the moment anybody's groups change — silently,
+// because a stale entry looks exactly like a granted one until it is
+// used.
+func TestGrantsAnswersWhatTheCallersGroupsOpen(t *testing.T) {
+	t.Parallel()
+	server, _ := serveIssuer(t)
+
+	// A workload's exchanged token, which carries real groups.
+	status, body := exchange(t, server, "k8s:devel/identity-system/authorization-webhook", "directory-roster")
+	if status != http.StatusOK {
+		t.Fatalf("exchange = %d, %v", status, body)
+	}
+	token, _ := body["access_token"].(string)
+
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+issuer.GrantsPath, nil)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	resp, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatalf("get grants: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("grants = %d", resp.StatusCode)
+	}
+	var answer struct {
+		Grants []struct {
+			Audience string   `json:"audience"`
+			Kind     string   `json:"kind"`
+			Through  []string `json:"through"`
+		} `json:"grants"`
+	}
+	if err = json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	var found bool
+	for _, grant := range answer.Grants {
+		if grant.Audience == "directory-roster" {
+			found = true
+			// WHY, not only that: a person reading this should see which
+			// of their groups opened it.
+			if len(grant.Through) == 0 {
+				t.Error("the grant does not say which group admits it")
+			}
+			if grant.Kind == "" {
+				t.Error("the grant does not say how to obtain a token for it")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("grants = %+v, want the client this proof was just admitted to", answer.Grants)
+	}
+}
+
+// Without a token there is nothing to answer about, and the refusal does
+// not say why: telling an unauthenticated caller what was wrong with its
+// token helps it make a better one.
+func TestGrantsNeedsABearer(t *testing.T) {
+	t.Parallel()
+	server, _ := serveIssuer(t)
+
+	for _, header := range []string{"", "Bearer not-a-token"} {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+issuer.GrantsPath, nil)
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		if header != "" {
+			request.Header.Set("Authorization", header)
+		}
+		resp, err := server.Client().Do(request)
+		if err != nil {
+			t.Fatalf("get grants: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("grants with %q = %d, want 401", header, resp.StatusCode)
+		}
+	}
+}
