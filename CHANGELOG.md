@@ -3,6 +3,23 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
+## v0.12.1
+
+- **The Action's own comment was an expression.** GitHub evaluates
+  `${{ ... }}` anywhere inside a `run:` block, including in a shell
+  comment, because the block is a string value before it is a script.
+  A comment added in v0.12.0 to explain which inputs are untrusted named
+  an event expression literally, so every run of the action would have
+  expanded it. Found by CodeQL, which was right to call it code
+  injection. **v0.12.0's action is broken; use this.**
+
+- **What reaches `GITHUB_ENV` is now the profile name this run wrote**,
+  not the input that selected it. The check against the written list was
+  already there, but passing the input through meant the value's shape
+  still came from the workflow. A name built here is `role@account` from
+  an audience whose whitespace was stripped, so it cannot carry the
+  newline that would declare extra environment variables.
+
 ## v0.12.0
 
 - **The GitHub Action's `default-profile` is checked against the profiles
