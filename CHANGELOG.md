@@ -1,3 +1,24 @@
+## Unreleased
+
+- **`hack/cutover-cleanup.sh`**, for the two messes the INF-691 cutover
+  leaves that will not resolve on their own.
+
+  A **stuck ValkeyCluster**: the retired store was pruned with foreground
+  propagation, so it waits for its dependents while the Valkey operator
+  keeps recreating them. The tell is that its pod, StatefulSet and
+  Service are a few seconds old however long you watch.
+
+  And **orphans**: the two retired Applications were pruned without a
+  cascade, so everything they owned still runs with a tracking-id naming
+  an Application that no longer exists. Nothing owns them, so nothing
+  will ever prune them — and an orphaned HTTPRoute still competes for its
+  hostname.
+
+  It refuses to run unless hubble's session store and the workspace
+  records are both present, because those are what must survive, and it
+  names every object rather than selecting by label: a selector here
+  would also match what the service itself wrote.
+
 ## v0.12.2
 
 - **`console.mount` accepts `/console/` as well as `/console`.** The
