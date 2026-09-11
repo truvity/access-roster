@@ -12,6 +12,8 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
@@ -193,6 +195,70 @@ export function Authority({ authoritative, conflict, served, owned, reason }: Au
   if (kind !== "provisional") return <State kind={kind} />;
   const explained = reason !== undefined ? domainReason[reason] : undefined;
   return <State kind="provisional" label={explained?.short} title={explained?.why} />;
+}
+
+/** A row of mutually exclusive filter buttons.
+ *
+ *  Shared because three pages had hand-rolled the same ToggleButtonGroup
+ *  with slightly different spacing, and because all three broke the same
+ *  way on a phone: a ToggleButtonGroup is a flex row that does NOT wrap,
+ *  so twelve domains ran off the side of the screen, took the page's
+ *  width with them, and left the filter both unreachable and the body
+ *  scrolling sideways.
+ *
+ *  Wrapping is the whole fix, and the squared inner corners MUI gives a
+ *  wrapped group are worth it: a filter you cannot reach is worse than a
+ *  filter with a straight edge.
+ *
+ *  Renders nothing for a single option. A filter with one setting is a
+ *  control that cannot change anything. */
+export function Facet<T extends string | number>({
+  value,
+  onChange,
+  options,
+  all,
+  mono,
+}: {
+  value: T;
+  onChange: (next: T) => void;
+  options: { value: T; label: string }[];
+  /** The label for "no filter", e.g. "Every provider". */
+  all: { value: T; label: string };
+  /** Monospace the options, for ids and hostnames. */
+  mono?: boolean;
+}) {
+  if (options.length < 2) return null;
+  return (
+    <ToggleButtonGroup
+      size="small"
+      exclusive
+      value={value}
+      onChange={(_, next: T | null) => next !== null && onChange(next)}
+      sx={{ flexWrap: "wrap" }}
+    >
+      <ToggleButton value={all.value} sx={{ textTransform: "none" }}>
+        {all.label}
+      </ToggleButton>
+      {options.map((option) => (
+        <ToggleButton
+          key={String(option.value)}
+          value={option.value}
+          sx={{ textTransform: "none", ...(mono ? { fontFamily: "monospace" } : {}) }}
+        >
+          {option.label}
+        </ToggleButton>
+      ))}
+    </ToggleButtonGroup>
+  );
+}
+
+/** The row the facets sit in, so every page spaces them the same. */
+export function Facets({ children }: { children: ReactNode }) {
+  return (
+    <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
+      {children}
+    </Stack>
+  );
 }
 
 export type Fact = { label: string; value: ReactNode };

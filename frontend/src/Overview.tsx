@@ -134,16 +134,20 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
                 <Ref to={paths.directory(d.workspace)}>Open {d.workspace}</Ref>.
               </Row>
             ))}
-            {emptyGroups.map((g) => (
-              <Row key={g.name} severity="info" title={`${g.name} has nobody in it`}>
-                Declared, but no directory group feeds it, so it grants nothing. <Ref to={paths.group(g.name)}>Attach one</Ref>.
-              </Row>
-            ))}
-            {unusedGroups.map((g) => (
-              <Row key={g.name} severity="info" title={`${g.name} opens no client`}>
-                No client requires it, so it only adds claims. <Ref to={paths.group(g.name)}>Open it</Ref>.
-              </Row>
-            ))}
+            <Same
+              items={emptyGroups.map((g) => g.name)}
+              one={(name) => `${name} has nobody in it`}
+              many={(n) => `${n} internal groups have nobody in them`}
+            >
+              Declared, but no directory group feeds them, so they grant nothing.
+            </Same>
+            <Same
+              items={unusedGroups.map((g) => g.name)}
+              one={(name) => `${name} opens no client`}
+              many={(n) => `${n} internal groups open no client`}
+            >
+              No client requires them, so they only add claims.
+            </Same>
           </Stack>
         )}
       </Section>
@@ -182,6 +186,58 @@ function Tile({ label, value, hint, bad, to }: { label: string; value: string; h
         <Typography variant="caption">{hint}</Typography>
       </Ref>
     </Paper>
+  );
+}
+
+/** One row per item while there are FEW, and one row for all of them
+ *  once there are many.
+ *
+ *  The length of these lists is decided by the policy, not by anything
+ *  being wrong. On this installation 73 internal groups open no client
+ *  yet, because the clusters and cloud accounts that will require them
+ *  are Phase 2 — so the page rendered 73 near-identical rows under a
+ *  heading that says "Needs attention", pushed the working state off the
+ *  screen, and made a healthy installation read as a broken one.
+ *
+ *  Three is the line: below it the names ARE the information and a
+ *  reader wants them spelled out; above it the COUNT is the
+ *  information, and the names belong on the page that lists them. */
+function Same({
+  items,
+  one,
+  many,
+  children,
+}: {
+  items: string[];
+  one: (name: string) => string;
+  many: (count: number) => string;
+  children: React.ReactNode;
+}) {
+  if (items.length === 0) return null;
+
+  if (items.length <= 3) {
+    return (
+      <>
+        {items.map((name) => (
+          <Row key={name} severity="info" title={one(name)}>
+            {children} <Ref to={paths.group(name)}>Open it</Ref>.
+          </Row>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <Row severity="info" title={many(items.length)}>
+      {children}{" "}
+      <Names items={items.slice(0, 6).map((name) => ({ label: name, to: paths.group(name), mono: true }))} empty="" />
+      {items.length > 6 ? (
+        <>
+          {" "}
+          and {items.length - 6} more — <Ref to={paths.groups()}>see all of them</Ref>.
+        </>
+      ) : null}
+    </Row>
   );
 }
 
