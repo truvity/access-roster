@@ -46,21 +46,47 @@ func TestLogoutEndsTheSignIn(t *testing.T) {
 
 	handler := signInHandler(t, sso)
 
-	request := httptest.NewRequest(http.MethodGet, "/logout", nil)
-	request.AddCookie(&http.Cookie{Name: issuer.SSOCookieName, Value: session.ID})
+	requestLogout(t, handler, sso, session.ID, http.MethodGet)
+}
+
+// The console sends POST, because its own sign-out was a POST. A
+// GET-only route answered that with 404 — sign-out fixed once and still
+// not working, which is exactly how it was reported the second time.
+func TestLogoutAcceptsThePostTheConsoleSends(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sso := issuer.NewSSO(state, time.Hour)
+
+	session, err := sso.Begin(ctx, "ada@north.example", "google")
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+
+	requestLogout(t, signInHandler(t, sso), sso, session.ID, http.MethodPost)
+}
+
+// requestLogout signs out with one method and checks the whole of what
+// sign-out must do: redirect, end the record, clear the cookie.
+func requestLogout(t *testing.T, handler http.Handler, sso *issuer.SSO, id, method string) {
+	t.Helper()
+
+	request := httptest.NewRequest(method, "/logout", nil)
+	request.AddCookie(&http.Cookie{Name: issuer.SSOCookieName, Value: id})
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusFound {
-		t.Fatalf("GET /logout = %d, want a redirect", recorder.Code)
+		t.Fatalf("%s /logout = %d, want a redirect", method, recorder.Code)
 	}
 	if to := recorder.Header().Get("Location"); to != "/signed-out" {
 		t.Errorf("landed on %q, want /signed-out", to)
 	}
 
 	// The half that was missing: the record itself.
-	if _, found, err := sso.Get(ctx, session.ID); err != nil || found {
-		t.Errorf("the sign-in survived sign-out: found=%v err=%v", found, err)
+	if _, found, err := sso.Get(context.Background(), id); err != nil || found {
+		t.Errorf("the sign-in survived %s sign-out: found=%v err=%v", method, found, err)
 	}
 
 	// And the cookie is cleared, so a request carrying the old value
