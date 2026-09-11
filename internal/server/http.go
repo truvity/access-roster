@@ -671,6 +671,18 @@ func (s *ConsoleServer) signOut() string {
 	if s.signOutURL != "" {
 		return s.signOutURL
 	}
+
+	// The ISSUER's sign-out, absolute, when this console is served by the
+	// issuer's own process. Absolute on purpose: the console treats a
+	// bare "/logout" as ITS OWN and posts to it with a fetch, which is
+	// right in the split deployment where it serves that route — and
+	// wrong here, where the route belongs to the issuer, answers with a
+	// redirect, and a fetch would swallow the redirect and leave the
+	// person on a page claiming they had signed out.
+	if s.issuerURL != "" {
+		return s.issuerURL + "/logout"
+	}
+
 	return "/logout"
 }
 

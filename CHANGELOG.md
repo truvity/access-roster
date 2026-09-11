@@ -1,5 +1,22 @@
 ## Unreleased
 
+- **Sign-out still did not work, and for a second reason.** The route
+  existed but answered **GET only**, and the console sends **POST** — its
+  own sign-out was a POST on the reasoning that a link which logs you out
+  is a link anyone can put in a page. So the button got a 404 from a
+  route that was there.
+
+  It was verified the first time with `curl`, which sent GET, so the
+  proof missed exactly the path the button takes. The network tab showed
+  it in one line: `logout POST 404`.
+
+  `/logout` now answers both. And the console is told the issuer's
+  sign-out **absolutely**, because it treats a bare `/logout` as its own
+  and fetches it — right where it serves that route, wrong here, where
+  the route answers with a redirect a fetch would swallow and leave
+  somebody reading "signed out" with the session still open.
+
+
 - **The account block went back to the foot of the rail.** Moved up and
   moved back on looking at it: near the brand it competed with the
   navigation for the first thing the eye lands on, and a console is

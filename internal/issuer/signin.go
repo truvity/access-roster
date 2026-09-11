@@ -126,7 +126,13 @@ func SignInRoutes(mux *http.ServeMux, deps SignInDeps) {
 	mux.HandleFunc("GET /login/{provider}/start", s.start)
 	mux.HandleFunc("GET /login/{provider}/callback", s.callback)
 	mux.HandleFunc("POST /login/recovery", s.recover)
+	// BOTH methods. A person following a link sends GET; the console
+	// sends POST, because its own sign-out was a POST — "a link that logs
+	// you out would be a link anyone could put in a page" — and a
+	// GET-only route answered that with 404. Serving one and not the
+	// other is how sign-out was fixed once and still did not work.
 	mux.HandleFunc("GET /logout", s.logout)
+	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /signed-out", s.signedOut)
 
 	// `/account` was the person's own page — their sessions, and the one
