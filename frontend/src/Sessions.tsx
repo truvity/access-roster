@@ -7,7 +7,6 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
 import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -21,7 +20,7 @@ import Typography from "@mui/material/Typography";
 import { ago, at, howName, reason, sessions as sessionsClient, until } from "./api";
 import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { paths } from "./router";
-import { Facet, Failure, Loading, Nothing, Page, Ref } from "./ui";
+import { Facet, Facets, Failure, Loading, Nothing, Page, Ref } from "./ui";
 
 /** Sessions live in the issuer (docs/design/access-issuer.md, "Where
  *  session management lives"): one refresh token, described, per
@@ -295,7 +294,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
 
   return (
     <Page title="Sessions" lede="Every session open right now, across every person and client. Every listing here is audited.">
-      <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: "center", flexWrap: "wrap", gap: 1.5 }}>
+      <Facets>
         <TextField
           size="small"
           label="Person"
@@ -316,7 +315,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
           all={{ value: "", label: "Any way in" }}
           options={ways.map((kind) => ({ value: String(kind), label: howName(kind) }))}
         />
-      </Stack>
+      </Facets>
 
       <Loading busy={loading} />
       <Failure error={failure} />

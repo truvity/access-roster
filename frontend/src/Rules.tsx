@@ -129,7 +129,7 @@ export function Rules() {
       <Loading busy={policy.loading} />
       <Failure error={policy.error} />
 
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
+      <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
         <Facet
           value={kind}
           onChange={(next) => setKind(next as Kind)}
