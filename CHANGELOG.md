@@ -1,4 +1,4 @@
-## Unreleased
+## v0.12.7
 
 - **Every filter on every page wraps now.** Provider groups was still
   scrolling 73px sideways on a phone after the first pass, because it had
