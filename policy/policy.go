@@ -169,6 +169,16 @@ type Policy struct {
 	// Clients is who may be issued a token for what. A client's id is the
 	// audience.
 	Clients map[string]Client `yaml:"clients,omitempty"`
+	// GitHub binds directory groups to GitHub teams, by organisation
+	// then team (INF-696). It grants nothing here and appears in no
+	// token: a controller reads it and makes the org's membership match.
+	//
+	// It lives in this file for one reason — a reader of the access model
+	// sees every GitHub team's source without opening another file — and
+	// it is the same shape as a group's `members`, read the same way: the
+	// people the directory puts in these groups are the people that team
+	// should contain.
+	GitHub map[string]map[string][]string `yaml:"github,omitempty"`
 }
 
 // Group is one internal group: a set of directory groups whose members
@@ -402,6 +412,30 @@ func (p Policy) Validate() error {
 		}
 		if _, ok := p.Groups[name]; !ok {
 			return fmt.Errorf("lifetimes: %q is not a declared group", name)
+		}
+	}
+	for _, org := range slices.Sorted(maps.Keys(p.GitHub)) {
+		if strings.TrimSpace(org) == "" {
+			return fmt.Errorf("github: an organisation with no name")
+		}
+		teams := p.GitHub[org]
+		for _, team := range slices.Sorted(maps.Keys(teams)) {
+			if strings.TrimSpace(team) == "" {
+				return fmt.Errorf("github: %q has a team with no name", org)
+			}
+			// A team fed by nothing is a team the controller would empty.
+			// It is refused rather than obeyed, because "remove everyone
+			// from platform" is not something to express by leaving a
+			// list out.
+			if len(teams[team]) == 0 {
+				return fmt.Errorf(
+					"github: %s/%s is fed by no group, which would empty the team", org, team)
+			}
+			for _, address := range teams[team] {
+				if _, ok := emailaddr.Domain(address); !ok {
+					return fmt.Errorf("github: %q in %s/%s has no domain", address, org, team)
+				}
+			}
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(p.Clients)) {

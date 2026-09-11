@@ -99,6 +99,33 @@ func (s *Set) Groups() []GroupView {
 	return out
 }
 
+// TeamView is one GitHub team binding as the console shows it: which
+// organisation, which team, and the directory groups that feed it.
+type TeamView struct {
+	Org     string
+	Team    string
+	Members []string
+}
+
+// GitHubTeams returns every binding, sorted by organisation then team.
+//
+// It is read by the console's Rules page, which is the point of the
+// table living in the policy at all: *who is in this GitHub team, and
+// why* is answered by reading the access model rather than by opening
+// GitHub.
+func (s *Set) GitHubTeams() []TeamView {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []TeamView
+	for _, org := range slices.Sorted(maps.Keys(s.declared.GitHub)) {
+		teams := s.declared.GitHub[org]
+		for _, team := range slices.Sorted(maps.Keys(teams)) {
+			out = append(out, TeamView{Org: org, Team: team, Members: slices.Clone(teams[team])})
+		}
+	}
+	return out
+}
+
 // ClientView is one declared client as the console shows it.
 type ClientView struct {
 	ID string
@@ -225,6 +252,24 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 			return fmt.Errorf("%s: client %q is declared twice", from, id)
 		}
 		p.Clients[id] = client
+	}
+	if p.GitHub == nil {
+		p.GitHub = map[string]map[string][]string{}
+	}
+	// Per TEAM, not per organisation: one file may bind the platform team
+	// and another the security team in the same org, which is what "one
+	// file per source" is for. Two files binding one team is still a
+	// clash, because the second would silently replace the first.
+	for org, teams := range other.GitHub {
+		if p.GitHub[org] == nil {
+			p.GitHub[org] = map[string][]string{}
+		}
+		for team, members := range teams {
+			if _, clash := p.GitHub[org][team]; clash {
+				return fmt.Errorf("%s: github team %s/%s is declared twice", from, org, team)
+			}
+			p.GitHub[org][team] = members
+		}
 	}
 	return nil
 }
