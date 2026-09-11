@@ -202,7 +202,7 @@ Three layers, and none is the fallback for another.
 | opens a second console | the proxy sends the browser to the issuer; the issuer recognises its own session and completes silently |
 | runs `kubectl` | kubelogin does code + PKCE on a loopback port; the cluster trusts the issuer and reads `groups` |
 | needs AWS credentials | `accessctl` exchanges the token it holds for one audienced at AWS; STS trusts the issuer |
-| signs out | the proxy clears its cookie and calls `end_session`; every other console asks again on its next visit |
+| signs out | the proxy clears its cookie and calls `end_session`; the issuer ends the sign-in AND every session that browser opened, so every other console asks again rather than refreshing on |
 | leaves the company | the next snapshot no longer lists them; within the freshness window, the next refresh anywhere is refused |
 
 | A machine… | What happens |

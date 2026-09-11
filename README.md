@@ -114,14 +114,20 @@ such as ArgoCD or Kargo, talks to the issuer directly.
 
 ## Conformance
 
-access-roster claims three OpenID Foundation profiles, and a claim is
-worth exactly what the suite says about it.
+access-roster targets three OpenID Foundation profiles. A profile is
+claimed only once the suite says so, which is why this section carries
+the last run rather than an intention.
 
-| Profile | Plan | Runs |
+Last run 2026-09-11 against the deployed issuer at v0.14.3.
+
+| Profile | Plan | Last run |
 |---|---|---|
-| **Config** | `oidcc-config-certification-test-plan` | **passing**, and in CI: it reads the discovery document and the key set, so it needs no client and nobody at a browser |
-| **Basic OP** | `oidcc-basic-certification-test-plan` | needs a sign-in |
-| **RP-Initiated Logout** | `oidcc-rp-initiated-logout-certification-test-plan` | needs a sign-in |
+| **Config** | `oidcc-config-certification-test-plan` | **1 passing**, and in CI: it reads the discovery document and the key set, so it needs no client and nobody at a browser |
+| **RP-Initiated Logout** | `oidcc-rp-initiated-logout-certification-test-plan` | **3 passing, 8 in review.** Review is the suite's state for a step a person signs off; each carries a screenshot of the page the issuer served |
+| **Basic OP** | `oidcc-basic-certification-test-plan` | **20 passing**, 6 warning, 4 skipped, 2 in review, 2 unfinished, **1 failing** — `oidcc-prompt-none-not-logged-in`, with `oidcc-prompt-login` and `oidcc-max-age-1` unfinished beside it. All three are about re-authentication, so they are likely one defect rather than three |
+
+A profile is not claimed until its run is green. Basic OP is not green,
+and this table says so rather than rounding up.
 
 The Config profile is the one that guards the surface most likely to
 break by accident: change a provider option and discovery changes with

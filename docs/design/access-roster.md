@@ -284,15 +284,31 @@ is to end access, the worst failure available. A refresh token is hashed
 into its key, so an index that can be read is not an index that can be
 replayed.
 
-Sign-out has two halves. A proxy ends its own session and chains to
-`end_session`, which ends the SSO session; a revoked or suspended person
-is stopped by the next refresh being refused, with the directory's
-liveness signal behind it. **Global logout is the first applied to the SSO
-session:** once cleared, every other console's next silent `/authorize`
-fails. The nuance worth stating: clearing the SSO session tears down
-silent re-authentication everywhere, but does not reach into other
-consoles' existing cookies — those live until their next refresh. To end a
-session *now* is **revocation**.
+Sign-out ends the sign-in AND every session opened under it, and it does
+both through whichever door was used: `/logout`, which a person follows,
+and `end_session`, which a proxy chains to. Ending the sign-in alone
+stops the next silent `/authorize` and nothing else.
+
+The design used to say only that much, and leaned on the other sessions
+dying *"at their next refresh"*. They do not, because nothing was
+revoking the refresh tokens — so a console the person had already opened
+kept refreshing successfully and serving pages for as long as its own
+cookie lasted, after a sign-out that reported success. Reported from
+hubble; fixed in v0.14.2 for `/logout` and v0.14.4 for `end_session`,
+which is the door that actually mattered because it is the one a proxy
+uses.
+
+What a sign-out reaches is scoped by what the request can PROVE, which is
+the cookie it carries. An `id_token_hint` is a hint in the specification
+rather than a credential — the library accepts an expired one by design —
+so it chooses the signed-out page and nothing else. A request that proves
+nothing ends nothing: before v0.14.4 it ended every session in the
+installation, which is [the security note](../../CHANGELOG.md).
+
+A revoked or suspended person is stopped separately, by the next refresh
+being refused, with the directory's liveness signal behind it. To end
+somebody *else's* session is **revocation**, through `RevokeSessions`,
+which authorizes the caller first.
 
 **And the console got exactly that wrong** (found in production, 0.12.8).
 Every Revoke button on the Sessions page sent a *session id*, and the
@@ -487,9 +503,18 @@ adds one back without a reason.
 | the implicit and hybrid flows | superseded by code with PKCE, which is what PKCE exists for |
 | TokenReview for workload exchange | it works on one cluster and would need a kubeconfig per cluster for the rest. A published key set needs none. It stays for recovery alone |
 
-Not served, and never was: back-channel logout (a revoked session dies at
-the proxy's next refresh), the session-management iframe, front-channel
-logout, PAR, DPoP, mTLS and CIBA. Each is surface without a consumer.
+Not served, and never was: back-channel logout, the session-management
+iframe, front-channel logout, PAR, DPoP, mTLS and CIBA. Each is surface
+without a consumer.
+
+Back-channel logout is the one with a real cost, and it is worth naming
+rather than waving past. Signing out revokes the sessions immediately, but
+a proxy only learns that at its next refresh — so it keeps serving for up
+to its `cookie_refresh`, five minutes on the consoles here. Back-channel
+logout would close that window by telling each client at the moment of
+sign-out. It stays unserved because oauth2-proxy does not consume it, so
+building it would buy nothing today; the window is the price, and it is
+bounded by a setting we choose.
 
 ## Build
 

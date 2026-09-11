@@ -50,8 +50,11 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		SupportedClaims: []string{
 			"sub", "aud", "exp", "iat", "iss", "email", "email_verified", "name", "groups",
 		},
-		// Back-channel logout is not served: the proxy does not consume
-		// it, and a revoked session dies at the proxy's next refresh.
+		// Back-channel logout is not served: oauth2-proxy does not
+		// consume it. Signing out revokes the sessions at once, but a
+		// proxy only finds out at its next refresh, so it keeps serving
+		// for up to its `cookie_refresh`. That window is the price of
+		// not building this, and it is bounded by a setting we choose.
 		BackChannelLogoutSupported: false,
 		// Where `/end_session` puts a person when the request named
 		// nowhere to send them. Empty -- the zero value this ran with --
