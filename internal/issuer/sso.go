@@ -3,6 +3,7 @@ package issuer
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -84,6 +85,55 @@ func (s *SSO) SetIDs(newID func() string) { s.newID = newID }
 func ssoKey(id string) string         { return "issuer:sso:" + id }
 func ssoOfKey(identity string) string { return "issuer:sso-of:" + strings.ToLower(identity) }
 
+// ssoAllKey is every sign-in, for the operator's view of what is open —
+// the same shape sessions keep, and for the same reason: the incident
+// case is the one where you do not know WHOSE to look for.
+const ssoAllKey = "issuer:sso"
+
+// List returns the live sign-ins, for one identity or for all of them.
+//
+// It exists because the console listed per-client sessions and not the
+// SIGN-IN behind them, so revoking every row emptied the page and
+// changed nothing about who could walk back in. What keeps letting you
+// in has to be on the page that says what is open.
+func (s *SSO) List(ctx context.Context, identity string) ([]SSOSession, error) {
+	key := ssoAllKey
+	if identity = strings.ToLower(strings.TrimSpace(identity)); identity != "" {
+		key = ssoOfKey(identity)
+	}
+
+	ids, err := s.state.Members(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]SSOSession, 0, len(ids))
+
+	for _, id := range ids {
+		session, live, err := s.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+
+		if !live {
+			// Self-repair, as the session index does: the record expired,
+			// so the id is not a sign-in any more and the set should stop
+			// claiming it is.
+			if err = s.state.Remove(ctx, key, id); err != nil {
+				return nil, err
+			}
+
+			continue
+		}
+
+		out = append(out, session)
+	}
+
+	slices.SortFunc(out, func(a, b SSOSession) int { return b.AuthTime.Compare(a.AuthTime) })
+
+	return out, nil
+}
+
 // Begin records a fresh authentication and returns the session.
 func (s *SSO) Begin(ctx context.Context, identity, how string) (SSOSession, error) {
 	now := s.now()
@@ -99,8 +149,10 @@ func (s *SSO) Begin(ctx context.Context, identity, how string) (SSOSession, erro
 		return SSOSession{}, err
 	}
 
-	if err := s.state.Add(ctx, ssoOfKey(session.Identity), session.ID, s.lifetime); err != nil {
-		return SSOSession{}, err
+	for _, key := range []string{ssoAllKey, ssoOfKey(session.Identity)} {
+		if err := s.state.Add(ctx, key, session.ID, s.lifetime); err != nil {
+			return SSOSession{}, err
+		}
 	}
 
 	return session, nil
@@ -135,8 +187,10 @@ func (s *SSO) End(ctx context.Context, id string) error {
 	}
 
 	if found {
-		if err = s.state.Remove(ctx, ssoOfKey(session.Identity), id); err != nil {
-			return err
+		for _, key := range []string{ssoAllKey, ssoOfKey(session.Identity)} {
+			if err = s.state.Remove(ctx, key, id); err != nil {
+				return err
+			}
 		}
 	}
 

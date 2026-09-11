@@ -289,6 +289,17 @@ type ListSessionsResponse struct {
 	Sessions []*Session `protobuf:"bytes,1,rep,name=sessions,proto3" json:"sessions,omitempty"`
 	// Non-empty when more sessions follow this page.
 	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	// The SIGN-INS behind those sessions: one per browser, newest first.
+	//
+	// Listed because leaving them out made the page lie by omission. A
+	// console showed every per-client session and none of the sign-ins, so
+	// revoking every row emptied the page and changed nothing about who
+	// could walk back in — and the console's own sign-in never appears as
+	// a session at all, because it does not redeem the code it gets back.
+	//
+	// Not paged with the sessions above: there are as many of these as a
+	// person has browsers, which is a number you can read.
+	SignIns       []*SignIn `protobuf:"bytes,3,rep,name=sign_ins,json=signIns,proto3" json:"sign_ins,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -337,6 +348,95 @@ func (x *ListSessionsResponse) GetNextPageToken() string {
 	return ""
 }
 
+func (x *ListSessionsResponse) GetSignIns() []*SignIn {
+	if x != nil {
+		return x.SignIns
+	}
+	return nil
+}
+
+// SignIn is one browser's authentication: what `/authorize` completes
+// silently from, and what a session points at when it was opened by one.
+type SignIn struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The id its sessions carry as `sso`, and what ends it.
+	Id       string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Identity string `protobuf:"bytes,2,opt,name=identity,proto3" json:"identity,omitempty"`
+	// What proved it: a provider kind ("google"), or "recovery".
+	How string `protobuf:"bytes,3,opt,name=how,proto3" json:"how,omitempty"`
+	// When the person authenticated, never when a token was minted from
+	// it. This is what `max_age` is measured against.
+	AuthTime      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=auth_time,json=authTime,proto3" json:"auth_time,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignIn) Reset() {
+	*x = SignIn{}
+	mi := &file_accessissuer_v1_session_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignIn) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignIn) ProtoMessage() {}
+
+func (x *SignIn) ProtoReflect() protoreflect.Message {
+	mi := &file_accessissuer_v1_session_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignIn.ProtoReflect.Descriptor instead.
+func (*SignIn) Descriptor() ([]byte, []int) {
+	return file_accessissuer_v1_session_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SignIn) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SignIn) GetIdentity() string {
+	if x != nil {
+		return x.Identity
+	}
+	return ""
+}
+
+func (x *SignIn) GetHow() string {
+	if x != nil {
+		return x.How
+	}
+	return ""
+}
+
+func (x *SignIn) GetAuthTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AuthTime
+	}
+	return nil
+}
+
+func (x *SignIn) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 type RevokeSessionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The identity whose sessions to end. Required, always: revocation is
@@ -364,7 +464,7 @@ type RevokeSessionsRequest struct {
 
 func (x *RevokeSessionsRequest) Reset() {
 	*x = RevokeSessionsRequest{}
-	mi := &file_accessissuer_v1_session_proto_msgTypes[3]
+	mi := &file_accessissuer_v1_session_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -376,7 +476,7 @@ func (x *RevokeSessionsRequest) String() string {
 func (*RevokeSessionsRequest) ProtoMessage() {}
 
 func (x *RevokeSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_accessissuer_v1_session_proto_msgTypes[3]
+	mi := &file_accessissuer_v1_session_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -389,7 +489,7 @@ func (x *RevokeSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeSessionsRequest.ProtoReflect.Descriptor instead.
 func (*RevokeSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_accessissuer_v1_session_proto_rawDescGZIP(), []int{3}
+	return file_accessissuer_v1_session_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RevokeSessionsRequest) GetIdentity() string {
@@ -432,7 +532,7 @@ type RevokeSessionsResponse struct {
 
 func (x *RevokeSessionsResponse) Reset() {
 	*x = RevokeSessionsResponse{}
-	mi := &file_accessissuer_v1_session_proto_msgTypes[4]
+	mi := &file_accessissuer_v1_session_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -444,7 +544,7 @@ func (x *RevokeSessionsResponse) String() string {
 func (*RevokeSessionsResponse) ProtoMessage() {}
 
 func (x *RevokeSessionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_accessissuer_v1_session_proto_msgTypes[4]
+	mi := &file_accessissuer_v1_session_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -457,7 +557,7 @@ func (x *RevokeSessionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeSessionsResponse.ProtoReflect.Descriptor instead.
 func (*RevokeSessionsResponse) Descriptor() ([]byte, []int) {
-	return file_accessissuer_v1_session_proto_rawDescGZIP(), []int{4}
+	return file_accessissuer_v1_session_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RevokeSessionsResponse) GetEnded() int32 {
@@ -487,10 +587,18 @@ const file_accessissuer_v1_session_proto_rawDesc = "" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tR\tpageToken\"t\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"\xa8\x01\n" +
 	"\x14ListSessionsResponse\x124\n" +
 	"\bsessions\x18\x01 \x03(\v2\x18.accessissuer.v1.SessionR\bsessions\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x81\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x122\n" +
+	"\bsign_ins\x18\x03 \x03(\v2\x17.accessissuer.v1.SignInR\asignIns\"\xba\x01\n" +
+	"\x06SignIn\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
+	"\bidentity\x18\x02 \x01(\tR\bidentity\x12\x10\n" +
+	"\x03how\x18\x03 \x01(\tR\x03how\x127\n" +
+	"\tauth_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bauthTime\x129\n" +
+	"\n" +
+	"expires_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x81\x01\n" +
 	"\x15RevokeSessionsRequest\x12\x1a\n" +
 	"\bidentity\x18\x01 \x01(\tR\bidentity\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x1d\n" +
@@ -523,31 +631,35 @@ func file_accessissuer_v1_session_proto_rawDescGZIP() []byte {
 }
 
 var file_accessissuer_v1_session_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_accessissuer_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_accessissuer_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_accessissuer_v1_session_proto_goTypes = []any{
 	(How)(0),                       // 0: accessissuer.v1.How
 	(*Session)(nil),                // 1: accessissuer.v1.Session
 	(*ListSessionsRequest)(nil),    // 2: accessissuer.v1.ListSessionsRequest
 	(*ListSessionsResponse)(nil),   // 3: accessissuer.v1.ListSessionsResponse
-	(*RevokeSessionsRequest)(nil),  // 4: accessissuer.v1.RevokeSessionsRequest
-	(*RevokeSessionsResponse)(nil), // 5: accessissuer.v1.RevokeSessionsResponse
-	(*timestamppb.Timestamp)(nil),  // 6: google.protobuf.Timestamp
+	(*SignIn)(nil),                 // 4: accessissuer.v1.SignIn
+	(*RevokeSessionsRequest)(nil),  // 5: accessissuer.v1.RevokeSessionsRequest
+	(*RevokeSessionsResponse)(nil), // 6: accessissuer.v1.RevokeSessionsResponse
+	(*timestamppb.Timestamp)(nil),  // 7: google.protobuf.Timestamp
 }
 var file_accessissuer_v1_session_proto_depIdxs = []int32{
-	0, // 0: accessissuer.v1.Session.how:type_name -> accessissuer.v1.How
-	6, // 1: accessissuer.v1.Session.issued_at:type_name -> google.protobuf.Timestamp
-	6, // 2: accessissuer.v1.Session.expires_at:type_name -> google.protobuf.Timestamp
-	6, // 3: accessissuer.v1.Session.last_refreshed:type_name -> google.protobuf.Timestamp
-	1, // 4: accessissuer.v1.ListSessionsResponse.sessions:type_name -> accessissuer.v1.Session
-	2, // 5: accessissuer.v1.SessionService.ListSessions:input_type -> accessissuer.v1.ListSessionsRequest
-	4, // 6: accessissuer.v1.SessionService.RevokeSessions:input_type -> accessissuer.v1.RevokeSessionsRequest
-	3, // 7: accessissuer.v1.SessionService.ListSessions:output_type -> accessissuer.v1.ListSessionsResponse
-	5, // 8: accessissuer.v1.SessionService.RevokeSessions:output_type -> accessissuer.v1.RevokeSessionsResponse
-	7, // [7:9] is the sub-list for method output_type
-	5, // [5:7] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	0,  // 0: accessissuer.v1.Session.how:type_name -> accessissuer.v1.How
+	7,  // 1: accessissuer.v1.Session.issued_at:type_name -> google.protobuf.Timestamp
+	7,  // 2: accessissuer.v1.Session.expires_at:type_name -> google.protobuf.Timestamp
+	7,  // 3: accessissuer.v1.Session.last_refreshed:type_name -> google.protobuf.Timestamp
+	1,  // 4: accessissuer.v1.ListSessionsResponse.sessions:type_name -> accessissuer.v1.Session
+	4,  // 5: accessissuer.v1.ListSessionsResponse.sign_ins:type_name -> accessissuer.v1.SignIn
+	7,  // 6: accessissuer.v1.SignIn.auth_time:type_name -> google.protobuf.Timestamp
+	7,  // 7: accessissuer.v1.SignIn.expires_at:type_name -> google.protobuf.Timestamp
+	2,  // 8: accessissuer.v1.SessionService.ListSessions:input_type -> accessissuer.v1.ListSessionsRequest
+	5,  // 9: accessissuer.v1.SessionService.RevokeSessions:input_type -> accessissuer.v1.RevokeSessionsRequest
+	3,  // 10: accessissuer.v1.SessionService.ListSessions:output_type -> accessissuer.v1.ListSessionsResponse
+	6,  // 11: accessissuer.v1.SessionService.RevokeSessions:output_type -> accessissuer.v1.RevokeSessionsResponse
+	10, // [10:12] is the sub-list for method output_type
+	8,  // [8:10] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_accessissuer_v1_session_proto_init() }
@@ -561,7 +673,7 @@ func file_accessissuer_v1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_accessissuer_v1_session_proto_rawDesc), len(file_accessissuer_v1_session_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

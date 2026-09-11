@@ -23,7 +23,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file accessissuer/v1/session.proto.
  */
 export const file_accessissuer_v1_session: GenFile = /*@__PURE__*/
-  fileDesc("Ch1hY2Nlc3Npc3N1ZXIvdjEvc2Vzc2lvbi5wcm90bxIPYWNjZXNzaXNzdWVyLnYxIv0BCgdTZXNzaW9uEgoKAmlkGAEgASgJEhAKCGlkZW50aXR5GAIgASgJEhEKCWNsaWVudF9pZBgDIAEoCRIhCgNob3cYBCABKA4yFC5hY2Nlc3Npc3N1ZXIudjEuSG93Ei0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoObGFzdF9yZWZyZXNoZWQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgsKA3NzbxgIIAEoCSJhChNMaXN0U2Vzc2lvbnNSZXF1ZXN0EhAKCGlkZW50aXR5GAEgASgJEhEKCWNsaWVudF9pZBgCIAEoCRIRCglwYWdlX3NpemUYAyABKAUSEgoKcGFnZV90b2tlbhgEIAEoCSJbChRMaXN0U2Vzc2lvbnNSZXNwb25zZRIqCghzZXNzaW9ucxgBIAMoCzIYLmFjY2Vzc2lzc3Vlci52MS5TZXNzaW9uEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSJdChVSZXZva2VTZXNzaW9uc1JlcXVlc3QSEAoIaWRlbnRpdHkYASABKAkSEQoJY2xpZW50X2lkGAIgASgJEhIKCnNlc3Npb25faWQYAyABKAkSCwoDc3NvGAQgASgJIicKFlJldm9rZVNlc3Npb25zUmVzcG9uc2USDQoFZW5kZWQYASABKAUqSgoDSG93EhMKD0hPV19VTlNQRUNJRklFRBAAEgwKCEhPV19DT0RFEAESDgoKSE9XX0RFVklDRRACEhAKDEhPV19FWENIQU5HRRADMtABCg5TZXNzaW9uU2VydmljZRJbCgxMaXN0U2Vzc2lvbnMSJC5hY2Nlc3Npc3N1ZXIudjEuTGlzdFNlc3Npb25zUmVxdWVzdBolLmFjY2Vzc2lzc3Vlci52MS5MaXN0U2Vzc2lvbnNSZXNwb25zZRJhCg5SZXZva2VTZXNzaW9ucxImLmFjY2Vzc2lzc3Vlci52MS5SZXZva2VTZXNzaW9uc1JlcXVlc3QaJy5hY2Nlc3Npc3N1ZXIudjEuUmV2b2tlU2Vzc2lvbnNSZXNwb25zZULFAQoTY29tLmFjY2Vzc2lzc3Vlci52MUIMU2Vzc2lvblByb3RvUAFaQ2dpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9hY2Nlc3Npc3N1ZXIvdjE7YWNjZXNzaXNzdWVydjGiAgNBWFiqAg9BY2Nlc3Npc3N1ZXIuVjHKAg9BY2Nlc3Npc3N1ZXJcVjHiAhtBY2Nlc3Npc3N1ZXJcVjFcR1BCTWV0YWRhdGHqAhBBY2Nlc3Npc3N1ZXI6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("Ch1hY2Nlc3Npc3N1ZXIvdjEvc2Vzc2lvbi5wcm90bxIPYWNjZXNzaXNzdWVyLnYxIv0BCgdTZXNzaW9uEgoKAmlkGAEgASgJEhAKCGlkZW50aXR5GAIgASgJEhEKCWNsaWVudF9pZBgDIAEoCRIhCgNob3cYBCABKA4yFC5hY2Nlc3Npc3N1ZXIudjEuSG93Ei0KCWlzc3VlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoObGFzdF9yZWZyZXNoZWQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgsKA3NzbxgIIAEoCSJhChNMaXN0U2Vzc2lvbnNSZXF1ZXN0EhAKCGlkZW50aXR5GAEgASgJEhEKCWNsaWVudF9pZBgCIAEoCRIRCglwYWdlX3NpemUYAyABKAUSEgoKcGFnZV90b2tlbhgEIAEoCSKGAQoUTGlzdFNlc3Npb25zUmVzcG9uc2USKgoIc2Vzc2lvbnMYASADKAsyGC5hY2Nlc3Npc3N1ZXIudjEuU2Vzc2lvbhIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkSKQoIc2lnbl9pbnMYAyADKAsyFy5hY2Nlc3Npc3N1ZXIudjEuU2lnbkluIpIBCgZTaWduSW4SCgoCaWQYASABKAkSEAoIaWRlbnRpdHkYAiABKAkSCwoDaG93GAMgASgJEi0KCWF1dGhfdGltZRgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiXQoVUmV2b2tlU2Vzc2lvbnNSZXF1ZXN0EhAKCGlkZW50aXR5GAEgASgJEhEKCWNsaWVudF9pZBgCIAEoCRISCgpzZXNzaW9uX2lkGAMgASgJEgsKA3NzbxgEIAEoCSInChZSZXZva2VTZXNzaW9uc1Jlc3BvbnNlEg0KBWVuZGVkGAEgASgFKkoKA0hvdxITCg9IT1dfVU5TUEVDSUZJRUQQABIMCghIT1dfQ09ERRABEg4KCkhPV19ERVZJQ0UQAhIQCgxIT1dfRVhDSEFOR0UQAzLQAQoOU2Vzc2lvblNlcnZpY2USWwoMTGlzdFNlc3Npb25zEiQuYWNjZXNzaXNzdWVyLnYxLkxpc3RTZXNzaW9uc1JlcXVlc3QaJS5hY2Nlc3Npc3N1ZXIudjEuTGlzdFNlc3Npb25zUmVzcG9uc2USYQoOUmV2b2tlU2Vzc2lvbnMSJi5hY2Nlc3Npc3N1ZXIudjEuUmV2b2tlU2Vzc2lvbnNSZXF1ZXN0GicuYWNjZXNzaXNzdWVyLnYxLlJldm9rZVNlc3Npb25zUmVzcG9uc2VCxQEKE2NvbS5hY2Nlc3Npc3N1ZXIudjFCDFNlc3Npb25Qcm90b1ABWkNnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vYWNjZXNzaXNzdWVyL3YxO2FjY2Vzc2lzc3VlcnYxogIDQVhYqgIPQWNjZXNzaXNzdWVyLlYxygIPQWNjZXNzaXNzdWVyXFYx4gIbQWNjZXNzaXNzdWVyXFYxXEdQQk1ldGFkYXRh6gIQQWNjZXNzaXNzdWVyOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * Session is one refresh token, described. The token itself is never
@@ -157,6 +157,22 @@ export type ListSessionsResponse = Message<"accessissuer.v1.ListSessionsResponse
    * @generated from field: string next_page_token = 2;
    */
   nextPageToken: string;
+
+  /**
+   * The SIGN-INS behind those sessions: one per browser, newest first.
+   *
+   * Listed because leaving them out made the page lie by omission. A
+   * console showed every per-client session and none of the sign-ins, so
+   * revoking every row emptied the page and changed nothing about who
+   * could walk back in — and the console's own sign-in never appears as
+   * a session at all, because it does not redeem the code it gets back.
+   *
+   * Not paged with the sessions above: there are as many of these as a
+   * person has browsers, which is a number you can read.
+   *
+   * @generated from field: repeated accessissuer.v1.SignIn sign_ins = 3;
+   */
+  signIns: SignIn[];
 };
 
 /**
@@ -165,6 +181,53 @@ export type ListSessionsResponse = Message<"accessissuer.v1.ListSessionsResponse
  */
 export const ListSessionsResponseSchema: GenMessage<ListSessionsResponse> = /*@__PURE__*/
   messageDesc(file_accessissuer_v1_session, 2);
+
+/**
+ * SignIn is one browser's authentication: what `/authorize` completes
+ * silently from, and what a session points at when it was opened by one.
+ *
+ * @generated from message accessissuer.v1.SignIn
+ */
+export type SignIn = Message<"accessissuer.v1.SignIn"> & {
+  /**
+   * The id its sessions carry as `sso`, and what ends it.
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string identity = 2;
+   */
+  identity: string;
+
+  /**
+   * What proved it: a provider kind ("google"), or "recovery".
+   *
+   * @generated from field: string how = 3;
+   */
+  how: string;
+
+  /**
+   * When the person authenticated, never when a token was minted from
+   * it. This is what `max_age` is measured against.
+   *
+   * @generated from field: google.protobuf.Timestamp auth_time = 4;
+   */
+  authTime?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp expires_at = 5;
+   */
+  expiresAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message accessissuer.v1.SignIn.
+ * Use `create(SignInSchema)` to create a new message.
+ */
+export const SignInSchema: GenMessage<SignIn> = /*@__PURE__*/
+  messageDesc(file_accessissuer_v1_session, 3);
 
 /**
  * @generated from message accessissuer.v1.RevokeSessionsRequest
@@ -214,7 +277,7 @@ export type RevokeSessionsRequest = Message<"accessissuer.v1.RevokeSessionsReque
  * Use `create(RevokeSessionsRequestSchema)` to create a new message.
  */
 export const RevokeSessionsRequestSchema: GenMessage<RevokeSessionsRequest> = /*@__PURE__*/
-  messageDesc(file_accessissuer_v1_session, 3);
+  messageDesc(file_accessissuer_v1_session, 4);
 
 /**
  * @generated from message accessissuer.v1.RevokeSessionsResponse
@@ -235,7 +298,7 @@ export type RevokeSessionsResponse = Message<"accessissuer.v1.RevokeSessionsResp
  * Use `create(RevokeSessionsResponseSchema)` to create a new message.
  */
 export const RevokeSessionsResponseSchema: GenMessage<RevokeSessionsResponse> = /*@__PURE__*/
-  messageDesc(file_accessissuer_v1_session, 4);
+  messageDesc(file_accessissuer_v1_session, 5);
 
 /**
  * How a session began. It is not decoration: "revoke Ada's kubectl login"

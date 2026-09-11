@@ -1,5 +1,19 @@
 ## Unreleased
 
+- **The Sessions page lists the SIGN-INS**, above the sessions they
+  opened. This is what made revoking look like a no-op: the page showed
+  every per-client session and no sign-in, so emptying the list changed
+  nothing about who could walk back in. Worse, the console's own sign-in
+  appeared nowhere at all — it never redeems the code it gets back, so it
+  opens no session — while being the very thing keeping the reader signed
+  in.
+
+  Each row ends that browser's sign-in and everything under it.
+  `ListSessionsResponse` gains `sign_ins`, the sign-in store gains a
+  global index beside its per-identity one, and both are returned under
+  the same permission rule as the sessions.
+
+
 - **Signing out leads back to signing in.** The signed-out page said what
   had happened and left you there; sign-out now lands on the console,
   which is where a sign-in can actually start. Not `/login` itself: its

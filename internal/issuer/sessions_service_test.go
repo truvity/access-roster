@@ -387,3 +387,60 @@ func TestASignInIdIsNotEnoughOnItsOwn(t *testing.T) {
 		t.Errorf("Ada ended Eli's sign-in: found=%v err=%v", found, err)
 	}
 }
+
+// The listing includes the SIGN-INS, not only what they opened.
+//
+// Leaving them out is what made the console lie by omission: every
+// per-client session was shown and none of the sign-ins, so revoking
+// every row emptied the page and left the thing that admits a browser
+// exactly where it was. The console's own sign-in is worse than hidden —
+// it opens no session at all, because it never redeems the code it gets
+// back, so without this it appears nowhere.
+func TestTheListingIncludesTheSignInsBehindTheSessions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+	sso := issuer.NewSSO(state, time.Hour)
+	svc := issuer.NewSessionsServiceWithSSOForTest(sessions, sso, verifier())
+
+	browser, err := sso.Begin(ctx, "ada@north.example", "google")
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+
+	// A sign-in that opened NOTHING, which is the console's shape.
+	got, err := list(t, svc, "ada@north.example|", &accessissuerv1.ListSessionsRequest{Identity: "ada@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(got.GetSessions()) != 0 {
+		t.Errorf("sessions = %d, want 0: nothing has been opened", len(got.GetSessions()))
+	}
+
+	if len(got.GetSignIns()) != 1 {
+		t.Fatalf("sign-ins = %d, want 1: the sign-in exists and nothing else lists it", len(got.GetSignIns()))
+	}
+
+	if in := got.GetSignIns()[0]; in.GetId() != browser.ID || in.GetHow() != "google" {
+		t.Errorf("signin = %+v, want the browser's own", in)
+	}
+
+	// And it disappears when the browser is signed out, which is the
+	// whole point of listing it.
+	if _, err = revoke(t, svc, "ada@north.example|",
+		&accessissuerv1.RevokeSessionsRequest{Identity: "ada@north.example", Sso: browser.ID}); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	got, err = list(t, svc, "ada@north.example|", &accessissuerv1.ListSessionsRequest{Identity: "ada@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(got.GetSignIns()) != 0 {
+		t.Errorf("sign-ins = %d after signing the browser out, want 0", len(got.GetSignIns()))
+	}
+}
