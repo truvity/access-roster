@@ -1,3 +1,34 @@
+## v0.14.4
+
+**Security.** An unauthenticated `GET /end_session` ended every session
+in the installation — every person and every workload, from anyone on the
+internet, at an address the discovery document publishes.
+
+The library hands the storage whatever the end-session request named, and
+a bare request names nothing: no `id_token_hint` and no `client_id` left
+both arguments empty. `TerminateSession` passed that straight into
+`Revoke(Query{})`, and an empty query selects everything.
+
+The same path had a second, quieter weakness. An `id_token_hint` is a
+*hint* in the specification rather than a credential, and the library
+accepts an **expired** one by design. Honouring it as authority to revoke
+meant anybody who found an old ID token — in a log, in browser history,
+in a referrer header — could sign that person out of a console.
+
+`TerminateSession` now ends nothing. What a logout request can actually
+prove is the cookie it carries, so the browser's own sign-in is the only
+authority for what gets revoked. The hint keeps its real job, which is
+choosing the client's signed-out page. Ending one identity's sessions at
+one client is still available through `RevokeSessions`, which authorizes
+the caller first.
+
+- **Both sign-out doors now do the same thing**, and the one that had the
+  weaker half was the one a PROXY uses. `/logout` revoked every session
+  the browser had opened; `/end_session` — what oauth2-proxy chains to —
+  only ended the sign-in. So a console behind a proxy went on refreshing
+  and serving pages after a sign-out that reported success, which is how
+  it was reported from hubble. Both call one `SignOut` now.
+
 ## v0.14.3
 
 - **Signing out lands on the page that says so.** `/end_session` had no

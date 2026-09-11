@@ -481,53 +481,77 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 // `end_session` has — ending a session is not a change somebody else can
 // exploit by making your browser visit it, only annoy you with.
 func (s *signIn) logout(w http.ResponseWriter, r *http.Request) {
-	if s.deps.SSO != nil {
-		if id := SSOFromRequest(r); id != "" {
-			// EVERYTHING this browser opened, and then the sign-in.
-			//
-			// Ending the sign-in alone stops the next silent /authorize
-			// and nothing else, and the design leaned on the sessions
-			// dying "at their next refresh" — which they do not, because
-			// nothing revoked the refresh tokens. Reported from hubble:
-			// signed out at the issuer, and its proxy went on refreshing
-			// successfully and serving pages.
-			//
-			// Sessions first. If this fails halfway the sign-in is still
-			// there and the person can try again; the other order would
-			// leave sessions running with no sign-in listing them.
-			// Narrowed by identity, which the sign-in record carries: an
-			// SSO-only query reads every session in the installation and
-			// filters, and this runs on an ordinary sign-out.
-			record, live, err := s.deps.SSO.Get(r.Context(), id)
-			if s.deps.Issuer != nil && err == nil && live {
-				ended, err := s.deps.Issuer.Sessions().Revoke(r.Context(),
-					Query{Identity: record.Identity, SSO: id})
-				if err != nil {
-					s.deps.Log.WarnContext(r.Context(), "sign-out could not end what this browser opened",
-						"error", logsafe.Error(err))
-				} else if ended > 0 {
-					s.deps.Log.InfoContext(r.Context(), "sign-out ended the sessions this browser opened",
-						"ended", ended)
-				}
-			}
-
-			if err := s.deps.SSO.End(r.Context(), id); err != nil {
-				s.deps.Log.WarnContext(r.Context(), "sign-out could not end the session",
-					"error", logsafe.Error(err))
-			}
-		}
-		// Cleared whatever the record said: a cookie naming a session
-		// that is already gone still makes the next request look signed
-		// in until it is checked, and clearing it costs nothing.
-		http.SetCookie(w, s.deps.SSO.Cookie("", s.deps.Secure))
-	}
+	SignOut(s.deps, w, r)
 
 	where := strings.TrimSpace(s.deps.AfterSignOut)
 	if where == "" {
-		where = "/signed-out"
+		where = signedOutPath
 	}
 
 	http.Redirect(w, r, where, http.StatusFound)
+}
+
+// SignOut ends EVERYTHING this browser opened, and then the sign-in
+// itself. It is what both doors do, because there is only one thing a
+// person means by signing out.
+//
+// Ending the sign-in alone stops the next silent `/authorize` and
+// nothing else. The design leaned on the other sessions dying "at their
+// next refresh" — they do not, because nothing revoked the refresh
+// tokens. Reported from hubble: signed out at the issuer, and its proxy
+// went on refreshing successfully and serving pages for hours.
+//
+// The two doors did not agree about this, and the one that had the weaker
+// half was the one a PROXY uses. `/logout` revoked; `/end_session`, which
+// is what oauth2-proxy chains to, only ended the sign-in — so every
+// console behind a proxy had exactly the failure the fix was written for.
+//
+// Sessions first, sign-in second. If the first half fails the sign-in is
+// still there and the person can try again; the other order would leave
+// sessions running with nothing listing them. Narrowed by identity, which
+// the sign-in record carries: an SSO-only query reads every session in
+// the installation and filters, and this runs on an ordinary sign-out.
+func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
+	if deps.SSO == nil {
+		return
+	}
+
+	if id := SSOFromRequest(r); id != "" {
+		record, live, err := deps.SSO.Get(r.Context(), id)
+		if deps.Issuer != nil && err == nil && live {
+			ended, err := deps.Issuer.Sessions().Revoke(r.Context(),
+				Query{Identity: record.Identity, SSO: id})
+			switch {
+			case err != nil:
+				deps.log().WarnContext(r.Context(), "sign-out could not end what this browser opened",
+					"error", logsafe.Error(err))
+			case ended > 0:
+				deps.log().InfoContext(r.Context(), "sign-out ended the sessions this browser opened",
+					"ended", ended)
+			}
+		}
+
+		if err := deps.SSO.End(r.Context(), id); err != nil {
+			deps.log().WarnContext(r.Context(), "sign-out could not end the session",
+				"error", logsafe.Error(err))
+		}
+	}
+
+	// Cleared whatever the record said: a cookie naming a session that is
+	// already gone still makes the next request look signed in until it
+	// is checked, and clearing it costs nothing.
+	http.SetCookie(w, deps.SSO.Cookie("", deps.Secure))
+}
+
+// log is the deps' logger, or the default one. SignOut is reached from
+// the provider middleware as well as from this handler, and that path
+// has never been required to carry a logger.
+func (d SignInDeps) log() *slog.Logger {
+	if d.Log != nil {
+		return d.Log
+	}
+
+	return slog.Default()
 }
 
 // signedOut is where sign-out lands, whichever door was used. It says
