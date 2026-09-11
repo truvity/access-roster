@@ -122,7 +122,7 @@ such as ArgoCD or Kargo, talks to the issuer directly.
 | write the policy | [docs/reference/policy.md](docs/reference/policy.md) |
 | deploy it | [docs/reference/configuration.md](docs/reference/configuration.md), then [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
 | put a console behind the gateway | [docs/connect/console-app.md](docs/connect/console-app.md) |
-| connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
+| connect a cluster, an AWS account, a GitHub organisation, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
 | run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |
 | build a service that accepts both people and workloads | [docs/connect/service-to-service.md](docs/connect/service-to-service.md) |
 
