@@ -133,13 +133,24 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// A console sharing this issuer's origin reaches it with the
 	// browser's own session cookie and needs no CORS at all; the wrapper
 	// below is for the other shape, a console on a host of its own.
-	path, sessions := accessissuerv1connect.NewSessionServiceHandler(
-		NewSessionsService(iss, op.NewAccessTokenVerifier(iss.Config().URL, keySetOf(storage))))
+	verifier := op.NewAccessTokenVerifier(iss.Config().URL, keySetOf(storage))
+	path, sessions := accessissuerv1connect.NewSessionServiceHandler(NewSessionsService(iss, verifier))
 	if signIn.ConsoleOrigin != "" {
 		sessions = browserAllowed(signIn.ConsoleOrigin, sessions)
 	}
 
 	mux.Handle(path, sessions)
+
+	// What the caller's own groups open, for `accessctl kubeconfig` and
+	// `aws-config`. The same verifier, so a bearer cannot mean one thing
+	// here and another to the session service.
+	mux.Handle(GrantsPath, grantsHandler(iss.Policy(), func(ctx context.Context, bearer string) (string, []string, error) {
+		claims, err := op.VerifyAccessToken[*oidc.AccessTokenClaims](ctx, bearer, verifier)
+		if err != nil {
+			return "", nil, err
+		}
+		return claims.Subject, groupsOf(claims), nil
+	}))
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
