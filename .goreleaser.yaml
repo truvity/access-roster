@@ -16,7 +16,16 @@ version: 2
 # the honest failure and still not one to discover at release time.
 before:
   hooks:
-    - sh -c "cd frontend && npm ci && npm run build"
+    # `just console`, NOT the npm commands written out again. The console
+    # imports @truvity/access-roster as file:../ts and resolves it
+    # through ts/dist, so ts has to be built first -- an ordering the
+    # Justfile already declares. Restating it here got it wrong on the
+    # first release after the bundles left git: the hook built the
+    # console against a package that was not there yet, and goreleaser
+    # failed on `Cannot find module '@truvity/access-roster'`.
+    #
+    # One definition of the order, in the place that already had it.
+    - just console
 
 builds:
   - id: access-issuer

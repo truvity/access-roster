@@ -1,4 +1,12 @@
-## v0.14.7
+## v0.14.8
+
+- **The release builds the bundles through `just console`** rather than
+  restating the npm commands. v0.14.7 failed on its first release after
+  the bundles left git: the hook built the console against `ts/dist`,
+  which is what the console imports as `file:../ts` and which nothing had
+  built yet. The ordering was already declared in the Justfile, and
+  writing it out a second time is how the two got to disagree.
+
 
 **The git history was rewritten at this version, and every tag before it
 was deleted.** Nothing in the code changed by the rewrite — the tree at
