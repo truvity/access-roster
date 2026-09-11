@@ -1,3 +1,22 @@
+## v0.14.5
+
+- **A client's `ttl_cap` now reaches the tokens a browser gets.** It was
+  applied on token exchange and nowhere else, so declaring it on a
+  console did nothing at all — the code flow used the deployment-wide
+  lifetime whatever the client said.
+
+  That number is the lever over how long a REVOKED session keeps working.
+  A client only learns a session ended when it next has to refresh, so
+  the access token's remaining life is exactly the window in which a
+  sign-out has not taken effect yet. Reported twice from live use, as a
+  console that went on serving after signing out; the sessions are now
+  revoked at sign-out (v0.14.2, v0.14.4) and this is what makes the
+  revocation prompt rather than eventual.
+
+  Back-channel logout would close the window entirely by telling each
+  client at the moment of sign-out. It is still not served, because
+  oauth2-proxy does not consume it, so a short cap is the lever we have.
+
 ## v0.14.4
 
 **Security.** An unauthenticated `GET /end_session` ended every session

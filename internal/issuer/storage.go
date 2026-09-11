@@ -316,7 +316,20 @@ func (s *Storage) GetClientByClientID(_ context.Context, clientID string) (op.Cl
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownTarget, clientID)
 	}
-	return &client{id: clientID, declared: declared, lifetime: s.iss.Config().TokenLifetime}, nil
+	return &client{id: clientID, declared: declared, lifetime: s.tokenLifetime(declared)}, nil
+}
+
+// tokenLifetime is how long this client's tokens live: the deployment's
+// lifetime, narrowed by the client's own `ttl_cap`.
+//
+// The cap was honoured on token EXCHANGE and nowhere else, so declaring
+// it on a browser client did nothing at all. It matters most there. A
+// revoked session keeps working until the client next has to refresh, so
+// the access token's lifetime IS the window in which a sign-out or a
+// revoke has not taken effect yet — and for a console that window was
+// the deployment-wide default.
+func (s *Storage) tokenLifetime(declared policy.Client) time.Duration {
+	return declared.Cap(s.iss.Config().TokenLifetime)
 }
 
 // AuthorizeClientIDSecret implements [op.OPStorage].
@@ -676,6 +689,10 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 		return nil, err
 	}
 	lifetime := s.iss.Config().TokenLifetime
+	if declared, ok := s.iss.Policy().Client(clientOf(request)); ok {
+		lifetime = declared.Cap(lifetime)
+	}
+
 	if exchange, ok := request.(op.TokenExchangeRequest); ok {
 		if grant, ok := s.grantFor(exchange); ok {
 			if capped := time.Duration(s.iss.Lifetime(grant)); capped > 0 && capped < lifetime {
