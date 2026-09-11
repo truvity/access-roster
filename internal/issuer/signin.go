@@ -126,6 +126,7 @@ func SignInRoutes(mux *http.ServeMux, deps SignInDeps) {
 	mux.HandleFunc("GET /login/{provider}/start", s.start)
 	mux.HandleFunc("GET /login/{provider}/callback", s.callback)
 	mux.HandleFunc("POST /login/recovery", s.recover)
+	mux.HandleFunc("GET /logout", s.logout)
 	mux.HandleFunc("GET /signed-out", s.signedOut)
 
 	// `/account` was the person's own page — their sessions, and the one
@@ -391,13 +392,46 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.deps.Return(r.Context(), request), http.StatusFound)
 }
 
-// signedOut is where RP-initiated logout lands. It says what did and did
-// not happen, because "signed out" on a page that ended one session and
-// left three others running is the kind of half-truth people plan around.
+// logout is the sign-out a PERSON follows, as opposed to `/end_session`,
+// which is the protocol endpoint a relying party redirects to.
+//
+// It exists because the console's sign-out button pointed at `/logout`
+// and nothing served it: the button returned 404 and the sign-in
+// survived, which is how "even sign-out does not work" was reported. The
+// button was not wrong — this is the address a person expects, it is
+// what they type, and `/end_session` is a name from a specification.
+//
+// Both end the same thing. This one needs no `id_token_hint`, which the
+// console could not supply anyway: it never redeems the code it gets
+// back, so it holds no ID token. That it takes a GET is the same posture
+// `end_session` has — ending a session is not a change somebody else can
+// exploit by making your browser visit it, only annoy you with.
+func (s *signIn) logout(w http.ResponseWriter, r *http.Request) {
+	if s.deps.SSO != nil {
+		if id := SSOFromRequest(r); id != "" {
+			if err := s.deps.SSO.End(r.Context(), id); err != nil {
+				s.deps.Log.WarnContext(r.Context(), "sign-out could not end the session",
+					"error", logsafe.Error(err))
+			}
+		}
+		// Cleared whatever the record said: a cookie naming a session
+		// that is already gone still makes the next request look signed
+		// in until it is checked, and clearing it costs nothing.
+		http.SetCookie(w, s.deps.SSO.Cookie("", s.deps.Secure))
+	}
+
+	http.Redirect(w, r, "/signed-out", http.StatusFound)
+}
+
+// signedOut is where sign-out lands, whichever door was used. It says
+// what did and did not happen, because "signed out" on a page that ended
+// one session and left three others running is the kind of half-truth
+// people plan around.
 func (s *signIn) signedOut(w http.ResponseWriter, _ *http.Request) {
-	s.page(w, "Signed out", `<p>This application has signed you out, and ended your sign-in here.</p>
-	<p class="note">Other applications you opened keep their own sessions until they next refresh.
-	To end every one of them now, use <a href="/account">your account page</a>.</p>`)
+	s.page(w, "Signed out", `<p>Your sign-in here has ended. The next application you open will ask again.</p>
+	<p class="note">Applications you already opened keep their OWN sessions until those expire —
+	ending a sign-in here cannot reach into them. To end one now, revoke its session from the
+	console's Sessions page.</p>`)
 }
 
 // providerName is what a person calls the directory, rather than what the
