@@ -396,3 +396,19 @@ console:
   # issuer's own page is, not the console's. Empty serves no console.
   mount: /console
 
+  # The client id the console signs people in as (INF-701).
+  #
+  # The console is a client of this issuer like any other application:
+  # somebody with no session is sent to /authorize, signs in once, and
+  # comes back with the issuer's session set — which the console then
+  # reads. One door, and nothing special held by the console.
+  #
+  # It must name a declared client in the policy whose `redirects`
+  # include this origin plus the mount with a trailing slash, and whose
+  # `requires` admits whoever should reach the console.
+  #
+  # Empty keeps the console's own sign-in page, which is the shape for a
+  # deployment with no issuer beside it — and, in one with an issuer, a
+  # second door.
+  client: ""
+

@@ -237,6 +237,16 @@ chart-lint:
         --set issuerURL=https://access.example --set route.host=access.example \
         --set console.mount= | grep -c '^kind: HTTPRoute$')" = "1"
 
+    # The console signs people in as a CLIENT of the issuer (INF-701),
+    # which is what makes one binary mean one door. No client declared,
+    # no entry -- and then the console keeps a sign-in page of its own,
+    # which in a deployment with an issuer beside it is a second door.
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example --set console.client=directory-console \
+        | grep -q 'CONSOLE_CLIENT_ID'
+    ! helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example | grep -q 'CONSOLE_CLIENT_ID'
+
     # Federated clusters (INF-692). No row is a secret, and the point of
     # the render is that the service ends up holding no cluster access at
     # all: IN_CLUSTER is recovery's, never a workload's.

@@ -109,7 +109,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// console — running an OpenID flow against a service in this very
 		// process — or the console's own login, which is the second door
 		// an installation with a gateway deliberately turns off.
-		UseSignedIn: directory.ConsoleServer().UseSignedIn,
+		UseSignedIn:    directory.ConsoleServer().UseSignedIn,
+		UseSignInEntry: directory.ConsoleServer().UseSignInEntry,
 	}
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {
