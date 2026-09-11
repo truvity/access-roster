@@ -1,3 +1,43 @@
+## v0.14.7
+
+**The git history was rewritten at this version, and every tag before it
+was deleted.** Nothing in the code changed by the rewrite — the tree at
+this commit is byte-identical to what v0.14.6 shipped — but every commit
+before it has a new hash, and the old tags are gone. A clone from before
+this point cannot be fast-forwarded; re-clone instead.
+
+- **Generated bundles are no longer in git.** `frontend/dist` cost 29.2 MB
+  of history, about seventy per cent of the repository, because a
+  minified bundle is a new blob on every dependency bump. It also bought
+  a silent failure: a committed artifact goes stale while everything
+  still compiles, which is how v0.14.0 shipped a console reading a
+  protobuf field the server no longer sent. Absent, the embed is a
+  compile error. Loud beats stale.
+
+  `ts/dist` goes for the same reason, with a `prepare` script so a git
+  install still needs no toolchain of its own. `gen/` STAYS: it is Go
+  source, small and diffable, and it is what makes the module
+  `go get`-able without buf.
+
+- **`directory-roster` leaves the release.** One service, one image, one
+  chart. The hub was a second binary until INF-691 folded it into the
+  issuer, which runs it in process — `internal/app` is still here and
+  still does the directory work. What goes is the separate deployment,
+  which had gone on being built and pushed for a service deployed
+  nowhere.
+
+- **react 19.3.0**, which is what Renovate's two open pull requests were
+  for. Neither could land: a bot can edit a lockfile and cannot rebuild
+  what it changes. There is nothing to rebuild now.
+
+- **The chart/binary environment check now points at the issuer's chart**
+  and reads both environment consumers. It immediately named eight
+  settings the merged service supplies to nobody, `SIGN_OUT_URL` among
+  them — which is the defect behind *"sign out does not work"*, reported
+  twice. Nothing failed at the time, because an empty string is valid
+  everywhere it lands. The list is in the test now, with what replaced
+  each one.
+
 ## v0.14.6
 
 Both of these were found by LOOKING at the screenshots the conformance
