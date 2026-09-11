@@ -154,8 +154,21 @@ plan, and run its modules. Each one that reaches a sign-in stops and
 waits for you: a browser window opens on the issuer's chooser, you sign
 in with Google as usual, and the test continues on its own.
 
-The logout plan is the same with
-`planName=oidcc-rp-initiated-logout-certification-test-plan`.
+The logout plan is **not** the same call. It takes a different set of
+variants — `client_registration` and `response_type`, with no
+`server_metadata` — and posting the Basic OP variant to it returns an
+error with no plan id rather than a plan:
+
+```bash
+variant='%7B%22client_registration%22%3A%22static_client%22%2C%22response_type%22%3A%22code%22%7D'
+curl -sk -X POST "$S/api/plan?planName=oidcc-rp-initiated-logout-certification-test-plan&variant=$variant" \
+  -H 'Content-Type: application/json' --data-binary @basic.json | jq -r .id
+```
+
+`response_type=code` because this issuer serves only `code` — which is
+the whole reason the other response types are absent from discovery. Ask
+the suite rather than guess; `GET /api/plan/available` lists each plan's
+variant keys and their permitted values.
 
 ### 4. Afterwards
 
