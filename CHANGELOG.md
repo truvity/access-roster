@@ -1,4 +1,11 @@
-## Unreleased
+## v0.15.0
+
+- **Sessions group by identity, then by browser.** Browser alone was the
+  whole grouping, and on the installation-wide listing that reads as
+  noise: one identity that signed in eight times is eight groups of one,
+  stacked, repeating the same name eight times. By person first, with
+  *same browser* kept underneath, because that is the unit a sign-out
+  ends. Each heading carries its count.
 
 - **The split deployment is gone from the code, not just from the
   cluster.** `HUB_ADDRESS` and `HUB_TOKEN_FILE`, the branch that dialled
