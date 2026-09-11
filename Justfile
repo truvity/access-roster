@@ -54,9 +54,22 @@ acceptance:
     kind delete cluster --name access-roster-acceptance
 
 # Check the release configuration without cutting one.
+# The release path, as far as it can be exercised without a tag.
+#
+# `goreleaser check` validates the config and `build --single-target`
+# proves it compiles, but NEITHER reaches the archives stage — which is
+# where v0.12.0 failed, four minutes into a tagged run, publishing
+# nothing. So the archive shapes are checked here by reading the same
+# file goreleaser reads.
 release-check:
+    ./hack/check-archives.py
     goreleaser check
     goreleaser build --snapshot --clean --single-target
+
+# The cheap half of release-check, for `check`: it reads a file and
+# needs no compiler, so it costs nothing to run on every push.
+archive-check:
+    ./hack/check-archives.py
 
 # Run go mod tidy
 tidy:
@@ -428,4 +441,4 @@ console:
     test -z "$(git ls-files --others --exclude-standard frontend/dist)"
 
 # Run all checks (build + test + lint + chart-lint + vuln)
-check: build test lint chart-lint vuln
+check: build test lint chart-lint archive-check vuln

@@ -5,6 +5,23 @@ git history.
 
 ## Unreleased
 
+- **The v0.12.0 release published nothing**, and the reason is the one
+  this repository's own release config warns about: release machinery is
+  exercised only by a tag. `accessctl` is the single binary built for
+  Windows, so in one shared archive the Windows download held one binary
+  where every other held four, and goreleaser refuses that — four minutes
+  into the tagged run, after every cross-compile had already succeeded.
+
+  `accessctl` now has its own archive, zipped on Windows as that platform
+  expects, which is also the better shape: it is the one thing here that
+  runs on somebody's own laptop.
+
+  And `just check` now proves every archive is uniform across its
+  platforms by reading the same file goreleaser reads. Neither
+  `goreleaser check` nor `build --single-target` reaches the archives
+  stage, which is why nothing caught this.
+
+
 - **A session cookie is marked `Secure` by default**, decided by the
   scheme of the service's own public URL rather than by a flag that
   defaults to off. It used to default to off, so an installation that
