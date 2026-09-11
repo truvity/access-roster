@@ -354,10 +354,20 @@ func (s *Storage) AuthorizeClientIDSecret(_ context.Context, clientID, secret st
 	// client id only names who is asking. So a public client presenting
 	// nothing is authenticated, and one presenting a secret is refused,
 	// because it should not have one to present.
-	if declared.Kind == policy.KindPublic {
+	// An EXCHANGE client is the same case and was missing from it. It is
+	// an audience -- a cloud role, a cluster -- and the design gives it
+	// no secret anywhere: `Client.Secret` is refused on that kind. But
+	// the library authenticates the caller of an exchange by HTTP Basic,
+	// so falling through to the secret path meant a declared exchange
+	// client could never authenticate at all, and every exchange failed
+	// with "the client secret does not match" while the policy looked
+	// correct. Found by trying the first real exchange this issuer has
+	// ever been asked to do.
+	if declared.Kind == policy.KindPublic || declared.Kind == policy.KindExchange {
 		if secret != "" {
 			return errors.New("a public client presents no secret")
 		}
+
 		return nil
 	}
 	want, ok := s.secrets(clientID)

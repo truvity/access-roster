@@ -1,5 +1,22 @@
 ## v0.15.2
 
+- **A declared `exchange` client could never authenticate**, so every
+  token-exchange audience was unusable. The library authenticates the
+  caller of an exchange by HTTP Basic; public clients were handled —
+  presenting nothing is right, because in an exchange the subject token
+  IS the credential — and `exchange` fell through to a secret lookup.
+  The policy refuses to let that kind carry a secret at all, so the
+  request failed with *the client secret does not match* while the policy
+  read correctly.
+
+  This is the deeper reason token exchange had never verified a proof.
+  Not only was no cluster federated: even with one, the audience could
+  not authenticate. It would have affected every exchange target the
+  design describes, including the AWS roles.
+
+  Found by performing the first real exchange this issuer has ever been
+  asked for, with a workload token minted in another cluster.
+
 - **A revoked session's access token stops answering at `userinfo`.** An
   access token is a JWT verified offline everywhere else, so nothing can
   be told to stop honouring one before it expires — but `userinfo` holds

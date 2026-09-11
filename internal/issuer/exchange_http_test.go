@@ -670,3 +670,54 @@ func TestGrantsNeedsABearer(t *testing.T) {
 		}
 	}
 }
+
+// An EXCHANGE client authenticates by presenting nothing, the same as a
+// public one. It is an audience -- a cloud role, a cluster -- and the
+// design refuses to give that kind a secret at all, so requiring one
+// made every declared exchange audience unusable: the library asks for
+// HTTP Basic on this grant, the storage looked for a secret file that
+// cannot exist, and the answer was "the client secret does not match"
+// while the policy read correctly.
+//
+// Found by performing the first real token exchange this issuer had ever
+// been asked for, against a workload token from another cluster.
+func TestAnExchangeClientNeedsNoSecret(t *testing.T) {
+	t.Parallel()
+
+	declared, err := policy.Parse([]byte(`
+version: 1
+lifetimes:
+  default: 1h
+clients:
+  aws:1111:deployer:
+    kind: exchange
+    requires: ["all:everyone"]
+groups:
+  all:everyone:
+    matchers:
+      - email: ada@north.example
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	client, ok := set.Client("aws:1111:deployer")
+	if !ok {
+		t.Fatal("the exchange client is not in the policy")
+	}
+
+	if client.Kind != policy.KindExchange {
+		t.Fatalf("kind is %q, want %q", client.Kind, policy.KindExchange)
+	}
+
+	// The policy refuses to carry a secret for this kind, which is why
+	// asking for one can never be satisfied.
+	if client.Secret != "" {
+		t.Errorf("an exchange client carries a secret %q; it should not be able to", client.Secret)
+	}
+}
