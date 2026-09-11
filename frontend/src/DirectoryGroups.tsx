@@ -2,20 +2,17 @@ import { useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import ToggleButton from "@mui/material/ToggleButton";
-import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 
 import { access, ago, at, forHowLong, people as peopleCount, personName } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
-import { Authority, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
+import { Authority, Facet, Facets, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
 
 /** The identity-side groups: what the providers say exists, and which
  *  of it the policy uses. */
@@ -43,28 +40,22 @@ export function DirectoryGroups() {
       title="Groups"
       lede="Every group in every connected provider, as the last snapshot has it. A group here grants nothing by itself: it does so by being attached to an internal group, and that attachment is the one thing this console edits."
     >
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
-        {providers.length > 1 ? (
-          <ToggleButtonGroup size="small" exclusive value={provider} onChange={(_, next: string | null) => next !== null && setProvider(next)}>
-            <ToggleButton value="">Every provider</ToggleButton>
-            {providers.map((id) => (
-              <ToggleButton key={id} value={id} sx={{ fontFamily: "monospace", textTransform: "none" }}>
-                {id}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        ) : null}
-        {domains.length > 1 ? (
-          <ToggleButtonGroup size="small" exclusive value={domain} onChange={(_, next: string | null) => next !== null && setDomain(next)}>
-            <ToggleButton value="">Every domain</ToggleButton>
-            {domains.map((name) => (
-              <ToggleButton key={name} value={name} sx={{ fontFamily: "monospace", textTransform: "none" }}>
-                {name}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        ) : null}
-      </Stack>
+      <Facets>
+        <Facet
+          value={provider}
+          onChange={setProvider}
+          all={{ value: "", label: "Every provider" }}
+          options={providers.map((id) => ({ value: id, label: id }))}
+          mono
+        />
+        <Facet
+          value={domain}
+          onChange={setDomain}
+          all={{ value: "", label: "Every domain" }}
+          options={domains.map((name) => ({ value: name, label: name }))}
+          mono
+        />
+      </Facets>
 
       <Loading busy={groups.loading || policy.loading} />
       <Failure error={groups.error ?? policy.error} />

@@ -20,7 +20,7 @@ import type { ExplainRequest } from "./gen/directoryroster/v1/access_pb";
 import { useAsync } from "./hooks";
 import { Explanation } from "./Person";
 import { paths } from "./router";
-import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State } from "./ui";
+import { Facet, Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State } from "./ui";
 
 /** The kind of rule, which is also the tab. `directory` is the one this
  *  page used to omit, and it is the majority of the estate. */
@@ -130,14 +130,18 @@ export function Rules() {
       <Failure error={policy.error} />
 
       <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
-        <ToggleButtonGroup size="small" exclusive value={kind} onChange={(_, next: Kind | null) => next && setKind(next)}>
-          <ToggleButton value="all">All</ToggleButton>
-          <ToggleButton value="directory">Provider groups</ToggleButton>
-          <ToggleButton value="sign-in">Sign-ins</ToggleButton>
-          <ToggleButton value="workload">Workloads</ToggleButton>
-          <ToggleButton value="ci">CI jobs</ToggleButton>
-          {teamRows.length ? <ToggleButton value="github-team">GitHub teams</ToggleButton> : null}
-        </ToggleButtonGroup>
+        <Facet
+          value={kind}
+          onChange={(next) => setKind(next as Kind)}
+          all={{ value: "all", label: "All" }}
+          options={[
+            { value: "directory", label: "Provider groups" },
+            { value: "sign-in", label: "Sign-ins" },
+            { value: "workload", label: "Workloads" },
+            { value: "ci", label: "CI jobs" },
+            ...(teamRows.length ? [{ value: "github-team", label: "GitHub teams" }] : []),
+          ]}
+        />
         <TextField select label="Internal group" value={group} onChange={(e) => setGroup(e.target.value)} sx={{ minWidth: 220 }}>
           <MenuItem value="">Any</MenuItem>
           {fed.map((g) => (
@@ -275,7 +279,7 @@ function Simulator() {
     <>
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <Stack spacing={2}>
-          <ToggleButtonGroup size="small" exclusive value={kind} onChange={(_, next: ProofKind | null) => next && setKind(next)}>
+          <ToggleButtonGroup size="small" exclusive value={kind} onChange={(_, next: ProofKind | null) => next && setKind(next)} sx={{ flexWrap: "wrap" }}>
             <ToggleButton value="ci">A CI job</ToggleButton>
             <ToggleButton value="workload">A workload</ToggleButton>
           </ToggleButtonGroup>
