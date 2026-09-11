@@ -1,4 +1,4 @@
-## Unreleased
+## v0.14.0
 
 - **Reusing an authorization code ends the session it opened.** RFC 6749
   4.1.2 says a code used twice must be denied and SHOULD revoke the
