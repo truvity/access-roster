@@ -1,3 +1,16 @@
+## Unreleased
+
+- **Signing out ends what the browser opened**, not only the sign-in
+  itself. The design leaned on those sessions dying *"at their next
+  refresh"* — they do, because a revoked session's refresh is refused —
+  but nothing was revoking them. So every console the person had opened
+  kept its own session until it happened to refresh, and a sign-out that
+  reported success left access in place.
+
+  The sessions go first and the sign-in second: if the first half fails
+  the sign-in is still there and the person can try again, where the
+  other order would leave sessions running with nothing listing them.
+
 ## v0.14.1
 
 - **The console bundle shipped in v0.14.0 was stale**, so the Sessions

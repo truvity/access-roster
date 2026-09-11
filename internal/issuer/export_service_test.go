@@ -51,3 +51,9 @@ func (s *Storage) CreateAuthRequestForTest(ctx context.Context, subject, clientI
 	}
 	return request.ID, nil
 }
+
+// NewForSessionsTest is an Issuer that holds nothing but a session store,
+// which is all the sign-out route reaches for.
+func NewForSessionsTest(sessions *Sessions) *Issuer {
+	return &Issuer{sessions: sessions}
+}
