@@ -1,4 +1,4 @@
-## Unreleased
+## v0.14.2
 
 - **Signing out ends what the browser opened**, not only the sign-in
   itself. The design leaned on those sessions dying *"at their next
