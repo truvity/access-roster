@@ -3,24 +3,7 @@
 One line per release; full detail lives in the release notes and the
 git history.
 
-## v0.11.0
-
-- **The documentation is rewritten around what the product is.** The
-  README opens with the idea in three sentences and the niche in one
-  table: dex is the right shape and stops one step short of knowing
-  anyone's groups; the heavy providers can do all of it at the cost of
-  running an identity product to use a fifth of one. `architecture.md`
-  is a third of its length, draws the live two-service shape honestly
-  and names the merge that follows; `why.md` carries the seven problems
-  and seven principles and nothing the README already says. Seven
-  decisions taken 2026-09-10 are recorded where they land — one
-  service (INF-691), machines by a federated key set with token exchange
-  as the one machine grant (INF-692), six grants (INF-693), a read-only
-  console (INF-694), the login page as the issuer's only UI (INF-695) —
-  and the two design documents carry a banner saying which of their
-  sections are current and which are history. No code changes.
-
-## Unreleased
+## v0.12.0
 
 - **The GitHub Action** (INF-649, the other half). One action at the
   repository root, `curl` and `jq` and two files: nothing of ours is
@@ -354,6 +337,23 @@ git history.
   recovery** rather than assuming it: stop the server, start it again,
   and the client must work without being reconstructed. It recovers in
   about two seconds.
+
+## v0.11.0
+
+- **The documentation is rewritten around what the product is.** The
+  README opens with the idea in three sentences and the niche in one
+  table: dex is the right shape and stops one step short of knowing
+  anyone's groups; the heavy providers can do all of it at the cost of
+  running an identity product to use a fifth of one. `architecture.md`
+  is a third of its length, draws the live two-service shape honestly
+  and names the merge that follows; `why.md` carries the seven problems
+  and seven principles and nothing the README already says. Seven
+  decisions taken 2026-09-10 are recorded where they land — one
+  service (INF-691), machines by a federated key set with token exchange
+  as the one machine grant (INF-692), six grants (INF-693), a read-only
+  console (INF-694), the login page as the issuer's only UI (INF-695) —
+  and the two design documents carry a banner saying which of their
+  sections are current and which are history. No code changes.
 
 ## v0.10.0
 
