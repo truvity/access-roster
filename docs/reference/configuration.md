@@ -1,17 +1,24 @@
-# directory-roster — chart and configuration
+# access-issuer — chart and configuration
 
-How the hub is configured: the chart's boundary, its values, the overlay
-format, the Kubernetes objects it owns, the roles, and the two things it
-expects the deployment to provide.
+How the service is configured: the chart's boundary, its values, the
+overlay format, the Kubernetes objects it owns, the roles, and the two
+things it expects the deployment to provide.
+
+**One chart, `charts/access-issuer`, for one service.** It renders the
+whole of access-roster — the directory, the policy, the OpenID provider,
+the login page and the console (INF-691). The older
+`charts/directory-roster` still ships so an installation can move back,
+and it is documented by the git history of this page rather than by this
+page.
 
 ## What the chart includes, what it expects
 
 | Included (standard Kubernetes APIs) | Expected to exist |
 |---|---|
-| Deployment, two Services (API, console), ServiceAccount + namespaced Role/RoleBinding, NetworkPolicy, the overlay ConfigMap, the Gateway API `HTTPRoute` for the console host (console slice) | a **Valkey** to point at; the **gateway authentication** in front of the console host; the Secrets a declared workspace or a declared OAuth client name |
+| Deployment, Service, ServiceAccount + namespaced Role/RoleBinding (with the Kubernetes store) + a cluster-scoped TokenReview role (with recovery), NetworkPolicy, the policy / overlay / federated-cluster ConfigMaps, a Gateway and two `HTTPRoute`s — one for the issuer's own endpoints and one for the console's path | a **Valkey** to point at; the Secrets a declared workspace, a declared OAuth client or an externally delivered signing key name |
 
-The hub itself reads and writes plain Kubernetes Secrets and ConfigMaps in
-its own namespace. It has no dependency on an external-secrets operator, a
+The service itself reads and writes plain Kubernetes Secrets and
+ConfigMaps in its own namespace. It has no dependency on an external-secrets operator, a
 cloud parameter store or a backup mechanism. Delivering a *declared* Secret
 into the namespace is the deployment's business; an example with
 external-secrets is at the end of this page.
@@ -28,50 +35,55 @@ hub writes *itself*, where it is the producer and gets to choose.
 
 | Value | Default | Meaning |
 |---|---|---|
-| `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory cache. Every replica serves every workspace, including one connected through the console on the other replica: a reader missing locally is opened from the stored credential on first use |
-| `image.repository` / `tag` | `ghcr.io/truvity/access-roster/directory-roster` / app version | |
-| `listeners.api.port` | `8080` | `DirectoryService` — consumers |
-| `listeners.api.audience` | the release name | the audience a consumer's projected token must carry |
-| `listeners.console.port` | `8081` | `WorkspaceService`, `SettingsService`, `AccessService`, the SPA, the login routes, the consent callback — operators, own login or a gateway in front |
-| `listeners.health.port` | `7070` | `/healthz`, `/readyz` |
-| `valkey.address` | `""` | host:port of the snapshot cache; empty selects the in-memory backend |
+| `issuerURL` | **required** | baked into every token and every relying party's trust. There is no default, because one would be a value nobody chose spread across an estate |
+| `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory store. Every replica serves every workspace, including one connected through the console on the other replica: a reader missing locally is opened from the stored credential on first use |
+| `image.repository` / `tag` | `ghcr.io/truvity/access-roster/access-issuer` / app version | |
+| `listeners.port` | `8080` | everything a browser and a relying party reach: discovery, the key set, the flows, the login page, and the console under `console.mount` |
+| `listeners.healthPort` | `7070` | `/healthz`, `/readyz` |
+| `valkey.address` | `""` | host:port of the shared store; empty keeps sessions and snapshots in memory, which is one replica only |
 | `valkey.passwordSecret.name` / `.key` | `""` / `password` | optional Secret with the password |
 | `valkey.tls` | `false` | |
-| `valkey.cluster` | `true` | speak the cluster protocol; the fleet's Valkeys are ValkeyClusters even at one shard. A plain single server needs `false`, and a mismatch is refused at start |
-| `freshness.refreshInterval` | `15m` | how often the refresher takes a new snapshot per workspace |
-| `freshness.freshnessWindow` | `30m` | how old a snapshot may be before its domains stop being authoritative |
-| `freshness.probeInterval` | `5m` | how often a credential is probed and the domain list re-read |
-| `oauthClient.secret.name` | `""` | a Secret holding the client; set, the console shows it read-only, because a value the deployment states must not be editable in a UI |
-| `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the hub does not produce this object: whatever delivers it — external-secrets, a 1Password operator, sealed-secrets, `kubectl create secret` — already had an opinion, and a hub that insisted on two particular names could not read a Secret already in the namespace |
-| `workspaces[]` | `[]` | declared workspaces, see below |
-| `consumers[]` | `[]` | `namespace` + `serviceAccount` pairs allowed on the API listener, verified by TokenReview — the cluster anchor, for workloads in this cluster. **Empty admits nobody.** Each entry may carry a grant (`workspaces`/`domains`, `groups`, `reads`) narrowing what that consumer may ask; no grant is full read. A caller from further away presents an issuer token instead: [../design/trust.md](../design/trust.md), [../connect/service-to-service.md](../connect/service-to-service.md) |
-| `route.host` | `""` | the console's hostname on the gateway, and only the console's: the API listener never gets a route, because a consumer that could arrive over the gateway could reach an operator call. Empty renders no Gateway, HTTPRoute or Certificate, which is right for a hub reached by port-forward |
-| `route.pathPrefix` | `""` | mount the console under a path of the host — `/console` — with the gateway rewriting the prefix away, so the hub's own SPA routes (`GET /assets/`, `GET /{$}`) do not change. This is how the console shares its issuer's hostname: the issuer must sit at the origin root (its `iss` claim and discovery are there), so the console takes the path. `PUBLIC_URL` and every setup value built from it carry the prefix. **`bootstrapPaths` are the one exception and are never moved under it** — see below. Empty is today's shape *(INF-687)* |
-| bare `<pathPrefix>` (no trailing slash) | — | redirects to `<pathPrefix>/`, rendered whenever a prefix is set. The console's assets are referenced **relatively**, so one committed bundle serves at any mount point — and `./assets/…` on a page reached without the slash resolves against the host root and asks whoever owns it. An `Exact` match outranks the prefix rule, so it takes only that one address |
-| `route.bootstrapPaths` | `[/login, /connect]` | paths served on a **second HTTPRoute**, so a gateway policy attached to the main one does not cover them, and **always at the host's root**, never under `route.pathPrefix` — a provider redirects to the literal, registered URI, and `PUBLIC_ROOT_URL` below is that root address. This is what makes a console behind an authenticating gateway bootstrappable at all: the operator who connects the FIRST directory is by definition one no directory can vouch for, so a gateway that gates `/login` sends them away to prove themselves against the thing that does not exist yet — and the consent they start comes back to a callback the gateway swallows, which reads as a second login prompt rather than a refusal. None of these is protected *by* the gateway anyway: recovery needs a token the API server vouches for, and an OAuth callback carries a signed state this hub issued. **The corollary: a request on this route carries no gateway identity, by design**, so the consent callback takes its operator from that signed state — established when an operator started the flow on a request the gateway did authenticate. Empty gates everything |
-| `route.gatewayClassName`, `route.certificate.*` | `internal`, `internal-ca` | which class the Gateway joins, and who issues its certificate. An empty `issuerName` renders none, for a gateway that brings its own. Ignored when `route.gateway.name` is set — see below |
-| `route.gateway.name` / `.namespace` / `.sectionName` | `""` | attach to an **existing** Gateway instead of rendering one — the shape `access-proxy`'s `exposure.gateway` already has, one level up. This is the other half of INF-687: `route.pathPrefix` puts the console on a path, but two charts each rendering their own Gateway for the same `route.host` is a duplicate-listener collision (Envoy Gateway merges every Gateway of one class into one deployment). So the console sharing its issuer's *hostname* also means sharing its issuer's *Gateway* — set these to the issuer's, across namespaces, and this chart renders no Certificate and no Gateway of its own. `route.host` is still required either way: both HTTPRoutes still carry it as their `hostnames`. Empty renders this chart's own Certificate + Gateway, today's shape exactly |
-| `access.recovery.enabled` | `true` | the way in for the day the ordinary one is broken. In a cluster it stores nothing: recovery is a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. On by default because it no longer costs a standing credential |
-| `access.recovery.serviceAccountName` | `<release>-recovery` | the account recovery proves access as; the chart creates it, bound to nobody. Granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
-| `access.recovery.audience` | `<release>-recovery` | the audience the token must be minted for. Without one, every mounted ServiceAccount token in the cluster would be a recovery token |
-| `access.holdWindow` | `4h` | how long a signed-in identity keeps its last granted role while the directory cannot be vouched for |
-| `access.login.directory` | `true` | the hub's own sign-in page. Off closes the routes, not just the buttons; connecting a directory is unaffected |
-| `access.signOutThroughIssuer` | `false` | render `signOutURL` as the whole sign-out: the proxy's own with the issuer's `end_session` as its `rd`, carrying `client_id` (the forwarded audience) and landing on `https://<route.host>/`. Refused at render without `route.host`, the issuer or the audience — half a chain looks exactly like a whole one and is not. An explicit `signOutURL` wins |
-| `access.proxyPrefix` | `/oauth2` | the proxy's path prefix, when the chain above is built |
-| `access.login.forwardedBearer.issuer` | `""` | **the path to use.** The issuer whose published keys the gateway's forwarded token is verified against. The console reads `X-Auth-Request-Access-Token` (or an ordinary bearer), fetches discovery and the key set once, and checks signature, issuer and expiry itself |
-| `access.login.forwardedBearer.audience` | `""` | this console's client id at that issuer. **Required whenever `issuer` is set — the render fails without it**, because a token minted for another audience is a perfectly valid token, and accepting it would make every service the issuer serves a way in here |
-| `access.login.forwardedBearer.emailHeader` | `""` | the weaker path: trust an address read from this header, unverified (`X-Auth-Request-Email` for oauth2-proxy and the fleet's gateway-auth). It asks who can reach the port rather than who signed the token, so it is only as good as the promise that nothing but the gateway can — one NetworkPolicy edit, one port-forward or one sidecar away from false. Where both are set, the signature decides and the header is never read |
-| `access.signOutURL` | `""` | where the console's sign-out control goes. Empty is this hub's own `/logout`, which is right only where this hub's own cookie is what signed the person in. **Behind a proxy it is not**: the proxy holds the session and forwards a bearer, so clearing this hub's cookie ends nothing, lands the person on a sign-in page with no way in — this hub's own sign-in being off is the point of having a proxy — and the next request arrives authenticated exactly as before. Name the proxy's own sign-out, `/oauth2/sign_out` for `access-proxy`'s default prefix. A value rather than something derived: the path belongs to the proxy, and where it goes afterwards — an issuer's end-session, a landing page — is the installation's to decide |
-| `access.sessionLifetime` | `12h` | how long a console session lasts |
-| `logLevel` | `info` | debug, info, warn, error |
-| `policy` | `{}` | the declared layer of the policy, see below |
+| `valkey.cluster` | `false` | speak the cluster protocol. **Off by default since 2026-09-10**: with one shard it makes the client learn node addresses from `CLUSTER SLOTS` and talk to those, bypassing the Service — the one mechanism whose job is to survive a pod moving. Turn it on when the store has three shards |
+| `signingKey.existingSecret` / `.key` | `""` / `tls.key` | a Secret holding a PEM RSA private key. Empty renders a cert-manager `Certificate` instead. **Never minted by the service**: two replicas with two keys hand out tokens half the fleet cannot verify |
+| `directory.store` | `kubernetes` | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
+| `directory.freshness.refreshInterval` | `15m` | how often the refresher takes a new snapshot per workspace |
+| `directory.freshness.freshnessWindow` | `30m` | how old a snapshot may be before its domains stop being authoritative |
+| `directory.freshness.probeInterval` | `5m` | how often a credential is probed and the domain list re-read |
+| `directory.sessionLifetime` | `12h` | how long the console's own session lasts |
+| `directory.login` | `true` | whether the console offers a sign-in of its own, under `<mount>/login`. With `console.client` set it is a second door: the issuer's page is the one people use |
+| `directory.workspaces[]` | `[]` | declared workspaces, see below |
+| `oauthClient.secret.name` | `""` | a Secret holding the client for sign-in and admin consent. Empty means nobody can sign in and this installation issues tokens to machines only, which is a real posture and is said at start |
+| `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the service does not produce this object: whatever delivers it already had an opinion, and a chart that insisted on two names could not read a Secret already in the namespace |
+| `console.mount` | `/console` | where the console sits on this origin. A **path** and not a host, because discovery must be at the root of the origin named in every token's `iss`. It is also what the console prefixes onto every link it hands a browser — `/login` resolves against the origin, where the issuer's page is. Empty serves no console |
+| `console.client` | `""` | the declared client the console signs people in as (INF-701). Somebody with no session is sent to `/authorize`, signs in at the issuer's page, and comes back with the issuer's session set. Its `redirects` must name this origin plus the mount with a trailing slash. Empty keeps the console's own page, which in a deployment with an issuer beside it is a second door |
+| `console.origin` | `""` | the one **other** origin allowed to call `SessionService` from a browser. Obsolete on one origin, which is the shipped shape; it remains for a console served from somewhere else |
+| `exchange.audience` | the release name | the audience a workload's ServiceAccount token must be minted for. Without one, every mounted token in every federated cluster would be a proof |
+| `exchange.clusters[]` | `[]` | the clusters whose workloads may exchange: `{name, issuer, jwksUri}` per cluster, verified against the key set that cluster publishes (INF-692). **No secret in any row**, and this service holds access to no cluster — including its own, which is a row like any other |
+| `github.owners[]` | `[]` | the GitHub organisations whose workflows may exchange. **Empty verifies no CI token at all**, deliberately: anybody may run a workflow in their own repository and get a valid GitHub token, so a list invented by the chart would admit every repository there is |
+| `cluster` | `""` | what this cluster is called, which becomes part of a ServiceAccount's subject. Empty keeps the older unqualified form |
+| `lifetimes.token` / `.refresh` / `.hold` | | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch |
+| `recovery.enabled` | `true` | the way in for the day the ordinary one is broken. It stores nothing: a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. **The only thing left that asks the cluster anything** |
+| `recovery.serviceAccountName` | `<release>-recovery` | the account recovery proves access as; the chart creates it, bound to nobody. Granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
+| `recovery.audience` | `<release>-recovery` | the audience the token must be minted for. Without one, every mounted ServiceAccount token in the cluster would be a recovery token |
+| `route.host` | `""` | the hostname on the gateway. Empty renders no Gateway, HTTPRoute or Certificate, which is right for an installation reached by port-forward |
+| `route.rootRedirect` | `""` | where a bare GET of the host goes. The issuer serves nothing at `/` — every endpoint it answers is a named one — so point this at `/console/` and somebody who types the domain lands somewhere useful |
+| `route.gatewayClassName`, `route.certificate.*` | `internal`, `internal-ca` | which class the Gateway joins, and who issues its certificate |
+| `route.sharedWith[]` | `[]` | namespaces besides this one allowed to attach an HTTPRoute to this Gateway. A **gateway-level** admission, not a ReferenceGrant: whether a Gateway accepts a route from another namespace is entirely its own `allowedRoutes` |
+| `policy` | `{}` | the declared policy, see [policy.md](policy.md) |
 | `networkPolicy.enabled` | `false` | |
-| `networkPolicy.apiClients[]` | `[]` | namespaces allowed to reach the API listener |
-| `networkPolicy.gatewayNamespace` | `""` | the namespace allowed to reach the console listener |
-| `resources`, `podAnnotations`, `nodeSelector`, `tolerations` | | Kubernetes passthrough |
+| `networkPolicy.clients[]` | `[]` | namespaces allowed to reach the service in-cluster: the proxies verifying tokens and the workloads exchanging them |
+| `logLevel` | `info` | debug, info, warn, error |
 
-`values.schema.json` is strict at the top level: an unknown key fails the
-render.
+**Two routes, and the second is not tidiness.** A gateway policy attaches
+to an `HTTPRoute`, so the console's path is a separate object: anything
+put in front of the console on a shared route would also sit in front of
+`/token`, `/keys` and discovery, and every relying party in the estate
+would be asked to sign in to fetch a key set. The console's route renders
+whether or not anything attaches to it.
+
+**The mount is not rewritten away** by the gateway, unlike the older
+split chart. The service strips it itself, so a gateway that stripped it
+too would hand the console a path it never serves.
 
 ## Declared workspaces (the overlay)
 
@@ -96,7 +108,7 @@ domain is claimed twice. Domains are discovered from the backend, exactly
 as for a connected workspace.
 
 `serve` narrows a tenant to a subset of the domains it owns. Leave it out
-and the hub serves all of them, including ones the company adds later —
+and the service serves all of them, including ones the company adds later —
 the ordinary case. Name a subset and the rest are still discovered and
 shown, but nothing routes to them and their accounts are never cached:
 that is how one installation reads a single domain of a company whose
@@ -109,7 +121,7 @@ tenants.
 directory holds every mailing list it ever made and an installation's
 policy speaks about a handful; naming them keeps the rest out of the
 cache, out of the pickers and off the pages. It narrows what is **kept**,
-not what is read — the hub still lists the tenant's groups, because that
+not what is read — the service still lists the tenant's groups, because that
 list is what an operator chooses from, so the saving is in storage and
 attention rather than in the directory's quota. Only a group the last
 read held may be named. Empty keeps every group in the served domains.
@@ -123,79 +135,21 @@ option. It can be changed afterwards on the directory's page.
 This is how an installation that already holds service-account keys goes
 live on day one, and connects through consent later at its own pace.
 
-## Consumers
+## Consumers of the directory
 
-A consumer mounts a projected ServiceAccount token with the hub's audience
-and sends it as a bearer:
+**There is no API listener.** It went with the merge (INF-691): the
+issuer was its only consumer and is now the same process, so the
+question a consumer used to ask over the network is a function call.
 
-```yaml
-volumes:
-  - name: directory-roster-token
-    projected:
-      sources:
-        - serviceAccountToken:
-            audience: directory-roster   # listeners.api.audience
-            expirationSeconds: 3600
-            path: token
-```
+What the grant model protected is not lost, only unused. It comes back
+on this service when something needs it again — the GitHub controller is
+the candidate — authenticated by token exchange like every other machine
+(INF-696). Until then there is nothing to grant and nothing to admit,
+which is the honest state for a listener with no callers.
 
-and appears in the hub's values:
-
-```yaml
-consumers:
-  - namespace: identity-system
-    serviceAccount: authorization-webhook
-```
-
-The chart then creates the one cluster-scoped permission it ever needs, a
-ClusterRole allowing `create` on `tokenreviews`, bound to the hub's
-ServiceAccount. It reads nothing.
-
-### What a consumer may ask
-
-An entry that names only a consumer is **full read**, which is what every
-consumer had before grants existed and what the issuer genuinely needs:
-it answers for every address in every company the hub serves. The next
-consumer usually does not. A grant narrows an admitted caller along three
-axes:
-
-```yaml
-consumers:
-  - namespace: access-issuer
-    serviceAccount: access-issuer          # no grant: full read
-
-  - namespace: team-sync
-    serviceAccount: team-sync
-    domains: [example.com]                 # or workspaces: [C0300000]
-    groups: ["team-*"]                     # exact address, or a * suffix
-    reads: [resolve]                       # resolve | groups | describe | probe
-```
-
-| read | procedures | what it exposes |
-| -- | -- | -- |
-| `resolve` | `ResolveUser`, `GetAccount`, `ResolveAccounts` | what one address, already known to the caller, resolves to |
-| `groups` | `GetGroup`, `ListGroups` | what the directory contains — the enumeration a resolve-only consumer must not have |
-| `describe` | `Describe` | which domains this hub serves |
-| `probe` | `Probe` | whether a workspace's last read succeeded |
-
-Three properties are worth stating, because each is a decision:
-
-**Outside the grant is indistinguishable from unserved.** An address in a
-withheld domain answers *not found, not in domain, no groups* — exactly
-as an address in a domain this hub does not serve. A refusal would
-confirm that the domain exists, which is the fact the grant is there to
-withhold, and consumers already read the unserved answer fail-safe.
-
-**Discovery is scoped too.** `Describe` lists only the granted domains,
-so a consumer given one directory is not told the others exist.
-
-**The API listener is read-only, whatever a grant says.** There is no
-read class that can be spelled to reach a write. Writes live on the
-console listener, behind operator sessions.
-
-Grants are read once, at start: the chart puts a checksum of them on the
-Deployment, because a narrowed grant that does not restart the pods is
-one an operator has applied and not applied at the same time.
+A service that needs to know who somebody is does not ask the directory
+at all: it verifies the issuer's token with the `identity` package and
+reads the `groups` claim. That is [../connect/service-to-service.md](../connect/service-to-service.md).
 
 ## The policy
 
@@ -214,7 +168,7 @@ policy:
   lifetimes: { default: 12h }
 ```
 
-## Kubernetes objects the hub owns
+## Kubernetes objects the service owns
 
 Everything an operator adds in the console lives here. `<release>` is the
 chart's full name, so two hubs in one namespace do not write over each
@@ -224,14 +178,14 @@ so the hash carries the uniqueness the readable part may have lost.
 
 | Object | Holds | Written by |
 |---|---|---|
-| `ConfigMap <release>-workspace-<tenant>` | backend, domains, served domains, admin, connected by/at, last health, credential type | the hub |
-| `Secret <release>-credential-<tenant>` | the credential: refresh token, or service-account key | the hub (Connect, UploadKey) |
-| `Secret <release>-oauth-client` | OAuth client id and secret | the hub (`SetOAuthClient`) — or declared via `oauthClient.secret.name`, and then read-only. The hub names the keys only in the one it writes itself |
-| `ConfigMap <release>-memberships` | memberships added in the console | the hub |
-| `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the hub, generated on first start; rotate by deleting |
-| the issuer's signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it and holds no permission to read Secrets; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
+| `ConfigMap <release>-workspace-<tenant>` | backend, domains, served domains, admin, connected by/at, last health, credential type | the service |
+| `Secret <release>-credential-<tenant>` | the credential: refresh token, or service-account key | the service (Connect, UploadKey) |
+| `Secret <release>-oauth-client` | OAuth client id and secret | declared via `oauthClient.secret.name` and read-only. The console used to be able to write one; it cannot since INF-694, because a credential a console can change is one somebody can change from a browser |
+| `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the service, generated on first start; rotate by deleting |
+| the signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it and holds no permission to read Secrets; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
+| `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** (INF-692) | the chart |
 
 The record and the credential are two objects on purpose. A record is
 shown to anyone who may see the console; a credential is written once and
@@ -251,7 +205,7 @@ Labels on every hub-written object: `app.kubernetes.io/managed-by=directory-rost
 kubectl -n directory-roster get secret,configmap -l app.kubernetes.io/managed-by=directory-roster -o yaml
 ```
 
-There is no backup mechanism in the hub. A consent credential is cheap to
+There is no backup mechanism here. A consent credential is cheap to
 mint again — Reconnect is the recovery — and a declared Secret is
 re-delivered by whatever declared it.
 
@@ -268,23 +222,33 @@ from the values above.
 
 | Variable | From |
 |---|---|
+| `ISSUER_URL` | `issuerURL` — required, and in every token |
 | `NAMESPACE` | the pod's namespace (downward API) |
-| `STORE` | always `kubernetes` from the chart; `memory` (the binary's default) keeps nothing |
-| `RELEASE_NAME` | the chart's full name, which prefixes every object the hub writes |
-| `API_PORT`, `CONSOLE_PORT`, `HEALTH_PORT` | `listeners.*` |
-| `REFRESH_INTERVAL`, `FRESHNESS_WINDOW`, `PROBE_INTERVAL` | `freshness.*` |
-| `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_CLUSTER`, `VALKEY_PASSWORD` | `valkey.*` (no address = in-memory snapshots, which is correct for one replica and wasteful for more) |
-| `OAUTH_CLIENT_SECRET_NAME`, `OAUTH_CLIENT_ID_KEY`, `OAUTH_CLIENT_SECRET_KEY` | `oauthClient.secret.*` |
-| `OVERLAY_FILE` | set when `workspaces` is non-empty |
-| `PUBLIC_URL` | `https://<route.host><route.pathPrefix>` — where a browser reaches the console itself; a deployment without `route.host` falls back to localhost and registers a redirect no browser will reach |
-| `PUBLIC_ROOT_URL` | `https://<route.host>` — the host's root, **never** carrying `route.pathPrefix`. Only set once a prefix makes it differ from `PUBLIC_URL`. This is what the admin-consent redirect URI is built from, because `bootstrapPaths` never move under the prefix (see above): a redirect registered under the prefix is one the provider never returns to |
+| `STORE` | `directory.store` |
+| `RELEASE_NAME` | the chart's full name, which prefixes every object the service writes and every key it uses in Valkey |
+| `PORT`, `HEALTH_PORT` | `listeners.*` |
+| `REFRESH_INTERVAL`, `FRESHNESS_WINDOW`, `PROBE_INTERVAL` | `directory.freshness.*` |
+| `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_CLUSTER`, `VALKEY_PASSWORD` | `valkey.*`. No address keeps everything in memory, which is correct for one replica and wrong for more |
+| `SIGNING_KEY_FILE` | the mounted key. Read from a FILE, never through the API, so a compromise of this service cannot become a read of every credential in its namespace |
+| `OAUTH_CLIENT_ID_FILE`, `OAUTH_CLIENT_SECRET_FILE` | the same client, as files, for signing a person in |
+| `OAUTH_CLIENT_SECRET_NAME`, `OAUTH_CLIENT_ID_KEY`, `OAUTH_CLIENT_SECRET_KEY` | the same client, through the API, for the admin-consent flow. One credential read two ways, from one value, so it cannot be half rotated |
+| `OVERLAY_FILE` | set when `directory.workspaces` is non-empty |
+| `CLUSTERS_FILE` | set when `exchange.clusters` is non-empty |
+| `CONSOLE_CLIENT_ID` | `console.client` |
+| `CONSOLE_ORIGIN` | `console.origin`, for a console on another host |
+| `PUBLIC_URL` | `https://<route.host><console.mount>` — where a browser reaches the console |
+| `PUBLIC_ROOT_URL` | `https://<route.host>` — the origin root, which is where the **admin-consent callback** stays. Its redirect URI is registered with every corporate tenant, so moving it under the console's path would mean re-registering it in each of them |
 | `SECURE_COOKIES` | `true` when `route.host` is set |
-| `FORWARDED_ISSUER`, `FORWARDED_AUDIENCE` | `access.login.forwardedBearer.{issuer,audience}` — the **verified** path: the console checks the gateway's forwarded token against this issuer's published keys, and refuses one minted for another audience. Setting an issuer without an audience fails the render |
-| `FORWARDED_EMAIL_HEADER` | `access.login.forwardedBearer.emailHeader` — the **trusted** path, and weaker: an address read out of a header, unverified. It asks who can reach the port rather than who signed the token. Where both are set, the signature decides and the header is never read |
-| `SESSION_LIFETIME` | `access.sessionLifetime` |
+| `EXCHANGE_AUDIENCE` | `exchange.audience` |
+| `GITHUB_OWNERS` | `github.owners` |
+| `CLUSTER` | `cluster` |
+| `IN_CLUSTER` | `true` when `recovery.enabled` — the one thing left that asks the API server anything |
+| `RECOVERY_ENABLED`, `RECOVERY_SERVICE_ACCOUNT`, `RECOVERY_AUDIENCE` | `recovery.*` |
+| `TOKEN_LIFETIME`, `REFRESH_LIFETIME`, `HOLD_WINDOW` | `lifetimes.*` |
+| `SESSION_LIFETIME` | `directory.sessionLifetime` |
+| `LOGIN_DIRECTORY` | `directory.login` |
+| `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
 | `LOG_LEVEL` | `logLevel` |
-| `POLICY_DIR` | the directory the declared layer is mounted in; every YAML file in it merges |
-| `HOLD_WINDOW` | `access.holdWindow` |
 
 ## Roles
 
@@ -296,8 +260,9 @@ Two roles, held by membership of two declared internal groups.
 | operator | `hub-operators` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient, AddMembership, RemoveMembership |
 
 Behind a gateway that forwards a token, the forwarded identity's email is
-resolved through the hub like any other; the groups in the token itself
-are not consulted, because the hub is the source they came from.
+resolved through the directory like any other; the groups in the token
+itself are not consulted, because the directory is the source they came
+from.
 
 ## The repository
 
@@ -316,7 +281,7 @@ the directories, tens of megabytes at most. Persistence is not required —
 a cold cache costs one fetch per workspace.
 
 If the cluster runs the [valkey-operator](https://github.com/hyperspike/valkey-operator),
-a single-node cluster in the hub's namespace is enough:
+a single-node cluster in the service's namespace is enough:
 
 ```yaml
 apiVersion: hyperspike.io/v1
@@ -344,7 +309,7 @@ gateway's own OIDC filter) is the deployment's. Set
 
 ## Delivering a declared Secret with external-secrets: an example
 
-Not a dependency of the hub — one way a deployment can put a
+Not a dependency of this service — one way a deployment can put a
 service-account key into the namespace for a declared workspace.
 
 ```yaml
