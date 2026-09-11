@@ -63,6 +63,7 @@ type ConsoleServer struct {
 	bearer     *forwardedBearer
 	log        *slog.Logger
 	consoleUI  fs.FS
+	signedIn   func(*http.Request) (access.Principal, bool)
 	// mount is the path this console is served under, without a trailing
 	// slash, or empty at an origin root. Its handlers never see it — it
 	// is stripped before they run — but every path they hand a BROWSER
@@ -93,6 +94,17 @@ type ConsoleServerDeps struct {
 	// proxy's sign-out path.
 	SignOutURL string
 	Forwarded  ForwardedIdentity
+	// SignedIn reads the ISSUER's own browser session, when the console
+	// is served by the same process on the same origin (INF-691).
+	//
+	// It is what lets a person who already signed in — at any console
+	// behind this issuer — reach this one with no second session and no
+	// proxy in front of it. A function rather than the type, because this
+	// package answers questions about a directory and should not have to
+	// know what an issuer is.
+	//
+	// Nil is the split deployment, where a gateway forwards a bearer.
+	SignedIn func(*http.Request) (access.Principal, bool)
 	// Mount is where this console sits on its origin: "/console" when it
 	// shares the issuer's hostname, empty when it has an origin of its
 	// own. It is not a route — the prefix is stripped before any of these
@@ -127,11 +139,23 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		log:        deps.Log,
 		consoleUI:  deps.UI,
 		mount:      strings.TrimSuffix(strings.TrimSpace(deps.Mount), "/"),
+		signedIn:   deps.SignedIn,
 	}
 	for _, c := range deps.Connectors {
 		s.connectors[c.Kind()] = c
 	}
 	return s
+}
+
+// UseSignedIn supplies the issuer's own browser session as an identity
+// source, after construction.
+//
+// After, because in the merged service the directory is assembled first
+// — the issuer is handed a door to it — so the issuer does not exist yet
+// when this console is built. It must be called before anything is
+// served; [ConsoleServer.principal] reads it per request.
+func (s *ConsoleServer) UseSignedIn(read func(*http.Request) (access.Principal, bool)) {
+	s.signedIn = read
 }
 
 // Handler returns the console listener's HTTP handler.
@@ -211,6 +235,16 @@ func (s *ConsoleServer) withIdentity(next http.Handler) http.Handler {
 
 // principal reads whichever source established the caller.
 func (s *ConsoleServer) principal(r *http.Request) (access.Principal, bool) {
+	// The issuer's own session first, where there is one: the console is
+	// served by the same process on the same origin, so the browser's
+	// issuer cookie is the strongest thing available and costs nothing to
+	// read. It is what lets somebody who signed in at another console
+	// reach this one with no second session.
+	if s.signedIn != nil {
+		if p, ok := s.signedIn(r); ok {
+			return p, true
+		}
+	}
 	if p, err := s.sessions.Read(r); err == nil {
 		return p, true
 	}

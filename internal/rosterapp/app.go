@@ -103,6 +103,13 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// DEMO=1 the directory built a demonstration policy and the
 		// issuer refused to start on an empty path.
 		Policy: directory.Policy(),
+		// And the console learns who is signed in from the issuer's own
+		// browser session, once the issuer exists. Without this the
+		// merged deployment would need either a proxy in front of the
+		// console — running an OpenID flow against a service in this very
+		// process — or the console's own login, which is the second door
+		// an installation with a gateway deliberately turns off.
+		UseSignedIn: directory.ConsoleServer().UseSignedIn,
 	}
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {
