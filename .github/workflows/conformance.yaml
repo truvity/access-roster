@@ -18,7 +18,7 @@
 #
 # The other two profiles sign somebody in, which is the point of them,
 # and the signing-in needs a credential this workflow should not hold:
-# `hack/conformance-drive.sh` gets one from the cluster, and CI has no
+# `hack/conformance_drive.py` gets one from the cluster, and CI has no
 # business with cluster access. They stay a person's job, and the script
 # makes them one command rather than thirty sign-ins.
 name: Conformance

@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
@@ -52,6 +54,13 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		// Back-channel logout is not served: the proxy does not consume
 		// it, and a revoked session dies at the proxy's next refresh.
 		BackChannelLogoutSupported: false,
+		// Where `/end_session` puts a person when the request named
+		// nowhere to send them. Empty -- the zero value this ran with --
+		// redirects to the issuer root, which redirects to the console,
+		// which starts a NEW authorization: sign out, and the last thing
+		// you see is a login page. That reads as the sign-out having
+		// failed, and it is what "after logout -- login loop" was.
+		DefaultLogoutRedirectURI: signedOutPath,
 	}
 
 	options := []op.Option{
@@ -155,7 +164,7 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
-	mux.Handle("/", neverCached(challenges(endsTheBrowserSession(signIn, truthfulDiscovery(provider)))))
+	mux.Handle("/", neverCached(challenges(endSession(signIn, truthfulDiscovery(provider)))))
 
 	return mux, nil
 }
@@ -197,41 +206,172 @@ func neverCached(next http.Handler) http.Handler {
 	})
 }
 
-// endsTheBrowserSession makes RP-initiated logout end the sign-in, not
-// just one application's session.
+// endSessionPath is the RP-initiated logout endpoint, and
+// [signedOutPath] is where it lands when the request named nowhere.
+const (
+	endSessionPath = "/end_session"
+	signedOutPath  = "/signed-out"
+)
+
+// endSession is everything RP-initiated logout needs that the library
+// does not do, in the order the doing has to happen.
 //
-// The library serves `/end_session` and ends what it knows about: the
-// client's tokens. It knows nothing of the browser session this issuer
-// holds, and leaving that behind is the half-sign-out that looks exactly
-// like a whole one -- the person clicks "sign out", lands on the signed-out
-// page, opens another console and is admitted with no password, because
-// the issuer still recognises the browser. So the cookie is cleared and
-// the record deleted on the way through, before the library writes its
-// redirect.
-func endsTheBrowserSession(signIn SignInDeps, next http.Handler) http.Handler {
-	if signIn.SSO == nil {
-		return next
-	}
-
+// It ENDS THE BROWSER SESSION, which is the part without which sign-out
+// is a lie. The library ends what it knows about -- the client's tokens
+// -- and knows nothing of the sign-in this issuer holds. Leaving that
+// behind is the half-sign-out that looks exactly like a whole one: the
+// person lands on the signed-out page, opens another console, and is
+// admitted with no password.
+//
+// It ends that session only if the request was GOOD. The order used to
+// be the other way round, and a request the library then refused had
+// already signed the person out -- an error page for a sign-out that
+// happened anyway. So the response is held until its status is known.
+//
+// It REFUSES a `post_logout_redirect_uri` that arrives with neither
+// `id_token_hint` nor `client_id`. The library ignores such a URI and
+// logs the person out regardless, which is safe -- nobody is sent
+// anywhere unregistered -- but it is silence where a caller asked for
+// something and did not get it. With no client named there is nothing to
+// look the URI up against, so "not registered" is the only answer
+// available, and saying so beats appearing to comply.
+//
+// And it renders the library's errors as a PAGE. Every `/end_session`
+// failure is answered with an OAuth JSON body, which is right for
+// `/token` and wrong here: this endpoint's caller is a person whose
+// browser was redirected to it. Anything that did not ask for HTML still
+// gets the JSON.
+func endSession(signIn SignInDeps, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/end_session" {
-			if id := SSOFromRequest(r); id != "" {
-				if err := signIn.SSO.End(r.Context(), id); err != nil && signIn.Log != nil {
-					// Through logsafe like every other call site: the id
-					// came off a COOKIE, so a crafted one can reach this
-					// error's text, and a value that can forge a line
-					// break can forge a log line. Missing it here was an
-					// inconsistency rather than a decision.
-					signIn.Log.WarnContext(r.Context(), "browser session could not be ended",
-						"error", logsafe.Error(err))
-				}
-
-				http.SetCookie(w, signIn.SSO.Cookie("", signIn.Secure))
-			}
+		if r.URL.Path != endSessionPath {
+			next.ServeHTTP(w, r)
+			return
 		}
 
-		next.ServeHTTP(w, r)
+		// Parsed here and cached on the request: the library parses
+		// again and gets the same values back, POST body included.
+		_ = r.ParseForm()
+		if r.Form.Get("post_logout_redirect_uri") != "" &&
+			r.Form.Get("id_token_hint") == "" && r.Form.Get("client_id") == "" {
+			endSessionRefusal(w, r, http.StatusBadRequest,
+				"post_logout_redirect_uri invalid: the request carries no id_token_hint "+
+					"and no client_id, so there is no client to have registered it")
+			return
+		}
+
+		held := &heldResponse{ResponseWriter: w}
+		next.ServeHTTP(held, r)
+		if held.succeeded() {
+			endTheBrowserSession(signIn, w, r)
+		}
+		held.release(r)
 	})
+}
+
+// endTheBrowserSession deletes the sign-in this browser holds and clears
+// the cookie naming it. Safe on a browser that has neither.
+func endTheBrowserSession(signIn SignInDeps, w http.ResponseWriter, r *http.Request) {
+	if signIn.SSO == nil {
+		return
+	}
+
+	if id := SSOFromRequest(r); id != "" {
+		if err := signIn.SSO.End(r.Context(), id); err != nil && signIn.Log != nil {
+			// Through logsafe like every other call site: the id came off
+			// a COOKIE, so a crafted one can reach this error's text, and
+			// a value that can forge a line break can forge a log line.
+			signIn.Log.WarnContext(r.Context(), "browser session could not be ended",
+				"error", logsafe.Error(err))
+		}
+
+		http.SetCookie(w, signIn.SSO.Cookie("", signIn.Secure))
+	}
+}
+
+// wantsHTML reports whether the caller is a browser being shown a page
+// rather than a program reading a response.
+func wantsHTML(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+// endSessionRefusal is one refusal, in whichever form the caller reads.
+//
+// Nothing was signed out when this is reached -- the sign-in is ended
+// only after the library has accepted the request -- and the page says
+// so, because a person who asked to sign out needs to know they still
+// have not.
+func endSessionRefusal(w http.ResponseWriter, r *http.Request, status int, description string) {
+	if !wantsHTML(r) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_request",
+			"error_description": description,
+		})
+		return
+	}
+
+	_ = writePage(w, status, "That sign-out request was not valid",
+		`<p>`+html.EscapeString(description)+`</p>
+	<p class="note">You are still signed in — this request was refused, so nothing ended.
+	The button below signs out anyway; it needs none of what was wrong here.</p>
+	<p><a class="btn" href="/logout">Sign out</a></p>`)
+}
+
+// heldResponse buffers one response so that its status can be acted on
+// before anything reaches the browser. Only `/end_session` is wrapped,
+// and its bodies are a redirect or a short error, never a stream.
+type heldResponse struct {
+	http.ResponseWriter
+
+	status int
+	body   bytes.Buffer
+}
+
+func (h *heldResponse) WriteHeader(status int) { h.status = status }
+
+func (h *heldResponse) Write(p []byte) (int, error) {
+	if h.status == 0 {
+		h.status = http.StatusOK
+	}
+	return h.body.Write(p)
+}
+
+// succeeded reports whether the library answered rather than refused.
+func (h *heldResponse) succeeded() bool {
+	return h.status == 0 || h.status < http.StatusBadRequest
+}
+
+// release writes what was held, as a page if it was a failure.
+func (h *heldResponse) release(r *http.Request) {
+	if h.status == 0 {
+		h.status = http.StatusOK
+	}
+	// Verbatim when it worked, and verbatim when it failed for a caller
+	// that is not a browser: an OAuth client reads the `error` code, and
+	// re-rendering would lose it.
+	if h.succeeded() || !wantsHTML(r) {
+		h.ResponseWriter.WriteHeader(h.status)
+		_, _ = h.ResponseWriter.Write(h.body.Bytes())
+		return
+	}
+
+	// The description, not the whole body: `error_description` is the
+	// sentence the library wrote for a person, and `error` is a code
+	// from a specification that tells them nothing.
+	var oauth struct {
+		Description string `json:"error_description"`
+	}
+	description := strings.TrimSpace(h.body.String())
+	if err := json.Unmarshal(h.body.Bytes(), &oauth); err == nil && oauth.Description != "" {
+		description = oauth.Description
+	}
+
+	// Nothing has reached the real writer yet -- that is the point of
+	// holding it -- so the page is the whole response, not an addition.
+	h.ResponseWriter.Header().Del("Content-Length")
+	endSessionRefusal(h.ResponseWriter, r, h.status, description)
 }
 
 // discoveryPath is where a relying party looks first.

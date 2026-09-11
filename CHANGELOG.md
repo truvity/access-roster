@@ -1,3 +1,41 @@
+## v0.14.3
+
+- **Signing out lands on the page that says so.** `/end_session` had no
+  default landing page, so a request naming nowhere to go redirected to
+  the issuer root, which redirects to the console, which starts a new
+  authorization — and the last thing a person saw after signing out was a
+  login prompt. That reads as the sign-out having failed. It now lands on
+  the signed-out page, which says what did and did not end.
+
+- **A refused sign-out no longer signs anyone out.** The browser session
+  was ended on the way IN to `/end_session`, before the library had
+  looked at the request. A request it then rejected — a bad
+  `id_token_hint`, an unregistered `post_logout_redirect_uri` — produced
+  an error page for a sign-out that had already happened. The response is
+  now held until its status is known, and the sign-in ends only if the
+  request was good.
+
+- **`/end_session` answers a browser with a page.** Every failure there
+  was an OAuth JSON body, which is right for `/token` and wrong for an
+  endpoint a person's browser is redirected to. Anything that does not
+  ask for HTML still gets the JSON, with its `error` code intact.
+
+- **A `post_logout_redirect_uri` with no `id_token_hint` and no
+  `client_id` is refused** rather than quietly dropped. There is no
+  client named, so there is nothing to have registered it, and "not
+  registered" is the only answer available. Nothing was being sent
+  anywhere unregistered before this — the URI was ignored and the person
+  signed out regardless — but silence in answer to a request is its own
+  defect.
+
+- **The conformance driver answers the suite's manual steps.** Eight of
+  the eleven RP-Initiated Logout modules end at a page the suite cannot
+  see and ask a human for a screenshot of it. Unanswered, each sat in
+  WAITING until the next module interrupted it — a row of greyed-out
+  results that looked like a server fault and was a step nobody had
+  performed. The driver uploads the screenshot from the browser it is
+  already driving.
+
 ## v0.14.2
 
 - **Signing out ends what the browser opened**, not only the sign-in

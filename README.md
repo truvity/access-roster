@@ -132,9 +132,11 @@ remembers — see
 
 The other two sign somebody in, which is the whole point of them.
 [docs/operations/conformance.md](docs/operations/conformance.md) is the
-procedure, and `hack/conformance-drive.sh` completes the browser half
-without a browser, so thirty modules are one command rather than thirty
-sign-ins.
+procedure, and [hack/conformance_drive.py](hack/conformance_drive.py)
+drives headless Chrome through the browser half — signing in through
+recovery, and answering the suite's manual steps with a screenshot of the
+page it is looking at — so thirty-five modules are one command rather
+than thirty-five sign-ins.
 
 ## Read next
 

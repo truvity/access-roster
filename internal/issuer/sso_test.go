@@ -333,3 +333,123 @@ func TestTheSessionServiceIsMountedWithoutAConsoleOrigin(t *testing.T) {
 		t.Fatal("the session service is not mounted without console.origin")
 	}
 }
+
+// endSessionRequest is one RP-initiated logout, with whatever the
+// browser's cookies are and whatever it says it accepts. The shared
+// `browser.do` cannot be used: these cases turn on the Accept header and
+// on the query, and both of those are the thing under test.
+func endSessionRequest(t *testing.T, b *browser, query, accept string) (int, string, string) {
+	t.Helper()
+
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+		b.server.URL+"/end_session"+query, nil)
+	if err != nil {
+		t.Fatalf("build the request: %v", err)
+	}
+
+	if accept != "" {
+		request.Header.Set("Accept", accept)
+	}
+
+	for name, value := range b.cookies {
+		request.AddCookie(&http.Cookie{Name: name, Value: value})
+	}
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("end_session: %v", err)
+	}
+
+	defer func() { _ = response.Body.Close() }()
+
+	body := make([]byte, 4096)
+	n, _ := response.Body.Read(body)
+
+	return response.StatusCode, response.Header.Get("Location"), string(body[:n])
+}
+
+// A sign-out that names nowhere to go lands on the page that says it
+// happened. It used to land on the issuer root, which redirects to the
+// console, which starts a new authorization — so the last thing a person
+// saw after signing out was a login page, and that reads as sign-out
+// having failed.
+func TestEndSessionWithNoParamsLandsOnTheSignedOutPage(t *testing.T) {
+	t.Parallel()
+	server, _ := signInServer(t, "ada@north.example")
+	b := newBrowser(t, server)
+	b.signIn()
+
+	status, location, _ := endSessionRequest(t, b, "", "text/html")
+	if status != http.StatusFound || location != "/signed-out" {
+		t.Fatalf("end_session = %d to %q, want 302 to /signed-out", status, location)
+	}
+}
+
+// A `post_logout_redirect_uri` with nothing naming the client that
+// registered it is refused rather than quietly dropped. The library
+// ignores such a URI and signs the person out anyway: safe, because
+// nobody is sent anywhere unregistered, but the caller asked for
+// something and was told nothing.
+func TestEndSessionRefusesAnUnattributableRedirectURI(t *testing.T) {
+	t.Parallel()
+	server, _ := signInServer(t, "ada@north.example")
+	b := newBrowser(t, server)
+	b.signIn()
+
+	status, _, body := endSessionRequest(t, b,
+		"?post_logout_redirect_uri=https%3A%2F%2Felsewhere.example%2Fout", "text/html")
+	if status != http.StatusBadRequest {
+		t.Fatalf("end_session = %d, want 400", status)
+	}
+
+	if !strings.Contains(body, "post_logout_redirect_uri") {
+		t.Errorf("the page does not say what was wrong: %q", body)
+	}
+
+	// And the refusal left the sign-in alone, which is what the page
+	// tells the person.
+	if where := b.authorize(""); !strings.Contains(where, "/authorize/callback") {
+		t.Errorf("a refused sign-out ended the session anyway: next authorize went to %q", where)
+	}
+}
+
+// A request the library refuses must not sign anybody out. The order ran
+// the other way once — the session was ended on the way in — so an error
+// page was shown for a sign-out that had already happened.
+func TestARefusedEndSessionDoesNotSignOut(t *testing.T) {
+	t.Parallel()
+	server, _ := signInServer(t, "ada@north.example")
+	b := newBrowser(t, server)
+	b.signIn()
+
+	if status, _, _ := endSessionRequest(t, b, "?id_token_hint=not.a.token", "text/html"); status != http.StatusBadRequest {
+		t.Fatalf("end_session with a broken id_token_hint = %d, want 400", status)
+	}
+
+	if where := b.authorize(""); !strings.Contains(where, "/authorize/callback") {
+		t.Errorf("a refused sign-out ended the session anyway: next authorize went to %q", where)
+	}
+}
+
+// The browser gets a page and a program gets the OAuth error it reads.
+// One endpoint, two audiences, and the JSON keeps its `error` code.
+func TestEndSessionAnswersInTheCallersLanguage(t *testing.T) {
+	t.Parallel()
+	server, _ := signInServer(t, "ada@north.example")
+	b := newBrowser(t, server)
+	b.signIn()
+
+	_, _, page := endSessionRequest(t, b, "?id_token_hint=not.a.token", "text/html")
+	if !strings.Contains(page, "<!doctype html>") {
+		t.Errorf("a browser got %q, want a page", page)
+	}
+
+	_, _, raw := endSessionRequest(t, b, "?id_token_hint=not.a.token", "application/json")
+	if !strings.Contains(raw, `"error"`) {
+		t.Errorf("a client got %q, want an OAuth error", raw)
+	}
+}

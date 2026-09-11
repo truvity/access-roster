@@ -173,6 +173,16 @@ part that needs a person. A module waiting for a sign-in says so with the
 URL to open; `--from <module>` resumes after a failure instead of
 re-running what already passed.
 
+**Screenshots are answered too.** Eight of the eleven RP-Initiated Logout
+modules end at a page the suite cannot see: the issuer must REFUSE, so
+there is no redirect back and no callback. The suite asks a human to
+upload a screenshot of that page and waits. Unanswered, the module sits
+in WAITING until the next one interrupts it — which is what a row of
+eight greyed-out logout results was, and it was a step nobody had
+performed rather than a server fault. The driver takes the screenshot
+from the browser it is already driving and uploads it, then marks the URL
+visited so the suite stops waiting for a callback that is not coming.
+
 Or open the suite at `https://localhost.emobix.co.uk:8443`, find the
 plan, and run its modules by hand.
 
