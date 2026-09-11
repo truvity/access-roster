@@ -129,4 +129,63 @@ spec:
           name: {{ include "access-issuer.fullname" . }}
           port: {{ .Values.listeners.port }}
           weight: 1
+{{- if .Values.console.mount }}
+---
+# The console's own route, and the reason it is a SEPARATE object rather
+# than another rule above: a gateway policy attaches to an HTTPRoute, so
+# anything put in front of the console would otherwise also sit in front
+# of /token, /keys and discovery. Every relying party in the estate would
+# be asked to sign in to fetch a key set.
+#
+# It renders whether or not anything attaches to it. An empty route costs
+# a few lines of YAML; discovering at cutover that there is nothing to
+# attach to costs an evening, and the alternative in that moment —
+# attaching to the catch-all — is the outage described above.
+#
+# The path is NOT rewritten. The merged service strips the prefix itself
+# (INF-691), so a gateway that stripped it too would hand the console a
+# path it never serves.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "access-issuer.fullname" . }}-console
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ include "access-issuer.fullname" . }}
+      sectionName: issuer
+  hostnames:
+    - {{ .Values.route.host | quote }}
+  rules:
+      {{- /* "/console" without the trailing slash is a different page to
+             a browser: the bundle references its assets relatively so
+             that one build serves at any mount point, and "./assets/..."
+             on a page at "/console" resolves against the ROOT, where
+             every asset asks the issuer and gets a 404. An Exact match
+             outranks the PathPrefix rule below, so this answers it. */}}
+    - matches:
+        - path:
+            type: Exact
+            value: {{ .Values.console.mount | quote }}
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: {{ printf "%s/" .Values.console.mount | quote }}
+            statusCode: 302
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ printf "%s/" .Values.console.mount | quote }}
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "access-issuer.fullname" . }}
+          port: {{ .Values.listeners.port }}
+          weight: 1
+{{- end }}
 {{- end }}

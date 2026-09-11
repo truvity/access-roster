@@ -22,6 +22,16 @@ git history.
 
 ## Unreleased
 
+- **The console gets its own HTTPRoute**, and that is not tidiness. A
+  gateway policy attaches to a *route*, so anything put in front of the
+  console on a shared route would also sit in front of `/token`, `/keys`
+  and discovery — every relying party in the estate asked to sign in to
+  fetch a key set. It renders whether or not anything attaches to it,
+  because discovering at cutover that there is nothing to attach to
+  leaves only that bad option. The prefix is deliberately not rewritten
+  away: the service strips it itself, so a gateway that stripped it too
+  would hand the console a path it never serves.
+
 - **The console admits whoever the issuer signed in.** One origin and one
   process, so the browser's issuer session is read directly rather than
   being relayed. Before this, a console on the issuer's own host was
