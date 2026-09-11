@@ -1,4 +1,4 @@
-## Unreleased
+## v0.13.0
 
 - **Revoking every session left the sign-in standing.** Reported from the
   live console: *"I revoked all sessions, but still has access
