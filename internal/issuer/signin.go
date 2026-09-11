@@ -55,6 +55,12 @@ type Pending struct {
 	ForbidsUI bool
 	// MaxAge, when set, is how old the authentication may be.
 	MaxAge time.Duration
+	// RedirectURI and State are the client's, for the one case that has
+	// to answer the CLIENT rather than the person: `prompt=none` with
+	// nobody signed in. The library validated the URI when it accepted
+	// the request, so it is safe to send a browser back to it.
+	RedirectURI string
+	State       string
 }
 
 // Completer is the part of the storage a sign-in finishes against: an
@@ -201,12 +207,20 @@ func (s *signIn) chooser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pending.ForbidsUI {
-		// `prompt=none` asked for no interface and there was no session to
-		// answer from. Saying so beats showing the very page it asked us
-		// not to show. (Conformance wants this as a `login_required`
-		// redirect to the client — INF-683.)
-		s.page(w, "Sign-in required", `<p>This application asked to continue without prompting, and there is no active sign-in here to continue from.</p>
-	<p class="note">Open the application again, or sign in first.</p>`)
+		// `prompt=none` asked for no interface and there is no session to
+		// answer from, so the answer goes to the CLIENT and not to the
+		// person: OpenID Connect Core 3.1.2.6 requires `login_required`
+		// at the redirect URI.
+		//
+		// This used to render a page saying so, which is worse than it
+		// sounds. The caller of `prompt=none` is usually a hidden iframe
+		// doing a silent renewal: it cannot read an HTML page, has nobody
+		// to show it to, and waits until it times out. Conformance failed
+		// it as "expected an error but did not get one", which is the same
+		// fact from the other side.
+		s.refuse(w, r, pending, "login_required",
+			"there is no active sign-in here to continue from")
+
 		return
 	}
 
@@ -276,6 +290,44 @@ func (s *signIn) start(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, access.LoginCookie(state, s.deps.Secure, signInWindow))
 	http.Redirect(w, r, where, http.StatusFound)
+}
+
+// refuse answers the CLIENT with an OAuth error, for the cases where
+// there is nobody to show a page to.
+//
+// Falls back to a page when the request named no redirect URI, which the
+// library should not produce -- it validates the URI before the request
+// exists -- but a redirect to nowhere is worse than a page.
+func (s *signIn) refuse(w http.ResponseWriter, r *http.Request, pending Pending, code, why string) {
+	if pending.RedirectURI == "" {
+		s.page(w, "Sign-in required", `<p>This application asked to continue without prompting, and there is no active sign-in here to continue from.</p>
+	<p class="note">Open the application again, or sign in first.</p>`)
+
+		return
+	}
+
+	to, err := url.Parse(pending.RedirectURI)
+	if err != nil {
+		s.deps.Log.WarnContext(r.Context(), "a pending request has an unparseable redirect uri",
+			"error", logsafe.Error(err))
+		s.page(w, "Sign-in required", `<p>This application asked to continue without prompting.</p>`)
+
+		return
+	}
+
+	query := to.Query()
+	query.Set("error", code)
+	query.Set("error_description", why)
+
+	// Echoed when there was one, and omitted when there was not: a state
+	// invented here would be one the client never sent.
+	if pending.State != "" {
+		query.Set("state", pending.State)
+	}
+
+	to.RawQuery = query.Encode()
+
+	http.Redirect(w, r, to.String(), http.StatusFound)
 }
 
 // recoveryForm renders the recovery block, or nothing when a deployment
