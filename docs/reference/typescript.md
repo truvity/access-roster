@@ -8,11 +8,13 @@ that verified tokens in a browser would need the issuer's keys, its clock
 and its rules in every console.
 
 ```sh
-npm install github:truvity/access-roster#v0.2.0
+npm install github:truvity/access-roster#v0.12.4
 ```
 
-Installed from git, with `ts/dist` committed, so it needs no toolchain and
-no registry. `react` and `@mui/material` are optional peers: an
+Installed from git at a REPOSITORY tag, with `ts/dist` committed, so it
+needs no toolchain and no registry. The package is the repository root —
+`ts/package.json` is the inner build and is not what anybody installs —
+which is why the import path has no `-ts` in it. `react` and `@mui/material` are optional peers: an
 application with neither pays for neither.
 
 ```tsx

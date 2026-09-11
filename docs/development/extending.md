@@ -51,11 +51,17 @@ kind is a need for a new dimension, and the answer to that is no — see
 
 ## 4. A middleware adapter
 
-`identity/<framework>mw`: wrap the framework's request into
-`identity.Request{Header(name) string}`, call the shared `Authenticate`,
-put the `Identity` in the context the framework uses, serve
-`/.access/whoami`. The four existing adapters are each under a hundred
-lines; a fifth should be too.
+There are **no framework adapters yet** — `net/http` is what ships, and
+the fiber, gRPC and connect adapters are designed and ticketed
+(INF-648). Writing one means: read the token with `identity.TokenFrom`
+or the framework's own accessor, ask each `identity.Verifier` in turn,
+put the resulting `identity.Verified` into the framework's context with
+`identity.WithVerified`, and serve `identity.WhoAmI` at
+`identity.WhoAmIPath`.
+
+Each is additive and changes nothing above it: they sit on the same
+`Verified` that `identity.Middleware` already produces, which is the
+reason the type is the seam.
 
 ## 5. A relying-party recipe
 

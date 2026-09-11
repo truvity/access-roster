@@ -1,3 +1,34 @@
+## Unreleased
+
+- **The documentation describes what ships** (INF-698). The sweep found
+  seven Go symbols the guides promised and the module does not export —
+  `identity.NewIssuerVerifier`, `identity.ClusterConfig`,
+  `identity.ServiceAccountRef`, a `directory` package, an `authz`
+  package — every one written down as though it shipped. A stranger
+  following `docs/connect/console-app.md` or `service-to-service.md`
+  could not have compiled what they were told to write.
+
+  `just check` now asks the compiler: `hack/check-docs-symbols.py` runs
+  `go doc` for every `identity.`/`tokens.`/`policy.` name the docs use,
+  and fails on one that does not exist. Nothing compiles a code block in
+  a Markdown file, which is why this drifted in silence.
+
+- **`docs/integrations.md` stopped carrying a banner saying it was
+  wrong.** Cases ④, ④b and ⑤ described the two-service shape; ④ is now a
+  workload proven against its own cluster's published key set, ⑤ is a
+  function call, and ④b is gone with the listener it described. The
+  two-anchor summary was rewritten too: recovery alone stands on the
+  cluster now.
+
+- **`docs/connect/console-app.md` covers both console shapes** — a proxy
+  in front, or its own flow — and says which is which, with the real
+  `identity.Middleware`/`identity.Require` rather than a package that was
+  never built. It also warns against registering a sign-out landing page
+  as a redirect, which is the trap the cutover hit.
+
+- The install line for the TypeScript package named a tag from eight
+  releases ago.
+
 ## v0.12.4
 
 - **The console says `access-roster`.** It said `directory-roster`, which
