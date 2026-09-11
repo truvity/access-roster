@@ -1,4 +1,4 @@
-## Unreleased
+## v0.13.2
 
 - **The Config profile runs in CI**, daily and on demand
   (`.github/workflows/conformance.yaml`), and the three profiles are
