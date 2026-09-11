@@ -22,6 +22,25 @@ git history.
 
 ## Unreleased
 
+- **A public `tokens` package**: the RFC 8693 exchange, and the two
+  envelopes a credential helper has to speak. It is what `accessctl`
+  will run on and what a workload can use directly.
+
+  The exchange presents its client in HTTP Basic, because the library on
+  the other side reads it from Basic alone and a posted `client_id` is
+  refused with an error naming the client rather than the mistake. A
+  refusal carries the issuer's own sentence — which audience, and which
+  groups the proof holds — since that is the whole value of the error in
+  a build log.
+
+  `WriteExecCredential` answers whichever apiVersion kubectl asked for,
+  and carries the expiry so kubectl caches instead of running the plugin
+  on every API call. `WriteCredentialProcess` writes real STS
+  credentials with `Version` as the **number** 1, and
+  `AssumeRoleWithWebIdentity` obtains them — unsigned, which is why the
+  AWS path needs no stored key: the token is the proof and the account's
+  trust policy decides what it opens.
+
 - **A public `identity` package, and access-roster uses it** (INF-648, the
   Go half). Two verifiers, one per anchor: `Issuer` for a token this
   installation signed, `Cluster` for a ServiceAccount token from the pod
