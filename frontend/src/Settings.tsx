@@ -35,7 +35,7 @@ export function SettingsView() {
         </Alert>
       </Section>
 
-      <Section title="Freshness" hint="how often the hub reads, and how old a reading may be before it stops vouching">
+      <Section title="Freshness" hint="how often access-roster reads, and how old a reading may be before it stops vouching">
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Facts
             items={[

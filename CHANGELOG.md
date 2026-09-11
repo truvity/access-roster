@@ -1,3 +1,28 @@
+## Unreleased
+
+- **The console says `access-roster`.** It said `directory-roster`, which
+  was the name of a service that no longer exists, and the wording around
+  it still called this "the hub" — a word that meant something only while
+  there were two services. The provider pages, the setup steps and the
+  settings hints say `access-roster` now.
+
+- **The Sessions page is a table.** Four facts per session were stacked
+  into one caption line, so a page that can hold a hundred rows used a
+  third of its width and lined up none of its columns: a reader scanning
+  for *whose session expires soonest* had to read every line. It is now
+  Person, Client, Way in, Browser, Opened, Last used, Expires, with a
+  facet for the way in that offers only the ways actually present.
+
+  **The browser grouping became a column** rather than a run of
+  subheadings. Two rows carrying the same mark came from one browser, and
+  a blank is a session with no browser behind it at all — which is what a
+  token exchange is. A column can be compared down the page, which is the
+  one thing a subheading cannot.
+
+  The grouped list stays for a person's page and a client's page, where
+  it sits in a narrow column, holds three rows, and the grouping is the
+  point.
+
 ## v0.12.3
 
 - **The Sessions page came back.** It vanished at the cutover, silently:

@@ -108,7 +108,7 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   declared: { label: "declared", color: "secondary", title: "Declared by the deployment: change it in the values." },
   console: { label: "console", color: "default", title: "Added in this console." },
   matcher: { label: "matcher", color: "secondary", title: "Admits a proof by its shape rather than through a directory: a CI job, a workload, a verified sign-in. Declared only." },
-  unknown: { label: "not read by the hub", color: "default", title: "No connected directory has this account, so the hub cannot say whether it is live." },
+  unknown: { label: "not read", color: "default", title: "No connected directory has this account, so access-roster cannot say whether it is live." },
   healthy: { label: "healthy", color: "success", title: "The last probe succeeded." },
   failing: { label: "failing", color: "warning", filled: true, title: "The last probe failed." },
   configured: { label: "configured", color: "success", title: "" },
@@ -116,7 +116,7 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   unserved: {
     label: "not served",
     color: "default",
-    title: "This directory owns the domain and this hub has been told not to read it: nothing routes to it and its accounts are not kept.",
+    title: "This directory owns the domain and access-roster has been told not to read it: nothing routes to it and its accounts are not kept.",
   },
   unowned: {
     label: "no longer owned",
