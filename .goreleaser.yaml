@@ -27,6 +27,21 @@ builds:
     ldflags:
       - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
 
+  # Not an image either, and for a stronger reason than the one below:
+  # this opens a browser and writes into somebody's own kubeconfig and
+  # AWS configuration. A container would have neither.
+  #
+  # Windows is built because a laptop is a laptop. The credential
+  # helpers are what the AWS SDKs and kubectl run, and both exist there.
+  - id: accessctl
+    main: ./cmd/accessctl
+    binary: accessctl
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
+
   # Not an image: it is run by a person against a cluster they chose, and
   # a container that needs a kubeconfig and a namespace argument is a
   # worse way to hand somebody a command than a binary is.
@@ -41,7 +56,7 @@ builds:
 
 archives:
   - id: binaries
-    ids: [directory-roster, access-issuer, acceptance]
+    ids: [directory-roster, access-issuer, accessctl, acceptance]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 

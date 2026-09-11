@@ -2,10 +2,10 @@
 
 **Anchor:** the issuer. The API server trusts it with one client id per
 cluster and reads the `groups` claim into RBAC, binding the internal
-group names exactly as the policy spells them. People use **kubelogin**,
-which works today; `accessctl` and `accessctl kube-token` are not built
-yet (INF-649), so a job's half of this page is what it will run rather
-than what it can.
+group names exactly as the policy spells them. People use **kubelogin**
+or `accessctl`, and both work today: `accessctl kubeconfig` writes a
+context per cluster you are granted, with `accessctl kube-token` as the
+exec plugin behind it.
 (A workload *inside* the cluster calling a service inside the cluster
 is the other anchor and does not come here:
 [service-to-service.md](service-to-service.md).)

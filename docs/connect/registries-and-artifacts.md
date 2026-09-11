@@ -1,9 +1,11 @@
 # Registries and artifacts on top of the profiles
 
-> **`accessctl` and the GitHub Action are not built yet (INF-649).**
-> Everything on this page that names one describes what it will run, not
-> what you can run today. The issuer side is real and can be set up now;
-> the laptop and workflow side waits for the CLI.
+> **The GitHub Action is not built yet (INF-649).** `accessctl` is:
+> `login`, `whoami`, `setup`, `kubeconfig`, `aws-config`, `kube-token`,
+> `aws` and `exchange` all work. What a workflow does on this page is
+> still what it will run — until the action exists, a job does the same
+> thing with `curl` against the token endpoint, which is all the action
+> will do in shell anyway.
 
 
 ECR and CodeArtifact have no trust relationship of their own with the
