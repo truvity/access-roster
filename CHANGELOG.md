@@ -1,4 +1,4 @@
-## Unreleased
+## v0.12.4
 
 - **The console says `access-roster`.** It said `directory-roster`, which
   was the name of a service that no longer exists, and the wording around
