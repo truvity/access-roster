@@ -453,3 +453,145 @@ func TestEndSessionAnswersInTheCallersLanguage(t *testing.T) {
 		t.Errorf("a client got %q, want an OAuth error", raw)
 	}
 }
+
+// Both doors sign the person out the same way, and the one that had the
+// weaker half was the one a PROXY uses.
+//
+// `/logout` revoked every session the browser had opened; `/end_session`
+// — which is what oauth2-proxy chains to on its own sign-out — only ended
+// the sign-in. So the console behind a proxy went on refreshing
+// successfully and serving pages after a sign-out that reported success,
+// which is how it was reported from hubble.
+func TestEndSessionRevokesWhatTheBrowserOpened(t *testing.T) {
+	t.Parallel()
+	server, iss := signInServer(t, "ada@north.example")
+	b := newBrowser(t, server)
+	b.signIn()
+
+	sso := b.cookies[issuer.SSOCookieName]
+	if sso == "" {
+		t.Fatal("the browser holds no sign-in to revoke under")
+	}
+
+	// A session this browser opened at another console, the way a proxy's
+	// code redemption files one.
+	if _, err := iss.Sessions().Record(t.Context(), issuer.Opened{
+		Identity: "ada@north.example",
+		ClientID: "argocd",
+		How:      issuer.HowCode,
+		Token:    "a-refresh-token",
+		SSO:      sso,
+	}); err != nil {
+		t.Fatalf("record a session: %v", err)
+	}
+
+	// Proved present first. Without this the assertion below passes on an
+	// empty list for any reason at all, which is a test that cannot fail.
+	before, err := iss.Sessions().List(t.Context(), issuer.Query{Identity: "ada@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(before) != 1 {
+		t.Fatalf("recorded 1 session, list says %d", len(before))
+	}
+
+	if _, _, _ = b.do(http.MethodGet, "/end_session"); b.cookies[issuer.SSOCookieName] != "" {
+		t.Fatal("end_session left the browser session behind")
+	}
+
+	open, err := iss.Sessions().List(t.Context(), issuer.Query{Identity: "ada@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(open) != 0 {
+		t.Errorf("end_session left %d session(s) running; sign-out must end what the browser opened", len(open))
+	}
+}
+
+// A STRANGER must not be able to sign out the installation.
+//
+// `/end_session` with no parameters reached the library's
+// `TerminateSession(userID, clientID)` with both empty, because nothing
+// in the request named either — and the storage turned that into
+// `Revoke(Query{})`, whose own comment says an empty query ends
+// everything. So one unauthenticated GET, from anyone, to a URL that is
+// published in the discovery document, ended every session every person
+// and every workload held.
+func TestEndSessionCannotSignOutTheInstallation(t *testing.T) {
+	t.Parallel()
+	server, iss := signInServer(t, "ada@north.example")
+
+	for _, who := range []string{"ada@north.example", "grace@north.example"} {
+		if _, err := iss.Sessions().Record(t.Context(), issuer.Opened{
+			Identity: who, ClientID: "argocd", How: issuer.HowCode, Token: "token-" + who,
+		}); err != nil {
+			t.Fatalf("record a session for %s: %v", who, err)
+		}
+	}
+
+	// No cookie, no id_token_hint, no client_id: a passer-by.
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/end_session", nil)
+	if err != nil {
+		t.Fatalf("build the request: %v", err)
+	}
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("end_session: %v", err)
+	}
+
+	_ = response.Body.Close()
+
+	left, err := iss.Sessions().List(t.Context(), issuer.Query{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(left) != 2 {
+		t.Fatalf("a stranger's end_session left %d of 2 sessions; it must end none", len(left))
+	}
+}
+
+// An `id_token_hint` is a HINT, and must not be authority to revoke.
+//
+// The specification calls it a hint about which session is being ended,
+// and the library accepts an EXPIRED one by design. Old ID tokens sit in
+// logs, in browser history and in referrer headers — so a hint that could
+// revoke would hand anybody who finds one a way to sign that person out
+// of a console. What a logout request can actually prove is the cookie it
+// carries, and that is what decides.
+func TestAnIDTokenHintDoesNotRevokeOnItsOwn(t *testing.T) {
+	t.Parallel()
+	server, iss := signInServer(t, "ada@north.example")
+
+	if _, err := iss.Sessions().Record(t.Context(), issuer.Opened{
+		Identity: "grace@north.example", ClientID: "argocd",
+		How: issuer.HowCode, Token: "grace-refresh-token",
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	// A browser that is signed in as somebody ELSE, ending its own
+	// session while naming Grace's client. Grace must be untouched.
+	b := newBrowser(t, server)
+	b.signIn()
+
+	if _, _, _ = b.do(http.MethodGet, "/end_session?client_id=argocd"); b.cookies[issuer.SSOCookieName] != "" {
+		t.Fatal("end_session left the browser session behind")
+	}
+
+	left, err := iss.Sessions().List(t.Context(), issuer.Query{Identity: "grace@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(left) != 1 {
+		t.Errorf("another person's sign-out ended %d of Grace's sessions; it must end none", 1-len(left))
+	}
+}

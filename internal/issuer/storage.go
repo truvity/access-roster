@@ -14,6 +14,7 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"github.com/zitadel/oidc/v3/pkg/op"
 
+	"github.com/truvity/access-roster/internal/logsafe"
 	"github.com/truvity/access-roster/policy"
 )
 
@@ -836,12 +837,37 @@ func (s *Storage) RevokeToken(ctx context.Context, tokenOrTokenID, _, _ string) 
 	return nil
 }
 
-// TerminateSession ends what an identity holds at one client, which is
-// where RP-initiated logout arrives after the proxy has ended its own.
+// TerminateSession is where the library lands RP-initiated logout, and
+// it deliberately ends NOTHING. [SignOut] has already run by then and has
+// ended the sign-in this browser holds and every session opened under it.
+//
+// It ends nothing because it cannot tell whose logout this is. The
+// library calls it with the subject and client taken from the request,
+// and a request can say anything:
+//
+//   - Nothing at all. No `id_token_hint` and no `client_id` leaves both
+//     arguments empty, and an empty [Query] selects EVERY session in the
+//     installation. That was live: one unauthenticated GET, by anyone, to
+//     an address the discovery document publishes, ended every session
+//     every person and every workload held.
+//   - An `id_token_hint` belonging to somebody else. The specification
+//     calls it a hint, not a credential, and the library accepts an
+//     EXPIRED one by design (`IDTokenHintExpiredError` is tolerated in
+//     ValidateEndSessionRequest). Old ID tokens sit in logs, in browser
+//     history and in referrer headers, so honouring one as authority to
+//     revoke hands anybody who finds one a way to sign that person out.
+//
+// What the request CAN prove is the cookie it carries, and that is what
+// [SignOut] acts on. The hint keeps its real job — deciding which
+// client's `signed_out` page the person lands on — which the library does
+// without any help from here.
+//
+// The narrower job this used to do, ending one identity's sessions at one
+// client, is served by `RevokeSessions` on the session service, which
+// authorizes the caller before it acts.
 func (s *Storage) TerminateSession(ctx context.Context, identity, clientID string) error {
-	if _, err := s.iss.Sessions().Revoke(ctx, Query{Identity: identity, ClientID: clientID}); err != nil {
-		return oidc.ErrServerError().WithDescription("%s", err)
-	}
+	s.logger().DebugContext(ctx, "end_session revokes nothing here; the browser's sign-in decides",
+		"identity", logsafe.Value(identity), "client_id", logsafe.Value(clientID))
 
 	return nil
 }

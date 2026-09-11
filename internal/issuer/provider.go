@@ -17,7 +17,6 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/op"
 
 	"github.com/truvity/access-roster/gen/accessissuer/v1/accessissuerv1connect"
-	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // Provider assembles the OpenID surface over the storage: discovery, the
@@ -216,12 +215,12 @@ const (
 // endSession is everything RP-initiated logout needs that the library
 // does not do, in the order the doing has to happen.
 //
-// It ENDS THE BROWSER SESSION, which is the part without which sign-out
+// It SIGNS THE PERSON OUT, which is the part without which this endpoint
 // is a lie. The library ends what it knows about -- the client's tokens
-// -- and knows nothing of the sign-in this issuer holds. Leaving that
-// behind is the half-sign-out that looks exactly like a whole one: the
-// person lands on the signed-out page, opens another console, and is
-// admitted with no password.
+// -- and knows nothing of the sign-in this issuer holds, nor of the
+// sessions every OTHER client opened under it. [SignOut] ends both, and
+// it is the same function `/logout` calls, because there is only one
+// thing a person means by signing out.
 //
 // It ends that session only if the request was GOOD. The order used to
 // be the other way round, and a request the library then refused had
@@ -262,30 +261,10 @@ func endSession(signIn SignInDeps, next http.Handler) http.Handler {
 		held := &heldResponse{ResponseWriter: w}
 		next.ServeHTTP(held, r)
 		if held.succeeded() {
-			endTheBrowserSession(signIn, w, r)
+			SignOut(signIn, w, r)
 		}
 		held.release(r)
 	})
-}
-
-// endTheBrowserSession deletes the sign-in this browser holds and clears
-// the cookie naming it. Safe on a browser that has neither.
-func endTheBrowserSession(signIn SignInDeps, w http.ResponseWriter, r *http.Request) {
-	if signIn.SSO == nil {
-		return
-	}
-
-	if id := SSOFromRequest(r); id != "" {
-		if err := signIn.SSO.End(r.Context(), id); err != nil && signIn.Log != nil {
-			// Through logsafe like every other call site: the id came off
-			// a COOKIE, so a crafted one can reach this error's text, and
-			// a value that can forge a line break can forge a log line.
-			signIn.Log.WarnContext(r.Context(), "browser session could not be ended",
-				"error", logsafe.Error(err))
-		}
-
-		http.SetCookie(w, signIn.SSO.Cookie("", signIn.Secure))
-	}
 }
 
 // wantsHTML reports whether the caller is a browser being shown a page
