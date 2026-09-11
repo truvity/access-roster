@@ -173,3 +173,53 @@ func TestPromptNoneWithNoSessionRefusesToTheClient(t *testing.T) {
 		t.Errorf("state = %q, want it echoed", got)
 	}
 }
+
+// Signing out ends what the browser opened, not only the sign-in.
+//
+// The design leaned on those sessions dying "at their next refresh".
+// They do — a revoked session's refresh is refused — but nothing was
+// revoking them, so every console the person had opened kept its own
+// session until it happened to refresh, and a sign-out that reported
+// success left access in place.
+func TestSignOutEndsWhatTheBrowserOpened(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sso := issuer.NewSSO(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour)
+
+	session, err := sso.Begin(ctx, "ada@north.example", "google")
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+
+	for _, client := range []string{"hubble", "kargo"} {
+		if _, err = sessions.Record(ctx, issuer.Opened{
+			Identity: "ada@north.example", ClientID: client,
+			How: issuer.HowCode, Token: "t-" + client, SSO: session.ID,
+		}); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+
+	mux := http.NewServeMux()
+	issuer.SignInRoutes(mux, issuer.SignInDeps{
+		SSO:    sso,
+		Issuer: issuer.NewForSessionsTest(sessions),
+		Log:    slog.New(slog.DiscardHandler),
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	request.AddCookie(&http.Cookie{Name: issuer.SSOCookieName, Value: session.ID})
+	mux.ServeHTTP(httptest.NewRecorder(), request)
+
+	left, err := sessions.List(ctx, issuer.Query{Identity: "ada@north.example"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(left) != 0 {
+		t.Errorf("after sign-out %d session(s) remain: %v", len(left), left)
+	}
+}

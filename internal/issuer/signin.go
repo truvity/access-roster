@@ -483,6 +483,34 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 func (s *signIn) logout(w http.ResponseWriter, r *http.Request) {
 	if s.deps.SSO != nil {
 		if id := SSOFromRequest(r); id != "" {
+			// EVERYTHING this browser opened, and then the sign-in.
+			//
+			// Ending the sign-in alone stops the next silent /authorize
+			// and nothing else, and the design leaned on the sessions
+			// dying "at their next refresh" — which they do not, because
+			// nothing revoked the refresh tokens. Reported from hubble:
+			// signed out at the issuer, and its proxy went on refreshing
+			// successfully and serving pages.
+			//
+			// Sessions first. If this fails halfway the sign-in is still
+			// there and the person can try again; the other order would
+			// leave sessions running with no sign-in listing them.
+			// Narrowed by identity, which the sign-in record carries: an
+			// SSO-only query reads every session in the installation and
+			// filters, and this runs on an ordinary sign-out.
+			record, live, err := s.deps.SSO.Get(r.Context(), id)
+			if s.deps.Issuer != nil && err == nil && live {
+				ended, err := s.deps.Issuer.Sessions().Revoke(r.Context(),
+					Query{Identity: record.Identity, SSO: id})
+				if err != nil {
+					s.deps.Log.WarnContext(r.Context(), "sign-out could not end what this browser opened",
+						"error", logsafe.Error(err))
+				} else if ended > 0 {
+					s.deps.Log.InfoContext(r.Context(), "sign-out ended the sessions this browser opened",
+						"ended", ended)
+				}
+			}
+
 			if err := s.deps.SSO.End(r.Context(), id); err != nil {
 				s.deps.Log.WarnContext(r.Context(), "sign-out could not end the session",
 					"error", logsafe.Error(err))
