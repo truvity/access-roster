@@ -4,12 +4,6 @@
 requests its identity token, exchanges it at the issuer for the clients
 its groups admit it to, and uses the result.
 
-> **The GitHub Action is not built yet (INF-649).** `accessctl` is:
-> `login`, `whoami`, `setup`, `kubeconfig`, `aws-config`, `kube-token`,
-> `aws` and `exchange` all work. What a workflow does on this page is
-> still what it will run — until the action exists, a job does the same
-> thing with `curl` against the token endpoint, which is all the action
-> will do in shell anyway.
 
 
 ## Issuer side
