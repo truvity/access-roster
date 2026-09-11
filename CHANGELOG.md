@@ -1,5 +1,20 @@
 ## Unreleased
 
+- **A token says how the person was proved.** `acr` was empty, so a
+  client asking with `acr_values` got none back — which conformance
+  flags, and which matters more than the flag: a recovery sign-in
+  bypasses the directory **by design**, and a relying party that wants to
+  refuse one had no way to see it in a token. Two classes, and discovery
+  now advertises both, because a client cannot ask for a value it has no
+  way to learn about.
+
+  `amr` said `pwd` for everything, which is untrue of every sign-in this
+  issuer serves: recovery presents a ServiceAccount token, and a
+  directory sign-in presents whatever the provider asked for — which we
+  are not told, so claiming a password was an invention. It is empty
+  where we were not told.
+
+
 - **A response carrying a credential is never cached.** RFC 6749 5.1
   requires `Cache-Control` on the token endpoint and the library does not
   set it, so conformance failed `oidcc-refresh-token` with *"token

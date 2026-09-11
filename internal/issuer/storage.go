@@ -87,6 +87,10 @@ type authRequest struct {
 	AuthTime time.Time         `json:"authTime,omitempty"`
 	IsDone   bool              `json:"done,omitempty"`
 
+	// How the person was proved: a provider kind, or "recovery". It is
+	// the token's `acr`.
+	How string `json:"how,omitempty"`
+
 	// SSO is the browser session this request was completed against,
 	// whether it was established just now or already existed. It travels
 	// down into the per-client session so that ending the browser session
@@ -103,9 +107,24 @@ type authRequest struct {
 
 var _ op.AuthRequest = (*authRequest)(nil)
 
-func (a *authRequest) GetID() string          { return a.ID }
-func (a *authRequest) GetACR() string         { return "" }
-func (a *authRequest) GetAMR() []string       { return []string{"pwd"} }
+func (a *authRequest) GetID() string { return a.ID }
+
+// GetACR says HOW this person was proved, which is the one claim a
+// relying party can read to refuse a break-glass sign-in.
+//
+// It was empty, so a client asking with `acr_values` got no `acr` back —
+// conformance says the server SHOULD return one, and more to the point a
+// deployment had no way to tell a Google sign-in from recovery in a
+// token. Recovery bypasses the directory by design; a relying party that
+// wants to refuse it needs to be able to see it.
+func (a *authRequest) GetACR() string { return acrFor(a.How) }
+
+// GetAMR is what was presented. It used to say `pwd` unconditionally,
+// which is untrue of every sign-in this issuer serves: a recovery
+// sign-in presents a ServiceAccount token, and a directory sign-in
+// presents whatever the provider asked for — which we are not told, so
+// claiming a password is an invention.
+func (a *authRequest) GetAMR() []string       { return amrFor(a.How) }
 func (a *authRequest) GetAudience() []string  { return []string{a.Req.ClientID} }
 func (a *authRequest) GetAuthTime() time.Time { return a.AuthTime }
 func (a *authRequest) GetClientID() string    { return a.Req.ClientID }
@@ -144,6 +163,48 @@ type Storage struct {
 	// the same handler, microseconds apart — writing that down would be
 	// storing something that never outlives the function that made it.
 	grants sync.Map // op.TokenExchangeRequest → Grant
+}
+
+// The authentication context classes this issuer can report. Custom
+// URNs because no registered class describes "a corporate directory
+// federated here" or "a ServiceAccount the cluster vouched for", and an
+// approximate standard value would be a claim that reads as precise.
+const (
+	ACRDirectory = "urn:truvity:access-roster:acr:directory"
+	ACRRecovery  = "urn:truvity:access-roster:acr:recovery"
+)
+
+// RecoveryHow is what a recovery sign-in records as its method. The
+// rest of that vocabulary is a PROVIDER KIND -- "google", "entra" --
+// which is a different set from the per-client session's `How`, and
+// the reason this maps rather than switching on that type.
+const RecoveryHow = "recovery"
+
+// acrFor maps how somebody was proved onto a class a relying party can
+// act on. The distinction that earns its keep is DIRECTORY against
+// RECOVERY: one went through the company's own identity provider, the
+// other bypassed it on purpose.
+func acrFor(how string) string {
+	if how == RecoveryHow {
+		return ACRRecovery
+	}
+
+	// A provider kind, or empty on a deployment that records none:
+	// the directory answered, which is the ordinary case.
+	return ACRDirectory
+}
+
+// amrFor is what was actually presented, and nothing more. An empty list
+// is the honest answer where we were not told, which is most of the time:
+// the provider knows whether there was a second factor and does not say.
+func amrFor(how string) []string {
+	if how == RecoveryHow {
+		// Not a password and not a person: a token the API server
+		// vouched for.
+		return []string{"swk"}
+	}
+
+	return nil
 }
 
 // How long each kind of thing in a login flow is worth keeping. Nothing
@@ -347,7 +408,7 @@ func (s *Storage) Complete(id string, who Authenticated) error {
 	// established an hour ago authenticated an hour ago, and `auth_time`
 	// is the one claim that has to say so — it is what a
 	// re-authenticate-for-this-action rule reads.
-	req.AuthTime, req.SSO = authTime, who.SSO
+	req.AuthTime, req.SSO, req.How = authTime, who.SSO, who.How
 
 	return setJSON(ctx, s.state, requestKey(id), req, authRequestTTL)
 }
