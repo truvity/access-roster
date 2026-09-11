@@ -1,6 +1,6 @@
 // Package hublocal asks the directory about a person by CALLING it.
 //
-// It is [github.com/truvity/access-roster/internal/hubclient] with the
+// It is the network client this package replaced, with the
 // network taken out: the same question, the same vocabulary, the same
 // distinction between "the directory says no" and "I could not ask". The
 // split that made the network version necessary — one deployment holding

@@ -1,3 +1,18 @@
+## Unreleased
+
+- **The split deployment is gone from the code, not just from the
+  cluster.** `HUB_ADDRESS` and `HUB_TOKEN_FILE`, the branch that dialled
+  a directory over the network, and the whole `hubclient` package. INF-691
+  folded the hub into this process and nothing has dialled it since, so
+  what was left was a branch that could not run and two settings nothing
+  set — configuration that reads as a supported deployment and is not one.
+  The directory is a required in-process dependency now.
+
+  Removing it found the last caller: three tests were driving a stub HTTP
+  hub, which is the shape from when the hub was a service of its own.
+  They use an in-process directory now, which is what they were testing
+  all along.
+
 ## v0.14.9
 
 - **Charts are published by the release workflow, not by goreleaser**, so

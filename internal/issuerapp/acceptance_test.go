@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/issuerapp"
 )
 
@@ -25,6 +26,12 @@ import (
 // can run in parallel: t.Setenv and t.Parallel are mutually exclusive,
 // and reading the environment is what is being tested.
 func boot(t *testing.T, env map[string]string) *issuerapp.App {
+	return bootWith(t, env, nobody{})
+}
+
+// bootWith is the same with a directory of the caller's choosing, which
+// the sign-in tests need: they are about what the DIRECTORY says.
+func bootWith(t *testing.T, env map[string]string, directory issuer.Directory) *issuerapp.App {
 	t.Helper()
 	policyDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(policyDir, "policy.yaml"), []byte(`
@@ -39,18 +46,11 @@ clients:
 `), 0o600); err != nil {
 		t.Fatalf("write the policy: %v", err)
 	}
-	// The hub admits nobody without a projected token, and the client
-	// reads it fresh on every call.
-	if err := os.WriteFile(filepath.Join(policyDir, "token"), []byte("a-projected-token"), 0o600); err != nil {
-		t.Fatalf("write the token: %v", err)
-	}
 	base := map[string]string{
-		"ISSUER_URL":     "https://issuer.example",
-		"HUB_ADDRESS":    "http://hub.invalid:8080",
-		"HUB_TOKEN_FILE": filepath.Join(policyDir, "token"),
-		"POLICY_DIR":     policyDir,
-		"PORT":           "0",
-		"HEALTH_PORT":    "0",
+		"ISSUER_URL":  "https://issuer.example",
+		"POLICY_DIR":  policyDir,
+		"PORT":        "0",
+		"HEALTH_PORT": "0",
 	}
 	for k, v := range env {
 		base[k] = v
@@ -62,11 +62,22 @@ clients:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	app, err := issuerapp.New(context.Background(), cfg, issuerapp.Deps{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	app, err := issuerapp.New(context.Background(), cfg,
+		issuerapp.Deps{Directory: directory}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	return app
+}
+
+// nobody is a directory that knows no one. These tests are about the
+// SURFACE the issuer serves -- discovery, the key set, health -- and a
+// directory is required to build one, so this supplies the smallest
+// thing that satisfies that without pretending to know anybody.
+type nobody struct{}
+
+func (nobody) ResolveUser(context.Context, string) (issuer.Standing, error) {
+	return issuer.Standing{}, nil
 }
 
 func get(t *testing.T, handler http.Handler, path string) (int, string) {
@@ -176,7 +187,6 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 	// address to dial, or a directory in this process (INF-691). Neither
 	// is a failure on its own; having neither is.
 	t.Setenv("ISSUER_URL", "https://issuer.example")
-	t.Setenv("HUB_ADDRESS", "")
 	t.Setenv("TOKEN_LIFETIME", "")
 	t.Setenv("LOG_LEVEL", "")
 	cfg, err := issuerapp.Load()

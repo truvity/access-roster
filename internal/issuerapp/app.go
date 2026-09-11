@@ -25,7 +25,6 @@ import (
 	"github.com/truvity/access-roster/backend/google"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/health"
-	"github.com/truvity/access-roster/internal/hubclient"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/valkey"
@@ -42,9 +41,6 @@ type Config struct {
 
 	issuerURL     string
 	allowInsecure bool
-
-	hubAddress   string
-	hubTokenFile string
 
 	policyPath string
 
@@ -85,8 +81,6 @@ func Load() (Config, error) {
 		healthPort:        envInt("HEALTH_PORT", 7070),
 		issuerURL:         strings.TrimSuffix(envString("ISSUER_URL", ""), "/"),
 		allowInsecure:     envBool("ALLOW_INSECURE", false),
-		hubAddress:        envString("HUB_ADDRESS", ""),
-		hubTokenFile:      envString("HUB_TOKEN_FILE", ""),
 		policyPath:        envString("POLICY_DIR", ""),
 		inCluster:         envBool("IN_CLUSTER", false),
 		oauthClientID:     envString("OAUTH_CLIENT_ID", ""),
@@ -158,11 +152,14 @@ func Load() (Config, error) {
 // dialling it, and the console is served from the issuer's own origin
 // instead of a listener of its own.
 //
-// A zero Deps is the split deployment: the directory is reached over the
-// network at HUB_ADDRESS, and nothing is mounted under /console/.
+// Directory is REQUIRED. It was optional while the hub was a service of
+// its own, reached over the network at HUB_ADDRESS; INF-691 folded it
+// into this process and nothing has dialled it since. What was left was
+// a branch that could not run, two settings nothing set, and a network
+// client with no caller -- config that reads as a supported deployment
+// and is not one.
 type Deps struct {
-	// Directory answers "who is this address". Nil builds a network
-	// client, and then HUB_ADDRESS is required.
+	// Directory answers "who is this address", in this process.
 	Directory issuer.Directory
 	// Policy is the policy in force. Supplying it is how the merged
 	// service guarantees both halves act on the SAME one: they read the
@@ -238,16 +235,9 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 
 	directory := deps.Directory
 	if directory == nil {
-		if cfg.hubAddress == "" {
-			return nil, errors.New(
-				"HUB_ADDRESS is required: this service asks the directory about every person, " +
-					"and no directory was supplied in-process")
-		}
-		if directory, err = hubclient.New(hubclient.Options{
-			BaseURL: cfg.hubAddress, TokenFile: cfg.hubTokenFile,
-		}); err != nil {
-			return nil, err
-		}
+		return nil, errors.New(
+			"a directory is required: this service asks it about every person, and it is " +
+				"supplied in-process -- there is no longer a network hub to dial")
 	}
 
 	// The shared store first: the issuer's session index lives in it, so
@@ -349,15 +339,10 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	return &App{handler: handler, health: healthMux, issuer: core, cfg: cfg, log: log}, nil
 }
 
-// directorySource says where the answer about a person comes from, in a
-// word an operator can act on: the address of another service, or this
-// process.
-func directorySource(deps Deps, cfg Config) string {
-	if deps.Directory != nil {
-		return "in-process"
-	}
-	return cfg.hubAddress
-}
+// directorySource says where the answer about a person comes from. There
+// is one answer now, and it is logged rather than dropped because an
+// operator reading the startup line should not have to know that.
+func directorySource(Deps, Config) string { return "in-process" }
 
 // consoleMount is where the console sits when there is one. It is a
 // constant because the mount is not configurable: the issuer owns the

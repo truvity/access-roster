@@ -11,10 +11,6 @@ import (
 
 	"time"
 
-	"connectrpc.com/connect"
-
-	directoryv1 "github.com/truvity/access-roster/gen/directory/v1"
-	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/issuerapp"
@@ -51,34 +47,29 @@ func (p *stubProvider) Pending(string) (issuer.Pending, error) {
 }
 
 // stubHub answers the one question the issuer asks about a person.
-type hubStub struct {
-	directoryv1connect.UnimplementedDirectoryServiceHandler
-	found, suspended bool
-}
+type hubStub struct{ found, suspended bool }
 
-func (h *hubStub) ResolveUser(
-	context.Context, *connect.Request[directoryv1.ResolveUserRequest],
-) (*connect.Response[directoryv1.ResolveUserResponse], error) {
-	return connect.NewResponse(&directoryv1.ResolveUserResponse{
-		InDomain: true, Found: h.found, Suspended: h.suspended, Authoritative: true,
+func (h *hubStub) ResolveUser(context.Context, string) (issuer.Standing, error) {
+	return issuer.Standing{
+		Found: h.found, Suspended: h.suspended, Authoritative: true,
 		Groups: []string{"platform@north.example"},
-	}), nil
+	}, nil
 }
 
-func stubHub(t *testing.T, found, suspended bool) string {
-	t.Helper()
-	mux := http.NewServeMux()
-	mux.Handle(directoryv1connect.NewDirectoryServiceHandler(&hubStub{found: found, suspended: suspended}))
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-	return server.URL
+// stubHub is the directory's answer, IN PROCESS. It used to be an HTTP
+// server the issuer dialled, which was the shape when the hub was a
+// service of its own -- and the last caller of the network client after
+// INF-691 folded the hub in. Keeping it would have meant keeping a
+// deployment nothing runs alive for the sake of a test.
+func stubHub(_ *testing.T, found, suspended bool) issuer.Directory {
+	return &hubStub{found: found, suspended: suspended}
 }
 
 // bootWithSignIn assembles an issuer whose sign-in is the stub, which is
 // the only way to drive the flow without a real provider.
-func bootWithSignIn(t *testing.T, hub string, provider *stubProvider, issuerURL *string) *appWithSignIn {
+func bootWithSignIn(t *testing.T, hub issuer.Directory, provider *stubProvider, issuerURL *string) *appWithSignIn {
 	t.Helper()
-	app := boot(t, map[string]string{"HUB_ADDRESS": hub})
+	app := bootWith(t, nil, hub)
 	key, err := issuer.NewSigningKey()
 	if err != nil {
 		t.Fatalf("key: %v", err)

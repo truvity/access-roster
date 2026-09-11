@@ -46,14 +46,6 @@ var localOnly = []string{
 	"API_PORT", "CONSOLE_PORT", "API_AUDIENCE", "CONSUMERS_FILE",
 	"FORWARDED_AUDIENCE", "FORWARDED_EMAIL_HEADER", "FORWARDED_ISSUER",
 	"SIGN_OUT_URL",
-
-	// SPLIT-DEPLOYMENT LEFTOVERS. The hub was reached over the network
-	// at HUB_ADDRESS until INF-691 folded it into this process, and the
-	// shipped binary now always supplies the directory in-process — so
-	// nothing sets these and nothing should. The code path behind them
-	// is dead in the one binary we build, and removing it is the last
-	// of that merge rather than part of this change.
-	"HUB_ADDRESS", "HUB_TOKEN_FILE",
 }
 
 // The chart and the binary agree on the environment between them, and
