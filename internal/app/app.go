@@ -363,6 +363,7 @@ type App struct {
 	console http.Handler
 	health  http.Handler
 	ready   health.Dependency
+	server  *server.ConsoleServer
 	policy  *policy.Set
 	hub     *hub.Hub
 	cfg     Config
@@ -381,6 +382,10 @@ func (a *App) HealthHandler() http.Handler { return a.health }
 
 // Hub is the directory hub itself, for a caller that drives it directly.
 func (a *App) Hub() *hub.Hub { return a.hub }
+
+// ConsoleServer is the console's own server, for a caller that has to
+// finish wiring it after both halves exist.
+func (a *App) ConsoleServer() *server.ConsoleServer { return a.server }
 
 // Policy is the policy in force, for a caller that has to act on the
 // SAME one.
@@ -598,6 +603,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		console: consoleServer.Handler(),
 		health:  healthMux,
 		ready:   ready,
+		server:  consoleServer,
 		policy:  set,
 		hub:     directory,
 		cfg:     cfg,

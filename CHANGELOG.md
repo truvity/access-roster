@@ -22,6 +22,21 @@ git history.
 
 ## Unreleased
 
+- **The console admits whoever the issuer signed in.** One origin and one
+  process, so the browser's issuer session is read directly rather than
+  being relayed. Before this, a console on the issuer's own host was
+  authenticated either by a proxy — which ran an OpenID flow against a
+  service in the same process, a network round trip and a second session
+  store to learn something already known — or by a login of its own,
+  which is the second door an installation with a gateway deliberately
+  turns off.
+
+  It does **not** remove the need for a way to *start* a sign-in. A
+  person arriving with no session anywhere still needs one, and the
+  console's own login or a proxy in front of it is still what provides
+  that. What this removes is the second session for a person who already
+  signed in somewhere behind this issuer.
+
 - **An installation that signs nobody in yet still serves its sessions.**
   The handler returned early on "no sign-in providers" and took the
   session service and the signed-out page with it. The posture where that
