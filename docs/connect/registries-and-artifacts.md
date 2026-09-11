@@ -1,5 +1,11 @@
 # Registries and artifacts on top of the profiles
 
+> **`accessctl` and the GitHub Action are not built yet (INF-649).**
+> Everything on this page that names one describes what it will run, not
+> what you can run today. The issuer side is real and can be set up now;
+> the laptop and workflow side waits for the CLI.
+
+
 ECR and CodeArtifact have no trust relationship of their own with the
 issuer. Both are an AWS credential plus a tool-specific handshake, and
 the credential is what access-roster prepared: a profile per granted role,

@@ -16,7 +16,8 @@
     "@mui/icons-material": "^9.4.0",
     "@mui/material": "^9.4.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@truvity/access-roster": "file:../ts"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
