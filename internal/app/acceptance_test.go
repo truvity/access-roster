@@ -316,3 +316,59 @@ func TestTheConsoleAdmitsWhoeverTheIssuerSignedIn(t *testing.T) {
 		t.Errorf("whoami = %q, want a signed-in status", body)
 	}
 }
+
+// Somebody with no session is sent to the ISSUER to get one, not to a
+// sign-in page of the console's own (INF-701). That is what makes one
+// door: the console is a client of the issuer like any other
+// application, and holds nothing special.
+func TestSomebodyWithNoSessionIsSentToTheIssuer(t *testing.T) {
+	client, at, assembled := console(t, map[string]string{"LOGIN_DIRECTORY": "false"})
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+	// Before: the console's own page, which is the split deployment's
+	// shape and the second door.
+	if to := where(t, client, at+"/"); !strings.HasSuffix(to, "/login") {
+		t.Fatalf("with no entry the console sends them to %q, want its own page", to)
+	}
+
+	assembled.ConsoleServer().UseSignInEntry(func() string {
+		return "https://access.example/authorize?client_id=directory-console"
+	})
+
+	if to := where(t, client, at+"/"); !strings.HasPrefix(to, "https://access.example/authorize") {
+		t.Errorf("the console sends them to %q, want the issuer's authorization endpoint", to)
+	}
+}
+
+// And the code the flow hands back is stripped rather than carried into
+// the page. The console never redeems it — what it needed was the
+// session the flow established — so leaving it in the URL would only put
+// it in a bookmark and in every referrer.
+func TestTheCodeIsStrippedFromTheConsolesURL(t *testing.T) {
+	client, at, assembled := console(t, map[string]string{"LOGIN_DIRECTORY": "false"})
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+	assembled.ConsoleServer().UseSignedIn(func(*http.Request) (access.Principal, bool) {
+		return access.Principal{Email: "ada@north.example", Source: access.SourceOIDC}, true
+	})
+
+	to := where(t, client, at+"/?code=abc123&state=xyz")
+	if to != "/" {
+		t.Errorf("after the flow the console went to %q, want the clean page", to)
+	}
+}
+
+// where is the Location a request is redirected to.
+func where(t *testing.T, client *http.Client, url string) string {
+	t.Helper()
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("get %s: %v", url, err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	return response.Header.Get("Location")
+}

@@ -64,6 +64,7 @@ type ConsoleServer struct {
 	log        *slog.Logger
 	consoleUI  fs.FS
 	signedIn   func(*http.Request) (access.Principal, bool)
+	entry      func() string
 	// mount is the path this console is served under, without a trailing
 	// slash, or empty at an origin root. Its handlers never see it — it
 	// is stripped before they run — but every path they hand a BROWSER
@@ -94,6 +95,16 @@ type ConsoleServerDeps struct {
 	// proxy's sign-out path.
 	SignOutURL string
 	Forwarded  ForwardedIdentity
+	// SignInEntry is where an unauthenticated browser is sent to GET a
+	// session: the issuer's authorization endpoint, with this console as
+	// the client (INF-701).
+	//
+	// [SignedIn] reads a session somebody already has; this is how they
+	// come by one. Both are needed and neither replaces the other. Nil
+	// falls back to this console's own sign-in page, which is the split
+	// deployment's shape and the second door an installation with a
+	// gateway turns off.
+	SignInEntry func() string
 	// SignedIn reads the ISSUER's own browser session, when the console
 	// is served by the same process on the same origin (INF-691).
 	//
@@ -140,6 +151,7 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		consoleUI:  deps.UI,
 		mount:      strings.TrimSuffix(strings.TrimSpace(deps.Mount), "/"),
 		signedIn:   deps.SignedIn,
+		entry:      deps.SignInEntry,
 	}
 	for _, c := range deps.Connectors {
 		s.connectors[c.Kind()] = c
@@ -156,6 +168,27 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 // served; [ConsoleServer.principal] reads it per request.
 func (s *ConsoleServer) UseSignedIn(read func(*http.Request) (access.Principal, bool)) {
 	s.signedIn = read
+}
+
+// UseSignInEntry supplies where to send somebody who has no session, for
+// the same reason and with the same timing as [ConsoleServer.UseSignedIn].
+func (s *ConsoleServer) UseSignInEntry(where func() string) {
+	s.entry = where
+}
+
+// wayIn is where an unauthenticated browser goes.
+//
+// The issuer's authorization endpoint where there is one, because then
+// this console is a client of it like any other application and there is
+// exactly one door. This console's own page otherwise, which is what a
+// deployment with no issuer beside it has.
+func (s *ConsoleServer) wayIn() string {
+	if s.entry != nil {
+		if where := s.entry(); where != "" {
+			return where
+		}
+	}
+	return s.at("/login")
 }
 
 // Handler returns the console listener's HTTP handler.
@@ -193,7 +226,16 @@ func (s *ConsoleServer) at(path string) string { return s.mount + path }
 // route is enough: no catch-all, and every API path stays clean.
 func (s *ConsoleServer) index(w http.ResponseWriter, r *http.Request) {
 	if _, ok := IdentityFrom(r.Context()); !ok {
-		http.Redirect(w, r, s.at("/login"), http.StatusFound)
+		http.Redirect(w, r, s.wayIn(), http.StatusFound)
+		return
+	}
+	// The authorization endpoint sends the browser back here with its
+	// code in the query. This console never redeems it — what it needed
+	// was the SESSION the flow established, which it has by now — so the
+	// query is stripped rather than carried into the page, where it would
+	// end up in a bookmark and in every referrer.
+	if r.URL.Query().Get("code") != "" {
+		http.Redirect(w, r, s.at("/"), http.StatusFound)
 		return
 	}
 	page, err := fs.ReadFile(s.consoleUI, "index.html")
