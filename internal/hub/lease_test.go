@@ -23,15 +23,19 @@ type shared struct {
 	// failLock makes taking a lease fail rather than refuse, which is a
 	// different case with a different right answer.
 	failLock error
+	// ttl is the last lease length asked for, which is the whole of what
+	// keeps a scheduled tick from being refused by its predecessor.
+	ttl time.Duration
 }
 
 func newShared() *shared {
 	return &shared{MemorySnapshots: hub.NewMemorySnapshots(), leases: map[string]bool{}}
 }
 
-func (s *shared) Lock(_ context.Context, key string, _ time.Duration) (func(context.Context), bool, error) {
+func (s *shared) Lock(_ context.Context, key string, ttl time.Duration) (func(context.Context), bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ttl = ttl
 	if s.failLock != nil {
 		return nil, false, s.failLock
 	}
@@ -161,5 +165,54 @@ func TestARefusedLeaseStopsAPassButABrokenOneDoesNot(t *testing.T) {
 	directoryHub.RefreshAll(ctx)
 	if got := directory.Calls(fake.OpAccounts) - before; got != 1 {
 		t.Errorf("a broken lease stopped the refresh (%d reads, want 1)", got)
+	}
+}
+
+// The lease must be SHORTER than the interval that schedules it.
+//
+// Equal lengths beat against each other: a tick arriving a second before
+// its predecessor's lease expired is refused, the next chance comes a
+// whole interval later, and the effective period doubles. With a
+// fifteen-minute interval that is thirty minutes — exactly the freshness
+// window — so the snapshot ages out and every domain in it reads
+// provisional on a service that is working. Seen on 2026-09-11: two
+// directories stale at 32 minutes while a third, which happened to miss
+// the collision, sat at 17.
+func TestTheLeaseIsShorterThanTheIntervalThatSchedulesIt(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	interval := 15 * time.Minute
+
+	directory := fake.New("C0north", "north.example").
+		WithAccount("ada@north.example", "Ada", "North")
+	snapshots := newShared()
+
+	h := hub.New(hub.NewMemoryStore(), snapshots, hub.Config{RefreshInterval: interval}, quiet)
+	if _, err := h.Adopt(ctx, hub.Workspace{Admin: "admin@north.example"}, directory); err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	h.Wait()
+
+	h.RefreshAll(ctx)
+
+	store := snapshots
+
+	if store.ttl == 0 {
+		t.Fatal("no lease was taken at all")
+	}
+
+	if store.ttl >= interval {
+		t.Errorf("lease %s >= interval %s: a tick on schedule will be refused by its own predecessor",
+			store.ttl, interval)
+	}
+
+	// And long enough to still be doing its job: a replica whose turn
+	// comes a few minutes later must be refused, or both read the same
+	// directory and spend the tenant's quota twice.
+	if store.ttl <= interval/2 {
+		t.Errorf("lease %s is under half the interval %s: a replica ticking soon after would read again",
+			store.ttl, interval)
 	}
 }

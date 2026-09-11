@@ -1,3 +1,27 @@
+## Unreleased
+
+- **Two directories read `provisional · stale` on a service that was
+  working.** The refresh lease was held for the whole refresh interval,
+  so the lease and the ticker were the same length and beat against each
+  other: a tick arriving a second before its predecessor's lease expired
+  was refused, and the next chance came a whole interval later. The
+  effective period doubled to thirty minutes — **exactly the freshness
+  window** — so the snapshot aged out and every domain in it lost
+  authority.
+
+  The evidence was in the ages: two directories at 32 minutes, and a
+  third that happened to miss the collision at 17. The lease now runs
+  three quarters of the interval, which still refuses a replica whose
+  turn comes a few minutes later and never refuses one ticking on
+  schedule.
+
+  **The start-up catch-up now refreshes what is DUE rather than what is
+  already stale.** A fourteen-minute-old snapshot on a pod that has just
+  replaced another used to wait a whole interval more, reaching
+  twenty-nine minutes — one rollout short of provisional. A restart
+  should not extend the schedule, and an afternoon of releases should
+  not look like a directory going bad.
+
 ## v0.13.1
 
 - **Sign-out did nothing, because nothing served `/logout`.** The
