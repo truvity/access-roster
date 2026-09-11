@@ -1,4 +1,4 @@
-## Unreleased
+## v0.12.6
 
 Found by signing in to the live console with a headless browser and
 looking at every page at 1440px and at 390px.
