@@ -1,3 +1,22 @@
+## v0.15.2
+
+- **A revoked session's access token stops answering at `userinfo`.** An
+  access token is a JWT verified offline everywhere else, so nothing can
+  be told to stop honouring one before it expires — but `userinfo` holds
+  the record, so it is the single place a revocation can reach a token
+  already in circulation. Access tokens now name their session and are
+  refused when it has ended.
+
+  Conformance found it through the narrowest door: a reused authorization
+  code must revoke what it issued (RFC 6749 4.1.2). We revoked the
+  session and `userinfo` went on answering with the access token from the
+  first redemption. Fixing only that case would have left every other
+  revocation with the same hole.
+
+- **The conformance driver can hand the browser step to a person**
+  (`--manual`). Four Basic OP modules ask what a real sign-in returns,
+  and recovery has no name or email to return.
+
 ## v0.15.1
 
 - **The sign-ins table writes the person's name once.** Grouping the

@@ -171,6 +171,24 @@ def start_chrome():
     sys.exit("chrome did not come up")
 
 
+class Passed(list):
+    """Issuer pages passed through, and how long we have waited to use one.
+
+    A plain list would be answered with immediately, which is wrong: the
+    page a step asks about is usually the one the browser is ABOUT to
+    reach, not the one it last left. `patient` is how many rounds have
+    gone by with a step outstanding and the browser not on the issuer --
+    long enough means it is never going to arrive, which is the
+    re-authentication case.
+    """
+
+    rounds = 0
+
+    def patient(self):
+        self.rounds += 1
+        return self.rounds > 3
+
+
 def shoot(cdp):
     """One screenshot of the page as it stands, as a data URI."""
     return "data:image/png;base64," + cdp.call(
@@ -252,11 +270,24 @@ def review(cdp, test, seen, pages):
     here = cdp.eval("window.location.href") or ""
     if here.startswith(ISSUER):
         where, shot = here, shoot(cdp)
-    elif pages:
+    elif pages and pages.patient():
+        # WAITED FIRST, and this is the whole of the difficulty. The
+        # suite logs its review step BEFORE handing over the URL the step
+        # is about, so at that moment the browser is still back on the
+        # suite's callback -- and answering then with the last issuer
+        # page means answering with the SIGN-IN page from the
+        # authorization that preceded it.
+        #
+        # That is not hypothetical: it made ten of twelve screenshots
+        # byte-identical pictures of the sign-in page, evidence of
+        # nothing, and only a person looking at them caught it.
+        #
+        # So the current page wins, and a remembered one is used only
+        # after the browser has had rounds to arrive and has not -- which
+        # is the re-authentication case, where the page asked about is
+        # one the driver fills in and leaves.
         where, shot = pages[-1]
     else:
-        # Nothing from the issuer yet: the browser has not arrived, and a
-        # picture of the suite's own page is evidence of nothing.
         return False
 
     for entry in outstanding:
@@ -268,6 +299,43 @@ def review(cdp, test, seen, pages):
         print("      screenshot of %s for: %s" % (
             where[len(ISSUER):].split("?")[0] or "/", str(entry.get("msg"))[:80]))
     return True
+
+
+def attend(plan, module, patience=600):
+    """Start one module and hand the browser step to a PERSON.
+
+    Recovery signs in with no name and no email -- deliberately, it is
+    the break-glass path -- so four Basic OP modules warn that userinfo
+    carries no profile or email claims. Nothing in the issuer is wrong
+    there: the claims cannot exist for that identity. Clearing those
+    warnings needs a sign-in by somebody who HAS a name, which is a
+    person at a Google prompt and cannot be automated.
+
+    So this starts the module and gets out of the way: it prints the URL,
+    waits, and reports what the suite concluded.
+    """
+    started = api("/api/runner?test=%s&plan=%s" % (module, plan), method="POST")
+    test = started.get("id")
+    if not test:
+        return "NOT-STARTED", ""
+
+    print("\n  %s" % module)
+    shown, waited = set(), 0
+    while waited < patience:
+        info = api("/api/info/%s" % test)
+        if info.get("status") in ("FINISHED", "INTERRUPTED"):
+            break
+
+        for url in api("/api/runner/browser/%s" % test).get("urls") or []:
+            if url not in shown:
+                shown.add(url)
+                print("\n  OPEN THIS AND SIGN IN WITH GOOGLE:\n    %s\n" % url)
+
+        time.sleep(5)
+        waited += 5
+
+    info = api("/api/info/%s" % test)
+    return info.get("result") or info.get("status") or "?", test
 
 
 def run(cdp, plan, module):
@@ -287,7 +355,7 @@ def run(cdp, plan, module):
     if not test:
         return "NOT-STARTED", ""
 
-    seen, filled, pages = set(), set(), []
+    seen, filled, pages = set(), set(), Passed()
     for _ in range(40):
         info = api("/api/info/%s" % test)
         status = info.get("status")
@@ -319,6 +387,8 @@ def main():
     parser.add_argument("plan")
     parser.add_argument("--from", dest="start")
     parser.add_argument("--only")
+    parser.add_argument("--manual", action="store_true",
+                        help="print the URL and wait for a PERSON to sign in")
     args = parser.parse_args()
 
     modules = [m["testModule"] for m in api("/api/plan/%s" % args.plan).get("modules", [])]
@@ -330,6 +400,15 @@ def main():
         modules = modules[modules.index(args.start):] if args.start in modules else modules
 
     print("plan %s: %d module(s)\n" % (args.plan, len(modules)))
+
+    if args.manual:
+        results = {}
+        for module in modules:
+            result, test = attend(args.plan, module)
+            results[module] = result
+            print("  %-10s %s   %s/log-detail.html?log=%s" % (result, module, SUITE, test))
+        sys.exit(0 if all(r in ("PASSED", "WARNING", "REVIEW") for r in results.values()) else 1)
+
     chrome, cdp = start_chrome()
     cdp.call("Page.enable")
     cdp.call("Network.enable")

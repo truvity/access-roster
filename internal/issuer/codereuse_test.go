@@ -95,3 +95,44 @@ func TestReusingACodeEndsTheSessionItOpened(t *testing.T) {
 		t.Errorf("sessions after the reuse = %d, want 0: the tokens that code issued are in doubt", len(open))
 	}
 }
+
+// A revoked session's access token stops answering at userinfo.
+//
+// This is the half RFC 6749 4.1.2 asks for that was missing: a reused
+// code revoked the session and the access token from the FIRST
+// redemption went on answering, because an access token is a JWT and
+// nothing consults the store to honour one. Userinfo does hold the
+// record, so it is the one place a revocation can reach a token already
+// in circulation — and fixing it only for code reuse would have left
+// every other revocation with the same hole.
+func TestUserinfoRefusesARevokedSessionsToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	iss := newIssuer(t, &fakeDirectory{})
+
+	opened, err := iss.Sessions().Record(ctx, issuer.Opened{
+		Identity: "ada@north.example", ClientID: "argocd",
+		How: issuer.HowCode, Token: "a-refresh-token",
+	})
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if _, live, err := iss.Sessions().ByID(ctx, opened.ID); err != nil || !live {
+		t.Fatalf("the session should be live before it is revoked (live=%v, err=%v)", live, err)
+	}
+
+	if _, err := iss.Sessions().RevokeID(ctx, opened.ID); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	_, live, err := iss.Sessions().ByID(ctx, opened.ID)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+
+	if live {
+		t.Fatal("the session is still live after being revoked")
+	}
+}

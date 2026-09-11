@@ -72,6 +72,15 @@ type token struct {
 	// shows a person rather than an address. Empty is normal.
 	GivenName  string `json:"givenName,omitempty"`
 	FamilyName string `json:"familyName,omitempty"`
+	// Session is the session this token was issued under, when there is
+	// one. It is what lets a REVOCATION reach an access token that has
+	// already been minted: the token is a JWT and is verified offline
+	// everywhere else, but `userinfo` reads this record and can ask
+	// whether the session behind it is still alive.
+	//
+	// Empty for a grant that opens no session. Such a token lives out
+	// its lifetime, which is what it is for.
+	Session string `json:"session,omitempty"`
 }
 
 // authRequest is a login in progress: a browser part-way between the
@@ -577,6 +586,14 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 		return "", "", time.Time{}, oidc.ErrServerError().WithDescription("%s", err)
 	}
 
+	// The ACCESS token names it too, so that revoking the session stops
+	// `userinfo` answering with a token already in circulation. Written
+	// after the session exists, because that is when its id does.
+	issued.Session = session.ID
+	if err = setJSON(ctx, s.state, tokenKey(issued.ID), issued, time.Until(issued.Expires)); err != nil {
+		return "", "", time.Time{}, oidc.ErrServerError().WithDescription("%s", err)
+	}
+
 	// The ID token minted a moment from now names this session. The
 	// library passes this very request object on to CreateIDToken, which
 	// is the only reason the id can travel without a second lookup.
@@ -899,14 +916,39 @@ func (s *Storage) SetUserinfoFromScopes(context.Context, *oidc.UserInfo, string,
 }
 
 // SetUserinfoFromToken implements [op.OPStorage].
+//
+// A revoked session's access token is refused here, which is the one
+// place a revocation can reach a token already in circulation. Access
+// tokens are JWTs verified offline by everything else, so until they
+// expire nothing else can be told to stop honouring one -- and this
+// endpoint holds the record anyway, so asking costs a lookup.
+//
+// Conformance found it through the narrowest door: a reused
+// authorization code must revoke what it issued (RFC 6749 4.1.2), we
+// revoked the session, and `userinfo` went on answering with the access
+// token from the first redemption. Fixing only that case would have left
+// every OTHER revocation with the same hole.
 func (s *Storage) SetUserinfoFromToken(ctx context.Context, info *oidc.UserInfo, tokenID, _, _ string) error {
 	issued, err := getJSON[token](ctx, s.state, tokenKey(tokenID))
 	if err != nil {
 		return err
 	}
+
 	if issued == nil {
 		return errors.New("no such token")
 	}
+
+	if issued.Session != "" {
+		_, live, err := s.iss.Sessions().ByID(ctx, issued.Session)
+		if err != nil {
+			return err
+		}
+
+		if !live {
+			return errors.New("the session this token was issued under has ended")
+		}
+	}
+
 	return s.fill(ctx, info, issued.Subject, issued.Claims, issued.GivenName, issued.FamilyName)
 }
 
