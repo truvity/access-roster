@@ -1,21 +1,18 @@
 import { useState } from "react";
 import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import ToggleButton from "@mui/material/ToggleButton";
-import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 
 import { access, personName, workspaces } from "./api";
 import { AccountFilter } from "./gen/directoryroster/v1/access_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
-import { Failure, Loading, Mono, Nothing, Page, Ref, State } from "./ui";
+import { Facet, Facets, Failure, Loading, Mono, Nothing, Page, Ref, State } from "./ui";
 
 /** The identity-side leaf: every account the hub has snapshotted. The
  *  header search is how you reach one person; this list is for the
@@ -55,33 +52,31 @@ export function People() {
       title="People"
       lede="Every account in every connected provider, as the last snapshot has it. A person's page shows the chain from their provider groups to the clients they reach."
     >
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
-        {list.length > 1 ? (
-          <ToggleButtonGroup size="small" exclusive value={provider} onChange={(_, next: string | null) => next !== null && setProvider(next)}>
-            <ToggleButton value="">Every provider</ToggleButton>
-            {list.map((tenant) => (
-              <ToggleButton key={tenant.id} value={tenant.id} sx={{ fontFamily: "monospace", textTransform: "none" }}>
-                {tenant.id}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        ) : null}
-        {domains.length > 1 ? (
-          <ToggleButtonGroup size="small" exclusive value={domain} onChange={(_, next: string | null) => next !== null && setDomain(next)}>
-            <ToggleButton value="">Every domain</ToggleButton>
-            {domains.map((name) => (
-              <ToggleButton key={name} value={name} sx={{ fontFamily: "monospace", textTransform: "none" }}>
-                {name}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        ) : null}
-        <ToggleButtonGroup size="small" exclusive value={account} onChange={(_, next: AccountFilter | null) => next !== null && setAccount(next)}>
-          <ToggleButton value={AccountFilter.UNSPECIFIED}>Any account</ToggleButton>
-          <ToggleButton value={AccountFilter.LIVE}>Live</ToggleButton>
-          <ToggleButton value={AccountFilter.SUSPENDED}>Suspended</ToggleButton>
-        </ToggleButtonGroup>
-      </Stack>
+      <Facets>
+        <Facet
+          value={provider}
+          onChange={setProvider}
+          all={{ value: "", label: "Every provider" }}
+          options={list.map((tenant) => ({ value: tenant.id, label: tenant.id }))}
+          mono
+        />
+        <Facet
+          value={domain}
+          onChange={setDomain}
+          all={{ value: "", label: "Every domain" }}
+          options={domains.map((name) => ({ value: name, label: name }))}
+          mono
+        />
+        <Facet
+          value={account}
+          onChange={setAccount}
+          all={{ value: AccountFilter.UNSPECIFIED, label: "Any account" }}
+          options={[
+            { value: AccountFilter.LIVE, label: "Live" },
+            { value: AccountFilter.SUSPENDED, label: "Suspended" },
+          ]}
+        />
+      </Facets>
 
       <Loading busy={found.loading} />
       <Failure error={found.error} />

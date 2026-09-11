@@ -13,8 +13,6 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
-import ToggleButton from "@mui/material/ToggleButton";
-import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
@@ -22,7 +20,7 @@ import { Backend, access, ago, at, backendName, personName, reason, settings, wo
 import { useAsync, useWhile } from "./hooks";
 import type { Workspace } from "./gen/directoryroster/v1/workspace_pb";
 import { paths } from "./router";
-import { Authority, Failure, Loading, Names, Nothing, Page, Ref, Rows, Section, State, authorityKind, stateLabel } from "./ui";
+import { Authority, Facet, Facets, Failure, Loading, Names, Nothing, Page, Ref, Rows, Section, State, authorityKind, stateLabel } from "./ui";
 
 /** The identity-side container: every directory this hub reads. */
 export function Directories({ operator, onDone }: { operator: boolean; onDone: (message: string) => void }) {
@@ -75,28 +73,21 @@ export function Directories({ operator, onDone }: { operator: boolean; onDone: (
       <Loading busy={list.loading} />
       <Failure error={failure ?? list.error} />
 
-      <Stack direction="row" spacing={2} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.5, mb: 1.5 }}>
-        {all.length > 1 ? (
-          <ToggleButtonGroup size="small" exclusive value={provider} onChange={(_, next: string | null) => next !== null && setProvider(next)}>
-            <ToggleButton value="">Every provider</ToggleButton>
-            {all.map((tenant) => (
-              <ToggleButton key={tenant.id} value={tenant.id} sx={{ fontFamily: "monospace", textTransform: "none" }}>
-                {tenant.id}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        ) : null}
-        {present.length > 1 ? (
-          <ToggleButtonGroup size="small" exclusive value={state} onChange={(_, next: string | null) => next !== null && setState(next)}>
-            <ToggleButton value="">Any state</ToggleButton>
-            {present.map((kind) => (
-              <ToggleButton key={kind} value={kind} sx={{ textTransform: "none" }}>
-                {stateLabel(kind)}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        ) : null}
-      </Stack>
+      <Facets>
+        <Facet
+          value={provider}
+          onChange={setProvider}
+          all={{ value: "", label: "Every provider" }}
+          options={all.map((tenant) => ({ value: tenant.id, label: tenant.id }))}
+          mono
+        />
+        <Facet
+          value={state}
+          onChange={setState}
+          all={{ value: "", label: "Any state" }}
+          options={present.map((kind) => ({ value: kind, label: stateLabel(kind) }))}
+        />
+      </Facets>
 
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
         <Table size="small">

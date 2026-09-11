@@ -134,15 +134,26 @@ export function App() {
       <Divider />
       {identityInfo?.status === "signed-in" ? (
         <Stack direction="row" sx={{ alignItems: "stretch", gap: 0.5, px: 1, py: 1 }}>
-          <Tooltip title="Your page: what you are, and what you reach">
+          {/* A recovery sign-in has no address: it is a ServiceAccount the
+              cluster vouched for, not a person, so there is no person page
+              to open and the link went to an empty one. It still shows who
+              is signed in, because that is the question the block answers
+              — it just stops pretending to be a link. */}
+          <Tooltip title={identityInfo.email ? "Your page: what you are, and what you reach" : "Signed in without an address, so there is no person page: this is a ServiceAccount the cluster vouched for"}>
             <ListItemButton
-              component="a"
-              href={`#${paths.person(identityInfo.email ?? "")}`}
-              selected={route.view === "people" && route.id?.toLowerCase() === identityInfo.email?.toLowerCase()}
+              component={identityInfo.email ? "a" : "div"}
+              href={identityInfo.email ? `#${paths.person(identityInfo.email)}` : undefined}
+              disabled={!identityInfo.email}
+              selected={route.view === "people" && !!identityInfo.email && route.id?.toLowerCase() === identityInfo.email.toLowerCase()}
               onClick={() => setOpen(false)}
-              sx={{ mx: 0, px: 1.25, py: 0.75, flexGrow: 1, minWidth: 0, display: "block" }}
+              sx={{ mx: 0, px: 1.25, py: 0.75, flexGrow: 1, minWidth: 0, display: "block", "&.Mui-disabled": { opacity: 1 } }}
             >
-              <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+              <Typography
+                variant="body2"
+                noWrap
+                sx={{ fontWeight: 600 }}
+                title={personName(identityInfo.givenName, identityInfo.familyName, identityInfo.email) || identityInfo.name}
+              >
                 {personName(identityInfo.givenName, identityInfo.familyName, identityInfo.email) || identityInfo.name}
               </Typography>
               <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block", fontFamily: "monospace", fontSize: "0.72rem", lineHeight: 1.4 }}>

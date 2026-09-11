@@ -15,15 +15,13 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
-import ToggleButton from "@mui/material/ToggleButton";
-import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { ago, at, howName, reason, sessions as sessionsClient, until } from "./api";
 import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { paths } from "./router";
-import { Failure, Loading, Nothing, Page, Ref } from "./ui";
+import { Facet, Failure, Loading, Nothing, Page, Ref } from "./ui";
 
 /** Sessions live in the issuer (docs/design/access-issuer.md, "Where
  *  session management lives"): one refresh token, described, per
@@ -312,16 +310,12 @@ export function SessionsPage({ operator }: { operator: boolean }) {
           value={clientId}
           onChange={(e) => setClientId(e.target.value.trim())}
         />
-        {ways.length > 1 ? (
-          <ToggleButtonGroup size="small" exclusive value={how} onChange={(_, next: string | null) => next !== null && setHow(next)}>
-            <ToggleButton value="">Any way in</ToggleButton>
-            {ways.map((kind) => (
-              <ToggleButton key={kind} value={String(kind)} sx={{ textTransform: "none" }}>
-                {howName(kind)}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-        ) : null}
+        <Facet
+          value={how}
+          onChange={setHow}
+          all={{ value: "", label: "Any way in" }}
+          options={ways.map((kind) => ({ value: String(kind), label: howName(kind) }))}
+        />
       </Stack>
 
       <Loading busy={loading} />

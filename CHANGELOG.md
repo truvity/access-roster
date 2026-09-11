@@ -1,3 +1,29 @@
+## Unreleased
+
+Found by signing in to the live console with a headless browser and
+looking at every page at 1440px and at 390px.
+
+- **The Overview stopped shouting.** "Needs attention" rendered one row
+  per internal group that opens no client — **73 of them**, because the
+  clusters and cloud accounts that will require those groups are Phase 2.
+  A healthy installation read as a broken one, the page was 4832px tall,
+  and the working state was pushed off the screen. Runs of the same
+  finding now collapse into one row with a count once there are more than
+  three: below that the names are the information, above it the count is.
+
+- **The filters fitted on a phone.** A `ToggleButtonGroup` is a flex row
+  that does not wrap, so twelve domains ran off the side of the screen
+  and took the page's width with them — the People page scrolled 182px
+  sideways and Provider groups 73px, with the filter itself unreachable.
+  One shared `Facet` now wraps, and three pages that had hand-rolled the
+  same control with slightly different spacing use it.
+
+- **The account block stopped linking to a page that cannot exist.** A
+  recovery sign-in has no address — it is a ServiceAccount the cluster
+  vouched for — so the link went to an empty person page. It still says
+  who is signed in, and shows the full subject on hover rather than its
+  first twenty characters.
+
 ## v0.12.5
 
 - **The conformance runbook was followed, and it was wrong twice**
