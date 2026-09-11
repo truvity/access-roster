@@ -170,29 +170,31 @@ runs:
           echo "AWS_CONFIG_FILE=${aws_config}" >> "${GITHUB_ENV}"
         fi
         if [ -n "${DEFAULT_PROFILE}" ]; then
-          # Checked against the profiles actually written, which closes
-          # two things at once.
+          # What reaches GITHUB_ENV is the name THIS RUN WROTE, not the
+          # input that selected it. That closes two things at once.
           #
-          # A value from the workflow reaches GITHUB_ENV here, and a
-          # newline in it would declare arbitrary environment variables
-          # for every later step of the job — the input is trusted only
-          # as far as whoever wrote the workflow, and an expression like
-          # ${{ github.event.* }} is not trusted at all.
+          # GITHUB_ENV is line-oriented, so a newline in a value declares
+          # arbitrary environment variables for every later step of the
+          # job. The input is trusted only as far as whoever wrote the
+          # workflow, and a workflow that interpolates an event field
+          # into it is not trusted at all. A name built here cannot carry
+          # a newline: it is role@account, from an audience whose
+          # whitespace was stripped before it was used.
           #
           # And a name that is not one of ours is a mistake worth
           # catching here rather than as an AWS error three steps later
           # about a profile that does not exist.
-          found=""
+          chosen=""
           for written in ${profiles}; do
             if [ "${written}" = "${DEFAULT_PROFILE}" ]; then
-              found="yes"
+              chosen="${written}"
             fi
           done
-          if [ -z "${found}" ]; then
-            echo "::error::default-profile ${DEFAULT_PROFILE} is not one this run wrote. Written: ${profiles:-none}" >&2
+          if [ -z "${chosen}" ]; then
+            echo "::error::default-profile is not one this run wrote. Written: ${profiles:-none}" >&2
             exit 1
           fi
-          echo "AWS_PROFILE=${DEFAULT_PROFILE}" >> "${GITHUB_ENV}"
+          echo "AWS_PROFILE=${chosen}" >> "${GITHUB_ENV}"
         fi
         if [ -n "${kubeconfig}" ]; then
           echo "KUBECONFIG=${kubeconfig}" >> "${GITHUB_ENV}"
