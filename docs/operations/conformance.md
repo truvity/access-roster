@@ -57,6 +57,11 @@ curl -sk "$S/api/info/$TEST" | jq '{status, result}'
 Change the discovery URL to point at whichever installation is under
 test. Nothing about this run touches the installation's configuration.
 
+**Last run: 2026-09-11 against `access.truvity.xyz`, on the merged
+service at 0.12.2 — FINISHED / PASSED, 34 checks, no failures and no
+warnings.** Worth repeating after anything that changes discovery, since
+that is the whole of what it reads.
+
 ## Basic OP and RP-Initiated Logout — attended
 
 These sign somebody in, so they need clients at the issuer and a person
@@ -79,17 +84,22 @@ certification is surface with no consumer.
 
 ```yaml
   - name: conformance
-    hostname: localhost.emobix.co.uk
+    # WITH THE PORT. A row names one host, port included, and the
+    # redirects below are on :8443 — the render refuses the mismatch with
+    # "not this client's host".
+    hostname: localhost.emobix.co.uk:8443
     redirects:
       - https://localhost.emobix.co.uk:8443/test/a/access-issuer/callback
     signed_out:
       - https://localhost.emobix.co.uk:8443/test/a/access-issuer/post_logout_redirect
+    requires: [all:access-roster:viewer]
   - name: conformance-2
-    hostname: localhost.emobix.co.uk
+    hostname: localhost.emobix.co.uk:8443
     redirects:
       - https://localhost.emobix.co.uk:8443/test/a/access-issuer/callback
     signed_out:
       - https://localhost.emobix.co.uk:8443/test/a/access-issuer/post_logout_redirect
+    requires: [all:access-roster:viewer]
 ```
 
 The alias in those paths (`access-issuer`) has to match the `alias` in
@@ -97,9 +107,17 @@ the test configuration below — the suite serves each test plan's
 callback under its own alias, and a mismatch reads as the issuer
 refusing the redirect.
 
-Neither declares `requires`: a certification run is not a role, and
-gating it on one would fail every test for a reason that has nothing to
-do with the specification.
+**`requires` is mandatory** and these are no exception: the policy
+refuses to load a client that requires no group, with *"client
+%q requires no group, so nobody may use it"*. An earlier version of this
+page said to leave it off, which would have failed the render before a
+single test ran.
+
+Name a group the person running the suite already holds.
+`all:access-roster:viewer` is the bootstrap matcher that admits the
+`truvity.com` domain, so it is the smallest thing that works here — the
+tests sign in as a real person, and that person has to be admitted like
+any other.
 
 ### 2. Read the secrets
 
