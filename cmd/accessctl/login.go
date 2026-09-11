@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -221,11 +222,24 @@ func readIDToken(token string) (subject, email string, ok bool) {
 	return claims.Subject, claims.Email, true
 }
 
+// page is the one thing the browser sees from this process.
+//
+// Everything is escaped, and the message especially: it carries the
+// issuer's `error_description` straight off the query string, so it is
+// attacker-controlled by anyone who can make a browser visit this
+// loopback port while a sign-in is running. Reflecting it unescaped was
+// a reflected XSS, and CodeQL was right to say so.
 func page(w http.ResponseWriter, title, message string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Nothing on this page loads a script, so the policy says exactly
+	// that. It costs one header and closes the whole class rather than
+	// this one instance of it.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	safeTitle, safeMessage := html.EscapeString(title), html.EscapeString(message)
 	_, _ = fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><title>%s</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;margin:4rem auto;max-width:32rem;padding:0 1rem}</style>
-<h1>%s</h1><p>%s</p>`, title, title, message)
+<h1>%s</h1><p>%s</p>`, safeTitle, safeTitle, safeMessage)
 }
 
 // openBrowser asks the desktop to open a URL, and does not care whether

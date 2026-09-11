@@ -15,6 +15,7 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/op"
 
 	"github.com/truvity/access-roster/gen/accessissuer/v1/accessissuerv1connect"
+	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // Provider assembles the OpenID surface over the storage: discovery, the
@@ -179,8 +180,13 @@ func endsTheBrowserSession(signIn SignInDeps, next http.Handler) http.Handler {
 		if r.URL.Path == "/end_session" {
 			if id := SSOFromRequest(r); id != "" {
 				if err := signIn.SSO.End(r.Context(), id); err != nil && signIn.Log != nil {
+					// Through logsafe like every other call site: the id
+					// came off a COOKIE, so a crafted one can reach this
+					// error's text, and a value that can forge a line
+					// break can forge a log line. Missing it here was an
+					// inconsistency rather than a decision.
 					signIn.Log.WarnContext(r.Context(), "browser session could not be ended",
-						"error", err)
+						"error", logsafe.Error(err))
 				}
 
 				http.SetCookie(w, signIn.SSO.Cookie("", signIn.Secure))
