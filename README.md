@@ -118,48 +118,107 @@ access-roster targets three OpenID Foundation profiles. A profile is
 claimed only once the suite says so, which is why this section carries
 the last run rather than an intention.
 
-Last run 2026-09-11 against the deployed issuer at v0.14.3.
+**Last run 2026-09-12 against the deployed issuer at v0.15.2.**
 
-| Profile | Plan | Last run |
-|---|---|---|
-| [**Config OP**](https://openid.net/certification/connect_op_testing/) | `oidcc-config-certification-test-plan` | **1 passing**, and in CI: it reads the discovery document and the key set, so it needs no client and nobody at a browser |
-| [**RP-Initiated Logout OP**](https://openid.net/certification/connect_op_logout_testing/) | `oidcc-rp-initiated-logout-certification-test-plan` | **3 passing, 8 in review.** Review is the suite's state for a step a person signs off; each carries a screenshot of the page the issuer served |
-| [**Basic OP**](https://openid.net/certification/connect_op_testing/) | `oidcc-basic-certification-test-plan` | see below |
+| Profile | Passed | Review | Skipped | Warning | **Failed** |
+|---|--:|--:|--:|--:|--:|
+| [Config OP](https://openid.net/certification/connect_op_testing/) | 1 | 0 | 0 | 0 | **0** |
+| [RP-Initiated Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 3 | 8 | 0 | 0 | **0** |
+| [Basic OP](https://openid.net/certification/connect_op_testing/) | 21 | 4 | 4 | 6 | **0** |
 
-The profile names link to the OpenID Foundation's own testing
-instructions for each.
+The Foundation's rule is that **PASSED, REVIEW, WARNING and SKIPPED all
+count, and only FAILED or INTERRUPTED disqualify** a profile. On that
+rule all three are certifiable. The columns are here rather than a word
+like *green* because the four states mean different things and two of
+them need explaining.
 
-A profile is not claimed until its run is green, and this table says so
-rather than rounding up.
+### REVIEW is a screenshot handed to a person
 
-**Logout cannot be certified on its own.** The Foundation requires a
-logout submission to carry RP-Initiated Logout OP *and at least one of*
-Session Management, Front-Channel or Back-Channel logout. This issuer
-serves none of those three on purpose — each is surface with no consumer
-here — so the RP-Initiated run above is worth having as a correctness
-check and is not a certifiable submission until one of them is built.
+Twelve modules end at a page the suite cannot see — it must refuse, so
+there is no redirect back — and each asks a human to confirm what was
+shown. All twelve were reviewed on 2026-09-12 and every screenshot shows
+the page its step demanded:
 
-**The suite is run by a person, at every major and minor release**, as a
-whole. It used to run the Config profile nightly and nothing else, which
-is worse than no check: one profile passing daily reads as *conformance
-passes*, while the two that actually sign somebody in have not run for
-weeks — and those two are where every defect has been. The Config
-workflow is still one click away
+| What the step demands | Modules | What the screenshot shows |
+|---|--:|---|
+| an error page, the `redirect_uri` is not registered | 2 | *That sign-in request was not valid* |
+| an error page, the `id_token_hint` is not valid | 2 | *That sign-out request was not valid — id_token_hint invalid* |
+| an error page, the `post_logout_redirect_uri` is not registered | 3 | *That sign-out request was not valid — post_logout_redirect_uri invalid* |
+| the successful logout page | 3 | *Signed out* |
+| the login prompt during a second authorization | 2 | the sign-in chooser |
+
+**This review is not a formality.** It has caught a defect both times it
+has been done: once two pages that were wrong (a signed-out page claiming
+other consoles were still running, and an unstyled library error), and
+once ten screenshots that were byte-identical pictures of the wrong page
+because of a fault in the driver. A REVIEW whose evidence is wrong passes
+silently.
+
+### SKIPPED means the discovery document was believed
+
+Three modules skip because `scopes_supported` says we do not offer
+`address` or `phone`, and one because we answer `request_not_supported`.
+Those are optional features we decline: `address` and `phone` are
+standard scopes for a postal address and a telephone number, and a
+directory reader for infrastructure has no source for either and no
+business holding them. The suite read discovery, believed it, and
+skipped — which is evidence the discovery document is truthful rather
+than a gap.
+
+### WARNING is mostly personal data we decline to hold
+
+Four warnings say userinfo does not carry every claim the `profile` and
+`email` scopes permit. **Verified with a real Google sign-in**, not the
+automated recovery path: `sub`, `name`, `given_name`, `family_name`,
+`preferred_username`, `email`, `email_verified` and `groups` are all
+returned. What is missing is `birthdate`, `gender`, `zoneinfo`,
+`locale`, `picture`, `website`, `profile`, `nickname`, `middle_name` and
+`updated_at` — data this issuer has no source for and no reason to
+carry. A warning for declining to hold somebody's birthdate is a warning
+worth keeping.
+
+The other two come from one module noting the ID token carries claims
+the client did not request by scope. One is `groups`, which is the
+entire point of this issuer and what Kargo and ArgoCD read; gating it
+behind a scope would satisfy the suite and break every consumer. The
+other is `client_id`, which duplicates `azp` and comes from the
+library's own claims struct rather than from anything here.
+
+**One warning was a real defect and is fixed** (v0.15.2): a reused
+authorization code must revoke what it issued, and `userinfo` went on
+answering with the access token from the first redemption.
+
+### Logout cannot be certified on its own
+
+The Foundation requires a logout submission to carry RP-Initiated Logout
+OP *and at least one of* Session Management, Front-Channel or
+Back-Channel logout. This issuer serves none of those three on purpose —
+each is surface with no consumer here — so the RP-Initiated run above is
+worth having as a correctness check and is not a certifiable submission
+until one of them is built. Back-Channel is the candidate: it would close
+the window in which a proxy keeps serving after a sign-out, which
+`ttl_cap` currently bounds rather than eliminates.
+
+### How it is run
+
+**By a person, at every major and minor release**, as a whole. It used to
+run the Config profile nightly and nothing else, which is worse than no
+check: one profile passing daily reads as *conformance passes* while the
+two that actually sign somebody in have not run for weeks — and those
+two are where every defect has been. The Config workflow is still one
+click away
 ([.github/workflows/conformance.yaml](.github/workflows/conformance.yaml)),
 because it needs no credential and guards the discovery document, which
 changes silently when a provider option changes.
-
-A run is not finished when the suite goes quiet. Modules in **REVIEW**
-are the suite handing a screenshot to a person, and a REVIEW whose
-screenshot shows the wrong page passes silently — two did, and both were
-pages a person meets.
 
 [docs/operations/conformance.md](docs/operations/conformance.md) is the
 procedure, and [hack/conformance_drive.py](hack/conformance_drive.py)
 drives headless Chrome through the browser half — signing in through
 recovery, and answering the suite's manual steps with a screenshot of the
 page it is looking at — so thirty-five modules are one command rather
-than thirty-five sign-ins.
+than thirty-five sign-ins. `--manual` hands one module's browser step to
+a person instead, which is how the profile and email claims above were
+checked with a real account.
 
 ## Read next
 
