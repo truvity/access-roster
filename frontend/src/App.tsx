@@ -98,10 +98,14 @@ export function App() {
   // an operator of every directory without naming any.
   const operatorFor = (workspace: string) => operator || (identityInfo?.scopes?.[workspace] ?? []).includes("operator");
 
-  // Who is signed in. Declared here and rendered near the TOP of the
-  // rail: the first question somebody has in a console that decides
-  // access is which account they are looking at it with, and the foot
-  // of a scrolling column is the last place they look.
+  // Who is signed in, rendered at the FOOT of the rail.
+  //
+  // It was moved to the top and moved back: near the brand it competed
+  // with the navigation for the first thing the eye lands on, and a
+  // console is opened to go somewhere rather than to check whose account
+  // it is. The foot is where an account block belongs — what it needed
+  // was not height but a sign-out that says "Sign out" instead of being
+  // an icon to guess at.
   const account = (
     <>
       {identityInfo?.status === "signed-in" ? (
@@ -181,8 +185,6 @@ export function App() {
           {identityInfo?.version ?? ""}
         </Typography>
       </Box>
-      {account}
-      <Divider />
       <List dense disablePadding sx={{ pb: 1 }}>
         <NavItem item={{ value: "overview", label: "Overview", to: paths.overview(), icon: <DashboardIcon fontSize="small" /> }} current={route.view} onPick={() => setOpen(false)} />
         <ListSubheader disableSticky sx={{ mt: 1.5 }} title="Where people come from">
@@ -208,6 +210,8 @@ export function App() {
         />
       </List>
       <Box sx={{ flexGrow: 1 }} />
+      <Divider />
+      {account}
     </Box>
   );
 

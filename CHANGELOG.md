@@ -1,3 +1,13 @@
+## Unreleased
+
+- **The account block went back to the foot of the rail.** Moved up and
+  moved back on looking at it: near the brand it competed with the
+  navigation for the first thing the eye lands on, and a console is
+  opened to go somewhere rather than to check whose account it is. What
+  it needed was not height. It was a sign-out that says *Sign out*
+  instead of an icon to guess at, and that stays — as does Settings in
+  the list of places to go rather than alone in the foot.
+
 ## v0.13.2
 
 - **The Config profile runs in CI**, daily and on demand
