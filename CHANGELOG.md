@@ -1,3 +1,16 @@
+## v0.15.1
+
+- **The sign-ins table writes the person's name once.** Grouping the
+  sessions list by identity in v0.15.0 fixed the half that sits below the
+  fold; the table that actually fills the Sessions page is *Sign-ins*,
+  and it repeated one identity fifteen times down the screen after a day
+  of testing. One row per browser is still right — a sign-in is a browser
+  and ending one is the unit of sign-out — but the name is written once,
+  with a count of how many browsers.
+
+  Found by taking a screenshot of the live page rather than trusting the
+  change.
+
 ## v0.15.0
 
 - **Sessions group by identity, then by browser.** Browser alone was the

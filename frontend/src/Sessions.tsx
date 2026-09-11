@@ -266,6 +266,19 @@ function SignIns({
 }) {
     if (signIns.length === 0) return null;
 
+    // One row per BROWSER still, but the person's name written once.
+    // Fifteen sign-ins by one identity rendered fifteen identical names
+    // down the page and pushed the sessions below the fold -- which is
+    // what this table looked like in practice after a day of testing.
+    const grouped = Array.from(
+        signIns.reduce((by, signin) => {
+            const rows = by.get(signin.identity) ?? [];
+            rows.push(signin);
+            by.set(signin.identity, rows);
+            return by;
+        }, new Map<string, typeof signIns>()),
+    );
+
     return (
         <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
@@ -296,46 +309,71 @@ function SignIns({
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {signIns.map((signin) => (
-                            <TableRow key={signin.id} hover>
-                                <TableCell>
-                                    <Ref to={paths.person(signin.identity)}>
-                                        {signin.identity}
-                                    </Ref>
-                                </TableCell>
-                                <TableCell>
-                                    <Typography
-                                        variant="body2"
-                                        color="text.secondary"
+                        {grouped.map(([identity, rows]) =>
+                            rows.map((signin, i) => (
+                                <TableRow key={signin.id} hover>
+                                    <TableCell
+                                        sx={{
+                                            borderBottom:
+                                                i < rows.length - 1
+                                                    ? "none"
+                                                    : undefined,
+                                        }}
                                     >
-                                        {signin.how === "recovery"
-                                            ? "recovery"
-                                            : signin.how}
-                                    </Typography>
-                                </TableCell>
-                                <TableCell>
-                                    {ago(at(signin.authTime))}
-                                </TableCell>
-                                <TableCell>
-                                    {until(at(signin.expiresAt))}
-                                </TableCell>
-                                <TableCell align="right">
-                                    <Button
-                                        size="small"
-                                        color="warning"
-                                        disabled={busy === signin.id}
-                                        onClick={() =>
-                                            onSignOut(
-                                                signin.id,
-                                                signin.identity,
-                                            )
-                                        }
-                                    >
-                                        Sign out
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                        ))}
+                                        {i === 0 ? (
+                                            <>
+                                                <Ref
+                                                    to={paths.person(identity)}
+                                                >
+                                                    {identity}
+                                                </Ref>
+                                                {rows.length > 1 ? (
+                                                    <Typography
+                                                        component="span"
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        {" "}
+                                                        · {rows.length} browsers
+                                                    </Typography>
+                                                ) : null}
+                                            </>
+                                        ) : null}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Typography
+                                            variant="body2"
+                                            color="text.secondary"
+                                        >
+                                            {signin.how === "recovery"
+                                                ? "recovery"
+                                                : signin.how}
+                                        </Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                        {ago(at(signin.authTime))}
+                                    </TableCell>
+                                    <TableCell>
+                                        {until(at(signin.expiresAt))}
+                                    </TableCell>
+                                    <TableCell align="right">
+                                        <Button
+                                            size="small"
+                                            color="warning"
+                                            disabled={busy === signin.id}
+                                            onClick={() =>
+                                                onSignOut(
+                                                    signin.id,
+                                                    signin.identity,
+                                                )
+                                            }
+                                        >
+                                            Sign out
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            )),
+                        )}
                     </TableBody>
                 </Table>
             </TableContainer>
