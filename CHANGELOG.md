@@ -1,4 +1,4 @@
-## Unreleased
+## v0.12.5
 
 - **The conformance runbook was followed, and it was wrong twice**
   (INF-683). It told you to leave `requires` off the two temporary
