@@ -108,10 +108,33 @@ applications that cannot run an OpenID flow themselves; anything that can,
 such as ArgoCD or Kargo, talks to the issuer directly.
 
 > **Status.** Running on one cluster with three Google Workspaces
-> connected, three relying parties on the issuer, and the OpenID
-> Foundation Config profile passing. [CHANGELOG.md](CHANGELOG.md) says
-> what exists at each version, and the documents below describe what is
-> built.
+> connected and four relying parties on the issuer.
+> [CHANGELOG.md](CHANGELOG.md) says what exists at each version, and the
+> documents below describe what is built.
+
+## Conformance
+
+access-roster claims three OpenID Foundation profiles, and a claim is
+worth exactly what the suite says about it.
+
+| Profile | Plan | Runs |
+|---|---|---|
+| **Config** | `oidcc-config-certification-test-plan` | **passing**, and in CI: it reads the discovery document and the key set, so it needs no client and nobody at a browser |
+| **Basic OP** | `oidcc-basic-certification-test-plan` | needs a sign-in |
+| **RP-Initiated Logout** | `oidcc-rp-initiated-logout-certification-test-plan` | needs a sign-in |
+
+The Config profile is the one that guards the surface most likely to
+break by accident: change a provider option and discovery changes with
+it, silently, for every relying party that reads it. So it runs on a
+schedule against the deployed issuer rather than only when somebody
+remembers — see
+[.github/workflows/conformance.yaml](.github/workflows/conformance.yaml).
+
+The other two sign somebody in, which is the whole point of them.
+[docs/operations/conformance.md](docs/operations/conformance.md) is the
+procedure, and `hack/conformance-drive.sh` completes the browser half
+without a browser, so thirty modules are one command rather than thirty
+sign-ins.
 
 ## Read next
 

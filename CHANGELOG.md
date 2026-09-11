@@ -1,5 +1,28 @@
 ## Unreleased
 
+- **The Config profile runs in CI**, daily and on demand
+  (`.github/workflows/conformance.yaml`), and the three profiles are
+  named in the README with which of them can run unattended and why.
+
+  Config is the one that can: it reads the discovery document and the key
+  set, so it needs no client, no secret and nobody at a browser. It also
+  guards the surface most likely to break by accident — change a provider
+  option and discovery changes with it, silently, for every relying party
+  that reads it.
+
+  **On a schedule rather than on a tag**, deliberately. A tag is a build,
+  not a deployment: at the moment `v1.2.3` is pushed the cluster still
+  runs what it ran before, so a run then would certify the OLD issuer and
+  file the result under the NEW version. Certifying the tag itself means
+  standing its image up inside the job with a policy, a signing key and a
+  certificate the suite accepts — worth doing, and a different job.
+
+  The other two sign somebody in, and the signing-in needs a credential
+  from the cluster. CI has no business holding that, so they stay a
+  person's job — `hack/conformance-drive.sh` makes thirty sign-ins one
+  command.
+
+
 - **The rail puts who you are at the top, and says "Sign out".** The
   account block sat at the foot of a scrolling column, which is the last
   place somebody looks for the first question a console like this raises:

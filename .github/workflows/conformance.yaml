@@ -1,0 +1,121 @@
+# The OpenID Foundation Config profile, run against the live issuer.
+#
+# WHY THIS ONE. Config reads the discovery document and the key set and
+# checks them against the specification. It needs no client, no secret
+# and nobody at a browser, so it is the only one of the three profiles
+# that can run unattended — and it happens to guard the surface most
+# likely to break by accident: change a provider option and discovery
+# changes with it, silently, for every relying party that reads it.
+#
+# WHY ON A SCHEDULE AND NOT ON A TAG. A tag is a build, not a
+# deployment: at the moment `v1.2.3` is pushed the cluster is still
+# running whatever it ran before, so a run here would certify the OLD
+# issuer and report it against the NEW version. Testing the tag itself
+# would mean standing its image up in the job with a policy, a signing
+# key and a certificate the suite will accept — worth doing, and not the
+# same job as this one. Until then this runs after a deployment has had
+# time to land, and on demand.
+#
+# The other two profiles sign somebody in, which is the point of them,
+# and the signing-in needs a credential this workflow should not hold:
+# `hack/conformance-drive.sh` gets one from the cluster, and CI has no
+# business with cluster access. They stay a person's job, and the script
+# makes them one command rather than thirty sign-ins.
+name: Conformance
+
+on:
+  schedule:
+    # Daily, well after any working-hours deployment has settled.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      issuer:
+        description: The issuer to certify.
+        required: false
+        default: https://access.truvity.xyz
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance
+  cancel-in-progress: false
+
+jobs:
+  config-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ISSUER: ${{ inputs.issuer || 'https://access.truvity.xyz' }}
+      SUITE: https://localhost.emobix.co.uk:8443
+    steps:
+      # Pinned by COMMIT SHA, never a tag: a tag moves, and this is the
+      # house rule every other workflow here follows.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # The suite is published as images, so there is no Java build. It
+      # answers on a PUBLIC name that resolves to 127.0.0.1, which is how
+      # it gets a real certificate while running on a runner.
+      - name: Start the conformance suite
+        run: |
+          git clone --depth 1 https://gitlab.com/openid/conformance-suite.git /tmp/suite
+          cd /tmp/suite
+          docker compose -f docker-compose-prebuilt.yml up -d
+
+      - name: Wait for it to answer
+        run: |
+          for _ in $(seq 1 60); do
+            code=$(curl -sk -o /dev/null -w '%{http_code}' "${SUITE}/api/runner/available" || true)
+            [ "$code" = "200" ] && exit 0
+            sleep 5
+          done
+          echo "::error::the suite never came up" >&2
+          exit 1
+
+      # The discovery document has to be reachable from the runner before
+      # the suite is blamed for not reading it.
+      - name: Check the issuer is reachable
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            "${ISSUER}/.well-known/openid-configuration")
+          if [ "$code" != "200" ]; then
+            echo "::error::${ISSUER} answered ${code} for its discovery document" >&2
+            exit 1
+          fi
+
+      - name: Run the Config profile
+        run: |
+          cat > /tmp/config.json <<JSON
+          {
+            "alias": "access-issuer-ci",
+            "description": "access-issuer — Config profile (CI)",
+            "server": { "discoveryUrl": "${ISSUER}/.well-known/openid-configuration" },
+            "client": { "client_id": "conformance", "client_secret": "unused-here" }
+          }
+          JSON
+
+          plan=$(curl -sk -X POST \
+            "${SUITE}/api/plan?planName=oidcc-config-certification-test-plan" \
+            -H 'Content-Type: application/json' --data-binary @/tmp/config.json \
+            | jq -r .id)
+          [ -n "$plan" ] && [ "$plan" != "null" ] || {
+            echo "::error::the suite would not create a plan" >&2; exit 1; }
+
+          echo "plan: ${SUITE}/plan-detail.html?plan=${plan}"
+          hack/conformance-run.sh "$plan"
+
+      # The suite's own record of the run, which is what an auditor wants
+      # and what a failure needs: the summary above says which module,
+      # this says which assertion.
+      - name: Keep the log
+        if: always()
+        run: |
+          mkdir -p /tmp/conformance
+          curl -sk "${SUITE}/api/log" -o /tmp/conformance/runs.json || true
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: conformance-config-profile
+          path: /tmp/conformance/
+          if-no-files-found: warn
