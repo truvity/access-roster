@@ -155,9 +155,46 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
-	mux.Handle("/", challenges(endsTheBrowserSession(signIn, truthfulDiscovery(provider))))
+	mux.Handle("/", neverCached(challenges(endsTheBrowserSession(signIn, truthfulDiscovery(provider)))))
 
 	return mux, nil
+}
+
+// neverCached puts `Cache-Control: no-store` on the responses that carry
+// credentials.
+//
+// RFC 6749 5.1 requires it on the token endpoint, and the library does
+// not set it: conformance failed `oidcc-refresh-token` with "token
+// endpoint response does not contain 'cache-control' header". The reason
+// behind the rule is the one that matters — a token response sitting in
+// a proxy's cache, or a browser's, is a credential anybody who can reach
+// that cache now holds.
+//
+// `Pragma: no-cache` goes with it. It is HTTP/1.0 and redundant against
+// anything written this century, and the specification asks for it, and
+// conformance checks what the specification asks for.
+//
+// Applied by PATH rather than to everything: discovery and the key set
+// are public documents that SHOULD be cached, and telling the world not
+// to cache a key set would put a fetch of it in front of every
+// verification anybody does.
+func neverCached(next http.Handler) http.Handler {
+	secret := map[string]bool{
+		"/token":       true,
+		"/revoke":      true,
+		"/userinfo":    true,
+		"/oauth/token": true,
+		"/introspect":  true,
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if secret[r.URL.Path] {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Pragma", "no-cache")
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // endsTheBrowserSession makes RP-initiated logout end the sign-in, not

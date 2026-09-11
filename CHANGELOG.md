@@ -1,5 +1,20 @@
 ## Unreleased
 
+- **A response carrying a credential is never cached.** RFC 6749 5.1
+  requires `Cache-Control` on the token endpoint and the library does not
+  set it, so conformance failed `oidcc-refresh-token` with *"token
+  endpoint response does not contain 'cache-control' header"*. The rule
+  exists for a reason worth stating: a token response sitting in a
+  proxy's cache, or a browser's, is a credential anybody who can reach
+  that cache now holds.
+
+  `no-store` and `Pragma: no-cache` go on `/token`, `/revoke`,
+  `/userinfo` and `/introspect` — and deliberately **not** on discovery
+  or the key set, which are public documents that should be cached.
+  Telling the world not to cache a key set would put a fetch of it in
+  front of every verification anybody does.
+
+
 - **`prompt=none` with nobody signed in now answers the CLIENT.** OpenID
   Connect Core 3.1.2.6 requires `login_required` at the redirect URI; the
   issuer rendered an HTML page saying so instead, and the code comment
