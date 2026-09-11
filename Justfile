@@ -1,4 +1,4 @@
-# Development commands for directory-roster. Tools come from devbox
+# Development commands for access-roster. Tools come from devbox
 # (`devbox shell`, or direnv); CI runs each recipe as its own job.
 
 # Disable go.work (a parent workspace interferes with standalone module builds)
@@ -89,98 +89,6 @@ clean:
 # prove the schema rejects an unknown key (values.schema.json is the
 # contract — a typo must fail the render, not be silently ignored).
 chart-lint:
-    helm lint charts/directory-roster
-    helm template directory-roster charts/directory-roster >/dev/null
-    helm template directory-roster charts/directory-roster \
-        --set valkey.address=valkey.example.svc:6379 \
-        --set networkPolicy.enabled=true \
-        --set 'workspaces[0].id=C0example' \
-        --set 'workspaces[0].backend=google' \
-        --set 'workspaces[0].admin=admin@example.com' \
-        --set 'workspaces[0].secretName=example-sa-key' \
-        --set 'consumers[0].namespace=example-ns' \
-        --set 'consumers[0].serviceAccount=example-sa' \
-        --set 'policy.version=1' \
-        --set 'policy.groups.hub-operators.members[0]=platform-admins@example.com' >/dev/null
-    ! helm template directory-roster charts/directory-roster --set bogusKey=1 >/dev/null 2>&1
-    # An exposed console renders TWO routes: the gated one, and the
-    # bootstrap surface a gateway policy must not cover -- or the first
-    # directory can never be connected from a browser.
-    test "$(helm template directory-roster charts/directory-roster \
-        --set route.host=console.example | grep -c '^kind: HTTPRoute')" = "2"
-    test "$(helm template directory-roster charts/directory-roster \
-        --set route.host=console.example --set 'route.bootstrapPaths=null' \
-        | grep -c '^kind: HTTPRoute')" = "1"
-    # route.pathPrefix (INF-687): empty is today's shape exactly -- no
-    # URLRewrite filter anywhere, and the console matches "/" same as
-    # before.
-    helm template directory-roster charts/directory-roster \
-        --set route.host=console.example > /tmp/directory-roster-noprefix.yaml
-    ! grep -q 'type: URLRewrite' /tmp/directory-roster-noprefix.yaml
-    ! grep -q 'PUBLIC_ROOT_URL' /tmp/directory-roster-noprefix.yaml
-    grep -q 'value: /$' /tmp/directory-roster-noprefix.yaml
-    # Set, ONLY the console's own route gains the filter that strips it.
-    # The bootstrap surface -- /login, /connect -- keeps matching the
-    # host's ROOT with NO rewrite: their OAuth redirect URIs are
-    # registered with the provider at that literal, unprefixed address
-    # (the real Google client registered exactly
-    # https://.../connect/google/callback at the root), and a prefixed
-    # bootstrap route would render fine and fail only the first time
-    # somebody connects a directory. PUBLIC_URL, the console's own
-    # address, carries the prefix; PUBLIC_ROOT_URL, printed in the setup
-    # steps for the bootstrap redirects, does not.
-    helm template directory-roster charts/directory-roster \
-        --set route.host=console.example --set route.pathPrefix=/console \
-        > /tmp/directory-roster-prefix.yaml
-    test "$(grep -c 'type: URLRewrite' /tmp/directory-roster-prefix.yaml)" = "1"
-    test "$(grep -c 'replacePrefixMatch: /$' /tmp/directory-roster-prefix.yaml)" = "1"
-    grep -q 'value: /console/$' /tmp/directory-roster-prefix.yaml
-    grep -q 'value: "/login"' /tmp/directory-roster-prefix.yaml
-    grep -q 'value: "/connect"' /tmp/directory-roster-prefix.yaml
-    ! grep -q '/console/login\|/console/connect' /tmp/directory-roster-prefix.yaml
-    grep -q 'value: https://console.example/console$' /tmp/directory-roster-prefix.yaml
-    grep -q 'PUBLIC_ROOT_URL' /tmp/directory-roster-prefix.yaml
-    grep -q 'value: https://console.example$' /tmp/directory-roster-prefix.yaml
-    # A trailing slash or a bare "/" is not a path prefix worth having --
-    # it is either what empty already means or a double slash away from
-    # one, and the schema is the contract: a typo here must fail the
-    # RENDER, not be discovered as a 404 behind the gateway.
-    ! helm template directory-roster charts/directory-roster \
-        --set route.host=console.example --set route.pathPrefix=/console/ >/dev/null 2>&1
-    ! helm template directory-roster charts/directory-roster \
-        --set route.host=console.example --set route.pathPrefix=/ >/dev/null 2>&1
-    # route.gateway (INF-687): the other half of pathPrefix. Unset, this
-    # chart still owns exactly one Gateway (and one Certificate) as
-    # today. Set, it owns NEITHER -- two Gateways declaring a listener
-    # for the same route.host is a duplicate-listener collision, not two
-    # independent routes -- and both HTTPRoutes' parentRefs point at the
-    # named one instead, across namespaces.
-    helm template directory-roster charts/directory-roster \
-        --set route.host=console.example > /tmp/directory-roster-owngw.yaml
-    test "$(grep -c '^kind: Gateway$' /tmp/directory-roster-owngw.yaml)" = "1"
-    test "$(grep -c '^kind: Certificate$' /tmp/directory-roster-owngw.yaml)" = "1"
-    helm template directory-roster charts/directory-roster \
-        --set route.host=console.example \
-        --set route.gateway.name=access-issuer --set route.gateway.namespace=issuer-ns --set route.gateway.sectionName=issuer \
-        > /tmp/directory-roster-attach.yaml
-    test "$(grep -c '^kind: Gateway$' /tmp/directory-roster-attach.yaml)" = "0"
-    test "$(grep -c '^kind: Certificate$' /tmp/directory-roster-attach.yaml)" = "0"
-    test "$(grep -c '      name: access-issuer$' /tmp/directory-roster-attach.yaml)" = "2"
-    test "$(grep -c '      namespace: issuer-ns$' /tmp/directory-roster-attach.yaml)" = "2"
-    # A Gateway in another namespace with no namespace given is a render
-    # that looks fine and a parentRef that resolves inside THIS chart's
-    # own namespace instead -- silently attaching to nothing, or to
-    # something else entirely that happens to share the name.
-    ! helm template directory-roster charts/directory-roster \
-        --set route.host=console.example --set route.gateway.name=access-issuer >/dev/null 2>&1
-    # A forwarded issuer without an audience accepts every token that
-    # issuer mints, for every service it serves. That must fail the
-    # RENDER, not be discovered in the console's logs.
-    ! helm template directory-roster charts/directory-roster \
-        --set access.login.forwardedBearer.issuer=https://issuer.example >/dev/null 2>&1
-    helm template directory-roster charts/directory-roster \
-        --set access.login.forwardedBearer.issuer=https://issuer.example \
-        --set access.login.forwardedBearer.audience=directory-console >/dev/null
     # Bare first: the shipped values must satisfy their own schema, or
     # anyone who lints the chart as published gets a failure.
     helm lint charts/access-issuer
@@ -365,43 +273,9 @@ chart-lint:
     # is a PERMANENT OutOfSync -- which counts unhealthy and gates every
     # later wave. One `weight` per backend, in routes and policies alike.
     test "$(grep -c '^      backendRefs:$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^          weight: 1$' /tmp/access-proxy-routes.yaml)"
-    # BOTH services read their policy file once, at start. A chart that
-    # renders a policy ConfigMap and no checksum annotation is a chart
-    # where a grant lands in git, in the ConfigMap and in ArgoCD's
-    # "Synced" -- and never in the running service, until something
-    # unrelated restarts it. Found live on 2026-09-09: the issuer had the
-    # annotation, the hub did not, and the hub answered from the policy it
-    # booted with for as long as its pods lived.
-    test "$(helm template t charts/directory-roster --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
     test "$(helm template t charts/access-issuer --set issuerURL=https://i.example --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
-    # Half a sign-out is worse than none: the proxy's cookie goes, the
-    # issuer keeps the session, and the next click is admitted with no
-    # password -- a failure that looks exactly like success. So asking for
-    # the chain without the issuer it would end must fail the RENDER.
-    ! helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true >/dev/null 2>&1
-    helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example --set access.login.forwardedBearer.audience=console | grep -q 'end_session'
-    # And it must carry client_id. There is no id_token_hint in a plain
-    # `rd` redirect, so without a client the issuer has no `signed_out`
-    # list to match: it ends the session and lands the person on its OWN
-    # page. Verified live on 2026-09-09 -- the first render did exactly
-    # that.
-    helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example --set access.login.forwardedBearer.audience=console | grep -q 'client_id'
-    ! helm template t charts/directory-roster --set route.host=dir.example --set access.signOutThroughIssuer=true --set access.login.forwardedBearer.issuer=https://iss.example >/dev/null 2>&1
-    # The console's assets are referenced RELATIVELY so one committed
-    # bundle serves at any mount point -- which only works on a page
-    # reached WITH the trailing slash, because "./assets/..." at
-    # "/console" resolves against the root and asks the issuer. So the
-    # bare prefix must redirect to itself with the slash, and an Exact
-    # match is what outranks the PathPrefix rule.
-    helm template t charts/directory-roster --set route.host=a.example \
-        --set route.pathPrefix=/console \
-        --set route.gateway.name=iss --set route.gateway.namespace=iss \
-        > /tmp/dr-prefix-redirect.yaml
     grep -q 'type: Exact' /tmp/dr-prefix-redirect.yaml
     grep -q 'replaceFullPath: "/console/"' /tmp/dr-prefix-redirect.yaml
-    # And with no prefix there is nothing to redirect.
-    ! helm template t charts/directory-roster --set route.host=dir.example \
-        | grep -q 'RequestRedirect'
     # The issuer's root: a bare GET of the host lands somewhere useful
     # when a console shares it, and 404s honestly when one does not.
     helm template t charts/access-issuer --set issuerURL=https://a.example \
@@ -413,19 +287,6 @@ chart-lint:
     ! helm template t charts/access-issuer --set issuerURL=https://a.example \
         --set route.host=a.example --set console.mount= \
         | grep -q 'RequestRedirect'
-    # Under a path prefix the WHOLE sign-out chain moves with the
-    # console, and both halves are the kind that fail silently. The
-    # proxy's own paths are under the prefix -- /oauth2 at the root
-    # belongs to the issuer -- so a link to the root's /oauth2/sign_out
-    # is a button that 404s. And post_logout_redirect_uri must be the
-    # console's page under the prefix, matching the client's `signed_out`
-    # character for character, or the issuer ends the session and lands
-    # the person on its OWN page: a sign-out that worked and reads as
-    # though it did not.
-    helm template t charts/directory-roster --set route.host=access.example         --set route.pathPrefix=/console         --set route.gateway.name=iss --set route.gateway.namespace=iss         --set access.signOutThroughIssuer=true         --set access.login.forwardedBearer.issuer=https://access.example         --set access.login.forwardedBearer.audience=console         | grep -q '"/console/oauth2/sign_out'
-    helm template t charts/directory-roster --set route.host=access.example         --set route.pathPrefix=/console         --set route.gateway.name=iss --set route.gateway.namespace=iss         --set access.signOutThroughIssuer=true         --set access.login.forwardedBearer.issuer=https://access.example         --set access.login.forwardedBearer.audience=console         | grep -q 'post_logout_redirect_uri%3Dhttps%253A%252F%252Faccess.example%252Fconsole%252F'
-    # And with no prefix it is exactly what it has always been.
-    helm template t charts/directory-roster --set route.host=dir.example         --set access.signOutThroughIssuer=true         --set access.login.forwardedBearer.issuer=https://iss.example         --set access.login.forwardedBearer.audience=console         | grep -q '"/oauth2/sign_out'
     # CI identity is opt-in by naming the organisations. A chart that
     # rendered GITHUB_OWNERS from nothing would admit every repository on
     # GitHub, because anybody may run a workflow in their own and get a

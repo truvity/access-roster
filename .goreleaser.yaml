@@ -19,15 +19,6 @@ before:
     - sh -c "cd frontend && npm ci && npm run build"
 
 builds:
-  - id: directory-roster
-    main: ./cmd/directory-roster
-    binary: directory-roster
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
-
   - id: access-issuer
     main: ./cmd/access-issuer
     binary: access-issuer
@@ -79,33 +70,24 @@ archives:
         formats: [zip]
     name_template: "accessctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
-  # The two services and the acceptance runner: what an operator pulls to
-  # run a build outside a container.
+  # The service and the acceptance runner: what an operator pulls to run
+  # a build outside a container.
   - id: binaries
-    ids: [directory-roster, access-issuer, acceptance]
+    ids: [access-issuer, acceptance]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 kos:
   # base_import_paths appends the cmd directory's basename, so with the
   # caller's ko-docker-repo ghcr.io/truvity/access-roster the published
-  # slugs nest as access-roster/{directory-roster,access-issuer}.
-  - id: directory-roster
-    build: directory-roster
-    tags:
-      - "{{ .Version }}"
-      - "{{ if not .IsSnapshot }}latest{{ end }}"
-    platforms: [linux/amd64, linux/arm64]
-    bare: true
-    preserve_import_paths: false
-    base_import_paths: true
-    base_image: gcr.io/distroless/static:nonroot
-    sbom: none
-    labels:
-      org.opencontainers.image.title: directory-roster
-      org.opencontainers.image.version: "{{ .Version }}"
-      org.opencontainers.image.source: https://github.com/truvity/access-roster
-
+  # slug nests as access-roster/access-issuer.
+  #
+  # ONE image, because there is one service. The hub was a second binary
+  # and a second image until INF-691 folded it into the issuer, which
+  # runs it in process -- internal/app is still here and still does the
+  # directory work; what is gone is the separate deployment of it. It
+  # went on being built and pushed on every release for a while after
+  # that, which is how its package accumulated versions nothing pulled.
   - id: access-issuer
     build: access-issuer
     tags:
@@ -131,10 +113,8 @@ release:
 
     | | |
     |---|---|
-    | Hub image | `ghcr.io/truvity/access-roster/directory-roster:{{ .Version }}` |
-    | Issuer image | `ghcr.io/truvity/access-roster/access-issuer:{{ .Version }}` |
-    | Hub chart | `oci://ghcr.io/truvity/charts/directory-roster:{{ .Version }}` |
-    | Issuer chart | `oci://ghcr.io/truvity/charts/access-issuer:{{ .Version }}` |
+    | Image | `ghcr.io/truvity/access-roster/access-issuer:{{ .Version }}` |
+    | Chart | `oci://ghcr.io/truvity/charts/access-issuer:{{ .Version }}` |
     | TypeScript | `npm install github:truvity/access-roster#{{ .Tag }}` |
     | Go | `go get github.com/truvity/access-roster@{{ .Tag }}` |
 
