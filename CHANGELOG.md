@@ -1,5 +1,32 @@
 ## Unreleased
 
+- **The conformance driver runs in headless Chrome, because it has to.**
+  The first one used `curl` on the reasoning that the flow is redirects
+  and one form POST. It is not: the suite's callback is an HTML page that
+  posts the result back **with JavaScript**, so `curl` reached it, never
+  ran it, and every module sat in WAITING while the authorization it was
+  waiting for had already succeeded. From outside that is indistinguishable
+  from a hang.
+
+  `hack/conformance_drive.py` drives Chrome over the DevTools protocol and
+  submits the recovery form in the page, so the browser follows the
+  redirects itself and runs the callback's script.
+
+- **What a recovery sign-in cannot prove**, now written down. A recovery
+  subject is a ServiceAccount: no address, no name, so `userinfo` returns
+  no `email`, `name` or `preferred_username`. Every module checking the
+  claims a scope implies warns for a reason that does not exist when a
+  person signs in. The unattended run is evidence for the protocol
+  modules and not for the claim-bearing ones.
+
+- **Run one plan at a time.** The suite serves every plan's callback under
+  its alias and the clients register one callback, so a second plan with
+  a different alias is refused a redirect it never registered, and one
+  with the same alias interrupts the running test — which it reports only
+  in its own log, so from outside it looks like a hang. This is what
+  stopped the first attempt.
+
+
 - **The Sessions page lists the SIGN-INS**, above the sessions they
   opened. This is what made revoking look like a no-op: the page showed
   every per-client session and no sign-in, so emptying the list changed
