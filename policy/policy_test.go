@@ -306,3 +306,67 @@ func refused(t *testing.T, document, complaint string) {
 		t.Fatal(complaint)
 	}
 }
+
+// A GitHub team binding says which provider groups feed a team. It
+// grants nothing and reaches no token — a controller makes the
+// organisation match it — and it lives in this file for one reason: a
+// reader of the access model sees every team's source without opening
+// GitHub (INF-696).
+func TestGitHubTeamBindingsAreReadAsWritten(t *testing.T) {
+	t.Parallel()
+	declared, err := policy.Parse([]byte(`
+version: 1
+groups:
+  a: { members: [g@h.example] }
+github:
+  truvity:
+    platform: [team-platform@truvity.com, sre@truvity.com]
+    security: [sec@truvity.com]
+  trust-form:
+    platform: [team-platform@trustform.eu]
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+
+	teams := set.GitHubTeams()
+	if len(teams) != 3 {
+		t.Fatalf("teams = %+v", teams)
+	}
+	// Sorted by organisation then team, so a reader compares two renders
+	// of the same model without a diff full of reordering.
+	if teams[0].Org != "trust-form" || teams[1].Org != "truvity" || teams[1].Team != "platform" {
+		t.Errorf("teams are not sorted: %+v", teams)
+	}
+	if len(teams[1].Members) != 2 || teams[1].Members[0] != "team-platform@truvity.com" {
+		t.Errorf("members = %v", teams[1].Members)
+	}
+	// The same team name in two organisations is two bindings, not a
+	// clash: `platform` on truvity and on trust-form are different teams.
+	if teams[0].Team != "platform" {
+		t.Errorf("a team name shared across organisations collided: %+v", teams)
+	}
+}
+
+// A team fed by nothing would be a team the controller empties. That is
+// not something to express by leaving a list out, so it is refused.
+func TestABindingThatWouldEmptyATeamIsRefused(t *testing.T) {
+	t.Parallel()
+	for name, text := range map[string]string{
+		"no groups":  "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { truvity: { platform: [] } }\n",
+		"no domain":  "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { truvity: { platform: [nodomain] } }\n",
+		"empty team": "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { truvity: { \"\": [g@h.example] } }\n",
+	} {
+		declared, err := policy.Parse([]byte(text))
+		if err != nil {
+			continue
+		}
+		if _, err = policy.NewSet(declared); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}

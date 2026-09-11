@@ -260,6 +260,21 @@ message GetPolicyResponse {
   // when there is no recovery path. Only "password" is a standing
   // credential, so only it is worth telling an operator about.
   string recovery_kind = 6;
+  // the GitHub team bindings: which directory groups feed which team, in
+  // which organisation. They grant nothing here and appear in no token —
+  // a controller makes the org match them — and they are served so that
+  // the Rules page can answer "who is in this team, and why" without
+  // anybody opening GitHub.
+  repeated PolicyTeam teams = 7;
+}
+
+// PolicyTeam is one GitHub team binding as the console shows it.
+message PolicyTeam {
+  string org = 1;
+  string team = 2;
+  // the directory groups that feed it, read exactly like a group's
+  // `members`.
+  repeated string members = 3;
 }
 
 message ListHoldersRequest {
