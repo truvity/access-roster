@@ -1,3 +1,16 @@
+## v0.14.1
+
+- **The console bundle shipped in v0.14.0 was stale**, so the Sessions
+  page's new sign-ins table would have shown nothing: a protobuf field
+  was renamed `signins` → `sign_ins`, the TypeScript was regenerated, and
+  `frontend/dist` was never rebuilt — so the bundle read a field the
+  server no longer sends.
+
+  `just check` did not catch it because `ts` and `console` were not in
+  it: CI runs each recipe as its own parallel job, so the local check and
+  the pre-push hook skipped the two that build. They are in it now. The
+  check is slower and it is the check that runs before a push.
+
 ## v0.14.0
 
 - **Reusing an authorization code ends the session it opened.** RFC 6749
