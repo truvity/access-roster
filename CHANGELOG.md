@@ -1,5 +1,21 @@
 ## Unreleased
 
+- **`prompt=none` with nobody signed in now answers the CLIENT.** OpenID
+  Connect Core 3.1.2.6 requires `login_required` at the redirect URI; the
+  issuer rendered an HTML page saying so instead, and the code comment
+  had predicted the failure without fixing it.
+
+  Worse than it sounds: the caller of `prompt=none` is usually a hidden
+  iframe doing a silent renewal. It cannot read an HTML page, has nobody
+  to show it to, and waits until it times out — so a relying party doing
+  silent refresh would hang rather than re-authenticate. Conformance
+  called it *"expected an error but did not get one"*, which is the same
+  fact from the other side.
+
+  Found by the Basic OP profile, which is the first thing that run has
+  paid for.
+
+
 - **The conformance driver runs in headless Chrome, because it has to.**
   The first one used `curl` on the reasoning that the flow is redirects
   and one form POST. It is not: the suite's callback is an HTML page that

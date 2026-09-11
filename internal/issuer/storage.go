@@ -360,7 +360,7 @@ func (s *Storage) Pending(id string) (Pending, error) {
 		return Pending{}, err
 	}
 
-	out := Pending{}
+	out := Pending{RedirectURI: req.Req.RedirectURI, State: req.Req.State}
 
 	for _, prompt := range req.Req.Prompt {
 		switch prompt {

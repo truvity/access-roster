@@ -5,11 +5,36 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/truvity/access-roster/internal/issuer"
 )
+
+// stubPending is an authorization request waiting to be completed, with
+// no storage behind it: these routes decide what to do about a request
+// before anyone is established, so what they need is what it ASKS.
+type stubPending struct {
+	asks issuer.Pending
+}
+
+func (s stubPending) Pending(string) (issuer.Pending, error)      { return s.asks, nil }
+func (s stubPending) Complete(string, issuer.Authenticated) error { return nil }
+
+// signInHandlerWith is signInHandler with a pending request to answer.
+func signInHandlerWith(t *testing.T, sso *issuer.SSO, pending stubPending) http.Handler {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	issuer.SignInRoutes(mux, issuer.SignInDeps{
+		SSO:     sso,
+		Storage: pending,
+		Log:     slog.New(slog.DiscardHandler),
+	})
+
+	return mux
+}
 
 // signInHandler is the issuer's own pages, with nothing behind them but
 // the sign-in store: these routes run BEFORE there is anyone to
@@ -99,5 +124,52 @@ func requestLogout(t *testing.T, handler http.Handler, sso *issuer.SSO, id, meth
 	}
 	if !cleared {
 		t.Error("the session cookie was not cleared")
+	}
+}
+
+// `prompt=none` with nobody signed in answers the CLIENT, not the person.
+//
+// OpenID Connect Core 3.1.2.6 requires `login_required` at the redirect
+// URI. This rendered a page saying so, which is worse than it sounds:
+// the caller of `prompt=none` is usually a hidden iframe doing a silent
+// renewal, and it cannot read an HTML page, has nobody to show it to,
+// and waits until it times out. Conformance called it "expected an
+// error but did not get one" — the same fact from the other side.
+func TestPromptNoneWithNoSessionRefusesToTheClient(t *testing.T) {
+	t.Parallel()
+
+	handler := signInHandlerWith(t, nil, stubPending{
+		asks: issuer.Pending{
+			ForbidsUI:   true,
+			RedirectURI: "https://rp.example/callback",
+			State:       "the-client-state",
+		},
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/login?auth=abc", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusFound {
+		t.Fatalf("GET /login = %d, want a redirect to the client", recorder.Code)
+	}
+
+	to, err := url.Parse(recorder.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse Location: %v", err)
+	}
+
+	if got, want := to.Scheme+"://"+to.Host+to.Path, "https://rp.example/callback"; got != want {
+		t.Errorf("redirected to %q, want the client's own %q", got, want)
+	}
+
+	if got := to.Query().Get("error"); got != "login_required" {
+		t.Errorf("error = %q, want login_required", got)
+	}
+
+	// The state is the client's and must come back, or the client cannot
+	// match the answer to the request it sent.
+	if got := to.Query().Get("state"); got != "the-client-state" {
+		t.Errorf("state = %q, want it echoed", got)
 	}
 }
