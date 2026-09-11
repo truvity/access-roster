@@ -461,4 +461,12 @@ console:
     test -z "$(git ls-files --others --exclude-standard frontend/dist)"
 
 # Run all checks (build + test + lint + chart-lint + vuln)
-check: build test lint chart-lint archive-check docs-check vuln
+# Everything CI runs, so that the pre-push hook catches what CI would.
+#
+# `ts` and `console` are in here despite being slow. They were left out
+# because CI runs each recipe as its own parallel job -- and the result
+# was a local check that passed while the COMMITTED console bundle was
+# stale: a proto field was renamed, dist was never rebuilt, and the
+# Sessions page would have read a field the server no longer sends and
+# shown nothing. CI caught it after the tag was already pushed.
+check: build test lint chart-lint archive-check docs-check ts console vuln
