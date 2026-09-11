@@ -42,3 +42,23 @@ frontend/node_modules/
 # Agent worktrees live here; they are checkouts, not sources.
 .claude/
 __pycache__/
+
+# The console bundle is BUILT, not committed. It was committed so that
+# `go build` needed no Node toolchain -- and it cost 29 MB of history,
+# about seventy per cent of this repository, because a minified bundle
+# is a new blob on every dependency bump. Worse, a committed artifact
+# can go STALE without anything failing: v0.14.0 shipped a console
+# reading a protobuf field the server no longer sent. A missing bundle
+# is a compile error (`pattern all:dist: no matching files found`);
+# a stale one is a silent bug, and committing it chose the silent one.
+#
+# `just build` builds it first.
+frontend/dist/
+
+# Same rule, same reason: generated, so not in git. The published npm
+# package is this repository's root and is installed from a git tag, so
+# a `prepare` script in package.json builds ts/dist at install time --
+# npm runs `prepare` for a git dependency and installs devDependencies
+# to do it, which is exactly the toolchain the committed copy existed to
+# avoid needing.
+ts/dist/

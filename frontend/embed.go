@@ -2,9 +2,17 @@
 // with no static-file deployment beside it and the SPA is same-origin with
 // the API it calls.
 //
-// dist/ is committed: `go build` must work without a Node toolchain, and
-// CI builds the service without one. Rebuild it with `just console` after
-// changing anything under frontend/src.
+// dist/ is BUILT, not committed, and `just build` builds it first.
+//
+// It used to be committed so that `go build` needed no Node toolchain.
+// That cost 29 MB of history -- about seventy per cent of this
+// repository -- because a minified bundle is a new blob on every
+// dependency bump. And it bought a silent failure: a committed artifact
+// can go stale while everything still compiles, which is how v0.14.0
+// shipped a console reading a protobuf field the server no longer sent.
+//
+// Absent, the embed below is a COMPILE ERROR -- `pattern all:dist: no
+// matching files found`. Loud beats stale.
 package frontend
 
 import (

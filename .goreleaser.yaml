@@ -8,6 +8,16 @@ project_name: access-roster
 
 version: 2
 
+# The console is BUILT here, not committed. `frontend/dist` is embedded
+# by the Go binary, and goreleaser runs `go build` directly rather than
+# through the Justfile, so without this the release would compile
+# against whatever happened to be on disk -- or fail outright on a clean
+# checkout with `pattern all:dist: no matching files found`, which is
+# the honest failure and still not one to discover at release time.
+before:
+  hooks:
+    - sh -c "cd frontend && npm ci && npm run build"
+
 builds:
   - id: directory-roster
     main: ./cmd/directory-roster

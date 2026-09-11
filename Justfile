@@ -9,7 +9,7 @@ fmt:
     golangci-lint fmt ./...
 
 # Build (compile check)
-build: fmt
+build: fmt console
     go build ./...
 
 # Run unit tests
@@ -83,7 +83,7 @@ tidy:
 
 # Clean build artifacts
 clean:
-    rm -rf dist/ coverage.out
+    rm -rf dist/ frontend/dist/ ts/dist/ coverage.out
 
 # Render the chart with the shipped values plus a fully-featured set;
 # prove the schema rejects an unknown key (values.schema.json is the
@@ -434,39 +434,54 @@ chart-lint:
     ! helm template t charts/access-issuer --set issuerURL=https://iss.example | grep -q GITHUB_OWNERS
     helm template t charts/access-issuer --set issuerURL=https://iss.example --set 'github.owners={truvity}' | grep -q GITHUB_OWNERS
 
-# Typecheck, test and build the TypeScript package. dist/ is COMMITTED so
-# that `npm install github:truvity/access-roster#vX` needs no toolchain —
-# the same reason frontend/dist is.
-ts:
-    cd ts && npm ci && npx tsc --noEmit && npx vitest run && npx tsc -p tsconfig.build.json
-    # Committed for the same reason and drifts the same way: the package
-    # is installed straight from a git tag, so what ships is whatever is
-    # in the tree rather than whatever a build would produce.
-    git diff --exit-code -- ts/dist
-    git diff --cached --exit-code -- ts/dist
-    test -z "$(git ls-files --others --exclude-standard ts/dist)"
+# Install every toolchain dependency, on both sides. Separate from the
+# builds because `npm ci` is the slow part and it does not change
+# between them.
+#
+# `tidy` first: downloading what go.mod asks for is not much use if
+# go.mod is missing something the code imports, and the two together are
+# what "my dependencies are in order" means.
+#
+# This does NOT touch gen/. Code generated from proto/ stays committed:
+# it is Go source, small and diffable, and it is what makes the module
+# `go get`-able without buf installed. That is a different argument from
+# a minified bundle, which is neither small nor diffable.
+deps: tidy
+    go mod download
+    cd ts && npm ci
+    cd frontend && npm ci
 
-# Rebuild the console SPA into frontend/dist (committed). Needs Node; CI
-# does not run this, which is why dist/ is in the repository.
-console:
-    cd frontend && npm ci && npm run build
-    # The bundle is COMMITTED, and the Go binary embeds it. So a build
-    # that changes it and is not committed ships a console nobody's
-    # package.json describes -- which is exactly what a dependency bump
-    # does, because a bot edits package.json and package-lock.json and
-    # has no way to rebuild what they produce. Found after react 19 went
-    # in: the repository declared 19 and carried an 18 bundle.
-    git diff --exit-code -- frontend/dist
-    git diff --cached --exit-code -- frontend/dist
-    test -z "$(git ls-files --others --exclude-standard frontend/dist)"
+# Build the TypeScript package into ts/dist.
+#
+# NOT committed, and FIRST: the console's package.json depends on it as
+# `file:../ts`, and resolves through the root manifest's `main`, which
+# points into ts/dist. Build the console before this and it resolves an
+# import to a directory that is not there yet.
+#
+# A git install builds it through the `prepare` script in the root
+# package.json, which npm runs for a git dependency after installing
+# devDependencies -- so the toolchain the committed copy existed to
+# avoid needing is there anyway, at the one moment it matters.
+ts-package: deps
+    cd ts && npx tsc -p tsconfig.build.json
+
+# Typecheck and test the TypeScript package.
+ts: ts-package
+    cd ts && npx tsc --noEmit && npx vitest run
+
+# Build the console SPA into frontend/dist, which the Go binary embeds.
+#
+# NOT committed, and `build` depends on it so the embed always has
+# something current to read. There is no drift check any more because
+# drift is not possible: the bundle is produced from the lockfile every
+# time, and if it is absent the compiler says so.
+console: ts-package
+    cd frontend && npm run build
 
 # Run all checks (build + test + lint + chart-lint + vuln)
 # Everything CI runs, so that the pre-push hook catches what CI would.
 #
-# `ts` and `console` are in here despite being slow. They were left out
-# because CI runs each recipe as its own parallel job -- and the result
-# was a local check that passed while the COMMITTED console bundle was
-# stale: a proto field was renamed, dist was never rebuilt, and the
-# Sessions page would have read a field the server no longer sends and
-# shown nothing. CI caught it after the tag was already pushed.
-check: build test lint chart-lint archive-check docs-check ts console vuln
+# `ts` is in here despite being slow: it typechecks and tests the
+# published package, which nothing else does. `console` arrives through
+# `build`, which needs it.
+check: build test lint chart-lint archive-check docs-check ts vuln
