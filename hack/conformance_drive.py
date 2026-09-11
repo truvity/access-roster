@@ -33,6 +33,7 @@ import struct
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 SUITE = os.environ.get("SUITE", "https://localhost.emobix.co.uk:8443")
@@ -41,9 +42,12 @@ CONTEXT = os.environ.get("CONTEXT", "kernel@oidc")
 PORT = 9223
 
 
-def api(path, method="GET", body=None):
+def api(path, method="GET", body=None, text=None):
     request = urllib.request.Request(SUITE + path, method=method)
-    if body is not None:
+    if text is not None:
+        request.add_header("Content-Type", "text/plain")
+        body = text.encode()
+    elif body is not None:
         request.add_header("Content-Type", "application/json")
         body = json.dumps(body).encode()
     import ssl
@@ -183,24 +187,60 @@ def visit(cdp, url):
         time.sleep(3.5)
 
 
+def review(cdp, test, seen):
+    """Answer the suite's manual steps with what the browser is showing.
+
+    A third of the logout modules end at a page the suite CANNOT see: the
+    OP must refuse, so there is no redirect back and no callback. The
+    suite asks a human for a screenshot and waits. Unanswered, the module
+    sits in WAITING until the next one interrupts it, which is what a row
+    of eight greyed-out logout results was — not a server fault, a step
+    nobody had performed.
+
+    A screenshot is exactly what a browser has. So the driver takes it,
+    fills the placeholder, and marks the URL visited so the suite stops
+    waiting on a callback that is not coming.
+    """
+    answered = False
+    for entry in api("/api/log/%s" % test):
+        placeholder = entry.get("upload")
+        if not placeholder or placeholder in seen:
+            continue
+        seen.add(placeholder)
+        shot = cdp.call("Page.captureScreenshot", {"format": "png"}).get("data", "")
+        api("/api/log/%s/images/%s" % (test, placeholder), method="POST",
+            text="data:image/png;base64," + shot)
+        print("      uploaded a screenshot for: %s" % str(entry.get("msg"))[:90])
+        answered = True
+    return answered
+
+
 def run(cdp, plan, module):
     started = api("/api/runner?test=%s&plan=%s" % (module, plan), method="POST")
     test = started.get("id")
     if not test:
         return "NOT-STARTED", ""
 
-    seen = set()
+    seen, filled = set(), set()
     for _ in range(40):
         info = api("/api/info/%s" % test)
         status = info.get("status")
         if status in ("FINISHED", "INTERRUPTED"):
             break
 
-        for url in api("/api/runner/browser/%s" % test).get("urls") or []:
+        urls = api("/api/runner/browser/%s" % test).get("urls") or []
+        for url in urls:
             if url in seen:
                 continue
             seen.add(url)
             visit(cdp, url)
+
+        # Only after the browser has been somewhere: the screenshot has
+        # to be of the page the step asked about.
+        if seen and review(cdp, test, filled):
+            for url in urls:
+                api("/api/runner/browser/%s/visit?url=%s" % (
+                    test, urllib.parse.quote(url, safe="")), method="POST")
 
         time.sleep(2)
 

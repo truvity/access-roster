@@ -555,11 +555,24 @@ func providerName(kind string) string {
 }
 
 func (s *signIn) page(w http.ResponseWriter, title, body string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	if _, err := fmt.Fprintf(w, pageHTML, html.EscapeString(title), html.EscapeString(title), body); err != nil {
+	if err := writePage(w, http.StatusOK, title, body); err != nil {
 		s.deps.Log.Warn("page could not be written", "error", err)
 	}
+}
+
+// writePage renders one of this service's pages. It is a function rather
+// than only a method because `/end_session` is served by the LIBRARY and
+// still has to answer a browser in the same voice -- see
+// [endSessionForPeople].
+func writePage(w http.ResponseWriter, status int, title, body string) error {
+	// Headers first, then the status: anything set after WriteHeader is
+	// dropped, and a page served without its content type is left to the
+	// browser to guess at.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_, err := fmt.Fprintf(w, pageHTML, html.EscapeString(title), html.EscapeString(title), body)
+	return err
 }
 
 // pageHTML is the whole of this service's own UI: three pages, no
