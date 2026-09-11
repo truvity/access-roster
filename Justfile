@@ -13,12 +13,17 @@ build: fmt console
     go build ./...
 
 # Run unit tests
-test:
+# `console` first, and the same on every recipe that COMPILES Go: CI
+# runs each recipe as its own job in a fresh checkout, so nothing else
+# has built the bundle the binary embeds. Locally this is invisible --
+# `check` runs `build` first and the bundle is already there -- and in CI
+# it is `pattern all:dist: no matching files found`, four jobs at once.
+test: console
     go test ./... -coverprofile=coverage.out
 
 # Run linters. `config verify` first: `run` accepts unknown top-level keys
 # silently, so a settings block in the wrong place is otherwise invisible.
-lint:
+lint: console
     golangci-lint config verify
     golangci-lint run ./...
     # A `;` inside a mermaid sequenceDiagram is a STATEMENT SEPARATOR, not
@@ -30,7 +35,7 @@ lint:
     ! grep -rn --include=*.md -E '^[[:space:]]*[A-Za-z][A-Za-z0-9_]*[[:space:]]*-?->>?.*;' docs/
 
 # Run Go vulnerability check
-vuln:
+vuln: console
     govulncheck ./...
 
 # Regenerate gen/ from proto/ (buf + protoc-gen-go + protoc-gen-connect-go,
@@ -47,7 +52,7 @@ generate:
 # refuses a create that raced another, and is the only thing that can
 # answer a TokenReview — which is what recovery and the API listener's
 # guard are built on.
-acceptance:
+acceptance: console
     kind create cluster --name access-roster-acceptance
     kubectl --context kind-access-roster-acceptance create namespace acceptance
     go run ./cmd/acceptance -namespace acceptance -kubeconfig ""
@@ -61,7 +66,7 @@ acceptance:
 # where v0.12.0 failed, four minutes into a tagged run, publishing
 # nothing. So the archive shapes are checked here by reading the same
 # file goreleaser reads.
-release-check:
+release-check: console
     ./hack/check-archives.py
     goreleaser check
     goreleaser build --snapshot --clean --single-target
