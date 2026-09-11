@@ -1,4 +1,4 @@
-## Unreleased
+## v0.12.3
 
 - **The Sessions page came back.** It vanished at the cutover, silently:
   the console learned where its issuer was from the FORWARDED bearer's
