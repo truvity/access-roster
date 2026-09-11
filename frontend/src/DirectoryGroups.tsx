@@ -145,7 +145,7 @@ export function DirectoryGroup({ email }: { email: string }) {
       lede={
         served
           ? `${peopleCount(members.length)} in it, feeding ${plural(feeds.length, "internal group", "internal groups")} and opening ${plural(clients.length, "client", "clients")}.`
-          : "No connected provider serves this domain, so the hub has no opinion about it."
+          : "No connected provider serves this domain, so access-roster has no opinion about it."
       }
       facts={
         served
