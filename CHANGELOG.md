@@ -1,5 +1,18 @@
 ## Unreleased
 
+- **The conformance runbook was followed, and it was wrong twice**
+  (INF-683). It told you to leave `requires` off the two temporary
+  clients — the policy refuses a client that requires no group, so the
+  render would have failed before a single test ran — and it gave their
+  hostname without the port, which the render also refuses, because a row
+  names one host and the redirects are on `:8443`. Both are fixed, and
+  the page now records what the last run actually reported.
+
+  **Config profile: PASSED against the merged service**, 34 checks, no
+  failures and no warnings. The two attended profiles need a person at a
+  browser and are the remaining gate.
+
+
 - **The documentation describes what ships** (INF-698). The sweep found
   seven Go symbols the guides promised and the module does not export —
   `identity.NewIssuerVerifier`, `identity.ClusterConfig`,
