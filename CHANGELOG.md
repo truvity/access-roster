@@ -1,4 +1,4 @@
-## Unreleased
+## v0.13.3
 
 - **Sign-out still did not work, and for a second reason.** The route
   existed but answered **GET only**, and the console sends **POST** — its
