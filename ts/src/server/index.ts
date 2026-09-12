@@ -103,7 +103,7 @@ export class Issuer {
   constructor(options: IssuerOptions) {
     if (!options.url) throw new Error("access-roster: an issuer url is required");
     if (!options.audience) throw new Error("access-roster: an audience — this service's client id — is required");
-    this.url = options.url.replace(/\/+$/, "");
+    this.url = trimTrailingSlashes(options.url);
     this.audience = options.audience;
     this.fetch = options.fetch ?? fetch;
   }
@@ -155,7 +155,7 @@ export class Issuer {
     }
     // A discovery document naming another issuer is a misconfiguration, and
     // trusting its keys would verify tokens this issuer never signed.
-    if (config.issuer?.replace(/\/+$/, "") !== this.url) {
+    if (trimTrailingSlashes(config.issuer ?? "") !== this.url) {
       throw new IssuerUnreachable(`access-roster: ${this.url} describes itself as ${config.issuer ?? "nothing"}`);
     }
     if (!config.jwks_uri) {
@@ -327,6 +327,15 @@ function unreachable(cause: unknown): boolean {
   // is a token this issuer never signed with a live key, which is the
   // caller's.
   return code === "ERR_JWKS_TIMEOUT" || cause instanceof TypeError;
+}
+
+/** Drops trailing slashes without a regular expression: `/\/+$/` backtracks
+ * quadratically on a long run of slashes, and the input is configuration a
+ * caller supplies. */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+  return value.slice(0, end);
 }
 
 function text(value: unknown): string {
