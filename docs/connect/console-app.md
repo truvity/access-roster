@@ -31,6 +31,11 @@ that pair rather than a pattern to copy.
   because a health endpoint and a landing page run before anybody is
   established. Serve `identity.WhoAmI(version)` at
   `identity.WhoAmIPath`, which is what the frontend asks.
+- **Backend in Node**: the same three pieces from
+  `@truvity/access-roster/server` — `middleware(issuer)`,
+  `requireGroups(...)`, and `whoami(version)` at `whoamiPath`, answering
+  the same body Go does. Connect-style, so Express and Nest on Express
+  take them as they are.
 - **Frontend**: `useIdentity()` and `<UserBadge/>` from the TypeScript
   package. Views in the URL fragment, dist embedded in the binary.
 - **Nothing else**: no login page, no session, no token parsing, no
@@ -45,6 +50,22 @@ mux.Handle("/admin/", identity.Require("all:myconsole:operator")(admin))
 
 http.ListenAndServe(":8080", identity.Middleware(issuer)(mux))
 ```
+
+```ts
+import express from "express";
+import { Issuer, middleware, requireGroups, whoami, whoamiPath } from "@truvity/access-roster/server";
+
+const issuer = new Issuer({ url: "https://access.example", audience: "myconsole.example.internal" });
+
+const app = express();
+app.use(middleware(issuer));
+app.get(whoamiPath, whoami(version));
+app.use("/admin", requireGroups("all:myconsole:operator"), admin);
+```
+
+Either way the caller carries `name`, `givenName` and `familyName` beside
+the address and the groups, read from the access token. A console that
+shows who is signed in has no userinfo call to make.
 
 There is no `authz` package: role helpers over `Verified` are designed
 and not built ([../reference/go-module.md](../reference/go-module.md)).

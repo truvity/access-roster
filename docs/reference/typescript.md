@@ -1,11 +1,16 @@
 # TypeScript package `access-roster`
 
 What a console needs from the identity it is behind: who the caller is,
-what that gets them, and the way out. It parses no token — the browser
-asks the application it is already talking to, and the application, which
-has verified whatever the proxy or the issuer gave it, answers. A package
-that verified tokens in a browser would need the issuer's keys, its clock
-and its rules in every console.
+what that gets them, and the way out. The browser half parses no token —
+the browser asks the application it is already talking to, and the
+application, which has verified whatever the gateway or the issuer gave
+it, answers. A package that verified tokens in a browser would need the
+issuer's keys, its clock and its rules in every console.
+
+That verification is the server half, under `/server`, for an
+application whose backend is Node. It is the Go `identity` package's
+issuer anchor in TypeScript: the same checks, the same caller, the same
+`whoami` body — see [The server half](#the-server-half).
 
 ```sh
 npm install github:truvity/access-roster#v0.12.4
@@ -72,3 +77,39 @@ Generated Connect-Web clients for the hub's console services. The hub's
 own console is in this repository and generates them itself; no other
 console calls those services, so shipping them would be surface with no
 consumer. `fetchIdentity` is deliberately the whole of the network code.
+
+## The server half
+
+```ts
+import { Issuer, middleware, requireGroups, whoami, whoamiPath, identityOf } from "@truvity/access-roster/server";
+
+const issuer = new Issuer({ url: "https://access.example", audience: "url-shortener-devel" });
+
+app.use(middleware(issuer));                       // establishes, never refuses
+app.get(whoamiPath, whoami(version));              // what useIdentity() asks
+app.use("/admin", requireGroups("devel:url-shortener:deployer"));
+app.get("/me", (req, res) => res.json(identityOf(req)));
+```
+
+- **`Issuer`** verifies an access token against the issuer's published
+  keys: signature, `iss`, expiry, and an `aud` of this service's own client
+  id. The audience is required — a token minted for another service is a
+  valid token, and accepting it would make every audience the issuer
+  serves a way in. Discovery is lazy, so the service starts whether or not
+  the issuer is up.
+- **Two errors, not one.** `Unverified` is a token that did not verify,
+  and says nothing about why. `IssuerUnreachable` is an outage; never
+  answer it with a 401, which would send a signed-in person back to sign in
+  for nothing.
+- **`middleware`** reads the token from `x-auth-request-access-token` or
+  the bearer, and establishes the caller for `identityOf(request)`. It
+  refuses nothing, because some routes run before anybody is established.
+  `requireGroups` refuses: 401 for nobody, 403 for the wrong groups, and it
+  never names the groups that would have worked.
+- **What a caller is:** `subject`, `email`, `name`, `givenName`,
+  `familyName`, `groups`, and `serviceAccount` for a workload. The names are
+  for display; never authorize on them.
+
+Only the issuer anchor is here. A ServiceAccount token from the pod next
+door is verified with the Kubernetes API, which is Go's `Cluster`; a Node
+service reaches its callers through the issuer.

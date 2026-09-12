@@ -147,6 +147,17 @@ func WhoAmI(version string) http.Handler {
 			if who.Email != "" {
 				body["email"] = who.Email
 			}
+			// The keys the TypeScript package's Identity reads: one wire
+			// contract, named once.
+			if who.Name != "" {
+				body["name"] = who.Name
+			}
+			if who.GivenName != "" {
+				body["givenName"] = who.GivenName
+			}
+			if who.FamilyName != "" {
+				body["familyName"] = who.FamilyName
+			}
 			if len(who.Groups) > 0 {
 				body["groups"] = who.Groups
 			}

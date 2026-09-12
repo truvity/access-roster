@@ -1,3 +1,32 @@
+## Unreleased
+
+- **An access token names the person.** `name`, `given_name` and
+  `family_name` now travel in the access token as they already did in the
+  ID token, from the same one directory call. The access token is what a
+  gateway or a proxy forwards to an application, so one showing who is
+  signed in no longer has to call userinfo on every page. A workload's
+  token carries no names rather than empty ones.
+
+- **The Go `identity` package reads them**: `Verified` gains `Name`,
+  `GivenName` and `FamilyName`, and `WhoAmI` answers `name`, `givenName`
+  and `familyName` — the keys the TypeScript `Identity` already declared,
+  and which nothing had been filling.
+
+- **A server half for Node: `@truvity/access-roster/server`.** The Go
+  package's issuer anchor in TypeScript — `Issuer`, `middleware`,
+  `requireGroups`, `whoami` — with the same checks, the same caller and the
+  same `whoami` body, connect-style for Express and Nest. It exists for the
+  business applications leaving gateway-auth, whose backends are Node and
+  which had nothing to verify a token with but a header or a generic JWT
+  library. `jose` becomes the package's one runtime dependency; a browser
+  bundle importing only the root or `/react` never loads it.
+
+  access-roster itself does not run this half, being a Go service, which
+  is the one place the rule that it consumes what it publishes cannot hold.
+  Its tests verify tokens over a real listener against a real key set, and
+  the Go test beside them proves the issuer's own tokens carry what both
+  halves read.
+
 ## v1.2.0
 
 GitHub organisations, managed from the policy, and an audit stream for the

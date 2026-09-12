@@ -157,10 +157,18 @@ func TestWhoAmIAnswersEitherWay(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, identity.WhoAmIPath, nil)
 	request = request.WithContext(identity.WithVerified(request.Context(),
-		identity.Verified{Subject: "ada@north.example", Email: "ada@north.example", Groups: []string{"platform"}}))
+		identity.Verified{
+			Subject: "ada@north.example", Email: "ada@north.example", Groups: []string{"platform"},
+			Name: "Ada Lovelace", GivenName: "Ada", FamilyName: "Lovelace",
+		}))
 	signedIn := httptest.NewRecorder()
 	identity.WhoAmI("dev").ServeHTTP(signedIn, request)
-	for _, want := range []string{`"signed-in"`, "ada@north.example", "platform", "dev"} {
+	// The name keys are the TypeScript Identity's, so a console renders a
+	// person rather than an address.
+	for _, want := range []string{
+		`"signed-in"`, "ada@north.example", "platform", "dev",
+		`"name":"Ada Lovelace"`, `"givenName":"Ada"`, `"familyName":"Lovelace"`,
+	} {
 		if !contains(signedIn.Body.String(), want) {
 			t.Errorf("whoami = %q, want it to carry %q", signedIn.Body.String(), want)
 		}

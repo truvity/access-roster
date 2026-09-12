@@ -1045,11 +1045,63 @@ func (s *Storage) SetIntrospectionFromToken(context.Context, *oidc.Introspection
 	return errors.New("introspection is not served by this issuer")
 }
 
-// GetPrivateClaimsFromScopes implements [op.OPStorage].
+// GetPrivateClaimsFromScopes implements [op.OPStorage]: what an ACCESS
+// token carries beyond the registered claims.
+//
+// The policy's claims, and the person's names beside them. An access
+// token is what reaches an application -- a gateway forwards it, a proxy
+// forwards it -- and an application showing who is signed in has only
+// this token to read it from. Without the names it had to call userinfo
+// on every page, which is a round trip to the issuer for a display string
+// and a dependency on the issuer for rendering at all. The ID token has
+// carried them all along; this is the same answer, from the same one
+// directory call.
 func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, subject, _ string, _ []string) (map[string]any, error) {
-	claims, _, _, err := s.identityOf(ctx, subject)
+	claims, given, family, err := s.identityOf(ctx, subject)
+	if err != nil {
+		return nil, err
+	}
 
-	return claims, err
+	return withNames(claims, given, family), nil
+}
+
+// withNames returns claims with the person's names added, leaving the map
+// it was given alone. Absent names add nothing: a workload and a recovery
+// sign-in have none, and an empty `name` would read as a person called
+// nothing.
+func withNames(claims map[string]any, given, family string) map[string]any {
+	name := displayName(given, family)
+	if name == "" {
+		return claims
+	}
+
+	out := make(map[string]any, len(claims)+3)
+	for key, value := range claims {
+		out[key] = value
+	}
+
+	out["name"] = name
+	if given != "" {
+		out["given_name"] = given
+	}
+	if family != "" {
+		out["family_name"] = family
+	}
+
+	return out
+}
+
+// displayName is the one way a person's name is put together, for the ID
+// token and the access token alike.
+func displayName(given, family string) string {
+	switch {
+	case given != "" && family != "":
+		return given + " " + family
+	case given != "":
+		return given
+	default:
+		return family
+	}
 }
 
 // identityOf asks the directory ONCE and returns everything one answer
@@ -1166,15 +1218,7 @@ func (s *Storage) fill(
 	// absent for a workload or a recovery sign-in, which have no names to
 	// give.
 	info.GivenName, info.FamilyName = given, family
-
-	switch {
-	case given != "" && family != "":
-		info.Name = given + " " + family
-	case given != "":
-		info.Name = given
-	case family != "":
-		info.Name = family
-	}
+	info.Name = displayName(given, family)
 
 	for name, value := range claims {
 		info.AppendClaims(name, value)
