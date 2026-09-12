@@ -45,10 +45,9 @@ clients:
 permissions:
   id-token: write
 steps:
-  - uses: actions/github-script@v7      # until the action below exists: request the token for the issuer's audience
-    id: token
-    with:
-      script: core.setOutput('t', await core.getIDToken('https://issuer.example.internal'))
+  # The action requests the job's identity token itself, for the issuer's
+  # URL as audience, so nothing else in the job handles a token. The
+  # `id-token: write` permission above is what lets it.
   - uses: truvity/access-roster@v1.0.0   # pin the release; there is no floating `v1` yet
     with:
       issuer: https://issuer.example.internal
