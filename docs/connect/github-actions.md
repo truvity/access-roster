@@ -49,7 +49,7 @@ steps:
     id: token
     with:
       script: core.setOutput('t', await core.getIDToken('https://issuer.example.internal'))
-  - uses: truvity/access-roster@v1
+  - uses: truvity/access-roster@v1.0.0   # pin the release; there is no floating `v1` yet
     with:
       issuer: https://issuer.example.internal
       audiences: k8s:devel, aws:111122223333:gitops-deployer
