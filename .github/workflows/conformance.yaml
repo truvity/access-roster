@@ -51,7 +51,7 @@ jobs:
     steps:
       # Pinned by COMMIT SHA, never a tag: a tag moves, and this is the
       # house rule every other workflow here follows.
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # The suite is published as images, so there is no Java build. It
       # answers on a PUBLIC name that resolves to 127.0.0.1, which is how
