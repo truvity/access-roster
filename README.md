@@ -118,24 +118,25 @@ access-roster targets four OpenID Foundation profiles. A profile is
 claimed only once the suite says so, so this is the last run rather than
 an intention.
 
-**Last run 2026-09-12 against the deployed issuer at v0.17.0.**
+**Last run 2026-09-12 against the deployed issuer at v1.0.0**, from the
+suite running in the cluster.
 
 | Profile | Passed | Review | Skipped | Warning | **Failed** |
 |---|--:|--:|--:|--:|--:|
 | [Config OP](https://openid.net/certification/connect_op_testing/) | 1 | 0 | 0 | 0 | **0** |
 | [Basic OP](https://openid.net/certification/connect_op_testing/) | 21 | 4 | 4 | 6 | **0** |
 | [RP-Initiated Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 3 | 8 | 0 | 0 | **0** |
-| [Back-Channel Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 1 | 0 | 0 | 0 | **0**† |
+| [Back-Channel Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 2 | 0 | 0 | 0 | **0** |
 
 The Foundation's rule is that only FAILED or INTERRUPTED disqualify a
 profile. **REVIEW** is a screenshot the suite hands to a person; all
 twelve were looked at on this run and each shows the page its step
 demanded. **WARNING** is mostly personal data this issuer declines to
 hold — a birthdate, a gender, a locale — with one real defect among
-them found and fixed in v0.15.2. †Back-Channel's end-to-end module needs
-the issuer able to reach the suite, which a laptop suite and an
-in-cluster issuer are not; the mechanism is proven in the issuer's own
-log. Every column, and why, is in
+them found and fixed in v0.15.2. The logout pair the Foundation requires
+for a submission, RP-Initiated plus Back-Channel, is green for the first
+time; the first Back-Channel run found two defects, fixed in v0.17.1.
+Every column, and why, is in
 [docs/conformance.md](docs/conformance.md).
 
 ## Read next

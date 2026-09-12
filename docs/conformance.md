@@ -7,26 +7,22 @@ the last run rather than an intention. The procedure for producing a
 run is [operations/conformance.md](operations/conformance.md); this page
 is what the last one said and what each of its columns means.
 
-**Last run 2026-09-12 against the deployed issuer at v0.17.0.**
+**Last run 2026-09-12 against the deployed issuer at v1.0.0**, from the
+suite running in the cluster (plans `xywkLCaSn66Wo`, `QQw1OfSOykbnC`,
+`Ps1nixuqZlBQp`, `6hKMyvxwF8baj`).
 
 | Profile | Passed | Review | Skipped | Warning | **Failed** |
 |---|--:|--:|--:|--:|--:|
 | [Config OP](https://openid.net/certification/connect_op_testing/) | 1 | 0 | 0 | 0 | **0** |
 | [Basic OP](https://openid.net/certification/connect_op_testing/) | 21 | 4 | 4 | 6 | **0** |
 | [RP-Initiated Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 3 | 8 | 0 | 0 | **0** |
-| [Back-Channel Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 1 | 0 | 0 | 0 | **0**† |
-
-† The Back-Channel discovery module passes. The end-to-end module needs
-the issuer and the suite on one network, which the laptop suite and the
-in-cluster issuer are not — see *Back-Channel needs a reachable suite*
-below. The mechanism itself is proven: the issuer mints the logout token
-and POSTs it to the registered URL, pinned by unit tests for `typ` and
-the absent `nonce`, and shown in the issuer's own log against the live
-suite.
+| [Back-Channel Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 2 | 0 | 0 | 0 | **0** |
 
 The Foundation's rule is that **PASSED, REVIEW, WARNING and SKIPPED all
 count, and only FAILED or INTERRUPTED disqualify** a profile. On that
-rule all four are certifiable. The columns are here rather than a word
+rule all four are certifiable, and the logout pair the Foundation requires
+for a submission — RP-Initiated plus one of the other three — is green
+for the first time. The columns are here rather than a word
 like *green* because the four states mean different things and two of
 them need explaining.
 
