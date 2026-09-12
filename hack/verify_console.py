@@ -166,15 +166,35 @@ class Observer:
 
 
 def serves(cdp, host):
-    """Whether the application itself answered, rather than the issuer.
+    """Whether the PROXY still admits this browser's cookie.
 
-    The proxy's own pages under /oauth2/ are not the application either:
-    a browser caught mid-redirect on /oauth2/start is on its way to the
-    issuer, and counting that as "served" turned a correct sign-out into
-    a reported failure.
+    Not the address bar. Hubble is a single-page application, and a
+    browser asked to load its front page answers from the cached shell
+    without asking the proxy at all -- the URL reads as served while
+    every API call underneath is being refused with "No valid
+    authentication in request". Two runs reported a sign-out that had
+    worked as a failure on that evidence, and the proxy's log for the
+    window held not one page GET from the browser.
+
+    So this asks the proxy directly, from inside the page, with the
+    cookie and without the cache: a 200 is admitted, and a redirect --
+    which fetch reports as an opaque redirect rather than following it
+    across origins -- is the proxy sending this browser to sign in.
     """
     here = cdp.eval("window.location.href") or ""
-    return here.startswith(host) and "/login" not in here and "/oauth2/" not in here
+    if not here.startswith(host) or "/login" in here or "/oauth2/" in here:
+        return False
+
+    probe = cdp.call("Runtime.evaluate", {
+        "expression": """(async () => {
+          try {
+            const r = await fetch(%s, {cache: 'no-store', redirect: 'manual', credentials: 'include'});
+            return r.type === 'opaqueredirect' ? 'redirect' : String(r.status);
+          } catch (e) { return 'error:' + e; }
+        })()""" % json.dumps(host + "/"),
+        "awaitPromise": True, "returnByValue": True,
+    })
+    return (probe.get("result") or {}).get("value") == "200"
 
 
 def settled(cdp, host, seconds=12):
@@ -209,6 +229,7 @@ def main():
         cdp.call("Page.enable")
         cdp.call("Network.enable")
         cdp.call("Network.clearBrowserCookies")
+        cdp.call("Network.setCacheDisabled", {"cacheDisabled": True})
 
         print("\n1. an unauthenticated visit is sent to the issuer")
         cdp.call("Page.navigate", {"url": host + "/"})
