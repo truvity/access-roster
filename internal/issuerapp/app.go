@@ -24,6 +24,7 @@ import (
 
 	"github.com/truvity/access-roster/backend/google"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
@@ -177,6 +178,9 @@ type Deps struct {
 	// origin learns who is signed in without a proxy in front of it and
 	// without a login of its own.
 	UseSignedIn func(func(*http.Request) (access.Principal, bool))
+	// Audit is the service's recorder, shared with the directory half so
+	// both write one history. Nil records to this process's log alone.
+	Audit audit.Recorder
 	// UseWorkloads is called with a reader of ServiceAccount bearers,
 	// verified against the same cluster key sets token exchange uses. It
 	// is how a controller beside this issuer reads the console's API with
@@ -260,6 +264,13 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		HoldWindow:      cfg.holdWindow,
 		AllowInsecure:   cfg.allowInsecure,
 	}, set, directory, shared)
+	// The service's one audit stream, opened by the directory half. A
+	// split deployment with none still records every event to the log.
+	if deps.Audit != nil {
+		core.UseAudit(deps.Audit)
+	} else {
+		core.UseAudit(audit.NewLog(log, nil))
+	}
 
 	key, err := signingKey(ctx, cfg, log)
 	if err != nil {

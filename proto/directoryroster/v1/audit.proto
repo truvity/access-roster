@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AuditService is what happened in this installation, lately.
+//
+// One stream for the whole service: the issuer's sign-ins, refusals,
+// exchanges and revokes; the directory's and the console's connects and
+// disconnects; and what a component in another process reports it did.
+// Capped by count and age — every event is also a log line, and the log
+// is the durable copy.
+service AuditService {
+  // ListAuditEvents returns events newest first, filtered and paged.
+  // Operator: the stream names every sign-in.
+  rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse);
+
+  // RecordAuditEvents takes events a component reports about itself.
+  // Only a WORKLOAD the policy puts in the reporters group may call it —
+  // never a person. The service stamps `reporter` with the caller it
+  // verified, sets `at` to when it arrived, and refuses the sources only
+  // it records (`issuer`, `directory`, `console`), so a reporter cannot
+  // forge a sign-in.
+  rpc RecordAuditEvents(RecordAuditEventsRequest) returns (RecordAuditEventsResponse);
+}
+
+// AuditEvent is one thing that happened.
+message AuditEvent {
+  // ordered by time; assigned by the store.
+  string id = 1;
+  google.protobuf.Timestamp at = 2;
+  // issuer, directory, console, or a reporter's own name.
+  string source = 3;
+  // what happened, dotted: sign-in, token.exchanged, workspace.connected,
+  // github.member.invited.
+  string kind = 4;
+  // the identity that caused it, or `system`.
+  string actor = 5;
+  // the verified component that reported it; empty for what the service
+  // recorded itself. Never taken from a report.
+  string reporter = 6;
+  // who or what it concerns.
+  string subject = 7;
+  // where: a client, a workspace, an organisation or team.
+  string target = 8;
+  // ok, refused, failed or held.
+  string outcome = 9;
+  string reason = 10;
+  map<string, string> attributes = 11;
+}
+
+message ListAuditEventsRequest {
+  string source = 1;
+  string kind = 2;
+  string subject = 3;
+  string target = 4;
+  google.protobuf.Timestamp since = 5;
+  // zero is a default; bounded.
+  int32 limit = 6;
+  // the cursor a previous page returned.
+  string cursor = 7;
+}
+
+message ListAuditEventsResponse {
+  repeated AuditEvent events = 1;
+  // where the next page starts; empty at the end.
+  string cursor = 2;
+}
+
+message RecordAuditEventsRequest {
+  repeated AuditEvent events = 1;
+}
+
+message RecordAuditEventsResponse {
+  int32 recorded = 1;
+}

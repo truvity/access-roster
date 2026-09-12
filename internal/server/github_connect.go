@@ -17,6 +17,7 @@ import (
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/status"
@@ -181,6 +182,10 @@ func (c *Console) DisconnectGitHubOrganisation(
 	if err = c.deps.GitHubOrgs.Delete(ctx, org); err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
+	c.record(ctx, audit.Event{
+		Kind: "github.org.disconnected", Target: org, Reason: out.GetDetail(),
+		Attributes: map[string]string{"uninstalled": strconv.FormatBool(out.GetUninstalled())},
+	})
 	return connect.NewResponse(out), nil
 }
 
@@ -241,6 +246,10 @@ func (s *ConsoleServer) githubCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.InfoContext(r.Context(), "GitHub App created", "org", org, "app", registration.ID,
 		"slug", registration.Slug, "by", logsafe.Value(actor))
+	s.console.record(r.Context(), audit.Event{
+		Kind: "github.app.created", Actor: actor, Target: org,
+		Attributes: map[string]string{"app": strconv.FormatInt(registration.ID, 10), "slug": registration.Slug},
+	})
 
 	state, err := s.state.IssueAs(access.Binding{Bind: githubBind + org, Actor: actor})
 	if err != nil {
@@ -310,6 +319,10 @@ func (s *ConsoleServer) githubSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.InfoContext(r.Context(), "GitHub App installed", "org", org, "installation", installation, "by", logsafe.Value(actor))
+	s.console.record(r.Context(), audit.Event{
+		Kind: "github.org.connected", Actor: actor, Target: org,
+		Attributes: map[string]string{"app": strconv.FormatInt(credential.AppID, 10), "installation": strconv.FormatInt(installation, 10)},
+	})
 	http.Redirect(w, r, s.at("/#/github"), http.StatusFound)
 }
 

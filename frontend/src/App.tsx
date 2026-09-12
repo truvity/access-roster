@@ -22,6 +22,7 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import DomainIcon from "@mui/icons-material/Domain";
 import GroupsIcon from "@mui/icons-material/Groups";
 import KeyIcon from "@mui/icons-material/Key";
+import HistoryIcon from "@mui/icons-material/History";
 import MenuIcon from "@mui/icons-material/Menu";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PeopleIcon from "@mui/icons-material/People";
@@ -43,6 +44,7 @@ import { Groups, Group } from "./Groups";
 import { Clients, Client } from "./Clients";
 import { GitHubPage } from "./GitHub";
 import { SessionsPage } from "./Sessions";
+import { AuditPage } from "./Audit";
 import { SettingsView } from "./Settings";
 
 const drawerWidth = 236;
@@ -77,6 +79,9 @@ const internalSide: Item[] = [
 // an issuer shares this console's origin, and even then it is
 // operator-only: the rail entry must not render for a viewer.
 const sessionsItem: Item = { value: "sessions", label: "Sessions", to: paths.sessions(), icon: <KeyIcon fontSize="small" /> };
+// What happened lately. Operator-only for the same reason as Sessions: it
+// names every sign-in.
+const auditItem: Item = { value: "audit", label: "Audit", to: paths.audit(), icon: <HistoryIcon fontSize="small" /> };
 
 export function App() {
   const route = useRoute();
@@ -207,6 +212,7 @@ export function App() {
         {operator && issuerIsSameOrigin(identityInfo?.issuerUrl) ? (
           <NavItem item={sessionsItem} current={route.view} onPick={() => setOpen(false)} />
         ) : null}
+        {operator ? <NavItem item={auditItem} current={route.view} onPick={() => setOpen(false)} /> : null}
         <Divider sx={{ my: 1 }} />
         <NavItem
           item={{ value: "settings", label: "Settings", to: paths.settings(), icon: <SettingsIcon fontSize="small" /> }}
@@ -328,6 +334,8 @@ function PageFor({
       return <GitHubPage operator={operator} onDone={onDone} />;
     case "sessions":
       return <SessionsPage operator={operator} />;
+    case "audit":
+      return <AuditPage />;
     case "settings":
       return <SettingsView />;
     default:

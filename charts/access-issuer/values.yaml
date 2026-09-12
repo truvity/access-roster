@@ -335,6 +335,18 @@ networkPolicy:
 serviceAccount:
   name: ""
 
+# The audit stream: what happened lately — sign-ins, refusals, exchanges,
+# revokes, connects, and what a reporting component (the GitHub
+# controller) did. It lives in the Valkey above, or in memory without one.
+# Capped by count and by age, because it is the in-product view of the
+# last while: every event is also one log line (`audit=true`), and the
+# log is the durable copy.
+audit:
+  # the most events kept; the oldest go first.
+  maxEvents: 50000
+  # the oldest an event may be.
+  maxAge: 720h
+
 logLevel: info
 
 resources: {}

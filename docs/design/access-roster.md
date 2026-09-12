@@ -505,6 +505,36 @@ data-dense page readable: a name is a link, monospace when it is an
 identifier; a chip is a state and nothing else is; facts are a label over
 a value; two-column data is a list and tabular data is a table.
 
+## Audit
+
+One stream for the whole service, because a sign-in and the connect that
+made it possible belong to one history. The issuer records sign-ins,
+refusals, exchanges and revokes; the directory and the console record
+connects and disconnects; and a component in another process reports
+what it did, recorded with the identity it proved. The GitHub controller
+is the first such component: its status says what is true now, and its
+audit events say what it changed.
+
+The stream lives in the shared Valkey, capped by count and by age, and
+every event is also a log line. That split is the design: the log is the
+durable copy, shipped wherever logs go, and the stream is the console's
+view of the last while. It is not a SIEM and does not try to be; the
+cluster's audit log, each directory's and GitHub's organisation audit log
+stay the records of record.
+
+**A component reports through this service, never into the store.** The
+store holds every session and refresh token, so a Valkey credential in a
+controller would be a read of all of them. Reporting is an RPC that only a
+workload in `all:access-roster:reporter` may call; the service stamps who
+reported from the caller it verified, sets the time on arrival, and
+refuses the sources only it records, so a reporter cannot forge a sign-in.
+This is ingestion by a component, not a person writing configuration: the
+console stays read-only for people.
+
+Recording never fails what is being recorded. A sign-in that could not be
+written down still happened, and refusing it because the store was slow
+would turn an audit outage into an access outage.
+
 ## The issuer's own HTML
 
 Four things, and they exist for one reason: each runs before there is

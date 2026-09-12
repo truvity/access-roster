@@ -11,10 +11,12 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/logsafe"
 )
 
@@ -574,6 +576,12 @@ func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
 			case ended > 0:
 				deps.log().InfoContext(r.Context(), "sign-out ended the sessions this browser opened",
 					"ended", ended)
+			}
+			if err == nil {
+				deps.Issuer.record(r.Context(), audit.Event{
+					Kind: "session.ended", Actor: record.Identity, Subject: record.Identity,
+					Attributes: map[string]string{"ended": strconv.Itoa(ended)},
+				})
 			}
 		}
 

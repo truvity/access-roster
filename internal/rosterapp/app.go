@@ -117,6 +117,9 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// sets. The console is built before the issuer exists, so it is
 		// handed the reader rather than building one.
 		UseWorkloads: directory.ConsoleServer().UseWorkloads,
+		// One audit stream for both halves: a sign-in and the connect that
+		// made it possible belong to one history.
+		Audit: directory.Audit(),
 	}
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {

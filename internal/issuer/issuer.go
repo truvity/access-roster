@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/policy"
 )
 
@@ -61,6 +62,22 @@ type Issuer struct {
 	resolver *Resolver
 	sessions *Sessions
 	sso      *SSO
+	audit    audit.Recorder
+}
+
+// UseAudit gives the issuer the service's recorder. The directory half
+// opens the one stream, so this is handed in after construction rather
+// than built here.
+func (i *Issuer) UseAudit(r audit.Recorder) { i.audit = r }
+
+// record writes one issuer event down, or nothing where no recorder was
+// given — a split deployment with no stream still logs through its own.
+func (i *Issuer) record(ctx context.Context, e audit.Event) {
+	if i == nil || i.audit == nil {
+		return
+	}
+	e.Source = audit.SourceIssuer
+	i.audit.Record(ctx, e)
 }
 
 // New returns an issuer over a policy set, a directory and the shared

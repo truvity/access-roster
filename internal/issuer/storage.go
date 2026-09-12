@@ -14,6 +14,7 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"github.com/zitadel/oidc/v3/pkg/op"
 
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/logsafe"
 	"github.com/truvity/access-roster/policy"
 )
@@ -501,6 +502,10 @@ func (s *Storage) Complete(id string, who Authenticated) error {
 	// Before the request is marked done, because a request marked done is
 	// one a code can be issued for.
 	if err = s.entitled(ctx, req.Req.ClientID, who.Subject); err != nil {
+		if errors.Is(err, ErrNotEntitled) {
+			s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeRefused,
+				"signed in, and admitted to no group this client requires"))
+		}
 		return err
 	}
 
@@ -511,7 +516,30 @@ func (s *Storage) Complete(id string, who Authenticated) error {
 	// re-authenticate-for-this-action rule reads.
 	req.AuthTime, req.SSO, req.How = authTime, who.SSO, who.How
 
-	return setJSON(ctx, s.state, requestKey(id), req, authRequestTTL)
+	if err = setJSON(ctx, s.state, requestKey(id), req, authRequestTTL); err != nil {
+		return err
+	}
+	s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeOK, ""))
+	return nil
+}
+
+// signInEvent is a completed or refused sign-in at one client. A recovery
+// sign-in is its own kind, because it is the way in that bypasses the
+// directory and has to be findable as such.
+func signInEvent(who Authenticated, clientID, outcome, reason string) audit.Event {
+	kind := "sign-in"
+	if who.How == RecoveryHow {
+		kind = "recovery.sign-in"
+	}
+	return audit.Event{
+		Kind:       kind,
+		Actor:      who.Subject,
+		Subject:    who.Subject,
+		Target:     clientID,
+		Outcome:    outcome,
+		Reason:     reason,
+		Attributes: map[string]string{"how": who.How},
+	}
 }
 
 // Pending reports what an authorization request asks of a sign-in, so
@@ -822,6 +850,13 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken s
 		if errors.Is(err, ErrNotEntitled) {
 			s.logger().InfoContext(ctx, "refused a refresh for a client the identity is no longer entitled to",
 				"client_id", logsafe.Value(session.ClientID), "error", logsafe.Error(err))
+			// A refresh is not an event; a refused one is — it is the
+			// moment somebody taken out of a group lost a client.
+			s.iss.record(ctx, audit.Event{
+				Kind: "session.refresh-refused", Actor: audit.ActorSystem, Subject: session.Identity,
+				Target: session.ClientID, Outcome: audit.OutcomeRefused,
+				Reason: "no longer admitted to any group this client requires",
+			})
 
 			return nil, oidc.ErrInvalidGrant().WithDescription("this identity is not admitted to this client")
 		}

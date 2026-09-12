@@ -68,5 +68,7 @@ export const paths = {
   // Every open session in the installation (INF-682). Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",
+  // What happened lately, installation-wide. Operator-only.
+  audit: () => "/audit",
   settings: () => "/settings",
 };

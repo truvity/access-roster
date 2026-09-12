@@ -75,6 +75,10 @@ spec:
               value: {{ .Values.directory.freshness.freshnessWindow | quote }}
             - name: PROBE_INTERVAL
               value: {{ .Values.directory.freshness.probeInterval | quote }}
+            - name: AUDIT_MAX_EVENTS
+              value: {{ .Values.audit.maxEvents | quote }}
+            - name: AUDIT_MAX_AGE
+              value: {{ .Values.audit.maxAge | quote }}
             - name: SESSION_LIFETIME
               value: {{ .Values.directory.sessionLifetime | quote }}
             - name: LOGIN_DIRECTORY

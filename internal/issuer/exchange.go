@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/policy"
 )
 
@@ -97,9 +98,11 @@ func (i *Issuer) Exchange(ctx context.Context, proof Proof, audience string) (Gr
 
 	result := i.set.Evaluate(in)
 	if !client.Admits(result) {
+		i.record(ctx, exchangeEvent(proof, audience, audit.OutcomeRefused, "the proof holds no group this client requires"))
 		return Grant{}, fmt.Errorf("%w: %q requires any of %v, this proof holds %v",
 			ErrRefused, audience, client.Requires, result.Groups)
 	}
+	i.record(ctx, exchangeEvent(proof, audience, audit.OutcomeOK, ""))
 
 	return Grant{
 		Subject:  proof.Subject(),
@@ -119,4 +122,21 @@ func (i *Issuer) Lifetime(grant Grant) (out policy.Duration) {
 		return policy.Duration(grant.Result.Lifetime)
 	}
 	return policy.Duration(client.Cap(grant.Result.Lifetime))
+}
+
+// exchangeEvent is one token exchange, by the kind of proof it was: the
+// question an operator asks of it is usually "which job, for what".
+func exchangeEvent(proof Proof, audience, outcome, reason string) audit.Event {
+	kind := "person"
+	switch {
+	case proof.GitHub != nil:
+		kind = "ci"
+	case proof.ServiceAccount != nil:
+		kind = "workload"
+	}
+	subject := proof.Subject()
+	return audit.Event{
+		Kind: "token.exchanged", Actor: subject, Subject: subject, Target: audience,
+		Outcome: outcome, Reason: reason, Attributes: map[string]string{"proof": kind},
+	}
 }

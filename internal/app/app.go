@@ -40,6 +40,7 @@ import (
 	"github.com/truvity/access-roster/frontend"
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
@@ -96,6 +97,8 @@ type Config struct {
 	oauthIDKey        string
 	oauthSecretKey    string
 	valkey            valkey.Config
+	auditEvents       int64
+	auditAge          time.Duration
 	holdWindow        time.Duration
 	logLevel          slog.Level
 }
@@ -128,6 +131,7 @@ func Load() (Config, error) {
 		oauthIDKey:        envString("OAUTH_CLIENT_ID_KEY", ""),
 		oauthSecretKey:    envString("OAUTH_CLIENT_SECRET_KEY", ""),
 	}
+	c.auditEvents = int64(envInt("AUDIT_MAX_EVENTS", valkey.DefaultAuditEvents))
 	c.valkey = valkey.Config{
 		Address:  envString("VALKEY_ADDRESS", ""),
 		Password: envString("VALKEY_PASSWORD", ""),
@@ -145,6 +149,9 @@ func Load() (Config, error) {
 	c.secureCookies = envBool("SECURE_COOKIES", strings.HasPrefix(c.publicRootURL, "https://"))
 
 	var err error
+	if c.auditAge, err = envDuration("AUDIT_MAX_AGE", valkey.DefaultAuditAge); err != nil {
+		return Config{}, err
+	}
 	if c.freshness.RefreshInterval, err = envDuration("REFRESH_INTERVAL", hub.DefaultRefreshInterval); err != nil {
 		return Config{}, err
 	}
@@ -207,6 +214,24 @@ func openSnapshots(ctx context.Context, cfg Config, log *slog.Logger) (hub.Snaps
 	log.InfoContext(ctx, "sharing snapshots and the refresh lease",
 		"cache", "valkey", "address", cfg.valkey.Address, "cluster", cfg.valkey.Cluster)
 	return shared, func() { _ = shared.Close() }, nil
+}
+
+// openAudit builds the one audit stream of the whole service: in Valkey
+// when there is one, so every replica and both halves write one history,
+// and in memory otherwise, which is one replica's own.
+func openAudit(ctx context.Context, cfg Config, log *slog.Logger) (audit.Store, func(), error) {
+	if cfg.valkey.Address == "" {
+		log.InfoContext(ctx, "keeping the audit stream in memory: one replica's own, and gone on restart; "+
+			"the log has every event", "audit", "memory")
+		return audit.NewMemory(int(cfg.auditEvents)), func() {}, nil
+	}
+	stream, err := valkey.OpenAudit(ctx, cfg.valkey, cfg.auditEvents, cfg.auditAge)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.InfoContext(ctx, "keeping the audit stream in valkey", "audit", "valkey",
+		"maxEvents", cfg.auditEvents, "maxAge", cfg.auditAge)
+	return stream, func() { _ = stream.Close() }, nil
 }
 
 // openRecovery builds the way in for the day the ordinary one is broken.
@@ -403,7 +428,12 @@ type App struct {
 	cfg     Config
 	log     *slog.Logger
 	close   func()
+	audit   audit.Recorder
 }
+
+// Audit is the service's one recorder, for the half assembled after this
+// one: both halves write one history.
+func (a *App) Audit() audit.Recorder { return a.audit }
 
 // APIHandler is the DirectoryService listener, guarded.
 func (a *App) APIHandler() http.Handler { return a.api }
@@ -467,6 +497,13 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	auditStore, closeAudit, err := openAudit(ctx, cfg, log)
+	if err != nil {
+		closeSnapshots()
+		return nil, err
+	}
+	closeStores := func() { closeAudit(); closeSnapshots() }
+	recorder := audit.NewLog(log, auditStore)
 
 	directory := hub.New(kept.workspaces, snapshots, cfg.freshness, log)
 	if kept.credentials != nil {
@@ -577,6 +614,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		SignIn:       cfg.loginDirectory,
 		GitHub:       githubReports(kept.github, cfg.demo),
 		GitHubOrgs:   githubConnections(kept.githubOrgs, cfg.demo),
+		Audit:        recorder,
+		AuditStore:   auditStore,
 	})
 	if err != nil {
 		return nil, err
@@ -644,7 +683,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		hub:     directory,
 		cfg:     cfg,
 		log:     log,
-		close:   closeSnapshots,
+		close:   closeStores,
+		audit:   recorder,
 	}, nil
 }
 

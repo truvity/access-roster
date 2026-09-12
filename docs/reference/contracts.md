@@ -261,6 +261,16 @@ which is what lets the controller's Role name that one object.
 `reports_available` is false only for a deployment keeping no state in
 Kubernetes.
 
+## `directoryroster.v1.AuditService`
+
+What happened lately, in the whole installation. See
+[operations/runbook.md](../operations/runbook.md#audit-what-happened-lately).
+
+| RPC | Role | Request | Response | Notes |
+|---|---|---|---|---|
+| `ListAuditEvents` | operator | `source?`, `kind?`, `subject?`, `target?`, `since?`, `limit?`, `cursor?` | `events[]{id, at, source, kind, actor, reporter, subject, target, outcome, reason, attributes}`, `cursor` | newest first. A narrow filter over a busy stream may return fewer than `limit` with a cursor: the read is bounded, and the cursor continues from where it stopped. Operator, because the stream names every sign-in. `failed_precondition` where there is no stream at all |
+| `RecordAuditEvents` | a **workload** in `all:access-roster:reporter` | `events[]` | `recorded` | a component reporting what it did. The service stamps `reporter` with the caller it verified and `at` with arrival, and refuses — whole, recording none of the batch — a reserved source (`issuer`, `directory`, `console`), a supplied `reporter`, an unknown outcome, or anything over the bounds (200 events, 512-byte fields, 20 attributes). A person holding the group is refused too |
+
 ## The whoami endpoint
 
 `GET /.access/whoami` on the console listener, the same shape every

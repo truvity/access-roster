@@ -157,3 +157,31 @@ on the other replica is opened from its stored credential on first use
 Structured JSON on stdout. The hub never logs a credential, a token or a
 key file, and never logs the members of a group; it logs workspace ids,
 domains, counts, durations and errors.
+
+## Audit: what happened lately
+
+The console's **Audit** page (operators only) is one stream for the whole
+service, newest first: sign-ins and their refusals — at the issuer and at
+the console's own door, recovery marked as its own kind — refused
+refreshes, token exchanges by proof kind, revokes and sign-outs, provider
+connects, disconnects and domain or group changes, GitHub Apps created,
+organisations connected and disconnected, and whatever a reporting
+component such as the GitHub controller did, shown with the identity it
+proved. A refused event carries its reason.
+
+**The stream is not the record of record.** It is capped by
+`audit.maxEvents` and `audit.maxAge`. Every event is also one log line with
+`"audit":true`, so the durable copy is wherever the logs are shipped:
+
+```sh
+kubectl -n access-issuer logs deploy/access-issuer --since=24h | jq 'select(.audit == true)'
+```
+
+A store that refuses a write costs the stream an entry and says so in the
+log; it never costs anybody a sign-in.
+
+**A component reports** by calling `AuditService.RecordAuditEvents` with
+its own ServiceAccount token. The policy has to put it in
+`all:access-roster:reporter` through a `service_account` matcher; nothing
+else — no person, no other workload — may report, and a report naming
+`issuer`, `directory` or `console` as its source is refused.

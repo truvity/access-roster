@@ -18,6 +18,7 @@ import (
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/emailaddr"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/logsafe"
@@ -244,6 +245,7 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.Handle(directoryrosterv1connect.NewSettingsServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewAccessServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewGitHubServiceHandler(s.console))
+	mux.Handle(directoryrosterv1connect.NewAuditServiceHandler(s.console))
 
 	if s.consoleUI != nil {
 		mux.Handle("GET /assets/", http.FileServerFS(s.consoleUI))
@@ -602,6 +604,11 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 		// The one Authorize refuses outright is an account the directory
 		// authoritatively says is not live.
 		s.log.WarnContext(r.Context(), "sign-in refused", "email", logsafe.Value(email), "error", logsafe.Error(err))
+		s.console.record(r.Context(), audit.Event{
+			Kind: "sign-in.refused", Actor: email, Subject: email, Target: "console",
+			Outcome: audit.OutcomeRefused, Reason: "the directory says this account is not live",
+			Attributes: map[string]string{"how": connector.Kind()},
+		})
 		http.Error(w, "signed in as "+email+", but that address cannot be served: "+err.Error(),
 			http.StatusForbidden)
 		return
@@ -615,6 +622,12 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.InfoContext(r.Context(), "signed in",
 		"email", logsafe.Value(email), "backend", connector.Kind(), "role", identity.Role)
+	// The console's own door, beside the issuer's: a standalone
+	// installation signs people in here, and a sign-in is a sign-in.
+	s.console.record(r.Context(), audit.Event{
+		Kind: "sign-in", Actor: email, Subject: email, Target: "console",
+		Attributes: map[string]string{"how": connector.Kind()},
+	})
 	redirectOrOK(w, r, s.at("/"))
 }
 
@@ -676,6 +689,10 @@ func (s *ConsoleServer) recoveryLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.WarnContext(r.Context(), "recovery sign-in", "subject", logsafe.Value(subject), "kind", s.recovery.Kind())
+	s.console.record(r.Context(), audit.Event{
+		Kind: "recovery.sign-in", Actor: subject, Subject: subject, Target: "console",
+		Attributes: map[string]string{"how": s.recovery.Kind()},
+	})
 	redirectOrOK(w, r, s.at("/"))
 }
 
@@ -848,6 +865,14 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 			"The consent worked, but the workspace could not be saved.", err.Error(), nil)
 		return
 	}
+	kind := "workspace.connected"
+	if bind != "" {
+		kind = "workspace.reconnected"
+	}
+	s.console.record(r.Context(), audit.Event{
+		Source: audit.SourceDirectory, Kind: kind, Actor: actor, Target: ws.ID,
+		Attributes: map[string]string{"backend": b.Kind(), "via": "consent"},
+	})
 	s.log.InfoContext(r.Context(), "workspace connected",
 		"workspace", ws.ID, "backend", b.Kind(), "by", logsafe.Value(actor))
 	// Straight to the question the connect leaves behind: which of this

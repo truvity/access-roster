@@ -282,6 +282,22 @@
         }
       }
     },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The audit stream: capped by count and by age. Every event is also a log line, which is the durable copy.",
+      "properties": {
+        "maxEvents": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The most events kept; the oldest go first."
+        },
+        "maxAge": {
+          "$ref": "#/definitions/duration",
+          "description": "The oldest an event may be."
+        }
+      }
+    },
     "logLevel": {
       "enum": [
         "debug",

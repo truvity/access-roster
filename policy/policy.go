@@ -53,15 +53,23 @@ const (
 	RoleOperator = "operator"
 	RoleViewer   = "viewer"
 
+	// RoleReporter is held by a component in another process that reports
+	// what it did into the audit stream. It is not a console role: it
+	// reads nothing, and only a workload may hold it to any effect.
+	RoleReporter = "reporter"
+
 	// Separator divides a grant's three segments.
 	Separator = ":"
 )
 
-// The two names the hub reads out of the policy for itself, installation
+// The names the hub reads out of the policy for itself, installation
 // wide.
 var (
 	GroupOperators = ScopedGroup(ScopeAll, RoleOperator)
 	GroupViewers   = ScopedGroup(ScopeAll, RoleViewer)
+	// GroupReporters is the workloads that may record audit events about
+	// themselves. Installation-wide only: a report is not about a tenant.
+	GroupReporters = ScopedGroup(ScopeAll, RoleReporter)
 )
 
 // ScopedGroup names the group that grants one of this hub's roles over

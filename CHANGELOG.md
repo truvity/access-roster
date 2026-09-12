@@ -82,6 +82,24 @@
   both created empty at start. The service now calls `api.github.com`,
   which a default-deny egress policy has to allow.
 
+- **An audit stream for the whole service** (INF-686), and an operator-only
+  **Audit** page. The issuer records sign-ins and their refusals, recovery
+  sign-ins as their own kind, refused refreshes, token exchanges, revokes
+  and sign-outs; the console records its own sign-ins, provider connects,
+  disconnects and domain and group changes, and GitHub Apps created,
+  organisations connected and disconnected. One Valkey stream shared by
+  every replica and both halves, capped by `audit.maxEvents` and
+  `audit.maxAge`; in memory without Valkey. **Every event is also a log
+  line** with `"audit":true`, which is the durable copy.
+
+  A component in another process reports through
+  `AuditService.RecordAuditEvents` with its own ServiceAccount token, and
+  only a workload in the new group `all:access-roster:reporter` may. The
+  service stamps who reported and when, and refuses a report naming one of
+  its own sources — so a reporter cannot forge a sign-in. A component never
+  writes to Valkey itself: that store holds every session and refresh
+  token. Recording never fails what it records.
+
 ## v1.1.0
 
 - **SECURITY: a client's `requires` is now enforced when somebody signs

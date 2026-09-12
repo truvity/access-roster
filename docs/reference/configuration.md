@@ -72,6 +72,8 @@ hub writes *itself*, where it is the producer and gets to choose.
 | `policy` | `{}` | the declared policy, see [policy.md](policy.md) |
 | `networkPolicy.enabled` | `false` | |
 | `networkPolicy.clients[]` | `[]` | namespaces allowed to reach the service in-cluster: the proxies verifying tokens and the workloads exchanging them |
+| `audit.maxEvents` | `50000` | the most events the audit stream keeps; the oldest go first. In Valkey when `valkey.address` is set, one replica's memory otherwise |
+| `audit.maxAge` | `720h` | the oldest an event may be. The stream is the console's view of the last while: every event is also a log line (`audit=true`), and the log is the copy that lasts |
 | `logLevel` | `info` | debug, info, warn, error |
 
 **Two routes, and the second is not tidiness.** A gateway policy attaches
@@ -185,6 +187,9 @@ so the hash carries the uniqueness the readable part may have lost.
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 | `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** (INF-692) | the chart |
+| `ConfigMap <release>-github-status` | the GitHub controller's last report, one document per organisation | created empty by the service at start; its data replaced by the controller, which is granted this one name |
+| `ConfigMap <release>-github-orgs` | one record per connected GitHub organisation: App id and slug, installation, connected by and at | the service (Connect a GitHub organisation), created empty at start |
+| `Secret <release>-github-apps` | one credential per connected organisation: the App's id, installation and private key | the service (Connect), created empty at start so the controller's volume always has a Secret behind it; read by the service only to uninstall on Disconnect |
 
 The record and the credential are two objects on purpose. A record is
 shown to anyone who may see the console; a credential is written once and
@@ -196,8 +201,8 @@ that will not start.
 
 Labels on every hub-written object: `app.kubernetes.io/managed-by=directory-roster`,
 `app.kubernetes.io/part-of=<release>`, and
-`directory-roster.truvity.com/kind` = `workspace`, `credential` or
-`settings`. The workspace id as the backend spells it is the annotation
+`directory-roster.truvity.com/kind` = `workspace`, `credential`,
+`settings`, `github-status` or `github-orgs`. The workspace id as the backend spells it is the annotation
 `directory-roster.truvity.com/workspace-id`. Export everything with
 
 ```sh
@@ -247,6 +252,7 @@ from the values above.
 | `SESSION_LIFETIME` | `directory.sessionLifetime` |
 | `LOGIN_DIRECTORY` | `directory.login` |
 | `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
+| `AUDIT_MAX_EVENTS`, `AUDIT_MAX_AGE` | `audit.*` |
 | `LOG_LEVEL` | `logLevel` |
 
 ## Roles

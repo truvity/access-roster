@@ -111,7 +111,8 @@ export type StateKind =
   | "applied"
   | "dry-run"
   | "failed"
-  | "unreported";
+  | "unreported"
+  | "refused";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The provider reports this account as active." },
@@ -147,6 +148,7 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   "dry-run": { label: "dry run", color: "secondary", title: "The organisation is disabled: the last pass derived everything and changed nothing. The states below say what it would do." },
   failed: { label: "failed", color: "warning", filled: true, title: "The last pass could not complete." },
   unreported: { label: "not reported", color: "default", title: "The controller has written nothing for this organisation yet." },
+  refused: { label: "refused", color: "warning", filled: true, title: "Asked for, and refused. The reason says why." },
 };
 
 /** The one thing a chip means here: a state. A state that has a reason

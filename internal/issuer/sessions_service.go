@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -13,6 +14,7 @@ import (
 
 	accessissuerv1 "github.com/truvity/access-roster/gen/accessissuer/v1"
 	"github.com/truvity/access-roster/gen/accessissuer/v1/accessissuerv1connect"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/policy"
 )
 
@@ -27,6 +29,9 @@ import (
 // the issuer's own host and the hub's code learns nothing about it.
 type SessionsService struct {
 	sessions *Sessions
+	// record writes a revoke down: ending somebody's access is the event
+	// an audit exists to find.
+	record func(context.Context, audit.Event)
 	// sso is the browser-session store, for two things: authorizing a
 	// same-origin call from the account page by cookie, and ending the
 	// sign-in when a revoke means "everywhere".
@@ -46,6 +51,7 @@ var _ accessissuerv1connect.SessionServiceHandler = (*SessionsService)(nil)
 func NewSessionsService(iss *Issuer, verifier *op.AccessTokenVerifier) *SessionsService {
 	return &SessionsService{
 		sessions: iss.Sessions(),
+		record:   iss.record,
 		sso:      iss.SSO(),
 		groups: func(ctx context.Context, identity string) ([]string, error) {
 			// The same evaluation a token gets, so a cookie and a bearer
@@ -381,6 +387,7 @@ func (s *SessionsService) RevokeSessions(
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 
+		s.revoked(ctx, who.identity, identity, "", "one session", int(boolToCount(gone)))
 		return connect.NewResponse(&accessissuerv1.RevokeSessionsResponse{Ended: boolToCount(gone)}), nil
 	}
 
@@ -427,6 +434,7 @@ func (s *SessionsService) RevokeSessions(
 			}
 		}
 
+		s.revoked(ctx, who.identity, identity, "", "one browser", ended)
 		return connect.NewResponse(&accessissuerv1.RevokeSessionsResponse{Ended: int32(ended)}), nil
 	}
 
@@ -448,7 +456,24 @@ func (s *SessionsService) RevokeSessions(
 		}
 	}
 
+	scope := "everywhere"
+	if clientID != "" {
+		scope = "one client"
+	}
+	s.revoked(ctx, who.identity, identity, clientID, scope, ended)
 	return connect.NewResponse(&accessissuerv1.RevokeSessionsResponse{Ended: int32(ended)}), nil
+}
+
+// revoked records one revoke: who did it, whose sessions, where, and how
+// many ended.
+func (s *SessionsService) revoked(ctx context.Context, actor, identity, clientID, scope string, ended int) {
+	if s.record == nil {
+		return
+	}
+	s.record(ctx, audit.Event{
+		Kind: "session.revoked", Actor: actor, Subject: identity, Target: clientID,
+		Attributes: map[string]string{"scope": scope, "ended": strconv.Itoa(ended)},
+	})
 }
 
 func boolToCount(gone bool) int32 {
