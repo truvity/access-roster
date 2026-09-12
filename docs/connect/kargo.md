@@ -77,7 +77,8 @@ the page shows SSO Login", "refresh opens a new session").
 
 The cause is in `ui/src/features/auth/oidc-login.tsx`: after a
 successful exchange Kargo navigates only when a `redirectTo` was carried
-into the flow, and its Logout lands on `/login` without one. The fix is
-upstream and three lines — fall back to the home path when there is no
-safe redirect. Until it lands: after a Logout-then-login, open the root
-rather than reloading.
+into the flow, and its Logout lands on `/login` without one. Reported
+upstream as [akuity/kargo#7189](https://github.com/akuity/kargo/issues/7189)
+with the fix in [akuity/kargo#7190](https://github.com/akuity/kargo/pull/7190):
+fall back to the home path when there is no safe redirect. Until it
+lands: after a Logout-then-login, open the root rather than reloading.
