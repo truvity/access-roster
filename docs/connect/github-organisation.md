@@ -1,11 +1,10 @@
 # Connect a GitHub organisation
 
-> **Half of this is built.** The bindings are: they live in the policy
-> and the console lists them on its Rules page, so the model can be
-> written and reviewed now. **The controller that acts on them is not**
-> (INF-697), and neither is the Connect flow that gives it a credential
-> (INF-696). Write the bindings if you want the model in git; teams will
-> not move until the controller exists.
+> **Most of this is built.** The bindings live in the policy and show on
+> the Rules page; the console's GitHub page shows each organisation; and
+> **Connect** creates and installs the App. **The controller that acts on
+> them is not built yet** (INF-697): a connected organisation's teams do
+> not move until it exists.
 
 **Anchor:** none of ours. The controller holds one GitHub App per
 organisation and acts with its own credential; the issuer holds the
@@ -63,11 +62,53 @@ the same reason every other grant lives here.
    binding explains.
 4. **Check the Rules page.** Each binding appears beside every other
    rule, with `GitHub team` as its kind, the internal group as its rule,
-   and the same *depends on* column that group has. That is the whole of
-   what you can verify today.
-5. **The controller comes later** (INF-697): one App per organisation,
-   created and installed through Connect, deriving membership from these
-   bindings every tick and publishing what it did.
+   and the same *depends on* column that group has.
+5. **Connect it**, on the console's GitHub page. An operator presses
+   *Connect* beside the organisation; the organisation's **owner** then
+   does two things on GitHub and types nothing:
+   - **Create** the App GitHub offers. It is private, asks for one
+     permission — `members: write` — and has no webhook. GitHub hands its
+     key to this service once, on the way back.
+   - **Install** it on the organisation, on the page GitHub goes to next.
+     Coming back, the service asks GitHub where the App is installed
+     rather than trusting the redirect, and the organisation shows as
+     connected.
+
+   If the owner stops after Create, the organisation shows *created, not
+   installed* and the button becomes *Finish installing*: it picks up at
+   Install instead of creating a second App. Only an organisation the
+   policy binds can be connected, so a typo in a login is caught here
+   rather than on GitHub's 404.
+6. **The controller comes later** (INF-697): deriving membership from
+   these bindings every pass, acting through the connected App, and
+   reporting on the same page.
+
+The service reaches `api.github.com` for Create, Install and Disconnect,
+so the cluster's egress policy must allow it.
+
+## Disconnecting
+
+*Disconnect* uninstalls the App from the organisation, then forgets the
+record and the key. GitHub's API cannot delete an App, so the
+registration stays for its owner to delete; the console says where. Once
+uninstalled and forgotten nothing can act through it — this service held
+its only key. An uninstall that fails still forgets, and says what is
+left to do on GitHub.
+
+Nobody is removed from anything by disconnecting: the organisation simply
+stops being managed.
+
+## What connecting leaves behind
+
+| Object | Holds | Read by |
+|---|---|---|
+| ConfigMap `<release>-github-orgs` | one record per organisation: the App's id and slug, where it is installed, when and by whom it was connected | the console |
+| Secret `<release>-github-apps` | one credential per organisation: the App's id, its installation, its private key | the controller, as a mounted volume; this service only to uninstall on Disconnect |
+
+Both exist, empty, from the service's first start, so the controller's
+volume always has a Secret behind it. Recovery for a lost key is
+Disconnect and Connect again; there is no backup, and no copy of the key
+anywhere else — not in git, not in a password manager.
 
 ## What the render refuses, and why each is silent otherwise
 
@@ -84,7 +125,8 @@ two orgs is two different teams.
 
 ## What this service never does here
 
-It holds no GitHub credential it reads, makes no GitHub call, and mints
+It never acts on GitHub with the key it keeps: the controller does. The
+one use this service makes of it is uninstalling on Disconnect. It mints
 no token for GitHub. A workflow's identity is the other direction
 entirely and is [github-actions.md](github-actions.md): GitHub proves a
 job to us, and we never prove anything to GitHub.

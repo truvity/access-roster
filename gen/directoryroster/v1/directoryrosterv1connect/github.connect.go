@@ -36,6 +36,12 @@ const (
 	// GitHubServiceGetGitHubStatusProcedure is the fully-qualified name of the GitHubService's
 	// GetGitHubStatus RPC.
 	GitHubServiceGetGitHubStatusProcedure = "/directoryroster.v1.GitHubService/GetGitHubStatus"
+	// GitHubServiceBeginGitHubConnectProcedure is the fully-qualified name of the GitHubService's
+	// BeginGitHubConnect RPC.
+	GitHubServiceBeginGitHubConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubConnect"
+	// GitHubServiceDisconnectGitHubOrganisationProcedure is the fully-qualified name of the
+	// GitHubService's DisconnectGitHubOrganisation RPC.
+	GitHubServiceDisconnectGitHubOrganisationProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubOrganisation"
 )
 
 // GitHubServiceClient is a client for the directoryroster.v1.GitHubService service.
@@ -44,6 +50,18 @@ type GitHubServiceClient interface {
 	// controller reports on, each with its bound teams and the members the
 	// controller derived for them. Viewer.
 	GetGitHubStatus(context.Context, *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error)
+	// BeginGitHubConnect starts connecting an organisation the policy
+	// binds: the App's manifest and where to post it, or — for an App
+	// already created and not yet installed — where to install it. Sets the
+	// flow's state cookie. Operator.
+	//
+	// An organisation already connected and installed is refused: connecting
+	// it again would create a second App beside the first, and the one
+	// left installed would be the one nobody holds a key for.
+	BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error)
+	// DisconnectGitHubOrganisation uninstalls the App, then forgets the
+	// organisation's record and credential. Operator.
+	DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error)
 }
 
 // NewGitHubServiceClient constructs a client for the directoryroster.v1.GitHubService service. By
@@ -63,17 +81,41 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(gitHubServiceMethods.ByName("GetGitHubStatus")),
 			connect.WithClientOptions(opts...),
 		),
+		beginGitHubConnect: connect.NewClient[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse](
+			httpClient,
+			baseURL+GitHubServiceBeginGitHubConnectProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubConnect")),
+			connect.WithClientOptions(opts...),
+		),
+		disconnectGitHubOrganisation: connect.NewClient[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse](
+			httpClient,
+			baseURL+GitHubServiceDisconnectGitHubOrganisationProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubOrganisation")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // gitHubServiceClient implements GitHubServiceClient.
 type gitHubServiceClient struct {
-	getGitHubStatus *connect.Client[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse]
+	getGitHubStatus              *connect.Client[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse]
+	beginGitHubConnect           *connect.Client[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse]
+	disconnectGitHubOrganisation *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
 }
 
 // GetGitHubStatus calls directoryroster.v1.GitHubService.GetGitHubStatus.
 func (c *gitHubServiceClient) GetGitHubStatus(ctx context.Context, req *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error) {
 	return c.getGitHubStatus.CallUnary(ctx, req)
+}
+
+// BeginGitHubConnect calls directoryroster.v1.GitHubService.BeginGitHubConnect.
+func (c *gitHubServiceClient) BeginGitHubConnect(ctx context.Context, req *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error) {
+	return c.beginGitHubConnect.CallUnary(ctx, req)
+}
+
+// DisconnectGitHubOrganisation calls directoryroster.v1.GitHubService.DisconnectGitHubOrganisation.
+func (c *gitHubServiceClient) DisconnectGitHubOrganisation(ctx context.Context, req *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error) {
+	return c.disconnectGitHubOrganisation.CallUnary(ctx, req)
 }
 
 // GitHubServiceHandler is an implementation of the directoryroster.v1.GitHubService service.
@@ -82,6 +124,18 @@ type GitHubServiceHandler interface {
 	// controller reports on, each with its bound teams and the members the
 	// controller derived for them. Viewer.
 	GetGitHubStatus(context.Context, *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error)
+	// BeginGitHubConnect starts connecting an organisation the policy
+	// binds: the App's manifest and where to post it, or — for an App
+	// already created and not yet installed — where to install it. Sets the
+	// flow's state cookie. Operator.
+	//
+	// An organisation already connected and installed is refused: connecting
+	// it again would create a second App beside the first, and the one
+	// left installed would be the one nobody holds a key for.
+	BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error)
+	// DisconnectGitHubOrganisation uninstalls the App, then forgets the
+	// organisation's record and credential. Operator.
+	DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error)
 }
 
 // NewGitHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -97,10 +151,26 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(gitHubServiceMethods.ByName("GetGitHubStatus")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gitHubServiceBeginGitHubConnectHandler := connect.NewUnaryHandler(
+		GitHubServiceBeginGitHubConnectProcedure,
+		svc.BeginGitHubConnect,
+		connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubConnect")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceDisconnectGitHubOrganisationHandler := connect.NewUnaryHandler(
+		GitHubServiceDisconnectGitHubOrganisationProcedure,
+		svc.DisconnectGitHubOrganisation,
+		connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubOrganisation")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/directoryroster.v1.GitHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GitHubServiceGetGitHubStatusProcedure:
 			gitHubServiceGetGitHubStatusHandler.ServeHTTP(w, r)
+		case GitHubServiceBeginGitHubConnectProcedure:
+			gitHubServiceBeginGitHubConnectHandler.ServeHTTP(w, r)
+		case GitHubServiceDisconnectGitHubOrganisationProcedure:
+			gitHubServiceDisconnectGitHubOrganisationHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -112,4 +182,12 @@ type UnimplementedGitHubServiceHandler struct{}
 
 func (UnimplementedGitHubServiceHandler) GetGitHubStatus(context.Context, *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.GetGitHubStatus is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.BeginGitHubConnect is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.DisconnectGitHubOrganisation is not implemented"))
 }

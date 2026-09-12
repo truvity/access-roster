@@ -259,6 +259,10 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.HandleFunc("POST /login/recovery", s.recoveryLogin)
 	mux.HandleFunc("POST /logout", s.logout)
 	mux.HandleFunc("GET /connect/{backend}/callback", s.connectCallback)
+	// GitHub's two, more specific than the pattern above and so chosen
+	// over it: after Create, and after Install.
+	mux.HandleFunc("GET "+githubCallbackPath, s.githubCallback)
+	mux.HandleFunc("GET "+githubSetupPath, s.githubSetup)
 	mux.HandleFunc("GET /.access/whoami", s.whoami)
 
 	return s.withIdentity(mux)

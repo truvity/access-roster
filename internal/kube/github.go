@@ -74,21 +74,17 @@ func (s *GitHubStatus) Reports(ctx context.Context) (map[string]string, error) {
 // can also move when the service re-creates labels or an operator edits
 // it, and neither is a reason to drop a tick's report.
 func (s *GitHubStatus) Replace(ctx context.Context, documents map[string]string) error {
-	const attempts = 3
-	var err error
-	for range attempts {
-		var cm *corev1.ConfigMap
-		cm, err = s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.Name(), metav1.GetOptions{})
+	err := retryConflict(func() error {
+		cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.Name(), metav1.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("read the GitHub status %s: %w", s.Name(), err)
+			return err
 		}
 		cm.Data = maps.Clone(documents)
-		if _, err = s.c.api.CoreV1().ConfigMaps(s.c.namespace).Update(ctx, cm, metav1.UpdateOptions{}); err == nil {
-			return nil
-		}
-		if !apierrors.IsConflict(err) {
-			break
-		}
+		_, err = s.c.api.CoreV1().ConfigMaps(s.c.namespace).Update(ctx, cm, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("write the GitHub status %s: %w", s.Name(), err)
 	}
-	return fmt.Errorf("write the GitHub status %s: %w", s.Name(), err)
+	return nil
 }

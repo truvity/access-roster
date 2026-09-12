@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -10,7 +11,7 @@ import TableRow from "@mui/material/TableRow";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { ago, at, github } from "./api";
+import { ago, at, github, reason } from "./api";
 import type { GitHubMember, GitHubOrganisation } from "./gen/directoryroster/v1/github_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
@@ -23,7 +24,7 @@ import { Facet, Facts, Failure, Loading, Mono, Names, Nothing, Page, Section, St
  *  page is where an operator reads what it did and, while an organisation
  *  is disabled, what it would do — which is how an organisation is
  *  enabled knowingly rather than hopefully. */
-export function GitHubPage() {
+export function GitHubPage({ operator, onDone }: { operator: boolean; onDone: (message: string) => void }) {
   const status = useAsync(() => github.getGitHubStatus({}), []);
   const organisations = status.value?.organisations ?? [];
 
@@ -44,7 +45,14 @@ export function GitHubPage() {
       ) : null}
 
       {organisations.map((org) => (
-        <Organisation key={org.org} org={org} />
+        <Organisation
+          key={org.org}
+          org={org}
+          operator={operator}
+          connecting={status.value?.connectingAvailable ?? false}
+          onDone={onDone}
+          reload={status.reload}
+        />
       ))}
     </Page>
   );
@@ -56,8 +64,55 @@ type Filter = "all" | "attention" | "synced";
  *  will the controller do in this organisation". */
 type Row = { key: string; team: string; member: GitHubMember };
 
-function Organisation({ org }: { org: GitHubOrganisation }) {
+function Organisation({
+  org,
+  operator,
+  connecting,
+  onDone,
+  reload,
+}: {
+  org: GitHubOrganisation;
+  operator: boolean;
+  connecting: boolean;
+  onDone: (message: string) => void;
+  reload: () => void;
+}) {
   const [filter, setFilter] = useState<Filter>("attention");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | undefined>();
+
+  // Connect is the one thing an operator does here, and it grants a
+  // credential rather than telling the controller what to do: the owner
+  // creates the App on GitHub and installs it, two clicks, nothing typed.
+  const connectOrganisation = async () => {
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      const started = await github.beginGitHubConnect({ org: org.org });
+      if (started.manifest) {
+        postManifest(started.url, started.manifest);
+      } else {
+        window.location.href = started.url;
+      }
+    } catch (error) {
+      setFailure(reason(error));
+      setBusy(false);
+    }
+  };
+  const disconnect = async () => {
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      const gone = await github.disconnectGitHubOrganisation({ org: org.org });
+      const settings = gone.appSettingsUrl ? ` Its owner can delete the App itself at ${gone.appSettingsUrl}.` : "";
+      onDone(gone.uninstalled ? `${org.org} disconnected and the App uninstalled.${settings}` : `${org.org} disconnected. ${gone.detail}${settings}`);
+      reload();
+    } catch (error) {
+      setFailure(reason(error));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const rows: Row[] = [
     ...org.members.map((member) => ({ key: `org:${member.email}:${member.login}`, team: "", member })),
@@ -69,11 +124,49 @@ function Organisation({ org }: { org: GitHubOrganisation }) {
   const synced = rows.filter((row) => row.member.state === "synced");
   const shown = { all: rows, attention, synced }[filter];
 
+  const connection = org.connection;
+  const action = !operator ? null : !connection ? (
+    <Tooltip
+      title={
+        !connecting
+          ? "This deployment keeps no state in Kubernetes, so there is nowhere to keep a connected organisation."
+          : !org.bound
+            ? "Bind the organisation's teams in the policy first."
+            : "Create the App on GitHub and install it: two clicks by the organisation's owner."
+      }
+    >
+      <span>
+        <Button size="small" variant="outlined" disabled={busy || !org.bound || !connecting} onClick={() => void connectOrganisation()}>
+          Connect
+        </Button>
+      </span>
+    </Tooltip>
+  ) : !connection.installed ? (
+    <Stack direction="row" sx={{ gap: 1 }}>
+      <Button size="small" variant="outlined" disabled={busy} onClick={() => void connectOrganisation()}>
+        Finish installing
+      </Button>
+      <Button size="small" color="warning" disabled={busy} onClick={() => void disconnect()}>
+        Disconnect
+      </Button>
+    </Stack>
+  ) : (
+    <Tooltip title="Uninstall the App and forget this organisation. Teams stop being managed; nobody is removed.">
+      <span>
+        <Button size="small" color="warning" disabled={busy} onClick={() => void disconnect()}>
+          Disconnect
+        </Button>
+      </span>
+    </Tooltip>
+  );
+
   return (
-    <Section title={org.org} hint={summary(org)}>
+    <Section title={org.org} hint={summary(org)} action={action}>
       <Stack sx={{ gap: 2 }}>
+        <Failure error={failure} />
         <Facts
           items={[
+            { label: "Connected", value: connectionFact(org) },
             { label: "Controller", value: outcome(org) },
             { label: "Acts on it", value: org.reported ? (org.enabled ? "yes" : "no — disabled, derived only") : undefined },
             { label: "Last pass", value: at(org.tick?.at) ? ago(at(org.tick?.at)) : undefined },
@@ -183,6 +276,43 @@ function Organisation({ org }: { org: GitHubOrganisation }) {
       </Stack>
     </Section>
   );
+}
+
+/** How the controller acts in the organisation, if it can. */
+function connectionFact(org: GitHubOrganisation) {
+  const c = org.connection;
+  if (!c) return <Typography variant="body2">not yet</Typography>;
+  const since = at(c.connectedAt);
+  const app = c.htmlUrl ? (
+    <a href={c.htmlUrl} target="_blank" rel="noreferrer">
+      <Mono>{c.appSlug}</Mono>
+    </a>
+  ) : (
+    <Mono>{c.appSlug}</Mono>
+  );
+  return (
+    <Typography component="span" variant="body2">
+      {app}
+      {c.installed ? "" : " — created, not installed"}
+      {since ? `, ${ago(since)}` : ""}
+      {c.connectedBy ? ` by ${c.connectedBy}` : ""}
+    </Typography>
+  );
+}
+
+/** GitHub creates an App only from a manifest POSTed by the browser, so
+ *  this is a form, submitted once, rather than a link. */
+function postManifest(action: string, manifest: string) {
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = action;
+  const field = document.createElement("input");
+  field.type = "hidden";
+  field.name = "manifest";
+  field.value = manifest;
+  form.appendChild(field);
+  document.body.appendChild(form);
+  form.submit();
 }
 
 /** The organisation's one line: how many teams, and whether anything is

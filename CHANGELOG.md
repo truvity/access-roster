@@ -69,6 +69,19 @@
   demonstration run carries bindings and a sample report, so the page
   can be walked through without a controller.
 
+- **Connect a GitHub organisation**, from the console's GitHub page. An
+  operator presses Connect; the organisation's owner creates the App
+  GitHub offers — private, `members: write` and nothing else, no webhook
+  — and installs it. Nothing is typed or pasted, and the key exists only
+  in this service's namespace. Coming back from Install the service asks
+  GitHub where the App is installed rather than trusting the redirect.
+  Only a bound organisation can be connected; an App created and never
+  installed is finished rather than created again; an installed one is
+  refused rather than duplicated. **Disconnect** uninstalls and forgets.
+  Records live in `<release>-github-orgs`, keys in `<release>-github-apps`,
+  both created empty at start. The service now calls `api.github.com`,
+  which a default-deny egress policy has to allow.
+
 ## v1.1.0
 
 - **SECURITY: a client's `requires` is now enforced when somebody signs

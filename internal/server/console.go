@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -117,6 +118,12 @@ type ConsoleDeps struct {
 	// controller to report to; the GitHub page then shows the bindings
 	// alone and says why.
 	GitHub GitHubReports
+	// GitHubOrgs is where connected organisations are kept. Nil is a
+	// deployment keeping no state in Kubernetes, which can connect none.
+	GitHubOrgs GitHubConnections
+	// GitHubHTTP makes the calls to GitHub that connecting and
+	// disconnecting need. Nil is a client with a short timeout.
+	GitHubHTTP *http.Client
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on

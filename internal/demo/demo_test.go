@@ -63,5 +63,10 @@ func TestTheDemonstrationFixturesAreOnesTheServiceAccepts(t *testing.T) {
 				t.Errorf("no team member is %s: the walkthrough cannot show it", state)
 			}
 		}
+		// A controller reports only on an organisation it can act in, so
+		// the demonstration connection is for the reported organisation.
+		if connected := demo.GitHubConnection(time.Now()); connected.Org != org || !connected.Installed() {
+			t.Errorf("the demonstration connection %+v does not match the report for %s", connected, org)
+		}
 	}
 }

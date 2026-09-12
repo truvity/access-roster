@@ -325,7 +325,7 @@ function PageFor({
     case "clients":
       return id ? <Client id={id} issuerUrl={issuerIsSameOrigin(me?.issuerUrl) ? me?.issuerUrl : undefined} operator={operator} onDone={onDone} /> : <Clients />;
     case "github":
-      return <GitHubPage />;
+      return <GitHubPage operator={operator} onDone={onDone} />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "settings":

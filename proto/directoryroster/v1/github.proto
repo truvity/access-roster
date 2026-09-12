@@ -16,6 +16,49 @@ service GitHubService {
   // controller reports on, each with its bound teams and the members the
   // controller derived for them. Viewer.
   rpc GetGitHubStatus(GetGitHubStatusRequest) returns (GetGitHubStatusResponse);
+
+  // BeginGitHubConnect starts connecting an organisation the policy
+  // binds: the App's manifest and where to post it, or — for an App
+  // already created and not yet installed — where to install it. Sets the
+  // flow's state cookie. Operator.
+  //
+  // An organisation already connected and installed is refused: connecting
+  // it again would create a second App beside the first, and the one
+  // left installed would be the one nobody holds a key for.
+  rpc BeginGitHubConnect(BeginGitHubConnectRequest) returns (BeginGitHubConnectResponse);
+
+  // DisconnectGitHubOrganisation uninstalls the App, then forgets the
+  // organisation's record and credential. Operator.
+  rpc DisconnectGitHubOrganisation(DisconnectGitHubOrganisationRequest) returns (DisconnectGitHubOrganisationResponse);
+}
+
+message BeginGitHubConnectRequest {
+  // the organisation's login.
+  string org = 1;
+}
+
+message BeginGitHubConnectResponse {
+  // where the browser goes next.
+  string url = 1;
+  // when set, the browser POSTs it as the form field `manifest` to url:
+  // GitHub creates an App only from a posted manifest. Empty means url is
+  // an ordinary navigation — the App exists and is to be installed.
+  string manifest = 2;
+}
+
+message DisconnectGitHubOrganisationRequest {
+  string org = 1;
+}
+
+message DisconnectGitHubOrganisationResponse {
+  // whether the installation was removed on GitHub. The record and the
+  // credential are forgotten either way.
+  bool uninstalled = 1;
+  // why it could not be, when it could not.
+  string detail = 2;
+  // where the organisation's owner deletes the App itself, which the API
+  // cannot do.
+  string app_settings_url = 3;
 }
 
 message GetGitHubStatusRequest {}
@@ -26,6 +69,9 @@ message GetGitHubStatusResponse {
   // no state in Kubernetes. Every organisation then reads as not
   // reported, and this is the reason rather than the controller.
   bool reports_available = 2;
+  // false where connecting an organisation is not possible here, because
+  // there is nowhere to keep what it leaves behind.
+  bool connecting_available = 3;
 }
 
 // GitHubOrganisation is one organisation: its bindings beside its report.
@@ -52,6 +98,21 @@ message GitHubOrganisation {
   // members of the organisation no bound holder's address matched,
   // listed and never touched.
   repeated GitHubAccount unlinked = 10;
+  // how the controller acts in it. Absent until an operator connects it.
+  GitHubConnection connection = 11;
+}
+
+// GitHubConnection is the App connecting an organisation left behind.
+// Never the key.
+message GitHubConnection {
+  int64 app_id = 1;
+  string app_slug = 2;
+  // false between Create and Install: the owner made the App and has not
+  // installed it, so nothing can act through it yet.
+  bool installed = 3;
+  string html_url = 4;
+  google.protobuf.Timestamp connected_at = 5;
+  string connected_by = 6;
 }
 
 // GitHubTick is how the controller's last pass over an organisation went.

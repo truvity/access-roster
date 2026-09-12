@@ -474,12 +474,14 @@ whole chain from a directory to a client, and why each link exists.
 It changes exactly two things, and both are removals or bootstrap rather
 than policy:
 
-- **Connect a provider** by admin consent. Google's consent genuinely
-  needs a browser and there is no infrastructure-as-code way to obtain
-  that credential; what it produces — a refresh token — is the one thing
-  this process writes for itself.
+- **Connect a provider** by admin consent, or **a GitHub organisation**
+  by its owner creating and installing an App. Both genuinely need a
+  browser and neither credential can be obtained as code; what they
+  produce — a refresh token, an App's private key — is what this process
+  writes for itself.
 - **Revoke a session.** A removal, and the lever between sign-out and
-  expiry.
+  expiry. Disconnecting a provider or an organisation is the same kind of
+  removal: it revokes at the other side, then forgets.
 
 It cannot change who is in a group. Operator therefore means *may connect
 a provider* and *may revoke*; everything else is a viewer.
@@ -570,6 +572,14 @@ need to be allowed to create any ConfigMap in this namespace — including
 one that reads as a workspace record. It is not rendered by the chart
 either, because a ConfigMap whose data a controller rewrites is one a
 GitOps sync reverts.
+
+A connected GitHub organisation is two objects for the reason a workspace
+is: a record in `<release>-github-orgs` that the console shows, and a
+credential — the App's private key — in `<release>-github-apps`. One
+Secret for every organisation rather than one each, so that the
+controller mounts it by name as a volume and holds no permission to read
+Secrets at all. This process reads a key back for one thing: uninstalling
+the App on Disconnect.
 
 The signing key is a file, never read through the API, so a compromise of
 this process cannot become a read of every credential in its namespace.

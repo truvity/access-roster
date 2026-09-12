@@ -42,6 +42,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
+	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
@@ -319,6 +320,9 @@ type stores struct {
 	// github is where the GitHub controller reports. Nil with the memory
 	// store, which has nowhere a separate process could write to.
 	github *kube.GitHubStatus
+	// githubOrgs is where connected GitHub organisations are kept. Nil
+	// with the memory store, for the same reason.
+	githubOrgs *kube.GitHubOrgs
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -361,8 +365,16 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.WarnContext(ctx, "the GitHub status report could not be created; the GitHub page will show bindings only",
 			"configMap", github.Name(), "error", err)
 	}
+	// And the two objects connecting an organisation writes into, empty,
+	// so the controller's Secret volume always has a Secret behind it.
+	githubOrgs := kube.NewGitHubOrgs(client)
+	if err = githubOrgs.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the objects GitHub organisations are connected into could not be created",
+			"configMap", githubOrgs.ConfigMapName(), "secret", githubOrgs.SecretName(), "error", err)
+	}
 	return stores{
 		github:      github,
+		githubOrgs:  githubOrgs,
 		workspaces:  kube.NewWorkspaces(client),
 		credentials: kube.NewCredentials(client),
 		settings: kube.NewSettings(client, kube.DeclaredClient{
@@ -564,6 +576,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		IssuerURL:    cfg.forwardedIssuer,
 		SignIn:       cfg.loginDirectory,
 		GitHub:       githubReports(kept.github, cfg.demo),
+		GitHubOrgs:   githubConnections(kept.githubOrgs, cfg.demo),
 	})
 	if err != nil {
 		return nil, err
@@ -985,3 +998,38 @@ func githubReports(store *kube.GitHubStatus, demonstration bool) server.GitHubRe
 type fixedReports map[string]string
 
 func (r fixedReports) Reports(context.Context) (map[string]string, error) { return r, nil }
+
+// githubConnections is the store as the console's interface, or nil — for
+// the same typed-nil reason as githubReports. A demonstration run with no
+// Kubernetes shows its one organisation connected, and connects nothing.
+func githubConnections(store *kube.GitHubOrgs, demonstration bool) server.GitHubConnections {
+	switch {
+	case store != nil:
+		return store
+	case demonstration:
+		return demoConnections{record: demo.GitHubConnection(time.Now())}
+	default:
+		return nil
+	}
+}
+
+// errDemoConnect is what a demonstration run says when asked to change a
+// connection: there is no GitHub organisation behind it.
+var errDemoConnect = errors.New("a demonstration run connects and disconnects nothing: there is no GitHub organisation behind it")
+
+// demoConnections is one fixed, connected organisation.
+type demoConnections struct{ record connection.Record }
+
+func (d demoConnections) List(context.Context) ([]connection.Record, error) {
+	return []connection.Record{d.record}, nil
+}
+
+func (demoConnections) Credential(context.Context, string) (connection.Credential, bool, error) {
+	return connection.Credential{}, false, nil
+}
+
+func (demoConnections) Put(context.Context, connection.Record, connection.Credential) error {
+	return errDemoConnect
+}
+
+func (demoConnections) Delete(context.Context, string) error { return errDemoConnect }

@@ -10,6 +10,7 @@ import (
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/policy"
 )
@@ -40,7 +41,10 @@ func (c *Console) GetGitHubStatus(
 	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
 		return nil, err
 	}
-	out := &directoryrosterv1.GetGitHubStatusResponse{ReportsAvailable: c.deps.GitHub != nil}
+	out := &directoryrosterv1.GetGitHubStatusResponse{
+		ReportsAvailable:    c.deps.GitHub != nil,
+		ConnectingAvailable: c.deps.GitHubOrgs != nil,
+	}
 
 	reports := map[string]string{}
 	if c.deps.GitHub != nil {
@@ -55,20 +59,54 @@ func (c *Console) GetGitHubStatus(
 		}
 	}
 
-	set := c.deps.Authorizer.Policy()
-	bound := boundOrganisations(set)
-	names := slices.Sorted(maps.Keys(bound))
-	for org := range reports {
-		if _, ok := bound[org]; !ok {
-			names = append(names, org)
+	connections := map[string]connection.Record{}
+	if c.deps.GitHubOrgs != nil {
+		records, err := c.deps.GitHubOrgs.List(ctx)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeUnavailable, err)
+		}
+		for _, record := range records {
+			connections[record.Org] = record
 		}
 	}
-	slices.Sort(names)
 
-	for _, org := range names {
-		out.Organisations = append(out.Organisations, organisationProto(org, bound[org], reports[org]))
+	set := c.deps.Authorizer.Policy()
+	bound := boundOrganisations(set)
+	seen := map[string]bool{}
+	for org := range bound {
+		seen[org] = true
+	}
+	for org := range reports {
+		seen[org] = true
+	}
+	for org := range connections {
+		seen[org] = true
+	}
+
+	for _, org := range slices.Sorted(maps.Keys(seen)) {
+		row := organisationProto(org, bound[org], reports[org])
+		if record, connected := connections[org]; connected {
+			row.Connection = connectionProto(record)
+		}
+		out.Organisations = append(out.Organisations, row)
 	}
 	return connect.NewResponse(out), nil
+}
+
+// connectionProto is a record as the page shows it: never the key, which
+// is not in a record to begin with.
+func connectionProto(record connection.Record) *directoryrosterv1.GitHubConnection {
+	out := &directoryrosterv1.GitHubConnection{
+		AppId:       record.AppID,
+		AppSlug:     record.AppSlug,
+		Installed:   record.Installed(),
+		HtmlUrl:     record.HTMLURL,
+		ConnectedBy: record.ConnectedBy,
+	}
+	if !record.ConnectedAt.IsZero() {
+		out.ConnectedAt = timestamppb.New(record.ConnectedAt)
+	}
+	return out
 }
 
 // binding is one organisation's side of the policy.

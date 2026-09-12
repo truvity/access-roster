@@ -237,6 +237,23 @@ acts, this shows. See [connect/github-organisation.md](../connect/github-organis
 |---|---|---|---|---|
 | `GetGitHubStatus` | installation-wide viewer | — | `organisations[]{org, bound, reported, report_error, enabled, tick{at, outcome, error, changes, held}, member_groups[], members[], teams[]{team, bound, member_groups[], maintainer_groups[], members[]}, unlinked[]{login, reason}}`, `reports_available` | every organisation the policy binds **or** the controller reports on, each with its bindings beside its report. A member is `{email, login, role, state, action, reason}`: state is `pending`, `invited`, `synced`, `leaving` or `held`; action is `invite`, `add`, `set-role` or `remove`, and a held one carries its reason. Where the two sides disagree both show — a bound team nobody has reported, a report for a team the policy no longer binds — and an unreadable report hides no binding. **Not** a tenant-scoped viewer: a report names the members of every bound team in every company |
 
+| `BeginGitHubConnect` | operator | `org` | `url`, `manifest` | starts connecting an organisation the policy binds, and sets the flow's state cookie. With `manifest` set the browser POSTs it as the form field `manifest` to `url`, GitHub's create page; without, `url` is the App's install page, for an App created and never installed. `failed_precondition` for an unbound organisation, for one already connected and installed, and where the deployment keeps no state in Kubernetes |
+| `DisconnectGitHubOrganisation` | operator | `org` | `uninstalled`, `detail`, `app_settings_url` | uninstalls the App, then forgets the record and the key — the latter even when the uninstall fails, which `detail` explains. `app_settings_url` is where the owner deletes the App, which the API cannot |
+
+`GetGitHubStatus` also carries each organisation's `connection{app_id,
+app_slug, installed, html_url, connected_at, connected_by}` — never the
+key — and `connecting_available`, false where nothing could keep one.
+
+**The two GitHub redirects** land at the origin root beside a directory's
+consent callback: `GET /connect/github/callback` after Create, which
+exchanges the one-time code for the App's key and sends the browser on
+to Install under a fresh state; and `GET /connect/github/setup` after
+Install, which asks GitHub — as the App — where it is installed, and
+ignores the installation id the redirect claims. Both check the flow
+cookie against a state signed by this service that names the organisation
+and the operator who pressed Connect, and every failure is a page with a
+4xx and GitHub's own words.
+
 The report is the ConfigMap `<release>-github-status` in the service's
 namespace, one key per organisation (`<login>.json`), each a versioned
 document. The service creates it; the controller only replaces its data,

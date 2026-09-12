@@ -18,6 +18,7 @@ import (
 
 	"github.com/truvity/access-roster/backend"
 	"github.com/truvity/access-roster/backend/fake"
+	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/internal/hub"
 )
@@ -305,4 +306,16 @@ func GitHubReports(now time.Time) map[string]string {
 		panic(err)
 	}
 	return map[string]string{status.Key(report.Org): document}
+}
+
+// GitHubConnection is the demonstration organisation's App, as though its
+// owner had created and installed it: a report only exists for an
+// organisation the controller can act in, so the walkthrough shows one
+// connected rather than a dry run of something nobody connected.
+func GitHubConnection(now time.Time) connection.Record {
+	return connection.Record{
+		Org: "example-org", AppID: 1000001, AppSlug: "example-org-access-roster", InstallationID: 2000002,
+		HTMLURL: "https://github.com/apps/example-org-access-roster", ConnectedAt: now.Add(-72 * time.Hour),
+		ConnectedBy: "ada@north.example",
+	}
 }
