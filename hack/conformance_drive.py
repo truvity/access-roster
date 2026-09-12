@@ -51,6 +51,11 @@ PORT = 9223
 
 def api(path, method="GET", body=None, text=None):
     request = urllib.request.Request(SUITE + path, method=method)
+    # The suite refuses any request not marked as having arrived over
+    # HTTPS. Its nginx sets this in front of it; reached at the ClusterIP
+    # over the tailnet there is no nginx, so the caller says it. Harmless
+    # when the suite really is behind TLS.
+    request.add_header("X-Forwarded-Proto", "https")
     if text is not None:
         request.add_header("Content-Type", "text/plain")
         body = text.encode()

@@ -74,8 +74,14 @@ profile has no login of its own. Reach it over the tailnet:
 
 ```bash
 S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080
-curl -s "$S/api/runner/available"      # 200 once it is up; the first start takes a minute
+H='X-Forwarded-Proto: https'
+curl -s -H "$H" "$S/api/runner/available"   # 200 once it is up; the first start takes a minute
 ```
+
+**Every call carries that header.** The suite refuses a request that
+does not claim to have arrived over HTTPS — its own nginx normally says
+so — and at the ClusterIP there is no nginx. The drivers add it
+themselves; a hand-typed `curl` has to.
 
 Everything below drives it over that API, so a run is a script and not a
 sequence of clicks. The drivers take the address as `SUITE=$S`. The
@@ -89,7 +95,7 @@ Needs no client and no browser: it reads the discovery document and the
 key set, and checks them against the specification.
 
 ```bash
-S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080
+S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080; H='X-Forwarded-Proto: https'
 cat > config.json <<'JSON'
 {
   "alias": "access-issuer-config",
@@ -99,10 +105,10 @@ cat > config.json <<'JSON'
 }
 JSON
 
-PLAN=$(curl -sk -X POST "$S/api/plan?planName=oidcc-config-certification-test-plan" \
+PLAN=$(curl -s -H "$H" -X POST "$S/api/plan?planName=oidcc-config-certification-test-plan" \
   -H 'Content-Type: application/json' --data-binary @config.json | jq -r .id)
-TEST=$(curl -sk -X POST "$S/api/runner?test=oidcc-discovery-endpoint-verification&plan=$PLAN" | jq -r .id)
-curl -sk "$S/api/info/$TEST" | jq '{status, result}'
+TEST=$(curl -s -H "$H" -X POST "$S/api/runner?test=oidcc-discovery-endpoint-verification&plan=$PLAN" | jq -r .id)
+curl -s -H "$H" "$S/api/info/$TEST" | jq '{status, result}'
 ```
 
 Change the discovery URL to point at whichever installation is under
@@ -187,7 +193,7 @@ kubectl -n access-issuer get secret conformance-client \
 ### 3. Configure and run
 
 ```bash
-S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080
+S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080; H='X-Forwarded-Proto: https'
 cat > basic.json <<JSON
 {
   "alias": "access-issuer",
@@ -199,7 +205,7 @@ cat > basic.json <<JSON
 }
 JSON
 
-curl -sk -X POST "$S/api/plan?planName=oidcc-basic-certification-test-plan&variant=%7B%22server_metadata%22%3A%22discovery%22%2C%22client_registration%22%3A%22static_client%22%7D" \
+curl -s -H "$H" -X POST "$S/api/plan?planName=oidcc-basic-certification-test-plan&variant=%7B%22server_metadata%22%3A%22discovery%22%2C%22client_registration%22%3A%22static_client%22%7D" \
   -H 'Content-Type: application/json' --data-binary @basic.json | jq -r .id
 ```
 
@@ -308,7 +314,7 @@ error with no plan id rather than a plan:
 
 ```bash
 variant='%7B%22client_registration%22%3A%22static_client%22%2C%22response_type%22%3A%22code%22%7D'
-curl -sk -X POST "$S/api/plan?planName=oidcc-rp-initiated-logout-certification-test-plan&variant=$variant" \
+curl -s -H "$H" -X POST "$S/api/plan?planName=oidcc-rp-initiated-logout-certification-test-plan&variant=$variant" \
   -H 'Content-Type: application/json' --data-binary @basic.json | jq -r .id
 ```
 
@@ -321,7 +327,7 @@ The Back-Channel plan takes the **same** variants as that one, and is
 started the same way:
 
 ```bash
-curl -sk -X POST "$S/api/plan?planName=oidcc-backchannel-rp-initiated-logout-certification-test-plan&variant=$variant" \
+curl -s -H "$H" -X POST "$S/api/plan?planName=oidcc-backchannel-rp-initiated-logout-certification-test-plan&variant=$variant" \
   -H 'Content-Type: application/json' --data-binary @basic.json | jq -r .id
 ```
 
