@@ -308,13 +308,25 @@ attach directory groups; that goes with INF-694.
 
 ## Testing the file
 
-Two ways, and both answer the same question.
+Three ways, at three moments.
 
-`accessctl policy test policy.yaml` evaluates fixtures — an account with
-directory groups, a CI token's claims, a client id — and prints the token
-that would result, so the file is reviewed like code.
+**Before it ships:** the file is parsed by the issuer's own loader, the
+same code that refuses it at startup. In gitops that is a test that runs
+on every render (`TestTheRenderedIssuerPolicyLoads`, INF-690), so an
+unknown key, a client with no `requires` or a redirect that is also a
+landing page fails the pull request rather than the rollout — and a
+rollout the issuer refuses is the worst case, because the previous pods
+keep serving the previous policy while everything reads Synced.
 
-The console does it live against the policy in force. Search for a
+**In a test:** the `policy` package is the engine itself.
+`policy.Parse`, then `policy.NewSet`, then `Evaluate` with an `Input` —
+an account with its directory groups, a CI token's claims, a client id —
+returns the groups, claims and lifetime a token would carry, so a change
+to the file can be pinned by a fixture the way the issuer's own tests
+pin it. There is no `accessctl` subcommand for this; the Go package is
+the interface.
+
+**Live:** the console does it against the policy in force. Search for a
 person and their page shows the internal groups, what put them in each,
 the merged claims, the lifetime, and every client with whether they reach
 it; Rules lists every rule that grants a group — a directory group by
