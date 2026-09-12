@@ -1,3 +1,43 @@
+## Unreleased
+
+- **A GitHub team binding now names internal groups, not provider
+  addresses**, and declares both of GitHub's team roles (INF-696):
+
+  ```yaml
+  github:
+    truvity:
+      members: [all:truvity:employee]     # in the org, with or without a team
+      teams:
+        team-platform:
+          members: [all:platform:engineer]
+          maintainers: [all:platform:lead]
+  ```
+
+  A team is a consumer of a group exactly as a client's `requires` is,
+  so everything the policy already does applies to a team for free:
+  holders from several workspaces, a matcher for the day before a
+  provider group exists, the naming convention, the console's holders
+  view. Which accounts hold a group stays a question the directory
+  answers once, in `groups`, rather than one this table asks again.
+
+  An organisation's own `members` is new and is for the people who
+  belong in it without a team — without it they are people no binding
+  accounts for, which is exactly who a controller would remove.
+
+  Refused, each because it is otherwise silent: a group nothing
+  declares, a team fed by neither role, an organisation binding nothing
+  at all, and either half declared twice across two merged files.
+
+  **This is a breaking change to the table**, which was read by nothing
+  but the console: no controller exists yet, and none of it has ever
+  reached a token. A deployment carrying the old shape fails the render
+  rather than being reinterpreted.
+
+- The Rules page reads the new shape: a binding's rule is the internal
+  group and links to its page, *depends on* is whatever that group
+  depends on, and an organisation's own members are their own kind.
+  `GetPolicy` carries `maintainers` on each team and a new `orgs` list.
+
 ## v1.1.0
 
 - **SECURITY: a client's `requires` is now enforced when somebody signs

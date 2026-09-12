@@ -169,16 +169,53 @@ type Policy struct {
 	// Clients is who may be issued a token for what. A client's id is the
 	// audience.
 	Clients map[string]Client `yaml:"clients,omitempty"`
-	// GitHub binds directory groups to GitHub teams, by organisation
-	// then team (INF-696). It grants nothing here and appears in no
-	// token: a controller reads it and makes the org's membership match.
+	// GitHub binds internal groups to GitHub teams, keyed by the
+	// organisation's login (INF-696). It grants nothing here and appears
+	// in no token: a controller reads it and makes each organisation's
+	// membership match.
 	//
 	// It lives in this file for one reason — a reader of the access model
 	// sees every GitHub team's source without opening another file — and
-	// it is the same shape as a group's `members`, read the same way: the
-	// people the directory puts in these groups are the people that team
-	// should contain.
-	GitHub map[string]map[string][]string `yaml:"github,omitempty"`
+	// a team is a consumer of a group exactly as a client's `requires`
+	// is: the holders of these groups are the people that team should
+	// contain. Which accounts hold a group is a question only the
+	// directory answers, so nothing about a provider appears here.
+	GitHub map[string]GitHubOrg `yaml:"github,omitempty"`
+}
+
+// GitHubOrg is one organisation's bindings.
+type GitHubOrg struct {
+	// Members are internal groups whose holders belong in the
+	// organisation itself. Being in a bound team implies organisation
+	// membership, so this is for the people who should be members
+	// without a team — and it is what keeps them from being removed as
+	// somebody no binding accounts for.
+	Members []string `yaml:"members,omitempty"`
+	// Teams are the organisation's teams, keyed by SLUG rather than
+	// display name: the slug is what the API takes and what a rename
+	// leaves alone.
+	Teams map[string]GitHubTeam `yaml:"teams,omitempty"`
+}
+
+// GitHubTeam is one team's binding. GitHub has two team roles and both
+// are declared here; a holder of a maintainer group is a maintainer even
+// when a member group also names them, because the wider role is the one
+// they were given.
+type GitHubTeam struct {
+	// Members are internal groups whose holders belong in the team.
+	Members []string `yaml:"members,omitempty"`
+	// Maintainers are internal groups whose holders maintain it.
+	Maintainers []string `yaml:"maintainers,omitempty"`
+}
+
+// Groups returns every internal group the team binds, members and
+// maintainers together, sorted and without repeats.
+func (t GitHubTeam) Groups() []string {
+	out := make([]string, 0, len(t.Members)+len(t.Maintainers))
+	out = append(out, t.Members...)
+	out = append(out, t.Maintainers...)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // Group is one internal group: a set of directory groups whose members
@@ -433,27 +470,8 @@ func (p Policy) Validate() error {
 		}
 	}
 	for _, org := range slices.Sorted(maps.Keys(p.GitHub)) {
-		if strings.TrimSpace(org) == "" {
-			return fmt.Errorf("github: an organisation with no name")
-		}
-		teams := p.GitHub[org]
-		for _, team := range slices.Sorted(maps.Keys(teams)) {
-			if strings.TrimSpace(team) == "" {
-				return fmt.Errorf("github: %q has a team with no name", org)
-			}
-			// A team fed by nothing is a team the controller would empty.
-			// It is refused rather than obeyed, because "remove everyone
-			// from platform" is not something to express by leaving a
-			// list out.
-			if len(teams[team]) == 0 {
-				return fmt.Errorf(
-					"github: %s/%s is fed by no group, which would empty the team", org, team)
-			}
-			for _, address := range teams[team] {
-				if _, ok := emailaddr.Domain(address); !ok {
-					return fmt.Errorf("github: %q in %s/%s has no domain", address, org, team)
-				}
-			}
+		if err := p.validateGitHubOrg(org); err != nil {
+			return err
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(p.Clients)) {
@@ -462,6 +480,48 @@ func (p Policy) Validate() error {
 		}
 	}
 	return p.checkFragments()
+}
+
+// validateGitHubOrg checks one organisation's bindings: that it names
+// something, that every group it names is declared, and that no team is
+// bound to nothing.
+func (p Policy) validateGitHubOrg(org string) error {
+	if strings.TrimSpace(org) == "" {
+		return fmt.Errorf("github: an organisation with no name")
+	}
+	binding := p.GitHub[org]
+	// An organisation that binds nothing is one the controller would
+	// connect and then have no opinion about — and, read the other way,
+	// one whose every member is accounted for by no binding. Refused, so
+	// that "stop managing this organisation" is expressed by removing it.
+	if len(binding.Members) == 0 && len(binding.Teams) == 0 {
+		return fmt.Errorf("github: %s binds no group and no team", org)
+	}
+	for _, group := range binding.Members {
+		if _, ok := p.Groups[group]; !ok {
+			return fmt.Errorf("github: %s members: %q is not a declared group", org, group)
+		}
+	}
+	for _, team := range slices.Sorted(maps.Keys(binding.Teams)) {
+		if strings.TrimSpace(team) == "" {
+			return fmt.Errorf("github: %q has a team with no name", org)
+		}
+		bound := binding.Teams[team]
+		// A team fed by nothing is a team the controller would empty. It
+		// is refused rather than obeyed, because "remove everyone from
+		// platform" is not something to express by leaving a list out.
+		if len(bound.Members) == 0 && len(bound.Maintainers) == 0 {
+			return fmt.Errorf(
+				"github: %s/%s is fed by no group, which would empty the team", org, team)
+		}
+		for _, group := range bound.Groups() {
+			if _, ok := p.Groups[group]; !ok {
+				return fmt.Errorf(
+					"github: %s/%s: %q is not a declared group", org, team, group)
+			}
+		}
+	}
+	return nil
 }
 
 func (g Group) validate(name string) error {

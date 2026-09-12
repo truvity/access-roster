@@ -52,9 +52,9 @@ clients:                       # who may be issued a token for what; the id is t
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
 | `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap` | declared |
-| `github` | organisation, then team | the provider groups that feed that GitHub team | declared |
+| `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
 
-Five tables, one writer. There was a fifth, `memberships`, which a
+Five tables, one writer. There was another, `memberships`, which a
 console could extend; it is gone with the read-only console (INF-694),
 and the key is now refused like any other unknown one rather than
 ignored. A directory group that should feed an internal group is named
@@ -246,32 +246,67 @@ one declared `local-dev` client.
 
 ```yaml
 github:
-  truvity:
-    platform: [team-platform@truvity.com, sre@truvity.com]
-    security: [sec@truvity.com]
+  truvity:                                  # the organisation's login
+    members: [all:truvity:employee]         # in the organisation, with or without a team
+    teams:
+      team-platform:                        # the team's SLUG, not its display name
+        members: [all:platform:engineer]
+        maintainers: [all:platform:lead]
+      team-security:
+        members: [all:security:analyst]
   trust-form:
-    platform: [team-platform@trustform.eu]
+    teams:
+      team-platform:
+        members: [all:platform:engineer]
 ```
 
-Read it exactly like a group's `members`: the people the directory puts
-in these groups are the people that team should contain.
+**A team is a consumer of an internal group, exactly as a client's
+`requires` is.** Read it that way: the holders of these groups are the
+people that team should contain. Nothing about a provider appears here —
+which accounts hold a group is a question only the directory answers,
+and it is answered once, in `groups`.
 
-**It grants nothing here and appears in no token.** A controller reads it
-and makes the organisation match; this service only holds it and shows
-it. The reason it lives in this file rather than the controller's own is
-the one that decides every question like it — *a reader of the access
-model sees every GitHub team's source without opening another file*, and
-`git log` is the history of who was in what.
+That is the whole reason this table names internal groups rather than
+provider addresses (INF-696): everything the policy already does applies
+to a team for free. Holders from two workspaces, a matcher for the day
+before a group exists, the naming convention, the console's holders
+view — a team gets all of it by being an ordinary consumer.
 
-The same team name in two organisations is two bindings, not a clash.
-The same team declared twice, in two files that merge, **is** a clash and
-is refused: the second would silently replace the first. A team fed by an
-empty list is refused too, because "remove everyone from platform" is not
-something to express by leaving a list out.
+GitHub has **two team roles** and both are declared per team. A holder of
+a maintainer group is a maintainer even when a member group also names
+them: the wider role is the one they were given.
 
-The console's Rules page lists these beside the rest, with the same
-*depends on* column — they depend on the directory, like any membership.
-They feed a team rather than an internal group, so they open no client.
+An organisation's own `members` is for the people who belong in it
+**without** a team. Being in a bound team implies organisation
+membership, so this is not a list of everybody — it is what keeps
+somebody no team accounts for from being removed as unaccounted for.
+
+**Nothing here grants anything, and none of it appears in a token.** A
+controller reads this table and makes each organisation match; this
+service only holds it and shows it. The reason it lives in this file
+rather than the controller's own is the one that decides every question
+like it — *a reader of the access model sees every GitHub team's source
+without opening another file* — and `git log` is the history of who was
+in what.
+
+What is refused, and why each would otherwise be silent:
+
+| Refused | Because |
+|---|---|
+| a group nothing declares | the binding would name something with no meaning, and read as though it worked |
+| a team with neither `members` nor `maintainers` | *remove everyone from platform* is not something to express by leaving a list out |
+| an organisation binding no group and no team | *stop managing this organisation* is expressed by removing it, not by emptying it |
+| the same team declared twice across two merged files | the second would silently replace the first |
+| the same organisation's `members` declared twice | the same reason |
+
+The same team name in two **organisations** is fine: `team-platform` on
+two orgs is two different teams.
+
+The console's Rules page lists these beside every other rule. A binding's
+rule is the internal group, so it links to that group's page, and *depends
+on* is whatever the group depends on — the provider for a membership, the
+proof alone for a matcher. It feeds a team rather than an internal group,
+so it opens no client.
 
 ## One source
 

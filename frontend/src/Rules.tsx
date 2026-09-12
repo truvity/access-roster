@@ -16,7 +16,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { access, matcherKind } from "./api";
-import type { ExplainRequest } from "./gen/directoryroster/v1/access_pb";
+import type { ExplainRequest, PolicyGroup } from "./gen/directoryroster/v1/access_pb";
 import { useAsync } from "./hooks";
 import { Explanation } from "./Person";
 import { paths } from "./router";
@@ -24,7 +24,7 @@ import { Facet, Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, Stat
 
 /** The kind of rule, which is also the tab. `directory` is the one this
  *  page used to omit, and it is the majority of the estate. */
-type Kind = "all" | "directory" | "ci" | "workload" | "sign-in" | "github-team";
+type Kind = "all" | "directory" | "ci" | "workload" | "sign-in" | "github-team" | "github-org";
 
 /** What a rule needs besides itself to grant anything.
  *
@@ -53,10 +53,42 @@ type Row = {
   group: string;
   needs: keyof typeof dependsOn;
   declared: boolean;
-  // A GitHub team binding feeds a team rather than an internal group, so
-  // there is no group page to link to and no client it opens.
+  // A GitHub binding feeds a team or an organisation rather than an
+  // internal group, so what it feeds has no group page to link to and
+  // opens no client.
   team?: boolean;
+  // A GitHub binding's RULE is an internal group, so the group filter
+  // has to match the rule rather than what it feeds.
+  filterGroup?: string;
+  // `member` or `maintainer`, GitHub's two team roles.
+  role?: string;
 };
+
+/** One row of a GitHub binding: an internal group, what it feeds, and
+ *  the role it feeds it as. */
+function githubRow(kind: Kind, group: string, feeds: string, role: string, groups: PolicyGroup[]): Row {
+  return {
+    key: `${feeds}:${role}:${group}`,
+    kind,
+    rule: group,
+    group: feeds,
+    filterGroup: group,
+    needs: needsOf(groups, group),
+    declared: true,
+    team: true,
+    role,
+  };
+}
+
+/** What a GitHub binding depends on: whatever the internal group it
+ *  names depends on. A group the provider vouches for degrades to the
+ *  hold window when the provider cannot be read; one admitted by a proof
+ *  alone does not. */
+function needsOf(groups: PolicyGroup[], name: string): keyof typeof dependsOn {
+  const group = groups.find((g) => g.name === name);
+  if (!group) return "directory";
+  return group.members.length ? "directory" : "proof";
+}
 
 /** Every rule that puts an identity into an internal group.
  *
@@ -76,22 +108,18 @@ export function Rules() {
   const groups = policy.value?.groups ?? [];
   const clients = policy.value?.clients ?? [];
 
-  // A GitHub team binding feeds a TEAM rather than an internal group, so
-  // it grants nothing in a token and opens no client. It belongs here
-  // anyway: the question this page answers is "how does somebody come to
-  // be in this, and why", and for a GitHub team the answer is a
-  // directory group exactly as it is for an internal one.
-  const teamRows: Row[] = (policy.value?.teams ?? []).flatMap((t) =>
-    t.members.map((address) => ({
-      key: `${t.org}/${t.team}:${address}`,
-      kind: "github-team" as Kind,
-      rule: address,
-      group: `${t.org}/${t.team}`,
-      needs: "directory" as const,
-      declared: true,
-      team: true,
-    })),
-  );
+  // A GitHub binding feeds a TEAM or an ORGANISATION rather than an
+  // internal group, so it grants nothing in a token and opens no client.
+  // It belongs here anyway: the question this page answers is "how does
+  // somebody come to be in this, and why", and a GitHub team is a
+  // consumer of an internal group exactly as a client is.
+  const githubRows: Row[] = [
+    ...(policy.value?.teams ?? []).flatMap((t) => [
+      ...t.members.map((g) => githubRow("github-team", g, `${t.org}/${t.team}`, "member", groups)),
+      ...t.maintainers.map((g) => githubRow("github-team", g, `${t.org}/${t.team}`, "maintainer", groups)),
+    ]),
+    ...(policy.value?.orgs ?? []).flatMap((o) => o.members.map((g) => githubRow("github-org", g, o.org, "member", groups))),
+  ];
 
   const rows: Row[] = groups.flatMap((g) => [
     // Membership: the majority of the estate, and what this page used to
@@ -115,16 +143,19 @@ export function Rules() {
   ]);
 
   const opens = (name: string) => clients.filter((client) => client.requires.includes(name));
-  const all = [...rows, ...teamRows];
-  const shown = all.filter((row) => (kind === "all" || row.kind === kind) && (!group || row.group === group));
+  const all = [...rows, ...githubRows];
+  const shown = all.filter((row) => (kind === "all" || row.kind === kind) && (!group || (row.filterGroup ?? row.group) === group));
   // Every group any rule feeds — which is now all of them, rather than
-  // the third that had a matcher.
-  const fed = groups.filter((g) => g.members.length || g.rules.length);
+  // the third that had a matcher — plus any a GitHub binding names, so
+  // that filtering by one never returns the rows it feeds and nothing
+  // else.
+  const bound = new Set(githubRows.map((row) => row.filterGroup));
+  const fed = groups.filter((g) => g.members.length || g.rules.length || bound.has(g.name));
 
   return (
     <Page
       title="Rules"
-      lede="Every rule that puts an identity somewhere: a provider group somebody is a member of, a verified sign-in, a workload, a CI job, and the provider groups that feed a GitHub team. Together they are the whole answer to who is in what and why. Declared by the deployment, never written here."
+      lede="Every rule that puts an identity somewhere: a provider group somebody is a member of, a verified sign-in, a workload, a CI job, and the internal groups that feed a GitHub team. Together they are the whole answer to who is in what and why. Declared by the deployment, never written here."
     >
       <Loading busy={policy.loading} />
       <Failure error={policy.error} />
@@ -139,7 +170,8 @@ export function Rules() {
             { value: "sign-in", label: "Sign-ins" },
             { value: "workload", label: "Workloads" },
             { value: "ci", label: "CI jobs" },
-            ...(teamRows.length ? [{ value: "github-team", label: "GitHub teams" }] : []),
+            ...(githubRows.some((row) => row.kind === "github-team") ? [{ value: "github-team", label: "GitHub teams" }] : []),
+            ...(githubRows.some((row) => row.kind === "github-org") ? [{ value: "github-org", label: "GitHub orgs" }] : []),
           ]}
         />
         <TextField select label="Internal group" value={group} onChange={(e) => setGroup(e.target.value)} sx={{ minWidth: 220 }}>
@@ -171,18 +203,17 @@ export function Rules() {
               {shown.map((row) => (
                 <TableRow key={row.key} hover>
                   <TableCell>{ruleKind(row.kind)}</TableCell>
-                  <TableCell>
-                    {row.kind === "directory" ? (
-                      <Ref to={paths.directoryGroup(row.rule)} mono>
-                        {row.rule}
-                      </Ref>
-                    ) : (
-                      <Mono>{row.rule}</Mono>
-                    )}
-                  </TableCell>
+                  <TableCell>{rule(row)}</TableCell>
                   <TableCell>
                     {row.team ? (
-                      <Mono>{row.group}</Mono>
+                      <>
+                        <Mono>{row.group}</Mono>
+                        {row.role === "maintainer" ? (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            as maintainer
+                          </Typography>
+                        ) : null}
+                      </>
                     ) : (
                       <Ref to={paths.group(row.group)} mono>
                         {row.group}
@@ -230,9 +261,32 @@ function ruleKind(kind: Kind): string {
       return "provider group";
     case "github-team":
       return "GitHub team";
+    case "github-org":
+      return "GitHub org";
     default:
       return matcherKind(kind);
   }
+}
+
+/** The rule itself, linked to whatever page explains it: a provider
+ *  group's page for a membership, the internal group's page for a GitHub
+ *  binding, and nothing for a matcher, which is the rule in full. */
+function rule(row: Row) {
+  if (row.kind === "directory") {
+    return (
+      <Ref to={paths.directoryGroup(row.rule)} mono>
+        {row.rule}
+      </Ref>
+    );
+  }
+  if (row.team) {
+    return (
+      <Ref to={paths.group(row.rule)} mono>
+        {row.rule}
+      </Ref>
+    );
+  }
+  return <Mono>{row.rule}</Mono>;
 }
 
 /** What an empty table means, which is not one thing.
@@ -251,6 +305,10 @@ function emptiness(kind: Kind, group: string, total: number): string {
       return "No workload rule is declared.";
     case "sign-in":
       return "No sign-in rule is declared: everybody arrives through a provider group.";
+    case "github-team":
+      return "No GitHub team is bound to an internal group.";
+    case "github-org":
+      return "No GitHub organisation binds members of its own: everybody in one is there through a team.";
     case "directory":
       return "No provider group feeds anything: only the rules above admit anyone.";
     default:

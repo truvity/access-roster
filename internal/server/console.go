@@ -637,7 +637,15 @@ func (c *Console) GetPolicy(
 	}
 	for _, team := range set.GitHubTeams() {
 		out.Teams = append(out.Teams, &directoryrosterv1.PolicyTeam{
-			Org: team.Org, Team: team.Team, Members: team.Members,
+			Org:         team.Org,
+			Team:        team.Team,
+			Members:     team.Members,
+			Maintainers: team.Maintainers,
+		})
+	}
+	for _, org := range set.GitHubOrgs() {
+		out.Orgs = append(out.Orgs, &directoryrosterv1.PolicyOrg{
+			Org: org.Org, Members: org.Members,
 		})
 	}
 	return connect.NewResponse(out), nil

@@ -1,6 +1,9 @@
 package policy_test
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -307,23 +310,33 @@ func refused(t *testing.T, document, complaint string) {
 	}
 }
 
-// A GitHub team binding says which provider groups feed a team. It
-// grants nothing and reaches no token — a controller makes the
-// organisation match it — and it lives in this file for one reason: a
-// reader of the access model sees every team's source without opening
-// GitHub (INF-696).
+// A GitHub team binding says which INTERNAL GROUPS feed a team, with
+// both of GitHub's team roles. It grants nothing and reaches no token —
+// a controller makes the organisation match it — and it lives in this
+// file for one reason: a reader of the access model sees every team's
+// source without opening GitHub (INF-696).
 func TestGitHubTeamBindingsAreReadAsWritten(t *testing.T) {
 	t.Parallel()
 	declared, err := policy.Parse([]byte(`
 version: 1
 groups:
-  a: { members: [g@h.example] }
+  all:platform:engineer: { members: [team-platform@truvity.com] }
+  all:platform:lead: { members: [leads@truvity.com] }
+  all:security:analyst: { members: [sec@truvity.com] }
+  all:truvity:employee: { matchers: [{ email_domain: truvity.com }] }
 github:
   truvity:
-    platform: [team-platform@truvity.com, sre@truvity.com]
-    security: [sec@truvity.com]
+    members: [all:truvity:employee]
+    teams:
+      platform:
+        members: [all:platform:engineer]
+        maintainers: [all:platform:lead]
+      security:
+        members: [all:security:analyst]
   trust-form:
-    platform: [team-platform@trustform.eu]
+    teams:
+      platform:
+        members: [all:platform:engineer]
 `))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -342,24 +355,111 @@ github:
 	if teams[0].Org != "trust-form" || teams[1].Org != "truvity" || teams[1].Team != "platform" {
 		t.Errorf("teams are not sorted: %+v", teams)
 	}
-	if len(teams[1].Members) != 2 || teams[1].Members[0] != "team-platform@truvity.com" {
+	if len(teams[1].Members) != 1 || teams[1].Members[0] != "all:platform:engineer" {
 		t.Errorf("members = %v", teams[1].Members)
+	}
+	// Both roles are declared per team, because GitHub has two and a
+	// lead is not a different person from a member.
+	if len(teams[1].Maintainers) != 1 || teams[1].Maintainers[0] != "all:platform:lead" {
+		t.Errorf("maintainers = %v", teams[1].Maintainers)
 	}
 	// The same team name in two organisations is two bindings, not a
 	// clash: `platform` on truvity and on trust-form are different teams.
 	if teams[0].Team != "platform" {
 		t.Errorf("a team name shared across organisations collided: %+v", teams)
 	}
+
+	// An organisation may bind its own members, for the people who
+	// belong in it without a team. One that binds only teams says
+	// nothing here.
+	orgs := set.GitHubOrgs()
+	if len(orgs) != 1 || orgs[0].Org != "truvity" || len(orgs[0].Members) != 1 {
+		t.Fatalf("orgs = %+v", orgs)
+	}
+	if orgs[0].Members[0] != "all:truvity:employee" {
+		t.Errorf("org members = %v", orgs[0].Members)
+	}
+}
+
+// A deployment renders one file per source, so the GitHub table merges
+// across files: one may bind the platform team and another the security
+// team in the same organisation. Two files binding ONE team is a clash,
+// because the second would silently replace the first — and so are two
+// files declaring one organisation's own members.
+func TestGitHubBindingsMergeAcrossFilesButNeverSilently(t *testing.T) {
+	t.Parallel()
+	const shared = `
+version: 1
+groups:
+  all:platform:engineer: { members: [team-platform@truvity.com] }
+  all:security:analyst: { members: [sec@truvity.com] }
+  all:truvity:employee: { matchers: [{ email_domain: truvity.com }] }
+`
+	layer := func(t *testing.T, files ...string) (policy.Policy, error) {
+		t.Helper()
+		dir := t.TempDir()
+		for i, text := range files {
+			name := filepath.Join(dir, fmt.Sprintf("%02d.yaml", i))
+			if err := os.WriteFile(name, []byte(text), 0o600); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+		}
+		return policy.LoadDeclared(dir)
+	}
+
+	t.Run("two teams in one organisation", func(t *testing.T) {
+		t.Parallel()
+		merged, err := layer(t,
+			shared+"github: { truvity: { teams: { platform: { members: [all:platform:engineer] } } } }\n",
+			"version: 1\ngithub: { truvity: { members: [all:truvity:employee], teams: { security: { members: [all:security:analyst] } } } }\n",
+		)
+		if err != nil {
+			t.Fatalf("LoadDeclared: %v", err)
+		}
+		set, err := policy.NewSet(merged)
+		if err != nil {
+			t.Fatalf("NewSet: %v", err)
+		}
+		if teams := set.GitHubTeams(); len(teams) != 2 {
+			t.Errorf("teams = %+v, want both files' bindings", teams)
+		}
+		if orgs := set.GitHubOrgs(); len(orgs) != 1 {
+			t.Errorf("orgs = %+v, want the second file's members", orgs)
+		}
+	})
+
+	for name, second := range map[string]string{
+		"the same team twice":   "version: 1\ngithub: { truvity: { teams: { platform: { members: [all:security:analyst] } } } }\n",
+		"org members twice":     "version: 1\ngithub: { truvity: { members: [all:security:analyst] } }\n",
+		"a maintainer rewrites": "version: 1\ngithub: { truvity: { teams: { platform: { maintainers: [all:security:analyst] } } } }\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := layer(t,
+				shared+"github: { truvity: { members: [all:truvity:employee], teams: { platform: { members: [all:platform:engineer] } } } }\n",
+				second,
+			)
+			if err == nil {
+				t.Fatal("the second file was accepted, silently replacing the first")
+			}
+		})
+	}
 }
 
 // A team fed by nothing would be a team the controller empties. That is
-// not something to express by leaving a list out, so it is refused.
+// not something to express by leaving a list out, so it is refused —
+// along with a group nothing declares, which would bind a team to a name
+// with no meaning.
 func TestABindingThatWouldEmptyATeamIsRefused(t *testing.T) {
 	t.Parallel()
+	const groups = "version: 1\ngroups: { a: { members: [g@h.example] } }\n"
 	for name, text := range map[string]string{
-		"no groups":  "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { truvity: { platform: [] } }\n",
-		"no domain":  "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { truvity: { platform: [nodomain] } }\n",
-		"empty team": "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { truvity: { \"\": [g@h.example] } }\n",
+		"no groups":         groups + "github: { truvity: { teams: { platform: {} } } }\n",
+		"undeclared group":  groups + "github: { truvity: { teams: { platform: { members: [b] } } } }\n",
+		"undeclared as org": groups + "github: { truvity: { members: [b] } }\n",
+		"empty team":        groups + "github: { truvity: { teams: { \"\": { members: [a] } } } }\n",
+		"binds nothing":     groups + "github: { truvity: {} }\n",
+		"maintainer only":   groups + "github: { truvity: { teams: { platform: { maintainers: [b] } } } }\n",
 	} {
 		declared, err := policy.Parse([]byte(text))
 		if err != nil {

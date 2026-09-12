@@ -100,14 +100,24 @@ func (s *Set) Groups() []GroupView {
 }
 
 // TeamView is one GitHub team binding as the console shows it: which
-// organisation, which team, and the directory groups that feed it.
+// organisation, which team, and the internal groups whose holders belong
+// in it.
 type TeamView struct {
+	Org         string
+	Team        string
+	Members     []string
+	Maintainers []string
+}
+
+// OrgView is one organisation's own binding: the internal groups whose
+// holders belong in the organisation with or without a team.
+type OrgView struct {
 	Org     string
-	Team    string
 	Members []string
 }
 
-// GitHubTeams returns every binding, sorted by organisation then team.
+// GitHubTeams returns every team binding, sorted by organisation then
+// team.
 //
 // It is read by the console's Rules page, which is the point of the
 // table living in the policy at all: *who is in this GitHub team, and
@@ -118,10 +128,33 @@ func (s *Set) GitHubTeams() []TeamView {
 	defer s.mu.RUnlock()
 	var out []TeamView
 	for _, org := range slices.Sorted(maps.Keys(s.declared.GitHub)) {
-		teams := s.declared.GitHub[org]
+		teams := s.declared.GitHub[org].Teams
 		for _, team := range slices.Sorted(maps.Keys(teams)) {
-			out = append(out, TeamView{Org: org, Team: team, Members: slices.Clone(teams[team])})
+			bound := teams[team]
+			out = append(out, TeamView{
+				Org:         org,
+				Team:        team,
+				Members:     slices.Clone(bound.Members),
+				Maintainers: slices.Clone(bound.Maintainers),
+			})
 		}
+	}
+	return out
+}
+
+// GitHubOrgs returns every organisation-level binding, sorted by
+// organisation. An organisation that binds only teams is absent: there
+// is nothing to say about it that the team rows do not.
+func (s *Set) GitHubOrgs() []OrgView {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []OrgView
+	for _, org := range slices.Sorted(maps.Keys(s.declared.GitHub)) {
+		members := s.declared.GitHub[org].Members
+		if len(members) == 0 {
+			continue
+		}
+		out = append(out, OrgView{Org: org, Members: slices.Clone(members)})
 	}
 	return out
 }
@@ -258,22 +291,31 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 		p.Clients[id] = other.Clients[id]
 	}
 	if p.GitHub == nil {
-		p.GitHub = map[string]map[string][]string{}
+		p.GitHub = map[string]GitHubOrg{}
 	}
 	// Per TEAM, not per organisation: one file may bind the platform team
 	// and another the security team in the same org, which is what "one
 	// file per source" is for. Two files binding one team is still a
-	// clash, because the second would silently replace the first.
-	for org, teams := range other.GitHub {
-		if p.GitHub[org] == nil {
-			p.GitHub[org] = map[string][]string{}
+	// clash, because the second would silently replace the first — and so
+	// are two files declaring one organisation's own members.
+	for org := range other.GitHub {
+		incoming, into := other.GitHub[org], p.GitHub[org]
+		if len(incoming.Members) > 0 {
+			if len(into.Members) > 0 {
+				return fmt.Errorf("%s: github organisation %s declares members twice", from, org)
+			}
+			into.Members = slices.Clone(incoming.Members)
 		}
-		for team, members := range teams {
-			if _, clash := p.GitHub[org][team]; clash {
+		if into.Teams == nil && len(incoming.Teams) > 0 {
+			into.Teams = make(map[string]GitHubTeam, len(incoming.Teams))
+		}
+		for team := range incoming.Teams {
+			if _, clash := into.Teams[team]; clash {
 				return fmt.Errorf("%s: github team %s/%s is declared twice", from, org, team)
 			}
-			p.GitHub[org][team] = members
+			into.Teams[team] = incoming.Teams[team]
 		}
+		p.GitHub[org] = into
 	}
 	return nil
 }
