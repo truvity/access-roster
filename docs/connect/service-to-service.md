@@ -64,11 +64,19 @@ at the issuer for a token whose audience is the service:
 
 ```
 POST /token
+Authorization: Basic base64(<the service's client id>:)
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 subject_token=<the workload's ServiceAccount token>
 subject_token_type=urn:ietf:params:oauth:token-type:jwt
 audience=<the service's client id>
 ```
+
+The caller **names itself in the Basic header, with an empty secret**.
+An exchange client has no secret — the subject token is the credential
+— but the library authenticates every token request by HTTP Basic, and
+a `client_id` sent only in the form is refused as `invalid_client`.
+Verified 2026-09-12 with a stage ServiceAccount token traded for
+`exchange-probe`.
 
 The issuer verifies the subject token against the **key set that cluster
 publishes** for its own ServiceAccount tokens — never by calling the
