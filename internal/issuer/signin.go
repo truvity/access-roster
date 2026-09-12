@@ -76,6 +76,10 @@ type Completer interface {
 
 // SignInDeps is what the sign-in routes need.
 type SignInDeps struct {
+	// Announce tells the clients that asked that their sessions have
+	// ended (OIDC Back-Channel Logout). Nil serves none, which is every
+	// deployment where no client declared an address to be told at.
+	Announce func(context.Context, []Session)
 	// Recovery is the way in when no directory can vouch for anybody, and
 	// nil is a deployment with none. It is offered alongside the
 	// providers rather than instead of them: a directory that cannot
@@ -519,8 +523,22 @@ func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
 	if id := SSOFromRequest(r); id != "" {
 		record, live, err := deps.SSO.Get(r.Context(), id)
 		if deps.Issuer != nil && err == nil && live {
+			// Read before revoking: once they are gone there is nothing
+			// left to say WHICH clients held them, and the clients that
+			// asked to be told are told by name.
+			held, _ := deps.Issuer.Sessions().List(r.Context(),
+				Query{Identity: record.Identity, SSO: id})
+
 			ended, err := deps.Issuer.Sessions().Revoke(r.Context(),
 				Query{Identity: record.Identity, SSO: id})
+
+			// After revoking, not before: a client told its session ended
+			// and then finding it alive is worse than one told a moment
+			// late. Best effort, because the sign-out has happened either
+			// way (OIDC Back-Channel Logout 1.0).
+			if deps.Announce != nil {
+				deps.Announce(r.Context(), held)
+			}
 			switch {
 			case err != nil:
 				deps.log().WarnContext(r.Context(), "sign-out could not end what this browser opened",

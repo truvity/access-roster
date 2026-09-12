@@ -247,11 +247,15 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 		}
 		p.Lifetimes[name] = d
 	}
-	for id, client := range other.Clients {
+	// By key rather than by value: Client is a wide struct and copying
+	// one per iteration is what the linter objects to. Reading it out of
+	// the map at the point of use costs nothing and says the same thing.
+	for id := range other.Clients {
 		if _, clash := p.Clients[id]; clash {
 			return fmt.Errorf("%s: client %q is declared twice", from, id)
 		}
-		p.Clients[id] = client
+
+		p.Clients[id] = other.Clients[id]
 	}
 	if p.GitHub == nil {
 		p.GitHub = map[string]map[string][]string{}

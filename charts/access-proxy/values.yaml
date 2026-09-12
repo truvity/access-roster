@@ -111,8 +111,25 @@ session:
   # renewed. `refresh` MUST be shorter than `lifetime`: the other way
   # round the cookie dies before a refresh is ever attempted, and the
   # configuration looks correct while behaving as if refresh were unset.
+  #
+  # REFRESH IS THE REVOCATION WINDOW, and that is what sets it. A revoked
+  # session is refused the moment this proxy next asks for a new token --
+  # and until then the proxy keeps serving on the one it holds, because
+  # an access token is a JWT nothing consults a store to honour. So this
+  # number IS how long "sign out" or "revoke" can take to be true here.
+  #
+  # A minute rather than five. The cost is five times the refresh
+  # traffic, which for a handful of consoles is nothing; the gain is that
+  # the answer to "how long until they are out" is a minute. The issuer's
+  # per-client `ttl_cap` bounds the same window from the other side and
+  # should not be shorter than this, or every request refreshes.
+  #
+  # Back-channel logout would close it entirely instead of bounding it,
+  # and oauth2-proxy cannot receive one: it encrypts each session with a
+  # secret that lives only in the user's cookie, so nothing server-side
+  # can find the session a logout token names.
   lifetime: 12h
-  refresh: 5m
+  refresh: 1m
   # Which claim is the caller's identity. `sub` suits an issuer whose
   # subject is the address for a person and a ServiceAccount for a
   # recovery sign-in; `email` suits a provider that always sets one.

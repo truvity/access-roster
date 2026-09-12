@@ -50,12 +50,26 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		SupportedClaims: []string{
 			"sub", "aud", "exp", "iat", "iss", "email", "email_verified", "name", "groups",
 		},
-		// Back-channel logout is not served: oauth2-proxy does not
-		// consume it. Signing out revokes the sessions at once, but a
-		// proxy only finds out at its next refresh, so it keeps serving
-		// for up to its `cookie_refresh`. That window is the price of
-		// not building this, and it is bounded by a setting we choose.
-		BackChannelLogoutSupported: false,
+		// Back-channel logout IS served, per client and opt-in: a client
+		// that declares no `backchannel_logout_uri` is never contacted.
+		//
+		// It closes the window this design otherwise only bounds.
+		// Revoking is immediate here and invisible there -- a relying
+		// party holding a valid access token keeps serving until it next
+		// refreshes, up to its `ttl_cap`. A logout token ends that at the
+		// moment of sign-out instead.
+		//
+		// Of the three optional logout mechanisms it is the only one
+		// worth serving: the other two put an iframe from this origin
+		// inside the application's page, which browsers block by default,
+		// and neither can reach a PROXY -- which is what holds the
+		// session for a console running no OpenID flow of its own.
+		//
+		// The session flag says the logout token carries `sid`. It does,
+		// and the ID token has carried one since INF-681, so a relying
+		// party can match them.
+		BackChannelLogoutSupported:        true,
+		BackChannelLogoutSessionSupported: true,
 		// Where `/end_session` puts a person when the request named
 		// nowhere to send them. Empty -- the zero value this ran with --
 		// redirects to the issuer root, which redirects to the console,
@@ -125,6 +139,15 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	}
 	if completer, ok := storage.(Completer); ok && signIn.Storage == nil {
 		signIn.Storage = completer
+	}
+
+	// Wired here because this is the one place that holds BOTH halves:
+	// the storage owns the signing key a logout token needs, and the
+	// sign-in deps own the moment a sign-out happens.
+	if own, ok := storage.(*Storage); ok && signIn.Announce == nil {
+		signIn.Announce = func(ctx context.Context, ended []Session) {
+			own.announceLogout(ctx, signIn.log(), ended)
+		}
 	}
 
 	mux := http.NewServeMux()

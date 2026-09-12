@@ -1,3 +1,40 @@
+## v0.16.0
+
+- **Back-Channel Logout (OIDC Back-Channel Logout 1.0), opt-in per
+  client.** A relying party that declares `backchannel_logout_uri` is
+  posted a signed logout token, server to server, the moment a sign-out
+  ends a session it holds. One that declares none is never contacted, so
+  serving this changes nothing for a client that has not asked.
+
+  It closes the window this design otherwise only bounds. Revoking is
+  immediate at the issuer and invisible at the relying party, which keeps
+  serving on a valid access token until it next refreshes.
+
+  Of the three optional logout mechanisms it is the only one worth
+  serving. Session Management and Front-Channel both load something from
+  this origin inside the application's page — a polled iframe, or one
+  hidden iframe per client — which browsers block by default, so both
+  fail quietly in exactly the case they exist for. And neither can reach
+  a PROXY, which is what holds the session for a console running no
+  OpenID flow of its own.
+
+  Two details the specification is strict about, both pinned by tests:
+  `typ` is `logout+jwt`, and there is no `nonce`. Both exist so a logout
+  token cannot be mistaken for an ID token by a relying party that checks
+  too little — which would turn *you are signed out* into *you are signed
+  in as somebody*.
+
+- **The access-proxy chart refreshes every minute rather than every
+  five.** That number IS how long a sign-out or a revoke takes to become
+  true at a proxied console: the proxy keeps serving on the token it
+  holds until it next asks for a new one. The cost is five times the
+  refresh traffic, which for a handful of consoles is nothing.
+
+  oauth2-proxy cannot receive a logout token — it encrypts each session
+  with a secret that lives only in the user's cookie, so nothing
+  server-side can find the session one names. Until that changes
+  upstream, the refresh interval is the whole of the dial.
+
 ## v0.15.3
 
 - **The Sessions page shows one row per identity**, with how it proved

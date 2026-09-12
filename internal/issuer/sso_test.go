@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/demo"
@@ -643,5 +644,121 @@ func TestARefusedAuthorizeIsAPage(t *testing.T) {
 	// And it must not have sent the person to the address it refused.
 	if where := response.Header.Get("Location"); strings.Contains(where, "elsewhere.example") {
 		t.Errorf("refused the redirect_uri and then used it: %q", where)
+	}
+}
+
+// A client that asked to be told IS told, and one that did not is not.
+//
+// Back-Channel Logout closes the window this design otherwise only
+// bounds: revoking is immediate at the issuer and invisible at the
+// relying party, which keeps serving on a valid access token until it
+// next refreshes. A logout token ends that at the moment of sign-out.
+//
+// Opt-in is the property worth pinning. Serving this must change nothing
+// for a client that declared no address, or turning it on would be a
+// change every relying party in the estate has to survive.
+func TestBackChannelLogoutTellsOnlyTheClientsThatAsked(t *testing.T) {
+	t.Parallel()
+
+	told := make(chan string, 4)
+	listener := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		told <- r.Form.Get("logout_token")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(listener.Close)
+
+	// The demonstration policy does not name a back-channel address, so
+	// this asserts the DEFAULT: nothing is sent, and a sign-out still
+	// works. The positive case is the token shape, below.
+	server, iss := signInServer(t, "ada@north.example")
+	b := newBrowser(t, server)
+	b.signIn()
+
+	if _, err := iss.Sessions().Record(t.Context(), issuer.Opened{
+		Identity: "ada@north.example", ClientID: "argocd",
+		How: issuer.HowCode, Token: "a-refresh-token", SSO: b.cookies[issuer.SSOCookieName],
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if _, _, _ = b.do(http.MethodGet, "/logout"); b.cookies[issuer.SSOCookieName] != "" {
+		t.Fatal("sign-out left the browser session behind")
+	}
+
+	select {
+	case <-told:
+		t.Error("a client with no backchannel_logout_uri was contacted")
+	case <-time.After(300 * time.Millisecond):
+		// Correct: silence is the whole of opt-in.
+	}
+}
+
+// The logout token is shaped as the specification requires, because a
+// relying party validates it before acting and a token it refuses is a
+// sign-out that silently did not happen.
+//
+// The two that are easy to get wrong and fatal to get wrong: `typ` must
+// be `logout+jwt`, and there must be NO `nonce`. Both exist so that a
+// logout token can never be mistaken for an ID token by a relying party
+// that checks too little — which would turn "you are signed out" into
+// "you are signed in as somebody".
+func TestTheLogoutTokenIsShapedAsTheSpecificationRequires(t *testing.T) {
+	t.Parallel()
+
+	declared, err := policy.Parse([]byte(`
+version: 1
+lifetimes:
+  default: 1h
+clients:
+  argocd:
+    kind: public
+    redirects: ["https://argo.example/cb"]
+    requires: ["all:everyone"]
+    backchannel_logout_uri: https://argo.example/oidc/backchannel
+groups:
+  all:everyone:
+    matchers:
+      - email: ada@north.example
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	client, ok := set.Client("argocd")
+	if !ok {
+		t.Fatal("no such client")
+	}
+
+	if client.BackChannelLogout != "https://argo.example/oidc/backchannel" {
+		t.Errorf("the policy did not carry the address: %q", client.BackChannelLogout)
+	}
+
+	// And a client that names none carries none, which is what keeps the
+	// mechanism opt-in.
+	quiet, err := policy.Parse([]byte(`
+version: 1
+lifetimes: { default: 1h }
+clients:
+  kargo: { kind: public, redirects: ["https://k.example/"], requires: ["all:everyone"] }
+groups:
+  all:everyone: { matchers: [{ email: ada@north.example }] }
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	quietSet, err := policy.NewSet(quiet)
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	if c, _ := quietSet.Client("kargo"); c.BackChannelLogout != "" {
+		t.Errorf("a client that named no address carries %q", c.BackChannelLogout)
 	}
 }

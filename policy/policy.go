@@ -257,6 +257,24 @@ type Client struct {
 	Requires []string `yaml:"requires,omitempty"`
 	// TTLCap caps the lifetime the groups would otherwise grant.
 	TTLCap Duration `yaml:"ttl_cap,omitempty"`
+	// BackChannelLogout is where this client is TOLD that a session it
+	// holds has ended (OIDC Back-Channel Logout 1.0). The issuer posts a
+	// signed logout token there, server to server, at the moment of
+	// sign-out.
+	//
+	// OPT-IN, per client, and that is what makes it safe to serve: a
+	// client that names no address is never contacted and behaves
+	// exactly as before. Nothing here forces a relying party to
+	// implement anything.
+	//
+	// It is the only one of the three optional logout mechanisms worth
+	// having. Session Management and Front-Channel both work by putting
+	// an iframe from this origin inside the application's page, which
+	// browsers now block by default; this is a POST between two servers
+	// and does not care what the browser allows. It is also the only one
+	// that can reach a proxy, which is what actually holds the session
+	// for a console that runs no OpenID flow of its own.
+	BackChannelLogout string `yaml:"backchannel_logout_uri,omitempty"`
 }
 
 // Parse reads one layer and checks its shape. Unknown keys are an error:
