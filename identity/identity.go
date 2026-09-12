@@ -54,6 +54,13 @@ type Verified struct {
 	Subject string
 	// Email is the person's address, empty for a workload.
 	Email string
+	// Name is what the directory calls the person, for display. Empty for
+	// a workload, a recovery sign-in, or a person the directory gives no
+	// name -- show the address then. Never authorize on it.
+	Name string
+	// GivenName and FamilyName are its halves, for a UI that wants them.
+	GivenName  string
+	FamilyName string
 	// Groups are the internal groups the policy put the caller in,
 	// verbatim from the token. Never re-mapped.
 	Groups []string
@@ -243,6 +250,10 @@ func fromClaims(claims *oidc.AccessTokenClaims) Verified {
 	if strings.Contains(email, "@") {
 		out.Email = email
 	}
+
+	out.Name = strings.TrimSpace(stringClaim(claims.Claims, "name"))
+	out.GivenName = strings.TrimSpace(stringClaim(claims.Claims, "given_name"))
+	out.FamilyName = strings.TrimSpace(stringClaim(claims.Claims, "family_name"))
 
 	return out
 }

@@ -18,6 +18,10 @@
     "./react": {
       "types": "./ts/dist/react/index.d.ts",
       "import": "./ts/dist/react/index.js"
+    },
+    "./server": {
+      "types": "./ts/dist/server/index.d.ts",
+      "import": "./ts/dist/server/index.js"
     }
   },
   "files": [
@@ -27,6 +31,9 @@
     "node": ">=20"
   },
   "sideEffects": false,
+  "dependencies": {
+    "jose": "^6.2.12"
+  },
   "peerDependencies": {
     "react": ">=18",
     "@mui/material": ">=6"

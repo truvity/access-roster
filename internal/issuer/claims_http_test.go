@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/truvity/access-roster/identity"
 	"github.com/truvity/access-roster/internal/issuer"
 )
 
@@ -132,6 +133,110 @@ func TestATokenNamesItsSessionAndWhenTheySignedIn(t *testing.T) {
 	}
 }
 
+// An access token names the person, as the ID token does.
+//
+// The access token is what a gateway or a proxy forwards to an
+// application. One showing who is signed in has only this token to read,
+// and without the names it had to call userinfo on every page. And a
+// workload has no names, so its token must carry none rather than empty
+// ones.
+func TestAnAccessTokenNamesThePerson(t *testing.T) {
+	t.Parallel()
+	server, iss := serveIssuerFor(t, &fakeDirectory{standing: map[string]issuer.Standing{
+		"ada@north.example": {
+			Found:         true,
+			Authoritative: true,
+			Groups:        []string{"engineering@north.example"},
+			GivenName:     "Ada",
+			FamilyName:    "Lovelace",
+		},
+	}})
+
+	if _, err := iss.Sessions().Record(t.Context(), issuer.Opened{
+		Identity: "ada@north.example", ClientID: "local-dev", How: issuer.HowCode,
+		Token:  "refresh-names",
+		Scopes: []string{"openid", "profile", "email"},
+	}); err != nil {
+		t.Fatalf("record the session: %v", err)
+	}
+
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {"refresh-names"},
+		"client_id":     {"local-dev"},
+		"scope":         {"openid profile email"},
+	}
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
+		server.URL+"/token", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("build the request: %v", err)
+	}
+
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatalf("post the refresh: %v", err)
+	}
+
+	defer func() { _ = response.Body.Close() }()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("refresh: %d", response.StatusCode)
+	}
+
+	var body struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err = json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode the response: %v", err)
+	}
+
+	claims := payloadOf(t, body.AccessToken)
+
+	for key, want := range map[string]string{
+		"name":        "Ada Lovelace",
+		"given_name":  "Ada",
+		"family_name": "Lovelace",
+	} {
+		if got, _ := claims[key].(string); got != want {
+			t.Errorf("access token %s = %q, want %q", key, got, want)
+		}
+	}
+
+	if granted, _ := claims["groups"].([]any); len(granted) == 0 {
+		t.Errorf("groups = %v, want the policy's claims kept beside the names", claims["groups"])
+	}
+
+	// And the consumer half reads them: the public verifier an application
+	// imports, against this issuer's own discovery and keys.
+	// The test issuer names itself http://issuer.example, which is what its
+	// tokens carry in `iss`; the transport sends that host to the listener,
+	// so the issuer and audience checks run exactly as they would in use.
+	listener, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse the listener: %v", err)
+	}
+
+	routed := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		r = r.Clone(r.Context())
+		r.URL.Scheme, r.URL.Host = listener.Scheme, listener.Host
+
+		return server.Client().Transport.RoundTrip(r)
+	})}
+
+	verifier := &identity.Issuer{URL: "http://issuer.example", Audience: "local-dev", Client: routed}
+
+	who, err := verifier.Verify(t.Context(), body.AccessToken)
+	if err != nil {
+		t.Fatalf("verify through the identity package: %v", err)
+	}
+
+	if who.Name != "Ada Lovelace" || who.GivenName != "Ada" || who.FamilyName != "Lovelace" {
+		t.Errorf("verified names = %q / %q / %q, want the directory's", who.Name, who.GivenName, who.FamilyName)
+	}
+}
+
 // A refresh may ask for less than it was granted, and never for more.
 //
 // Answering nil for a session's scopes made every such request look like
@@ -232,3 +337,8 @@ func payloadOf(t *testing.T, token string) map[string]any {
 
 	return claims
 }
+
+// roundTrip adapts a function to an http.RoundTripper.
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
