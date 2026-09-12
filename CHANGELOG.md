@@ -38,6 +38,26 @@
   depends on, and an organisation's own members are their own kind.
   `GetPolicy` carries `maintainers` on each team and a new `orgs` list.
 
+- **A workload in a federated cluster can call the console's API with
+  its own ServiceAccount token.** It presents the projected token as the
+  bearer, with the audience token exchange uses, and it is verified
+  against the same cluster key sets — no exchange in front of a
+  same-cluster call, and no TokenReview, so the service still holds no
+  access to its own cluster. The identity has the new source `workload`
+  and is whatever the policy's `service_account` matchers make it:
+  never recovery's operator, the only other identity that arrives as a
+  ServiceAccount. It is how the GitHub controller will read
+  `ListHolders`.
+
+- **`ListHolders` no longer answers as though complete when it was not.**
+  `truncated` reported only the response limit, so past the examined cap
+  of 10,000 accounts an answer silently left holders out and looked
+  whole. It now reports either bound. Its documentation also says what
+  was always true and is the thing a consumer removing access needs to
+  know: absence from `holders` is never evidence on its own, because a
+  workspace whose snapshot cannot be read contributes no accounts — a
+  removal is confirmed per account with `Explain`.
+
 ## v1.1.0
 
 - **SECURITY: a client's `requires` is now enforced when somebody signs

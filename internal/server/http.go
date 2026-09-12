@@ -64,6 +64,7 @@ type ConsoleServer struct {
 	log        *slog.Logger
 	consoleUI  fs.FS
 	signedIn   func(*http.Request) (access.Principal, bool)
+	workloads  func(*http.Request) (access.Principal, bool)
 	entry      func() string
 	// issuerURL is the issuer this console shares an origin with, when
 	// the process serving it IS that issuer. Supplied rather than
@@ -173,6 +174,20 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 // served; [ConsoleServer.principal] reads it per request.
 func (s *ConsoleServer) UseSignedIn(read func(*http.Request) (access.Principal, bool)) {
 	s.signedIn = read
+}
+
+// UseWorkloads supplies a reader of ServiceAccount bearers from the
+// clusters the issuer federates, for the same reason and with the same
+// timing as [ConsoleServer.UseSignedIn]: the key sets live with the
+// issuer, which does not exist yet when this console is built.
+//
+// It is how a controller in the same cluster reads this console's API.
+// It presents its own projected token and nothing else — no exchange in
+// front of a same-cluster call, which would have the issuer verify that
+// very token and re-sign it — and what it may then do is whatever the
+// policy's `service_account` matchers make it.
+func (s *ConsoleServer) UseWorkloads(read func(*http.Request) (access.Principal, bool)) {
+	s.workloads = read
 }
 
 // UseSignInEntry supplies where to send somebody who has no session, for
@@ -319,6 +334,17 @@ func (s *ConsoleServer) principal(r *http.Request) (access.Principal, bool) {
 	}
 	if p, err := s.sessions.Read(r); err == nil {
 		return p, true
+	}
+	// A workload's own ServiceAccount token, before an issuer-signed
+	// bearer. Ordering costs nothing either way — a token is recognised
+	// by the issuer it names before any key is fetched, so an issuer
+	// token passes straight through — but this way round a controller
+	// calling every tick never reaches the forwarded path, which logs
+	// every token it cannot verify.
+	if s.workloads != nil {
+		if p, ok := s.workloads(r); ok {
+			return p, true
+		}
 	}
 	// Verified before trusted: where both are configured, a signature
 	// decides and a header is never consulted.

@@ -112,6 +112,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		UseSignedIn:    directory.ConsoleServer().UseSignedIn,
 		UseSignInEntry: directory.ConsoleServer().UseSignInEntry,
 		UseIssuerURL:   directory.ConsoleServer().UseIssuerURL,
+		// A controller beside the issuer reads the console's API with its
+		// own ServiceAccount token, verified by the issuer's cluster key
+		// sets. The console is built before the issuer exists, so it is
+		// handed the reader rather than building one.
+		UseWorkloads: directory.ConsoleServer().UseWorkloads,
 	}
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {

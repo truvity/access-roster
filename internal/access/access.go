@@ -73,6 +73,16 @@ const (
 	// broken: proven cluster access, or a generated password outside a
 	// cluster.
 	SourceRecovery Source = "recovery"
+	// SourceWorkload is a workload presenting its own ServiceAccount
+	// token as the bearer, verified against its cluster's published key
+	// set — a controller calling the console's API, not a person at it.
+	//
+	// It is NOT recovery, and the difference is the whole reason it is a
+	// source of its own. Recovery is an operator by construction; a
+	// workload is whatever the policy's `service_account` matchers make
+	// it, which for a controller that only reads is a viewer and nothing
+	// more.
+	SourceWorkload Source = "workload"
 )
 
 // Principal is an authenticated caller, before the policy has run.

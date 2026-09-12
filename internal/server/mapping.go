@@ -135,6 +135,8 @@ func sourceEnum(s access.Source) directoryrosterv1.IdentitySource {
 		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_FORWARDED
 	case access.SourceRecovery:
 		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_RECOVERY
+	case access.SourceWorkload:
+		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_WORKLOAD
 	default:
 		return directoryrosterv1.IdentitySource_IDENTITY_SOURCE_UNSPECIFIED
 	}

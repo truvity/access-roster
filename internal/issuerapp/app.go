@@ -177,6 +177,12 @@ type Deps struct {
 	// origin learns who is signed in without a proxy in front of it and
 	// without a login of its own.
 	UseSignedIn func(func(*http.Request) (access.Principal, bool))
+	// UseWorkloads is called with a reader of ServiceAccount bearers,
+	// verified against the same cluster key sets token exchange uses. It
+	// is how a controller beside this issuer reads the console's API with
+	// its own projected token. Nil is never called with, and a deployment
+	// federating no cluster hands it nothing.
+	UseWorkloads func(func(*http.Request) (access.Principal, bool))
 	// UseIssuerURL is called with this issuer's own URL, so the console
 	// can tell a browser where the SessionService is.
 	//
@@ -262,7 +268,7 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if err = readClient(&cfg); err != nil {
 		return nil, err
 	}
-	verifiers, err := openVerifiers(ctx, cfg, log)
+	verifiers, clusters, err := openVerifiers(ctx, cfg, log)
 	if err != nil {
 		return nil, err
 	}
@@ -317,6 +323,15 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		// the browser's issuer session directly rather than being told by
 		// a proxy that ran an OpenID flow against this very service.
 		deps.UseSignedIn(signedIn(core))
+	}
+	if deps.UseWorkloads != nil {
+		// The SAME verifiers token exchange uses, and only the clusters:
+		// a CI job has no business reading the console's API, and a
+		// second copy of the cluster rows would be a second place for one
+		// installation's trust to be configured.
+		if read := workloadBearer(clusters, log); read != nil {
+			deps.UseWorkloads(read)
+		}
 	}
 
 	// Readiness follows the state store; liveness does not. An issuer
@@ -611,7 +626,11 @@ func openState(ctx context.Context, cfg Config, log *slog.Logger) (issuer.State,
 // nothing, and says so, because an exchange endpoint that refuses
 // everything with "unverified" is indistinguishable from one that is
 // misconfigured.
-func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (issuer.Verifiers, error) {
+//
+// The clusters are also returned on their own: they are the one kind of
+// proof the console accepts as a bearer, from a workload in a federated
+// cluster calling its API.
+func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (all, clusters issuer.Verifiers, err error) {
 	var verifiers issuer.Verifiers
 
 	// Clusters, by their own published key set and NEVER by asking them
@@ -627,10 +646,11 @@ func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (issuer.Ve
 	// that only one installation exercises.
 	federation, err := verify.LoadFederation(cfg.clustersPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, cluster := range federation.Verifiers(cfg.audience, nil) {
 		verifiers = append(verifiers, cluster)
+		clusters = append(clusters, cluster)
 	}
 	if len(federation.Clusters) > 0 {
 		log.InfoContext(ctx, "workload tokens are verified against each cluster's own key set",
@@ -666,7 +686,7 @@ func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (issuer.Ve
 		log.WarnContext(ctx, "no proof can be verified: token exchange will refuse everything")
 	}
 
-	return verifiers, nil
+	return verifiers, clusters, nil
 }
 
 // serve runs one listener until the context is done, then drains it.

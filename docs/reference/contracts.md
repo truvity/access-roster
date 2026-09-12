@@ -45,6 +45,19 @@ request. Roles come from membership of two declared policy groups:
 the viewers group reads, the operators group writes. Unauthenticated RPCs get `unauthenticated`; a missing role gets
 `permission_denied`.
 
+**A workload calling the console's API** — a controller beside the
+issuer, such as the GitHub controller — presents its own projected
+ServiceAccount token as `Authorization: Bearer`, with the audience token
+exchange uses (`exchange.audience`, the release name by default). It is
+verified against the same cluster key sets as an exchange, so only a
+cluster the chart federates can produce one, and there is no exchange in
+front of it: the issuer would verify that very token and re-sign it. The
+identity it becomes has source `workload`, and its role is whatever the
+policy's `service_account` matchers put it in — **never** recovery's
+operator, which is the one other identity that arrives as a
+ServiceAccount. A policy that names no workload admits none. Read the
+token file on every call; the kubelet rotates it.
+
 | Route | Does |
 |---|---|
 | `GET /login` | the login page: the enabled sources as buttons |
@@ -203,10 +216,10 @@ can see what the hub runs with; changing them is a deployment change.
 |---|---|---|---|---|
 | `WhoAmI` | any signed-in identity | — | `identity{email, subject, source, role, groups[], given_name, family_name}`, `version` | groups are the internal groups the policy puts the caller in |
 | `Explain` | self: any; anything else: viewer | one proof: `email?`, `github{repository, owner, ref, workflow, environment}?` or `service_account{namespace, name}?` | the identity, the directory's answer (`in_domain`, `found`, `suspended`, `authoritative`), `workspace_id`, `directory_groups[]`, `held[]{group, via[]}`, `claims`, `lifetime`, `clients[]{id, kind, requires[], admitted, lifetime}` | what a proof effectively gets and why. A person, a CI job and a workload are the same question, so they are the same call; nothing set explains the caller |
-| `GetPolicy` | viewer | — | `groups[]{name, members[]{address, layer}, rules[]{kind, rule}, claims, lifetime}`, `clients[]{id, kind, requires[], redirects[], ttl_cap, secret}`, `admin_enabled`, `login_sources[]`, `console_layer` | `console_layer` is the console's own edits as YAML, for export; a confidential client names the Secret holding its secret, never the secret |
+| `GetPolicy` | viewer | — | `groups[]{name, members[]{address}, rules[]{kind, rule}, claims, lifetime}`, `clients[]{id, kind, requires[], redirects[], ttl_cap, secret}`, `teams[]{org, team, members[], maintainers[]}`, `orgs[]{org, members[]}`, `recovery_enabled`, `recovery_kind`, `login_sources[]` | a confidential client names the Secret holding its secret, never the secret. A team's and an organisation's `members` are internal groups, as `requires` is; an organisation that binds only teams has no `orgs` row |
 | `AddMembership` | operator | `group`, `directory_group` | — | the group must be declared |
 | `RemoveMembership` | operator | `group`, `directory_group` | — | `failed_precondition` for a membership the deployment declared |
-| `ListHolders` | viewer | `group?` or `client?`, `limit?` | `holders[]{email, given_name, family_name, live, authoritative, via[], lifetime}`, `examined`, `truncated` | who holds a group, or reaches a client, right now. The policy says which directory groups count; only the directory knows who is in them |
+| `ListHolders` | viewer | `group?` or `client?`, `limit?` | `holders[]{email, given_name, family_name, live, authoritative, via[], lifetime}`, `examined`, `truncated` | who holds a group, or reaches a client, right now. The policy says which directory groups count; only the directory knows who is in them. `truncated` is set when the limit cut the list **or** there were more accounts than one answer examines. **Absence is not evidence:** a workspace whose snapshot cannot be read contributes no accounts at all, so a consumer that removes access on absence confirms each account with `Explain` first |
 | `SearchPeople` | viewer | `query?`, `workspace_id?`, `account?` (live, suspended), `limit?` | `people[]{email, given_name, family_name, workspace_id, live}`, `total`, `truncated` | accounts by address or name across every snapshot, or one tenant's accounts, so a console can start from a name and a tenant's page can list who it holds |
 | `ListDirectoryGroups` | viewer | `domain?` | `groups[]{email, domain, workspace_id, members}` | the picker's source: the hub's own snapshots |
 | `GetDirectoryGroup` | viewer | `email` | `email, domain, workspace_id, found, authoritative, snapshot_at`, `members[]{email, given_name, family_name, known, live}`, `feeds[]{group, layer}` | one directory group: its members as the directory reports them, and the memberships table read backwards. The direction an admin who just changed a group in the directory thinks in, and not derivable from the policy alone |

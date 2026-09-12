@@ -709,7 +709,7 @@ func (c *Console) ListHolders(
 	// Every account is examined, because holding a group is a property of
 	// the whole policy rather than of one table; the limit bounds what is
 	// returned, not what is considered.
-	people, _, err := c.deps.Hub.People(ctx,
+	people, total, err := c.deps.Hub.People(ctx,
 		hub.PeopleQuery{Workspaces: caller.Workspaces(access.RoleViewer)}, maxExamined)
 	if err != nil {
 		return nil, rpcError(err)
@@ -721,8 +721,12 @@ func (c *Console) ListHolders(
 		limit = len(holders)
 	}
 	out := &directoryrosterv1.ListHoldersResponse{
-		Examined:  int32(len(people)), //nolint:gosec // a snapshot's account count never overflows
-		Truncated: limit < len(holders),
+		Examined: int32(len(people)), //nolint:gosec // a snapshot's account count never overflows
+		// Truncated by either bound. It used to report only the limit, so
+		// an installation past the examined cap got an answer that looked
+		// complete and silently left holders out — the one shape of wrong
+		// a consumer that removes access cannot tell from the right one.
+		Truncated: limit < len(holders) || total > len(people),
 		Holders:   make([]*directoryrosterv1.Holder, 0, limit),
 	}
 	for i := range holders[:limit] {

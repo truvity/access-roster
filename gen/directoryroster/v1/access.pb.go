@@ -90,6 +90,10 @@ const (
 	// the recovery sign-in: proven cluster access, or the generated
 	// password an installation outside Kubernetes keeps.
 	IdentitySource_IDENTITY_SOURCE_RECOVERY IdentitySource = 4
+	// a workload in a declared cluster presenting its own ServiceAccount
+	// token, verified against that cluster's key set. What it may do is the
+	// policy's `service_account` matchers, never recovery's operator.
+	IdentitySource_IDENTITY_SOURCE_WORKLOAD IdentitySource = 5
 )
 
 // Enum value maps for IdentitySource.
@@ -100,6 +104,7 @@ var (
 		2: "IDENTITY_SOURCE_OIDC",
 		3: "IDENTITY_SOURCE_FORWARDED",
 		4: "IDENTITY_SOURCE_RECOVERY",
+		5: "IDENTITY_SOURCE_WORKLOAD",
 	}
 	IdentitySource_value = map[string]int32{
 		"IDENTITY_SOURCE_UNSPECIFIED": 0,
@@ -107,6 +112,7 @@ var (
 		"IDENTITY_SOURCE_OIDC":        2,
 		"IDENTITY_SOURCE_FORWARDED":   3,
 		"IDENTITY_SOURCE_RECOVERY":    4,
+		"IDENTITY_SOURCE_WORKLOAD":    5,
 	}
 )
 
@@ -1618,8 +1624,16 @@ type ListHoldersResponse struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Holders []*Holder              `protobuf:"bytes,1,rep,name=holders,proto3" json:"holders,omitempty"`
 	// how many accounts were examined, so a truncated answer is honest.
-	Examined      int32 `protobuf:"varint,2,opt,name=examined,proto3" json:"examined,omitempty"`
-	Truncated     bool  `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Examined int32 `protobuf:"varint,2,opt,name=examined,proto3" json:"examined,omitempty"`
+	// true when this is not every holder: the limit cut the list, or there
+	// were more accounts than one answer examines. Either way an account
+	// absent from `holders` may still hold the group.
+	//
+	// Absence is never evidence on its own, truncated or not: a workspace
+	// whose snapshot cannot be read contributes no accounts at all. A
+	// consumer that REMOVES access on absence must confirm each account
+	// with Explain, whose `authoritative` answers for that one account.
+	Truncated     bool `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2498,13 +2512,14 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_VIEWER\x10\x01\x12\x11\n" +
-	"\rROLE_OPERATOR\x10\x02*\xa7\x01\n" +
+	"\rROLE_OPERATOR\x10\x02*\xc5\x01\n" +
 	"\x0eIdentitySource\x12\x1f\n" +
 	"\x1bIDENTITY_SOURCE_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19IDENTITY_SOURCE_DIRECTORY\x10\x01\x12\x18\n" +
 	"\x14IDENTITY_SOURCE_OIDC\x10\x02\x12\x1d\n" +
 	"\x19IDENTITY_SOURCE_FORWARDED\x10\x03\x12\x1c\n" +
-	"\x18IDENTITY_SOURCE_RECOVERY\x10\x04*f\n" +
+	"\x18IDENTITY_SOURCE_RECOVERY\x10\x04\x12\x1c\n" +
+	"\x18IDENTITY_SOURCE_WORKLOAD\x10\x05*f\n" +
 	"\rAccountFilter\x12\x1e\n" +
 	"\x1aACCOUNT_FILTER_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACCOUNT_FILTER_LIVE\x10\x01\x12\x1c\n" +

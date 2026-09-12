@@ -90,6 +90,10 @@ enum IdentitySource {
   // the recovery sign-in: proven cluster access, or the generated
   // password an installation outside Kubernetes keeps.
   IDENTITY_SOURCE_RECOVERY = 4;
+  // a workload in a declared cluster presenting its own ServiceAccount
+  // token, verified against that cluster's key set. What it may do is the
+  // policy's `service_account` matchers, never recovery's operator.
+  IDENTITY_SOURCE_WORKLOAD = 5;
 }
 
 message Identity {
@@ -326,6 +330,14 @@ message ListHoldersResponse {
   repeated Holder holders = 1;
   // how many accounts were examined, so a truncated answer is honest.
   int32 examined = 2;
+  // true when this is not every holder: the limit cut the list, or there
+  // were more accounts than one answer examines. Either way an account
+  // absent from `holders` may still hold the group.
+  //
+  // Absence is never evidence on its own, truncated or not: a workspace
+  // whose snapshot cannot be read contributes no accounts at all. A
+  // consumer that REMOVES access on absence must confirm each account
+  // with Explain, whose `authoritative` answers for that one account.
   bool truncated = 3;
 }
 

@@ -49,13 +49,16 @@ treat an empty list as admitting nobody rather than everybody. A
 NetworkPolicy admitting the caller's namespace is the second layer, never
 the only one.
 
-> **access-roster itself no longer has a listener like this.** The
-> directory and the issuer became one process in 0.12, the issuer's
-> question became a function call, and the only consumer of that API
-> disappeared with it. The pattern is documented because it is right for
-> a service with two kinds of caller — it is simply not something we run
-> today, and a guide that implied otherwise would send you looking for a
-> port that is not there.
+> **access-roster's own console API accepts exactly this**, for a
+> controller running beside the issuer. The GitHub controller reads
+> `AccessService.ListHolders` with its projected token, audience
+> `exchange.audience`, and the policy names it in a `service_account`
+> matcher — see [reference/contracts.md](../reference/contracts.md).
+> The one difference from the pattern above is how the token is
+> checked: against the cluster's published key set, the same rows token
+> exchange uses, rather than a TokenReview, so that the service holds no
+> access to the cluster it runs in. The directory's own
+> `DirectoryService` listener is still not served.
 
 ## Calling with an issuer token (anywhere else)
 
