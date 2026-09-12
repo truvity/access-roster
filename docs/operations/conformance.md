@@ -49,22 +49,39 @@ screenshot shows the wrong page is a failure that the suite cannot see.
 
 ## The suite
 
-Self-hosted from the published images, so there is no Java build:
+**It runs in the cluster**, from the Foundation's published image, and
+it exists exactly while the conformance client rows are declared: the
+two rows in gitops' `cfg/access.yaml` render the suite with them
+(`stacks/identity`, namespace `conformance`), and removing the rows
+removes the suite. One thing to add for a run, one thing to take out.
+
+Why in the cluster and not on a laptop, where it used to run at
+`localhost.emobix.co.uk`. Three of the four plans are driven by a
+browser and work against an issuer anywhere. The fourth, Back-Channel
+Logout, is the one place the **issuer has to reach the suite**: a logout
+token is a server-to-server POST, and a name that resolves to
+`127.0.0.1` is, from the pod, the pod's own loopback. Pods cannot reach
+the tailnet either. So the suite has a kernel hostname like every other
+console, and the issuer reaches it through the same edge with a
+certificate it already verifies.
+
+Only the relying-party half is published at that name — `/test/` (the
+callback, the post-logout landing page, the back-channel endpoint) and
+the two static paths the callback page loads. The **control plane** —
+the UI, the API that creates plans and reads results, the stored client
+secrets — is on the ClusterIP only, because the suite's developer
+profile has no login of its own. Reach it over the tailnet:
 
 ```bash
-git clone --depth 1 https://gitlab.com/openid/conformance-suite.git
-cd conformance-suite
-docker compose -f docker-compose-prebuilt.yml up -d
+S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080
+curl -s "$S/api/runner/available"      # 200 once it is up; the first start takes a minute
 ```
 
-It answers at `https://localhost.emobix.co.uk:8443` — a public name that
-resolves to `127.0.0.1`, which is how the suite gets a real hostname and
-a real certificate while running on your machine. Wait for
-`/api/runner/available` to return 200; the first start takes a minute.
-
-Everything below drives it over its REST API, so a run is a script and
-not a sequence of clicks. `-k` is there because the suite serves its own
-certificate.
+Everything below drives it over that API, so a run is a script and not a
+sequence of clicks. The drivers take the address as `SUITE=$S`. The
+suite's own pages (`plan-detail.html`, `log-detail.html`) are at the
+same address; the public hostname answers them with nothing, and that
+is the point.
 
 ## Config — unattended
 
@@ -72,7 +89,7 @@ Needs no client and no browser: it reads the discovery document and the
 key set, and checks them against the specification.
 
 ```bash
-S=https://localhost.emobix.co.uk:8443
+S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080
 cat > config.json <<'JSON'
 {
   "alias": "access-issuer-config",
@@ -119,32 +136,30 @@ certification is surface with no consumer.
 
 ```yaml
   - name: conformance
-    # WITH THE PORT. A row names one host, port included, and the
-    # redirects below are on :8443 — the render refuses the mismatch with
-    # "not this client's host".
-    hostname: localhost.emobix.co.uk:8443
-    redirects:
-      - https://localhost.emobix.co.uk:8443/test/a/access-issuer/callback
-    signed_out:
-      - https://localhost.emobix.co.uk:8443/test/a/access-issuer/post_logout_redirect
+    # The suite's own hostname. Every path below is host-relative, so
+    # this one name is the redirect the issuer accepts, the landing
+    # page, the back-channel URL and the BASE_URL the suite starts with.
+    hostname: conformance.kernel.truvity.xyz
+    redirects:  [/test/a/access-issuer/callback]
+    signed_out: [/test/a/access-issuer/post_logout_redirect]
     # Only the Back-Channel plan reads this, and without it every module
     # of that plan waits for a logout token that is never sent.
-    backchannel_logout: https://localhost.emobix.co.uk:8443/test/a/access-issuer/backchannel_logout
+    backchannel_logout: /test/a/access-issuer/backchannel_logout
     requires: [all:access-roster:viewer]
   - name: conformance-2
-    hostname: localhost.emobix.co.uk:8443
-    redirects:
-      - https://localhost.emobix.co.uk:8443/test/a/access-issuer/callback
-    signed_out:
-      - https://localhost.emobix.co.uk:8443/test/a/access-issuer/post_logout_redirect
-    backchannel_logout: https://localhost.emobix.co.uk:8443/test/a/access-issuer/backchannel_logout
+    hostname: conformance.kernel.truvity.xyz
+    redirects:  [/test/a/access-issuer/callback]
+    signed_out: [/test/a/access-issuer/post_logout_redirect]
+    backchannel_logout: /test/a/access-issuer/backchannel_logout
     requires: [all:access-roster:viewer]
 ```
 
 The alias in those paths (`access-issuer`) has to match the `alias` in
 the test configuration below — the suite serves each test plan's
 callback under its own alias, and a mismatch reads as the issuer
-refusing the redirect.
+refusing the redirect. The hostname is also what the suite is started
+with, so a run needs no hand-kept agreement between three places: the
+`hostname` here is read by the chart that renders the suite.
 
 **`requires` is mandatory** and these are no exception: the policy
 refuses to load a client that requires no group, with *"client
@@ -172,7 +187,7 @@ kubectl -n access-issuer get secret conformance-client \
 ### 3. Configure and run
 
 ```bash
-S=https://localhost.emobix.co.uk:8443
+S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080
 cat > basic.json <<JSON
 {
   "alias": "access-issuer",
@@ -194,7 +209,9 @@ Then run every module of the plan in order:
 hack/conformance_drive.py <plan-id>
 ```
 
-**In headless Chrome, and it has to be a browser.** The suite's callback
+**In headless Chrome, and it has to be a browser**, with `SUITE=$S` so
+the driver's API calls go to the ClusterIP while the browser follows the
+suite's public callbacks. The suite's callback
 is an HTML page that posts the result back with JavaScript: `curl`
 follows every redirect, reaches that page, never runs it, and the module
 sits in WAITING while the authorization it was waiting for has already
@@ -256,8 +273,8 @@ authenticates through OIDC needs the `kubectl-oidc_login` credential
 plugin on PATH, and kubectl only says so once its cached token expires,
 which is a plan that runs for ten minutes and then dies in the middle.
 
-Or open the suite at `https://localhost.emobix.co.uk:8443`, find the
-plan, and run its modules by hand.
+Or open the suite's own pages at `$S` over the tailnet, find the plan,
+and run its modules by hand.
 
 ### What a recovery sign-in cannot prove
 
@@ -314,7 +331,7 @@ row that declares none is never contacted and every module of this plan
 waits for a token that is not coming:
 
 ```yaml
-    backchannel_logout: https://localhost.emobix.co.uk:8443/test/a/access-issuer/backchannel_logout
+    backchannel_logout: /test/a/access-issuer/backchannel_logout
 ```
 
 The alias in that path is the same alias as the callback, for the same
