@@ -144,15 +144,28 @@ certification is surface with no consumer.
   - name: conformance
     # The suite's own hostname. Every path below is host-relative, so
     # this one name is the redirect the issuer accepts, the landing
-    # page, the back-channel URL and the BASE_URL the suite starts with.
+    # page, and the BASE_URL the suite starts with.
     hostname: conformance.kernel.truvity.xyz
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
-    # Only the Back-Channel plan reads this, and without it every module
-    # of that plan waits for a logout token that is never sent.
-    backchannel_logout: /test/a/access-issuer/backchannel_logout
     requires: [all:access-roster:viewer]
   - name: conformance-2
+    hostname: conformance.kernel.truvity.xyz
+    redirects:  [/test/a/access-issuer/callback]
+    signed_out: [/test/a/access-issuer/post_logout_redirect]
+    requires: [all:access-roster:viewer]
+  # The Back-Channel plan's pair: the same endpoints plus the address a
+  # logout token is POSTed to. Kept apart from the pair above on
+  # purpose -- the RP-Initiated modules FAIL a test that receives a
+  # back-channel request it did not expect, and since 0.17.1 every
+  # sign-out sends one to every client that signed somebody in.
+  - name: conformance-bc
+    hostname: conformance.kernel.truvity.xyz
+    redirects:  [/test/a/access-issuer/callback]
+    signed_out: [/test/a/access-issuer/post_logout_redirect]
+    backchannel_logout: /test/a/access-issuer/backchannel_logout
+    requires: [all:access-roster:viewer]
+  - name: conformance-bc-2
     hostname: conformance.kernel.truvity.xyz
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
@@ -191,6 +204,16 @@ kubectl -n access-issuer get secret conformance-client \
 ```
 
 ### 3. Configure and run
+
+The whole of this section is one script, which reads the secrets
+itself and prints the four plan ids:
+
+```bash
+KUBECTL="kubectl --context kernel@oidc" hack/conformance-plans.sh v1.0.0
+```
+
+What follows is what it does, for when a plan has to be made by hand.
+
 
 ```bash
 S=http://$(kubectl -n conformance get svc conformance-suite -o jsonpath='{.spec.clusterIP}'):8080; H='X-Forwarded-Proto: https'
@@ -332,20 +355,16 @@ curl -s -H "$H" -X POST "$S/api/plan?planName=oidcc-backchannel-rp-initiated-log
 ```
 
 What it needs that the others do not is **a client declaring where to
-send the logout token**. Back-Channel Logout is opt-in per client, so a
-row that declares none is never contacted and every module of this plan
-waits for a token that is not coming:
+send the logout token**, and it must be a client the OTHER plans do not
+use. Back-Channel Logout is opt-in per client, so a row that declares
+none is never contacted and every module of this plan waits for a token
+that is not coming; and a row that declares one is contacted at every
+sign-out, which the RP-Initiated modules count as a failure. Hence the
+`conformance-bc` pair: the Back-Channel plan's configuration names
+those two, and `hack/conformance-plans.sh` does so.
 
-```yaml
-    backchannel_logout: /test/a/access-issuer/backchannel_logout
-```
-
-The alias in that path is the same alias as the callback, for the same
-reason: the suite serves every endpoint of a plan under it.
-
-Both conformance rows carry it, because the tests that check one
-client's logout does not end another's need the second client to be
-listening too.
+The alias in the address is the same alias as the callback, for the
+same reason: the suite serves every endpoint of a plan under it.
 
 **And the issuer must be able to reach the suite.** This is the one
 module where it has to: a logout token is a server-to-server POST, and
@@ -361,7 +380,7 @@ on a host the cluster can reach, with a certificate the issuer trusts
 
 - Export each plan's results from the suite and attach them to the
   ticket. A green run nobody kept is a green run nobody can check.
-- **Remove the two client rows.** This is the step that gets forgotten,
+- **Remove the four client rows.** This is the step that gets forgotten,
   and it is the only one that leaves anything behind.
 
 ## What the run has already found

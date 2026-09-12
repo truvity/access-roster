@@ -86,7 +86,7 @@ library's own claims struct rather than from anything here.
 authorization code must revoke what it issued, and `userinfo` went on
 answering with the access token from the first redemption.
 
-## Back-Channel needs a reachable suite
+## Back-Channel is witnessed from a suite the issuer can reach
 
 The Foundation requires a logout submission to carry RP-Initiated Logout
 OP *and at least one of* Session Management, Front-Channel or
@@ -96,26 +96,34 @@ load an iframe from the issuer inside the application's page, which
 browsers block by default, so both fail quietly in exactly the case they
 exist for.
 
-Its certification module is the one place the **issuer has to reach the
-suite**. Every other module is driven by the browser, so a suite on a
-laptop at a name that resolves to `127.0.0.1` works against an issuer
-anywhere. A logout token is a server-to-server POST, and from the pod
-that address is its own loopback:
+Its end-to-end module is the one place the **issuer has to reach the
+suite**: a logout token is a server-to-server POST. A suite on a laptop
+at a name that resolves to `127.0.0.1` is, from the pod, the pod's own
+loopback, and pods cannot reach the tailnet either. So the suite runs in
+the cluster, at a kernel hostname of its own, exactly while the
+conformance client rows are declared — see
+[operations/conformance.md](operations/conformance.md). Only its
+relying-party paths are public; the control plane is reached over the
+tailnet.
 
-```
-a client could not be told its session ended
-  client_id=conformance
-  error=Post "https://localhost.emobix.co.uk:8443/test/a/access-issuer/backchannel_logout":
-        dial tcp 127.0.0.1:8443: connect: connection refused
-```
+**The first run that could receive a token found two defects**, both
+fixed in 0.17.1 and both pinned by end-to-end tests that drive a real
+code flow and read what the listening relying party is sent:
 
-That line is the run's evidence: the token was minted for the right
-client and sent to the registered URL, and the network said no. Closing
-the module is a topology change, not a code change — the suite on a host
-the cluster can reach with a certificate the issuer trusts, or the
-Foundation's hosted suite, which is what an actual submission uses
-anyway. Until then the pair reads as RP-Initiated green and Back-Channel
-proven but not witnessed.
+- A client that asked for `openid` alone holds no refresh token, and a
+  session here *is* a refresh token — so the issuer recorded nothing for
+  it and, at sign-out, announced nothing. The sign-in now remembers which
+  clients were issued an ID token under it, and every one is told.
+- The logout token named the browser sign-in as `sid` while the ID token
+  had named the per-client session (INF-681). A relying party matches
+  the two by that value; a token that verified and matched nothing was a
+  sign-out that silently did not happen. The logout token now names the
+  `sid` the ID token did, and a client whose ID token carried none is
+  told by `sub` alone.
+
+Neither would have been found by reading. The suite noticed the first by
+waiting for a POST that never came, and would have noticed the second
+the moment one did.
 
 ## How it is run
 

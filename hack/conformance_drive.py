@@ -34,6 +34,7 @@ import subprocess
 import sys
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 
 SUITE = os.environ.get("SUITE", "https://localhost.emobix.co.uk:8443")
@@ -66,9 +67,22 @@ def api(path, method="GET", body=None, text=None):
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    with urllib.request.urlopen(request, body, context=ctx, timeout=30) as response:
-        raw = response.read().decode()
-    return json.loads(raw) if raw else {}
+    # Retried, because the suite is briefly unresponsive while it
+    # interrupts a test -- which is exactly when the driver is asking it
+    # what happened. One such timeout used to abort the whole plan, with
+    # the modules after it never run.
+    last = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, body, context=ctx, timeout=30) as response:
+                raw = response.read().decode()
+            return json.loads(raw) if raw else {}
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as failed:
+            last = failed
+            if isinstance(failed, urllib.error.HTTPError) and failed.code < 500:
+                raise
+            time.sleep(2 * (attempt + 1))
+    raise last
 
 
 def proof():
