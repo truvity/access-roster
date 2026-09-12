@@ -156,8 +156,15 @@ class Observer:
         with self.open(request, timeout=30) as response:
             return json.loads(response.read().decode() or "{}")
 
+    # Only the sessions THIS run opened may be counted or ended. The
+    # console it walks is a live one, and an operator debugging beside it
+    # holds sessions of their own on the same client; a harness that
+    # revoked "every session for hubble" would sign them out mid-thought.
+    OWN = "kernel:k8s:access-issuer:access-issuer-recovery"
+
     def sessions(self, client):
-        return self.call("ListSessions", {"clientId": client}).get("sessions") or []
+        every = self.call("ListSessions", {"clientId": client}).get("sessions") or []
+        return [s for s in every if s.get("identity") == self.OWN]
 
     def revoke(self, session):
         return self.call("RevokeSessions", {
