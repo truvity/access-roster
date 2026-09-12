@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// GitHubService is the console's view of GitHub organisations: which the
+// policy binds, and what the GitHub controller last reported for each.
+//
+// Read-only. The controller acts and the console shows: no call here
+// writes to GitHub, and the one thing an operator does through the
+// console for GitHub — connecting an organisation — gives the controller
+// a credential rather than telling it what to do.
+service GitHubService {
+  // GetGitHubStatus returns every organisation the policy binds or the
+  // controller reports on, each with its bound teams and the members the
+  // controller derived for them. Viewer.
+  rpc GetGitHubStatus(GetGitHubStatusRequest) returns (GetGitHubStatusResponse);
+}
+
+message GetGitHubStatusRequest {}
+
+message GetGitHubStatusResponse {
+  repeated GitHubOrganisation organisations = 1;
+  // false where this deployment keeps no report at all, because it keeps
+  // no state in Kubernetes. Every organisation then reads as not
+  // reported, and this is the reason rather than the controller.
+  bool reports_available = 2;
+}
+
+// GitHubOrganisation is one organisation: its bindings beside its report.
+message GitHubOrganisation {
+  // the organisation's login.
+  string org = 1;
+  // whether the policy binds it. A report for one it does not is the
+  // controller's last word on an organisation removed from the policy.
+  bool bound = 2;
+  // whether the controller has reported on it at all.
+  bool reported = 3;
+  // why a report that exists could not be read. The rest of the report is
+  // then empty, and the bindings are still shown.
+  string report_error = 4;
+  // whether the controller acts on it. A disabled organisation is still
+  // derived, and its members' states say what would change.
+  bool enabled = 5;
+  GitHubTick tick = 6;
+  // the internal groups bound to the organisation itself, and the
+  // members the controller derived from them.
+  repeated string member_groups = 7;
+  repeated GitHubMember members = 8;
+  repeated GitHubTeamStatus teams = 9;
+  // members of the organisation no bound holder's address matched,
+  // listed and never touched.
+  repeated GitHubAccount unlinked = 10;
+}
+
+// GitHubTick is how the controller's last pass over an organisation went.
+message GitHubTick {
+  google.protobuf.Timestamp at = 1;
+  // in-sync, applied, dry-run, held or failed.
+  string outcome = 2;
+  string error = 3;
+  // actions taken, or that would have been while disabled.
+  int32 changes = 4;
+  // actions not taken, each with its reason on the member.
+  int32 held = 5;
+}
+
+// GitHubTeamStatus is one team: its binding beside what was derived.
+message GitHubTeamStatus {
+  // the team's slug.
+  string team = 1;
+  // whether the policy binds it; false for a team only a stale report
+  // still names.
+  bool bound = 2;
+  repeated string member_groups = 3;
+  repeated string maintainer_groups = 4;
+  repeated GitHubMember members = 5;
+}
+
+// GitHubMember is one person's membership as the controller derived it.
+message GitHubMember {
+  string email = 1;
+  // empty for somebody not yet linked to a GitHub account.
+  string login = 2;
+  // member or maintainer.
+  string role = 3;
+  // pending, invited, synced, leaving or held.
+  string state = 4;
+  // invite, add, set-role or remove; empty when synced.
+  string action = 5;
+  // why an action is held.
+  string reason = 6;
+}
+
+// GitHubAccount is a login with a note.
+message GitHubAccount {
+  string login = 1;
+  string reason = 2;
+}

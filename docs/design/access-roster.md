@@ -484,6 +484,18 @@ than policy:
 It cannot change who is in a group. Operator therefore means *may connect
 a provider* and *may revoke*; everything else is a viewer.
 
+**GitHub** is a page on the internal side, beside clients, because a
+GitHub team consumes internal groups the way a client does. Per
+organisation it shows the bindings from the policy beside the GitHub
+controller's last report: each bound team, the groups feeding it in both
+roles, and every person with their state — `synced`, `pending`,
+`invited`, `leaving`, or `held` with the reason — and what the controller
+does next. A disabled organisation is still derived every pass, so its
+page is the dry run an operator reads before enabling it. Nothing on it
+writes to GitHub; the report is read from a ConfigMap the controller
+writes, and a report that is missing or unreadable hides none of the
+bindings.
+
 Every page reads in the same direction, from the identity side toward the
 access side, and the two group pages carry the same sections mirrored. The
 visual vocabulary has one meaning per form, which is what keeps a
@@ -549,6 +561,15 @@ so the recovery for a lost workspace Secret is **Reconnect**, and a
 declared Secret is re-delivered by whatever declared it. The console never
 returns secret material, the logs never print it, and **Disconnect**
 revokes the token at the backend before the Secret is deleted.
+
+The GitHub controller's report is one more object here,
+`<release>-github-status`. The **service** creates it at start and the
+controller only ever replaces its data: Kubernetes RBAC cannot narrow
+`create` to a name, so a controller that created its own report would
+need to be allowed to create any ConfigMap in this namespace — including
+one that reads as a workspace record. It is not rendered by the chart
+either, because a ConfigMap whose data a controller rewrites is one a
+GitOps sync reverts.
 
 The signing key is a file, never read through the API, so a compromise of
 this process cannot become a read of every credential in its namespace.

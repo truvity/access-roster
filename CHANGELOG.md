@@ -58,6 +58,17 @@
   workspace whose snapshot cannot be read contributes no accounts — a
   removal is confirmed per account with `Explain`.
 
+- **A GitHub page in the console**, on the internal side beside
+  clients. Per organisation it shows the policy's bindings beside what
+  the GitHub controller last reported — each team's groups in both roles,
+  every person's state and what happens next, held actions with their
+  reason, and members no binding explains. Read-only. The report is a
+  ConfigMap, `<release>-github-status`, which the service now creates at
+  start so that the controller's Role can name the one object it
+  updates; `GitHubService.GetGitHubStatus` serves the join. The
+  demonstration run carries bindings and a sample report, so the page
+  can be walked through without a controller.
+
 ## v1.1.0
 
 - **SECURITY: a client's `requires` is now enforced when somebody signs

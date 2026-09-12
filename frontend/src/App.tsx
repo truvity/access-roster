@@ -17,6 +17,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import AppsIcon from "@mui/icons-material/Apps";
+import GitHubIcon from "@mui/icons-material/GitHub";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import DomainIcon from "@mui/icons-material/Domain";
 import GroupsIcon from "@mui/icons-material/Groups";
@@ -40,6 +41,7 @@ import { Person } from "./Person";
 import { Rules } from "./Rules";
 import { Groups, Group } from "./Groups";
 import { Clients, Client } from "./Clients";
+import { GitHubPage } from "./GitHub";
 import { SessionsPage } from "./Sessions";
 import { SettingsView } from "./Settings";
 
@@ -67,6 +69,9 @@ const identity: Item[] = [
 const internalSide: Item[] = [
   { value: "groups", label: "Groups", to: paths.groups(), icon: <ShieldIcon fontSize="small" /> },
   { value: "clients", label: "Clients", to: paths.clients(), icon: <AppsIcon fontSize="small" /> },
+  // A GitHub team is fed by internal groups the way a client is opened by
+  // them, so it belongs on this side.
+  { value: "github", label: "GitHub", to: paths.github(), icon: <GitHubIcon fontSize="small" /> },
 ];
 // Every open session in the installation (INF-682). It only exists once
 // an issuer shares this console's origin, and even then it is
@@ -319,6 +324,8 @@ function PageFor({
       return id ? <Group name={id} /> : <Groups />;
     case "clients":
       return id ? <Client id={id} issuerUrl={issuerIsSameOrigin(me?.issuerUrl) ? me?.issuerUrl : undefined} operator={operator} onDone={onDone} /> : <Clients />;
+    case "github":
+      return <GitHubPage />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "settings":

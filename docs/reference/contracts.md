@@ -228,6 +228,22 @@ Errors: `unauthenticated` with no session; `permission_denied` without the
 role; `not_found` for an undeclared group; `failed_precondition` for
 anything the deployment owns.
 
+## `directoryroster.v1.GitHubService`
+
+The console's view of GitHub organisations. Read-only: the controller
+acts, this shows. See [connect/github-organisation.md](../connect/github-organisation.md).
+
+| RPC | Role | Request | Response | Notes |
+|---|---|---|---|---|
+| `GetGitHubStatus` | installation-wide viewer | — | `organisations[]{org, bound, reported, report_error, enabled, tick{at, outcome, error, changes, held}, member_groups[], members[], teams[]{team, bound, member_groups[], maintainer_groups[], members[]}, unlinked[]{login, reason}}`, `reports_available` | every organisation the policy binds **or** the controller reports on, each with its bindings beside its report. A member is `{email, login, role, state, action, reason}`: state is `pending`, `invited`, `synced`, `leaving` or `held`; action is `invite`, `add`, `set-role` or `remove`, and a held one carries its reason. Where the two sides disagree both show — a bound team nobody has reported, a report for a team the policy no longer binds — and an unreadable report hides no binding. **Not** a tenant-scoped viewer: a report names the members of every bound team in every company |
+
+The report is the ConfigMap `<release>-github-status` in the service's
+namespace, one key per organisation (`<login>.json`), each a versioned
+document. The service creates it; the controller only replaces its data,
+which is what lets the controller's Role name that one object.
+`reports_available` is false only for a deployment keeping no state in
+Kubernetes.
+
 ## The whoami endpoint
 
 `GET /.access/whoami` on the console listener, the same shape every

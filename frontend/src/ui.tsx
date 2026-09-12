@@ -99,7 +99,19 @@ export type StateKind =
   | "configured"
   | "unconfigured"
   | "unserved"
-  | "unowned";
+  | "unowned"
+  // A GitHub membership as the controller derived it, and how its last
+  // pass over an organisation went.
+  | "synced"
+  | "pending"
+  | "invited"
+  | "leaving"
+  | "held"
+  | "in-sync"
+  | "applied"
+  | "dry-run"
+  | "failed"
+  | "unreported";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The provider reports this account as active." },
@@ -125,6 +137,16 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
     color: "warning",
     title: "This hub is set to serve the domain, but the directory no longer lists it — it has moved elsewhere. It routes nothing; drop it from the served list.",
   },
+  synced: { label: "synced", color: "success", title: "On GitHub exactly as the policy says." },
+  pending: { label: "pending", color: "warning", title: "Should be here and is not yet. The action says what the controller does next." },
+  invited: { label: "invited", color: "secondary", title: "An organisation invitation to their address is waiting to be accepted." },
+  leaving: { label: "leaving", color: "warning", filled: true, title: "Here, and no group the policy binds holds them any more." },
+  held: { label: "held", color: "warning", filled: true, title: "Something is to be done and is not being done. The reason says why." },
+  "in-sync": { label: "in sync", color: "success", title: "The last pass found nothing to do." },
+  applied: { label: "applied", color: "success", title: "The last pass made changes." },
+  "dry-run": { label: "dry run", color: "secondary", title: "The organisation is disabled: the last pass derived everything and changed nothing. The states below say what it would do." },
+  failed: { label: "failed", color: "warning", filled: true, title: "The last pass could not complete." },
+  unreported: { label: "not reported", color: "default", title: "The controller has written nothing for this organisation yet." },
 };
 
 /** The one thing a chip means here: a state. A state that has a reason

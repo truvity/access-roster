@@ -243,6 +243,7 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.Handle(directoryrosterv1connect.NewWorkspaceServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewSettingsServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewAccessServiceHandler(s.console))
+	mux.Handle(directoryrosterv1connect.NewGitHubServiceHandler(s.console))
 
 	if s.consoleUI != nil {
 		mux.Handle("GET /assets/", http.FileServerFS(s.consoleUI))

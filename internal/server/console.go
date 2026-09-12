@@ -112,6 +112,11 @@ type ConsoleDeps struct {
 	// SignIn reports whether this console signs people in itself, which
 	// is the other place a sign-in redirect can land.
 	SignIn bool
+	// GitHub is where the GitHub controller's reports are read. Nil is a
+	// deployment keeping no state in Kubernetes, which has nowhere for a
+	// controller to report to; the GitHub page then shows the bindings
+	// alone and says why.
+	GitHub GitHubReports
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on
@@ -125,6 +130,7 @@ var (
 	_ directoryrosterv1connect.WorkspaceServiceHandler = (*Console)(nil)
 	_ directoryrosterv1connect.SettingsServiceHandler  = (*Console)(nil)
 	_ directoryrosterv1connect.AccessServiceHandler    = (*Console)(nil)
+	_ directoryrosterv1connect.GitHubServiceHandler    = (*Console)(nil)
 )
 
 // NewConsole returns the operator services.

@@ -51,9 +51,10 @@ const (
 // The kinds of object this package writes, which are also the middle
 // segment of every object's name.
 const (
-	kindWorkspace  = "workspace"
-	kindCredential = "credential"
-	kindSettings   = "settings"
+	kindWorkspace    = "workspace"
+	kindCredential   = "credential"
+	kindSettings     = "settings"
+	kindGitHubStatus = "github-status"
 )
 
 // The one key of each single-value Secret the hub keeps for itself.

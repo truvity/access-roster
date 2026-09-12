@@ -316,6 +316,9 @@ type stores struct {
 	// password shape of recovery.
 	reviewToken func(ctx context.Context, token string, audiences []string) (string, error)
 	namespace   string
+	// github is where the GitHub controller reports. Nil with the memory
+	// store, which has nowhere a separate process could write to.
+	github *kube.GitHubStatus
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -348,7 +351,18 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		"store", storeKubernetes, "namespace", client.Namespace(),
 		"sessionKeySecret", client.SessionKeyName(),
 		"oauthClientSecret", cfg.oauthSecretName)
+	// The report the GitHub controller writes into is created HERE, by the
+	// service, so that the controller's Role can name the one object it
+	// updates: `create` cannot be narrowed to a name. Cheap and idempotent,
+	// so it is done whether or not a controller is deployed, and a failure
+	// is a warning — the directory works without it.
+	github := kube.NewGitHubStatus(client)
+	if err = github.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the GitHub status report could not be created; the GitHub page will show bindings only",
+			"configMap", github.Name(), "error", err)
+	}
 	return stores{
+		github:      github,
 		workspaces:  kube.NewWorkspaces(client),
 		credentials: kube.NewCredentials(client),
 		settings: kube.NewSettings(client, kube.DeclaredClient{
@@ -549,6 +563,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		RootURL:      cfg.publicRootURL,
 		IssuerURL:    cfg.forwardedIssuer,
 		SignIn:       cfg.loginDirectory,
+		GitHub:       githubReports(kept.github, cfg.demo),
 	})
 	if err != nil {
 		return nil, err
@@ -948,3 +963,25 @@ func recoveryKind(r server.Recovery) string {
 	}
 	return r.Kind()
 }
+
+// githubReports is the store as the console's interface, or nil. A typed
+// nil stored in an interface is not nil, and the console reads nil as
+// "this deployment keeps no reports" — so the conversion is explicit.
+//
+// A demonstration run with no Kubernetes gets the demonstration report
+// instead, so the GitHub page can be walked through like every other.
+func githubReports(store *kube.GitHubStatus, demonstration bool) server.GitHubReports {
+	switch {
+	case store != nil:
+		return store
+	case demonstration:
+		return fixedReports(demo.GitHubReports(time.Now()))
+	default:
+		return nil
+	}
+}
+
+// fixedReports is a report that never changes.
+type fixedReports map[string]string
+
+func (r fixedReports) Reports(context.Context) (map[string]string, error) { return r, nil }

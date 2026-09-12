@@ -18,6 +18,7 @@ import (
 
 	"github.com/truvity/access-roster/backend"
 	"github.com/truvity/access-roster/backend/fake"
+	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/internal/hub"
 )
 
@@ -41,8 +42,8 @@ type Tenant struct {
 //   - a client that caps a lifetime shorter than the groups would give;
 //   - machine groups, so a CI job and a workload are explainable next to a
 //     person;
-//   - a membership declared in the memberships table, which the console
-//     may extend but not remove.
+//   - GitHub teams bound to internal groups in both roles, and an
+//     organisation's own members, so the GitHub page has bindings to show.
 const Policy = `
 version: 1
 groups:
@@ -90,6 +91,15 @@ clients:
     kind: public
     redirects: [http://localhost:8000/callback]
     requires: [devel:k8s:viewer]
+github:
+  example-org:
+    members: [all:access-roster:viewer]
+    teams:
+      team-engineering:
+        members: [devel:k8s:viewer]
+        maintainers: [kernel:k8s:admin]
+      team-security:
+        members: [kernel:k8s:auditor]
 `
 
 // Tenants returns the two workspaces the prototype starts with: one
@@ -252,4 +262,47 @@ func (c *Connector) Exchange(_ context.Context, code, bind string) (hub.Workspac
 		WithGroup("everyone@"+domain, "owner@"+domain)
 	c.tenants[id] = b
 	return hub.Workspace{ID: id, Admin: "owner@" + domain, Credential: hub.CredentialOAuth}, b, nil
+}
+
+// GitHubReports is what a GitHub controller would have reported for the
+// demonstration organisation: disabled, so every change is what it WOULD
+// do, and one of each thing worth seeing — a maintainer and a member in
+// sync, a joiner to invite, the suspended leaver on their way out, an
+// invitation held for a reason, and a member no binding explains.
+//
+// A demonstration run has no controller and no Kubernetes to report into,
+// so without this the GitHub page would show only bindings and could not
+// be walked through.
+func GitHubReports(now time.Time) map[string]string {
+	report := status.Org{
+		Org:     "example-org",
+		Enabled: false,
+		Tick:    status.Tick{At: now.Add(-4 * time.Minute), Outcome: status.OutcomeDryRun, Changes: 2, Held: 1},
+		Members: []status.Member{
+			{Email: "ada@north.example", Login: "ada-north", Role: status.RoleMember, State: status.StateSynced},
+			{Email: "brian@north.example", Login: "bbell", Role: status.RoleMember, State: status.StateSynced},
+			{Email: "dana@south.example", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
+			{Email: "eli@south.example", Login: "eli-east", Role: status.RoleMember, State: status.StateSynced},
+		},
+		Teams: []status.Team{
+			{Team: "team-engineering", Members: []status.Member{
+				{Email: "ada@north.example", Login: "ada-north", Role: status.RoleMaintainer, State: status.StateSynced},
+				{Email: "brian@north.example", Login: "bbell", Role: status.RoleMember, State: status.StateSynced},
+				{Email: "dana@south.example", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
+				{Email: "cleo@north.example", Login: "cleo-c", Role: status.RoleMember, State: status.StateLeaving, Action: status.ActionRemove},
+			}},
+			{Team: "team-security", Members: []status.Member{
+				{Email: "eli@south.example", Login: "eli-east", Role: status.RoleMember, State: status.StateHeld, Action: status.ActionAdd,
+					Reason: "south.example is not a verified domain of example-org, so eli-east cannot be linked to that address"},
+			}},
+		},
+		Unlinked: []status.Account{{Login: "example-bot", Reason: "no bound holder's address matched this login"}},
+	}
+	document, err := status.Encode(report)
+	if err != nil {
+		// A fixture that does not encode is a bug in this file, caught by
+		// its test rather than by somebody opening the page.
+		panic(err)
+	}
+	return map[string]string{status.Key(report.Org): document}
 }

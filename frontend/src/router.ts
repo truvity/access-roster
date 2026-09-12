@@ -63,6 +63,8 @@ export const paths = {
   group: (name: string) => `/groups/${encodeURIComponent(name)}`,
   clients: () => "/clients",
   client: (id: string) => `/clients/${encodeURIComponent(id)}`,
+  // GitHub teams consume internal groups the way clients do.
+  github: () => "/github",
   // Every open session in the installation (INF-682). Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",
