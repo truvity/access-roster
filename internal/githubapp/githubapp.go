@@ -16,6 +16,7 @@
 package githubapp
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
@@ -211,6 +212,23 @@ func FindInstallation(ctx context.Context, client *http.Client, appToken, org st
 	return 0, fmt.Errorf("%w: %s", ErrNotInstalled, org)
 }
 
+// InstallationToken is what the App acts in one installation with: an
+// hour-long token GitHub mints on request, signed for by the App JWT.
+func InstallationToken(ctx context.Context, client *http.Client, appToken string, installation int64) (string, time.Time, error) {
+	endpoint := APIBase + "/app/installations/" + strconv.FormatInt(installation, 10) + "/access_tokens"
+	var body struct {
+		Token     string    `json:"token"`
+		ExpiresAt time.Time `json:"expires_at"`
+	}
+	if err := call(ctx, client, http.MethodPost, endpoint, appToken, http.StatusCreated, &body); err != nil {
+		return "", time.Time{}, fmt.Errorf("github: an installation token: %w", err)
+	}
+	if body.Token == "" {
+		return "", time.Time{}, errors.New("github: GitHub minted an empty installation token")
+	}
+	return body.Token, body.ExpiresAt, nil
+}
+
 // DeleteInstallation uninstalls the App from wherever that installation
 // is. It is Disconnect's revoke: the App registration stays on GitHub —
 // the API cannot delete one — but nothing can act through it any more.
@@ -246,7 +264,12 @@ func parseKey(privateKey string) (*rsa.PrivateKey, error) {
 // call makes one request and decodes the answer, refusing any status but
 // the one expected.
 func call(ctx context.Context, client *http.Client, method, endpoint, bearer string, want int, out any) error {
-	response, err := do(ctx, client, method, endpoint, bearer)
+	return send(ctx, client, method, endpoint, bearer, nil, want, out)
+}
+
+// send is call with a JSON body.
+func send(ctx context.Context, client *http.Client, method, endpoint, bearer string, body any, want int, out any) error {
+	response, err := do(ctx, client, method, endpoint, bearer, body)
 	if err != nil {
 		return err
 	}
@@ -262,7 +285,7 @@ func call(ctx context.Context, client *http.Client, method, endpoint, bearer str
 
 // callPage is call for a paginated GET, returning the next page's URL.
 func callPage(ctx context.Context, client *http.Client, endpoint, bearer string, out any) (string, error) {
-	response, err := do(ctx, client, http.MethodGet, endpoint, bearer)
+	response, err := do(ctx, client, http.MethodGet, endpoint, bearer, nil)
 	if err != nil {
 		return "", err
 	}
@@ -276,10 +299,21 @@ func callPage(ctx context.Context, client *http.Client, endpoint, bearer string,
 	return nextLink(response.Header.Get("Link")), nil
 }
 
-func do(ctx context.Context, client *http.Client, method, endpoint, bearer string) (*http.Response, error) {
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, http.NoBody)
+func do(ctx context.Context, client *http.Client, method, endpoint, bearer string, body any) (*http.Response, error) {
+	var reader io.Reader = http.NoBody
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reader = bytes.NewReader(raw)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
 	if err != nil {
 		return nil, err
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
 	request.Header.Set("X-GitHub-Api-Version", apiVersion)

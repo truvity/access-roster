@@ -355,8 +355,8 @@ type GitHubOrganisation struct {
 	MemberGroups []string            `protobuf:"bytes,7,rep,name=member_groups,json=memberGroups,proto3" json:"member_groups,omitempty"`
 	Members      []*GitHubMember     `protobuf:"bytes,8,rep,name=members,proto3" json:"members,omitempty"`
 	Teams        []*GitHubTeamStatus `protobuf:"bytes,9,rep,name=teams,proto3" json:"teams,omitempty"`
-	// members of the organisation no bound holder's address matched,
-	// listed and never touched.
+	// members with no verified address in the organisation's domains:
+	// nobody can say who they are, so they are listed and never touched.
 	Unlinked []*GitHubAccount `protobuf:"bytes,10,rep,name=unlinked,proto3" json:"unlinked,omitempty"`
 	// how the controller acts in it. Absent until an operator connects it.
 	Connection    *GitHubConnection `protobuf:"bytes,11,opt,name=connection,proto3" json:"connection,omitempty"`

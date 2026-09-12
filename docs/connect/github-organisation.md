@@ -1,10 +1,9 @@
 # Connect a GitHub organisation
 
-> **Most of this is built.** The bindings live in the policy and show on
-> the Rules page; the console's GitHub page shows each organisation; and
-> **Connect** creates and installs the App. **The controller that acts on
-> them is not built yet** (INF-697): a connected organisation's teams do
-> not move until it exists.
+> **Built, and not yet run against a real organisation.** The bindings,
+> the GitHub page, Connect and the controller all exist; the first
+> supervised enable is INF-642 on the sandbox organisation, then INF-628
+> on the real ones.
 
 **Anchor:** none of ours. The controller holds one GitHub App per
 organisation and acts with its own credential; the issuer holds the
@@ -79,12 +78,99 @@ the same reason every other grant lives here.
    Install instead of creating a second App. Only an organisation the
    policy binds can be connected, so a typo in a login is caught here
    rather than on GitHub's 404.
-6. **The controller comes later** (INF-697): deriving membership from
-   these bindings every pass, acting through the connected App, and
-   reporting on the same page.
+6. **Run the controller**, disabled for the organisation. See *Running the
+   controller* below. Its first pass reports on the GitHub page what it
+   WOULD do; read it.
+7. **Enable the organisation** by adding its login to
+   `githubRoster.actsIn`. That is a reviewed change, and the next pass acts.
 
 The service reaches `api.github.com` for Create, Install and Disconnect,
 so the cluster's egress policy must allow it.
+
+## Running the controller
+
+The controller is a second process from the same chart:
+
+```yaml
+githubRoster:
+  enabled: true
+  actsIn: []            # born disabled: nothing is changed until an organisation is listed
+exchange:
+  clusters:
+    - name: kernel      # this cluster: the service verifies the controller's token against its key set
+      issuer: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE
+      jwksUri: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE/keys
+```
+
+and the policy puts its account in two groups — reading who holds a group,
+and recording what it did:
+
+```yaml
+groups:
+  all:access-roster:viewer:
+    matchers:
+      - service_account: { cluster: kernel, namespace: access-issuer, name: access-issuer-github-roster }
+  all:access-roster:reporter:
+    matchers:
+      - service_account: { cluster: kernel, namespace: access-issuer, name: access-issuer-github-roster }
+```
+
+The account's name is `<release>-github-roster`. The chart refuses to
+render the controller without an `exchange.clusters` row or a console
+mount, because either absence is a controller that can never read
+anything.
+
+**It needs to reach `api.github.com`**, and a default-deny egress policy
+has to allow it.
+
+## What it does every pass
+
+For each organisation the policy binds:
+
+1. **Who should be where.** It asks the console who holds each bound
+   group. A suspended account is not somebody a team should contain.
+2. **What GitHub holds.** Through the organisation's App: members with
+   their role and their addresses in the organisation's **verified
+   domains**, pending invitations, teams, and each bound team's members
+   in both roles. All of it, or the pass fails: a partial read acted on is
+   how the wrong people get removed.
+3. **Who is who.** A login is matched to a person by a verified-domain
+   address, and by nothing else. One account with addresses in two
+   workspaces is one member. An address two accounts claim is linked to
+   neither, and held.
+4. **What to change.**
+   - somebody wanted and not a member is **invited** by address, straight
+     into every team that wants them — once;
+   - a member wanted in a team is **added** in the role wanted, and a
+     wrong role is **changed**; a maintainer group wins over a member
+     group;
+   - a member of a bound team whom no bound group wants is **removed**
+     from that team;
+   - a member the directory **no longer has** — not found, or suspended —
+     is **removed from the organisation**, and so from every team.
+5. **Act** where the organisation is in `actsIn`, and **report**: the
+   GitHub page shows every person's state and what comes next, and each
+   change and each newly held action is recorded in the audit stream.
+
+**A removal never rests on absence.** Before anybody is removed, the
+controller asks the console about that one address, and acts only on an
+answer the directory vouches for. An unreadable workspace, a truncated
+list, a directory mid-outage: each holds the removal, with the reason on
+the row, and removes nobody.
+
+**Held, with a reason, rather than done:**
+
+| Held | Because |
+|---|---|
+| a removal the directory cannot vouch for | absence from a list is not evidence |
+| removing an owner from the organisation | owners are declared elsewhere |
+| an invitation to a domain no member has a verified address at | it is very likely not a verified domain of the organisation, and an accepted invitation could not be matched back to anybody |
+| an address two accounts claim | acting on either is a guess |
+| anything in a team GitHub does not have | teams are created by whatever manages the organisation's structure, never here |
+| a change GitHub refused | GitHub's words are on the row |
+
+**Never touched:** a member with no verified address (listed as *not
+linked*), a team no binding names, and anybody's owner status.
 
 ## Disconnecting
 
@@ -123,10 +209,10 @@ anywhere else — not in git, not in a password manager.
 The same team name in two **organisations** is fine — `team-platform` on
 two orgs is two different teams.
 
-## What this service never does here
+## What the service never does here
 
-It never acts on GitHub with the key it keeps: the controller does. The
-one use this service makes of it is uninstalling on Disconnect. It mints
-no token for GitHub. A workflow's identity is the other direction
+The service never acts on GitHub with the key it keeps: the controller
+does, from its own process. The one use the service makes of it is
+uninstalling on Disconnect. It mints no token for GitHub. A workflow's identity is the other direction
 entirely and is [github-actions.md](github-actions.md): GitHub proves a
 job to us, and we never prove anything to GitHub.

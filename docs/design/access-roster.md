@@ -505,6 +505,34 @@ data-dense page readable: a name is a link, monospace when it is an
 identifier; a chip is a state and nothing else is; facts are a label over
 a value; two-column data is a list and tabular data is a table.
 
+## The GitHub controller
+
+A second process from the same chart, because it holds GitHub App keys
+and writes to GitHub, and neither belongs in the login path. It has no
+listener and no console of its own.
+
+What each GitHub team should contain is the policy's `github` table:
+internal groups per team, in both of GitHub's roles. Which accounts hold
+those groups is the console's to answer, and the controller asks it with
+its own ServiceAccount token — no exchange in front of a same-cluster
+call. A login is matched to a person only by an address in the
+organisation's verified domains, so nothing links a GitHub account to a
+person by hand.
+
+Every pass derives everything, for every bound organisation, and changes
+only those listed in `githubRoster.actsIn`: an organisation is born
+disabled, and its report is the dry run an operator reads before enabling
+it. Removal is the part that needs one more question than addition.
+Absence from a holders list is never evidence — an unreadable workspace
+contributes nobody — so each removal is confirmed by asking about that one
+address, and done only on an answer the directory vouches for. Somebody
+is removed from the organisation only when the directory no longer has
+them at all, and never if they are an owner.
+
+It writes GitHub, its report, and audit events through the service.
+Nothing else: no store of its own, and no Valkey credential, because that
+store holds every session and refresh token.
+
 ## Audit
 
 One stream for the whole service, because a sign-in and the connect that

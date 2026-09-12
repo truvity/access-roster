@@ -269,7 +269,7 @@ function Organisation({
         ) : null}
 
         {org.unlinked.length > 0 ? (
-          <Section title="Not linked" hint="members of the organisation whose login no bound holder's address matched — listed, never touched">
+          <Section title="Not linked" hint="members with no verified address in the organisation's domains — nobody can say who they are, so they are listed and never touched">
             <Names items={org.unlinked.map((account) => ({ label: account.login, mono: true, note: account.reason }))} />
           </Section>
         ) : null}

@@ -32,4 +32,14 @@ spec:
         {{- end }}
       ports:
         - port: {{ .Values.listeners.port }}
+    {{- if .Values.githubRoster.enabled }}
+    # The GitHub controller beside it, reading the console's API with its
+    # own ServiceAccount token.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "access-issuer.githubRosterSelectorLabels" . | nindent 14 }}
+      ports:
+        - port: {{ .Values.listeners.port }}
+    {{- end }}
 {{- end }}

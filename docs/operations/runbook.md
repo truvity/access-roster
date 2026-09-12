@@ -158,6 +158,24 @@ Structured JSON on stdout. The hub never logs a credential, a token or a
 key file, and never logs the members of a group; it logs workspace ids,
 domains, counts, durations and errors.
 
+## Enabling a GitHub organisation
+
+1. The organisation is bound in the policy, **connected** on the GitHub
+   page, and the controller runs with the organisation *not* in
+   `githubRoster.actsIn`.
+2. Read its section on the GitHub page after a pass. *Controller* says
+   `dry run`; the table of people not synced is exactly what enabling it
+   would do. Look for anybody you did not expect to be removed, and for
+   held rows: each carries its reason.
+3. Add the login to `githubRoster.actsIn` and roll out. The next pass
+   acts; its changes appear in the audit stream as `github.member.*`.
+4. To stop acting in it, remove the login again. Nothing is undone: the
+   organisation is simply left as it is.
+
+If a pass fails, the section says why — an organisation not connected,
+an App GitHub refuses, a console that did not answer. A failed pass changes
+nothing.
+
 ## Audit: what happened lately
 
 The console's **Audit** page (operators only) is one stream for the whole

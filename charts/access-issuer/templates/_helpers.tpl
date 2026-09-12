@@ -83,3 +83,13 @@ here is what keeps either spelling working. The Go side already trims it.
 {{- $mount := .Values.console.mount | default "" | trimSuffix "/" -}}
 {{- $mount -}}
 {{- end -}}
+
+{{/*
+The GitHub controller's pods, told apart from the service's. They must not
+carry the service's selector labels: the service's Service would then send
+logins to a process that has no listener.
+*/}}
+{{- define "access-issuer.githubRosterSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "access-issuer.name" . }}-github-roster
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

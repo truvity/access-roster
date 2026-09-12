@@ -297,6 +297,33 @@ chart-lint:
     # chart must not invent one.
     ! helm template t charts/access-issuer --set issuerURL=https://iss.example | grep -q GITHUB_OWNERS
     helm template t charts/access-issuer --set issuerURL=https://iss.example --set 'github.owners={truvity}' | grep -q GITHUB_OWNERS
+    # The GitHub controller (INF-697): off unless asked for, refused
+    # without the cluster row the service verifies its token against, and
+    # never selected by the service's own Service — which would send logins
+    # to a process with no listener.
+    ! helm template t charts/access-issuer --set issuerURL=https://iss.example | grep -q github-roster
+    ! helm template t charts/access-issuer --set issuerURL=https://iss.example --set githubRoster.enabled=true >/dev/null 2>&1
+    helm template t charts/access-issuer --set issuerURL=https://iss.example \
+        --set githubRoster.enabled=true --set 'githubRoster.actsIn={truvity}' \
+        --set networkPolicy.enabled=true \
+        --set 'exchange.clusters[0].name=kernel' --set 'exchange.clusters[0].issuer=https://oidc.example' \
+        --set 'exchange.clusters[0].jwksUri=https://oidc.example/keys' > /tmp/access-issuer-github.yaml
+    grep -q 'value: "http://t-access-issuer.default.svc:8080/console"' /tmp/access-issuer-github.yaml
+    grep -q 'value: "truvity"' /tmp/access-issuer-github.yaml
+    grep -q 'secretName: t-access-issuer-github-apps' /tmp/access-issuer-github.yaml
+    grep -q 'resourceNames: \["t-access-issuer-github-status"\]' /tmp/access-issuer-github.yaml
+    grep -q 'app.kubernetes.io/name: access-issuer-github-roster' /tmp/access-issuer-github.yaml
+    helm template t charts/access-issuer --set issuerURL=https://iss.example --set githubRoster.enabled=true \
+        --set 'exchange.clusters[0].name=kernel' --set 'exchange.clusters[0].issuer=https://oidc.example' \
+        --set 'exchange.clusters[0].jwksUri=https://oidc.example/keys' \
+        --show-only templates/service.yaml > /tmp/access-issuer-github-service.yaml
+    grep -q 'app.kubernetes.io/name: access-issuer$' /tmp/access-issuer-github-service.yaml
+    ! grep -q github-roster /tmp/access-issuer-github-service.yaml
+    helm template t charts/access-issuer --set issuerURL=https://iss.example --set githubRoster.enabled=true \
+        --set networkPolicy.enabled=true \
+        --set 'exchange.clusters[0].name=kernel' --set 'exchange.clusters[0].issuer=https://oidc.example' \
+        --set 'exchange.clusters[0].jwksUri=https://oidc.example/keys' \
+        --show-only templates/networkpolicy.yaml | grep -q 'app.kubernetes.io/name: access-issuer-github-roster'
 
 # Install every toolchain dependency, on both sides. Separate from the
 # builds because `npm ci` is the slow part and it does not change

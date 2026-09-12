@@ -72,6 +72,10 @@ hub writes *itself*, where it is the producer and gets to choose.
 | `policy` | `{}` | the declared policy, see [policy.md](policy.md) |
 | `networkPolicy.enabled` | `false` | |
 | `networkPolicy.clients[]` | `[]` | namespaces allowed to reach the service in-cluster: the proxies verifying tokens and the workloads exchanging them |
+| `githubRoster.enabled` | `false` | render the GitHub controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, because either is a controller that can read nothing |
+| `githubRoster.actsIn[]` | `[]` | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled |
+| `githubRoster.interval` | `15m` | how long between passes |
+| `githubRoster.image.repository` / `.tag` | `ghcr.io/truvity/access-roster/github-roster` / app version | from the same release as the service |
 | `audit.maxEvents` | `50000` | the most events the audit stream keeps; the oldest go first. In Valkey when `valkey.address` is set, one replica's memory otherwise |
 | `audit.maxAge` | `720h` | the oldest an event may be. The stream is the console's view of the last while: every event is also a log line (`audit=true`), and the log is the copy that lasts |
 | `logLevel` | `info` | debug, info, warn, error |
@@ -254,6 +258,27 @@ from the values above.
 | `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
 | `AUDIT_MAX_EVENTS`, `AUDIT_MAX_AGE` | `audit.*` |
 | `LOG_LEVEL` | `logLevel` |
+
+## The GitHub controller's environment
+
+The controller reads its own few, all set by
+`templates/github-roster.yaml`:
+
+| Variable | From |
+|---|---|
+| `RELEASE_NAME` | the chart's full name, so it finds `<release>-github-status` |
+| `NAMESPACE` | the pod's namespace |
+| `POLICY_DIR` | the same policy ConfigMap the service mounts; its `github` table is the bindings |
+| `CONSOLE_URL` | the service's in-cluster address plus `console.mount` |
+| `TOKEN_FILE` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
+| `APPS_DIR` | the mounted `<release>-github-apps` Secret, one file per connected organisation |
+| `INTERVAL` | `githubRoster.interval` |
+| `ENABLED_ORGS` | `githubRoster.actsIn` |
+| `LOG_LEVEL` | `logLevel` |
+
+Its account, `<release>-github-roster`, may `get`, `update` and `patch`
+the one ConfigMap `<release>-github-status`, and nothing else: the App keys
+are a volume, so it holds no permission to read Secrets.
 
 ## Roles
 

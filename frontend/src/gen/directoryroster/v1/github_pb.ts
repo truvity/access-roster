@@ -228,8 +228,8 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
   teams: GitHubTeamStatus[];
 
   /**
-   * members of the organisation no bound holder's address matched,
-   * listed and never touched.
+   * members with no verified address in the organisation's domains:
+   * nobody can say who they are, so they are listed and never touched.
    *
    * @generated from field: repeated directoryroster.v1.GitHubAccount unlinked = 10;
    */

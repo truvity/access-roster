@@ -100,6 +100,30 @@
   writes to Valkey itself: that store holds every session and refresh
   token. Recording never fails what it records.
 
+- **The GitHub controller** (INF-697): `github-roster`, a second binary
+  and image from this repository and a second process from this chart,
+  behind `githubRoster.enabled`. It makes each organisation's teams match
+  the policy's `github` table and reports on the GitHub page.
+
+  Every pass, for every bound organisation: it asks the console who holds
+  each bound group, with its own ServiceAccount token; reads GitHub
+  through the organisation's App — members with their verified-domain
+  addresses, invitations, teams and roles, all of it or the pass fails;
+  links a login to a person by verified address alone; invites joiners
+  straight into their teams, adds and re-roles members, removes a member
+  no bound group wants from a team, and removes from the organisation only
+  somebody the directory no longer has. **Each removal is confirmed** by
+  asking about that one address, and done only on an answer the directory
+  vouches for. Owners, members with no verified address and unbound teams
+  are never touched.
+
+  **Born disabled:** organisations not in `githubRoster.actsIn` are derived
+  and reported, and nothing is changed. Changes and newly held actions are
+  recorded in the audit stream. The chart gives its account one
+  permission — updating its report — and mounts the App keys as a volume;
+  it refuses to render without the cluster row the service verifies the
+  controller's token against.
+
 ## v1.1.0
 
 - **SECURITY: a client's `requires` is now enforced when somebody signs

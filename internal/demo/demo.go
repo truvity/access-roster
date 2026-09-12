@@ -297,7 +297,7 @@ func GitHubReports(now time.Time) map[string]string {
 					Reason: "south.example is not a verified domain of example-org, so eli-east cannot be linked to that address"},
 			}},
 		},
-		Unlinked: []status.Account{{Login: "example-bot", Reason: "no bound holder's address matched this login"}},
+		Unlinked: []status.Account{{Login: "example-bot", Reason: "no verified address in any of the organisation's domains"}},
 	}
 	document, err := status.Encode(report)
 	if err != nil {

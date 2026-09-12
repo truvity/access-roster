@@ -282,6 +282,52 @@
         }
       }
     },
+    "githubRoster": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The GitHub controller: a second process beside the service that makes each organisation's teams match the policy's github table.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the controller. Needs exchange.clusters to name this cluster and console.mount to be set."
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "interval": {
+          "$ref": "#/definitions/duration",
+          "description": "How long between passes."
+        },
+        "actsIn": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$"
+          },
+          "description": "The organisations the controller changes. Every other bound organisation is derived and reported, and left alone."
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    },
     "audit": {
       "type": "object",
       "additionalProperties": false,

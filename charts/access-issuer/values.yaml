@@ -335,6 +335,33 @@ networkPolicy:
 serviceAccount:
   name: ""
 
+# The GitHub controller: makes each GitHub organisation's teams match the
+# policy's `github` table, and reports on the console's GitHub page.
+#
+# A second process beside the service, from this chart, because it holds
+# GitHub App keys and writes to GitHub — neither belongs in the login path.
+# It has no listener. It reads the console's API with its own
+# ServiceAccount token, which the service verifies against this cluster's
+# key set: `exchange.clusters` must name this cluster, and the policy must
+# put the controller's account in `all:access-roster:viewer` (to read who
+# holds a group) and `all:access-roster:reporter` (to record what it did).
+githubRoster:
+  enabled: false
+  image:
+    repository: ghcr.io/truvity/access-roster/github-roster
+    # Empty uses the chart's appVersion, so the controller and the service
+    # always come from one release.
+    tag: ""
+    pullPolicy: IfNotPresent
+  # How long between passes.
+  interval: 15m
+  # The organisations it CHANGES. Every other organisation the policy
+  # binds is derived every pass and shown on the GitHub page with what
+  # would happen, and nothing is done to it: an organisation is born
+  # disabled, and enabling one is a reviewed change to this list.
+  actsIn: []
+  resources: {}
+
 # The audit stream: what happened lately — sign-ins, refusals, exchanges,
 # revokes, connects, and what a reporting component (the GitHub
 # controller) did. It lives in the Valkey above, or in memory without one.

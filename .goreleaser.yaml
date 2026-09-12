@@ -37,6 +37,19 @@ builds:
     ldflags:
       - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
 
+  # The GitHub controller: a second process from the same chart, because
+  # it holds GitHub App keys and writes to GitHub, and neither belongs in
+  # the login path. The same platforms as the service, so the archive
+  # both are in holds the same binaries everywhere.
+  - id: github-roster
+    main: ./cmd/github-roster
+    binary: github-roster
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
+
   # Not an image either, and for a stronger reason than the one below:
   # this opens a browser and writes into somebody's own kubeconfig and
   # AWS configuration. A container would have neither.
@@ -82,7 +95,7 @@ archives:
   # The service and the acceptance runner: what an operator pulls to run
   # a build outside a container.
   - id: binaries
-    ids: [access-issuer, acceptance]
+    ids: [access-issuer, github-roster, acceptance]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
@@ -91,7 +104,9 @@ kos:
   # caller's ko-docker-repo ghcr.io/truvity/access-roster the published
   # slug nests as access-roster/access-issuer.
   #
-  # ONE image, because there is one service. The hub was a second binary
+  # One SERVICE image, because there is one service. (The GitHub
+  # controller below is a second process beside it, not a second service.)
+  # The hub was a second binary
   # and a second image until INF-691 folded it into the issuer, which
   # runs it in process -- internal/app is still here and still does the
   # directory work; what is gone is the separate deployment of it. It
@@ -110,6 +125,25 @@ kos:
     sbom: none
     labels:
       org.opencontainers.image.title: access-issuer
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/truvity/access-roster
+
+  # The GitHub controller's image, beside the service's, from the same
+  # tag: the chart renders it from the same appVersion, so a service and a
+  # controller from two releases never run together by accident.
+  - id: github-roster
+    build: github-roster
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: true
+    base_image: gcr.io/distroless/static:nonroot
+    sbom: none
+    labels:
+      org.opencontainers.image.title: github-roster
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: https://github.com/truvity/access-roster
 

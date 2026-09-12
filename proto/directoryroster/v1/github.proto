@@ -95,8 +95,8 @@ message GitHubOrganisation {
   repeated string member_groups = 7;
   repeated GitHubMember members = 8;
   repeated GitHubTeamStatus teams = 9;
-  // members of the organisation no bound holder's address matched,
-  // listed and never touched.
+  // members with no verified address in the organisation's domains:
+  // nobody can say who they are, so they are listed and never touched.
   repeated GitHubAccount unlinked = 10;
   // how the controller acts in it. Absent until an operator connects it.
   GitHubConnection connection = 11;

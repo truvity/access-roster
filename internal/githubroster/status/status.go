@@ -68,8 +68,9 @@ type Org struct {
 	// belong in the organisation with or without a team.
 	Members []Member `json:"members,omitempty"`
 	Teams   []Team   `json:"teams,omitempty"`
-	// Unlinked are members of the organisation whose login no bound
-	// holder's address matched. They are listed and never touched.
+	// Unlinked are members with no verified address in the organisation's
+	// domains: nobody can say who they are, so they are listed and never
+	// touched.
 	Unlinked []Account `json:"unlinked,omitempty"`
 }
 

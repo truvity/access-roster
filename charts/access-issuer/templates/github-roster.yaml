@@ -1,0 +1,156 @@
+{{- if .Values.githubRoster.enabled }}
+{{- if not .Values.exchange.clusters }}
+{{- fail "githubRoster.enabled needs exchange.clusters to name this cluster: the service verifies the controller's ServiceAccount token against that key set, and with no row it verifies nothing" }}
+{{- end }}
+{{- if not (include "access-issuer.consoleMount" .) }}
+{{- fail "githubRoster.enabled needs console.mount: the controller reads the console's API, and with no mount there is none" }}
+{{- end }}
+{{- $name := printf "%s-github-roster" (include "access-issuer.fullname" .) }}
+---
+# The controller's own account. It holds no permission but updating its
+# one report: the Secret with the Apps' keys is a mounted volume, so the
+# account needs no right to read Secrets at all.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: github-roster
+---
+# Update, by name, the one ConfigMap it reports into. The service creates
+# that object — `create` cannot be narrowed to a name — so this account
+# cannot create any ConfigMap, and in particular none that would read to
+# the service as a workspace record.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: github-roster
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: [{{ printf "%s-github-status" (include "access-issuer.fullname" .) | quote }}]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: github-roster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: github-roster
+spec:
+  # One: two controllers would make every change twice, and GitHub's answer
+  # to the second is an error that reads as a failure.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "access-issuer.githubRosterSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "access-issuer.githubRosterSelectorLabels" . | nindent 8 }}
+      annotations:
+        # The bindings are read at start, like the service's policy.
+        checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ $name }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: github-roster
+          image: "{{ .Values.githubRoster.image.repository }}:{{ .Values.githubRoster.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.githubRoster.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: RELEASE_NAME
+              value: {{ include "access-issuer.fullname" . }}
+            - name: POLICY_DIR
+              value: /var/run/github-roster/policy
+            - name: CONSOLE_URL
+              value: {{ printf "http://%s.%s.svc:%v%s" (include "access-issuer.fullname" .) .Release.Namespace .Values.listeners.port (include "access-issuer.consoleMount" .) | quote }}
+            - name: TOKEN_FILE
+              value: /var/run/secrets/github-roster/token
+            - name: APPS_DIR
+              value: /var/run/github-roster/apps
+            - name: INTERVAL
+              value: {{ .Values.githubRoster.interval | quote }}
+            - name: ENABLED_ORGS
+              value: {{ join "," .Values.githubRoster.actsIn | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+          volumeMounts:
+            - name: policy
+              mountPath: /var/run/github-roster/policy
+              readOnly: true
+            - name: token
+              mountPath: /var/run/secrets/github-roster
+              readOnly: true
+            - name: apps
+              mountPath: /var/run/github-roster/apps
+              readOnly: true
+          {{- with .Values.githubRoster.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: policy
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-policy
+        # The token the console verifies, for the audience it accepts a
+        # workload's token for. Rotated by the kubelet; the controller reads
+        # the file on every call.
+        - name: token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: {{ include "access-issuer.exchangeAudience" . }}
+                  expirationSeconds: 3600
+                  path: token
+        # One file per connected organisation. Optional: before anything is
+        # connected there may be nothing, and the controller reports each
+        # bound organisation as not connected rather than failing to start.
+        - name: apps
+          secret:
+            secretName: {{ include "access-issuer.fullname" . }}-github-apps
+            optional: true
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

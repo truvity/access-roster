@@ -1,0 +1,361 @@
+package controller_test
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+
+	"connectrpc.com/connect"
+
+	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
+	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
+	"github.com/truvity/access-roster/internal/githubapp/githubfake"
+	"github.com/truvity/access-roster/internal/githubroster/connection"
+	"github.com/truvity/access-roster/internal/githubroster/controller"
+	"github.com/truvity/access-roster/internal/githubroster/status"
+	"github.com/truvity/access-roster/policy"
+)
+
+// console answers the two questions the controller asks, from a directory
+// the test edits between passes.
+type console struct {
+	directoryrosterv1connect.AccessServiceClient
+	mu sync.Mutex
+	// holders: group -> address -> live
+	holders map[string]map[string]bool
+	// people: address -> the directory's answer
+	people map[string]*directoryrosterv1.ExplainResponse
+}
+
+func (c *console) ListHolders(
+	_ context.Context, req *connect.Request[directoryrosterv1.ListHoldersRequest],
+) (*connect.Response[directoryrosterv1.ListHoldersResponse], error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := &directoryrosterv1.ListHoldersResponse{}
+	for email, live := range c.holders[req.Msg.GetGroup()] {
+		out.Holders = append(out.Holders, &directoryrosterv1.Holder{Email: email, Live: live, Authoritative: true})
+	}
+	return connect.NewResponse(out), nil
+}
+
+func (c *console) Explain(
+	_ context.Context, req *connect.Request[directoryrosterv1.ExplainRequest],
+) (*connect.Response[directoryrosterv1.ExplainResponse], error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if answer, ok := c.people[req.Msg.GetEmail()]; ok {
+		return connect.NewResponse(answer), nil
+	}
+	return connect.NewResponse(&directoryrosterv1.ExplainResponse{Authoritative: true, Found: false}), nil
+}
+
+// auditLog collects what the controller reports.
+type auditLog struct {
+	directoryrosterv1connect.AuditServiceClient
+	mu     sync.Mutex
+	events []*directoryrosterv1.AuditEvent
+}
+
+func (a *auditLog) RecordAuditEvents(
+	_ context.Context, req *connect.Request[directoryrosterv1.RecordAuditEventsRequest],
+) (*connect.Response[directoryrosterv1.RecordAuditEventsResponse], error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.events = append(a.events, req.Msg.GetEvents()...)
+	return connect.NewResponse(&directoryrosterv1.RecordAuditEventsResponse{}), nil
+}
+
+func (a *auditLog) kinds() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []string
+	for _, e := range a.events {
+		out = append(out, e.GetKind()+" "+e.GetSubject()+" "+e.GetOutcome())
+	}
+	return out
+}
+
+type report struct {
+	mu        sync.Mutex
+	documents map[string]string
+}
+
+func (r *report) Replace(_ context.Context, documents map[string]string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.documents = documents
+	return nil
+}
+
+func (r *report) org(t *testing.T, login string) status.Org {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	decoded, err := status.Decode(r.documents[status.Key(login)])
+	if err != nil {
+		t.Fatalf("the report for %s: %v", login, err)
+	}
+	return decoded
+}
+
+func writeCredential(t *testing.T, dir, org string) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := connection.EncodeCredential(connection.Credential{
+		Org: org, AppID: 42, InstallationID: 7,
+		PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, connection.Key(org)), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+var bindings = map[string]policy.GitHubOrg{
+	"truvity": {
+		Members: []string{"all:truvity:employee"},
+		Teams: map[string]policy.GitHubTeam{
+			"team-platform": {Members: []string{"all:platform:engineer"}, Maintainers: []string{"all:platform:lead"}},
+		},
+	},
+}
+
+type rig struct {
+	github  *githubfake.Org
+	console *console
+	audit   *auditLog
+	report  *report
+	run     func(enabled bool)
+}
+
+func newRig(t *testing.T) *rig {
+	t.Helper()
+	github := githubfake.Start(t, "truvity")
+	github.AddMember("boss", true, "boss@truvity.com")
+	github.AddMember("ada", false, "ada@truvity.com")
+	github.AddMember("leaver", false, "leaver@truvity.com")
+	github.AddMember("bot", false)
+	github.AddTeam("team-platform", "leaver", "bot")
+	github.AddTeam("robots", "bot")
+
+	dir := t.TempDir()
+	writeCredential(t, dir, "truvity")
+
+	r := &rig{
+		github: github,
+		console: &console{
+			holders: map[string]map[string]bool{
+				"all:truvity:employee":  {"boss@truvity.com": true, "ada@truvity.com": true, "new@truvity.com": true, "leaver@truvity.com": false},
+				"all:platform:engineer": {"ada@truvity.com": true, "new@truvity.com": true, "leaver@truvity.com": false},
+				"all:platform:lead":     {"ada@truvity.com": true},
+			},
+			people: map[string]*directoryrosterv1.ExplainResponse{
+				"leaver@truvity.com": {Authoritative: true, Found: true, Suspended: true},
+			},
+		},
+		audit:  &auditLog{},
+		report: &report{},
+	}
+	// One controller per setting, kept across passes: what it remembers
+	// between passes is part of what is under test.
+	controllers := map[bool]*controller.Controller{}
+	r.run = func(enabled bool) {
+		c, ok := controllers[enabled]
+		if !ok {
+			c = controller.New(controller.Config{AppsDir: dir, Enabled: map[string]bool{"truvity": enabled}}, controller.Deps{
+				Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: github.Client(),
+				Access: r.console, Audit: r.audit, Status: r.report, Bindings: bindings,
+			})
+			controllers[enabled] = c
+		}
+		c.Pass(context.Background())
+	}
+	return r
+}
+
+// Born disabled: every pass derives everything and changes nothing, and
+// the report says what WOULD happen — which is how an organisation is
+// enabled knowingly. Nothing is recorded, because nothing happened.
+func TestADisabledOrganisationIsADryRun(t *testing.T) {
+	r := newRig(t)
+	r.run(false)
+
+	if did := r.github.Did(); len(did) != 0 {
+		t.Errorf("a disabled organisation was changed: %v", did)
+	}
+	if kinds := r.audit.kinds(); len(kinds) != 0 {
+		t.Errorf("a dry run recorded %v", kinds)
+	}
+	got := r.report.org(t, "truvity")
+	if got.Enabled || got.Tick.Outcome != status.OutcomeDryRun || got.Tick.Changes == 0 {
+		t.Errorf("tick = %+v, want a dry run that counts what it would do", got.Tick)
+	}
+}
+
+// Enabled: the joiner is invited into their team, a lead is added as a
+// maintainer, the suspended leaver leaves the organisation, the unlinked
+// bot and the unbound team are left alone — and each change is recorded
+// once in the audit stream.
+func TestAnEnabledOrganisationIsMadeToMatch(t *testing.T) {
+	r := newRig(t)
+	r.run(true)
+
+	did := r.github.Did()
+	for _, want := range []string{"invite new@truvity.com", "add team-platform/ada as maintainer", "remove-from-org leaver"} {
+		if !slices.Contains(did, want) {
+			t.Errorf("actions = %v, want %q among them", did, want)
+		}
+	}
+	for _, change := range did {
+		if strings.Contains(change, "bot") || strings.Contains(change, "robots") || strings.Contains(change, "boss") {
+			t.Errorf("%q touched what must never be touched", change)
+		}
+	}
+	if invitation := r.github.Invitations["new@truvity.com"]; invitation == nil || !slices.Equal(invitation.Teams, []int64{r.github.Teams["team-platform"].ID}) {
+		t.Errorf("the invitation does not place new@ in team-platform: %+v", invitation)
+	}
+
+	got := r.report.org(t, "truvity")
+	if got.Tick.Outcome != status.OutcomeApplied || got.Tick.Changes != 3 {
+		t.Errorf("tick = %+v, want three changes applied", got.Tick)
+	}
+	events := r.audit.kinds()
+	for _, want := range []string{
+		"github.member.invite new@truvity.com ok", "github.member.add ada@truvity.com ok", "github.member.remove leaver@truvity.com ok",
+	} {
+		if !slices.Contains(events, want) {
+			t.Errorf("audit = %v, want %q", events, want)
+		}
+	}
+	if len(got.Unlinked) != 1 || got.Unlinked[0].Login != "bot" {
+		t.Errorf("unlinked = %+v, want bot", got.Unlinked)
+	}
+
+	// The joiner accepts with an account that verifies their address: the
+	// next pass finds them linked and in the team, and does nothing.
+	r.github.Accept("new@truvity.com", "newbie", true)
+	r.run(true)
+	after := r.github.Did()[len(did):]
+	if len(after) != 0 {
+		t.Errorf("the pass after the joiner accepted did %v, want nothing", after)
+	}
+	if got = r.report.org(t, "truvity"); got.Tick.Outcome != status.OutcomeInSync {
+		t.Errorf("after accepting, tick = %+v, want in sync", got.Tick)
+	}
+}
+
+// An owner who leaves the directory is held, not removed; the hold is
+// recorded when it begins and not again every pass after.
+func TestAnOwnerWhoLeavesIsHeldAndRecordedOnce(t *testing.T) {
+	r := newRig(t)
+	r.console.mu.Lock()
+	delete(r.console.holders["all:truvity:employee"], "boss@truvity.com")
+	r.console.people["boss@truvity.com"] = &directoryrosterv1.ExplainResponse{Authoritative: true, Found: false}
+	r.console.mu.Unlock()
+
+	r.run(true)
+	r.run(true)
+
+	if r.github.Members["boss"] == nil {
+		t.Fatal("an owner was removed from the organisation")
+	}
+	held := 0
+	for _, kind := range r.audit.kinds() {
+		if kind == "github.action.held boss@truvity.com held" {
+			held++
+		}
+	}
+	if held != 1 {
+		t.Errorf("the owner's hold was recorded %d times over two passes, want once: %v", held, r.audit.kinds())
+	}
+}
+
+// A directory that cannot vouch for a leaver removes nobody: the removal
+// is held, with the reason on the row.
+func TestAnUnvouchedLeaverIsHeld(t *testing.T) {
+	r := newRig(t)
+	r.console.mu.Lock()
+	r.console.people["leaver@truvity.com"] = &directoryrosterv1.ExplainResponse{Authoritative: false}
+	r.console.mu.Unlock()
+
+	r.run(true)
+
+	for _, change := range r.github.Did() {
+		if strings.Contains(change, "leaver") {
+			t.Errorf("%q acted on an answer the directory could not vouch for", change)
+		}
+	}
+	got := r.report.org(t, "truvity")
+	for _, team := range got.Teams {
+		for _, m := range team.Members {
+			if m.Login == "leaver" && (m.State != status.StateHeld || !strings.Contains(m.Reason, "cannot vouch")) {
+				t.Errorf("leaver's row = %+v, want held on the directory", m)
+			}
+		}
+	}
+}
+
+// GitHub's refusal of one change holds that change with GitHub's words,
+// records it as failed, and does not stop the rest.
+func TestARefusedChangeIsHeldAndTheRestGoOn(t *testing.T) {
+	r := newRig(t)
+	r.github.Refuse["invite new@truvity.com"] = "new@truvity.com is already a part of this organization"
+
+	r.run(true)
+
+	if !slices.Contains(r.github.Did(), "add team-platform/ada as maintainer") {
+		t.Errorf("a refused invitation stopped the other changes: %v", r.github.Did())
+	}
+	if !slices.Contains(r.audit.kinds(), "github.member.invite new@truvity.com failed") {
+		t.Errorf("audit = %v, want the refused invitation recorded as failed", r.audit.kinds())
+	}
+	got := r.report.org(t, "truvity")
+	found := false
+	for _, m := range got.Members {
+		if m.Email == "new@truvity.com" {
+			found = true
+			if m.State != status.StateHeld || !strings.Contains(m.Reason, "already a part") {
+				t.Errorf("new@'s row = %+v, want held with GitHub's words", m)
+			}
+		}
+	}
+	if !found {
+		t.Error("no organisation row for new@")
+	}
+}
+
+// An organisation the policy binds and nobody has connected is reported as
+// failed, with what to do about it.
+func TestAnUnconnectedOrganisationSaysSo(t *testing.T) {
+	r := newRig(t)
+	dir := t.TempDir() // no credential in it
+	c := controller.New(controller.Config{AppsDir: dir, Enabled: map[string]bool{"truvity": true}}, controller.Deps{
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: r.github.Client(),
+		Access: r.console, Audit: r.audit, Status: r.report, Bindings: bindings,
+	})
+	c.Pass(context.Background())
+
+	got := r.report.org(t, "truvity")
+	if got.Tick.Outcome != status.OutcomeFailed || !strings.Contains(got.Tick.Error, "connect it from the console") {
+		t.Errorf("tick = %+v, want failed, saying to connect it", got.Tick)
+	}
+	if len(r.github.Did()) != 0 {
+		t.Errorf("an unconnected organisation was changed: %v", r.github.Did())
+	}
+}
