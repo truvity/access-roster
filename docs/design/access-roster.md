@@ -305,6 +305,36 @@ so it chooses the signed-out page and nothing else. A request that proves
 nothing ends nothing: before v0.14.4 it ended every session in the
 installation, which is [the security note](../../CHANGELOG.md).
 
+### Who may open which console
+
+A client's `requires` names the internal groups any one of which admits
+somebody to it. It is checked in three places, and for a long time only
+one of them: **token exchange**, where the audience is the decision;
+**a browser sign-in**, as the request is completed; and **a refresh**,
+as the session is renewed.
+
+The middle one was missing until 1.1.0, which made `requires` on a
+browser client documentation rather than a gate — anybody this issuer
+would authenticate received a token for any declared client. What
+stopped them was whatever the application checked for itself, which for
+a console with no authorization of its own and a proxy posture of
+`authenticated` was nothing (INF-704).
+
+The check cannot happen at `/authorize`: the request arrives before
+anyone has proved who they are, so there is nobody to judge. It happens
+when the sign-in completes, which is the first moment both facts exist.
+
+A refusal there is a **page**. The relying party is not the one that
+needs telling, and a redirect carrying an error produces a console
+rendering its own version of a refusal it does not understand. The
+person is signed *in* — the browser session stands, and the next console
+they are entitled to costs them no password.
+
+The third check is why the second is not enough on its own. A grant
+removed after a token was issued would otherwise keep working for as
+long as the refresh token lives; re-checking at renewal ends it at the
+next refresh instead, which for a proxied console is its `ttl_cap`.
+
 ### Telling the relying party: Back-Channel Logout
 
 Everything above is immediate at the issuer and invisible at the relying

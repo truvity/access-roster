@@ -990,3 +990,219 @@ func TestTheLogoutTokenNamesTheSessionTheIDTokenDid(t *testing.T) {
 	case <-time.After(300 * time.Millisecond):
 	}
 }
+
+// twoClientPolicy declares one client the person is in a group for and
+// one they are not, which is the whole of what `requires` promises.
+func twoClientPolicy() string {
+	return `
+version: 1
+lifetimes:
+  default: 1h
+clients:
+  local-dev:
+    kind: public
+    redirects: ["http://localhost:8000/callback"]
+    requires: ["all:everyone"]
+  restricted:
+    kind: public
+    redirects: ["http://localhost:8000/callback"]
+    requires: ["all:nobody"]
+groups:
+  all:everyone:
+    matchers:
+      - email: ada@north.example
+  all:nobody:
+    matchers:
+      - email: nobody@north.example
+`
+}
+
+// authorizeFor starts an authorization for one client and walks the
+// provider round trip by hand, returning the final status and body --
+// because the point of these tests is the step where the harness's
+// signIn would have called t.Fatal.
+func (b *browser) authorizeFor(clientID string) (int, string, string) {
+	b.t.Helper()
+
+	sum := sha256.Sum256([]byte(pkceVerifier))
+	query := url.Values{
+		"client_id":             {clientID},
+		"redirect_uri":          {"http://localhost:8000/callback"},
+		"response_type":         {"code"},
+		"scope":                 {"openid"},
+		"state":                 {"entitlement-test"},
+		"code_challenge":        {base64.RawURLEncoding.EncodeToString(sum[:])},
+		"code_challenge_method": {"S256"},
+	}
+
+	status, where, body := b.do(http.MethodGet, "/authorize?"+query.Encode())
+	if status != http.StatusFound {
+		return status, where, body
+	}
+
+	// The library always sends a browser to the login page; what happens
+	// there is the sign-in, the silent completion, or the refusal.
+	status, next, body := b.do(http.MethodGet, where)
+	if status != http.StatusFound {
+		return status, next, body
+	}
+
+	if !strings.Contains(next, "/login/google/start") {
+		// Completed from the existing session.
+		return status, next, body
+	}
+
+	status, toProvider, _ := b.do(http.MethodGet, next)
+	if status != http.StatusFound {
+		b.t.Fatalf("provider start: %d", status)
+	}
+
+	state := toProvider[strings.Index(toProvider, "state=")+len("state="):]
+
+	return b.do(http.MethodGet, "/login/google/callback?code=x&state="+state)
+}
+
+// A client's `requires` is the gate, and until INF-704 it was the gate on
+// token exchange only -- so anybody the issuer would authenticate got a
+// token for any declared client, and what stopped them was whatever the
+// application checked for itself. A console with no authorization of its
+// own had nothing.
+func TestAClientRefusesAnIdentityItRequiresNoGroupOf(t *testing.T) {
+	t.Parallel()
+
+	server, _ := signInServerWith(t, "ada@north.example", twoClientPolicy())
+	b := newBrowser(t, server)
+
+	status, where, body := b.authorizeFor("restricted")
+
+	if status == http.StatusFound {
+		t.Fatalf("a client requiring a group she does not hold sent her on to %q", where)
+	}
+
+	if status != http.StatusForbidden {
+		t.Errorf("answered %d, want 403", status)
+	}
+
+	if !strings.Contains(body, "not in a group that opens this application") {
+		t.Errorf("the page does not say why: %q", body)
+	}
+
+	// It must not name the groups: telling somebody which group would
+	// have admitted them is telling them what to ask for by name.
+	if strings.Contains(body, "all:nobody") {
+		t.Error("the refusal page named the group that would have admitted her")
+	}
+}
+
+// And the refusal is about the CLIENT, not about her: the same sign-in
+// opens the client she does hold a group for, with no second password.
+func TestARefusedClientLeavesTheSignInStanding(t *testing.T) {
+	t.Parallel()
+
+	server, _ := signInServerWith(t, "ada@north.example", twoClientPolicy())
+	b := newBrowser(t, server)
+
+	if status, _, _ := b.authorizeFor("restricted"); status != http.StatusForbidden {
+		t.Fatalf("the restricted client answered %d, want 403", status)
+	}
+
+	if b.cookies[issuer.SSOCookieName] == "" {
+		t.Fatal("being refused a client ended the browser session")
+	}
+
+	status, where, body := b.authorizeFor("local-dev")
+	if status != http.StatusFound {
+		t.Fatalf("the client she holds a group for answered %d: %s", status, body)
+	}
+
+	if !strings.Contains(where, "code=") && !strings.Contains(where, "/authorize/callback") {
+		t.Errorf("sent to %q, want the callback with a code", where)
+	}
+}
+
+// The SILENT path is refused too, and answered with the page rather than
+// fallen through: falling through shows a login page to somebody already
+// signed in, who signs in again and is refused again.
+func TestTheSilentPathRefusesAnUnentitledClient(t *testing.T) {
+	t.Parallel()
+
+	server, _ := signInServerWith(t, "ada@north.example", twoClientPolicy())
+	b := newBrowser(t, server)
+
+	// One sign-in, so the second authorization completes from the session.
+	if status, _, _ := b.authorizeFor("local-dev"); status != http.StatusFound {
+		t.Fatal("could not establish the browser session")
+	}
+
+	status, _, body := b.authorizeFor("restricted")
+	if status != http.StatusForbidden {
+		t.Fatalf("silently completed a client she is not entitled to: %d", status)
+	}
+
+	if !strings.Contains(body, "not in a group that opens this application") {
+		t.Errorf("the page does not say why: %q", body)
+	}
+}
+
+// Checking `requires` only at sign-in would make the gate good for as
+// long as a refresh token lives: somebody taken out of the group would go
+// on renewing for up to twelve hours against a client that is no longer
+// theirs. So it is checked again at refresh.
+func TestRefreshIsRefusedWhenTheClientNoLongerAdmits(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+
+	declared, err := policy.Parse([]byte(twoClientPolicy()))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	iss := issuer.New(
+		issuer.Config{URL: "http://issuer.example", AllowInsecure: true},
+		set,
+		&fakeDirectory{standing: map[string]issuer.Standing{
+			"ada@north.example": {Found: true, Authoritative: true},
+		}},
+		state,
+	)
+
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("storage: %v", err)
+	}
+
+	// A live session on the client whose group she does NOT hold -- the
+	// shape left behind by a token issued before the gate existed, or by
+	// a grant removed after it was issued.
+	if _, err = sessions.Record(ctx, issuer.Opened{
+		Identity: "ada@north.example", ClientID: "restricted",
+		How: issuer.HowCode, Token: "a-refresh-token",
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if _, err = storage.TokenRequestByRefreshToken(ctx, "a-refresh-token"); err == nil {
+		t.Fatal("renewed a session for a client the identity is not admitted to")
+	}
+
+	// And the client she does hold a group for still renews, or the check
+	// is not a gate but an outage.
+	if _, err = sessions.Record(ctx, issuer.Opened{
+		Identity: "ada@north.example", ClientID: "local-dev",
+		How: issuer.HowCode, Token: "another-refresh-token",
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if _, err = storage.TokenRequestByRefreshToken(ctx, "another-refresh-token"); err != nil {
+		t.Errorf("refused a refresh for a client she is admitted to: %v", err)
+	}
+}

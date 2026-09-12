@@ -1,3 +1,42 @@
+## v1.1.0
+
+- **SECURITY: a client's `requires` is now enforced when somebody signs
+  in through a browser, and again when a session is refreshed.** It was
+  enforced on token exchange and nowhere else, so for a browser client
+  the list was documentation: anybody the issuer would authenticate was
+  issued a token for any declared client, and what stopped them was
+  whatever the application checked for itself.
+
+  Most relying parties were saved by that second check — ArgoCD admits
+  nobody by default, Kargo authorizes itself, the consoles check their
+  own roles. One was not. A console with no authorization of its own,
+  behind a proxy with posture `authenticated`, had `requires` as its
+  only gate, which means it had none.
+
+  Not a way in for a stranger: the identity still had to be one this
+  issuer authenticates. What it collapsed was *which* console a
+  signed-in person could open.
+
+  The refusal is a **page**, not a redirect carrying an error. The
+  relying party is not the one that needs telling, and sending the
+  browser back to it produces a console rendering its own version of a
+  refusal it does not understand. The page says the sign-in was fine and
+  that signing in again will not help, and it does not name the group
+  that would have admitted them — that is telling somebody what to ask
+  for by name. The detail goes to the log.
+
+  **Checked again at refresh**, because checking only at sign-in would
+  make the gate good for as long as a refresh token lives: somebody
+  taken out of a group would go on renewing for up to twelve hours
+  against a client no longer theirs. Now it ends at the next refresh,
+  which for a proxied console is its `ttl_cap`. The answer is
+  `invalid_grant`, which is what a relying party acts on — it stops
+  renewing and starts a new authorization, which meets the same gate.
+
+  Found by migrating a console and watching an identity that held none
+  of its groups be admitted by the issuer and refused by the console
+  (INF-704).
+
 ## v1.0.0
 
 The first release the design document, the architecture as shipped and

@@ -498,6 +498,12 @@ func (s *Storage) Complete(id string, who Authenticated) error {
 		authTime = time.Now()
 	}
 
+	// Before the request is marked done, because a request marked done is
+	// one a code can be issued for.
+	if err = s.entitled(ctx, req.Req.ClientID, who.Subject); err != nil {
+		return err
+	}
+
 	req.Subject, req.IsDone = strings.ToLower(who.Subject), true
 	// NOT time.Now(): a request completed silently against a session
 	// established an hour ago authenticated an hour ago, and `auth_time`
@@ -800,6 +806,29 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken s
 	if !ok {
 		return nil, op.ErrInvalidRefreshToken
 	}
+
+	// The client's `requires`, again. Checking it only at sign-in would
+	// make the gate good for as long as a refresh token lives: somebody
+	// taken out of the group would keep renewing for up to twelve hours
+	// against a client that is no longer theirs. Here it ends at the next
+	// refresh, which for a proxied console is its `ttl_cap`.
+	//
+	// invalid_grant rather than a quieter refusal, because that is the
+	// answer a relying party acts on: it stops renewing and starts a new
+	// authorization, which meets the same gate and says why on a page.
+	// The description is deliberately plain -- the detail is in the log,
+	// and the client is not who needs telling.
+	if err = s.entitled(ctx, session.ClientID, session.Identity); err != nil {
+		if errors.Is(err, ErrNotEntitled) {
+			s.logger().InfoContext(ctx, "refused a refresh for a client the identity is no longer entitled to",
+				"client_id", logsafe.Value(session.ClientID), "error", logsafe.Error(err))
+
+			return nil, oidc.ErrInvalidGrant().WithDescription("this identity is not admitted to this client")
+		}
+
+		return nil, oidc.ErrServerError().WithDescription("%s", err)
+	}
+
 	return &refreshRequest{session: session}, nil
 }
 
@@ -1007,19 +1036,71 @@ func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, subject, _ str
 func (s *Storage) identityOf(
 	ctx context.Context, subject string,
 ) (claims map[string]any, given, family string, err error) {
-	if account, ok := serviceAccountSubject(subject); ok {
-		return Claims(s.iss.Policy().Evaluate(policy.Input{
-			ServiceAccount: &account,
-		})), "", "", nil
-	}
-
-	resolved, err := s.iss.resolver.Resolve(ctx, subject)
+	result, given, family, err := s.resolveSubject(ctx, subject)
 	if err != nil {
 		return nil, "", "", err
 	}
 
-	return Claims(s.iss.Policy().Evaluate(resolved.Input(subject))),
+	return Claims(result), given, family, nil
+}
+
+// resolveSubject evaluates the policy for one subject and returns the
+// RESULT rather than the claims made from it, because two questions are
+// asked of it: what a token should say, and whether this identity may
+// have a token for a particular client at all.
+func (s *Storage) resolveSubject(
+	ctx context.Context, subject string,
+) (result policy.Result, given, family string, err error) {
+	if account, ok := serviceAccountSubject(subject); ok {
+		return s.iss.Policy().Evaluate(policy.Input{ServiceAccount: &account}), "", "", nil
+	}
+
+	resolved, err := s.iss.resolver.Resolve(ctx, subject)
+	if err != nil {
+		return policy.Result{}, "", "", err
+	}
+
+	return s.iss.Policy().Evaluate(resolved.Input(subject)),
 		resolved.GivenName, resolved.FamilyName, nil
+}
+
+// ErrNotEntitled says the person is who they claim to be and may not have
+// a token for THIS client: they hold none of the groups it requires.
+//
+// Distinct from every other refusal on this path, because it is the only
+// one where signing in again cannot help and the person has done nothing
+// wrong. It is an answer about entitlement, not about the request.
+var ErrNotEntitled = errors.New("no group this client requires")
+
+// entitled is the client's `requires`, applied to a browser sign-in.
+//
+// It was applied on token exchange and nowhere else, so `requires` on a
+// browser client was documentation: anybody the issuer would authenticate
+// was issued a token for any declared client, and what stopped them was
+// whatever the application checked for itself. For a console with no
+// authorization of its own -- hubble -- nothing did (INF-704).
+//
+// Here rather than at /authorize because there is nobody to judge until
+// the sign-in finishes: the request arrives before anyone has proved who
+// they are.
+func (s *Storage) entitled(ctx context.Context, clientID, subject string) error {
+	declared, ok := s.iss.Policy().Client(clientID)
+	if !ok {
+		// Not this function's refusal to make: an undeclared client is
+		// refused before a person is ever asked to sign in.
+		return nil
+	}
+
+	result, _, _, err := s.resolveSubject(ctx, subject)
+	if err != nil {
+		return err
+	}
+
+	if declared.Admits(result) {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s holds none of %v", ErrNotEntitled, subject, declared.Requires)
 }
 
 // serviceAccountSubject reads a ServiceAccount out of a subject, in

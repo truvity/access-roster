@@ -148,12 +148,12 @@ certification is surface with no consumer.
     hostname: conformance.kernel.truvity.xyz
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
-    requires: [all:access-roster:viewer]
+    requires: [all:access-roster:operator, all:access-roster:viewer]
   - name: conformance-2
     hostname: conformance.kernel.truvity.xyz
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
-    requires: [all:access-roster:viewer]
+    requires: [all:access-roster:operator, all:access-roster:viewer]
   # The Back-Channel plan's pair: the same endpoints plus the address a
   # logout token is POSTed to. Kept apart from the pair above on
   # purpose -- the RP-Initiated modules FAIL a test that receives a
@@ -164,13 +164,13 @@ certification is surface with no consumer.
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     backchannel_logout: /test/a/access-issuer/backchannel_logout
-    requires: [all:access-roster:viewer]
+    requires: [all:access-roster:operator, all:access-roster:viewer]
   - name: conformance-bc-2
     hostname: conformance.kernel.truvity.xyz
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     backchannel_logout: /test/a/access-issuer/backchannel_logout
-    requires: [all:access-roster:viewer]
+    requires: [all:access-roster:operator, all:access-roster:viewer]
 ```
 
 The alias in those paths (`access-issuer`) has to match the `alias` in
@@ -185,6 +185,15 @@ refuses to load a client that requires no group, with *"client
 %q requires no group, so nobody may use it"*. An earlier version of this
 page said to leave it off, which would have failed the render before a
 single test ran.
+
+**Both groups, and the operator one is the load-bearing half.** Since
+1.1.0 `requires` is enforced on the browser flow, and the driver signs
+in as RECOVERY — a ServiceAccount. `all:access-roster:viewer` is matched
+by email domain, which a ServiceAccount has none of, so a row requiring
+only viewer refuses the driver and every module fails at the sign-in.
+Recovery holds `all:access-roster:operator` through a `service_account`
+matcher, which is why it is listed. A human running the plans by hand
+would pass on either.
 
 Name a group the person running the suite already holds.
 `all:access-roster:viewer` is the bootstrap matcher that admits the

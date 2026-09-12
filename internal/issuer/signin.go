@@ -401,7 +401,12 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = s.deps.Storage.Complete(request, s.established(w, r, subject, RecoveryHow)); err != nil {
+		if s.refuseUnentitled(w, r, err) {
+			return
+		}
+
 		http.Error(w, "that sign-in is no longer waiting to be completed", http.StatusBadRequest)
+
 		return
 	}
 	// WARN, not INFO: this is the way in that bypasses the directory, and
@@ -462,7 +467,12 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = s.deps.Storage.Complete(request, s.established(w, r, email, provider.Kind())); err != nil {
+		if s.refuseUnentitled(w, r, err) {
+			return
+		}
+
 		http.Error(w, "that sign-in is no longer waiting to be completed", http.StatusBadRequest)
+
 		return
 	}
 	s.deps.Log.InfoContext(r.Context(), "signed in",
@@ -709,12 +719,45 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 		// proved in the first place.
 		How: session.How,
 	}); err != nil {
-		return false
+		// TRUE because it is answered, not because it succeeded: falling
+		// through would show a login page to somebody already signed in,
+		// who would sign in again and be refused again.
+		return s.refuseUnentitled(w, r, err)
 	}
 
 	s.deps.Log.InfoContext(r.Context(), "signed in from an existing browser session",
 		"identity", logsafe.Value(session.Identity), "how", session.How)
 	http.Redirect(w, r, s.deps.Return(r.Context(), request), http.StatusFound)
+
+	return true
+}
+
+// refuseUnentitled tells somebody who signed in perfectly well that this
+// particular application is not theirs to open, and reports whether that
+// is what happened.
+//
+// A page, not a redirect carrying an error: the relying party is not the
+// one that needs telling, and sending the browser back to it produces a
+// console rendering its own version of a refusal it does not understand.
+// The person is signed IN -- the browser session stands, and the next
+// console they are entitled to costs them no password.
+func (s *signIn) refuseUnentitled(w http.ResponseWriter, r *http.Request, err error) bool {
+	if !errors.Is(err, ErrNotEntitled) {
+		return false
+	}
+
+	// The detail names the identity and the groups, which belongs in a
+	// log an operator reads and not on a page: telling somebody which
+	// groups would have admitted them is telling them what to ask for by
+	// name, and the answer to "why can I not open this" is a person, not
+	// a list.
+	s.deps.log().InfoContext(r.Context(), "refused a client the identity is not entitled to",
+		"error", logsafe.Error(err))
+
+	_ = writePage(w, http.StatusForbidden, "You are signed in, but not for this",
+		`<p>Your account is not in a group that opens this application.</p>
+	<p class="note">Nothing is wrong with your sign-in, and signing in again will not change it.
+	Ask whoever administers access to grant it.</p>`)
 
 	return true
 }
