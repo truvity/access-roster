@@ -9,19 +9,32 @@ and nowhere else, so the window in which a revoked session kept working
 was the deployment default. Each was found by a person in a browser,
 reported, and only then reproduced. This is that person, automated.
 
-It asserts four things, in the order a person meets them:
+It asserts five things, in the order a person meets them:
 
   1. an unauthenticated visit reaches the issuer, not the application
   2. after signing in, the application serves AND the issuer lists the
      session it opened
-  3. signing out ends the sign-in AND every session under it -- the half
-     that was missing, and the half that decides whether the next click
-     is admitted with no password
-  4. a REVOKED session stops the application within the client's
-     `ttl_cap`, rather than whenever its proxy happens to refresh
+  3. signing out THROUGH THE PROXY -- what the Sign out button does --
+     ends the sign-in and every session under it, and the next visit
+     asks again at once, because nothing is left to notice later
+  4. signing out AT THE ISSUER -- the console's "Sign out all" -- stops
+     the application within the proxy's refresh interval, because the
+     issuer answers the next refresh with invalid_grant and oauth2-proxy
+     treats that as fatal
+  5. REVOKING one session with the sign-in left standing REPLACES it: the
+     proxy's refresh fails, it starts a new sign-in, the standing sign-in
+     admits it silently, and a fresh session appears where the old one
+     was. Revoke is not sign-out, and the Sessions page says so.
+
+The first version of this asserted that a sign-out at the issuer stops
+a proxied console immediately, and that a revoke stops it at all. Both
+were wrong about the design rather than about the code: the proxy's
+cookie is on another host and survives an issuer sign-out, and a revoke
+leaves the sign-in that admits the next visit. The run that showed it
+had every issuer-side fact right and reported two failures anyway.
 
 Usage:
-  hack/verify_console.py <host> [--client <id>] [--patience <seconds>]
+  hack/verify_console.py <host> [--client <id>]
 
 Sign-in is RECOVERY, the audited break-glass path, which is why this runs
 unattended. The identity must hold a group the client's `requires` names
@@ -153,17 +166,38 @@ class Observer:
 
 
 def serves(cdp, host):
-    """Whether the application itself answered, rather than the issuer."""
+    """Whether the application itself answered, rather than the issuer.
+
+    The proxy's own pages under /oauth2/ are not the application either:
+    a browser caught mid-redirect on /oauth2/start is on its way to the
+    issuer, and counting that as "served" turned a correct sign-out into
+    a reported failure.
+    """
     here = cdp.eval("window.location.href") or ""
-    return here.startswith(host) and "/login" not in here
+    return here.startswith(host) and "/login" not in here and "/oauth2/" not in here
+
+
+def settled(cdp, host, seconds=12):
+    """Load the front page and wait for the redirect chain to finish."""
+    cdp.call("Page.navigate", {"url": host + "/"})
+    waited = 0
+    while waited < seconds:
+        time.sleep(3)
+        waited += 3
+        here = cdp.eval("window.location.href") or ""
+        if "/oauth2/" not in here and not here.endswith("/authorize"):
+            break
+    return serves(cdp, host)
+
+
+def stamp():
+    return time.strftime("%H:%M:%S")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("host", help="e.g. https://hubble.kernel.truvity.xyz")
     parser.add_argument("--client", help="the client id, for the session query")
-    parser.add_argument("--patience", type=int, default=420,
-                        help="seconds to wait for a revoked session to bite")
     args = parser.parse_args()
     host = args.host.rstrip("/")
     client = args.client or host.split("//")[1].split(".")[0]
@@ -204,38 +238,79 @@ def main():
             # sign-in never showed up on its own Sessions page.
             print("  NOTE %s opened no session: it does not redeem its code" % client)
 
-        print("\n3. signing out ends the sign-in AND the sessions under it")
-        cdp.call("Page.navigate", {"url": ISSUER + "/logout"})
-        time.sleep(5)
+        print("\n3. signing out THROUGH THE PROXY ends everything, at once")
+        # This is what a person's Sign out does: the proxy clears its own
+        # cookie, then continues to the issuer's end_session, which ends
+        # the sign-in and every session under it. Nothing is left to
+        # notice later, so the next visit must ask again immediately.
+        chain = "%s/oauth2/sign_out?rd=%s" % (host, urllib.parse.quote(
+            "%s/end_session?client_id=%s&post_logout_redirect_uri=%s" % (
+                ISSUER, client, urllib.parse.quote(host + "/", safe="")), safe=""))
+        cdp.call("Page.navigate", {"url": chain})
+        time.sleep(6)
         after = watcher.sessions(client)
         passed.append(ok(len(after) <= before,
                          "sessions for %s went %d -> %d" % (client, len(opened), len(after))))
-        cdp.call("Page.navigate", {"url": host + "/"})
-        time.sleep(6)
-        passed.append(ok(not serves(cdp, host), "the application asks again rather than serving"))
+        passed.append(ok(not settled(cdp, host), "the next visit asks again, immediately"))
 
-        print("\n4. a REVOKED session stops the application")
+        print("\n4. signing out AT THE ISSUER stops the application within cookie_refresh")
+        # The console's "Sign out all", or the issuer's own /logout: the
+        # issuer ends the sign-in and the sessions, but the proxy's cookie
+        # is on another host and survives. The proxy learns when it next
+        # refreshes -- which the chart sets to a minute -- and the issuer
+        # answers invalid_grant, which oauth2-proxy treats as fatal and
+        # clears the session. So this must bite in about a minute, not in
+        # ttl_cap, and not at the cookie's own expiry.
         sign_in(cdp, host + "/")
         if not serves(cdp, host):
-            passed.append(ok(False, "could not sign in again to test revocation"))
-        elif not watcher.sessions(client):
-            print("  SKIP %s holds no session to revoke" % client)
+            passed.append(ok(False, "could not sign in again"))
         else:
-            ended = sum(watcher.revoke(s) for s in watcher.sessions(client))
-            print("     revoked %d session(s); the proxy learns at its next refresh," % ended)
-            print("     so this waits up to %ds -- ttl_cap is what bounds it" % args.patience)
+            cdp.call("Page.navigate", {"url": ISSUER + "/logout"})
+            time.sleep(5)
+            print("     %s signed out at the issuer; polling the console" % stamp())
             stopped, waited = False, 0
-            while waited < args.patience:
-                time.sleep(30)
-                waited += 30
-                cdp.call("Page.navigate", {"url": host + "/"})
-                time.sleep(5)
-                if not serves(cdp, host):
+            while waited < 150:
+                time.sleep(15)
+                waited += 15
+                if not settled(cdp, host):
                     stopped = True
                     break
-                print("       still serving after %ds" % waited)
+                print("       %s still serving after %ds" % (stamp(), waited))
             passed.append(ok(stopped, "stopped serving after %ds" % waited if stopped
-                             else "STILL serving after %ds: revocation has not bitten" % waited))
+                             else "STILL serving after %ds: the proxy did not refresh, or the "
+                                  "issuer did not refuse" % waited))
+
+        print("\n5. REVOKING one session, with the sign-in left standing, replaces it")
+        # Revoke is not sign-out, and the Sessions page says so: ending a
+        # session does not stop the next visit being admitted with no
+        # password. So the honest expectation for a proxied console is
+        # not that it stops -- it is that the proxy's next refresh fails,
+        # it starts a new sign-in, the issuer admits it silently on the
+        # standing sign-in, and a NEW session appears where the old one
+        # was. What must not happen is the old session going on working.
+        sign_in(cdp, host + "/")
+        held = watcher.sessions(client)
+        if not serves(cdp, host) or not held:
+            passed.append(ok(False, "could not sign in again to test revocation"))
+        else:
+            old = {s_["id"] for s_ in held}
+            ended = sum(watcher.revoke(s_) for s_ in held)
+            print("     %s revoked %d session(s) %s" % (stamp(), ended, sorted(old)))
+            replaced, waited = False, 0
+            while waited < 150:
+                time.sleep(15)
+                waited += 15
+                settled(cdp, host)
+                now = {s_["id"] for s_ in watcher.sessions(client)}
+                if not (now & old) and now:
+                    replaced = True
+                    break
+                print("       %s after %ds: %d old still listed, %d new" % (
+                    stamp(), waited, len(now & old), len(now - old)))
+            passed.append(ok(replaced,
+                             "the revoked session is gone and a fresh one stands in %ds" % waited
+                             if replaced else
+                             "after %ds the revoked session is still listed, or nothing replaced it" % waited))
     finally:
         chrome.terminate()
 

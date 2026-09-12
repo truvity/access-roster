@@ -91,9 +91,10 @@ curl -sk "$S/api/info/$TEST" | jq '{status, result}'
 Change the discovery URL to point at whichever installation is under
 test. Nothing about this run touches the installation's configuration.
 
-**Last run: 2026-09-11 against `access.truvity.xyz`, on the merged
-service at 0.12.2 — FINISHED / PASSED, 34 checks, no failures and no
-warnings.** Worth repeating after anything that changes discovery, since
+**Last run: 2026-09-12 against `access.truvity.xyz` at 0.17.0 —
+FINISHED / PASSED.** Discovery now also advertises
+`backchannel_logout_supported` and `backchannel_logout_session_supported`,
+both `true`, which the Back-Channel plan's own discovery module checks. Worth repeating after anything that changes discovery, since
 that is the whole of what it reads.
 
 ## Basic OP and RP-Initiated Logout — attended
@@ -322,6 +323,16 @@ reason: the suite serves every endpoint of a plan under it.
 Both conformance rows carry it, because the tests that check one
 client's logout does not end another's need the second client to be
 listening too.
+
+**And the issuer must be able to reach the suite.** This is the one
+module where it has to: a logout token is a server-to-server POST, and
+a suite on a laptop at a name that resolves to `127.0.0.1` is, from the
+pod, the pod's own loopback. The module then sits in WAITING after
+*"Received front channel redirect; waiting for back channel request"*
+while the issuer logs `connection refused` against the registered URL.
+That log line is the proof the mechanism ran; the module needs the suite
+on a host the cluster can reach, with a certificate the issuer trusts
+— or the Foundation's hosted suite.
 
 ### 4. Afterwards
 

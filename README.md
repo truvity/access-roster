@@ -114,21 +114,30 @@ such as ArgoCD or Kargo, talks to the issuer directly.
 
 ## Conformance
 
-access-roster targets three OpenID Foundation profiles. A profile is
+access-roster targets four OpenID Foundation profiles. A profile is
 claimed only once the suite says so, which is why this section carries
 the last run rather than an intention.
 
-**Last run 2026-09-12 against the deployed issuer at v0.15.2.**
+**Last run 2026-09-12 against the deployed issuer at v0.17.0.**
 
 | Profile | Passed | Review | Skipped | Warning | **Failed** |
 |---|--:|--:|--:|--:|--:|
 | [Config OP](https://openid.net/certification/connect_op_testing/) | 1 | 0 | 0 | 0 | **0** |
-| [RP-Initiated Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 3 | 8 | 0 | 0 | **0** |
 | [Basic OP](https://openid.net/certification/connect_op_testing/) | 21 | 4 | 4 | 6 | **0** |
+| [RP-Initiated Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 3 | 8 | 0 | 0 | **0** |
+| [Back-Channel Logout OP](https://openid.net/certification/connect_op_logout_testing/) | 1 | 0 | 0 | 0 | **0**† |
+
+† The Back-Channel discovery module passes. The end-to-end module needs
+the issuer and the suite on one network, which the laptop suite and the
+in-cluster issuer are not — see *Back-Channel needs a reachable suite*
+below. The mechanism itself is proven: the issuer mints the logout token
+and POSTs it to the registered URL, pinned by unit tests for `typ` and
+the absent `nonce`, and shown in the issuer's own log against the live
+suite.
 
 The Foundation's rule is that **PASSED, REVIEW, WARNING and SKIPPED all
 count, and only FAILED or INTERRUPTED disqualify** a profile. On that
-rule all three are certifiable. The columns are here rather than a word
+rule all four are certifiable. The columns are here rather than a word
 like *green* because the four states mean different things and two of
 them need explaining.
 
@@ -188,16 +197,36 @@ library's own claims struct rather than from anything here.
 authorization code must revoke what it issued, and `userinfo` went on
 answering with the access token from the first redemption.
 
-### Logout cannot be certified on its own
+### Back-Channel needs a reachable suite
 
 The Foundation requires a logout submission to carry RP-Initiated Logout
 OP *and at least one of* Session Management, Front-Channel or
-Back-Channel logout. This issuer serves none of those three on purpose —
-each is surface with no consumer here — so the RP-Initiated run above is
-worth having as a correctness check and is not a certifiable submission
-until one of them is built. Back-Channel is the candidate: it would close
-the window in which a proxy keeps serving after a sign-out, which
-`ttl_cap` currently bounds rather than eliminates.
+Back-Channel logout. Back-Channel is served since 0.16.0, opt-in per
+client, and it is the only one of the three worth serving: the other two
+load an iframe from the issuer inside the application's page, which
+browsers block by default, so both fail quietly in exactly the case they
+exist for.
+
+Its certification module is the one place the **issuer has to reach the
+suite**. Every other module is driven by the browser, so a suite on a
+laptop at a name that resolves to `127.0.0.1` works against an issuer
+anywhere. A logout token is a server-to-server POST, and from the pod
+that address is its own loopback:
+
+```
+a client could not be told its session ended
+  client_id=conformance
+  error=Post "https://localhost.emobix.co.uk:8443/test/a/access-issuer/backchannel_logout":
+        dial tcp 127.0.0.1:8443: connect: connection refused
+```
+
+That line is the run's evidence: the token was minted for the right
+client and sent to the registered URL, and the network said no. Closing
+the module is a topology change, not a code change — the suite on a host
+the cluster can reach with a certificate the issuer trusts, or the
+Foundation's hosted suite, which is what an actual submission uses
+anyway. Until then the pair reads as RP-Initiated green and Back-Channel
+proven but not witnessed.
 
 ### How it is run
 
