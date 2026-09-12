@@ -20,7 +20,7 @@ package gives a UI the first without parsing a token.
 | `authz` | `Require(role)` and `RequireAny(...)` per handler; role mapping from `groups` values or from the policy, so a two-role console needs no code of its own |
 | `directory` | a typed `DirectoryService` client with the ServiceAccount token source built in and the authoritative rule enforced: `Live(email)` and `Members(group)` return a value and an `Authoritative` flag, and a helper `RemoveOnlyIf(authoritative)` for reconcilers |
 | `tokens` | `Exchange(ctx, subject, audience)`, a refreshing `Source` for a projected ServiceAccount token, and the AWS `credential_process` and Kubernetes exec-credential encoders `accessctl` uses |
-| `policy` | the policy engine and its schema — groups, claims, lifetimes, clients, memberships — shared by the hub's console and the issuer |
+| `policy` | the policy engine and its schema — groups, claims, lifetimes, clients, github — one loader for the issuer and the console, so both act on the same policy |
 | `connect` | the admin-consent flow and the backends behind storage interfaces, importable by a product that connects its customers' directories |
 
 Design rules for the module: no framework leaks across packages, every

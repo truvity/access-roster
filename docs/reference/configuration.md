@@ -153,12 +153,11 @@ reads the `groups` claim. That is [../connect/service-to-service.md](../connect/
 
 ## The policy
 
-The hub loads the family's [policy](policy.md): `groups`, `claims`,
-`lifetimes` and `memberships`, from the deployment's ConfigMap(s) as the
-declared layer and from `ConfigMap <release>-memberships` as the console
-layer.
-The chart renders the declared layer from `policy:` in values, which is
-the same YAML:
+The service loads the family's [policy](policy.md) — `groups`,
+`claims`, `lifetimes`, `clients` and `github` — from the deployment's
+ConfigMap(s). There is one layer: the console is read-only (INF-694), so
+nothing it does can add to what is declared here. The chart renders the
+policy from `policy:` in values, which is the same YAML:
 
 ```yaml
 policy:
