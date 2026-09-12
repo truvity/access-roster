@@ -529,6 +529,24 @@ func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
 			held, _ := deps.Issuer.Sessions().List(r.Context(),
 				Query{Identity: record.Identity, SSO: id})
 
+			// And the clients that were signed in under this browser
+			// WITHOUT a refresh token -- `openid` alone -- which the
+			// session index knows nothing about. They hold a session with
+			// this issuer all the same, and are told by subject: there
+			// is no session id to name because their ID token carried
+			// none.
+			if involved, err := deps.SSO.Involved(r.Context(), id); err == nil {
+				seen := map[string]bool{}
+				for i := range held {
+					seen[held[i].ClientID] = true
+				}
+				for _, clientID := range involved {
+					if !seen[clientID] {
+						held = append(held, Session{ClientID: clientID, Identity: record.Identity, SSO: id})
+					}
+				}
+			}
+
 			ended, err := deps.Issuer.Sessions().Revoke(r.Context(),
 				Query{Identity: record.Identity, SSO: id})
 

@@ -340,6 +340,20 @@ that a logout token cannot be mistaken for an ID token by a relying
 party that checks too little — which would turn *you are signed out*
 into *you are signed in as somebody*.
 
+**Who is told, and by which name.** A session in the index is a refresh
+token, and a client that asked for `openid` alone holds none — yet it
+signed somebody in and has to be told when that ends. So the sign-in
+remembers which clients were issued an ID token under it, and at
+sign-out every one of them is told, with or without a refresh token. The
+token's `sid` is the one the relying party's ID token carried, which is
+the per-client session (INF-681) and not the browser sign-in it hangs
+off: a relying party matches the two by that value, and the first
+version named the sign-in instead — a token that verified and matched
+nothing. A client whose ID token carried no `sid` is told by `sub`
+alone, which the specification allows. Both were found by the
+Foundation's Back-Channel plan on the first day it could receive a
+token at all.
+
 The order is deliberate in both directions. The sessions are read
 BEFORE the revocation, because afterwards nothing records which clients
 held them. The tokens go out AFTER it, because a client told its session

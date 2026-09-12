@@ -1,3 +1,30 @@
+## v0.17.1
+
+- **Back-Channel Logout reaches every client that signed somebody in,
+  and names the session that client actually saw.** Two defects, both
+  found by the Foundation's Back-Channel plan the moment it could
+  receive a token, which it could not from a laptop.
+
+  A client that asked for `openid` alone holds no refresh token, and a
+  session here IS a refresh token — so the issuer recorded nothing for
+  it and, at sign-out, announced nothing. The sign-in now remembers
+  which clients were issued an ID token under it, and each is told when
+  it ends, whether or not it holds a refresh token.
+
+  And the logout token carried the browser sign-in's id as `sid`, while
+  the ID token had carried the per-client session's (INF-681). A relying
+  party matches the two by that value; a token that verified and matched
+  nothing was a sign-out that silently did not happen. The logout token
+  now names the `sid` the ID token did, and a client whose ID token had
+  none is told by `sub` alone, which the specification allows.
+
+- **The conformance suite runs in the cluster**, rendered exactly while
+  its client rows are declared, at a kernel hostname of its own. Only the
+  relying-party paths are public; the control plane is reached over the
+  tailnet. It is the only way the Back-Channel module can be witnessed
+  at all: the issuer has to POST to the suite, and a laptop suite is the
+  pod's own loopback.
+
 ## v0.17.0
 
 - **The Sessions page filters MATCH rather than equal.** Typing `tsarev`

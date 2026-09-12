@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -35,9 +36,17 @@ func (p oneProvider) Identify(context.Context, string) (string, error) { return 
 func signInServer(t *testing.T, email string) (*httptest.Server, *issuer.Issuer) {
 	t.Helper()
 
-	declared, err := policy.Parse([]byte(demo.Policy))
+	return signInServerWith(t, email, demo.Policy)
+}
+
+// signInServerWith is the same issuer under a policy of the test's own,
+// for the tests about what a CLIENT declared.
+func signInServerWith(t *testing.T, email, policyYAML string) (*httptest.Server, *issuer.Issuer) {
+	t.Helper()
+
+	declared, err := policy.Parse([]byte(policyYAML))
 	if err != nil {
-		t.Fatalf("parse the demonstration policy: %v", err)
+		t.Fatalf("parse the policy: %v", err)
 	}
 
 	set, err := policy.NewSet(declared)
@@ -132,10 +141,19 @@ func (b *browser) do(method, path string) (status int, location, body string) {
 // authorize starts one authorization request and returns where the
 // browser was sent — which is the whole assertion in these tests.
 func (b *browser) authorize(extra string) string {
+	return b.authorizeWith(nil, extra)
+}
+
+// pkceVerifier is the one every authorization here commits to, so that a
+// test which redeems the code can present it.
+const pkceVerifier = "a-verifier-long-enough-to-be-a-real-one-0123456789"
+
+// authorizeWith is authorize with some of the request overridden -- the
+// scope, for a test about what a refresh token changes.
+func (b *browser) authorizeWith(over map[string]string, extra string) string {
 	b.t.Helper()
 
-	verifier := "a-verifier-long-enough-to-be-a-real-one-0123456789"
-	sum := sha256.Sum256([]byte(verifier))
+	sum := sha256.Sum256([]byte(pkceVerifier))
 	query := url.Values{
 		"client_id":             {"local-dev"},
 		"redirect_uri":          {"http://localhost:8000/callback"},
@@ -144,6 +162,10 @@ func (b *browser) authorize(extra string) string {
 		"state":                 {"sso-test"},
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(sum[:])},
 		"code_challenge_method": {"S256"},
+	}
+
+	for key, value := range over {
+		query.Set(key, value)
 	}
 
 	status, where, body := b.do(http.MethodGet, "/authorize?"+query.Encode()+extra)
@@ -760,5 +782,211 @@ groups:
 
 	if c, _ := quietSet.Client("kargo"); c.BackChannelLogout != "" {
 		t.Errorf("a client that named no address carries %q", c.BackChannelLogout)
+	}
+}
+
+// backChannelPolicy is a policy whose one client asked to be told, at the
+// address a test is listening on.
+func backChannelPolicy(listener string) string {
+	return `
+version: 1
+lifetimes:
+  default: 1h
+clients:
+  local-dev:
+    kind: public
+    redirects: ["http://localhost:8000/callback"]
+    requires: ["all:everyone"]
+    backchannel_logout_uri: ` + listener + `/backchannel
+groups:
+  all:everyone:
+    matchers:
+      - email: ada@north.example
+`
+}
+
+// redeem trades the code the browser was sent back with for tokens, as
+// the relying party would, and returns the token response.
+func redeem(t *testing.T, b *browser, sentTo string) map[string]any {
+	t.Helper()
+
+	// A signed-in browser is sent through the library's own callback hop
+	// (/authorize/callback?id=...) before it reaches the client's; walk
+	// the issuer-relative hops until the client's absolute one.
+	for strings.HasPrefix(sentTo, "/") {
+		_, sentTo, _ = b.do(http.MethodGet, sentTo)
+	}
+
+	back, err := url.Parse(sentTo)
+	if err != nil || back.Query().Get("code") == "" {
+		t.Fatalf("the browser was sent to %q, want the callback with a code", sentTo)
+	}
+
+	form := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {back.Query().Get("code")},
+		"redirect_uri":  {"http://localhost:8000/callback"},
+		"client_id":     {"local-dev"},
+		"code_verifier": {pkceVerifier},
+	}
+
+	response, err := http.Post(b.server.URL+"/token", //nolint:noctx // a test
+		"application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("redeem: %v", err)
+	}
+
+	defer func() { _ = response.Body.Close() }()
+
+	var body map[string]any
+	if err = json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("token response: %v", err)
+	}
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("redeem answered %d: %v", response.StatusCode, body)
+	}
+
+	return body
+}
+
+// jwtPart decodes one segment of a compact JWT without verifying it --
+// these tests are about what the token SAYS, and the signing key is the
+// issuer's own.
+func jwtPart(t *testing.T, raw string, index int) map[string]any {
+	t.Helper()
+
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		t.Fatalf("not a compact JWT: %q", raw)
+	}
+
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[index])
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	var out map[string]any
+	if err = json.Unmarshal(decoded, &out); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	return out
+}
+
+// awaitLogoutToken is the relying party receiving its one logout token.
+func awaitLogoutToken(t *testing.T, told <-chan string) string {
+	t.Helper()
+
+	select {
+	case token := <-told:
+		return token
+	case <-time.After(3 * time.Second):
+		t.Fatal("no logout token arrived")
+		return ""
+	}
+}
+
+// A client that asked for `openid` alone holds no refresh token, and a
+// session here IS a refresh token -- so the issuer used to record nothing
+// for it and, at sign-out, tell it nothing. It signed somebody in all the
+// same. Found by the Foundation's Back-Channel plan on the first day it
+// could receive a token at all: its module signs in with no
+// offline_access and waited for a POST that never came.
+func TestBackChannelLogoutTellsAClientThatHoldsNoRefreshToken(t *testing.T) {
+	t.Parallel()
+
+	told := make(chan string, 4)
+	listener := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		told <- r.Form.Get("logout_token")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(listener.Close)
+
+	server, _ := signInServerWith(t, "ada@north.example", backChannelPolicy(listener.URL))
+	b := newBrowser(t, server)
+	b.signIn()
+
+	tokens := redeem(t, b, b.authorizeWith(map[string]string{"scope": "openid"}, ""))
+	if _, has := tokens["refresh_token"]; has {
+		t.Fatal("openid alone was issued a refresh token; this test is about the client that holds none")
+	}
+
+	if _, _, _ = b.do(http.MethodGet, "/logout"); b.cookies[issuer.SSOCookieName] != "" {
+		t.Fatal("sign-out left the browser session behind")
+	}
+
+	raw := awaitLogoutToken(t, told)
+	header, claims := jwtPart(t, raw, 0), jwtPart(t, raw, 1)
+
+	// The shape the specification is strict about, on the wire this time.
+	if header["typ"] != "logout+jwt" {
+		t.Errorf("typ = %v, want logout+jwt", header["typ"])
+	}
+
+	if _, has := claims["nonce"]; has {
+		t.Error("a logout token carried a nonce, which is how one gets mistaken for an ID token")
+	}
+
+	if claims["aud"] != "local-dev" || claims["sub"] != "ada@north.example" {
+		t.Errorf("aud=%v sub=%v, want the client and the person", claims["aud"], claims["sub"])
+	}
+
+	if events, _ := claims["events"].(map[string]any); events["http://schemas.openid.net/event/backchannel-logout"] == nil {
+		t.Errorf("events = %v, want the back-channel logout event", claims["events"])
+	}
+
+	// No session was opened, so the ID token carried no sid, and the
+	// logout token names none either: the subject alone is what the
+	// relying party can match on, and the specification allows it.
+	if sid, has := claims["sid"]; has && sid != "" {
+		t.Errorf("sid = %v for a client whose ID token carried none", sid)
+	}
+}
+
+// The relying party matches a logout token to its session by `sid`, so
+// the logout token must name the SAME one its ID token did -- which is
+// the per-client session (INF-681), not the browser sign-in it hangs off.
+// The first version named the sign-in: a token that verified and matched
+// nothing, a sign-out that silently did not happen.
+func TestTheLogoutTokenNamesTheSessionTheIDTokenDid(t *testing.T) {
+	t.Parallel()
+
+	told := make(chan string, 4)
+	listener := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		told <- r.Form.Get("logout_token")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(listener.Close)
+
+	server, _ := signInServerWith(t, "ada@north.example", backChannelPolicy(listener.URL))
+	b := newBrowser(t, server)
+	b.signIn()
+
+	tokens := redeem(t, b, b.authorizeWith(map[string]string{"scope": "openid offline_access"}, ""))
+	if _, has := tokens["refresh_token"]; !has {
+		t.Fatal("offline_access was issued no refresh token; this test is about the client that holds one")
+	}
+
+	idToken, _ := tokens["id_token"].(string)
+	sid, _ := jwtPart(t, idToken, 1)["sid"].(string)
+	if sid == "" {
+		t.Fatal("the ID token carried no sid, so there is nothing for a logout token to name")
+	}
+
+	b.do(http.MethodGet, "/logout")
+
+	claims := jwtPart(t, awaitLogoutToken(t, told), 1)
+	if claims["sid"] != sid {
+		t.Errorf("logout token sid = %v, ID token sid = %v: the relying party cannot match them", claims["sid"], sid)
+	}
+
+	// One token for one session: a second must not follow it.
+	select {
+	case extra := <-told:
+		t.Errorf("a second logout token arrived for the same session: %s", jwtPart(t, extra, 1))
+	case <-time.After(300 * time.Millisecond):
 	}
 }

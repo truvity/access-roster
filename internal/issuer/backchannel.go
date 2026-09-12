@@ -138,10 +138,15 @@ func (s *Storage) mintLogoutToken(session *Session) (string, error) {
 		IssuedAt: time.Now().Unix(),
 		JWTID:    uuid.NewString(),
 		Subject:  session.Identity,
-		// The SSO session, which is what a relying party's own session
-		// was opened under. Empty for a grant that opened no browser
-		// session, and then `sub` carries it alone.
-		SessionID: session.SSO,
+		// The SAME `sid` the relying party's ID token carried, which is
+		// this per-client session (INF-681) and not the browser sign-in
+		// it hangs off. A relying party matches a logout token to its
+		// session by that value; naming the sign-in instead was a token
+		// that verified and matched nothing. Empty for a client whose ID
+		// token carried none -- `openid` alone opens no session here --
+		// and then `sub` carries it alone, which the specification
+		// allows.
+		SessionID: session.ID,
 		Events:    map[string]any{backChannelEvent: map[string]any{}},
 	}
 

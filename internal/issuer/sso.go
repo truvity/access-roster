@@ -82,7 +82,17 @@ func (s *SSO) SetIDs(newID func() string) { s.newID = newID }
 
 // The keys: the record carries the expiry, the set carries ids only, in
 // the same shape the per-client index uses.
-func ssoKey(id string) string         { return "issuer:sso:" + id }
+func ssoKey(id string) string { return "issuer:sso:" + id }
+
+// ssoClientsKey is the clients that were issued an ID token under one
+// sign-in: the relying parties that hold a session with THIS issuer for
+// that browser. It exists because the session index does not answer
+// that question -- a session there is a refresh token, and a client that
+// asked for `openid` alone holds none, yet it signed somebody in and has
+// to be told when that ends (OIDC Back-Channel Logout 1.0). Found by the
+// suite: its logout module signs in with no `offline_access`, the issuer
+// recorded nothing, and so announced nothing.
+func ssoClientsKey(id string) string  { return "issuer:sso-clients:" + id }
 func ssoOfKey(identity string) string { return "issuer:sso-of:" + strings.ToLower(identity) }
 
 // ssoAllKey is every sign-in, for the operator's view of what is open —
@@ -150,6 +160,21 @@ func (s *SSO) list(ctx context.Context, identity string, contains bool) ([]SSOSe
 	return out, nil
 }
 
+// Involve records that a client was issued an ID token under a sign-in.
+// Idempotent, and it lives exactly as long as the sign-in.
+func (s *SSO) Involve(ctx context.Context, id, clientID string) error {
+	if id == "" || clientID == "" {
+		return nil
+	}
+
+	return s.state.Add(ctx, ssoClientsKey(id), clientID, s.lifetime)
+}
+
+// Involved lists the clients a sign-in was used at, in no order.
+func (s *SSO) Involved(ctx context.Context, id string) ([]string, error) {
+	return s.state.Members(ctx, ssoClientsKey(id))
+}
+
 // Begin records a fresh authentication and returns the session.
 func (s *SSO) Begin(ctx context.Context, identity, how string) (SSOSession, error) {
 	now := s.now()
@@ -210,6 +235,10 @@ func (s *SSO) End(ctx context.Context, id string) error {
 		}
 	}
 
+	if err := s.state.Delete(ctx, ssoClientsKey(id)); err != nil {
+		return err
+	}
+
 	return s.state.Delete(ctx, ssoKey(id))
 }
 
@@ -228,6 +257,10 @@ func (s *SSO) EndFor(ctx context.Context, identity string) (int, error) {
 	ended := 0
 
 	for _, id := range ids {
+		if err = s.state.Delete(ctx, ssoClientsKey(id)); err != nil {
+			return ended, err
+		}
+
 		if err = s.state.Delete(ctx, ssoKey(id)); err != nil {
 			return ended, err
 		}

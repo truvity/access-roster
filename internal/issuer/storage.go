@@ -669,6 +669,17 @@ func (s *Storage) SetUserinfoFromRequest(
 		info.AppendClaims("sid", id)
 	}
 
+	// An ID token is a client being signed somebody in, and the sign-in
+	// remembers which clients that happened at, so that ending it can
+	// tell each of them. The session index cannot say: a client that
+	// asked for `openid` alone holds no refresh token and has no session
+	// there, yet it signed somebody in all the same.
+	if sso := ssoOf(request); sso != "" && s.iss.SSO() != nil {
+		if err = s.iss.SSO().Involve(ctx, sso, request.GetClientID()); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
