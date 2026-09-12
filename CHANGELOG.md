@@ -1,4 +1,15 @@
-## Unreleased
+## v1.2.0
+
+GitHub organisations, managed from the policy, and an audit stream for the
+whole service. **Nothing changes for a deployment that sets nothing new:**
+the GitHub controller is off unless `githubRoster.enabled`, and changes no
+organisation until it is listed in `githubRoster.actsIn`.
+
+The one incompatible change is to the policy's `github` table, which
+nothing rendered and nothing but the console ever read: it now names
+internal groups. A policy carrying the old shape is refused at start
+rather than reinterpreted.
+
 
 - **A GitHub team binding now names internal groups, not provider
   addresses**, and declares both of GitHub's team roles (INF-696):
