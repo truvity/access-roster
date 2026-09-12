@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -238,12 +239,25 @@ type Query struct {
 	// only half of signing that browser out — the sign-in itself has to
 	// go with them, which [SessionsService.RevokeSessions] does.
 	SSO string
+	// Contains reads Identity and ClientID as SUBSTRINGS -- prefix,
+	// suffix and middle, one rule -- rather than as exact values.
+	//
+	// It is a LISTING affordance and deliberately not a revoking one:
+	// [Sessions.Revoke] takes the same Query, and a revoke whose scope
+	// is "anything containing this" is the control that ends more than
+	// its caller meant. Revoke refuses it.
+	Contains bool
 }
 
 // set is the narrowest set that can answer this query. Asking for one
 // person's sessions must not read every session in the installation.
 func (q Query) set() string {
 	switch {
+	// A substring cannot know which per-identity index holds a match, so
+	// there is no narrower set than all of them. This is the cost of the
+	// affordance, and it is the read the unfiltered listing already does.
+	case q.Contains:
+		return sessionAllKey
 	case q.Identity != "":
 		return sessionOfKey(q.Identity)
 	case q.ClientID != "":
@@ -276,6 +290,13 @@ func (s *Sessions) List(ctx context.Context, q Query) ([]Session, error) {
 // remove: an empty query would end everything, so a caller that means
 // "this person" must say so.
 func (s *Sessions) Revoke(ctx context.Context, q Query) (int, error) {
+	// Listing by substring is a convenience; revoking by one is a way to
+	// end far more than was meant. "kar" would take kargo and karma with
+	// it, and there is no undo.
+	if q.Contains {
+		return 0, errors.New("a substring names sessions to LIST, never sessions to end")
+	}
+
 	sessions, err := s.collect(ctx, q)
 	if err != nil {
 		return 0, err
@@ -398,8 +419,8 @@ func (s *Sessions) collect(ctx context.Context, q Query) ([]Session, error) {
 		// query applied: "Ada's ArgoCD sessions" reads Ada's set and then
 		// keeps the ArgoCD ones.
 		switch {
-		case identity != "" && session.Identity != identity:
-		case q.ClientID != "" && session.ClientID != q.ClientID:
+		case identity != "" && !matches(session.Identity, identity, q.Contains):
+		case q.ClientID != "" && !matches(session.ClientID, q.ClientID, q.Contains):
 		case q.SSO != "" && session.SSO != q.SSO:
 		default:
 			out = append(out, session)
@@ -407,6 +428,17 @@ func (s *Sessions) collect(ctx context.Context, q Query) ([]Session, error) {
 	}
 
 	return out, nil
+}
+
+// matches is the one place the two filter shapes differ. Both sides are
+// already lowered by their callers, so this is a comparison and not a
+// second normalisation.
+func matches(have, want string, contains bool) bool {
+	if contains {
+		return strings.Contains(have, want)
+	}
+
+	return have == want
 }
 
 // ByID reads one session. Exported because a caller acting on a session

@@ -444,3 +444,122 @@ func TestTheListingIncludesTheSignInsBehindTheSessions(t *testing.T) {
 		t.Errorf("sign-ins = %d after signing the browser out, want 0", len(got.GetSignIns()))
 	}
 }
+
+// A filter box you have to fill in exactly is one you can only use when
+// you already know the answer, which is not the state anyone is in when
+// they open the Sessions page. So both boxes MATCH: prefix, suffix and
+// middle, one rule.
+func TestSessionsMatchBySubstring(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+	svc := service(t, state)
+
+	for _, one := range []issuer.Opened{
+		{Identity: "o.tsarev@truvity.com", ClientID: "kargo", How: issuer.HowCode, Token: "t-1"},
+		{Identity: "o.tsarev@truvity.com", ClientID: "hubble", How: issuer.HowCode, Token: "t-2"},
+		{Identity: "ada@north.example", ClientID: "kargo", How: issuer.HowCode, Token: "t-3"},
+	} {
+		if _, err := sessions.Record(ctx, one); err != nil {
+			t.Fatalf("record: %v", err)
+		}
+	}
+
+	ops := "ops@north.example|" + policy.GroupOperators
+
+	for name, tc := range map[string]struct {
+		identity string
+		clientID string
+		want     int
+	}{
+		"middle of an address":   {identity: "tsarev", want: 2},
+		"prefix of an address":   {identity: "o.tsa", want: 2},
+		"suffix of an address":   {identity: "truvity.com", want: 2},
+		"the whole address":      {identity: "o.tsarev@truvity.com", want: 2},
+		"prefix of a client":     {clientID: "karg", want: 2},
+		"middle of a client":     {clientID: "ubbl", want: 1},
+		"both, and they narrow":  {identity: "tsarev", clientID: "karg", want: 1},
+		"a substring of neither": {identity: "nobody", want: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := list(t, svc, ops, &accessissuerv1.ListSessionsRequest{
+				Identity: tc.identity, ClientId: tc.clientID, Contains: true,
+			})
+			if err != nil {
+				t.Fatalf("listing: %v", err)
+			}
+
+			if len(got.GetSessions()) != tc.want {
+				t.Errorf("matched %d sessions, want %d", len(got.GetSessions()), tc.want)
+			}
+		})
+	}
+}
+
+// And it is an operator's, because a substring names an unknown set.
+// Every other rule here decides what a caller may see from the identity
+// they NAMED; "truvity.com" names everybody, and the checks underneath
+// would pass it precisely because it is not anybody's identity to refuse.
+func TestMatchingBySubstringIsAnOperators(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+	svc := service(t, state)
+
+	if _, err := sessions.Record(ctx, issuer.Opened{
+		Identity: "ada@north.example", ClientID: "argocd", How: issuer.HowCode, Token: "t-ada",
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	// Ada asking about herself, exactly, is allowed -- and the same
+	// question asked as a substring is not, even though it is her own
+	// address and would return exactly the same row.
+	if _, err := list(t, svc, "ada@north.example|", &accessissuerv1.ListSessionsRequest{
+		Identity: "ada@north.example", Contains: true,
+	}); err == nil {
+		t.Error("a non-operator matched sessions by substring")
+	}
+
+	if _, err := list(t, svc, "ada@north.example|", &accessissuerv1.ListSessionsRequest{
+		Identity: "ada@north.example",
+	}); err != nil {
+		t.Errorf("Ada could not list her own sessions exactly: %v", err)
+	}
+}
+
+// Listing by substring is a convenience. Revoking by one would be a way
+// to end far more than was meant, with no undo -- "kar" takes kargo and
+// karma with it.
+func TestRevokingBySubstringIsRefused(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	state := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(state, time.Hour)
+
+	if _, err := sessions.Record(ctx, issuer.Opened{
+		Identity: "ada@north.example", ClientID: "argocd", How: issuer.HowCode, Token: "t-ada",
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if _, err := sessions.Revoke(ctx, issuer.Query{Identity: "ada", Contains: true}); err == nil {
+		t.Fatal("a substring revoked sessions")
+	}
+
+	left, err := sessions.List(ctx, issuer.Query{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if len(left) != 1 {
+		t.Errorf("%d sessions left after a refused revoke, want 1", len(left))
+	}
+}

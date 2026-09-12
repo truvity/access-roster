@@ -82,6 +82,21 @@ message ListSessionsRequest {
   // Opaque; pass back next_page_token from the previous response to
   // continue a listing. Empty starts from the newest session.
   string page_token = 4;
+  // Read `identity` and `client_id` as SUBSTRINGS rather than as exact
+  // values, so that "tsarev" finds `o.tsarev@truvity.com` and "karg"
+  // finds `kargo`. Prefix, suffix and middle, one rule.
+  //
+  // Operator-only, and not for tidiness: an exact identity is the
+  // caller's own or nobody's, whereas "truvity.com" as a substring names
+  // everybody. The server refuses it for anyone else rather than
+  // narrowing it, because a filter that silently means something
+  // different to different callers is worse than one that is refused.
+  //
+  // It also costs more. An exact identity reads that identity's own
+  // index; a substring cannot know which indexes to read, so it walks
+  // the whole live set — the same read the unfiltered listing already
+  // does, which is why this is affordable at all.
+  bool contains = 5;
 }
 
 message ListSessionsResponse {

@@ -305,6 +305,49 @@ so it chooses the signed-out page and nothing else. A request that proves
 nothing ends nothing: before v0.14.4 it ended every session in the
 installation, which is [the security note](../../CHANGELOG.md).
 
+### Telling the relying party: Back-Channel Logout
+
+Everything above is immediate at the issuer and invisible at the relying
+party. A console holding a valid access token keeps serving until it
+next refreshes, and until then a person who has signed out is still
+being served pages. `ttl_cap` BOUNDS that window, per client. Since
+0.16.0 a client may also ask to be told, and then the window closes.
+
+A client that declares `backchannel_logout_uri` is POSTed a signed
+logout token, server to server, the moment a sign-out ends a session it
+holds. One that declares none is never contacted, which is what makes
+serving this safe: it changes nothing for a client that has not asked.
+
+**Why this one, of the three optional mechanisms.** Session Management
+and Front-Channel Logout both work by loading something from the
+issuer's origin inside the application's page — a polled iframe, or one
+hidden iframe per client at sign-out. Browsers block third-party cookies
+by default now, so both fail quietly in exactly the case they exist for.
+This is an HTTP POST between two servers and does not care what a
+browser allows.
+
+It is also the only one of the three that could ever reach a PROXY,
+which is what actually holds the session for a console running no OpenID
+flow of its own. *Could*, not *does*: oauth2-proxy encrypts each session
+with a secret that lives only in the user's cookie, so nothing
+server-side can find the session a logout token names. Until that
+changes upstream, the refresh interval is the whole of the dial for a
+proxied console, and the chart sets it to a minute.
+
+Two details the specification is strict about, and both are pinned by
+tests: `typ` is `logout+jwt`, and there is no `nonce`. Both exist so
+that a logout token cannot be mistaken for an ID token by a relying
+party that checks too little — which would turn *you are signed out*
+into *you are signed in as somebody*.
+
+The order is deliberate in both directions. The sessions are read
+BEFORE the revocation, because afterwards nothing records which clients
+held them. The tokens go out AFTER it, because a client told its session
+ended and then finding it alive is worse than one told a moment late.
+Delivery failures are logged and never raised: the sign-out has already
+happened, and a relying party that cannot be reached must not turn a
+completed sign-out into a failed one.
+
 A revoked or suspended person is stopped separately, by the next refresh
 being refused, with the directory's liveness signal behind it. To end
 somebody *else's* session is **revocation**, through `RevokeSessions`,

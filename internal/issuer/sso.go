@@ -97,8 +97,20 @@ const ssoAllKey = "issuer:sso"
 // changed nothing about who could walk back in. What keeps letting you
 // in has to be on the page that says what is open.
 func (s *SSO) List(ctx context.Context, identity string) ([]SSOSession, error) {
+	return s.list(ctx, identity, false)
+}
+
+// Like lists the sign-ins whose identity CONTAINS a substring -- prefix,
+// suffix and middle, the same rule the session listing follows. There is
+// no per-identity index that answers this, so it walks all of them, and
+// that is why it is an operator's question at the service above.
+func (s *SSO) Like(ctx context.Context, part string) ([]SSOSession, error) {
+	return s.list(ctx, part, true)
+}
+
+func (s *SSO) list(ctx context.Context, identity string, contains bool) ([]SSOSession, error) {
 	key := ssoAllKey
-	if identity = strings.ToLower(strings.TrimSpace(identity)); identity != "" {
+	if identity = strings.ToLower(strings.TrimSpace(identity)); identity != "" && !contains {
 		key = ssoOfKey(identity)
 	}
 
@@ -123,6 +135,10 @@ func (s *SSO) List(ctx context.Context, identity string) ([]SSOSession, error) {
 				return nil, err
 			}
 
+			continue
+		}
+
+		if contains && !strings.Contains(strings.ToLower(session.Identity), identity) {
 			continue
 		}
 

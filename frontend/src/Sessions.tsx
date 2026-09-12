@@ -521,7 +521,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
         setLoading(true);
         setFailure(undefined);
         sessionsClient
-            .listSessions({ identity, clientId, pageSize: 100 })
+            .listSessions({ identity, clientId, contains: true, pageSize: 100 })
             .then((response) => {
                 setItems(response.sessions);
                 setSignIns(response.signIns);
@@ -542,6 +542,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
             const response = await sessionsClient.listSessions({
                 identity,
                 clientId,
+                contains: true,
                 pageSize: 100,
                 pageToken: nextToken,
             });
@@ -620,6 +621,12 @@ export function SessionsPage({ operator }: { operator: boolean }) {
     // way in is filtered here, because it is a closed set the rows carry.
     // Only the ways actually present are offered, so the facet never shows
     // a button that returns nothing.
+    //
+    // Both boxes MATCH rather than equal: prefix, suffix and middle, so
+    // that "tsarev" finds the address and "karg" finds the client. A box
+    // you have to fill in exactly is a box you can only use when you
+    // already know the answer, which is not the state anyone is in on
+    // this page.
     const ways = [...new Set(items.map((session) => session.how))].sort();
     const shown = how
         ? items.filter((session) => String(session.how) === how)
@@ -633,15 +640,15 @@ export function SessionsPage({ operator }: { operator: boolean }) {
             <Facets>
                 <TextField
                     size="small"
-                    label="Person"
-                    placeholder="ada@example.com"
+                    label="Person contains"
+                    placeholder="ada"
                     value={identity}
                     onChange={(e) => setIdentity(e.target.value.trim())}
                 />
                 <TextField
                     size="small"
-                    label="Client"
-                    placeholder="argocd"
+                    label="Client contains"
+                    placeholder="argo"
                     value={clientId}
                     onChange={(e) => setClientId(e.target.value.trim())}
                 />

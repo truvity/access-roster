@@ -209,6 +209,22 @@ func (s *SessionsService) ListSessions(
 
 	identity := strings.TrimSpace(req.Msg.GetIdentity())
 	clientID := strings.TrimSpace(req.Msg.GetClientId())
+	contains := req.Msg.GetContains()
+
+	// A substring is operator-only, and this refusal is the whole of why.
+	// Every rule below decides what a caller may see from the identity
+	// they NAMED -- `may` admits the caller's own and nobody else's. A
+	// substring names an unknown set: "truvity.com" is everybody, and the
+	// checks underneath would pass it because the string is not anyone's
+	// identity to refuse.
+	//
+	// Refused rather than narrowed to their own, because a filter that
+	// quietly means something different depending on who is asking is
+	// worse than one that says no.
+	if contains && !who.operator {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("matching sessions by substring is an operator's"))
+	}
 
 	// Naming neither is the global listing: every session in the
 	// installation, newest first. It exists for the incident where you do
@@ -233,7 +249,7 @@ func (s *SessionsService) ListSessions(
 			errors.New("that is somebody else's session"))
 	}
 
-	found, err := s.sessions.List(ctx, Query{Identity: identity, ClientID: clientID})
+	found, err := s.sessions.List(ctx, Query{Identity: identity, ClientID: clientID, Contains: contains})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -259,7 +275,15 @@ func (s *SessionsService) ListSessions(
 	// console's own sign-in appears as no session at all, because it
 	// never redeems the code it gets back.
 	if s.sso != nil && strings.TrimSpace(req.Msg.GetPageToken()) == "" {
-		signIns, err := s.sso.List(ctx, identity)
+		// The sign-ins are filtered the same way the sessions were, or
+		// the page contradicts itself: four rows for one person and a
+		// browser summary listing everybody who is signed in.
+		list := s.sso.List
+		if contains {
+			list = s.sso.Like
+		}
+
+		signIns, err := list(ctx, identity)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}

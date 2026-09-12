@@ -1,10 +1,10 @@
 # The conformance run
 
-access-issuer claims three OpenID Foundation profiles, and the claim is
+access-issuer claims four OpenID Foundation profiles, and the claim is
 worth exactly what the suite says about it. This is how to run it.
 
-> The exit criterion for `v1.0.0` is a green run of all three
-> (INF-683). One of them runs unattended; two need a person at a
+> The exit criterion for `v1.0.0` is a green run of all four
+> (INF-683). One of them runs unattended; three need a person at a
 > browser, because the whole point of them is that a person signs in.
 
 | profile | plan | attended |
@@ -12,6 +12,15 @@ worth exactly what the suite says about it. This is how to run it.
 | Config | `oidcc-config-certification-test-plan` | no |
 | Basic OP | `oidcc-basic-certification-test-plan` | yes |
 | RP-Initiated Logout | `oidcc-rp-initiated-logout-certification-test-plan` | yes |
+| Back-Channel Logout | `oidcc-backchannel-rp-initiated-logout-certification-test-plan` | yes |
+
+**Why the fourth exists.** The Foundation does not certify RP-Initiated
+Logout on its own: a logout certification is RP-Initiated **plus at
+least one** of Session Management, Front-Channel or Back-Channel. We
+serve Back-Channel and only Back-Channel, for reasons that are about
+what a browser will actually do rather than about effort — see
+[the design note](../design/access-roster.md#telling-the-relying-party-back-channel-logout). So this pair is the
+smallest set that can be submitted, and neither half counts alone.
 
 
 ## When to run it
@@ -117,6 +126,9 @@ certification is surface with no consumer.
       - https://localhost.emobix.co.uk:8443/test/a/access-issuer/callback
     signed_out:
       - https://localhost.emobix.co.uk:8443/test/a/access-issuer/post_logout_redirect
+    # Only the Back-Channel plan reads this, and without it every module
+    # of that plan waits for a logout token that is never sent.
+    backchannel_logout: https://localhost.emobix.co.uk:8443/test/a/access-issuer/backchannel_logout
     requires: [all:access-roster:viewer]
   - name: conformance-2
     hostname: localhost.emobix.co.uk:8443
@@ -124,6 +136,7 @@ certification is surface with no consumer.
       - https://localhost.emobix.co.uk:8443/test/a/access-issuer/callback
     signed_out:
       - https://localhost.emobix.co.uk:8443/test/a/access-issuer/post_logout_redirect
+    backchannel_logout: https://localhost.emobix.co.uk:8443/test/a/access-issuer/backchannel_logout
     requires: [all:access-roster:viewer]
 ```
 
@@ -285,6 +298,30 @@ curl -sk -X POST "$S/api/plan?planName=oidcc-rp-initiated-logout-certification-t
 the whole reason the other response types are absent from discovery. Ask
 the suite rather than guess; `GET /api/plan/available` lists each plan's
 variant keys and their permitted values.
+
+The Back-Channel plan takes the **same** variants as that one, and is
+started the same way:
+
+```bash
+curl -sk -X POST "$S/api/plan?planName=oidcc-backchannel-rp-initiated-logout-certification-test-plan&variant=$variant" \
+  -H 'Content-Type: application/json' --data-binary @basic.json | jq -r .id
+```
+
+What it needs that the others do not is **a client declaring where to
+send the logout token**. Back-Channel Logout is opt-in per client, so a
+row that declares none is never contacted and every module of this plan
+waits for a token that is not coming:
+
+```yaml
+    backchannel_logout: https://localhost.emobix.co.uk:8443/test/a/access-issuer/backchannel_logout
+```
+
+The alias in that path is the same alias as the callback, for the same
+reason: the suite serves every endpoint of a plan under it.
+
+Both conformance rows carry it, because the tests that check one
+client's logout does not end another's need the second client to be
+listening too.
 
 ### 4. Afterwards
 

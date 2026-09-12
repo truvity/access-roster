@@ -1,3 +1,33 @@
+## v0.17.0
+
+- **The Sessions page filters MATCH rather than equal.** Typing `tsarev`
+  in the person box finds `o.tsarev@truvity.com`, and `karg` finds
+  `kargo` — prefix, suffix and middle, one rule. A box you have to fill
+  in exactly is a box you can only use once you already know the answer,
+  which is not the state anybody is in when they open that page.
+
+  Valkey cannot do this for us, and it does not need to. Its glob is
+  over KEY NAMES and the identity lives inside the record, not in the
+  key; there is no substring index in the core and the search module is
+  not deployed. What is there is a set per exact identity and a set of
+  every live session — and the unfiltered listing already reads the
+  second one. So a substring is the read the page was doing anyway, with
+  the comparison changed. What it gives up is the narrow index, which is
+  why the exact path stays exact: an identity's own page, and any
+  non-operator, still read one small set.
+
+  **Operator-only, and refused rather than narrowed for anyone else.**
+  Every other rule here decides what a caller may see from the identity
+  they NAMED, and an exact identity is the caller's own or nobody's. A
+  substring names an unknown set: `truvity.com` is everybody, and the
+  checks underneath would pass it precisely because it is not anybody's
+  identity to refuse.
+
+  **`RevokeSessions` takes no such field.** It shares the query type, so
+  this is enforced rather than merely absent: a revoke scoped to
+  *anything containing this* takes `kargo` and `karma` together, and
+  there is no undo.
+
 ## v0.16.0
 
 - **Back-Channel Logout (OIDC Back-Channel Logout 1.0), opt-in per

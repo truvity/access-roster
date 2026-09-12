@@ -220,7 +220,22 @@ type ListSessionsRequest struct {
 	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Opaque; pass back next_page_token from the previous response to
 	// continue a listing. Empty starts from the newest session.
-	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	PageToken string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Read `identity` and `client_id` as SUBSTRINGS rather than as exact
+	// values, so that "tsarev" finds `o.tsarev@truvity.com` and "karg"
+	// finds `kargo`. Prefix, suffix and middle, one rule.
+	//
+	// Operator-only, and not for tidiness: an exact identity is the
+	// caller's own or nobody's, whereas "truvity.com" as a substring names
+	// everybody. The server refuses it for anyone else rather than
+	// narrowing it, because a filter that silently means something
+	// different to different callers is worse than one that is refused.
+	//
+	// It also costs more. An exact identity reads that identity's own
+	// index; a substring cannot know which indexes to read, so it walks
+	// the whole live set — the same read the unfiltered listing already
+	// does, which is why this is affordable at all.
+	Contains      bool `protobuf:"varint,5,opt,name=contains,proto3" json:"contains,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -281,6 +296,13 @@ func (x *ListSessionsRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListSessionsRequest) GetContains() bool {
+	if x != nil {
+		return x.Contains
+	}
+	return false
 }
 
 type ListSessionsResponse struct {
@@ -581,13 +603,14 @@ const file_accessissuer_v1_session_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12A\n" +
 	"\x0elast_refreshed\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\rlastRefreshed\x12\x10\n" +
-	"\x03sso\x18\b \x01(\tR\x03sso\"\x8a\x01\n" +
+	"\x03sso\x18\b \x01(\tR\x03sso\"\xa6\x01\n" +
 	"\x13ListSessionsRequest\x12\x1a\n" +
 	"\bidentity\x18\x01 \x01(\tR\bidentity\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tR\tpageToken\"\xa8\x01\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\x12\x1a\n" +
+	"\bcontains\x18\x05 \x01(\bR\bcontains\"\xa8\x01\n" +
 	"\x14ListSessionsResponse\x124\n" +
 	"\bsessions\x18\x01 \x03(\v2\x18.accessissuer.v1.SessionR\bsessions\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x122\n" +
