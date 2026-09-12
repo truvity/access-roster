@@ -1,3 +1,26 @@
+## v1.0.0
+
+The first release the design document, the architecture as shipped and
+the OpenID Foundation's suite all describe the same thing. No code
+changed since 0.17.1; what changed is what can be said about it.
+
+- **Four conformance plans, zero failed, from a suite the issuer can
+  reach.** Config OP, Basic OP, RP-Initiated Logout OP and Back-Channel
+  Logout OP, run against the deployed issuer from the suite running in
+  the cluster. The Foundation's rule is that only FAILED and INTERRUPTED
+  disqualify; every REVIEW screenshot was looked at and shows the page
+  its step demanded. The logout pair — RP-Initiated plus one of the
+  other three — is what the Foundation requires for a logout
+  submission, and both halves are green for the first time.
+  [docs/conformance.md](docs/conformance.md) carries the run and what
+  each column means.
+
+- **Documentation at 1.0** (INF-698): one design document for the one
+  service, the architecture drawn as shipped, a connect guide per row of
+  the fan-out table, references that match the schema, and nothing in
+  the tree describing what is not built except under a heading that
+  says so.
+
 ## v0.17.1
 
 - **Back-Channel Logout reaches every client that signed somebody in,
