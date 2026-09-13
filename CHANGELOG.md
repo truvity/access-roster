@@ -1,3 +1,12 @@
+## Unreleased
+
+- **Audit events keep their request on a deployment, not only in tests.**
+  The request's address, user agent and id were put into the context by a
+  wrapper around a handler the service's listener never served, so every
+  event recorded in production had none of them. The issuer's listener
+  now serves the wrapped handler itself (`issuerapp.Deps.Around`), and the
+  service's `Handler` is that same handler.
+
 ## v1.6.4
 
 - **The client address is read from the right of `X-Forwarded-For`.**

@@ -61,7 +61,6 @@ func Load() (Config, error) {
 type App struct {
 	directory *app.App
 	issuer    *issuerapp.App
-	handler   http.Handler
 	log       *slog.Logger
 }
 
@@ -69,7 +68,7 @@ type App struct {
 // and the login page at the origin root, the console under /console/ —
 // all of it under one reading of each request for the audit trail, so an
 // exchange at /token records where it came from as a console call does.
-func (a *App) Handler() http.Handler { return a.handler }
+func (a *App) Handler() http.Handler { return a.issuer.Handler() }
 
 // HealthHandler is liveness and readiness for both halves.
 func (a *App) HealthHandler() http.Handler { return a.issuer.HealthHandler() }
@@ -123,6 +122,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// One audit stream for both halves: a sign-in and the connect that
 		// made it possible belong to one history.
 		Audit: directory.Audit(),
+		// What an audit event keeps of a request goes into its context at
+		// the outermost handler — the one the issuer's listener serves.
+		// Wrapping a handler only this package returned left the served
+		// one bare, and every event on a deployment without its request.
+		Around: directory.AuditRequests,
 	}
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {
@@ -131,7 +135,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	log.InfoContext(ctx, "access-roster assembled as one service: a login makes no network "+
 		"call except to the corporate directory")
-	return &App{directory: directory, issuer: assembled, handler: directory.AuditRequests(assembled.Handler()), log: log}, nil
+	return &App{directory: directory, issuer: assembled, log: log}, nil
 }
 
 // Run serves the listeners and drives the directory's loops until the

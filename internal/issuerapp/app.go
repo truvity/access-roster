@@ -203,6 +203,12 @@ type Deps struct {
 	// origin. It is mounted under /console/ with the prefix stripped,
 	// which is exactly what the gateway used to do for it.
 	Console http.Handler
+	// Around wraps everything this issuer serves on its port, the console
+	// included. It is applied to the one handler both [App.Handler] and
+	// [App.Run] use, so what a caller tests through the first is what the
+	// second serves. The merged service puts what an audit event keeps of
+	// each request into its context here. Nil wraps nothing.
+	Around func(http.Handler) http.Handler
 }
 
 // App is an assembled issuer.
@@ -361,6 +367,9 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if cfg.allowInsecure {
 		log.WarnContext(ctx, "the issuer URL may be plaintext: every token this service signs is a "+
 			"bearer credential, and an issuer reached over http can be impersonated by anyone on the path")
+	}
+	if deps.Around != nil {
+		handler = deps.Around(handler)
 	}
 	return &App{handler: handler, health: healthMux, issuer: core, cfg: cfg, log: log}, nil
 }
