@@ -152,7 +152,7 @@ func TestATokenExchangeKeepsItsRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gateway := httptest.NewServer(server.AuditRequests(true, handler))
+	gateway := httptest.NewServer(server.AuditRequests(1, handler))
 	t.Cleanup(gateway.Close)
 
 	form := url.Values{
@@ -164,7 +164,7 @@ func TestATokenExchangeKeepsItsRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.Header.Set("X-Forwarded-For", "198.51.100.40")
+	request.Header.Set("X-Forwarded-For", "198.51.100.40, 10.0.0.1")
 	request.Header.Set("User-Agent", "access-roster-action/1")
 	request.Header.Set("X-Request-Id", "gw-exchange")
 	request.SetBasicAuth("local-dev", "")
