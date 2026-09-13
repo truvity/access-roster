@@ -1,4 +1,4 @@
-## Unreleased
+## v1.6.4
 
 - **The client address is read from the right of `X-Forwarded-For`.**
   `audit.trustForwardedFor` took the first entry, which a caller can
