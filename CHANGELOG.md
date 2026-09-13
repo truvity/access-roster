@@ -1,4 +1,4 @@
-## Unreleased
+## v1.5.1
 
 - **The GitHub page is tabs.** *Overview* says what needs attention next,
   with a card per organisation and the people who have not linked, and a
