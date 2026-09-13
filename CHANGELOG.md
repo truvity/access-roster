@@ -1,3 +1,26 @@
+## Unreleased
+
+- **Runner Apps are created from the console.** A runner App is the
+  GitHub App a self-hosted runner scale set registers with, one per
+  organisation per tier.
+  - **Declaring tiers.** Set `githubRunnerApps.tiers`, for example
+    `[preview, stable]`.
+  - **Creating one.** An operator creates each App on the GitHub page
+    (Apps), with the same two clicks as an organisation's App: create,
+    then install.
+  - **Scope.** The App asks for `organization_self_hosted_runners: write`
+    and nothing else. It is private and has no webhook.
+  - **Where it is kept.** Every App is in
+    `Secret <release>-github-runner-apps`, under the keys gha-runner-scale-set's
+    `githubConfigSecret` reads: `<tier>.<org>.github_app_id`,
+    `.github_app_installation_id` and `.github_app_private_key`. A
+    deployment copies them to its runners, for example with a
+    `PushSecret`.
+  - **Keys appear only once installed.** Until the App is installed, its
+    key is kept under another name, so a copy never replaces working
+    runners with an App they cannot register with.
+  - **Disconnect.** It uninstalls the App and forgets its keys.
+
 ## v1.7.0
 
 - **Three Secrets restore everything a console added.** Workspace

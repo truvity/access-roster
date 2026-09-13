@@ -274,6 +274,9 @@ func (s *ConsoleServer) Handler() http.Handler {
 	// over it: after Create, and after Install.
 	mux.HandleFunc("GET "+githubCallbackPath, s.githubCallback)
 	mux.HandleFunc("GET "+githubSetupPath, s.githubSetup)
+	// A runner App's two: after Create, and after Install.
+	mux.HandleFunc("GET "+githubRunnerCallbackPath, s.githubRunnerCallback)
+	mux.HandleFunc("GET "+githubRunnerSetupPath, s.githubRunnerSetup)
 	// Creating the link App, and a person linking an account with it.
 	mux.HandleFunc("GET "+githubLinkAppCallbackPath, s.githubLinkAppCallback)
 	mux.HandleFunc("GET "+githubLinkPath, s.githubLinkPage)

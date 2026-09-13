@@ -47,6 +47,7 @@ import (
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/link"
+	"github.com/truvity/access-roster/internal/githubroster/runnerapp"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
@@ -108,6 +109,9 @@ type Config struct {
 	auditForwardedForTrustedHops int
 	holdWindow                   time.Duration
 	logLevel                     slog.Level
+	// githubRunnerTiers are the tiers an operator may create a runner App
+	// for, from GITHUB_RUNNER_TIERS, comma-separated. Empty keeps none.
+	githubRunnerTiers []string
 }
 
 // Load reads the configuration from the environment.
@@ -194,6 +198,16 @@ func Load() (Config, error) {
 	case storeMemory, storeKubernetes:
 	default:
 		return Config{}, fmt.Errorf("STORE: %q is neither %q nor %q", c.store, storeMemory, storeKubernetes)
+	}
+	for _, tier := range strings.Split(envString("GITHUB_RUNNER_TIERS", ""), ",") {
+		tier = strings.TrimSpace(tier)
+		switch {
+		case tier == "" || slices.Contains(c.githubRunnerTiers, tier):
+		case !runnerapp.ValidTier(tier):
+			return Config{}, fmt.Errorf("GITHUB_RUNNER_TIERS: %q is not a tier: lower-case letters, digits and dashes, at most 16", tier)
+		default:
+			c.githubRunnerTiers = append(c.githubRunnerTiers, tier)
+		}
 	}
 	return c, nil
 }
@@ -386,6 +400,9 @@ type stores struct {
 	// githubLinks is where people's linked GitHub accounts are kept. Nil
 	// with the memory store, for the same reason.
 	githubLinks *kube.GitHubLinks
+	// githubRunnerApps is where runner Apps are kept. Nil with the memory
+	// store, for the same reason.
+	githubRunnerApps *kube.GitHubRunnerApps
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -442,6 +459,13 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.WarnContext(ctx, "the Secret GitHub accounts are linked into could not be created",
 			"secret", githubLinks.Name(), "error", err)
 	}
+	// And the Secret runner Apps are kept in, so a deployment copying it
+	// finds it before the first App is created.
+	githubRunnerApps := kube.NewGitHubRunnerApps(client)
+	if err = githubRunnerApps.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the Secret runner Apps are kept in could not be created",
+			"secret", githubRunnerApps.SecretName(), "error", err)
+	}
 	// Each connection's credential carries its record, so the GitHub Apps
 	// Secret alone restores every organisation: put back a record a
 	// restore left missing, and copy records into credentials written
@@ -481,8 +505,12 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		github:      github,
 		githubOrgs:  githubOrgs,
 		githubLinks: githubLinks,
-		workspaces:  workspaces,
-		credentials: credentials,
+		// runner Apps are created only for declared tiers, but the store
+		// is kept either way: an App created before a tier was dropped
+		// stays visible, so it can be disconnected.
+		githubRunnerApps: githubRunnerApps,
+		workspaces:       workspaces,
+		credentials:      credentials,
 		settings: kube.NewSettings(client, kube.DeclaredClient{
 			Name:      cfg.oauthSecretName,
 			IDKey:     cfg.oauthIDKey,
@@ -711,6 +739,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHubLinkApp:       githubLinkApp(kept.githubOrgs, cfg.demo),
 		GitHubLinks:         githubLinks(kept.githubLinks, cfg.demo),
 		GitHubConfirmations: githubConfirmations(kept.githubOrgs),
+		GitHubRunnerApps:    githubRunnerApps(kept.githubRunnerApps),
+		GitHubRunnerTiers:   cfg.githubRunnerTiers,
 		Audit:               recorder,
 		AuditSink:           auditSink,
 	})
@@ -1149,6 +1179,14 @@ func githubConnections(store *kube.GitHubOrgs, demonstration bool) server.GitHub
 	default:
 		return nil
 	}
+}
+
+// githubRunnerApps is the store as the console's interface, or nil.
+func githubRunnerApps(store *kube.GitHubRunnerApps) server.GitHubRunnerApps {
+	if store == nil {
+		return nil
+	}
+	return store
 }
 
 // githubLinkApp is the store as the console's interface, or nil. A

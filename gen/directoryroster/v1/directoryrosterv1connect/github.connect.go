@@ -45,6 +45,12 @@ const (
 	// GitHubServiceBeginGitHubLinkAppConnectProcedure is the fully-qualified name of the
 	// GitHubService's BeginGitHubLinkAppConnect RPC.
 	GitHubServiceBeginGitHubLinkAppConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubLinkAppConnect"
+	// GitHubServiceBeginGitHubRunnerAppConnectProcedure is the fully-qualified name of the
+	// GitHubService's BeginGitHubRunnerAppConnect RPC.
+	GitHubServiceBeginGitHubRunnerAppConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubRunnerAppConnect"
+	// GitHubServiceDisconnectGitHubRunnerAppProcedure is the fully-qualified name of the
+	// GitHubService's DisconnectGitHubRunnerApp RPC.
+	GitHubServiceDisconnectGitHubRunnerAppProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubRunnerApp"
 	// GitHubServiceDisconnectGitHubLinkAppProcedure is the fully-qualified name of the GitHubService's
 	// DisconnectGitHubLinkApp RPC.
 	GitHubServiceDisconnectGitHubLinkAppProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubLinkApp"
@@ -80,6 +86,19 @@ type GitHubServiceClient interface {
 	// person's own email addresses. Created under an organisation the
 	// operator owns. Operator.
 	BeginGitHubLinkAppConnect(context.Context, *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error)
+	// BeginGitHubRunnerAppConnect starts creating a runner App: the App a
+	// self-hosted runner scale set in one tier registers with in one
+	// organisation the policy binds. Its manifest and where to post it, or —
+	// for an App already created and not yet installed — where to install
+	// it. Sets the flow's state cookie. Operator.
+	//
+	// One App per organisation per tier, so a compromised runner plane is
+	// confined to its tier. A tier the deployment does not declare is
+	// refused, and so is one already installed.
+	BeginGitHubRunnerAppConnect(context.Context, *connect.Request[v1.BeginGitHubRunnerAppConnectRequest]) (*connect.Response[v1.BeginGitHubRunnerAppConnectResponse], error)
+	// DisconnectGitHubRunnerApp uninstalls a runner App, then forgets it.
+	// Runners registered with it stop getting jobs. Operator.
+	DisconnectGitHubRunnerApp(context.Context, *connect.Request[v1.DisconnectGitHubRunnerAppRequest]) (*connect.Response[v1.DisconnectGitHubRunnerAppResponse], error)
 	// DisconnectGitHubLinkApp forgets the link App. Every link made with it
 	// becomes unverifiable — nothing can check its tokens any more — which
 	// removes nobody and adds nobody until each person links again.
@@ -135,6 +154,18 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubLinkAppConnect")),
 			connect.WithClientOptions(opts...),
 		),
+		beginGitHubRunnerAppConnect: connect.NewClient[v1.BeginGitHubRunnerAppConnectRequest, v1.BeginGitHubRunnerAppConnectResponse](
+			httpClient,
+			baseURL+GitHubServiceBeginGitHubRunnerAppConnectProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubRunnerAppConnect")),
+			connect.WithClientOptions(opts...),
+		),
+		disconnectGitHubRunnerApp: connect.NewClient[v1.DisconnectGitHubRunnerAppRequest, v1.DisconnectGitHubRunnerAppResponse](
+			httpClient,
+			baseURL+GitHubServiceDisconnectGitHubRunnerAppProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubRunnerApp")),
+			connect.WithClientOptions(opts...),
+		),
 		disconnectGitHubLinkApp: connect.NewClient[v1.DisconnectGitHubLinkAppRequest, v1.DisconnectGitHubLinkAppResponse](
 			httpClient,
 			baseURL+GitHubServiceDisconnectGitHubLinkAppProcedure,
@@ -162,6 +193,8 @@ type gitHubServiceClient struct {
 	beginGitHubConnect           *connect.Client[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse]
 	disconnectGitHubOrganisation *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
 	beginGitHubLinkAppConnect    *connect.Client[v1.BeginGitHubLinkAppConnectRequest, v1.BeginGitHubLinkAppConnectResponse]
+	beginGitHubRunnerAppConnect  *connect.Client[v1.BeginGitHubRunnerAppConnectRequest, v1.BeginGitHubRunnerAppConnectResponse]
+	disconnectGitHubRunnerApp    *connect.Client[v1.DisconnectGitHubRunnerAppRequest, v1.DisconnectGitHubRunnerAppResponse]
 	disconnectGitHubLinkApp      *connect.Client[v1.DisconnectGitHubLinkAppRequest, v1.DisconnectGitHubLinkAppResponse]
 	confirmGitHubRemovals        *connect.Client[v1.ConfirmGitHubRemovalsRequest, v1.ConfirmGitHubRemovalsResponse]
 	importGitHubLinks            *connect.Client[v1.ImportGitHubLinksRequest, v1.ImportGitHubLinksResponse]
@@ -185,6 +218,16 @@ func (c *gitHubServiceClient) DisconnectGitHubOrganisation(ctx context.Context, 
 // BeginGitHubLinkAppConnect calls directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect.
 func (c *gitHubServiceClient) BeginGitHubLinkAppConnect(ctx context.Context, req *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error) {
 	return c.beginGitHubLinkAppConnect.CallUnary(ctx, req)
+}
+
+// BeginGitHubRunnerAppConnect calls directoryroster.v1.GitHubService.BeginGitHubRunnerAppConnect.
+func (c *gitHubServiceClient) BeginGitHubRunnerAppConnect(ctx context.Context, req *connect.Request[v1.BeginGitHubRunnerAppConnectRequest]) (*connect.Response[v1.BeginGitHubRunnerAppConnectResponse], error) {
+	return c.beginGitHubRunnerAppConnect.CallUnary(ctx, req)
+}
+
+// DisconnectGitHubRunnerApp calls directoryroster.v1.GitHubService.DisconnectGitHubRunnerApp.
+func (c *gitHubServiceClient) DisconnectGitHubRunnerApp(ctx context.Context, req *connect.Request[v1.DisconnectGitHubRunnerAppRequest]) (*connect.Response[v1.DisconnectGitHubRunnerAppResponse], error) {
+	return c.disconnectGitHubRunnerApp.CallUnary(ctx, req)
 }
 
 // DisconnectGitHubLinkApp calls directoryroster.v1.GitHubService.DisconnectGitHubLinkApp.
@@ -226,6 +269,19 @@ type GitHubServiceHandler interface {
 	// person's own email addresses. Created under an organisation the
 	// operator owns. Operator.
 	BeginGitHubLinkAppConnect(context.Context, *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error)
+	// BeginGitHubRunnerAppConnect starts creating a runner App: the App a
+	// self-hosted runner scale set in one tier registers with in one
+	// organisation the policy binds. Its manifest and where to post it, or —
+	// for an App already created and not yet installed — where to install
+	// it. Sets the flow's state cookie. Operator.
+	//
+	// One App per organisation per tier, so a compromised runner plane is
+	// confined to its tier. A tier the deployment does not declare is
+	// refused, and so is one already installed.
+	BeginGitHubRunnerAppConnect(context.Context, *connect.Request[v1.BeginGitHubRunnerAppConnectRequest]) (*connect.Response[v1.BeginGitHubRunnerAppConnectResponse], error)
+	// DisconnectGitHubRunnerApp uninstalls a runner App, then forgets it.
+	// Runners registered with it stop getting jobs. Operator.
+	DisconnectGitHubRunnerApp(context.Context, *connect.Request[v1.DisconnectGitHubRunnerAppRequest]) (*connect.Response[v1.DisconnectGitHubRunnerAppResponse], error)
 	// DisconnectGitHubLinkApp forgets the link App. Every link made with it
 	// becomes unverifiable — nothing can check its tokens any more — which
 	// removes nobody and adds nobody until each person links again.
@@ -277,6 +333,18 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubLinkAppConnect")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gitHubServiceBeginGitHubRunnerAppConnectHandler := connect.NewUnaryHandler(
+		GitHubServiceBeginGitHubRunnerAppConnectProcedure,
+		svc.BeginGitHubRunnerAppConnect,
+		connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubRunnerAppConnect")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceDisconnectGitHubRunnerAppHandler := connect.NewUnaryHandler(
+		GitHubServiceDisconnectGitHubRunnerAppProcedure,
+		svc.DisconnectGitHubRunnerApp,
+		connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubRunnerApp")),
+		connect.WithHandlerOptions(opts...),
+	)
 	gitHubServiceDisconnectGitHubLinkAppHandler := connect.NewUnaryHandler(
 		GitHubServiceDisconnectGitHubLinkAppProcedure,
 		svc.DisconnectGitHubLinkApp,
@@ -305,6 +373,10 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 			gitHubServiceDisconnectGitHubOrganisationHandler.ServeHTTP(w, r)
 		case GitHubServiceBeginGitHubLinkAppConnectProcedure:
 			gitHubServiceBeginGitHubLinkAppConnectHandler.ServeHTTP(w, r)
+		case GitHubServiceBeginGitHubRunnerAppConnectProcedure:
+			gitHubServiceBeginGitHubRunnerAppConnectHandler.ServeHTTP(w, r)
+		case GitHubServiceDisconnectGitHubRunnerAppProcedure:
+			gitHubServiceDisconnectGitHubRunnerAppHandler.ServeHTTP(w, r)
 		case GitHubServiceDisconnectGitHubLinkAppProcedure:
 			gitHubServiceDisconnectGitHubLinkAppHandler.ServeHTTP(w, r)
 		case GitHubServiceConfirmGitHubRemovalsProcedure:
@@ -334,6 +406,14 @@ func (UnimplementedGitHubServiceHandler) DisconnectGitHubOrganisation(context.Co
 
 func (UnimplementedGitHubServiceHandler) BeginGitHubLinkAppConnect(context.Context, *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) BeginGitHubRunnerAppConnect(context.Context, *connect.Request[v1.BeginGitHubRunnerAppConnectRequest]) (*connect.Response[v1.BeginGitHubRunnerAppConnectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.BeginGitHubRunnerAppConnect is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) DisconnectGitHubRunnerApp(context.Context, *connect.Request[v1.DisconnectGitHubRunnerAppRequest]) (*connect.Response[v1.DisconnectGitHubRunnerAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.DisconnectGitHubRunnerApp is not implemented"))
 }
 
 func (UnimplementedGitHubServiceHandler) DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error) {

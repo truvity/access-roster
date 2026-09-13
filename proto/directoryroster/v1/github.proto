@@ -38,6 +38,21 @@ service GitHubService {
   // operator owns. Operator.
   rpc BeginGitHubLinkAppConnect(BeginGitHubLinkAppConnectRequest) returns (BeginGitHubLinkAppConnectResponse);
 
+  // BeginGitHubRunnerAppConnect starts creating a runner App: the App a
+  // self-hosted runner scale set in one tier registers with in one
+  // organisation the policy binds. Its manifest and where to post it, or —
+  // for an App already created and not yet installed — where to install
+  // it. Sets the flow's state cookie. Operator.
+  //
+  // One App per organisation per tier, so a compromised runner plane is
+  // confined to its tier. A tier the deployment does not declare is
+  // refused, and so is one already installed.
+  rpc BeginGitHubRunnerAppConnect(BeginGitHubRunnerAppConnectRequest) returns (BeginGitHubRunnerAppConnectResponse);
+
+  // DisconnectGitHubRunnerApp uninstalls a runner App, then forgets it.
+  // Runners registered with it stop getting jobs. Operator.
+  rpc DisconnectGitHubRunnerApp(DisconnectGitHubRunnerAppRequest) returns (DisconnectGitHubRunnerAppResponse);
+
   // DisconnectGitHubLinkApp forgets the link App. Every link made with it
   // becomes unverifiable — nothing can check its tokens any more — which
   // removes nobody and adds nobody until each person links again.
@@ -101,6 +116,36 @@ message BeginGitHubLinkAppConnectResponse {
   string manifest = 2;
 }
 
+message BeginGitHubRunnerAppConnectRequest {
+  // the organisation's login.
+  string org = 1;
+  // one of the tiers the deployment declares.
+  string tier = 2;
+}
+
+message BeginGitHubRunnerAppConnectResponse {
+  // where the browser goes next.
+  string url = 1;
+  // when set, the browser POSTs it as the form field `manifest` to url.
+  // Empty means url is an ordinary navigation to install the App.
+  string manifest = 2;
+}
+
+message DisconnectGitHubRunnerAppRequest {
+  string org = 1;
+  string tier = 2;
+}
+
+message DisconnectGitHubRunnerAppResponse {
+  // whether the installation was removed on GitHub. The App's record and
+  // key are forgotten either way.
+  bool uninstalled = 1;
+  // why it could not be, when it could not.
+  string detail = 2;
+  // where the organisation's owner deletes the App itself.
+  string app_settings_url = 3;
+}
+
 message DisconnectGitHubLinkAppRequest {}
 
 message DisconnectGitHubLinkAppResponse {
@@ -158,6 +203,25 @@ message GetGitHubStatusResponse {
   string link_url = 6;
   // every linked account, never with its tokens.
   repeated GitHubLink links = 7;
+  // the runner tiers this deployment declares; empty where it keeps no
+  // runner Apps.
+  repeated string runner_tiers = 8;
+  // every runner App created, never with its key.
+  repeated GitHubRunnerApp runner_apps = 9;
+}
+
+// GitHubRunnerApp is the App one tier's runners register with in one
+// organisation. Never the key.
+message GitHubRunnerApp {
+  string org = 1;
+  string tier = 2;
+  int64 app_id = 3;
+  string app_slug = 4;
+  // false between Create and Install.
+  bool installed = 5;
+  string html_url = 6;
+  google.protobuf.Timestamp connected_at = 7;
+  string connected_by = 8;
 }
 
 // GitHubLinkApp is the App people authorize to link their accounts.

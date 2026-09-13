@@ -201,3 +201,22 @@ func TestUninstallingReportsGitHubsOwnReason(t *testing.T) {
 		t.Errorf("an unknown installation = %v, want GitHub's message", err)
 	}
 }
+
+// A runner App asks for registering organisation runners and nothing else,
+// is private, has no webhook, and keeps its tier in its name however long
+// the organisation's login is.
+func TestTheRunnerManifestAsksOnlyForRunnersAndKeepsItsTier(t *testing.T) {
+	t.Parallel()
+
+	manifest := githubapp.NewRunnerManifest("north", "stable", "https://home.example", "https://home.example/cb", "https://home.example/setup")
+	if manifest.Name != "north-runners-stable" || manifest.Public || manifest.HookAttributes.Active ||
+		len(manifest.DefaultPermissions) != 1 || manifest.DefaultPermissions["organization_self_hosted_runners"] != "write" ||
+		manifest.RedirectURL != "https://home.example/cb" || manifest.SetupURL != "https://home.example/setup" {
+		t.Errorf("manifest = %+v", manifest)
+	}
+
+	long := githubapp.NewRunnerManifest(strings.Repeat("organisation-", 4), "preview", "", "", "")
+	if len(long.Name) > 34 || !strings.HasSuffix(long.Name, "-runners-preview") {
+		t.Errorf("long name = %q (%d)", long.Name, len(long.Name))
+	}
+}

@@ -141,6 +141,10 @@ spec:
             {{- end }}
             - name: RELEASE_NAME
               value: {{ include "access-issuer.fullname" . }}
+            {{- with .Values.githubRunnerApps.tiers }}
+            - name: GITHUB_RUNNER_TIERS
+              value: {{ join "," . | quote }}
+            {{- end }}
             - name: POLICY_DIR
               value: /var/run/access-issuer/policy
             - name: TOKEN_LIFETIME

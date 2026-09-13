@@ -135,6 +135,13 @@ chart-lint:
     grep -q 'value: https://access.example$' /tmp/access-issuer-merged.yaml
     grep -q 'name: OVERLAY_FILE' /tmp/access-issuer-merged.yaml
     grep -q 'secretName: example-key' /tmp/access-issuer-merged.yaml
+    # Runner tiers reach the service as one variable, and none renders
+    # nothing: a deployment that declares no tier creates no runner App.
+    ! grep -q 'GITHUB_RUNNER_TIERS' /tmp/access-issuer-merged.yaml
+    helm template access-issuer charts/access-issuer \
+        --set issuerURL=https://access.example \
+        --set 'githubRunnerApps.tiers={preview,stable}' \
+        | grep -A1 'name: GITHUB_RUNNER_TIERS' | grep -q 'value: "preview,stable"'
     # "/console" and "/console/" are the same place, and the chart used
     # to render the second as a route to "/console//" -- a path the
     # console does not serve, from a value nothing rejects. Our own

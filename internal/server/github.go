@@ -109,6 +109,9 @@ func (c *Console) GetGitHubStatus(
 	if err := c.linkStatus(ctx, out); err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
+	if err := c.runnerStatus(ctx, out); err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
 	return connect.NewResponse(out), nil
 }
 

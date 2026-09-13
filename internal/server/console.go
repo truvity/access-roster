@@ -131,6 +131,12 @@ type ConsoleDeps struct {
 	// GitHubConfirmations is where operators confirm removal sets over the
 	// limit. Nil confirms nothing.
 	GitHubConfirmations GitHubConfirmations
+	// GitHubRunnerApps is where runner Apps are kept. Nil is a deployment
+	// that keeps none.
+	GitHubRunnerApps GitHubRunnerApps
+	// GitHubRunnerTiers are the runner tiers an operator may create an App
+	// for. Empty keeps no runner Apps, whatever the store.
+	GitHubRunnerTiers []string
 	// GitHubHTTP makes the calls to GitHub that connecting and
 	// disconnecting need. Nil is a client with a short timeout.
 	GitHubHTTP *http.Client

@@ -21,7 +21,7 @@ import Typography from "@mui/material/Typography";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import { ago, at, github, reason } from "./api";
-import type { GetGitHubStatusResponse, GitHubOrganisation } from "./gen/directoryroster/v1/github_pb";
+import type { GetGitHubStatusResponse, GitHubOrganisation, GitHubRunnerApp } from "./gen/directoryroster/v1/github_pb";
 import { countLabels, labelOf, linkPage, organisationNeeds, peopleOf, rowsOf, sentence, tooltipOf, type Row } from "./githubModel";
 import { useAsync } from "./hooks";
 import { go, paths } from "./router";
@@ -543,6 +543,15 @@ function AppsPage({ status, operator, onDone, reload }: Props & { status: GetGit
       onDone(`The link App is disconnected; ${gone.invalidated} links wait for their people to link again.${settingsNote(gone.appSettingsUrl)}`);
       reload();
     });
+  const disconnectRunnerApp = (org: string, tier: string) =>
+    run(async () => {
+      const gone = await github.disconnectGitHubRunnerApp({ org, tier });
+      onDone(
+        `${org}'s ${tier} runner App is disconnected${gone.uninstalled ? " and uninstalled" : `. ${gone.detail}`}.${settingsNote(gone.appSettingsUrl)}`,
+      );
+      reload();
+    });
+  const runnerRows = runnerAppRows(status);
   const disconnectOrganisation = (org: string) =>
     run(async () => {
       const gone = await github.disconnectGitHubOrganisation({ org });
@@ -551,7 +560,10 @@ function AppsPage({ status, operator, onDone, reload }: Props & { status: GetGit
     });
 
   return (
-    <Page title="Apps" lede="One link App people authorize, for every organisation, and one App per organisation the controller acts through.">
+    <Page
+      title="Apps"
+      lede="One link App people authorize, for every organisation, one App per organisation the controller acts through, and — where the deployment declares runner tiers — one runner App per organisation per tier."
+    >
       <Failure error={failure} />
       <Section
         title="Link App"
@@ -673,6 +685,79 @@ function AppsPage({ status, operator, onDone, reload }: Props & { status: GetGit
         </TableContainer>
       </Section>
 
+      {runnerRows.length ? (
+        <Section title="Runner Apps" hint="one per organisation per tier, for its self-hosted runners">
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Organisation</TableCell>
+                  <TableCell>Tier</TableCell>
+                  <TableCell>Runner App</TableCell>
+                  <TableCell>State</TableCell>
+                  <TableCell>Connected</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {runnerRows.map(({ org, tier, app: r, declared, bound: isBound }) => (
+                  <TableRow key={`${org}/${tier}`} hover>
+                    <TableCell>
+                      <Ref to={paths.githubOrganisation(org)} mono>
+                        {org}
+                      </Ref>
+                    </TableCell>
+                    <TableCell>
+                      <Mono>{tier}</Mono>
+                    </TableCell>
+                    <TableCell>{r ? appLink(r.appSlug, r.htmlUrl) : "—"}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{!r ? "not created" : r.installed ? "installed" : "created, not installed"}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {r ? since(r.connectedAt, r.connectedBy) : "—"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      {!operator ? null : !r ? (
+                        <Tooltip title={!isBound ? "Bind the organisation's teams in the policy first." : "Two clicks by the organisation's owner: create, then install."}>
+                          <span>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              disabled={busy || !isBound || !declared}
+                              onClick={() => void leave(() => github.beginGitHubRunnerAppConnect({ org, tier }))}
+                            >
+                              Create
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      ) : (
+                        <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
+                          {!r.installed && declared ? (
+                            <Button size="small" variant="outlined" disabled={busy} onClick={() => void leave(() => github.beginGitHubRunnerAppConnect({ org, tier }))}>
+                              Finish installing
+                            </Button>
+                          ) : null}
+                          <Tooltip title="Uninstall the App and forget its key. Runners registered with it stop getting jobs.">
+                            <span>
+                              <Button size="small" color="warning" disabled={busy} onClick={() => void disconnectRunnerApp(org, tier)}>
+                                Disconnect
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        </Stack>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Section>
+      ) : null}
+
       {links.length ? (
         <Section title="Linked accounts" hint={`${linked} linked${attention ? `, ${attention} not counting` : ""}`}>
           <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
@@ -716,6 +801,23 @@ function AppsPage({ status, operator, onDone, reload }: Props & { status: GetGit
 }
 
 // ----------------------------------------------------------------- helpers
+
+/** One row per bound organisation per declared tier, plus any App created
+ * for a tier or an organisation no longer declared or bound, so it can
+ * still be disconnected. */
+function runnerAppRows(status: GetGitHubStatusResponse) {
+  const rows = new Map<string, { org: string; tier: string; app?: GitHubRunnerApp; declared: boolean; bound: boolean }>();
+  const bound = new Set(status.organisations.filter((org) => org.bound).map((org) => org.org));
+  for (const org of [...bound].sort()) {
+    for (const tier of status.runnerTiers) rows.set(`${org}/${tier}`, { org, tier, declared: true, bound: true });
+  }
+  for (const app of status.runnerApps) {
+    const key = `${app.org}/${app.tier}`;
+    const row = rows.get(key) ?? { org: app.org, tier: app.tier, declared: status.runnerTiers.includes(app.tier), bound: bound.has(app.org) };
+    rows.set(key, { ...row, app });
+  }
+  return [...rows.values()].sort((a, b) => a.org.localeCompare(b.org) || a.tier.localeCompare(b.tier));
+}
 
 export function sourceName(source: string): string {
   return ({ self: "linked by them", profile: "public profile", imported: "imported" } as Record<string, string>)[source] ?? source;

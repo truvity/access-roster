@@ -336,6 +336,21 @@ func (s *ConsoleServer) githubFlow(w http.ResponseWriter, r *http.Request) (org,
 // githubFlowFor is [ConsoleServer.githubFlow] for a flow whose state names
 // its organisation behind another prefix.
 func (s *ConsoleServer) githubFlowFor(w http.ResponseWriter, r *http.Request, prefix string) (org, actor string, ok bool) {
+	bind, actor, ok := s.githubBound(w, r)
+	if !ok {
+		return "", "", false
+	}
+	org, isGitHub := strings.CutPrefix(bind, prefix)
+	if !isGitHub || !status.ValidOrg(org) {
+		s.githubProblem(w, r, http.StatusBadRequest, "This is not a GitHub connect.", "", nil)
+		return "", "", false
+	}
+	return org, actor, true
+}
+
+// githubBound checks the state this browser was given, signed by this
+// service, and returns what it binds and the operator who started the flow.
+func (s *ConsoleServer) githubBound(w http.ResponseWriter, r *http.Request) (bind, actor string, ok bool) {
 	state := r.URL.Query().Get("state")
 	cookie, err := r.Cookie(access.ConnectCookieName)
 	if err != nil || cookie.Value == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
@@ -351,11 +366,6 @@ func (s *ConsoleServer) githubFlowFor(w http.ResponseWriter, r *http.Request, pr
 		s.githubProblem(w, r, http.StatusBadRequest, "This connect cannot be finished.", err.Error(), nil)
 		return "", "", false
 	}
-	org, isGitHub := strings.CutPrefix(binding.Bind, prefix)
-	if !isGitHub || !status.ValidOrg(org) {
-		s.githubProblem(w, r, http.StatusBadRequest, "This is not a GitHub connect.", "", nil)
-		return "", "", false
-	}
 	actor = binding.Actor
 	if id, signedIn := IdentityFrom(r.Context()); signedIn && id.Can(access.RoleOperator) {
 		actor = id.Who()
@@ -364,7 +374,7 @@ func (s *ConsoleServer) githubFlowFor(w http.ResponseWriter, r *http.Request, pr
 		s.githubProblem(w, r, http.StatusForbidden, "Connecting a GitHub organisation needs the operator role.", "", nil)
 		return "", "", false
 	}
-	return org, actor, true
+	return binding.Bind, actor, true
 }
 
 // githubProblem is the page a GitHub redirect lands on when it cannot

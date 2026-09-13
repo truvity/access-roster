@@ -366,6 +366,19 @@ githubRoster:
   actsIn: []
   resources: {}
 
+# Runner Apps: the GitHub App a self-hosted runner scale set in one tier
+# registers with, one per organisation per tier, created by an operator on
+# the console's GitHub page (Apps). The service keeps every App in the
+# Secret `<release>-github-runner-apps`, an installed App as three keys
+# named as gha-runner-scale-set's githubConfigSecret names them —
+# `<tier>.<org>.github_app_id`, `.github_app_installation_id`,
+# `.github_app_private_key` — for the deployment to hand to its runners.
+# Nothing here acts with them. Needs `directory.store: kubernetes`.
+githubRunnerApps:
+  # The tiers an operator may create an App for, e.g. [preview, stable].
+  # Empty creates none.
+  tiers: []
+
 # The audit trail: sign-ins, refusals, exchanges, revokes, connects, and
 # what a reporting component (the GitHub controller) did. Kept in S3 — the
 # durable record, and what the console's Audit page reads — and never in
