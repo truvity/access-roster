@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,38 @@ func TestTheExchangePresentsItsClientInBasicAuth(t *testing.T) {
 	}
 	if !strings.Contains(gotForm, "subject_token_type="+strings.ReplaceAll(tokens.TypeJWT, ":", "%3A")) {
 		t.Errorf("form = %q, want the default subject type", gotForm)
+	}
+}
+
+// The client travels form-encoded inside Basic, and comes out whole where
+// the issuer decodes it — which it does for every request, so a raw id
+// holding a colon (`k8s:devel`, `aws:1111:power`) split at its first colon
+// and was refused as a client nobody declared.
+func TestTheBasicClientSurvivesTheIssuersDecoding(t *testing.T) {
+	t.Parallel()
+
+	var gotID, gotSecret string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, _ := r.BasicAuth()
+		// Exactly what the issuer's OIDC library does with the header.
+		gotID, _ = url.QueryUnescape(user)
+		gotSecret, _ = url.QueryUnescape(pass)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "minted", "expires_in": 3600})
+	}))
+	t.Cleanup(server.Close)
+
+	exchanger := &tokens.Exchanger{
+		Issuer: server.URL, ClientID: "k8s:devel", ClientSecret: "a+b%c:d", Client: server.Client(),
+	}
+	if _, err := exchanger.Exchange(context.Background(), "a-subject", "", "k8s:devel"); err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+	if gotID != "k8s:devel" {
+		t.Errorf("client id = %q after decoding, want k8s:devel", gotID)
+	}
+	if gotSecret != "a+b%c:d" {
+		t.Errorf("client secret = %q after decoding, want it unchanged", gotSecret)
 	}
 }
 

@@ -99,7 +99,12 @@ func (e *Exchanger) Exchange(ctx context.Context, subject, subjectType, audience
 		return Token{}, fmt.Errorf("tokens: build the exchange: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.SetBasicAuth(e.ClientID, e.ClientSecret)
+	// Form-encoded BEFORE Basic, as RFC 6749 §2.3.1 requires and as the
+	// issuer decodes. Raw, a client id with a colon — every `k8s:` and
+	// `aws:` audience — splits at the wrong place and is refused as an
+	// unknown client, and a secret holding `+` or `%` is decoded into
+	// something else.
+	request.SetBasicAuth(url.QueryEscape(e.ClientID), url.QueryEscape(e.ClientSecret))
 
 	httpClient := e.Client
 	if httpClient == nil {
