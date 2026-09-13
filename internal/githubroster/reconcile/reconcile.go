@@ -19,7 +19,9 @@
 //
 // What is never touched, whatever the inputs: a member nobody linked
 // (nobody can say who they are), a team no binding names, and an owner's
-// place in the organisation. The one removal that does not ask the
+// place in the organisation. An owner is added to teams and promoted in
+// them like anybody, and never removed from a team or demoted in one:
+// owners are managed outside, and a break-glass seat keeps what it has. The one removal that does not ask the
 // directory is an account whose link GitHub itself says is gone — the
 // person removed the address, or revoked the authorization.
 package reconcile
@@ -270,7 +272,7 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 	for slug := range binding.Teams {
 		for login := range d.current[slug] {
 			emails := d.emailsOf[login]
-			if len(emails) == 0 || d.wantsAny(slug, emails) {
+			if len(emails) == 0 || d.owner[login] || d.wantsAny(slug, emails) {
 				continue
 			}
 			for _, email := range emails {
@@ -395,6 +397,11 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 			case !in:
 				member.State, member.Action = status.StatePending, status.ActionAdd
 				actions = append(actions, Action{Kind: status.ActionAdd, Team: scope, Login: login, Email: email, Role: role})
+			case d.owner[login] && current && role != status.RoleMaintainer:
+				// An owner is never demoted: owners are managed outside, and a
+				// break-glass seat keeps whatever it was given.
+				member.State, member.Role = status.StateReported, status.RoleMaintainer
+				member.Reason = "an owner, kept as maintainer: owners are added and promoted, never demoted"
 			case current != (role == status.RoleMaintainer):
 				member.State, member.Action = status.StatePending, status.ActionSetRole
 				actions = append(actions, Action{Kind: status.ActionSetRole, Team: scope, Login: login, Email: email, Role: role})
@@ -432,6 +439,13 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 				continue
 			}
 			member := status.Member{Login: login, Email: emails[0], Role: roleOf(d.current[slug][login])}
+			if d.owner[login] {
+				// Never removed from a team, for the reason an owner is never
+				// demoted in one.
+				member.State, member.Reason = status.StateReported, "an owner, left in the team: owners are added and promoted, never removed"
+				team.Members = append(team.Members, member)
+				continue
+			}
 			switch reason, remove := d.confirmTeamRemoval(slug, emails, confirmations); {
 			case remove:
 				member.State, member.Action = status.StateLeaving, status.ActionRemove

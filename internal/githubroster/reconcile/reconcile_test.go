@@ -499,3 +499,58 @@ func TestMassRemovalWaitsForConfirmation(t *testing.T) {
 		t.Errorf("half: actions = %v, breaker = %+v; want both removals and no breaker", actions(did), report.Breaker)
 	}
 }
+
+// An owner is added to a team the policy wants them in and promoted in one,
+// and never removed from a team or demoted: owners are managed outside, and
+// a break-glass seat keeps what it has.
+func TestAnOwnerIsAddedAndPromotedButNeverRemovedOrDemoted(t *testing.T) {
+	t.Parallel()
+	holders := reconcile.Holders{
+		"all:truvity:employee":  live("boss@truvity.com", "it@truvity.com", "lead@truvity.com"),
+		"all:platform:engineer": live("boss@truvity.com", "lead@truvity.com"),
+		"all:platform:lead":     live("lead@truvity.com"),
+	}
+	state := reconcile.State{
+		Members: []githubapp.Member{
+			{Login: "boss", Owner: true, Emails: []string{"boss@truvity.com"}},
+			{Login: "it", Owner: true, Emails: []string{"it@truvity.com"}},
+			{Login: "lead", Owner: true, Emails: []string{"lead@truvity.com"}},
+		},
+		Teams: []githubapp.Team{{ID: 1, Slug: "team-platform"}},
+		// boss maintains the team and the policy wants a member; it is in the
+		// team and the policy does not want it there; lead is a member the
+		// policy wants as maintainer.
+		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {
+			{Login: "boss", Maintainer: true}, {Login: "it", Maintainer: true}, {Login: "lead"},
+		}},
+	}
+	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+
+	if want := []string{"set-role lead in team-platform"}; !slices.Equal(actions(did), want) {
+		t.Errorf("actions = %v, want only lead promoted", actions(did))
+	}
+	var boss, it status.Member
+	for _, team := range report.Teams {
+		for _, m := range team.Members {
+			switch m.Login {
+			case "boss":
+				boss = m
+			case "it":
+				it = m
+			}
+		}
+	}
+	if boss.State != status.StateReported || boss.Role != status.RoleMaintainer || boss.Action != "" {
+		t.Errorf("boss = %+v, want reported, still maintainer, nothing to do", boss)
+	}
+	if it.State != status.StateReported || it.Action != "" {
+		t.Errorf("it = %+v, want reported and left in the team", it)
+	}
+
+	// An owner the policy wants in a team they are not in is added.
+	state.TeamMembers = map[string][]githubapp.TeamMember{"team-platform": {}}
+	_, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	if !slices.Contains(actions(did), "add boss in team-platform") {
+		t.Errorf("actions = %v, want boss added", actions(did))
+	}
+}

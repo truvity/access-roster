@@ -192,9 +192,13 @@ the row, and removes nobody.
 directory cannot vouch for right now, and a change GitHub refused (its
 words are on the row).
 
-**Reported, never done:** anything concerning an **owner**. Owners and
-billing are managed outside; an owner the directory no longer has is said
-on the page and in the audit stream (`github.owner.reported`), once.
+**Owners are added, never taken away.** Owners and billing are managed
+outside, and an organisation's break-glass seat must keep what it has. An
+owner is added to the teams the policy wants them in and promoted to
+maintainer where it wants that, like anybody; an owner is never removed
+from a team, never demoted in one, and never removed from the
+organisation. Each of those is said on the page and in the audit stream
+(`github.owner.reported`), once.
 **Outside collaborators** are listed and never managed.
 
 **Never touched:** a member nobody linked (listed as *not linked*), a

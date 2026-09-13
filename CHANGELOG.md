@@ -1,3 +1,13 @@
+## Unreleased
+
+- **An owner is added to teams, and never removed from one or demoted.**
+  Owners — an organisation's break-glass seat among them — are managed
+  outside. The controller still adds an owner to the teams the policy wants
+  them in and promotes them where it wants a maintainer; it no longer takes
+  an owner out of a team or turns a maintainer into a member. Both are
+  reported instead. On the first real dry run every role change it proposed
+  was an owner being demoted.
+
 ## v1.5.2
 
 - **Disconnecting the link App leaves profile matches and imports alone.**
