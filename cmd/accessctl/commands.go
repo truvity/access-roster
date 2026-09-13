@@ -177,14 +177,14 @@ func exchange(args []string) error {
 // exchangeFor trades a subject token for one audienced elsewhere, and
 // turns the issuer's refusal into this tool's exit code.
 func exchangeFor(ctx context.Context, cfg Config, subject, audience string) (tokens.Token, error) {
-	return exchangeAs(ctx, cfg.Issuer, cfg.ClientID, subject, audience)
+	return exchangeAs(ctx, cfg.Issuer, cfg.ClientID, subject, tokens.TypeJWT, audience)
 }
 
 // exchangeAs is the exchange with the presented client named, which a
 // job's proof needs: it presents the audience, never a sign-in client.
-func exchangeAs(ctx context.Context, issuer, client, subject, audience string) (tokens.Token, error) {
+func exchangeAs(ctx context.Context, issuer, client, subject, subjectType, audience string) (tokens.Token, error) {
 	exchanger := &tokens.Exchanger{Issuer: issuer, ClientID: client}
-	token, err := exchanger.Exchange(ctx, subject, tokens.TypeJWT, audience)
+	token, err := exchanger.Exchange(ctx, subject, subjectType, audience)
 	switch {
 	case errors.Is(err, tokens.ErrRefused):
 		// The issuer's own sentence names the audience and the groups

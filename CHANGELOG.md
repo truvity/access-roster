@@ -1,3 +1,17 @@
+## v1.5.5
+
+- **`accessctl` works on a laptop.** `accessctl login` followed by
+  `accessctl kube-token` or `accessctl aws` exchanges that sign-in for the
+  requested audience, so one kubeconfig and one aws.ini serve a person and
+  a CI job alike. Of the tokens this issuer signs, the exchange takes only
+  this one as a proof: the access token of a live session at a client
+  declaring the new `sign_in_exchange: true` (a `public` client: the CLI),
+  presented by that client. Deploy the issuer before adding the key to a
+  policy: an older issuer refuses the unknown key.
+- **Revoking a session reaches a renewed access token.** A token minted
+  by a refresh now names its session, as the first one does, so
+  `userinfo` stops answering for it once the session is revoked.
+
 ## v1.5.4
 
 - **An organisation can ignore addresses and GitHub logins.** The policy's

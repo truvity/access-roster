@@ -67,9 +67,11 @@ type Token struct {
 
 // Exchange trades subject for a token audienced at audience.
 //
-// subjectType says what is being presented. Both RFC 8693 spellings are
-// accepted by the issuer, and an empty value means [TypeJWT], which is
-// what every subject this family deals in actually is.
+// subjectType says what is being presented, and empty means [TypeJWT].
+// A third party's token -- a GitHub job's, a cluster workload's -- is
+// accepted under either RFC 8693 spelling. The issuer's OWN access token,
+// a person's sign-in, is accepted only as [TypeAccessToken]: labelled a
+// jwt, it is tried as a third party's and refused.
 func (e *Exchanger) Exchange(ctx context.Context, subject, subjectType, audience string) (Token, error) {
 	switch {
 	case e == nil || strings.TrimSpace(e.Issuer) == "":

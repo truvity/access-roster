@@ -609,7 +609,16 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 			return "", "", time.Time{}, oidc.ErrInvalidGrant().WithDescription("the refresh token is not live")
 		}
 
-		_ = live
+		// A renewed access token names its session exactly as the first
+		// one does. It did not, so revoking a session stopped `userinfo`
+		// for the token minted at sign-in and for none minted after it --
+		// and a sign-in exchange, which must see a LIVE session behind
+		// the token, could never be offered a token that shows one.
+		issued.Session = live.ID
+		if err = setJSON(ctx, s.state, tokenKey(issued.ID), issued, time.Until(issued.Expires)); err != nil {
+			return "", "", time.Time{}, oidc.ErrServerError().WithDescription("%s", err)
+		}
+
 		return issued.ID, refresh, issued.Expires, nil
 	}
 
@@ -1275,7 +1284,7 @@ func (s *Storage) VerifyExchangeSubjectToken(
 	if subject == "" {
 		return "", "", nil, ErrUnverified
 	}
-	return tok, subject, proofClaims(proof), nil
+	return tok, subject, map[string]any{verifiedKey: verified{proof}}, nil
 }
 
 // VerifyExchangeActorToken is not served: delegation, where one party
@@ -1287,31 +1296,18 @@ func (s *Storage) VerifyExchangeActorToken(
 	return "", "", nil, errors.New("acting for another party is not served by this issuer")
 }
 
-// proofClaims carries the verified proof through the library, which hands
-// the claims back at validation time.
-func proofClaims(proof Proof) map[string]any {
-	out := map[string]any{}
-	if proof.Email != "" {
-		out["email"] = proof.Email
-	}
-	if g := proof.GitHub; g != nil {
-		out["repository"], out["repository_owner"] = g.Repository, g.Owner
-		out["ref"], out["workflow"], out["environment"] = g.Ref, g.Workflow, g.Environment
-	}
-	if sa := proof.ServiceAccount; sa != nil {
-		out["namespace"], out["serviceaccount"] = sa.Namespace, sa.Name
-		// WHICH cluster, and it has to survive this round trip. The same
-		// namespace and name exist on every cluster, so a subject without
-		// it is the collision the qualifier exists to prevent — and a
-		// `service_account` matcher that narrows to one cluster would
-		// match nothing at all, silently, because the rule would be
-		// compared against an empty string.
-		if sa.Cluster != "" {
-			out["cluster"] = sa.Cluster
-		}
-	}
-	return out
-}
+// verified carries a proof from [Storage.VerifyExchangeSubjectToken] to
+// [Storage.ValidateTokenExchangeRequest], through the library, as a Go
+// value.
+//
+// A value and never claims, because the library fills the same map from
+// tokens THIS issuer signed, and a verifier's proof must not be something
+// such a token's contents could spell. Nothing decoded from JSON can be
+// this type, so a proof exists only where a verifier made one.
+type verified struct{ proof Proof }
+
+// verifiedKey is where that value sits in the claims map.
+const verifiedKey = "access-roster:verified-proof"
 
 // ValidateTokenExchangeRequest is the gate. The requested audience is a
 // client; the proof resolves to internal groups; the client's `requires`
@@ -1325,7 +1321,11 @@ func (s *Storage) ValidateTokenExchangeRequest(ctx context.Context, request op.T
 		return oidc.ErrInvalidTarget().WithDescription("name exactly one audience: it is the decision")
 	}
 
-	proof := proofFrom(request.GetExchangeSubjectTokenClaims())
+	proof, err := s.proofOf(ctx, request)
+	if err != nil {
+		return err
+	}
+
 	grant, err := s.iss.Exchange(ctx, proof, audiences[0])
 	switch {
 	case errors.Is(err, ErrUnknownTarget), errors.Is(err, ErrNoTarget):
@@ -1350,25 +1350,77 @@ func (s *Storage) ValidateTokenExchangeRequest(ctx context.Context, request op.T
 	return nil
 }
 
-// proofFrom rebuilds a proof from the claims the verifier returned.
-func proofFrom(claims map[string]any) Proof {
-	str := func(name string) string {
-		s, _ := claims[name].(string)
-		return s
+// proofOf is what the subject token proves, and the only two answers
+// there are.
+//
+// A verifier's proof: a GitHub job or a cluster's workload, checked
+// against their own keys on the way in.
+//
+// Or a person's sign-in, which is a token this issuer signed and the
+// library has already checked for signature and expiry -- and nothing
+// else. That is not enough to trust it as the person, because most of
+// this issuer's tokens are handed to somebody else: an ID token to every
+// relying party, an access token to whatever a gateway forwards it to. So
+// it is a proof only as the access token of a live session, at a client
+// that allows [policy.Client.SignInExchange], presented by that client.
+func (s *Storage) proofOf(ctx context.Context, request op.TokenExchangeRequest) (Proof, error) {
+	if carried, ok := request.GetExchangeSubjectTokenClaims()[verifiedKey].(verified); ok {
+		return carried.proof, nil
 	}
-	proof := Proof{Email: str("email")}
-	if repo := str("repository"); repo != "" {
-		proof.GitHub = &policy.GitHubClaims{
-			Repository: repo, Owner: str("repository_owner"), Ref: str("ref"),
-			Workflow: str("workflow"), Environment: str("environment"),
-		}
+
+	return s.signInProof(ctx, request)
+}
+
+// signInProof accepts one of this issuer's own tokens as a person's proof,
+// or says which rule refused it.
+func (s *Storage) signInProof(ctx context.Context, request op.TokenExchangeRequest) (Proof, error) {
+	refuse := func(format string, args ...any) (Proof, error) {
+		return Proof{}, oidc.ErrInvalidGrant().WithDescription("subject_token: "+format, args...)
 	}
-	if ns := str("namespace"); ns != "" {
-		proof.ServiceAccount = &policy.ServiceAccountRef{
-			Cluster: str("cluster"), Namespace: ns, Name: str("serviceaccount"),
-		}
+
+	if request.GetExchangeSubjectTokenType() != oidc.AccessTokenType {
+		return refuse("a token this issuer signed is exchanged only as the access token of a sign-in, never as %s",
+			request.GetExchangeSubjectTokenType())
 	}
-	return proof
+
+	issued, err := getJSON[token](ctx, s.state, tokenKey(request.GetExchangeSubjectTokenIDOrToken()))
+	if err != nil {
+		return Proof{}, oidc.ErrServerError().WithDescription("%s", err)
+	}
+
+	if issued == nil {
+		return refuse("this issuer holds no record of that access token")
+	}
+
+	declared, ok := s.iss.Policy().Client(issued.ClientID)
+	if !ok || !declared.SignInExchange {
+		return refuse("a sign-in to %q cannot be exchanged", issued.ClientID)
+	}
+
+	// Presented by the client it was issued to: the CLI trading its own
+	// sign-in, not some other caller holding a copy of it.
+	if request.GetClientID() != issued.ClientID {
+		return refuse("a sign-in to %q is exchanged only by %q", issued.ClientID, issued.ClientID)
+	}
+
+	if !strings.Contains(issued.Subject, "@") {
+		return refuse("a sign-in exchange is a person's, and %q is not one", issued.Subject)
+	}
+
+	if issued.Session == "" {
+		return refuse("no session stands behind that access token")
+	}
+
+	_, live, err := s.iss.Sessions().ByID(ctx, issued.Session)
+	if err != nil {
+		return Proof{}, oidc.ErrServerError().WithDescription("%s", err)
+	}
+
+	if !live {
+		return refuse("the session behind that access token has ended")
+	}
+
+	return Proof{Email: issued.Subject}, nil
 }
 
 func (s *Storage) grantFor(request op.TokenExchangeRequest) (Grant, bool) {

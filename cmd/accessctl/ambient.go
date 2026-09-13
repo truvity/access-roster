@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/truvity/access-roster/tokens"
 )
 
 // The two variables GitHub Actions sets in a job granted `id-token: write`.
@@ -32,6 +34,11 @@ type proof struct {
 	Client string
 	// Name is who the token is about, for a session name the cloud shows.
 	Name string
+	// Type is the RFC 8693 label on Subject. A job's GitHub token is a
+	// `jwt` the issuer checks against GitHub; a person's sign-in is this
+	// issuer's own `access_token`, which it accepts only as that: under
+	// any other label it would try it as a third party's, and refuse.
+	Type string
 }
 
 // proofFor is the one place a command decides whose token it is holding.
@@ -48,7 +55,7 @@ func proofFor(ctx context.Context, cfg Config, audience string) (proof, error) {
 		if err != nil {
 			return proof{}, err
 		}
-		return proof{Subject: subject, Client: audience, Name: githubSessionName()}, nil
+		return proof{Subject: subject, Client: audience, Name: githubSessionName(), Type: tokens.TypeJWT}, nil
 	}
 
 	own, err := refresh(ctx, cfg)
@@ -60,7 +67,7 @@ func proofFor(ctx context.Context, cfg Config, audience string) (proof, error) {
 	if name == "" {
 		name = session.Subject
 	}
-	return proof{Subject: own.AccessToken, Client: cfg.ClientID, Name: name}, nil
+	return proof{Subject: own.AccessToken, Client: cfg.ClientID, Name: name, Type: tokens.TypeAccessToken}, nil
 }
 
 // githubToken asks the job's token service for an identity token whose

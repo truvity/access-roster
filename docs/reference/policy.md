@@ -44,6 +44,7 @@ clients:                       # who may be issued a token for what; the id is t
   aws:1111:deployer: { kind: exchange,     requires: [ci:gitops:deployer] }
   argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [kernel:k8s:admin, kernel:k8s:auditor], ttl_cap: 12h }
   local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [prod:eudi:deployer] }
+  accessctl:         { kind: public,       redirects: [http://127.0.0.1/callback], requires: [kernel:k8s:admin, kernel:k8s:auditor], sign_in_exchange: true }
 ```
 
 | Table | Key | Holds | Who writes it |
@@ -51,7 +52,7 @@ clients:                       # who may be issued a token for what; the id is t
 | `groups` | internal group name | directory `members`, or `matchers`; a group with neither is one nobody is in yet, which is where a fresh installation starts | declared |
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
-| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap` | declared |
+| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap`, `sign_in_exchange` | declared |
 | `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
 
 Five tables, one writer. There was another, `memberships`, which a
@@ -234,6 +235,17 @@ because putting somebody on a redirect URI after signing out begins the
 login they just ended; one address in both fails the load, and an
 `exchange` client, which nobody signs into, may declare no `signed_out`
 at all.
+
+A token **exchange** trades a proof for a token whose `aud` is any
+declared client, and the target's `requires` decides. The proofs are the
+ones in the table above, each checked against its own issuer's keys, plus
+one of this issuer's own: a person's sign-in to a client that declares
+`sign_in_exchange: true` -- `accessctl`, whose tokens never leave the
+laptop -- presented by that client, as its `access_token`, while the
+session behind it is live. It is what lets one kubeconfig and one aws.ini
+serve a laptop and a CI job alike. No other token this issuer signs is a
+proof: an ID token or a relying party's access token is for that party.
+Only a `public` client may declare it.
 
 Clients are **declared**, and only declared: one row each in the
 deployment's values, with `requires` mandatory — an empty list means

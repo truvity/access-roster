@@ -36,7 +36,7 @@ func kubeToken(args []string) error {
 	if err != nil {
 		return err
 	}
-	token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, *audience)
+	token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, held.Type, *audience)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func awsCredentials(args []string) error {
 	if err != nil {
 		return err
 	}
-	token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, *audience)
+	token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, held.Type, *audience)
 	if err != nil {
 		return err
 	}
