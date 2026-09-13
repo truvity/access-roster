@@ -1,4 +1,4 @@
-## Unreleased
+## v1.6.3
 
 - **A restarted GitHub controller does not record every held and reported
   row again.** Which rows it had recorded lived in the process, so each
