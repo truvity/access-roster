@@ -1,4 +1,4 @@
-## Unreleased
+## v1.7.0
 
 - **Three Secrets restore everything a console added.** Workspace
   credentials are one Secret, `<release>-workspace-credentials`, with a
