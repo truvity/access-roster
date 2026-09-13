@@ -1,5 +1,12 @@
 ## Unreleased
 
+- **Workspace credentials written by the release-rename script migrate
+  too.** 1.7.0 found an old per-workspace credential Secret by its
+  workspace annotation. The objects the release-rename script wrote carry
+  none, so 1.7.0 refused them and kept reading them where they were.
+  Start-up now starts from the workspace records and finds each old
+  object by name, the way a read already did. An old object with no
+  record is left alone.
 - **Runner Apps are created from the console.** A runner App is the
   GitHub App a self-hosted runner scale set registers with, one per
   organisation per tier.

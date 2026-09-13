@@ -180,6 +180,11 @@ func (s *Credentials) keepRecord(ctx context.Context, ws hub.Workspace) error {
 // the one Secret, with the record beside each, and returns the workspaces
 // whose entry it wrote.
 //
+// It starts from the workspace records and finds each one's old object by
+// name, the way Load does, never by the workspace annotation: an object
+// renamed by hand from another release carries none. An old object with no
+// record is left alone; there is no workspace to restore it to.
+//
 // The old objects stay, so a rollback to that release still reads them. An
 // old object wins over the entry: it outlives a Save or a Delete here,
 // which remove it, only while nothing has changed that workspace since, or
@@ -187,36 +192,36 @@ func (s *Credentials) keepRecord(ctx context.Context, ws hub.Workspace) error {
 // An entry that already matches is not written again, so every start after
 // the first changes nothing.
 func (s *Credentials) Migrate(ctx context.Context, workspaces *Workspaces) ([]string, error) {
-	list, err := s.c.api.CoreV1().Secrets(s.c.namespace).
-		List(ctx, metav1.ListOptions{LabelSelector: s.c.selector(kindCredential)})
+	list, err := workspaces.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("kube: list the credentials to migrate: %w", err)
+		return nil, err
 	}
 	var moved []string
-	for i := range list.Items {
-		legacy := &list.Items[i]
-		id := legacy.Annotations[idAnnotation]
-		if id == "" {
-			return moved, fmt.Errorf("kube: %s names no workspace; migrate it by hand", legacy.Name)
+	for i := range list {
+		ws := &list[i]
+		if ws.Declared {
+			continue
+		}
+		legacy, err := s.c.api.CoreV1().Secrets(s.c.namespace).
+			Get(ctx, s.c.objectName(kindCredential, ws.ID), metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return moved, fmt.Errorf("kube: read the credential of %s to migrate it: %w", ws.ID, err)
 		}
 		doc := credentialDoc{
 			Version:    credentialVersion,
-			Workspace:  id,
+			Workspace:  ws.ID,
 			Type:       string(legacy.Data[credentialTypeKey]),
 			Admin:      string(legacy.Data[credentialAdminKey]),
 			Credential: legacy.Data[credentialDataKey],
+			Record:     backupRecord(*ws),
 		}
-		if _, err := doc.credential(); err != nil {
+		if _, err = doc.credential(); err != nil {
 			return moved, err
 		}
-		ws, err := workspaces.Get(ctx, id)
-		switch {
-		case err == nil:
-			doc.Record = backupRecord(ws)
-		case !errors.Is(err, hub.ErrNotFound):
-			return moved, err
-		}
-		key := objectKey(id)
+		key := objectKey(ws.ID)
 		wrote := false
 		err = s.edit(ctx, func(data map[string][]byte) (bool, error) {
 			raw, err := json.Marshal(doc)
@@ -227,10 +232,10 @@ func (s *Credentials) Migrate(ctx context.Context, workspaces *Workspaces) ([]st
 			return true, nil
 		})
 		if err != nil {
-			return moved, fmt.Errorf("kube: migrate the credential of %s: %w", id, err)
+			return moved, fmt.Errorf("kube: migrate the credential of %s: %w", ws.ID, err)
 		}
 		if wrote {
-			moved = append(moved, id)
+			moved = append(moved, ws.ID)
 		}
 	}
 	return moved, nil

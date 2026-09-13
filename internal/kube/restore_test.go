@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,23 +157,47 @@ func TestAnOlderReleasesCredentialsMoveIntoOneSecret(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
+	client := newClient()
+	workspaces := kube.NewWorkspaces(client)
+	credentials := kube.NewCredentials(client)
+	if err := workspaces.Put(ctx, hub.Workspace{ID: "C0north", Backend: "google", Serve: []string{"north.example"}}); err != nil {
+		t.Fatal(err)
+	}
+	// What an older release wrote, under the name it wrote it — and, like
+	// an object renamed by hand from another release, without the workspace
+	// annotation. The name is the same one Save would give it.
+	namedClient := newClient()
+	named := kube.NewCredentials(namedClient)
+	if err := named.Save(ctx, "C0north", backend.Credential{Type: backend.CredentialOAuth, Data: []byte("x")}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := namedClient.API().CoreV1().Secrets(namespace).Get(ctx, named.SecretName(), metav1.GetOptions{})
+	if err != nil || len(saved.Data) != 1 {
+		t.Fatalf("the naming store wrote %v, %v", saved, err)
+	}
+	var segment string
+	for key := range saved.Data {
+		segment = strings.TrimSuffix(key, ".json")
+	}
 	legacy := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "directory-roster-credential-c0north-0123456789",
+			Name:      "directory-roster-credential-" + segment,
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by":      "directory-roster",
 				"app.kubernetes.io/part-of":         "directory-roster",
 				"directory-roster.truvity.com/kind": "credential",
 			},
-			Annotations: map[string]string{"directory-roster.truvity.com/workspace-id": "C0north"},
 		},
 		Data: map[string][]byte{"type": []byte(backend.CredentialOAuth), "admin": []byte("admin@north.example"), "credential": []byte("refresh")},
 	}
-	client := newClient(legacy)
-	workspaces := kube.NewWorkspaces(client)
-	credentials := kube.NewCredentials(client)
-	if err := workspaces.Put(ctx, hub.Workspace{ID: "C0north", Backend: "google", Serve: []string{"north.example"}}); err != nil {
+	if _, err = client.API().CoreV1().Secrets(namespace).Create(ctx, legacy, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// An old object with no record beside it is left alone.
+	orphan := legacy.DeepCopy()
+	orphan.Name = "directory-roster-credential-gone-0123456789"
+	if _, err = client.API().CoreV1().Secrets(namespace).Create(ctx, orphan, metav1.CreateOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
