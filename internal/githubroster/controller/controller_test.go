@@ -438,6 +438,71 @@ func TestAnOwnerWhoLeavesIsReportedAndRecordedOnce(t *testing.T) {
 	}
 }
 
+// A failed pass reports the failure over what was last known, and a
+// controller started after it still knows what it recorded: a rollout
+// where a pass fails against a console on another policy, then a restart,
+// records no owner a second time.
+func TestAFailedPassKeepsItsRowsAndARestartAfterItRecordsNothingAgain(t *testing.T) {
+	r := newRig(t)
+	r.console.mu.Lock()
+	delete(r.console.holders["all:truvity:employee"], "boss@truvity.com")
+	r.console.people["boss@truvity.com"] = &directoryrosterv1.ExplainResponse{Authoritative: true, Found: false}
+	r.console.mu.Unlock()
+	owners := func() int {
+		n := 0
+		for _, kind := range r.audit.kinds() {
+			if kind == "github.owner.reported boss@truvity.com ok" {
+				n++
+			}
+		}
+		return n
+	}
+	hasOwnerRow := func(o status.Org) bool {
+		found := false
+		each := func(members []status.Member) {
+			for _, m := range members {
+				if m.Login == "boss" && m.State == status.StateReported {
+					found = true
+				}
+			}
+		}
+		each(o.Members)
+		for _, team := range o.Teams {
+			each(team.Members)
+		}
+		return found
+	}
+
+	r.run(true)
+	if owners() != 1 {
+		t.Fatalf("the owner was recorded %d times on the first pass, want once", owners())
+	}
+
+	r.console.mu.Lock()
+	r.console.policy = "another-policy"
+	r.console.mu.Unlock()
+	r.run(true)
+	failed := r.report.org(t, "truvity")
+	if failed.Tick.Outcome != status.OutcomeFailed {
+		t.Fatalf("tick = %+v, want failed", failed.Tick)
+	}
+	if !hasOwnerRow(failed) {
+		t.Errorf("the failed pass dropped the rows it last knew: %+v", failed)
+	}
+
+	r.console.mu.Lock()
+	r.console.policy = testPolicy
+	r.console.mu.Unlock()
+	restarted := controller.New(controller.Config{AppsDir: r.appsDir, Enabled: map[string]bool{"truvity": true}}, controller.Deps{
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: r.github.Client(),
+		Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings, Policy: testPolicy,
+	})
+	restarted.Pass(context.Background())
+	if owners() != 1 {
+		t.Errorf("after a failed pass and a restart the owner was recorded %d times in all, want still once: %v", owners(), r.audit.kinds())
+	}
+}
+
 // A directory that cannot vouch for a leaver removes nobody: the removal
 // is retried next pass, with the reason on the row.
 func TestAnUnvouchedLeaverIsRetried(t *testing.T) {

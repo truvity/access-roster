@@ -100,6 +100,9 @@ type Controller struct {
 	// held is last pass's held actions per organisation, so that a held
 	// action is recorded once, when it becomes held, and not every pass.
 	held map[string]map[string]bool
+	// last is each organisation's last report that was not a failure, so
+	// a failed pass can keep what was last known instead of blanking it.
+	last map[string]status.Org
 	// profileMisses is when each login's public profile was last found to
 	// show no work address: asked again after a day, not every pass.
 	profileMisses map[string]time.Time
@@ -127,6 +130,7 @@ func New(cfg Config, deps Deps) *Controller {
 	}
 	return &Controller{
 		cfg: cfg, deps: deps, tokens: map[string]installationToken{}, held: map[string]map[string]bool{},
+		last:          map[string]status.Org{},
 		profileMisses: map[string]time.Time{}, metrics: newInstruments(),
 	}
 }
@@ -172,9 +176,16 @@ func (c *Controller) organisation(
 ) status.Org {
 	enabled := c.cfg.Enabled[org]
 	started := c.deps.Now().UTC()
+	// A failed pass reports the failure over what was last known: the page
+	// keeps its rows, and a controller that starts after the failure still
+	// finds the held and reported rows it recorded, rather than an empty
+	// report that would have it record them all again.
 	fail := func(err error) status.Org {
 		c.deps.Log.WarnContext(ctx, "a pass over an organisation failed", "org", org, "error", err)
-		return status.Org{Org: org, Enabled: enabled, Tick: status.Tick{At: started, Outcome: status.OutcomeFailed, Error: err.Error()}}
+		report := c.previous(ctx, org)
+		report.Org, report.Enabled = org, enabled
+		report.Tick = status.Tick{At: started, Outcome: status.OutcomeFailed, Error: err.Error()}
+		return report
 	}
 
 	// Without the links every linked member reads as unlinked: nothing
@@ -215,7 +226,42 @@ func (c *Controller) organisation(
 	report.Tick.Outcome = outcome(enabled, report.Tick)
 	c.deps.Log.InfoContext(ctx, "passed over an organisation", "org", org, "enabled", enabled,
 		"outcome", report.Tick.Outcome, "changes", report.Tick.Changes, "held", report.Tick.Held, "waiting", report.Tick.Waiting)
+	c.mu.Lock()
+	c.last[org] = report
+	c.mu.Unlock()
 	return report
+}
+
+// previous is an organisation's last report with its rows: this process's
+// own last successful one, or else the one the previous process wrote,
+// which may itself be a failure that kept its rows. Nothing to read is an
+// empty report.
+func (c *Controller) previous(ctx context.Context, org string) status.Org {
+	c.mu.Lock()
+	kept, ok := c.last[org]
+	c.mu.Unlock()
+	if ok {
+		return kept
+	}
+	reader, ok := c.deps.Status.(StatusReader)
+	if !ok {
+		return status.Org{}
+	}
+	documents, err := reader.Reports(ctx)
+	if err != nil {
+		c.deps.Log.WarnContext(ctx, "the last report could not be read", "org", org, "error", err)
+		return status.Org{}
+	}
+	raw, ok := documents[status.Key(org)]
+	if !ok {
+		return status.Org{}
+	}
+	last, err := status.Decode(raw)
+	if err != nil {
+		c.deps.Log.WarnContext(ctx, "the last report could not be decoded", "org", org, "error", err)
+		return status.Org{}
+	}
+	return last
 }
 
 // token is the organisation's installation token, minted when the one
@@ -462,24 +508,7 @@ func heldKey(team string, m status.Member) string {
 // the safe way to be wrong.
 func (c *Controller) lastHeld(ctx context.Context, org string) map[string]bool {
 	out := map[string]bool{}
-	reader, ok := c.deps.Status.(StatusReader)
-	if !ok {
-		return out
-	}
-	documents, err := reader.Reports(ctx)
-	if err != nil {
-		c.deps.Log.WarnContext(ctx, "the last report could not be read; held and reported rows are recorded again", "org", org, "error", err)
-		return out
-	}
-	raw, ok := documents[status.Key(org)]
-	if !ok {
-		return out
-	}
-	last, err := status.Decode(raw)
-	if err != nil {
-		return out
-	}
-	each(last, func(team string, m status.Member) {
+	each(c.previous(ctx, org), func(team string, m status.Member) {
 		if m.State == status.StateHeld || m.State == status.StateReported {
 			out[heldKey(team, m)] = true
 		}
