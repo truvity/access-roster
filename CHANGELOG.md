@@ -1,3 +1,24 @@
+## Unreleased
+
+- **Security: a policy rollout no longer removes people from GitHub teams.**
+  The GitHub controller and the console load the policy when they start,
+  and a rollout restarts them at different moments. For that window the
+  controller could decide with the new policy and ask a console still on
+  the old one, which knows nothing of a team the new policy binds: nobody
+  holds its group there, and `Explain` lists no such group, so the
+  controller took every member of the newly bound team as confirmed to
+  leave it. On kernel on 2026-09-13 this removed three people from
+  `team-legacy` when that team was first bound; the next pass, under one
+  policy, added them back four minutes later. `Explain` and `ListHolders`
+  now carry `policy_digest`, the digest of the policy each answer was
+  computed under, and the controller changes nothing on a holders list
+  under another policy (the pass fails and is retried) and confirms no
+  removal on an `Explain` under another one (the row waits). A console too
+  old to send a digest counts as another policy, so deploy the controller
+  and the console together, as the chart does. Organisation removals were
+  never exposed: they rest on the directory's found and suspended, which
+  no policy changes.
+
 ## v1.6.0
 
 - **The sign-in page names the application.** It said "the application

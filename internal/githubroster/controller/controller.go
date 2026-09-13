@@ -74,7 +74,13 @@ type Deps struct {
 	// an organisation that discloses its members' addresses is matched.
 	Links    LinkStore
 	Bindings map[string]policy.GitHubOrg
-	Now      func() time.Time
+	// Policy is the digest of the policy Bindings came from. The console's
+	// answers carry the digest of the policy it computed them under, and a
+	// pass acts only on answers from the same one: in a rollout the
+	// controller and the console restart at different moments, and a group
+	// the new policy binds has, under the old one, nobody in it.
+	Policy string
+	Now    func() time.Time
 }
 
 // Controller is the loop and what it remembers between passes.
@@ -294,6 +300,9 @@ func (c *Controller) holders(ctx context.Context, binding policy.GitHubOrg) (rec
 		if err != nil {
 			return nil, fmt.Errorf("ask who holds %s: %w", group, err)
 		}
+		if err = c.samePolicy(response.Msg.GetPolicyDigest()); err != nil {
+			return nil, fmt.Errorf("ask who holds %s: %w", group, err)
+		}
 		for _, holder := range response.Msg.GetHolders() {
 			out[group] = append(out[group], reconcile.Holder{Email: holder.GetEmail(), Live: holder.GetLive()})
 		}
@@ -306,12 +315,29 @@ func (c *Controller) holders(ctx context.Context, binding policy.GitHubOrg) (rec
 	return out, nil
 }
 
+// errPolicyDiffers is an answer computed under a policy other than the one
+// this pass decides with.
+var errPolicyDiffers = errors.New("the console answers under a different policy; nothing is changed until both run the same one")
+
+// samePolicy refuses an answer from a console running another policy. An
+// unset digest on either side is a mismatch too: a console too old to say
+// which policy it runs cannot be shown to run this one.
+func (c *Controller) samePolicy(digest string) error {
+	if c.deps.Policy == "" || digest != c.deps.Policy {
+		return fmt.Errorf("%w (console %q, controller %q)", errPolicyDiffers, digest, c.deps.Policy)
+	}
+	return nil
+}
+
 // confirm asks about each address a removal would rest on. One that could
 // not be asked is simply not confirmed, which holds its removal.
 func (c *Controller) confirm(ctx context.Context, emails []string) map[string]reconcile.Confirmation {
 	out := make(map[string]reconcile.Confirmation, len(emails))
 	for _, email := range emails {
 		response, err := c.deps.Access.Explain(ctx, connect.NewRequest(&directoryrosterv1.ExplainRequest{Email: email}))
+		if err == nil {
+			err = c.samePolicy(response.Msg.GetPolicyDigest())
+		}
 		if err != nil {
 			c.deps.Log.WarnContext(ctx, "a removal could not be confirmed and is held", "email", email, "error", err)
 			continue

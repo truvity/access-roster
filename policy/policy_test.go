@@ -623,3 +623,31 @@ func TestClientTitle(t *testing.T) {
 		}
 	}
 }
+
+// The digest names the policy, not the process that loaded it: the same
+// document gives the same digest however often its maps are walked, and a
+// change to anything in it — here one team binding — gives another.
+func TestTheDigestNamesThePolicy(t *testing.T) {
+	first, second := set(t), set(t)
+	if first.Digest() == "" || first.Digest() != second.Digest() {
+		t.Fatalf("two loads of one policy digest to %q and %q", first.Digest(), second.Digest())
+	}
+	for range 20 {
+		if again := set(t).Digest(); again != first.Digest() {
+			t.Fatalf("the same policy digested to %q, then %q", first.Digest(), again)
+		}
+	}
+
+	p, err := policy.Parse([]byte(declared))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Lifetimes["default"] = policy.Duration(time.Hour + p.Lifetimes["default"].Duration())
+	changed, err := policy.NewSet(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.Digest() == first.Digest() {
+		t.Errorf("a changed policy kept the digest %q", first.Digest())
+	}
+}

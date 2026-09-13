@@ -657,7 +657,9 @@ func (c *Console) Explain(
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	return connect.NewResponse(explanationProto(explained, caller, self)), nil
+	out := explanationProto(explained, caller, self)
+	out.PolicyDigest = c.deps.Authorizer.Policy().Digest()
+	return connect.NewResponse(out), nil
 }
 
 // GetPolicy implements the operator contract.
@@ -778,8 +780,9 @@ func (c *Console) ListHolders(
 		// an installation past the examined cap got an answer that looked
 		// complete and silently left holders out — the one shape of wrong
 		// a consumer that removes access cannot tell from the right one.
-		Truncated: limit < len(holders) || total > len(people),
-		Holders:   make([]*directoryrosterv1.Holder, 0, limit),
+		Truncated:    limit < len(holders) || total > len(people),
+		Holders:      make([]*directoryrosterv1.Holder, 0, limit),
+		PolicyDigest: c.deps.Authorizer.Policy().Digest(),
 	}
 	for i := range holders[:limit] {
 		out.Holders = append(out.Holders, holderProto(&holders[i]))

@@ -715,7 +715,12 @@ type ExplainResponse struct {
 	// workspace_id is the directory that serves this address, when one
 	// does, so a page about a person can link to where they come from
 	// without a second call.
-	WorkspaceId   string `protobuf:"bytes,11,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	WorkspaceId string `protobuf:"bytes,11,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// policy_digest names the policy this answer was computed under
+	// (policy.Set.Digest). A consumer that acts on `held` checks it against
+	// the policy it decided with: during a rollout the two can differ, and a
+	// group one policy binds is simply absent from an answer under the other.
+	PolicyDigest  string `protobuf:"bytes,12,opt,name=policy_digest,json=policyDigest,proto3" json:"policy_digest,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -823,6 +828,13 @@ func (x *ExplainResponse) GetClients() []*ClientAdmission {
 func (x *ExplainResponse) GetWorkspaceId() string {
 	if x != nil {
 		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *ExplainResponse) GetPolicyDigest() string {
+	if x != nil {
+		return x.PolicyDigest
 	}
 	return ""
 }
@@ -1633,7 +1645,11 @@ type ListHoldersResponse struct {
 	// whose snapshot cannot be read contributes no accounts at all. A
 	// consumer that REMOVES access on absence must confirm each account
 	// with Explain, whose `authoritative` answers for that one account.
-	Truncated     bool `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Truncated bool `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// policy_digest names the policy the holders were computed under, as on
+	// ExplainResponse. A group this policy does not define has no holders,
+	// which is not the same as nobody holding it under the asker's policy.
+	PolicyDigest  string `protobuf:"bytes,4,opt,name=policy_digest,json=policyDigest,proto3" json:"policy_digest,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1687,6 +1703,13 @@ func (x *ListHoldersResponse) GetTruncated() bool {
 		return x.Truncated
 	}
 	return false
+}
+
+func (x *ListHoldersResponse) GetPolicyDigest() string {
+	if x != nil {
+		return x.PolicyDigest
+	}
+	return ""
 }
 
 type SearchPeopleRequest struct {
@@ -2386,7 +2409,7 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x0eExplainRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x127\n" +
 	"\x06github\x18\x02 \x01(\v2\x1f.directoryroster.v1.GitHubProofR\x06github\x12P\n" +
-	"\x0fservice_account\x18\x03 \x01(\v2'.directoryroster.v1.ServiceAccountProofR\x0eserviceAccount\"\xea\x03\n" +
+	"\x0fservice_account\x18\x03 \x01(\v2'.directoryroster.v1.ServiceAccountProofR\x0eserviceAccount\"\x8f\x04\n" +
 	"\x0fExplainResponse\x128\n" +
 	"\bidentity\x18\x01 \x01(\v2\x1c.directoryroster.v1.IdentityR\bidentity\x12\x1b\n" +
 	"\tin_domain\x18\x02 \x01(\bR\binDomain\x12\x14\n" +
@@ -2399,7 +2422,8 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\blifetime\x18\t \x01(\v2\x19.google.protobuf.DurationR\blifetime\x12=\n" +
 	"\aclients\x18\n" +
 	" \x03(\v2#.directoryroster.v1.ClientAdmissionR\aclients\x12!\n" +
-	"\fworkspace_id\x18\v \x01(\tR\vworkspaceId\"\xa4\x01\n" +
+	"\fworkspace_id\x18\v \x01(\tR\vworkspaceId\x12#\n" +
+	"\rpolicy_digest\x18\f \x01(\tR\fpolicyDigest\"\xa4\x01\n" +
 	"\x0fClientAdmission\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1a\n" +
@@ -2455,11 +2479,12 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x04live\x18\x04 \x01(\bR\x04live\x12$\n" +
 	"\rauthoritative\x18\x05 \x01(\bR\rauthoritative\x12\x10\n" +
 	"\x03via\x18\x06 \x03(\tR\x03via\x125\n" +
-	"\blifetime\x18\a \x01(\v2\x19.google.protobuf.DurationR\blifetime\"\x85\x01\n" +
+	"\blifetime\x18\a \x01(\v2\x19.google.protobuf.DurationR\blifetime\"\xaa\x01\n" +
 	"\x13ListHoldersResponse\x124\n" +
 	"\aholders\x18\x01 \x03(\v2\x1a.directoryroster.v1.HolderR\aholders\x12\x1a\n" +
 	"\bexamined\x18\x02 \x01(\x05R\bexamined\x12\x1c\n" +
-	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"\xb9\x01\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated\x12#\n" +
+	"\rpolicy_digest\x18\x04 \x01(\tR\fpolicyDigest\"\xb9\x01\n" +
 	"\x13SearchPeopleRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12!\n" +

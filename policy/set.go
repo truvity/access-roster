@@ -1,6 +1,8 @@
 package policy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -9,6 +11,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ErrUnknownGroup is returned for a group name the policy does not have.
@@ -51,6 +55,7 @@ type MatcherView struct {
 type Set struct {
 	mu       sync.RWMutex
 	declared Policy
+	digest   string
 }
 
 // NewSet validates a declared layer and returns it as the policy in
@@ -59,7 +64,32 @@ func NewSet(declared Policy) (*Set, error) {
 	if err := declared.Validate(); err != nil {
 		return nil, err
 	}
-	return &Set{declared: declared}, nil
+	digest, err := declared.Digest()
+	if err != nil {
+		return nil, err
+	}
+	return &Set{declared: declared, digest: digest}, nil
+}
+
+// Digest names the policy in force. Two processes that loaded the same
+// policy agree on it; during a rollout, when one has the new policy and
+// the other the old, they do not — and an answer computed under a policy
+// the asker did not decide with must not be acted on.
+func (s *Set) Digest() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.digest
+}
+
+// Digest is a stable name for a declared policy: the first twelve bytes
+// of the SHA-256 of its canonical YAML, whose map keys are always sorted.
+func (p Policy) Digest() (string, error) {
+	raw, err := yaml.Marshal(p)
+	if err != nil {
+		return "", fmt.Errorf("digest the policy: %w", err)
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:12]), nil
 }
 
 // Evaluate resolves a proof against the policy in force.

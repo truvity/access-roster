@@ -184,6 +184,11 @@ message ExplainResponse {
   // does, so a page about a person can link to where they come from
   // without a second call.
   string workspace_id = 11;
+  // policy_digest names the policy this answer was computed under
+  // (policy.Set.Digest). A consumer that acts on `held` checks it against
+  // the policy it decided with: during a rollout the two can differ, and a
+  // group one policy binds is simply absent from an answer under the other.
+  string policy_digest = 12;
 }
 
 // ClientAdmission is one relying party, and whether a proof reaches it.
@@ -339,6 +344,10 @@ message ListHoldersResponse {
   // consumer that REMOVES access on absence must confirm each account
   // with Explain, whose `authoritative` answers for that one account.
   bool truncated = 3;
+  // policy_digest names the policy the holders were computed under, as on
+  // ExplainResponse. A group this policy does not define has no holders,
+  // which is not the same as nobody holding it under the asker's policy.
+  string policy_digest = 4;
 }
 
 message SearchPeopleRequest {

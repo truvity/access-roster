@@ -87,7 +87,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	// Validated with the service's own loader: a controller acting on a
 	// policy the service would refuse is acting on a different model.
-	if _, err = policy.NewSet(declared); err != nil {
+	set, err := policy.NewSet(declared)
+	if err != nil {
 		return nil, fmt.Errorf("the policy: %w", err)
 	}
 	if len(declared.GitHub) == 0 {
@@ -119,7 +120,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	web := &http.Client{Timeout: 30 * time.Second}
 
 	log.InfoContext(ctx, "the GitHub controller is assembled",
-		"organisations", len(declared.GitHub), "enabled", keys(cfg.enabled), "interval", cfg.interval, "console", cfg.console)
+		"organisations", len(declared.GitHub), "enabled", keys(cfg.enabled), "interval", cfg.interval, "console", cfg.console,
+		"policy", set.Digest())
 	return &App{
 		log: log,
 		controller: controller.New(controller.Config{Interval: cfg.interval, Enabled: cfg.enabled, AppsDir: cfg.appsDir}, controller.Deps{
@@ -128,6 +130,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			Access:   directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, bearer),
 			Audit:    directoryrosterv1connect.NewAuditServiceClient(web, cfg.console, bearer),
 			Console:  directoryrosterv1connect.NewGitHubServiceClient(web, cfg.console, bearer),
+			Policy:   set.Digest(),
 			Status:   kube.NewGitHubStatus(client),
 			Links:    kube.NewGitHubLinks(client),
 			Bindings: declared.GitHub,

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
@@ -41,14 +42,20 @@ type console struct {
 	holders map[string]map[string]bool
 	// people: address -> the directory's answer
 	people map[string]*directoryrosterv1.ExplainResponse
+	// policy is the digest the console answers under; explainPolicy, when
+	// set, is a second replica's for Explain alone.
+	policy, explainPolicy string
 }
+
+// testPolicy is the digest the rig's controller decides with.
+const testPolicy = "rig-policy"
 
 func (c *console) ListHolders(
 	_ context.Context, req *connect.Request[directoryrosterv1.ListHoldersRequest],
 ) (*connect.Response[directoryrosterv1.ListHoldersResponse], error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	out := &directoryrosterv1.ListHoldersResponse{}
+	out := &directoryrosterv1.ListHoldersResponse{PolicyDigest: c.policy}
 	for email, live := range c.holders[req.Msg.GetGroup()] {
 		out.Holders = append(out.Holders, &directoryrosterv1.Holder{Email: email, Live: live, Authoritative: true})
 	}
@@ -60,10 +67,17 @@ func (c *console) Explain(
 ) (*connect.Response[directoryrosterv1.ExplainResponse], error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if answer, ok := c.people[req.Msg.GetEmail()]; ok {
-		return connect.NewResponse(answer), nil
+	digest := c.policy
+	if c.explainPolicy != "" {
+		digest = c.explainPolicy
 	}
-	return connect.NewResponse(&directoryrosterv1.ExplainResponse{Authoritative: true, Found: false}), nil
+	answer, ok := c.people[req.Msg.GetEmail()]
+	if !ok {
+		answer = &directoryrosterv1.ExplainResponse{Authoritative: true, Found: false}
+	}
+	out, _ := proto.Clone(answer).(*directoryrosterv1.ExplainResponse)
+	out.PolicyDigest = digest
+	return connect.NewResponse(out), nil
 }
 
 // auditLog collects what the controller reports.
@@ -266,6 +280,7 @@ func newRig(t *testing.T) *rig {
 	r := &rig{
 		github: github,
 		console: &console{
+			policy: testPolicy,
 			holders: map[string]map[string]bool{
 				"all:truvity:employee":  {"boss@truvity.com": true, "ada@truvity.com": true, "new@truvity.com": true, "leaver@truvity.com": false},
 				"all:platform:engineer": {"ada@truvity.com": true, "new@truvity.com": true, "leaver@truvity.com": false},
@@ -289,7 +304,7 @@ func newRig(t *testing.T) *rig {
 		if !ok {
 			c = controller.New(controller.Config{AppsDir: dir, Enabled: map[string]bool{"truvity": enabled}}, controller.Deps{
 				Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: github.Client(),
-				Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings,
+				Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings, Policy: testPolicy,
 			})
 			controllers[enabled] = c
 		}
@@ -421,6 +436,60 @@ func TestAnUnvouchedLeaverIsRetried(t *testing.T) {
 	}
 }
 
+// A policy rollout restarts the controller and the console at different
+// moments. Under the old policy a team the new one binds has no holders,
+// and Explain holds nobody in it — which, acted on, removes the team's
+// members. So an answer under another policy changes nothing: a holders
+// list fails the pass, and a confirmation does not confirm.
+func TestAnAnswerUnderAnotherPolicyChangesNothing(t *testing.T) {
+	setup := func(t *testing.T) *rig {
+		t.Helper()
+		r := newRig(t)
+		r.github.AddMember("dev", false, "dev@truvity.com")
+		r.github.AddTeam("team-platform", "leaver", "bot", "dev")
+		r.console.mu.Lock()
+		defer r.console.mu.Unlock()
+		// dev is employed, and — as the old policy sees it — holds
+		// nothing the team binds.
+		r.console.holders["all:truvity:employee"]["dev@truvity.com"] = true
+		r.console.people["dev@truvity.com"] = &directoryrosterv1.ExplainResponse{
+			Authoritative: true, Found: true,
+			Held: []*directoryrosterv1.HeldGroup{{Group: "all:truvity:employee"}},
+		}
+		return r
+	}
+	removedDev := func(r *rig) bool {
+		return slices.ContainsFunc(r.github.Did(), func(change string) bool { return strings.Contains(change, "dev") })
+	}
+
+	// The scenario has teeth: under one policy, dev leaves the team.
+	same := setup(t)
+	same.run(true)
+	if !removedDev(same) {
+		t.Fatalf("under one policy dev was not removed from team-platform: %v", same.github.Did())
+	}
+
+	// The console answers under another policy: the pass changes nothing.
+	other := setup(t)
+	other.console.policy = "old-policy"
+	other.run(true)
+	if did := other.github.Did(); len(did) != 0 {
+		t.Errorf("a pass on answers under another policy changed %v", did)
+	}
+	if got := other.report.org(t, "truvity"); got.Tick.Outcome != status.OutcomeFailed || !strings.Contains(got.Tick.Error, "different policy") {
+		t.Errorf("tick = %+v, want failed, naming the policy difference", got.Tick)
+	}
+
+	// Only Explain comes from a replica still on the old policy: the
+	// removal is not confirmed, and waits.
+	mixed := setup(t)
+	mixed.console.explainPolicy = "old-policy"
+	mixed.run(true)
+	if removedDev(mixed) {
+		t.Errorf("a removal was confirmed by an answer under another policy: %v", mixed.github.Did())
+	}
+}
+
 // GitHub's refusal of one change holds that change with GitHub's words,
 // records it as failed, and does not stop the rest.
 func TestARefusedChangeIsHeldAndTheRestGoOn(t *testing.T) {
@@ -457,7 +526,7 @@ func TestAnUnconnectedOrganisationSaysSo(t *testing.T) {
 	dir := t.TempDir() // no credential in it
 	c := controller.New(controller.Config{AppsDir: dir, Enabled: map[string]bool{"truvity": true}}, controller.Deps{
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: r.github.Client(),
-		Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings,
+		Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings, Policy: testPolicy,
 	})
 	c.Pass(context.Background())
 
