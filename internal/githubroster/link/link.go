@@ -290,14 +290,16 @@ func Claim(existing []Link, claimed Link, now time.Time) []Link {
 	return out
 }
 
-// Invalidate makes every linked account unverifiable, forgetting its
+// Invalidate makes every self-linked account unverifiable, forgetting its
 // tokens: what disconnecting the link App does, because nothing can check
 // those tokens any more.
 func Invalidate(existing []Link, reason string, now time.Time) []Link {
 	var out []Link
 	for k := range existing {
 		l := existing[k]
-		if l.State != StateLinked {
+		// Only a self-link holds tokens the App issued. A profile match or an
+		// import owes the App nothing, and stands whichever App is connected.
+		if l.State != StateLinked || !l.Checked() {
 			continue
 		}
 		l.State, l.Reason, l.ChangedAt = StateUnverifiable, reason, now

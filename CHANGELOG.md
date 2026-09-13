@@ -1,3 +1,11 @@
+## Unreleased
+
+- **Disconnecting the link App leaves profile matches and imports alone.**
+  It made every linked account unverifiable, including the ones matched
+  from a public profile or imported, which hold no token of the App's. So
+  moving the link App to another organisation would have unlinked every
+  imported account; now it unlinks only the people who authorized it.
+
 ## v1.5.1
 
 - **The GitHub page is tabs.** *Overview* says what needs attention next,

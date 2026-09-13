@@ -265,9 +265,10 @@ happens only when the address is a live account the directory vouches
 for and the account is a member already, and never displaces a link the
 person made. The person linking themselves replaces it.
 
-**Disconnecting the link App** makes every link unverifiable — nothing
+**Disconnecting the link App** makes every self-link unverifiable — nothing
 can check their tokens any more — which adds and removes nobody until
-each person links again.
+each person links again. A profile match or an import holds no token of
+the App's, and stands.
 
 ## Disconnecting
 

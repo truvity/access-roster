@@ -90,3 +90,24 @@ func TestAdoptNeverDisplacesALink(t *testing.T) {
 		t.Error("an adopted link must count and must not be re-checked on GitHub")
 	}
 }
+
+// Disconnecting the link App touches only the links it issued tokens for:
+// a profile match or an import stands, whichever App is connected.
+func TestInvalidateLeavesLinksTheAppDidNotMake(t *testing.T) {
+	t.Parallel()
+	existing := []link.Link{
+		{ID: 1, Login: "self", Emails: []string{"a@truvity.com"}, State: link.StateLinked, AccessToken: "t"},
+		{ID: 2, Login: "old", Emails: []string{"b@truvity.com"}, State: link.StateLinked, Source: link.SourceSelf},
+		{ID: 3, Login: "pub", Emails: []string{"c@truvity.com"}, State: link.StateLinked, Source: link.SourceProfile},
+		{ID: 4, Login: "imp", Emails: []string{"d@truvity.com"}, State: link.StateLinked, Source: link.SourceImported},
+	}
+	changed := link.Invalidate(existing, "the link App was disconnected", time.Now())
+	if len(changed) != 2 || changed[0].ID != 1 || changed[1].ID != 2 {
+		t.Errorf("changed = %+v, want the two self-links alone", changed)
+	}
+	for i := range changed {
+		if changed[i].State != link.StateUnverifiable || changed[i].AccessToken != "" {
+			t.Errorf("link %d = %+v, want unverifiable with no token", changed[i].ID, changed[i])
+		}
+	}
+}
