@@ -1,4 +1,4 @@
-## Unreleased
+## v1.6.1
 
 - **A CI matcher can require a repository's visibility.** `github:
   { owner: truvity, visibility: private }` admits every private repository
