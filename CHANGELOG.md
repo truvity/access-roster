@@ -1,4 +1,4 @@
-## Unreleased
+## v1.5.3
 
 - **An owner is added to teams, and never removed from one or demoted.**
   Owners — an organisation's break-glass seat among them — are managed
