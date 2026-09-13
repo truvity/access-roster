@@ -70,6 +70,20 @@ artifact domains are just many profiles and many `--profile` flags, and no
 version of ours moves when Amazon's tooling does. The recipes are in
 [connect/registries-and-artifacts.md](../connect/registries-and-artifacts.md).
 
+## Installing it
+
+Every release carries `accessctl_<version>_nix-flake.tar.gz` beside the
+archives: a Nix flake that fetches that release's archives by sha256
+(linux amd64 and arm64, darwin arm64). A repository whose tools come from
+devbox names it in `devbox.json`, and `devbox.lock` pins it:
+
+```json
+"https://github.com/truvity/access-roster/releases/download/v1.7.0/accessctl_1.7.0_nix-flake.tar.gz#accessctl": ""
+```
+
+Moving to a new version means changing the version in that URL. Anything
+else downloads the archive for its platform from the release.
+
 ## `accessctl setup` on a laptop
 
 The same boundary for people: one command that writes the kubeconfig

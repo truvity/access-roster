@@ -34,7 +34,10 @@ jobs:
     permissions:
       contents: write
       packages: write
-    uses: truvity/ci-workflows/.github/workflows/release-public.yaml@eb317bdb3240d43404665cc943d1c00e8946f733 # v2.18.0
+    # Ahead of the other ci-workflows pins, at the untagged commit that adds
+    # nix-flakes. release-public.yaml there differs from v2.18.0 by that step
+    # alone. Rejoin the others at the next tag.
+    uses: truvity/ci-workflows/.github/workflows/release-public.yaml@056d401d40822dfca5b8185062ce0c98288046c9 # master 2026-09-13 (ci-workflows#95)
     with:
       # Charts are published by this workflow, NOT by goreleaser, so this
       # list is a second place the set of shipped artifacts is written
@@ -46,6 +49,10 @@ jobs:
       # ko names each artifact after its cmd dir, so the published slug
       # is ghcr.io/truvity/access-roster/access-issuer.
       ko-docker-repo: ghcr.io/truvity/access-roster
+      # accessctl as a Nix flake: the release carries
+      # accessctl_<version>_nix-flake.tar.gz, which another repository's
+      # devbox installs by URL (gitops, instead of a hand-downloaded binary).
+      nix-flakes: '["accessctl"]'
 
   # The TypeScript package, to GitHub Packages, at the tag's version.
   #
