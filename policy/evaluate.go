@@ -206,6 +206,24 @@ func (p Policy) lifetimeOf(groups []string) time.Duration {
 	return shortest
 }
 
+// Title is what a person is shown this client as, given its id: the
+// declared `display_name`, or for a cluster's client that declares none,
+// "Kubernetes — <cluster>", or else the id itself.
+//
+// Never a generic "the application": a page that cannot name where a
+// person is going has told them nothing they can check, and the id,
+// however machine-shaped, is at least the same word on every page and in
+// every log.
+func (c Client) Title(id string) string {
+	if name := strings.TrimSpace(c.DisplayName); name != "" {
+		return name
+	}
+	if cluster, ok := strings.CutPrefix(id, "k8s:"); ok && cluster != "" {
+		return "Kubernetes — " + cluster
+	}
+	return id
+}
+
 // Cap applies a client's ttl_cap to a lifetime.
 func (c Client) Cap(lifetime time.Duration) time.Duration {
 	capped := c.TTLCap.Duration()

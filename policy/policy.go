@@ -18,6 +18,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -314,6 +316,23 @@ type Fragment map[string]any
 type Client struct {
 	// Kind is public, confidential or exchange.
 	Kind string `yaml:"kind"`
+	// DisplayName is what a person is told they are signing in to: "Sign
+	// in to continue to Argo CD". Optional; see [Client.Title] for what
+	// is shown without one.
+	//
+	// The id is the audience and is spelled for machines. A person who
+	// arrives on the sign-in page redirected from somewhere else needs to
+	// recognise where they are going, and a page that cannot say is the
+	// shape of a phishing page.
+	//
+	// SHOWN TO ANYONE who starts a sign-in for this client, before they
+	// have proved who they are. It is not a place for anything a stranger
+	// should not read.
+	DisplayName string `yaml:"display_name,omitempty"`
+	// Description is one line under the name on the sign-in page: what
+	// the application is for. Optional, and public in exactly the way
+	// DisplayName is.
+	Description string `yaml:"description,omitempty"`
 	// Secret names a Secret in the issuer's namespace, for a confidential
 	// client. The secret itself is never in this file.
 	Secret string `yaml:"secret,omitempty"`
@@ -614,6 +633,12 @@ func (g Group) validate(name string) error {
 }
 
 func (c Client) validate(id string, groups map[string]Group) error {
+	if err := displayText("display_name", c.DisplayName, MaxDisplayName); err != nil {
+		return fmt.Errorf("client %q: %w", id, err)
+	}
+	if err := displayText("description", c.Description, MaxDescription); err != nil {
+		return fmt.Errorf("client %q: %w", id, err)
+	}
 	switch c.Kind {
 	case KindPublic, KindConfidential, KindExchange:
 	case "":
@@ -649,6 +674,45 @@ func (c Client) validate(id string, groups map[string]Group) error {
 	for _, name := range c.Requires {
 		if _, ok := groups[name]; !ok {
 			return fmt.Errorf("client %q requires %q, which is not a declared group", id, name)
+		}
+	}
+	return nil
+}
+
+// The longest a client's display text may be, in characters. A name is a
+// heading and a description is one line; anything longer is a paragraph
+// somebody pasted into the wrong field, and the page it lands on is the
+// one a person reads while deciding whether to trust it.
+const (
+	MaxDisplayName = 80
+	MaxDescription = 200
+)
+
+// displayText checks one piece of text a sign-in page will show.
+//
+// Optional, so empty passes. What is refused is what would make the page
+// say something other than what the file appears to: a line break or a
+// control character that splits it, a bidirectional override that
+// reorders it on screen, bytes that are not text, or a value that is all
+// whitespace and so renders as nothing where a name was promised. The
+// page escapes everything it writes; this is about what the text SAYS,
+// not about whether it is safe to write.
+func displayText(field, value string, limit int) error {
+	if value == "" {
+		return nil
+	}
+	if !utf8.ValidString(value) {
+		return fmt.Errorf("%s is not valid UTF-8", field)
+	}
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s is blank; leave it out instead", field)
+	}
+	if n := utf8.RuneCountInString(value); n > limit {
+		return fmt.Errorf("%s is %d characters, and at most %d are allowed", field, n, limit)
+	}
+	for _, r := range value {
+		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
+			return fmt.Errorf("%s contains the control or formatting character %U", field, r)
 		}
 	}
 	return nil

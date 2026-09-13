@@ -8,6 +8,7 @@ import (
 	"html"
 	"log/slog"
 	"maps"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -18,6 +19,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/logsafe"
+	"github.com/truvity/access-roster/policy"
 )
 
 // SignIn is a directory a person can prove who they are with.
@@ -67,6 +69,19 @@ type Pending struct {
 	// the request, so it is safe to send a browser back to it.
 	RedirectURI string
 	State       string
+	// ClientID is the client that made the request, as the library
+	// accepted it at /authorize.
+	ClientID string
+	// Client is what the policy declares about that client, read when the
+	// request is looked up. The sign-in page names the application from
+	// it -- its `display_name` and `description` -- and from nothing the
+	// browser sent: a name taken from the query string would let any link
+	// put any words on this page. Only those two fields are for showing;
+	// what the client requires is not a stranger's business.
+	//
+	// Zero when the policy no longer declares the client, which leaves
+	// the page naming it by id.
+	Client policy.Client
 }
 
 // Completer is the part of the storage a sign-in finishes against: an
@@ -256,7 +271,7 @@ func (s *signIn) chooser(w http.ResponseWriter, r *http.Request) {
 	// else, on a hostname they may never have seen, and being asked to
 	// sign in by a page that does not identify itself is the shape of
 	// every phishing page there has ever been.
-	buttons.WriteString(`<p class="note">Sign in to continue to the application that sent you here.</p>`)
+	buttons.WriteString(destination(pending))
 	for _, kind := range kinds {
 		fmt.Fprintf(&buttons, `<p><a class="btn" href="%s">Continue with %s</a></p>`,
 			html.EscapeString(s.startURL(kind, request)), html.EscapeString(providerName(kind)))
@@ -266,6 +281,108 @@ func (s *signIn) chooser(w http.ResponseWriter, r *http.Request) {
 	}
 	buttons.WriteString(recovery)
 	s.page(w, "Sign in", buttons.String())
+}
+
+// destination names what this sign-in is for: the application, what it
+// is, and where the sign-in goes back to.
+//
+// Every word comes from the declared policy or from the pending request,
+// whose redirect URI the library already matched against the client's
+// registered ones. None comes from this page's own query string: `auth`
+// is an id and nothing else is read, so a link cannot put its own words
+// here. And none of it says whether the person will be let in -- nobody
+// has signed in yet, and "you will need group X" is a list of what to ask
+// for by name.
+//
+// The return address is TEXT, never a link. It is here to be read and
+// compared with what the person expected; a link would be one more thing
+// on a sign-in page to click.
+func destination(pending Pending) string {
+	if pending.ClientID == "" {
+		// No request to describe: a deployment with no storage wired.
+		return `<p class="note">Sign in to continue to the application that sent you here.</p>`
+	}
+
+	name := html.EscapeString(pending.Client.Title(pending.ClientID))
+
+	var out strings.Builder
+
+	fmt.Fprintf(&out, `<p>Sign in to continue to <strong>%s</strong></p>`, name)
+
+	if description := strings.TrimSpace(pending.Client.Description); description != "" {
+		fmt.Fprintf(&out, `<p class="note">%s</p>`, html.EscapeString(description))
+	}
+
+	host, loopback := returnHost(pending.RedirectURI)
+
+	switch {
+	case loopback:
+		// kubelogin and accessctl listen on this computer, on a port
+		// chosen at run time. The host and port say nothing a person can
+		// check; that a PROGRAM is asking, and which, is what they can.
+		fmt.Fprintf(&out, `<p class="note">A program on this computer, not a website, is asking you to sign in to `+
+			`<strong>%s</strong>. Continue only if you just started it.</p>`, name)
+	case host != "":
+		fmt.Fprintf(&out, `<p class="note">This sign-in returns to <span class="host">%s</span></p>`, html.EscapeString(host))
+	}
+
+	return out.String()
+}
+
+// returnHost is the host a redirect URI sends the browser back to, and
+// whether that host is this computer rather than a website.
+//
+// The host alone: no scheme, no port, no path. A path is the client's
+// own plumbing (`/oauth2/callback`) and a port is noise; the host is the
+// part a person recognises. Loopback is what RFC 8252 names for a native
+// client -- `localhost`, and any loopback address -- plus the
+// `.localhost` names browsers resolve the same way.
+func returnHost(uri string) (host string, loopback bool) {
+	to, err := url.Parse(uri)
+	if err != nil {
+		return "", false
+	}
+
+	host = strings.ToLower(to.Hostname())
+	if host == "" {
+		return "", false
+	}
+
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return host, true
+	}
+
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return host, true
+	}
+
+	return host, false
+}
+
+// named is the application as a sentence on a page writes it -- escaped,
+// in bold -- or the words to use when the request named no client.
+func named(pending Pending, otherwise string) string {
+	if pending.ClientID == "" {
+		return otherwise
+	}
+
+	return "<strong>" + html.EscapeString(pending.Client.Title(pending.ClientID)) + "</strong>"
+}
+
+// pendingOf reads a request for a page to describe. It is the zero
+// request when that fails, because a refusal that cannot name the
+// application must still refuse.
+func (s *signIn) pendingOf(request string) Pending {
+	if s.deps.Storage == nil || request == "" {
+		return Pending{}
+	}
+
+	pending, err := s.deps.Storage.Pending(request)
+	if err != nil {
+		return Pending{}
+	}
+
+	return pending
 }
 
 func (s *signIn) startURL(kind, request string) string {
@@ -310,7 +427,8 @@ func (s *signIn) start(w http.ResponseWriter, r *http.Request) {
 // exists -- but a redirect to nowhere is worse than a page.
 func (s *signIn) refuse(w http.ResponseWriter, r *http.Request, pending Pending, code, why string) {
 	if pending.RedirectURI == "" {
-		s.page(w, "Sign-in required", `<p>This application asked to continue without prompting, and there is no active sign-in here to continue from.</p>
+		s.page(w, "Sign-in required", `<p>`+named(pending, "This application")+
+			` asked to continue without prompting, and there is no active sign-in here to continue from.</p>
 	<p class="note">Open the application again, or sign in first.</p>`)
 
 		return
@@ -320,7 +438,7 @@ func (s *signIn) refuse(w http.ResponseWriter, r *http.Request, pending Pending,
 	if err != nil {
 		s.deps.Log.WarnContext(r.Context(), "a pending request has an unparseable redirect uri",
 			"error", logsafe.Error(err))
-		s.page(w, "Sign-in required", `<p>This application asked to continue without prompting.</p>`)
+		s.page(w, "Sign-in required", `<p>`+named(pending, "This application")+` asked to continue without prompting.</p>`)
 
 		return
 	}
@@ -403,7 +521,7 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = s.deps.Storage.Complete(request, s.established(w, r, subject, RecoveryHow)); err != nil {
-		if s.refuseUnentitled(w, r, err) {
+		if s.refuseUnentitled(w, r, err, request) {
 			return
 		}
 
@@ -469,7 +587,7 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = s.deps.Storage.Complete(request, s.established(w, r, email, provider.Kind())); err != nil {
-		if s.refuseUnentitled(w, r, err) {
+		if s.refuseUnentitled(w, r, err, request) {
 			return
 		}
 
@@ -680,6 +798,8 @@ const pageHTML = `<!doctype html><meta charset="utf-8"><title>%s</title>
  pre{font-size:13px;background:#f3f5f8;border:1px solid #d9dee6;border-radius:4px;padding:10px;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
  details{margin-top:20px;border-top:1px solid #e6eaef;padding-top:12px}
  summary{cursor:pointer}
+ strong{font-weight:600}
+ .host{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;color:#1b2230;word-break:break-all}
 </style>
 <main><h1>%s</h1>%s</main>`
 
@@ -730,7 +850,7 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 		// TRUE because it is answered, not because it succeeded: falling
 		// through would show a login page to somebody already signed in,
 		// who would sign in again and be refused again.
-		return s.refuseUnentitled(w, r, err)
+		return s.refuseUnentitled(w, r, err, request)
 	}
 
 	s.deps.Log.InfoContext(r.Context(), "signed in from an existing browser session",
@@ -749,7 +869,11 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 // console rendering its own version of a refusal it does not understand.
 // The person is signed IN -- the browser session stands, and the next
 // console they are entitled to costs them no password.
-func (s *signIn) refuseUnentitled(w http.ResponseWriter, r *http.Request, err error) bool {
+//
+// It names the application, the same way the chooser did: "not for this"
+// on its own leaves somebody who opened three tabs guessing which one
+// refused them. The name comes from the policy, by way of the request.
+func (s *signIn) refuseUnentitled(w http.ResponseWriter, r *http.Request, err error, request string) bool {
 	if !errors.Is(err, ErrNotEntitled) {
 		return false
 	}
@@ -763,7 +887,7 @@ func (s *signIn) refuseUnentitled(w http.ResponseWriter, r *http.Request, err er
 		"error", logsafe.Error(err))
 
 	_ = writePage(w, http.StatusForbidden, "You are signed in, but not for this",
-		`<p>Your account is not in a group that opens this application.</p>
+		`<p>Your account is not in a group that opens `+named(s.pendingOf(request), "this application")+`.</p>
 	<p class="note">Nothing is wrong with your sign-in, and signing in again will not change it.
 	Ask whoever administers access to grant it.</p>`)
 

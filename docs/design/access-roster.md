@@ -574,7 +574,7 @@ else a person sees is the console.
 
 | | |
 |---|---|
-| `/login` | the sign-in chooser, by email domain |
+| `/login` | the sign-in chooser: one button per provider kind, under the name of the application being signed in to and the host it returns to — all of it from the declared policy and the validated request, none of it from the query string |
 | `/logout` | the sign-out a person follows, needing no `id_token_hint` |
 | `/signed-out` | where a sign-out lands when the client declares no page of its own |
 | a refusal | what `/authorize` and `/end_session` show when they cannot send the person onward |

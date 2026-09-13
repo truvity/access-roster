@@ -42,9 +42,9 @@ clients:                       # who may be issued a token for what; the id is t
   k8s:kernel:        { kind: public,       requires: [kernel:k8s:admin, kernel:k8s:auditor] }
   aws:1111:power:    { kind: exchange,     requires: [kernel:k8s:admin] }
   aws:1111:deployer: { kind: exchange,     requires: [ci:gitops:deployer] }
-  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [kernel:k8s:admin, kernel:k8s:auditor], ttl_cap: 12h }
+  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [kernel:k8s:admin, kernel:k8s:auditor], ttl_cap: 12h, display_name: Argo CD, description: Continuous delivery for the kernel cluster. }
   local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [prod:eudi:deployer] }
-  accessctl:         { kind: public,       redirects: [http://127.0.0.1/callback], requires: [kernel:k8s:admin, kernel:k8s:auditor], sign_in_exchange: true }
+  accessctl:         { kind: public,       redirects: [http://127.0.0.1/callback], requires: [kernel:k8s:admin, kernel:k8s:auditor], sign_in_exchange: true, display_name: accessctl }
 ```
 
 | Table | Key | Holds | Who writes it |
@@ -52,7 +52,7 @@ clients:                       # who may be issued a token for what; the id is t
 | `groups` | internal group name | directory `members`, or `matchers`; a group with neither is one nobody is in yet, which is where a fresh installation starts | declared |
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
-| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap`, `sign_in_exchange` | declared |
+| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap`, `sign_in_exchange`, `display_name`, `description` | declared |
 | `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
 
 Five tables, one writer. There was another, `memberships`, which a
@@ -247,6 +247,40 @@ serve a laptop and a CI job alike. No other token this issuer signs is a
 proof: an ID token or a relying party's access token is for that party.
 Only a `public` client may declare it.
 
+### What the sign-in page calls a client
+
+`display_name` and `description` are what the issuer's sign-in page shows
+a person: *Sign in to continue to **Argo CD***, the description on the
+line under it, and the host the sign-in returns to. Both are optional.
+
+| The row declares | The page says |
+|---|---|
+| `display_name` | that name |
+| no name, and the id is `k8s:<cluster>` | *Kubernetes — `<cluster>`* |
+| no name | the client id, as it is |
+
+The host is taken from the redirect URI of the request being answered,
+which the issuer has already matched against `redirects`, and it is
+shown as text, never as a link. When that redirect is on this computer
+(`localhost` or a loopback address, which is where kubelogin and
+accessctl listen) the page says instead that *a program on this computer*
+is asking, names the client, and shows no port. Nothing on the page comes
+from its own query string, and nothing on it says which groups would
+admit anybody. The refusal a signed-in person sees for a client they
+hold no group of names the application the same way.
+
+**Both fields are public.** Anyone who starts a sign-in for a client
+reads them, before proving who they are, so neither is a place for
+anything a stranger should not know: say what the application is for,
+not what it holds or who administers it. Validation refuses a name over
+80 characters, a description over 200, a blank value, and any control
+or formatting character — a line break, a tab, a bidirectional override
+— because each would make the page say something other than what the
+file appears to. Everything is HTML-escaped when written.
+
+An issuer older than the release that introduced them refuses both keys
+as unknown, like any other: deploy the issuer before declaring them.
+
 Clients are **declared**, and only declared: one row each in the
 deployment's values, with `requires` mandatory — an empty list means
 nobody, not everyone, and the issuer refuses to start on one. Never
@@ -355,7 +389,8 @@ its own directory is uncertain. It is a chart value.
 Unknown keys refused, `memberships` among them. Every key in `claims`
 and `lifetimes` names a declared group. Every `requires` entry names one.
 Every member address has a domain. No scalar conflict across any two
-fragments. A matcher has at least one field. A typo fails the rollout,
+fragments. A matcher has at least one field. A client's `display_name`
+and `description` are one bounded line each. A typo fails the rollout,
 not a login.
 
 ## What the console may change

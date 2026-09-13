@@ -521,3 +521,105 @@ github:
 		t.Error("the merged entries are not read back as a login and an address")
 	}
 }
+
+// A client's display name and description are what the sign-in page
+// shows a person who has not signed in yet. Both are optional; what is
+// refused is text that would make the page say something other than what
+// the file appears to.
+func TestClientDisplayTextIsOneBoundedLine(t *testing.T) {
+	t.Parallel()
+
+	client := func(field, value string) string {
+		return fmt.Sprintf(`
+version: 1
+groups:
+  team: { members: [team@example.com] }
+clients:
+  console:
+    kind: public
+    requires: [team]
+    %s: %s
+`, field, strconv.Quote(value))
+	}
+
+	accepted := map[string]string{
+		"plain name":           client("display_name", "Argo CD"),
+		"name at the limit":    client("display_name", strings.Repeat("é", policy.MaxDisplayName)),
+		"punctuation and dash": client("display_name", "Kubernetes — kernel (read-only) & more"),
+		"description":          client("description", "Deploys what gitops declares."),
+		"description at limit": client("description", strings.Repeat("x", policy.MaxDescription)),
+	}
+	for name, doc := range accepted {
+		t.Run("accepts "+name, func(t *testing.T) {
+			t.Parallel()
+
+			parsed, err := policy.Parse([]byte(doc))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+
+			if err = parsed.Validate(); err != nil {
+				t.Fatalf("Validate refused it: %v", err)
+			}
+		})
+	}
+
+	refusedText := map[string]string{
+		"name too long":        client("display_name", strings.Repeat("a", policy.MaxDisplayName+1)),
+		"description too long": client("description", strings.Repeat("a", policy.MaxDescription+1)),
+		"blank name":           client("display_name", "   "),
+		"newline in name":      client("display_name", "Argo\nCD"),
+		"tab in description":   client("description", "one\ttwo"),
+		"bell":                 client("display_name", "Argo\aCD"),
+		"escape":               client("description", "\x1b[31mred"),
+		"bidi override":        client("display_name", "Argo\u202eDC"),
+		"zero-width joiner":    client("display_name", "Argo\u200dCD"),
+		"line separator":       client("description", "one\u2028two"),
+	}
+	for name, doc := range refusedText {
+		t.Run("refuses "+name, func(t *testing.T) {
+			t.Parallel()
+
+			// Parsed first, so a document YAML itself rejects cannot pass
+			// for one the rule refused.
+			parsed, err := policy.Parse([]byte(doc))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+
+			err = parsed.Validate()
+			if err == nil {
+				t.Fatal("a client's display text was accepted")
+			}
+
+			if !strings.Contains(err.Error(), `client "console"`) {
+				t.Errorf("the refusal does not name the client: %v", err)
+			}
+		})
+	}
+}
+
+// Title is what the sign-in page calls a client: the declared name, a
+// cluster's client by its cluster, and anything else by its id.
+func TestClientTitle(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		id     string
+		client policy.Client
+		want   string
+	}{
+		{id: "argocd", client: policy.Client{DisplayName: "Argo CD"}, want: "Argo CD"},
+		{id: "argocd", want: "argocd"},
+		{id: "k8s:kernel", want: "Kubernetes — kernel"},
+		{id: "k8s:kernel", client: policy.Client{DisplayName: "Headlamp"}, want: "Headlamp"},
+		{id: "k8s:", want: "k8s:"},
+		{id: "aws:1111:power", want: "aws:1111:power"},
+	}
+
+	for _, c := range cases {
+		if got := c.client.Title(c.id); got != c.want {
+			t.Errorf("Title(%q) with %+v = %q, want %q", c.id, c.client, got, c.want)
+		}
+	}
+}
