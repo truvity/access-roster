@@ -1,4 +1,4 @@
-## Unreleased
+## v1.6.2
 
 - **The audit trail is kept in S3, never in Valkey.** `audit.s3.bucket`
   names the bucket; the service appends events as JSON-lines objects by
