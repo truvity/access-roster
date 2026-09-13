@@ -87,6 +87,8 @@ func run(args []string) error {
 		return whoami(args[1:])
 	case "exchange":
 		return exchange(args[1:])
+	case "token":
+		return token(args[1:])
 	case "kube-token":
 		return kubeToken(args[1:])
 	case "aws":
@@ -116,6 +118,7 @@ func usage(to *os.File) {
   kubeconfig    a context per cluster you are granted
   aws-config    a profile per cloud role you are granted
 
+  token         a token for one audience, on stdout (OpenBAO's login, scripts)
   kube-token    a Kubernetes exec credential      (run by kubectl)
   aws           an AWS credential process answer  (run by the AWS SDKs)
   exchange      the raw exchange: a token in, a token for an audience out

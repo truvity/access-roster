@@ -11,6 +11,43 @@ import (
 	"github.com/truvity/access-roster/tokens"
 )
 
+// token prints a token for one audience and nothing else, for a caller
+// that is neither kubectl nor an AWS SDK: OpenBAO's JWT login reads it
+// from stdin (`accessctl token --audience openbao | bao write
+// auth/jwt-roster/login role=roster jwt=-`). Like kube-token and aws it
+// answers from the sign-in on a laptop and from the job's own token in
+// CI, so the same line serves both.
+//
+// The token goes to stdout only, never to an argument or a file.
+func token(args []string) error {
+	flags := flag.NewFlagSet("token", flag.ContinueOnError)
+	audience := flags.String("audience", "", "the client the token is for, e.g. openbao")
+	issuer := flags.String("issuer", "", "the issuer, when not configured")
+	clientID := flags.String("client", "", "the client to present")
+	if err := flags.Parse(args); err != nil {
+		return usageError{err}
+	}
+	if strings.TrimSpace(*audience) == "" {
+		return badUsage("--audience is required: a token for nothing in particular is what an audience prevents")
+	}
+
+	cfg, err := loadConfig(*issuer, *clientID)
+	if err != nil {
+		return err
+	}
+	held, err := proofFor(context.Background(), cfg, *audience)
+	if err != nil {
+		return err
+	}
+	issued, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, held.Type, *audience)
+	if err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintln(stdout, issued.AccessToken)
+	return nil
+}
+
 // kubeToken answers kubectl's exec plugin.
 //
 // kubectl runs this on every API call it has no cached credential for,

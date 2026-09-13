@@ -13,6 +13,10 @@
   who starts a sign-in, so keep them free of anything a stranger should
   not read. Deploy the issuer before adding them to a policy: an older
   issuer refuses the unknown keys.
+- **`accessctl token --audience <client>`** prints a token for one audience
+  and nothing else, for a caller that is neither kubectl nor an AWS SDK —
+  OpenBAO's JWT login reads it from stdin. Like `kube-token` and `aws` it
+  answers from the sign-in on a laptop and from the job's own token in CI.
 
 ## v1.5.6
 

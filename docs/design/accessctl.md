@@ -24,6 +24,7 @@ a login cache and an issuer configuration.
 | `kube-token` | a Kubernetes exec credential for one cluster audience; refreshes silently from the cached login | people |
 | `aws-config` | writes a profile per granted cloud role with `credential_process = accessctl aws --audience aws:<account>:<role>` | people |
 | `aws` | exchanges the cached login for the role's audience and answers the credential-process JSON | people |
+| `token` | prints a token for one audience on stdout and nothing else, for a caller that is neither kubectl nor an AWS SDK: `accessctl token --audience openbao \| bao write -field=token auth/jwt-roster/login role=roster jwt=-`. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
 | `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
