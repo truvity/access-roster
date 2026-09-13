@@ -1,5 +1,16 @@
 ## Unreleased
 
+- **The GitHub page is tabs.** *Overview* says what needs attention next,
+  with a card per organisation and the people who have not linked, and a
+  button to copy their addresses. *Organisations* opens each
+  organisation — what enabling it would do in one sentence, removals
+  first, its teams each with a page — and *Apps* holds the link App and
+  every organisation's App. Rows read **OK**, **waiting for them** or
+  **needs you**, with the controller's exact state in the tooltip.
+- **A person's page shows them on GitHub**: the linked account, their
+  teams and what comes next, and on your own page a button to link your
+  account. A group's page lists the GitHub teams it feeds.
+
 - **The TypeScript package is published to GitHub Packages** at each
   release tag's version, built and tested by the release workflow.
   Install `@truvity/access-roster` with the `@truvity` scope pointed at
