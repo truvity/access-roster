@@ -47,6 +47,13 @@ type StatusWriter interface {
 	Replace(ctx context.Context, documents map[string]string) error
 }
 
+// StatusReader is a status store that can give back what the last pass
+// wrote. With one, a restarted controller knows which held and reported
+// rows it recorded already, and does not record them all again.
+type StatusReader interface {
+	Reports(ctx context.Context) (map[string]string, error)
+}
+
 // Config is what a deployment decides.
 type Config struct {
 	// Interval is how long between passes.
@@ -400,8 +407,19 @@ func (c *Controller) act(ctx context.Context, client githubapp.Org, token string
 }
 
 // recordNewlyHeld records each action that is held now and was not last
-// pass — once, rather than every pass for as long as it stays held.
+// pass — once, rather than every pass for as long as it stays held, and
+// not again after a restart: the first pass takes "last pass" from the
+// report the previous process wrote.
 func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report status.Org) {
+	c.mu.Lock()
+	_, known := c.held[org]
+	c.mu.Unlock()
+	if !known {
+		last := c.lastHeld(ctx, org)
+		c.mu.Lock()
+		c.held[org] = last
+		c.mu.Unlock()
+	}
 	now := map[string]bool{}
 	var events []*directoryrosterv1.AuditEvent
 	each(report, func(team string, m status.Member) {
@@ -415,7 +433,7 @@ func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report sta
 		default:
 			return
 		}
-		key := team + "|" + m.Email + "|" + m.Login + "|" + string(m.Action) + "|" + string(m.State)
+		key := heldKey(team, m)
 		now[key] = true
 		c.mu.Lock()
 		was := c.held[org][key]
@@ -432,6 +450,41 @@ func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report sta
 	c.held[org] = now
 	c.mu.Unlock()
 	c.report(ctx, events)
+}
+
+// heldKey names one held or reported row across passes.
+func heldKey(team string, m status.Member) string {
+	return team + "|" + m.Email + "|" + m.Login + "|" + string(m.Action) + "|" + string(m.State)
+}
+
+// lastHeld is the held and reported rows of the report the previous pass
+// wrote, or nothing when there is none to read — which records them again,
+// the safe way to be wrong.
+func (c *Controller) lastHeld(ctx context.Context, org string) map[string]bool {
+	out := map[string]bool{}
+	reader, ok := c.deps.Status.(StatusReader)
+	if !ok {
+		return out
+	}
+	documents, err := reader.Reports(ctx)
+	if err != nil {
+		c.deps.Log.WarnContext(ctx, "the last report could not be read; held and reported rows are recorded again", "org", org, "error", err)
+		return out
+	}
+	raw, ok := documents[status.Key(org)]
+	if !ok {
+		return out
+	}
+	last, err := status.Decode(raw)
+	if err != nil {
+		return out
+	}
+	each(last, func(team string, m status.Member) {
+		if m.State == status.StateHeld || m.State == status.StateReported {
+			out[heldKey(team, m)] = true
+		}
+	})
+	return out
 }
 
 // report sends events to the audit stream. Losing one is logged, never

@@ -79,6 +79,10 @@ type App struct {
 	log        *slog.Logger
 }
 
+// The cluster's status store reads back what it wrote, so a restarted
+// controller does not record every held and reported row again.
+var _ controller.StatusReader = (*kube.GitHubStatus)(nil)
+
 // New assembles the controller.
 func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	declared, err := policy.LoadDeclared(cfg.policyDir)

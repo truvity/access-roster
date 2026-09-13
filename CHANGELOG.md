@@ -1,3 +1,14 @@
+## Unreleased
+
+- **A restarted GitHub controller does not record every held and reported
+  row again.** Which rows it had recorded lived in the process, so each
+  restart wrote a fresh `github.owner.reported` for every owner in every
+  team — fourteen events on kernel — into a trail that is now durable. The
+  first pass after a start takes them from the report the previous
+  process wrote, so a restart is not news.
+- **The Audit page says where the trail is kept:** in S3, not a capped
+  stream whose durable copy was the log.
+
 ## v1.6.2
 
 - **The audit trail is kept in S3, never in Valkey.** `audit.s3.bucket`

@@ -55,7 +55,7 @@ export function AuditPage() {
   return (
     <Page
       title="Audit"
-      lede="What happened lately: sign-ins and refusals, token exchanges, revokes, connects and disconnects, and what a reporting component such as the GitHub controller did. Newest first. The stream is capped by count and age; every event is also a log line, and the log is the copy that lasts."
+      lede="What happened lately: sign-ins and refusals, token exchanges, revokes, connects and disconnects, and what a reporting component such as the GitHub controller did. Newest first. The trail is kept in S3: the durable record, retained under the bucket's own lock, and never in Valkey."
     >
       <Stack
         component="form"

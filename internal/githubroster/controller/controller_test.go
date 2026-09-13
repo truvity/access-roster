@@ -127,6 +127,12 @@ func (r *report) Replace(_ context.Context, documents map[string]string) error {
 	return nil
 }
 
+func (r *report) Reports(context.Context) (map[string]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return maps.Clone(r.documents), nil
+}
+
 func (r *report) org(t *testing.T, login string) status.Org {
 	t.Helper()
 	r.mu.Lock()
@@ -244,6 +250,8 @@ type rig struct {
 	run     func(enabled bool)
 	// newbie is the joiner's linked account.
 	newbie *githubfake.Account
+	// appsDir holds the Apps' credentials, for a second controller.
+	appsDir string
 }
 
 // link has somebody link an account through the fake, and keeps the link
@@ -294,6 +302,7 @@ func newRig(t *testing.T) *rig {
 		report: &report{},
 		links:  &links{byID: map[int64]link.Link{}},
 	}
+	r.appsDir = dir
 	r.newbie = github.AddAccount("newbie", "new@truvity.com", "newbie@example.org")
 	r.link(t, r.newbie, "new@truvity.com")
 	// One controller per setting, kept across passes: what it remembers
@@ -408,6 +417,24 @@ func TestAnOwnerWhoLeavesIsReportedAndRecordedOnce(t *testing.T) {
 	}
 	if reported != 1 {
 		t.Errorf("the owner was recorded %d times over two passes, want once: %v", reported, r.audit.kinds())
+	}
+
+	// A restarted controller reads the report the last one wrote, and does
+	// not record the owner again: the trail is durable, and a restart is
+	// not news.
+	restarted := controller.New(controller.Config{AppsDir: r.appsDir, Enabled: map[string]bool{"truvity": true}}, controller.Deps{
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: r.github.Client(),
+		Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings, Policy: testPolicy,
+	})
+	restarted.Pass(context.Background())
+	again := 0
+	for _, kind := range r.audit.kinds() {
+		if kind == "github.owner.reported boss@truvity.com ok" {
+			again++
+		}
+	}
+	if again != 1 {
+		t.Errorf("after a restart the owner was recorded %d times in all, want still once: %v", again, r.audit.kinds())
 	}
 }
 
