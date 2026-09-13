@@ -117,11 +117,12 @@ func TestAGitHubTokenBecomesAProof(t *testing.T) {
 
 	fake := newFakeGitHub(t)
 	token := fake.mint(t, map[string]any{
-		"repository":       "truvity/gitops",
-		"repository_owner": "truvity",
-		"ref":              "refs/heads/master",
-		"workflow":         "Release",
-		"environment":      "prod",
+		"repository":            "truvity/gitops",
+		"repository_owner":      "truvity",
+		"ref":                   "refs/heads/master",
+		"workflow":              "Release",
+		"environment":           "prod",
+		"repository_visibility": "private",
 	}, nil)
 
 	proof, err := githubVerifier(fake).Verify(context.Background(), token, verify.TypeJWT)
@@ -139,6 +140,7 @@ func TestAGitHubTokenBecomesAProof(t *testing.T) {
 		"ref":         {proof.GitHub.Ref, "refs/heads/master"},
 		"workflow":    {proof.GitHub.Workflow, "Release"},
 		"environment": {proof.GitHub.Environment, "prod"},
+		"visibility":  {proof.GitHub.Visibility, "private"},
 	} {
 		if got.have != got.want {
 			t.Errorf("%s = %q, want %q", name, got.have, got.want)

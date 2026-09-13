@@ -31,6 +31,9 @@ type GitHubClaims struct {
 	Ref         string
 	Workflow    string
 	Environment string
+	// Visibility is the repository's visibility: public, private or
+	// internal.
+	Visibility string
 }
 
 // ServiceAccountRef is a verified Kubernetes ServiceAccount.

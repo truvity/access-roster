@@ -219,6 +219,7 @@ func proofFromRequest(msg *directoryrosterv1.ExplainRequest) access.Proof {
 			Ref:         g.GetRef(),
 			Workflow:    g.GetWorkflow(),
 			Environment: g.GetEnvironment(),
+			Visibility:  g.GetVisibility(),
 		}
 	}
 	if sa := msg.GetServiceAccount(); sa != nil {

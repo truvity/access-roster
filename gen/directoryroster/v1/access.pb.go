@@ -500,12 +500,14 @@ func (x *HeldGroup) GetVia() []string {
 // GitHubProof is a CI identity token's claims, as the simulator supplies
 // them: what a real job would present.
 type GitHubProof struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Repository    string                 `protobuf:"bytes,1,opt,name=repository,proto3" json:"repository,omitempty"`
-	Owner         string                 `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
-	Ref           string                 `protobuf:"bytes,3,opt,name=ref,proto3" json:"ref,omitempty"`
-	Workflow      string                 `protobuf:"bytes,4,opt,name=workflow,proto3" json:"workflow,omitempty"`
-	Environment   string                 `protobuf:"bytes,5,opt,name=environment,proto3" json:"environment,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Repository  string                 `protobuf:"bytes,1,opt,name=repository,proto3" json:"repository,omitempty"`
+	Owner       string                 `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
+	Ref         string                 `protobuf:"bytes,3,opt,name=ref,proto3" json:"ref,omitempty"`
+	Workflow    string                 `protobuf:"bytes,4,opt,name=workflow,proto3" json:"workflow,omitempty"`
+	Environment string                 `protobuf:"bytes,5,opt,name=environment,proto3" json:"environment,omitempty"`
+	// the repository's visibility: public, private or internal.
+	Visibility    string `protobuf:"bytes,6,opt,name=visibility,proto3" json:"visibility,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -571,6 +573,13 @@ func (x *GitHubProof) GetWorkflow() string {
 func (x *GitHubProof) GetEnvironment() string {
 	if x != nil {
 		return x.Environment
+	}
+	return ""
+}
+
+func (x *GitHubProof) GetVisibility() string {
+	if x != nil {
+		return x.Visibility
 	}
 	return ""
 }
@@ -2394,7 +2403,7 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\"3\n" +
 	"\tHeldGroup\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12\x10\n" +
-	"\x03via\x18\x02 \x03(\tR\x03via\"\x93\x01\n" +
+	"\x03via\x18\x02 \x03(\tR\x03via\"\xb3\x01\n" +
 	"\vGitHubProof\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x01 \x01(\tR\n" +
@@ -2402,7 +2411,10 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\x05owner\x18\x02 \x01(\tR\x05owner\x12\x10\n" +
 	"\x03ref\x18\x03 \x01(\tR\x03ref\x12\x1a\n" +
 	"\bworkflow\x18\x04 \x01(\tR\bworkflow\x12 \n" +
-	"\venvironment\x18\x05 \x01(\tR\venvironment\"G\n" +
+	"\venvironment\x18\x05 \x01(\tR\venvironment\x12\x1e\n" +
+	"\n" +
+	"visibility\x18\x06 \x01(\tR\n" +
+	"visibility\"G\n" +
 	"\x13ServiceAccountProof\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"\xb1\x01\n" +

@@ -295,7 +295,15 @@ type GitHubMatcher struct {
 	Ref         string `yaml:"ref,omitempty"`
 	Workflow    string `yaml:"workflow,omitempty"`
 	Environment string `yaml:"environment,omitempty"`
+	// Visibility is the repository's: public, private or internal, as
+	// GitHub states it in the token. `{owner: org, visibility: private}`
+	// is every private repository of an organisation — which a fork's run
+	// is not, because a fork is another repository.
+	Visibility string `yaml:"visibility,omitempty"`
 }
+
+// visibilities are the values GitHub's repository_visibility claim takes.
+var visibilities = map[string]bool{"public": true, "private": true, "internal": true}
 
 // ServiceAccountMatcher matches a Kubernetes ServiceAccount.
 type ServiceAccountMatcher struct {
@@ -416,7 +424,7 @@ func (m Matcher) Describe() string {
 		var parts []string
 		for label, value := range map[string]string{
 			"repository": m.GitHub.Repository, "owner": m.GitHub.Owner, "ref": m.GitHub.Ref,
-			"workflow": m.GitHub.Workflow, "environment": m.GitHub.Environment,
+			"workflow": m.GitHub.Workflow, "environment": m.GitHub.Environment, "visibility": m.GitHub.Visibility,
 		} {
 			if value != "" {
 				parts = append(parts, label+" "+value)
@@ -482,7 +490,8 @@ func (m Matcher) matches(in Input) bool {
 			globs(m.GitHub.Owner, in.GitHub.Owner) &&
 			globs(m.GitHub.Ref, in.GitHub.Ref) &&
 			globs(m.GitHub.Workflow, in.GitHub.Workflow) &&
-			globs(m.GitHub.Environment, in.GitHub.Environment)
+			globs(m.GitHub.Environment, in.GitHub.Environment) &&
+			(m.GitHub.Visibility == "" || m.GitHub.Visibility == in.GitHub.Visibility)
 	case m.ServiceAccount != nil:
 		if in.ServiceAccount == nil {
 			return false
@@ -624,6 +633,9 @@ func (g Group) validate(name string) error {
 		}
 		if gh := g.Matchers[i].GitHub; gh != nil && *gh == (GitHubMatcher{}) {
 			return fmt.Errorf("group %q: matcher %d matches every CI job", name, i)
+		}
+		if gh := g.Matchers[i].GitHub; gh != nil && gh.Visibility != "" && !visibilities[gh.Visibility] {
+			return fmt.Errorf("group %q: matcher %d: visibility %q is not public, private or internal", name, i, gh.Visibility)
 		}
 		if sa := g.Matchers[i].ServiceAccount; sa != nil && (sa.Namespace == "" || sa.Name == "") {
 			return fmt.Errorf("group %q: matcher %d needs a namespace and a name", name, i)

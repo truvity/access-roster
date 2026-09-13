@@ -128,7 +128,7 @@ point a person and a job are the same thing.
 | Proof | Becomes the groups… |
 |---|---|
 | a corporate sign-in | whose `members` contain a directory group the hub confirms the account is in, **authoritatively** |
-| a CI identity token | whose `matchers` the token's claims satisfy |
+| a CI identity token | whose `matchers` the token's claims satisfy: `repository`, `owner`, `ref`, `workflow` and `environment` as globs, and `visibility` (`public`, `private` or `internal`) exactly |
 | a Kubernetes ServiceAccount token | whose `matchers` name that namespace and ServiceAccount |
 
 `matchers` are conditions on a verified proof, so they also cover a

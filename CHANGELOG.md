@@ -1,5 +1,13 @@
 ## Unreleased
 
+- **A CI matcher can require a repository's visibility.** `github:
+  { owner: truvity, visibility: private }` admits every private repository
+  of an organisation and nothing else: not its public ones, and not a
+  fork, which is another repository. The issuer reads GitHub's
+  `repository_visibility` claim into the proof, `Explain` takes it in
+  `github.visibility`, and a value other than `public`, `private` or
+  `internal` is refused when the policy loads. Deploy the issuer before
+  writing the key in a policy: an older one refuses it.
 - **Security: a policy rollout no longer removes people from GitHub teams.**
   The GitHub controller and the console load the policy when they start,
   and a rollout restarts them at different moments. For that window the

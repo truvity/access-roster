@@ -215,14 +215,15 @@ func TestRejectsBadPolicies(t *testing.T) {
 		// write. There is one place a group's members come from now
 		// (INF-694), so the key is not merely ignored — it is refused,
 		// the way any other unknown key is.
-		"memberships table": "version: 1\ngroups: { a: { members: [g@h.example] } }\nmemberships: { a: [x@y.example] }\n",
-		"client no kind":    "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { requires: [a] } }\n",
-		"client no group":   "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public, requires: [b] } }\n",
-		"client no require": "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public } }\n",
-		"confidential bare": "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: confidential, requires: [a] } }\n",
-		"two matchers":      "version: 1\ngroups: { a: { matchers: [{ email: a@b.c, email_domain: b.c }] } }\n",
-		"empty github":      "version: 1\ngroups: { a: { matchers: [{ github: {} }] } }\n",
-		"bad duration":      "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { default: soon }\n",
+		"memberships table":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nmemberships: { a: [x@y.example] }\n",
+		"client no kind":     "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { requires: [a] } }\n",
+		"client no group":    "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public, requires: [b] } }\n",
+		"client no require":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: public } }\n",
+		"confidential bare":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { kind: confidential, requires: [a] } }\n",
+		"two matchers":       "version: 1\ngroups: { a: { matchers: [{ email: a@b.c, email_domain: b.c }] } }\n",
+		"empty github":       "version: 1\ngroups: { a: { matchers: [{ github: {} }] } }\n",
+		"unknown visibility": "version: 1\ngroups: { a: { matchers: [{ github: { owner: org, visibility: Private } }] } }\n",
+		"bad duration":       "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { default: soon }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -649,5 +650,43 @@ func TestTheDigestNamesThePolicy(t *testing.T) {
 	}
 	if changed.Digest() == first.Digest() {
 		t.Errorf("a changed policy kept the digest %q", first.Digest())
+	}
+}
+
+// `{owner, visibility: private}` is every private repository of an
+// organisation: a public repository of the same owner, or a private one of
+// another, is not in it.
+func TestAVisibilityMatcherAdmitsOnlyThatVisibility(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+groups:
+  devel:ci-org:job:
+    matchers: [{ github: { owner: org, visibility: private } }]
+clients:
+  k8s:devel: { kind: exchange, requires: [devel:ci-org:job] }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := policy.NewSet(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		owner, visibility string
+		holds             bool
+	}{
+		{"org", "private", true},
+		{"org", "public", false},
+		{"org", "", false},
+		{"other", "private", false},
+	} {
+		got := s.Evaluate(policy.Input{GitHub: &policy.GitHubClaims{
+			Repository: c.owner + "/repo", Owner: c.owner, Visibility: c.visibility,
+		}})
+		if got.Has("devel:ci-org:job") != c.holds {
+			t.Errorf("%s/repo (%q): holds = %v, want %v", c.owner, c.visibility, got.Has("devel:ci-org:job"), c.holds)
+		}
 	}
 }

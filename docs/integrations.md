@@ -135,11 +135,15 @@ configure and where, what you get.
   directly.
 - **Flow:** the job requests its identity token → the action exchanges it
   at the issuer for each requested audience → matchers on repository,
-  ref and workflow decide → the job gets tokens for ⑥ and ⑦.
+  owner, ref, workflow, environment and visibility decide → the job gets
+  tokens for ⑥ and ⑦.
 - **You configure:** the organisations in the issuer's values; a machine
   group with the matcher, and the clients that require it; one step in
   the workflow.
-- **You get:** no stored secret anywhere; a fork branch gets nothing.
+- **You get:** no stored secret anywhere. A fork is another repository,
+  so a matcher on `repository` or on `owner` with `visibility: private`
+  never admits one; GitHub issues no identity token to a fork's pull
+  request run in the first place.
 - Guide: [connect/github-actions.md](connect/github-actions.md).
 
 ### ④ A workload proves itself → the issuer

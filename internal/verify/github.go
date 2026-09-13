@@ -118,6 +118,7 @@ func (g *GitHub) Verify(ctx context.Context, token, tokenType string) (issuer.Pr
 		Ref:         strings.TrimSpace(claims.Ref),
 		Workflow:    strings.TrimSpace(claims.Workflow),
 		Environment: strings.TrimSpace(claims.Environment),
+		Visibility:  strings.TrimSpace(claims.RepositoryVisibility),
 	}}, nil
 }
 
@@ -194,6 +195,8 @@ type githubClaims struct {
 	Ref             string `json:"ref,omitempty"`
 	Workflow        string `json:"workflow,omitempty"`
 	Environment     string `json:"environment,omitempty"`
+	// RepositoryVisibility is public, private or internal.
+	RepositoryVisibility string `json:"repository_visibility,omitempty"`
 }
 
 // hasAudience reports whether the token was minted for us.

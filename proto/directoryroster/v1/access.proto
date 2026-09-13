@@ -144,6 +144,8 @@ message GitHubProof {
   string ref = 3;
   string workflow = 4;
   string environment = 5;
+  // the repository's visibility: public, private or internal.
+  string visibility = 6;
 }
 
 // ServiceAccountProof is a Kubernetes workload.
