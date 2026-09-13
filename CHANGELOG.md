@@ -1,4 +1,4 @@
-## Unreleased
+## v1.6.5
 
 - **Audit events keep their request on a deployment, not only in tests.**
   The request's address, user agent and id were put into the context by a
