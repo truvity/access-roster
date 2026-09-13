@@ -568,9 +568,66 @@ refuses the sources only it records, so a reporter cannot forge a sign-in.
 This is ingestion by a component, not a person writing configuration: the
 console stays read-only for people.
 
+**Records speak the Elastic Common Schema** (decided 2026-09-13). Each
+event in the bucket is one ECS document — `event.action`,
+`event.category`, `event.outcome`, `user.name`, `client.address` and the
+rest — and each log line carries the same fields under the same dotted
+names, from one mapping in `internal/audit`, so whoever reads the bucket
+and whoever queries the logs share one vocabulary and neither needs a
+translation of ours. ECS rather than OCSF because OCSF's classes fit a
+sign-in and little else here: a token exchange or a workspace connect has
+no activity of its own there. If a SIEM ever wants OCSF, a shipper maps
+ECS to it and nothing in this service changes. What ECS has no field for
+stays under `access_roster.*`: the native outcome (`held`, and refused
+against failed, which `event.outcome` cannot say), the target, the
+attributes. Objects written by 1.6.2 hold that release's own event lines
+and stay readable beside them, because the bucket keeps objects longer
+than any release lives.
+
+An event caused by a request keeps three things of it: the client's
+address, its User-Agent, and the gateway's `X-Request-Id`, which is the
+key into the gateway's own access log. The server reads them once, at the
+outermost handler, and they travel in the request's context to wherever
+the event is recorded — including the token endpoint's storage, which an
+OpenID library calls with a context and nothing else. The address is the
+peer's unless the deployment says a gateway in front sets
+`X-Forwarded-For` (`audit.trustForwardedFor`): anybody can send that
+header, so the service never takes it on its own authority. A reporter
+supplies these fields itself, bounded like the rest of a report, and never
+gets its own connection's.
+
+**Where events are kept is a contract, not a type.** `AuditSinkService`
+(`WriteAuditEvents`, with `durable`, and `ListStoredAuditEvents`) is the
+line between what records and what writes: everything that records holds
+its generated client, and a writer implements its handler — the S3 writer,
+and the in-memory one used without a bucket and by every test that checks
+what was recorded. In one process they are joined by a client that calls
+the handler directly, with no network. The point is the next step, which
+is not taken here: a dedicated writer in a process of its own, or a bridge
+onto a queue such as NATS (INF-726), implements the same service and is
+reached through the generated client over HTTP, and nothing that records
+changes. No chart value or setting names a remote writer in this release,
+because none exists to name.
+
 Recording never fails what is being recorded. A sign-in that could not be
 written down still happened, and refusing it because the store was slow
-would turn an audit outage into an access outage.
+would turn an audit outage into an access outage. The writer queues,
+retries, and past 50 000 unwritten events drops the oldest with a warning;
+each of those is visible as a metric, and the runbook's
+[control](../operations/runbook.md#when-the-audit-trail-cannot-be-written)
+says what to watch.
+
+**The one exception is a recovery sign-in, which fails closed.** Its
+record is written durably — put in an object of its own, not queued —
+before the sign-in succeeds, at the issuer and at the console's own door
+alike, and when that write fails the sign-in is refused with a page saying
+the audit trail could not be written, and the refusal is recorded the
+ordinary way. Recovery is the way in that bypasses the directory, so a
+recovery that left no trace is the one gap an auditor most needs to be
+impossible. Refusing it costs little on the day it is needed: the write
+depends on S3 and the pod's own AWS identity, and on nothing this service
+runs, so the outage that makes recovery necessary is not one that stops
+its record.
 
 ## The issuer's own HTML
 
@@ -670,6 +727,10 @@ account, revocable by removing a binding and landed in the audit log.
 It grants nothing by itself. A recovered sign-in completes as the
 ServiceAccount *subject*, and only a `service_account` matcher in the
 policy puts that subject in a group.
+
+It is also the one thing the audit trail can refuse: a recovery sign-in
+is written durably before it completes, and refused when it cannot be
+(see [Audit](#audit)).
 
 ## Failure semantics
 

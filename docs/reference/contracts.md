@@ -294,8 +294,24 @@ What happened lately, in the whole installation. See
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `ListAuditEvents` | operator | `source?`, `kind?`, `subject?`, `target?`, `since?`, `limit?`, `cursor?` | `events[]{id, at, source, kind, actor, reporter, subject, target, outcome, reason, attributes}`, `cursor` | newest first. A narrow filter over a busy stream may return fewer than `limit` with a cursor: the read is bounded, and the cursor continues from where it stopped. Operator, because the stream names every sign-in. `failed_precondition` where there is no stream at all |
-| `RecordAuditEvents` | a **workload** in `all:access-roster:reporter` | `events[]` | `recorded` | a component reporting what it did. The service stamps `reporter` with the caller it verified and `at` with arrival, and refuses — whole, recording none of the batch — a reserved source (`issuer`, `directory`, `console`), a supplied `reporter`, an unknown outcome, or anything over the bounds (200 events, 512-byte fields, 20 attributes). A person holding the group is refused too |
+| `ListAuditEvents` | operator | `source?`, `kind?`, `subject?`, `target?`, `since?`, `limit?`, `cursor?` | `events[]{id, at, source, kind, actor, reporter, subject, target, outcome, reason, attributes, client_address, user_agent, request_id}`, `cursor` | newest first. The last three are what the event kept of the request that caused it — the client's address (the first `X-Forwarded-For` hop only where `audit.trustForwardedFor` is set), its User-Agent, the gateway's `X-Request-Id` — and are empty for background work and for events recorded before they were kept. A narrow filter over a busy stream may return fewer than `limit` with a cursor: the read is bounded, and the cursor continues from where it stopped. Operator, because the stream names every sign-in. `failed_precondition` where there is no stream at all |
+| `RecordAuditEvents` | a **workload** in `all:access-roster:reporter` | `events[]` | `recorded` | a component reporting what it did. The service stamps `reporter` with the caller it verified and `at` with arrival, and refuses — whole, recording none of the batch — a reserved source (`issuer`, `directory`, `console`), a supplied `reporter`, an unknown outcome, or anything over the bounds (200 events, 512-byte fields, 20 attributes, and `client_address` 64, `user_agent` 256, `request_id` 128 bytes). The three request fields are the reporter's own to supply — never taken from its connection — and are kept with line breaks removed. A person holding the group is refused too |
+
+## `directoryroster.v1.AuditSinkService`
+
+Where audit events are kept: the contract between what records them and
+what writes them down, not an API anybody calls. The service holds its
+client; a writer implements its handler — S3, or one replica's memory
+without a bucket — and in one process the two are joined without a
+network. A writer in another process (a dedicated writer, a bridge onto a
+queue) would implement the same service behind the generated client; this
+release serves it on no listener and names no remote writer. It authorises
+nobody: whoever serves a writer decides who may reach it.
+
+| RPC | Request | Response | Notes |
+|---|---|---|---|
+| `WriteAuditEvents` | `events[]`, `durable` | `written` | keeps events. With `durable` it answers only once they are persisted, and an error means they are not (the S3 writer puts them in an object of their own); without it, once they are accepted. An event's `id` and `at` are kept when set and assigned when not, so a log line written before the write names the record's id. `unavailable` when the writer cannot keep them |
+| `ListStoredAuditEvents` | `query` (a `ListAuditEventsRequest`) | `events[]`, `cursor` | newest first, filtered and paged as `ListAuditEvents` is, which answers with it. `invalid_argument` for a cursor that is not one |
 
 ## The whoami endpoint
 

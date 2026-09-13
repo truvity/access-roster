@@ -3,11 +3,45 @@
 - **A restarted GitHub controller does not record every held and reported
   row again.** Which rows it had recorded lived in the process, so each
   restart wrote a fresh `github.owner.reported` for every owner in every
-  team — fourteen events on kernel — into a trail that is now durable. The
-  first pass after a start takes them from the report the previous
-  process wrote, so a restart is not news.
+  team into a trail that is now durable. The first pass after a start
+  takes them from the report the previous process wrote, so a restart is
+  not news.
 - **The Audit page says where the trail is kept:** in S3, not a capped
   stream whose durable copy was the log.
+- **Audit records speak the Elastic Common Schema.** Each event kept in
+  S3 is one ECS document (`event.action`, `event.category`, `event.type`,
+  `event.outcome`, `user.name`, `user.target.name`, `observer.name`,
+  `service.target.name`, …), and each log line carries the same fields
+  under the same dotted names, with an `event.id` shared by the line and
+  the record. What ECS cannot say stays under `access_roster.*`: the
+  native outcome, the target and the attributes. The log line keeps
+  `audit=true`; `kind`, `source`, `actor` and the `attr.<name>` keys are
+  gone, so a log query naming them needs the new names. **Upgrade note:**
+  objects written by 1.6.2 are read as before, beside the new records.
+- **An audit event says where it came from.** `client_address`,
+  `user_agent` and `request_id` (the gateway's `X-Request-Id`) are kept
+  for every event a request caused, from sign-ins and console calls to
+  token exchanges, shown on the Audit page, and accepted from a reporter
+  within bounds. The address is the connection's peer unless
+  `audit.trustForwardedFor` is set, which only a deployment behind a
+  gateway that replaces `X-Forwarded-For` should do.
+- **Audit writing is a ConnectRPC contract.** `AuditSinkService`
+  (`WriteAuditEvents`, `ListStoredAuditEvents`) is what the service
+  records through and what a writer implements: the S3 writer and the
+  in-memory one, joined in process with no network. A writer in another
+  process can implement it later without anything that records changing;
+  none is configured in this release.
+- **A recovery sign-in is refused when its audit record cannot be
+  written.** It is the one event that fails closed: at the issuer and at
+  the console's door alike, the record is put in S3 before the sign-in
+  succeeds, and a failed put refuses it with a message naming the audit
+  trail, and records the refusal. Every other event still never waits on
+  S3. The runbook's *When the audit trail cannot be written* says what to
+  check.
+- **The audit writer publishes metrics:** `access_roster.audit.writes`
+  by outcome and durability, `access_roster.audit.dropped`, and
+  `access_roster.audit.queue`, over OTLP when `telemetry.otlpEndpoint` is
+  set. The runbook carries the alert rules for when a collector exists.
 
 ## v1.6.2
 

@@ -228,18 +228,61 @@ after the event. That bucket is the record: read it directly for anything
 older than the console pages through, or to hand an auditor an hour:
 
 ```sh
-aws s3 cp --recursive s3://<bucket>/events/2026/09/13/16/ - | jq -c .
+hour=s3://<bucket>/events/2026/09/13/16/
+for key in $(aws s3 ls "$hour" | awk '{print $4}'); do aws s3 cp "$hour$key" -; done > hour.jsonl
 ```
 
-S3 refusing a write never costs anybody a sign-in: the events stay queued
-in the replica, are listed from there, and are written when S3 answers
-(`the audit trail could not be written to S3` in the log says it is
-happening). Every event is also one log line with `"audit":true`, which is
+**Each line is an Elastic Common Schema document**, nested as ECS nests
+it; fields with no value are left out:
+
+```json
+{"@timestamp":"2026-09-13T16:58:01.123456789Z","access_roster":{"attributes":{"how":"google"},"outcome":"refused","target":"console"},"client":{"address":"203.0.113.7"},"ecs":{"version":"8.11.0"},"event":{"action":"sign-in.refused","category":["authentication"],"dataset":"access_roster.audit","id":"1789318681123456789-access-issuer-7d9f8c6b5-x2x4q-1","kind":"event","outcome":"failure","provider":"console","reason":"the directory says this account is not live","type":["denied"]},"http":{"request":{"id":"5f0c1a9e-6b1d-4c1e-9a0b-2d3e4f5a6b7c"}},"service":{"target":{"name":"console"}},"user":{"name":"ada@north.example","target":{"name":"ada@north.example"}},"user_agent":{"original":"Mozilla/5.0 (X11; Linux x86_64)"}}
+```
+
+`event.action` is the kind (`sign-in`, `token.exchanged`,
+`github.member.invite`…), `event.provider` the source, `user.name` who did
+it, `user.target.name` who it concerns, `observer.name` the verified
+reporter of a reported event, and `event.outcome` is `success`, `failure`
+or `unknown`. ECS cannot tell refused from failed, nor say `held`, so the
+native outcome is `access_roster.outcome`, beside `access_roster.target`
+and `access_roster.attributes`. `event.category` and `event.type` are
+ECS's own values, decided per kind in `internal/audit/ecs.go`.
+
+Objects written by 1.6.2 hold its own lines instead (`id`, `at`, `kind`,
+`actor`, … at the top level); the console reads both, and so can `jq`:
+
+```sh
+# recovery sign-ins in the hour, newest format only
+jq -c 'select(.event.action == "recovery.sign-in") | {at: ."@timestamp", who: .user.name, from: .client.address, outcome: .access_roster.outcome}' hour.jsonl
+# every event in either format, as one shape
+jq -c 'if .event then {id: .event.id, kind: .event.action, subject: .user.target.name, outcome: .access_roster.outcome}
+       else {id, kind, subject, outcome} end' hour.jsonl
+```
+
+**Every event is also one log line** with `"audit":true`, carrying the
+same fields under their dotted names, flat — `event.action`, `user.name`,
+`client.address`, and each attribute as `access_roster.attributes.<name>`
+— with the line's own `time` as the timestamp. `event.id` is the same id
+as the kept record's, so a line finds its record and back. The lines are
 all that remains of a queue a replica could not write before it stopped:
 
 ```sh
 kubectl -n access-issuer logs deploy/access-issuer --since=24h | jq 'select(.audit == true)'
+kubectl -n access-issuer logs deploy/access-issuer --since=24h \
+  | jq -c 'select(.audit == true and ."event.action" == "sign-in.refused") | {time, who: ."user.name", from: ."client.address", why: ."event.reason"}'
 ```
+
+In Loki, whose `json` stage turns dots into underscores, the trail is
+`{app="access-issuer"} | json | event_dataset="access_roster.audit"`.
+
+**Three fields say where an event came from**, for an event a request
+caused: `client.address`, `user_agent.original`, and `http.request.id` —
+the gateway's `X-Request-Id`, which finds the same request in the
+gateway's access log. The address is the connection's peer unless
+`audit.trustForwardedFor` is set, and then the first `X-Forwarded-For`
+hop. Set it only behind a gateway that replaces that header rather than
+appending to it: anybody can send it. Background work leaves all three
+empty, and a reporter supplies its own.
 
 Without a bucket the trail is one replica's memory, capped by
 `audit.maxEvents` and gone on restart — right for a laptop, and warned
@@ -250,3 +293,74 @@ its own ServiceAccount token. The policy has to put it in
 `all:access-roster:reporter` through a `service_account` matcher; nothing
 else — no person, no other workload — may report, and a report naming
 `issuer`, `directory` or `console` as its source is refused.
+
+### When the audit trail cannot be written
+
+**Nothing but a recovery sign-in waits for S3.** Every event is a log line
+first. An ordinary event is then queued in the replica that recorded it,
+listed from there, and written when S3 answers; the writer tries again
+every `audit.s3.flushInterval`. Past 50 000 unwritten events in one
+replica the oldest are dropped, and their log lines are then the only
+copy. A replica that stops while S3 refuses keeps nothing but those lines.
+This is fail-open by decision: an audit outage must not become an access
+outage.
+
+**A recovery sign-in fails closed.** Its record is put in S3 before the
+sign-in succeeds, and when the put fails the sign-in is refused — a page
+at the issuer, a 503 at the console's own door, both saying the audit
+trail could not be written — and the refusal is recorded the ordinary way,
+as `recovery.sign-in` with outcome `refused`. The proof was good; fix the
+write and recover again. That write depends on S3 and the pod's AWS
+identity only, so check those: the bucket, `s3:PutObject` under the
+prefix, the bucket key's `kms:GenerateDataKey`, and the pod's egress to
+S3. The one override is a reviewed deploy that empties `audit.s3.bucket`,
+which keeps the trail in memory, where a durable write cannot fail — and
+which is itself on the record, in the change that made it.
+
+**The signals**, in the log:
+
+| Line | Means |
+|---|---|
+| `the audit trail could not be written to S3; tried again next interval` (Warn) | a queued batch was refused; it is retried |
+| `an audit event was logged and not stored` (Warn) | the writer would not even accept an event, as a replica shutting down does; the log line is its only copy |
+| `the audit trail cannot be written and is full; the oldest unwritten events are dropped (their log lines remain)` (Warn) | events have been lost from the trail, with `dropped` counting them |
+| `an audit event was logged and could not be written durably` (Warn) and `recovery refused: the audit trail could not be written` (Error) | a recovery sign-in was refused |
+| `the audit trail could not be written before shutdown; those events are in the log only` (Error) | a replica stopped with events unwritten |
+
+and as metrics, pushed over OTLP when `telemetry.otlpEndpoint` is set:
+
+| Metric | Kind | Attributes |
+|---|---|---|
+| `access_roster.audit.writes` | counter: objects put | `outcome` (`ok`, `failed`), `durable` |
+| `access_roster.audit.dropped` | counter: events dropped unwritten | |
+| `access_roster.audit.queue` | gauge: events accepted and not yet written | |
+
+No collector is deployed for these yet. When one is, these are the rules,
+in Prometheus form (an OTLP counter arrives as `…_total`, dots as
+underscores):
+
+```yaml
+groups:
+  - name: access-roster-audit
+    rules:
+      - alert: AccessRosterAuditUnwritable
+        expr: sum(increase(access_roster_audit_writes_total{outcome="failed"}[10m])) > 0
+        for: 10m
+        annotations:
+          summary: the audit trail has not been written to S3 for 10 minutes; recovery sign-ins are refused
+      - alert: AccessRosterAuditDropping
+        expr: sum(increase(access_roster_audit_dropped_total[5m])) > 0
+        annotations:
+          summary: audit events were dropped unwritten; their log lines are the only copy
+      - alert: AccessRosterAuditQueueGrowing
+        expr: max(access_roster_audit_queue) > 5000
+        for: 15m
+        annotations:
+          summary: a replica holds thousands of audit events it has not written
+```
+
+and the same without metrics, over the log lines in Loki:
+
+```logql
+sum(count_over_time({app="access-issuer"} |= "the audit trail could not be written" [10m])) > 0
+```
