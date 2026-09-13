@@ -225,6 +225,8 @@ message GitHubOrganisation {
   GitHubBreaker breaker = 14;
   // the removal set an operator confirmed, while it holds.
   GitHubRemovalConfirmation removal_confirmation = 15;
+  // addresses and GitHub logins the policy says to leave alone here.
+  repeated string ignored = 16;
 }
 
 // GitHubSeats is what the organisation pays for.

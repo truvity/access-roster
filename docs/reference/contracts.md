@@ -257,7 +257,8 @@ carries `seats{known, total, filled, pending, free, short}`,
 `breaker{affected, members, fingerprint, confirmed}` when a pass would
 have removed more than half of it, `removal_confirmation{fingerprint,
 confirmed_by, confirmed_at}` while one holds, and
-`outside_collaborators[]`. A member's state adds `retrying`, `ignored`
+`outside_collaborators[]`, and `ignored[]`, the addresses and logins the
+policy says to leave alone. A member's state adds `retrying`, `ignored`
 and `reported`; a tick adds `retrying`.
 
 **The link flows** are at the origin root too. `GET

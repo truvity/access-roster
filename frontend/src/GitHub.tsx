@@ -390,6 +390,12 @@ function OrganisationPage({ org, operator, onDone, reload }: Props & { org: GitH
         ) : null}
       </Section>
 
+      {org.ignored.length ? (
+        <Section title="Ignored" hint="left alone here, whatever the groups say — declared in the policy, in git">
+          <Names items={org.ignored.map((entry) => (entry.includes("@") ? { label: entry, to: paths.person(entry), mono: true } : { label: entry, mono: true }))} />
+        </Section>
+      ) : null}
+
       {org.outsideCollaborators.length ? (
         <Section title="Outside collaborators" hint="access to repositories without membership: reported, never managed">
           <Names items={org.outsideCollaborators.map((account) => ({ label: account.login, mono: true }))} />

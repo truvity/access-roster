@@ -258,6 +258,9 @@ github:
     teams:
       team-platform:
         members: [all:platform:engineer]
+    ignore:                                 # left alone here, whatever the bindings say
+      - admin@partner.example               # an address in a bound group nobody can take out
+      - temp-owner                          # a GitHub login: a temporary owner, a break-glass seat
 ```
 
 **A team is a consumer of an internal group, exactly as a client's
@@ -280,6 +283,15 @@ An organisation's own `members` is for the people who belong in it
 **without** a team. Being in a bound team implies organisation
 membership, so this is not a list of everybody — it is what keeps
 somebody no team accounts for from being removed as unaccounted for.
+
+**`ignore` is for what nobody here controls.** An ignored address is never
+wanted in that organisation, whatever group it sits in: it is not invited,
+and it is not reported as waiting to link. An ignored login is never added,
+removed or changed, linked or not, owner or not. An account whose every
+linked address is ignored is left alone with them. Each entry is an address
+or a GitHub login; two files ignoring accounts in one organisation ignore
+both. Deleting the line brings the account back under the bindings, and
+`git log` says when.
 
 **Nothing here grants anything, and none of it appears in a token.** A
 controller reads this table and makes each organisation match; this

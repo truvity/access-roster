@@ -183,6 +183,7 @@ func connectionProto(record connection.Record) *directoryrosterv1.GitHubConnecti
 // binding is one organisation's side of the policy.
 type binding struct {
 	members []string
+	ignore  []string
 	teams   map[string]policy.TeamView
 }
 
@@ -202,6 +203,7 @@ func boundOrganisations(set *policy.Set) map[string]*binding {
 	}
 	for _, org := range set.GitHubOrgs() {
 		get(org.Org).members = org.Members
+		get(org.Org).ignore = org.Ignore
 	}
 	return out
 }
@@ -212,6 +214,7 @@ func organisationProto(org string, bound *binding, document string) *directoryro
 	out := &directoryrosterv1.GitHubOrganisation{Org: org, Bound: bound != nil}
 	if bound != nil {
 		out.MemberGroups = bound.members
+		out.Ignored = bound.ignore
 	}
 
 	var report status.Org

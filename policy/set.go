@@ -114,6 +114,8 @@ type TeamView struct {
 type OrgView struct {
 	Org     string
 	Members []string
+	// Ignore are the addresses and logins the controller leaves alone.
+	Ignore []string
 }
 
 // GitHubTeams returns every team binding, sorted by organisation then
@@ -150,11 +152,11 @@ func (s *Set) GitHubOrgs() []OrgView {
 	defer s.mu.RUnlock()
 	var out []OrgView
 	for _, org := range slices.Sorted(maps.Keys(s.declared.GitHub)) {
-		members := s.declared.GitHub[org].Members
-		if len(members) == 0 {
+		bound := s.declared.GitHub[org]
+		if len(bound.Members) == 0 && len(bound.Ignore) == 0 {
 			continue
 		}
-		out = append(out, OrgView{Org: org, Members: slices.Clone(members)})
+		out = append(out, OrgView{Org: org, Members: slices.Clone(bound.Members), Ignore: slices.Clone(bound.Ignore)})
 	}
 	return out
 }
@@ -305,6 +307,13 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 				return fmt.Errorf("%s: github organisation %s declares members twice", from, org)
 			}
 			into.Members = slices.Clone(incoming.Members)
+		}
+		// Ignoring is additive: two files leaving two accounts alone leave
+		// both alone, and neither can make the other's line mean less.
+		for _, entry := range incoming.Ignore {
+			if !slices.Contains(into.Ignore, entry) {
+				into.Ignore = append(into.Ignore, entry)
+			}
 		}
 		if into.Teams == nil && len(incoming.Teams) > 0 {
 			into.Teams = make(map[string]GitHubTeam, len(incoming.Teams))

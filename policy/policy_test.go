@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -468,5 +469,55 @@ func TestABindingThatWouldEmptyATeamIsRefused(t *testing.T) {
 		if _, err = policy.NewSet(declared); err == nil {
 			t.Errorf("%s was accepted", name)
 		}
+	}
+}
+
+// An ignore entry is an address or a GitHub login, and nothing else; two
+// files ignoring accounts in one organisation ignore both.
+func TestGitHubIgnoreIsAddressesOrLoginsAndMerges(t *testing.T) {
+	t.Parallel()
+	base := `
+version: 1
+groups:
+  all:platform:engineer: { members: [team-platform@truvity.com] }
+github:
+  truvity:
+    teams:
+      team-platform: { members: [all:platform:engineer] }
+    ignore: [%s]
+`
+	for entry, ok := range map[string]bool{
+		"admin@datagrid.solutions": true, "ekvtsareva": true, "trustform-adm": true,
+		"not a login": false, "-leading-hyphen": false, "nobody@": false,
+	} {
+		declared, err := policy.Parse([]byte(fmt.Sprintf(base, strconv.Quote(entry))))
+		if err == nil {
+			_, err = policy.NewSet(declared)
+		}
+		if (err == nil) != ok {
+			t.Errorf("ignore %q: err = %v, want accepted %v", entry, err, ok)
+		}
+	}
+
+	dir := t.TempDir()
+	for name, text := range map[string]string{
+		"01.yaml": fmt.Sprintf(base, `"ekvtsareva"`),
+		"02.yaml": "version: 1\ngithub: { truvity: { teams: { team-other: { members: [all:platform:engineer] } }, " +
+			"ignore: [admin@datagrid.solutions, ekvtsareva] } }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := policy.LoadDeclared(dir)
+	if err != nil {
+		t.Fatalf("LoadDeclared: %v", err)
+	}
+	if got := first.GitHub["truvity"].Ignore; len(got) != 2 {
+		t.Errorf("merged ignore = %v, want both entries once", got)
+	}
+	org := first.GitHub["truvity"]
+	if !org.IgnoredLogins()["ekvtsareva"] || !org.IgnoredAddresses()["admin@datagrid.solutions"] {
+		t.Error("the merged entries are not read back as a login and an address")
 	}
 }

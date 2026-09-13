@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"maps"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -203,6 +204,38 @@ type GitHubOrg struct {
 	// display name: the slug is what the API takes and what a rename
 	// leaves alone.
 	Teams map[string]GitHubTeam `yaml:"teams,omitempty"`
+	// Ignore are work addresses and GitHub logins the controller leaves
+	// alone in this organisation, whatever the bindings say: an address in
+	// a bound directory group that nobody can take out of it, a temporary
+	// owner. An ignored address is never wanted here; an ignored login is
+	// never added, removed or changed, linked or not. Removing the line
+	// brings them back under the bindings.
+	Ignore []string `yaml:"ignore,omitempty"`
+}
+
+// ignoredLogin is what GitHub allows in a login.
+var ignoredLogin = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9]){0,38}$`)
+
+// IgnoredAddresses are the ignored work addresses, lowercased.
+func (o GitHubOrg) IgnoredAddresses() map[string]bool {
+	out := map[string]bool{}
+	for _, entry := range o.Ignore {
+		if entry = strings.ToLower(strings.TrimSpace(entry)); strings.Contains(entry, "@") {
+			out[entry] = true
+		}
+	}
+	return out
+}
+
+// IgnoredLogins are the ignored GitHub logins, lowercased.
+func (o GitHubOrg) IgnoredLogins() map[string]bool {
+	out := map[string]bool{}
+	for _, entry := range o.Ignore {
+		if entry = strings.ToLower(strings.TrimSpace(entry)); entry != "" && !strings.Contains(entry, "@") {
+			out[entry] = true
+		}
+	}
+	return out
 }
 
 // GitHubTeam is one team's binding. GitHub has two team roles and both
@@ -508,6 +541,18 @@ func (p Policy) validateGitHubOrg(org string) error {
 	for _, group := range binding.Members {
 		if _, ok := p.Groups[group]; !ok {
 			return fmt.Errorf("github: %s members: %q is not a declared group", org, group)
+		}
+	}
+	for _, entry := range binding.Ignore {
+		entry = strings.TrimSpace(entry)
+		if strings.Contains(entry, "@") {
+			if _, ok := emailaddr.Domain(entry); !ok {
+				return fmt.Errorf("github: %s ignore: %q is not an address", org, entry)
+			}
+			continue
+		}
+		if !ignoredLogin.MatchString(entry) {
+			return fmt.Errorf("github: %s ignore: %q is neither an address nor a GitHub login", org, entry)
 		}
 	}
 	for _, team := range slices.Sorted(maps.Keys(binding.Teams)) {

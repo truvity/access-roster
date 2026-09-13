@@ -202,7 +202,10 @@ organisation. Each of those is said on the page and in the audit stream
 **Outside collaborators** are listed and never managed.
 
 **Never touched:** a member nobody linked (listed as *not linked*), a
-team no binding names, and anybody's owner status.
+team no binding names, anybody's owner status, and anything the
+organisation's `ignore` list names — an address in a bound group that
+nobody here can take out of it, a temporary owner. The organisation's page
+lists what is ignored.
 
 ## Linking accounts
 

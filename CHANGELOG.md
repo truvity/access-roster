@@ -1,3 +1,12 @@
+## Unreleased
+
+- **An organisation can ignore addresses and GitHub logins.** The policy's
+  `github.<org>.ignore` lists what the controller leaves alone whatever the
+  bindings say: an address in a bound directory group that nobody here can
+  take out of it, a temporary owner. An ignored address is never invited
+  and never reported as waiting; an ignored login is never added, removed
+  or changed. The organisation's page lists them.
+
 ## v1.5.3
 
 - **An owner is added to teams, and never removed from one or demoted.**

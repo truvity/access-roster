@@ -161,6 +161,24 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 		candidates: map[string]bool{},
 	}
 
+	ignoredAddress, ignoredLogin := binding.IgnoredAddresses(), binding.IgnoredLogins()
+	// kept filters an account's addresses down to the ones not ignored, and
+	// says whether the account is to be left alone: its login is ignored,
+	// or every address it had is.
+	kept := func(login string, emails []string) ([]string, bool) {
+		if ignoredLogin[strings.ToLower(login)] {
+			return nil, true
+		}
+		out := make([]string, 0, len(emails))
+		for _, email := range emails {
+			if !ignoredAddress[strings.ToLower(email)] {
+				out = append(out, email)
+			}
+		}
+		return out, len(emails) > 0 && len(out) == 0
+	}
+	skipped := map[string]bool{}
+
 	want := func(scope, email string, role status.Role) {
 		if d.desired[scope] == nil {
 			d.desired[scope] = map[string]status.Role{}
@@ -174,8 +192,8 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 	}
 	live := func(group string, each func(string)) {
 		for _, h := range holders[group] {
-			if h.Live {
-				each(strings.ToLower(strings.TrimSpace(h.Email)))
+			if email := strings.ToLower(strings.TrimSpace(h.Email)); h.Live && !ignoredAddress[email] {
+				each(email)
 			}
 		}
 	}
@@ -198,13 +216,22 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 	}
 	members := map[int64]bool{}
 	for _, member := range state.Members {
-		d.owner[member.Login] = member.Owner
 		members[member.ID] = true
 		emails := slices.Clone(member.Emails)
 		l, linked := links[member.ID]
-		if linked && !l.Lost {
+		if linked {
 			emails = append(emails, l.Emails...)
 		}
+		// Left alone: not in the report, not a candidate for anything.
+		if rest, alone := kept(member.Login, emails); alone {
+			skipped[member.Login] = true
+			continue
+		} else if linked && !l.Lost {
+			emails = rest
+		} else {
+			emails, _ = kept(member.Login, member.Emails)
+		}
+		d.owner[member.Login] = member.Owner
 		if len(emails) == 0 {
 			if linked && l.Lost {
 				d.lost[member.Login] = l
@@ -238,7 +265,11 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 		if l.Lost || members[l.ID] {
 			continue
 		}
-		for _, email := range l.Emails {
+		emails, alone := kept(l.Login, l.Emails)
+		if alone {
+			continue
+		}
+		for _, email := range emails {
 			email = strings.ToLower(email)
 			if other, taken := d.outside[email]; taken && other.ID != l.ID {
 				d.ambiguous[email] = appendUnique(appendUnique(d.ambiguous[email], other.Login), l.Login)
@@ -261,6 +292,9 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 	for slug, members := range state.TeamMembers {
 		d.current[slug] = map[string]bool{}
 		for _, m := range members {
+			if skipped[m.Login] || ignoredLogin[strings.ToLower(m.Login)] {
+				continue
+			}
 			d.current[slug][m.Login] = m.Maintainer
 		}
 	}

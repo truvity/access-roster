@@ -554,3 +554,57 @@ func TestAnOwnerIsAddedAndPromotedButNeverRemovedOrDemoted(t *testing.T) {
 		t.Errorf("actions = %v, want boss added", actions(did))
 	}
 }
+
+// An ignored address is never wanted, whatever group it is in; an ignored
+// login is never touched, linked or not, owner or not; and an account
+// whose every address is ignored is left alone with it.
+func TestIgnoredAddressesAndLoginsAreLeftAlone(t *testing.T) {
+	t.Parallel()
+	ignoring := policy.GitHubOrg{
+		Members: binding.Members,
+		Teams:   binding.Teams,
+		Ignore:  []string{"Admin@Partner.example", "temp-owner"},
+	}
+	holders := reconcile.Holders{
+		"all:truvity:employee":  live("admin@partner.example", "temp@truvity.com", "ada@truvity.com", "mailbox@truvity.com"),
+		"all:platform:engineer": live("admin@partner.example", "ada@truvity.com"),
+	}
+	state := reconcile.State{
+		Members: []githubapp.Member{
+			{ID: 1, Login: "ada", Emails: []string{"ada@truvity.com"}},
+			// An owner with an ignored login, in a team nothing wants it in.
+			{ID: 2, Login: "temp-owner", Owner: true},
+			// A member whose only linked address is ignored.
+			{ID: 3, Login: "partner-admin"},
+		},
+		Teams: []githubapp.Team{{ID: 7, Slug: "team-platform"}},
+		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {
+			{Login: "ada"}, {Login: "temp-owner", Maintainer: true}, {Login: "partner-admin"},
+		}},
+		Links: []reconcile.Link{
+			{ID: 3, Login: "partner-admin", Emails: []string{"admin@partner.example"}},
+			{ID: 2, Login: "temp-owner", Emails: []string{"temp@truvity.com"}},
+		},
+	}
+	report, did := reconcile.Derive("truvity", ignoring, holders, state).Decide(nil)
+
+	if len(did) != 0 {
+		t.Errorf("actions = %v, want none: everything else is in sync or ignored", actions(did))
+	}
+	for _, m := range append(slices.Clone(report.Members), report.Teams[0].Members...) {
+		switch {
+		case m.Email == "admin@partner.example":
+			t.Errorf("an ignored address has a row: %+v", m)
+		case m.Login == "temp-owner" || m.Login == "partner-admin":
+			t.Errorf("an ignored account has a row: %+v", m)
+		}
+	}
+	if m := findMember(t, report, "", "mailbox@truvity.com"); m.State != status.StateNotLinked {
+		t.Errorf("mailbox@ = %+v, want an address nobody ignored still waiting", m)
+	}
+	for _, account := range report.Unlinked {
+		if account.Login == "temp-owner" || account.Login == "partner-admin" {
+			t.Errorf("%s is listed as unlinked; an ignored account is not listed", account.Login)
+		}
+	}
+}

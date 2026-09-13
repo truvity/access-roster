@@ -1067,8 +1067,10 @@ type GitHubOrganisation struct {
 	Breaker *GitHubBreaker `protobuf:"bytes,14,opt,name=breaker,proto3" json:"breaker,omitempty"`
 	// the removal set an operator confirmed, while it holds.
 	RemovalConfirmation *GitHubRemovalConfirmation `protobuf:"bytes,15,opt,name=removal_confirmation,json=removalConfirmation,proto3" json:"removal_confirmation,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// addresses and GitHub logins the policy says to leave alone here.
+	Ignored       []string `protobuf:"bytes,16,rep,name=ignored,proto3" json:"ignored,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GitHubOrganisation) Reset() {
@@ -1202,6 +1204,13 @@ func (x *GitHubOrganisation) GetBreaker() *GitHubBreaker {
 func (x *GitHubOrganisation) GetRemovalConfirmation() *GitHubRemovalConfirmation {
 	if x != nil {
 		return x.RemovalConfirmation
+	}
+	return nil
+}
+
+func (x *GitHubOrganisation) GetIgnored() []string {
+	if x != nil {
+		return x.Ignored
 	}
 	return nil
 }
@@ -1908,7 +1917,7 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"changed_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tchangedAt\x12\x16\n" +
 	"\x06source\x18\t \x01(\tR\x06source\x12\x12\n" +
 	"\x04note\x18\n" +
-	" \x01(\tR\x04note\"\x99\x06\n" +
+	" \x01(\tR\x04note\"\xb3\x06\n" +
 	"\x12GitHubOrganisation\x12\x10\n" +
 	"\x03org\x18\x01 \x01(\tR\x03org\x12\x14\n" +
 	"\x05bound\x18\x02 \x01(\bR\x05bound\x12\x1a\n" +
@@ -1927,7 +1936,8 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\x15outside_collaborators\x18\f \x03(\v2!.directoryroster.v1.GitHubAccountR\x14outsideCollaborators\x125\n" +
 	"\x05seats\x18\r \x01(\v2\x1f.directoryroster.v1.GitHubSeatsR\x05seats\x12;\n" +
 	"\abreaker\x18\x0e \x01(\v2!.directoryroster.v1.GitHubBreakerR\abreaker\x12`\n" +
-	"\x14removal_confirmation\x18\x0f \x01(\v2-.directoryroster.v1.GitHubRemovalConfirmationR\x13removalConfirmation\"\x95\x01\n" +
+	"\x14removal_confirmation\x18\x0f \x01(\v2-.directoryroster.v1.GitHubRemovalConfirmationR\x13removalConfirmation\x12\x18\n" +
+	"\aignored\x18\x10 \x03(\tR\aignored\"\x95\x01\n" +
 	"\vGitHubSeats\x12\x14\n" +
 	"\x05known\x18\x01 \x01(\bR\x05known\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x16\n" +
