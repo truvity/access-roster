@@ -91,8 +91,8 @@ spec:
               value: {{ .Values.audit.s3.prefix | quote }}
             - name: AUDIT_S3_FLUSH_INTERVAL
               value: {{ .Values.audit.s3.flushInterval | quote }}
-            - name: AUDIT_TRUST_FORWARDED_FOR
-              value: {{ .Values.audit.trustForwardedFor | quote }}
+            - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
+              value: {{ .Values.audit.forwardedForTrustedHops | quote }}
 {{- with .Values.telemetry.otlpEndpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ . | quote }}

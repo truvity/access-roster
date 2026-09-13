@@ -1,3 +1,12 @@
+## Unreleased
+
+- **The client address is read from the right of `X-Forwarded-For`.**
+  `audit.trustForwardedFor` took the first entry, which a caller can
+  write, since an edge and a gateway append rather than replace. It is
+  replaced by `audit.forwardedForTrustedHops`: the number of the
+  deployment's own proxies that append, the client being the entry just
+  left of them. `0`, the default, still records the connection's peer.
+
 ## v1.6.3
 
 - **A restarted GitHub controller does not record every held and reported

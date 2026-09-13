@@ -103,12 +103,11 @@ type Config struct {
 	valkey            valkey.Config
 	auditEvents       int64
 	auditS3           s3audit.Config
-	// auditTrustForwardedFor takes an audit event's client address from
-	// X-Forwarded-For, which only a deployment behind a gateway that sets
-	// it may do.
-	auditTrustForwardedFor bool
-	holdWindow             time.Duration
-	logLevel               slog.Level
+	// auditForwardedForTrustedHops is how many of the deployment's own
+	// proxies append to X-Forwarded-For; zero records the peer.
+	auditForwardedForTrustedHops int
+	holdWindow                   time.Duration
+	logLevel                     slog.Level
 }
 
 // Load reads the configuration from the environment.
@@ -140,7 +139,10 @@ func Load() (Config, error) {
 		oauthSecretKey:    envString("OAUTH_CLIENT_SECRET_KEY", ""),
 	}
 	c.auditEvents = int64(envInt("AUDIT_MAX_EVENTS", audit.DefaultMemoryEvents))
-	c.auditTrustForwardedFor = envBool("AUDIT_TRUST_FORWARDED_FOR", false)
+	c.auditForwardedForTrustedHops = envInt("AUDIT_FORWARDED_FOR_TRUSTED_HOPS", 0)
+	if c.auditForwardedForTrustedHops < 0 {
+		c.auditForwardedForTrustedHops = 0
+	}
 	c.auditS3 = s3audit.Config{
 		Bucket: envString("AUDIT_S3_BUCKET", ""),
 		Region: envString("AUDIT_S3_REGION", ""),
@@ -485,7 +487,7 @@ func (a *App) Audit() audit.Recorder { return a.audit }
 // it, so a token exchange records where it came from as a console call
 // does.
 func (a *App) AuditRequests(next http.Handler) http.Handler {
-	return server.AuditRequests(a.cfg.auditTrustForwardedFor, next)
+	return server.AuditRequests(a.cfg.auditForwardedForTrustedHops, next)
 }
 
 // APIHandler is the DirectoryService listener, guarded.
@@ -701,10 +703,10 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// never see the prefix — the gateway strips it, and so does the
 		// merged process — but every link they hand a browser has to
 		// carry it.
-		Mount:             mountOf(cfg.publicURL),
-		TrustForwardedFor: cfg.auditTrustForwardedFor,
-		Log:               log,
-		UI:                frontend.FS(),
+		Mount:                   mountOf(cfg.publicURL),
+		ForwardedForTrustedHops: cfg.auditForwardedForTrustedHops,
+		Log:                     log,
+		UI:                      frontend.FS(),
 	})
 
 	apiMux := http.NewServeMux()

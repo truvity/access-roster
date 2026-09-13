@@ -374,11 +374,12 @@ githubRoster:
 # gets, as the pod's own AWS identity. Every event is also one log line
 # (`audit=true`) with the same ECS fields.
 audit:
-  # Take an event's client address from the first X-Forwarded-For hop
-  # instead of the connection's peer. Only behind a gateway that REPLACES
-  # that header: anybody can send it, and a gateway that appends to it
-  # passes the caller's own first hop on.
-  trustForwardedFor: false
+  # How many of the deployment's own proxies append to X-Forwarded-For in
+  # front of the service. The client is the entry just left of them, read
+  # from the right; the left end is whatever a caller sent. 0 records the
+  # connection's peer. Behind an edge that appends the client and a gateway
+  # that appends the edge's connector, it is 1.
+  forwardedForTrustedHops: 0
   s3:
     # The bucket. Empty keeps the trail in one replica's memory, which is
     # not a record: right for a laptop, and warned about anywhere else.

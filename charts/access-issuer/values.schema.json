@@ -360,9 +360,10 @@
           "minimum": 1,
           "description": "The in-memory trail's cap, used only without a bucket."
         },
-        "trustForwardedFor": {
-          "type": "boolean",
-          "description": "Take an event's client address from the first X-Forwarded-For hop. Only behind a gateway that replaces that header."
+        "forwardedForTrustedHops": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many of the deployment's own proxies append to X-Forwarded-For in front of the service; the client is the entry just left of them. 0 records the peer."
         }
       }
     },

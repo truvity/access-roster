@@ -15,32 +15,45 @@ import (
 	"github.com/truvity/access-roster/internal/audit/sinkrpc"
 )
 
-// The address an event keeps is the first X-Forwarded-For hop only where
-// the deployment says a gateway sets that header; anywhere else the header
-// is whatever the caller wrote, and the peer is the address.
-func TestTheClientAddressTrustsForwardedForOnlyWhenTold(t *testing.T) {
+// The address an event keeps is read from the right of X-Forwarded-For,
+// past the deployment's own proxies, and only when the deployment says how
+// many there are; anywhere else, and wherever the header cannot have come
+// through them, the peer is the address. A caller's own entries at the left
+// are never taken.
+func TestTheClientAddressIsReadFromTheRightPastTrustedHops(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, forwarded, peer string
-		trust                 bool
+		hops                  int
 		want                  string
 	}{
-		{"untrusted, header ignored", "198.51.100.1, 10.0.0.1", "192.0.2.10:5555", false, "192.0.2.10"},
-		{"trusted, first hop", "198.51.100.1, 10.0.0.1", "10.0.0.2:5555", true, "198.51.100.1"},
-		{"trusted, one hop with a port", "198.51.100.1:443", "10.0.0.2:5555", true, "198.51.100.1"},
-		{"trusted, IPv6", "[2001:db8::7]:443, 10.0.0.1", "10.0.0.2:5555", true, "2001:db8::7"},
-		{"trusted, no header", "", "10.0.0.2:5555", true, "10.0.0.2"},
-		{"trusted, not an address", "unknown", "10.0.0.2:5555", true, "10.0.0.2"},
-		{"trusted, a forged line", "198.51.100.1\nevent.outcome=success", "10.0.0.2:5555", true, "10.0.0.2"},
-		{"untrusted, IPv6 peer", "", "[2001:db8::9]:5555", false, "2001:db8::9"},
+		{"no hops, header ignored", "198.51.100.1, 10.0.0.1", "192.0.2.10:5555", 0, "192.0.2.10"},
+		{"one hop: the client the edge appended", "198.51.100.1, 10.0.0.1", "10.0.0.2:5555", 1, "198.51.100.1"},
+		{"one hop: a caller's own entry is passed over", "203.0.113.66, 198.51.100.1, 10.0.0.1", "10.0.0.2:5555", 1, "198.51.100.1"},
+		{"two hops", "203.0.113.66, 198.51.100.1, 10.0.0.9, 10.0.0.1", "10.0.0.2:5555", 2, "198.51.100.1"},
+		{"shorter than the hops: not through them", "10.0.0.1", "10.0.0.2:5555", 1, "10.0.0.2"},
+		{"IPv6 with a port", "[2001:db8::7]:443, 10.0.0.1", "10.0.0.2:5555", 1, "2001:db8::7"},
+		{"no header", "", "10.0.0.2:5555", 1, "10.0.0.2"},
+		{"not an address", "unknown, 10.0.0.1", "10.0.0.2:5555", 1, "10.0.0.2"},
+		{"a forged line", "198.51.100.1\nevent.outcome=success, 10.0.0.1", "10.0.0.2:5555", 1, "10.0.0.2"},
+		{"IPv6 peer", "", "[2001:db8::9]:5555", 0, "2001:db8::9"},
 	} {
 		header := http.Header{}
 		if tc.forwarded != "" {
 			header["X-Forwarded-For"] = []string{tc.forwarded}
 		}
-		if got := auditRequest(header, tc.peer, tc.trust).ClientAddress; got != tc.want {
+		if got := auditRequest(header, tc.peer, tc.hops).ClientAddress; got != tc.want {
 			t.Errorf("%s: client address = %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// Two X-Forwarded-For headers are one list, in order.
+func TestForwardedForHeadersAreOneList(t *testing.T) {
+	t.Parallel()
+	header := http.Header{"X-Forwarded-For": []string{"203.0.113.66, 198.51.100.1", "10.0.0.1"}}
+	if got := auditRequest(header, "10.0.0.2:1", 1).ClientAddress; got != "198.51.100.1" {
+		t.Errorf("client address = %q, want the entry just left of the one trusted hop", got)
 	}
 }
 
@@ -52,7 +65,7 @@ func TestRequestHeadersAreSanitisedAndBounded(t *testing.T) {
 		"User-Agent":   []string{"curl/8.0\r\n{\"audit\":true,\"event.action\":\"sign-in\"}" + strings.Repeat("a", 400)},
 		"X-Request-Id": []string{"abc\ndef" + strings.Repeat("0", 200)},
 	}
-	got := auditRequest(header, "192.0.2.1:1", false)
+	got := auditRequest(header, "192.0.2.1:1", 0)
 	for name, value := range map[string]string{"user agent": got.UserAgent, "request id": got.RequestID} {
 		if strings.ContainsAny(value, "\r\n") {
 			t.Errorf("the %s kept a line break: %q", name, value)
@@ -80,7 +93,7 @@ func (oneRecovery) Verify(_ context.Context, proof string) (string, error) {
 }
 
 // recoveryServer is a console with recovery, recording into writer.
-func recoveryServer(t *testing.T, writer *audit.MemoryWriter, trustForwardedFor bool) http.Handler {
+func recoveryServer(t *testing.T, writer *audit.MemoryWriter, trustedHops int) http.Handler {
 	t.Helper()
 	sink := sinkrpc.InProcess(writer)
 	console := githubConsole(t, nil)
@@ -92,7 +105,7 @@ func recoveryServer(t *testing.T, writer *audit.MemoryWriter, trustForwardedFor 
 	}
 	return NewConsoleServer(ConsoleServerDeps{
 		Console: console, Authorizer: console.deps.Authorizer, Sessions: sessions, Recovery: oneRecovery{},
-		TrustForwardedFor: trustForwardedFor, Log: slog.New(slog.DiscardHandler),
+		ForwardedForTrustedHops: trustedHops, Log: slog.New(slog.DiscardHandler),
 	}).Handler()
 }
 
@@ -115,7 +128,7 @@ func recoverThroughConsole(handler http.Handler) *httptest.ResponseRecorder {
 func TestARecoverySignInIsRefusedWithoutItsRecord(t *testing.T) {
 	t.Parallel()
 	writer := audit.NewMemoryWriter(100)
-	handler := recoveryServer(t, writer, true)
+	handler := recoveryServer(t, writer, 1)
 
 	writer.FailDurableWrites(errors.New("S3 refused the put"))
 	refused := recoverThroughConsole(handler)
@@ -151,12 +164,12 @@ func TestARecoverySignInIsRefusedWithoutItsRecord(t *testing.T) {
 	}
 }
 
-// Without the deployment's word that a gateway sets X-Forwarded-For, the
-// same request records its peer.
+// Without the deployment's count of its own proxies, the same request
+// records its peer.
 func TestAnUntrustedDeploymentRecordsThePeer(t *testing.T) {
 	t.Parallel()
 	writer := audit.NewMemoryWriter(100)
-	if response := recoverThroughConsole(recoveryServer(t, writer, false)); response.Code >= http.StatusBadRequest {
+	if response := recoverThroughConsole(recoveryServer(t, writer, 0)); response.Code >= http.StatusBadRequest {
 		t.Fatalf("recovery = %d %q", response.Code, response.Body.String())
 	}
 	if events := writer.Durable(); len(events) != 1 || events[0].ClientAddress != "10.0.0.2" {

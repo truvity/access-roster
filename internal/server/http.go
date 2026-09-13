@@ -78,8 +78,8 @@ type ConsoleServer struct {
 	// has to carry it, because the browser resolves them against the
 	// origin. See [ConsoleServerDeps.Mount].
 	mount string
-	// trustForwardedFor: see [ConsoleServerDeps.TrustForwardedFor].
-	trustForwardedFor bool
+	// forwardedForTrustedHops: see [ConsoleServerDeps.ForwardedForTrustedHops].
+	forwardedForTrustedHops int
 }
 
 // ConsoleServerDeps is what the console listener needs.
@@ -133,12 +133,12 @@ type ConsoleServerDeps struct {
 	// because a browser resolves "/login" against the origin and would
 	// land on the issuer's page instead of this one's.
 	Mount string
-	// TrustForwardedFor takes an audit event's client address from the
-	// first X-Forwarded-For hop rather than the peer. Only for a deployment
-	// whose gateway sets that header: anybody can send it, and a gateway
-	// that does not replace it passes on whatever the caller wrote.
-	TrustForwardedFor bool
-	Log               *slog.Logger
+	// ForwardedForTrustedHops is how many of the deployment's own proxies
+	// append to X-Forwarded-For in front of the service. Zero records the
+	// peer as an audit event's client address; otherwise the entry just
+	// left of those hops is the client.
+	ForwardedForTrustedHops int
+	Log                     *slog.Logger
 	// UI is the built console. Nil serves no UI, which is what a
 	// deployment that only wants the API does.
 	UI fs.FS
@@ -167,7 +167,7 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		signedIn:   deps.SignedIn,
 		entry:      deps.SignInEntry,
 
-		trustForwardedFor: deps.TrustForwardedFor,
+		forwardedForTrustedHops: deps.ForwardedForTrustedHops,
 	}
 	for _, c := range deps.Connectors {
 		s.connectors[c.Kind()] = c
@@ -280,7 +280,7 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.HandleFunc("GET "+githubLinkCallbackPath, s.githubLinkCallback)
 	mux.HandleFunc("GET /.access/whoami", s.whoami)
 
-	return AuditRequests(s.trustForwardedFor, s.withIdentity(mux))
+	return AuditRequests(s.forwardedForTrustedHops, s.withIdentity(mux))
 }
 
 // at turns a path of this console's into one a browser can follow. Every

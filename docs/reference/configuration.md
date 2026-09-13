@@ -81,7 +81,7 @@ hub writes *itself*, where it is the producer and gets to choose.
 | `audit.s3.prefix` | `events/` | prepended to every key: `<prefix>YYYY/MM/DD/HH/<first event>-<pod>-<batch>.jsonl` |
 | `audit.s3.flushInterval` | `10s` | the longest an event waits in memory before it is written |
 | `audit.maxEvents` | `50000` | the in-memory trail's cap, used only without a bucket |
-| `audit.trustForwardedFor` | `false` | take an audit event's `client.address` from the first `X-Forwarded-For` hop instead of the connection's peer. **Only behind a gateway that replaces that header**: anybody can send it, and a gateway that appends to it passes the caller's own first hop on |
+| `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. An audit event's `client.address` is the entry just left of them, read from the right; the left end is whatever a caller sent, so the first entry is never taken. `0` records the connection's peer. Behind an edge that appends the client and a gateway that appends the edge's connector, it is `1` |
 | `logLevel` | `info` | debug, info, warn, error |
 
 **Two routes, and the second is not tidiness.** A gateway policy attaches
@@ -260,7 +260,7 @@ from the values above.
 | `SESSION_LIFETIME` | `directory.sessionLifetime` |
 | `LOGIN_DIRECTORY` | `directory.login` |
 | `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
-| `AUDIT_S3_BUCKET`, `AUDIT_S3_REGION`, `AUDIT_S3_PREFIX`, `AUDIT_S3_FLUSH_INTERVAL`, `AUDIT_MAX_EVENTS`, `AUDIT_TRUST_FORWARDED_FOR` | `audit.*` |
+| `AUDIT_S3_BUCKET`, `AUDIT_S3_REGION`, `AUDIT_S3_PREFIX`, `AUDIT_S3_FLUSH_INTERVAL`, `AUDIT_MAX_EVENTS`, `AUDIT_FORWARDED_FOR_TRUSTED_HOPS` | `audit.*` |
 | `POD_NAME` | the pod's name, from the downward API: names the replica in audit object keys |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty. Metrics are pushed over OTLP/HTTP; with nothing set, nothing is exported and no listener is opened. Every other `OTEL_*` variable OpenTelemetry defines is honoured too. Set on the GitHub controller as well |
 | `LOG_LEVEL` | `logLevel` |

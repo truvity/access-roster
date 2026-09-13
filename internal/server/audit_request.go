@@ -20,17 +20,16 @@ import (
 // merged service mounts the console, which does this for itself, inside
 // the issuer, which does it first.
 //
-// trustForwardedFor is whether the address comes from X-Forwarded-For. Only
-// a deployment that knows a gateway in front sets that header may say so:
-// anybody can send it, and without a gateway to replace it the first hop is
-// whatever the caller wrote.
-func AuditRequests(trustForwardedFor bool, next http.Handler) http.Handler {
+// trustedHops is how many proxies of the deployment's own append to
+// X-Forwarded-For in front of the service; zero takes the peer and ignores
+// the header. See [clientAddress].
+func AuditRequests(trustedHops int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := audit.RequestFrom(r.Context()); ok {
 			next.ServeHTTP(w, r)
 			return
 		}
-		request := auditRequest(r.Header, r.RemoteAddr, trustForwardedFor)
+		request := auditRequest(r.Header, r.RemoteAddr, trustedHops)
 		next.ServeHTTP(w, r.WithContext(audit.WithRequest(r.Context(), request)))
 	})
 }
@@ -38,22 +37,39 @@ func AuditRequests(trustForwardedFor bool, next http.Handler) http.Handler {
 // auditRequest is the one reading of a request for the audit trail. Every
 // value in it was chosen by whoever sent the request, so every value is
 // made safe for a log line and cut to its bound.
-func auditRequest(header http.Header, peer string, trustForwardedFor bool) audit.Request {
+func auditRequest(header http.Header, peer string, trustedHops int) audit.Request {
 	return audit.Request{
-		ClientAddress: clientAddress(header, peer, trustForwardedFor),
+		ClientAddress: clientAddress(header, peer, trustedHops),
 		UserAgent:     audit.Bounded(header.Get("User-Agent"), audit.MaxUserAgent),
 		RequestID:     audit.Bounded(header.Get("X-Request-Id"), audit.MaxRequestID),
 	}
 }
 
-// clientAddress is the first X-Forwarded-For hop when the deployment trusts
-// its gateway to have set it, and the peer's host otherwise — including
-// when the header holds no address at all, which a gateway does not write.
-func clientAddress(header http.Header, peer string, trustForwardedFor bool) string {
-	if trustForwardedFor {
-		first, _, _ := strings.Cut(header.Get("X-Forwarded-For"), ",")
-		if address, ok := addressOf(first); ok {
-			return address
+// clientAddress is the address of whoever reached the deployment's first
+// proxy, and the peer's host when that cannot be known.
+//
+// X-Forwarded-For is read from the right, because only the right end is
+// written by proxies the deployment trusts: each appends the address it
+// was reached from, and everything to the left of what they wrote is text
+// a caller may have sent. With trustedHops proxies of the deployment's own
+// appending — an edge that appends the client, then a gateway that appends
+// the edge's connector is one hop in front of the service — the client is
+// the entry just left of the last trustedHops. The first entry is never
+// trusted: a caller who sends the header owns it.
+//
+// A header shorter than that did not come through those proxies, and a
+// value that is not an address is not one a proxy wrote; both fall back to
+// the peer.
+func clientAddress(header http.Header, peer string, trustedHops int) string {
+	if trustedHops > 0 {
+		var hops []string
+		for _, value := range header.Values("X-Forwarded-For") {
+			hops = append(hops, strings.Split(value, ",")...)
+		}
+		if at := len(hops) - 1 - trustedHops; at >= 0 {
+			if address, ok := addressOf(hops[at]); ok {
+				return address
+			}
 		}
 	}
 	if address, ok := addressOf(peer); ok {

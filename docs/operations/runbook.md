@@ -279,9 +279,12 @@ In Loki, whose `json` stage turns dots into underscores, the trail is
 caused: `client.address`, `user_agent.original`, and `http.request.id` —
 the gateway's `X-Request-Id`, which finds the same request in the
 gateway's access log. The address is the connection's peer unless
-`audit.trustForwardedFor` is set, and then the first `X-Forwarded-For`
-hop. Set it only behind a gateway that replaces that header rather than
-appending to it: anybody can send it. Background work leaves all three
+`audit.forwardedForTrustedHops` is set, and then the `X-Forwarded-For`
+entry just left of that many of the deployment's own proxies, read from
+the right. Count the proxies that append: behind an edge that appends
+the client and a gateway that appends the edge's connector, it is 1. The
+gateway's access log shows the header as it arrives, which is how to
+count them. Background work leaves all three
 empty, and a reporter supplies its own.
 
 Without a bucket the trail is one replica's memory, capped by
@@ -313,9 +316,7 @@ as `recovery.sign-in` with outcome `refused`. The proof was good; fix the
 write and recover again. That write depends on S3 and the pod's AWS
 identity only, so check those: the bucket, `s3:PutObject` under the
 prefix, the bucket key's `kms:GenerateDataKey`, and the pod's egress to
-S3. The one override is a reviewed deploy that empties `audit.s3.bucket`,
-which keeps the trail in memory, where a durable write cannot fail — and
-which is itself on the record, in the change that made it.
+S3. A recovery sign-in waits for the trail: there is no override.
 
 **The signals**, in the log:
 

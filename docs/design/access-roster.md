@@ -590,9 +590,10 @@ key into the gateway's own access log. The server reads them once, at the
 outermost handler, and they travel in the request's context to wherever
 the event is recorded — including the token endpoint's storage, which an
 OpenID library calls with a context and nothing else. The address is the
-peer's unless the deployment says a gateway in front sets
-`X-Forwarded-For` (`audit.trustForwardedFor`): anybody can send that
-header, so the service never takes it on its own authority. A reporter
+peer's unless the deployment says how many of its own proxies append to
+`X-Forwarded-For` (`audit.forwardedForTrustedHops`); the header is then
+read from the right, because only the right end is written by those
+proxies and the left end is whatever a caller sent. A reporter
 supplies these fields itself, bounded like the rest of a report, and never
 gets its own connection's.
 
