@@ -1,4 +1,4 @@
-## Unreleased
+## v1.6.0
 
 - **The sign-in page names the application.** It said "the application
   that sent you here", which is true of every sign-in page, a phishing
