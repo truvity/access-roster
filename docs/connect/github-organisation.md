@@ -170,7 +170,7 @@ For each organisation the policy binds:
 6. **Act** where the organisation is in `actsIn`, and **report**: the
    GitHub page shows every person's state and what comes next, and each
    change, each newly held action and each owner the policy would change
-   is recorded in the audit stream.
+   is recorded in the audit trail.
 
 **A removal never rests on absence.** Before anybody is removed, the
 controller asks the console about that one address, and acts only on an
@@ -197,7 +197,7 @@ outside, and an organisation's break-glass seat must keep what it has. An
 owner is added to the teams the policy wants them in and promoted to
 maintainer where it wants that, like anybody; an owner is never removed
 from a team, never demoted in one, and never removed from the
-organisation. Each of those is said on the page and in the audit stream
+organisation. Each of those is said on the page and in the audit trail
 (`github.owner.reported`), once.
 **Outside collaborators** are listed and never managed.
 

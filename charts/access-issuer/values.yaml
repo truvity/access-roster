@@ -366,17 +366,25 @@ githubRoster:
   actsIn: []
   resources: {}
 
-# The audit stream: what happened lately — sign-ins, refusals, exchanges,
-# revokes, connects, and what a reporting component (the GitHub
-# controller) did. It lives in the Valkey above, or in memory without one.
-# Capped by count and by age, because it is the in-product view of the
-# last while: every event is also one log line (`audit=true`), and the
-# log is the durable copy.
+# The audit trail: sign-ins, refusals, exchanges, revokes, connects, and
+# what a reporting component (the GitHub controller) did. Kept in S3 — the
+# durable record, and what the console's Audit page reads — and never in
+# Valkey. The bucket should carry Object Lock and deny deletes; the
+# service only puts, lists and gets, as the pod's own AWS identity. Every
+# event is also one log line (`audit=true`).
 audit:
-  # the most events kept; the oldest go first.
+  s3:
+    # The bucket. Empty keeps the trail in one replica's memory, which is
+    # not a record: right for a laptop, and warned about anywhere else.
+    bucket: ""
+    # The bucket's region; empty takes the AWS SDK's own resolution.
+    region: ""
+    # Prepended to every key: <prefix>YYYY/MM/DD/HH/<batch>.jsonl
+    prefix: events/
+    # The longest an event waits in memory before it is written.
+    flushInterval: 10s
+  # The in-memory trail's cap, used only without a bucket.
   maxEvents: 50000
-  # the oldest an event may be.
-  maxAge: 720h
 
 # Metrics, pushed over OTLP by the service and the GitHub controller.
 # Empty publishes nothing: no listener is opened for them either way.

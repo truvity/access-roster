@@ -1,3 +1,19 @@
+## Unreleased
+
+- **The audit trail is kept in S3, never in Valkey.** `audit.s3.bucket`
+  names the bucket; the service appends events as JSON-lines objects by
+  the hour (`<prefix>YYYY/MM/DD/HH/…jsonl`), at most
+  `audit.s3.flushInterval` (10s) after each event, and the console's
+  Audit page and `ListAuditEvents` read them back, newest first. Recording
+  still never waits on the store: events queue in the replica, are listed
+  from there until written, and are written when S3 answers again. The
+  Valkey stream is gone, and with it `audit.maxAge`; a deployment that
+  sets no bucket keeps the trail in one replica's memory and says so at
+  start. **Upgrade note:** the stream held in Valkey is not carried over;
+  the pod's AWS identity needs `s3:PutObject`, `s3:GetObject` under the
+  prefix, `s3:ListBucket` on the bucket, and the bucket key's
+  `kms:GenerateDataKey`/`kms:Decrypt`. Put Object Lock on the bucket.
+
 ## v1.6.1
 
 - **A CI matcher can require a repository's visibility.** `github:

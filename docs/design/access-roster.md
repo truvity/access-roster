@@ -546,12 +546,18 @@ what it did, recorded with the identity it proved. The GitHub controller
 is the first such component: its status says what is true now, and its
 audit events say what it changed.
 
-The stream lives in the shared Valkey, capped by count and by age, and
-every event is also a log line. That split is the design: the log is the
-durable copy, shipped wherever logs go, and the stream is the console's
-view of the last while. It is not a SIEM and does not try to be; the
-cluster's audit log, each directory's and GitHub's organisation audit log
-stay the records of record.
+The trail lives in S3, and never in Valkey (decided 2026-09-13). It is
+the durable record and what the console reads: the service appends
+JSON-lines objects by the hour, under a bucket meant to carry Object Lock
+and deny deletes, and only ever puts, lists and gets. It was a capped
+stream in the shared Valkey, with log shipping named as the durable copy;
+on an installation that ships no logs that left no durable copy at all,
+and a Valkey restart took the history with it. Every event is still a log
+line. It is not a SIEM and does not try to be: what a token was then used
+for is the cluster's audit log's and CloudTrail's, and what changed in an
+organisation is GitHub's audit log; this trail holds what only this
+service knows — who signed in or was refused, who was issued what and
+why, recovery, and every change to the access system itself.
 
 **A component reports through this service, never into the store.** The
 store holds every session and refresh token, so a Valkey credential in a

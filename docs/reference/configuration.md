@@ -76,8 +76,11 @@ hub writes *itself*, where it is the producer and gets to choose.
 | `githubRoster.actsIn[]` | `[]` | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled |
 | `githubRoster.interval` | `15m` | how long between passes |
 | `githubRoster.image.repository` / `.tag` | `ghcr.io/truvity/access-roster/github-roster` / app version | from the same release as the service |
-| `audit.maxEvents` | `50000` | the most events the audit stream keeps; the oldest go first. In Valkey when `valkey.address` is set, one replica's memory otherwise |
-| `audit.maxAge` | `720h` | the oldest an event may be. The stream is the console's view of the last while: every event is also a log line (`audit=true`), and the log is the copy that lasts |
+| `audit.s3.bucket` | `""` | the S3 bucket the audit trail is kept in: the durable record, and what the console's Audit page reads. Never Valkey. Empty keeps it in one replica's memory, which is not a record. The pod's own AWS identity needs `s3:PutObject` and `s3:GetObject` under the prefix and `s3:ListBucket` on the bucket (plus the bucket key's `kms:GenerateDataKey`/`kms:Decrypt` when it is encrypted with one); the bucket should carry Object Lock and deny deletes |
+| `audit.s3.region` | `""` | the bucket's region; empty takes the AWS SDK's own resolution |
+| `audit.s3.prefix` | `events/` | prepended to every key: `<prefix>YYYY/MM/DD/HH/<first event>-<pod>-<batch>.jsonl` |
+| `audit.s3.flushInterval` | `10s` | the longest an event waits in memory before it is written |
+| `audit.maxEvents` | `50000` | the in-memory trail's cap, used only without a bucket |
 | `logLevel` | `info` | debug, info, warn, error |
 
 **Two routes, and the second is not tidiness.** A gateway policy attaches
@@ -256,7 +259,8 @@ from the values above.
 | `SESSION_LIFETIME` | `directory.sessionLifetime` |
 | `LOGIN_DIRECTORY` | `directory.login` |
 | `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
-| `AUDIT_MAX_EVENTS`, `AUDIT_MAX_AGE` | `audit.*` |
+| `AUDIT_S3_BUCKET`, `AUDIT_S3_REGION`, `AUDIT_S3_PREFIX`, `AUDIT_S3_FLUSH_INTERVAL`, `AUDIT_MAX_EVENTS` | `audit.*` |
+| `POD_NAME` | the pod's name, from the downward API: names the replica in audit object keys |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty. Metrics are pushed over OTLP/HTTP; with nothing set, nothing is exported and no listener is opened. Every other `OTEL_*` variable OpenTelemetry defines is honoured too. Set on the GitHub controller as well |
 | `LOG_LEVEL` | `logLevel` |
 

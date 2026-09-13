@@ -8,11 +8,11 @@
 // with the identity it proved. Status elsewhere says what is true now;
 // this says what changed and who caused it.
 //
-// It is NOT the record of record. Every event is also one structured log
-// line, and log shipping is the durable copy; the stream is capped by
-// count and by age, and is the in-product view of the last while. The
-// cluster's own audit log, each directory's, and GitHub's organisation
-// audit log stay what they are.
+// A deployment keeps it in S3 (internal/s3audit): the durable record, and
+// what the console reads. Every event is also one structured log line. The
+// cluster's own audit log, CloudTrail, each directory's and GitHub's
+// organisation audit log stay what they are, and are not duplicated here
+// beyond the events this service itself causes.
 //
 // Recording never fails the thing being recorded. A sign-in that could not
 // be written down still happened, and refusing it because the store was
@@ -216,8 +216,11 @@ type Nop struct{}
 // Record implements [Recorder].
 func (Nop) Record(context.Context, Event) {}
 
-// Memory is a capped store in this process: correct for one replica and
-// for tests, and what a deployment without Valkey keeps.
+// DefaultMemoryEvents caps the in-memory store.
+const DefaultMemoryEvents = 50000
+
+// Memory is a capped store in this process: correct for one replica, a
+// laptop and tests. It is not a record: a deployment keeps its trail in S3.
 type Memory struct {
 	mu     sync.Mutex
 	cap    int

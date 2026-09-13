@@ -48,6 +48,7 @@ import (
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/s3audit"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
 	"github.com/truvity/access-roster/internal/valkey"
@@ -99,7 +100,7 @@ type Config struct {
 	oauthSecretKey    string
 	valkey            valkey.Config
 	auditEvents       int64
-	auditAge          time.Duration
+	auditS3           s3audit.Config
 	holdWindow        time.Duration
 	logLevel          slog.Level
 }
@@ -132,7 +133,13 @@ func Load() (Config, error) {
 		oauthIDKey:        envString("OAUTH_CLIENT_ID_KEY", ""),
 		oauthSecretKey:    envString("OAUTH_CLIENT_SECRET_KEY", ""),
 	}
-	c.auditEvents = int64(envInt("AUDIT_MAX_EVENTS", valkey.DefaultAuditEvents))
+	c.auditEvents = int64(envInt("AUDIT_MAX_EVENTS", audit.DefaultMemoryEvents))
+	c.auditS3 = s3audit.Config{
+		Bucket: envString("AUDIT_S3_BUCKET", ""),
+		Region: envString("AUDIT_S3_REGION", ""),
+		Prefix: envString("AUDIT_S3_PREFIX", s3audit.DefaultPrefix),
+		Writer: envString("POD_NAME", ""),
+	}
 	c.valkey = valkey.Config{
 		Address:  envString("VALKEY_ADDRESS", ""),
 		Password: envString("VALKEY_PASSWORD", ""),
@@ -150,7 +157,7 @@ func Load() (Config, error) {
 	c.secureCookies = envBool("SECURE_COOKIES", strings.HasPrefix(c.publicRootURL, "https://"))
 
 	var err error
-	if c.auditAge, err = envDuration("AUDIT_MAX_AGE", valkey.DefaultAuditAge); err != nil {
+	if c.auditS3.FlushInterval, err = envDuration("AUDIT_S3_FLUSH_INTERVAL", s3audit.DefaultFlushInterval); err != nil {
 		return Config{}, err
 	}
 	if c.freshness.RefreshInterval, err = envDuration("REFRESH_INTERVAL", hub.DefaultRefreshInterval); err != nil {
@@ -217,22 +224,34 @@ func openSnapshots(ctx context.Context, cfg Config, log *slog.Logger) (hub.Snaps
 	return shared, func() { _ = shared.Close() }, nil
 }
 
-// openAudit builds the one audit stream of the whole service: in Valkey
-// when there is one, so every replica and both halves write one history,
-// and in memory otherwise, which is one replica's own.
+// openAudit builds the one audit trail of the whole service: in S3, the
+// durable record the console also reads, and never in Valkey (decided
+// 2026-09-13). Without a bucket it is kept in memory, which is one
+// replica's own and gone on restart: right for a laptop and for tests, and
+// said loudly anywhere else.
 func openAudit(ctx context.Context, cfg Config, log *slog.Logger) (audit.Store, func(), error) {
-	if cfg.valkey.Address == "" {
-		log.InfoContext(ctx, "keeping the audit stream in memory: one replica's own, and gone on restart; "+
-			"the log has every event", "audit", "memory")
+	if cfg.auditS3.Bucket == "" {
+		log.WarnContext(ctx, "keeping the audit trail in memory: one replica's own, gone on restart, and NOT a record; "+
+			"set audit.s3.bucket for a durable trail", "audit", "memory")
 		return audit.NewMemory(int(cfg.auditEvents)), func() {}, nil
 	}
-	stream, err := valkey.OpenAudit(ctx, cfg.valkey, cfg.auditEvents, cfg.auditAge)
+	trail, err := s3audit.Open(ctx, cfg.auditS3, log)
 	if err != nil {
 		return nil, nil, err
 	}
-	log.InfoContext(ctx, "keeping the audit stream in valkey", "audit", "valkey",
-		"maxEvents", cfg.auditEvents, "maxAge", cfg.auditAge)
-	return stream, func() { _ = stream.Close() }, nil
+	log.InfoContext(ctx, "keeping the audit trail in S3", "audit", "s3",
+		"bucket", cfg.auditS3.Bucket, "prefix", cfg.auditS3.Prefix, "flushInterval", cfg.auditS3.FlushInterval)
+	return trail, func() {
+		// What is queued is written before the process goes, within a
+		// bound: a shutdown that cannot reach S3 still ends, and every
+		// event it could not write is already a log line.
+		closing, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+		defer cancel()
+		if closeErr := trail.Close(closing); closeErr != nil {
+			log.ErrorContext(ctx, "the audit trail could not be written before shutdown; those events are in the log only",
+				"error", closeErr)
+		}
+	}, nil
 }
 
 // openRecovery builds the way in for the day the ordinary one is broken.

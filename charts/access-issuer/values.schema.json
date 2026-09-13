@@ -331,16 +331,34 @@
     "audit": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The audit stream: capped by count and by age. Every event is also a log line, which is the durable copy.",
+      "description": "The audit trail, kept in S3 and never in Valkey. Every event is also a log line.",
       "properties": {
+        "s3": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bucket": {
+              "type": "string",
+              "description": "The bucket. Empty keeps the trail in one replica's memory, which is not a record."
+            },
+            "region": {
+              "type": "string",
+              "description": "The bucket's region; empty takes the AWS SDK's own resolution."
+            },
+            "prefix": {
+              "type": "string",
+              "description": "Prepended to every key."
+            },
+            "flushInterval": {
+              "$ref": "#/definitions/duration",
+              "description": "The longest an event waits in memory before it is written."
+            }
+          }
+        },
         "maxEvents": {
           "type": "integer",
           "minimum": 1,
-          "description": "The most events kept; the oldest go first."
-        },
-        "maxAge": {
-          "$ref": "#/definitions/duration",
-          "description": "The oldest an event may be."
+          "description": "The in-memory trail's cap, used only without a bucket."
         }
       }
     },

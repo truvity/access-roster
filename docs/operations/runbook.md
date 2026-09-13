@@ -173,7 +173,7 @@ domains, counts, durations and errors.
    links` when the only thing left is people who have not linked — that
    is not in sync, and enabling changes nothing for them.
 3. Add the login to `githubRoster.actsIn` and roll out. The next pass
-   acts; its changes appear in the audit stream as `github.member.*`.
+   acts; its changes appear in the audit trail as `github.member.*`.
 4. To stop acting in it, remove the login again. Nothing is undone: the
    organisation is simply left as it is.
 
@@ -191,7 +191,7 @@ nothing.
   for it already.
 - *Removals held* — more than half the organisation would leave in one
   pass. Read the removals; if they are right, press **Confirm**
-  (`github.removals.confirmed` in the audit stream). If they are a policy
+  (`github.removals.confirmed` in the audit trail). If they are a policy
   mistake, fix the policy: the set changes and the confirmation would not
   cover it anyway.
 
@@ -209,7 +209,7 @@ the person to open the link page and link again.
 **A link that is `lost`** was withdrawn on GitHub — the work address
 removed or unverified, or the authorization revoked — and its account
 left the organisation (`github.link.lost`, then `github.member.remove`
-in the audit stream). Linking again brings it back in on the next pass.
+in the audit trail). Linking again brings it back in on the next pass.
 
 ## Audit: what happened lately
 
@@ -222,16 +222,28 @@ organisations connected and disconnected, and whatever a reporting
 component such as the GitHub controller did, shown with the identity it
 proved. A refused event carries its reason.
 
-**The stream is not the record of record.** It is capped by
-`audit.maxEvents` and `audit.maxAge`. Every event is also one log line with
-`"audit":true`, so the durable copy is wherever the logs are shipped:
+**The trail is kept in S3** (`audit.s3.bucket`), one JSON-lines object per
+batch under `<prefix>YYYY/MM/DD/HH/`, written at most `audit.s3.flushInterval`
+after the event. That bucket is the record: read it directly for anything
+older than the console pages through, or to hand an auditor an hour:
+
+```sh
+aws s3 cp --recursive s3://<bucket>/events/2026/09/13/16/ - | jq -c .
+```
+
+S3 refusing a write never costs anybody a sign-in: the events stay queued
+in the replica, are listed from there, and are written when S3 answers
+(`the audit trail could not be written to S3` in the log says it is
+happening). Every event is also one log line with `"audit":true`, which is
+all that remains of a queue a replica could not write before it stopped:
 
 ```sh
 kubectl -n access-issuer logs deploy/access-issuer --since=24h | jq 'select(.audit == true)'
 ```
 
-A store that refuses a write costs the stream an entry and says so in the
-log; it never costs anybody a sign-in.
+Without a bucket the trail is one replica's memory, capped by
+`audit.maxEvents` and gone on restart — right for a laptop, and warned
+about at start anywhere else.
 
 **A component reports** by calling `AuditService.RecordAuditEvents` with
 its own ServiceAccount token. The policy has to put it in

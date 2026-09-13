@@ -62,6 +62,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            # Names this replica in the audit trail's object keys, so two
+            # replicas never write the same key.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             # What an operator connected — the workspaces and their
             # credentials, the memberships, the OAuth client it was
             # given, the session key — kept as ConfigMaps and Secrets in
@@ -77,8 +83,14 @@ spec:
               value: {{ .Values.directory.freshness.probeInterval | quote }}
             - name: AUDIT_MAX_EVENTS
               value: {{ .Values.audit.maxEvents | quote }}
-            - name: AUDIT_MAX_AGE
-              value: {{ .Values.audit.maxAge | quote }}
+            - name: AUDIT_S3_BUCKET
+              value: {{ .Values.audit.s3.bucket | quote }}
+            - name: AUDIT_S3_REGION
+              value: {{ .Values.audit.s3.region | quote }}
+            - name: AUDIT_S3_PREFIX
+              value: {{ .Values.audit.s3.prefix | quote }}
+            - name: AUDIT_S3_FLUSH_INTERVAL
+              value: {{ .Values.audit.s3.flushInterval | quote }}
 {{- with .Values.telemetry.otlpEndpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ . | quote }}
