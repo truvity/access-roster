@@ -1,4 +1,4 @@
-## Unreleased
+## v1.4.0
 
 - **`accessctl` works inside a GitHub Actions job.** With
   `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` set,
