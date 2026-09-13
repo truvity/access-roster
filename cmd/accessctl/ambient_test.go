@@ -88,3 +88,103 @@ func TestALaptopWithoutASignInIsToldToSignIn(t *testing.T) {
 		t.Errorf("error = %v, want the sign-in to be what is missing", err)
 	}
 }
+
+// `token` prints the exchanged token and nothing else, from the same proof
+// kube-token uses: a job's own GitHub token in CI.
+func TestTokenPrintsTheExchangedTokenInAJob(t *testing.T) {
+	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": "the-job-token"})
+	}))
+	t.Cleanup(github.Close)
+
+	var presentedClient, subjectType string
+
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, _, _ := r.BasicAuth()
+		presentedClient, _ = url.QueryUnescape(user)
+		_ = r.ParseForm()
+		subjectType = r.Form.Get("subject_token_type")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "for-openbao", "expires_in": 600})
+	}))
+	t.Cleanup(issuer.Close)
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(envGitHubTokenURL, github.URL+"/token")
+	t.Setenv(envGitHubTokenGrant, "the-grant")
+
+	written := captureStdout(t, func() error {
+		return token([]string{"--audience", "openbao", "--issuer", issuer.URL})
+	})
+
+	if written != "for-openbao\n" {
+		t.Errorf("stdout = %q, want exactly the token and a newline", written)
+	}
+	if presentedClient != "openbao" || subjectType != "urn:ietf:params:oauth:token-type:jwt" {
+		t.Errorf("presented %q as %q, want the audience and a jwt", presentedClient, subjectType)
+	}
+}
+
+// On a laptop the sign-in is exchanged as the issuer's own access token:
+// labelled a jwt, the issuer tries it as a third party's and refuses it.
+func TestTokenOnALaptopExchangesTheSignInAsAnAccessToken(t *testing.T) {
+	var subject, subjectType, presentedClient string
+
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Form.Get("grant_type") == "refresh_token" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "the-sign-in", "refresh_token": "next-refresh"})
+			return
+		}
+
+		user, _, _ := r.BasicAuth()
+		presentedClient, _ = url.QueryUnescape(user)
+		subject, subjectType = r.Form.Get("subject_token"), r.Form.Get("subject_token_type")
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "for-openbao", "expires_in": 600})
+	}))
+	t.Cleanup(issuer.Close)
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(envGitHubTokenURL, "")
+	t.Setenv(envGitHubTokenGrant, "")
+
+	if err := saveSession(Session{RefreshToken: "a-refresh", Email: "ada@north.example"}); err != nil {
+		t.Fatalf("save the session: %v", err)
+	}
+
+	written := captureStdout(t, func() error {
+		return token([]string{"--audience", "openbao", "--issuer", issuer.URL, "--client", "accessctl"})
+	})
+
+	if written != "for-openbao\n" {
+		t.Errorf("stdout = %q, want exactly the token", written)
+	}
+	if subject != "the-sign-in" || subjectType != "urn:ietf:params:oauth:token-type:access_token" || presentedClient != "accessctl" {
+		t.Errorf("exchanged %q as %q by %q, want the sign-in as an access_token by accessctl", subject, subjectType, presentedClient)
+	}
+}
+
+func captureStdout(t *testing.T, run func() error) string {
+	t.Helper()
+
+	out, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
+	if err != nil {
+		t.Fatalf("create stdout: %v", err)
+	}
+
+	saved := stdout
+	stdout = out
+	t.Cleanup(func() { stdout = saved })
+
+	if err = run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	written, _ := os.ReadFile(out.Name())
+
+	return string(written)
+}
