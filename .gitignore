@@ -1,12 +1,12 @@
 # Binaries
 bin/
-# The TypeScript package's dist IS committed (a git install has no
-# toolchain); its node_modules is not.
+# The TypeScript package's build output and node_modules (see ts/dist/
+# below).
 ts/node_modules/
 # `go build ./cmd/<name>` drops the binary here, named for the command.
 /acceptance
-# ko / goreleaser output; NOT the web console — frontend/dist is COMMITTED
-# (the embed needs it and `go build` must work without a Node toolchain).
+/accessctl
+# ko / goreleaser output.
 /dist/
 !frontend/dist/
 
@@ -55,9 +55,8 @@ __pycache__/
 frontend/dist/
 
 # Same rule, same reason: generated, so not in git. The published npm
-# package is this repository's root and is installed from a git tag, so
-# a `prepare` script in package.json builds ts/dist at install time --
-# npm runs `prepare` for a git dependency and installs devDependencies
-# to do it, which is exactly the toolchain the committed copy existed to
-# avoid needing.
+# package is this repository's root, built by the release workflow and
+# published to GitHub Packages at the tag's version. (Building it on a
+# git install through `prepare` did not survive yarn 4, which packed the
+# dependency without running it and shipped no ts/dist.)
 ts/dist/
