@@ -1,8 +1,7 @@
 # Connect a GitHub organisation
 
-> **In use since 2026-09-13.** The controller acts in two real
-> organisations (truvity and trust-form) after supervised dry runs that
-> proposed no change, and replaced the standalone github-roster 0.x there.
+> **In use.** The controller acts in production organisations, each
+> enabled after a supervised dry run.
 
 **Anchor:** none of ours. The controller holds one GitHub App per
 organisation and acts with its own credential; the issuer holds the

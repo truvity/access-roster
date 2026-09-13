@@ -28,7 +28,7 @@
 ## v1.6.1
 
 - **A CI matcher can require a repository's visibility.** `github:
-  { owner: truvity, visibility: private }` admits every private repository
+  { owner: example-org, visibility: private }` admits every private repository
   of an organisation and nothing else: not its public ones, and not a
   fork, which is another repository. The issuer reads GitHub's
   `repository_visibility` claim into the proof, `Explain` takes it in
@@ -42,9 +42,8 @@
   the old one, which knows nothing of a team the new policy binds: nobody
   holds its group there, and `Explain` lists no such group, so the
   controller took every member of the newly bound team as confirmed to
-  leave it. On kernel on 2026-09-13 this removed three people from
-  `team-legacy` when that team was first bound; the next pass, under one
-  policy, added them back four minutes later. `Explain` and `ListHolders`
+  leave it: binding a new team removed its members until the next pass,
+  under one policy, added them back. `Explain` and `ListHolders`
   now carry `policy_digest`, the digest of the policy each answer was
   computed under, and the controller changes nothing on a holders list
   under another policy (the pass fails and is retried) and confirms no
