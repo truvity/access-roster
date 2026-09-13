@@ -1,4 +1,4 @@
-## Unreleased
+## v1.5.6
 
 - **An owner the controller reports reaches the audit log.** The
   `github.owner.reported` event carried the outcome `reported`, which the
