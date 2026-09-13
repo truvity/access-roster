@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **A failed GitHub pass keeps what was last known.** It reported the
+  failure over an empty organisation, so the GitHub page blanked for as
+  long as passes failed, and a controller started right after a failure
+  found no held or reported rows to remember and recorded them all again —
+  which is what an upgrade does, when a pass meets a console still on the
+  old release. The failure is now reported over the last report with rows.
 - **accessctl installs through devbox.** A release now also carries
   `accessctl_<version>_nix-flake.tar.gz`, a Nix flake over that release's
   own archives. A repository adds its URL with `#accessctl` to
