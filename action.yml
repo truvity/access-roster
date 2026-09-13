@@ -103,8 +103,15 @@ runs:
           # as a posted client_id: the issuer reads it from Basic alone,
           # and a posted one is refused with an error naming the client
           # rather than the mistake.
+          #
+          # Form-encoded first, as RFC 6749 §2.3.1 requires and as the
+          # issuer decodes. Every audience here holds a colon, and Basic
+          # splits the id from the secret at the FIRST colon: sent raw,
+          # `k8s:devel:` arrived as client `k8s` and was refused with
+          # "invalid client_id / client_secret".
+          client=$(printf '%s' "${audience}" | jq -sRr @uri)
           response=$(curl --fail-with-body --silent --show-error \
-            -u "${audience}:" \
+            -u "${client}:" \
             -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
             -d "subject_token=${subject}" \
             -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
