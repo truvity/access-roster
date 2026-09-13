@@ -1,4 +1,4 @@
-## Unreleased
+## v1.6.6
 
 - **A failed GitHub pass keeps what was last known.** It reported the
   failure over an empty organisation, so the GitHub page blanked for as
