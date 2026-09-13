@@ -98,7 +98,7 @@ func startFakeGitHub(t *testing.T) *fakeGitHub {
 		}
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": 42, "slug": "truvity-access-roster", "pem": fake.pem,
+			"id": 42, "slug": "truvity-access-roster", "pem": fake.pem, "client_id": "Iv1.created", "client_secret": "created-secret",
 			"html_url": "https://github.com/apps/truvity-access-roster", "owner": map[string]any{"login": fake.owner},
 		})
 	})

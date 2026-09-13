@@ -128,6 +128,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			Access:   directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, bearer),
 			Audit:    directoryrosterv1connect.NewAuditServiceClient(web, cfg.console, bearer),
 			Status:   kube.NewGitHubStatus(client),
+			Links:    kube.NewGitHubLinks(client),
 			Bindings: declared.GitHub,
 		}),
 	}, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -90,7 +91,51 @@ func (c *Console) GetGitHubStatus(
 		}
 		out.Organisations = append(out.Organisations, row)
 	}
+	if err := c.linkStatus(ctx, out); err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
 	return connect.NewResponse(out), nil
+}
+
+// linkStatus adds the link App and every link, never with a token.
+func (c *Console) linkStatus(ctx context.Context, out *directoryrosterv1.GetGitHubStatusResponse) error {
+	if c.deps.GitHubLinkApp == nil || c.deps.GitHubLinks == nil {
+		return nil
+	}
+	out.LinkingAvailable = true
+	out.LinkUrl = c.githubRoot() + githubLinkPath
+	app, connected, err := c.deps.GitHubLinkApp.LinkApp(ctx)
+	if err != nil {
+		return err
+	}
+	if connected {
+		out.LinkApp = &directoryrosterv1.GitHubLinkApp{
+			AppId: app.AppID, AppSlug: app.AppSlug, Owner: app.Owner, HtmlUrl: app.HTMLURL, ConnectedBy: app.ConnectedBy,
+		}
+		if !app.ConnectedAt.IsZero() {
+			out.LinkApp.ConnectedAt = timestamppb.New(app.ConnectedAt)
+		}
+	}
+	links, err := c.deps.GitHubLinks.List(ctx)
+	if err != nil {
+		return err
+	}
+	for k := range links {
+		l := links[k].Public()
+		out.Links = append(out.Links, &directoryrosterv1.GitHubLink{
+			AccountId: l.ID, Login: l.Login, Emails: l.Emails, State: string(l.State), Reason: l.Reason,
+			LinkedAt: timestampOf(l.LinkedAt), CheckedAt: timestampOf(l.CheckedAt), ChangedAt: timestampOf(l.ChangedAt),
+		})
+	}
+	return nil
+}
+
+// timestampOf is a time for the page, absent when it never happened.
+func timestampOf(at time.Time) *timestamppb.Timestamp {
+	if at.IsZero() {
+		return nil
+	}
+	return timestamppb.New(at)
 }
 
 // connectionProto is a record as the page shows it: never the key, which

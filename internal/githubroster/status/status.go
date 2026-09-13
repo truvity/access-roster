@@ -68,9 +68,8 @@ type Org struct {
 	// belong in the organisation with or without a team.
 	Members []Member `json:"members,omitempty"`
 	Teams   []Team   `json:"teams,omitempty"`
-	// Unlinked are members with no verified address in the organisation's
-	// domains: nobody can say who they are, so they are listed and never
-	// touched.
+	// Unlinked are members nobody linked to a work address: nobody can say
+	// who they are, so they are listed and never touched.
 	Unlinked []Account `json:"unlinked,omitempty"`
 }
 
@@ -144,11 +143,14 @@ type State string
 
 // The states, in the order a joiner passes through them.
 const (
+	// StateNotLinked: they should be here and have not linked a GitHub
+	// account, so there is nobody to invite. Waiting on them, not held.
+	StateNotLinked State = "not-linked"
 	// StatePending: they should be here and are not yet; Action says what
 	// comes next.
 	StatePending State = "pending"
-	// StateInvited: an organisation invitation to their address is
-	// waiting to be accepted.
+	// StateInvited: an organisation invitation to their account, or to
+	// their address, is waiting to be accepted.
 	StateInvited State = "invited"
 	// StateSynced: what is true matches what should be.
 	StateSynced State = "synced"

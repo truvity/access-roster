@@ -235,14 +235,30 @@ acts, this shows. See [connect/github-organisation.md](../connect/github-organis
 
 | RPC | Role | Request | Response | Notes |
 |---|---|---|---|---|
-| `GetGitHubStatus` | installation-wide viewer | — | `organisations[]{org, bound, reported, report_error, enabled, tick{at, outcome, error, changes, held}, member_groups[], members[], teams[]{team, bound, member_groups[], maintainer_groups[], members[]}, unlinked[]{login, reason}}`, `reports_available` | every organisation the policy binds **or** the controller reports on, each with its bindings beside its report. A member is `{email, login, role, state, action, reason}`: state is `pending`, `invited`, `synced`, `leaving` or `held`; action is `invite`, `add`, `set-role` or `remove`, and a held one carries its reason. Where the two sides disagree both show — a bound team nobody has reported, a report for a team the policy no longer binds — and an unreadable report hides no binding. **Not** a tenant-scoped viewer: a report names the members of every bound team in every company |
+| `GetGitHubStatus` | installation-wide viewer | — | `organisations[]{org, bound, reported, report_error, enabled, tick{at, outcome, error, changes, held}, member_groups[], members[], teams[]{team, bound, member_groups[], maintainer_groups[], members[]}, unlinked[]{login, reason}}`, `reports_available` | every organisation the policy binds **or** the controller reports on, each with its bindings beside its report. A member is `{email, login, role, state, action, reason}`: state is `not-linked`, `pending`, `invited`, `synced`, `leaving` or `held`; action is `invite`, `add`, `set-role` or `remove`, and a held one carries its reason. Where the two sides disagree both show — a bound team nobody has reported, a report for a team the policy no longer binds — and an unreadable report hides no binding. **Not** a tenant-scoped viewer: a report names the members of every bound team in every company |
 
 | `BeginGitHubConnect` | operator | `org` | `url`, `manifest` | starts connecting an organisation the policy binds, and sets the flow's state cookie. With `manifest` set the browser POSTs it as the form field `manifest` to `url`, GitHub's create page; without, `url` is the App's install page, for an App created and never installed. `failed_precondition` for an unbound organisation, for one already connected and installed, and where the deployment keeps no state in Kubernetes |
 | `DisconnectGitHubOrganisation` | operator | `org` | `uninstalled`, `detail`, `app_settings_url` | uninstalls the App, then forgets the record and the key — the latter even when the uninstall fails, which `detail` explains. `app_settings_url` is where the owner deletes the App, which the API cannot |
+| `BeginGitHubLinkAppConnect` | operator | `owner` | `url`, `manifest` | starts creating the link App under an organisation: public, `emails: read` alone, installed nowhere, calling back to the link callback. `failed_precondition` when one is connected already, or where the deployment keeps no state in Kubernetes |
+| `DisconnectGitHubLinkApp` | operator | — | `invalidated`, `app_settings_url` | makes every link unverifiable, then forgets the App |
 
 `GetGitHubStatus` also carries each organisation's `connection{app_id,
 app_slug, installed, html_url, connected_at, connected_by}` — never the
-key — and `connecting_available`, false where nothing could keep one.
+key — and `connecting_available`, false where nothing could keep one; and
+`linking_available`, `link_app{app_id, app_slug, owner, html_url,
+connected_at, connected_by}`, `link_url` — the page to send people to —
+and `links[]{account_id, login, emails[], state, reason, linked_at,
+checked_at, changed_at}`, never with a token. A link's state is
+`linked`, `lost` or `unverifiable`.
+
+**The link flows** are at the origin root too. `GET
+/connect/github/link-app/callback` after the owner creates the link App
+keeps its client id and secret. `GET /connect/github/link` is the page a
+person starts from: it sets its own flow cookie and links to GitHub's
+authorize page. `GET /connect/github/link/callback` redeems the code,
+reads the account and its verified addresses, keeps a link for each
+address the directory has live and vouches for, and says on the page what
+it linked and why anything was not. None of the three needs a session.
 
 **The two GitHub redirects** land at the origin root beside a directory's
 consent callback: `GET /connect/github/callback` after Create, which

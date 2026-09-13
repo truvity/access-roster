@@ -42,6 +42,12 @@ const (
 	// GitHubServiceDisconnectGitHubOrganisationProcedure is the fully-qualified name of the
 	// GitHubService's DisconnectGitHubOrganisation RPC.
 	GitHubServiceDisconnectGitHubOrganisationProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubOrganisation"
+	// GitHubServiceBeginGitHubLinkAppConnectProcedure is the fully-qualified name of the
+	// GitHubService's BeginGitHubLinkAppConnect RPC.
+	GitHubServiceBeginGitHubLinkAppConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubLinkAppConnect"
+	// GitHubServiceDisconnectGitHubLinkAppProcedure is the fully-qualified name of the GitHubService's
+	// DisconnectGitHubLinkApp RPC.
+	GitHubServiceDisconnectGitHubLinkAppProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubLinkApp"
 )
 
 // GitHubServiceClient is a client for the directoryroster.v1.GitHubService service.
@@ -62,6 +68,17 @@ type GitHubServiceClient interface {
 	// DisconnectGitHubOrganisation uninstalls the App, then forgets the
 	// organisation's record and credential. Operator.
 	DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error)
+	// BeginGitHubLinkAppConnect starts creating the link App: the one App
+	// people authorize, as themselves, to link their GitHub account to their
+	// work addresses. Public, installed nowhere, and asking only to read the
+	// person's own email addresses. Created under an organisation the
+	// operator owns. Operator.
+	BeginGitHubLinkAppConnect(context.Context, *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error)
+	// DisconnectGitHubLinkApp forgets the link App. Every link made with it
+	// becomes unverifiable — nothing can check its tokens any more — which
+	// removes nobody and adds nobody until each person links again.
+	// Operator.
+	DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error)
 }
 
 // NewGitHubServiceClient constructs a client for the directoryroster.v1.GitHubService service. By
@@ -93,6 +110,18 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubOrganisation")),
 			connect.WithClientOptions(opts...),
 		),
+		beginGitHubLinkAppConnect: connect.NewClient[v1.BeginGitHubLinkAppConnectRequest, v1.BeginGitHubLinkAppConnectResponse](
+			httpClient,
+			baseURL+GitHubServiceBeginGitHubLinkAppConnectProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubLinkAppConnect")),
+			connect.WithClientOptions(opts...),
+		),
+		disconnectGitHubLinkApp: connect.NewClient[v1.DisconnectGitHubLinkAppRequest, v1.DisconnectGitHubLinkAppResponse](
+			httpClient,
+			baseURL+GitHubServiceDisconnectGitHubLinkAppProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubLinkApp")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -101,6 +130,8 @@ type gitHubServiceClient struct {
 	getGitHubStatus              *connect.Client[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse]
 	beginGitHubConnect           *connect.Client[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse]
 	disconnectGitHubOrganisation *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
+	beginGitHubLinkAppConnect    *connect.Client[v1.BeginGitHubLinkAppConnectRequest, v1.BeginGitHubLinkAppConnectResponse]
+	disconnectGitHubLinkApp      *connect.Client[v1.DisconnectGitHubLinkAppRequest, v1.DisconnectGitHubLinkAppResponse]
 }
 
 // GetGitHubStatus calls directoryroster.v1.GitHubService.GetGitHubStatus.
@@ -116,6 +147,16 @@ func (c *gitHubServiceClient) BeginGitHubConnect(ctx context.Context, req *conne
 // DisconnectGitHubOrganisation calls directoryroster.v1.GitHubService.DisconnectGitHubOrganisation.
 func (c *gitHubServiceClient) DisconnectGitHubOrganisation(ctx context.Context, req *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error) {
 	return c.disconnectGitHubOrganisation.CallUnary(ctx, req)
+}
+
+// BeginGitHubLinkAppConnect calls directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect.
+func (c *gitHubServiceClient) BeginGitHubLinkAppConnect(ctx context.Context, req *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error) {
+	return c.beginGitHubLinkAppConnect.CallUnary(ctx, req)
+}
+
+// DisconnectGitHubLinkApp calls directoryroster.v1.GitHubService.DisconnectGitHubLinkApp.
+func (c *gitHubServiceClient) DisconnectGitHubLinkApp(ctx context.Context, req *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error) {
+	return c.disconnectGitHubLinkApp.CallUnary(ctx, req)
 }
 
 // GitHubServiceHandler is an implementation of the directoryroster.v1.GitHubService service.
@@ -136,6 +177,17 @@ type GitHubServiceHandler interface {
 	// DisconnectGitHubOrganisation uninstalls the App, then forgets the
 	// organisation's record and credential. Operator.
 	DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error)
+	// BeginGitHubLinkAppConnect starts creating the link App: the one App
+	// people authorize, as themselves, to link their GitHub account to their
+	// work addresses. Public, installed nowhere, and asking only to read the
+	// person's own email addresses. Created under an organisation the
+	// operator owns. Operator.
+	BeginGitHubLinkAppConnect(context.Context, *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error)
+	// DisconnectGitHubLinkApp forgets the link App. Every link made with it
+	// becomes unverifiable — nothing can check its tokens any more — which
+	// removes nobody and adds nobody until each person links again.
+	// Operator.
+	DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error)
 }
 
 // NewGitHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -163,6 +215,18 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubOrganisation")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gitHubServiceBeginGitHubLinkAppConnectHandler := connect.NewUnaryHandler(
+		GitHubServiceBeginGitHubLinkAppConnectProcedure,
+		svc.BeginGitHubLinkAppConnect,
+		connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubLinkAppConnect")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceDisconnectGitHubLinkAppHandler := connect.NewUnaryHandler(
+		GitHubServiceDisconnectGitHubLinkAppProcedure,
+		svc.DisconnectGitHubLinkApp,
+		connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubLinkApp")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/directoryroster.v1.GitHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GitHubServiceGetGitHubStatusProcedure:
@@ -171,6 +235,10 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 			gitHubServiceBeginGitHubConnectHandler.ServeHTTP(w, r)
 		case GitHubServiceDisconnectGitHubOrganisationProcedure:
 			gitHubServiceDisconnectGitHubOrganisationHandler.ServeHTTP(w, r)
+		case GitHubServiceBeginGitHubLinkAppConnectProcedure:
+			gitHubServiceBeginGitHubLinkAppConnectHandler.ServeHTTP(w, r)
+		case GitHubServiceDisconnectGitHubLinkAppProcedure:
+			gitHubServiceDisconnectGitHubLinkAppHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -190,4 +258,12 @@ func (UnimplementedGitHubServiceHandler) BeginGitHubConnect(context.Context, *co
 
 func (UnimplementedGitHubServiceHandler) DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.DisconnectGitHubOrganisation is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) BeginGitHubLinkAppConnect(context.Context, *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.DisconnectGitHubLinkApp is not implemented"))
 }

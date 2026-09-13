@@ -123,6 +123,11 @@ type ConsoleDeps struct {
 	// GitHubOrgs is where connected organisations are kept. Nil is a
 	// deployment keeping no state in Kubernetes, which can connect none.
 	GitHubOrgs GitHubConnections
+	// GitHubLinkApp is where the link App is kept. Nil is a deployment
+	// where nobody can link an account.
+	GitHubLinkApp GitHubLinkApp
+	// GitHubLinks is where people's links are kept. Nil, likewise.
+	GitHubLinks GitHubLinks
 	// GitHubHTTP makes the calls to GitHub that connecting and
 	// disconnecting need. Nil is a client with a short timeout.
 	GitHubHTTP *http.Client

@@ -30,8 +30,8 @@ func live(emails ...string) []reconcile.Holder {
 
 func actions(list []reconcile.Action) []string {
 	out := make([]string, 0, len(list))
-	for _, a := range list {
-		out = append(out, a.String())
+	for k := range list {
+		out = append(out, list[k].String())
 	}
 	return out
 }
@@ -53,6 +53,17 @@ func findMember(t *testing.T, report status.Org, team, email string) status.Memb
 		}
 	}
 	t.Fatalf("no row for %s in %q: %+v", email, team, report)
+	return status.Member{}
+}
+
+func findLogin(t *testing.T, report status.Org, login string, action status.Action) status.Member {
+	t.Helper()
+	for _, m := range report.Members {
+		if m.Login == login && m.Action == action {
+			return m
+		}
+	}
+	t.Fatalf("no organisation row for @%s with %s: %+v", login, action, report.Members)
 	return status.Member{}
 }
 
@@ -99,42 +110,106 @@ func TestAMemberIsAddedInTheRoleWantedAndTheWiderRoleWins(t *testing.T) {
 	}
 }
 
-// A joiner is invited once, straight into every team that wants them — and
-// only at a domain some member has a verified address at, because an
-// invitation accepted with an account that verifies nothing there is
-// linked to nobody.
-func TestAJoinerIsInvitedOnceIntoTheirTeamsOrHeldForAnUnverifiedDomain(t *testing.T) {
+// A joiner who linked an account is invited once — as that account,
+// straight into every team that wants them, however many addresses they
+// linked. A joiner who linked nothing is waiting on themselves: nobody is
+// invited, and nothing is held.
+func TestAJoinerIsInvitedAsTheAccountTheyLinked(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{
-		"all:truvity:employee":  live("ada@truvity.com", "new@truvity.com", "partner@trustform.io"),
+		"all:truvity:employee":  live("ada@truvity.com", "new@truvity.com", "new@trustform.io", "partner@trustform.io"),
 		"all:platform:engineer": live("new@truvity.com", "partner@trustform.io"),
 	}
 	state := reconcile.State{
-		Members:     []githubapp.Member{{Login: "ada", Emails: []string{"ada@truvity.com"}}},
+		Members:     []githubapp.Member{{ID: 1, Login: "ada", Emails: []string{"ada@truvity.com"}}},
 		Teams:       []githubapp.Team{{ID: 7, Slug: "team-platform"}},
 		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {}},
+		Links:       []reconcile.Link{{ID: 42, Login: "newbie", Emails: []string{"new@truvity.com", "new@trustform.io"}}},
 	}
 	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
 
-	if len(did) != 1 || did[0].Kind != status.ActionInvite || did[0].Email != "new@truvity.com" || !slices.Equal(did[0].Teams, []int64{7}) {
-		t.Fatalf("actions = %+v, want one invitation for new@ into team 7", did)
+	if len(did) != 1 || did[0].Kind != status.ActionInvite || did[0].Account != 42 || !slices.Equal(did[0].Teams, []int64{7}) {
+		t.Fatalf("actions = %+v, want one invitation for account 42 into team 7", did)
 	}
-	if m := findMember(t, report, "team-platform", "new@truvity.com"); m.State != status.StatePending || m.Action != status.ActionInvite {
-		t.Errorf("new@ in the team = %+v", m)
+	if m := findMember(t, report, "team-platform", "new@truvity.com"); m.State != status.StatePending || m.Login != "newbie" {
+		t.Errorf("new@ in the team = %+v, want pending as @newbie", m)
 	}
-	held := findMember(t, report, "team-platform", "partner@trustform.io")
-	if held.State != status.StateHeld || !strings.Contains(held.Reason, "trustform.io") {
-		t.Errorf("partner@ = %+v, want held on the unverified domain", held)
+	waiting := findMember(t, report, "team-platform", "partner@trustform.io")
+	if waiting.State != status.StateNotLinked || waiting.Action != "" {
+		t.Errorf("partner@ = %+v, want not-linked with nothing to do", waiting)
 	}
 
 	// Already invited: waiting, nothing sent again.
-	state.Invitations = []githubapp.Invitation{{Email: "new@truvity.com"}}
+	state.Invitations = []githubapp.Invitation{{Login: "newbie"}}
 	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
 	if len(did) != 0 {
 		t.Errorf("actions for an invited joiner = %v, want none", actions(did))
 	}
-	if m := findMember(t, report, "", "new@truvity.com"); m.State != status.StateInvited {
-		t.Errorf("new@ = %+v, want invited", m)
+	if m := findMember(t, report, "", "new@trustform.io"); m.State != status.StateInvited {
+		t.Errorf("new@trustform.io = %+v, want invited", m)
+	}
+
+	// Once they accept, the link is how they are recognised.
+	state.Invitations = nil
+	state.Members = append(state.Members, githubapp.Member{ID: 42, Login: "newbie"})
+	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	if !slices.Equal(actions(did), []string{"add newbie in team-platform"}) {
+		t.Errorf("actions after accepting = %v, want newbie added to the team", actions(did))
+	}
+	if m := findMember(t, report, "", "new@truvity.com"); m.State != status.StateSynced {
+		t.Errorf("new@ in the organisation = %+v, want synced", m)
+	}
+}
+
+// A member whose link GitHub says is gone leaves the organisation at once,
+// without asking the directory — the account is no longer shown to be
+// anybody's. An owner is held. An account whose link could not be checked
+// is simply unlinked, and nothing happens to it.
+func TestALostLinkRemovesTheAccountAtOnce(t *testing.T) {
+	t.Parallel()
+	holders := reconcile.Holders{
+		"all:truvity:employee":  live("ada@truvity.com", "boss@truvity.com"),
+		"all:platform:engineer": live("ada@truvity.com"),
+	}
+	state := reconcile.State{
+		Members: []githubapp.Member{
+			{ID: 1, Login: "ada"}, {ID: 2, Login: "boss", Owner: true}, {ID: 3, Login: "quiet"},
+		},
+		Teams:       []githubapp.Team{{ID: 7, Slug: "team-platform"}},
+		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {{Login: "ada"}}},
+		Links: []reconcile.Link{
+			{ID: 1, Login: "ada", Emails: []string{"ada@truvity.com"}, Lost: true, Reason: "no linked work address is verified"},
+			{ID: 2, Login: "boss", Emails: []string{"boss@truvity.com"}, Lost: true, Reason: "revoked"},
+		},
+	}
+	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+
+	if !slices.Equal(actions(did), []string{"remove ada in the organisation"}) {
+		t.Fatalf("actions = %v, want ada removed from the organisation and nothing else", actions(did))
+	}
+	if did[0].Reason == "" {
+		t.Error("the removal carries no reason")
+	}
+	ada := findLogin(t, report, "ada", status.ActionRemove)
+	if ada.State != status.StateLeaving || !strings.Contains(ada.Reason, "no linked work address") {
+		t.Errorf("ada = %+v, want leaving with the link's reason", ada)
+	}
+	boss := findLogin(t, report, "boss", status.ActionRemove)
+	if boss.State != status.StateHeld || !strings.Contains(boss.Reason, "owner") {
+		t.Errorf("boss = %+v, want held as an owner", boss)
+	}
+	// The row that still wants ada says why she is not simply synced.
+	if wanted := findMember(t, report, "team-platform", "ada@truvity.com"); wanted.State != status.StateNotLinked ||
+		!strings.Contains(wanted.Reason, "@ada is gone") {
+		t.Errorf("ada in the team = %+v, want not-linked naming the lost link", wanted)
+	}
+	for _, account := range report.Unlinked {
+		if account.Login == "ada" || account.Login == "boss" {
+			t.Errorf("%s is listed as unlinked; a lost link is not an unlinked member", account.Login)
+		}
+	}
+	if len(report.Unlinked) != 1 || report.Unlinked[0].Login != "quiet" {
+		t.Errorf("unlinked = %+v, want quiet alone", report.Unlinked)
 	}
 }
 

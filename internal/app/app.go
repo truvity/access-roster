@@ -348,6 +348,9 @@ type stores struct {
 	// githubOrgs is where connected GitHub organisations are kept. Nil
 	// with the memory store, for the same reason.
 	githubOrgs *kube.GitHubOrgs
+	// githubLinks is where people's linked GitHub accounts are kept. Nil
+	// with the memory store, for the same reason.
+	githubLinks *kube.GitHubLinks
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -397,9 +400,17 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.WarnContext(ctx, "the objects GitHub organisations are connected into could not be created",
 			"configMap", githubOrgs.ConfigMapName(), "secret", githubOrgs.SecretName(), "error", err)
 	}
+	// And the Secret people's links are written into, so the controller's
+	// Role can name an object that exists.
+	githubLinks := kube.NewGitHubLinks(client)
+	if err = githubLinks.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the Secret GitHub accounts are linked into could not be created",
+			"secret", githubLinks.Name(), "error", err)
+	}
 	return stores{
 		github:      github,
 		githubOrgs:  githubOrgs,
+		githubLinks: githubLinks,
 		workspaces:  kube.NewWorkspaces(client),
 		credentials: kube.NewCredentials(client),
 		settings: kube.NewSettings(client, kube.DeclaredClient{
@@ -614,8 +625,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		SignIn:       cfg.loginDirectory,
 		GitHub:       githubReports(kept.github, cfg.demo),
 		GitHubOrgs:   githubConnections(kept.githubOrgs, cfg.demo),
-		Audit:        recorder,
-		AuditStore:   auditStore,
+		// Typed nils again: an interface holding a nil store is not nil.
+		GitHubLinkApp: githubLinkApp(kept.githubOrgs),
+		GitHubLinks:   githubLinks(kept.githubLinks),
+		Audit:         recorder,
+		AuditStore:    auditStore,
 	})
 	if err != nil {
 		return nil, err
@@ -1051,6 +1065,22 @@ func githubConnections(store *kube.GitHubOrgs, demonstration bool) server.GitHub
 	default:
 		return nil
 	}
+}
+
+// githubLinkApp is the store as the console's interface, or nil.
+func githubLinkApp(store *kube.GitHubOrgs) server.GitHubLinkApp {
+	if store == nil {
+		return nil
+	}
+	return store
+}
+
+// githubLinks is the store as the console's interface, or nil.
+func githubLinks(store *kube.GitHubLinks) server.GitHubLinks {
+	if store == nil {
+		return nil
+	}
+	return store
 }
 
 // errDemoConnect is what a demonstration run says when asked to change a

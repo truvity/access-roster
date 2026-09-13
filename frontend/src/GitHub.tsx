@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Button from "@mui/material/Button";
+import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -8,11 +9,12 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { ago, at, github, reason } from "./api";
-import type { GitHubMember, GitHubOrganisation } from "./gen/directoryroster/v1/github_pb";
+import type { GetGitHubStatusResponse, GitHubMember, GitHubOrganisation } from "./gen/directoryroster/v1/github_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Facet, Facts, Failure, Loading, Mono, Names, Nothing, Page, Section, State, type StateKind } from "./ui";
@@ -31,10 +33,14 @@ export function GitHubPage({ operator, onDone }: { operator: boolean; onDone: (m
   return (
     <Page
       title="GitHub"
-      lede="Each GitHub team is fed by internal groups, exactly as a client is opened by them: the holders of those groups are the people the team should contain. The controller makes each organisation match and reports here what it found. Nothing on this page writes to GitHub."
+      lede="Each GitHub team is fed by internal groups, exactly as a client is opened by them: the holders of those groups are the people the team should contain. A GitHub account belongs to the person who linked it with a verified work address. The controller makes each organisation match and reports here what it found."
     >
       <Loading busy={status.loading} />
       <Failure error={status.error} />
+
+      {status.value ? (
+        <Linking status={status.value} operator={operator} onDone={onDone} reload={status.reload} />
+      ) : null}
 
       {status.value && !status.value.reportsAvailable ? (
         <Nothing>This deployment keeps no state in Kubernetes, so a controller has nowhere to report: only the bindings are shown.</Nothing>
@@ -269,7 +275,7 @@ function Organisation({
         ) : null}
 
         {org.unlinked.length > 0 ? (
-          <Section title="Not linked" hint="members with no verified address in the organisation's domains — nobody can say who they are, so they are listed and never touched">
+          <Section title="Not linked" hint="members nobody linked to a work address — nobody can say who they are, so they are listed and never touched">
             <Names items={org.unlinked.map((account) => ({ label: account.login, mono: true, note: account.reason }))} />
           </Section>
         ) : null}
@@ -332,6 +338,7 @@ function outcome(org: GitHubOrganisation) {
 
 function stateKind(state: string): StateKind {
   switch (state) {
+    case "not-linked":
     case "synced":
     case "pending":
     case "invited":
@@ -347,7 +354,13 @@ function stateKind(state: string): StateKind {
  *  not doing it. The reason is the point of the column: a held member
  *  with no reason reads as a stuck controller. */
 function next(member: GitHubMember) {
-  if (!member.action) return null;
+  if (!member.action) {
+    return member.reason ? (
+      <Typography variant="body2" color="text.secondary">
+        {member.reason}
+      </Typography>
+    ) : null;
+  }
   const words: Record<string, string> = { invite: "invite", add: "add to team", "set-role": "change role", remove: "remove" };
   const label = words[member.action] ?? member.action;
   if (!member.reason) return <Typography variant="body2">{label}</Typography>;
@@ -358,4 +371,181 @@ function next(member: GitHubMember) {
       </Typography>
     </Tooltip>
   );
+}
+
+/** Linking: the App people authorize, the page to send them to, and every
+ *  account linked so far. Linking is what makes a GitHub account somebody's:
+ *  GitHub tells no organisation outside its Enterprise plan which work
+ *  address a member has, so the person shows it themselves. */
+function Linking({
+  status,
+  operator,
+  onDone,
+  reload,
+}: {
+  status: GetGitHubStatusResponse;
+  operator: boolean;
+  onDone: (message: string) => void;
+  reload: () => void;
+}) {
+  const owners = status.organisations.filter((org) => org.bound).map((org) => org.org);
+  const [owner, setOwner] = useState(owners[0] ?? "");
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | undefined>();
+  const app = status.linkApp;
+
+  if (!status.linkingAvailable) {
+    return (
+      <Section title="Linking accounts">
+        <Nothing>This deployment keeps no state in Kubernetes, so a linked account would not survive a restart.</Nothing>
+      </Section>
+    );
+  }
+
+  const create = async () => {
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      const started = await github.beginGitHubLinkAppConnect({ owner });
+      postManifest(started.url, started.manifest);
+    } catch (error) {
+      setFailure(reason(error));
+      setBusy(false);
+    }
+  };
+  const disconnect = async () => {
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      const gone = await github.disconnectGitHubLinkApp({});
+      const settings = gone.appSettingsUrl ? ` Its owner can delete the App itself at ${gone.appSettingsUrl}.` : "";
+      onDone(`The link App is disconnected; ${gone.invalidated} links can no longer be checked and wait for their people to link again.${settings}`);
+      reload();
+    } catch (error) {
+      setFailure(reason(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const action = !operator ? null : app ? (
+    <Tooltip title="Forget the link App. Every link becomes unverifiable: nobody is added or removed on its account until the person links again.">
+      <span>
+        <Button size="small" color="warning" disabled={busy} onClick={() => void disconnect()}>
+          Disconnect
+        </Button>
+      </span>
+    </Tooltip>
+  ) : (
+    <Stack direction="row" sx={{ gap: 1, alignItems: "center" }}>
+      <TextField select size="small" label="Under" value={owner} onChange={(event) => setOwner(event.target.value)} disabled={busy || owners.length === 0}>
+        {owners.map((login) => (
+          <MenuItem key={login} value={login}>
+            {login}
+          </MenuItem>
+        ))}
+      </TextField>
+      <Tooltip title="Create the public App people authorize to link their accounts: one click by the organisation's owner. It reads a person's own email addresses and nothing else, and is installed nowhere.">
+        <span>
+          <Button size="small" variant="outlined" disabled={busy || !owner} onClick={() => void create()}>
+            Create link App
+          </Button>
+        </span>
+      </Tooltip>
+    </Stack>
+  );
+
+  const since = at(app?.connectedAt);
+  const linked = status.links.filter((l) => l.state === "linked").length;
+  return (
+    <Section title="Linking accounts" hint={app ? `${linked} linked` : "not set up"} action={action}>
+      <Stack sx={{ gap: 2 }}>
+        <Failure error={failure} />
+        <Facts
+          items={[
+            {
+              label: "Link App",
+              value: app ? (
+                <Typography component="span" variant="body2">
+                  {app.htmlUrl ? (
+                    <a href={app.htmlUrl} target="_blank" rel="noreferrer">
+                      <Mono>{app.appSlug}</Mono>
+                    </a>
+                  ) : (
+                    <Mono>{app.appSlug}</Mono>
+                  )}
+                  {` under ${app.owner}`}
+                  {since ? `, ${ago(since)}` : ""}
+                  {app.connectedBy ? ` by ${app.connectedBy}` : ""}
+                </Typography>
+              ) : (
+                <Typography variant="body2">not yet</Typography>
+              ),
+            },
+            {
+              label: "Send people to",
+              value: app ? (
+                <a href={status.linkUrl} target="_blank" rel="noreferrer">
+                  <Mono>{status.linkUrl}</Mono>
+                </a>
+              ) : undefined,
+            },
+          ]}
+        />
+        {status.links.length === 0 ? (
+          <Nothing>{app ? "Nobody has linked an account yet." : "Create the link App, then send people the link page."}</Nothing>
+        ) : (
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>GitHub</TableCell>
+                  <TableCell>Work addresses</TableCell>
+                  <TableCell>State</TableCell>
+                  <TableCell>Checked</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {status.links.map((l) => {
+                  const checked = at(l.checkedAt);
+                  return (
+                    <TableRow key={String(l.accountId)} hover>
+                      <TableCell>
+                        <a href={`https://github.com/${l.login}`} target="_blank" rel="noreferrer">
+                          <Mono>{l.login}</Mono>
+                        </a>
+                      </TableCell>
+                      <TableCell>
+                        <Names items={l.emails.map((email) => ({ label: email, mono: true }))} empty="—" />
+                      </TableCell>
+                      <TableCell>
+                        <State kind={linkKind(l.state)} />
+                        {l.reason ? (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            {l.reason}
+                          </Typography>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>{checked ? ago(checked) : "—"}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Stack>
+    </Section>
+  );
+}
+
+function linkKind(state: string): StateKind {
+  switch (state) {
+    case "linked":
+    case "lost":
+    case "unverifiable":
+      return state;
+    default:
+      return "unknown";
+  }
 }

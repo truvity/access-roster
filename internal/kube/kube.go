@@ -56,6 +56,7 @@ const (
 	kindSettings     = "settings"
 	kindGitHubStatus = "github-status"
 	kindGitHubOrgs   = "github-orgs"
+	kindGitHubLinks  = "github-links"
 )
 
 // The one key of each single-value Secret the hub keeps for itself.

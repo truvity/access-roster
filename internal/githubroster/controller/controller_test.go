@@ -8,20 +8,24 @@ import (
 	"encoding/pem"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
+	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubapp/githubfake"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/controller"
+	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/policy"
 )
@@ -127,6 +131,62 @@ func writeCredential(t *testing.T, dir, org string) {
 	}
 }
 
+// links is the link store, in memory, with the store's revision rule.
+type links struct {
+	mu   sync.Mutex
+	byID map[int64]link.Link
+}
+
+func (l *links) List(context.Context) ([]link.Link, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]link.Link, 0, len(l.byID))
+	for _, id := range slices.Sorted(maps.Keys(l.byID)) {
+		out = append(out, l.byID[id])
+	}
+	slices.SortFunc(out, func(a, b link.Link) int { return int(a.ID - b.ID) })
+	return out, nil
+}
+
+func (l *links) Update(_ context.Context, changed []link.Link) ([]link.Link, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var written []link.Link
+	for k := range changed {
+		change := changed[k]
+		if have, ok := l.byID[change.ID]; !ok || have.Revision != change.Revision {
+			continue
+		}
+		change.Revision++
+		l.byID[change.ID] = change
+		written = append(written, change)
+	}
+	return written, nil
+}
+
+func (l *links) get(id int64) link.Link {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.byID[id]
+}
+
+func (l *links) set(v link.Link) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.byID[v.ID] = v
+}
+
+func writeLinkCredential(t *testing.T, dir string) {
+	t.Helper()
+	raw, err := link.EncodeAppCredential(link.AppCredential{AppID: 9, ClientID: githubfake.ClientID, ClientSecret: githubfake.ClientSecret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, link.AppKey), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 var bindings = map[string]policy.GitHubOrg{
 	"truvity": {
 		Members: []string{"all:truvity:employee"},
@@ -141,7 +201,27 @@ type rig struct {
 	console *console
 	audit   *auditLog
 	report  *report
+	links   *links
 	run     func(enabled bool)
+	// newbie is the joiner's linked account.
+	newbie *githubfake.Account
+}
+
+// link has somebody link an account through the fake, and keeps the link
+// as the service would.
+func (r *rig) link(t *testing.T, account *githubfake.Account, emails ...string) {
+	t.Helper()
+	now := time.Now()
+	tokens, err := githubapp.ExchangeCode(context.Background(), r.github.Client(), githubfake.ClientID, githubfake.ClientSecret,
+		r.github.Authorize(account.Login), "https://access.example/connect/github/link/callback", now)
+	if err != nil {
+		t.Fatalf("link %s: %v", account.Login, err)
+	}
+	r.links.set(link.Link{
+		ID: account.ID, Login: account.Login, AppID: 9, Emails: emails, State: link.StateLinked, LinkedAt: now,
+		AccessToken: tokens.AccessToken, AccessExpires: tokens.AccessExpires,
+		RefreshToken: tokens.RefreshToken, RefreshExpires: tokens.RefreshExpires,
+	})
 }
 
 func newRig(t *testing.T) *rig {
@@ -156,6 +236,7 @@ func newRig(t *testing.T) *rig {
 
 	dir := t.TempDir()
 	writeCredential(t, dir, "truvity")
+	writeLinkCredential(t, dir)
 
 	r := &rig{
 		github: github,
@@ -171,7 +252,10 @@ func newRig(t *testing.T) *rig {
 		},
 		audit:  &auditLog{},
 		report: &report{},
+		links:  &links{byID: map[int64]link.Link{}},
 	}
+	r.newbie = github.AddAccount("newbie", "new@truvity.com", "newbie@example.org")
+	r.link(t, r.newbie, "new@truvity.com")
 	// One controller per setting, kept across passes: what it remembers
 	// between passes is part of what is under test.
 	controllers := map[bool]*controller.Controller{}
@@ -180,7 +264,7 @@ func newRig(t *testing.T) *rig {
 		if !ok {
 			c = controller.New(controller.Config{AppsDir: dir, Enabled: map[string]bool{"truvity": enabled}}, controller.Deps{
 				Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: github.Client(),
-				Access: r.console, Audit: r.audit, Status: r.report, Bindings: bindings,
+				Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings,
 			})
 			controllers[enabled] = c
 		}
@@ -217,7 +301,7 @@ func TestAnEnabledOrganisationIsMadeToMatch(t *testing.T) {
 	r.run(true)
 
 	did := r.github.Did()
-	for _, want := range []string{"invite new@truvity.com", "add team-platform/ada as maintainer", "remove-from-org leaver"} {
+	for _, want := range []string{"invite @newbie", "add team-platform/ada as maintainer", "remove-from-org leaver"} {
 		if !slices.Contains(did, want) {
 			t.Errorf("actions = %v, want %q among them", did, want)
 		}
@@ -227,8 +311,8 @@ func TestAnEnabledOrganisationIsMadeToMatch(t *testing.T) {
 			t.Errorf("%q touched what must never be touched", change)
 		}
 	}
-	if invitation := r.github.Invitations["new@truvity.com"]; invitation == nil || !slices.Equal(invitation.Teams, []int64{r.github.Teams["team-platform"].ID}) {
-		t.Errorf("the invitation does not place new@ in team-platform: %+v", invitation)
+	if invitation := r.github.Invitations["@newbie"]; invitation == nil || !slices.Equal(invitation.Teams, []int64{r.github.Teams["team-platform"].ID}) {
+		t.Errorf("the invitation does not place @newbie in team-platform: %+v", invitation)
 	}
 
 	got := r.report.org(t, "truvity")
@@ -247,9 +331,9 @@ func TestAnEnabledOrganisationIsMadeToMatch(t *testing.T) {
 		t.Errorf("unlinked = %+v, want bot", got.Unlinked)
 	}
 
-	// The joiner accepts with an account that verifies their address: the
-	// next pass finds them linked and in the team, and does nothing.
-	r.github.Accept("new@truvity.com", "newbie", true)
+	// The joiner accepts with the account they linked: the next pass finds
+	// them linked and in the team, and does nothing.
+	r.github.AcceptAccount("newbie")
 	r.run(true)
 	after := r.github.Did()[len(did):]
 	if len(after) != 0 {
@@ -315,7 +399,7 @@ func TestAnUnvouchedLeaverIsHeld(t *testing.T) {
 // records it as failed, and does not stop the rest.
 func TestARefusedChangeIsHeldAndTheRestGoOn(t *testing.T) {
 	r := newRig(t)
-	r.github.Refuse["invite new@truvity.com"] = "new@truvity.com is already a part of this organization"
+	r.github.Refuse["invite @newbie"] = "newbie is already a part of this organization"
 
 	r.run(true)
 
@@ -347,7 +431,7 @@ func TestAnUnconnectedOrganisationSaysSo(t *testing.T) {
 	dir := t.TempDir() // no credential in it
 	c := controller.New(controller.Config{AppsDir: dir, Enabled: map[string]bool{"truvity": true}}, controller.Deps{
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: r.github.Client(),
-		Access: r.console, Audit: r.audit, Status: r.report, Bindings: bindings,
+		Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings,
 	})
 	c.Pass(context.Background())
 
@@ -357,5 +441,153 @@ func TestAnUnconnectedOrganisationSaysSo(t *testing.T) {
 	}
 	if len(r.github.Did()) != 0 {
 		t.Errorf("an unconnected organisation was changed: %v", r.github.Did())
+	}
+}
+
+// joined runs the rig until the joiner is a member of the organisation and
+// its team, and returns how many changes that took.
+func joined(t *testing.T, r *rig) int {
+	t.Helper()
+	r.run(true)
+	r.github.AcceptAccount("newbie")
+	r.run(true)
+	if r.github.Members["newbie"] == nil {
+		t.Fatal("the joiner never became a member")
+	}
+	return len(r.github.Did())
+}
+
+// A person who removes their work address from the GitHub account they
+// linked — or leaves it unverified — is out of the organisation on the next
+// pass. Their other, personal addresses count for nothing.
+func TestAnAddressGoneFromGitHubRemovesTheAccount(t *testing.T) {
+	for name, change := range map[string]func(*githubfake.Org){
+		"removed":    func(g *githubfake.Org) { g.SetEmail("newbie", "new@truvity.com", false, true) },
+		"unverified": func(g *githubfake.Org) { g.SetEmail("newbie", "new@truvity.com", false, false) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			before := joined(t, r)
+			change(r.github)
+
+			r.run(true)
+
+			if after := r.github.Did()[before:]; !slices.Contains(after, "remove-from-org newbie") {
+				t.Errorf("actions = %v, want newbie removed from the organisation", after)
+			}
+			got := r.links.get(r.newbie.ID)
+			if got.State != link.StateLost || got.AccessToken != "" || got.RefreshToken != "" {
+				t.Errorf("link = %+v, want lost with its tokens forgotten", got)
+			}
+			if !slices.Contains(r.audit.kinds(), "github.link.lost new@truvity.com ok") {
+				t.Errorf("audit = %v, want the lost link recorded", r.audit.kinds())
+			}
+		})
+	}
+}
+
+// Revoking the authorization on GitHub is the person withdrawing the
+// proof: the same as removing the address.
+func TestARevokedAuthorizationRemovesTheAccount(t *testing.T) {
+	r := newRig(t)
+	before := joined(t, r)
+	r.github.Revoke("newbie")
+
+	r.run(true)
+
+	if after := r.github.Did()[before:]; !slices.Contains(after, "remove-from-org newbie") {
+		t.Errorf("actions = %v, want newbie removed", after)
+	}
+	if got := r.links.get(r.newbie.ID); got.State != link.StateLost || !strings.Contains(got.Reason, "revoked") {
+		t.Errorf("link = %+v, want lost as revoked", got)
+	}
+}
+
+// GitHub being down is not GitHub saying anything: nobody is removed, the
+// link stays as it was, and the account is still recognised.
+func TestAGitHubOutageRemovesNobody(t *testing.T) {
+	r := newRig(t)
+	before := joined(t, r)
+	r.github.UsersDown = true
+
+	r.run(true)
+
+	if after := r.github.Did()[before:]; len(after) != 0 {
+		t.Errorf("an outage changed %v", after)
+	}
+	if got := r.links.get(r.newbie.ID); got.State != link.StateLinked {
+		t.Errorf("link = %+v, want still linked", got)
+	}
+}
+
+// A token near its end is renewed, and the renewed pair is what is kept —
+// GitHub kills the old pair the moment it issues the new one.
+func TestATokenNearItsEndIsRenewedAndKept(t *testing.T) {
+	r := newRig(t)
+	stored := r.links.get(r.newbie.ID)
+	stored.AccessExpires = time.Now().Add(30 * time.Minute)
+	r.links.set(stored)
+	oldAccess := stored.AccessToken
+
+	r.run(false)
+
+	got := r.links.get(r.newbie.ID)
+	if got.State != link.StateLinked || got.AccessToken == oldAccess || got.AccessToken != r.github.Accounts["newbie"].Access {
+		t.Errorf("link = %+v, want linked with the pair GitHub issued last", got)
+	}
+	if !got.RefreshingSince.IsZero() {
+		t.Error("the refresh marker was left behind")
+	}
+	// And the renewed pair works: a second pass checks with it cleanly.
+	r.run(false)
+	if again := r.links.get(r.newbie.ID); again.State != link.StateLinked {
+		t.Errorf("after renewal the link is %+v", again)
+	}
+}
+
+// A refresh that was interrupted after GitHub issued a new pair leaves a
+// link whose tokens are all dead. That reads exactly like a revoked
+// authorization — and must not be treated as one: the link is
+// unverifiable, and the person is not removed.
+func TestAnInterruptedRefreshIsNotARevocation(t *testing.T) {
+	r := newRig(t)
+	before := joined(t, r)
+	stored := r.links.get(r.newbie.ID)
+	// GitHub rotated the pair; the store never heard about it.
+	if _, err := githubapp.RefreshUserTokens(context.Background(), r.github.Client(), githubfake.ClientID, githubfake.ClientSecret,
+		stored.RefreshToken, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	stored.RefreshingSince = time.Now().Add(-time.Minute)
+	r.links.set(stored)
+
+	r.run(true)
+
+	if after := r.github.Did()[before:]; slices.Contains(after, "remove-from-org newbie") {
+		t.Errorf("an interrupted refresh removed the person: %v", after)
+	}
+	if got := r.links.get(r.newbie.ID); got.State != link.StateUnverifiable {
+		t.Errorf("link = %+v, want unverifiable", got)
+	}
+}
+
+// A link made with a link App that has since been replaced is never
+// checked with the new App's credentials — GitHub would call its token
+// unknown, and that would read as a revocation. It is unverifiable, and
+// nobody is removed.
+func TestALinkFromAnotherLinkAppIsNeverCalledLost(t *testing.T) {
+	r := newRig(t)
+	before := joined(t, r)
+	stored := r.links.get(r.newbie.ID)
+	stored.AppID = 1
+	r.links.set(stored)
+
+	r.run(true)
+
+	if after := r.github.Did()[before:]; slices.Contains(after, "remove-from-org newbie") {
+		t.Errorf("a link from another App removed the person: %v", after)
+	}
+	if got := r.links.get(r.newbie.ID); got.State != link.StateUnverifiable {
+		t.Errorf("link = %+v, want unverifiable", got)
 	}
 }

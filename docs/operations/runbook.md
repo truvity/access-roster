@@ -162,7 +162,10 @@ domains, counts, durations and errors.
 
 1. The organisation is bound in the policy, **connected** on the GitHub
    page, and the controller runs with the organisation *not* in
-   `githubRoster.actsIn`.
+   `githubRoster.actsIn`. The **link App** is created, and the people
+   who belong in it have linked their accounts — send them the link page
+   the GitHub page shows. Until somebody links, their rows say
+   `not linked` and their accounts are left alone.
 2. Read its section on the GitHub page after a pass. *Controller* says
    `dry run`; the table of people not synced is exactly what enabling it
    would do. Look for anybody you did not expect to be removed, and for
@@ -175,6 +178,16 @@ domains, counts, durations and errors.
 If a pass fails, the section says why — an organisation not connected,
 an App GitHub refuses, a console that did not answer. A failed pass changes
 nothing.
+
+**A link that is `unverifiable`** can no longer be checked and was not
+said by GitHub to be gone: its token pair was lost in an interrupted
+renewal, or the link App was replaced. It adds and removes nobody. Ask
+the person to open the link page and link again.
+
+**A link that is `lost`** was withdrawn on GitHub — the work address
+removed or unverified, or the authorization revoked — and its account
+left the organisation (`github.link.lost`, then `github.member.remove`
+in the audit stream). Linking again brings it back in on the next pass.
 
 ## Audit: what happened lately
 

@@ -515,9 +515,12 @@ What each GitHub team should contain is the policy's `github` table:
 internal groups per team, in both of GitHub's roles. Which accounts hold
 those groups is the console's to answer, and the controller asks it with
 its own ServiceAccount token — no exchange in front of a same-cluster
-call. A login is matched to a person only by an address in the
-organisation's verified domains, so nothing links a GitHub account to a
-person by hand.
+call. A GitHub account is matched to a person by the work addresses GitHub
+verified on it, which the person shows by authorizing a link App — GitHub
+discloses members' addresses to no organisation outside its Enterprise
+Cloud plan — so nobody types a GitHub username, and nobody else keeps a
+mapping. The controller checks every link again each pass, and an account
+whose link GitHub says is gone leaves the organisation at once.
 
 Every pass derives everything, for every bound organisation, and changes
 only those listed in `githubRoster.actsIn`: an organisation is born

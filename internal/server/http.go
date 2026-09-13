@@ -265,6 +265,10 @@ func (s *ConsoleServer) Handler() http.Handler {
 	// over it: after Create, and after Install.
 	mux.HandleFunc("GET "+githubCallbackPath, s.githubCallback)
 	mux.HandleFunc("GET "+githubSetupPath, s.githubSetup)
+	// Creating the link App, and a person linking an account with it.
+	mux.HandleFunc("GET "+githubLinkAppCallbackPath, s.githubLinkAppCallback)
+	mux.HandleFunc("GET "+githubLinkPath, s.githubLinkPage)
+	mux.HandleFunc("GET "+githubLinkCallbackPath, s.githubLinkCallback)
 	mux.HandleFunc("GET /.access/whoami", s.whoami)
 
 	return s.withIdentity(mux)

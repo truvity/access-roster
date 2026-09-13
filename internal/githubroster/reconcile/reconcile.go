@@ -11,9 +11,17 @@
 // addresses has been asked about one at a time, and removes only on an
 // answer the directory vouches for.
 //
-// What is never touched, whatever the inputs: a member with no verified
-// address (nobody can say who they are), a team no binding names, and an
-// owner's place in the organisation.
+// Who a GitHub account belongs to is what its person LINKED: they
+// authorized the link App as that account, and GitHub verified the work
+// addresses the link proves. GitHub discloses nothing else about a
+// member's addresses outside its Enterprise Cloud plan, where the
+// organisation's verified-domain addresses count as well.
+//
+// What is never touched, whatever the inputs: a member nobody linked
+// (nobody can say who they are), a team no binding names, and an owner's
+// place in the organisation. The one removal that does not ask the
+// directory is an account whose link GitHub itself says is gone — the
+// person removed the address, or revoked the authorization.
 package reconcile
 
 import (
@@ -46,6 +54,21 @@ type State struct {
 	// TeamMembers are each bound team's members, by slug. A bound team
 	// missing here does not exist on GitHub.
 	TeamMembers map[string][]githubapp.TeamMember
+	// Links are the accounts people linked, as last checked. A link that
+	// could not be checked is not here at all: it neither adds anybody nor
+	// removes anybody.
+	Links []Link
+}
+
+// Link is one linked GitHub account.
+type Link struct {
+	ID     int64
+	Login  string
+	Emails []string
+	// Lost is GitHub's own answer that the link's proof is gone. The
+	// account leaves the organisation.
+	Lost   bool
+	Reason string
 }
 
 // Confirmation is the directory's answer about one address, asked before
@@ -74,6 +97,10 @@ type Action struct {
 	Role  status.Role
 	// Teams are the ids an invitation places the invitee in.
 	Teams []int64
+	// Account is the linked account an invitation is for.
+	Account int64
+	// Reason is why a removal happens, when it is not the directory's.
+	Reason string
 }
 
 func (a Action) String() string {
@@ -98,14 +125,17 @@ type Draft struct {
 	// anywhere is every address desired somewhere in the organisation.
 	anywhere map[string]bool
 
-	loginOf    map[string]string // address -> login
-	ambiguous  map[string][]string
-	emailsOf   map[string][]string // login -> addresses
-	owner      map[string]bool
-	invited    map[string]bool
-	teamID     map[string]int64
-	current    map[string]map[string]bool // slug -> login -> maintainer
-	domains    map[string]bool            // domains a member has a verified address at
+	loginOf   map[string]string // address -> login
+	ambiguous map[string][]string
+	emailsOf  map[string][]string // login -> addresses
+	owner     map[string]bool
+	invited   map[string]bool // addresses and lowercased logins with a pending invitation
+	teamID    map[string]int64
+	current   map[string]map[string]bool // slug -> login -> maintainer
+	// outside are linked accounts that are not members, by address.
+	outside map[string]Link
+	// lost are members whose link GitHub says is gone: login -> the link.
+	lost       map[string]Link
 	unlinked   []status.Account
 	candidates map[string]bool // addresses to confirm
 }
@@ -121,7 +151,8 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 		desired: map[string]map[string]status.Role{}, anywhere: map[string]bool{},
 		loginOf: map[string]string{}, ambiguous: map[string][]string{}, emailsOf: map[string][]string{},
 		owner: map[string]bool{}, invited: map[string]bool{}, teamID: map[string]int64{},
-		current: map[string]map[string]bool{}, domains: map[string]bool{}, candidates: map[string]bool{},
+		current: map[string]map[string]bool{}, outside: map[string]Link{}, lost: map[string]Link{},
+		candidates: map[string]bool{},
 	}
 
 	want := func(scope, email string, role status.Role) {
@@ -155,20 +186,35 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 		}
 	}
 
+	links := map[int64]Link{}
+	for _, l := range state.Links {
+		links[l.ID] = l
+	}
+	members := map[int64]bool{}
 	for _, member := range state.Members {
 		d.owner[member.Login] = member.Owner
-		if len(member.Emails) == 0 {
+		members[member.ID] = true
+		emails := slices.Clone(member.Emails)
+		l, linked := links[member.ID]
+		if linked && !l.Lost {
+			emails = append(emails, l.Emails...)
+		}
+		if len(emails) == 0 {
+			if linked && l.Lost {
+				d.lost[member.Login] = l
+				continue
+			}
 			d.unlinked = append(d.unlinked, status.Account{
-				Login: member.Login, Reason: "no verified address in any of the organisation's domains",
+				Login: member.Login, Reason: "has not linked this account to a work address",
 			})
 			continue
 		}
-		for _, email := range member.Emails {
+		for _, email := range emails {
 			email = strings.ToLower(email)
-			d.emailsOf[member.Login] = appendUnique(d.emailsOf[member.Login], email)
-			if at := strings.LastIndex(email, "@"); at >= 0 {
-				d.domains[email[at+1:]] = true
+			if slices.Contains(d.emailsOf[member.Login], email) {
+				continue
 			}
+			d.emailsOf[member.Login] = append(d.emailsOf[member.Login], email)
 			if other, taken := d.loginOf[email]; taken && other != member.Login {
 				d.ambiguous[email] = appendUnique(appendUnique(d.ambiguous[email], other), member.Login)
 				continue
@@ -181,8 +227,27 @@ func Derive(org string, binding policy.GitHubOrg, holders Holders, state State) 
 	for email := range d.ambiguous {
 		delete(d.loginOf, email)
 	}
+	// Linked accounts that are not members yet: who an invitation goes to.
+	for _, l := range state.Links {
+		if l.Lost || members[l.ID] {
+			continue
+		}
+		for _, email := range l.Emails {
+			email = strings.ToLower(email)
+			if other, taken := d.outside[email]; taken && other.ID != l.ID {
+				d.ambiguous[email] = appendUnique(appendUnique(d.ambiguous[email], other.Login), l.Login)
+				continue
+			}
+			d.outside[email] = l
+		}
+	}
 	for _, invitation := range state.Invitations {
-		d.invited[strings.ToLower(invitation.Email)] = true
+		if invitation.Email != "" {
+			d.invited[strings.ToLower(invitation.Email)] = true
+		}
+		if invitation.Login != "" {
+			d.invited["@"+strings.ToLower(invitation.Login)] = true
+		}
 	}
 	for _, team := range state.Teams {
 		d.teamID[team.Slug] = team.ID
@@ -248,38 +313,54 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 		member.State, member.Action, member.Reason = status.StateHeld, action, reason
 	}
 
-	// Somebody wanted and not yet linked is invited once, into every team
-	// that wants them, however many team rows show it.
-	inviting := map[string]*Action{}
+	// Somebody wanted who is not a member is invited once — as the account
+	// they linked, into every team that wants them, however many team rows
+	// and addresses show it. Somebody who linked no account is waiting on
+	// themselves, not held: there is nobody to invite yet.
+	var invites []*Action
+	// lostBy says, for an address whose link is gone, which account it was
+	// and why — so the row that wants them says more than "not linked".
+	lostBy := map[string]string{}
+	for login, l := range d.lost {
+		for _, email := range l.Emails {
+			lostBy[strings.ToLower(email)] = "the link to @" + login + " is gone (" + l.Reason + ")"
+		}
+	}
+	inviting := map[int64]*Action{}
 	inviteHeld := map[string]string{}
+	notLinked := map[string]bool{}
 	for _, email := range slices.Sorted(maps.Keys(d.anywhere)) {
 		if _, linked := d.loginOf[email]; linked || d.invited[email] {
 			continue
 		}
 		if logins, clash := d.ambiguous[email]; clash {
-			inviteHeld[email] = fmt.Sprintf("%s is a verified address of more than one account (%s)", email, strings.Join(logins, ", "))
+			inviteHeld[email] = fmt.Sprintf("%s is linked to more than one account (%s)", email, strings.Join(logins, ", "))
 			continue
 		}
-		domain := email[strings.LastIndex(email, "@")+1:]
-		if !d.domains[domain] {
-			// No member has a verified address at this domain, so it is very
-			// likely not a verified domain of the organisation — and an
-			// invitation accepted with any account would then be linked to
-			// nobody. Held until somebody verifies an address there.
-			inviteHeld[email] = fmt.Sprintf(
-				"no member of %s has a verified address at %s, so an accepted invitation could not be matched back to %s",
-				d.org, domain, email)
+		account, has := d.outside[email]
+		if !has {
+			notLinked[email] = true
 			continue
 		}
-		invite := &Action{Kind: status.ActionInvite, Email: email, Role: status.RoleMember}
+		if d.invited["@"+strings.ToLower(account.Login)] {
+			continue
+		}
+		invite, started := inviting[account.ID]
+		if !started {
+			invite = &Action{Kind: status.ActionInvite, Email: email, Login: account.Login, Account: account.ID, Role: status.RoleMember}
+			inviting[account.ID] = invite
+			invites = append(invites, invite)
+		}
 		for _, slug := range slices.Sorted(maps.Keys(d.binding.Teams)) {
 			if _, wanted := d.desired[slug][email]; wanted {
-				if id, exists := d.teamID[slug]; exists {
+				if id, exists := d.teamID[slug]; exists && !slices.Contains(invite.Teams, id) {
 					invite.Teams = append(invite.Teams, id)
 				}
 			}
 		}
-		inviting[email] = invite
+	}
+	for _, invite := range invites {
+		slices.Sort(invite.Teams)
 		actions = append(actions, *invite)
 	}
 
@@ -287,11 +368,19 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 		member := status.Member{Email: email, Role: role}
 		login, linked := d.loginOf[email]
 		member.Login = login
+		account, outside := d.outside[email]
+		if !linked && outside {
+			member.Login = account.Login
+		}
 		switch {
-		case !linked && d.invited[email]:
+		case !linked && (d.invited[email] || (outside && d.invited["@"+strings.ToLower(account.Login)])):
 			member.State = status.StateInvited
 		case !linked && inviteHeld[email] != "":
 			hold(&member, status.ActionInvite, inviteHeld[email])
+		case !linked && notLinked[email] && lostBy[email] != "":
+			member.State, member.Reason = status.StateNotLinked, lostBy[email]+": link the account again"
+		case !linked && notLinked[email]:
+			member.State, member.Reason = status.StateNotLinked, email+" has not linked a GitHub account"
 		case !linked:
 			member.State, member.Action = status.StatePending, status.ActionInvite
 		case scope == "":
@@ -372,6 +461,24 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 		out.Members = append(out.Members, member)
 	}
 
+	// An account whose link GitHub says is gone leaves at once: the person
+	// removed the work address from it or revoked the authorization, and
+	// either way it is no longer shown to be theirs.
+	for _, login := range slices.Sorted(maps.Keys(d.lost)) {
+		l := d.lost[login]
+		member := status.Member{Login: login, Role: status.RoleMember, Reason: "the link is gone: " + l.Reason}
+		if len(l.Emails) > 0 {
+			member.Email = l.Emails[0]
+		}
+		if d.owner[login] {
+			hold(&member, status.ActionRemove, "an owner, not removed: the organisation's owners are declared elsewhere; the link is gone: "+l.Reason)
+		} else {
+			member.State, member.Action = status.StateLeaving, status.ActionRemove
+			actions = append(actions, Action{Kind: status.ActionRemove, Login: login, Email: member.Email, Reason: member.Reason})
+		}
+		out.Members = append(out.Members, member)
+	}
+
 	return out, dropTeamWorkForLeavers(actions)
 }
 
@@ -408,17 +515,17 @@ func (d *Draft) allGone(emails []string, confirmations map[string]Confirmation) 
 // team removal first would only be a second call to the same end.
 func dropTeamWorkForLeavers(actions []Action) []Action {
 	leaving := map[string]bool{}
-	for _, a := range actions {
-		if a.Kind == status.ActionRemove && a.Team == "" {
+	for k := range actions {
+		if a := &actions[k]; a.Kind == status.ActionRemove && a.Team == "" {
 			leaving[a.Login] = true
 		}
 	}
 	out := actions[:0]
-	for _, a := range actions {
-		if a.Team != "" && leaving[a.Login] {
+	for k := range actions {
+		if actions[k].Team != "" && leaving[actions[k].Login] {
 			continue
 		}
-		out = append(out, a)
+		out = append(out, actions[k])
 	}
 	return out
 }

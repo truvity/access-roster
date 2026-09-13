@@ -1,4 +1,35 @@
-## Unreleased
+## v1.3.0
+
+People link their own GitHub account. GitHub discloses members' work
+addresses only to organisations on its Enterprise Cloud plan, so on every
+other plan the controller could match nobody: every member read as
+unlinked and every invitation was held. Nothing was changed on GitHub by
+that, and nothing is now until a person links.
+
+- **Self-service linking.** An operator creates the **link App** once,
+  from the GitHub page: a public App that asks only to read a person's own
+  email addresses and is installed nowhere. A person opens
+  `/connect/github/link`, authorizes it, and their account is linked to
+  each verified work address the directory has, live. No console role is
+  needed, and nobody types a username. Linking a second account with the
+  same address moves the address to it.
+- **A link is checked every pass.** The controller keeps the person's
+  token pair and reads the account's verified addresses again each pass.
+  An account whose linked addresses are all gone or unverified, or whose
+  authorization was revoked, **leaves the organisation at once** — the one
+  removal that does not ask the directory. An outage changes nothing. A
+  token pair lost in an interrupted renewal makes the link
+  *unverifiable*, never lost: renewals are written as in progress first.
+- **Invitations go to the linked account**, by its id, straight into its
+  teams. Somebody wanted who has not linked is `not-linked` — waiting on
+  them, not held. Invitations by address are no longer sent.
+- **Chart:** the controller's Role may update one Secret by name,
+  `<release>-github-links`, which the service creates. The link App's
+  credential sits beside the organisations' in `<release>-github-apps`.
+- **Console:** the GitHub page gains *Linking accounts* — the link App,
+  the page to send people to, and every link with its state.
+
+Also in this release:
 
 - **An access token names the person.** `name`, `given_name` and
   `family_name` now travel in the access token as they already did in the

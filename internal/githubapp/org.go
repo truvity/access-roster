@@ -19,13 +19,16 @@ type Org struct {
 
 // Member is one member of the organisation.
 type Member struct {
+	// ID is the account's id, which a link is kept by.
+	ID    int64
 	Login string
 	// Owner is the organisation's admin role. The controller never changes
 	// it and never removes an owner from the organisation.
 	Owner bool
 	// Emails are the member's addresses in the organisation's VERIFIED
-	// domains — the only addresses GitHub vouches for, and the only ones a
-	// login is matched to a person by.
+	// domains, which GitHub discloses only to an organisation on its
+	// Enterprise Cloud plan. Everywhere else this is empty, and a member is
+	// matched to a person by the link they made themselves.
 	Emails []string
 }
 
@@ -55,7 +58,7 @@ const membersQuery = `query($org: String!, $after: String) {
   organization(login: $org) {
     membersWithRole(first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
-      edges { role node { login organizationVerifiedDomainEmails(login: $org) } }
+      edges { role node { databaseId login organizationVerifiedDomainEmails(login: $org) } }
     }
   }
 }`
@@ -80,6 +83,7 @@ func (o Org) Members(ctx context.Context, token string) ([]Member, error) {
 						Edges []struct {
 							Role string `json:"role"`
 							Node struct {
+								ID     int64    `json:"databaseId"`
 								Login  string   `json:"login"`
 								Emails []string `json:"organizationVerifiedDomainEmails"`
 							} `json:"node"`
@@ -111,7 +115,7 @@ func (o Org) Members(ctx context.Context, token string) ([]Member, error) {
 			for _, email := range edge.Node.Emails {
 				emails = append(emails, strings.ToLower(strings.TrimSpace(email)))
 			}
-			out = append(out, Member{Login: edge.Node.Login, Owner: edge.Role == "ADMIN", Emails: emails})
+			out = append(out, Member{ID: edge.Node.ID, Login: edge.Node.Login, Owner: edge.Role == "ADMIN", Emails: emails})
 		}
 		if !page.PageInfo.HasNextPage {
 			return out, nil
@@ -193,6 +197,21 @@ func (o Org) Invite(ctx context.Context, token, email string, teams []int64) err
 	if err := send(ctx, o.HTTP, http.MethodPost, APIBase+"/orgs/"+url.PathEscape(o.Login)+"/invitations", token,
 		body, http.StatusCreated, nil); err != nil {
 		return fmt.Errorf("github: invite to %s: %w", o.Login, err)
+	}
+	return nil
+}
+
+// InviteUser invites a GitHub account by its id, straight into teams. It is
+// how a person who linked their account is invited: the account is known,
+// so nothing about the invitation has to be matched back afterwards.
+func (o Org) InviteUser(ctx context.Context, token string, id int64, teams []int64) error {
+	body := map[string]any{"invitee_id": id, "role": "direct_member"}
+	if len(teams) > 0 {
+		body["team_ids"] = teams
+	}
+	if err := send(ctx, o.HTTP, http.MethodPost, APIBase+"/orgs/"+url.PathEscape(o.Login)+"/invitations", token,
+		body, http.StatusCreated, nil); err != nil {
+		return fmt.Errorf("github: invite account %d to %s: %w", id, o.Login, err)
 	}
 	return nil
 }

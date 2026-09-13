@@ -330,6 +330,12 @@ func (s *ConsoleServer) githubSetup(w http.ResponseWriter, r *http.Request) {
 // browser was given, signed by this service, naming a GitHub organisation
 // and the operator who started the flow.
 func (s *ConsoleServer) githubFlow(w http.ResponseWriter, r *http.Request) (org, actor string, ok bool) {
+	return s.githubFlowFor(w, r, githubBind)
+}
+
+// githubFlowFor is [ConsoleServer.githubFlow] for a flow whose state names
+// its organisation behind another prefix.
+func (s *ConsoleServer) githubFlowFor(w http.ResponseWriter, r *http.Request, prefix string) (org, actor string, ok bool) {
 	state := r.URL.Query().Get("state")
 	cookie, err := r.Cookie(access.ConnectCookieName)
 	if err != nil || cookie.Value == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
@@ -345,7 +351,7 @@ func (s *ConsoleServer) githubFlow(w http.ResponseWriter, r *http.Request) (org,
 		s.githubProblem(w, r, http.StatusBadRequest, "This connect cannot be finished.", err.Error(), nil)
 		return "", "", false
 	}
-	org, isGitHub := strings.CutPrefix(binding.Bind, githubBind)
+	org, isGitHub := strings.CutPrefix(binding.Bind, prefix)
 	if !isGitHub || !status.ValidOrg(org) {
 		s.githubProblem(w, r, http.StatusBadRequest, "This is not a GitHub connect.", "", nil)
 		return "", "", false

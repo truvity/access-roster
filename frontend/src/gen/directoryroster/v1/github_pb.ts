@@ -12,7 +12,91 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/github.proto.
  */
 export const file_directoryroster_v1_github: GenFile = /*@__PURE__*/
-  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvZ2l0aHViLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEiKAoZQmVnaW5HaXRIdWJDb25uZWN0UmVxdWVzdBILCgNvcmcYASABKAkiOwoaQmVnaW5HaXRIdWJDb25uZWN0UmVzcG9uc2USCwoDdXJsGAEgASgJEhAKCG1hbmlmZXN0GAIgASgJIjIKI0Rpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXF1ZXN0EgsKA29yZxgBIAEoCSJlCiREaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uUmVzcG9uc2USEwoLdW5pbnN0YWxsZWQYASABKAgSDgoGZGV0YWlsGAIgASgJEhgKEGFwcF9zZXR0aW5nc191cmwYAyABKAkiGAoWR2V0R2l0SHViU3RhdHVzUmVxdWVzdCKRAQoXR2V0R2l0SHViU3RhdHVzUmVzcG9uc2USPQoNb3JnYW5pc2F0aW9ucxgBIAMoCzImLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJPcmdhbmlzYXRpb24SGQoRcmVwb3J0c19hdmFpbGFibGUYAiABKAgSHAoUY29ubmVjdGluZ19hdmFpbGFibGUYAyABKAgihQMKEkdpdEh1Yk9yZ2FuaXNhdGlvbhILCgNvcmcYASABKAkSDQoFYm91bmQYAiABKAgSEAoIcmVwb3J0ZWQYAyABKAgSFAoMcmVwb3J0X2Vycm9yGAQgASgJEg8KB2VuYWJsZWQYBSABKAgSLAoEdGljaxgGIAEoCzIeLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJUaWNrEhUKDW1lbWJlcl9ncm91cHMYByADKAkSMQoHbWVtYmVycxgIIAMoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJNZW1iZXISMwoFdGVhbXMYCSADKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViVGVhbVN0YXR1cxIzCgh1bmxpbmtlZBgKIAMoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJBY2NvdW50EjgKCmNvbm5lY3Rpb24YCyABKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQ29ubmVjdGlvbiKhAQoQR2l0SHViQ29ubmVjdGlvbhIOCgZhcHBfaWQYASABKAMSEAoIYXBwX3NsdWcYAiABKAkSEQoJaW5zdGFsbGVkGAMgASgIEhAKCGh0bWxfdXJsGAQgASgJEjAKDGNvbm5lY3RlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFAoMY29ubmVjdGVkX2J5GAYgASgJInMKCkdpdEh1YlRpY2sSJgoCYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB291dGNvbWUYAiABKAkSDQoFZXJyb3IYAyABKAkSDwoHY2hhbmdlcxgEIAEoBRIMCgRoZWxkGAUgASgFIpQBChBHaXRIdWJUZWFtU3RhdHVzEgwKBHRlYW0YASABKAkSDQoFYm91bmQYAiABKAgSFQoNbWVtYmVyX2dyb3VwcxgDIAMoCRIZChFtYWludGFpbmVyX2dyb3VwcxgEIAMoCRIxCgdtZW1iZXJzGAUgAygLMiAuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1Yk1lbWJlciJpCgxHaXRIdWJNZW1iZXISDQoFZW1haWwYASABKAkSDQoFbG9naW4YAiABKAkSDAoEcm9sZRgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZhY3Rpb24YBSABKAkSDgoGcmVhc29uGAYgASgJIi4KDUdpdEh1YkFjY291bnQSDQoFbG9naW4YASABKAkSDgoGcmVhc29uGAIgASgJMoQDCg1HaXRIdWJTZXJ2aWNlEmoKD0dldEdpdEh1YlN0YXR1cxIqLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRHaXRIdWJTdGF0dXNSZXF1ZXN0GisuZGlyZWN0b3J5cm9zdGVyLnYxLkdldEdpdEh1YlN0YXR1c1Jlc3BvbnNlEnMKEkJlZ2luR2l0SHViQ29ubmVjdBItLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkNvbm5lY3RSZXF1ZXN0Gi4uZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luR2l0SHViQ29ubmVjdFJlc3BvbnNlEpEBChxEaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uEjcuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXF1ZXN0GjguZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXNwb25zZULZAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUILR2l0aHViUHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvZ2l0aHViLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEiMQogQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlcXVlc3QSDQoFb3duZXIYASABKAkiQgohQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCRIQCghtYW5pZmVzdBgCIAEoCSIgCh5EaXNjb25uZWN0R2l0SHViTGlua0FwcFJlcXVlc3QiUAofRGlzY29ubmVjdEdpdEh1YkxpbmtBcHBSZXNwb25zZRITCgtpbnZhbGlkYXRlZBgBIAEoBRIYChBhcHBfc2V0dGluZ3NfdXJsGAIgASgJIigKGUJlZ2luR2l0SHViQ29ubmVjdFJlcXVlc3QSCwoDb3JnGAEgASgJIjsKGkJlZ2luR2l0SHViQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCRIQCghtYW5pZmVzdBgCIAEoCSIyCiNEaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uUmVxdWVzdBILCgNvcmcYASABKAkiZQokRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvblJlc3BvbnNlEhMKC3VuaW5zdGFsbGVkGAEgASgIEg4KBmRldGFpbBgCIAEoCRIYChBhcHBfc2V0dGluZ3NfdXJsGAMgASgJIhgKFkdldEdpdEh1YlN0YXR1c1JlcXVlc3QiogIKF0dldEdpdEh1YlN0YXR1c1Jlc3BvbnNlEj0KDW9yZ2FuaXNhdGlvbnMYASADKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViT3JnYW5pc2F0aW9uEhkKEXJlcG9ydHNfYXZhaWxhYmxlGAIgASgIEhwKFGNvbm5lY3RpbmdfYXZhaWxhYmxlGAMgASgIEhkKEWxpbmtpbmdfYXZhaWxhYmxlGAQgASgIEjMKCGxpbmtfYXBwGAUgASgLMiEuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkxpbmtBcHASEAoIbGlua191cmwYBiABKAkSLQoFbGlua3MYByADKAsyHi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViTGluayKaAQoNR2l0SHViTGlua0FwcBIOCgZhcHBfaWQYASABKAMSEAoIYXBwX3NsdWcYAiABKAkSDQoFb3duZXIYAyABKAkSEAoIaHRtbF91cmwYBCABKAkSMAoMY29ubmVjdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIUCgxjb25uZWN0ZWRfYnkYBiABKAki7QEKCkdpdEh1YkxpbmsSEgoKYWNjb3VudF9pZBgBIAEoAxINCgVsb2dpbhgCIAEoCRIOCgZlbWFpbHMYAyADKAkSDQoFc3RhdGUYBCABKAkSDgoGcmVhc29uGAUgASgJEi0KCWxpbmtlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKY2hlY2tlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKY2hhbmdlZF9hdBgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAihQMKEkdpdEh1Yk9yZ2FuaXNhdGlvbhILCgNvcmcYASABKAkSDQoFYm91bmQYAiABKAgSEAoIcmVwb3J0ZWQYAyABKAgSFAoMcmVwb3J0X2Vycm9yGAQgASgJEg8KB2VuYWJsZWQYBSABKAgSLAoEdGljaxgGIAEoCzIeLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJUaWNrEhUKDW1lbWJlcl9ncm91cHMYByADKAkSMQoHbWVtYmVycxgIIAMoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJNZW1iZXISMwoFdGVhbXMYCSADKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViVGVhbVN0YXR1cxIzCgh1bmxpbmtlZBgKIAMoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJBY2NvdW50EjgKCmNvbm5lY3Rpb24YCyABKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQ29ubmVjdGlvbiKhAQoQR2l0SHViQ29ubmVjdGlvbhIOCgZhcHBfaWQYASABKAMSEAoIYXBwX3NsdWcYAiABKAkSEQoJaW5zdGFsbGVkGAMgASgIEhAKCGh0bWxfdXJsGAQgASgJEjAKDGNvbm5lY3RlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFAoMY29ubmVjdGVkX2J5GAYgASgJInMKCkdpdEh1YlRpY2sSJgoCYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB291dGNvbWUYAiABKAkSDQoFZXJyb3IYAyABKAkSDwoHY2hhbmdlcxgEIAEoBRIMCgRoZWxkGAUgASgFIpQBChBHaXRIdWJUZWFtU3RhdHVzEgwKBHRlYW0YASABKAkSDQoFYm91bmQYAiABKAgSFQoNbWVtYmVyX2dyb3VwcxgDIAMoCRIZChFtYWludGFpbmVyX2dyb3VwcxgEIAMoCRIxCgdtZW1iZXJzGAUgAygLMiAuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1Yk1lbWJlciJpCgxHaXRIdWJNZW1iZXISDQoFZW1haWwYASABKAkSDQoFbG9naW4YAiABKAkSDAoEcm9sZRgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZhY3Rpb24YBSABKAkSDgoGcmVhc29uGAYgASgJIi4KDUdpdEh1YkFjY291bnQSDQoFbG9naW4YASABKAkSDgoGcmVhc29uGAIgASgJMpQFCg1HaXRIdWJTZXJ2aWNlEmoKD0dldEdpdEh1YlN0YXR1cxIqLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRHaXRIdWJTdGF0dXNSZXF1ZXN0GisuZGlyZWN0b3J5cm9zdGVyLnYxLkdldEdpdEh1YlN0YXR1c1Jlc3BvbnNlEnMKEkJlZ2luR2l0SHViQ29ubmVjdBItLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkNvbm5lY3RSZXF1ZXN0Gi4uZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luR2l0SHViQ29ubmVjdFJlc3BvbnNlEpEBChxEaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uEjcuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXF1ZXN0GjguZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXNwb25zZRKIAQoZQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdBI0LmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkxpbmtBcHBDb25uZWN0UmVxdWVzdBo1LmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkxpbmtBcHBDb25uZWN0UmVzcG9uc2USggEKF0Rpc2Nvbm5lY3RHaXRIdWJMaW5rQXBwEjIuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJMaW5rQXBwUmVxdWVzdBozLmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViTGlua0FwcFJlc3BvbnNlQtkBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQgtHaXRodWJQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+
+/**
+ * @generated from message directoryroster.v1.BeginGitHubLinkAppConnectRequest
+ */
+export type BeginGitHubLinkAppConnectRequest = Message<"directoryroster.v1.BeginGitHubLinkAppConnectRequest"> & {
+  /**
+   * the organisation the App is created under.
+   *
+   * @generated from field: string owner = 1;
+   */
+  owner: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.BeginGitHubLinkAppConnectRequest.
+ * Use `create(BeginGitHubLinkAppConnectRequestSchema)` to create a new message.
+ */
+export const BeginGitHubLinkAppConnectRequestSchema: GenMessage<BeginGitHubLinkAppConnectRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 0);
+
+/**
+ * @generated from message directoryroster.v1.BeginGitHubLinkAppConnectResponse
+ */
+export type BeginGitHubLinkAppConnectResponse = Message<"directoryroster.v1.BeginGitHubLinkAppConnectResponse"> & {
+  /**
+   * where the browser POSTs the manifest.
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+
+  /**
+   * the App's manifest, posted as the form field `manifest`.
+   *
+   * @generated from field: string manifest = 2;
+   */
+  manifest: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.BeginGitHubLinkAppConnectResponse.
+ * Use `create(BeginGitHubLinkAppConnectResponseSchema)` to create a new message.
+ */
+export const BeginGitHubLinkAppConnectResponseSchema: GenMessage<BeginGitHubLinkAppConnectResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 1);
+
+/**
+ * @generated from message directoryroster.v1.DisconnectGitHubLinkAppRequest
+ */
+export type DisconnectGitHubLinkAppRequest = Message<"directoryroster.v1.DisconnectGitHubLinkAppRequest"> & {
+};
+
+/**
+ * Describes the message directoryroster.v1.DisconnectGitHubLinkAppRequest.
+ * Use `create(DisconnectGitHubLinkAppRequestSchema)` to create a new message.
+ */
+export const DisconnectGitHubLinkAppRequestSchema: GenMessage<DisconnectGitHubLinkAppRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 2);
+
+/**
+ * @generated from message directoryroster.v1.DisconnectGitHubLinkAppResponse
+ */
+export type DisconnectGitHubLinkAppResponse = Message<"directoryroster.v1.DisconnectGitHubLinkAppResponse"> & {
+  /**
+   * how many links became unverifiable.
+   *
+   * @generated from field: int32 invalidated = 1;
+   */
+  invalidated: number;
+
+  /**
+   * where the owner deletes the App itself, which the API cannot do.
+   *
+   * @generated from field: string app_settings_url = 2;
+   */
+  appSettingsUrl: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.DisconnectGitHubLinkAppResponse.
+ * Use `create(DisconnectGitHubLinkAppResponseSchema)` to create a new message.
+ */
+export const DisconnectGitHubLinkAppResponseSchema: GenMessage<DisconnectGitHubLinkAppResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 3);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubConnectRequest
@@ -31,7 +115,7 @@ export type BeginGitHubConnectRequest = Message<"directoryroster.v1.BeginGitHubC
  * Use `create(BeginGitHubConnectRequestSchema)` to create a new message.
  */
 export const BeginGitHubConnectRequestSchema: GenMessage<BeginGitHubConnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 0);
+  messageDesc(file_directoryroster_v1_github, 4);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubConnectResponse
@@ -59,7 +143,7 @@ export type BeginGitHubConnectResponse = Message<"directoryroster.v1.BeginGitHub
  * Use `create(BeginGitHubConnectResponseSchema)` to create a new message.
  */
 export const BeginGitHubConnectResponseSchema: GenMessage<BeginGitHubConnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 1);
+  messageDesc(file_directoryroster_v1_github, 5);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubOrganisationRequest
@@ -76,7 +160,7 @@ export type DisconnectGitHubOrganisationRequest = Message<"directoryroster.v1.Di
  * Use `create(DisconnectGitHubOrganisationRequestSchema)` to create a new message.
  */
 export const DisconnectGitHubOrganisationRequestSchema: GenMessage<DisconnectGitHubOrganisationRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 2);
+  messageDesc(file_directoryroster_v1_github, 6);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubOrganisationResponse
@@ -111,7 +195,7 @@ export type DisconnectGitHubOrganisationResponse = Message<"directoryroster.v1.D
  * Use `create(DisconnectGitHubOrganisationResponseSchema)` to create a new message.
  */
 export const DisconnectGitHubOrganisationResponseSchema: GenMessage<DisconnectGitHubOrganisationResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 3);
+  messageDesc(file_directoryroster_v1_github, 7);
 
 /**
  * @generated from message directoryroster.v1.GetGitHubStatusRequest
@@ -124,7 +208,7 @@ export type GetGitHubStatusRequest = Message<"directoryroster.v1.GetGitHubStatus
  * Use `create(GetGitHubStatusRequestSchema)` to create a new message.
  */
 export const GetGitHubStatusRequestSchema: GenMessage<GetGitHubStatusRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 4);
+  messageDesc(file_directoryroster_v1_github, 8);
 
 /**
  * @generated from message directoryroster.v1.GetGitHubStatusResponse
@@ -151,6 +235,34 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
    * @generated from field: bool connecting_available = 3;
    */
   connectingAvailable: boolean;
+
+  /**
+   * false where people cannot link accounts here, for the same reason.
+   *
+   * @generated from field: bool linking_available = 4;
+   */
+  linkingAvailable: boolean;
+
+  /**
+   * the connected link App; absent until an operator creates it.
+   *
+   * @generated from field: directoryroster.v1.GitHubLinkApp link_app = 5;
+   */
+  linkApp?: GitHubLinkApp | undefined;
+
+  /**
+   * the page a person opens to link their account. Share it.
+   *
+   * @generated from field: string link_url = 6;
+   */
+  linkUrl: string;
+
+  /**
+   * every linked account, never with its tokens.
+   *
+   * @generated from field: repeated directoryroster.v1.GitHubLink links = 7;
+   */
+  links: GitHubLink[];
 };
 
 /**
@@ -158,7 +270,113 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
  * Use `create(GetGitHubStatusResponseSchema)` to create a new message.
  */
 export const GetGitHubStatusResponseSchema: GenMessage<GetGitHubStatusResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 5);
+  messageDesc(file_directoryroster_v1_github, 9);
+
+/**
+ * GitHubLinkApp is the App people authorize to link their accounts.
+ *
+ * @generated from message directoryroster.v1.GitHubLinkApp
+ */
+export type GitHubLinkApp = Message<"directoryroster.v1.GitHubLinkApp"> & {
+  /**
+   * @generated from field: int64 app_id = 1;
+   */
+  appId: bigint;
+
+  /**
+   * @generated from field: string app_slug = 2;
+   */
+  appSlug: string;
+
+  /**
+   * the organisation it was created under.
+   *
+   * @generated from field: string owner = 3;
+   */
+  owner: string;
+
+  /**
+   * @generated from field: string html_url = 4;
+   */
+  htmlUrl: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp connected_at = 5;
+   */
+  connectedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string connected_by = 6;
+   */
+  connectedBy: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.GitHubLinkApp.
+ * Use `create(GitHubLinkAppSchema)` to create a new message.
+ */
+export const GitHubLinkAppSchema: GenMessage<GitHubLinkApp> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 10);
+
+/**
+ * GitHubLink is one GitHub account a person linked.
+ *
+ * @generated from message directoryroster.v1.GitHubLink
+ */
+export type GitHubLink = Message<"directoryroster.v1.GitHubLink"> & {
+  /**
+   * @generated from field: int64 account_id = 1;
+   */
+  accountId: bigint;
+
+  /**
+   * @generated from field: string login = 2;
+   */
+  login: string;
+
+  /**
+   * the work addresses GitHub verifies for it, which the directory knew.
+   *
+   * @generated from field: repeated string emails = 3;
+   */
+  emails: string[];
+
+  /**
+   * linked, lost or unverifiable.
+   *
+   * @generated from field: string state = 4;
+   */
+  state: string;
+
+  /**
+   * why a link is lost or unverifiable.
+   *
+   * @generated from field: string reason = 5;
+   */
+  reason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp linked_at = 6;
+   */
+  linkedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp checked_at = 7;
+   */
+  checkedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp changed_at = 8;
+   */
+  changedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message directoryroster.v1.GitHubLink.
+ * Use `create(GitHubLinkSchema)` to create a new message.
+ */
+export const GitHubLinkSchema: GenMessage<GitHubLink> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 11);
 
 /**
  * GitHubOrganisation is one organisation: its bindings beside its report.
@@ -228,8 +446,8 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
   teams: GitHubTeamStatus[];
 
   /**
-   * members with no verified address in the organisation's domains:
-   * nobody can say who they are, so they are listed and never touched.
+   * members nobody linked to a work address: nobody can say who they
+   * are, so they are listed and never touched.
    *
    * @generated from field: repeated directoryroster.v1.GitHubAccount unlinked = 10;
    */
@@ -248,7 +466,7 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
  * Use `create(GitHubOrganisationSchema)` to create a new message.
  */
 export const GitHubOrganisationSchema: GenMessage<GitHubOrganisation> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 6);
+  messageDesc(file_directoryroster_v1_github, 12);
 
 /**
  * GitHubConnection is the App connecting an organisation left behind.
@@ -296,7 +514,7 @@ export type GitHubConnection = Message<"directoryroster.v1.GitHubConnection"> & 
  * Use `create(GitHubConnectionSchema)` to create a new message.
  */
 export const GitHubConnectionSchema: GenMessage<GitHubConnection> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 7);
+  messageDesc(file_directoryroster_v1_github, 13);
 
 /**
  * GitHubTick is how the controller's last pass over an organisation went.
@@ -341,7 +559,7 @@ export type GitHubTick = Message<"directoryroster.v1.GitHubTick"> & {
  * Use `create(GitHubTickSchema)` to create a new message.
  */
 export const GitHubTickSchema: GenMessage<GitHubTick> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 8);
+  messageDesc(file_directoryroster_v1_github, 14);
 
 /**
  * GitHubTeamStatus is one team: its binding beside what was derived.
@@ -385,7 +603,7 @@ export type GitHubTeamStatus = Message<"directoryroster.v1.GitHubTeamStatus"> & 
  * Use `create(GitHubTeamStatusSchema)` to create a new message.
  */
 export const GitHubTeamStatusSchema: GenMessage<GitHubTeamStatus> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 9);
+  messageDesc(file_directoryroster_v1_github, 15);
 
 /**
  * GitHubMember is one person's membership as the controller derived it.
@@ -413,7 +631,7 @@ export type GitHubMember = Message<"directoryroster.v1.GitHubMember"> & {
   role: string;
 
   /**
-   * pending, invited, synced, leaving or held.
+   * not-linked, pending, invited, synced, leaving or held.
    *
    * @generated from field: string state = 4;
    */
@@ -439,7 +657,7 @@ export type GitHubMember = Message<"directoryroster.v1.GitHubMember"> & {
  * Use `create(GitHubMemberSchema)` to create a new message.
  */
 export const GitHubMemberSchema: GenMessage<GitHubMember> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 10);
+  messageDesc(file_directoryroster_v1_github, 16);
 
 /**
  * GitHubAccount is a login with a note.
@@ -463,7 +681,7 @@ export type GitHubAccount = Message<"directoryroster.v1.GitHubAccount"> & {
  * Use `create(GitHubAccountSchema)` to create a new message.
  */
 export const GitHubAccountSchema: GenMessage<GitHubAccount> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 11);
+  messageDesc(file_directoryroster_v1_github, 17);
 
 /**
  * GitHubService is the console's view of GitHub organisations: which the
@@ -516,6 +734,33 @@ export const GitHubService: GenService<{
     methodKind: "unary";
     input: typeof DisconnectGitHubOrganisationRequestSchema;
     output: typeof DisconnectGitHubOrganisationResponseSchema;
+  },
+  /**
+   * BeginGitHubLinkAppConnect starts creating the link App: the one App
+   * people authorize, as themselves, to link their GitHub account to their
+   * work addresses. Public, installed nowhere, and asking only to read the
+   * person's own email addresses. Created under an organisation the
+   * operator owns. Operator.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect
+   */
+  beginGitHubLinkAppConnect: {
+    methodKind: "unary";
+    input: typeof BeginGitHubLinkAppConnectRequestSchema;
+    output: typeof BeginGitHubLinkAppConnectResponseSchema;
+  },
+  /**
+   * DisconnectGitHubLinkApp forgets the link App. Every link made with it
+   * becomes unverifiable — nothing can check its tokens any more — which
+   * removes nobody and adds nobody until each person links again.
+   * Operator.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.DisconnectGitHubLinkApp
+   */
+  disconnectGitHubLinkApp: {
+    methodKind: "unary";
+    input: typeof DisconnectGitHubLinkAppRequestSchema;
+    output: typeof DisconnectGitHubLinkAppResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_directoryroster_v1_github, 0);

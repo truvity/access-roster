@@ -30,6 +30,40 @@ service GitHubService {
   // DisconnectGitHubOrganisation uninstalls the App, then forgets the
   // organisation's record and credential. Operator.
   rpc DisconnectGitHubOrganisation(DisconnectGitHubOrganisationRequest) returns (DisconnectGitHubOrganisationResponse);
+
+  // BeginGitHubLinkAppConnect starts creating the link App: the one App
+  // people authorize, as themselves, to link their GitHub account to their
+  // work addresses. Public, installed nowhere, and asking only to read the
+  // person's own email addresses. Created under an organisation the
+  // operator owns. Operator.
+  rpc BeginGitHubLinkAppConnect(BeginGitHubLinkAppConnectRequest) returns (BeginGitHubLinkAppConnectResponse);
+
+  // DisconnectGitHubLinkApp forgets the link App. Every link made with it
+  // becomes unverifiable — nothing can check its tokens any more — which
+  // removes nobody and adds nobody until each person links again.
+  // Operator.
+  rpc DisconnectGitHubLinkApp(DisconnectGitHubLinkAppRequest) returns (DisconnectGitHubLinkAppResponse);
+}
+
+message BeginGitHubLinkAppConnectRequest {
+  // the organisation the App is created under.
+  string owner = 1;
+}
+
+message BeginGitHubLinkAppConnectResponse {
+  // where the browser POSTs the manifest.
+  string url = 1;
+  // the App's manifest, posted as the form field `manifest`.
+  string manifest = 2;
+}
+
+message DisconnectGitHubLinkAppRequest {}
+
+message DisconnectGitHubLinkAppResponse {
+  // how many links became unverifiable.
+  int32 invalidated = 1;
+  // where the owner deletes the App itself, which the API cannot do.
+  string app_settings_url = 2;
 }
 
 message BeginGitHubConnectRequest {
@@ -72,6 +106,40 @@ message GetGitHubStatusResponse {
   // false where connecting an organisation is not possible here, because
   // there is nowhere to keep what it leaves behind.
   bool connecting_available = 3;
+  // false where people cannot link accounts here, for the same reason.
+  bool linking_available = 4;
+  // the connected link App; absent until an operator creates it.
+  GitHubLinkApp link_app = 5;
+  // the page a person opens to link their account. Share it.
+  string link_url = 6;
+  // every linked account, never with its tokens.
+  repeated GitHubLink links = 7;
+}
+
+// GitHubLinkApp is the App people authorize to link their accounts.
+message GitHubLinkApp {
+  int64 app_id = 1;
+  string app_slug = 2;
+  // the organisation it was created under.
+  string owner = 3;
+  string html_url = 4;
+  google.protobuf.Timestamp connected_at = 5;
+  string connected_by = 6;
+}
+
+// GitHubLink is one GitHub account a person linked.
+message GitHubLink {
+  int64 account_id = 1;
+  string login = 2;
+  // the work addresses GitHub verifies for it, which the directory knew.
+  repeated string emails = 3;
+  // linked, lost or unverifiable.
+  string state = 4;
+  // why a link is lost or unverifiable.
+  string reason = 5;
+  google.protobuf.Timestamp linked_at = 6;
+  google.protobuf.Timestamp checked_at = 7;
+  google.protobuf.Timestamp changed_at = 8;
 }
 
 // GitHubOrganisation is one organisation: its bindings beside its report.
@@ -95,8 +163,8 @@ message GitHubOrganisation {
   repeated string member_groups = 7;
   repeated GitHubMember members = 8;
   repeated GitHubTeamStatus teams = 9;
-  // members with no verified address in the organisation's domains:
-  // nobody can say who they are, so they are listed and never touched.
+  // members nobody linked to a work address: nobody can say who they
+  // are, so they are listed and never touched.
   repeated GitHubAccount unlinked = 10;
   // how the controller acts in it. Absent until an operator connects it.
   GitHubConnection connection = 11;
@@ -146,7 +214,7 @@ message GitHubMember {
   string login = 2;
   // member or maintainer.
   string role = 3;
-  // pending, invited, synced, leaving or held.
+  // not-linked, pending, invited, synced, leaving or held.
   string state = 4;
   // invite, add, set-role or remove; empty when synced.
   string action = 5;

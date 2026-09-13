@@ -1,6 +1,8 @@
 // Package githubapp is the part of GitHub's App API that connecting an
-// organisation needs: creating an App from a manifest, finding where it is
-// installed, and uninstalling it.
+// organisation needs — creating an App from a manifest, finding where it is
+// installed, and uninstalling it — and the part linking a person's GitHub
+// account needs: authorizing the link App as themselves, and reading back
+// who they are and which addresses GitHub verified for them.
 //
 // An App is created by an organisation's owner in two clicks — Create,
 // then Install — and nothing about it is typed or pasted. This is how the
@@ -10,9 +12,9 @@
 // deployment.
 //
 // Ported from github-roster 0.x (`pkg/githubapp`) onto the JWT library
-// access-roster already uses, and narrowed: the client and webhook
-// secrets a conversion returns are dropped on the floor, because nothing
-// here uses them and a secret nobody keeps is one nobody can leak.
+// access-roster already uses. A conversion's webhook secret is dropped on
+// the floor, because nothing here receives a webhook; its client secret is
+// kept only for the link App, which is the one App people authorize.
 package githubapp
 
 import (
@@ -58,6 +60,9 @@ type Manifest struct {
 	SetupURL           string            `json:"setup_url"`
 	Public             bool              `json:"public"`
 	DefaultPermissions map[string]string `json:"default_permissions"`
+	// CallbackURLs are where GitHub may send somebody back after they
+	// authorize the App as themselves. Only the link App has one.
+	CallbackURLs []string `json:"callback_urls,omitempty"`
 }
 
 // HookAttributes is an App's webhook. The controller polls, so it is
@@ -124,6 +129,11 @@ type Registration struct {
 	// here; losing it means reconnecting.
 	PEM     string
 	HTMLURL string
+	// ClientID and ClientSecret are what a person's authorization of the
+	// App is redeemed and refreshed with. An organisation's App ignores
+	// them.
+	ClientID     string
+	ClientSecret string
 }
 
 // Convert exchanges the code GitHub returns after Create for the App's
@@ -137,11 +147,13 @@ func Convert(ctx context.Context, client *http.Client, code string) (Registratio
 	// one carrying a path would otherwise address some other endpoint.
 	endpoint := APIBase + "/app-manifests/" + url.PathEscape(code) + "/conversions"
 	var body struct {
-		ID    int64  `json:"id"`
-		Slug  string `json:"slug"`
-		PEM   string `json:"pem"`
-		URL   string `json:"html_url"`
-		Owner struct {
+		ID           int64  `json:"id"`
+		Slug         string `json:"slug"`
+		PEM          string `json:"pem"`
+		URL          string `json:"html_url"`
+		ClientID     string `json:"client_id"`
+		ClientSecret string `json:"client_secret"`
+		Owner        struct {
 			Login string `json:"login"`
 		} `json:"owner"`
 	}
@@ -151,7 +163,10 @@ func Convert(ctx context.Context, client *http.Client, code string) (Registratio
 	if body.ID == 0 || body.PEM == "" || body.Slug == "" {
 		return Registration{}, errors.New("github: the App was created and GitHub returned no id, slug or key for it")
 	}
-	return Registration{ID: body.ID, Slug: body.Slug, Owner: body.Owner.Login, PEM: body.PEM, HTMLURL: body.URL}, nil
+	return Registration{
+		ID: body.ID, Slug: body.Slug, Owner: body.Owner.Login, PEM: body.PEM, HTMLURL: body.URL,
+		ClientID: body.ClientID, ClientSecret: body.ClientSecret,
+	}, nil
 }
 
 // AppToken is the short-lived JWT an App authenticates App-level calls

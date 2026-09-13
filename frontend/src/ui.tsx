@@ -102,6 +102,7 @@ export type StateKind =
   | "unowned"
   // A GitHub membership as the controller derived it, and how its last
   // pass over an organisation went.
+  | "not-linked"
   | "synced"
   | "pending"
   | "invited"
@@ -112,7 +113,11 @@ export type StateKind =
   | "dry-run"
   | "failed"
   | "unreported"
-  | "refused";
+  | "refused"
+  // A person's link between a GitHub account and their work addresses.
+  | "linked"
+  | "lost"
+  | "unverifiable";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The provider reports this account as active." },
@@ -138,9 +143,14 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
     color: "warning",
     title: "This hub is set to serve the domain, but the directory no longer lists it — it has moved elsewhere. It routes nothing; drop it from the served list.",
   },
+  "not-linked": {
+    label: "not linked",
+    color: "default",
+    title: "Should be here, and has not linked a GitHub account yet: there is nobody to invite. Waiting on them — send them the link page.",
+  },
   synced: { label: "synced", color: "success", title: "On GitHub exactly as the policy says." },
   pending: { label: "pending", color: "warning", title: "Should be here and is not yet. The action says what the controller does next." },
-  invited: { label: "invited", color: "secondary", title: "An organisation invitation to their address is waiting to be accepted." },
+  invited: { label: "invited", color: "secondary", title: "An organisation invitation to their account is waiting to be accepted." },
   leaving: { label: "leaving", color: "warning", filled: true, title: "Here, and no group the policy binds holds them any more." },
   held: { label: "held", color: "warning", filled: true, title: "Something is to be done and is not being done. The reason says why." },
   "in-sync": { label: "in sync", color: "success", title: "The last pass found nothing to do." },
@@ -149,6 +159,18 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   failed: { label: "failed", color: "warning", filled: true, title: "The last pass could not complete." },
   unreported: { label: "not reported", color: "default", title: "The controller has written nothing for this organisation yet." },
   refused: { label: "refused", color: "warning", filled: true, title: "Asked for, and refused. The reason says why." },
+  linked: { label: "linked", color: "success", title: "GitHub verified these work addresses on the account when it was last checked." },
+  lost: {
+    label: "lost",
+    color: "warning",
+    filled: true,
+    title: "GitHub said the proof is gone: the address was removed or unverified, or the authorization revoked. The account leaves the organisations.",
+  },
+  unverifiable: {
+    label: "unverifiable",
+    color: "warning",
+    title: "The link can no longer be checked, and GitHub did not say it is gone. It neither adds nor removes anybody until the person links again.",
+  },
 };
 
 /** The one thing a chip means here: a state. A state that has a reason

@@ -312,6 +312,9 @@ chart-lint:
     grep -q 'value: "truvity"' /tmp/access-issuer-github.yaml
     grep -q 'secretName: t-access-issuer-github-apps' /tmp/access-issuer-github.yaml
     grep -q 'resourceNames: \["t-access-issuer-github-status"\]' /tmp/access-issuer-github.yaml
+    # The one Secret the controller may touch is the links', by name.
+    grep -q 'resourceNames: \["t-access-issuer-github-links"\]' /tmp/access-issuer-github.yaml
+    [ "$(grep -c 'resources: \["secrets"\]' /tmp/access-issuer-github.yaml)" = 1 ]
     grep -q 'app.kubernetes.io/name: access-issuer-github-roster' /tmp/access-issuer-github.yaml
     helm template t charts/access-issuer --set issuerURL=https://iss.example --set githubRoster.enabled=true \
         --set 'exchange.clusters[0].name=kernel' --set 'exchange.clusters[0].issuer=https://oidc.example' \

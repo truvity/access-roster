@@ -62,11 +62,14 @@ type Config struct {
 
 // Deps are what the controller talks to.
 type Deps struct {
-	Log      *slog.Logger
-	GitHub   *http.Client
-	Access   directoryrosterv1connect.AccessServiceClient
-	Audit    directoryrosterv1connect.AuditServiceClient
-	Status   StatusWriter
+	Log    *slog.Logger
+	GitHub *http.Client
+	Access directoryrosterv1connect.AccessServiceClient
+	Audit  directoryrosterv1connect.AuditServiceClient
+	Status StatusWriter
+	// Links are people's linked accounts. Nil links nobody, and then only
+	// an organisation that discloses its members' addresses is matched.
+	Links    LinkStore
 	Bindings map[string]policy.GitHubOrg
 	Now      func() time.Time
 }
@@ -122,8 +125,9 @@ func (c *Controller) Run(ctx context.Context) error {
 // Pass goes over every bound organisation once and replaces the report.
 func (c *Controller) Pass(ctx context.Context) {
 	documents := map[string]string{}
+	links, linksErr := c.checkLinks(ctx)
 	for _, org := range slices.Sorted(maps.Keys(c.deps.Bindings)) {
-		report := c.organisation(ctx, org, c.deps.Bindings[org])
+		report := c.organisation(ctx, org, c.deps.Bindings[org], links, linksErr)
 		document, err := status.Encode(report)
 		if err != nil {
 			c.deps.Log.ErrorContext(ctx, "a report could not be written", "org", org, "error", err)
@@ -138,7 +142,9 @@ func (c *Controller) Pass(ctx context.Context) {
 
 // organisation is one organisation's pass, ending in its report whatever
 // happened.
-func (c *Controller) organisation(ctx context.Context, org string, binding policy.GitHubOrg) status.Org {
+func (c *Controller) organisation(
+	ctx context.Context, org string, binding policy.GitHubOrg, links []reconcile.Link, linksErr error,
+) status.Org {
 	enabled := c.cfg.Enabled[org]
 	started := c.deps.Now().UTC()
 	fail := func(err error) status.Org {
@@ -146,6 +152,11 @@ func (c *Controller) organisation(ctx context.Context, org string, binding polic
 		return status.Org{Org: org, Enabled: enabled, Tick: status.Tick{At: started, Outcome: status.OutcomeFailed, Error: err.Error()}}
 	}
 
+	// Without the links every linked member reads as unlinked: nothing
+	// would be removed, and the page would say nobody has linked.
+	if linksErr != nil {
+		return fail(linksErr)
+	}
 	token, err := c.token(ctx, org)
 	if err != nil {
 		return fail(err)
@@ -155,6 +166,7 @@ func (c *Controller) organisation(ctx context.Context, org string, binding polic
 	if err != nil {
 		return fail(err)
 	}
+	state.Links = links
 	holders, err := c.holders(ctx, binding)
 	if err != nil {
 		return fail(err)
@@ -306,9 +318,12 @@ func (c *Controller) confirm(ctx context.Context, emails []string) map[string]re
 func (c *Controller) act(ctx context.Context, client githubapp.Org, token string, report *status.Org, actions []reconcile.Action) {
 	var events []*directoryrosterv1.AuditEvent
 	done := 0
-	for _, action := range actions {
+	for k := range actions {
+		action := actions[k]
 		var err error
 		switch {
+		case action.Kind == status.ActionInvite && action.Account != 0:
+			err = client.InviteUser(ctx, token, action.Account, action.Teams)
 		case action.Kind == status.ActionInvite:
 			err = client.Invite(ctx, token, action.Email, action.Teams)
 		case action.Kind == status.ActionRemove && action.Team == "":
@@ -322,6 +337,9 @@ func (c *Controller) act(ctx context.Context, client githubapp.Org, token string
 			Source: Source, Kind: "github.member." + string(action.Kind), Actor: "system",
 			Subject: action.Email, Target: target(report.Org, action.Team), Outcome: "ok",
 			Attributes: map[string]string{"login": action.Login, "role": string(action.Role)},
+		}
+		if action.Reason != "" {
+			event.Reason = action.Reason
 		}
 		if err != nil {
 			event.Outcome, event.Reason = "failed", err.Error()
@@ -403,7 +421,8 @@ func each(report status.Org, visit func(team string, m status.Member)) {
 func rows(report *status.Org, action reconcile.Action, visit func(*status.Member)) {
 	matches := func(m *status.Member) bool {
 		if action.Kind == status.ActionInvite {
-			return m.Email == action.Email && m.Action == status.ActionInvite
+			return m.Action == status.ActionInvite &&
+				(m.Email == action.Email || (action.Account != 0 && m.Login == action.Login))
 		}
 		return m.Login == action.Login && m.Action == action.Kind
 	}

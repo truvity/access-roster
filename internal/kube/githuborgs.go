@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/truvity/access-roster/internal/githubroster/connection"
+	"github.com/truvity/access-roster/internal/githubroster/link"
 )
 
 // GitHubOrgs keeps connected GitHub organisations: a record per
@@ -128,6 +129,67 @@ func (s *GitHubOrgs) Delete(ctx context.Context, org string) error {
 		return err
 	}
 	return s.editSecret(ctx, func(data map[string][]byte) { delete(data, key) })
+}
+
+// PutLinkApp keeps the connected link App: its record beside the
+// organisations' records and its credential beside their keys, so the
+// controller reads it from the volume it already mounts.
+func (s *GitHubOrgs) PutLinkApp(ctx context.Context, record link.App, credential link.AppCredential) error {
+	rawRecord, err := link.EncodeApp(record)
+	if err != nil {
+		return err
+	}
+	rawCredential, err := link.EncodeAppCredential(credential)
+	if err != nil {
+		return err
+	}
+	if err = s.editSecret(ctx, func(data map[string][]byte) { data[link.AppKey] = rawCredential }); err != nil {
+		return err
+	}
+	return s.editConfigMap(ctx, func(data map[string]string) { data[link.AppKey] = rawRecord })
+}
+
+// LinkApp reads the link App's record, if one is connected.
+func (s *GitHubOrgs) LinkApp(ctx context.Context) (link.App, bool, error) {
+	cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return link.App{}, false, nil
+	}
+	if err != nil {
+		return link.App{}, false, fmt.Errorf("read %s: %w", s.ConfigMapName(), err)
+	}
+	raw, ok := cm.Data[link.AppKey]
+	if !ok {
+		return link.App{}, false, nil
+	}
+	record, err := link.DecodeApp(raw)
+	return record, err == nil, err
+}
+
+// LinkAppCredential reads the link App's credential, which redeeming a
+// person's authorization needs.
+func (s *GitHubOrgs) LinkAppCredential(ctx context.Context) (link.AppCredential, bool, error) {
+	secret, err := s.c.api.CoreV1().Secrets(s.c.namespace).Get(ctx, s.SecretName(), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return link.AppCredential{}, false, nil
+	}
+	if err != nil {
+		return link.AppCredential{}, false, fmt.Errorf("read %s: %w", s.SecretName(), err)
+	}
+	raw, ok := secret.Data[link.AppKey]
+	if !ok {
+		return link.AppCredential{}, false, nil
+	}
+	credential, err := link.DecodeAppCredential(raw)
+	return credential, err == nil, err
+}
+
+// DeleteLinkApp forgets the link App, record first.
+func (s *GitHubOrgs) DeleteLinkApp(ctx context.Context) error {
+	if err := s.editConfigMap(ctx, func(data map[string]string) { delete(data, link.AppKey) }); err != nil {
+		return err
+	}
+	return s.editSecret(ctx, func(data map[string][]byte) { delete(data, link.AppKey) })
 }
 
 func (s *GitHubOrgs) objectMeta(name string) metav1.ObjectMeta {

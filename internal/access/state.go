@@ -22,9 +22,14 @@ import (
 // consent is an operator granting this hub access to a company, sign-in
 // is a person proving who they are. One cookie would let a callback
 // finish a flow the browser did not start.
+//
+// A third for a person linking a GitHub account, for the same reason: an
+// operator connecting an organisation in one tab and linking their own
+// account in another must not have either flow finish the other.
 const (
 	ConnectCookieName = "access_roster_connect"
 	LoginCookieName   = "access_roster_login"
+	LinkCookieName    = "access_roster_link"
 )
 
 // ErrBadState is returned for a state that is forged, stale or malformed.
@@ -41,6 +46,11 @@ var ErrBadState = errors.New("access: state is not valid")
 // harmless the moment someone copies it.
 func ConnectCookie(value string, secure bool, ttl time.Duration) *http.Cookie {
 	return flowCookie(ConnectCookieName, value, secure, ttl)
+}
+
+// LinkCookie is the same for linking a GitHub account.
+func LinkCookie(value string, secure bool, ttl time.Duration) *http.Cookie {
+	return flowCookie(LinkCookieName, value, secure, ttl)
 }
 
 // LoginCookie is the same for the sign-in flow.
