@@ -1,5 +1,17 @@
 ## v1.5.5
 
+- **Security: token exchange no longer accepts an ID token as a proof.**
+  Before 1.5.5 the exchange accepted any token this issuer had signed whose
+  claims named a person. An ID token names one, and is handed to every
+  relying party a person signs in to, so a holder of it could exchange it
+  -- presenting any public client -- for a token for any audience that
+  person's groups admit, a cloud role or a cluster included. Signature,
+  issuer and expiry were always checked; what was missing was any rule
+  about which of this issuer's own tokens may stand for a person. Now a
+  proof comes only from a verifier (a GitHub job, a cluster workload) or
+  from a CLI sign-in as described below, and every other token this
+  issuer signs is refused. Upgrade every access-issuer to 1.5.5; there is
+  no configuration-only mitigation.
 - **`accessctl` works on a laptop.** `accessctl login` followed by
   `accessctl kube-token` or `accessctl aws` exchanges that sign-in for the
   requested audience, so one kubeconfig and one aws.ini serve a person and
