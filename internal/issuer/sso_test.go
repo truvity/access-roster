@@ -1083,7 +1083,7 @@ func TestAClientRefusesAnIdentityItRequiresNoGroupOf(t *testing.T) {
 		t.Errorf("answered %d, want 403", status)
 	}
 
-	if !strings.Contains(body, "not in a group that opens this application") {
+	if !strings.Contains(body, "not in a group that opens <strong>restricted</strong>") {
 		t.Errorf("the page does not say why: %q", body)
 	}
 
@@ -1139,7 +1139,7 @@ func TestTheSilentPathRefusesAnUnentitledClient(t *testing.T) {
 		t.Fatalf("silently completed a client she is not entitled to: %d", status)
 	}
 
-	if !strings.Contains(body, "not in a group that opens this application") {
+	if !strings.Contains(body, "not in a group that opens <strong>restricted</strong>") {
 		t.Errorf("the page does not say why: %q", body)
 	}
 }

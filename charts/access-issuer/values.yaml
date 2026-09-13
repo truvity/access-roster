@@ -276,6 +276,10 @@ valkey:
 #         secretKey: client-secret    # its key; this is the default
 #         redirects: [https://console.example/oauth2/callback]
 #         requires: [operators]
+#         # What the sign-in page calls it. Optional, and PUBLIC: anyone
+#         # who starts a sign-in for this client reads both lines.
+#         display_name: My console
+#         description: Where operators look after the widgets.
 #
 # Each one is projected to a file named after the client id, and the
 # service resolves a secret by reading that path -- never by holding RBAC

@@ -550,7 +550,15 @@ func (s *Storage) Pending(id string) (Pending, error) {
 		return Pending{}, err
 	}
 
-	out := Pending{RedirectURI: req.Req.RedirectURI, State: req.Req.State}
+	out := Pending{RedirectURI: req.Req.RedirectURI, State: req.Req.State, ClientID: req.Req.ClientID}
+
+	// The declared row, for the page to name the application by. Looked
+	// up here rather than carried in the request so that a name changed
+	// in the policy shows on a sign-in already in flight, and an absent
+	// row is simply no name.
+	if declared, ok := s.iss.Policy().Client(req.Req.ClientID); ok {
+		out.Client = declared
+	}
 
 	for _, prompt := range req.Req.Prompt {
 		switch prompt {

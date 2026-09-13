@@ -1,3 +1,19 @@
+## Unreleased
+
+- **The sign-in page names the application.** It said "the application
+  that sent you here", which is true of every sign-in page, a phishing
+  page's included. Now it says *Sign in to continue to **Argo CD***, with
+  a one-line description under it and the host the sign-in returns to,
+  as text. A client declares the two new optional keys `display_name` and
+  `description`; one with no name is shown by its id, and a `k8s:<cluster>`
+  client as *Kubernetes — `<cluster>`*. When the redirect is on the
+  person's own computer (kubelogin, accessctl) the page says a program on
+  this computer is asking, and shows no port. The refusal for a client a
+  person holds no group of names it too. Both keys are shown to anyone
+  who starts a sign-in, so keep them free of anything a stranger should
+  not read. Deploy the issuer before adding them to a policy: an older
+  issuer refuses the unknown keys.
+
 ## v1.5.6
 
 - **An owner the controller reports reaches the audit log.** The
