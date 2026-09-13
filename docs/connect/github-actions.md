@@ -66,6 +66,36 @@ kubeconfig with the cluster token and a profile `<role>@<account>` per
 cloud audience with `web_identity_token_file`. Nothing is downloaded into
 the job.
 
+## Or: the same files a laptop uses
+
+A repository that has `accessctl` in its toolchain needs no action and no
+second copy of its access files. The line a person's kubeconfig runs,
+
+```yaml
+exec:
+  command: accessctl
+  args: [kube-token, --audience, k8s:devel, --issuer, https://issuer.example.internal]
+```
+
+and the line a person's `aws.ini` runs,
+
+```ini
+[profile test]
+credential_process = accessctl aws --audience aws:111122223333:test --issuer https://issuer.example.internal
+```
+
+work unchanged in a job granted `id-token: write`. When
+`ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are
+set, `accessctl` asks GitHub for the job's identity token — for the
+issuer's URL, the one audience it accepts — and exchanges that, presenting
+the audience as its client exactly as the action does. Anywhere else it
+exchanges the cached sign-in. So one committed file serves both, and what
+admits each is the target client's `requires`: list the people's groups
+and the job's group together when both should reach it.
+
+Keep credentials off a committed `[default]`: in a job it would shadow
+the runner's own identity for every call. Select a named profile instead.
+
 **Both targets go through the issuer, never directly.** A cluster trusts
 one OIDC issuer and that is access-issuer, so a GitHub token can never be
 presented to an API server; and cloud accounts trust the issuer's
