@@ -1,9 +1,8 @@
 # Connect a GitHub organisation
 
-> **Built, and not yet run against a real organisation.** The bindings,
-> the GitHub page, Connect and the controller all exist; the first
-> supervised enable is INF-642 on the sandbox organisation, then INF-628
-> on the real ones.
+> **In use since 2026-09-13.** The controller acts in two real
+> organisations (truvity and trust-form) after supervised dry runs that
+> proposed no change, and replaced the standalone github-roster 0.x there.
 
 **Anchor:** none of ours. The controller holds one GitHub App per
 organisation and acts with its own credential; the issuer holds the
