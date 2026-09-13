@@ -1705,6 +1705,14 @@ git history.
 
 ## Unreleased
 
+- **`accessctl` works inside a GitHub Actions job.** With
+  `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` set,
+  `accessctl kube-token` and `accessctl aws` exchange the job's own
+  identity token, minted for the issuer, and present the audience as the
+  client, the way the root action does. Elsewhere nothing changes. One
+  committed kubeconfig and one `aws.ini` now serve a laptop and a job
+  alike, where a repository used to keep a second copy of each for CI.
+
 - **The console can be mounted under a path of its host, so it can share
   its issuer's origin.** `route.pathPrefix` on the hub's chart: the
   console's own route matches the prefix and the gateway rewrites it

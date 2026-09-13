@@ -32,11 +32,11 @@ func kubeToken(args []string) error {
 	if err != nil {
 		return err
 	}
-	own, err := refresh(context.Background(), cfg)
+	held, err := proofFor(context.Background(), cfg, *audience)
 	if err != nil {
 		return err
 	}
-	token, err := exchangeFor(context.Background(), cfg, own.AccessToken, *audience)
+	token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, *audience)
 	if err != nil {
 		return err
 	}
@@ -86,11 +86,11 @@ func awsCredentials(args []string) error {
 	if err != nil {
 		return err
 	}
-	own, err := refresh(context.Background(), cfg)
+	held, err := proofFor(context.Background(), cfg, *audience)
 	if err != nil {
 		return err
 	}
-	token, err := exchangeFor(context.Background(), cfg, own.AccessToken, *audience)
+	token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, *audience)
 	if err != nil {
 		return err
 	}
@@ -102,12 +102,7 @@ func awsCredentials(args []string) error {
 		}
 	}
 
-	session, _ := loadSession()
-	name := session.Email
-	if name == "" {
-		name = session.Subject
-	}
-	creds, err := tokens.AssumeRoleWithWebIdentity(context.Background(), nil, arn, sessionName(name), token.AccessToken)
+	creds, err := tokens.AssumeRoleWithWebIdentity(context.Background(), nil, arn, sessionName(held.Name), token.AccessToken)
 	if err != nil {
 		return err
 	}
