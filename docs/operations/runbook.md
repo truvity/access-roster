@@ -169,7 +169,9 @@ domains, counts, durations and errors.
 2. Read its section on the GitHub page after a pass. *Controller* says
    `dry run`; the table of people not synced is exactly what enabling it
    would do. Look for anybody you did not expect to be removed, and for
-   held rows: each carries its reason.
+   held rows: each carries its reason. *Controller* says `waiting on
+   links` when the only thing left is people who have not linked — that
+   is not in sync, and enabling changes nothing for them.
 3. Add the login to `githubRoster.actsIn` and roll out. The next pass
    acts; its changes appear in the audit stream as `github.member.*`.
 4. To stop acting in it, remove the login again. Nothing is undone: the

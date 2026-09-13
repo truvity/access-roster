@@ -85,6 +85,9 @@ type Tick struct {
 	// Held is how many actions were not taken, each for a reason given on
 	// the member it concerns.
 	Held int `json:"held"`
+	// Waiting is how many rows want somebody who has not linked a GitHub
+	// account: nothing the controller can do, and not in sync either.
+	Waiting int `json:"waiting,omitempty"`
 }
 
 // Outcome is a tick's result, as one word.
@@ -102,6 +105,10 @@ const (
 	// OutcomeHeld: something was to be done and every such action was
 	// held. Not a failure — each has its reason on the member.
 	OutcomeHeld Outcome = "held"
+	// OutcomeWaiting: nothing to do and nothing held, and people the
+	// policy wants have not linked an account yet. Not in sync: enabling
+	// the organisation would change nothing for them.
+	OutcomeWaiting Outcome = "waiting"
 	// OutcomeFailed: the tick could not complete.
 	OutcomeFailed Outcome = "failed"
 )

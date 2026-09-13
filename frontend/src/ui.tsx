@@ -111,6 +111,7 @@ export type StateKind =
   | "in-sync"
   | "applied"
   | "dry-run"
+  | "waiting"
   | "failed"
   | "unreported"
   | "refused"
@@ -156,6 +157,11 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   "in-sync": { label: "in sync", color: "success", title: "The last pass found nothing to do." },
   applied: { label: "applied", color: "success", title: "The last pass made changes." },
   "dry-run": { label: "dry run", color: "secondary", title: "The organisation is disabled: the last pass derived everything and changed nothing. The states below say what it would do." },
+  waiting: {
+    label: "waiting on links",
+    color: "secondary",
+    title: "Nothing to do and nothing held, and people the policy wants have not linked a GitHub account yet. Not in sync: send them the link page.",
+  },
   failed: { label: "failed", color: "warning", filled: true, title: "The last pass could not complete." },
   unreported: { label: "not reported", color: "default", title: "The controller has written nothing for this organisation yet." },
   refused: { label: "refused", color: "warning", filled: true, title: "Asked for, and refused. The reason says why." },

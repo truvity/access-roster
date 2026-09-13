@@ -978,13 +978,15 @@ func (x *GitHubConnection) GetConnectedBy() string {
 type GitHubTick struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	At    *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=at,proto3" json:"at,omitempty"`
-	// in-sync, applied, dry-run, held or failed.
+	// in-sync, applied, dry-run, held, waiting or failed.
 	Outcome string `protobuf:"bytes,2,opt,name=outcome,proto3" json:"outcome,omitempty"`
 	Error   string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 	// actions taken, or that would have been while disabled.
 	Changes int32 `protobuf:"varint,4,opt,name=changes,proto3" json:"changes,omitempty"`
 	// actions not taken, each with its reason on the member.
-	Held          int32 `protobuf:"varint,5,opt,name=held,proto3" json:"held,omitempty"`
+	Held int32 `protobuf:"varint,5,opt,name=held,proto3" json:"held,omitempty"`
+	// rows waiting on somebody to link a GitHub account.
+	Waiting       int32 `protobuf:"varint,6,opt,name=waiting,proto3" json:"waiting,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1050,6 +1052,13 @@ func (x *GitHubTick) GetChanges() int32 {
 func (x *GitHubTick) GetHeld() int32 {
 	if x != nil {
 		return x.Held
+	}
+	return 0
+}
+
+func (x *GitHubTick) GetWaiting() int32 {
+	if x != nil {
+		return x.Waiting
 	}
 	return 0
 }
@@ -1352,14 +1361,15 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\tinstalled\x18\x03 \x01(\bR\tinstalled\x12\x19\n" +
 	"\bhtml_url\x18\x04 \x01(\tR\ahtmlUrl\x12=\n" +
 	"\fconnected_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vconnectedAt\x12!\n" +
-	"\fconnected_by\x18\x06 \x01(\tR\vconnectedBy\"\x96\x01\n" +
+	"\fconnected_by\x18\x06 \x01(\tR\vconnectedBy\"\xb0\x01\n" +
 	"\n" +
 	"GitHubTick\x12*\n" +
 	"\x02at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x12\x18\n" +
 	"\aoutcome\x18\x02 \x01(\tR\aoutcome\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error\x12\x18\n" +
 	"\achanges\x18\x04 \x01(\x05R\achanges\x12\x12\n" +
-	"\x04held\x18\x05 \x01(\x05R\x04held\"\xca\x01\n" +
+	"\x04held\x18\x05 \x01(\x05R\x04held\x12\x18\n" +
+	"\awaiting\x18\x06 \x01(\x05R\awaiting\"\xca\x01\n" +
 	"\x10GitHubTeamStatus\x12\x12\n" +
 	"\x04team\x18\x01 \x01(\tR\x04team\x12\x14\n" +
 	"\x05bound\x18\x02 \x01(\bR\x05bound\x12#\n" +

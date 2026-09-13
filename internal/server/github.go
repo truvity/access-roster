@@ -208,6 +208,7 @@ func organisationProto(org string, bound *binding, document string) *directoryro
 			Error:   report.Tick.Error,
 			Changes: int32(report.Tick.Changes), //nolint:gosec // a tick's action count never overflows
 			Held:    int32(report.Tick.Held),    //nolint:gosec // nor its held count
+			Waiting: int32(report.Tick.Waiting), //nolint:gosec // nor its waiting count
 		}
 		if !report.Tick.At.IsZero() {
 			out.Tick.At = timestamppb.New(report.Tick.At)

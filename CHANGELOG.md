@@ -1,3 +1,11 @@
+## v1.3.1
+
+- **An organisation waiting on people to link says so.** With nobody
+  linked there is nothing to change and nothing held, and the controller
+  reported `in-sync` — which is exactly what an operator reads as "safe
+  to enable". It now reports `waiting`, with a count of the rows waiting
+  on somebody to link (`tick.waiting`), and the GitHub page shows it.
+
 ## v1.3.0
 
 People link their own GitHub account. GitHub discloses members' work

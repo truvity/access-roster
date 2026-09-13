@@ -181,10 +181,11 @@ func (c *Controller) organisation(
 		c.act(ctx, client, token, &report, actions)
 		c.recordNewlyHeld(ctx, org, report)
 	}
-	report.Tick.Held = countHeld(report)
-	report.Tick.Outcome = outcome(enabled, report.Tick.Changes, report.Tick.Held)
+	report.Tick.Held = countState(report, status.StateHeld)
+	report.Tick.Waiting = countState(report, status.StateNotLinked)
+	report.Tick.Outcome = outcome(enabled, report.Tick)
 	c.deps.Log.InfoContext(ctx, "passed over an organisation", "org", org, "enabled", enabled,
-		"outcome", report.Tick.Outcome, "changes", report.Tick.Changes, "held", report.Tick.Held)
+		"outcome", report.Tick.Outcome, "changes", report.Tick.Changes, "held", report.Tick.Held, "waiting", report.Tick.Waiting)
 	return report
 }
 
@@ -465,24 +466,26 @@ func markHeld(report *status.Org, action reconcile.Action, reason string) {
 	})
 }
 
-func countHeld(report status.Org) int {
-	held := 0
+func countState(report status.Org, state status.State) int {
+	count := 0
 	each(report, func(_ string, m status.Member) {
-		if m.State == status.StateHeld {
-			held++
+		if m.State == state {
+			count++
 		}
 	})
-	return held
+	return count
 }
 
-func outcome(enabled bool, changes, held int) status.Outcome {
+func outcome(enabled bool, tick status.Tick) status.Outcome {
 	switch {
-	case !enabled && (changes > 0 || held > 0):
+	case !enabled && (tick.Changes > 0 || tick.Held > 0):
 		return status.OutcomeDryRun
-	case changes > 0:
+	case tick.Changes > 0:
 		return status.OutcomeApplied
-	case held > 0:
+	case tick.Held > 0:
 		return status.OutcomeHeld
+	case tick.Waiting > 0:
+		return status.OutcomeWaiting
 	default:
 		return status.OutcomeInSync
 	}

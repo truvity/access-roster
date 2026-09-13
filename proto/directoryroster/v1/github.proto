@@ -186,13 +186,15 @@ message GitHubConnection {
 // GitHubTick is how the controller's last pass over an organisation went.
 message GitHubTick {
   google.protobuf.Timestamp at = 1;
-  // in-sync, applied, dry-run, held or failed.
+  // in-sync, applied, dry-run, held, waiting or failed.
   string outcome = 2;
   string error = 3;
   // actions taken, or that would have been while disabled.
   int32 changes = 4;
   // actions not taken, each with its reason on the member.
   int32 held = 5;
+  // rows waiting on somebody to link a GitHub account.
+  int32 waiting = 6;
 }
 
 // GitHubTeamStatus is one team: its binding beside what was derived.

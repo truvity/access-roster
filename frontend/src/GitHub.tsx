@@ -178,6 +178,7 @@ function Organisation({
             { label: "Last pass", value: at(org.tick?.at) ? ago(at(org.tick?.at)) : undefined },
             { label: "Changes", value: org.tick ? String(org.tick.changes) : undefined },
             { label: "Held", value: org.tick ? String(org.tick.held) : undefined },
+            { label: "Not linked", value: org.tick ? String(org.tick.waiting) : undefined },
             {
               label: "In the organisation itself",
               value: org.memberGroups.length ? <Names items={org.memberGroups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} /> : undefined,
