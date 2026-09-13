@@ -1,12 +1,15 @@
 {
   "name": "@truvity/access-roster",
-  "version": "0.2.0",
-  "description": "What a console needs from the identity it is behind: who the caller is, what that gets them, and the way out. Install from git: npm install github:truvity/access-roster#v0.2.0",
+  "version": "0.0.0",
+  "description": "What a console needs from the identity it is behind: who the caller is, what that gets them, and the way out. Published to GitHub Packages at each release tag's version; see docs/reference/typescript.md.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/truvity/access-roster.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "main": "./ts/dist/index.js",
   "types": "./ts/dist/index.d.ts",
@@ -45,8 +48,5 @@
     "@mui/material": {
       "optional": true
     }
-  },
-  "scripts": {
-    "prepare": "cd ts && npm ci && npx tsc -p tsconfig.build.json"
   }
 }

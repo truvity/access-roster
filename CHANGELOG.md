@@ -1,3 +1,13 @@
+## Unreleased
+
+- **The TypeScript package is published to GitHub Packages** at each
+  release tag's version, built and tested by the release workflow.
+  Install `@truvity/access-roster` with the `@truvity` scope pointed at
+  `https://npm.pkg.github.com` and a token that can read packages
+  ([docs/reference/typescript.md](docs/reference/typescript.md)). A git
+  install stopped working when `ts/dist` left git: yarn 4 packs a git
+  dependency without running `prepare`, so it shipped no `ts/dist`.
+
 ## v1.5.0
 
 The GitHub controller runs joiners, movers and leavers with no human in the

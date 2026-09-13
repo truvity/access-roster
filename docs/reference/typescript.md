@@ -12,14 +12,37 @@ application whose backend is Node. It is the Go `identity` package's
 issuer anchor in TypeScript: the same checks, the same caller, the same
 `whoami` body — see [The server half](#the-server-half).
 
-```sh
-npm install github:truvity/access-roster#v0.12.4
+Published to GitHub Packages by each release, at the tag's version
+(`v1.5.0` publishes `1.5.0`), built and tested once in the release
+workflow. The package is the repository root — `ts/package.json` is the
+inner build and is not what anybody installs — which is why the import
+path has no `-ts` in it.
+
+GitHub's npm registry needs a token to install, even a public package:
+one with `read:packages` (a job's `GITHUB_TOKEN` with
+`packages: read`, or `gh auth token` after `gh auth refresh -s
+read:packages` on a laptop). Point the `@truvity` scope at it:
+
+```yaml
+# .yarnrc.yml (yarn 4)
+npmScopes:
+  truvity:
+    npmRegistryServer: "https://npm.pkg.github.com"
+    npmAuthToken: "${GITHUB_PACKAGES_TOKEN}"
 ```
 
-Installed from git at a REPOSITORY tag, with `ts/dist` committed, so it
-needs no toolchain and no registry. The package is the repository root —
-`ts/package.json` is the inner build and is not what anybody installs —
-which is why the import path has no `-ts` in it. `react` and `@mui/material` are optional peers: an
+```ini
+# .npmrc (npm)
+@truvity:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}
+```
+
+```sh
+yarn add @truvity/access-roster@^1.5.0
+```
+
+A git install (`github:truvity/access-roster#<tag>`) no longer works:
+`ts/dist` is not committed, and nothing builds it on install. `react` and `@mui/material` are optional peers: an
 application with neither pays for neither.
 
 ```tsx

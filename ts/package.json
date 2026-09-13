@@ -1,7 +1,7 @@
 {
   "name": "@truvity/access-roster-ts",
   "version": "0.0.0",
-  "description": "Sources for @truvity/access-roster. The published package is the repository root; this builds into dist/, which is committed so a git install needs no toolchain.",
+  "description": "Sources for @truvity/access-roster. The published package is the repository root; this builds into dist/, which the release publishes to GitHub Packages.",
   "type": "module",
   "license": "MIT",
   "private": true,
