@@ -1,4 +1,4 @@
-## Unreleased
+## v1.5.4
 
 - **An organisation can ignore addresses and GitHub logins.** The policy's
   `github.<org>.ignore` lists what the controller leaves alone whatever the
