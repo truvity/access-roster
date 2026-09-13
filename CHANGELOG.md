@@ -1,4 +1,4 @@
-## Unreleased
+## v1.5.2
 
 - **Disconnecting the link App leaves profile matches and imports alone.**
   It made every linked account unverifiable, including the ones matched
