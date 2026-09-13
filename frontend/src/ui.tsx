@@ -121,7 +121,12 @@ export type StateKind =
   // A person's link between a GitHub account and their work addresses.
   | "linked"
   | "lost"
-  | "unverifiable";
+  | "unverifiable"
+  // The three things a reader of the GitHub pages needs to know about a
+  // row, over the controller's exact states.
+  | "ok"
+  | "their-move"
+  | "needs-you";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The provider reports this account as active." },
@@ -178,6 +183,9 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
     filled: true,
     title: "GitHub said the proof is gone: the address was removed or unverified, or the authorization revoked. The account leaves the organisations.",
   },
+  ok: { label: "OK", color: "success", title: "Done, or the controller does it on its own." },
+  "their-move": { label: "waiting for them", color: "default", title: "Only the person can move this forward: link, accept, link again." },
+  "needs-you": { label: "needs you", color: "warning", filled: true, title: "Nothing moves until a person acts. The reason says what to do." },
   unverifiable: {
     label: "unverifiable",
     color: "warning",

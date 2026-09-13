@@ -12,11 +12,13 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, forHowLong, issuerIsSameOrigin, personName, reason, roleName, sessions, sourceName, type Me } from "./api";
+import { access, forHowLong, github, issuerIsSameOrigin, personName, reason, roleName, sessions, sourceName, type Me } from "./api";
 import type { ExplainRequest, ExplainResponse } from "./gen/directoryroster/v1/access_pb";
 import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
+import { labelOf, linkPage, rowsOf, sentence, tooltipOf } from "./githubModel";
+import { loginCell, sourceName as linkSourceName } from "./GitHub";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type Fact } from "./ui";
 import { SessionsPanel } from "./Sessions";
 
@@ -55,6 +57,7 @@ export function Person({
           onDone={onDone}
         />
       ) : null}
+      {explained.value ? <GitHubSection email={email} self={self} /> : null}
     </Box>
   );
 }
@@ -306,5 +309,85 @@ export function Explanation({
         </Collapse>
       </Section>
     </Page>
+  );
+}
+
+/** A person on GitHub: the account linked to their address, the teams the
+ *  policy puts them in and where each stands. Read from the GitHub page's
+ *  one call, which needs the viewer role; without it only the person's own
+ *  way to link is shown. */
+function GitHubSection({ email, self }: { email: string; self: boolean }) {
+  const status = useAsync(() => github.getGitHubStatus({}), []);
+  const address = email.toLowerCase();
+  const rows = (status.value?.organisations ?? []).flatMap((org) =>
+    rowsOf(org)
+      .filter((row) => row.member.email.toLowerCase() === address)
+      .map((row) => ({ ...row, acting: org.enabled })),
+  );
+  const links = (status.value?.links ?? []).filter((l) => l.emails.some((e) => e.toLowerCase() === address));
+  const active = links.find((l) => l.state === "linked");
+  if (!self && rows.length === 0 && links.length === 0) return null;
+
+  return (
+    <Box sx={{ mb: 3 }}>
+      <Section
+        title="GitHub"
+        hint={active ? `@${active.login}, ${linkSourceName(active.source)}` : rows.length ? "not linked" : undefined}
+        action={
+          self ? (
+            <Button size="small" variant={active ? "text" : "contained"} href={linkPage(status.value?.linkUrl)} target="_blank" rel="noreferrer">
+              {active ? "Link again" : "Link your GitHub account"}
+            </Button>
+          ) : null
+        }
+      >
+        {rows.length ? (
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Where</TableCell>
+                  <TableCell>GitHub</TableCell>
+                  <TableCell>Role</TableCell>
+                  <TableCell>State</TableCell>
+                  <TableCell>Next</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={`${row.org}/${row.team}/${row.member.action}`}>
+                    <TableCell>
+                      {row.team ? (
+                        <Ref to={paths.githubTeam(row.org, row.team)} mono>
+                          {`${row.org} / ${row.team}`}
+                        </Ref>
+                      ) : (
+                        <Ref to={paths.githubOrganisation(row.org)} mono>
+                          {row.org}
+                        </Ref>
+                      )}
+                    </TableCell>
+                    <TableCell>{loginCell(row.member.login)}</TableCell>
+                    <TableCell>{row.member.role}</TableCell>
+                    <TableCell>
+                      <State kind={labelOf(row.member.state)} title={tooltipOf(row.member)} />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{sentence(row.member, row.acting)}</Typography>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            {self
+              ? "No GitHub team is bound to a group you are in. Linking your account now means you are added the day one is."
+              : "No GitHub team is bound to a group this person is in."}
+          </Typography>
+        )}
+      </Section>
+    </Box>
   );
 }

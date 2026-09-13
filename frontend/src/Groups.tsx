@@ -85,6 +85,13 @@ export function Group({ name }: { name: string }) {
 
   const group = (policy.value?.groups ?? []).find((g) => g.name === name);
   const opens = (policy.value?.clients ?? []).filter((client) => client.requires.includes(name));
+  const feeds = [
+    ...(policy.value?.teams ?? []).flatMap((team) => [
+      ...(team.members.includes(name) ? [{ org: team.org, team: team.team, role: "member" }] : []),
+      ...(team.maintainers.includes(name) ? [{ org: team.org, team: team.team, role: "maintainer" }] : []),
+    ]),
+    ...(policy.value?.orgs ?? []).filter((org) => org.members.includes(name)).map((org) => ({ org: org.org, team: "", role: "member" })),
+  ];
 
   if (!group) {
     return (
@@ -203,6 +210,28 @@ export function Group({ name }: { name: string }) {
           empty="No client requires this group, so it only adds claims to a token."
         />
       </Section>
+
+      {feeds.length ? (
+        <Section title="GitHub teams it feeds" hint="its holders belong in these teams; the controller makes GitHub match">
+          <Rows
+            items={feeds}
+            keyOf={(f) => `${f.org}/${f.team}/${f.role}`}
+            primary={(f) =>
+              f.team ? (
+                <Ref to={paths.githubTeam(f.org, f.team)} mono>
+                  {`${f.org} / ${f.team}`}
+                </Ref>
+              ) : (
+                <Ref to={paths.githubOrganisation(f.org)} mono>
+                  {f.org}
+                </Ref>
+              )
+            }
+            secondary={(f) => (f.team ? `as ${f.role}` : "in the organisation, without a team")}
+            empty=""
+          />
+        </Section>
+      ) : null}
     </Page>
   );
 }

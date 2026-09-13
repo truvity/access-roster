@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 /** One place in the console: a view and, for a detail page, the thing it
  *  is about. Views live in the URL fragment, so deep links, the back
  *  button and a refresh all work without a server route. */
-export type Route = { view: string; id?: string; query: URLSearchParams };
+export type Route = { view: string; id?: string; rest: string[]; query: URLSearchParams };
 
 export function parse(hash: string): Route {
   const raw = hash.replace(/^#/, "") || "/";
@@ -11,8 +11,15 @@ export function parse(hash: string): Route {
   // particular state — the consent callback landing on a directory with
   // its domain chooser open, rather than the operator having to find it.
   const [path, search = ""] = raw.split("?");
-  const [, view, id] = path.split("/");
-  return { view: renamed[view] ?? view ?? "overview", id: id ? decodeURIComponent(id) : undefined, query: new URLSearchParams(search) };
+  const [, view, id, ...rest] = path.split("/");
+  return {
+    view: renamed[view] ?? view ?? "overview",
+    id: id ? decodeURIComponent(id) : undefined,
+    // Deeper segments, for the one page nested more than one level: an
+    // organisation's team.
+    rest: rest.filter(Boolean).map(decodeURIComponent),
+    query: new URLSearchParams(search),
+  };
 }
 
 /** Views that have been renamed, and the name they answer to now.
@@ -65,6 +72,10 @@ export const paths = {
   client: (id: string) => `/clients/${encodeURIComponent(id)}`,
   // GitHub teams consume internal groups the way clients do.
   github: () => "/github",
+  githubOrganisations: () => "/github/organisations",
+  githubOrganisation: (org: string) => `/github/organisations/${encodeURIComponent(org)}`,
+  githubTeam: (org: string, team: string) => `/github/organisations/${encodeURIComponent(org)}/teams/${encodeURIComponent(team)}`,
+  githubApps: () => "/github/apps",
   // Every open session in the installation (INF-682). Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",

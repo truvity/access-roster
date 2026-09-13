@@ -279,7 +279,16 @@ export function App() {
             </Alert>
           ) : null}
 
-          <PageFor view={route.view} id={route.id} query={route.query} operator={operator} operatorFor={operatorFor} onDone={setBanner} me={identityInfo} />
+          <PageFor
+            view={route.view}
+            id={route.id}
+            rest={route.rest}
+            query={route.query}
+            operator={operator}
+            operatorFor={operatorFor}
+            onDone={setBanner}
+            me={identityInfo}
+          />
         </Container>
       </Box>
     </Box>
@@ -299,6 +308,7 @@ function NavItem({ item, current, onPick }: { item: Item; current: string; onPic
 function PageFor({
   view,
   id,
+  rest,
   query,
   operator,
   operatorFor,
@@ -307,6 +317,7 @@ function PageFor({
 }: {
   view: string;
   id?: string;
+  rest: string[];
   query: URLSearchParams;
   operator: boolean;
   operatorFor: (workspace: string) => boolean;
@@ -331,7 +342,7 @@ function PageFor({
     case "clients":
       return id ? <Client id={id} issuerUrl={issuerIsSameOrigin(me?.issuerUrl) ? me?.issuerUrl : undefined} operator={operator} onDone={onDone} /> : <Clients />;
     case "github":
-      return <GitHubPage operator={operator} onDone={onDone} />;
+      return <GitHubPage section={id} rest={rest} operator={operator} onDone={onDone} />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "audit":

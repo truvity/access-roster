@@ -2,95 +2,507 @@ import { useState, type ReactNode } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Collapse from "@mui/material/Collapse";
 import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import Tab from "@mui/material/Tab";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 
 import { ago, at, github, reason } from "./api";
-import type { GetGitHubStatusResponse, GitHubMember, GitHubOrganisation } from "./gen/directoryroster/v1/github_pb";
+import type { GetGitHubStatusResponse, GitHubOrganisation } from "./gen/directoryroster/v1/github_pb";
+import { countLabels, labelOf, linkPage, organisationNeeds, peopleOf, rowsOf, sentence, tooltipOf, type Row } from "./githubModel";
 import { useAsync } from "./hooks";
-import { paths } from "./router";
-import { Facet, Facts, Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type StateKind } from "./ui";
+import { go, paths } from "./router";
+import { Facts, Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type StateKind } from "./ui";
 
-/** GitHub: who belongs in which team, whether they have linked the account
- *  they use, and what the controller would change.
- *
- *  Read top to bottom it is the order the work happens in: set the Apps
- *  up, get people linked, read what each organisation is waiting on. The
- *  one thing an operator does here is create and remove Apps; the
- *  controller acts, and the page says what it found. */
-export function GitHubPage({ operator, onDone }: { operator: boolean; onDone: (message: string) => void }) {
+type Props = { operator: boolean; onDone: (message: string) => void };
+
+/** GitHub, as tabs: what needs attention across every organisation, each
+ *  organisation and its teams, and the Apps behind it all. One call feeds
+ *  every tab, so moving between them never waits. */
+export function GitHubPage({ section, rest, operator, onDone }: Props & { section?: string; rest: string[] }) {
   const status = useAsync(() => github.getGitHubStatus({}), []);
+  const tab = section === "organisations" ? "organisations" : section === "apps" ? "apps" : "overview";
   const value = status.value;
 
+  let body: ReactNode = null;
+  if (value) {
+    if (tab === "organisations" && rest[0]) {
+      const org = value.organisations.find((o) => o.org === rest[0]);
+      body = !org ? (
+        <Nothing>No organisation {rest[0]} is bound or reported.</Nothing>
+      ) : rest[1] === "teams" && rest[2] ? (
+        <TeamPage org={org} team={rest[2]} />
+      ) : (
+        <OrganisationPage org={org} operator={operator} onDone={onDone} reload={status.reload} />
+      );
+    } else if (tab === "organisations") {
+      body = <OrganisationsList status={value} />;
+    } else if (tab === "apps") {
+      body = <AppsPage status={value} operator={operator} onDone={onDone} reload={status.reload} />;
+    } else {
+      body = <Overview status={value} />;
+    }
+  }
+
   return (
-    <Page
-      title="GitHub"
-      lede="The policy decides who belongs in which GitHub team. Each person links the GitHub account they use, once; the controller then makes every organisation match, and this page shows what it would change."
-    >
+    <Box>
+      <Tabs
+        value={tab}
+        onChange={(_, next: string) => go(next === "overview" ? paths.github() : next === "apps" ? paths.githubApps() : paths.githubOrganisations())}
+        sx={{ mb: 3 }}
+      >
+        <Tab value="overview" label="Overview" />
+        <Tab value="organisations" label="Organisations" />
+        <Tab value="apps" label="Apps" />
+      </Tabs>
       <Loading busy={status.loading} />
       <Failure error={status.error} />
-
       {value && !value.reportsAvailable ? (
         <Nothing>This deployment keeps no state in Kubernetes, so a controller has nowhere to report: only the bindings are shown.</Nothing>
       ) : null}
-      {value && value.organisations.length === 0 ? (
-        <Nothing>No GitHub organisation is bound. A team is bound in the policy&apos;s github table, beside the groups that feed it.</Nothing>
-      ) : null}
+      {body}
+    </Box>
+  );
+}
 
-      {value && value.organisations.length > 0 ? (
-        <>
-          <SetUp status={value} operator={operator} onDone={onDone} reload={status.reload} />
-          <People status={value} />
-          {value.organisations.map((org) => (
-            <Organisation key={org.org} org={org} operator={operator} onDone={onDone} reload={status.reload} />
-          ))}
-          <LinkedAccounts status={value} />
-        </>
+// ---------------------------------------------------------------- overview
+
+function Overview({ status }: { status: GetGitHubStatusResponse }) {
+  const people = peopleOf(status.organisations);
+  const waiting = people.filter((p) => p.label === "their-move");
+  const needs = status.organisations.flatMap((org) => [
+    ...organisationNeeds(org).map((what) => ({ org: org.org, what })),
+    ...rowsOf(org)
+      .filter((row) => labelOf(row.member.state) === "needs-you")
+      .map((row) => ({ org: org.org, what: `${row.member.email || row.member.login}: ${row.member.reason}` })),
+  ]);
+  const dryRun = status.organisations.filter((org) => org.bound && org.connection?.installed && !org.enabled);
+
+  let next: ReactNode;
+  if (!status.linkApp || status.organisations.some((org) => org.bound && !org.connection?.installed)) {
+    next = (
+      <>
+        Create the GitHub Apps on the <Ref to={paths.githubApps()}>Apps</Ref> tab.
+      </>
+    );
+  } else if (needs.length) {
+    next = `${needs.length} ${needs.length === 1 ? "thing needs" : "things need"} you — the organisations below say what.`;
+  } else if (waiting.length) {
+    next = `${waiting.length} ${waiting.length === 1 ? "person has" : "people have"} not linked or accepted yet: send them the link page below.`;
+  } else if (dryRun.length) {
+    next = `Read ${dryRun.map((org) => org.org).join(" and ")}'s dry run, then add ${dryRun.length === 1 ? "it" : "them"} to githubRoster.actsIn.`;
+  } else {
+    next = "Nothing to do: every organisation matches the policy.";
+  }
+
+  return (
+    <Page title="GitHub" lede="Who belongs in which GitHub team is the policy's; the controller makes every organisation match. This is what needs attention.">
+      <Alert severity={needs.length ? "warning" : "info"} sx={{ mb: 3 }}>
+        <strong>Next:</strong> {next}
+      </Alert>
+
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" }, gap: 2, mb: 4 }}>
+        {status.organisations.map((org) => (
+          <OrganisationCard key={org.org} org={org} />
+        ))}
+      </Box>
+
+      {waiting.length ? (
+        <Section title="Waiting for them" hint={`${waiting.length} not linked, or invited and not accepted`}>
+          <Stack sx={{ gap: 1.5 }}>
+            <Stack direction="row" sx={{ gap: 1, alignItems: "center", flexWrap: "wrap" }}>
+              <CopyButton value={waiting.map((p) => p.email).join(", ")} label="Copy their addresses" />
+              <Typography variant="body2" color="text.secondary">
+                and send them
+              </Typography>
+              <CopyLine value={linkPage(status.linkUrl)} />
+            </Stack>
+            <Names items={waiting.map((p) => ({ label: p.email, to: paths.person(p.email), mono: true }))} />
+          </Stack>
+        </Section>
       ) : null}
     </Page>
   );
 }
 
-// ---------------------------------------------------------------- set up
+function OrganisationCard({ org }: { org: GitHubOrganisation }) {
+  const counts = countLabels(rowsOf(org).map((row) => row.member));
+  const needs = organisationNeeds(org);
+  return (
+    <Paper variant="outlined" sx={{ p: 2, minWidth: 0 }}>
+      <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", gap: 1, mb: 1 }}>
+        <Ref to={paths.githubOrganisation(org.org)} mono>
+          {org.org}
+        </Ref>
+        {outcome(org)}
+      </Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+        {!org.connection?.installed ? "App not installed" : org.enabled ? "the controller acts" : "dry run"}
+        {at(org.tick?.at) ? ` · last pass ${ago(at(org.tick?.at))}` : ""}
+        {org.seats?.known ? ` · ${org.seats.free} ${org.seats.free === 1 ? "seat" : "seats"} free` : ""}
+      </Typography>
+      <Stack direction="row" sx={{ gap: 3, flexWrap: "wrap" }}>
+        <Count label="OK" value={counts.ok} />
+        <Count label="Waiting for them" value={counts["their-move"]} />
+        <Count label="Needs you" value={counts["needs-you"] + needs.length} strong />
+      </Stack>
+      {needs.length ? (
+        <Typography variant="body2" sx={{ mt: 1.5 }}>
+          {needs.join(" · ")}
+        </Typography>
+      ) : null}
+    </Paper>
+  );
+}
 
-/** Three steps, each ticked when done. Every App is in the first, in one
- *  table, because an App has nowhere else to live on the page. */
-function SetUp({
-  status,
-  operator,
-  onDone,
-  reload,
-}: {
-  status: GetGitHubStatusResponse;
-  operator: boolean;
-  onDone: (message: string) => void;
-  reload: () => void;
-}) {
+function Count({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+  return (
+    <Box>
+      <Typography variant="h6" color={strong && value ? "warning.main" : undefined} sx={{ lineHeight: 1.2 }}>
+        {value}
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+    </Box>
+  );
+}
+
+// ----------------------------------------------------------- organisations
+
+function OrganisationsList({ status }: { status: GetGitHubStatusResponse }) {
+  return (
+    <Page title="Organisations" lede="Every GitHub organisation the policy binds or the controller reports on.">
+      {status.organisations.length === 0 ? (
+        <Nothing>No GitHub organisation is bound. A team is bound in the policy&apos;s github table.</Nothing>
+      ) : (
+        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Organisation</TableCell>
+                <TableCell>Controller</TableCell>
+                <TableCell>Teams</TableCell>
+                <TableCell align="right">OK</TableCell>
+                <TableCell align="right">Waiting for them</TableCell>
+                <TableCell align="right">Needs you</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {status.organisations.map((org) => {
+                const counts = countLabels(rowsOf(org).map((row) => row.member));
+                return (
+                  <TableRow key={org.org} hover>
+                    <TableCell>
+                      <Ref to={paths.githubOrganisation(org.org)} mono>
+                        {org.org}
+                      </Ref>
+                    </TableCell>
+                    <TableCell>{outcome(org)}</TableCell>
+                    <TableCell>{org.teams.length}</TableCell>
+                    <TableCell align="right">{counts.ok}</TableCell>
+                    <TableCell align="right">{counts["their-move"]}</TableCell>
+                    <TableCell align="right">{counts["needs-you"] + organisationNeeds(org).length}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Page>
+  );
+}
+
+function OrganisationPage({ org, operator, onDone, reload }: Props & { org: GitHubOrganisation; reload: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | undefined>();
+  const [others, setOthers] = useState(false);
+  const rows = rowsOf(org);
+  const acting = org.enabled;
+  const changes = rows.filter((row) => row.member.action);
+  const removals = changes.filter((row) => row.member.action === "remove");
+  const rest = rows.filter(
+    (row) => row.member.action !== "remove" && (Boolean(row.member.action) || ["held", "retrying", "reported", "ignored", "not-linked", "invited"].includes(row.member.state)),
+  );
+  // People, not rows: an invitation shows on the organisation's row and on
+  // every team row for the same person, and is one invitation.
+  const count = (action: string) =>
+    new Set(changes.filter((row) => row.member.action === action).map((row) => (action === "invite" ? row.member.email : `${row.team}|${row.member.login}`))).size;
+  const breaker = org.breaker;
+  const seats = org.seats;
+
+  const confirm = async () => {
+    if (!breaker) return;
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      await github.confirmGitHubRemovals({ org: org.org, fingerprint: breaker.fingerprint });
+      onDone(`Confirmed: the ${breaker.affected} removals in ${org.org} go ahead on the next pass.`);
+      reload();
+    } catch (error) {
+      setFailure(reason(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const plan = [
+    count("invite") && `invite ${count("invite")}`,
+    count("add") && `add ${count("add")} to teams`,
+    count("set-role") && `change ${count("set-role")} ${count("set-role") === 1 ? "role" : "roles"}`,
+    count("remove") && `remove ${count("remove")}`,
+  ].filter(Boolean);
+
+  return (
+    <Page
+      title={org.org}
+      mono
+      lede={
+        !org.reported
+          ? "The controller has not reported on this organisation yet."
+          : plan.length
+            ? `${acting ? "This pass will" : "If enabled now, the controller would"} ${plan.join(", ")}.`
+            : "Nothing to change."
+      }
+      facts={[
+        { label: "Controller", value: outcome(org) },
+        { label: "Acts on it", value: org.reported ? (acting ? "yes" : "no — dry run") : undefined },
+        { label: "Last pass", value: at(org.tick?.at) ? ago(at(org.tick?.at)) : undefined },
+        { label: "Seats", value: seats?.known ? `${seats.free} free of ${seats.total}` : undefined },
+      ]}
+    >
+      <Stack sx={{ gap: 2, mb: 4 }}>
+        <Failure error={failure} />
+        {org.reportError ? <Failure error={`The last report could not be read: ${org.reportError}`} /> : null}
+        {org.tick?.error ? <Failure error={`The last pass failed: ${org.tick.error}`} /> : null}
+        {seats && !seats.known ? (
+          <Alert severity="warning">
+            <strong>Nobody is invited: the seats cannot be counted.</strong> Approve organisation administration (read) for this
+            organisation&apos;s App on GitHub; invitations go out on the next pass.
+          </Alert>
+        ) : null}
+        {seats?.known && seats.short > 0 ? (
+          <Alert severity="warning">
+            <strong>
+              Not enough seats: {seats.short} {seats.short === 1 ? "person waits" : "people wait"} for a seat.
+            </strong>{" "}
+            Buy {seats.short} in {org.org}&apos;s billing on GitHub ({seats.filled} of {seats.total} taken, {seats.pending} invitations pending).
+          </Alert>
+        ) : null}
+        {breaker && !breaker.confirmed ? (
+          <Alert
+            severity="error"
+            action={
+              operator ? (
+                <Button color="inherit" size="small" disabled={busy || org.removalConfirmation?.fingerprint === breaker.fingerprint} onClick={() => void confirm()}>
+                  {org.removalConfirmation?.fingerprint === breaker.fingerprint ? "Confirmed" : "Confirm"}
+                </Button>
+              ) : null
+            }
+          >
+            <strong>
+              Removals held: {breaker.affected} of {breaker.members} members would leave at once.
+            </strong>{" "}
+            That is more often a policy mistake than people leaving. Read the removals below; confirming lets exactly this set go ahead.
+          </Alert>
+        ) : null}
+      </Stack>
+
+      {removals.length ? (
+        <Section title={acting ? "Removals" : "Removals it would make"} hint="the part worth reading before anything else">
+          <RowsTable rows={removals} acting={acting} hideState />
+        </Section>
+      ) : null}
+
+      {rest.length ? (
+        <Section
+          title={acting ? "Everything else" : "Everything else it would do"}
+          hint={`${rest.length} rows — invitations, team changes, and who it is waiting on`}
+          action={
+            <Button size="small" onClick={() => setOthers(!others)}>
+              {others ? "Hide" : "Show"}
+            </Button>
+          }
+        >
+          <Collapse in={others}>
+            <RowsTable rows={rest} acting={acting} />
+          </Collapse>
+        </Section>
+      ) : null}
+
+      <Section title="Teams" hint="each fed by internal groups; open one for its members">
+        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Team</TableCell>
+                <TableCell>Fed by</TableCell>
+                <TableCell align="right">OK</TableCell>
+                <TableCell align="right">Waiting for them</TableCell>
+                <TableCell align="right">Needs you</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {org.teams.map((team) => {
+                const counts = countLabels(team.members);
+                return (
+                  <TableRow key={team.team} hover>
+                    <TableCell>
+                      <Ref to={paths.githubTeam(org.org, team.team)} mono>
+                        {team.team}
+                      </Ref>
+                      {!team.bound ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                          no longer bound
+                        </Typography>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <Names items={[...team.memberGroups, ...team.maintainerGroups].map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="—" />
+                    </TableCell>
+                    <TableCell align="right">{counts.ok}</TableCell>
+                    <TableCell align="right">{counts["their-move"]}</TableCell>
+                    <TableCell align="right">{counts["needs-you"]}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        {org.memberGroups.length ? (
+          <Typography variant="body2" color="text.secondary" component="div" sx={{ mt: 1 }}>
+            In the organisation itself, without a team: <Names items={org.memberGroups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} />
+          </Typography>
+        ) : null}
+      </Section>
+
+      {org.outsideCollaborators.length ? (
+        <Section title="Outside collaborators" hint="access to repositories without membership: reported, never managed">
+          <Names items={org.outsideCollaborators.map((account) => ({ label: account.login, mono: true }))} />
+        </Section>
+      ) : null}
+
+      {org.unlinked.length ? (
+        <Section title="Members nobody linked" hint="in the organisation, and nobody can say who they are: never touched">
+          <Names items={org.unlinked.map((account) => ({ label: account.login, mono: true }))} />
+        </Section>
+      ) : null}
+    </Page>
+  );
+}
+
+function TeamPage({ org, team: slug }: { org: GitHubOrganisation; team: string }) {
+  const team = org.teams.find((t) => t.team === slug);
+  if (!team) return <Nothing>{org.org} has no bound or reported team {slug}.</Nothing>;
+  const counts = countLabels(team.members);
+  const rows: Row[] = team.members.map((member) => ({ org: org.org, team: team.team, member }));
+  return (
+    <Page
+      title={team.team}
+      mono
+      lede={
+        <>
+          A team in{" "}
+          <Ref to={paths.githubOrganisation(org.org)} mono>
+            {org.org}
+          </Ref>
+          : {counts.ok} OK, {counts["their-move"]} waiting for them, {counts["needs-you"]} needing you.
+        </>
+      }
+    >
+      <Section title="Fed by" hint="the internal groups whose holders belong in it; change it in the policy, in git">
+        <Facts
+          items={[
+            { label: "Members", value: <Names items={team.memberGroups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="—" /> },
+            { label: "Maintainers", value: <Names items={team.maintainerGroups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="—" /> },
+          ]}
+        />
+      </Section>
+      <Section title="Members" hint="as the controller found them">
+        {rows.length ? <RowsTable rows={rows} acting={org.enabled} hideWhere /> : <Nothing>Nobody is wanted in this team.</Nothing>}
+      </Section>
+    </Page>
+  );
+}
+
+function RowsTable({ rows, acting, hideWhere, hideState }: { rows: Row[]; acting: boolean; hideWhere?: boolean; hideState?: boolean }) {
+  return (
+    <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Person</TableCell>
+            <TableCell>GitHub</TableCell>
+            {hideWhere ? null : <TableCell>Where</TableCell>}
+            <TableCell>Role</TableCell>
+            {hideState ? null : <TableCell>State</TableCell>}
+            <TableCell>Next</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={`${row.team}:${row.member.email}:${row.member.login}:${row.member.action}:${row.member.state}`} hover>
+              <TableCell>
+                {row.member.email ? (
+                  <Ref to={paths.person(row.member.email)} mono>
+                    {row.member.email}
+                  </Ref>
+                ) : (
+                  "—"
+                )}
+              </TableCell>
+              <TableCell>{loginCell(row.member.login)}</TableCell>
+              {hideWhere ? null : (
+                <TableCell>
+                  {row.team ? (
+                    <Ref to={paths.githubTeam(row.org, row.team)} mono>
+                      {row.team}
+                    </Ref>
+                  ) : (
+                    <Typography variant="body2">the organisation</Typography>
+                  )}
+                </TableCell>
+              )}
+              <TableCell>{row.member.role}</TableCell>
+              {hideState ? null : (
+                <TableCell>
+                  <State kind={labelOf(row.member.state) as StateKind} title={tooltipOf(row.member)} />
+                </TableCell>
+              )}
+              <TableCell>
+                <Typography variant="body2">{sentence(row.member, acting)}</Typography>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
+
+// -------------------------------------------------------------------- apps
+
+function AppsPage({ status, operator, onDone, reload }: Props & { status: GetGitHubStatusResponse; reload: () => void }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const bound = status.organisations.filter((org) => org.bound);
   const [owner, setOwner] = useState(bound[0]?.org ?? "");
+  const app = status.linkApp;
 
-  const people = collectPeople(status.organisations);
-  const linkedPeople = people.filter((person) => person.state !== "not-linked").length;
-  const connected = bound.filter((org) => org.connection?.installed).length;
-  const acting = bound.filter((org) => org.enabled).length;
-
-  // Creating an App leaves the page for GitHub, so busy stays set.
   const leave = async (start: () => Promise<{ url: string; manifest: string }>) => {
     setBusy(true);
     setFailure(undefined);
@@ -115,602 +527,212 @@ function SetUp({
     }
   };
   const settingsNote = (url: string) => (url ? ` Its owner can delete the App on GitHub: ${url}` : "");
-  const disconnectOrganisation = (org: string) =>
-    run(async () => {
-      const gone = await github.disconnectGitHubOrganisation({ org });
-      onDone(`${org} is disconnected${gone.uninstalled ? " and its App uninstalled" : `. ${gone.detail}`}.${settingsNote(gone.appSettingsUrl)}`);
-      reload();
-    });
+  const links = status.links;
+  const linked = links.filter((l) => l.state === "linked").length;
+  const attention = links.length - linked;
+
   const disconnectLinkApp = () =>
     run(async () => {
       const gone = await github.disconnectGitHubLinkApp({});
       onDone(`The link App is disconnected; ${gone.invalidated} links wait for their people to link again.${settingsNote(gone.appSettingsUrl)}`);
       reload();
     });
-
-  const app = status.linkApp;
-  const linkAction = !operator ? null : app ? (
-    <Tooltip title="Forget the link App. Every link becomes unverifiable: nobody is added or removed on its account until the person links again.">
-      <span>
-        <Button size="small" color="warning" disabled={busy} onClick={() => void disconnectLinkApp()}>
-          Disconnect
-        </Button>
-      </span>
-    </Tooltip>
-  ) : !status.linkingAvailable ? null : (
-    <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end", alignItems: "center" }}>
-      <TextField select size="small" label="Under" value={owner} onChange={(event) => setOwner(event.target.value)} disabled={busy} sx={{ minWidth: 140 }}>
-        {bound.map((org) => (
-          <MenuItem key={org.org} value={org.org}>
-            {org.org}
-          </MenuItem>
-        ))}
-      </TextField>
-      <Button size="small" variant="outlined" disabled={busy || !owner} onClick={() => void leave(() => github.beginGitHubLinkAppConnect({ owner }))}>
-        Create
-      </Button>
-    </Stack>
-  );
-  const organisationAction = (org: GitHubOrganisation) => {
-    const c = org.connection;
-    if (!operator) return null;
-    if (!c) {
-      return (
-        <Tooltip title={!org.bound ? "Bind the organisation's teams in the policy first." : "Two clicks by the organisation's owner: create, then install."}>
-          <span>
-            <Button size="small" variant="outlined" disabled={busy || !org.bound || !status.connectingAvailable} onClick={() => void leave(() => github.beginGitHubConnect({ org: org.org }))}>
-              Create
-            </Button>
-          </span>
-        </Tooltip>
-      );
-    }
-    return (
-      <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
-        {!c.installed ? (
-          <Button size="small" variant="outlined" disabled={busy} onClick={() => void leave(() => github.beginGitHubConnect({ org: org.org }))}>
-            Finish installing
-          </Button>
-        ) : null}
-        <Tooltip title="Uninstall the App and forget the organisation. Its teams stop being managed; nobody is removed.">
-          <span>
-            <Button size="small" color="warning" disabled={busy} onClick={() => void disconnectOrganisation(org.org)}>
-              Disconnect
-            </Button>
-          </span>
-        </Tooltip>
-      </Stack>
-    );
-  };
-
-  const steps: { done: boolean; title: string; body: ReactNode }[] = [
-    {
-      done: bound.length > 0 && connected === bound.length && Boolean(app),
-      title: "Create the GitHub Apps",
-      body: (
-        <AppTable>
-          <AppRow
-            name={app ? appLink(app.appSlug, app.htmlUrl) : <Typography variant="body2">link App</Typography>}
-            scope={<Typography variant="body2">every organisation</Typography>}
-            purpose={
-              <>
-                People authorize it to show which work addresses their GitHub account has.
-                <Typography component="span" variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                  One for all organisations: public, reads a person&apos;s own email addresses, installed nowhere.
-                </Typography>
-              </>
-            }
-            state={!status.linkingAvailable ? "not available here" : app ? `created under ${app.owner}` : "not created"}
-            since={app ? since(app.connectedAt, app.connectedBy) : ""}
-            action={linkAction}
-          />
-          {status.organisations.map((org) => {
-            const c = org.connection;
-            return (
-              <AppRow
-                key={org.org}
-                name={c ? appLink(c.appSlug, c.htmlUrl) : <Typography variant="body2">team App</Typography>}
-                scope={<Mono>{org.org}</Mono>}
-                purpose={
-                  <>
-                    The controller manages {org.org}&apos;s members and teams through it.
-                    <Typography component="span" variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                      Private, members: write, installed on {org.org}.{org.bound ? "" : " The policy no longer binds it."}
-                    </Typography>
-                  </>
-                }
-                state={!c ? "not created" : c.installed ? "installed" : "created, not installed"}
-                since={c ? since(c.connectedAt, c.connectedBy) : ""}
-                action={organisationAction(org)}
-              />
-            );
-          })}
-        </AppTable>
-      ),
-    },
-    {
-      done: people.length > 0 && linkedPeople === people.length,
-      title: `People link their GitHub account — ${linkedPeople} of ${people.length}`,
-      body: app ? (
-        <Stack sx={{ gap: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            Send everybody below who is <em>not linked</em> this page. They sign in to GitHub, authorize, and are invited or added within a
-            few minutes. A personal address counts for nothing: they need their work address verified on the account.
-          </Typography>
-          <CopyLine value={status.linkUrl} />
-        </Stack>
-      ) : (
-        <Typography variant="body2" color="text.secondary">
-          Create the link App first.
-        </Typography>
-      ),
-    },
-    {
-      done: bound.length > 0 && acting === bound.length,
-      title: "Let the controller act",
-      body: (
-        <Typography variant="body2" color="text.secondary">
-          Every organisation starts as a dry run. When its section below reads right, add it to <Mono>githubRoster.actsIn</Mono> in the
-          deployment. Acting now: {acting ? bound.filter((org) => org.enabled).map((org) => org.org).join(", ") : "none"}.
-        </Typography>
-      ),
-    },
-  ];
-  const done = steps.filter((step) => step.done).length;
+  const disconnectOrganisation = (org: string) =>
+    run(async () => {
+      const gone = await github.disconnectGitHubOrganisation({ org });
+      onDone(`${org} is disconnected${gone.uninstalled ? " and its App uninstalled" : `. ${gone.detail}`}.${settingsNote(gone.appSettingsUrl)}`);
+      reload();
+    });
 
   return (
-    <Section title="Set up" hint={`${done} of ${steps.length} done`}>
+    <Page title="Apps" lede="One link App people authorize, for every organisation, and one App per organisation the controller acts through.">
       <Failure error={failure} />
-      <Paper variant="outlined">
-        {steps.map((step, index) => (
-          <Stack key={step.title} direction="row" sx={{ gap: 1.5, p: 2, borderTop: index ? 1 : 0, borderColor: "divider" }}>
-            {step.done ? <CheckCircleIcon color="success" fontSize="small" sx={{ mt: 0.25 }} /> : <RadioButtonUncheckedIcon color="disabled" fontSize="small" sx={{ mt: 0.25 }} />}
-            <Stack sx={{ gap: 1, minWidth: 0, flex: 1 }}>
-              <Typography variant="subtitle2">
-                {index + 1}. {step.title}
-              </Typography>
-              {step.body}
+      <Section
+        title="Link App"
+        hint="for every organisation"
+        action={
+          !operator || !status.linkingAvailable ? null : app ? (
+            <Tooltip title="Forget the link App. Every link it made becomes unverifiable: nobody is added or removed on its account until the person links again.">
+              <span>
+                <Button size="small" color="warning" disabled={busy} onClick={() => void disconnectLinkApp()}>
+                  Disconnect
+                </Button>
+              </span>
+            </Tooltip>
+          ) : (
+            <Stack direction="row" sx={{ gap: 1, alignItems: "center" }}>
+              <TextField select size="small" label="Under" value={owner} onChange={(event) => setOwner(event.target.value)} disabled={busy} sx={{ minWidth: 140 }}>
+                {bound.map((org) => (
+                  <MenuItem key={org.org} value={org.org}>
+                    {org.org}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Button size="small" variant="outlined" disabled={busy || !owner} onClick={() => void leave(() => github.beginGitHubLinkAppConnect({ owner }))}>
+                Create
+              </Button>
             </Stack>
-          </Stack>
-        ))}
-      </Paper>
-    </Section>
-  );
-}
-
-function AppTable({ children }: { children: ReactNode }) {
-  return (
-    <TableContainer sx={{ overflowX: "auto" }}>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>App</TableCell>
-            <TableCell>Organisation</TableCell>
-            <TableCell>What it does</TableCell>
-            <TableCell>State</TableCell>
-            <TableCell>Connected</TableCell>
-            <TableCell />
-          </TableRow>
-        </TableHead>
-        <TableBody>{children}</TableBody>
-      </Table>
-    </TableContainer>
-  );
-}
-
-function AppRow({
-  name,
-  scope,
-  purpose,
-  state,
-  since,
-  action,
-}: {
-  name: ReactNode;
-  scope: ReactNode;
-  purpose: ReactNode;
-  state: string;
-  since: string;
-  action: ReactNode;
-}) {
-  return (
-    <TableRow>
-      <TableCell>{name}</TableCell>
-      <TableCell>{scope}</TableCell>
-      <TableCell>
-        <Typography variant="body2">{purpose}</Typography>
-      </TableCell>
-      <TableCell>
-        <Typography variant="body2">{state}</Typography>
-      </TableCell>
-      <TableCell>
-        <Typography variant="body2" color="text.secondary">
-          {since || "—"}
-        </Typography>
-      </TableCell>
-      <TableCell align="right">{action}</TableCell>
-    </TableRow>
-  );
-}
-
-function CopyLine({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <Stack direction="row" sx={{ alignItems: "center", gap: 0.5, minWidth: 0 }}>
-      <Box component="a" href={value} target="_blank" rel="noreferrer" sx={{ minWidth: 0, overflowWrap: "anywhere" }}>
-        <Mono>{value}</Mono>
-      </Box>
-      <Tooltip title={copied ? "Copied" : "Copy"}>
-        <IconButton
-          size="small"
-          aria-label="copy"
-          onClick={() => {
-            void navigator.clipboard.writeText(value).then(() => setCopied(true));
-          }}
-        >
-          <ContentCopyIcon fontSize="inherit" />
-        </IconButton>
-      </Tooltip>
-    </Stack>
-  );
-}
-
-// ---------------------------------------------------------------- people
-
-/** One person across every organisation and team the policy wants them in. */
-type Person = {
-  email: string;
-  login: string;
-  places: string[];
-  /** The state that matters most across their rows. */
-  state: string;
-  next: GitHubMember | undefined;
-};
-
-/** Worst first: what an operator should look at before anything else. */
-const priority = ["held", "retrying", "leaving", "pending", "invited", "ignored", "not-linked", "reported", "synced"];
-
-function collectPeople(organisations: GitHubOrganisation[]): Person[] {
-  const byEmail = new Map<string, Person>();
-  const add = (place: string, member: GitHubMember) => {
-    if (!member.email) return;
-    const person = byEmail.get(member.email) ?? { email: member.email, login: "", places: [], state: "synced", next: undefined };
-    if (member.login && !person.login) person.login = member.login;
-    person.places.push(place);
-    if (rank(member.state) < rank(person.state)) {
-      person.state = member.state;
-      person.next = member;
-    }
-    byEmail.set(member.email, person);
-  };
-  for (const org of organisations) {
-    for (const member of org.members) add(org.org, member);
-    for (const team of org.teams) for (const member of team.members) add(`${org.org} / ${team.team}`, member);
-  }
-  return [...byEmail.values()].sort((a, b) => rank(a.state) - rank(b.state) || a.email.localeCompare(b.email));
-}
-
-function rank(state: string): number {
-  const at = priority.indexOf(state);
-  return at < 0 ? priority.length : at;
-}
-
-type PeopleFilter = "all" | "action" | "waiting" | "synced";
-
-function People({ status }: { status: GetGitHubStatusResponse }) {
-  const people = collectPeople(status.organisations);
-  const action = people.filter((p) => ["held", "retrying", "leaving", "pending"].includes(p.state));
-  const waiting = people.filter((p) => ["not-linked", "invited", "ignored"].includes(p.state));
-  const synced = people.filter((p) => ["synced", "reported"].includes(p.state));
-  const [filter, setFilter] = useState<PeopleFilter>(action.length ? "action" : waiting.length ? "waiting" : "all");
-  if (people.length === 0) return null;
-  const shown = { all: people, action, waiting, synced }[filter];
-
-  return (
-    <Section title="People" hint={`${people.length} the policy wants in GitHub, ${synced.length} synced`}>
-      <Stack sx={{ gap: 1.5 }}>
-        <Facet
-          value={filter}
-          onChange={setFilter}
-          all={{ value: "all", label: `Everyone (${people.length})` }}
-          options={[
-            { value: "action", label: `To change (${action.length})` },
-            { value: "waiting", label: `Waiting on them (${waiting.length})` },
-            { value: "synced", label: `Synced (${synced.length})` },
-          ]}
-        />
-        {shown.length === 0 ? (
-          <Nothing>{filter === "action" ? "Nothing to change." : filter === "waiting" ? "Nobody is waiting." : "Nobody here."}</Nothing>
+          )
+        }
+      >
+        {!status.linkingAvailable ? (
+          <Nothing>This deployment keeps no state in Kubernetes, so a link would not survive a restart.</Nothing>
         ) : (
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Facts
+              items={[
+                { label: "App", value: app ? appLink(app.appSlug, app.htmlUrl) : "not created" },
+                { label: "Created under", value: app?.owner },
+                { label: "Connected", value: app ? since(app.connectedAt, app.connectedBy) : undefined },
+                { label: "Linked", value: app ? String(linked) : undefined },
+                { label: "Not counting", value: app && attention ? String(attention) : undefined },
+                { label: "Send people to", value: app ? <CopyLine value={linkPage(status.linkUrl)} /> : undefined },
+              ]}
+            />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+              Public, reads a person&apos;s own email addresses and nothing else, installed nowhere. The organisation it is created under only
+              hosts it.
+            </Typography>
+          </Paper>
+        )}
+      </Section>
+
+      <Section title="Organisation Apps" hint="one per organisation, installed on it">
+        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Organisation</TableCell>
+                <TableCell>Team App</TableCell>
+                <TableCell>State</TableCell>
+                <TableCell>Connected</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {status.organisations.map((org) => {
+                const c = org.connection;
+                return (
+                  <TableRow key={org.org} hover>
+                    <TableCell>
+                      <Ref to={paths.githubOrganisation(org.org)} mono>
+                        {org.org}
+                      </Ref>
+                    </TableCell>
+                    <TableCell>{c ? appLink(c.appSlug, c.htmlUrl) : "—"}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{!c ? "not created" : c.installed ? "installed" : "created, not installed"}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {c ? since(c.connectedAt, c.connectedBy) : "—"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      {!operator ? null : !c ? (
+                        <Tooltip title={!org.bound ? "Bind the organisation's teams in the policy first." : "Two clicks by the organisation's owner: create, then install."}>
+                          <span>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              disabled={busy || !org.bound || !status.connectingAvailable}
+                              onClick={() => void leave(() => github.beginGitHubConnect({ org: org.org }))}
+                            >
+                              Create
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      ) : (
+                        <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
+                          {!c.installed ? (
+                            <Button size="small" variant="outlined" disabled={busy} onClick={() => void leave(() => github.beginGitHubConnect({ org: org.org }))}>
+                              Finish installing
+                            </Button>
+                          ) : null}
+                          <Tooltip title="Uninstall the App and forget the organisation. Its teams stop being managed; nobody is removed.">
+                            <span>
+                              <Button size="small" color="warning" disabled={busy} onClick={() => void disconnectOrganisation(org.org)}>
+                                Disconnect
+                              </Button>
+                            </span>
+                          </Tooltip>
+                        </Stack>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Section>
+
+      {links.length ? (
+        <Section title="Linked accounts" hint={`${linked} linked${attention ? `, ${attention} not counting` : ""}`}>
           <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Person</TableCell>
                   <TableCell>GitHub</TableCell>
-                  <TableCell>Where</TableCell>
+                  <TableCell>Work addresses</TableCell>
+                  <TableCell>How</TableCell>
                   <TableCell>State</TableCell>
-                  <TableCell>Next</TableCell>
+                  <TableCell>Checked</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {shown.map((person) => (
-                  <TableRow key={person.email} hover>
+                {links.map((l) => (
+                  <TableRow key={String(l.accountId)} hover>
+                    <TableCell>{loginCell(l.login)}</TableCell>
                     <TableCell>
-                      <Ref to={paths.person(person.email)} mono>
-                        {person.email}
-                      </Ref>
-                    </TableCell>
-                    <TableCell>{loginCell(person.login)}</TableCell>
-                    <TableCell>
-                      <Typography variant="body2">{person.places.join(", ")}</Typography>
+                      <Names items={l.emails.map((email) => ({ label: email, to: paths.person(email), mono: true }))} empty="—" />
                     </TableCell>
                     <TableCell>
-                      <State kind={stateKind(person.state)} />
+                      <Tooltip title={l.note || "They authorized the link App; checked on GitHub every pass."}>
+                        <Typography variant="body2" component="span">
+                          {sourceName(l.source)}
+                        </Typography>
+                      </Tooltip>
                     </TableCell>
-                    <TableCell>{person.next ? next(person.next) : null}</TableCell>
+                    <TableCell>
+                      <State kind={linkKind(l.state)} title={l.reason || undefined} />
+                    </TableCell>
+                    <TableCell>{at(l.checkedAt) ? ago(at(l.checkedAt)) : "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </TableContainer>
-        )}
-      </Stack>
-    </Section>
+        </Section>
+      ) : null}
+    </Page>
   );
 }
 
-// ---------------------------------------------------------- organisations
+// ----------------------------------------------------------------- helpers
 
-/** One organisation: how the controller's last pass went, its teams, and
- *  the changes it would make. People waiting to link are in People above,
- *  once, rather than here once per team. */
-function Organisation({
-  org,
-  operator,
-  onDone,
-  reload,
-}: {
-  org: GitHubOrganisation;
-  operator: boolean;
-  onDone: (message: string) => void;
-  reload: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | undefined>();
-  const breaker = org.breaker;
-  const seats = org.seats;
-  const confirm = async () => {
-    if (!breaker) return;
-    setBusy(true);
-    setFailure(undefined);
-    try {
-      await github.confirmGitHubRemovals({ org: org.org, fingerprint: breaker.fingerprint });
-      onDone(`Confirmed: the ${breaker.affected} removals in ${org.org} go ahead on the next pass.`);
-      reload();
-    } catch (error) {
-      setFailure(reason(error));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const rows = [
-    ...org.members.map((member) => ({ team: "", member })),
-    ...org.teams.flatMap((team) => team.members.map((member) => ({ team: team.team, member }))),
-  ];
-  const changes = rows.filter((row) => row.member.action || ["held", "retrying", "reported", "ignored"].includes(row.member.state));
-
-  return (
-    <Section title={org.org} hint={summary(org)}>
-      <Stack sx={{ gap: 2 }}>
-        <Failure error={failure} />
-        {seats && !seats.known ? (
-          <Alert severity="warning">
-            <strong>Nobody is invited: the seats cannot be counted.</strong> Approve organisation administration (read) for this
-            organisation&apos;s App on GitHub; invitations go out on the next pass.
-          </Alert>
-        ) : null}
-        {seats && seats.known && seats.short > 0 ? (
-          <Alert severity="warning">
-            <strong>
-              Not enough seats: {seats.short} {seats.short === 1 ? "person waits" : "people wait"} for a seat, {seats.free} free.
-            </strong>{" "}
-            Buy {seats.short} {seats.short === 1 ? "seat" : "seats"} in {org.org}&apos;s billing on GitHub; the invitations go out on the next
-            pass. ({seats.filled} of {seats.total} taken, {seats.pending} invitations pending.)
-          </Alert>
-        ) : null}
-        {breaker && !breaker.confirmed ? (
-          <Alert
-            severity="error"
-            action={
-              operator ? (
-                <Button color="inherit" size="small" disabled={busy || org.removalConfirmation?.fingerprint === breaker.fingerprint} onClick={() => void confirm()}>
-                  {org.removalConfirmation?.fingerprint === breaker.fingerprint ? "Confirmed" : "Confirm"}
-                </Button>
-              ) : null
-            }
-          >
-            <strong>
-              Removals held: {breaker.affected} of {breaker.members} members would leave at once.
-            </strong>{" "}
-            More than half an organisation leaving together is more often a policy mistake than people leaving. Read the removals below;
-            confirming lets exactly this set go ahead, and a different set needs confirming again.
-          </Alert>
-        ) : null}
-        <Facts
-          items={[
-            { label: "Controller", value: outcome(org) },
-            { label: "Acts on it", value: org.reported ? (org.enabled ? "yes" : "no — dry run") : undefined },
-            { label: "Last pass", value: at(org.tick?.at) ? ago(at(org.tick?.at)) : undefined },
-            { label: "To change", value: org.tick ? String(org.tick.changes) : undefined },
-            { label: "Held", value: org.tick ? String(org.tick.held) : undefined },
-            { label: "Not linked", value: org.tick ? String(org.tick.waiting) : undefined },
-            { label: "Retrying", value: org.tick?.retrying ? String(org.tick.retrying) : undefined },
-            { label: "Seats", value: seats?.known ? `${seats.free} free of ${seats.total}` : undefined },
-            {
-              label: "In the organisation itself",
-              value: org.memberGroups.length ? <Names items={org.memberGroups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} /> : undefined,
-            },
-          ]}
-        />
-        {org.reportError ? <Failure error={`The last report could not be read: ${org.reportError}`} /> : null}
-        {org.tick?.error ? <Failure error={`The last pass failed: ${org.tick.error}`} /> : null}
-        {!org.bound ? <Nothing>The policy no longer binds this organisation. What follows is the controller&apos;s last report on it.</Nothing> : null}
-
-        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Team</TableCell>
-                <TableCell>Members from</TableCell>
-                <TableCell>Maintainers from</TableCell>
-                <TableCell align="right">Synced</TableCell>
-                <TableCell align="right">To change</TableCell>
-                <TableCell align="right">Not linked</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {org.teams.map((team) => (
-                <TableRow key={team.team} hover>
-                  <TableCell>
-                    <Mono>{team.team}</Mono>
-                    {!team.bound ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        no longer bound
-                      </Typography>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <Names items={team.memberGroups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="—" />
-                  </TableCell>
-                  <TableCell>
-                    <Names items={team.maintainerGroups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="—" />
-                  </TableCell>
-                  <TableCell align="right">{count(team.members, (m) => m.state === "synced")}</TableCell>
-                  <TableCell align="right">{count(team.members, (m) => Boolean(m.action) || m.state === "held")}</TableCell>
-                  <TableCell align="right">{count(team.members, (m) => m.state === "not-linked")}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-
-        {changes.length > 0 ? (
-          <Box>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              {org.enabled ? "Changes" : "Changes it would make"}
-            </Typography>
-            <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Person</TableCell>
-                    <TableCell>GitHub</TableCell>
-                    <TableCell>Where</TableCell>
-                    <TableCell>Role</TableCell>
-                    <TableCell>State</TableCell>
-                    <TableCell>Next</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {changes.map((row) => (
-                    <TableRow key={`${row.team}:${row.member.email}:${row.member.login}:${row.member.action}`} hover>
-                      <TableCell>{row.member.email ? <Mono>{row.member.email}</Mono> : "—"}</TableCell>
-                      <TableCell>{loginCell(row.member.login)}</TableCell>
-                      <TableCell>{row.team ? <Mono>{row.team}</Mono> : <Typography variant="body2">the organisation</Typography>}</TableCell>
-                      <TableCell>{row.member.role}</TableCell>
-                      <TableCell>
-                        <State kind={stateKind(row.member.state)} />
-                      </TableCell>
-                      <TableCell>{next(row.member)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
-        ) : null}
-
-        {org.outsideCollaborators.length > 0 ? (
-          <Box>
-            <Typography variant="subtitle2">Outside collaborators ({org.outsideCollaborators.length})</Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-              Access to repositories without membership. Reported, never managed.
-            </Typography>
-            <Names items={org.outsideCollaborators.map((account) => ({ label: account.login, mono: true }))} />
-          </Box>
-        ) : null}
-
-        {org.unlinked.length > 0 ? (
-          <Box>
-            <Typography variant="subtitle2">Members nobody linked ({org.unlinked.length})</Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-              In {org.org} on GitHub, and nobody has linked the account to a work address — so nobody can say who they are. Never touched.
-            </Typography>
-            <Names items={org.unlinked.map((account) => ({ label: account.login, mono: true }))} />
-          </Box>
-        ) : null}
-      </Stack>
-    </Section>
-  );
+export function sourceName(source: string): string {
+  return ({ self: "linked by them", profile: "public profile", imported: "imported" } as Record<string, string>)[source] ?? source;
 }
 
-// ---------------------------------------------------------- linked accounts
-
-/** Every account linked so far. Last on the page: it is the evidence
- *  behind People, and matters most when a link went wrong. */
-function LinkedAccounts({ status }: { status: GetGitHubStatusResponse }) {
-  if (!status.linkingAvailable || status.links.length === 0) return null;
-  const linked = status.links.filter((l) => l.state === "linked").length;
-  return (
-    <Section title="Linked GitHub accounts" hint={`${linked} linked, ${status.links.length - linked} not counting`}>
-      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>GitHub</TableCell>
-              <TableCell>Work addresses</TableCell>
-              <TableCell>How</TableCell>
-              <TableCell>State</TableCell>
-              <TableCell>Checked</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {status.links.map((l) => {
-              const checked = at(l.checkedAt);
-              return (
-                <TableRow key={String(l.accountId)} hover>
-                  <TableCell>{loginCell(l.login)}</TableCell>
-                  <TableCell>
-                    <Names items={l.emails.map((email) => ({ label: email, to: paths.person(email), mono: true }))} empty="—" />
-                  </TableCell>
-                  <TableCell>
-                    <Tooltip title={l.note || "They authorized the link App; checked on GitHub every pass."}>
-                      <Typography variant="body2" component="span">
-                        {{ self: "linked by them", profile: "public profile", imported: "imported" }[l.source] ?? l.source}
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>
-                    <State kind={linkKind(l.state)} />
-                    {l.reason ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        {l.reason}
-                      </Typography>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>{checked ? ago(checked) : "—"}</TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Section>
-  );
+export function linkKind(state: string): StateKind {
+  switch (state) {
+    case "linked":
+      return "ok";
+    case "unverifiable":
+      return "their-move";
+    case "lost":
+      return "lost";
+    default:
+      return "unknown";
+  }
 }
 
-// ---------------------------------------------------------------- helpers
+function outcome(org: GitHubOrganisation) {
+  if (!org.reported) return <State kind="unreported" />;
+  const kind = org.tick?.outcome as StateKind | undefined;
+  return kind ? <State kind={kind} /> : <State kind="unreported" />;
+}
 
 function appLink(slug: string, url: string) {
   return url ? (
@@ -722,7 +744,7 @@ function appLink(slug: string, url: string) {
   );
 }
 
-function loginCell(login: string) {
+export function loginCell(login: string) {
   return login ? (
     <a href={`https://github.com/${login}`} target="_blank" rel="noreferrer">
       <Mono>{login}</Mono>
@@ -739,8 +761,35 @@ function since(connectedAt: Parameters<typeof at>[0], by: string): string {
   return [when ? ago(when) : "", by ? `by ${by}` : ""].filter(Boolean).join(" ");
 }
 
-function count<T>(items: T[], test: (item: T) => boolean): number {
-  return items.filter(test).length;
+export function CopyLine({ value }: { value: string }) {
+  return (
+    <Stack direction="row" sx={{ alignItems: "center", gap: 0.5, minWidth: 0 }}>
+      <Box component="a" href={value} target="_blank" rel="noreferrer" sx={{ minWidth: 0, overflowWrap: "anywhere" }}>
+        <Mono>{value}</Mono>
+      </Box>
+      <CopyIcon value={value} />
+    </Stack>
+  );
+}
+
+function CopyIcon({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Tooltip title={copied ? "Copied" : "Copy"}>
+      <IconButton size="small" aria-label="copy" onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}>
+        <ContentCopyIcon fontSize="inherit" />
+      </IconButton>
+    </Tooltip>
+  );
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button size="small" variant="outlined" startIcon={<ContentCopyIcon fontSize="inherit" />} onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}>
+      {copied ? "Copied" : label}
+    </Button>
+  );
 }
 
 /** GitHub creates an App only from a manifest POSTed by the browser, so
@@ -756,68 +805,4 @@ function postManifest(action: string, manifest: string) {
   form.appendChild(field);
   document.body.appendChild(form);
   form.submit();
-}
-
-/** The organisation's one line. */
-function summary(org: GitHubOrganisation): string {
-  const teams = `${org.teams.length} ${org.teams.length === 1 ? "team" : "teams"}`;
-  if (!org.reported) return `${teams}, not reported yet`;
-  const tick = org.tick;
-  const parts = [teams];
-  if (tick?.changes) parts.push(`${tick.changes} to change`);
-  if (tick?.held) parts.push(`${tick.held} held`);
-  if (tick?.waiting) parts.push(`${tick.waiting} not linked`);
-  if (parts.length === 1) parts.push("everyone synced");
-  return parts.join(", ");
-}
-
-function outcome(org: GitHubOrganisation) {
-  if (!org.reported) return <State kind="unreported" />;
-  const kind = org.tick?.outcome as StateKind | undefined;
-  return kind ? <State kind={kind} /> : <State kind="unreported" />;
-}
-
-function stateKind(state: string): StateKind {
-  switch (state) {
-    case "not-linked":
-    case "synced":
-    case "pending":
-    case "invited":
-    case "leaving":
-    case "held":
-    case "retrying":
-    case "ignored":
-    case "reported":
-      return state;
-    default:
-      return "unknown";
-  }
-}
-
-function linkKind(state: string): StateKind {
-  switch (state) {
-    case "linked":
-    case "lost":
-    case "unverifiable":
-      return state;
-    default:
-      return "unknown";
-  }
-}
-
-/** What happens next for one row, and why when it is held. A not-linked
- *  row has no next step of the controller's: the chip says it all. */
-function next(member: GitHubMember) {
-  if (member.state === "not-linked") return null;
-  const words: Record<string, string> = { invite: "invite", add: "add to team", "set-role": "change role", remove: "remove" };
-  const label = member.action ? (words[member.action] ?? member.action) : "";
-  if (!member.reason) return label ? <Typography variant="body2">{label}</Typography> : null;
-  return (
-    <Typography variant="body2">
-      {label ? `${label} — ` : ""}
-      <Typography component="span" variant="body2" color="text.secondary">
-        {member.reason}
-      </Typography>
-    </Typography>
-  );
 }
