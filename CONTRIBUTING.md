@@ -29,10 +29,10 @@ internal/                 hub (snapshots, routing, authority), issuer
                           proofs), demo (fixtures). app and issuerapp
                           assemble the two halves; rosterapp is the
                           wiring that makes them one process
-frontend/                 the console: Vite + React + MUI, committed
+frontend/                 the console: Vite + React + MUI, its built
                           dist/ embedded into the binary by go:embed
-ts/                       the TypeScript package; dist/ committed so a
-                          git install needs no toolchain
+ts/                       the TypeScript package; dist/ is built and
+                          published to GitHub Packages by the release
 proto/  gen/              contracts and committed generated code
 docs/                     why, concepts, architecture, design per
                           battery, reference, connect guides,

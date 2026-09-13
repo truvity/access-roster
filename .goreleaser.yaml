@@ -158,11 +158,12 @@ release:
     |---|---|
     | Image | `ghcr.io/truvity/access-roster/access-issuer:{{ .Version }}` |
     | Chart | `oci://ghcr.io/truvity/charts/access-issuer:{{ .Version }}` |
-    | TypeScript | `npm install github:truvity/access-roster#{{ .Tag }}` |
+    | TypeScript | `@truvity/access-roster@{{ .Version }}` on GitHub Packages |
     | Go | `go get github.com/truvity/access-roster@{{ .Tag }}` |
 
-    The TypeScript package installs from this tag with its `dist`
-    committed, so it needs no registry and no toolchain. The Go module at
+    The TypeScript package is published to GitHub Packages at this
+    version; installing it needs a token that can read packages
+    (`docs/reference/typescript.md`). The Go module at
     this tag is the policy engine, `identity` and `tokens`; `authz` and
     `directory` are not built yet, and `docs/reference/go-module.md` says
     so.

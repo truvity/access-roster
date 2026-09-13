@@ -352,10 +352,8 @@ deps: tidy
 # points into ts/dist. Build the console before this and it resolves an
 # import to a directory that is not there yet.
 #
-# A git install builds it through the `prepare` script in the root
-# package.json, which npm runs for a git dependency after installing
-# devDependencies -- so the toolchain the committed copy existed to
-# avoid needing is there anyway, at the one moment it matters.
+# The release builds it the same way and publishes the root package to
+# GitHub Packages; nothing builds it on install.
 ts-package: deps
     cd ts && npx tsc -p tsconfig.build.json
 

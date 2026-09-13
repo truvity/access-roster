@@ -46,3 +46,37 @@ jobs:
       # ko names each artifact after its cmd dir, so the published slug
       # is ghcr.io/truvity/access-roster/access-issuer.
       ko-docker-repo: ghcr.io/truvity/access-roster
+
+  # The TypeScript package, to GitHub Packages, at the tag's version.
+  #
+  # Built here rather than on install. A git dependency builds itself
+  # through `prepare`, and a package manager is free to pack it without
+  # running that: yarn 4 did, and bar received a package with no ts/dist
+  # at all. A registry holds exactly what was built and tested, once.
+  #
+  # After the binaries, image and charts: a release whose artifacts
+  # failed should not leave a package claiming its version.
+  npm:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@truvity"
+      - name: Build, test and publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          (cd ts && npm ci && npx tsc --noEmit && npx vitest run && npx tsc -p tsconfig.build.json)
+          # The repository's version is the tag; package.json carries none.
+          npm version "${TAG#v}" --no-git-tag-version --allow-same-version
+          npm publish
