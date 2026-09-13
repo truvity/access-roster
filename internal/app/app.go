@@ -44,6 +44,7 @@ import (
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
+	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
@@ -626,8 +627,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHub:       githubReports(kept.github, cfg.demo),
 		GitHubOrgs:   githubConnections(kept.githubOrgs, cfg.demo),
 		// Typed nils again: an interface holding a nil store is not nil.
-		GitHubLinkApp: githubLinkApp(kept.githubOrgs),
-		GitHubLinks:   githubLinks(kept.githubLinks),
+		GitHubLinkApp: githubLinkApp(kept.githubOrgs, cfg.demo),
+		GitHubLinks:   githubLinks(kept.githubLinks, cfg.demo),
 		Audit:         recorder,
 		AuditStore:    auditStore,
 	})
@@ -1067,20 +1068,58 @@ func githubConnections(store *kube.GitHubOrgs, demonstration bool) server.GitHub
 	}
 }
 
-// githubLinkApp is the store as the console's interface, or nil.
-func githubLinkApp(store *kube.GitHubOrgs) server.GitHubLinkApp {
-	if store == nil {
+// githubLinkApp is the store as the console's interface, or nil. A
+// demonstration run shows a link App already created.
+func githubLinkApp(store *kube.GitHubOrgs, demonstration bool) server.GitHubLinkApp {
+	switch {
+	case store != nil:
+		return store
+	case demonstration:
+		return demoLinkApp{app: demo.GitHubLinkApp(time.Now())}
+	default:
 		return nil
 	}
-	return store
 }
 
-// githubLinks is the store as the console's interface, or nil.
-func githubLinks(store *kube.GitHubLinks) server.GitHubLinks {
-	if store == nil {
+// githubLinks is the store as the console's interface, or nil. A
+// demonstration run shows a few links, and links nobody.
+func githubLinks(store *kube.GitHubLinks, demonstration bool) server.GitHubLinks {
+	switch {
+	case store != nil:
+		return store
+	case demonstration:
+		return demoLinks{links: demo.GitHubLinks(time.Now())}
+	default:
 		return nil
 	}
-	return store
+}
+
+// demoLinkApp is a fixed link App that nobody can authorize.
+type demoLinkApp struct{ app link.App }
+
+func (d demoLinkApp) LinkApp(context.Context) (link.App, bool, error) { return d.app, true, nil }
+
+func (demoLinkApp) LinkAppCredential(context.Context) (link.AppCredential, bool, error) {
+	return link.AppCredential{}, false, nil
+}
+
+func (demoLinkApp) PutLinkApp(context.Context, link.App, link.AppCredential) error {
+	return errDemoConnect
+}
+
+func (demoLinkApp) DeleteLinkApp(context.Context) error { return errDemoConnect }
+
+// demoLinks are fixed links.
+type demoLinks struct{ links []link.Link }
+
+func (d demoLinks) List(context.Context) ([]link.Link, error) { return d.links, nil }
+
+func (demoLinks) Claim(context.Context, link.Link, time.Time) ([]link.Link, error) {
+	return nil, errDemoConnect
+}
+
+func (demoLinks) Invalidate(context.Context, string, time.Time) (int, error) {
+	return 0, errDemoConnect
 }
 
 // errDemoConnect is what a demonstration run says when asked to change a

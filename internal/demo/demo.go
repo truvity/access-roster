@@ -19,6 +19,7 @@ import (
 	"github.com/truvity/access-roster/backend"
 	"github.com/truvity/access-roster/backend/fake"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
+	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/internal/hub"
 )
@@ -275,37 +276,68 @@ func (c *Connector) Exchange(_ context.Context, code, bind string) (hub.Workspac
 // so without this the GitHub page would show only bindings and could not
 // be walked through.
 func GitHubReports(now time.Time) map[string]string {
-	report := status.Org{
+	north := status.Org{
 		Org:     "example-org",
 		Enabled: false,
-		Tick:    status.Tick{At: now.Add(-4 * time.Minute), Outcome: status.OutcomeDryRun, Changes: 2, Held: 1},
+		Tick:    status.Tick{At: now.Add(-4 * time.Minute), Outcome: status.OutcomeDryRun, Changes: 3, Held: 1, Waiting: 2},
 		Members: []status.Member{
 			{Email: "ada@north.example", Login: "ada-north", Role: status.RoleMember, State: status.StateSynced},
 			{Email: "brian@north.example", Login: "bbell", Role: status.RoleMember, State: status.StateSynced},
-			{Email: "dana@south.example", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
-			{Email: "eli@south.example", Login: "eli-east", Role: status.RoleMember, State: status.StateSynced},
+			{Email: "dana@south.example", Login: "dana-s", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
+			{Email: "finn@north.example", Role: status.RoleMember, State: status.StateNotLinked, Reason: "finn@north.example has not linked a GitHub account"},
+			{Email: "old-cleo@north.example", Login: "cleo-c", Role: status.RoleMember, State: status.StateLeaving, Action: status.ActionRemove,
+				Reason: "the link is gone: no linked work address is verified on the account any more (old-cleo@north.example)"},
 		},
 		Teams: []status.Team{
 			{Team: "team-engineering", Members: []status.Member{
 				{Email: "ada@north.example", Login: "ada-north", Role: status.RoleMaintainer, State: status.StateSynced},
 				{Email: "brian@north.example", Login: "bbell", Role: status.RoleMember, State: status.StateSynced},
-				{Email: "dana@south.example", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
-				{Email: "cleo@north.example", Login: "cleo-c", Role: status.RoleMember, State: status.StateLeaving, Action: status.ActionRemove},
+				{Email: "dana@south.example", Login: "dana-s", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
+				{Email: "finn@north.example", Role: status.RoleMember, State: status.StateNotLinked, Reason: "finn@north.example has not linked a GitHub account"},
+				{Email: "gus@south.example", Role: status.RoleMember, State: status.StateNotLinked, Reason: "gus@south.example has not linked a GitHub account"},
+				{Email: "hal@north.example", Login: "hal-9", Role: status.RoleMember, State: status.StateLeaving, Action: status.ActionRemove},
 			}},
 			{Team: "team-security", Members: []status.Member{
 				{Email: "eli@south.example", Login: "eli-east", Role: status.RoleMember, State: status.StateHeld, Action: status.ActionAdd,
-					Reason: "south.example is not a verified domain of example-org, so eli-east cannot be linked to that address"},
+					Reason: "example-org has no team team-security"},
 			}},
 		},
-		Unlinked: []status.Account{{Login: "example-bot", Reason: "no verified address in any of the organisation's domains"}},
+		Unlinked: []status.Account{{Login: "example-bot", Reason: "has not linked this account to a work address"}},
 	}
-	document, err := status.Encode(report)
-	if err != nil {
-		// A fixture that does not encode is a bug in this file, caught by
-		// its test rather than by somebody opening the page.
-		panic(err)
+	out := map[string]string{}
+	for _, report := range []*status.Org{&north} {
+		document, err := status.Encode(*report)
+		if err != nil {
+			// A fixture that does not encode is a bug in this file, caught by
+			// its test rather than by somebody opening the page.
+			panic(err)
+		}
+		out[status.Key(report.Org)] = document
 	}
-	return map[string]string{status.Key(report.Org): document}
+	return out
+}
+
+// GitHubLinkApp is the demonstration's link App.
+func GitHubLinkApp(now time.Time) link.App {
+	return link.App{
+		Owner: "example-org", AppID: 1000003, AppSlug: "example-org-access-roster-link", ClientID: "Iv1.demo",
+		HTMLURL: "https://github.com/apps/example-org-access-roster-link", ConnectedAt: now.Add(-48 * time.Hour),
+		ConnectedBy: "ada@north.example",
+	}
+}
+
+// GitHubLinks are the demonstration's linked accounts: people in sync, a
+// joiner linked and not yet invited, and a link GitHub said is gone.
+func GitHubLinks(now time.Time) []link.Link {
+	checked := now.Add(-4 * time.Minute)
+	return []link.Link{
+		{ID: 11, Login: "ada-north", Emails: []string{"ada@north.example"}, State: link.StateLinked, LinkedAt: now.Add(-40 * time.Hour), CheckedAt: checked},
+		{ID: 12, Login: "bbell", Emails: []string{"brian@north.example"}, State: link.StateLinked, LinkedAt: now.Add(-30 * time.Hour), CheckedAt: checked},
+		{ID: 13, Login: "dana-s", Emails: []string{"dana@south.example"}, State: link.StateLinked, LinkedAt: now.Add(-2 * time.Hour), CheckedAt: checked},
+		{ID: 14, Login: "eli-east", Emails: []string{"eli@south.example"}, State: link.StateLinked, LinkedAt: now.Add(-20 * time.Hour), CheckedAt: checked},
+		{ID: 15, Login: "cleo-c", Emails: []string{"old-cleo@north.example"}, State: link.StateLost, LinkedAt: now.Add(-90 * time.Hour),
+			CheckedAt: checked, Reason: "no linked work address is verified on the account any more (old-cleo@north.example)"},
+	}
 }
 
 // GitHubConnection is the demonstration organisation's App, as though its

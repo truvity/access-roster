@@ -1,3 +1,17 @@
+## v1.3.2
+
+- **The GitHub page reads in the order the work happens.** *Set up* first,
+  as three ticked steps: every GitHub App in one table — the link App for
+  all organisations and each organisation's team App, with Create and
+  Disconnect beside each — then the link page to send people, with a copy
+  button, then letting the controller act. *People* next, once per person
+  across every organisation and team, filtered to what needs a change or
+  is waiting on them. Each organisation's section keeps its teams and the
+  changes it would make; nobody waiting to link is repeated there once per
+  team.
+- The demonstration shows linking: a link App, linked accounts, a lost
+  link and people not linked.
+
 ## v1.3.1
 
 - **An organisation waiting on people to link says so.** With nobody
