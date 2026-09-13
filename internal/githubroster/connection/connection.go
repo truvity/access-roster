@@ -61,6 +61,10 @@ type Credential struct {
 	AppID          int64  `json:"app_id"`
 	InstallationID int64  `json:"installation_id,omitempty"`
 	PrivateKey     string `json:"private_key"`
+	// Record is a copy of the organisation's record, so that the Secret
+	// alone restores a connection whose ConfigMap is gone. The controller
+	// never reads it.
+	Record *Record `json:"record,omitempty"`
 }
 
 // ErrVersion is a document of a version this build does not read.

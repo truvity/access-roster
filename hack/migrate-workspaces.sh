@@ -3,6 +3,10 @@
 # Move what an operator connected from the old directory-roster release
 # into the merged access-issuer release (INF-691).
 #
+# A one-off for that move, from releases before 1.7: since 1.7 the
+# credentials are one `<release>-workspace-credentials` Secret, which a
+# release rename carries by renaming that one object.
+#
 # WHY THIS EXISTS, and why it is not a chart hook: the workspace records
 # and their credentials are written by the service itself, into its own
 # namespace, named and labelled after its RELEASE. The merged service

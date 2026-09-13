@@ -188,7 +188,7 @@ so the hash carries the uniqueness the readable part may have lost.
 | Object | Holds | Written by |
 |---|---|---|
 | `ConfigMap <release>-workspace-<tenant>` | backend, domains, served domains, admin, connected by/at, last health, credential type | the service |
-| `Secret <release>-credential-<tenant>` | the credential: refresh token, or service-account key | the service (Connect, UploadKey) |
+| `Secret <release>-workspace-credentials` | one entry per console-connected workspace, key `<tenant>.json`: the credential (refresh token, or service-account key) and a copy of the workspace's record without its health | the service (Connect, UploadKey), created empty at start. Releases before 1.7 kept a `Secret <release>-credential-<tenant>` each; start-up moves them in |
 | `Secret <release>-oauth-client` | OAuth client id and secret | declared via `oauthClient.secret.name` and read-only. The console used to be able to write one; it cannot since INF-694, because a credential a console can change is one somebody can change from a browser |
 | `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the service, generated on first start; rotate by deleting |
 | the signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it and holds no permission to read Secrets; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
@@ -197,7 +197,7 @@ so the hash carries the uniqueness the readable part may have lost.
 | `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** (INF-692) | the chart |
 | `ConfigMap <release>-github-status` | the GitHub controller's last report, one document per organisation | created empty by the service at start; its data replaced by the controller, which is granted this one name |
 | `ConfigMap <release>-github-orgs` | one record per connected GitHub organisation: App id and slug, installation, connected by and at | the service (Connect a GitHub organisation), created empty at start |
-| `Secret <release>-github-apps` | one credential per connected organisation: the App's id, installation and private key | the service (Connect), created empty at start so the controller's volume always has a Secret behind it; read by the service only to uninstall on Disconnect |
+| `Secret <release>-github-apps` | one credential per connected organisation: the App's id, installation and private key, and a copy of the organisation's record; the link App's likewise | the service (Connect), created empty at start so the controller's volume always has a Secret behind it; read by the service only to uninstall on Disconnect |
 
 The record and the credential are two objects on purpose. A record is
 shown to anyone who may see the console; a credential is written once and
@@ -209,17 +209,37 @@ that will not start.
 
 Labels on every hub-written object: `app.kubernetes.io/managed-by=directory-roster`,
 `app.kubernetes.io/part-of=<release>`, and
-`directory-roster.truvity.com/kind` = `workspace`, `credential`,
-`settings`, `github-status` or `github-orgs`. The workspace id as the backend spells it is the annotation
+`directory-roster.truvity.com/kind` = `workspace`, `workspace-credentials`,
+`settings`, `github-status`, `github-orgs`, `github-apps` or `github-links`. The workspace id as the backend spells it is the annotation
 `directory-roster.truvity.com/workspace-id`. Export everything with
 
 ```sh
 kubectl -n directory-roster get secret,configmap -l app.kubernetes.io/managed-by=directory-roster -o yaml
 ```
 
-There is no backup mechanism here. A consent credential is cheap to
-mint again — Reconnect is the recovery — and a declared Secret is
-re-delivered by whatever declared it.
+### Restoring from the Secrets alone
+
+Three Secrets hold everything a console added that cannot be minted again,
+each under a name a deployment knows in advance:
+
+- `<release>-workspace-credentials`;
+- `<release>-github-apps`;
+- `<release>-github-links`.
+
+A deployment backs them up by copying those three objects, for example
+with an External Secrets `PushSecret` each. Nothing in the service depends
+on the copy.
+
+Each credential carries a copy of its record. So after the three Secrets
+are put back into an empty namespace, the next start does the rest before
+reopening anything:
+
+- it restores every console-connected workspace's ConfigMap;
+- it restores every GitHub organisation's record and the link App's.
+
+A restored workspace shows as never probed until its first probe. A link
+token may have rotated since the copy; that person links again. A
+declared Secret is re-delivered by whatever declared it.
 
 **`STORE=memory`** turns all of it off: nothing is written, and a restart
 is a fresh installation. It is the default for the binary, because a local

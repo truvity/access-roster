@@ -150,7 +150,9 @@ func (w *Workspaces) Put(ctx context.Context, ws hub.Workspace) error {
 	if err != nil {
 		return fmt.Errorf("kube: store workspace %s: %w", ws.ID, err)
 	}
-	return nil
+	// The credential's entry carries a copy, so that entry alone restores
+	// the workspace.
+	return NewCredentials(w.c).keepRecord(ctx, ws)
 }
 
 // Delete implements [hub.Store].

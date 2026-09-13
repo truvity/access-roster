@@ -51,12 +51,16 @@ const (
 // The kinds of object this package writes, which are also the middle
 // segment of every object's name.
 const (
-	kindWorkspace    = "workspace"
-	kindCredential   = "credential"
-	kindSettings     = "settings"
-	kindGitHubStatus = "github-status"
-	kindGitHubOrgs   = "github-orgs"
-	kindGitHubLinks  = "github-links"
+	kindWorkspace  = "workspace"
+	kindCredential = "credential"
+	// kindWorkspaceCredentials is the one Secret every console-connected
+	// workspace's credential is kept in. kindCredential names the object
+	// per workspace releases before 1.7 wrote, which start-up migrates.
+	kindWorkspaceCredentials = "workspace-credentials"
+	kindSettings             = "settings"
+	kindGitHubStatus         = "github-status"
+	kindGitHubOrgs           = "github-orgs"
+	kindGitHubLinks          = "github-links"
 )
 
 // The one key of each single-value Secret the hub keeps for itself.
@@ -144,6 +148,15 @@ func (c *Client) selector(kind string) string {
 // human scanning `kubectl get`, and a hash of the true id is appended to
 // carry the uniqueness the readable part may have lost.
 func (c *Client) objectName(kind, id string) string {
+	return fmt.Sprintf("%s-%s-%s", c.prefix, kind, idSegment(id))
+}
+
+// objectKey is the key one workspace is kept under inside an object shared
+// by every workspace: the same readable part and hash as its object name.
+func objectKey(id string) string { return idSegment(id) + ".json" }
+
+// idSegment is the readable part of a workspace id and a hash of the whole.
+func idSegment(id string) string {
 	sum := sha256.Sum256([]byte(id))
 	digest := hex.EncodeToString(sum[:])[:10]
 
@@ -162,9 +175,9 @@ func (c *Client) objectName(kind, id string) string {
 		readable = strings.Trim(readable[:24], "-")
 	}
 	if readable == "" {
-		return fmt.Sprintf("%s-%s-%s", c.prefix, kind, digest)
+		return digest
 	}
-	return fmt.Sprintf("%s-%s-%s-%s", c.prefix, kind, readable, digest)
+	return readable + "-" + digest
 }
 
 // meta is the ObjectMeta every per-workspace object carries.

@@ -442,12 +442,47 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.WarnContext(ctx, "the Secret GitHub accounts are linked into could not be created",
 			"secret", githubLinks.Name(), "error", err)
 	}
+	// Each connection's credential carries its record, so the GitHub Apps
+	// Secret alone restores every organisation: put back a record a
+	// restore left missing, and copy records into credentials written
+	// before they carried one.
+	if changed, err := githubOrgs.ReconcileRecords(ctx); err != nil {
+		log.WarnContext(ctx, "the GitHub connections' records and credentials could not be reconciled",
+			"configMap", githubOrgs.ConfigMapName(), "secret", githubOrgs.SecretName(), "error", err)
+	} else if len(changed) > 0 {
+		log.InfoContext(ctx, "reconciled GitHub connection records with their credentials", "keys", changed)
+	}
+	// Workspace credentials are one Secret, each entry carrying its
+	// workspace's record, for the same reason. An older release kept one
+	// Secret per workspace: those move in, and records a restore left
+	// missing come back before the stored workspaces are reopened. A
+	// failure warns rather than stops: an unmoved credential is still read
+	// where it is.
+	workspaces := kube.NewWorkspaces(client)
+	credentials := kube.NewCredentials(client)
+	if err = credentials.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the Secret workspace credentials are kept in could not be created",
+			"secret", credentials.SecretName(), "error", err)
+	}
+	if moved, err := credentials.Migrate(ctx, workspaces); err != nil {
+		log.WarnContext(ctx, "not every workspace credential could be moved into one Secret; the rest are read where they are",
+			"secret", credentials.SecretName(), "moved", moved, "error", err)
+	} else if len(moved) > 0 {
+		log.InfoContext(ctx, "moved workspace credentials into one Secret",
+			"secret", credentials.SecretName(), "workspaces", moved)
+	}
+	if restored, err := credentials.RestoreRecords(ctx, workspaces); err != nil {
+		log.WarnContext(ctx, "workspace records missing beside their credentials could not be restored",
+			"secret", credentials.SecretName(), "restored", restored, "error", err)
+	} else if len(restored) > 0 {
+		log.InfoContext(ctx, "restored workspace records from their credentials", "workspaces", restored)
+	}
 	return stores{
 		github:      github,
 		githubOrgs:  githubOrgs,
 		githubLinks: githubLinks,
-		workspaces:  kube.NewWorkspaces(client),
-		credentials: kube.NewCredentials(client),
+		workspaces:  workspaces,
+		credentials: credentials,
 		settings: kube.NewSettings(client, kube.DeclaredClient{
 			Name:      cfg.oauthSecretName,
 			IDKey:     cfg.oauthIDKey,

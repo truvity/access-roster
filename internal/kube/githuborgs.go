@@ -68,6 +68,9 @@ func (s *GitHubOrgs) Put(ctx context.Context, record connection.Record, credenti
 	if err != nil {
 		return err
 	}
+	kept := record
+	kept.Version = connection.Version
+	credential.Record = &kept
 	rawCredential, err := connection.EncodeCredential(credential)
 	if err != nil {
 		return err
@@ -140,6 +143,9 @@ func (s *GitHubOrgs) PutLinkApp(ctx context.Context, record link.App, credential
 	if err != nil {
 		return err
 	}
+	kept := record
+	kept.Version = link.Version
+	credential.Record = &kept
 	rawCredential, err := link.EncodeAppCredential(credential)
 	if err != nil {
 		return err
@@ -191,6 +197,101 @@ func (s *GitHubOrgs) DeleteLinkApp(ctx context.Context) error {
 		return err
 	}
 	return s.editSecret(ctx, func(data map[string][]byte) { delete(data, link.AppKey) })
+}
+
+// ReconcileRecords makes the two objects agree on what the Secret alone
+// must be able to restore, in both directions, and returns the keys it
+// changed:
+//   - a credential whose record is gone — a restore from a copy of the
+//     Secret alone — gets its record back from the copy it carries;
+//   - a credential written before credentials carried their record gets
+//     the copy from the record beside it.
+//
+// It runs at start. The record decides what the console shows, so a
+// record is never replaced, only put back when missing.
+func (s *GitHubOrgs) ReconcileRecords(ctx context.Context) ([]string, error) {
+	secret, err := s.c.api.CoreV1().Secrets(s.c.namespace).Get(ctx, s.SecretName(), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", s.SecretName(), err)
+	}
+	cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, fmt.Errorf("read %s: %w", s.ConfigMapName(), err)
+	}
+	records := map[string]string{}
+	if cm != nil && cm.Data != nil {
+		records = cm.Data
+	}
+
+	restore := map[string]string{}
+	backfill := map[string][]byte{}
+	for _, key := range slices.Sorted(maps.Keys(secret.Data)) {
+		raw := secret.Data[key]
+		switch key {
+		case link.AppKey:
+			credential, err := link.DecodeAppCredential(raw)
+			if err != nil {
+				continue
+			}
+			if current, ok := records[key]; ok {
+				if record, err := link.DecodeApp(current); err == nil && credential.Record == nil {
+					credential.Record = &record
+					if encoded, err := link.EncodeAppCredential(credential); err == nil {
+						backfill[key] = encoded
+					}
+				}
+			} else if credential.Record != nil {
+				if encoded, err := link.EncodeApp(*credential.Record); err == nil {
+					restore[key] = encoded
+				}
+			}
+		default:
+			org, ok := connection.OrgOfKey(key)
+			if !ok {
+				continue
+			}
+			credential, err := connection.DecodeCredential(raw)
+			if err != nil || credential.Org != org {
+				continue
+			}
+			if current, ok := records[key]; ok {
+				if record, err := connection.DecodeRecord(current); err == nil && credential.Record == nil {
+					credential.Record = &record
+					if encoded, err := connection.EncodeCredential(credential); err == nil {
+						backfill[key] = encoded
+					}
+				}
+			} else if credential.Record != nil && credential.Record.Org == org {
+				if encoded, err := connection.EncodeRecord(*credential.Record); err == nil {
+					restore[key] = encoded
+				}
+			}
+		}
+	}
+
+	if len(backfill) > 0 {
+		if err = s.editSecret(ctx, func(data map[string][]byte) { maps.Copy(data, backfill) }); err != nil {
+			return nil, err
+		}
+	}
+	if len(restore) > 0 {
+		if err = s.editConfigMap(ctx, func(data map[string]string) {
+			for key, raw := range restore {
+				if _, ok := data[key]; !ok {
+					data[key] = raw
+				}
+			}
+		}); err != nil {
+			return nil, err
+		}
+	}
+	changed := slices.Collect(maps.Keys(backfill))
+	changed = append(changed, slices.Collect(maps.Keys(restore))...)
+	slices.Sort(changed)
+	return changed, nil
 }
 
 // PutConfirmation keeps an operator's confirmation of a removal set.

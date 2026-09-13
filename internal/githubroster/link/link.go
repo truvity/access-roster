@@ -210,6 +210,9 @@ type AppCredential struct {
 	AppID        int64  `json:"app_id"`
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
+	// Record is a copy of the App's record, so that the Secret alone
+	// restores the link App whose ConfigMap entry is gone.
+	Record *App `json:"record,omitempty"`
 }
 
 // EncodeApp writes the App's record.

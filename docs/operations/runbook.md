@@ -107,7 +107,7 @@ only thing left to trust is the API server.
 | A domain shows *no longer owned* | the served list names a domain the directory no longer lists — it has moved to another tenant | the hand-over already happened: the other workspace serves it as soon as its own discovery returns it. Drop the entry here so the list matches reality |
 | Every domain non-authoritative at once | Valkey unreachable | restore Valkey; the hub refills it within one refresh interval |
 | A workspace shows *declared* and no Reconnect/Disconnect | it comes from the chart's overlay | change the deployment's values, not the console |
-| After a restart, a workspace is unhealthy with "no backend: the credential is not loaded" | its `Secret <release>-credential-<tenant>` is gone or unreadable — restored namespace, hand-edited object, a Secret deleted with the wrong selector | **Reconnect** (consent) or upload the key again. The record, its served domains and its memberships are intact; only the credential is missing. The hub logs the workspace id at start |
+| After a restart, a workspace is unhealthy with "no backend: the credential is not loaded" | its entry in `Secret <release>-workspace-credentials` is gone or unreadable — restored namespace without that Secret, hand-edited object, an entry deleted by hand | put the Secret back from a backup, or **Reconnect** (consent) or upload the key again. The record, its served domains and its memberships are intact; only the credential is missing. The hub logs the workspace id at start |
 
 The rule consumers follow makes every row above safe: **a
 non-authoritative answer holds, it never removes.**

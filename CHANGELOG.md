@@ -1,3 +1,26 @@
+## Unreleased
+
+- **Three Secrets restore everything a console added.** Workspace
+  credentials are one Secret, `<release>-workspace-credentials`, with a
+  key per workspace. Before, each workspace had its own Secret, named with
+  a hash of its tenant id, which nothing outside the service could
+  select. Each credential now carries a copy of its record, as does every
+  GitHub connection's and the link App's in `<release>-github-apps`.
+  - **Start-up restores what is missing.** It rebuilds a workspace
+    ConfigMap or a GitHub record that is gone, from the copy in its
+    credential. So copying `<release>-workspace-credentials`,
+    `<release>-github-apps` and `<release>-github-links` is a whole
+    backup, for example with one External Secrets `PushSecret` each
+    ([configuration](docs/reference/configuration.md#restoring-from-the-secrets-alone)).
+  - **Existing credentials migrate at start.** The first start copies each
+    per-workspace Secret in, and gives older GitHub credentials their
+    records.
+  - **Rollback stays safe.** The per-workspace Secrets are left for a
+    rollback. Reconnecting or disconnecting a workspace removes its old
+    one.
+  - **Probes don't touch the copy.** It leaves out the last probe, so a
+    probe does not rewrite the Secret.
+
 ## v1.6.6
 
 - **A failed GitHub pass keeps what was last known.** It reported the
