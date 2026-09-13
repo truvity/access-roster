@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -55,7 +56,7 @@ export function GitHubPage({ operator, onDone }: { operator: boolean; onDone: (m
           <SetUp status={value} operator={operator} onDone={onDone} reload={status.reload} />
           <People status={value} />
           {value.organisations.map((org) => (
-            <Organisation key={org.org} org={org} />
+            <Organisation key={org.org} org={org} operator={operator} onDone={onDone} reload={status.reload} />
           ))}
           <LinkedAccounts status={value} />
         </>
@@ -367,7 +368,7 @@ type Person = {
 };
 
 /** Worst first: what an operator should look at before anything else. */
-const priority = ["held", "leaving", "pending", "invited", "not-linked", "synced"];
+const priority = ["held", "retrying", "leaving", "pending", "invited", "ignored", "not-linked", "reported", "synced"];
 
 function collectPeople(organisations: GitHubOrganisation[]): Person[] {
   const byEmail = new Map<string, Person>();
@@ -398,9 +399,9 @@ type PeopleFilter = "all" | "action" | "waiting" | "synced";
 
 function People({ status }: { status: GetGitHubStatusResponse }) {
   const people = collectPeople(status.organisations);
-  const action = people.filter((p) => ["held", "leaving", "pending"].includes(p.state));
-  const waiting = people.filter((p) => ["not-linked", "invited"].includes(p.state));
-  const synced = people.filter((p) => p.state === "synced");
+  const action = people.filter((p) => ["held", "retrying", "leaving", "pending"].includes(p.state));
+  const waiting = people.filter((p) => ["not-linked", "invited", "ignored"].includes(p.state));
+  const synced = people.filter((p) => ["synced", "reported"].includes(p.state));
   const [filter, setFilter] = useState<PeopleFilter>(action.length ? "action" : waiting.length ? "waiting" : "all");
   if (people.length === 0) return null;
   const shown = { all: people, action, waiting, synced }[filter];
@@ -464,16 +465,78 @@ function People({ status }: { status: GetGitHubStatusResponse }) {
 /** One organisation: how the controller's last pass went, its teams, and
  *  the changes it would make. People waiting to link are in People above,
  *  once, rather than here once per team. */
-function Organisation({ org }: { org: GitHubOrganisation }) {
+function Organisation({
+  org,
+  operator,
+  onDone,
+  reload,
+}: {
+  org: GitHubOrganisation;
+  operator: boolean;
+  onDone: (message: string) => void;
+  reload: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | undefined>();
+  const breaker = org.breaker;
+  const seats = org.seats;
+  const confirm = async () => {
+    if (!breaker) return;
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      await github.confirmGitHubRemovals({ org: org.org, fingerprint: breaker.fingerprint });
+      onDone(`Confirmed: the ${breaker.affected} removals in ${org.org} go ahead on the next pass.`);
+      reload();
+    } catch (error) {
+      setFailure(reason(error));
+    } finally {
+      setBusy(false);
+    }
+  };
   const rows = [
     ...org.members.map((member) => ({ team: "", member })),
     ...org.teams.flatMap((team) => team.members.map((member) => ({ team: team.team, member }))),
   ];
-  const changes = rows.filter((row) => row.member.action || row.member.state === "held");
+  const changes = rows.filter((row) => row.member.action || ["held", "retrying", "reported", "ignored"].includes(row.member.state));
 
   return (
     <Section title={org.org} hint={summary(org)}>
       <Stack sx={{ gap: 2 }}>
+        <Failure error={failure} />
+        {seats && !seats.known ? (
+          <Alert severity="warning">
+            <strong>Nobody is invited: the seats cannot be counted.</strong> Approve organisation administration (read) for this
+            organisation&apos;s App on GitHub; invitations go out on the next pass.
+          </Alert>
+        ) : null}
+        {seats && seats.known && seats.short > 0 ? (
+          <Alert severity="warning">
+            <strong>
+              Not enough seats: {seats.short} {seats.short === 1 ? "person waits" : "people wait"} for a seat, {seats.free} free.
+            </strong>{" "}
+            Buy {seats.short} {seats.short === 1 ? "seat" : "seats"} in {org.org}&apos;s billing on GitHub; the invitations go out on the next
+            pass. ({seats.filled} of {seats.total} taken, {seats.pending} invitations pending.)
+          </Alert>
+        ) : null}
+        {breaker && !breaker.confirmed ? (
+          <Alert
+            severity="error"
+            action={
+              operator ? (
+                <Button color="inherit" size="small" disabled={busy || org.removalConfirmation?.fingerprint === breaker.fingerprint} onClick={() => void confirm()}>
+                  {org.removalConfirmation?.fingerprint === breaker.fingerprint ? "Confirmed" : "Confirm"}
+                </Button>
+              ) : null
+            }
+          >
+            <strong>
+              Removals held: {breaker.affected} of {breaker.members} members would leave at once.
+            </strong>{" "}
+            More than half an organisation leaving together is more often a policy mistake than people leaving. Read the removals below;
+            confirming lets exactly this set go ahead, and a different set needs confirming again.
+          </Alert>
+        ) : null}
         <Facts
           items={[
             { label: "Controller", value: outcome(org) },
@@ -482,6 +545,8 @@ function Organisation({ org }: { org: GitHubOrganisation }) {
             { label: "To change", value: org.tick ? String(org.tick.changes) : undefined },
             { label: "Held", value: org.tick ? String(org.tick.held) : undefined },
             { label: "Not linked", value: org.tick ? String(org.tick.waiting) : undefined },
+            { label: "Retrying", value: org.tick?.retrying ? String(org.tick.retrying) : undefined },
+            { label: "Seats", value: seats?.known ? `${seats.free} free of ${seats.total}` : undefined },
             {
               label: "In the organisation itself",
               value: org.memberGroups.length ? <Names items={org.memberGroups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} /> : undefined,
@@ -566,6 +631,16 @@ function Organisation({ org }: { org: GitHubOrganisation }) {
           </Box>
         ) : null}
 
+        {org.outsideCollaborators.length > 0 ? (
+          <Box>
+            <Typography variant="subtitle2">Outside collaborators ({org.outsideCollaborators.length})</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+              Access to repositories without membership. Reported, never managed.
+            </Typography>
+            <Names items={org.outsideCollaborators.map((account) => ({ label: account.login, mono: true }))} />
+          </Box>
+        ) : null}
+
         {org.unlinked.length > 0 ? (
           <Box>
             <Typography variant="subtitle2">Members nobody linked ({org.unlinked.length})</Typography>
@@ -595,6 +670,7 @@ function LinkedAccounts({ status }: { status: GetGitHubStatusResponse }) {
             <TableRow>
               <TableCell>GitHub</TableCell>
               <TableCell>Work addresses</TableCell>
+              <TableCell>How</TableCell>
               <TableCell>State</TableCell>
               <TableCell>Checked</TableCell>
             </TableRow>
@@ -607,6 +683,13 @@ function LinkedAccounts({ status }: { status: GetGitHubStatusResponse }) {
                   <TableCell>{loginCell(l.login)}</TableCell>
                   <TableCell>
                     <Names items={l.emails.map((email) => ({ label: email, to: paths.person(email), mono: true }))} empty="—" />
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title={l.note || "They authorized the link App; checked on GitHub every pass."}>
+                      <Typography variant="body2" component="span">
+                        {{ self: "linked by them", profile: "public profile", imported: "imported" }[l.source] ?? l.source}
+                      </Typography>
+                    </Tooltip>
                   </TableCell>
                   <TableCell>
                     <State kind={linkKind(l.state)} />
@@ -702,6 +785,9 @@ function stateKind(state: string): StateKind {
     case "invited":
     case "leaving":
     case "held":
+    case "retrying":
+    case "ignored":
+    case "reported":
       return state;
     default:
       return "unknown";

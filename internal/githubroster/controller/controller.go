@@ -66,7 +66,10 @@ type Deps struct {
 	GitHub *http.Client
 	Access directoryrosterv1connect.AccessServiceClient
 	Audit  directoryrosterv1connect.AuditServiceClient
-	Status StatusWriter
+	// Console is where an operator's confirmations are read from. Nil
+	// confirms nothing, so a tripped breaker stays tripped.
+	Console directoryrosterv1connect.GitHubServiceClient
+	Status  StatusWriter
 	// Links are people's linked accounts. Nil links nobody, and then only
 	// an organisation that discloses its members' addresses is matched.
 	Links    LinkStore
@@ -84,6 +87,10 @@ type Controller struct {
 	// held is last pass's held actions per organisation, so that a held
 	// action is recorded once, when it becomes held, and not every pass.
 	held map[string]map[string]bool
+	// profileMisses is when each login's public profile was last found to
+	// show no work address: asked again after a day, not every pass.
+	profileMisses map[string]time.Time
+	metrics       instruments
 }
 
 type installationToken struct {
@@ -105,7 +112,10 @@ func New(cfg Config, deps Deps) *Controller {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 15 * time.Minute
 	}
-	return &Controller{cfg: cfg, deps: deps, tokens: map[string]installationToken{}, held: map[string]map[string]bool{}}
+	return &Controller{
+		cfg: cfg, deps: deps, tokens: map[string]installationToken{}, held: map[string]map[string]bool{},
+		profileMisses: map[string]time.Time{}, metrics: newInstruments(),
+	}
 }
 
 // Run passes now and then every interval, until the context ends.
@@ -126,8 +136,10 @@ func (c *Controller) Run(ctx context.Context) error {
 func (c *Controller) Pass(ctx context.Context) {
 	documents := map[string]string{}
 	links, linksErr := c.checkLinks(ctx)
+	confirmed := c.confirmations(ctx)
 	for _, org := range slices.Sorted(maps.Keys(c.deps.Bindings)) {
-		report := c.organisation(ctx, org, c.deps.Bindings[org], links, linksErr)
+		report := c.organisation(ctx, org, c.deps.Bindings[org], links, linksErr, confirmed[org])
+		c.metrics.recordPass(ctx, &report)
 		document, err := status.Encode(report)
 		if err != nil {
 			c.deps.Log.ErrorContext(ctx, "a report could not be written", "org", org, "error", err)
@@ -143,7 +155,7 @@ func (c *Controller) Pass(ctx context.Context) {
 // organisation is one organisation's pass, ending in its report whatever
 // happened.
 func (c *Controller) organisation(
-	ctx context.Context, org string, binding policy.GitHubOrg, links []reconcile.Link, linksErr error,
+	ctx context.Context, org string, binding policy.GitHubOrg, links []reconcile.Link, linksErr error, confirmed string,
 ) status.Org {
 	enabled := c.cfg.Enabled[org]
 	started := c.deps.Now().UTC()
@@ -166,14 +178,17 @@ func (c *Controller) organisation(
 	if err != nil {
 		return fail(err)
 	}
-	state.Links = links
+	state.Links = append(slices.Clone(links), c.matchProfiles(ctx, token, state.Members, links)...)
 	holders, err := c.holders(ctx, binding)
 	if err != nil {
 		return fail(err)
 	}
+	guards := c.guards(ctx, client, token, state, confirmed)
 
 	draft := reconcile.Derive(org, binding, holders, state)
 	report, actions := draft.Decide(c.confirm(ctx, draft.Confirm()))
+	actions = reconcile.Guard(&report, actions, guards)
+	report.OutsideCollaborators = c.collaborators(ctx, client, token)
 	report.Enabled = enabled
 	report.Tick = status.Tick{At: started, Changes: len(actions)}
 
@@ -182,6 +197,7 @@ func (c *Controller) organisation(
 		c.recordNewlyHeld(ctx, org, report)
 	}
 	report.Tick.Held = countState(report, status.StateHeld)
+	report.Tick.Retrying = countState(report, status.StateRetrying)
 	report.Tick.Waiting = countState(report, status.StateNotLinked)
 	report.Tick.Outcome = outcome(enabled, report.Tick)
 	c.deps.Log.InfoContext(ctx, "passed over an organisation", "org", org, "enabled", enabled,
@@ -342,6 +358,7 @@ func (c *Controller) act(ctx context.Context, client githubapp.Org, token string
 		if action.Reason != "" {
 			event.Reason = action.Reason
 		}
+		c.metrics.recordChange(ctx, report.Org, action.Kind, err == nil)
 		if err != nil {
 			event.Outcome, event.Reason = "failed", err.Error()
 			markHeld(report, action, err.Error())
@@ -362,18 +379,23 @@ func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report sta
 	now := map[string]bool{}
 	var events []*directoryrosterv1.AuditEvent
 	each(report, func(team string, m status.Member) {
-		if m.State != status.StateHeld {
+		kind, outcome := "github.action.held", "held"
+		switch m.State {
+		case status.StateHeld:
+		case status.StateReported:
+			kind, outcome = "github.owner.reported", "reported"
+		default:
 			return
 		}
-		key := team + "|" + m.Email + "|" + m.Login + "|" + string(m.Action)
+		key := team + "|" + m.Email + "|" + m.Login + "|" + string(m.Action) + "|" + string(m.State)
 		now[key] = true
 		c.mu.Lock()
 		was := c.held[org][key]
 		c.mu.Unlock()
 		if !was {
 			events = append(events, &directoryrosterv1.AuditEvent{
-				Source: Source, Kind: "github.action.held", Actor: "system", Subject: m.Email,
-				Target: target(org, team), Outcome: "held", Reason: m.Reason,
+				Source: Source, Kind: kind, Actor: "system", Subject: m.Email,
+				Target: target(org, team), Outcome: outcome, Reason: m.Reason,
 				Attributes: map[string]string{"login": m.Login, "action": string(m.Action)},
 			})
 		}
@@ -462,7 +484,8 @@ func markDone(report *status.Org, action reconcile.Action) {
 
 func markHeld(report *status.Org, action reconcile.Action, reason string) {
 	rows(report, action, func(m *status.Member) {
-		m.State, m.Reason = status.StateHeld, "GitHub refused: "+strings.TrimSpace(reason)
+		// Refused this pass; tried again next pass, with GitHub's words.
+		m.State, m.Reason = status.StateRetrying, "GitHub refused: "+strings.TrimSpace(reason)
 	})
 }
 
@@ -478,12 +501,14 @@ func countState(report status.Org, state status.State) int {
 
 func outcome(enabled bool, tick status.Tick) status.Outcome {
 	switch {
-	case !enabled && (tick.Changes > 0 || tick.Held > 0):
+	case !enabled && (tick.Changes > 0 || tick.Held > 0 || tick.Retrying > 0):
 		return status.OutcomeDryRun
 	case tick.Changes > 0:
 		return status.OutcomeApplied
 	case tick.Held > 0:
 		return status.OutcomeHeld
+	case tick.Retrying > 0:
+		return status.OutcomeRetrying
 	case tick.Waiting > 0:
 		return status.OutcomeWaiting
 	default:

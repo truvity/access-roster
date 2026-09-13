@@ -137,9 +137,11 @@ For each organisation the policy binds:
    [linked it](#linking-accounts), by the work addresses GitHub verified
    on it. On an organisation on GitHub's Enterprise Cloud plan, members'
    addresses in its verified domains count as well; on every other plan
-   GitHub discloses no member's address, and the link is the only way. One
-   account with addresses in two workspaces is one member. An address two
-   accounts claim is linked to neither, and held.
+   GitHub discloses no member's address, and a link is the only way. A
+   member nobody linked whose public profile shows a work address the
+   directory has, live, is [linked from the profile](#where-a-link-comes-from).
+   One account with addresses in two workspaces is one member. An address
+   two accounts claim is linked to neither, and held.
 4. **What to change.**
    - somebody wanted and not a member, who linked an account, is
      **invited** as that account, straight into every team that wants
@@ -156,9 +158,19 @@ For each organisation the policy binds:
      unverified, or the authorization revoked — is **removed from the
      organisation** at once. It is the one removal that does not ask the
      directory: the account is no longer shown to be anybody's.
-5. **Act** where the organisation is in `actsIn`, and **report**: the
+5. **Check the organisation as a whole**, and hold what fails:
+   - an account that let **two invitations expire** since it last linked is
+     not invited a third time; linking again starts over;
+   - nobody is invited without a **free seat** — seats minus taken seats
+     minus pending invitations — and nobody at all while the seats cannot
+     be read. The controller never buys a seat, and GitHub would either
+     buy one or refuse;
+   - if the removals concern **more than half the organisation's members**,
+     nobody is removed until an operator confirms exactly that set.
+6. **Act** where the organisation is in `actsIn`, and **report**: the
    GitHub page shows every person's state and what comes next, and each
-   change and each newly held action is recorded in the audit stream.
+   change, each newly held action and each owner the policy would change
+   is recorded in the audit stream.
 
 **A removal never rests on absence.** Before anybody is removed, the
 controller asks the console about that one address, and acts only on an
@@ -166,15 +178,24 @@ answer the directory vouches for. An unreadable workspace, a truncated
 list, a directory mid-outage: each holds the removal, with the reason on
 the row, and removes nobody.
 
-**Held, with a reason, rather than done:**
+**Held until a person acts** — shown as *needs you*:
 
-| Held | Because |
+| Held | What to do |
 |---|---|
-| a removal the directory cannot vouch for | absence from a list is not evidence |
-| removing an owner from the organisation | owners are declared elsewhere |
-| an address two accounts claim | acting on either is a guess |
-| anything in a team GitHub does not have | teams are created by whatever manages the organisation's structure, never here |
-| a change GitHub refused | GitHub's words are on the row |
+| no free seat | buy seats in the organisation's billing |
+| seats cannot be read | approve organisation administration (read) for the App |
+| removals over half the organisation | read them, then **Confirm** on the GitHub page — for exactly that set; a different set needs confirming again, and a confirmation lapses after a day |
+| anything in a team GitHub does not have | create the team where the organisation's structure is managed |
+| an address two accounts claim | the person unlinks one |
+
+**Retried every pass**, because it clears on its own: a removal the
+directory cannot vouch for right now, and a change GitHub refused (its
+words are on the row).
+
+**Reported, never done:** anything concerning an **owner**. Owners and
+billing are managed outside; an owner the directory no longer has is said
+on the page and in the audit stream (`github.owner.reported`), once.
+**Outside collaborators** are listed and never managed.
 
 **Never touched:** a member nobody linked (listed as *not linked*), a
 team no binding names, and anybody's owner status.
@@ -228,7 +249,21 @@ after; one found in progress on a later pass is never read as a
 revocation. A link is only ever checked with the credentials of the App
 that issued it.
 
-An owner's link going lost holds the removal, like any owner's.
+An owner's link going lost is reported, like anything about an owner.
+
+### Where a link comes from
+
+| Source | Proof | Checked on GitHub every pass | Removed when the address leaves GitHub |
+|---|---|---|---|
+| **linked by them** | they authorized the link App; GitHub verified the address | yes | yes |
+| **public profile** | the account publishes the work address; GitHub lets an account publish only a verified one. Matched automatically, members only | no | no — hiding an address is not removing it |
+| **imported** | an approved pairing from github-roster 0.x, imported once | no | no |
+
+All three count as the person: they are invited, moved between teams and
+removed when the directory suspends them. A profile match or an import
+happens only when the address is a live account the directory vouches
+for and the account is a member already, and never displaces a link the
+person made. The person linking themselves replaces it.
 
 **Disconnecting the link App** makes every link unverifiable — nothing
 can check their tokens any more — which adds and removes nobody until

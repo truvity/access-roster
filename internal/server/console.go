@@ -128,6 +128,9 @@ type ConsoleDeps struct {
 	GitHubLinkApp GitHubLinkApp
 	// GitHubLinks is where people's links are kept. Nil, likewise.
 	GitHubLinks GitHubLinks
+	// GitHubConfirmations is where operators confirm removal sets over the
+	// limit. Nil confirms nothing.
+	GitHubConfirmations GitHubConfirmations
 	// GitHubHTTP makes the calls to GitHub that connecting and
 	// disconnecting need. Nil is a client with a short timeout.
 	GitHubHTTP *http.Client

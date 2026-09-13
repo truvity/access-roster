@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -89,7 +90,8 @@ func TestTheChartSetsEverythingTheBinaryReads(t *testing.T) {
 	for _, name := range sets {
 		// NAMESPACE is read by internal/kube rather than through the
 		// helpers here, so it is expected and named rather than matched.
-		if name == "NAMESPACE" || slices.Contains(reads, name) {
+		// OTEL_* are OpenTelemetry's own, read by its SDK (internal/telemetry).
+		if name == "NAMESPACE" || strings.HasPrefix(name, "OTEL_") || slices.Contains(reads, name) {
 			continue
 		}
 		t.Errorf("the chart sets %s and nothing reads it: it is a value an operator can change "+

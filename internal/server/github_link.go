@@ -38,6 +38,7 @@ type GitHubLinkApp interface {
 type GitHubLinks interface {
 	List(ctx context.Context) ([]link.Link, error)
 	Claim(ctx context.Context, claimed link.Link, now time.Time) ([]link.Link, error)
+	Adopt(ctx context.Context, candidates []link.Link) ([]link.Link, map[int64]string, error)
 	Invalidate(ctx context.Context, reason string, now time.Time) (int, error)
 }
 

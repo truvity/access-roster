@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -190,6 +191,36 @@ func (s *GitHubOrgs) DeleteLinkApp(ctx context.Context) error {
 		return err
 	}
 	return s.editSecret(ctx, func(data map[string][]byte) { delete(data, link.AppKey) })
+}
+
+// PutConfirmation keeps an operator's confirmation of a removal set.
+func (s *GitHubOrgs) PutConfirmation(ctx context.Context, confirmation connection.Confirmation) error {
+	raw, err := connection.EncodeConfirmation(confirmation)
+	if err != nil {
+		return err
+	}
+	return s.editConfigMap(ctx, func(data map[string]string) { data[connection.ConfirmationKey(confirmation.Org)] = raw })
+}
+
+// Confirmations reads every organisation's confirmation, current or not.
+func (s *GitHubOrgs) Confirmations(ctx context.Context) (map[string]connection.Confirmation, error) {
+	cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", s.ConfigMapName(), err)
+	}
+	out := map[string]connection.Confirmation{}
+	for key, raw := range cm.Data {
+		if !strings.HasPrefix(key, "_confirm.") {
+			continue
+		}
+		if confirmation, err := connection.DecodeConfirmation(raw); err == nil {
+			out[confirmation.Org] = confirmation
+		}
+	}
+	return out, nil
 }
 
 func (s *GitHubOrgs) objectMeta(name string) metav1.ObjectMeta {

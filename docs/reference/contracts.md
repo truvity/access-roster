@@ -241,6 +241,8 @@ acts, this shows. See [connect/github-organisation.md](../connect/github-organis
 | `DisconnectGitHubOrganisation` | operator | `org` | `uninstalled`, `detail`, `app_settings_url` | uninstalls the App, then forgets the record and the key — the latter even when the uninstall fails, which `detail` explains. `app_settings_url` is where the owner deletes the App, which the API cannot |
 | `BeginGitHubLinkAppConnect` | operator | `owner` | `url`, `manifest` | starts creating the link App under an organisation: public, `emails: read` alone, installed nowhere, calling back to the link callback. `failed_precondition` when one is connected already, or where the deployment keeps no state in Kubernetes |
 | `DisconnectGitHubLinkApp` | operator | — | `invalidated`, `app_settings_url` | makes every link unverifiable, then forgets the App |
+| `ConfirmGitHubRemovals` | operator | `org`, `fingerprint` | — | lets exactly the removal set the organisation's latest report names go ahead. `failed_precondition` when the report shows a different set. Lapses after a day |
+| `ImportGitHubLinks` | operator | `records[]{login, emails[], approved_by, approved_at}`, `origin` | `imported[]` (links), `skipped[]{login, reason}` | adopts approved pairings as links after three checks each: approved, an address the directory vouches for and has live, the account a member of a connected organisation. Never displaces a link the person made. At most 500 records |
 
 `GetGitHubStatus` also carries each organisation's `connection{app_id,
 app_slug, installed, html_url, connected_at, connected_by}` — never the
@@ -249,7 +251,14 @@ key — and `connecting_available`, false where nothing could keep one; and
 connected_at, connected_by}`, `link_url` — the page to send people to —
 and `links[]{account_id, login, emails[], state, reason, linked_at,
 checked_at, changed_at}`, never with a token. A link's state is
-`linked`, `lost` or `unverifiable`.
+`linked`, `lost` or `unverifiable`, and its `source` `self`, `profile` or
+`imported`, with a `note` for the latter two. Each organisation also
+carries `seats{known, total, filled, pending, free, short}`,
+`breaker{affected, members, fingerprint, confirmed}` when a pass would
+have removed more than half of it, `removal_confirmation{fingerprint,
+confirmed_by, confirmed_at}` while one holds, and
+`outside_collaborators[]`. A member's state adds `retrying`, `ignored`
+and `reported`; a tick adds `retrying`.
 
 **The link flows** are at the origin root too. `GET
 /connect/github/link-app/callback` after the owner creates the link App

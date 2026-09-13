@@ -81,6 +81,33 @@ func (s *GitHubLinks) Claim(ctx context.Context, claimed link.Link, now time.Tim
 	return written, err
 }
 
+// Adopt writes links that were not made by the person, never displacing
+// one that was, in one write. It returns what it wrote and why anything was
+// skipped, by account id.
+func (s *GitHubLinks) Adopt(ctx context.Context, candidates []link.Link) ([]link.Link, map[int64]string, error) {
+	var written []link.Link
+	var skipped map[int64]string
+	err := s.edit(ctx, func(data map[string][]byte) error {
+		current := decodeLinks(data)
+		written, skipped = link.Adopt(current, candidates)
+		for i := range written {
+			for j := range current {
+				if current[j].ID == written[i].ID {
+					written[i].Revision = current[j].Revision
+				}
+			}
+			written[i].Revision++
+			raw, err := link.Encode(written[i])
+			if err != nil {
+				return err
+			}
+			data[link.Key(written[i].ID)] = raw
+		}
+		return nil
+	})
+	return written, skipped, err
+}
+
 // Update writes links a check changed. Each is written only if the stored
 // link is still at the revision the check read, so a person who linked
 // again meanwhile is not overwritten; it returns the links it wrote, at

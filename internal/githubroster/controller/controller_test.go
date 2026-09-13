@@ -164,6 +164,20 @@ func (l *links) Update(_ context.Context, changed []link.Link) ([]link.Link, err
 	return written, nil
 }
 
+func (l *links) Adopt(_ context.Context, candidates []link.Link) ([]link.Link, map[int64]string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	existing := make([]link.Link, 0, len(l.byID))
+	for _, id := range slices.Sorted(maps.Keys(l.byID)) {
+		existing = append(existing, l.byID[id])
+	}
+	adopted, skipped := link.Adopt(existing, candidates)
+	for i := range adopted {
+		l.byID[adopted[i].ID] = adopted[i]
+	}
+	return adopted, skipped, nil
+}
+
 func (l *links) get(id int64) link.Link {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -344,9 +358,10 @@ func TestAnEnabledOrganisationIsMadeToMatch(t *testing.T) {
 	}
 }
 
-// An owner who leaves the directory is held, not removed; the hold is
-// recorded when it begins and not again every pass after.
-func TestAnOwnerWhoLeavesIsHeldAndRecordedOnce(t *testing.T) {
+// An owner who leaves the directory is reported, never removed — owners are
+// managed outside — and the report is recorded when it begins and not again
+// every pass after.
+func TestAnOwnerWhoLeavesIsReportedAndRecordedOnce(t *testing.T) {
 	r := newRig(t)
 	r.console.mu.Lock()
 	delete(r.console.holders["all:truvity:employee"], "boss@truvity.com")
@@ -359,20 +374,20 @@ func TestAnOwnerWhoLeavesIsHeldAndRecordedOnce(t *testing.T) {
 	if r.github.Members["boss"] == nil {
 		t.Fatal("an owner was removed from the organisation")
 	}
-	held := 0
+	reported := 0
 	for _, kind := range r.audit.kinds() {
-		if kind == "github.action.held boss@truvity.com held" {
-			held++
+		if kind == "github.owner.reported boss@truvity.com reported" {
+			reported++
 		}
 	}
-	if held != 1 {
-		t.Errorf("the owner's hold was recorded %d times over two passes, want once: %v", held, r.audit.kinds())
+	if reported != 1 {
+		t.Errorf("the owner was recorded %d times over two passes, want once: %v", reported, r.audit.kinds())
 	}
 }
 
 // A directory that cannot vouch for a leaver removes nobody: the removal
-// is held, with the reason on the row.
-func TestAnUnvouchedLeaverIsHeld(t *testing.T) {
+// is retried next pass, with the reason on the row.
+func TestAnUnvouchedLeaverIsRetried(t *testing.T) {
 	r := newRig(t)
 	r.console.mu.Lock()
 	r.console.people["leaver@truvity.com"] = &directoryrosterv1.ExplainResponse{Authoritative: false}
@@ -388,8 +403,8 @@ func TestAnUnvouchedLeaverIsHeld(t *testing.T) {
 	got := r.report.org(t, "truvity")
 	for _, team := range got.Teams {
 		for _, m := range team.Members {
-			if m.Login == "leaver" && (m.State != status.StateHeld || !strings.Contains(m.Reason, "cannot vouch")) {
-				t.Errorf("leaver's row = %+v, want held on the directory", m)
+			if m.Login == "leaver" && (m.State != status.StateRetrying || !strings.Contains(m.Reason, "cannot vouch")) {
+				t.Errorf("leaver's row = %+v, want retrying on the directory", m)
 			}
 		}
 	}
@@ -414,8 +429,8 @@ func TestARefusedChangeIsHeldAndTheRestGoOn(t *testing.T) {
 	for _, m := range got.Members {
 		if m.Email == "new@truvity.com" {
 			found = true
-			if m.State != status.StateHeld || !strings.Contains(m.Reason, "already a part") {
-				t.Errorf("new@'s row = %+v, want held with GitHub's words", m)
+			if m.State != status.StateRetrying || !strings.Contains(m.Reason, "already a part") {
+				t.Errorf("new@'s row = %+v, want retrying with GitHub's words", m)
 			}
 		}
 	}
@@ -589,5 +604,76 @@ func TestALinkFromAnotherLinkAppIsNeverCalledLost(t *testing.T) {
 	}
 	if got := r.links.get(r.newbie.ID); got.State != link.StateUnverifiable {
 		t.Errorf("link = %+v, want unverifiable", got)
+	}
+}
+
+// A member nobody linked who publishes a work address the directory has,
+// live, is linked from the profile and handled like anybody linked — and a
+// profile showing nothing is not asked about again every pass.
+func TestAPublishedWorkAddressLinksTheMember(t *testing.T) {
+	r := newRig(t)
+	r.github.AddMember("pub", false)
+	r.github.Public["pub"] = "Pub@Truvity.com"
+	r.github.AddTeam("team-platform", "leaver", "bot")
+	r.console.mu.Lock()
+	r.console.holders["all:platform:engineer"]["pub@truvity.com"] = true
+	r.console.people["pub@truvity.com"] = &directoryrosterv1.ExplainResponse{InDomain: true, Authoritative: true, Found: true}
+	r.console.mu.Unlock()
+
+	r.run(true)
+
+	if !slices.Contains(r.github.Did(), "add team-platform/pub as member") {
+		t.Errorf("actions = %v, want pub added to the team through the profile link", r.github.Did())
+	}
+	got := r.links.get(r.github.Members["pub"].ID)
+	if got.Source != link.SourceProfile || !got.Active() || got.Checked() || got.Emails[0] != "pub@truvity.com" {
+		t.Errorf("link = %+v, want an active profile link, never re-checked with tokens", got)
+	}
+	if !slices.Contains(r.audit.kinds(), "github.link.matched pub@truvity.com ok") {
+		t.Errorf("audit = %v, want the match recorded", r.audit.kinds())
+	}
+	// bot publishes nothing: remembered, not asked again next pass.
+	if !slices.Contains(slices.Collect(maps.Keys(r.links.byID)), r.github.Members["pub"].ID) {
+		t.Fatal("no link for pub")
+	}
+}
+
+// A pass that would remove more than half the organisation removes nobody
+// and reports the breaker; seats the App cannot read invite nobody; and
+// outside collaborators are reported.
+func TestTheOrganisationWideGuardsReachTheReport(t *testing.T) {
+	r := newRig(t)
+	r.github.Seats = 0 // the App cannot read the plan
+	r.github.Collaborators = []string{"contractor"}
+	// Everybody but boss leaves the directory at once.
+	r.console.mu.Lock()
+	for _, email := range []string{"ada@truvity.com", "leaver@truvity.com"} {
+		r.console.people[email] = &directoryrosterv1.ExplainResponse{Authoritative: true, Found: false}
+		for group := range r.console.holders {
+			delete(r.console.holders[group], email)
+		}
+	}
+	r.console.mu.Unlock()
+	r.github.AddMember("carl", false, "carl@truvity.com")
+	r.console.mu.Lock()
+	r.console.people["carl@truvity.com"] = &directoryrosterv1.ExplainResponse{Authoritative: true, Found: false}
+	r.console.mu.Unlock()
+
+	r.run(true)
+
+	for _, change := range r.github.Did() {
+		if strings.HasPrefix(change, "remove") || strings.HasPrefix(change, "invite") {
+			t.Errorf("%q happened past a guard", change)
+		}
+	}
+	got := r.report.org(t, "truvity")
+	if got.Breaker == nil || got.Breaker.Affected != 3 || got.Breaker.Members != 5 {
+		t.Errorf("breaker = %+v, want 3 of 5 affected", got.Breaker)
+	}
+	if got.Seats == nil || got.Seats.Known {
+		t.Errorf("seats = %+v, want unknown", got.Seats)
+	}
+	if len(got.OutsideCollaborators) != 1 || got.OutsideCollaborators[0].Login != "contractor" {
+		t.Errorf("outside collaborators = %+v", got.OutsideCollaborators)
 	}
 }

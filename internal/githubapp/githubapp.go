@@ -97,13 +97,16 @@ func NewManifest(org, homepage, redirect, setup string) Manifest {
 		name = strings.TrimRight(name[:nameLimit], "-")
 	}
 	return Manifest{
-		Name:               name,
-		URL:                homepage,
-		HookAttributes:     HookAttributes{URL: homepage, Active: false},
-		RedirectURL:        redirect,
-		SetupURL:           setup,
-		Public:             false,
-		DefaultPermissions: map[string]string{"members": "write"},
+		Name:           name,
+		URL:            homepage,
+		HookAttributes: HookAttributes{URL: homepage, Active: false},
+		RedirectURL:    redirect,
+		SetupURL:       setup,
+		Public:         false,
+		// Organisation administration, read-only, for one thing: the plan's
+		// seats. Without it the controller cannot tell a full organisation
+		// from one with room, and it never invites into a paid seat blind.
+		DefaultPermissions: map[string]string{"members": "write", "organization_administration": "read"},
 	}
 }
 

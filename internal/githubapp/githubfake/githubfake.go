@@ -49,6 +49,15 @@ type Org struct {
 	// UsersDown makes every call made with a person's token fail with a
 	// 502, as an outage would.
 	UsersDown bool
+	// Seats and Filled are the plan; Seats zero is a plan the App may not
+	// read, as without organisation administration.
+	Seats, Filled int
+	// Failed are failed invitations.
+	Failed []FailedInvitation
+	// Collaborators are outside collaborators, by login.
+	Collaborators []string
+	// Public are the addresses accounts show on their profiles, by login.
+	Public map[string]string
 
 	nextID int64
 	server *httptest.Server
@@ -56,6 +65,12 @@ type Org struct {
 	codes  map[string]string
 	access map[string]string
 	fresh  map[string]string
+}
+
+// FailedInvitation is an invitation that expired.
+type FailedInvitation struct {
+	Login    string
+	FailedAt time.Time
 }
 
 // Account is one GitHub account a person can authorize the link App as.
@@ -102,6 +117,7 @@ func Start(t *testing.T, login string) *Org {
 		Login: login, Members: map[string]*Member{}, Teams: map[string]*Team{},
 		Invitations: map[string]*Invitation{}, Token: "installation-token", Refuse: map[string]string{}, nextID: 100,
 		Accounts: map[string]*Account{}, codes: map[string]string{}, access: map[string]string{}, fresh: map[string]string{},
+		Public: map[string]string{}, Seats: 100,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /app/installations/{id}/access_tokens", org.accessToken)
@@ -113,6 +129,11 @@ func Start(t *testing.T, login string) *Org {
 	mux.HandleFunc("PUT /orgs/{org}/teams/{team}/memberships/{login}", org.setTeamRole)
 	mux.HandleFunc("DELETE /orgs/{org}/teams/{team}/memberships/{login}", org.removeFromTeam)
 	mux.HandleFunc("DELETE /orgs/{org}/memberships/{login}", org.removeFromOrg)
+	mux.HandleFunc("GET /orgs/{org}", org.plan)
+	mux.HandleFunc("GET /orgs/{org}/failed_invitations", org.failedInvitations)
+	mux.HandleFunc("GET /orgs/{org}/outside_collaborators", org.outsideCollaborators)
+	mux.HandleFunc("GET /orgs/{org}/members/{login}", org.isMember)
+	mux.HandleFunc("GET /users/{login}", org.profile)
 	mux.HandleFunc("POST /login/oauth/access_token", org.userToken)
 	mux.HandleFunc("GET /user", org.user)
 	mux.HandleFunc("GET /user/emails", org.userEmails)
@@ -123,6 +144,88 @@ func Start(t *testing.T, login string) *Org {
 	githubapp.APIBase, githubapp.WebBase = org.server.URL, org.server.URL
 	t.Cleanup(func() { githubapp.APIBase, githubapp.WebBase = api, web })
 	return org
+}
+
+func (o *Org) plan(w http.ResponseWriter, r *http.Request) {
+	if !o.authorised(w, r) {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	body := map[string]any{"login": o.Login}
+	if o.Seats > 0 {
+		filled := o.Filled
+		if filled == 0 {
+			filled = len(o.Members)
+		}
+		body["plan"] = map[string]any{"name": "team", "seats": o.Seats, "filled_seats": filled}
+	}
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+func (o *Org) failedInvitations(w http.ResponseWriter, r *http.Request) {
+	if !o.authorised(w, r) {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	out := []map[string]any{}
+	for _, failed := range o.Failed {
+		out = append(out, map[string]any{"login": failed.Login, "failed_at": failed.FailedAt, "failed_reason": "Invitation expired"})
+	}
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (o *Org) outsideCollaborators(w http.ResponseWriter, r *http.Request) {
+	if !o.authorised(w, r) {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	out := []map[string]any{}
+	for _, login := range o.Collaborators {
+		out = append(out, map[string]any{"login": login})
+	}
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (o *Org) isMember(w http.ResponseWriter, r *http.Request) {
+	if !o.authorised(w, r) {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.Members[r.PathValue("login")] == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// profile answers a public profile read, made with any token.
+func (o *Org) profile(w http.ResponseWriter, r *http.Request) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	login := r.PathValue("login")
+	var id int64
+	if account := o.Accounts[login]; account != nil {
+		id = account.ID
+	} else if member := o.Members[login]; member != nil {
+		id = member.ID
+	}
+	if id == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"message":"Not Found"}`)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "login": login, "email": nilIfEmpty(o.Public[login])})
+}
+
+func nilIfEmpty(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 // ClientID and ClientSecret are the link App's, as the fake knows them.

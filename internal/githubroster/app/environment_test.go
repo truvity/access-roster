@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -27,8 +28,9 @@ func TestTheChartSetsEverythingTheControllerReads(t *testing.T) {
 		}
 	}
 	for _, name := range sets {
-		// NAMESPACE is read by the Kubernetes client, not by envString.
-		if name != "NAMESPACE" && !slices.Contains(reads, name) {
+		// NAMESPACE is read by the Kubernetes client, and OTEL_* by
+		// OpenTelemetry's SDK, not by envString.
+		if name != "NAMESPACE" && !strings.HasPrefix(name, "OTEL_") && !slices.Contains(reads, name) {
 			t.Errorf("the chart sets %s and the controller never reads it", name)
 		}
 	}

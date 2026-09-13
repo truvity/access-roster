@@ -1,3 +1,32 @@
+## v1.5.0
+
+The GitHub controller runs joiners, movers and leavers with no human in the
+loop, and stops itself where a person is needed. Every organisation stays
+a dry run until it is listed in `githubRoster.actsIn`, as before.
+
+- **Three ways a GitHub account becomes somebody's.** Linked by the person,
+  as before; **matched from a public profile** that shows a work address
+  the directory has, live — GitHub lets an account publish only a verified
+  address; and **imported** from approved pairings elsewhere through the
+  new operator RPC `ImportGitHubLinks`, after three checks. The latter two
+  are never re-checked on GitHub and never displace a link the person made.
+- **Seats.** Nobody is invited past the last free seat, and nobody at all
+  while the seats cannot be read; the GitHub page says how many seats to
+  buy. **An organisation's App now asks for organisation administration
+  (read).** Apps already created need an owner to add it on GitHub.
+- **Mass removals wait for a person.** A pass whose removals concern more
+  than half an organisation removes nobody until an operator presses
+  Confirm, for exactly that set (`ConfirmGitHubRemovals`).
+- **Two expired invitations stop the third**, until the person links again.
+- **Owners are reported, never held**: owners and billing are managed
+  outside. Transient trouble — the directory unable to vouch right now, a
+  change GitHub refused — is **retried** every pass instead of held.
+  Outside collaborators are listed.
+- **OpenTelemetry metrics**, pushed over OTLP when
+  `telemetry.otlpEndpoint` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) is set:
+  passes, changes, rows by state, seats, breaker trips, links by state and
+  source. Nothing is exported, and no listener opened, without it.
+
 ## v1.4.0
 
 - **`accessctl` works inside a GitHub Actions job.** With

@@ -29,6 +29,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/status"
@@ -69,6 +70,9 @@ type Link struct {
 	// account leaves the organisation.
 	Lost   bool
 	Reason string
+	// LinkedAt is when the person last linked: invitations that expired
+	// before it do not count against them.
+	LinkedAt time.Time
 }
 
 // Confirmation is the directory's answer about one address, asked before
@@ -433,7 +437,9 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 				member.State, member.Action = status.StateLeaving, status.ActionRemove
 				actions = append(actions, Action{Kind: status.ActionRemove, Team: slug, Login: login, Email: emails[0]})
 			case reason != "":
-				hold(&member, status.ActionRemove, reason)
+				// The directory could not be asked, or could not vouch: that
+				// clears on its own, and the removal is tried again.
+				member.State, member.Action, member.Reason = status.StateRetrying, status.ActionRemove, reason
 			default:
 				// Absent from the holders and confirmed as holding the group:
 				// the holders list was incomplete. Nothing to do.
@@ -453,7 +459,7 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 		}
 		member := status.Member{Login: login, Email: emails[0], Role: status.RoleMember}
 		if d.owner[login] {
-			hold(&member, status.ActionRemove, "an owner, not removed: the organisation's owners are declared elsewhere")
+			member.State, member.Reason = status.StateReported, "an owner, managed outside: the directory no longer has them"
 		} else {
 			member.State, member.Action = status.StateLeaving, status.ActionRemove
 			actions = append(actions, Action{Kind: status.ActionRemove, Login: login, Email: emails[0]})
@@ -471,7 +477,7 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 			member.Email = l.Emails[0]
 		}
 		if d.owner[login] {
-			hold(&member, status.ActionRemove, "an owner, not removed: the organisation's owners are declared elsewhere; the link is gone: "+l.Reason)
+			member.State, member.Reason = status.StateReported, "an owner, managed outside: the link is gone ("+l.Reason+")"
 		} else {
 			member.State, member.Action = status.StateLeaving, status.ActionRemove
 			actions = append(actions, Action{Kind: status.ActionRemove, Login: login, Email: member.Email, Reason: member.Reason})

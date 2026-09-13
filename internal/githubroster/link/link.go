@@ -62,11 +62,33 @@ const (
 	StateUnverifiable State = "unverifiable"
 )
 
+// Source is how a link came to be.
+type Source string
+
+// The sources, strongest first.
+const (
+	// SourceSelf: the person authorized the link App. GitHub verified the
+	// addresses, and they are checked again every pass.
+	SourceSelf Source = "self"
+	// SourceProfile: the account publishes the work address on its profile,
+	// which GitHub allows only for a verified address. Proven when matched;
+	// hiding the address later removes nobody.
+	SourceProfile Source = "profile"
+	// SourceImported: an approved pairing from the records github-roster
+	// 0.x kept. Declared, not re-checked on GitHub.
+	SourceImported Source = "imported"
+)
+
 // Link is one GitHub account's link.
 type Link struct {
 	Version int    `json:"version"`
 	ID      int64  `json:"id"`
 	Login   string `json:"login"`
+	// Source is how the link came to be; empty is a link written before
+	// sources existed, which were all self-links.
+	Source Source `json:"source,omitempty"`
+	// Note says where a link that is not a self-link came from.
+	Note string `json:"note,omitempty"`
 	// AppID is the link App the tokens were issued to. A token is only
 	// ever checked with that App's credentials: checked with another's,
 	// GitHub would call a perfectly good token unknown.
@@ -96,6 +118,10 @@ type Link struct {
 	// revoked authorization and remove the person.
 	RefreshingSince time.Time `json:"refreshing_since,omitzero"`
 }
+
+// Checked reports whether the controller re-checks the link on GitHub: a
+// self-link, which holds the person's tokens. The other sources hold none.
+func (l Link) Checked() bool { return l.Source == "" || l.Source == SourceSelf }
 
 // Active reports whether a link counts: it proves its addresses right now.
 func (l Link) Active() bool { return l.State == StateLinked && len(l.Emails) > 0 }
@@ -279,4 +305,51 @@ func Invalidate(existing []Link, reason string, now time.Time) []Link {
 		out = append(out, l)
 	}
 	return out
+}
+
+// Adopt adds links that were not made by the person — matched from a
+// profile, or imported — without ever displacing one that was. A candidate
+// is skipped when its account already has a link that counts, and loses any
+// address another account's link already proves. It returns the links to
+// write and, by account id, why each skipped candidate was.
+func Adopt(existing, candidates []Link) (adopted []Link, skipped map[int64]string) {
+	skipped = map[int64]string{}
+	proven := map[string]string{}
+	have := map[int64]bool{}
+	for i := range existing {
+		if !existing[i].Active() {
+			continue
+		}
+		have[existing[i].ID] = true
+		for _, email := range existing[i].Emails {
+			proven[email] = existing[i].Login
+		}
+	}
+	for i := range candidates {
+		candidate := candidates[i]
+		if have[candidate.ID] {
+			skipped[candidate.ID] = "the account is already linked"
+			continue
+		}
+		var kept, taken []string
+		for _, email := range normalise(candidate.Emails) {
+			if login, other := proven[email]; other {
+				taken = append(taken, email+" (linked to @"+login+")")
+				continue
+			}
+			kept = append(kept, email)
+		}
+		if len(kept) == 0 {
+			skipped[candidate.ID] = "every address is already linked to another account: " + strings.Join(taken, ", ")
+			continue
+		}
+		candidate.Emails, candidate.State = kept, StateLinked
+		candidate.Forget()
+		adopted = append(adopted, candidate)
+		have[candidate.ID] = true
+		for _, email := range kept {
+			proven[email] = candidate.Login
+		}
+	}
+	return adopted, skipped
 }

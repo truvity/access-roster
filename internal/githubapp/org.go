@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Org is one organisation, as the App installed in it sees and changes it.
@@ -199,6 +200,120 @@ func (o Org) Invite(ctx context.Context, token, email string, teams []int64) err
 		return fmt.Errorf("github: invite to %s: %w", o.Login, err)
 	}
 	return nil
+}
+
+// Plan is what the organisation pays for, in seats.
+type Plan struct {
+	// Seats is how many seats are paid for.
+	Seats int
+	// Filled is how many are taken: members, and outside collaborators on
+	// private repositories.
+	Filled int
+}
+
+// Plan reads the organisation's seats. The second result is false when
+// GitHub did not say — the App lacks organisation administration (read) —
+// which is not the same as zero seats and must never be read as it.
+func (o Org) Plan(ctx context.Context, token string) (Plan, bool, error) {
+	var body struct {
+		Plan *struct {
+			Seats  int `json:"seats"`
+			Filled int `json:"filled_seats"`
+		} `json:"plan"`
+	}
+	if err := call(ctx, o.HTTP, http.MethodGet, APIBase+"/orgs/"+url.PathEscape(o.Login), token, http.StatusOK, &body); err != nil {
+		return Plan{}, false, fmt.Errorf("github: read %s's plan: %w", o.Login, err)
+	}
+	if body.Plan == nil || body.Plan.Seats == 0 {
+		return Plan{}, false, nil
+	}
+	return Plan{Seats: body.Plan.Seats, Filled: body.Plan.Filled}, true, nil
+}
+
+// FailedInvitation is an invitation that expired or was cancelled.
+type FailedInvitation struct {
+	Login    string
+	Email    string
+	FailedAt time.Time
+}
+
+// FailedInvitations reads the organisation's failed invitations.
+func (o Org) FailedInvitations(ctx context.Context, token string) ([]FailedInvitation, error) {
+	var out []FailedInvitation
+	err := pages(ctx, o.HTTP, APIBase+"/orgs/"+url.PathEscape(o.Login)+"/failed_invitations?per_page=100", token, func(page *[]struct {
+		Login    string    `json:"login"`
+		Email    string    `json:"email"`
+		FailedAt time.Time `json:"failed_at"`
+	}) {
+		for _, failed := range *page {
+			out = append(out, FailedInvitation{Login: failed.Login, Email: strings.ToLower(failed.Email), FailedAt: failed.FailedAt})
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("github: read %s's failed invitations: %w", o.Login, err)
+	}
+	return out, nil
+}
+
+// OutsideCollaborators reads who has access to the organisation's
+// repositories without being a member of it.
+func (o Org) OutsideCollaborators(ctx context.Context, token string) ([]string, error) {
+	var out []string
+	err := pages(ctx, o.HTTP, APIBase+"/orgs/"+url.PathEscape(o.Login)+"/outside_collaborators?per_page=100", token, func(page *[]struct {
+		Login string `json:"login"`
+	}) {
+		for _, collaborator := range *page {
+			out = append(out, collaborator.Login)
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("github: read %s's outside collaborators: %w", o.Login, err)
+	}
+	return out, nil
+}
+
+// PublicEmail is the address an account shows on its profile, lowercased,
+// or empty. GitHub lets an account publish only an address it has verified,
+// so a published address is one GitHub vouches for.
+func PublicEmail(ctx context.Context, client *http.Client, token, login string) (string, error) {
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := call(ctx, client, http.MethodGet, APIBase+"/users/"+url.PathEscape(login), token, http.StatusOK, &body); err != nil {
+		return "", fmt.Errorf("github: read %s's profile: %w", login, err)
+	}
+	return strings.ToLower(strings.TrimSpace(body.Email)), nil
+}
+
+// UserID resolves a login to its account id.
+func UserID(ctx context.Context, client *http.Client, token, login string) (int64, error) {
+	var body struct {
+		ID int64 `json:"id"`
+	}
+	if err := call(ctx, client, http.MethodGet, APIBase+"/users/"+url.PathEscape(login), token, http.StatusOK, &body); err != nil {
+		return 0, fmt.Errorf("github: resolve %s: %w", login, err)
+	}
+	if body.ID == 0 {
+		return 0, fmt.Errorf("github: %s has no id", login)
+	}
+	return body.ID, nil
+}
+
+// IsMember reports whether an account is a member of the organisation.
+func (o Org) IsMember(ctx context.Context, token, login string) (bool, error) {
+	response, err := do(ctx, o.HTTP, http.MethodGet, APIBase+"/orgs/"+url.PathEscape(o.Login)+"/members/"+url.PathEscape(login), token, nil)
+	if err != nil {
+		return false, err
+	}
+	defer response.Body.Close() //nolint:errcheck // a read body's close has nothing to report
+	switch response.StatusCode {
+	case http.StatusNoContent:
+		return true, nil
+	case http.StatusNotFound, http.StatusFound:
+		return false, nil
+	default:
+		return false, fmt.Errorf("github: is %s a member of %s: %w", login, o.Login, statusError(response))
+	}
 }
 
 // InviteUser invites a GitHub account by its id, straight into teams. It is

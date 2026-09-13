@@ -480,6 +480,17 @@
           }
         }
       }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Metrics pushed over OTLP by the service and the GitHub controller. Empty publishes nothing.",
+      "properties": {
+        "otlpEndpoint": {
+          "type": "string",
+          "description": "The collector's OTLP/HTTP endpoint; empty publishes nothing."
+        }
+      }
     }
   },
   "definitions": {

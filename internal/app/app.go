@@ -627,10 +627,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHub:       githubReports(kept.github, cfg.demo),
 		GitHubOrgs:   githubConnections(kept.githubOrgs, cfg.demo),
 		// Typed nils again: an interface holding a nil store is not nil.
-		GitHubLinkApp: githubLinkApp(kept.githubOrgs, cfg.demo),
-		GitHubLinks:   githubLinks(kept.githubLinks, cfg.demo),
-		Audit:         recorder,
-		AuditStore:    auditStore,
+		GitHubLinkApp:       githubLinkApp(kept.githubOrgs, cfg.demo),
+		GitHubLinks:         githubLinks(kept.githubLinks, cfg.demo),
+		GitHubConfirmations: githubConfirmations(kept.githubOrgs),
+		Audit:               recorder,
+		AuditStore:          auditStore,
 	})
 	if err != nil {
 		return nil, err
@@ -1120,6 +1121,19 @@ func (demoLinks) Claim(context.Context, link.Link, time.Time) ([]link.Link, erro
 
 func (demoLinks) Invalidate(context.Context, string, time.Time) (int, error) {
 	return 0, errDemoConnect
+}
+
+func (demoLinks) Adopt(context.Context, []link.Link) ([]link.Link, map[int64]string, error) {
+	return nil, nil, errDemoConnect
+}
+
+// githubConfirmations is the store as the console's interface, or nil. A
+// demonstration run confirms nothing: there is nothing to remove.
+func githubConfirmations(store *kube.GitHubOrgs) server.GitHubConfirmations {
+	if store == nil {
+		return nil
+	}
+	return store
 }
 
 // errDemoConnect is what a demonstration run says when asked to change a

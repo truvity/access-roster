@@ -43,6 +43,50 @@ service GitHubService {
   // removes nobody and adds nobody until each person links again.
   // Operator.
   rpc DisconnectGitHubLinkApp(DisconnectGitHubLinkAppRequest) returns (DisconnectGitHubLinkAppResponse);
+
+  // ConfirmGitHubRemovals lets a pass that would remove more than half an
+  // organisation go ahead — for exactly the set of removals the operator
+  // saw, named by its fingerprint in the organisation's report. A
+  // different set needs confirming again; a confirmation lapses after a
+  // day. Operator.
+  rpc ConfirmGitHubRemovals(ConfirmGitHubRemovalsRequest) returns (ConfirmGitHubRemovalsResponse);
+
+  // ImportGitHubLinks adopts pairings of a GitHub login and work addresses
+  // that somebody approved elsewhere — github-roster 0.x kept them. Each
+  // becomes a link only when the pairing was approved, an address is a
+  // live account the directory vouches for, and the account is a member of
+  // a connected organisation; a link the person made is never displaced.
+  // Operator.
+  rpc ImportGitHubLinks(ImportGitHubLinksRequest) returns (ImportGitHubLinksResponse);
+}
+
+message ConfirmGitHubRemovalsRequest {
+  string org = 1;
+  // the breaker's fingerprint, as the report shows it.
+  string fingerprint = 2;
+}
+
+message ConfirmGitHubRemovalsResponse {}
+
+message ImportGitHubLinksRequest {
+  repeated GitHubLinkRecord records = 1;
+  // where the records come from, kept on each link as its note.
+  string origin = 2;
+}
+
+// GitHubLinkRecord is one approved pairing to import.
+message GitHubLinkRecord {
+  string login = 1;
+  repeated string emails = 2;
+  // who approved the pairing, and when; a record nobody approved is
+  // skipped.
+  string approved_by = 3;
+  google.protobuf.Timestamp approved_at = 4;
+}
+
+message ImportGitHubLinksResponse {
+  repeated GitHubLink imported = 1;
+  repeated GitHubAccount skipped = 2;
 }
 
 message BeginGitHubLinkAppConnectRequest {
@@ -140,6 +184,10 @@ message GitHubLink {
   google.protobuf.Timestamp linked_at = 6;
   google.protobuf.Timestamp checked_at = 7;
   google.protobuf.Timestamp changed_at = 8;
+  // self, profile or imported.
+  string source = 9;
+  // where a link that is not a self-link came from.
+  string note = 10;
 }
 
 // GitHubOrganisation is one organisation: its bindings beside its report.
@@ -168,6 +216,44 @@ message GitHubOrganisation {
   repeated GitHubAccount unlinked = 10;
   // how the controller acts in it. Absent until an operator connects it.
   GitHubConnection connection = 11;
+  // accounts with access to repositories without membership: reported.
+  repeated GitHubAccount outside_collaborators = 12;
+  // the organisation's seats as last read.
+  GitHubSeats seats = 13;
+  // set when the last pass would have removed more than half the
+  // organisation.
+  GitHubBreaker breaker = 14;
+  // the removal set an operator confirmed, while it holds.
+  GitHubRemovalConfirmation removal_confirmation = 15;
+}
+
+// GitHubSeats is what the organisation pays for.
+message GitHubSeats {
+  // false when GitHub would not say: nobody is invited while it is.
+  bool known = 1;
+  int32 total = 2;
+  int32 filled = 3;
+  int32 pending = 4;
+  int32 free = 5;
+  // invitations the last pass could not send for want of a seat.
+  int32 short = 6;
+}
+
+// GitHubBreaker is a pass that would have removed more than half the
+// organisation.
+message GitHubBreaker {
+  int32 affected = 1;
+  int32 members = 2;
+  string fingerprint = 3;
+  // whether the set was confirmed, so the removals went ahead.
+  bool confirmed = 4;
+}
+
+// GitHubRemovalConfirmation is an operator's confirmation of one set.
+message GitHubRemovalConfirmation {
+  string fingerprint = 1;
+  string confirmed_by = 2;
+  google.protobuf.Timestamp confirmed_at = 3;
 }
 
 // GitHubConnection is the App connecting an organisation left behind.
@@ -186,7 +272,7 @@ message GitHubConnection {
 // GitHubTick is how the controller's last pass over an organisation went.
 message GitHubTick {
   google.protobuf.Timestamp at = 1;
-  // in-sync, applied, dry-run, held, waiting or failed.
+  // in-sync, applied, dry-run, held, retrying, waiting or failed.
   string outcome = 2;
   string error = 3;
   // actions taken, or that would have been while disabled.
@@ -195,6 +281,8 @@ message GitHubTick {
   int32 held = 5;
   // rows waiting on somebody to link a GitHub account.
   int32 waiting = 6;
+  // actions that could not be taken this pass and are tried again.
+  int32 retrying = 7;
 }
 
 // GitHubTeamStatus is one team: its binding beside what was derived.
@@ -216,7 +304,8 @@ message GitHubMember {
   string login = 2;
   // member or maintainer.
   string role = 3;
-  // not-linked, pending, invited, synced, leaving or held.
+  // not-linked, pending, invited, ignored, synced, leaving, retrying, held or
+  // reported.
   string state = 4;
   // invite, add, set-role or remove; empty when synced.
   string action = 5;

@@ -12,7 +12,127 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/github.proto.
  */
 export const file_directoryroster_v1_github: GenFile = /*@__PURE__*/
-  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvZ2l0aHViLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEiMQogQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlcXVlc3QSDQoFb3duZXIYASABKAkiQgohQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCRIQCghtYW5pZmVzdBgCIAEoCSIgCh5EaXNjb25uZWN0R2l0SHViTGlua0FwcFJlcXVlc3QiUAofRGlzY29ubmVjdEdpdEh1YkxpbmtBcHBSZXNwb25zZRITCgtpbnZhbGlkYXRlZBgBIAEoBRIYChBhcHBfc2V0dGluZ3NfdXJsGAIgASgJIigKGUJlZ2luR2l0SHViQ29ubmVjdFJlcXVlc3QSCwoDb3JnGAEgASgJIjsKGkJlZ2luR2l0SHViQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCRIQCghtYW5pZmVzdBgCIAEoCSIyCiNEaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uUmVxdWVzdBILCgNvcmcYASABKAkiZQokRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvblJlc3BvbnNlEhMKC3VuaW5zdGFsbGVkGAEgASgIEg4KBmRldGFpbBgCIAEoCRIYChBhcHBfc2V0dGluZ3NfdXJsGAMgASgJIhgKFkdldEdpdEh1YlN0YXR1c1JlcXVlc3QiogIKF0dldEdpdEh1YlN0YXR1c1Jlc3BvbnNlEj0KDW9yZ2FuaXNhdGlvbnMYASADKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViT3JnYW5pc2F0aW9uEhkKEXJlcG9ydHNfYXZhaWxhYmxlGAIgASgIEhwKFGNvbm5lY3RpbmdfYXZhaWxhYmxlGAMgASgIEhkKEWxpbmtpbmdfYXZhaWxhYmxlGAQgASgIEjMKCGxpbmtfYXBwGAUgASgLMiEuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkxpbmtBcHASEAoIbGlua191cmwYBiABKAkSLQoFbGlua3MYByADKAsyHi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViTGluayKaAQoNR2l0SHViTGlua0FwcBIOCgZhcHBfaWQYASABKAMSEAoIYXBwX3NsdWcYAiABKAkSDQoFb3duZXIYAyABKAkSEAoIaHRtbF91cmwYBCABKAkSMAoMY29ubmVjdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIUCgxjb25uZWN0ZWRfYnkYBiABKAki7QEKCkdpdEh1YkxpbmsSEgoKYWNjb3VudF9pZBgBIAEoAxINCgVsb2dpbhgCIAEoCRIOCgZlbWFpbHMYAyADKAkSDQoFc3RhdGUYBCABKAkSDgoGcmVhc29uGAUgASgJEi0KCWxpbmtlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKY2hlY2tlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKY2hhbmdlZF9hdBgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAihQMKEkdpdEh1Yk9yZ2FuaXNhdGlvbhILCgNvcmcYASABKAkSDQoFYm91bmQYAiABKAgSEAoIcmVwb3J0ZWQYAyABKAgSFAoMcmVwb3J0X2Vycm9yGAQgASgJEg8KB2VuYWJsZWQYBSABKAgSLAoEdGljaxgGIAEoCzIeLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJUaWNrEhUKDW1lbWJlcl9ncm91cHMYByADKAkSMQoHbWVtYmVycxgIIAMoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJNZW1iZXISMwoFdGVhbXMYCSADKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViVGVhbVN0YXR1cxIzCgh1bmxpbmtlZBgKIAMoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJBY2NvdW50EjgKCmNvbm5lY3Rpb24YCyABKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQ29ubmVjdGlvbiKhAQoQR2l0SHViQ29ubmVjdGlvbhIOCgZhcHBfaWQYASABKAMSEAoIYXBwX3NsdWcYAiABKAkSEQoJaW5zdGFsbGVkGAMgASgIEhAKCGh0bWxfdXJsGAQgASgJEjAKDGNvbm5lY3RlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFAoMY29ubmVjdGVkX2J5GAYgASgJIoQBCgpHaXRIdWJUaWNrEiYKAmF0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIPCgdvdXRjb21lGAIgASgJEg0KBWVycm9yGAMgASgJEg8KB2NoYW5nZXMYBCABKAUSDAoEaGVsZBgFIAEoBRIPCgd3YWl0aW5nGAYgASgFIpQBChBHaXRIdWJUZWFtU3RhdHVzEgwKBHRlYW0YASABKAkSDQoFYm91bmQYAiABKAgSFQoNbWVtYmVyX2dyb3VwcxgDIAMoCRIZChFtYWludGFpbmVyX2dyb3VwcxgEIAMoCRIxCgdtZW1iZXJzGAUgAygLMiAuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1Yk1lbWJlciJpCgxHaXRIdWJNZW1iZXISDQoFZW1haWwYASABKAkSDQoFbG9naW4YAiABKAkSDAoEcm9sZRgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZhY3Rpb24YBSABKAkSDgoGcmVhc29uGAYgASgJIi4KDUdpdEh1YkFjY291bnQSDQoFbG9naW4YASABKAkSDgoGcmVhc29uGAIgASgJMpQFCg1HaXRIdWJTZXJ2aWNlEmoKD0dldEdpdEh1YlN0YXR1cxIqLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRHaXRIdWJTdGF0dXNSZXF1ZXN0GisuZGlyZWN0b3J5cm9zdGVyLnYxLkdldEdpdEh1YlN0YXR1c1Jlc3BvbnNlEnMKEkJlZ2luR2l0SHViQ29ubmVjdBItLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkNvbm5lY3RSZXF1ZXN0Gi4uZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luR2l0SHViQ29ubmVjdFJlc3BvbnNlEpEBChxEaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uEjcuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXF1ZXN0GjguZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXNwb25zZRKIAQoZQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdBI0LmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkxpbmtBcHBDb25uZWN0UmVxdWVzdBo1LmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkxpbmtBcHBDb25uZWN0UmVzcG9uc2USggEKF0Rpc2Nvbm5lY3RHaXRIdWJMaW5rQXBwEjIuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJMaW5rQXBwUmVxdWVzdBozLmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViTGlua0FwcFJlc3BvbnNlQtkBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQgtHaXRodWJQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvZ2l0aHViLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEiQAocQ29uZmlybUdpdEh1YlJlbW92YWxzUmVxdWVzdBILCgNvcmcYASABKAkSEwoLZmluZ2VycHJpbnQYAiABKAkiHwodQ29uZmlybUdpdEh1YlJlbW92YWxzUmVzcG9uc2UiYQoYSW1wb3J0R2l0SHViTGlua3NSZXF1ZXN0EjUKB3JlY29yZHMYASADKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViTGlua1JlY29yZBIOCgZvcmlnaW4YAiABKAkidwoQR2l0SHViTGlua1JlY29yZBINCgVsb2dpbhgBIAEoCRIOCgZlbWFpbHMYAiADKAkSEwoLYXBwcm92ZWRfYnkYAyABKAkSLwoLYXBwcm92ZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIoEBChlJbXBvcnRHaXRIdWJMaW5rc1Jlc3BvbnNlEjAKCGltcG9ydGVkGAEgAygLMh4uZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkxpbmsSMgoHc2tpcHBlZBgCIAMoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJBY2NvdW50IjEKIEJlZ2luR2l0SHViTGlua0FwcENvbm5lY3RSZXF1ZXN0Eg0KBW93bmVyGAEgASgJIkIKIUJlZ2luR2l0SHViTGlua0FwcENvbm5lY3RSZXNwb25zZRILCgN1cmwYASABKAkSEAoIbWFuaWZlc3QYAiABKAkiIAoeRGlzY29ubmVjdEdpdEh1YkxpbmtBcHBSZXF1ZXN0IlAKH0Rpc2Nvbm5lY3RHaXRIdWJMaW5rQXBwUmVzcG9uc2USEwoLaW52YWxpZGF0ZWQYASABKAUSGAoQYXBwX3NldHRpbmdzX3VybBgCIAEoCSIoChlCZWdpbkdpdEh1YkNvbm5lY3RSZXF1ZXN0EgsKA29yZxgBIAEoCSI7ChpCZWdpbkdpdEh1YkNvbm5lY3RSZXNwb25zZRILCgN1cmwYASABKAkSEAoIbWFuaWZlc3QYAiABKAkiMgojRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvblJlcXVlc3QSCwoDb3JnGAEgASgJImUKJERpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXNwb25zZRITCgt1bmluc3RhbGxlZBgBIAEoCBIOCgZkZXRhaWwYAiABKAkSGAoQYXBwX3NldHRpbmdzX3VybBgDIAEoCSIYChZHZXRHaXRIdWJTdGF0dXNSZXF1ZXN0IqICChdHZXRHaXRIdWJTdGF0dXNSZXNwb25zZRI9Cg1vcmdhbmlzYXRpb25zGAEgAygLMiYuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1Yk9yZ2FuaXNhdGlvbhIZChFyZXBvcnRzX2F2YWlsYWJsZRgCIAEoCBIcChRjb25uZWN0aW5nX2F2YWlsYWJsZRgDIAEoCBIZChFsaW5raW5nX2F2YWlsYWJsZRgEIAEoCBIzCghsaW5rX2FwcBgFIAEoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJMaW5rQXBwEhAKCGxpbmtfdXJsGAYgASgJEi0KBWxpbmtzGAcgAygLMh4uZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkxpbmsimgEKDUdpdEh1YkxpbmtBcHASDgoGYXBwX2lkGAEgASgDEhAKCGFwcF9zbHVnGAIgASgJEg0KBW93bmVyGAMgASgJEhAKCGh0bWxfdXJsGAQgASgJEjAKDGNvbm5lY3RlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFAoMY29ubmVjdGVkX2J5GAYgASgJIosCCgpHaXRIdWJMaW5rEhIKCmFjY291bnRfaWQYASABKAMSDQoFbG9naW4YAiABKAkSDgoGZW1haWxzGAMgAygJEg0KBXN0YXRlGAQgASgJEg4KBnJlYXNvbhgFIAEoCRItCglsaW5rZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmNoZWNrZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmNoYW5nZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg4KBnNvdXJjZRgJIAEoCRIMCgRub3RlGAogASgJIvgEChJHaXRIdWJPcmdhbmlzYXRpb24SCwoDb3JnGAEgASgJEg0KBWJvdW5kGAIgASgIEhAKCHJlcG9ydGVkGAMgASgIEhQKDHJlcG9ydF9lcnJvchgEIAEoCRIPCgdlbmFibGVkGAUgASgIEiwKBHRpY2sYBiABKAsyHi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViVGljaxIVCg1tZW1iZXJfZ3JvdXBzGAcgAygJEjEKB21lbWJlcnMYCCADKAsyIC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViTWVtYmVyEjMKBXRlYW1zGAkgAygLMiQuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YlRlYW1TdGF0dXMSMwoIdW5saW5rZWQYCiADKAsyIS5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQWNjb3VudBI4Cgpjb25uZWN0aW9uGAsgASgLMiQuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkNvbm5lY3Rpb24SQAoVb3V0c2lkZV9jb2xsYWJvcmF0b3JzGAwgAygLMiEuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFjY291bnQSLgoFc2VhdHMYDSABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViU2VhdHMSMgoHYnJlYWtlchgOIAEoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJCcmVha2VyEksKFHJlbW92YWxfY29uZmlybWF0aW9uGA8gASgLMi0uZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YlJlbW92YWxDb25maXJtYXRpb24iaQoLR2l0SHViU2VhdHMSDQoFa25vd24YASABKAgSDQoFdG90YWwYAiABKAUSDgoGZmlsbGVkGAMgASgFEg8KB3BlbmRpbmcYBCABKAUSDAoEZnJlZRgFIAEoBRINCgVzaG9ydBgGIAEoBSJaCg1HaXRIdWJCcmVha2VyEhAKCGFmZmVjdGVkGAEgASgFEg8KB21lbWJlcnMYAiABKAUSEwoLZmluZ2VycHJpbnQYAyABKAkSEQoJY29uZmlybWVkGAQgASgIIngKGUdpdEh1YlJlbW92YWxDb25maXJtYXRpb24SEwoLZmluZ2VycHJpbnQYASABKAkSFAoMY29uZmlybWVkX2J5GAIgASgJEjAKDGNvbmZpcm1lZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAioQEKEEdpdEh1YkNvbm5lY3Rpb24SDgoGYXBwX2lkGAEgASgDEhAKCGFwcF9zbHVnGAIgASgJEhEKCWluc3RhbGxlZBgDIAEoCBIQCghodG1sX3VybBgEIAEoCRIwCgxjb25uZWN0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhQKDGNvbm5lY3RlZF9ieRgGIAEoCSKWAQoKR2l0SHViVGljaxImCgJhdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHb3V0Y29tZRgCIAEoCRINCgVlcnJvchgDIAEoCRIPCgdjaGFuZ2VzGAQgASgFEgwKBGhlbGQYBSABKAUSDwoHd2FpdGluZxgGIAEoBRIQCghyZXRyeWluZxgHIAEoBSKUAQoQR2l0SHViVGVhbVN0YXR1cxIMCgR0ZWFtGAEgASgJEg0KBWJvdW5kGAIgASgIEhUKDW1lbWJlcl9ncm91cHMYAyADKAkSGQoRbWFpbnRhaW5lcl9ncm91cHMYBCADKAkSMQoHbWVtYmVycxgFIAMoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJNZW1iZXIiaQoMR2l0SHViTWVtYmVyEg0KBWVtYWlsGAEgASgJEg0KBWxvZ2luGAIgASgJEgwKBHJvbGUYAyABKAkSDQoFc3RhdGUYBCABKAkSDgoGYWN0aW9uGAUgASgJEg4KBnJlYXNvbhgGIAEoCSIuCg1HaXRIdWJBY2NvdW50Eg0KBWxvZ2luGAEgASgJEg4KBnJlYXNvbhgCIAEoCTKEBwoNR2l0SHViU2VydmljZRJqCg9HZXRHaXRIdWJTdGF0dXMSKi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0R2l0SHViU3RhdHVzUmVxdWVzdBorLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRHaXRIdWJTdGF0dXNSZXNwb25zZRJzChJCZWdpbkdpdEh1YkNvbm5lY3QSLS5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJDb25uZWN0UmVxdWVzdBouLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkNvbm5lY3RSZXNwb25zZRKRAQocRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvbhI3LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uUmVxdWVzdBo4LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uUmVzcG9uc2USiAEKGUJlZ2luR2l0SHViTGlua0FwcENvbm5lY3QSNC5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlcXVlc3QaNS5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlc3BvbnNlEoIBChdEaXNjb25uZWN0R2l0SHViTGlua0FwcBIyLmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViTGlua0FwcFJlcXVlc3QaMy5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdEdpdEh1YkxpbmtBcHBSZXNwb25zZRJ8ChVDb25maXJtR2l0SHViUmVtb3ZhbHMSMC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ29uZmlybUdpdEh1YlJlbW92YWxzUmVxdWVzdBoxLmRpcmVjdG9yeXJvc3Rlci52MS5Db25maXJtR2l0SHViUmVtb3ZhbHNSZXNwb25zZRJwChFJbXBvcnRHaXRIdWJMaW5rcxIsLmRpcmVjdG9yeXJvc3Rlci52MS5JbXBvcnRHaXRIdWJMaW5rc1JlcXVlc3QaLS5kaXJlY3Rvcnlyb3N0ZXIudjEuSW1wb3J0R2l0SHViTGlua3NSZXNwb25zZULZAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUILR2l0aHViUHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+
+/**
+ * @generated from message directoryroster.v1.ConfirmGitHubRemovalsRequest
+ */
+export type ConfirmGitHubRemovalsRequest = Message<"directoryroster.v1.ConfirmGitHubRemovalsRequest"> & {
+  /**
+   * @generated from field: string org = 1;
+   */
+  org: string;
+
+  /**
+   * the breaker's fingerprint, as the report shows it.
+   *
+   * @generated from field: string fingerprint = 2;
+   */
+  fingerprint: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.ConfirmGitHubRemovalsRequest.
+ * Use `create(ConfirmGitHubRemovalsRequestSchema)` to create a new message.
+ */
+export const ConfirmGitHubRemovalsRequestSchema: GenMessage<ConfirmGitHubRemovalsRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 0);
+
+/**
+ * @generated from message directoryroster.v1.ConfirmGitHubRemovalsResponse
+ */
+export type ConfirmGitHubRemovalsResponse = Message<"directoryroster.v1.ConfirmGitHubRemovalsResponse"> & {
+};
+
+/**
+ * Describes the message directoryroster.v1.ConfirmGitHubRemovalsResponse.
+ * Use `create(ConfirmGitHubRemovalsResponseSchema)` to create a new message.
+ */
+export const ConfirmGitHubRemovalsResponseSchema: GenMessage<ConfirmGitHubRemovalsResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 1);
+
+/**
+ * @generated from message directoryroster.v1.ImportGitHubLinksRequest
+ */
+export type ImportGitHubLinksRequest = Message<"directoryroster.v1.ImportGitHubLinksRequest"> & {
+  /**
+   * @generated from field: repeated directoryroster.v1.GitHubLinkRecord records = 1;
+   */
+  records: GitHubLinkRecord[];
+
+  /**
+   * where the records come from, kept on each link as its note.
+   *
+   * @generated from field: string origin = 2;
+   */
+  origin: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.ImportGitHubLinksRequest.
+ * Use `create(ImportGitHubLinksRequestSchema)` to create a new message.
+ */
+export const ImportGitHubLinksRequestSchema: GenMessage<ImportGitHubLinksRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 2);
+
+/**
+ * GitHubLinkRecord is one approved pairing to import.
+ *
+ * @generated from message directoryroster.v1.GitHubLinkRecord
+ */
+export type GitHubLinkRecord = Message<"directoryroster.v1.GitHubLinkRecord"> & {
+  /**
+   * @generated from field: string login = 1;
+   */
+  login: string;
+
+  /**
+   * @generated from field: repeated string emails = 2;
+   */
+  emails: string[];
+
+  /**
+   * who approved the pairing, and when; a record nobody approved is
+   * skipped.
+   *
+   * @generated from field: string approved_by = 3;
+   */
+  approvedBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp approved_at = 4;
+   */
+  approvedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message directoryroster.v1.GitHubLinkRecord.
+ * Use `create(GitHubLinkRecordSchema)` to create a new message.
+ */
+export const GitHubLinkRecordSchema: GenMessage<GitHubLinkRecord> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 3);
+
+/**
+ * @generated from message directoryroster.v1.ImportGitHubLinksResponse
+ */
+export type ImportGitHubLinksResponse = Message<"directoryroster.v1.ImportGitHubLinksResponse"> & {
+  /**
+   * @generated from field: repeated directoryroster.v1.GitHubLink imported = 1;
+   */
+  imported: GitHubLink[];
+
+  /**
+   * @generated from field: repeated directoryroster.v1.GitHubAccount skipped = 2;
+   */
+  skipped: GitHubAccount[];
+};
+
+/**
+ * Describes the message directoryroster.v1.ImportGitHubLinksResponse.
+ * Use `create(ImportGitHubLinksResponseSchema)` to create a new message.
+ */
+export const ImportGitHubLinksResponseSchema: GenMessage<ImportGitHubLinksResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 4);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubLinkAppConnectRequest
@@ -31,7 +151,7 @@ export type BeginGitHubLinkAppConnectRequest = Message<"directoryroster.v1.Begin
  * Use `create(BeginGitHubLinkAppConnectRequestSchema)` to create a new message.
  */
 export const BeginGitHubLinkAppConnectRequestSchema: GenMessage<BeginGitHubLinkAppConnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 0);
+  messageDesc(file_directoryroster_v1_github, 5);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubLinkAppConnectResponse
@@ -57,7 +177,7 @@ export type BeginGitHubLinkAppConnectResponse = Message<"directoryroster.v1.Begi
  * Use `create(BeginGitHubLinkAppConnectResponseSchema)` to create a new message.
  */
 export const BeginGitHubLinkAppConnectResponseSchema: GenMessage<BeginGitHubLinkAppConnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 1);
+  messageDesc(file_directoryroster_v1_github, 6);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubLinkAppRequest
@@ -70,7 +190,7 @@ export type DisconnectGitHubLinkAppRequest = Message<"directoryroster.v1.Disconn
  * Use `create(DisconnectGitHubLinkAppRequestSchema)` to create a new message.
  */
 export const DisconnectGitHubLinkAppRequestSchema: GenMessage<DisconnectGitHubLinkAppRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 2);
+  messageDesc(file_directoryroster_v1_github, 7);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubLinkAppResponse
@@ -96,7 +216,7 @@ export type DisconnectGitHubLinkAppResponse = Message<"directoryroster.v1.Discon
  * Use `create(DisconnectGitHubLinkAppResponseSchema)` to create a new message.
  */
 export const DisconnectGitHubLinkAppResponseSchema: GenMessage<DisconnectGitHubLinkAppResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 3);
+  messageDesc(file_directoryroster_v1_github, 8);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubConnectRequest
@@ -115,7 +235,7 @@ export type BeginGitHubConnectRequest = Message<"directoryroster.v1.BeginGitHubC
  * Use `create(BeginGitHubConnectRequestSchema)` to create a new message.
  */
 export const BeginGitHubConnectRequestSchema: GenMessage<BeginGitHubConnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 4);
+  messageDesc(file_directoryroster_v1_github, 9);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubConnectResponse
@@ -143,7 +263,7 @@ export type BeginGitHubConnectResponse = Message<"directoryroster.v1.BeginGitHub
  * Use `create(BeginGitHubConnectResponseSchema)` to create a new message.
  */
 export const BeginGitHubConnectResponseSchema: GenMessage<BeginGitHubConnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 5);
+  messageDesc(file_directoryroster_v1_github, 10);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubOrganisationRequest
@@ -160,7 +280,7 @@ export type DisconnectGitHubOrganisationRequest = Message<"directoryroster.v1.Di
  * Use `create(DisconnectGitHubOrganisationRequestSchema)` to create a new message.
  */
 export const DisconnectGitHubOrganisationRequestSchema: GenMessage<DisconnectGitHubOrganisationRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 6);
+  messageDesc(file_directoryroster_v1_github, 11);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubOrganisationResponse
@@ -195,7 +315,7 @@ export type DisconnectGitHubOrganisationResponse = Message<"directoryroster.v1.D
  * Use `create(DisconnectGitHubOrganisationResponseSchema)` to create a new message.
  */
 export const DisconnectGitHubOrganisationResponseSchema: GenMessage<DisconnectGitHubOrganisationResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 7);
+  messageDesc(file_directoryroster_v1_github, 12);
 
 /**
  * @generated from message directoryroster.v1.GetGitHubStatusRequest
@@ -208,7 +328,7 @@ export type GetGitHubStatusRequest = Message<"directoryroster.v1.GetGitHubStatus
  * Use `create(GetGitHubStatusRequestSchema)` to create a new message.
  */
 export const GetGitHubStatusRequestSchema: GenMessage<GetGitHubStatusRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 8);
+  messageDesc(file_directoryroster_v1_github, 13);
 
 /**
  * @generated from message directoryroster.v1.GetGitHubStatusResponse
@@ -270,7 +390,7 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
  * Use `create(GetGitHubStatusResponseSchema)` to create a new message.
  */
 export const GetGitHubStatusResponseSchema: GenMessage<GetGitHubStatusResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 9);
+  messageDesc(file_directoryroster_v1_github, 14);
 
 /**
  * GitHubLinkApp is the App people authorize to link their accounts.
@@ -316,7 +436,7 @@ export type GitHubLinkApp = Message<"directoryroster.v1.GitHubLinkApp"> & {
  * Use `create(GitHubLinkAppSchema)` to create a new message.
  */
 export const GitHubLinkAppSchema: GenMessage<GitHubLinkApp> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 10);
+  messageDesc(file_directoryroster_v1_github, 15);
 
 /**
  * GitHubLink is one GitHub account a person linked.
@@ -369,6 +489,20 @@ export type GitHubLink = Message<"directoryroster.v1.GitHubLink"> & {
    * @generated from field: google.protobuf.Timestamp changed_at = 8;
    */
   changedAt?: Timestamp | undefined;
+
+  /**
+   * self, profile or imported.
+   *
+   * @generated from field: string source = 9;
+   */
+  source: string;
+
+  /**
+   * where a link that is not a self-link came from.
+   *
+   * @generated from field: string note = 10;
+   */
+  note: string;
 };
 
 /**
@@ -376,7 +510,7 @@ export type GitHubLink = Message<"directoryroster.v1.GitHubLink"> & {
  * Use `create(GitHubLinkSchema)` to create a new message.
  */
 export const GitHubLinkSchema: GenMessage<GitHubLink> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 11);
+  messageDesc(file_directoryroster_v1_github, 16);
 
 /**
  * GitHubOrganisation is one organisation: its bindings beside its report.
@@ -459,6 +593,35 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
    * @generated from field: directoryroster.v1.GitHubConnection connection = 11;
    */
   connection?: GitHubConnection | undefined;
+
+  /**
+   * accounts with access to repositories without membership: reported.
+   *
+   * @generated from field: repeated directoryroster.v1.GitHubAccount outside_collaborators = 12;
+   */
+  outsideCollaborators: GitHubAccount[];
+
+  /**
+   * the organisation's seats as last read.
+   *
+   * @generated from field: directoryroster.v1.GitHubSeats seats = 13;
+   */
+  seats?: GitHubSeats | undefined;
+
+  /**
+   * set when the last pass would have removed more than half the
+   * organisation.
+   *
+   * @generated from field: directoryroster.v1.GitHubBreaker breaker = 14;
+   */
+  breaker?: GitHubBreaker | undefined;
+
+  /**
+   * the removal set an operator confirmed, while it holds.
+   *
+   * @generated from field: directoryroster.v1.GitHubRemovalConfirmation removal_confirmation = 15;
+   */
+  removalConfirmation?: GitHubRemovalConfirmation | undefined;
 };
 
 /**
@@ -466,7 +629,121 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
  * Use `create(GitHubOrganisationSchema)` to create a new message.
  */
 export const GitHubOrganisationSchema: GenMessage<GitHubOrganisation> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 12);
+  messageDesc(file_directoryroster_v1_github, 17);
+
+/**
+ * GitHubSeats is what the organisation pays for.
+ *
+ * @generated from message directoryroster.v1.GitHubSeats
+ */
+export type GitHubSeats = Message<"directoryroster.v1.GitHubSeats"> & {
+  /**
+   * false when GitHub would not say: nobody is invited while it is.
+   *
+   * @generated from field: bool known = 1;
+   */
+  known: boolean;
+
+  /**
+   * @generated from field: int32 total = 2;
+   */
+  total: number;
+
+  /**
+   * @generated from field: int32 filled = 3;
+   */
+  filled: number;
+
+  /**
+   * @generated from field: int32 pending = 4;
+   */
+  pending: number;
+
+  /**
+   * @generated from field: int32 free = 5;
+   */
+  free: number;
+
+  /**
+   * invitations the last pass could not send for want of a seat.
+   *
+   * @generated from field: int32 short = 6;
+   */
+  short: number;
+};
+
+/**
+ * Describes the message directoryroster.v1.GitHubSeats.
+ * Use `create(GitHubSeatsSchema)` to create a new message.
+ */
+export const GitHubSeatsSchema: GenMessage<GitHubSeats> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 18);
+
+/**
+ * GitHubBreaker is a pass that would have removed more than half the
+ * organisation.
+ *
+ * @generated from message directoryroster.v1.GitHubBreaker
+ */
+export type GitHubBreaker = Message<"directoryroster.v1.GitHubBreaker"> & {
+  /**
+   * @generated from field: int32 affected = 1;
+   */
+  affected: number;
+
+  /**
+   * @generated from field: int32 members = 2;
+   */
+  members: number;
+
+  /**
+   * @generated from field: string fingerprint = 3;
+   */
+  fingerprint: string;
+
+  /**
+   * whether the set was confirmed, so the removals went ahead.
+   *
+   * @generated from field: bool confirmed = 4;
+   */
+  confirmed: boolean;
+};
+
+/**
+ * Describes the message directoryroster.v1.GitHubBreaker.
+ * Use `create(GitHubBreakerSchema)` to create a new message.
+ */
+export const GitHubBreakerSchema: GenMessage<GitHubBreaker> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 19);
+
+/**
+ * GitHubRemovalConfirmation is an operator's confirmation of one set.
+ *
+ * @generated from message directoryroster.v1.GitHubRemovalConfirmation
+ */
+export type GitHubRemovalConfirmation = Message<"directoryroster.v1.GitHubRemovalConfirmation"> & {
+  /**
+   * @generated from field: string fingerprint = 1;
+   */
+  fingerprint: string;
+
+  /**
+   * @generated from field: string confirmed_by = 2;
+   */
+  confirmedBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp confirmed_at = 3;
+   */
+  confirmedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message directoryroster.v1.GitHubRemovalConfirmation.
+ * Use `create(GitHubRemovalConfirmationSchema)` to create a new message.
+ */
+export const GitHubRemovalConfirmationSchema: GenMessage<GitHubRemovalConfirmation> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 20);
 
 /**
  * GitHubConnection is the App connecting an organisation left behind.
@@ -514,7 +791,7 @@ export type GitHubConnection = Message<"directoryroster.v1.GitHubConnection"> & 
  * Use `create(GitHubConnectionSchema)` to create a new message.
  */
 export const GitHubConnectionSchema: GenMessage<GitHubConnection> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 13);
+  messageDesc(file_directoryroster_v1_github, 21);
 
 /**
  * GitHubTick is how the controller's last pass over an organisation went.
@@ -528,7 +805,7 @@ export type GitHubTick = Message<"directoryroster.v1.GitHubTick"> & {
   at?: Timestamp | undefined;
 
   /**
-   * in-sync, applied, dry-run, held, waiting or failed.
+   * in-sync, applied, dry-run, held, retrying, waiting or failed.
    *
    * @generated from field: string outcome = 2;
    */
@@ -559,6 +836,13 @@ export type GitHubTick = Message<"directoryroster.v1.GitHubTick"> & {
    * @generated from field: int32 waiting = 6;
    */
   waiting: number;
+
+  /**
+   * actions that could not be taken this pass and are tried again.
+   *
+   * @generated from field: int32 retrying = 7;
+   */
+  retrying: number;
 };
 
 /**
@@ -566,7 +850,7 @@ export type GitHubTick = Message<"directoryroster.v1.GitHubTick"> & {
  * Use `create(GitHubTickSchema)` to create a new message.
  */
 export const GitHubTickSchema: GenMessage<GitHubTick> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 14);
+  messageDesc(file_directoryroster_v1_github, 22);
 
 /**
  * GitHubTeamStatus is one team: its binding beside what was derived.
@@ -610,7 +894,7 @@ export type GitHubTeamStatus = Message<"directoryroster.v1.GitHubTeamStatus"> & 
  * Use `create(GitHubTeamStatusSchema)` to create a new message.
  */
 export const GitHubTeamStatusSchema: GenMessage<GitHubTeamStatus> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 15);
+  messageDesc(file_directoryroster_v1_github, 23);
 
 /**
  * GitHubMember is one person's membership as the controller derived it.
@@ -638,7 +922,8 @@ export type GitHubMember = Message<"directoryroster.v1.GitHubMember"> & {
   role: string;
 
   /**
-   * not-linked, pending, invited, synced, leaving or held.
+   * not-linked, pending, invited, ignored, synced, leaving, retrying, held or
+   * reported.
    *
    * @generated from field: string state = 4;
    */
@@ -664,7 +949,7 @@ export type GitHubMember = Message<"directoryroster.v1.GitHubMember"> & {
  * Use `create(GitHubMemberSchema)` to create a new message.
  */
 export const GitHubMemberSchema: GenMessage<GitHubMember> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 16);
+  messageDesc(file_directoryroster_v1_github, 24);
 
 /**
  * GitHubAccount is a login with a note.
@@ -688,7 +973,7 @@ export type GitHubAccount = Message<"directoryroster.v1.GitHubAccount"> & {
  * Use `create(GitHubAccountSchema)` to create a new message.
  */
 export const GitHubAccountSchema: GenMessage<GitHubAccount> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 17);
+  messageDesc(file_directoryroster_v1_github, 25);
 
 /**
  * GitHubService is the console's view of GitHub organisations: which the
@@ -768,6 +1053,35 @@ export const GitHubService: GenService<{
     methodKind: "unary";
     input: typeof DisconnectGitHubLinkAppRequestSchema;
     output: typeof DisconnectGitHubLinkAppResponseSchema;
+  },
+  /**
+   * ConfirmGitHubRemovals lets a pass that would remove more than half an
+   * organisation go ahead — for exactly the set of removals the operator
+   * saw, named by its fingerprint in the organisation's report. A
+   * different set needs confirming again; a confirmation lapses after a
+   * day. Operator.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.ConfirmGitHubRemovals
+   */
+  confirmGitHubRemovals: {
+    methodKind: "unary";
+    input: typeof ConfirmGitHubRemovalsRequestSchema;
+    output: typeof ConfirmGitHubRemovalsResponseSchema;
+  },
+  /**
+   * ImportGitHubLinks adopts pairings of a GitHub login and work addresses
+   * that somebody approved elsewhere — github-roster 0.x kept them. Each
+   * becomes a link only when the pairing was approved, an address is a
+   * live account the directory vouches for, and the account is a member of
+   * a connected organisation; a link the person made is never displaced.
+   * Operator.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.ImportGitHubLinks
+   */
+  importGitHubLinks: {
+    methodKind: "unary";
+    input: typeof ImportGitHubLinksRequestSchema;
+    output: typeof ImportGitHubLinksResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_directoryroster_v1_github, 0);

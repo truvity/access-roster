@@ -283,6 +283,8 @@ func GitHubReports(now time.Time) map[string]string {
 		Members: []status.Member{
 			{Email: "ada@north.example", Login: "ada-north", Role: status.RoleMember, State: status.StateSynced},
 			{Email: "brian@north.example", Login: "bbell", Role: status.RoleMember, State: status.StateSynced},
+			{Email: "boss@north.example", Login: "the-boss", Role: status.RoleMember, State: status.StateReported,
+				Reason: "an owner, managed outside: the directory no longer has them"},
 			{Email: "dana@south.example", Login: "dana-s", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
 			{Email: "finn@north.example", Role: status.RoleMember, State: status.StateNotLinked, Reason: "finn@north.example has not linked a GitHub account"},
 			{Email: "old-cleo@north.example", Login: "cleo-c", Role: status.RoleMember, State: status.StateLeaving, Action: status.ActionRemove,
@@ -302,7 +304,9 @@ func GitHubReports(now time.Time) map[string]string {
 					Reason: "example-org has no team team-security"},
 			}},
 		},
-		Unlinked: []status.Account{{Login: "example-bot", Reason: "has not linked this account to a work address"}},
+		Unlinked:             []status.Account{{Login: "example-bot", Reason: "has not linked this account to a work address"}},
+		OutsideCollaborators: []status.Account{{Login: "contractor-c", Reason: "outside collaborator: reported, not managed"}},
+		Seats:                &status.Seats{Known: true, Total: 12, Filled: 10, Pending: 1, Free: 1},
 	}
 	out := map[string]string{}
 	for _, report := range []*status.Org{&north} {
@@ -332,9 +336,11 @@ func GitHubLinks(now time.Time) []link.Link {
 	checked := now.Add(-4 * time.Minute)
 	return []link.Link{
 		{ID: 11, Login: "ada-north", Emails: []string{"ada@north.example"}, State: link.StateLinked, LinkedAt: now.Add(-40 * time.Hour), CheckedAt: checked},
-		{ID: 12, Login: "bbell", Emails: []string{"brian@north.example"}, State: link.StateLinked, LinkedAt: now.Add(-30 * time.Hour), CheckedAt: checked},
+		{ID: 12, Login: "bbell", Emails: []string{"brian@north.example"}, State: link.StateLinked, LinkedAt: now.Add(-30 * time.Hour), CheckedAt: checked,
+			Source: link.SourceImported, Note: "github-roster 0.x: approved by ada@north.example on 2026-07-02"},
 		{ID: 13, Login: "dana-s", Emails: []string{"dana@south.example"}, State: link.StateLinked, LinkedAt: now.Add(-2 * time.Hour), CheckedAt: checked},
-		{ID: 14, Login: "eli-east", Emails: []string{"eli@south.example"}, State: link.StateLinked, LinkedAt: now.Add(-20 * time.Hour), CheckedAt: checked},
+		{ID: 14, Login: "eli-east", Emails: []string{"eli@south.example"}, State: link.StateLinked, LinkedAt: now.Add(-20 * time.Hour), CheckedAt: checked,
+			Source: link.SourceProfile, Note: "the work address the account publishes on its GitHub profile"},
 		{ID: 15, Login: "cleo-c", Emails: []string{"old-cleo@north.example"}, State: link.StateLost, LinkedAt: now.Add(-90 * time.Hour),
 			CheckedAt: checked, Reason: "no linked work address is verified on the account any more (old-cleo@north.example)"},
 	}

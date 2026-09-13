@@ -374,6 +374,12 @@ audit:
   # the oldest an event may be.
   maxAge: 720h
 
+# Metrics, pushed over OTLP by the service and the GitHub controller.
+# Empty publishes nothing: no listener is opened for them either way.
+telemetry:
+  # the collector's OTLP/HTTP endpoint, e.g. http://otel-collector.observability.svc:4318
+  otlpEndpoint: ""
+
 logLevel: info
 
 resources: {}

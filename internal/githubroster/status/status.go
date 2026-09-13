@@ -71,6 +71,48 @@ type Org struct {
 	// Unlinked are members nobody linked to a work address: nobody can say
 	// who they are, so they are listed and never touched.
 	Unlinked []Account `json:"unlinked,omitempty"`
+	// OutsideCollaborators have access to repositories without being
+	// members. Reported, never managed.
+	OutsideCollaborators []Account `json:"outside_collaborators,omitempty"`
+	// Seats is the organisation's seats as last read, or nil before the
+	// controller could read anything.
+	Seats *Seats `json:"seats,omitempty"`
+	// Breaker is set when this pass would have removed more than half the
+	// organisation, and so removed nobody.
+	Breaker *Breaker `json:"breaker,omitempty"`
+}
+
+// Seats is what the organisation pays for, beside what the policy wants.
+type Seats struct {
+	// Known is false when GitHub would not say: the App lacks organisation
+	// administration (read). Nobody is invited while it is.
+	Known  bool `json:"known"`
+	Total  int  `json:"total,omitempty"`
+	Filled int  `json:"filled,omitempty"`
+	// Pending are invitations waiting to be accepted, which take a seat
+	// once accepted and may already be counted in Filled; counted here
+	// again, so the controller errs towards inviting too few.
+	Pending int `json:"pending,omitempty"`
+	// Free is Total - Filled - Pending, never below zero.
+	Free int `json:"free"`
+	// Short is how many invitations this pass could not send for want of a
+	// seat.
+	Short int `json:"short,omitempty"`
+}
+
+// Breaker is a pass that would have removed more than half the
+// organisation.
+type Breaker struct {
+	// Affected is how many accounts the removals concern, and Members how
+	// many the organisation has.
+	Affected int `json:"affected"`
+	Members  int `json:"members"`
+	// Fingerprint names exactly this set of removals. Confirming it lets
+	// this set, and no other, go ahead.
+	Fingerprint string `json:"fingerprint"`
+	// Confirmed is whether an operator confirmed this set, so the pass
+	// went ahead.
+	Confirmed bool `json:"confirmed,omitempty"`
 }
 
 // Tick is how the last pass over the organisation went.
@@ -83,8 +125,11 @@ type Tick struct {
 	// have been.
 	Changes int `json:"changes"`
 	// Held is how many actions were not taken, each for a reason given on
-	// the member it concerns.
+	// the member it concerns, until a person acts.
 	Held int `json:"held"`
+	// Retrying is how many actions could not be taken this pass and will be
+	// tried again.
+	Retrying int `json:"retrying,omitempty"`
 	// Waiting is how many rows want somebody who has not linked a GitHub
 	// account: nothing the controller can do, and not in sync either.
 	Waiting int `json:"waiting,omitempty"`
@@ -105,6 +150,9 @@ const (
 	// OutcomeHeld: something was to be done and every such action was
 	// held. Not a failure — each has its reason on the member.
 	OutcomeHeld Outcome = "held"
+	// OutcomeRetrying: every action this pass could not be taken for a
+	// reason that clears on its own, and is tried again next pass.
+	OutcomeRetrying Outcome = "retrying"
 	// OutcomeWaiting: nothing to do and nothing held, and people the
 	// policy wants have not linked an account yet. Not in sync: enabling
 	// the organisation would change nothing for them.
@@ -164,9 +212,20 @@ const (
 	// StateLeaving: they are here and should not be; Action says what
 	// comes next.
 	StateLeaving State = "leaving"
-	// StateHeld: something is to be done and is not being done; Reason
-	// says why.
+	// StateHeld: something is to be done and is not being done until a
+	// person acts — a team missing on GitHub, no free seat, a removal over
+	// the limit waiting for confirmation. Reason says why.
 	StateHeld State = "held"
+	// StateRetrying: something is to be done and could not be this pass,
+	// for a reason that clears on its own — the directory cannot vouch for
+	// somebody right now, GitHub refused a change. Tried again next pass.
+	StateRetrying State = "retrying"
+	// StateIgnored: they linked an account and let two invitations expire.
+	// Not invited again until they link again.
+	StateIgnored State = "ignored"
+	// StateReported: an organisation owner the policy would change.
+	// Owners and billing are managed outside; this is said, never done.
+	StateReported State = "reported"
 )
 
 // Action is one change the controller makes to GitHub.

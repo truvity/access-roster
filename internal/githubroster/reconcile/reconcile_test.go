@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/reconcile"
@@ -194,9 +195,9 @@ func TestALostLinkRemovesTheAccountAtOnce(t *testing.T) {
 	if ada.State != status.StateLeaving || !strings.Contains(ada.Reason, "no linked work address") {
 		t.Errorf("ada = %+v, want leaving with the link's reason", ada)
 	}
-	boss := findLogin(t, report, "boss", status.ActionRemove)
-	if boss.State != status.StateHeld || !strings.Contains(boss.Reason, "owner") {
-		t.Errorf("boss = %+v, want held as an owner", boss)
+	boss := findLogin(t, report, "boss", "")
+	if boss.State != status.StateReported || !strings.Contains(boss.Reason, "owner") {
+		t.Errorf("boss = %+v, want reported as an owner", boss)
 	}
 	// The row that still wants ada says why she is not simply synced.
 	if wanted := findMember(t, report, "team-platform", "ada@truvity.com"); wanted.State != status.StateNotLinked ||
@@ -263,8 +264,8 @@ func TestNobodyIsRemovedOnAnAnswerTheDirectoryCannotVouchFor(t *testing.T) {
 		if len(did) != 0 {
 			t.Errorf("%s: actions = %v, want none", name, actions(did))
 		}
-		if m := findMember(t, report, "team-platform", "ada@truvity.com"); m.State != status.StateHeld || m.Reason == "" {
-			t.Errorf("%s: ada = %+v, want held with a reason", name, m)
+		if m := findMember(t, report, "team-platform", "ada@truvity.com"); m.State != status.StateRetrying || m.Reason == "" {
+			t.Errorf("%s: ada = %+v, want retrying with a reason", name, m)
 		}
 	}
 
@@ -279,8 +280,9 @@ func TestNobodyIsRemovedOnAnAnswerTheDirectoryCannotVouchFor(t *testing.T) {
 }
 
 // A leaver the directory no longer has leaves the organisation, and so
-// every team with it in one call — except an owner, who is held.
-func TestALeaverLeavesTheOrganisationButAnOwnerIsHeld(t *testing.T) {
+// every team with it in one call — except an owner, who is reported: owners
+// are managed outside.
+func TestALeaverLeavesTheOrganisationButAnOwnerIsReported(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{"all:truvity:employee": live("ada@truvity.com")}
 	state := reconcile.State{
@@ -299,8 +301,8 @@ func TestALeaverLeavesTheOrganisationButAnOwnerIsHeld(t *testing.T) {
 	if want := []string{"remove gone in the organisation"}; !slices.Equal(actions(did), want) {
 		t.Errorf("actions = %v, want %v: the team removal rides on leaving the organisation", actions(did), want)
 	}
-	if m := findMember(t, report, "", "boss@truvity.com"); m.State != status.StateHeld || !strings.Contains(m.Reason, "owner") {
-		t.Errorf("boss = %+v, want an owner held", m)
+	if m := findLogin(t, report, "boss", ""); m.State != status.StateReported || m.Action != "" || !strings.Contains(m.Reason, "owner") {
+		t.Errorf("boss = %+v, want an owner reported, with nothing to do", m)
 	}
 }
 
@@ -378,5 +380,122 @@ func TestUnlinkedMembersUnboundTeamsAndMissingTeamsAreLeftAlone(t *testing.T) {
 	}
 	if slices.Contains(draft.Confirm(), "") {
 		t.Error("an unlinked member was asked about")
+	}
+}
+
+// An account that let two invitations expire since it last linked is not
+// invited a third time; linking again starts the count over.
+func TestTwoExpiredInvitationsStopTheThird(t *testing.T) {
+	t.Parallel()
+	linkedAt := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	holders := reconcile.Holders{"all:truvity:employee": live("new@truvity.com")}
+	state := reconcile.State{
+		Links: []reconcile.Link{{ID: 42, Login: "newbie", Emails: []string{"new@truvity.com"}, LinkedAt: linkedAt}},
+	}
+	guards := reconcile.Guards{
+		Known: true, Plan: githubapp.Plan{Seats: 10, Filled: 1}, LinkedAt: map[int64]time.Time{42: linkedAt},
+		Failed: []githubapp.FailedInvitation{
+			{Login: "newbie", FailedAt: linkedAt.Add(8 * 24 * time.Hour)},
+			{Login: "NEWBIE", FailedAt: linkedAt.Add(16 * 24 * time.Hour)},
+		},
+	}
+	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	did = reconcile.Guard(&report, did, guards)
+	if len(did) != 0 {
+		t.Errorf("actions = %v, want no third invitation", actions(did))
+	}
+	if m := findMember(t, report, "", "new@truvity.com"); m.State != status.StateIgnored || !strings.Contains(m.Reason, "linking the account again") {
+		t.Errorf("new@ = %+v, want ignored, saying how to start over", m)
+	}
+
+	// Linked again after both expired: invited again.
+	guards.LinkedAt[42] = linkedAt.Add(20 * 24 * time.Hour)
+	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	if did = reconcile.Guard(&report, did, guards); len(did) != 1 || did[0].Kind != status.ActionInvite {
+		t.Errorf("after linking again, actions = %v, want one invitation", actions(did))
+	}
+}
+
+// Nobody is invited past the last free seat, pending invitations taking one
+// each, and nobody at all while the seats cannot be read.
+func TestInvitationsStopAtTheLastFreeSeat(t *testing.T) {
+	t.Parallel()
+	holders := reconcile.Holders{"all:truvity:employee": live("a@truvity.com", "b@truvity.com", "c@truvity.com")}
+	state := reconcile.State{Links: []reconcile.Link{
+		{ID: 1, Login: "a", Emails: []string{"a@truvity.com"}},
+		{ID: 2, Login: "b", Emails: []string{"b@truvity.com"}},
+		{ID: 3, Login: "c", Emails: []string{"c@truvity.com"}},
+	}}
+	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Plan: githubapp.Plan{Seats: 30, Filled: 28}, Pending: 1})
+	if len(did) != 1 {
+		t.Errorf("actions = %v, want exactly one invitation for the one free seat", actions(did))
+	}
+	if report.Seats == nil || report.Seats.Free != 1 || report.Seats.Short != 2 {
+		t.Errorf("seats = %+v, want one free and two short", report.Seats)
+	}
+	held := 0
+	for _, m := range report.Members {
+		if m.State == status.StateHeld && strings.Contains(m.Reason, "no free seat") {
+			held++
+		}
+	}
+	if held != 2 {
+		t.Errorf("rows held for a seat = %d, want 2: %+v", held, report.Members)
+	}
+
+	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	if did = reconcile.Guard(&report, did, reconcile.Guards{Known: false}); len(did) != 0 {
+		t.Errorf("with unreadable seats, actions = %v, want none", actions(did))
+	}
+	if m := findMember(t, report, "", "a@truvity.com"); !strings.Contains(m.Reason, "organisation administration") {
+		t.Errorf("a@ = %+v, want held on the missing permission", m)
+	}
+}
+
+// A pass removing more than half the organisation removes nobody until an
+// operator confirms exactly that set; a different set needs confirming
+// again. Half exactly is not more than half.
+func TestMassRemovalWaitsForConfirmation(t *testing.T) {
+	t.Parallel()
+	holders := reconcile.Holders{"all:truvity:employee": live("stay@truvity.com")}
+	members := []githubapp.Member{{ID: 1, Login: "stay", Emails: []string{"stay@truvity.com"}}}
+	confirmations := map[string]reconcile.Confirmation{}
+	for _, login := range []string{"x", "y", "z"} {
+		email := login + "@truvity.com"
+		members = append(members, githubapp.Member{Login: login, Emails: []string{email}})
+		confirmations[email] = reconcile.Confirmation{Authoritative: true, Found: false}
+	}
+	state := reconcile.State{Members: members}
+
+	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(confirmations)
+	did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Plan: githubapp.Plan{Seats: 10}, Members: 4})
+	if len(did) != 0 || report.Breaker == nil || report.Breaker.Affected != 3 || report.Breaker.Confirmed {
+		t.Fatalf("actions = %v, breaker = %+v; want nothing removed and the breaker open", actions(did), report.Breaker)
+	}
+	if m := findLogin(t, report, "x", status.ActionRemove); m.State != status.StateHeld || !strings.Contains(m.Reason, "confirms") {
+		t.Errorf("x = %+v, want held for confirmation", m)
+	}
+	fingerprint := report.Breaker.Fingerprint
+
+	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(confirmations)
+	if did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Members: 4, Confirmed: fingerprint}); len(did) != 3 || !report.Breaker.Confirmed {
+		t.Errorf("confirmed: actions = %v, want the three removals", actions(did))
+	}
+
+	// One more leaver changes the set: the old confirmation does not cover it.
+	state.Members = append(state.Members, githubapp.Member{Login: "w", Emails: []string{"w@truvity.com"}})
+	confirmations["w@truvity.com"] = reconcile.Confirmation{Authoritative: true, Found: false}
+	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(confirmations)
+	if did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Members: 5, Confirmed: fingerprint}); len(did) != 0 {
+		t.Errorf("a changed set went ahead on an old confirmation: %v", actions(did))
+	}
+
+	// Two of four is half, not more than half: no breaker.
+	state.Members = members[:3]
+	delete(confirmations, "z@truvity.com")
+	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(confirmations)
+	if did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Members: 4}); len(did) != 2 || report.Breaker != nil {
+		t.Errorf("half: actions = %v, breaker = %+v; want both removals and no breaker", actions(did), report.Breaker)
 	}
 }

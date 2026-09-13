@@ -79,6 +79,10 @@ spec:
               value: {{ .Values.audit.maxEvents | quote }}
             - name: AUDIT_MAX_AGE
               value: {{ .Values.audit.maxAge | quote }}
+{{- with .Values.telemetry.otlpEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ . | quote }}
+{{- end }}
             - name: SESSION_LIFETIME
               value: {{ .Values.directory.sessionLifetime | quote }}
             - name: LOGIN_DIRECTORY

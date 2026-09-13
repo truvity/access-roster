@@ -22,6 +22,271 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ConfirmGitHubRemovalsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Org   string                 `protobuf:"bytes,1,opt,name=org,proto3" json:"org,omitempty"`
+	// the breaker's fingerprint, as the report shows it.
+	Fingerprint   string `protobuf:"bytes,2,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmGitHubRemovalsRequest) Reset() {
+	*x = ConfirmGitHubRemovalsRequest{}
+	mi := &file_directoryroster_v1_github_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmGitHubRemovalsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmGitHubRemovalsRequest) ProtoMessage() {}
+
+func (x *ConfirmGitHubRemovalsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_github_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmGitHubRemovalsRequest.ProtoReflect.Descriptor instead.
+func (*ConfirmGitHubRemovalsRequest) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ConfirmGitHubRemovalsRequest) GetOrg() string {
+	if x != nil {
+		return x.Org
+	}
+	return ""
+}
+
+func (x *ConfirmGitHubRemovalsRequest) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
+}
+
+type ConfirmGitHubRemovalsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmGitHubRemovalsResponse) Reset() {
+	*x = ConfirmGitHubRemovalsResponse{}
+	mi := &file_directoryroster_v1_github_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmGitHubRemovalsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmGitHubRemovalsResponse) ProtoMessage() {}
+
+func (x *ConfirmGitHubRemovalsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_github_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmGitHubRemovalsResponse.ProtoReflect.Descriptor instead.
+func (*ConfirmGitHubRemovalsResponse) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{1}
+}
+
+type ImportGitHubLinksRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Records []*GitHubLinkRecord    `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
+	// where the records come from, kept on each link as its note.
+	Origin        string `protobuf:"bytes,2,opt,name=origin,proto3" json:"origin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportGitHubLinksRequest) Reset() {
+	*x = ImportGitHubLinksRequest{}
+	mi := &file_directoryroster_v1_github_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportGitHubLinksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportGitHubLinksRequest) ProtoMessage() {}
+
+func (x *ImportGitHubLinksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_github_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportGitHubLinksRequest.ProtoReflect.Descriptor instead.
+func (*ImportGitHubLinksRequest) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ImportGitHubLinksRequest) GetRecords() []*GitHubLinkRecord {
+	if x != nil {
+		return x.Records
+	}
+	return nil
+}
+
+func (x *ImportGitHubLinksRequest) GetOrigin() string {
+	if x != nil {
+		return x.Origin
+	}
+	return ""
+}
+
+// GitHubLinkRecord is one approved pairing to import.
+type GitHubLinkRecord struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Login  string                 `protobuf:"bytes,1,opt,name=login,proto3" json:"login,omitempty"`
+	Emails []string               `protobuf:"bytes,2,rep,name=emails,proto3" json:"emails,omitempty"`
+	// who approved the pairing, and when; a record nobody approved is
+	// skipped.
+	ApprovedBy    string                 `protobuf:"bytes,3,opt,name=approved_by,json=approvedBy,proto3" json:"approved_by,omitempty"`
+	ApprovedAt    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=approved_at,json=approvedAt,proto3" json:"approved_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GitHubLinkRecord) Reset() {
+	*x = GitHubLinkRecord{}
+	mi := &file_directoryroster_v1_github_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GitHubLinkRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GitHubLinkRecord) ProtoMessage() {}
+
+func (x *GitHubLinkRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_github_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GitHubLinkRecord.ProtoReflect.Descriptor instead.
+func (*GitHubLinkRecord) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *GitHubLinkRecord) GetLogin() string {
+	if x != nil {
+		return x.Login
+	}
+	return ""
+}
+
+func (x *GitHubLinkRecord) GetEmails() []string {
+	if x != nil {
+		return x.Emails
+	}
+	return nil
+}
+
+func (x *GitHubLinkRecord) GetApprovedBy() string {
+	if x != nil {
+		return x.ApprovedBy
+	}
+	return ""
+}
+
+func (x *GitHubLinkRecord) GetApprovedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ApprovedAt
+	}
+	return nil
+}
+
+type ImportGitHubLinksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Imported      []*GitHubLink          `protobuf:"bytes,1,rep,name=imported,proto3" json:"imported,omitempty"`
+	Skipped       []*GitHubAccount       `protobuf:"bytes,2,rep,name=skipped,proto3" json:"skipped,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportGitHubLinksResponse) Reset() {
+	*x = ImportGitHubLinksResponse{}
+	mi := &file_directoryroster_v1_github_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportGitHubLinksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportGitHubLinksResponse) ProtoMessage() {}
+
+func (x *ImportGitHubLinksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_github_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportGitHubLinksResponse.ProtoReflect.Descriptor instead.
+func (*ImportGitHubLinksResponse) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ImportGitHubLinksResponse) GetImported() []*GitHubLink {
+	if x != nil {
+		return x.Imported
+	}
+	return nil
+}
+
+func (x *ImportGitHubLinksResponse) GetSkipped() []*GitHubAccount {
+	if x != nil {
+		return x.Skipped
+	}
+	return nil
+}
+
 type BeginGitHubLinkAppConnectRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// the organisation the App is created under.
@@ -32,7 +297,7 @@ type BeginGitHubLinkAppConnectRequest struct {
 
 func (x *BeginGitHubLinkAppConnectRequest) Reset() {
 	*x = BeginGitHubLinkAppConnectRequest{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[0]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44,7 +309,7 @@ func (x *BeginGitHubLinkAppConnectRequest) String() string {
 func (*BeginGitHubLinkAppConnectRequest) ProtoMessage() {}
 
 func (x *BeginGitHubLinkAppConnectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[0]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57,7 +322,7 @@ func (x *BeginGitHubLinkAppConnectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginGitHubLinkAppConnectRequest.ProtoReflect.Descriptor instead.
 func (*BeginGitHubLinkAppConnectRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{0}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *BeginGitHubLinkAppConnectRequest) GetOwner() string {
@@ -79,7 +344,7 @@ type BeginGitHubLinkAppConnectResponse struct {
 
 func (x *BeginGitHubLinkAppConnectResponse) Reset() {
 	*x = BeginGitHubLinkAppConnectResponse{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[1]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -91,7 +356,7 @@ func (x *BeginGitHubLinkAppConnectResponse) String() string {
 func (*BeginGitHubLinkAppConnectResponse) ProtoMessage() {}
 
 func (x *BeginGitHubLinkAppConnectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[1]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -104,7 +369,7 @@ func (x *BeginGitHubLinkAppConnectResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use BeginGitHubLinkAppConnectResponse.ProtoReflect.Descriptor instead.
 func (*BeginGitHubLinkAppConnectResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{1}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *BeginGitHubLinkAppConnectResponse) GetUrl() string {
@@ -129,7 +394,7 @@ type DisconnectGitHubLinkAppRequest struct {
 
 func (x *DisconnectGitHubLinkAppRequest) Reset() {
 	*x = DisconnectGitHubLinkAppRequest{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[2]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -141,7 +406,7 @@ func (x *DisconnectGitHubLinkAppRequest) String() string {
 func (*DisconnectGitHubLinkAppRequest) ProtoMessage() {}
 
 func (x *DisconnectGitHubLinkAppRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[2]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -154,7 +419,7 @@ func (x *DisconnectGitHubLinkAppRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectGitHubLinkAppRequest.ProtoReflect.Descriptor instead.
 func (*DisconnectGitHubLinkAppRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{2}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{7}
 }
 
 type DisconnectGitHubLinkAppResponse struct {
@@ -169,7 +434,7 @@ type DisconnectGitHubLinkAppResponse struct {
 
 func (x *DisconnectGitHubLinkAppResponse) Reset() {
 	*x = DisconnectGitHubLinkAppResponse{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[3]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -181,7 +446,7 @@ func (x *DisconnectGitHubLinkAppResponse) String() string {
 func (*DisconnectGitHubLinkAppResponse) ProtoMessage() {}
 
 func (x *DisconnectGitHubLinkAppResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[3]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -194,7 +459,7 @@ func (x *DisconnectGitHubLinkAppResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectGitHubLinkAppResponse.ProtoReflect.Descriptor instead.
 func (*DisconnectGitHubLinkAppResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{3}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DisconnectGitHubLinkAppResponse) GetInvalidated() int32 {
@@ -221,7 +486,7 @@ type BeginGitHubConnectRequest struct {
 
 func (x *BeginGitHubConnectRequest) Reset() {
 	*x = BeginGitHubConnectRequest{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[4]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -233,7 +498,7 @@ func (x *BeginGitHubConnectRequest) String() string {
 func (*BeginGitHubConnectRequest) ProtoMessage() {}
 
 func (x *BeginGitHubConnectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[4]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -246,7 +511,7 @@ func (x *BeginGitHubConnectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginGitHubConnectRequest.ProtoReflect.Descriptor instead.
 func (*BeginGitHubConnectRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{4}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *BeginGitHubConnectRequest) GetOrg() string {
@@ -270,7 +535,7 @@ type BeginGitHubConnectResponse struct {
 
 func (x *BeginGitHubConnectResponse) Reset() {
 	*x = BeginGitHubConnectResponse{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[5]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -282,7 +547,7 @@ func (x *BeginGitHubConnectResponse) String() string {
 func (*BeginGitHubConnectResponse) ProtoMessage() {}
 
 func (x *BeginGitHubConnectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[5]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -295,7 +560,7 @@ func (x *BeginGitHubConnectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginGitHubConnectResponse.ProtoReflect.Descriptor instead.
 func (*BeginGitHubConnectResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{5}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *BeginGitHubConnectResponse) GetUrl() string {
@@ -321,7 +586,7 @@ type DisconnectGitHubOrganisationRequest struct {
 
 func (x *DisconnectGitHubOrganisationRequest) Reset() {
 	*x = DisconnectGitHubOrganisationRequest{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[6]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -333,7 +598,7 @@ func (x *DisconnectGitHubOrganisationRequest) String() string {
 func (*DisconnectGitHubOrganisationRequest) ProtoMessage() {}
 
 func (x *DisconnectGitHubOrganisationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[6]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -346,7 +611,7 @@ func (x *DisconnectGitHubOrganisationRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use DisconnectGitHubOrganisationRequest.ProtoReflect.Descriptor instead.
 func (*DisconnectGitHubOrganisationRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{6}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DisconnectGitHubOrganisationRequest) GetOrg() string {
@@ -372,7 +637,7 @@ type DisconnectGitHubOrganisationResponse struct {
 
 func (x *DisconnectGitHubOrganisationResponse) Reset() {
 	*x = DisconnectGitHubOrganisationResponse{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[7]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -384,7 +649,7 @@ func (x *DisconnectGitHubOrganisationResponse) String() string {
 func (*DisconnectGitHubOrganisationResponse) ProtoMessage() {}
 
 func (x *DisconnectGitHubOrganisationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[7]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -397,7 +662,7 @@ func (x *DisconnectGitHubOrganisationResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use DisconnectGitHubOrganisationResponse.ProtoReflect.Descriptor instead.
 func (*DisconnectGitHubOrganisationResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{7}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DisconnectGitHubOrganisationResponse) GetUninstalled() bool {
@@ -429,7 +694,7 @@ type GetGitHubStatusRequest struct {
 
 func (x *GetGitHubStatusRequest) Reset() {
 	*x = GetGitHubStatusRequest{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[8]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -441,7 +706,7 @@ func (x *GetGitHubStatusRequest) String() string {
 func (*GetGitHubStatusRequest) ProtoMessage() {}
 
 func (x *GetGitHubStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[8]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -454,7 +719,7 @@ func (x *GetGitHubStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGitHubStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetGitHubStatusRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{8}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{13}
 }
 
 type GetGitHubStatusResponse struct {
@@ -481,7 +746,7 @@ type GetGitHubStatusResponse struct {
 
 func (x *GetGitHubStatusResponse) Reset() {
 	*x = GetGitHubStatusResponse{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[9]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -493,7 +758,7 @@ func (x *GetGitHubStatusResponse) String() string {
 func (*GetGitHubStatusResponse) ProtoMessage() {}
 
 func (x *GetGitHubStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[9]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -506,7 +771,7 @@ func (x *GetGitHubStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGitHubStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetGitHubStatusResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{9}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetGitHubStatusResponse) GetOrganisations() []*GitHubOrganisation {
@@ -574,7 +839,7 @@ type GitHubLinkApp struct {
 
 func (x *GitHubLinkApp) Reset() {
 	*x = GitHubLinkApp{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[10]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -586,7 +851,7 @@ func (x *GitHubLinkApp) String() string {
 func (*GitHubLinkApp) ProtoMessage() {}
 
 func (x *GitHubLinkApp) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[10]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -599,7 +864,7 @@ func (x *GitHubLinkApp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubLinkApp.ProtoReflect.Descriptor instead.
 func (*GitHubLinkApp) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{10}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GitHubLinkApp) GetAppId() int64 {
@@ -654,17 +919,21 @@ type GitHubLink struct {
 	// linked, lost or unverifiable.
 	State string `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`
 	// why a link is lost or unverifiable.
-	Reason        string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
-	LinkedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=linked_at,json=linkedAt,proto3" json:"linked_at,omitempty"`
-	CheckedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
-	ChangedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=changed_at,json=changedAt,proto3" json:"changed_at,omitempty"`
+	Reason    string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
+	LinkedAt  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=linked_at,json=linkedAt,proto3" json:"linked_at,omitempty"`
+	CheckedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
+	ChangedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=changed_at,json=changedAt,proto3" json:"changed_at,omitempty"`
+	// self, profile or imported.
+	Source string `protobuf:"bytes,9,opt,name=source,proto3" json:"source,omitempty"`
+	// where a link that is not a self-link came from.
+	Note          string `protobuf:"bytes,10,opt,name=note,proto3" json:"note,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GitHubLink) Reset() {
 	*x = GitHubLink{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[11]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -676,7 +945,7 @@ func (x *GitHubLink) String() string {
 func (*GitHubLink) ProtoMessage() {}
 
 func (x *GitHubLink) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[11]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -689,7 +958,7 @@ func (x *GitHubLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubLink.ProtoReflect.Descriptor instead.
 func (*GitHubLink) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{11}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GitHubLink) GetAccountId() int64 {
@@ -748,6 +1017,20 @@ func (x *GitHubLink) GetChangedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *GitHubLink) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *GitHubLink) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
 // GitHubOrganisation is one organisation: its bindings beside its report.
 type GitHubOrganisation struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -774,14 +1057,23 @@ type GitHubOrganisation struct {
 	// are, so they are listed and never touched.
 	Unlinked []*GitHubAccount `protobuf:"bytes,10,rep,name=unlinked,proto3" json:"unlinked,omitempty"`
 	// how the controller acts in it. Absent until an operator connects it.
-	Connection    *GitHubConnection `protobuf:"bytes,11,opt,name=connection,proto3" json:"connection,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Connection *GitHubConnection `protobuf:"bytes,11,opt,name=connection,proto3" json:"connection,omitempty"`
+	// accounts with access to repositories without membership: reported.
+	OutsideCollaborators []*GitHubAccount `protobuf:"bytes,12,rep,name=outside_collaborators,json=outsideCollaborators,proto3" json:"outside_collaborators,omitempty"`
+	// the organisation's seats as last read.
+	Seats *GitHubSeats `protobuf:"bytes,13,opt,name=seats,proto3" json:"seats,omitempty"`
+	// set when the last pass would have removed more than half the
+	// organisation.
+	Breaker *GitHubBreaker `protobuf:"bytes,14,opt,name=breaker,proto3" json:"breaker,omitempty"`
+	// the removal set an operator confirmed, while it holds.
+	RemovalConfirmation *GitHubRemovalConfirmation `protobuf:"bytes,15,opt,name=removal_confirmation,json=removalConfirmation,proto3" json:"removal_confirmation,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *GitHubOrganisation) Reset() {
 	*x = GitHubOrganisation{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[12]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -793,7 +1085,7 @@ func (x *GitHubOrganisation) String() string {
 func (*GitHubOrganisation) ProtoMessage() {}
 
 func (x *GitHubOrganisation) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[12]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -806,7 +1098,7 @@ func (x *GitHubOrganisation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubOrganisation.ProtoReflect.Descriptor instead.
 func (*GitHubOrganisation) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{12}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GitHubOrganisation) GetOrg() string {
@@ -886,6 +1178,253 @@ func (x *GitHubOrganisation) GetConnection() *GitHubConnection {
 	return nil
 }
 
+func (x *GitHubOrganisation) GetOutsideCollaborators() []*GitHubAccount {
+	if x != nil {
+		return x.OutsideCollaborators
+	}
+	return nil
+}
+
+func (x *GitHubOrganisation) GetSeats() *GitHubSeats {
+	if x != nil {
+		return x.Seats
+	}
+	return nil
+}
+
+func (x *GitHubOrganisation) GetBreaker() *GitHubBreaker {
+	if x != nil {
+		return x.Breaker
+	}
+	return nil
+}
+
+func (x *GitHubOrganisation) GetRemovalConfirmation() *GitHubRemovalConfirmation {
+	if x != nil {
+		return x.RemovalConfirmation
+	}
+	return nil
+}
+
+// GitHubSeats is what the organisation pays for.
+type GitHubSeats struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// false when GitHub would not say: nobody is invited while it is.
+	Known   bool  `protobuf:"varint,1,opt,name=known,proto3" json:"known,omitempty"`
+	Total   int32 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	Filled  int32 `protobuf:"varint,3,opt,name=filled,proto3" json:"filled,omitempty"`
+	Pending int32 `protobuf:"varint,4,opt,name=pending,proto3" json:"pending,omitempty"`
+	Free    int32 `protobuf:"varint,5,opt,name=free,proto3" json:"free,omitempty"`
+	// invitations the last pass could not send for want of a seat.
+	Short         int32 `protobuf:"varint,6,opt,name=short,proto3" json:"short,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GitHubSeats) Reset() {
+	*x = GitHubSeats{}
+	mi := &file_directoryroster_v1_github_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GitHubSeats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GitHubSeats) ProtoMessage() {}
+
+func (x *GitHubSeats) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_github_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GitHubSeats.ProtoReflect.Descriptor instead.
+func (*GitHubSeats) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *GitHubSeats) GetKnown() bool {
+	if x != nil {
+		return x.Known
+	}
+	return false
+}
+
+func (x *GitHubSeats) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *GitHubSeats) GetFilled() int32 {
+	if x != nil {
+		return x.Filled
+	}
+	return 0
+}
+
+func (x *GitHubSeats) GetPending() int32 {
+	if x != nil {
+		return x.Pending
+	}
+	return 0
+}
+
+func (x *GitHubSeats) GetFree() int32 {
+	if x != nil {
+		return x.Free
+	}
+	return 0
+}
+
+func (x *GitHubSeats) GetShort() int32 {
+	if x != nil {
+		return x.Short
+	}
+	return 0
+}
+
+// GitHubBreaker is a pass that would have removed more than half the
+// organisation.
+type GitHubBreaker struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Affected    int32                  `protobuf:"varint,1,opt,name=affected,proto3" json:"affected,omitempty"`
+	Members     int32                  `protobuf:"varint,2,opt,name=members,proto3" json:"members,omitempty"`
+	Fingerprint string                 `protobuf:"bytes,3,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	// whether the set was confirmed, so the removals went ahead.
+	Confirmed     bool `protobuf:"varint,4,opt,name=confirmed,proto3" json:"confirmed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GitHubBreaker) Reset() {
+	*x = GitHubBreaker{}
+	mi := &file_directoryroster_v1_github_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GitHubBreaker) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GitHubBreaker) ProtoMessage() {}
+
+func (x *GitHubBreaker) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_github_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GitHubBreaker.ProtoReflect.Descriptor instead.
+func (*GitHubBreaker) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *GitHubBreaker) GetAffected() int32 {
+	if x != nil {
+		return x.Affected
+	}
+	return 0
+}
+
+func (x *GitHubBreaker) GetMembers() int32 {
+	if x != nil {
+		return x.Members
+	}
+	return 0
+}
+
+func (x *GitHubBreaker) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
+}
+
+func (x *GitHubBreaker) GetConfirmed() bool {
+	if x != nil {
+		return x.Confirmed
+	}
+	return false
+}
+
+// GitHubRemovalConfirmation is an operator's confirmation of one set.
+type GitHubRemovalConfirmation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Fingerprint   string                 `protobuf:"bytes,1,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	ConfirmedBy   string                 `protobuf:"bytes,2,opt,name=confirmed_by,json=confirmedBy,proto3" json:"confirmed_by,omitempty"`
+	ConfirmedAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=confirmed_at,json=confirmedAt,proto3" json:"confirmed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GitHubRemovalConfirmation) Reset() {
+	*x = GitHubRemovalConfirmation{}
+	mi := &file_directoryroster_v1_github_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GitHubRemovalConfirmation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GitHubRemovalConfirmation) ProtoMessage() {}
+
+func (x *GitHubRemovalConfirmation) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_github_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GitHubRemovalConfirmation.ProtoReflect.Descriptor instead.
+func (*GitHubRemovalConfirmation) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *GitHubRemovalConfirmation) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
+}
+
+func (x *GitHubRemovalConfirmation) GetConfirmedBy() string {
+	if x != nil {
+		return x.ConfirmedBy
+	}
+	return ""
+}
+
+func (x *GitHubRemovalConfirmation) GetConfirmedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ConfirmedAt
+	}
+	return nil
+}
+
 // GitHubConnection is the App connecting an organisation left behind.
 // Never the key.
 type GitHubConnection struct {
@@ -904,7 +1443,7 @@ type GitHubConnection struct {
 
 func (x *GitHubConnection) Reset() {
 	*x = GitHubConnection{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[13]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -916,7 +1455,7 @@ func (x *GitHubConnection) String() string {
 func (*GitHubConnection) ProtoMessage() {}
 
 func (x *GitHubConnection) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[13]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -929,7 +1468,7 @@ func (x *GitHubConnection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubConnection.ProtoReflect.Descriptor instead.
 func (*GitHubConnection) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{13}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GitHubConnection) GetAppId() int64 {
@@ -978,7 +1517,7 @@ func (x *GitHubConnection) GetConnectedBy() string {
 type GitHubTick struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	At    *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=at,proto3" json:"at,omitempty"`
-	// in-sync, applied, dry-run, held, waiting or failed.
+	// in-sync, applied, dry-run, held, retrying, waiting or failed.
 	Outcome string `protobuf:"bytes,2,opt,name=outcome,proto3" json:"outcome,omitempty"`
 	Error   string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 	// actions taken, or that would have been while disabled.
@@ -986,14 +1525,16 @@ type GitHubTick struct {
 	// actions not taken, each with its reason on the member.
 	Held int32 `protobuf:"varint,5,opt,name=held,proto3" json:"held,omitempty"`
 	// rows waiting on somebody to link a GitHub account.
-	Waiting       int32 `protobuf:"varint,6,opt,name=waiting,proto3" json:"waiting,omitempty"`
+	Waiting int32 `protobuf:"varint,6,opt,name=waiting,proto3" json:"waiting,omitempty"`
+	// actions that could not be taken this pass and are tried again.
+	Retrying      int32 `protobuf:"varint,7,opt,name=retrying,proto3" json:"retrying,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GitHubTick) Reset() {
 	*x = GitHubTick{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[14]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1005,7 +1546,7 @@ func (x *GitHubTick) String() string {
 func (*GitHubTick) ProtoMessage() {}
 
 func (x *GitHubTick) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[14]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1018,7 +1559,7 @@ func (x *GitHubTick) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubTick.ProtoReflect.Descriptor instead.
 func (*GitHubTick) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{14}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GitHubTick) GetAt() *timestamppb.Timestamp {
@@ -1063,6 +1604,13 @@ func (x *GitHubTick) GetWaiting() int32 {
 	return 0
 }
 
+func (x *GitHubTick) GetRetrying() int32 {
+	if x != nil {
+		return x.Retrying
+	}
+	return 0
+}
+
 // GitHubTeamStatus is one team: its binding beside what was derived.
 type GitHubTeamStatus struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1080,7 +1628,7 @@ type GitHubTeamStatus struct {
 
 func (x *GitHubTeamStatus) Reset() {
 	*x = GitHubTeamStatus{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[15]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1092,7 +1640,7 @@ func (x *GitHubTeamStatus) String() string {
 func (*GitHubTeamStatus) ProtoMessage() {}
 
 func (x *GitHubTeamStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[15]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1105,7 +1653,7 @@ func (x *GitHubTeamStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubTeamStatus.ProtoReflect.Descriptor instead.
 func (*GitHubTeamStatus) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{15}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GitHubTeamStatus) GetTeam() string {
@@ -1151,7 +1699,8 @@ type GitHubMember struct {
 	Login string `protobuf:"bytes,2,opt,name=login,proto3" json:"login,omitempty"`
 	// member or maintainer.
 	Role string `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"`
-	// not-linked, pending, invited, synced, leaving or held.
+	// not-linked, pending, invited, ignored, synced, leaving, retrying, held or
+	// reported.
 	State string `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`
 	// invite, add, set-role or remove; empty when synced.
 	Action string `protobuf:"bytes,5,opt,name=action,proto3" json:"action,omitempty"`
@@ -1163,7 +1712,7 @@ type GitHubMember struct {
 
 func (x *GitHubMember) Reset() {
 	*x = GitHubMember{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[16]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1175,7 +1724,7 @@ func (x *GitHubMember) String() string {
 func (*GitHubMember) ProtoMessage() {}
 
 func (x *GitHubMember) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[16]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1188,7 +1737,7 @@ func (x *GitHubMember) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubMember.ProtoReflect.Descriptor instead.
 func (*GitHubMember) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{16}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GitHubMember) GetEmail() string {
@@ -1244,7 +1793,7 @@ type GitHubAccount struct {
 
 func (x *GitHubAccount) Reset() {
 	*x = GitHubAccount{}
-	mi := &file_directoryroster_v1_github_proto_msgTypes[17]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1256,7 +1805,7 @@ func (x *GitHubAccount) String() string {
 func (*GitHubAccount) ProtoMessage() {}
 
 func (x *GitHubAccount) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_github_proto_msgTypes[17]
+	mi := &file_directoryroster_v1_github_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1269,7 +1818,7 @@ func (x *GitHubAccount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitHubAccount.ProtoReflect.Descriptor instead.
 func (*GitHubAccount) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{17}
+	return file_directoryroster_v1_github_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GitHubAccount) GetLogin() string {
@@ -1290,7 +1839,24 @@ var File_directoryroster_v1_github_proto protoreflect.FileDescriptor
 
 const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\n" +
-	"\x1fdirectoryroster/v1/github.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"8\n" +
+	"\x1fdirectoryroster/v1/github.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"R\n" +
+	"\x1cConfirmGitHubRemovalsRequest\x12\x10\n" +
+	"\x03org\x18\x01 \x01(\tR\x03org\x12 \n" +
+	"\vfingerprint\x18\x02 \x01(\tR\vfingerprint\"\x1f\n" +
+	"\x1dConfirmGitHubRemovalsResponse\"r\n" +
+	"\x18ImportGitHubLinksRequest\x12>\n" +
+	"\arecords\x18\x01 \x03(\v2$.directoryroster.v1.GitHubLinkRecordR\arecords\x12\x16\n" +
+	"\x06origin\x18\x02 \x01(\tR\x06origin\"\x9e\x01\n" +
+	"\x10GitHubLinkRecord\x12\x14\n" +
+	"\x05login\x18\x01 \x01(\tR\x05login\x12\x16\n" +
+	"\x06emails\x18\x02 \x03(\tR\x06emails\x12\x1f\n" +
+	"\vapproved_by\x18\x03 \x01(\tR\n" +
+	"approvedBy\x12;\n" +
+	"\vapproved_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"approvedAt\"\x94\x01\n" +
+	"\x19ImportGitHubLinksResponse\x12:\n" +
+	"\bimported\x18\x01 \x03(\v2\x1e.directoryroster.v1.GitHubLinkR\bimported\x12;\n" +
+	"\askipped\x18\x02 \x03(\v2!.directoryroster.v1.GitHubAccountR\askipped\"8\n" +
 	" BeginGitHubLinkAppConnectRequest\x12\x14\n" +
 	"\x05owner\x18\x01 \x01(\tR\x05owner\"Q\n" +
 	"!BeginGitHubLinkAppConnectResponse\x12\x10\n" +
@@ -1326,7 +1892,7 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\x05owner\x18\x03 \x01(\tR\x05owner\x12\x19\n" +
 	"\bhtml_url\x18\x04 \x01(\tR\ahtmlUrl\x12=\n" +
 	"\fconnected_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vconnectedAt\x12!\n" +
-	"\fconnected_by\x18\x06 \x01(\tR\vconnectedBy\"\xb6\x02\n" +
+	"\fconnected_by\x18\x06 \x01(\tR\vconnectedBy\"\xe2\x02\n" +
 	"\n" +
 	"GitHubLink\x12\x1d\n" +
 	"\n" +
@@ -1339,7 +1905,10 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\n" +
 	"checked_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAt\x129\n" +
 	"\n" +
-	"changed_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tchangedAt\"\xeb\x03\n" +
+	"changed_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tchangedAt\x12\x16\n" +
+	"\x06source\x18\t \x01(\tR\x06source\x12\x12\n" +
+	"\x04note\x18\n" +
+	" \x01(\tR\x04note\"\x99\x06\n" +
 	"\x12GitHubOrganisation\x12\x10\n" +
 	"\x03org\x18\x01 \x01(\tR\x03org\x12\x14\n" +
 	"\x05bound\x18\x02 \x01(\bR\x05bound\x12\x1a\n" +
@@ -1354,14 +1923,34 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	" \x03(\v2!.directoryroster.v1.GitHubAccountR\bunlinked\x12D\n" +
 	"\n" +
 	"connection\x18\v \x01(\v2$.directoryroster.v1.GitHubConnectionR\n" +
-	"connection\"\xdf\x01\n" +
+	"connection\x12V\n" +
+	"\x15outside_collaborators\x18\f \x03(\v2!.directoryroster.v1.GitHubAccountR\x14outsideCollaborators\x125\n" +
+	"\x05seats\x18\r \x01(\v2\x1f.directoryroster.v1.GitHubSeatsR\x05seats\x12;\n" +
+	"\abreaker\x18\x0e \x01(\v2!.directoryroster.v1.GitHubBreakerR\abreaker\x12`\n" +
+	"\x14removal_confirmation\x18\x0f \x01(\v2-.directoryroster.v1.GitHubRemovalConfirmationR\x13removalConfirmation\"\x95\x01\n" +
+	"\vGitHubSeats\x12\x14\n" +
+	"\x05known\x18\x01 \x01(\bR\x05known\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x16\n" +
+	"\x06filled\x18\x03 \x01(\x05R\x06filled\x12\x18\n" +
+	"\apending\x18\x04 \x01(\x05R\apending\x12\x12\n" +
+	"\x04free\x18\x05 \x01(\x05R\x04free\x12\x14\n" +
+	"\x05short\x18\x06 \x01(\x05R\x05short\"\x85\x01\n" +
+	"\rGitHubBreaker\x12\x1a\n" +
+	"\baffected\x18\x01 \x01(\x05R\baffected\x12\x18\n" +
+	"\amembers\x18\x02 \x01(\x05R\amembers\x12 \n" +
+	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint\x12\x1c\n" +
+	"\tconfirmed\x18\x04 \x01(\bR\tconfirmed\"\x9f\x01\n" +
+	"\x19GitHubRemovalConfirmation\x12 \n" +
+	"\vfingerprint\x18\x01 \x01(\tR\vfingerprint\x12!\n" +
+	"\fconfirmed_by\x18\x02 \x01(\tR\vconfirmedBy\x12=\n" +
+	"\fconfirmed_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vconfirmedAt\"\xdf\x01\n" +
 	"\x10GitHubConnection\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\x03R\x05appId\x12\x19\n" +
 	"\bapp_slug\x18\x02 \x01(\tR\aappSlug\x12\x1c\n" +
 	"\tinstalled\x18\x03 \x01(\bR\tinstalled\x12\x19\n" +
 	"\bhtml_url\x18\x04 \x01(\tR\ahtmlUrl\x12=\n" +
 	"\fconnected_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vconnectedAt\x12!\n" +
-	"\fconnected_by\x18\x06 \x01(\tR\vconnectedBy\"\xb0\x01\n" +
+	"\fconnected_by\x18\x06 \x01(\tR\vconnectedBy\"\xcc\x01\n" +
 	"\n" +
 	"GitHubTick\x12*\n" +
 	"\x02at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x12\x18\n" +
@@ -1369,7 +1958,8 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tR\x05error\x12\x18\n" +
 	"\achanges\x18\x04 \x01(\x05R\achanges\x12\x12\n" +
 	"\x04held\x18\x05 \x01(\x05R\x04held\x12\x18\n" +
-	"\awaiting\x18\x06 \x01(\x05R\awaiting\"\xca\x01\n" +
+	"\awaiting\x18\x06 \x01(\x05R\awaiting\x12\x1a\n" +
+	"\bretrying\x18\a \x01(\x05R\bretrying\"\xca\x01\n" +
 	"\x10GitHubTeamStatus\x12\x12\n" +
 	"\x04team\x18\x01 \x01(\tR\x04team\x12\x14\n" +
 	"\x05bound\x18\x02 \x01(\bR\x05bound\x12#\n" +
@@ -1385,13 +1975,15 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\x06reason\x18\x06 \x01(\tR\x06reason\"=\n" +
 	"\rGitHubAccount\x12\x14\n" +
 	"\x05login\x18\x01 \x01(\tR\x05login\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason2\x94\x05\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason2\x84\a\n" +
 	"\rGitHubService\x12j\n" +
 	"\x0fGetGitHubStatus\x12*.directoryroster.v1.GetGitHubStatusRequest\x1a+.directoryroster.v1.GetGitHubStatusResponse\x12s\n" +
 	"\x12BeginGitHubConnect\x12-.directoryroster.v1.BeginGitHubConnectRequest\x1a..directoryroster.v1.BeginGitHubConnectResponse\x12\x91\x01\n" +
 	"\x1cDisconnectGitHubOrganisation\x127.directoryroster.v1.DisconnectGitHubOrganisationRequest\x1a8.directoryroster.v1.DisconnectGitHubOrganisationResponse\x12\x88\x01\n" +
 	"\x19BeginGitHubLinkAppConnect\x124.directoryroster.v1.BeginGitHubLinkAppConnectRequest\x1a5.directoryroster.v1.BeginGitHubLinkAppConnectResponse\x12\x82\x01\n" +
-	"\x17DisconnectGitHubLinkApp\x122.directoryroster.v1.DisconnectGitHubLinkAppRequest\x1a3.directoryroster.v1.DisconnectGitHubLinkAppResponseB\xd9\x01\n" +
+	"\x17DisconnectGitHubLinkApp\x122.directoryroster.v1.DisconnectGitHubLinkAppRequest\x1a3.directoryroster.v1.DisconnectGitHubLinkAppResponse\x12|\n" +
+	"\x15ConfirmGitHubRemovals\x120.directoryroster.v1.ConfirmGitHubRemovalsRequest\x1a1.directoryroster.v1.ConfirmGitHubRemovalsResponse\x12p\n" +
+	"\x11ImportGitHubLinks\x12,.directoryroster.v1.ImportGitHubLinksRequest\x1a-.directoryroster.v1.ImportGitHubLinksResponseB\xd9\x01\n" +
 	"\x16com.directoryroster.v1B\vGithubProtoP\x01ZIgithub.com/truvity/access-roster/gen/directoryroster/v1;directoryrosterv1\xa2\x02\x03DXX\xaa\x02\x12Directoryroster.V1\xca\x02\x12Directoryroster\\V1\xe2\x02\x1eDirectoryroster\\V1\\GPBMetadata\xea\x02\x13Directoryroster::V1b\x06proto3"
 
 var (
@@ -1406,59 +1998,80 @@ func file_directoryroster_v1_github_proto_rawDescGZIP() []byte {
 	return file_directoryroster_v1_github_proto_rawDescData
 }
 
-var file_directoryroster_v1_github_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_directoryroster_v1_github_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_directoryroster_v1_github_proto_goTypes = []any{
-	(*BeginGitHubLinkAppConnectRequest)(nil),     // 0: directoryroster.v1.BeginGitHubLinkAppConnectRequest
-	(*BeginGitHubLinkAppConnectResponse)(nil),    // 1: directoryroster.v1.BeginGitHubLinkAppConnectResponse
-	(*DisconnectGitHubLinkAppRequest)(nil),       // 2: directoryroster.v1.DisconnectGitHubLinkAppRequest
-	(*DisconnectGitHubLinkAppResponse)(nil),      // 3: directoryroster.v1.DisconnectGitHubLinkAppResponse
-	(*BeginGitHubConnectRequest)(nil),            // 4: directoryroster.v1.BeginGitHubConnectRequest
-	(*BeginGitHubConnectResponse)(nil),           // 5: directoryroster.v1.BeginGitHubConnectResponse
-	(*DisconnectGitHubOrganisationRequest)(nil),  // 6: directoryroster.v1.DisconnectGitHubOrganisationRequest
-	(*DisconnectGitHubOrganisationResponse)(nil), // 7: directoryroster.v1.DisconnectGitHubOrganisationResponse
-	(*GetGitHubStatusRequest)(nil),               // 8: directoryroster.v1.GetGitHubStatusRequest
-	(*GetGitHubStatusResponse)(nil),              // 9: directoryroster.v1.GetGitHubStatusResponse
-	(*GitHubLinkApp)(nil),                        // 10: directoryroster.v1.GitHubLinkApp
-	(*GitHubLink)(nil),                           // 11: directoryroster.v1.GitHubLink
-	(*GitHubOrganisation)(nil),                   // 12: directoryroster.v1.GitHubOrganisation
-	(*GitHubConnection)(nil),                     // 13: directoryroster.v1.GitHubConnection
-	(*GitHubTick)(nil),                           // 14: directoryroster.v1.GitHubTick
-	(*GitHubTeamStatus)(nil),                     // 15: directoryroster.v1.GitHubTeamStatus
-	(*GitHubMember)(nil),                         // 16: directoryroster.v1.GitHubMember
-	(*GitHubAccount)(nil),                        // 17: directoryroster.v1.GitHubAccount
-	(*timestamppb.Timestamp)(nil),                // 18: google.protobuf.Timestamp
+	(*ConfirmGitHubRemovalsRequest)(nil),         // 0: directoryroster.v1.ConfirmGitHubRemovalsRequest
+	(*ConfirmGitHubRemovalsResponse)(nil),        // 1: directoryroster.v1.ConfirmGitHubRemovalsResponse
+	(*ImportGitHubLinksRequest)(nil),             // 2: directoryroster.v1.ImportGitHubLinksRequest
+	(*GitHubLinkRecord)(nil),                     // 3: directoryroster.v1.GitHubLinkRecord
+	(*ImportGitHubLinksResponse)(nil),            // 4: directoryroster.v1.ImportGitHubLinksResponse
+	(*BeginGitHubLinkAppConnectRequest)(nil),     // 5: directoryroster.v1.BeginGitHubLinkAppConnectRequest
+	(*BeginGitHubLinkAppConnectResponse)(nil),    // 6: directoryroster.v1.BeginGitHubLinkAppConnectResponse
+	(*DisconnectGitHubLinkAppRequest)(nil),       // 7: directoryroster.v1.DisconnectGitHubLinkAppRequest
+	(*DisconnectGitHubLinkAppResponse)(nil),      // 8: directoryroster.v1.DisconnectGitHubLinkAppResponse
+	(*BeginGitHubConnectRequest)(nil),            // 9: directoryroster.v1.BeginGitHubConnectRequest
+	(*BeginGitHubConnectResponse)(nil),           // 10: directoryroster.v1.BeginGitHubConnectResponse
+	(*DisconnectGitHubOrganisationRequest)(nil),  // 11: directoryroster.v1.DisconnectGitHubOrganisationRequest
+	(*DisconnectGitHubOrganisationResponse)(nil), // 12: directoryroster.v1.DisconnectGitHubOrganisationResponse
+	(*GetGitHubStatusRequest)(nil),               // 13: directoryroster.v1.GetGitHubStatusRequest
+	(*GetGitHubStatusResponse)(nil),              // 14: directoryroster.v1.GetGitHubStatusResponse
+	(*GitHubLinkApp)(nil),                        // 15: directoryroster.v1.GitHubLinkApp
+	(*GitHubLink)(nil),                           // 16: directoryroster.v1.GitHubLink
+	(*GitHubOrganisation)(nil),                   // 17: directoryroster.v1.GitHubOrganisation
+	(*GitHubSeats)(nil),                          // 18: directoryroster.v1.GitHubSeats
+	(*GitHubBreaker)(nil),                        // 19: directoryroster.v1.GitHubBreaker
+	(*GitHubRemovalConfirmation)(nil),            // 20: directoryroster.v1.GitHubRemovalConfirmation
+	(*GitHubConnection)(nil),                     // 21: directoryroster.v1.GitHubConnection
+	(*GitHubTick)(nil),                           // 22: directoryroster.v1.GitHubTick
+	(*GitHubTeamStatus)(nil),                     // 23: directoryroster.v1.GitHubTeamStatus
+	(*GitHubMember)(nil),                         // 24: directoryroster.v1.GitHubMember
+	(*GitHubAccount)(nil),                        // 25: directoryroster.v1.GitHubAccount
+	(*timestamppb.Timestamp)(nil),                // 26: google.protobuf.Timestamp
 }
 var file_directoryroster_v1_github_proto_depIdxs = []int32{
-	12, // 0: directoryroster.v1.GetGitHubStatusResponse.organisations:type_name -> directoryroster.v1.GitHubOrganisation
-	10, // 1: directoryroster.v1.GetGitHubStatusResponse.link_app:type_name -> directoryroster.v1.GitHubLinkApp
-	11, // 2: directoryroster.v1.GetGitHubStatusResponse.links:type_name -> directoryroster.v1.GitHubLink
-	18, // 3: directoryroster.v1.GitHubLinkApp.connected_at:type_name -> google.protobuf.Timestamp
-	18, // 4: directoryroster.v1.GitHubLink.linked_at:type_name -> google.protobuf.Timestamp
-	18, // 5: directoryroster.v1.GitHubLink.checked_at:type_name -> google.protobuf.Timestamp
-	18, // 6: directoryroster.v1.GitHubLink.changed_at:type_name -> google.protobuf.Timestamp
-	14, // 7: directoryroster.v1.GitHubOrganisation.tick:type_name -> directoryroster.v1.GitHubTick
-	16, // 8: directoryroster.v1.GitHubOrganisation.members:type_name -> directoryroster.v1.GitHubMember
-	15, // 9: directoryroster.v1.GitHubOrganisation.teams:type_name -> directoryroster.v1.GitHubTeamStatus
-	17, // 10: directoryroster.v1.GitHubOrganisation.unlinked:type_name -> directoryroster.v1.GitHubAccount
-	13, // 11: directoryroster.v1.GitHubOrganisation.connection:type_name -> directoryroster.v1.GitHubConnection
-	18, // 12: directoryroster.v1.GitHubConnection.connected_at:type_name -> google.protobuf.Timestamp
-	18, // 13: directoryroster.v1.GitHubTick.at:type_name -> google.protobuf.Timestamp
-	16, // 14: directoryroster.v1.GitHubTeamStatus.members:type_name -> directoryroster.v1.GitHubMember
-	8,  // 15: directoryroster.v1.GitHubService.GetGitHubStatus:input_type -> directoryroster.v1.GetGitHubStatusRequest
-	4,  // 16: directoryroster.v1.GitHubService.BeginGitHubConnect:input_type -> directoryroster.v1.BeginGitHubConnectRequest
-	6,  // 17: directoryroster.v1.GitHubService.DisconnectGitHubOrganisation:input_type -> directoryroster.v1.DisconnectGitHubOrganisationRequest
-	0,  // 18: directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect:input_type -> directoryroster.v1.BeginGitHubLinkAppConnectRequest
-	2,  // 19: directoryroster.v1.GitHubService.DisconnectGitHubLinkApp:input_type -> directoryroster.v1.DisconnectGitHubLinkAppRequest
-	9,  // 20: directoryroster.v1.GitHubService.GetGitHubStatus:output_type -> directoryroster.v1.GetGitHubStatusResponse
-	5,  // 21: directoryroster.v1.GitHubService.BeginGitHubConnect:output_type -> directoryroster.v1.BeginGitHubConnectResponse
-	7,  // 22: directoryroster.v1.GitHubService.DisconnectGitHubOrganisation:output_type -> directoryroster.v1.DisconnectGitHubOrganisationResponse
-	1,  // 23: directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect:output_type -> directoryroster.v1.BeginGitHubLinkAppConnectResponse
-	3,  // 24: directoryroster.v1.GitHubService.DisconnectGitHubLinkApp:output_type -> directoryroster.v1.DisconnectGitHubLinkAppResponse
-	20, // [20:25] is the sub-list for method output_type
-	15, // [15:20] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	3,  // 0: directoryroster.v1.ImportGitHubLinksRequest.records:type_name -> directoryroster.v1.GitHubLinkRecord
+	26, // 1: directoryroster.v1.GitHubLinkRecord.approved_at:type_name -> google.protobuf.Timestamp
+	16, // 2: directoryroster.v1.ImportGitHubLinksResponse.imported:type_name -> directoryroster.v1.GitHubLink
+	25, // 3: directoryroster.v1.ImportGitHubLinksResponse.skipped:type_name -> directoryroster.v1.GitHubAccount
+	17, // 4: directoryroster.v1.GetGitHubStatusResponse.organisations:type_name -> directoryroster.v1.GitHubOrganisation
+	15, // 5: directoryroster.v1.GetGitHubStatusResponse.link_app:type_name -> directoryroster.v1.GitHubLinkApp
+	16, // 6: directoryroster.v1.GetGitHubStatusResponse.links:type_name -> directoryroster.v1.GitHubLink
+	26, // 7: directoryroster.v1.GitHubLinkApp.connected_at:type_name -> google.protobuf.Timestamp
+	26, // 8: directoryroster.v1.GitHubLink.linked_at:type_name -> google.protobuf.Timestamp
+	26, // 9: directoryroster.v1.GitHubLink.checked_at:type_name -> google.protobuf.Timestamp
+	26, // 10: directoryroster.v1.GitHubLink.changed_at:type_name -> google.protobuf.Timestamp
+	22, // 11: directoryroster.v1.GitHubOrganisation.tick:type_name -> directoryroster.v1.GitHubTick
+	24, // 12: directoryroster.v1.GitHubOrganisation.members:type_name -> directoryroster.v1.GitHubMember
+	23, // 13: directoryroster.v1.GitHubOrganisation.teams:type_name -> directoryroster.v1.GitHubTeamStatus
+	25, // 14: directoryroster.v1.GitHubOrganisation.unlinked:type_name -> directoryroster.v1.GitHubAccount
+	21, // 15: directoryroster.v1.GitHubOrganisation.connection:type_name -> directoryroster.v1.GitHubConnection
+	25, // 16: directoryroster.v1.GitHubOrganisation.outside_collaborators:type_name -> directoryroster.v1.GitHubAccount
+	18, // 17: directoryroster.v1.GitHubOrganisation.seats:type_name -> directoryroster.v1.GitHubSeats
+	19, // 18: directoryroster.v1.GitHubOrganisation.breaker:type_name -> directoryroster.v1.GitHubBreaker
+	20, // 19: directoryroster.v1.GitHubOrganisation.removal_confirmation:type_name -> directoryroster.v1.GitHubRemovalConfirmation
+	26, // 20: directoryroster.v1.GitHubRemovalConfirmation.confirmed_at:type_name -> google.protobuf.Timestamp
+	26, // 21: directoryroster.v1.GitHubConnection.connected_at:type_name -> google.protobuf.Timestamp
+	26, // 22: directoryroster.v1.GitHubTick.at:type_name -> google.protobuf.Timestamp
+	24, // 23: directoryroster.v1.GitHubTeamStatus.members:type_name -> directoryroster.v1.GitHubMember
+	13, // 24: directoryroster.v1.GitHubService.GetGitHubStatus:input_type -> directoryroster.v1.GetGitHubStatusRequest
+	9,  // 25: directoryroster.v1.GitHubService.BeginGitHubConnect:input_type -> directoryroster.v1.BeginGitHubConnectRequest
+	11, // 26: directoryroster.v1.GitHubService.DisconnectGitHubOrganisation:input_type -> directoryroster.v1.DisconnectGitHubOrganisationRequest
+	5,  // 27: directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect:input_type -> directoryroster.v1.BeginGitHubLinkAppConnectRequest
+	7,  // 28: directoryroster.v1.GitHubService.DisconnectGitHubLinkApp:input_type -> directoryroster.v1.DisconnectGitHubLinkAppRequest
+	0,  // 29: directoryroster.v1.GitHubService.ConfirmGitHubRemovals:input_type -> directoryroster.v1.ConfirmGitHubRemovalsRequest
+	2,  // 30: directoryroster.v1.GitHubService.ImportGitHubLinks:input_type -> directoryroster.v1.ImportGitHubLinksRequest
+	14, // 31: directoryroster.v1.GitHubService.GetGitHubStatus:output_type -> directoryroster.v1.GetGitHubStatusResponse
+	10, // 32: directoryroster.v1.GitHubService.BeginGitHubConnect:output_type -> directoryroster.v1.BeginGitHubConnectResponse
+	12, // 33: directoryroster.v1.GitHubService.DisconnectGitHubOrganisation:output_type -> directoryroster.v1.DisconnectGitHubOrganisationResponse
+	6,  // 34: directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect:output_type -> directoryroster.v1.BeginGitHubLinkAppConnectResponse
+	8,  // 35: directoryroster.v1.GitHubService.DisconnectGitHubLinkApp:output_type -> directoryroster.v1.DisconnectGitHubLinkAppResponse
+	1,  // 36: directoryroster.v1.GitHubService.ConfirmGitHubRemovals:output_type -> directoryroster.v1.ConfirmGitHubRemovalsResponse
+	4,  // 37: directoryroster.v1.GitHubService.ImportGitHubLinks:output_type -> directoryroster.v1.ImportGitHubLinksResponse
+	31, // [31:38] is the sub-list for method output_type
+	24, // [24:31] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_github_proto_init() }
@@ -1472,7 +2085,7 @@ func file_directoryroster_v1_github_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_github_proto_rawDesc), len(file_directoryroster_v1_github_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

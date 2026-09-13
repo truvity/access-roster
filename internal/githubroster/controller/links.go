@@ -21,6 +21,7 @@ import (
 type LinkStore interface {
 	List(ctx context.Context) ([]link.Link, error)
 	Update(ctx context.Context, changed []link.Link) ([]link.Link, error)
+	Adopt(ctx context.Context, candidates []link.Link) ([]link.Link, map[int64]string, error)
 }
 
 // refreshAhead is how long before a person's token expires it is renewed.
@@ -56,7 +57,9 @@ func (c *Controller) checkLinks(ctx context.Context) ([]reconcile.Link, error) {
 		var changed []link.Link
 		var events []*directoryrosterv1.AuditEvent
 		for i := range links {
-			if links[i].State != link.StateLinked {
+			// Only a self-link holds tokens to check with; a matched or
+			// imported link stands as it was made.
+			if links[i].State != link.StateLinked || !links[i].Checked() {
 				continue
 			}
 			checked, event := c.checkLink(ctx, credential, links[i])
@@ -76,14 +79,15 @@ func (c *Controller) checkLinks(ctx context.Context) ([]reconcile.Link, error) {
 		c.report(ctx, events)
 	}
 
+	c.metrics.recordLinks(ctx, links)
 	var out []reconcile.Link
 	for k := range links {
 		l := &links[k]
 		switch {
 		case l.Active():
-			out = append(out, reconcile.Link{ID: l.ID, Login: l.Login, Emails: l.Emails})
+			out = append(out, reconcile.Link{ID: l.ID, Login: l.Login, Emails: l.Emails, LinkedAt: l.LinkedAt})
 		case l.State == link.StateLost:
-			out = append(out, reconcile.Link{ID: l.ID, Login: l.Login, Emails: l.Emails, Lost: true, Reason: l.Reason})
+			out = append(out, reconcile.Link{ID: l.ID, Login: l.Login, Emails: l.Emails, Lost: true, Reason: l.Reason, LinkedAt: l.LinkedAt})
 		}
 	}
 	return out, nil
@@ -162,6 +166,7 @@ func (c *Controller) checkLink(ctx context.Context, credential link.AppCredentia
 	case len(kept) < len(l.Emails):
 		dropped := slices.DeleteFunc(slices.Clone(l.Emails), func(email string) bool { return slices.Contains(kept, email) })
 		l.Emails, l.ChangedAt = kept, now
+		c.metrics.recordLinkChange(ctx, "narrowed")
 		return l, c.linkEvent("github.link.narrowed", l, "no longer verified on the account: "+strings.Join(dropped, ", "))
 	}
 	return l, nil
@@ -221,12 +226,14 @@ func (c *Controller) refresh(
 func (c *Controller) lose(l link.Link, now time.Time, reason string) (link.Link, *directoryrosterv1.AuditEvent) {
 	l.State, l.Reason, l.ChangedAt, l.CheckedAt = link.StateLost, reason, now, now
 	l.Forget()
+	c.metrics.recordLinkChange(context.Background(), "lost")
 	return l, c.linkEvent("github.link.lost", l, reason)
 }
 
 func (c *Controller) unverifiable(l link.Link, now time.Time, reason string) (link.Link, *directoryrosterv1.AuditEvent) {
 	l.State, l.Reason, l.ChangedAt, l.CheckedAt = link.StateUnverifiable, reason, now, now
 	l.Forget()
+	c.metrics.recordLinkChange(context.Background(), "unverifiable")
 	return l, c.linkEvent("github.link.unverifiable", l, reason)
 }
 

@@ -43,16 +43,18 @@ func fakeGitHub(t *testing.T, mux *http.ServeMux) {
 	t.Cleanup(func() { githubapp.APIBase, githubapp.WebBase = api, web })
 }
 
-// The App the controller acts through: private, one permission, no
-// webhook — and a name GitHub will accept.
-func TestTheManifestAsksForOnePermissionAndNoWebhook(t *testing.T) {
+// The App the controller acts through: private, members to act with and
+// organisation administration read-only to count seats, no webhook — and a
+// name GitHub will accept.
+func TestTheManifestAsksForMembersAndSeatsAndNoWebhook(t *testing.T) {
 	manifest := githubapp.NewManifest("truvity", "https://access.example/console/",
 		"https://access.example/connect/github/callback", "https://access.example/connect/github/setup")
 	if manifest.Public {
 		t.Error("the App is public: anybody could install it on anything")
 	}
-	if len(manifest.DefaultPermissions) != 1 || manifest.DefaultPermissions["members"] != "write" {
-		t.Errorf("permissions = %v, want members:write and nothing else", manifest.DefaultPermissions)
+	if len(manifest.DefaultPermissions) != 2 || manifest.DefaultPermissions["members"] != "write" ||
+		manifest.DefaultPermissions["organization_administration"] != "read" {
+		t.Errorf("permissions = %v, want members:write and organization_administration:read, nothing else", manifest.DefaultPermissions)
 	}
 	if manifest.HookAttributes.Active {
 		t.Error("the webhook is active: nothing of ours should need to be reachable from GitHub")

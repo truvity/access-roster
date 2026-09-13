@@ -48,6 +48,12 @@ const (
 	// GitHubServiceDisconnectGitHubLinkAppProcedure is the fully-qualified name of the GitHubService's
 	// DisconnectGitHubLinkApp RPC.
 	GitHubServiceDisconnectGitHubLinkAppProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubLinkApp"
+	// GitHubServiceConfirmGitHubRemovalsProcedure is the fully-qualified name of the GitHubService's
+	// ConfirmGitHubRemovals RPC.
+	GitHubServiceConfirmGitHubRemovalsProcedure = "/directoryroster.v1.GitHubService/ConfirmGitHubRemovals"
+	// GitHubServiceImportGitHubLinksProcedure is the fully-qualified name of the GitHubService's
+	// ImportGitHubLinks RPC.
+	GitHubServiceImportGitHubLinksProcedure = "/directoryroster.v1.GitHubService/ImportGitHubLinks"
 )
 
 // GitHubServiceClient is a client for the directoryroster.v1.GitHubService service.
@@ -79,6 +85,19 @@ type GitHubServiceClient interface {
 	// removes nobody and adds nobody until each person links again.
 	// Operator.
 	DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error)
+	// ConfirmGitHubRemovals lets a pass that would remove more than half an
+	// organisation go ahead — for exactly the set of removals the operator
+	// saw, named by its fingerprint in the organisation's report. A
+	// different set needs confirming again; a confirmation lapses after a
+	// day. Operator.
+	ConfirmGitHubRemovals(context.Context, *connect.Request[v1.ConfirmGitHubRemovalsRequest]) (*connect.Response[v1.ConfirmGitHubRemovalsResponse], error)
+	// ImportGitHubLinks adopts pairings of a GitHub login and work addresses
+	// that somebody approved elsewhere — github-roster 0.x kept them. Each
+	// becomes a link only when the pairing was approved, an address is a
+	// live account the directory vouches for, and the account is a member of
+	// a connected organisation; a link the person made is never displaced.
+	// Operator.
+	ImportGitHubLinks(context.Context, *connect.Request[v1.ImportGitHubLinksRequest]) (*connect.Response[v1.ImportGitHubLinksResponse], error)
 }
 
 // NewGitHubServiceClient constructs a client for the directoryroster.v1.GitHubService service. By
@@ -122,6 +141,18 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubLinkApp")),
 			connect.WithClientOptions(opts...),
 		),
+		confirmGitHubRemovals: connect.NewClient[v1.ConfirmGitHubRemovalsRequest, v1.ConfirmGitHubRemovalsResponse](
+			httpClient,
+			baseURL+GitHubServiceConfirmGitHubRemovalsProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("ConfirmGitHubRemovals")),
+			connect.WithClientOptions(opts...),
+		),
+		importGitHubLinks: connect.NewClient[v1.ImportGitHubLinksRequest, v1.ImportGitHubLinksResponse](
+			httpClient,
+			baseURL+GitHubServiceImportGitHubLinksProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("ImportGitHubLinks")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -132,6 +163,8 @@ type gitHubServiceClient struct {
 	disconnectGitHubOrganisation *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
 	beginGitHubLinkAppConnect    *connect.Client[v1.BeginGitHubLinkAppConnectRequest, v1.BeginGitHubLinkAppConnectResponse]
 	disconnectGitHubLinkApp      *connect.Client[v1.DisconnectGitHubLinkAppRequest, v1.DisconnectGitHubLinkAppResponse]
+	confirmGitHubRemovals        *connect.Client[v1.ConfirmGitHubRemovalsRequest, v1.ConfirmGitHubRemovalsResponse]
+	importGitHubLinks            *connect.Client[v1.ImportGitHubLinksRequest, v1.ImportGitHubLinksResponse]
 }
 
 // GetGitHubStatus calls directoryroster.v1.GitHubService.GetGitHubStatus.
@@ -157,6 +190,16 @@ func (c *gitHubServiceClient) BeginGitHubLinkAppConnect(ctx context.Context, req
 // DisconnectGitHubLinkApp calls directoryroster.v1.GitHubService.DisconnectGitHubLinkApp.
 func (c *gitHubServiceClient) DisconnectGitHubLinkApp(ctx context.Context, req *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error) {
 	return c.disconnectGitHubLinkApp.CallUnary(ctx, req)
+}
+
+// ConfirmGitHubRemovals calls directoryroster.v1.GitHubService.ConfirmGitHubRemovals.
+func (c *gitHubServiceClient) ConfirmGitHubRemovals(ctx context.Context, req *connect.Request[v1.ConfirmGitHubRemovalsRequest]) (*connect.Response[v1.ConfirmGitHubRemovalsResponse], error) {
+	return c.confirmGitHubRemovals.CallUnary(ctx, req)
+}
+
+// ImportGitHubLinks calls directoryroster.v1.GitHubService.ImportGitHubLinks.
+func (c *gitHubServiceClient) ImportGitHubLinks(ctx context.Context, req *connect.Request[v1.ImportGitHubLinksRequest]) (*connect.Response[v1.ImportGitHubLinksResponse], error) {
+	return c.importGitHubLinks.CallUnary(ctx, req)
 }
 
 // GitHubServiceHandler is an implementation of the directoryroster.v1.GitHubService service.
@@ -188,6 +231,19 @@ type GitHubServiceHandler interface {
 	// removes nobody and adds nobody until each person links again.
 	// Operator.
 	DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error)
+	// ConfirmGitHubRemovals lets a pass that would remove more than half an
+	// organisation go ahead — for exactly the set of removals the operator
+	// saw, named by its fingerprint in the organisation's report. A
+	// different set needs confirming again; a confirmation lapses after a
+	// day. Operator.
+	ConfirmGitHubRemovals(context.Context, *connect.Request[v1.ConfirmGitHubRemovalsRequest]) (*connect.Response[v1.ConfirmGitHubRemovalsResponse], error)
+	// ImportGitHubLinks adopts pairings of a GitHub login and work addresses
+	// that somebody approved elsewhere — github-roster 0.x kept them. Each
+	// becomes a link only when the pairing was approved, an address is a
+	// live account the directory vouches for, and the account is a member of
+	// a connected organisation; a link the person made is never displaced.
+	// Operator.
+	ImportGitHubLinks(context.Context, *connect.Request[v1.ImportGitHubLinksRequest]) (*connect.Response[v1.ImportGitHubLinksResponse], error)
 }
 
 // NewGitHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -227,6 +283,18 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubLinkApp")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gitHubServiceConfirmGitHubRemovalsHandler := connect.NewUnaryHandler(
+		GitHubServiceConfirmGitHubRemovalsProcedure,
+		svc.ConfirmGitHubRemovals,
+		connect.WithSchema(gitHubServiceMethods.ByName("ConfirmGitHubRemovals")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceImportGitHubLinksHandler := connect.NewUnaryHandler(
+		GitHubServiceImportGitHubLinksProcedure,
+		svc.ImportGitHubLinks,
+		connect.WithSchema(gitHubServiceMethods.ByName("ImportGitHubLinks")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/directoryroster.v1.GitHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GitHubServiceGetGitHubStatusProcedure:
@@ -239,6 +307,10 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 			gitHubServiceBeginGitHubLinkAppConnectHandler.ServeHTTP(w, r)
 		case GitHubServiceDisconnectGitHubLinkAppProcedure:
 			gitHubServiceDisconnectGitHubLinkAppHandler.ServeHTTP(w, r)
+		case GitHubServiceConfirmGitHubRemovalsProcedure:
+			gitHubServiceConfirmGitHubRemovalsHandler.ServeHTTP(w, r)
+		case GitHubServiceImportGitHubLinksProcedure:
+			gitHubServiceImportGitHubLinksHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -266,4 +338,12 @@ func (UnimplementedGitHubServiceHandler) BeginGitHubLinkAppConnect(context.Conte
 
 func (UnimplementedGitHubServiceHandler) DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.DisconnectGitHubLinkApp is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) ConfirmGitHubRemovals(context.Context, *connect.Request[v1.ConfirmGitHubRemovalsRequest]) (*connect.Response[v1.ConfirmGitHubRemovalsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.ConfirmGitHubRemovals is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) ImportGitHubLinks(context.Context, *connect.Request[v1.ImportGitHubLinksRequest]) (*connect.Response[v1.ImportGitHubLinksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.ImportGitHubLinks is not implemented"))
 }

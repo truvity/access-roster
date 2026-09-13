@@ -108,6 +108,9 @@ export type StateKind =
   | "invited"
   | "leaving"
   | "held"
+  | "retrying"
+  | "ignored"
+  | "reported"
   | "in-sync"
   | "applied"
   | "dry-run"
@@ -153,7 +156,10 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   pending: { label: "pending", color: "warning", title: "Should be here and is not yet. The action says what the controller does next." },
   invited: { label: "invited", color: "secondary", title: "An organisation invitation to their account is waiting to be accepted." },
   leaving: { label: "leaving", color: "warning", filled: true, title: "Here, and no group the policy binds holds them any more." },
-  held: { label: "held", color: "warning", filled: true, title: "Something is to be done and is not being done. The reason says why." },
+  held: { label: "needs you", color: "warning", filled: true, title: "Something is to be done and waits for a person: a seat, a confirmation, a team to create. The reason says what." },
+  retrying: { label: "retrying", color: "default", title: "Could not be done this pass for a reason that clears on its own; tried again next pass. The reason says why." },
+  ignored: { label: "ignored invitations", color: "default", title: "Linked an account and let two invitations expire. Invited again when they link again." },
+  reported: { label: "owner", color: "secondary", title: "An organisation owner. Owners and billing are managed outside: reported, never changed." },
   "in-sync": { label: "in sync", color: "success", title: "The last pass found nothing to do." },
   applied: { label: "applied", color: "success", title: "The last pass made changes." },
   "dry-run": { label: "dry run", color: "secondary", title: "The organisation is disabled: the last pass derived everything and changed nothing. The states below say what it would do." },

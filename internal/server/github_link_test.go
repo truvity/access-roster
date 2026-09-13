@@ -88,6 +88,16 @@ func (m *memoryLinks) Claim(_ context.Context, claimed link.Link, now time.Time)
 	return written, nil
 }
 
+func (m *memoryLinks) Adopt(_ context.Context, candidates []link.Link) ([]link.Link, map[int64]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	adopted, skipped := link.Adopt(slices.Collect(maps.Values(m.byID)), candidates)
+	for i := range adopted {
+		m.byID[adopted[i].ID] = adopted[i]
+	}
+	return adopted, skipped, nil
+}
+
 func (m *memoryLinks) Invalidate(_ context.Context, reason string, now time.Time) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

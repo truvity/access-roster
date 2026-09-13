@@ -181,6 +181,26 @@ If a pass fails, the section says why — an organisation not connected,
 an App GitHub refuses, a console that did not answer. A failed pass changes
 nothing.
 
+**Needs you on a GitHub organisation:**
+
+- *Not enough seats* — buy the seats the banner names in the organisation's
+  billing on GitHub. Nobody is invited past the last free seat.
+- *Seats cannot be counted* — the organisation's App lacks organisation
+  administration (read). An owner adds it in the App's settings on GitHub
+  and accepts it for the installation. An App created from 1.5.0 on asks
+  for it already.
+- *Removals held* — more than half the organisation would leave in one
+  pass. Read the removals; if they are right, press **Confirm**
+  (`github.removals.confirmed` in the audit stream). If they are a policy
+  mistake, fix the policy: the set changes and the confirmation would not
+  cover it anyway.
+
+**Importing github-roster 0.x pairings.** Once, from a machine that can
+read `/roster/people/*` in SSM: build `records[]{login, emails[],
+approved_by, approved_at}` and call `ImportGitHubLinks` with `origin:
+"github-roster 0.x"` as an operator. Every skipped record comes back with
+its reason; imported ones show as *imported* on the GitHub page.
+
 **A link that is `unverifiable`** can no longer be checked and was not
 said by GitHub to be gone: its token pair was lost in an interrupted
 renewal, or the link App was replaced. It adds and removes nobody. Ask

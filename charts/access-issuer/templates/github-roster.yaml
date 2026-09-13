@@ -117,6 +117,10 @@ spec:
               value: {{ join "," .Values.githubRoster.actsIn | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
+{{- with .Values.telemetry.otlpEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ . | quote }}
+{{- end }}
           volumeMounts:
             - name: policy
               mountPath: /var/run/github-roster/policy

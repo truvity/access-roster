@@ -12,6 +12,7 @@ import (
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
+	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/policy"
 )
@@ -71,6 +72,15 @@ func (c *Console) GetGitHubStatus(
 		}
 	}
 
+	confirmations := map[string]connection.Confirmation{}
+	if c.deps.GitHubConfirmations != nil {
+		read, err := c.deps.GitHubConfirmations.Confirmations(ctx)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeUnavailable, err)
+		}
+		confirmations = read
+	}
+
 	set := c.deps.Authorizer.Policy()
 	bound := boundOrganisations(set)
 	seen := map[string]bool{}
@@ -88,6 +98,11 @@ func (c *Console) GetGitHubStatus(
 		row := organisationProto(org, bound[org], reports[org])
 		if record, connected := connections[org]; connected {
 			row.Connection = connectionProto(record)
+		}
+		if confirmation, ok := confirmations[org]; ok && confirmation.Current(time.Now()) {
+			row.RemovalConfirmation = &directoryrosterv1.GitHubRemovalConfirmation{
+				Fingerprint: confirmation.Fingerprint, ConfirmedBy: confirmation.By, ConfirmedAt: timestampOf(confirmation.At),
+			}
 		}
 		out.Organisations = append(out.Organisations, row)
 	}
@@ -122,12 +137,23 @@ func (c *Console) linkStatus(ctx context.Context, out *directoryrosterv1.GetGitH
 	}
 	for k := range links {
 		l := links[k].Public()
-		out.Links = append(out.Links, &directoryrosterv1.GitHubLink{
-			AccountId: l.ID, Login: l.Login, Emails: l.Emails, State: string(l.State), Reason: l.Reason,
-			LinkedAt: timestampOf(l.LinkedAt), CheckedAt: timestampOf(l.CheckedAt), ChangedAt: timestampOf(l.ChangedAt),
-		})
+		out.Links = append(out.Links, linkProto(&l))
 	}
 	return nil
+}
+
+// linkProto is a link as the page shows it. Pass it a Public link: this
+// copies no token, and the caller never hands it one either.
+func linkProto(l *link.Link) *directoryrosterv1.GitHubLink {
+	source := l.Source
+	if source == "" {
+		source = link.SourceSelf
+	}
+	return &directoryrosterv1.GitHubLink{
+		AccountId: l.ID, Login: l.Login, Emails: l.Emails, State: string(l.State), Reason: l.Reason,
+		LinkedAt: timestampOf(l.LinkedAt), CheckedAt: timestampOf(l.CheckedAt), ChangedAt: timestampOf(l.ChangedAt),
+		Source: string(source), Note: l.Note,
+	}
 }
 
 // timestampOf is a time for the page, absent when it never happened.
@@ -204,11 +230,12 @@ func organisationProto(org string, bound *binding, document string) *directoryro
 	if out.GetReportError() == "" && out.GetReported() {
 		out.Enabled = report.Enabled
 		out.Tick = &directoryrosterv1.GitHubTick{
-			Outcome: string(report.Tick.Outcome),
-			Error:   report.Tick.Error,
-			Changes: int32(report.Tick.Changes), //nolint:gosec // a tick's action count never overflows
-			Held:    int32(report.Tick.Held),    //nolint:gosec // nor its held count
-			Waiting: int32(report.Tick.Waiting), //nolint:gosec // nor its waiting count
+			Outcome:  string(report.Tick.Outcome),
+			Error:    report.Tick.Error,
+			Changes:  int32(report.Tick.Changes),  //nolint:gosec // a tick's action count never overflows
+			Held:     int32(report.Tick.Held),     //nolint:gosec // nor its held count
+			Waiting:  int32(report.Tick.Waiting),  //nolint:gosec // nor its waiting count
+			Retrying: int32(report.Tick.Retrying), //nolint:gosec // nor its retrying count
 		}
 		if !report.Tick.At.IsZero() {
 			out.Tick.At = timestamppb.New(report.Tick.At)
@@ -218,6 +245,23 @@ func organisationProto(org string, bound *binding, document string) *directoryro
 			out.Unlinked = append(out.Unlinked, &directoryrosterv1.GitHubAccount{
 				Login: account.Login, Reason: account.Reason,
 			})
+		}
+		for _, account := range report.OutsideCollaborators {
+			out.OutsideCollaborators = append(out.OutsideCollaborators, &directoryrosterv1.GitHubAccount{
+				Login: account.Login, Reason: account.Reason,
+			})
+		}
+		if seats := report.Seats; seats != nil {
+			out.Seats = &directoryrosterv1.GitHubSeats{
+				Known: seats.Known, Total: int32(seats.Total), Filled: int32(seats.Filled), //nolint:gosec // seat counts are small
+				Pending: int32(seats.Pending), Free: int32(seats.Free), Short: int32(seats.Short), //nolint:gosec // likewise
+			}
+		}
+		if breaker := report.Breaker; breaker != nil {
+			out.Breaker = &directoryrosterv1.GitHubBreaker{
+				Affected: int32(breaker.Affected), Members: int32(breaker.Members), //nolint:gosec // member counts are small
+				Fingerprint: breaker.Fingerprint, Confirmed: breaker.Confirmed,
+			}
 		}
 	}
 

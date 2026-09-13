@@ -67,3 +67,26 @@ func TestClaimMovesAddresses(t *testing.T) {
 		t.Errorf("both = %+v, want narrowed to trustform", both)
 	}
 }
+
+// Adopting never displaces a link the person made, and never lets two
+// accounts prove one address.
+func TestAdoptNeverDisplacesALink(t *testing.T) {
+	t.Parallel()
+	existing := []link.Link{{ID: 1, Login: "ada-gh", Emails: []string{"ada@truvity.com"}, State: link.StateLinked}}
+	candidates := []link.Link{
+		{ID: 1, Login: "ada-gh", Emails: []string{"ada@truvity.com"}, Source: link.SourceImported},
+		{ID: 2, Login: "ada-old", Emails: []string{"ada@truvity.com"}, Source: link.SourceImported},
+		{ID: 3, Login: "bob", Emails: []string{"bob@truvity.com", "ada@truvity.com"}, Source: link.SourceProfile, AccessToken: "never"},
+	}
+	adopted, skipped := link.Adopt(existing, candidates)
+	if len(adopted) != 1 || adopted[0].ID != 3 || len(adopted[0].Emails) != 1 || adopted[0].Emails[0] != "bob@truvity.com" ||
+		adopted[0].AccessToken != "" || adopted[0].State != link.StateLinked {
+		t.Errorf("adopted = %+v, want bob alone, with bob@ and no token", adopted)
+	}
+	if !strings.Contains(skipped[1], "already linked") || !strings.Contains(skipped[2], "@ada-gh") {
+		t.Errorf("skipped = %v", skipped)
+	}
+	if !adopted[0].Active() || adopted[0].Checked() {
+		t.Error("an adopted link must count and must not be re-checked on GitHub")
+	}
+}

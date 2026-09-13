@@ -109,3 +109,49 @@ func DecodeCredential(raw []byte) (Credential, error) {
 	}
 	return c, nil
 }
+
+// ConfirmationTTL is how long an operator's confirmation of a removal set
+// holds. Long enough for the next pass; short enough that nobody finds a
+// forgotten confirmation doing something weeks later.
+const ConfirmationTTL = 24 * time.Hour
+
+// ConfirmationKey is where an organisation's confirmation is kept, beside
+// its record. A leading underscore is never an organisation's login.
+func ConfirmationKey(org string) string { return "_confirm." + org + ".json" }
+
+// Confirmation is an operator's confirmation that one set of removals, over
+// the limit, may go ahead.
+type Confirmation struct {
+	Version     int       `json:"version"`
+	Org         string    `json:"org"`
+	Fingerprint string    `json:"fingerprint"`
+	By          string    `json:"by"`
+	At          time.Time `json:"at"`
+}
+
+// Current reports whether the confirmation still holds at now.
+func (c Confirmation) Current(now time.Time) bool {
+	return c.Fingerprint != "" && now.Sub(c.At) < ConfirmationTTL
+}
+
+// EncodeConfirmation writes a confirmation.
+func EncodeConfirmation(c Confirmation) (string, error) {
+	if !status.ValidOrg(c.Org) || c.Fingerprint == "" || c.By == "" {
+		return "", errors.New("connection: a confirmation needs an organisation, a fingerprint and who confirmed")
+	}
+	c.Version = Version
+	raw, err := json.Marshal(c)
+	return string(raw), err
+}
+
+// DecodeConfirmation reads a confirmation.
+func DecodeConfirmation(raw string) (Confirmation, error) {
+	var c Confirmation
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
+		return Confirmation{}, fmt.Errorf("connection: decode a confirmation: %w", err)
+	}
+	if c.Version != Version {
+		return Confirmation{}, fmt.Errorf("%w: %d", ErrVersion, c.Version)
+	}
+	return c, nil
+}
