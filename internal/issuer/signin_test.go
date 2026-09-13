@@ -19,8 +19,8 @@ type stubPending struct {
 	asks issuer.Pending
 }
 
-func (s stubPending) Pending(string) (issuer.Pending, error)      { return s.asks, nil }
-func (s stubPending) Complete(string, issuer.Authenticated) error { return nil }
+func (s stubPending) Pending(string) (issuer.Pending, error)                       { return s.asks, nil }
+func (s stubPending) Complete(context.Context, string, issuer.Authenticated) error { return nil }
 
 // signInHandlerWith is signInHandler with a pending request to answer.
 func signInHandlerWith(t *testing.T, sso *issuer.SSO, pending stubPending) http.Handler {

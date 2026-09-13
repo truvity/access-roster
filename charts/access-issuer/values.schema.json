@@ -359,6 +359,10 @@
           "type": "integer",
           "minimum": 1,
           "description": "The in-memory trail's cap, used only without a bucket."
+        },
+        "trustForwardedFor": {
+          "type": "boolean",
+          "description": "Take an event's client address from the first X-Forwarded-For hop. Only behind a gateway that replaces that header."
         }
       }
     },

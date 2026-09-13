@@ -87,7 +87,7 @@ type Pending struct {
 // Completer is the part of the storage a sign-in finishes against: an
 // authorization request waiting for somebody to be established.
 type Completer interface {
-	Complete(id string, who Authenticated) error
+	Complete(ctx context.Context, id string, who Authenticated) error
 	Pending(id string) (Pending, error)
 }
 
@@ -520,8 +520,15 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = s.deps.Storage.Complete(request, s.established(w, r, subject, RecoveryHow)); err != nil {
-		if s.refuseUnentitled(w, r, err, request) {
+	who := s.established(w, r, subject, RecoveryHow)
+	if err = s.deps.Storage.Complete(r.Context(), request, who); err != nil {
+		if errors.Is(err, ErrUnaudited) {
+			// The browser session this recovery began goes with it: a
+			// session that never had its record is not one to sign in
+			// from silently later.
+			s.unestablish(w, r, who)
+		}
+		if s.refuseUnentitled(w, r, err, request) || s.refuseUnaudited(w, r, err) {
 			return
 		}
 
@@ -586,7 +593,7 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = s.deps.Storage.Complete(request, s.established(w, r, email, provider.Kind())); err != nil {
+	if err = s.deps.Storage.Complete(r.Context(), request, s.established(w, r, email, provider.Kind())); err != nil {
 		if s.refuseUnentitled(w, r, err, request) {
 			return
 		}
@@ -838,7 +845,7 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 		}
 	}
 
-	if err = s.deps.Storage.Complete(request, Authenticated{
+	if err = s.deps.Storage.Complete(r.Context(), request, Authenticated{
 		Subject:  session.Identity,
 		AuthTime: session.AuthTime,
 		SSO:      session.ID,
@@ -850,7 +857,7 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 		// TRUE because it is answered, not because it succeeded: falling
 		// through would show a login page to somebody already signed in,
 		// who would sign in again and be refused again.
-		return s.refuseUnentitled(w, r, err, request)
+		return s.refuseUnentitled(w, r, err, request) || s.refuseUnaudited(w, r, err)
 	}
 
 	s.deps.Log.InfoContext(r.Context(), "signed in from an existing browser session",
@@ -892,6 +899,38 @@ func (s *signIn) refuseUnentitled(w http.ResponseWriter, r *http.Request, err er
 	Ask whoever administers access to grant it.</p>`)
 
 	return true
+}
+
+// refuseUnaudited tells somebody recovering that the sign-in is refused
+// because its record could not be written, and reports whether that is
+// what happened.
+//
+// Said plainly, with a 503, because it is the one refusal that is about
+// the service rather than the person: the proof was good, and the operator
+// holding it needs to know to look at the audit bucket, not at their
+// token.
+func (s *signIn) refuseUnaudited(w http.ResponseWriter, r *http.Request, err error) bool {
+	if !errors.Is(err, ErrUnaudited) {
+		return false
+	}
+	s.deps.log().ErrorContext(r.Context(), "recovery refused: the audit trail could not be written",
+		"error", logsafe.Error(err))
+	_ = writePage(w, http.StatusServiceUnavailable, "Recovery is refused: the audit trail could not be written",
+		`<p>Your proof was accepted, but a recovery sign-in never happens without its audit record, and that record could not be written.</p>
+	<p class="note">Check that this service can write to its audit bucket, then try again.</p>`)
+	return true
+}
+
+// unestablish ends the browser session [signIn.established] began, and
+// takes its cookie back.
+func (s *signIn) unestablish(w http.ResponseWriter, r *http.Request, who Authenticated) {
+	if s.deps.SSO == nil || who.SSO == "" {
+		return
+	}
+	if err := s.deps.SSO.End(r.Context(), who.SSO); err != nil {
+		s.deps.log().WarnContext(r.Context(), "a refused recovery's browser session could not be ended", "error", logsafe.Error(err))
+	}
+	http.SetCookie(w, s.deps.SSO.Cookie("", s.deps.Secure))
 }
 
 // established records a fresh authentication as a browser session and

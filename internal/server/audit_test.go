@@ -2,8 +2,8 @@ package server
 
 import (
 	"context"
-	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -11,21 +11,25 @@ import (
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/audit/sinkrpc"
 	"github.com/truvity/access-roster/policy"
 )
 
-func auditConsole(t *testing.T) (*Console, *audit.Memory) {
+// auditConsole is a console recording into the in-memory writer, which is
+// what the test reads back.
+func auditConsole(t *testing.T) (*Console, *audit.MemoryWriter) {
 	t.Helper()
-	store := audit.NewMemory(100)
+	writer := audit.NewMemoryWriter(100)
+	sink := sinkrpc.InProcess(writer)
 	console := githubConsole(t, nil)
-	console.deps.AuditStore = store
-	console.deps.Audit = audit.NewLog(slog.New(slog.NewTextHandler(io.Discard, nil)), store)
-	return console, store
+	console.deps.AuditSink = sink
+	console.deps.Audit = audit.NewLog(slog.New(slog.DiscardHandler), sink, "test")
+	return console, writer
 }
 
 func reporter(groups ...string) context.Context {
 	return WithIdentity(context.Background(), access.Identity{
-		Subject: "kernel:k8s:access-issuer:github-roster",
+		Subject: "cluster:k8s:access-issuer:github-roster",
 		Source:  access.SourceWorkload,
 		Groups:  groups,
 	})
@@ -49,11 +53,11 @@ func TestAReportIsStampedWithTheVerifiedReporter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordAuditEvents: %v", err)
 	}
-	events, _, _ := store.List(context.Background(), audit.Query{})
+	events := store.Events()
 	if len(events) != 1 {
 		t.Fatalf("stored = %+v", events)
 	}
-	if events[0].Reporter != "kernel:k8s:access-issuer:github-roster" || events[0].At.IsZero() || events[0].Outcome != audit.OutcomeOK {
+	if events[0].Reporter != "cluster:k8s:access-issuer:github-roster" || events[0].At.IsZero() || events[0].Outcome != audit.OutcomeOK {
 		t.Errorf("event = %+v, want the verified reporter, an arrival time and ok", events[0])
 	}
 
@@ -75,7 +79,7 @@ func TestAReportIsStampedWithTheVerifiedReporter(t *testing.T) {
 	); err == nil {
 		t.Error("a batch with a forged event was accepted")
 	}
-	if events, _, _ = store.List(context.Background(), audit.Query{}); len(events) != 1 {
+	if events = store.Events(); len(events) != 1 {
 		t.Errorf("a refused batch left %d events, want only the first report's one", len(events))
 	}
 }
@@ -104,8 +108,8 @@ func TestOnlyAWorkloadInTheReportersGroupMayReport(t *testing.T) {
 // The stream names every sign-in, so reading it is an operator's.
 func TestReadingTheAuditStreamNeedsAnOperator(t *testing.T) {
 	t.Parallel()
-	console, store := auditConsole(t)
-	_, _ = store.Append(context.Background(), audit.Event{Source: "issuer", Kind: "sign-in", Subject: "ada@north.example"})
+	console, _ := auditConsole(t)
+	console.deps.Audit.Record(context.Background(), audit.Event{Source: "issuer", Kind: "sign-in", Subject: "ada@north.example"})
 	list := func(role access.Role) (*directoryrosterv1.ListAuditEventsResponse, error) {
 		response, err := console.ListAuditEvents(WithIdentity(context.Background(), access.Identity{Role: role}),
 			connect.NewRequest(&directoryrosterv1.ListAuditEventsRequest{Kind: "sign-in"}))
@@ -120,5 +124,52 @@ func TestReadingTheAuditStreamNeedsAnOperator(t *testing.T) {
 	got, err := list(access.RoleOperator)
 	if err != nil || len(got.GetEvents()) != 1 || got.GetEvents()[0].GetSubject() != "ada@north.example" {
 		t.Errorf("an operator = %+v, %v", got, err)
+	}
+}
+
+// What an event keeps of a request is the reporter's to say — a reporter
+// acting for a person may carry that person's — and never the report's own
+// connection, which caused none of it. It is bounded like any field, and
+// a report over the bounds is refused whole.
+func TestAReportCarriesItsOwnRequestFields(t *testing.T) {
+	t.Parallel()
+	console, store := auditConsole(t)
+	// The reporter's own connection, as the server in front reads it.
+	ctx := audit.WithRequest(reporter(policy.GroupReporters), audit.Request{ClientAddress: "10.0.0.9", UserAgent: "connect-go/1.20", RequestID: "reporter-req"})
+
+	err := report(ctx, console,
+		&directoryrosterv1.AuditEvent{Source: "github-roster", Kind: "github.link.created", Subject: "dana@south.example",
+			ClientAddress: "203.0.113.7", UserAgent: "Mozilla/5.0\nforged=true", RequestId: "person-req"},
+		&directoryrosterv1.AuditEvent{Source: "github-roster", Kind: "github.member.add", Actor: "system"},
+	)
+	if err != nil {
+		t.Fatalf("RecordAuditEvents: %v", err)
+	}
+	events := store.Events()
+	if len(events) != 2 {
+		t.Fatalf("stored %v", store.Kinds())
+	}
+	if got := events[0]; got.ClientAddress != "203.0.113.7" || got.UserAgent != "Mozilla/5.0forged=true" || got.RequestID != "person-req" {
+		t.Errorf("the reported request = %q %q %q, want the report's own, with no line break", got.ClientAddress, got.UserAgent, got.RequestID)
+	}
+	if got := events[1]; got.ClientAddress != "" || got.UserAgent != "" || got.RequestID != "" {
+		t.Errorf("an event reported with no request took the reporter's connection: %q %q %q", got.ClientAddress, got.UserAgent, got.RequestID)
+	}
+	if events[0].Reporter != "cluster:k8s:access-issuer:github-roster" {
+		t.Errorf("reporter = %q, want the verified caller still", events[0].Reporter)
+	}
+
+	for name, over := range map[string]*directoryrosterv1.AuditEvent{
+		"a long address":    {Source: "github-roster", Kind: "k", ClientAddress: strings.Repeat("1", audit.MaxClientAddress+1)},
+		"a long user agent": {Source: "github-roster", Kind: "k", UserAgent: strings.Repeat("a", audit.MaxUserAgent+1)},
+		"a long request id": {Source: "github-roster", Kind: "k", RequestId: strings.Repeat("r", audit.MaxRequestID+1)},
+	} {
+		err = report(ctx, console, &directoryrosterv1.AuditEvent{Source: "github-roster", Kind: "fine"}, over)
+		if connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("a report with %s = %v, want invalid argument", name, err)
+		}
+	}
+	if n := len(store.Events()); n != 2 {
+		t.Errorf("refused reports left %d events, want the first report's two", n)
 	}
 }

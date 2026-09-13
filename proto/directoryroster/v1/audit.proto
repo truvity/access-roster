@@ -6,11 +6,11 @@ import "google/protobuf/timestamp.proto";
 
 // AuditService is what happened in this installation, lately.
 //
-// One stream for the whole service: the issuer's sign-ins, refusals,
+// One trail for the whole service: the issuer's sign-ins, refusals,
 // exchanges and revokes; the directory's and the console's connects and
 // disconnects; and what a component in another process reports it did.
-// Capped by count and age — every event is also a log line, and the log
-// is the durable copy.
+// Kept by an AuditSinkService writer — in S3 for a deployment — and every
+// event is also a log line under the same Elastic Common Schema names.
 service AuditService {
   // ListAuditEvents returns events newest first, filtered and paged.
   // Operator: the stream names every sign-in.
@@ -27,7 +27,8 @@ service AuditService {
 
 // AuditEvent is one thing that happened.
 message AuditEvent {
-  // ordered by time; assigned by the store.
+  // ordered by time; assigned when the event is recorded, before its log
+  // line, which carries the same id as `event.id`.
   string id = 1;
   google.protobuf.Timestamp at = 2;
   // issuer, directory, console, or a reporter's own name.
@@ -48,6 +49,15 @@ message AuditEvent {
   string outcome = 9;
   string reason = 10;
   map<string, string> attributes = 11;
+  // where the request that caused it came from: the first X-Forwarded-For
+  // hop where the deployment trusts its gateway to set that header, else
+  // the peer's address. Empty for what no request caused.
+  string client_address = 12;
+  // the User-Agent of that request.
+  string user_agent = 13;
+  // the X-Request-Id of that request: the key into the gateway's own
+  // access log.
+  string request_id = 14;
 }
 
 message ListAuditEventsRequest {

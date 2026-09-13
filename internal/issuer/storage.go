@@ -487,8 +487,12 @@ func (s *Storage) DeleteAuthRequest(ctx context.Context, id string) error {
 
 // Complete marks a login as finished, which is what the issuer's own
 // sign-in page calls once an identity provider has said who is there.
-func (s *Storage) Complete(id string, who Authenticated) error {
-	ctx := context.Background()
+//
+// The context is the sign-in's request, for what its record keeps of that
+// request; the work is not cancelled with it, because a browser that went
+// away mid-completion must not leave a request half marked.
+func (s *Storage) Complete(ctx context.Context, id string, who Authenticated) error {
+	ctx = context.WithoutCancel(ctx)
 	req, err := s.request(ctx, id)
 	if err != nil {
 		return err
@@ -516,12 +520,37 @@ func (s *Storage) Complete(id string, who Authenticated) error {
 	// re-authenticate-for-this-action rule reads.
 	req.AuthTime, req.SSO, req.How = authTime, who.SSO, who.How
 
+	// A recovery sign-in is written down durably before the request is
+	// marked done — a request marked done is one a code can be issued for —
+	// and is refused when it cannot be. It is the one event that does not
+	// fail open: the way in that bypasses the directory must never leave
+	// no trace, and the write depends on S3 and the pod's own identity
+	// alone, nothing this service runs.
+	recovery := who.How == RecoveryHow
+	if recovery {
+		if err = s.iss.recordDurable(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeOK, "")); err != nil {
+			s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeRefused,
+				"the audit trail could not be written, and a recovery sign-in is refused without its record"))
+			return fmt.Errorf("%w: %w", ErrUnaudited, err)
+		}
+	}
+
 	if err = setJSON(ctx, s.state, requestKey(id), req, authRequestTTL); err != nil {
+		if recovery {
+			// Its record already says it succeeded; this says it did not.
+			s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeFailed, "the sign-in could not be saved"))
+		}
 		return err
 	}
-	s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeOK, ""))
+	if !recovery {
+		s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeOK, ""))
+	}
 	return nil
 }
+
+// ErrUnaudited is a recovery sign-in refused because its record could not
+// be written.
+var ErrUnaudited = errors.New("the audit trail could not be written")
 
 // signInEvent is a completed or refused sign-in at one client. A recovery
 // sign-in is its own kind, because it is the way in that bypasses the

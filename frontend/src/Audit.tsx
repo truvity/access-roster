@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -115,9 +116,15 @@ export function AuditPage() {
                       {event.source}
                       {attributes(event)}
                     </Typography>
+                    <RequestDetails event={event} />
                   </TableCell>
                   <TableCell>
                     <Mono>{event.actor || "—"}</Mono>
+                    {event.clientAddress ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        from <Mono>{event.clientAddress}</Mono>
+                      </Typography>
+                    ) : null}
                     {event.reporter ? (
                       <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                         reported by <Mono>{event.reporter}</Mono>
@@ -165,6 +172,34 @@ function outcome(event: AuditEvent) {
     default:
       return <Typography variant="body2">ok</Typography>;
   }
+}
+
+/** The request an event came from, beyond its address: the gateway's id
+ *  for it, which finds the same request in the gateway's access log, and
+ *  what sent it. Folded away, because they are for following a trail and
+ *  not for reading the page; absent for what no request caused, and for
+ *  every event recorded before they were kept. */
+function RequestDetails({ event }: { event: AuditEvent }) {
+  if (!event.requestId && !event.userAgent) {
+    return null;
+  }
+  return (
+    <Box component="details" sx={{ mt: 0.25 }}>
+      <Typography component="summary" variant="caption" color="text.secondary" sx={{ cursor: "pointer" }}>
+        request
+      </Typography>
+      {event.requestId ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          id <Mono>{event.requestId}</Mono>
+        </Typography>
+      ) : null}
+      {event.userAgent ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+          user agent <Mono>{event.userAgent}</Mono>
+        </Typography>
+      ) : null}
+    </Box>
+  );
 }
 
 /** The attributes worth a glance, inline after the source. */

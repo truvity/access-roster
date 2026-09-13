@@ -39,8 +39,10 @@ import (
 	"github.com/truvity/access-roster/backend/google"
 	"github.com/truvity/access-roster/frontend"
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
+	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/audit/sinkrpc"
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
@@ -101,8 +103,12 @@ type Config struct {
 	valkey            valkey.Config
 	auditEvents       int64
 	auditS3           s3audit.Config
-	holdWindow        time.Duration
-	logLevel          slog.Level
+	// auditTrustForwardedFor takes an audit event's client address from
+	// X-Forwarded-For, which only a deployment behind a gateway that sets
+	// it may do.
+	auditTrustForwardedFor bool
+	holdWindow             time.Duration
+	logLevel               slog.Level
 }
 
 // Load reads the configuration from the environment.
@@ -134,6 +140,7 @@ func Load() (Config, error) {
 		oauthSecretKey:    envString("OAUTH_CLIENT_SECRET_KEY", ""),
 	}
 	c.auditEvents = int64(envInt("AUDIT_MAX_EVENTS", audit.DefaultMemoryEvents))
+	c.auditTrustForwardedFor = envBool("AUDIT_TRUST_FORWARDED_FOR", false)
 	c.auditS3 = s3audit.Config{
 		Bucket: envString("AUDIT_S3_BUCKET", ""),
 		Region: envString("AUDIT_S3_REGION", ""),
@@ -224,16 +231,22 @@ func openSnapshots(ctx context.Context, cfg Config, log *slog.Logger) (hub.Snaps
 	return shared, func() { _ = shared.Close() }, nil
 }
 
-// openAudit builds the one audit trail of the whole service: in S3, the
-// durable record the console also reads, and never in Valkey (decided
-// 2026-09-13). Without a bucket it is kept in memory, which is one
+// openAudit builds the one writer of the whole service's audit trail: in
+// S3, the durable record the console also reads, and never in Valkey
+// (decided 2026-09-13). Without a bucket it is kept in memory, which is one
 // replica's own and gone on restart: right for a laptop and for tests, and
 // said loudly anywhere else.
-func openAudit(ctx context.Context, cfg Config, log *slog.Logger) (audit.Store, func(), error) {
+//
+// What it returns is the writer's side of the AuditSinkService contract;
+// the service records and reads through the client side of it, in process
+// (sinkrpc.InProcess). A writer in another process would be the same
+// contract behind the generated client, and nothing that records would
+// change.
+func openAudit(ctx context.Context, cfg Config, log *slog.Logger) (directoryrosterv1connect.AuditSinkServiceHandler, func(), error) {
 	if cfg.auditS3.Bucket == "" {
 		log.WarnContext(ctx, "keeping the audit trail in memory: one replica's own, gone on restart, and NOT a record; "+
 			"set audit.s3.bucket for a durable trail", "audit", "memory")
-		return audit.NewMemory(int(cfg.auditEvents)), func() {}, nil
+		return audit.NewMemoryWriter(int(cfg.auditEvents)), func() {}, nil
 	}
 	trail, err := s3audit.Open(ctx, cfg.auditS3, log)
 	if err != nil {
@@ -466,6 +479,15 @@ type App struct {
 // one: both halves write one history.
 func (a *App) Audit() audit.Recorder { return a.audit }
 
+// AuditRequests puts what an audit event keeps of each request into the
+// context of everything next serves, with this deployment's decision on
+// X-Forwarded-For. The merged service wraps the issuer's whole origin in
+// it, so a token exchange records where it came from as a console call
+// does.
+func (a *App) AuditRequests(next http.Handler) http.Handler {
+	return server.AuditRequests(a.cfg.auditTrustForwardedFor, next)
+}
+
 // APIHandler is the DirectoryService listener, guarded.
 func (a *App) APIHandler() http.Handler { return a.api }
 
@@ -528,13 +550,16 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	auditStore, closeAudit, err := openAudit(ctx, cfg, log)
+	auditWriter, closeAudit, err := openAudit(ctx, cfg, log)
 	if err != nil {
 		closeSnapshots()
 		return nil, err
 	}
 	closeStores := func() { closeAudit(); closeSnapshots() }
-	recorder := audit.NewLog(log, auditStore)
+	auditSink := sinkrpc.InProcess(auditWriter)
+	// The pod's name, as the S3 writer's keys use: a log line's event id
+	// then names the replica that recorded it.
+	recorder := audit.NewLog(log, auditSink, cfg.auditS3.Writer)
 
 	directory := hub.New(kept.workspaces, snapshots, cfg.freshness, log)
 	if kept.credentials != nil {
@@ -650,7 +675,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHubLinks:         githubLinks(kept.githubLinks, cfg.demo),
 		GitHubConfirmations: githubConfirmations(kept.githubOrgs),
 		Audit:               recorder,
-		AuditStore:          auditStore,
+		AuditSink:           auditSink,
 	})
 	if err != nil {
 		return nil, err
@@ -676,9 +701,10 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// never see the prefix — the gateway strips it, and so does the
 		// merged process — but every link they hand a browser has to
 		// carry it.
-		Mount: mountOf(cfg.publicURL),
-		Log:   log,
-		UI:    frontend.FS(),
+		Mount:             mountOf(cfg.publicURL),
+		TrustForwardedFor: cfg.auditTrustForwardedFor,
+		Log:               log,
+		UI:                frontend.FS(),
 	})
 
 	apiMux := http.NewServeMux()

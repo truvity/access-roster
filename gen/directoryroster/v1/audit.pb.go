@@ -25,7 +25,8 @@ const (
 // AuditEvent is one thing that happened.
 type AuditEvent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ordered by time; assigned by the store.
+	// ordered by time; assigned when the event is recorded, before its log
+	// line, which carries the same id as `event.id`.
 	Id string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	At *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=at,proto3" json:"at,omitempty"`
 	// issuer, directory, console, or a reporter's own name.
@@ -43,9 +44,18 @@ type AuditEvent struct {
 	// where: a client, a workspace, an organisation or team.
 	Target string `protobuf:"bytes,8,opt,name=target,proto3" json:"target,omitempty"`
 	// ok, refused, failed or held.
-	Outcome       string            `protobuf:"bytes,9,opt,name=outcome,proto3" json:"outcome,omitempty"`
-	Reason        string            `protobuf:"bytes,10,opt,name=reason,proto3" json:"reason,omitempty"`
-	Attributes    map[string]string `protobuf:"bytes,11,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Outcome    string            `protobuf:"bytes,9,opt,name=outcome,proto3" json:"outcome,omitempty"`
+	Reason     string            `protobuf:"bytes,10,opt,name=reason,proto3" json:"reason,omitempty"`
+	Attributes map[string]string `protobuf:"bytes,11,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// where the request that caused it came from: the first X-Forwarded-For
+	// hop where the deployment trusts its gateway to set that header, else
+	// the peer's address. Empty for what no request caused.
+	ClientAddress string `protobuf:"bytes,12,opt,name=client_address,json=clientAddress,proto3" json:"client_address,omitempty"`
+	// the User-Agent of that request.
+	UserAgent string `protobuf:"bytes,13,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
+	// the X-Request-Id of that request: the key into the gateway's own
+	// access log.
+	RequestId     string `protobuf:"bytes,14,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -155,6 +165,27 @@ func (x *AuditEvent) GetAttributes() map[string]string {
 		return x.Attributes
 	}
 	return nil
+}
+
+func (x *AuditEvent) GetClientAddress() string {
+	if x != nil {
+		return x.ClientAddress
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetUserAgent() string {
+	if x != nil {
+		return x.UserAgent
+	}
+	return ""
+}
+
+func (x *AuditEvent) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
 }
 
 type ListAuditEventsRequest struct {
@@ -396,7 +427,7 @@ var File_directoryroster_v1_audit_proto protoreflect.FileDescriptor
 
 const file_directoryroster_v1_audit_proto_rawDesc = "" +
 	"\n" +
-	"\x1edirectoryroster/v1/audit.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x99\x03\n" +
+	"\x1edirectoryroster/v1/audit.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfe\x03\n" +
 	"\n" +
 	"AuditEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12*\n" +
@@ -412,7 +443,12 @@ const file_directoryroster_v1_audit_proto_rawDesc = "" +
 	" \x01(\tR\x06reason\x12N\n" +
 	"\n" +
 	"attributes\x18\v \x03(\v2..directoryroster.v1.AuditEvent.AttributesEntryR\n" +
-	"attributes\x1a=\n" +
+	"attributes\x12%\n" +
+	"\x0eclient_address\x18\f \x01(\tR\rclientAddress\x12\x1d\n" +
+	"\n" +
+	"user_agent\x18\r \x01(\tR\tuserAgent\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x0e \x01(\tR\trequestId\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd6\x01\n" +

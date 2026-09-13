@@ -1,32 +1,49 @@
-// Package audit is what happened in access-roster, lately, where an
-// operator can read it.
+// Package audit is what happened in access-roster, where an operator can
+// read it.
 //
-// One stream for the whole service. The issuer records sign-ins, refusals,
+// One trail for the whole service. The issuer records sign-ins, refusals,
 // exchanges and revokes; the directory and the console record connects
 // and disconnects; a component in another process — the GitHub controller
 // first — reports what it did through the console's API, and is recorded
 // with the identity it proved. Status elsewhere says what is true now;
 // this says what changed and who caused it.
 //
-// A deployment keeps it in S3 (internal/s3audit): the durable record, and
-// what the console reads. Every event is also one structured log line. The
-// cluster's own audit log, CloudTrail, each directory's and GitHub's
-// organisation audit log stay what they are, and are not duplicated here
-// beyond the events this service itself causes.
+// Where events are kept is a contract, not a type in this package: the
+// generated AuditSinkService. Recording holds its client and a writer
+// implements its handler — S3 for a deployment (internal/s3audit), this
+// process's memory without a bucket and in every test ([MemoryWriter]) —
+// joined in process by internal/audit/sinkrpc and over a network by the
+// generated client, so the writing can move to another process without
+// anything that records changing.
+//
+// Each kept record is an Elastic Common Schema document, and every event is
+// also one structured log line carrying the same fields under the same
+// names ([EncodeRecord], [Classify]): whoever reads the bucket and whoever
+// queries the logs are reading one vocabulary. The cluster's own audit log,
+// CloudTrail, each directory's and GitHub's organisation audit log stay
+// what they are, and are not duplicated here beyond the events this service
+// itself causes.
 //
 // Recording never fails the thing being recorded. A sign-in that could not
-// be written down still happened, and refusing it because the store was
-// slow would turn an audit outage into an access outage.
+// be written down still happened, and refusing it because the writer was
+// slow would turn an audit outage into an access outage. There is one
+// exception, and it is deliberate: a recovery sign-in bypasses the
+// directory, so it is written durably before it succeeds and refused when it
+// cannot be ([Log.RecordDurable]).
 package audit
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"maps"
-	"slices"
 	"strings"
-	"sync"
 	"time"
+
+	"connectrpc.com/connect"
+
+	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
+	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
+	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // The sources this service records for itself. A component reporting
@@ -62,16 +79,21 @@ const (
 )
 
 // Event is one thing that happened.
+//
+// The JSON tags are the record format access-roster 1.6.2 wrote to S3, one
+// event per line. Records are ECS documents now ([EncodeRecord]); the tags
+// stay because those older objects are under Object Lock for longer than
+// any release lives, and [DecodeRecord] reads them with these.
 type Event struct {
-	// ID is assigned by the store, ordered by time.
+	// ID orders by time as a string; assigned when an event is recorded.
 	ID string `json:"id,omitempty"`
-	// At is when; the store fills it when zero.
+	// At is when; filled when zero.
 	At time.Time `json:"at"`
 	// Source is the component: issuer, directory, console, or a
 	// reporter's own name.
 	Source string `json:"source"`
 	// Kind is what happened, dotted: sign-in, token.exchanged,
-	// workspace.connected, github.member.invited.
+	// workspace.connected, github.member.invite.
 	Kind string `json:"kind"`
 	// Actor is the verified identity that caused it, or ActorSystem.
 	Actor string `json:"actor,omitempty"`
@@ -90,12 +112,24 @@ type Event struct {
 	// Attributes are the rest, flat, for the few things worth keeping that
 	// fit no field above.
 	Attributes map[string]string `json:"attributes,omitempty"`
+	// ClientAddress, UserAgent and RequestID are what the event keeps of
+	// the request that caused it ([Request]); empty for what no request
+	// caused.
+	ClientAddress string `json:"client_address,omitempty"`
+	UserAgent     string `json:"user_agent,omitempty"`
+	RequestID     string `json:"request_id,omitempty"`
 }
 
-// Recorder writes events down. Implementations never return an error to
-// the caller and never block it for long.
+// Recorder writes events down.
 type Recorder interface {
+	// Record never returns an error to the caller and never blocks it for
+	// long.
 	Record(ctx context.Context, e Event)
+	// RecordDurable returns only once the event is persisted, or says why
+	// it is not. It is for the one event that must not happen without its
+	// record — a recovery sign-in — and the caller refuses what it records
+	// when this fails.
+	RecordDurable(ctx context.Context, e Event) error
 }
 
 // Query narrows a listing. Empty fields match everything.
@@ -118,15 +152,7 @@ const DefaultLimit = 100
 // MaxLimit bounds one page.
 const MaxLimit = 1000
 
-// Store keeps events and lists them, newest first.
-type Store interface {
-	Append(ctx context.Context, e Event) (string, error)
-	// List returns a page and the cursor for the next one, empty at the
-	// end.
-	List(ctx context.Context, q Query) ([]Event, string, error)
-}
-
-// Matches reports whether an event is one a query asks for. Stores that
+// Matches reports whether an event is one a query asks for. Writers that
 // cannot filter server-side use it.
 func (q Query) Matches(e Event) bool {
 	return field(q.Source, e.Source) && field(q.Kind, e.Kind) &&
@@ -150,63 +176,98 @@ func (q Query) Limited() int {
 	}
 }
 
-// Log records every event as a log line and then into a store, and says
-// so in the log when the store refuses.
+// Log records every event as a log line and then through a writer, and
+// says so in the log when the writer refuses.
 type Log struct {
-	log   *slog.Logger
-	store Store
-	now   func() time.Time
+	log    *slog.Logger
+	sink   directoryrosterv1connect.AuditSinkServiceClient
+	writer string
+	now    func() time.Time
 }
 
-// NewLog returns a recorder. A nil store records to the log alone, which
-// is still the durable copy.
-func NewLog(log *slog.Logger, store Store) *Log {
+// NewLog returns a recorder writing through sink, naming this process as
+// writer in the ids it assigns. A nil sink records to the log alone: a
+// component with nowhere to keep a trail still leaves the lines.
+func NewLog(log *slog.Logger, sink directoryrosterv1connect.AuditSinkServiceClient, writer string) *Log {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Log{log: log, store: store, now: time.Now}
+	return &Log{log: log, sink: sink, writer: WriterName(writer), now: time.Now}
 }
 
-// storeTimeout bounds how long a store write may hold up the caller.
+// storeTimeout bounds how long an ordinary write may hold up the caller.
 const storeTimeout = 2 * time.Second
+
+// durableTimeout bounds how long a durable write may. It is longer, because
+// the caller is waiting for the record on purpose, and still bounded,
+// because a recovery sign-in that hangs is as unhelpful as one refused.
+const durableTimeout = 10 * time.Second
 
 // Record implements [Recorder].
 func (l *Log) Record(ctx context.Context, e Event) {
 	if l == nil {
 		return
 	}
-	if e.At.IsZero() {
-		e.At = l.now().UTC()
-	}
-	if e.Outcome == "" {
-		e.Outcome = OutcomeOK
-	}
-	attrs := []any{
-		"audit", true, "source", e.Source, "kind", e.Kind, "outcome", e.Outcome,
-		"actor", e.Actor, "subject", e.Subject, "target", e.Target,
-	}
-	if e.Reporter != "" {
-		attrs = append(attrs, "reporter", e.Reporter)
-	}
-	if e.Reason != "" {
-		attrs = append(attrs, "reason", e.Reason)
-	}
-	for _, key := range slices.Sorted(maps.Keys(e.Attributes)) {
-		attrs = append(attrs, "attr."+key, e.Attributes[key])
-	}
-	l.log.InfoContext(ctx, "audit", attrs...)
-
-	if l.store == nil {
+	e = l.stamp(e)
+	l.line(ctx, e)
+	if l.sink == nil {
 		return
 	}
 	// Detached from the caller's cancellation — a request that ends as
 	// soon as it has signed somebody in must not take its own record with
-	// it — but bounded, so a slow store costs the caller little.
+	// it — but bounded, so a slow writer costs the caller little.
 	writing, cancel := context.WithTimeout(context.WithoutCancel(ctx), storeTimeout)
 	defer cancel()
-	if _, err := l.store.Append(writing, e); err != nil {
-		l.log.WarnContext(ctx, "an audit event was logged and not stored", "kind", e.Kind, "error", err)
+	if err := l.write(writing, e, false); err != nil {
+		l.log.WarnContext(ctx, "an audit event was logged and not stored",
+			"event.id", e.ID, "event.action", e.Kind, "error", logsafe.Error(err))
 	}
+}
+
+// RecordDurable implements [Recorder]: the log line first, as for every
+// event, then a write that answers only once the event is persisted.
+//
+// A log with no writer answers nil. That is a component deliberately
+// keeping no trail, and refusing recovery there would make recovery
+// impossible by configuration; the service itself always has a writer.
+func (l *Log) RecordDurable(ctx context.Context, e Event) error {
+	if l == nil {
+		return nil
+	}
+	e = l.stamp(e)
+	l.line(ctx, e)
+	if l.sink == nil {
+		return nil
+	}
+	writing, cancel := context.WithTimeout(context.WithoutCancel(ctx), durableTimeout)
+	defer cancel()
+	if err := l.write(writing, e, true); err != nil {
+		l.log.WarnContext(ctx, "an audit event was logged and could not be written durably",
+			"event.id", e.ID, "event.action", e.Kind, "error", logsafe.Error(err))
+		return fmt.Errorf("audit: %s could not be written durably: %w", e.Kind, err)
+	}
+	return nil
+}
+
+// stamp gives an event what every record carries: a time, an outcome, and
+// an id — assigned HERE, before the log line, so that the line and the
+// kept record share it and one finds the other.
+func (l *Log) stamp(e Event) Event {
+	if e.Outcome == "" {
+		e.Outcome = OutcomeOK
+	}
+	return Assign(e, l.writer, l.now())
+}
+
+func (l *Log) line(ctx context.Context, e Event) {
+	l.log.InfoContext(ctx, "audit", append([]any{"audit", true}, LogAttrs(e)...)...)
+}
+
+func (l *Log) write(ctx context.Context, e Event, durable bool) error {
+	_, err := l.sink.WriteAuditEvents(ctx, connect.NewRequest(&directoryrosterv1.WriteAuditEventsRequest{
+		Events: []*directoryrosterv1.AuditEvent{ToProto(e)}, Durable: durable,
+	}))
+	return err
 }
 
 // Nop records nothing. It exists so a component with no recorder need not
@@ -216,69 +277,6 @@ type Nop struct{}
 // Record implements [Recorder].
 func (Nop) Record(context.Context, Event) {}
 
-// DefaultMemoryEvents caps the in-memory store.
-const DefaultMemoryEvents = 50000
-
-// Memory is a capped store in this process: correct for one replica, a
-// laptop and tests. It is not a record: a deployment keeps its trail in S3.
-type Memory struct {
-	mu     sync.Mutex
-	cap    int
-	events []Event
-	next   uint64
-}
-
-// NewMemory returns a store holding at most capacity events.
-func NewMemory(capacity int) *Memory {
-	if capacity <= 0 {
-		capacity = 10000
-	}
-	return &Memory{cap: capacity}
-}
-
-// Append implements [Store].
-func (m *Memory) Append(_ context.Context, e Event) (string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.next++
-	e.ID = formatID(m.next)
-	m.events = append(m.events, e)
-	if over := len(m.events) - m.cap; over > 0 {
-		m.events = slices.Delete(m.events, 0, over)
-	}
-	return e.ID, nil
-}
-
-// List implements [Store].
-func (m *Memory) List(_ context.Context, q Query) ([]Event, string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	limit := q.Limited()
-	var out []Event
-	for i := len(m.events) - 1; i >= 0; i-- {
-		e := m.events[i]
-		if q.Cursor != "" && e.ID >= q.Cursor {
-			continue
-		}
-		if !q.Matches(e) {
-			continue
-		}
-		if len(out) == limit {
-			return out, out[len(out)-1].ID, nil
-		}
-		out = append(out, e)
-	}
-	return out, "", nil
-}
-
-// formatID is a sortable decimal: zero-padded so string order is number
-// order.
-func formatID(n uint64) string {
-	const width = 20
-	s := make([]byte, width)
-	for i := width - 1; i >= 0; i-- {
-		s[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(s)
-}
+// RecordDurable implements [Recorder]. A component with no recorder keeps
+// no trail, so there is nothing to wait for.
+func (Nop) RecordDurable(context.Context, Event) error { return nil }

@@ -46,7 +46,20 @@ func (s *Storage) CreateAuthRequestForTest(ctx context.Context, subject, clientI
 	if err := setJSON(ctx, s.state, requestKey(request.ID), request, authRequestTTL); err != nil {
 		return "", err
 	}
-	if err := s.Complete(request.ID, Authenticated{Subject: subject}); err != nil {
+	if err := s.Complete(ctx, request.ID, Authenticated{Subject: subject}); err != nil {
+		return "", err
+	}
+	return request.ID, nil
+}
+
+// CreatePendingAuthRequestForTest makes an authorization request nobody has
+// completed yet, for a test to complete. It returns the request's id.
+func (s *Storage) CreatePendingAuthRequestForTest(ctx context.Context, id, clientID string) (string, error) {
+	request := &authRequest{
+		ID:  id,
+		Req: &oidc.AuthRequest{ClientID: clientID, RedirectURI: "https://rp.example/cb"},
+	}
+	if err := setJSON(ctx, s.state, requestKey(request.ID), request, authRequestTTL); err != nil {
 		return "", err
 	}
 	return request.ID, nil

@@ -35,7 +35,7 @@ func (p *stubProvider) URL(state string) (string, error) { return p.back(state),
 func (p *stubProvider) Identify(context.Context, string) (string, error) { return p.email, nil }
 
 // Complete implements issuer.Completer, standing in for the storage.
-func (p *stubProvider) Complete(id string, who issuer.Authenticated) error {
+func (p *stubProvider) Complete(_ context.Context, id string, who issuer.Authenticated) error {
 	p.completed, p.subject = id, who.Subject
 	return nil
 }

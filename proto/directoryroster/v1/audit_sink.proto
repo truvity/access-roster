@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+import "directoryroster/v1/audit.proto";
+
+// AuditSinkService is where audit events are kept: the contract between
+// what records them and what writes them down.
+//
+// It is not an API a person or a component calls; reporting is
+// AuditService.RecordAuditEvents. The service records through this
+// contract, and a writer implements it: today S3, or one replica's memory
+// without a bucket, both in the same process and reached without a
+// network. A writer in another process — a dedicated audit writer, or a
+// bridge onto a queue — implements the same service, and nothing that
+// records has to change to use it.
+service AuditSinkService {
+  // WriteAuditEvents keeps events. With `durable` it answers only once they
+  // are persisted, and an error means they are not; without it, it answers
+  // once they are accepted, and they are written soon after. A writer keeps
+  // an event's `id` and `at` when they are set and assigns them when they
+  // are not.
+  rpc WriteAuditEvents(WriteAuditEventsRequest) returns (WriteAuditEventsResponse);
+
+  // ListStoredAuditEvents reads kept events back, newest first, filtered
+  // and paged exactly as AuditService.ListAuditEvents is — which is what
+  // the console answers that call with. It authorises nobody: whoever
+  // serves a writer decides who may reach it.
+  rpc ListStoredAuditEvents(ListStoredAuditEventsRequest) returns (ListStoredAuditEventsResponse);
+}
+
+message WriteAuditEventsRequest {
+  repeated AuditEvent events = 1;
+  // persisted before the answer, rather than accepted.
+  bool durable = 2;
+}
+
+message WriteAuditEventsResponse {
+  int32 written = 1;
+}
+
+message ListStoredAuditEventsRequest {
+  ListAuditEventsRequest query = 1;
+}
+
+message ListStoredAuditEventsResponse {
+  repeated AuditEvent events = 1;
+  // where the next page starts; empty at the end.
+  string cursor = 2;
+}

@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/audit.proto.
  */
 export const file_directoryroster_v1_audit: GenFile = /*@__PURE__*/
-  fileDesc("Ch5kaXJlY3Rvcnlyb3N0ZXIvdjEvYXVkaXQucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSK4AgoKQXVkaXRFdmVudBIKCgJpZBgBIAEoCRImCgJhdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc291cmNlGAMgASgJEgwKBGtpbmQYBCABKAkSDQoFYWN0b3IYBSABKAkSEAoIcmVwb3J0ZXIYBiABKAkSDwoHc3ViamVjdBgHIAEoCRIOCgZ0YXJnZXQYCCABKAkSDwoHb3V0Y29tZRgJIAEoCRIOCgZyZWFzb24YCiABKAkSQgoKYXR0cmlidXRlcxgLIAMoCzIuLmRpcmVjdG9yeXJvc3Rlci52MS5BdWRpdEV2ZW50LkF0dHJpYnV0ZXNFbnRyeRoxCg9BdHRyaWJ1dGVzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKhAQoWTGlzdEF1ZGl0RXZlbnRzUmVxdWVzdBIOCgZzb3VyY2UYASABKAkSDAoEa2luZBgCIAEoCRIPCgdzdWJqZWN0GAMgASgJEg4KBnRhcmdldBgEIAEoCRIpCgVzaW5jZRgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDQoFbGltaXQYBiABKAUSDgoGY3Vyc29yGAcgASgJIlkKF0xpc3RBdWRpdEV2ZW50c1Jlc3BvbnNlEi4KBmV2ZW50cxgBIAMoCzIeLmRpcmVjdG9yeXJvc3Rlci52MS5BdWRpdEV2ZW50Eg4KBmN1cnNvchgCIAEoCSJKChhSZWNvcmRBdWRpdEV2ZW50c1JlcXVlc3QSLgoGZXZlbnRzGAEgAygLMh4uZGlyZWN0b3J5cm9zdGVyLnYxLkF1ZGl0RXZlbnQiLQoZUmVjb3JkQXVkaXRFdmVudHNSZXNwb25zZRIQCghyZWNvcmRlZBgBIAEoBTLsAQoMQXVkaXRTZXJ2aWNlEmoKD0xpc3RBdWRpdEV2ZW50cxIqLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0QXVkaXRFdmVudHNSZXF1ZXN0GisuZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3RBdWRpdEV2ZW50c1Jlc3BvbnNlEnAKEVJlY29yZEF1ZGl0RXZlbnRzEiwuZGlyZWN0b3J5cm9zdGVyLnYxLlJlY29yZEF1ZGl0RXZlbnRzUmVxdWVzdBotLmRpcmVjdG9yeXJvc3Rlci52MS5SZWNvcmRBdWRpdEV2ZW50c1Jlc3BvbnNlQtgBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQgpBdWRpdFByb3RvUAFaSWdpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9kaXJlY3Rvcnlyb3N0ZXIvdjE7ZGlyZWN0b3J5cm9zdGVydjGiAgNEWFiqAhJEaXJlY3Rvcnlyb3N0ZXIuVjHKAhJEaXJlY3Rvcnlyb3N0ZXJcVjHiAh5EaXJlY3Rvcnlyb3N0ZXJcVjFcR1BCTWV0YWRhdGHqAhNEaXJlY3Rvcnlyb3N0ZXI6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("Ch5kaXJlY3Rvcnlyb3N0ZXIvdjEvYXVkaXQucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSL4AgoKQXVkaXRFdmVudBIKCgJpZBgBIAEoCRImCgJhdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc291cmNlGAMgASgJEgwKBGtpbmQYBCABKAkSDQoFYWN0b3IYBSABKAkSEAoIcmVwb3J0ZXIYBiABKAkSDwoHc3ViamVjdBgHIAEoCRIOCgZ0YXJnZXQYCCABKAkSDwoHb3V0Y29tZRgJIAEoCRIOCgZyZWFzb24YCiABKAkSQgoKYXR0cmlidXRlcxgLIAMoCzIuLmRpcmVjdG9yeXJvc3Rlci52MS5BdWRpdEV2ZW50LkF0dHJpYnV0ZXNFbnRyeRIWCg5jbGllbnRfYWRkcmVzcxgMIAEoCRISCgp1c2VyX2FnZW50GA0gASgJEhIKCnJlcXVlc3RfaWQYDiABKAkaMQoPQXR0cmlidXRlc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEioQEKFkxpc3RBdWRpdEV2ZW50c1JlcXVlc3QSDgoGc291cmNlGAEgASgJEgwKBGtpbmQYAiABKAkSDwoHc3ViamVjdBgDIAEoCRIOCgZ0YXJnZXQYBCABKAkSKQoFc2luY2UYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg0KBWxpbWl0GAYgASgFEg4KBmN1cnNvchgHIAEoCSJZChdMaXN0QXVkaXRFdmVudHNSZXNwb25zZRIuCgZldmVudHMYASADKAsyHi5kaXJlY3Rvcnlyb3N0ZXIudjEuQXVkaXRFdmVudBIOCgZjdXJzb3IYAiABKAkiSgoYUmVjb3JkQXVkaXRFdmVudHNSZXF1ZXN0Ei4KBmV2ZW50cxgBIAMoCzIeLmRpcmVjdG9yeXJvc3Rlci52MS5BdWRpdEV2ZW50Ii0KGVJlY29yZEF1ZGl0RXZlbnRzUmVzcG9uc2USEAoIcmVjb3JkZWQYASABKAUy7AEKDEF1ZGl0U2VydmljZRJqCg9MaXN0QXVkaXRFdmVudHMSKi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdEF1ZGl0RXZlbnRzUmVxdWVzdBorLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0QXVkaXRFdmVudHNSZXNwb25zZRJwChFSZWNvcmRBdWRpdEV2ZW50cxIsLmRpcmVjdG9yeXJvc3Rlci52MS5SZWNvcmRBdWRpdEV2ZW50c1JlcXVlc3QaLS5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVjb3JkQXVkaXRFdmVudHNSZXNwb25zZULYAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUIKQXVkaXRQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * AuditEvent is one thing that happened.
@@ -21,7 +21,8 @@ export const file_directoryroster_v1_audit: GenFile = /*@__PURE__*/
  */
 export type AuditEvent = Message<"directoryroster.v1.AuditEvent"> & {
   /**
-   * ordered by time; assigned by the store.
+   * ordered by time; assigned when the event is recorded, before its log
+   * line, which carries the same id as `event.id`.
    *
    * @generated from field: string id = 1;
    */
@@ -92,6 +93,30 @@ export type AuditEvent = Message<"directoryroster.v1.AuditEvent"> & {
    * @generated from field: map<string, string> attributes = 11;
    */
   attributes: { [key: string]: string };
+
+  /**
+   * where the request that caused it came from: the first X-Forwarded-For
+   * hop where the deployment trusts its gateway to set that header, else
+   * the peer's address. Empty for what no request caused.
+   *
+   * @generated from field: string client_address = 12;
+   */
+  clientAddress: string;
+
+  /**
+   * the User-Agent of that request.
+   *
+   * @generated from field: string user_agent = 13;
+   */
+  userAgent: string;
+
+  /**
+   * the X-Request-Id of that request: the key into the gateway's own
+   * access log.
+   *
+   * @generated from field: string request_id = 14;
+   */
+  requestId: string;
 };
 
 /**
@@ -213,11 +238,11 @@ export const RecordAuditEventsResponseSchema: GenMessage<RecordAuditEventsRespon
 /**
  * AuditService is what happened in this installation, lately.
  *
- * One stream for the whole service: the issuer's sign-ins, refusals,
+ * One trail for the whole service: the issuer's sign-ins, refusals,
  * exchanges and revokes; the directory's and the console's connects and
  * disconnects; and what a component in another process reports it did.
- * Capped by count and age — every event is also a log line, and the log
- * is the durable copy.
+ * Kept by an AuditSinkService writer — in S3 for a deployment — and every
+ * event is also a log line under the same Elastic Common Schema names.
  *
  * @generated from service directoryroster.v1.AuditService
  */

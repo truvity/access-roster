@@ -269,7 +269,7 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if deps.Audit != nil {
 		core.UseAudit(deps.Audit)
 	} else {
-		core.UseAudit(audit.NewLog(log, nil))
+		core.UseAudit(audit.NewLog(log, nil, ""))
 	}
 
 	key, err := signingKey(ctx, cfg, log)

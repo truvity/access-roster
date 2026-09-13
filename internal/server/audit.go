@@ -9,11 +9,11 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/logsafe"
 	"github.com/truvity/access-roster/policy"
 )
 
@@ -40,6 +40,20 @@ func (c *Console) recorder() audit.Recorder {
 
 // record writes down something an identity did through the console.
 func (c *Console) record(ctx context.Context, e audit.Event) {
+	c.recorder().Record(ctx, consoleEvent(ctx, e))
+}
+
+// recordDurable writes it down and answers only once it is persisted. It
+// is for the recovery sign-in, which does not happen without its record.
+func (c *Console) recordDurable(ctx context.Context, e audit.Event) error {
+	return c.recorder().RecordDurable(ctx, consoleEvent(ctx, e))
+}
+
+// consoleEvent fills what the console knows of every event it records:
+// that it is the source unless told otherwise, the identity signed in, and
+// what the event keeps of the request, which [AuditRequests] put in the
+// context.
+func consoleEvent(ctx context.Context, e audit.Event) audit.Event {
 	if e.Source == "" {
 		e.Source = audit.SourceConsole
 	}
@@ -48,40 +62,43 @@ func (c *Console) record(ctx context.Context, e audit.Event) {
 			e.Actor = id.Who()
 		}
 	}
-	c.recorder().Record(ctx, e)
+	if request, ok := audit.RequestFrom(ctx); ok {
+		request.Apply(&e)
+	}
+	return e
 }
 
-// ListAuditEvents implements the audit page.
+// ListAuditEvents implements the audit page: the writer's own listing,
+// passed through, behind the operator check the writer does not make.
 func (c *Console) ListAuditEvents(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ListAuditEventsRequest],
 ) (*connect.Response[directoryrosterv1.ListAuditEventsResponse], error) {
 	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
-	if c.deps.AuditStore == nil {
+	if c.deps.AuditSink == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("this deployment keeps no audit stream; its events are in the log alone"))
+			errors.New("this deployment keeps no audit trail; its events are in the log alone"))
 	}
-	q := audit.Query{
-		Source:  req.Msg.GetSource(),
-		Kind:    req.Msg.GetKind(),
-		Subject: req.Msg.GetSubject(),
-		Target:  req.Msg.GetTarget(),
-		Limit:   int(req.Msg.GetLimit()),
-		Cursor:  req.Msg.GetCursor(),
-	}
-	if since := req.Msg.GetSince(); since != nil {
-		q.Since = since.AsTime()
-	}
-	events, cursor, err := c.deps.AuditStore.List(ctx, q)
+	stored, err := c.deps.AuditSink.ListStoredAuditEvents(ctx,
+		connect.NewRequest(&directoryrosterv1.ListStoredAuditEventsRequest{Query: req.Msg}))
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		// The writer's own words, and its code only where the caller can
+		// act on it: a cursor it refused. Anything else is the trail being
+		// unreadable just now.
+		code, cause := connect.CodeUnavailable, err
+		var refused *connect.Error
+		if errors.As(err, &refused) {
+			cause = errors.New(refused.Message())
+			if refused.Code() == connect.CodeInvalidArgument {
+				code = connect.CodeInvalidArgument
+			}
+		}
+		return nil, connect.NewError(code, cause)
 	}
-	out := &directoryrosterv1.ListAuditEventsResponse{Cursor: cursor, Events: make([]*directoryrosterv1.AuditEvent, 0, len(events))}
-	for i := range events {
-		out.Events = append(out.Events, auditEventProto(&events[i]))
-	}
-	return connect.NewResponse(out), nil
+	return connect.NewResponse(&directoryrosterv1.ListAuditEventsResponse{
+		Events: stored.Msg.GetEvents(), Cursor: stored.Msg.GetCursor(),
+	}), nil
 }
 
 // RecordAuditEvents implements reporting by a component.
@@ -91,6 +108,12 @@ func (c *Console) ListAuditEvents(
 // was recorded (on arrival), and that the source is not one of this
 // service's own — a reporter that could write `issuer` could forge a
 // sign-in.
+//
+// What an event keeps of a request IS the reporter's to say, and is never
+// taken from the report's own request: the reporter's connection is not
+// the request that caused what it reports, and a reporter acting for a
+// person may carry that person's. Recorded through the recorder directly,
+// not [Console.record], for exactly that reason.
 func (c *Console) RecordAuditEvents(
 	ctx context.Context, req *connect.Request[directoryrosterv1.RecordAuditEventsRequest],
 ) (*connect.Response[directoryrosterv1.RecordAuditEventsResponse], error) {
@@ -155,6 +178,24 @@ func reportedEvent(in *directoryrosterv1.AuditEvent) (audit.Event, error) {
 			return audit.Event{}, fmt.Errorf("a field is longer than %d bytes", maxReportedField)
 		}
 	}
+	// The request fields have bounds of their own, the same ones a request
+	// the service reads itself is cut to. Over them is refused rather than
+	// cut: a reporter sending more is a bug to see, not a value to trim.
+	for _, bounded := range []struct {
+		name, value string
+		limit       int
+	}{
+		{"client_address", in.GetClientAddress(), audit.MaxClientAddress},
+		{"user_agent", in.GetUserAgent(), audit.MaxUserAgent},
+		{"request_id", in.GetRequestId(), audit.MaxRequestID},
+	} {
+		if len(bounded.value) > bounded.limit {
+			return audit.Event{}, fmt.Errorf("%s is longer than %d bytes", bounded.name, bounded.limit)
+		}
+	}
+	e.ClientAddress = logsafe.Value(in.GetClientAddress())
+	e.UserAgent = logsafe.Value(in.GetUserAgent())
+	e.RequestID = logsafe.Value(in.GetRequestId())
 	if len(in.GetAttributes()) > maxReportedAttrs {
 		return audit.Event{}, fmt.Errorf("at most %d attributes", maxReportedAttrs)
 	}
@@ -167,20 +208,4 @@ func reportedEvent(in *directoryrosterv1.AuditEvent) (audit.Event, error) {
 		e.Attributes = maps.Clone(in.GetAttributes())
 	}
 	return e, nil
-}
-
-func auditEventProto(e *audit.Event) *directoryrosterv1.AuditEvent {
-	return &directoryrosterv1.AuditEvent{
-		Id:         e.ID,
-		At:         timestamppb.New(e.At),
-		Source:     e.Source,
-		Kind:       e.Kind,
-		Actor:      e.Actor,
-		Reporter:   e.Reporter,
-		Subject:    e.Subject,
-		Target:     e.Target,
-		Outcome:    e.Outcome,
-		Reason:     e.Reason,
-		Attributes: e.Attributes,
-	}
 }

@@ -61,12 +61,15 @@ func Load() (Config, error) {
 type App struct {
 	directory *app.App
 	issuer    *issuerapp.App
+	handler   http.Handler
 	log       *slog.Logger
 }
 
 // Handler is everything served on the public port: the OpenID surface
-// and the login page at the origin root, the console under /console/.
-func (a *App) Handler() http.Handler { return a.issuer.Handler() }
+// and the login page at the origin root, the console under /console/ —
+// all of it under one reading of each request for the audit trail, so an
+// exchange at /token records where it came from as a console call does.
+func (a *App) Handler() http.Handler { return a.handler }
 
 // HealthHandler is liveness and readiness for both halves.
 func (a *App) HealthHandler() http.Handler { return a.issuer.HealthHandler() }
@@ -128,7 +131,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	log.InfoContext(ctx, "access-roster assembled as one service: a login makes no network "+
 		"call except to the corporate directory")
-	return &App{directory: directory, issuer: assembled, log: log}, nil
+	return &App{directory: directory, issuer: assembled, handler: directory.AuditRequests(assembled.Handler()), log: log}, nil
 }
 
 // Run serves the listeners and drives the directory's loops until the

@@ -369,10 +369,16 @@ githubRoster:
 # The audit trail: sign-ins, refusals, exchanges, revokes, connects, and
 # what a reporting component (the GitHub controller) did. Kept in S3 — the
 # durable record, and what the console's Audit page reads — and never in
-# Valkey. The bucket should carry Object Lock and deny deletes; the
-# service only puts, lists and gets, as the pod's own AWS identity. Every
-# event is also one log line (`audit=true`).
+# Valkey, one Elastic Common Schema document per event. The bucket should
+# carry Object Lock and deny deletes; the service only puts, lists and
+# gets, as the pod's own AWS identity. Every event is also one log line
+# (`audit=true`) with the same ECS fields.
 audit:
+  # Take an event's client address from the first X-Forwarded-For hop
+  # instead of the connection's peer. Only behind a gateway that REPLACES
+  # that header: anybody can send it, and a gateway that appends to it
+  # passes the caller's own first hop on.
+  trustForwardedFor: false
   s3:
     # The bucket. Empty keeps the trail in one replica's memory, which is
     # not a record: right for a laptop, and warned about anywhere else.

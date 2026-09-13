@@ -137,9 +137,10 @@ type ConsoleDeps struct {
 	// Audit records what an identity did through the console. Nil records
 	// nothing.
 	Audit audit.Recorder
-	// AuditStore is where the audit page reads from. Nil is a deployment
-	// with no stream, whose events are in the log alone.
-	AuditStore audit.Store
+	// AuditSink is the writer the audit page reads back from, through its
+	// AuditSinkService client: the same writer Audit records through. Nil
+	// is a deployment keeping no trail, whose events are in the log alone.
+	AuditSink directoryrosterv1connect.AuditSinkServiceClient
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on

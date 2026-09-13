@@ -1,44 +1,52 @@
 // Package s3audit keeps the audit trail in S3: the durable record of what
 // happened in access-roster, and the store the console's Audit page reads.
+// It is an AuditSinkService writer, reached in process through
+// internal/audit/sinkrpc.
 //
 // Events are appended in batches, one JSON-lines object per batch, under
 //
 //	<prefix>YYYY/MM/DD/HH/<first event's unix nanoseconds>-<writer>-<seq>.jsonl
 //
 // so every object holds events of one UTC hour, and a listing reads hour
-// by hour, newest first. Objects are never rewritten: the bucket is meant to
-// carry Object Lock and deny deletes, and this package only ever puts,
-// lists and gets.
+// by hour, newest first. Each line is one ECS document (audit.EncodeRecord);
+// objects written by access-roster 1.6.2 hold its own event lines, and both
+// are read back (audit.DecodeRecord). Objects are never rewritten: the
+// bucket is meant to carry Object Lock and deny deletes, and this package
+// only ever puts, lists and gets.
 //
-// Recording never waits on S3. Append queues the event and returns; a
+// An ordinary write never waits on S3. It queues the events and returns; a
 // flusher writes the queue on a short interval, at a batch size, and at
 // every hour boundary, and keeps what it could not write for the next try.
 // An event not yet written is still one log line, and still in listings
-// from this replica.
+// from this replica. A durable write is the other kind: its events are put
+// in an object of their own before it returns, and what it could not put is
+// not kept at all — which is what a recovery sign-in waits for.
 package s3audit
 
 import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"go.opentelemetry.io/otel/metric"
 
+	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // Client is the part of the S3 API the store uses.
@@ -62,6 +70,9 @@ type Config struct {
 	// Writer names this replica in object keys and event ids, so two
 	// replicas never write the same key. The pod name when empty.
 	Writer string
+	// Meter is where the writer's metrics go; the global provider when
+	// nil, which records nothing unless a collector is named.
+	Meter metric.MeterProvider
 }
 
 // Defaults.
@@ -84,17 +95,17 @@ const (
 	cacheObjects = 1024
 )
 
-// Store is an [audit.Store] in S3.
+// Store is an AuditSinkService writer in S3.
 type Store struct {
-	client Client
-	cfg    Config
-	log    *slog.Logger
-	now    func() time.Time
+	client  Client
+	cfg     Config
+	log     *slog.Logger
+	now     func() time.Time
+	metrics instruments
 
 	mu      sync.Mutex
 	pending []audit.Event // appended, not yet written, oldest first
 	writing []audit.Event // taken by a flush in progress
-	seq     uint64
 	batch   uint64
 	closed  bool
 
@@ -147,42 +158,117 @@ func New(client Client, cfg Config, log *slog.Logger, now func() time.Time) *Sto
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = DefaultBatchSize
 	}
-	if cfg.Writer == "" {
-		cfg.Writer, _ = os.Hostname()
-	}
-	cfg.Writer = keySafe(cfg.Writer)
+	cfg.Writer = audit.WriterName(cfg.Writer)
 	s := &Store{
 		client: client, cfg: cfg, log: log, now: now,
 		wake: make(chan struct{}, 1), done: make(chan struct{}), stopped: make(chan struct{}),
 		cache: map[string][]audit.Event{},
 	}
+	s.metrics = newInstruments(cfg.Meter, s.depth)
 	go s.run()
 	return s
 }
 
-// Append implements [audit.Store]. It never waits on S3.
-func (s *Store) Append(_ context.Context, e audit.Event) (string, error) {
+// WriteAuditEvents implements the AuditSinkService handler.
+func (s *Store) WriteAuditEvents(
+	ctx context.Context, req *connect.Request[directoryrosterv1.WriteAuditEventsRequest],
+) (*connect.Response[directoryrosterv1.WriteAuditEventsResponse], error) {
+	events := audit.EventsFromProto(req.Msg.GetEvents())
+	if err := s.write(ctx, events, req.Msg.GetDurable()); err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
+	return connect.NewResponse(&directoryrosterv1.WriteAuditEventsResponse{
+		Written: int32(len(events)), //nolint:gosec // one request's events
+	}), nil
+}
+
+// write keeps events: queued, or with durable put before it returns.
+func (s *Store) write(ctx context.Context, events []audit.Event, durable bool) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
-		return "", errors.New("s3audit: the store is closed")
+		s.mu.Unlock()
+		return errors.New("s3audit: the store is closed")
 	}
-	if e.At.IsZero() {
-		e.At = s.now().UTC()
+	now := s.now()
+	for i := range events {
+		events[i] = audit.Assign(events[i], s.cfg.Writer, now)
 	}
-	e.At = e.At.UTC()
-	s.seq++
-	e.ID = eventID(e.At, s.cfg.Writer, s.seq)
-	s.pending = append(s.pending, e)
+	if durable {
+		s.mu.Unlock()
+		return s.putNow(ctx, events)
+	}
+	defer s.mu.Unlock()
+	s.pending = append(s.pending, events...)
 	if over := len(s.pending) - maxPending; over > 0 {
 		s.log.Warn("the audit trail cannot be written and is full; the oldest unwritten events are dropped (their log lines remain)",
 			"dropped", over)
+		s.metrics.dropped.Add(context.Background(), int64(over))
 		s.pending = slices.Delete(s.pending, 0, over)
 	}
 	if len(s.pending) >= s.cfg.BatchSize {
 		s.nudge()
 	}
-	return e.ID, nil
+	return nil
+}
+
+// putNow writes events in objects of their own, one per hour they span,
+// bypassing the queue. It is the durable write: nothing it could not put is
+// kept for later, because an event its caller refused on that failure must
+// not turn up in the trail afterwards as though it had happened.
+func (s *Store) putNow(ctx context.Context, events []audit.Event) error {
+	slices.SortFunc(events, func(a, b audit.Event) int { return strings.Compare(a.ID, b.ID) })
+	for len(events) > 0 {
+		hour := hourOf(events[0].At)
+		n := 1
+		for n < len(events) && hourOf(events[n].At).Equal(hour) {
+			n++
+		}
+		batch := slices.Clone(events[:n])
+		events = events[n:]
+		s.mu.Lock()
+		s.batch++
+		key := s.key(hour, batch[0].At, s.batch)
+		s.mu.Unlock()
+		if err := s.put(ctx, key, batch, true); err != nil {
+			return err
+		}
+		s.remember(key, batch)
+	}
+	return nil
+}
+
+// key is where a batch is put: its hour, its first event's time, this
+// writer, and a sequence no other batch of this writer shares.
+func (s *Store) key(hour, first time.Time, batch uint64) string {
+	return s.cfg.Prefix + hour.Format("2006/01/02/15") + "/" +
+		fmt.Sprintf("%019d-%s-%d.jsonl", first.UnixNano(), s.cfg.Writer, batch)
+}
+
+// put writes one object of ECS records and counts the write.
+func (s *Store) put(ctx context.Context, key string, batch []audit.Event, durable bool) error {
+	var body bytes.Buffer
+	for i := range batch {
+		line, err := audit.EncodeRecord(batch[i])
+		if err != nil {
+			continue
+		}
+		body.Write(line)
+		body.WriteByte('\n')
+	}
+	putCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	_, err := s.client.PutObject(putCtx, &s3.PutObjectInput{
+		Bucket:            aws.String(s.cfg.Bucket),
+		Key:               aws.String(key),
+		Body:              bytes.NewReader(body.Bytes()),
+		ContentType:       aws.String("application/x-ndjson"),
+		ChecksumAlgorithm: types.ChecksumAlgorithmCrc32,
+	})
+	s.metrics.recordWrite(ctx, durable, err == nil)
+	if err != nil {
+		return fmt.Errorf("put %s: %w", key, err)
+	}
+	return nil
 }
 
 // Close stops the flusher and writes what is queued, within ctx. Called
@@ -194,6 +280,7 @@ func (s *Store) Close(ctx context.Context) error {
 	s.mu.Unlock()
 	if first {
 		close(s.done)
+		s.metrics.stop()
 	}
 	// The flusher finishes the batch it is writing before it stops, so
 	// what is left afterwards is all in pending.
@@ -261,29 +348,11 @@ func (s *Store) flush(ctx context.Context) (bool, error) {
 	s.writing = slices.Clone(s.pending[:n])
 	s.pending = slices.Delete(s.pending, 0, n)
 	s.batch++
-	key := s.cfg.Prefix + hour.Format("2006/01/02/15") + "/" +
-		fmt.Sprintf("%019d-%s-%d.jsonl", s.writing[0].At.UnixNano(), s.cfg.Writer, s.batch)
+	key := s.key(hour, s.writing[0].At, s.batch)
 	batch := s.writing
 	s.mu.Unlock()
 
-	var body bytes.Buffer
-	for i := range batch {
-		line, err := json.Marshal(batch[i])
-		if err != nil {
-			continue
-		}
-		body.Write(line)
-		body.WriteByte('\n')
-	}
-	putCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	_, err := s.client.PutObject(putCtx, &s3.PutObjectInput{
-		Bucket:            aws.String(s.cfg.Bucket),
-		Key:               aws.String(key),
-		Body:              bytes.NewReader(body.Bytes()),
-		ContentType:       aws.String("application/x-ndjson"),
-		ChecksumAlgorithm: types.ChecksumAlgorithmCrc32,
-	})
+	err := s.put(ctx, key, batch, false)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -291,16 +360,35 @@ func (s *Store) flush(ctx context.Context) (bool, error) {
 		// Back at the front, in order, for the next try.
 		s.pending = append(slices.Clone(batch), s.pending...)
 		s.writing = nil
-		return false, fmt.Errorf("put %s: %w", key, err)
+		return false, err
 	}
 	s.writing = nil
 	s.remember(key, batch)
 	return true, nil
 }
 
-// List implements [audit.Store]: newest first, including this replica's
-// events not yet written.
-func (s *Store) List(ctx context.Context, q audit.Query) ([]audit.Event, string, error) {
+// ListStoredAuditEvents implements the AuditSinkService handler.
+func (s *Store) ListStoredAuditEvents(
+	ctx context.Context, req *connect.Request[directoryrosterv1.ListStoredAuditEventsRequest],
+) (*connect.Response[directoryrosterv1.ListStoredAuditEventsResponse], error) {
+	events, cursor, err := s.list(ctx, audit.QueryFromProto(req.Msg.GetQuery()))
+	if errors.Is(err, errCursor) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
+	return connect.NewResponse(&directoryrosterv1.ListStoredAuditEventsResponse{
+		Events: audit.EventsToProto(events), Cursor: cursor,
+	}), nil
+}
+
+// errCursor is a cursor that is not one.
+var errCursor = errors.New("s3audit: not a cursor")
+
+// list reads newest first, including this replica's events not yet
+// written.
+func (s *Store) list(ctx context.Context, q audit.Query) ([]audit.Event, string, error) {
 	limit := q.Limited()
 	s.mu.Lock()
 	unwritten := append(slices.Clone(s.writing), s.pending...)
@@ -310,7 +398,7 @@ func (s *Store) List(ctx context.Context, q audit.Query) ([]audit.Event, string,
 	if q.Cursor != "" {
 		at, ok := cursorTime(q.Cursor)
 		if !ok {
-			return nil, "", fmt.Errorf("s3audit: %q is not a cursor", q.Cursor)
+			return nil, "", fmt.Errorf("%w: %q", errCursor, logsafe.Value(q.Cursor))
 		}
 		start = hourOf(at)
 	}
@@ -448,8 +536,9 @@ func (s *Store) fetch(ctx context.Context, key string) ([]audit.Event, error) {
 	lines := bufio.NewScanner(io.LimitReader(object.Body, 64<<20))
 	lines.Buffer(make([]byte, 0, 64*1024), 4<<20)
 	for lines.Scan() {
-		var e audit.Event
-		if json.Unmarshal(lines.Bytes(), &e) == nil && e.ID != "" {
+		// Either format: an object holds one, and the hour it is in may
+		// hold objects of both.
+		if e, err := audit.DecodeRecord(lines.Bytes()); err == nil && e.ID != "" {
 			out = append(out, e)
 		}
 	}
@@ -502,12 +591,6 @@ func merge(written, unwritten []audit.Event, hour time.Time) []audit.Event {
 	return written
 }
 
-// eventID orders by time as a string: nineteen digits of nanoseconds, then
-// the writer and its sequence, so two replicas' events never collide.
-func eventID(at time.Time, writer string, seq uint64) string {
-	return fmt.Sprintf("%019d-%s-%d", at.UnixNano(), writer, seq)
-}
-
 // cursorTime reads the time a cursor or event id starts with.
 func cursorTime(cursor string) (time.Time, bool) {
 	digits, _, _ := strings.Cut(cursor, "-")
@@ -526,19 +609,9 @@ func boundary(t time.Time) string { return fmt.Sprintf("%019d", t.UnixNano()) }
 
 func hourOf(t time.Time) time.Time { return t.UTC().Truncate(time.Hour) }
 
-// keySafe keeps a writer name to characters that need no escaping in a key.
-func keySafe(name string) string {
-	var b strings.Builder
-	for _, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '.':
-			b.WriteRune(r)
-		default:
-			b.WriteRune('_')
-		}
-	}
-	if b.Len() == 0 {
-		return "writer"
-	}
-	return b.String()
+// depth is how many events are accepted and not yet written.
+func (s *Store) depth() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.pending) + len(s.writing)
 }

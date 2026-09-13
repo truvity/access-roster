@@ -76,8 +76,28 @@ func (i *Issuer) record(ctx context.Context, e audit.Event) {
 	if i == nil || i.audit == nil {
 		return
 	}
+	i.audit.Record(ctx, issuerEvent(ctx, e))
+}
+
+// recordDurable writes one issuer event down and answers only once it is
+// persisted: for a recovery sign-in, which does not complete without it.
+func (i *Issuer) recordDurable(ctx context.Context, e audit.Event) error {
+	if i == nil || i.audit == nil {
+		return nil
+	}
+	return i.audit.RecordDurable(ctx, issuerEvent(ctx, e))
+}
+
+// issuerEvent is an event as the issuer records it: as itself, with what
+// the event keeps of the request that caused it. The request arrives in
+// the context, put there by the server in front (server.AuditRequests),
+// because the storage an OpenID library calls is handed nothing else.
+func issuerEvent(ctx context.Context, e audit.Event) audit.Event {
 	e.Source = audit.SourceIssuer
-	i.audit.Record(ctx, e)
+	if request, ok := audit.RequestFrom(ctx); ok {
+		request.Apply(&e)
+	}
+	return e
 }
 
 // New returns an issuer over a policy set, a directory and the shared

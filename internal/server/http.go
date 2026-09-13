@@ -78,6 +78,8 @@ type ConsoleServer struct {
 	// has to carry it, because the browser resolves them against the
 	// origin. See [ConsoleServerDeps.Mount].
 	mount string
+	// trustForwardedFor: see [ConsoleServerDeps.TrustForwardedFor].
+	trustForwardedFor bool
 }
 
 // ConsoleServerDeps is what the console listener needs.
@@ -131,7 +133,12 @@ type ConsoleServerDeps struct {
 	// because a browser resolves "/login" against the origin and would
 	// land on the issuer's page instead of this one's.
 	Mount string
-	Log   *slog.Logger
+	// TrustForwardedFor takes an audit event's client address from the
+	// first X-Forwarded-For hop rather than the peer. Only for a deployment
+	// whose gateway sets that header: anybody can send it, and a gateway
+	// that does not replace it passes on whatever the caller wrote.
+	TrustForwardedFor bool
+	Log               *slog.Logger
 	// UI is the built console. Nil serves no UI, which is what a
 	// deployment that only wants the API does.
 	UI fs.FS
@@ -159,6 +166,8 @@ func NewConsoleServer(deps ConsoleServerDeps) *ConsoleServer {
 		mount:      strings.TrimSuffix(strings.TrimSpace(deps.Mount), "/"),
 		signedIn:   deps.SignedIn,
 		entry:      deps.SignInEntry,
+
+		trustForwardedFor: deps.TrustForwardedFor,
 	}
 	for _, c := range deps.Connectors {
 		s.connectors[c.Kind()] = c
@@ -271,7 +280,7 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.HandleFunc("GET "+githubLinkCallbackPath, s.githubLinkCallback)
 	mux.HandleFunc("GET /.access/whoami", s.whoami)
 
-	return s.withIdentity(mux)
+	return AuditRequests(s.trustForwardedFor, s.withIdentity(mux))
 }
 
 // at turns a path of this console's into one a browser can follow. Every
@@ -684,21 +693,46 @@ func (s *ConsoleServer) recoveryLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Written down durably BEFORE there is a session, and refused when it
+	// cannot be: the one event that does not fail open. Recovery is the way
+	// in that bypasses the directory, so a recovery that left no trace is
+	// the thing an auditor most needs to be impossible — and the write
+	// depends on S3 and this pod's own AWS identity alone, nothing this
+	// service runs, so the day recovery is needed is not a day it fails.
+	recovered := audit.Event{
+		Kind: "recovery.sign-in", Actor: subject, Subject: subject, Target: "console",
+		Attributes: map[string]string{"how": s.recovery.Kind()},
+	}
+	if err = s.console.recordDurable(r.Context(), recovered); err != nil {
+		s.log.ErrorContext(r.Context(), "recovery refused: the audit trail could not be written",
+			"subject", logsafe.Value(subject), "error", logsafe.Error(err))
+		refused := recovered
+		refused.Outcome, refused.Reason = audit.OutcomeRefused, reasonUnaudited
+		s.console.record(r.Context(), refused)
+		http.Error(w, "recovery is refused: the audit trail could not be written, and a recovery sign-in "+
+			"never happens without its record. Check that the audit bucket can be written, then try again.",
+			http.StatusServiceUnavailable)
+		return
+	}
+
 	// The session records who recovered. A shared password made every
 	// recovery look like the same person; a token names one.
 	if err = s.sessions.Issue(w, access.Principal{
 		Email: subject, Subject: subject, Source: access.SourceRecovery,
 	}); err != nil {
+		failed := recovered
+		failed.Outcome, failed.Reason = audit.OutcomeFailed, "the session could not be issued"
+		s.console.record(r.Context(), failed)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.log.WarnContext(r.Context(), "recovery sign-in", "subject", logsafe.Value(subject), "kind", s.recovery.Kind())
-	s.console.record(r.Context(), audit.Event{
-		Kind: "recovery.sign-in", Actor: subject, Subject: subject, Target: "console",
-		Attributes: map[string]string{"how": s.recovery.Kind()},
-	})
 	redirectOrOK(w, r, s.at("/"))
 }
+
+// reasonUnaudited is the reason a refused recovery sign-in is recorded
+// with, when its own record could not be written.
+const reasonUnaudited = "the audit trail could not be written, and a recovery sign-in is refused without its record"
 
 // logout clears the session. It cannot end a session elsewhere: rotating
 // the session key is what does that, and it logs everyone out at once.
