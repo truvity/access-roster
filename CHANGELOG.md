@@ -1,3 +1,11 @@
+## Unreleased
+
+- **accessctl installs through devbox.** A release now also carries
+  `accessctl_<version>_nix-flake.tar.gz`, a Nix flake over that release's
+  own archives. A repository adds its URL with `#accessctl` to
+  `devbox.json`
+  ([docs/design/accessctl.md](docs/design/accessctl.md#installing-it)).
+
 ## v1.6.5
 
 - **Audit events keep their request on a deployment, not only in tests.**
