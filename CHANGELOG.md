@@ -1,3 +1,12 @@
+## Unreleased
+
+- **An owner the controller reports reaches the audit log.** The
+  `github.owner.reported` event carried the outcome `reported`, which the
+  audit stream does not have, so it refused the whole batch and the
+  owners' events never landed. It is recorded with the outcome `ok` now;
+  the kind says what happened. This only shows in an organisation the
+  controller acts in.
+
 ## v1.5.5
 
 - **Security: token exchange no longer accepts an ID token as a proof.**

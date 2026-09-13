@@ -383,7 +383,9 @@ func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report sta
 		switch m.State {
 		case status.StateHeld:
 		case status.StateReported:
-			kind, outcome = "github.owner.reported", "reported"
+			// The kind says it was reported; the outcome is the audit
+			// stream's, which has no "reported" and refuses the batch.
+			kind, outcome = "github.owner.reported", "ok"
 		default:
 			return
 		}

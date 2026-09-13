@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -21,6 +22,7 @@ import (
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubapp/githubfake"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
@@ -74,6 +76,15 @@ type auditLog struct {
 func (a *auditLog) RecordAuditEvents(
 	_ context.Context, req *connect.Request[directoryrosterv1.RecordAuditEventsRequest],
 ) (*connect.Response[directoryrosterv1.RecordAuditEventsResponse], error) {
+	// Refused as the service refuses it: one event with an outcome the
+	// audit stream does not have loses the whole batch.
+	for i, e := range req.Msg.GetEvents() {
+		switch e.GetOutcome() {
+		case "", audit.OutcomeOK, audit.OutcomeRefused, audit.OutcomeFailed, audit.OutcomeHeld:
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("event %d: outcome %q", i, e.GetOutcome()))
+		}
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.events = append(a.events, req.Msg.GetEvents()...)
@@ -376,7 +387,7 @@ func TestAnOwnerWhoLeavesIsReportedAndRecordedOnce(t *testing.T) {
 	}
 	reported := 0
 	for _, kind := range r.audit.kinds() {
-		if kind == "github.owner.reported boss@truvity.com reported" {
+		if kind == "github.owner.reported boss@truvity.com ok" {
 			reported++
 		}
 	}
