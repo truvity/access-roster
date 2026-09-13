@@ -335,6 +335,16 @@ type Client struct {
 	Requires []string `yaml:"requires,omitempty"`
 	// TTLCap caps the lifetime the groups would otherwise grant.
 	TTLCap Duration `yaml:"ttl_cap,omitempty"`
+	// SignInExchange lets a person's sign-in to this client be traded for
+	// a token for another client: `accessctl login`, then `accessctl
+	// kube-token` or `accessctl aws`. Only the access token of a live
+	// session qualifies, presented by this same client, and what it opens
+	// is still decided by the TARGET client's `requires`.
+	//
+	// Off everywhere else: a token issued to a relying party is for that
+	// party. Only a public client may carry it -- a CLI on the person's own
+	// machine, whose tokens go nowhere but back to this issuer.
+	SignInExchange bool `yaml:"sign_in_exchange,omitempty"`
 	// BackChannelLogout is where this client is TOLD that a session it
 	// holds has ended (OIDC Back-Channel Logout 1.0). The issuer posts a
 	// signed logout token there, server to server, at the moment of
@@ -619,6 +629,9 @@ func (c Client) validate(id string, groups map[string]Group) error {
 	}
 	if c.Kind == KindExchange && len(c.SignedOut) > 0 {
 		return fmt.Errorf("client %q is an exchange target: nobody signs into it, so nobody signs out of it", id)
+	}
+	if c.SignInExchange && c.Kind != KindPublic {
+		return fmt.Errorf("client %q allows sign_in_exchange but is %s: only a public client, a CLI, may trade its sign-in", id, c.Kind)
 	}
 	// A post-logout URI that is also a redirect URI sends the person
 	// straight back into the login they just ended. It is the one mistake
