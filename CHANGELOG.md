@@ -1,4 +1,4 @@
-## Unreleased
+## v1.5.1
 
 - **The TypeScript package is published to GitHub Packages** at each
   release tag's version, built and tested by the release workflow.
