@@ -15,7 +15,6 @@
     "lefthook":              "latest",
     "protoc-gen-connect-go": "latest",
     "protoc-gen-go":         "latest",
-    "kubelogin":             "latest",
     "kubectl":               "latest",
     "git-filter-repo":       "latest"
   },
