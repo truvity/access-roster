@@ -1,4 +1,4 @@
-## Unreleased
+## v1.8.0
 
 - **Workspace credentials written by the release-rename script migrate
   too.** 1.7.0 found an old per-workspace credential Secret by its
