@@ -414,8 +414,8 @@ rather than reinterpreted.
 
   ```yaml
   github:
-    truvity:
-      members: [all:truvity:employee]     # in the org, with or without a team
+    globex:
+      members: [all:globex:employee]      # in the org, with or without a team
       teams:
         team-platform:
           members: [all:platform:engineer]
@@ -624,8 +624,8 @@ changed since 0.17.1; what changed is what can be said about it.
 
 ## v0.17.0
 
-- **The Sessions page filters MATCH rather than equal.** Typing `tsarev`
-  in the person box finds `o.tsarev@truvity.com`, and `karg` finds
+- **The Sessions page filters MATCH rather than equal.** Typing `lovelace`
+  in the person box finds `ada.lovelace@globex.example`, and `karg` finds
   `kargo` — prefix, suffix and middle, one rule. A box you have to fill
   in exactly is a box you can only use once you already know the answer,
   which is not the state anybody is in when they open that page.
@@ -643,7 +643,7 @@ changed since 0.17.1; what changed is what can be said about it.
   **Operator-only, and refused rather than narrowed for anyone else.**
   Every other rule here decides what a caller may see from the identity
   they NAMED, and an exact identity is the caller's own or nobody's. A
-  substring names an unknown set: `truvity.com` is everybody, and the
+  substring names an unknown set: `globex.example` is everybody, and the
   checks underneath would pass it precisely because it is not anybody's
   identity to refuse.
 

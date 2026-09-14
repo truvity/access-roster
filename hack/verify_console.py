@@ -60,7 +60,7 @@ spec = importlib.util.spec_from_file_location("drive", HERE / "conformance_drive
 drive = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(drive)
 
-ISSUER = os.environ.get("ISSUER", "https://access.truvity.xyz")
+ISSUER = os.environ.get("ISSUER") or sys.exit("ISSUER: set it to the issuer, e.g. https://access.example.com")
 
 
 def ok(passed, text):
@@ -223,7 +223,7 @@ def stamp():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("host", help="e.g. https://hubble.kernel.truvity.xyz")
+    parser.add_argument("host", help="e.g. https://hubble.kernel.example.com")
     parser.add_argument("--client", help="the client id, for the session query")
     args = parser.parse_args()
     host = args.host.rstrip("/")

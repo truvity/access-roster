@@ -82,7 +82,7 @@ func (f *fakeGitHub) mint(t *testing.T, claims map[string]any, signer *rsa.Priva
 
 	full := map[string]any{
 		"iss": f.URL,
-		"sub": "repo:truvity/gitops:ref:refs/heads/master",
+		"sub": "repo:globex/gitops:ref:refs/heads/master",
 		"aud": "https://iss.example",
 		"exp": time.Now().Add(time.Hour).Unix(),
 		"iat": time.Now().Unix(),
@@ -101,7 +101,7 @@ func (f *fakeGitHub) mint(t *testing.T, claims map[string]any, signer *rsa.Priva
 
 func githubVerifier(fake *fakeGitHub, owners ...string) *verify.GitHub {
 	if len(owners) == 0 {
-		owners = []string{"truvity"}
+		owners = []string{"globex"}
 	}
 
 	return (&verify.GitHub{
@@ -117,8 +117,8 @@ func TestAGitHubTokenBecomesAProof(t *testing.T) {
 
 	fake := newFakeGitHub(t)
 	token := fake.mint(t, map[string]any{
-		"repository":            "truvity/gitops",
-		"repository_owner":      "truvity",
+		"repository":            "globex/gitops",
+		"repository_owner":      "globex",
 		"ref":                   "refs/heads/master",
 		"workflow":              "Release",
 		"environment":           "prod",
@@ -135,8 +135,8 @@ func TestAGitHubTokenBecomesAProof(t *testing.T) {
 	}
 
 	for name, got := range map[string]struct{ have, want string }{
-		"repository":  {proof.GitHub.Repository, "truvity/gitops"},
-		"owner":       {proof.GitHub.Owner, "truvity"},
+		"repository":  {proof.GitHub.Repository, "globex/gitops"},
+		"owner":       {proof.GitHub.Owner, "globex"},
 		"ref":         {proof.GitHub.Ref, "refs/heads/master"},
 		"workflow":    {proof.GitHub.Workflow, "Release"},
 		"environment": {proof.GitHub.Environment, "prod"},
@@ -147,8 +147,8 @@ func TestAGitHubTokenBecomesAProof(t *testing.T) {
 		}
 	}
 
-	if subject := proof.Subject(); subject != "github:truvity/gitops" {
-		t.Errorf("Subject = %q, want github:truvity/gitops", subject)
+	if subject := proof.Subject(); subject != "github:globex/gitops" {
+		t.Errorf("Subject = %q, want github:globex/gitops", subject)
 	}
 }
 
@@ -185,8 +185,8 @@ func TestATokenForAnotherAudienceIsRefused(t *testing.T) {
 	fake := newFakeGitHub(t)
 	token := fake.mint(t, map[string]any{
 		"aud":              "sts.amazonaws.com",
-		"repository":       "truvity/gitops",
-		"repository_owner": "truvity",
+		"repository":       "globex/gitops",
+		"repository_owner": "globex",
 	}, nil)
 
 	if _, err := githubVerifier(fake).Verify(context.Background(), token, verify.TypeJWT); err == nil {
@@ -207,8 +207,8 @@ func TestAForgedSignatureIsRefused(t *testing.T) {
 	}
 
 	token := fake.mint(t, map[string]any{
-		"repository":       "truvity/gitops",
-		"repository_owner": "truvity",
+		"repository":       "globex/gitops",
+		"repository_owner": "globex",
 	}, other)
 
 	_, err = githubVerifier(fake).Verify(context.Background(), token, verify.TypeJWT)
@@ -229,7 +229,7 @@ func TestAnotherIssuersTokenIsLeftAlone(t *testing.T) {
 	fake := newFakeGitHub(t)
 	token := fake.mint(t, map[string]any{
 		"iss":              "https://kubernetes.default.svc",
-		"repository_owner": "truvity",
+		"repository_owner": "globex",
 	}, nil)
 
 	_, err := githubVerifier(fake).Verify(context.Background(), token, verify.TypeJWT)
@@ -245,8 +245,8 @@ func TestWithoutOwnersItVerifiesNothing(t *testing.T) {
 
 	fake := newFakeGitHub(t)
 	token := fake.mint(t, map[string]any{
-		"repository":       "truvity/gitops",
-		"repository_owner": "truvity",
+		"repository":       "globex/gitops",
+		"repository_owner": "globex",
 	}, nil)
 
 	verifier := (&verify.GitHub{Audience: "https://iss.example", Client: fake.Client()}).FromIssuer(fake.URL)

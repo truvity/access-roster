@@ -13,14 +13,14 @@ import (
 func TestALinkRoundTripsAndNeverLeaksItsTokens(t *testing.T) {
 	t.Parallel()
 	raw, err := link.Encode(link.Link{
-		ID: 7, Login: "ada", Emails: []string{"Ada@Truvity.com", "ada@truvity.com"}, State: link.StateLinked,
+		ID: 7, Login: "ada", Emails: []string{"Ada@Globex.example", "ada@globex.example"}, State: link.StateLinked,
 		AccessToken: "uat-secret", RefreshToken: "urt-secret",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := link.Decode(raw)
-	if err != nil || len(got.Emails) != 1 || got.Emails[0] != "ada@truvity.com" || got.AccessToken != "uat-secret" {
+	if err != nil || len(got.Emails) != 1 || got.Emails[0] != "ada@globex.example" || got.AccessToken != "uat-secret" {
 		t.Errorf("decoded %+v, %v", got, err)
 	}
 	if public := got.Public(); public.AccessToken != "" || public.RefreshToken != "" {
@@ -47,11 +47,11 @@ func TestClaimMovesAddresses(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	existing := []link.Link{
-		{ID: 1, Login: "old", Emails: []string{"ada@truvity.com"}, State: link.StateLinked, AccessToken: "t"},
-		{ID: 2, Login: "both", Emails: []string{"ada@truvity.com", "ada@trustform.io"}, State: link.StateLinked},
-		{ID: 3, Login: "other", Emails: []string{"bob@truvity.com"}, State: link.StateLinked},
+		{ID: 1, Login: "old", Emails: []string{"ada@globex.example"}, State: link.StateLinked, AccessToken: "t"},
+		{ID: 2, Login: "both", Emails: []string{"ada@globex.example", "ada@acme.example"}, State: link.StateLinked},
+		{ID: 3, Login: "other", Emails: []string{"bob@globex.example"}, State: link.StateLinked},
 	}
-	written := link.Claim(existing, link.Link{ID: 4, Login: "new", Emails: []string{"ada@truvity.com"}, State: link.StateLinked}, now)
+	written := link.Claim(existing, link.Link{ID: 4, Login: "new", Emails: []string{"ada@globex.example"}, State: link.StateLinked}, now)
 
 	byID := map[int64]link.Link{}
 	for _, l := range written {
@@ -63,8 +63,8 @@ func TestClaimMovesAddresses(t *testing.T) {
 	if old := byID[1]; old.State != link.StateLost || old.AccessToken != "" {
 		t.Errorf("old = %+v, want lost with no tokens", old)
 	}
-	if both := byID[2]; both.State != link.StateLinked || len(both.Emails) != 1 || both.Emails[0] != "ada@trustform.io" {
-		t.Errorf("both = %+v, want narrowed to trustform", both)
+	if both := byID[2]; both.State != link.StateLinked || len(both.Emails) != 1 || both.Emails[0] != "ada@acme.example" {
+		t.Errorf("both = %+v, want narrowed to acme", both)
 	}
 }
 
@@ -72,14 +72,14 @@ func TestClaimMovesAddresses(t *testing.T) {
 // accounts prove one address.
 func TestAdoptNeverDisplacesALink(t *testing.T) {
 	t.Parallel()
-	existing := []link.Link{{ID: 1, Login: "ada-gh", Emails: []string{"ada@truvity.com"}, State: link.StateLinked}}
+	existing := []link.Link{{ID: 1, Login: "ada-gh", Emails: []string{"ada@globex.example"}, State: link.StateLinked}}
 	candidates := []link.Link{
-		{ID: 1, Login: "ada-gh", Emails: []string{"ada@truvity.com"}, Source: link.SourceImported},
-		{ID: 2, Login: "ada-old", Emails: []string{"ada@truvity.com"}, Source: link.SourceImported},
-		{ID: 3, Login: "bob", Emails: []string{"bob@truvity.com", "ada@truvity.com"}, Source: link.SourceProfile, AccessToken: "never"},
+		{ID: 1, Login: "ada-gh", Emails: []string{"ada@globex.example"}, Source: link.SourceImported},
+		{ID: 2, Login: "ada-old", Emails: []string{"ada@globex.example"}, Source: link.SourceImported},
+		{ID: 3, Login: "bob", Emails: []string{"bob@globex.example", "ada@globex.example"}, Source: link.SourceProfile, AccessToken: "never"},
 	}
 	adopted, skipped := link.Adopt(existing, candidates)
-	if len(adopted) != 1 || adopted[0].ID != 3 || len(adopted[0].Emails) != 1 || adopted[0].Emails[0] != "bob@truvity.com" ||
+	if len(adopted) != 1 || adopted[0].ID != 3 || len(adopted[0].Emails) != 1 || adopted[0].Emails[0] != "bob@globex.example" ||
 		adopted[0].AccessToken != "" || adopted[0].State != link.StateLinked {
 		t.Errorf("adopted = %+v, want bob alone, with bob@ and no token", adopted)
 	}
@@ -96,10 +96,10 @@ func TestAdoptNeverDisplacesALink(t *testing.T) {
 func TestInvalidateLeavesLinksTheAppDidNotMake(t *testing.T) {
 	t.Parallel()
 	existing := []link.Link{
-		{ID: 1, Login: "self", Emails: []string{"a@truvity.com"}, State: link.StateLinked, AccessToken: "t"},
-		{ID: 2, Login: "old", Emails: []string{"b@truvity.com"}, State: link.StateLinked, Source: link.SourceSelf},
-		{ID: 3, Login: "pub", Emails: []string{"c@truvity.com"}, State: link.StateLinked, Source: link.SourceProfile},
-		{ID: 4, Login: "imp", Emails: []string{"d@truvity.com"}, State: link.StateLinked, Source: link.SourceImported},
+		{ID: 1, Login: "self", Emails: []string{"a@globex.example"}, State: link.StateLinked, AccessToken: "t"},
+		{ID: 2, Login: "old", Emails: []string{"b@globex.example"}, State: link.StateLinked, Source: link.SourceSelf},
+		{ID: 3, Login: "pub", Emails: []string{"c@globex.example"}, State: link.StateLinked, Source: link.SourceProfile},
+		{ID: 4, Login: "imp", Emails: []string{"d@globex.example"}, State: link.StateLinked, Source: link.SourceImported},
 	}
 	changed := link.Invalidate(existing, "the link App was disconnected", time.Now())
 	if len(changed) != 2 || changed[0].ID != 1 || changed[1].ID != 2 {

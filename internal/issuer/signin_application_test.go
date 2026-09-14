@@ -56,7 +56,7 @@ func TestTheChooserNamesTheApplication(t *testing.T) {
 
 	page := chooserFor(t, issuer.Pending{
 		ClientID:    "url-shortener-devel",
-		RedirectURI: "https://URL-Shortener.devel.truvity.xyz:443/oauth2/callback?from=x",
+		RedirectURI: "https://URL-Shortener.devel.example.com:443/oauth2/callback?from=x",
 		Client: policy.Client{
 			DisplayName: "URL shortener (devel)",
 			Description: "Short links for sharing internal pages.",
@@ -66,7 +66,7 @@ func TestTheChooserNamesTheApplication(t *testing.T) {
 	for _, want := range []string{
 		"Sign in to continue to <strong>URL shortener (devel)</strong>",
 		`<p class="note">Short links for sharing internal pages.</p>`,
-		`<span class="host">url-shortener.devel.truvity.xyz</span>`,
+		`<span class="host">url-shortener.devel.example.com</span>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the chooser does not say %q:\n%s", want, page)

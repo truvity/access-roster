@@ -116,7 +116,7 @@ func (d directory) ResolveUser(_ context.Context, email string, _ *time.Duration
 		answer.Email = email
 		return answer, nil
 	}
-	if strings.HasSuffix(email, "@truvity.com") {
+	if strings.HasSuffix(email, "@globex.example") {
 		return hub.UserResult{Email: email, InDomain: true, Authoritative: true}, nil
 	}
 	return hub.UserResult{Email: email}, nil
@@ -132,7 +132,7 @@ type linkRig struct {
 
 func newLinkRig(t *testing.T, dir directory) *linkRig {
 	t.Helper()
-	github := githubfake.Start(t, "truvity")
+	github := githubfake.Start(t, "globex")
 	server, console := connectServer(t, newMemoryConnections())
 	console.deps.Authorizer = access.NewAuthorizer(console.deps.Authorizer.Policy(), dir, 0)
 	console.deps.GitHubHTTP = github.Client()
@@ -143,7 +143,7 @@ func newLinkRig(t *testing.T, dir directory) *linkRig {
 	}
 	console.deps.GitHubLinkApp, console.deps.GitHubLinks = r.app, r.links
 	_ = r.app.PutLinkApp(context.Background(),
-		link.App{Owner: "truvity", AppID: 9, AppSlug: "truvity-access-roster-link", ClientID: githubfake.ClientID},
+		link.App{Owner: "globex", AppID: 9, AppSlug: "globex-access-roster-link", ClientID: githubfake.ClientID},
 		link.AppCredential{AppID: 9, ClientID: githubfake.ClientID, ClientSecret: githubfake.ClientSecret})
 	return r
 }
@@ -201,10 +201,10 @@ func (r *linkRig) finish(t *testing.T, login, state, cookie string) *httptest.Re
 // unverified one, or a suspended account's.
 func TestAPersonLinksTheirVerifiedWorkAddress(t *testing.T) {
 	r := newLinkRig(t, directory{
-		"ada@truvity.com": {InDomain: true, Found: true, Authoritative: true},
-		"old@truvity.com": {InDomain: true, Found: true, Suspended: true, Authoritative: true},
+		"ada@globex.example": {InDomain: true, Found: true, Authoritative: true},
+		"old@globex.example": {InDomain: true, Found: true, Suspended: true, Authoritative: true},
 	})
-	account := r.github.AddAccount("ada-gh", "ada@truvity.com", "old@truvity.com", "ada@gmail.example", "draft@truvity.com?")
+	account := r.github.AddAccount("ada-gh", "ada@globex.example", "old@globex.example", "ada@gmail.example", "draft@globex.example?")
 
 	state, cookie := r.start(t)
 	done := r.finish(t, "ada-gh", state, cookie)
@@ -216,11 +216,11 @@ func TestAPersonLinksTheirVerifiedWorkAddress(t *testing.T) {
 	if strings.Contains(body, "gmail") || strings.Contains(body, "draft@") {
 		t.Errorf("the page repeats a personal or unverified address:\n%s", body)
 	}
-	if !strings.Contains(body, "old@truvity.com: the account is suspended") {
+	if !strings.Contains(body, "old@globex.example: the account is suspended") {
 		t.Errorf("the page does not say why old@ was not linked:\n%s", body)
 	}
 	got := r.links.byID[account.ID]
-	if got.State != link.StateLinked || !slices.Equal(got.Emails, []string{"ada@truvity.com"}) || got.AppID != 9 ||
+	if got.State != link.StateLinked || !slices.Equal(got.Emails, []string{"ada@globex.example"}) || got.AppID != 9 ||
 		got.AccessToken != account.Access || got.RefreshToken != account.Refresh {
 		t.Errorf("link = %+v, want ada@ alone, with the App and the pair GitHub issued", got)
 	}
@@ -235,12 +235,12 @@ func TestAPersonLinksTheirVerifiedWorkAddress(t *testing.T) {
 // linked, and the page says what to do.
 func TestAnAccountWithNoKnownWorkAddressIsNotLinked(t *testing.T) {
 	r := newLinkRig(t, directory{})
-	r.github.AddAccount("stranger", "someone@gmail.example", "nobody@truvity.com")
+	r.github.AddAccount("stranger", "someone@gmail.example", "nobody@globex.example")
 
 	state, cookie := r.start(t)
 	done := r.finish(t, "stranger", state, cookie)
 
-	if done.Code != http.StatusConflict || !strings.Contains(done.Body.String(), "nobody@truvity.com: the directory has no such account") {
+	if done.Code != http.StatusConflict || !strings.Contains(done.Body.String(), "nobody@globex.example: the directory has no such account") {
 		t.Errorf("callback = %d:\n%s", done.Code, done.Body)
 	}
 	if len(r.links.byID) != 0 {
@@ -251,9 +251,9 @@ func TestAnAccountWithNoKnownWorkAddressIsNotLinked(t *testing.T) {
 // A person who links a second account with the same work address moves
 // the address to it; the first account, left proving nothing, is lost.
 func TestLinkingASecondAccountMovesTheAddress(t *testing.T) {
-	r := newLinkRig(t, directory{"ada@truvity.com": {InDomain: true, Found: true, Authoritative: true}})
-	first := r.github.AddAccount("ada-old", "ada@truvity.com")
-	second := r.github.AddAccount("ada-new", "ada@truvity.com")
+	r := newLinkRig(t, directory{"ada@globex.example": {InDomain: true, Found: true, Authoritative: true}})
+	first := r.github.AddAccount("ada-old", "ada@globex.example")
+	second := r.github.AddAccount("ada-new", "ada@globex.example")
 
 	state, cookie := r.start(t)
 	r.finish(t, "ada-old", state, cookie)
@@ -293,7 +293,7 @@ func TestCreatingTheLinkAppKeepsItsClientCredentials(t *testing.T) {
 	console.deps.GitHubLinkApp, console.deps.GitHubLinks = app, links
 
 	begun, err := console.BeginGitHubLinkAppConnect(operator(),
-		connect.NewRequest(&directoryrosterv1.BeginGitHubLinkAppConnectRequest{Owner: "truvity"}))
+		connect.NewRequest(&directoryrosterv1.BeginGitHubLinkAppConnectRequest{Owner: "globex"}))
 	if err != nil {
 		t.Fatalf("BeginGitHubLinkAppConnect: %v", err)
 	}
@@ -316,14 +316,14 @@ func TestCreatingTheLinkAppKeepsItsClientCredentials(t *testing.T) {
 	}
 
 	// An organisation's connect state does not create the link App.
-	orgState, _ := console.deps.State.IssueAs(access.Binding{Bind: githubBind + "truvity", Actor: "ada@north.example"})
+	orgState, _ := console.deps.State.IssueAs(access.Binding{Bind: githubBind + "globex", Actor: "ada@north.example"})
 	if got := redirect(server.githubLinkAppCallback, githubLinkAppCallbackPath,
 		url.Values{"code": {"created"}, "state": {orgState}}, orgState); got.Code != http.StatusBadRequest {
 		t.Errorf("an organisation's state = %d, want 400", got.Code)
 	}
 
 	if _, err = console.BeginGitHubLinkAppConnect(operator(),
-		connect.NewRequest(&directoryrosterv1.BeginGitHubLinkAppConnectRequest{Owner: "truvity"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		connect.NewRequest(&directoryrosterv1.BeginGitHubLinkAppConnectRequest{Owner: "globex"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("creating a second link App = %v, want failed precondition", err)
 	}
 	viewer := WithIdentity(context.Background(), access.Identity{Role: access.RoleViewer})
@@ -336,8 +336,8 @@ func TestCreatingTheLinkAppKeepsItsClientCredentials(t *testing.T) {
 // Disconnecting the link App makes every link unverifiable and forgets
 // its tokens, and the status page shows links without a token in sight.
 func TestDisconnectingTheLinkAppMakesLinksUnverifiable(t *testing.T) {
-	r := newLinkRig(t, directory{"ada@truvity.com": {InDomain: true, Found: true, Authoritative: true}})
-	account := r.github.AddAccount("ada-gh", "ada@truvity.com")
+	r := newLinkRig(t, directory{"ada@globex.example": {InDomain: true, Found: true, Authoritative: true}})
+	account := r.github.AddAccount("ada-gh", "ada@globex.example")
 	state, cookie := r.start(t)
 	r.finish(t, "ada-gh", state, cookie)
 
@@ -346,7 +346,7 @@ func TestDisconnectingTheLinkAppMakesLinksUnverifiable(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !status.GetLinkingAvailable() || status.GetLinkUrl() != "https://access.example"+githubLinkPath ||
-		status.GetLinkApp().GetAppSlug() != "truvity-access-roster-link" || len(status.GetLinks()) != 1 {
+		status.GetLinkApp().GetAppSlug() != "globex-access-roster-link" || len(status.GetLinks()) != 1 {
 		t.Errorf("status = %+v", status)
 	}
 	if raw, _ := json.Marshal(status); strings.Contains(string(raw), account.Access) || strings.Contains(string(raw), account.Refresh) {

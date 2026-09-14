@@ -23,17 +23,17 @@ func TestGetPolicyCarriesBothTeamRolesAndAnOrganisationsOwnMembers(t *testing.T)
 	declared, err := policy.Parse([]byte(`
 version: 1
 groups:
-  all:platform:engineer: { members: [team-platform@truvity.com] }
-  all:platform:lead: { members: [leads@truvity.com] }
-  all:truvity:employee: { matchers: [{ email_domain: truvity.com }] }
+  all:platform:engineer: { members: [team-platform@globex.example] }
+  all:platform:lead: { members: [leads@globex.example] }
+  all:globex:employee: { matchers: [{ email_domain: globex.example }] }
 github:
-  truvity:
-    members: [all:truvity:employee]
+  globex:
+    members: [all:globex:employee]
     teams:
       team-platform:
         members: [all:platform:engineer]
         maintainers: [all:platform:lead]
-  trust-form:
+  acme:
     teams:
       team-platform:
         members: [all:platform:engineer]
@@ -56,12 +56,12 @@ github:
 
 	var platform *directoryrosterv1.PolicyTeam
 	for _, team := range got.GetTeams() {
-		if team.GetOrg() == "truvity" && team.GetTeam() == "team-platform" {
+		if team.GetOrg() == "globex" && team.GetTeam() == "team-platform" {
 			platform = team
 		}
 	}
 	if platform == nil {
-		t.Fatalf("teams = %v, want truvity/team-platform", got.GetTeams())
+		t.Fatalf("teams = %v, want globex/team-platform", got.GetTeams())
 	}
 	if !slices.Equal(platform.GetMembers(), []string{"all:platform:engineer"}) {
 		t.Errorf("members = %v", platform.GetMembers())
@@ -70,13 +70,13 @@ github:
 		t.Errorf("maintainers = %v, want the lead group", platform.GetMaintainers())
 	}
 
-	// trust-form binds only teams, so it has nothing to say at the
+	// acme binds only teams, so it has nothing to say at the
 	// organisation level and is absent from the list.
 	orgs := got.GetOrgs()
-	if len(orgs) != 1 || orgs[0].GetOrg() != "truvity" {
-		t.Fatalf("orgs = %v, want truvity alone", orgs)
+	if len(orgs) != 1 || orgs[0].GetOrg() != "globex" {
+		t.Fatalf("orgs = %v, want globex alone", orgs)
 	}
-	if !slices.Equal(orgs[0].GetMembers(), []string{"all:truvity:employee"}) {
+	if !slices.Equal(orgs[0].GetMembers(), []string{"all:globex:employee"}) {
 		t.Errorf("org members = %v", orgs[0].GetMembers())
 	}
 }

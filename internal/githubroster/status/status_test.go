@@ -17,19 +17,19 @@ func TestAReportReadsBackAsWritten(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 9, 12, 21, 0, 0, 0, time.UTC)
 	written := status.Org{
-		Org:     "truvity",
+		Org:     "globex",
 		Enabled: false,
 		Tick:    status.Tick{At: at, Outcome: status.OutcomeDryRun, Changes: 2, Held: 1},
 		Teams: []status.Team{{
 			Team: "team-platform",
 			Members: []status.Member{
-				{Email: "o.tsarev@truvity.com", Login: "excavador", Role: status.RoleMaintainer, State: status.StateSynced},
-				{Email: "a.joiner@truvity.com", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
-				{Email: "a.leaver@truvity.com", Login: "leaver", Role: status.RoleMember, State: status.StateHeld,
-					Action: status.ActionRemove, Reason: "the directory cannot vouch for truvity.com"},
+				{Email: "ada.lovelace@globex.example", Login: "excavador", Role: status.RoleMaintainer, State: status.StateSynced},
+				{Email: "a.joiner@globex.example", Role: status.RoleMember, State: status.StatePending, Action: status.ActionInvite},
+				{Email: "a.leaver@globex.example", Login: "leaver", Role: status.RoleMember, State: status.StateHeld,
+					Action: status.ActionRemove, Reason: "the directory cannot vouch for globex.example"},
 			},
 		}},
-		Unlinked: []status.Account{{Login: "truvity-bot", Reason: "no bound holder's address"}},
+		Unlinked: []status.Account{{Login: "globex-bot", Reason: "no bound holder's address"}},
 	}
 
 	raw, err := status.Encode(written)
@@ -40,7 +40,7 @@ func TestAReportReadsBackAsWritten(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	if read.Version != status.Version || read.Org != "truvity" || !read.Tick.At.Equal(at) {
+	if read.Version != status.Version || read.Org != "globex" || !read.Tick.At.Equal(at) {
 		t.Errorf("header = %+v", read)
 	}
 	if len(read.Teams) != 1 || len(read.Teams[0].Members) != 3 {
@@ -63,23 +63,23 @@ func TestAReportReadsBackAsWritten(t *testing.T) {
 func TestEncodingOrdersTheDocumentWithoutTouchingTheCallersSlices(t *testing.T) {
 	t.Parallel()
 	members := []status.Member{
-		{Email: "z@truvity.com", State: status.StateSynced},
-		{Email: "a@truvity.com", State: status.StateSynced},
+		{Email: "z@globex.example", State: status.StateSynced},
+		{Email: "a@globex.example", State: status.StateSynced},
 	}
 	teams := []status.Team{{Team: "team-z", Members: members}, {Team: "team-a"}}
 
-	raw, err := status.Encode(status.Org{Org: "truvity", Teams: teams, Members: members})
+	raw, err := status.Encode(status.Org{Org: "globex", Teams: teams, Members: members})
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
 	if strings.Index(raw, `"team-a"`) > strings.Index(raw, `"team-z"`) {
 		t.Errorf("teams are not in order: %s", raw)
 	}
-	if members[0].Email != "z@truvity.com" || teams[0].Team != "team-z" {
+	if members[0].Email != "z@globex.example" || teams[0].Team != "team-z" {
 		t.Error("Encode reordered the caller's slices")
 	}
 
-	again, _ := status.Encode(status.Org{Org: "truvity", Teams: slices.Clone(teams), Members: slices.Clone(members)})
+	again, _ := status.Encode(status.Org{Org: "globex", Teams: slices.Clone(teams), Members: slices.Clone(members)})
 	if again != raw {
 		t.Error("the same report encoded twice produced two documents")
 	}
@@ -90,10 +90,10 @@ func TestEncodingOrdersTheDocumentWithoutTouchingTheCallersSlices(t *testing.T) 
 // show a confident page that means something else.
 func TestAnUnknownVersionIsRefused(t *testing.T) {
 	t.Parallel()
-	if _, err := status.Decode(`{"version":2,"org":"truvity"}`); !errors.Is(err, status.ErrVersion) {
+	if _, err := status.Decode(`{"version":2,"org":"globex"}`); !errors.Is(err, status.ErrVersion) {
 		t.Errorf("version 2 = %v, want ErrVersion", err)
 	}
-	if _, err := status.Decode(`{"org":"truvity"}`); !errors.Is(err, status.ErrVersion) {
+	if _, err := status.Decode(`{"org":"globex"}`); !errors.Is(err, status.ErrVersion) {
 		t.Errorf("no version = %v, want ErrVersion", err)
 	}
 }
@@ -106,10 +106,10 @@ func TestAnOrganisationIsItsOwnKey(t *testing.T) {
 	if _, err := status.Encode(status.Org{Org: "not a login"}); err == nil {
 		t.Error("a login with a space was encoded")
 	}
-	if org, ok := status.OrgOfKey(status.Key("trust-form")); !ok || org != "trust-form" {
-		t.Errorf("OrgOfKey(Key(trust-form)) = %q, %v", org, ok)
+	if org, ok := status.OrgOfKey(status.Key("acme")); !ok || org != "acme" {
+		t.Errorf("OrgOfKey(Key(acme)) = %q, %v", org, ok)
 	}
-	for _, key := range []string{"trust-form", "README", "-bad.json", "a--b.json", ".json"} {
+	for _, key := range []string{"acme", "README", "-bad.json", "a--b.json", ".json"} {
 		if _, ok := status.OrgOfKey(key); ok {
 			t.Errorf("%q was read as an organisation", key)
 		}

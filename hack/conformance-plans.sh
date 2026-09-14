@@ -32,7 +32,7 @@ secret() { $K -n access-issuer get secret "$1" -o jsonpath='{.data.client-secret
 # register one and serve the Back-Channel plan, which expects it.
 S1=$(secret conformance-client);    S2=$(secret conformance-2-client)
 B1=$(secret conformance-bc-client); B2=$(secret conformance-bc-2-client)
-ISS=https://access.truvity.xyz/.well-known/openid-configuration
+ISS="${ISSUER:?set ISSUER to the issuer to certify, e.g. https://access.example.com}/.well-known/openid-configuration"
 python3 - "$DIR" "$S1" "$S2" "$B1" "$B2" "$ISS" "$LABEL" <<'PY'
 import json, sys, pathlib
 d, s1, s2, b1, b2, iss, label = sys.argv[1:]

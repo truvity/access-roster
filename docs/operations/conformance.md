@@ -100,7 +100,7 @@ cat > config.json <<'JSON'
 {
   "alias": "access-issuer-config",
   "description": "access-issuer — Config profile",
-  "server": { "discoveryUrl": "https://access.truvity.xyz/.well-known/openid-configuration" },
+  "server": { "discoveryUrl": "https://access.example.com/.well-known/openid-configuration" },
   "client": { "client_id": "conformance", "client_secret": "unused-here" }
 }
 JSON
@@ -114,7 +114,7 @@ curl -s -H "$H" "$S/api/info/$TEST" | jq '{status, result}'
 Change the discovery URL to point at whichever installation is under
 test. Nothing about this run touches the installation's configuration.
 
-**Last run: 2026-09-12 against `access.truvity.xyz` at 0.17.0 —
+**Last run: 2026-09-12 against `access.example.com` at 0.17.0 —
 FINISHED / PASSED.** Discovery now also advertises
 `backchannel_logout_supported` and `backchannel_logout_session_supported`,
 both `true`, which the Back-Channel plan's own discovery module checks. Worth repeating after anything that changes discovery, since
@@ -145,12 +145,12 @@ certification is surface with no consumer.
     # The suite's own hostname. Every path below is host-relative, so
     # this one name is the redirect the issuer accepts, the landing
     # page, and the BASE_URL the suite starts with.
-    hostname: conformance.kernel.truvity.xyz
+    hostname: conformance.kernel.example.com
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     requires: [all:access-roster:operator, all:access-roster:viewer]
   - name: conformance-2
-    hostname: conformance.kernel.truvity.xyz
+    hostname: conformance.kernel.example.com
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     requires: [all:access-roster:operator, all:access-roster:viewer]
@@ -160,13 +160,13 @@ certification is surface with no consumer.
   # back-channel request it did not expect, and since 0.17.1 every
   # sign-out sends one to every client that signed somebody in.
   - name: conformance-bc
-    hostname: conformance.kernel.truvity.xyz
+    hostname: conformance.kernel.example.com
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     backchannel_logout: /test/a/access-issuer/backchannel_logout
     requires: [all:access-roster:operator, all:access-roster:viewer]
   - name: conformance-bc-2
-    hostname: conformance.kernel.truvity.xyz
+    hostname: conformance.kernel.example.com
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     backchannel_logout: /test/a/access-issuer/backchannel_logout
@@ -197,7 +197,7 @@ would pass on either.
 
 Name a group the person running the suite already holds.
 `all:access-roster:viewer` is the bootstrap matcher that admits the
-`truvity.com` domain, so it is the smallest thing that works here — the
+`acme.example` domain, so it is the smallest thing that works here — the
 tests sign in as a real person, and that person has to be admitted like
 any other.
 
@@ -218,7 +218,7 @@ The whole of this section is one script, which reads the secrets
 itself and prints the four plan ids:
 
 ```bash
-KUBECTL="kubectl --context kernel@oidc" hack/conformance-plans.sh v1.0.0
+ISSUER=https://access.example.com KUBECTL="kubectl --context kernel@oidc" hack/conformance-plans.sh v1.0.0
 ```
 
 What follows is what it does, for when a plan has to be made by hand.
@@ -230,7 +230,7 @@ cat > basic.json <<JSON
 {
   "alias": "access-issuer",
   "description": "access-issuer — Basic OP",
-  "server": { "discoveryUrl": "https://access.truvity.xyz/.well-known/openid-configuration" },
+  "server": { "discoveryUrl": "https://access.example.com/.well-known/openid-configuration" },
   "client":  { "client_id": "conformance",   "client_secret": "$FIRST_SECRET" },
   "client2": { "client_id": "conformance-2", "client_secret": "$SECOND_SECRET" },
   "client_secret_post": { "client_id": "conformance", "client_secret": "$FIRST_SECRET" }
@@ -244,7 +244,7 @@ curl -s -H "$H" -X POST "$S/api/plan?planName=oidcc-basic-certification-test-pla
 Then run every module of the plan in order:
 
 ```bash
-hack/conformance_drive.py <plan-id>
+ISSUER=https://access.example.com hack/conformance_drive.py <plan-id>
 ```
 
 **In headless Chrome, and it has to be a browser**, with `SUITE=$S` so

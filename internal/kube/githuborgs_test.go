@@ -33,7 +33,7 @@ func TestAConnectedOrganisationIsARecordAndACredentialAndDisconnectingForgetsBot
 	}
 
 	at := time.Date(2026, 9, 12, 23, 0, 0, 0, time.UTC)
-	for _, org := range []string{"truvity", "trust-form"} {
+	for _, org := range []string{"globex", "acme"} {
 		err := store.Put(ctx,
 			connection.Record{Org: org, AppID: 42, AppSlug: org + "-access-roster", ConnectedAt: at, ConnectedBy: "ada@north.example"},
 			connection.Credential{Org: org, AppID: 42, PrivateKey: "-----BEGIN RSA PRIVATE KEY-----"},
@@ -43,38 +43,38 @@ func TestAConnectedOrganisationIsARecordAndACredentialAndDisconnectingForgetsBot
 		}
 	}
 	records, err := store.List(ctx)
-	if err != nil || len(records) != 2 || records[0].Org != "trust-form" || records[0].Installed() {
+	if err != nil || len(records) != 2 || records[0].Org != "acme" || records[0].Installed() {
 		t.Fatalf("List = %+v, %v; want both, sorted, neither installed", records, err)
 	}
 
 	// Install completes the same record in place.
 	if err = store.Put(ctx,
-		connection.Record{Org: "truvity", AppID: 42, AppSlug: "truvity-access-roster", InstallationID: 7, ConnectedAt: at},
-		connection.Credential{Org: "truvity", AppID: 42, InstallationID: 7, PrivateKey: "-----BEGIN RSA PRIVATE KEY-----"},
+		connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster", InstallationID: 7, ConnectedAt: at},
+		connection.Credential{Org: "globex", AppID: 42, InstallationID: 7, PrivateKey: "-----BEGIN RSA PRIVATE KEY-----"},
 	); err != nil {
 		t.Fatalf("Put installed: %v", err)
 	}
-	credential, found, err := store.Credential(ctx, "truvity")
+	credential, found, err := store.Credential(ctx, "globex")
 	if err != nil || !found || credential.InstallationID != 7 {
 		t.Errorf("Credential = %+v, %v, %v", credential, found, err)
 	}
 
 	// The record and the credential are never for two organisations.
 	if err = store.Put(ctx,
-		connection.Record{Org: "truvity", AppID: 1, AppSlug: "x"},
-		connection.Credential{Org: "trust-form", AppID: 1, PrivateKey: "k"},
+		connection.Record{Org: "globex", AppID: 1, AppSlug: "x"},
+		connection.Credential{Org: "acme", AppID: 1, PrivateKey: "k"},
 	); err == nil {
 		t.Error("a record and a credential for different organisations were written together")
 	}
 
-	if err = store.Delete(ctx, "truvity"); err != nil {
+	if err = store.Delete(ctx, "globex"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, found, _ = store.Credential(ctx, "truvity"); found {
+	if _, found, _ = store.Credential(ctx, "globex"); found {
 		t.Error("the credential outlived Disconnect")
 	}
 	records, _ = store.List(ctx)
-	if len(records) != 1 || records[0].Org != "trust-form" {
-		t.Errorf("after Delete = %+v, want trust-form alone", records)
+	if len(records) != 1 || records[0].Org != "acme" {
+		t.Errorf("after Delete = %+v, want acme alone", records)
 	}
 }

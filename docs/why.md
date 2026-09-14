@@ -20,7 +20,7 @@ An installation already has, or can have for free:
   any console behind a gateway.
 
 What it does not have is the connective tissue: something that turns
-"Alice is in group platform-admins in the truvity.com Workspace" into
+"Alice is in group platform-admins in the globex.example Workspace" into
 "Alice may assume role power in account 1111, is cluster-admin on kernel,
 and is an operator in the directory console", and turns "this is job
 4711 of example-org/gitops on master" into "this job may deploy to

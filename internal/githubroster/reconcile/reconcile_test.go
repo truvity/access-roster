@@ -12,10 +12,10 @@ import (
 	"github.com/truvity/access-roster/policy"
 )
 
-// binding is truvity with one team fed in both roles, and the organisation
+// binding is globex with one team fed in both roles, and the organisation
 // itself fed by everyone.
 var binding = policy.GitHubOrg{
-	Members: []string{"all:truvity:employee"},
+	Members: []string{"all:globex:employee"},
 	Teams: map[string]policy.GitHubTeam{
 		"team-platform": {Members: []string{"all:platform:engineer"}, Maintainers: []string{"all:platform:lead"}},
 	},
@@ -74,38 +74,38 @@ func findLogin(t *testing.T, report status.Org, login string, action status.Acti
 func TestAMemberIsAddedInTheRoleWantedAndTheWiderRoleWins(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{
-		"all:truvity:employee":  live("ada@truvity.com", "bob@truvity.com", "cy@truvity.com"),
-		"all:platform:engineer": live("ada@truvity.com", "bob@truvity.com", "cy@truvity.com"),
-		"all:platform:lead":     live("ada@truvity.com", "cy@truvity.com"),
+		"all:globex:employee":   live("ada@globex.example", "bob@globex.example", "cy@globex.example"),
+		"all:platform:engineer": live("ada@globex.example", "bob@globex.example", "cy@globex.example"),
+		"all:platform:lead":     live("ada@globex.example", "cy@globex.example"),
 	}
 	state := reconcile.State{
 		Members: []githubapp.Member{
-			{Login: "ada", Emails: []string{"ada@truvity.com"}},
-			{Login: "bob", Emails: []string{"bob@truvity.com"}},
-			{Login: "cy", Emails: []string{"cy@truvity.com"}},
+			{Login: "ada", Emails: []string{"ada@globex.example"}},
+			{Login: "bob", Emails: []string{"bob@globex.example"}},
+			{Login: "cy", Emails: []string{"cy@globex.example"}},
 		},
 		Teams:       []githubapp.Team{{ID: 1, Slug: "team-platform"}},
 		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {{Login: "bob"}, {Login: "cy", Maintainer: true}}},
 	}
-	draft := reconcile.Derive("truvity", binding, holders, state)
+	draft := reconcile.Derive("globex", binding, holders, state)
 	report, did := draft.Decide(nil)
 
 	if want := []string{"add ada in team-platform"}; !slices.Equal(actions(did), want) {
 		t.Errorf("actions = %v, want %v", actions(did), want)
 	}
-	if m := findMember(t, report, "team-platform", "ada@truvity.com"); m.Role != status.RoleMaintainer || m.State != status.StatePending {
+	if m := findMember(t, report, "team-platform", "ada@globex.example"); m.Role != status.RoleMaintainer || m.State != status.StatePending {
 		t.Errorf("ada = %+v, want a pending maintainer: a lead group names her", m)
 	}
-	if m := findMember(t, report, "team-platform", "cy@truvity.com"); m.State != status.StateSynced {
+	if m := findMember(t, report, "team-platform", "cy@globex.example"); m.State != status.StateSynced {
 		t.Errorf("cy = %+v, want synced", m)
 	}
-	if m := findMember(t, report, "", "bob@truvity.com"); m.State != status.StateSynced {
+	if m := findMember(t, report, "", "bob@globex.example"); m.State != status.StateSynced {
 		t.Errorf("bob in the organisation = %+v", m)
 	}
 
 	// A maintainer the policy now wants as a member is changed, not removed.
-	holders["all:platform:lead"] = live("ada@truvity.com")
-	_, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	holders["all:platform:lead"] = live("ada@globex.example")
+	_, did = reconcile.Derive("globex", binding, holders, state).Decide(nil)
 	if !slices.Contains(actions(did), "set-role cy in team-platform") {
 		t.Errorf("actions = %v, want cy's role changed", actions(did))
 	}
@@ -118,46 +118,46 @@ func TestAMemberIsAddedInTheRoleWantedAndTheWiderRoleWins(t *testing.T) {
 func TestAJoinerIsInvitedAsTheAccountTheyLinked(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{
-		"all:truvity:employee":  live("ada@truvity.com", "new@truvity.com", "new@trustform.io", "partner@trustform.io"),
-		"all:platform:engineer": live("new@truvity.com", "partner@trustform.io"),
+		"all:globex:employee":   live("ada@globex.example", "new@globex.example", "new@acme.example", "partner@acme.example"),
+		"all:platform:engineer": live("new@globex.example", "partner@acme.example"),
 	}
 	state := reconcile.State{
-		Members:     []githubapp.Member{{ID: 1, Login: "ada", Emails: []string{"ada@truvity.com"}}},
+		Members:     []githubapp.Member{{ID: 1, Login: "ada", Emails: []string{"ada@globex.example"}}},
 		Teams:       []githubapp.Team{{ID: 7, Slug: "team-platform"}},
 		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {}},
-		Links:       []reconcile.Link{{ID: 42, Login: "newbie", Emails: []string{"new@truvity.com", "new@trustform.io"}}},
+		Links:       []reconcile.Link{{ID: 42, Login: "newbie", Emails: []string{"new@globex.example", "new@acme.example"}}},
 	}
-	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did := reconcile.Derive("globex", binding, holders, state).Decide(nil)
 
 	if len(did) != 1 || did[0].Kind != status.ActionInvite || did[0].Account != 42 || !slices.Equal(did[0].Teams, []int64{7}) {
 		t.Fatalf("actions = %+v, want one invitation for account 42 into team 7", did)
 	}
-	if m := findMember(t, report, "team-platform", "new@truvity.com"); m.State != status.StatePending || m.Login != "newbie" {
+	if m := findMember(t, report, "team-platform", "new@globex.example"); m.State != status.StatePending || m.Login != "newbie" {
 		t.Errorf("new@ in the team = %+v, want pending as @newbie", m)
 	}
-	waiting := findMember(t, report, "team-platform", "partner@trustform.io")
+	waiting := findMember(t, report, "team-platform", "partner@acme.example")
 	if waiting.State != status.StateNotLinked || waiting.Action != "" {
 		t.Errorf("partner@ = %+v, want not-linked with nothing to do", waiting)
 	}
 
 	// Already invited: waiting, nothing sent again.
 	state.Invitations = []githubapp.Invitation{{Login: "newbie"}}
-	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did = reconcile.Derive("globex", binding, holders, state).Decide(nil)
 	if len(did) != 0 {
 		t.Errorf("actions for an invited joiner = %v, want none", actions(did))
 	}
-	if m := findMember(t, report, "", "new@trustform.io"); m.State != status.StateInvited {
-		t.Errorf("new@trustform.io = %+v, want invited", m)
+	if m := findMember(t, report, "", "new@acme.example"); m.State != status.StateInvited {
+		t.Errorf("new@acme.example = %+v, want invited", m)
 	}
 
 	// Once they accept, the link is how they are recognised.
 	state.Invitations = nil
 	state.Members = append(state.Members, githubapp.Member{ID: 42, Login: "newbie"})
-	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did = reconcile.Derive("globex", binding, holders, state).Decide(nil)
 	if !slices.Equal(actions(did), []string{"add newbie in team-platform"}) {
 		t.Errorf("actions after accepting = %v, want newbie added to the team", actions(did))
 	}
-	if m := findMember(t, report, "", "new@truvity.com"); m.State != status.StateSynced {
+	if m := findMember(t, report, "", "new@globex.example"); m.State != status.StateSynced {
 		t.Errorf("new@ in the organisation = %+v, want synced", m)
 	}
 }
@@ -169,8 +169,8 @@ func TestAJoinerIsInvitedAsTheAccountTheyLinked(t *testing.T) {
 func TestALostLinkRemovesTheAccountAtOnce(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{
-		"all:truvity:employee":  live("ada@truvity.com", "boss@truvity.com"),
-		"all:platform:engineer": live("ada@truvity.com"),
+		"all:globex:employee":   live("ada@globex.example", "boss@globex.example"),
+		"all:platform:engineer": live("ada@globex.example"),
 	}
 	state := reconcile.State{
 		Members: []githubapp.Member{
@@ -179,11 +179,11 @@ func TestALostLinkRemovesTheAccountAtOnce(t *testing.T) {
 		Teams:       []githubapp.Team{{ID: 7, Slug: "team-platform"}},
 		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {{Login: "ada"}}},
 		Links: []reconcile.Link{
-			{ID: 1, Login: "ada", Emails: []string{"ada@truvity.com"}, Lost: true, Reason: "no linked work address is verified"},
-			{ID: 2, Login: "boss", Emails: []string{"boss@truvity.com"}, Lost: true, Reason: "revoked"},
+			{ID: 1, Login: "ada", Emails: []string{"ada@globex.example"}, Lost: true, Reason: "no linked work address is verified"},
+			{ID: 2, Login: "boss", Emails: []string{"boss@globex.example"}, Lost: true, Reason: "revoked"},
 		},
 	}
-	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did := reconcile.Derive("globex", binding, holders, state).Decide(nil)
 
 	if !slices.Equal(actions(did), []string{"remove ada in the organisation"}) {
 		t.Fatalf("actions = %v, want ada removed from the organisation and nothing else", actions(did))
@@ -200,7 +200,7 @@ func TestALostLinkRemovesTheAccountAtOnce(t *testing.T) {
 		t.Errorf("boss = %+v, want reported as an owner", boss)
 	}
 	// The row that still wants ada says why she is not simply synced.
-	if wanted := findMember(t, report, "team-platform", "ada@truvity.com"); wanted.State != status.StateNotLinked ||
+	if wanted := findMember(t, report, "team-platform", "ada@globex.example"); wanted.State != status.StateNotLinked ||
 		!strings.Contains(wanted.Reason, "@ada is gone") {
 		t.Errorf("ada in the team = %+v, want not-linked naming the lost link", wanted)
 	}
@@ -219,26 +219,26 @@ func TestALostLinkRemovesTheAccountAtOnce(t *testing.T) {
 func TestLeavingATeamIsConfirmedAndLeavesTheOrganisationAlone(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{
-		"all:truvity:employee":  live("ada@truvity.com", "moved@truvity.com"),
-		"all:platform:engineer": live("ada@truvity.com"),
+		"all:globex:employee":   live("ada@globex.example", "moved@globex.example"),
+		"all:platform:engineer": live("ada@globex.example"),
 	}
 	state := reconcile.State{
-		Members:     []githubapp.Member{{Login: "ada", Emails: []string{"ada@truvity.com"}}, {Login: "moved", Emails: []string{"moved@truvity.com"}}},
+		Members:     []githubapp.Member{{Login: "ada", Emails: []string{"ada@globex.example"}}, {Login: "moved", Emails: []string{"moved@globex.example"}}},
 		Teams:       []githubapp.Team{{ID: 1, Slug: "team-platform"}},
 		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {{Login: "ada"}, {Login: "moved"}}},
 	}
-	draft := reconcile.Derive("truvity", binding, holders, state)
-	if !slices.Equal(draft.Confirm(), []string{"moved@truvity.com"}) {
+	draft := reconcile.Derive("globex", binding, holders, state)
+	if !slices.Equal(draft.Confirm(), []string{"moved@globex.example"}) {
 		t.Fatalf("confirm = %v, want only moved@", draft.Confirm())
 	}
 
 	report, did := draft.Decide(map[string]reconcile.Confirmation{
-		"moved@truvity.com": {Authoritative: true, Found: true, Groups: []string{"all:truvity:employee"}},
+		"moved@globex.example": {Authoritative: true, Found: true, Groups: []string{"all:globex:employee"}},
 	})
 	if want := []string{"remove moved in team-platform"}; !slices.Equal(actions(did), want) {
 		t.Errorf("actions = %v, want %v and nothing about the organisation", actions(did), want)
 	}
-	if m := findMember(t, report, "team-platform", "moved@truvity.com"); m.State != status.StateLeaving {
+	if m := findMember(t, report, "team-platform", "moved@globex.example"); m.State != status.StateLeaving {
 		t.Errorf("moved@ = %+v, want leaving", m)
 	}
 }
@@ -250,21 +250,21 @@ func TestNobodyIsRemovedOnAnAnswerTheDirectoryCannotVouchFor(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{"all:platform:engineer": live()} // an unreadable workspace: nobody
 	state := reconcile.State{
-		Members:     []githubapp.Member{{Login: "ada", Emails: []string{"ada@truvity.com"}}},
+		Members:     []githubapp.Member{{Login: "ada", Emails: []string{"ada@globex.example"}}},
 		Teams:       []githubapp.Team{{ID: 1, Slug: "team-platform"}},
 		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {{Login: "ada"}}},
 	}
-	draft := reconcile.Derive("truvity", binding, holders, state)
+	draft := reconcile.Derive("globex", binding, holders, state)
 
 	for name, confirmation := range map[string]map[string]reconcile.Confirmation{
 		"not asked":         nil,
-		"not authoritative": {"ada@truvity.com": {Authoritative: false, Found: false}},
+		"not authoritative": {"ada@globex.example": {Authoritative: false, Found: false}},
 	} {
 		report, did := draft.Decide(confirmation)
 		if len(did) != 0 {
 			t.Errorf("%s: actions = %v, want none", name, actions(did))
 		}
-		if m := findMember(t, report, "team-platform", "ada@truvity.com"); m.State != status.StateRetrying || m.Reason == "" {
+		if m := findMember(t, report, "team-platform", "ada@globex.example"); m.State != status.StateRetrying || m.Reason == "" {
 			t.Errorf("%s: ada = %+v, want retrying with a reason", name, m)
 		}
 	}
@@ -272,9 +272,9 @@ func TestNobodyIsRemovedOnAnAnswerTheDirectoryCannotVouchFor(t *testing.T) {
 	// The list was merely incomplete: asked, the directory says she holds
 	// the group. Synced, nothing to do.
 	report, did := draft.Decide(map[string]reconcile.Confirmation{
-		"ada@truvity.com": {Authoritative: true, Found: true, Groups: []string{"all:platform:engineer"}},
+		"ada@globex.example": {Authoritative: true, Found: true, Groups: []string{"all:platform:engineer"}},
 	})
-	if len(did) != 0 || findMember(t, report, "team-platform", "ada@truvity.com").State != status.StateSynced {
+	if len(did) != 0 || findMember(t, report, "team-platform", "ada@globex.example").State != status.StateSynced {
 		t.Errorf("an incomplete list confirmed = %v, %+v", actions(did), report)
 	}
 }
@@ -284,19 +284,19 @@ func TestNobodyIsRemovedOnAnAnswerTheDirectoryCannotVouchFor(t *testing.T) {
 // are managed outside.
 func TestALeaverLeavesTheOrganisationButAnOwnerIsReported(t *testing.T) {
 	t.Parallel()
-	holders := reconcile.Holders{"all:truvity:employee": live("ada@truvity.com")}
+	holders := reconcile.Holders{"all:globex:employee": live("ada@globex.example")}
 	state := reconcile.State{
 		Members: []githubapp.Member{
-			{Login: "ada", Emails: []string{"ada@truvity.com"}},
-			{Login: "gone", Emails: []string{"gone@truvity.com"}},
-			{Login: "boss", Owner: true, Emails: []string{"boss@truvity.com"}},
+			{Login: "ada", Emails: []string{"ada@globex.example"}},
+			{Login: "gone", Emails: []string{"gone@globex.example"}},
+			{Login: "boss", Owner: true, Emails: []string{"boss@globex.example"}},
 		},
 		Teams:       []githubapp.Team{{ID: 1, Slug: "team-platform"}},
 		TeamMembers: map[string][]githubapp.TeamMember{"team-platform": {{Login: "gone"}}},
 	}
-	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(map[string]reconcile.Confirmation{
-		"gone@truvity.com": {Authoritative: true, Found: true, Suspended: true},
-		"boss@truvity.com": {Authoritative: true, Found: false},
+	report, did := reconcile.Derive("globex", binding, holders, state).Decide(map[string]reconcile.Confirmation{
+		"gone@globex.example": {Authoritative: true, Found: true, Suspended: true},
+		"boss@globex.example": {Authoritative: true, Found: false},
 	})
 	if want := []string{"remove gone in the organisation"}; !slices.Equal(actions(did), want) {
 		t.Errorf("actions = %v, want %v: the team removal rides on leaving the organisation", actions(did), want)
@@ -312,32 +312,32 @@ func TestALeaverLeavesTheOrganisationButAnOwnerIsReported(t *testing.T) {
 func TestLivenessTwoWorkspacesAndAnAmbiguousAddress(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{
-		"all:truvity:employee": {
-			{Email: "dual@trustform.io", Live: true},
-			{Email: "suspended@truvity.com", Live: false},
-			{Email: "shared@truvity.com", Live: true},
+		"all:globex:employee": {
+			{Email: "dual@acme.example", Live: true},
+			{Email: "suspended@globex.example", Live: false},
+			{Email: "shared@globex.example", Live: true},
 		},
 	}
 	state := reconcile.State{
 		Members: []githubapp.Member{
-			{Login: "dual", Emails: []string{"dual@truvity.com", "dual@trustform.io"}},
-			{Login: "one", Emails: []string{"shared@truvity.com"}},
-			{Login: "two", Emails: []string{"shared@truvity.com"}},
+			{Login: "dual", Emails: []string{"dual@globex.example", "dual@acme.example"}},
+			{Login: "one", Emails: []string{"shared@globex.example"}},
+			{Login: "two", Emails: []string{"shared@globex.example"}},
 		},
 		Teams: []githubapp.Team{{ID: 1, Slug: "team-platform"}},
 	}
-	draft := reconcile.Derive("truvity", binding, holders, state)
+	draft := reconcile.Derive("globex", binding, holders, state)
 	report, did := draft.Decide(nil)
 
-	if m := findMember(t, report, "", "dual@trustform.io"); m.Login != "dual" || m.State != status.StateSynced {
+	if m := findMember(t, report, "", "dual@acme.example"); m.Login != "dual" || m.State != status.StateSynced {
 		t.Errorf("dual through the second workspace = %+v", m)
 	}
 	for _, row := range report.Members {
-		if row.Email == "suspended@truvity.com" {
+		if row.Email == "suspended@globex.example" {
 			t.Errorf("a suspended holder has a row: %+v", row)
 		}
 	}
-	shared := findMember(t, report, "", "shared@truvity.com")
+	shared := findMember(t, report, "", "shared@globex.example")
 	if shared.Login != "" || shared.State != status.StateHeld {
 		t.Errorf("an address two accounts claim = %+v, want linked to neither and held", shared)
 	}
@@ -351,17 +351,17 @@ func TestLivenessTwoWorkspacesAndAnAmbiguousAddress(t *testing.T) {
 // held rather than created.
 func TestUnlinkedMembersUnboundTeamsAndMissingTeamsAreLeftAlone(t *testing.T) {
 	t.Parallel()
-	holders := reconcile.Holders{"all:platform:engineer": live("ada@truvity.com")}
+	holders := reconcile.Holders{"all:platform:engineer": live("ada@globex.example")}
 	state := reconcile.State{
 		Members: []githubapp.Member{
-			{Login: "ada", Emails: []string{"ada@truvity.com"}},
+			{Login: "ada", Emails: []string{"ada@globex.example"}},
 			{Login: "bot"},
 		},
 		// team-platform does not exist; robots is unbound.
 		Teams:       []githubapp.Team{{ID: 9, Slug: "robots"}},
 		TeamMembers: map[string][]githubapp.TeamMember{"robots": {{Login: "bot"}, {Login: "ada"}}},
 	}
-	draft := reconcile.Derive("truvity", binding, holders, state)
+	draft := reconcile.Derive("globex", binding, holders, state)
 	report, did := draft.Decide(nil)
 
 	if len(did) != 0 {
@@ -370,7 +370,7 @@ func TestUnlinkedMembersUnboundTeamsAndMissingTeamsAreLeftAlone(t *testing.T) {
 	if len(report.Unlinked) != 1 || report.Unlinked[0].Login != "bot" {
 		t.Errorf("unlinked = %+v, want bot", report.Unlinked)
 	}
-	if m := findMember(t, report, "team-platform", "ada@truvity.com"); m.State != status.StateHeld || !strings.Contains(m.Reason, "no team team-platform") {
+	if m := findMember(t, report, "team-platform", "ada@globex.example"); m.State != status.StateHeld || !strings.Contains(m.Reason, "no team team-platform") {
 		t.Errorf("ada in a missing team = %+v", m)
 	}
 	for _, team := range report.Teams {
@@ -388,9 +388,9 @@ func TestUnlinkedMembersUnboundTeamsAndMissingTeamsAreLeftAlone(t *testing.T) {
 func TestTwoExpiredInvitationsStopTheThird(t *testing.T) {
 	t.Parallel()
 	linkedAt := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	holders := reconcile.Holders{"all:truvity:employee": live("new@truvity.com")}
+	holders := reconcile.Holders{"all:globex:employee": live("new@globex.example")}
 	state := reconcile.State{
-		Links: []reconcile.Link{{ID: 42, Login: "newbie", Emails: []string{"new@truvity.com"}, LinkedAt: linkedAt}},
+		Links: []reconcile.Link{{ID: 42, Login: "newbie", Emails: []string{"new@globex.example"}, LinkedAt: linkedAt}},
 	}
 	guards := reconcile.Guards{
 		Known: true, Plan: githubapp.Plan{Seats: 10, Filled: 1}, LinkedAt: map[int64]time.Time{42: linkedAt},
@@ -399,18 +399,18 @@ func TestTwoExpiredInvitationsStopTheThird(t *testing.T) {
 			{Login: "NEWBIE", FailedAt: linkedAt.Add(16 * 24 * time.Hour)},
 		},
 	}
-	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did := reconcile.Derive("globex", binding, holders, state).Decide(nil)
 	did = reconcile.Guard(&report, did, guards)
 	if len(did) != 0 {
 		t.Errorf("actions = %v, want no third invitation", actions(did))
 	}
-	if m := findMember(t, report, "", "new@truvity.com"); m.State != status.StateIgnored || !strings.Contains(m.Reason, "linking the account again") {
+	if m := findMember(t, report, "", "new@globex.example"); m.State != status.StateIgnored || !strings.Contains(m.Reason, "linking the account again") {
 		t.Errorf("new@ = %+v, want ignored, saying how to start over", m)
 	}
 
 	// Linked again after both expired: invited again.
 	guards.LinkedAt[42] = linkedAt.Add(20 * 24 * time.Hour)
-	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did = reconcile.Derive("globex", binding, holders, state).Decide(nil)
 	if did = reconcile.Guard(&report, did, guards); len(did) != 1 || did[0].Kind != status.ActionInvite {
 		t.Errorf("after linking again, actions = %v, want one invitation", actions(did))
 	}
@@ -420,13 +420,13 @@ func TestTwoExpiredInvitationsStopTheThird(t *testing.T) {
 // each, and nobody at all while the seats cannot be read.
 func TestInvitationsStopAtTheLastFreeSeat(t *testing.T) {
 	t.Parallel()
-	holders := reconcile.Holders{"all:truvity:employee": live("a@truvity.com", "b@truvity.com", "c@truvity.com")}
+	holders := reconcile.Holders{"all:globex:employee": live("a@globex.example", "b@globex.example", "c@globex.example")}
 	state := reconcile.State{Links: []reconcile.Link{
-		{ID: 1, Login: "a", Emails: []string{"a@truvity.com"}},
-		{ID: 2, Login: "b", Emails: []string{"b@truvity.com"}},
-		{ID: 3, Login: "c", Emails: []string{"c@truvity.com"}},
+		{ID: 1, Login: "a", Emails: []string{"a@globex.example"}},
+		{ID: 2, Login: "b", Emails: []string{"b@globex.example"}},
+		{ID: 3, Login: "c", Emails: []string{"c@globex.example"}},
 	}}
-	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did := reconcile.Derive("globex", binding, holders, state).Decide(nil)
 	did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Plan: githubapp.Plan{Seats: 30, Filled: 28}, Pending: 1})
 	if len(did) != 1 {
 		t.Errorf("actions = %v, want exactly one invitation for the one free seat", actions(did))
@@ -444,11 +444,11 @@ func TestInvitationsStopAtTheLastFreeSeat(t *testing.T) {
 		t.Errorf("rows held for a seat = %d, want 2: %+v", held, report.Members)
 	}
 
-	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did = reconcile.Derive("globex", binding, holders, state).Decide(nil)
 	if did = reconcile.Guard(&report, did, reconcile.Guards{Known: false}); len(did) != 0 {
 		t.Errorf("with unreadable seats, actions = %v, want none", actions(did))
 	}
-	if m := findMember(t, report, "", "a@truvity.com"); !strings.Contains(m.Reason, "organisation administration") {
+	if m := findMember(t, report, "", "a@globex.example"); !strings.Contains(m.Reason, "organisation administration") {
 		t.Errorf("a@ = %+v, want held on the missing permission", m)
 	}
 }
@@ -458,17 +458,17 @@ func TestInvitationsStopAtTheLastFreeSeat(t *testing.T) {
 // again. Half exactly is not more than half.
 func TestMassRemovalWaitsForConfirmation(t *testing.T) {
 	t.Parallel()
-	holders := reconcile.Holders{"all:truvity:employee": live("stay@truvity.com")}
-	members := []githubapp.Member{{ID: 1, Login: "stay", Emails: []string{"stay@truvity.com"}}}
+	holders := reconcile.Holders{"all:globex:employee": live("stay@globex.example")}
+	members := []githubapp.Member{{ID: 1, Login: "stay", Emails: []string{"stay@globex.example"}}}
 	confirmations := map[string]reconcile.Confirmation{}
 	for _, login := range []string{"x", "y", "z"} {
-		email := login + "@truvity.com"
+		email := login + "@globex.example"
 		members = append(members, githubapp.Member{Login: login, Emails: []string{email}})
 		confirmations[email] = reconcile.Confirmation{Authoritative: true, Found: false}
 	}
 	state := reconcile.State{Members: members}
 
-	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(confirmations)
+	report, did := reconcile.Derive("globex", binding, holders, state).Decide(confirmations)
 	did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Plan: githubapp.Plan{Seats: 10}, Members: 4})
 	if len(did) != 0 || report.Breaker == nil || report.Breaker.Affected != 3 || report.Breaker.Confirmed {
 		t.Fatalf("actions = %v, breaker = %+v; want nothing removed and the breaker open", actions(did), report.Breaker)
@@ -478,23 +478,23 @@ func TestMassRemovalWaitsForConfirmation(t *testing.T) {
 	}
 	fingerprint := report.Breaker.Fingerprint
 
-	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(confirmations)
+	report, did = reconcile.Derive("globex", binding, holders, state).Decide(confirmations)
 	if did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Members: 4, Confirmed: fingerprint}); len(did) != 3 || !report.Breaker.Confirmed {
 		t.Errorf("confirmed: actions = %v, want the three removals", actions(did))
 	}
 
 	// One more leaver changes the set: the old confirmation does not cover it.
-	state.Members = append(state.Members, githubapp.Member{Login: "w", Emails: []string{"w@truvity.com"}})
-	confirmations["w@truvity.com"] = reconcile.Confirmation{Authoritative: true, Found: false}
-	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(confirmations)
+	state.Members = append(state.Members, githubapp.Member{Login: "w", Emails: []string{"w@globex.example"}})
+	confirmations["w@globex.example"] = reconcile.Confirmation{Authoritative: true, Found: false}
+	report, did = reconcile.Derive("globex", binding, holders, state).Decide(confirmations)
 	if did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Members: 5, Confirmed: fingerprint}); len(did) != 0 {
 		t.Errorf("a changed set went ahead on an old confirmation: %v", actions(did))
 	}
 
 	// Two of four is half, not more than half: no breaker.
 	state.Members = members[:3]
-	delete(confirmations, "z@truvity.com")
-	report, did = reconcile.Derive("truvity", binding, holders, state).Decide(confirmations)
+	delete(confirmations, "z@globex.example")
+	report, did = reconcile.Derive("globex", binding, holders, state).Decide(confirmations)
 	if did = reconcile.Guard(&report, did, reconcile.Guards{Known: true, Members: 4}); len(did) != 2 || report.Breaker != nil {
 		t.Errorf("half: actions = %v, breaker = %+v; want both removals and no breaker", actions(did), report.Breaker)
 	}
@@ -506,15 +506,15 @@ func TestMassRemovalWaitsForConfirmation(t *testing.T) {
 func TestAnOwnerIsAddedAndPromotedButNeverRemovedOrDemoted(t *testing.T) {
 	t.Parallel()
 	holders := reconcile.Holders{
-		"all:truvity:employee":  live("boss@truvity.com", "it@truvity.com", "lead@truvity.com"),
-		"all:platform:engineer": live("boss@truvity.com", "lead@truvity.com"),
-		"all:platform:lead":     live("lead@truvity.com"),
+		"all:globex:employee":   live("boss@globex.example", "it@globex.example", "lead@globex.example"),
+		"all:platform:engineer": live("boss@globex.example", "lead@globex.example"),
+		"all:platform:lead":     live("lead@globex.example"),
 	}
 	state := reconcile.State{
 		Members: []githubapp.Member{
-			{Login: "boss", Owner: true, Emails: []string{"boss@truvity.com"}},
-			{Login: "it", Owner: true, Emails: []string{"it@truvity.com"}},
-			{Login: "lead", Owner: true, Emails: []string{"lead@truvity.com"}},
+			{Login: "boss", Owner: true, Emails: []string{"boss@globex.example"}},
+			{Login: "it", Owner: true, Emails: []string{"it@globex.example"}},
+			{Login: "lead", Owner: true, Emails: []string{"lead@globex.example"}},
 		},
 		Teams: []githubapp.Team{{ID: 1, Slug: "team-platform"}},
 		// boss maintains the team and the policy wants a member; it is in the
@@ -524,7 +524,7 @@ func TestAnOwnerIsAddedAndPromotedButNeverRemovedOrDemoted(t *testing.T) {
 			{Login: "boss", Maintainer: true}, {Login: "it", Maintainer: true}, {Login: "lead"},
 		}},
 	}
-	report, did := reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	report, did := reconcile.Derive("globex", binding, holders, state).Decide(nil)
 
 	if want := []string{"set-role lead in team-platform"}; !slices.Equal(actions(did), want) {
 		t.Errorf("actions = %v, want only lead promoted", actions(did))
@@ -549,7 +549,7 @@ func TestAnOwnerIsAddedAndPromotedButNeverRemovedOrDemoted(t *testing.T) {
 
 	// An owner the policy wants in a team they are not in is added.
 	state.TeamMembers = map[string][]githubapp.TeamMember{"team-platform": {}}
-	_, did = reconcile.Derive("truvity", binding, holders, state).Decide(nil)
+	_, did = reconcile.Derive("globex", binding, holders, state).Decide(nil)
 	if !slices.Contains(actions(did), "add boss in team-platform") {
 		t.Errorf("actions = %v, want boss added", actions(did))
 	}
@@ -566,12 +566,12 @@ func TestIgnoredAddressesAndLoginsAreLeftAlone(t *testing.T) {
 		Ignore:  []string{"Admin@Partner.example", "temp-owner"},
 	}
 	holders := reconcile.Holders{
-		"all:truvity:employee":  live("admin@partner.example", "temp@truvity.com", "ada@truvity.com", "mailbox@truvity.com"),
-		"all:platform:engineer": live("admin@partner.example", "ada@truvity.com"),
+		"all:globex:employee":   live("admin@partner.example", "temp@globex.example", "ada@globex.example", "mailbox@globex.example"),
+		"all:platform:engineer": live("admin@partner.example", "ada@globex.example"),
 	}
 	state := reconcile.State{
 		Members: []githubapp.Member{
-			{ID: 1, Login: "ada", Emails: []string{"ada@truvity.com"}},
+			{ID: 1, Login: "ada", Emails: []string{"ada@globex.example"}},
 			// An owner with an ignored login, in a team nothing wants it in.
 			{ID: 2, Login: "temp-owner", Owner: true},
 			// A member whose only linked address is ignored.
@@ -583,10 +583,10 @@ func TestIgnoredAddressesAndLoginsAreLeftAlone(t *testing.T) {
 		}},
 		Links: []reconcile.Link{
 			{ID: 3, Login: "partner-admin", Emails: []string{"admin@partner.example"}},
-			{ID: 2, Login: "temp-owner", Emails: []string{"temp@truvity.com"}},
+			{ID: 2, Login: "temp-owner", Emails: []string{"temp@globex.example"}},
 		},
 	}
-	report, did := reconcile.Derive("truvity", ignoring, holders, state).Decide(nil)
+	report, did := reconcile.Derive("globex", ignoring, holders, state).Decide(nil)
 
 	if len(did) != 0 {
 		t.Errorf("actions = %v, want none: everything else is in sync or ignored", actions(did))
@@ -599,7 +599,7 @@ func TestIgnoredAddressesAndLoginsAreLeftAlone(t *testing.T) {
 			t.Errorf("an ignored account has a row: %+v", m)
 		}
 	}
-	if m := findMember(t, report, "", "mailbox@truvity.com"); m.State != status.StateNotLinked {
+	if m := findMember(t, report, "", "mailbox@globex.example"); m.State != status.StateNotLinked {
 		t.Errorf("mailbox@ = %+v, want an address nobody ignored still waiting", m)
 	}
 	for _, account := range report.Unlinked {

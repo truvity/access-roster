@@ -303,7 +303,7 @@ chart-lint:
     # valid token: the verifier refuses to run without the list, and the
     # chart must not invent one.
     ! helm template t charts/access-issuer --set issuerURL=https://iss.example | grep -q GITHUB_OWNERS
-    helm template t charts/access-issuer --set issuerURL=https://iss.example --set 'github.owners={truvity}' | grep -q GITHUB_OWNERS
+    helm template t charts/access-issuer --set issuerURL=https://iss.example --set 'github.owners={globex}' | grep -q GITHUB_OWNERS
     # The GitHub controller (INF-697): off unless asked for, refused
     # without the cluster row the service verifies its token against, and
     # never selected by the service's own Service — which would send logins
@@ -311,12 +311,12 @@ chart-lint:
     ! helm template t charts/access-issuer --set issuerURL=https://iss.example | grep -q github-roster
     ! helm template t charts/access-issuer --set issuerURL=https://iss.example --set githubRoster.enabled=true >/dev/null 2>&1
     helm template t charts/access-issuer --set issuerURL=https://iss.example \
-        --set githubRoster.enabled=true --set 'githubRoster.actsIn={truvity}' \
+        --set githubRoster.enabled=true --set 'githubRoster.actsIn={globex}' \
         --set networkPolicy.enabled=true \
         --set 'exchange.clusters[0].name=kernel' --set 'exchange.clusters[0].issuer=https://oidc.example' \
         --set 'exchange.clusters[0].jwksUri=https://oidc.example/keys' > /tmp/access-issuer-github.yaml
     grep -q 'value: "http://t-access-issuer.default.svc:8080/console"' /tmp/access-issuer-github.yaml
-    grep -q 'value: "truvity"' /tmp/access-issuer-github.yaml
+    grep -q 'value: "globex"' /tmp/access-issuer-github.yaml
     grep -q 'secretName: t-access-issuer-github-apps' /tmp/access-issuer-github.yaml
     grep -q 'resourceNames: \["t-access-issuer-github-status"\]' /tmp/access-issuer-github.yaml
     # The one Secret the controller may touch is the links', by name.

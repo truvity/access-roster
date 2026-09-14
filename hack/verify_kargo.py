@@ -42,6 +42,7 @@ on it are not this script's to touch.
 
 import importlib.util
 import pathlib
+import urllib.parse
 import sys
 import time
 
@@ -60,7 +61,9 @@ console = load("verify_console")
 
 
 def main():
-    host = (sys.argv[1] if len(sys.argv) > 1 else "https://kargo.kernel.truvity.xyz").rstrip("/")
+    if len(sys.argv) < 2:
+        sys.exit("usage: ISSUER=https://access.example.com verify_kargo.py https://kargo.example.com")
+    host = sys.argv[1].rstrip("/")
     watcher = console.Observer()
     chrome, cdp = drive.start_chrome()
     passed = []
@@ -126,7 +129,7 @@ def main():
         click("^SSO Login$")
         time.sleep(10)
         here = url()
-        silent = "access.truvity.xyz/login" not in here and has_tokens()
+        silent = urllib.parse.urlparse(drive.ISSUER).netloc + "/login" not in here and has_tokens()
         passed.append(ok(silent, "the next SSO click is admitted with no password"))
         if silent and "/login?code=" in here:
             print("  NOTE Kargo stayed on the callback URL showing its login page -- the known")

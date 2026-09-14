@@ -38,26 +38,26 @@ func TestTheGitHubStatusIsCreatedOnceAndReplacedWhole(t *testing.T) {
 		t.Errorf("name = %q: the chart grants the controller by this name", cm.Name)
 	}
 
-	if err = store.Replace(ctx, map[string]string{"truvity.json": "{}", "trust-form.json": "{}"}); err != nil {
+	if err = store.Replace(ctx, map[string]string{"globex.json": "{}", "acme.json": "{}"}); err != nil {
 		t.Fatalf("Replace: %v", err)
 	}
 	// Replacing is whole: an organisation no longer reported leaves the
 	// page rather than lingering with its last state.
-	if err = store.Replace(ctx, map[string]string{"truvity.json": `{"version":1}`}); err != nil {
+	if err = store.Replace(ctx, map[string]string{"globex.json": `{"version":1}`}); err != nil {
 		t.Fatalf("Replace: %v", err)
 	}
 	reports, err = store.Reports(ctx)
 	if err != nil {
 		t.Fatalf("Reports: %v", err)
 	}
-	if len(reports) != 1 || reports["truvity.json"] != `{"version":1}` {
-		t.Errorf("reports = %v, want truvity alone, as last written", reports)
+	if len(reports) != 1 || reports["globex.json"] != `{"version":1}` {
+		t.Errorf("reports = %v, want globex alone, as last written", reports)
 	}
 
 	// A write before anything created the report is an error, never a
 	// silent create: the controller is not allowed to create objects.
 	fresh := kube.NewGitHubStatus(newClient())
-	if err = fresh.Replace(ctx, map[string]string{"truvity.json": "{}"}); err == nil {
+	if err = fresh.Replace(ctx, map[string]string{"globex.json": "{}"}); err == nil {
 		t.Error("Replace created the report instead of refusing")
 	}
 }

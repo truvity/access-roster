@@ -30,9 +30,8 @@ on:
   workflow_dispatch:
     inputs:
       issuer:
-        description: The issuer to certify.
-        required: false
-        default: https://access.truvity.xyz
+        description: The issuer to certify, e.g. https://access.example.com.
+        required: true
 
 permissions:
   contents: read
@@ -46,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      ISSUER: ${{ inputs.issuer || 'https://access.truvity.xyz' }}
+      ISSUER: ${{ inputs.issuer }}
       SUITE: https://localhost.emobix.co.uk:8443
     steps:
       # Pinned by COMMIT SHA, never a tag: a tag moves, and this is the

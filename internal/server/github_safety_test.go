@@ -42,15 +42,15 @@ func (m *memoryConfirmations) Confirmations(context.Context) (map[string]connect
 // Only the removal set the latest report shows can be confirmed, only by
 // an operator, and the confirmation is what the status then carries.
 func TestConfirmingRemovalsIsForTheSetTheReportShows(t *testing.T) {
-	document, err := status.Encode(status.Org{Org: "truvity", Breaker: &status.Breaker{Affected: 3, Members: 4, Fingerprint: "abc123"}})
+	document, err := status.Encode(status.Org{Org: "globex", Breaker: &status.Breaker{Affected: 3, Members: 4, Fingerprint: "abc123"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	console := githubConsole(t, reports{status.Key("truvity"): document})
+	console := githubConsole(t, reports{status.Key("globex"): document})
 	confirmations := &memoryConfirmations{byOrg: map[string]connection.Confirmation{}}
 	console.deps.GitHubConfirmations = confirmations
 	confirm := func(ctx context.Context, fingerprint string) error {
-		_, err := console.ConfirmGitHubRemovals(ctx, connect.NewRequest(&directoryrosterv1.ConfirmGitHubRemovalsRequest{Org: "truvity", Fingerprint: fingerprint}))
+		_, err := console.ConfirmGitHubRemovals(ctx, connect.NewRequest(&directoryrosterv1.ConfirmGitHubRemovalsRequest{Org: "globex", Fingerprint: fingerprint}))
 		return err
 	}
 
@@ -68,18 +68,18 @@ func TestConfirmingRemovalsIsForTheSetTheReportShows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := organisation(t, got, "truvity").GetRemovalConfirmation()
+	c := organisation(t, got, "globex").GetRemovalConfirmation()
 	if c.GetFingerprint() != "abc123" || c.GetConfirmedBy() != "ada@north.example" {
 		t.Errorf("confirmation = %+v", c)
 	}
-	if b := organisation(t, got, "truvity").GetBreaker(); b.GetAffected() != 3 || b.GetFingerprint() != "abc123" {
+	if b := organisation(t, got, "globex").GetBreaker(); b.GetAffected() != 3 || b.GetFingerprint() != "abc123" {
 		t.Errorf("breaker = %+v", b)
 	}
 
 	// A day later it no longer holds.
-	confirmations.byOrg["truvity"] = connection.Confirmation{Org: "truvity", Fingerprint: "abc123", By: "x", At: time.Now().Add(-25 * time.Hour)}
+	confirmations.byOrg["globex"] = connection.Confirmation{Org: "globex", Fingerprint: "abc123", By: "x", At: time.Now().Add(-25 * time.Hour)}
 	got, _ = githubStatus(t, console, access.RoleViewer)
-	if organisation(t, got, "truvity").GetRemovalConfirmation() != nil {
+	if organisation(t, got, "globex").GetRemovalConfirmation() != nil {
 		t.Error("a day-old confirmation still holds")
 	}
 }
@@ -89,22 +89,22 @@ func TestConfirmingRemovalsIsForTheSetTheReportShows(t *testing.T) {
 // connected organisation — and says why for every one it skips.
 func TestImportingLinksAppliesTheThreeChecks(t *testing.T) {
 	r := newLinkRig(t, directory{
-		"ada@truvity.com":  {InDomain: true, Found: true, Authoritative: true},
-		"gone@truvity.com": {InDomain: true, Found: true, Suspended: true, Authoritative: true},
-		"out@truvity.com":  {InDomain: true, Found: true, Authoritative: true},
+		"ada@globex.example":  {InDomain: true, Found: true, Authoritative: true},
+		"gone@globex.example": {InDomain: true, Found: true, Suspended: true, Authoritative: true},
+		"out@globex.example":  {InDomain: true, Found: true, Authoritative: true},
 	})
 	r.github.AddMember("ada-gh", false)
 	r.github.AddMember("gone-gh", false)
 	r.github.AddAccount("out-gh")
-	credentialFor(t, r, "truvity")
+	credentialFor(t, r, "globex")
 
 	response, err := r.console.ImportGitHubLinks(operator(), connect.NewRequest(&directoryrosterv1.ImportGitHubLinksRequest{
 		Origin: "github-roster 0.x",
 		Records: []*directoryrosterv1.GitHubLinkRecord{
-			{Login: "ada-gh", Emails: []string{"ada@truvity.com"}, ApprovedBy: "boss@truvity.com"},
-			{Login: "gone-gh", Emails: []string{"gone@truvity.com"}, ApprovedBy: "boss@truvity.com"},
-			{Login: "out-gh", Emails: []string{"out@truvity.com"}, ApprovedBy: "boss@truvity.com"},
-			{Login: "ada-gh", Emails: []string{"ada@truvity.com"}},
+			{Login: "ada-gh", Emails: []string{"ada@globex.example"}, ApprovedBy: "boss@globex.example"},
+			{Login: "gone-gh", Emails: []string{"gone@globex.example"}, ApprovedBy: "boss@globex.example"},
+			{Login: "out-gh", Emails: []string{"out@globex.example"}, ApprovedBy: "boss@globex.example"},
+			{Login: "ada-gh", Emails: []string{"ada@globex.example"}},
 		},
 	}))
 	if err != nil {
@@ -124,7 +124,7 @@ func TestImportingLinksAppliesTheThreeChecks(t *testing.T) {
 		}
 	}
 	for _, l := range r.links.byID {
-		if l.Login == "ada-gh" && (!l.Active() || l.Checked() || !strings.Contains(l.Note, "approved by boss@truvity.com")) {
+		if l.Login == "ada-gh" && (!l.Active() || l.Checked() || !strings.Contains(l.Note, "approved by boss@globex.example")) {
 			t.Errorf("ada's link = %+v", l)
 		}
 	}

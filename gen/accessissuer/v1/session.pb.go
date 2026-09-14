@@ -222,11 +222,11 @@ type ListSessionsRequest struct {
 	// continue a listing. Empty starts from the newest session.
 	PageToken string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	// Read `identity` and `client_id` as SUBSTRINGS rather than as exact
-	// values, so that "tsarev" finds `o.tsarev@truvity.com` and "karg"
+	// values, so that "lovelace" finds `ada.lovelace@globex.example` and "karg"
 	// finds `kargo`. Prefix, suffix and middle, one rule.
 	//
 	// Operator-only, and not for tidiness: an exact identity is the
-	// caller's own or nobody's, whereas "truvity.com" as a substring names
+	// caller's own or nobody's, whereas "globex.example" as a substring names
 	// everybody. The server refuses it for anyone else rather than
 	// narrowing it, because a filter that silently means something
 	// different to different callers is worse than one that is refused.

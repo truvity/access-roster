@@ -47,7 +47,7 @@ func fakeGitHub(t *testing.T, mux *http.ServeMux) {
 // organisation administration read-only to count seats, no webhook — and a
 // name GitHub will accept.
 func TestTheManifestAsksForMembersAndSeatsAndNoWebhook(t *testing.T) {
-	manifest := githubapp.NewManifest("truvity", "https://access.example/console/",
+	manifest := githubapp.NewManifest("globex", "https://access.example/console/",
 		"https://access.example/connect/github/callback", "https://access.example/connect/github/setup")
 	if manifest.Public {
 		t.Error("the App is public: anybody could install it on anything")
@@ -59,7 +59,7 @@ func TestTheManifestAsksForMembersAndSeatsAndNoWebhook(t *testing.T) {
 	if manifest.HookAttributes.Active {
 		t.Error("the webhook is active: nothing of ours should need to be reachable from GitHub")
 	}
-	if manifest.Name != "truvity-access-roster" {
+	if manifest.Name != "globex-access-roster" {
 		t.Errorf("name = %q", manifest.Name)
 	}
 	long := githubapp.NewManifest("an-organisation-with-a-very-long-login", "h", "r", "s")
@@ -79,8 +79,8 @@ func TestConvertingKeepsTheKeyAndEscapesTheCode(t *testing.T) {
 		gotPath = r.URL.EscapedPath()
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": 42, "slug": "truvity-access-roster", "pem": pemKey, "html_url": "https://github.com/apps/truvity-access-roster",
-			"owner": map[string]any{"login": "truvity"}, "client_secret": "not kept", "webhook_secret": "not kept",
+			"id": 42, "slug": "globex-access-roster", "pem": pemKey, "html_url": "https://github.com/apps/globex-access-roster",
+			"owner": map[string]any{"login": "globex"}, "client_secret": "not kept", "webhook_secret": "not kept",
 		})
 	})
 	fakeGitHub(t, mux)
@@ -89,7 +89,7 @@ func TestConvertingKeepsTheKeyAndEscapesTheCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Convert: %v", err)
 	}
-	if registration.ID != 42 || registration.Owner != "truvity" || registration.PEM != pemKey {
+	if registration.ID != 42 || registration.Owner != "globex" || registration.PEM != pemKey {
 		t.Errorf("registration = %+v", registration)
 	}
 
@@ -148,7 +148,7 @@ func TestFindingAnInstallationAsksGitHubAndFollowsOnlyItsOwnPages(t *testing.T) 
 			w.Header().Set("Link", "<"+server.URL+`/app/installations?per_page=100&page=2>; rel="next"`)
 			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "account": map[string]any{"login": "someone-else"}}})
 		case "2":
-			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 7, "account": map[string]any{"login": "Truvity"}}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 7, "account": map[string]any{"login": "Globex"}}})
 		}
 	})
 	server = httptest.NewServer(mux)
@@ -157,11 +157,11 @@ func TestFindingAnInstallationAsksGitHubAndFollowsOnlyItsOwnPages(t *testing.T) 
 	githubapp.APIBase = server.URL
 	t.Cleanup(func() { githubapp.APIBase = api })
 
-	id, err := githubapp.FindInstallation(context.Background(), server.Client(), "app-jwt", "truvity")
+	id, err := githubapp.FindInstallation(context.Background(), server.Client(), "app-jwt", "globex")
 	if err != nil || id != 7 {
 		t.Fatalf("FindInstallation = %d, %v; want 7 from the second page, matched case-insensitively", id, err)
 	}
-	if _, err = githubapp.FindInstallation(context.Background(), server.Client(), "app-jwt", "trust-form"); !errors.Is(err, githubapp.ErrNotInstalled) {
+	if _, err = githubapp.FindInstallation(context.Background(), server.Client(), "app-jwt", "acme"); !errors.Is(err, githubapp.ErrNotInstalled) {
 		t.Errorf("an organisation with no installation = %v, want ErrNotInstalled", err)
 	}
 
@@ -173,7 +173,7 @@ func TestFindingAnInstallationAsksGitHubAndFollowsOnlyItsOwnPages(t *testing.T) 
 	hostile := httptest.NewServer(elsewhere)
 	t.Cleanup(hostile.Close)
 	githubapp.APIBase = hostile.URL
-	if _, err = githubapp.FindInstallation(context.Background(), hostile.Client(), "app-jwt", "truvity"); err == nil ||
+	if _, err = githubapp.FindInstallation(context.Background(), hostile.Client(), "app-jwt", "globex"); err == nil ||
 		errors.Is(err, githubapp.ErrNotInstalled) {
 		t.Errorf("a next page on another host = %v, want a refusal", err)
 	}

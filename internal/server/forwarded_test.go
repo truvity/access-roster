@@ -116,30 +116,30 @@ func TestForwardedBearer(t *testing.T) {
 	}{
 		{
 			name:     "the email claim is the address",
-			claims:   map[string]any{"sub": "alice@truvity.com", "aud": []string{"console"}, "email": "Alice@Truvity.com"},
+			claims:   map[string]any{"sub": "alice@globex.example", "aud": []string{"console"}, "email": "Alice@Globex.example"},
 			audience: "console",
-			want:     "alice@truvity.com",
+			want:     "alice@globex.example",
 		},
 		{
 			// The issuer's subject IS the address for a corporate
 			// sign-in, so a token without the email scope still names one.
 			name:     "the subject stands in when there is no email claim",
-			claims:   map[string]any{"sub": "bob@trustform.eu", "aud": []string{"console"}},
+			claims:   map[string]any{"sub": "bob@acme.test", "aud": []string{"console"}},
 			audience: "console",
-			want:     "bob@trustform.eu",
+			want:     "bob@acme.test",
 		},
 		{
 			// A valid token for another audience is a valid token. It is
 			// just not one for this console, and accepting it would make
 			// every audience the issuer serves a way in here.
 			name:     "a token minted for something else is refused",
-			claims:   map[string]any{"sub": "alice@truvity.com", "aud": []string{"aws:1111:power"}},
+			claims:   map[string]any{"sub": "alice@globex.example", "aud": []string{"aws:1111:power"}},
 			audience: "console",
 			want:     "",
 		},
 		{
 			name:     "a signature from another key is refused",
-			claims:   map[string]any{"sub": "alice@truvity.com", "aud": []string{"console"}},
+			claims:   map[string]any{"sub": "alice@globex.example", "aud": []string{"console"}},
 			signer:   other,
 			audience: "console",
 			want:     "",
@@ -153,7 +153,7 @@ func TestForwardedBearer(t *testing.T) {
 		},
 		{
 			name:     "an expired token is refused",
-			claims:   map[string]any{"sub": "alice@truvity.com", "aud": []string{"console"}, "exp": time.Now().Add(-time.Minute).Unix()},
+			claims:   map[string]any{"sub": "alice@globex.example", "aud": []string{"console"}, "exp": time.Now().Add(-time.Minute).Unix()},
 			audience: "console",
 			want:     "",
 		},
@@ -203,7 +203,7 @@ func TestForwardedBearerWithoutAudienceAcceptsAnyAudience(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(identity.HeaderForwarded,
-		issuer.mint(t, map[string]any{"sub": "alice@truvity.com", "aud": []string{"something-else"}}, nil))
+		issuer.mint(t, map[string]any{"sub": "alice@globex.example", "aud": []string{"something-else"}}, nil))
 
 	if _, ok := verifier.identity(request); !ok {
 		t.Fatal("an unset audience should accept any audience — the chart is what must refuse to leave it unset")

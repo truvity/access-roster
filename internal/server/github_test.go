@@ -30,17 +30,17 @@ func githubConsole(t *testing.T, store GitHubReports) *Console {
 	declared, err := policy.Parse([]byte(`
 version: 1
 groups:
-  all:platform:engineer: { members: [team-platform@truvity.com] }
-  all:platform:lead: { members: [leads@truvity.com] }
-  all:truvity:employee: { matchers: [{ email_domain: truvity.com }] }
+  all:platform:engineer: { members: [team-platform@globex.example] }
+  all:platform:lead: { members: [leads@globex.example] }
+  all:globex:employee: { matchers: [{ email_domain: globex.example }] }
 github:
-  truvity:
-    members: [all:truvity:employee]
+  globex:
+    members: [all:globex:employee]
     teams:
       team-platform:
         members: [all:platform:engineer]
         maintainers: [all:platform:lead]
-  trust-form:
+  acme:
     teams:
       team-platform:
         members: [all:platform:engineer]
@@ -83,20 +83,20 @@ func organisation(t *testing.T, got *directoryrosterv1.GetGitHubStatusResponse, 
 func TestTheGitHubPageShowsBindingsBesideReports(t *testing.T) {
 	t.Parallel()
 
-	truvity, err := status.Encode(status.Org{
-		Org:     "truvity",
+	globex, err := status.Encode(status.Org{
+		Org:     "globex",
 		Enabled: false,
 		Tick:    status.Tick{At: time.Date(2026, 9, 12, 21, 0, 0, 0, time.UTC), Outcome: status.OutcomeDryRun, Changes: 1},
 		Teams: []status.Team{
 			{Team: "team-platform", Members: []status.Member{
-				{Email: "o.tsarev@truvity.com", Login: "excavador", Role: status.RoleMaintainer, State: status.StateSynced},
+				{Email: "ada.lovelace@globex.example", Login: "excavador", Role: status.RoleMaintainer, State: status.StateSynced},
 			}},
 			// No longer in the policy: the controller's last word on it.
 			{Team: "team-legacy", Members: []status.Member{
-				{Email: "a@truvity.com", Login: "a", Role: status.RoleMember, State: status.StateSynced},
+				{Email: "a@globex.example", Login: "a", Role: status.RoleMember, State: status.StateSynced},
 			}},
 		},
-		Unlinked: []status.Account{{Login: "truvity-bot"}},
+		Unlinked: []status.Account{{Login: "globex-bot"}},
 	})
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
@@ -107,7 +107,7 @@ func TestTheGitHubPageShowsBindingsBesideReports(t *testing.T) {
 		t.Fatalf("Encode: %v", err)
 	}
 	store := reports{
-		status.Key("truvity"): truvity,
+		status.Key("globex"):  globex,
 		status.Key("old-org"): gone,
 		"not-a-report":        "ignored",
 	}
@@ -123,18 +123,18 @@ func TestTheGitHubPageShowsBindingsBesideReports(t *testing.T) {
 	for _, o := range got.GetOrganisations() {
 		names = append(names, o.GetOrg())
 	}
-	if !slices.Equal(names, []string{"old-org", "trust-form", "truvity"}) {
+	if !slices.Equal(names, []string{"acme", "globex", "old-org"}) {
 		t.Errorf("organisations = %v, want every bound and every reported one, sorted", names)
 	}
 
-	tv := organisation(t, got, "truvity")
+	tv := organisation(t, got, "globex")
 	if !tv.GetBound() || !tv.GetReported() || tv.GetEnabled() || tv.GetTick().GetOutcome() != "dry-run" {
-		t.Errorf("truvity header = %+v", tv)
+		t.Errorf("globex header = %+v", tv)
 	}
-	if !slices.Equal(tv.GetMemberGroups(), []string{"all:truvity:employee"}) {
-		t.Errorf("truvity's own binding = %v", tv.GetMemberGroups())
+	if !slices.Equal(tv.GetMemberGroups(), []string{"all:globex:employee"}) {
+		t.Errorf("globex's own binding = %v", tv.GetMemberGroups())
 	}
-	if len(tv.GetUnlinked()) != 1 || tv.GetUnlinked()[0].GetLogin() != "truvity-bot" {
+	if len(tv.GetUnlinked()) != 1 || tv.GetUnlinked()[0].GetLogin() != "globex-bot" {
 		t.Errorf("unlinked = %v", tv.GetUnlinked())
 	}
 	var platform, legacy *directoryrosterv1.GitHubTeamStatus
@@ -157,12 +157,12 @@ func TestTheGitHubPageShowsBindingsBesideReports(t *testing.T) {
 
 	// Bound, never reported: the bindings show and nothing pretends to be
 	// a report.
-	tf := organisation(t, got, "trust-form")
+	tf := organisation(t, got, "acme")
 	if !tf.GetBound() || tf.GetReported() || tf.GetTick() != nil {
-		t.Errorf("trust-form = %+v, want bound and unreported", tf)
+		t.Errorf("acme = %+v, want bound and unreported", tf)
 	}
 	if len(tf.GetTeams()) != 1 || !tf.GetTeams()[0].GetBound() || len(tf.GetTeams()[0].GetMembers()) != 0 {
-		t.Errorf("trust-form teams = %v", tf.GetTeams())
+		t.Errorf("acme teams = %v", tf.GetTeams())
 	}
 
 	if old := organisation(t, got, "old-org"); old.GetBound() || !old.GetReported() {
@@ -174,13 +174,13 @@ func TestTheGitHubPageShowsBindingsBesideReports(t *testing.T) {
 // bindings still show, beside why the report did not.
 func TestAnUnreadableReportStillShowsTheBindings(t *testing.T) {
 	t.Parallel()
-	got, err := githubStatus(t, githubConsole(t, reports{status.Key("truvity"): `{"version":99}`}), access.RoleViewer)
+	got, err := githubStatus(t, githubConsole(t, reports{status.Key("globex"): `{"version":99}`}), access.RoleViewer)
 	if err != nil {
 		t.Fatalf("GetGitHubStatus: %v", err)
 	}
-	tv := organisation(t, got, "truvity")
+	tv := organisation(t, got, "globex")
 	if tv.GetReportError() == "" || !tv.GetReported() {
-		t.Errorf("truvity = %+v, want the report's error", tv)
+		t.Errorf("globex = %+v, want the report's error", tv)
 	}
 	if len(tv.GetTeams()) != 1 || !tv.GetTeams()[0].GetBound() {
 		t.Errorf("the bindings disappeared with the report: %v", tv.GetTeams())

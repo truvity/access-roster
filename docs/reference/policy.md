@@ -292,15 +292,15 @@ one declared `local-dev` client.
 
 ```yaml
 github:
-  truvity:                                  # the organisation's login
-    members: [all:truvity:employee]         # in the organisation, with or without a team
+  globex:                                   # the organisation's login
+    members: [all:globex:employee]          # in the organisation, with or without a team
     teams:
       team-platform:                        # the team's SLUG, not its display name
         members: [all:platform:engineer]
         maintainers: [all:platform:lead]
       team-security:
         members: [all:security:analyst]
-  trust-form:
+  acme:
     teams:
       team-platform:
         members: [all:platform:engineer]

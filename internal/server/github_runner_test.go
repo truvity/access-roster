@@ -50,7 +50,7 @@ func TestARunnerAppIsCreateThenInstallAndItsKeysAppearOnlyOnceInstalled(t *testi
 	server, console, client := runnerServer(t, "preview", "stable")
 
 	begun, err := console.BeginGitHubRunnerAppConnect(operator(),
-		connect.NewRequest(&directoryrosterv1.BeginGitHubRunnerAppConnectRequest{Org: "truvity", Tier: "stable"}))
+		connect.NewRequest(&directoryrosterv1.BeginGitHubRunnerAppConnectRequest{Org: "globex", Tier: "stable"}))
 	if err != nil {
 		t.Fatalf("BeginGitHubRunnerAppConnect: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestARunnerAppIsCreateThenInstallAndItsKeysAppearOnlyOnceInstalled(t *testi
 	if err = json.Unmarshal([]byte(begun.Msg.GetManifest()), &manifest); err != nil {
 		t.Fatalf("manifest: %v", err)
 	}
-	if manifest.Name != "truvity-runners-stable" || manifest.DefaultPermissions["organization_self_hosted_runners"] != "write" ||
+	if manifest.Name != "globex-runners-stable" || manifest.DefaultPermissions["organization_self_hosted_runners"] != "write" ||
 		manifest.RedirectURL != "https://access.example"+githubRunnerCallbackPath || manifest.SetupURL != "https://access.example"+githubRunnerSetupPath {
 		t.Errorf("manifest = %+v", manifest)
 	}
@@ -75,11 +75,11 @@ func TestARunnerAppIsCreateThenInstallAndItsKeysAppearOnlyOnceInstalled(t *testi
 	}
 	data := runnerSecret(t, client)
 	for _, property := range []string{runnerapp.AppIDProperty, runnerapp.InstallationIDProperty, runnerapp.PrivateKeyProperty} {
-		if _, ok := data[runnerapp.Key("stable", "truvity", property)]; ok {
+		if _, ok := data[runnerapp.Key("stable", "globex", property)]; ok {
 			t.Errorf("before Install the Secret already has %s", property)
 		}
 	}
-	if key, ok, _ := console.deps.GitHubRunnerApps.PrivateKey(context.Background(), "stable", "truvity"); !ok || key != github.pem {
+	if key, ok, _ := console.deps.GitHubRunnerApps.PrivateKey(context.Background(), "stable", "globex"); !ok || key != github.pem {
 		t.Error("the App's key was not kept while it waits to be installed")
 	}
 
@@ -90,11 +90,11 @@ func TestARunnerAppIsCreateThenInstallAndItsKeysAppearOnlyOnceInstalled(t *testi
 		t.Fatalf("after Install = %d to %q:\n%s", installed.Code, installed.Header().Get("Location"), installed.Body)
 	}
 	data = runnerSecret(t, client)
-	if string(data["stable.truvity.github_app_id"]) != "42" || string(data["stable.truvity.github_app_installation_id"]) != "7" ||
-		string(data["stable.truvity.github_app_private_key"]) != github.pem {
+	if string(data["stable.globex.github_app_id"]) != "42" || string(data["stable.globex.github_app_installation_id"]) != "7" ||
+		string(data["stable.globex.github_app_private_key"]) != github.pem {
 		t.Errorf("after Install the keys are %v", slices.Sorted(maps.Keys(data)))
 	}
-	if _, pending := data["stable.truvity.pending_private_key"]; pending {
+	if _, pending := data["stable.globex.pending_private_key"]; pending {
 		t.Error("the pending key outlived Install")
 	}
 
@@ -108,13 +108,13 @@ func TestARunnerAppIsCreateThenInstallAndItsKeysAppearOnlyOnceInstalled(t *testi
 	}
 
 	_, err = console.BeginGitHubRunnerAppConnect(operator(),
-		connect.NewRequest(&directoryrosterv1.BeginGitHubRunnerAppConnectRequest{Org: "truvity", Tier: "stable"}))
+		connect.NewRequest(&directoryrosterv1.BeginGitHubRunnerAppConnectRequest{Org: "globex", Tier: "stable"}))
 	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("creating an installed tier's App again = %v, want failed precondition", err)
 	}
 	// Another tier is another App.
 	if _, err = console.BeginGitHubRunnerAppConnect(operator(),
-		connect.NewRequest(&directoryrosterv1.BeginGitHubRunnerAppConnectRequest{Org: "truvity", Tier: "preview"})); err != nil {
+		connect.NewRequest(&directoryrosterv1.BeginGitHubRunnerAppConnectRequest{Org: "globex", Tier: "preview"})); err != nil {
 		t.Errorf("the preview tier beside an installed stable one = %v", err)
 	}
 }
@@ -135,8 +135,8 @@ func TestARunnerAppNeedsADeclaredTierABoundOrganisationAndAnOperator(t *testing.
 		org, tier string
 		want      connect.Code
 	}{
-		{"a viewer", viewer, "truvity", "stable", connect.CodePermissionDenied},
-		{"an undeclared tier", operator(), "truvity", "preview", connect.CodeInvalidArgument},
+		{"a viewer", viewer, "globex", "stable", connect.CodePermissionDenied},
+		{"an undeclared tier", operator(), "globex", "preview", connect.CodeInvalidArgument},
 		{"an unbound organisation", operator(), "not-bound", "stable", connect.CodeFailedPrecondition},
 		{"a malformed login", operator(), "not a login", "stable", connect.CodeInvalidArgument},
 	} {
@@ -147,7 +147,7 @@ func TestARunnerAppNeedsADeclaredTierABoundOrganisationAndAnOperator(t *testing.
 
 	_, none, _ := runnerServer(t)
 	_, err := none.BeginGitHubRunnerAppConnect(operator(),
-		connect.NewRequest(&directoryrosterv1.BeginGitHubRunnerAppConnectRequest{Org: "truvity", Tier: "stable"}))
+		connect.NewRequest(&directoryrosterv1.BeginGitHubRunnerAppConnectRequest{Org: "globex", Tier: "stable"}))
 	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("no declared tiers = %v, want failed precondition", err)
 	}
@@ -165,19 +165,19 @@ func TestDisconnectingARunnerAppUninstallsThenForgetsItsKeys(t *testing.T) {
 	at := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
 	for _, tier := range []string{"preview", "stable"} {
 		if err := store.Put(context.Background(), runnerapp.Record{
-			Tier: tier, Org: "truvity", AppID: 42, AppSlug: "truvity-runners-" + tier, InstallationID: 7, ConnectedAt: at,
+			Tier: tier, Org: "globex", AppID: 42, AppSlug: "globex-runners-" + tier, InstallationID: 7, ConnectedAt: at,
 		}, github.pem); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	gone, err := console.DisconnectGitHubRunnerApp(operator(),
-		connect.NewRequest(&directoryrosterv1.DisconnectGitHubRunnerAppRequest{Org: "truvity", Tier: "stable"}))
+		connect.NewRequest(&directoryrosterv1.DisconnectGitHubRunnerAppRequest{Org: "globex", Tier: "stable"}))
 	if err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
 	if !gone.Msg.GetUninstalled() || !slices.Equal(github.uninstalled, []string{"7"}) ||
-		gone.Msg.GetAppSettingsUrl() != "https://github.example/organizations/truvity/settings/apps/truvity-runners-stable" {
+		gone.Msg.GetAppSettingsUrl() != "https://github.example/organizations/globex/settings/apps/globex-runners-stable" {
 		t.Errorf("response = %+v, calls = %v", gone.Msg, github.uninstalled)
 	}
 	for key := range runnerSecret(t, client) {
@@ -190,7 +190,7 @@ func TestDisconnectingARunnerAppUninstallsThenForgetsItsKeys(t *testing.T) {
 	}
 
 	if _, err = console.DisconnectGitHubRunnerApp(operator(),
-		connect.NewRequest(&directoryrosterv1.DisconnectGitHubRunnerAppRequest{Org: "truvity", Tier: "stable"})); connect.CodeOf(err) != connect.CodeNotFound {
+		connect.NewRequest(&directoryrosterv1.DisconnectGitHubRunnerAppRequest{Org: "globex", Tier: "stable"})); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("disconnecting what is gone = %v, want not found", err)
 	}
 }

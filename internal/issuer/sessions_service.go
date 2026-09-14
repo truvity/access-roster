@@ -220,7 +220,7 @@ func (s *SessionsService) ListSessions(
 	// A substring is operator-only, and this refusal is the whole of why.
 	// Every rule below decides what a caller may see from the identity
 	// they NAMED -- `may` admits the caller's own and nobody else's. A
-	// substring names an unknown set: "truvity.com" is everybody, and the
+	// substring names an unknown set: "globex.example" is everybody, and the
 	// checks underneath would pass it because the string is not anyone's
 	// identity to refuse.
 	//

@@ -71,7 +71,7 @@ func (m *memoryConnections) Delete(_ context.Context, org string) error {
 }
 
 // fakeGitHub answers the three calls connecting and disconnecting make,
-// as GitHub would for an owner of truvity. The package's two base URLs
+// as GitHub would for an owner of globex. The package's two base URLs
 // are shared state, so tests using this are never parallel.
 type fakeGitHub struct {
 	pem         string
@@ -87,7 +87,7 @@ func startFakeGitHub(t *testing.T) *fakeGitHub {
 	}
 	fake := &fakeGitHub{
 		pem:   string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})),
-		owner: "truvity",
+		owner: "globex",
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /app-manifests/{code}/conversions", func(w http.ResponseWriter, r *http.Request) {
@@ -98,12 +98,12 @@ func startFakeGitHub(t *testing.T) *fakeGitHub {
 		}
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id": 42, "slug": "truvity-access-roster", "pem": fake.pem, "client_id": "Iv1.created", "client_secret": "created-secret",
-			"html_url": "https://github.com/apps/truvity-access-roster", "owner": map[string]any{"login": fake.owner},
+			"id": 42, "slug": "globex-access-roster", "pem": fake.pem, "client_id": "Iv1.created", "client_secret": "created-secret",
+			"html_url": "https://github.com/apps/globex-access-roster", "owner": map[string]any{"login": fake.owner},
 		})
 	})
 	mux.HandleFunc("GET /app/installations", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 7, "account": map[string]any{"login": "truvity"}}})
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 7, "account": map[string]any{"login": "globex"}}})
 	})
 	mux.HandleFunc("DELETE /app/installations/{id}", func(w http.ResponseWriter, r *http.Request) {
 		fake.uninstalled = append(fake.uninstalled, r.PathValue("id"))
@@ -171,12 +171,12 @@ func TestConnectingAnOrganisationIsCreateThenInstall(t *testing.T) {
 	store := newMemoryConnections()
 	server, console := connectServer(t, store)
 
-	begun, err := console.BeginGitHubConnect(operator(), connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "truvity"}))
+	begun, err := console.BeginGitHubConnect(operator(), connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "globex"}))
 	if err != nil {
 		t.Fatalf("BeginGitHubConnect: %v", err)
 	}
-	if !strings.HasPrefix(begun.Msg.GetUrl(), "https://github.example/organizations/truvity/settings/apps/new?state=") {
-		t.Errorf("url = %s, want truvity's create page", begun.Msg.GetUrl())
+	if !strings.HasPrefix(begun.Msg.GetUrl(), "https://github.example/organizations/globex/settings/apps/new?state=") {
+		t.Errorf("url = %s, want globex's create page", begun.Msg.GetUrl())
 	}
 	var manifest githubapp.Manifest
 	if err = json.Unmarshal([]byte(begun.Msg.GetManifest()), &manifest); err != nil {
@@ -194,14 +194,14 @@ func TestConnectingAnOrganisationIsCreateThenInstall(t *testing.T) {
 		t.Fatalf("after Create = %d:\n%s", created.Code, created.Body)
 	}
 	install := created.Header().Get("Location")
-	if !strings.HasPrefix(install, "https://github.example/apps/truvity-access-roster/installations/new?state=") {
+	if !strings.HasPrefix(install, "https://github.example/apps/globex-access-roster/installations/new?state=") {
 		t.Errorf("after Create the owner is sent to %s, want the App's install page", install)
 	}
-	record, _ := recordOf(mustList(t, store), "truvity")
+	record, _ := recordOf(mustList(t, store), "globex")
 	if record.AppID != 42 || record.Installed() || record.ConnectedBy != "ada@north.example" {
 		t.Errorf("after Create the record is %+v", record)
 	}
-	if credential, _, _ := store.Credential(context.Background(), "truvity"); credential.PrivateKey != github.pem {
+	if credential, _, _ := store.Credential(context.Background(), "globex"); credential.PrivateKey != github.pem {
 		t.Error("the App's key was not kept")
 	}
 	// The state that brought the browser back is spent; Install runs under
@@ -218,15 +218,15 @@ func TestConnectingAnOrganisationIsCreateThenInstall(t *testing.T) {
 	if installed.Code != http.StatusFound || installed.Header().Get("Location") != "/console/#/github" {
 		t.Fatalf("after Install = %d to %q:\n%s", installed.Code, installed.Header().Get("Location"), installed.Body)
 	}
-	record, _ = recordOf(mustList(t, store), "truvity")
-	credential, _, _ := store.Credential(context.Background(), "truvity")
+	record, _ = recordOf(mustList(t, store), "globex")
+	credential, _, _ := store.Credential(context.Background(), "globex")
 	if record.InstallationID != 7 || credential.InstallationID != 7 {
 		t.Errorf("installation = %d / %d, want 7 as GitHub reports, never the redirect's 999", record.InstallationID, credential.InstallationID)
 	}
 
 	// Connected and installed: connecting again would put a second App
 	// beside the first.
-	_, err = console.BeginGitHubConnect(operator(), connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "truvity"}))
+	_, err = console.BeginGitHubConnect(operator(), connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "globex"}))
 	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("connecting an installed organisation again = %v, want failed precondition", err)
 	}
@@ -239,7 +239,7 @@ func TestAGitHubRedirectThisBrowserDidNotStartIsRefused(t *testing.T) {
 	store := newMemoryConnections()
 	server, console := connectServer(t, store)
 
-	begun, err := console.BeginGitHubConnect(operator(), connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "truvity"}))
+	begun, err := console.BeginGitHubConnect(operator(), connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "globex"}))
 	if err != nil {
 		t.Fatalf("BeginGitHubConnect: %v", err)
 	}
@@ -264,14 +264,14 @@ func TestAGitHubRedirectThisBrowserDidNotStartIsRefused(t *testing.T) {
 		t.Errorf("a directory's state = %d, want 400", got.Code)
 	}
 
-	// The create page was truvity's; an App owned by anybody else is not
+	// The create page was globex's; an App owned by anybody else is not
 	// the one asked for.
 	github.owner = "somebody-else"
 	if got := redirect(server.githubCallback, githubCallbackPath, url.Values{"code": {"created"}, "state": {state}}, cookie); got.Code != http.StatusConflict {
 		t.Errorf("an App under another owner = %d, want 409", got.Code)
 	}
 	// A spent code: GitHub's words reach the page, and a 4xx, never a 5xx.
-	github.owner = "truvity"
+	github.owner = "globex"
 	used := redirect(server.githubCallback, githubCallbackPath, url.Values{"code": {"spent"}, "state": {state}}, cookie)
 	if used.Code != http.StatusConflict || !strings.Contains(used.Body.String(), "code already used") {
 		t.Errorf("a spent code = %d:\n%s", used.Code, used.Body)
@@ -290,7 +290,7 @@ func TestOnlyAnOperatorConnectsOnlyABoundOrganisation(t *testing.T) {
 		return err
 	}
 	viewer := WithIdentity(context.Background(), access.Identity{Role: access.RoleViewer})
-	if err := begin(viewer, "truvity"); connect.CodeOf(err) != connect.CodePermissionDenied {
+	if err := begin(viewer, "globex"); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Errorf("a viewer = %v, want permission denied", err)
 	}
 	if err := begin(operator(), "not-bound"); connect.CodeOf(err) != connect.CodeFailedPrecondition {
@@ -303,7 +303,7 @@ func TestOnlyAnOperatorConnectsOnlyABoundOrganisation(t *testing.T) {
 	_, noStore := connectServer(t, nil)
 	noStore.deps.GitHubOrgs = nil
 	if _, err := noStore.BeginGitHubConnect(operator(),
-		connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "truvity"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "globex"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("no store = %v, want failed precondition", err)
 	}
 }
@@ -314,15 +314,15 @@ func TestAnUninstalledAppIsFinishedRatherThanCreatedAgain(t *testing.T) {
 	startFakeGitHub(t)
 	store := newMemoryConnections()
 	_ = store.Put(context.Background(),
-		connection.Record{Org: "truvity", AppID: 42, AppSlug: "truvity-access-roster"},
-		connection.Credential{Org: "truvity", AppID: 42, PrivateKey: "k"})
+		connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster"},
+		connection.Credential{Org: "globex", AppID: 42, PrivateKey: "k"})
 	_, console := connectServer(t, store)
 
-	begun, err := console.BeginGitHubConnect(operator(), connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "truvity"}))
+	begun, err := console.BeginGitHubConnect(operator(), connect.NewRequest(&directoryrosterv1.BeginGitHubConnectRequest{Org: "globex"}))
 	if err != nil {
 		t.Fatalf("BeginGitHubConnect: %v", err)
 	}
-	if begun.Msg.GetManifest() != "" || !strings.Contains(begun.Msg.GetUrl(), "/apps/truvity-access-roster/installations/new") {
+	if begun.Msg.GetManifest() != "" || !strings.Contains(begun.Msg.GetUrl(), "/apps/globex-access-roster/installations/new") {
 		t.Errorf("response = %+v, want the install page and no manifest", begun.Msg)
 	}
 }
@@ -333,19 +333,19 @@ func TestDisconnectingUninstallsThenForgets(t *testing.T) {
 	github := startFakeGitHub(t)
 	store := newMemoryConnections()
 	_ = store.Put(context.Background(),
-		connection.Record{Org: "truvity", AppID: 42, AppSlug: "truvity-access-roster", InstallationID: 7},
-		connection.Credential{Org: "truvity", AppID: 42, InstallationID: 7, PrivateKey: github.pem})
+		connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster", InstallationID: 7},
+		connection.Credential{Org: "globex", AppID: 42, InstallationID: 7, PrivateKey: github.pem})
 	_, console := connectServer(t, store)
 
 	gone, err := console.DisconnectGitHubOrganisation(operator(),
-		connect.NewRequest(&directoryrosterv1.DisconnectGitHubOrganisationRequest{Org: "truvity"}))
+		connect.NewRequest(&directoryrosterv1.DisconnectGitHubOrganisationRequest{Org: "globex"}))
 	if err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
 	if !gone.Msg.GetUninstalled() || !slices.Equal(github.uninstalled, []string{"7"}) {
 		t.Errorf("uninstalled = %v, calls = %v", gone.Msg.GetUninstalled(), github.uninstalled)
 	}
-	if gone.Msg.GetAppSettingsUrl() != "https://github.example/organizations/truvity/settings/apps/truvity-access-roster" {
+	if gone.Msg.GetAppSettingsUrl() != "https://github.example/organizations/globex/settings/apps/globex-access-roster" {
 		t.Errorf("settings url = %s", gone.Msg.GetAppSettingsUrl())
 	}
 	if records := mustList(t, store); len(records) != 0 {
@@ -355,10 +355,10 @@ func TestDisconnectingUninstallsThenForgets(t *testing.T) {
 	// An unusable key cannot uninstall, and the organisation is still
 	// forgotten — with the detail an operator acts on.
 	_ = store.Put(context.Background(),
-		connection.Record{Org: "truvity", AppID: 42, AppSlug: "truvity-access-roster", InstallationID: 7},
-		connection.Credential{Org: "truvity", AppID: 42, InstallationID: 7, PrivateKey: "not a key"})
+		connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster", InstallationID: 7},
+		connection.Credential{Org: "globex", AppID: 42, InstallationID: 7, PrivateKey: "not a key"})
 	gone, err = console.DisconnectGitHubOrganisation(operator(),
-		connect.NewRequest(&directoryrosterv1.DisconnectGitHubOrganisationRequest{Org: "truvity"}))
+		connect.NewRequest(&directoryrosterv1.DisconnectGitHubOrganisationRequest{Org: "globex"}))
 	if err != nil || gone.Msg.GetUninstalled() || gone.Msg.GetDetail() == "" {
 		t.Errorf("a failed uninstall = %+v, %v; want forgotten with a detail", gone.Msg, err)
 	}
@@ -367,7 +367,7 @@ func TestDisconnectingUninstallsThenForgets(t *testing.T) {
 	}
 
 	if _, err = console.DisconnectGitHubOrganisation(operator(),
-		connect.NewRequest(&directoryrosterv1.DisconnectGitHubOrganisationRequest{Org: "truvity"})); connect.CodeOf(err) != connect.CodeNotFound {
+		connect.NewRequest(&directoryrosterv1.DisconnectGitHubOrganisationRequest{Org: "globex"})); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("disconnecting what is not connected = %v, want not found", err)
 	}
 }

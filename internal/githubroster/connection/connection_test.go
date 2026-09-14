@@ -12,7 +12,7 @@ import (
 // an error: errors reach logs and, on a callback, a page.
 func TestAnUnreadableCredentialNeverRepeatsItself(t *testing.T) {
 	t.Parallel()
-	secret := `{"version":1,"org":"truvity","private_key":"-----BEGIN RSA PRIVATE KEY-----SECRET` // truncated JSON
+	secret := `{"version":1,"org":"globex","private_key":"-----BEGIN RSA PRIVATE KEY-----SECRET` // truncated JSON
 	_, err := connection.DecodeCredential([]byte(secret))
 	if err == nil {
 		t.Fatal("a truncated credential decoded")
@@ -26,7 +26,7 @@ func TestAnUnreadableCredentialNeverRepeatsItself(t *testing.T) {
 // document of another version is refused rather than half-read.
 func TestARecordAndACredentialReadBackAsWritten(t *testing.T) {
 	t.Parallel()
-	raw, err := connection.EncodeCredential(connection.Credential{Org: "truvity", AppID: 42, InstallationID: 7, PrivateKey: "key"})
+	raw, err := connection.EncodeCredential(connection.Credential{Org: "globex", AppID: 42, InstallationID: 7, PrivateKey: "key"})
 	if err != nil {
 		t.Fatalf("EncodeCredential: %v", err)
 	}
@@ -34,22 +34,22 @@ func TestARecordAndACredentialReadBackAsWritten(t *testing.T) {
 	if err != nil || credential.AppID != 42 || credential.InstallationID != 7 || credential.PrivateKey != "key" {
 		t.Errorf("credential = %+v, %v", credential, err)
 	}
-	record, err := connection.EncodeRecord(connection.Record{Org: "truvity", AppID: 42, AppSlug: "truvity-access-roster"})
+	record, err := connection.EncodeRecord(connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster"})
 	if err != nil {
 		t.Fatalf("EncodeRecord: %v", err)
 	}
 	if decoded, err := connection.DecodeRecord(record); err != nil || decoded.Installed() {
 		t.Errorf("record = %+v, %v; want uninstalled", decoded, err)
 	}
-	if _, err = connection.DecodeRecord(`{"version":2,"org":"truvity"}`); !errors.Is(err, connection.ErrVersion) {
+	if _, err = connection.DecodeRecord(`{"version":2,"org":"globex"}`); !errors.Is(err, connection.ErrVersion) {
 		t.Errorf("version 2 = %v, want ErrVersion", err)
 	}
 	// A record or credential missing what the controller needs to act is
 	// never written.
-	if _, err = connection.EncodeCredential(connection.Credential{Org: "truvity", AppID: 42}); err == nil {
+	if _, err = connection.EncodeCredential(connection.Credential{Org: "globex", AppID: 42}); err == nil {
 		t.Error("a credential with no key was encoded")
 	}
-	if _, err = connection.EncodeRecord(connection.Record{Org: "truvity"}); err == nil {
+	if _, err = connection.EncodeRecord(connection.Record{Org: "globex"}); err == nil {
 		t.Error("a record with no App was encoded")
 	}
 }

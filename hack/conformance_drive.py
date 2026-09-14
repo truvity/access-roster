@@ -38,7 +38,9 @@ import urllib.error
 import urllib.request
 
 SUITE = os.environ.get("SUITE", "https://localhost.emobix.co.uk:8443")
-ISSUER = os.environ.get("ISSUER", "https://access.truvity.xyz")
+# The issuer under test: no default, so a run never certifies an
+# installation nobody named.
+ISSUER = os.environ.get("ISSUER") or sys.exit("ISSUER: set it to the issuer to certify, e.g. https://access.example.com")
 CONTEXT = os.environ.get("CONTEXT", "kernel@oidc")
 # How to run kubectl, because reaching the cluster can need more than the
 # binary. A context that authenticates through OIDC needs the

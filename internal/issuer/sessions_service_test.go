@@ -458,8 +458,8 @@ func TestSessionsMatchBySubstring(t *testing.T) {
 	svc := service(t, state)
 
 	for _, one := range []issuer.Opened{
-		{Identity: "o.tsarev@truvity.com", ClientID: "kargo", How: issuer.HowCode, Token: "t-1"},
-		{Identity: "o.tsarev@truvity.com", ClientID: "hubble", How: issuer.HowCode, Token: "t-2"},
+		{Identity: "ada.lovelace@globex.example", ClientID: "kargo", How: issuer.HowCode, Token: "t-1"},
+		{Identity: "ada.lovelace@globex.example", ClientID: "hubble", How: issuer.HowCode, Token: "t-2"},
 		{Identity: "ada@north.example", ClientID: "kargo", How: issuer.HowCode, Token: "t-3"},
 	} {
 		if _, err := sessions.Record(ctx, one); err != nil {
@@ -474,13 +474,13 @@ func TestSessionsMatchBySubstring(t *testing.T) {
 		clientID string
 		want     int
 	}{
-		"middle of an address":   {identity: "tsarev", want: 2},
-		"prefix of an address":   {identity: "o.tsa", want: 2},
-		"suffix of an address":   {identity: "truvity.com", want: 2},
-		"the whole address":      {identity: "o.tsarev@truvity.com", want: 2},
+		"middle of an address":   {identity: "lovelace", want: 2},
+		"prefix of an address":   {identity: "ada.lo", want: 2},
+		"suffix of an address":   {identity: "globex.example", want: 2},
+		"the whole address":      {identity: "ada.lovelace@globex.example", want: 2},
 		"prefix of a client":     {clientID: "karg", want: 2},
 		"middle of a client":     {clientID: "ubbl", want: 1},
-		"both, and they narrow":  {identity: "tsarev", clientID: "karg", want: 1},
+		"both, and they narrow":  {identity: "lovelace", clientID: "karg", want: 1},
 		"a substring of neither": {identity: "nobody", want: 0},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -502,7 +502,7 @@ func TestSessionsMatchBySubstring(t *testing.T) {
 
 // And it is an operator's, because a substring names an unknown set.
 // Every other rule here decides what a caller may see from the identity
-// they NAMED; "truvity.com" names everybody, and the checks underneath
+// they NAMED; "globex.example" names everybody, and the checks underneath
 // would pass it precisely because it is not anybody's identity to refuse.
 func TestMatchingBySubstringIsAnOperators(t *testing.T) {
 	t.Parallel()

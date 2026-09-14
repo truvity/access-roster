@@ -322,20 +322,20 @@ func TestGitHubTeamBindingsAreReadAsWritten(t *testing.T) {
 	declared, err := policy.Parse([]byte(`
 version: 1
 groups:
-  all:platform:engineer: { members: [team-platform@truvity.com] }
-  all:platform:lead: { members: [leads@truvity.com] }
-  all:security:analyst: { members: [sec@truvity.com] }
-  all:truvity:employee: { matchers: [{ email_domain: truvity.com }] }
+  all:platform:engineer: { members: [team-platform@globex.example] }
+  all:platform:lead: { members: [leads@globex.example] }
+  all:security:analyst: { members: [sec@globex.example] }
+  all:globex:employee: { matchers: [{ email_domain: globex.example }] }
 github:
-  truvity:
-    members: [all:truvity:employee]
+  globex:
+    members: [all:globex:employee]
     teams:
       platform:
         members: [all:platform:engineer]
         maintainers: [all:platform:lead]
       security:
         members: [all:security:analyst]
-  trust-form:
+  acme:
     teams:
       platform:
         members: [all:platform:engineer]
@@ -354,7 +354,7 @@ github:
 	}
 	// Sorted by organisation then team, so a reader compares two renders
 	// of the same model without a diff full of reordering.
-	if teams[0].Org != "trust-form" || teams[1].Org != "truvity" || teams[1].Team != "platform" {
+	if teams[0].Org != "acme" || teams[1].Org != "globex" || teams[1].Team != "platform" {
 		t.Errorf("teams are not sorted: %+v", teams)
 	}
 	if len(teams[1].Members) != 1 || teams[1].Members[0] != "all:platform:engineer" {
@@ -366,7 +366,7 @@ github:
 		t.Errorf("maintainers = %v", teams[1].Maintainers)
 	}
 	// The same team name in two organisations is two bindings, not a
-	// clash: `platform` on truvity and on trust-form are different teams.
+	// clash: `platform` on globex and on acme are different teams.
 	if teams[0].Team != "platform" {
 		t.Errorf("a team name shared across organisations collided: %+v", teams)
 	}
@@ -375,10 +375,10 @@ github:
 	// belong in it without a team. One that binds only teams says
 	// nothing here.
 	orgs := set.GitHubOrgs()
-	if len(orgs) != 1 || orgs[0].Org != "truvity" || len(orgs[0].Members) != 1 {
+	if len(orgs) != 1 || orgs[0].Org != "globex" || len(orgs[0].Members) != 1 {
 		t.Fatalf("orgs = %+v", orgs)
 	}
-	if orgs[0].Members[0] != "all:truvity:employee" {
+	if orgs[0].Members[0] != "all:globex:employee" {
 		t.Errorf("org members = %v", orgs[0].Members)
 	}
 }
@@ -393,9 +393,9 @@ func TestGitHubBindingsMergeAcrossFilesButNeverSilently(t *testing.T) {
 	const shared = `
 version: 1
 groups:
-  all:platform:engineer: { members: [team-platform@truvity.com] }
-  all:security:analyst: { members: [sec@truvity.com] }
-  all:truvity:employee: { matchers: [{ email_domain: truvity.com }] }
+  all:platform:engineer: { members: [team-platform@globex.example] }
+  all:security:analyst: { members: [sec@globex.example] }
+  all:globex:employee: { matchers: [{ email_domain: globex.example }] }
 `
 	layer := func(t *testing.T, files ...string) (policy.Policy, error) {
 		t.Helper()
@@ -412,8 +412,8 @@ groups:
 	t.Run("two teams in one organisation", func(t *testing.T) {
 		t.Parallel()
 		merged, err := layer(t,
-			shared+"github: { truvity: { teams: { platform: { members: [all:platform:engineer] } } } }\n",
-			"version: 1\ngithub: { truvity: { members: [all:truvity:employee], teams: { security: { members: [all:security:analyst] } } } }\n",
+			shared+"github: { globex: { teams: { platform: { members: [all:platform:engineer] } } } }\n",
+			"version: 1\ngithub: { globex: { members: [all:globex:employee], teams: { security: { members: [all:security:analyst] } } } }\n",
 		)
 		if err != nil {
 			t.Fatalf("LoadDeclared: %v", err)
@@ -431,14 +431,14 @@ groups:
 	})
 
 	for name, second := range map[string]string{
-		"the same team twice":   "version: 1\ngithub: { truvity: { teams: { platform: { members: [all:security:analyst] } } } }\n",
-		"org members twice":     "version: 1\ngithub: { truvity: { members: [all:security:analyst] } }\n",
-		"a maintainer rewrites": "version: 1\ngithub: { truvity: { teams: { platform: { maintainers: [all:security:analyst] } } } }\n",
+		"the same team twice":   "version: 1\ngithub: { globex: { teams: { platform: { members: [all:security:analyst] } } } }\n",
+		"org members twice":     "version: 1\ngithub: { globex: { members: [all:security:analyst] } }\n",
+		"a maintainer rewrites": "version: 1\ngithub: { globex: { teams: { platform: { maintainers: [all:security:analyst] } } } }\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			_, err := layer(t,
-				shared+"github: { truvity: { members: [all:truvity:employee], teams: { platform: { members: [all:platform:engineer] } } } }\n",
+				shared+"github: { globex: { members: [all:globex:employee], teams: { platform: { members: [all:platform:engineer] } } } }\n",
 				second,
 			)
 			if err == nil {
@@ -456,12 +456,12 @@ func TestABindingThatWouldEmptyATeamIsRefused(t *testing.T) {
 	t.Parallel()
 	const groups = "version: 1\ngroups: { a: { members: [g@h.example] } }\n"
 	for name, text := range map[string]string{
-		"no groups":         groups + "github: { truvity: { teams: { platform: {} } } }\n",
-		"undeclared group":  groups + "github: { truvity: { teams: { platform: { members: [b] } } } }\n",
-		"undeclared as org": groups + "github: { truvity: { members: [b] } }\n",
-		"empty team":        groups + "github: { truvity: { teams: { \"\": { members: [a] } } } }\n",
-		"binds nothing":     groups + "github: { truvity: {} }\n",
-		"maintainer only":   groups + "github: { truvity: { teams: { platform: { maintainers: [b] } } } }\n",
+		"no groups":         groups + "github: { globex: { teams: { platform: {} } } }\n",
+		"undeclared group":  groups + "github: { globex: { teams: { platform: { members: [b] } } } }\n",
+		"undeclared as org": groups + "github: { globex: { members: [b] } }\n",
+		"empty team":        groups + "github: { globex: { teams: { \"\": { members: [a] } } } }\n",
+		"binds nothing":     groups + "github: { globex: {} }\n",
+		"maintainer only":   groups + "github: { globex: { teams: { platform: { maintainers: [b] } } } }\n",
 	} {
 		declared, err := policy.Parse([]byte(text))
 		if err != nil {
@@ -480,15 +480,15 @@ func TestGitHubIgnoreIsAddressesOrLoginsAndMerges(t *testing.T) {
 	base := `
 version: 1
 groups:
-  all:platform:engineer: { members: [team-platform@truvity.com] }
+  all:platform:engineer: { members: [team-platform@globex.example] }
 github:
-  truvity:
+  globex:
     teams:
       team-platform: { members: [all:platform:engineer] }
     ignore: [%s]
 `
 	for entry, ok := range map[string]bool{
-		"admin@datagrid.solutions": true, "ekvtsareva": true, "trustform-adm": true,
+		"admin@datagrid.solutions": true, "ekvtsareva": true, "acme-adm": true,
 		"not a login": false, "-leading-hyphen": false, "nobody@": false,
 	} {
 		declared, err := policy.Parse([]byte(fmt.Sprintf(base, strconv.Quote(entry))))
@@ -503,7 +503,7 @@ github:
 	dir := t.TempDir()
 	for name, text := range map[string]string{
 		"01.yaml": fmt.Sprintf(base, `"ekvtsareva"`),
-		"02.yaml": "version: 1\ngithub: { truvity: { teams: { team-other: { members: [all:platform:engineer] } }, " +
+		"02.yaml": "version: 1\ngithub: { globex: { teams: { team-other: { members: [all:platform:engineer] } }, " +
 			"ignore: [admin@datagrid.solutions, ekvtsareva] } }\n",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
@@ -514,10 +514,10 @@ github:
 	if err != nil {
 		t.Fatalf("LoadDeclared: %v", err)
 	}
-	if got := first.GitHub["truvity"].Ignore; len(got) != 2 {
+	if got := first.GitHub["globex"].Ignore; len(got) != 2 {
 		t.Errorf("merged ignore = %v, want both entries once", got)
 	}
-	org := first.GitHub["truvity"]
+	org := first.GitHub["globex"]
 	if !org.IgnoredLogins()["ekvtsareva"] || !org.IgnoredAddresses()["admin@datagrid.solutions"] {
 		t.Error("the merged entries are not read back as a login and an address")
 	}

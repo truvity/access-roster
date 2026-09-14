@@ -24,7 +24,7 @@ func TestALinkIsNeverOverwrittenByAStaleCheck(t *testing.T) {
 		t.Errorf("name = %s: the chart grants the controller by this name", store.Name())
 	}
 	now := time.Now().UTC()
-	first := link.Link{ID: 7, Login: "ada", AppID: 9, Emails: []string{"ada@truvity.com"}, State: link.StateLinked, AccessToken: "one"}
+	first := link.Link{ID: 7, Login: "ada", AppID: 9, Emails: []string{"ada@globex.example"}, State: link.StateLinked, AccessToken: "one"}
 	if _, err := store.Claim(ctx, first, now); err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
@@ -75,17 +75,17 @@ func TestTheLinkAppIsKeptBesideTheOrganisations(t *testing.T) {
 		t.Fatalf("Ensure: %v", err)
 	}
 	if err := store.PutLinkApp(ctx,
-		link.App{Owner: "truvity", AppID: 9, AppSlug: "truvity-access-roster-link", ClientID: "Iv1.x"},
+		link.App{Owner: "globex", AppID: 9, AppSlug: "globex-access-roster-link", ClientID: "Iv1.x"},
 		link.AppCredential{AppID: 9, ClientID: "Iv1.x", ClientSecret: "s"}); err != nil {
 		t.Fatalf("PutLinkApp: %v", err)
 	}
-	if err := store.Put(ctx, connection.Record{Org: "truvity", AppID: 42, AppSlug: "truvity-access-roster"},
-		connection.Credential{Org: "truvity", AppID: 42, PrivateKey: "k"}); err != nil {
+	if err := store.Put(ctx, connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster"},
+		connection.Credential{Org: "globex", AppID: 42, PrivateKey: "k"}); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
 	records, err := store.List(ctx)
-	if err != nil || len(records) != 1 || records[0].Org != "truvity" {
-		t.Errorf("organisations = %+v, %v; want truvity alone", records, err)
+	if err != nil || len(records) != 1 || records[0].Org != "globex" {
+		t.Errorf("organisations = %+v, %v; want globex alone", records, err)
 	}
 	app, found, err := store.LinkApp(ctx)
 	if err != nil || !found || app.ClientID != "Iv1.x" {
