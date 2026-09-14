@@ -10,7 +10,7 @@ its groups admit it to, and uses the result.
 
 ```yaml
 github:
-  owners: [example-org]
+  owners: [acme]
 ```
 
 That list is the trust boundary, not tuning. Anybody may run a workflow
@@ -30,14 +30,22 @@ token for list that group:
 
 ```yaml
 groups:
-  ci-gitops:   { matchers: [{ github: { repository: example-org/gitops, ref: refs/heads/master } }] }
-  ci-any-main: { matchers: [{ github: { owner: example-org, ref: refs/heads/* } }] }
-lifetimes: { ci-gitops: 1h, ci-any-main: 1h }
+  ci-gitops:   { matchers: [{ github: { repository: acme/gitops, ref: refs/heads/master } }] }
+  ci-any-main: { matchers: [{ github: { owner: acme, ref: refs/heads/* } }] }
+  ci-private:  { matchers: [{ github: { owner: acme, visibility: private } }] }
+lifetimes: { ci-gitops: 1h, ci-any-main: 1h, ci-private: 1h }
 clients:
   aws:111122223333:gitops-deployer: { kind: exchange, requires: [ci-gitops] }
   k8s:devel:                        { kind: public,   requires: [ci-gitops, engineer] }
   k8s:devel-readonly:               { kind: public,   requires: [ci-any-main] }
 ```
+
+`visibility` admits every private repository of an organisation and
+nothing else: not its public ones, and not a fork, which is another
+repository. It reads GitHub's `repository_visibility` claim; `public`,
+`private` and `internal` are its values, and the policy refuses any
+other. Deploy the issuer before writing the key in a policy: an older
+one refuses it.
 
 ## Workflow side
 
@@ -48,7 +56,7 @@ steps:
   # The action requests the job's identity token itself, for the issuer's
   # URL as audience, so nothing else in the job handles a token. The
   # `id-token: write` permission above is what lets it.
-  - uses: truvity/access-roster@v1.0.0   # pin the release; there is no floating `v1` yet
+  - uses: truvity/access-roster@v1.8.0   # pin a release; there is no floating `v1`
     with:
       issuer: https://issuer.example.internal
       audiences: k8s:devel, aws:111122223333:gitops-deployer
@@ -68,8 +76,10 @@ the job.
 
 ## Or: the same files a laptop uses
 
-A repository that has `accessctl` in its toolchain needs no action and no
-second copy of its access files. The line a person's kubeconfig runs,
+A repository that has `accessctl` in its toolchain — each release
+carries a Nix flake for devbox ([installing it](../design/accessctl.md#installing-it))
+— needs no action and no second copy of its access files. The line a
+person's kubeconfig runs,
 
 ```yaml
 exec:
@@ -95,6 +105,8 @@ and the job's group together when both should reach it.
 
 Keep credentials off a committed `[default]`: in a job it would shadow
 the runner's own identity for every call. Select a named profile instead.
+A consumer that is neither kubectl nor an AWS SDK reads `accessctl token
+--audience <client>` from stdin, in a job and on a laptop alike.
 
 **Both targets go through the issuer, never directly.** A cluster trusts
 one OIDC issuer and that is access-issuer, so a GitHub token can never be

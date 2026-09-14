@@ -60,12 +60,13 @@ the same reason every other grant lives here.
 4. **Check the Rules page.** Each binding appears beside every other
    rule, with `GitHub team` as its kind, the internal group as its rule,
    and the same *depends on* column that group has.
-5. **Connect it**, on the console's GitHub page. An operator presses
-   *Connect* beside the organisation; the organisation's **owner** then
-   does two things on GitHub and types nothing:
-   - **Create** the App GitHub offers. It is private, asks for one
-     permission — `members: write` — and has no webhook. GitHub hands its
-     key to this service once, on the way back.
+5. **Connect it**, on the *Apps* tab of the console's GitHub page. An
+   operator presses *Create* beside the organisation; the organisation's
+   **owner** then does two things on GitHub and types nothing:
+   - **Create** the App GitHub offers. It is private, asks for two
+     permissions — `members: write`, and `organization_administration:
+     read` for the seat count — and has no webhook. GitHub hands its key
+     to this service once, on the way back.
    - **Install** it on the organisation, on the page GitHub goes to next.
      Coming back, the service asks GitHub where the App is installed
      rather than trusting the redirect, and the organisation shows as
@@ -116,7 +117,20 @@ groups:
 The account's name is `<release>-github-roster`. The chart refuses to
 render the controller without an `exchange.clusters` row or a console
 mount, because either absence is a controller that can never read
-anything.
+anything. `githubRoster.interval` (15 minutes) is how long between
+passes.
+
+**Deploy the controller and the console together**, as the chart does.
+Every answer the console gives carries the digest of the policy it was
+computed under; the controller changes nothing on a holders list under
+another policy, and confirms no removal on an `Explain` under another
+one. A rollout restarts the two at different moments, and without that
+rule a team the new policy binds would have been emptied by a controller
+asking a console that had not yet heard of it.
+
+The controller pushes metrics over OTLP when `telemetry.otlpEndpoint`
+is set: passes, changes, rows by state, seats, breaker trips, links by
+state and source. Nothing is exported without it.
 
 **It needs to reach `api.github.com`**, and a default-deny egress policy
 has to allow it.
@@ -211,14 +225,14 @@ GitHub tells an organisation outside its Enterprise Cloud plan nothing
 about which work address a member has — not the App, not an owner. So
 each person shows it themselves, once.
 
-**Set up once.** On the GitHub page an operator presses **Create link
-App** under an organisation they own. It is a separate App from the
+**Set up once.** On the GitHub page's *Apps* tab an operator presses
+**Create** beside *Link App*, under an organisation they own. It is a separate App from the
 organisations', on purpose:
 
 | | The link App | An organisation's App |
 |---|---|---|
 | used by | each person, authorizing it as themselves | the controller |
-| permission | read the person's own email addresses | `members: write` |
+| permission | read the person's own email addresses | `members: write`, `organization_administration: read` |
 | installed | nowhere | on its organisation |
 | visibility | **public**: a private App can only be authorized by members of its owner organisation, which a new hire and a partner's engineer are not | private |
 | kept | client id and secret | private key |
@@ -262,7 +276,7 @@ An owner's link going lost is reported, like anything about an owner.
 |---|---|---|---|
 | **linked by them** | they authorized the link App; GitHub verified the address | yes | yes |
 | **public profile** | the account publishes the work address; GitHub lets an account publish only a verified one. Matched automatically, members only | no | no — hiding an address is not removing it |
-| **imported** | an approved pairing from github-roster 0.x, imported once | no | no |
+| **imported** | an approved pairing from elsewhere, handed to the operator RPC `ImportGitHubLinks` once — three checks each: approved, an address the directory has live, the account a member of a connected organisation | no | no |
 
 All three count as the person: they are invited, moved between teams and
 removed when the directory suspends them. A profile match or an import
@@ -287,6 +301,35 @@ left to do on GitHub.
 Nobody is removed from anything by disconnecting: the organisation simply
 stops being managed.
 
+## Runner Apps
+
+A runner App is the GitHub App a self-hosted runner scale set registers
+with: one per organisation per **tier**, so a compromised runner plane
+is confined to its tier. The chart declares the tiers, and the *Apps*
+tab then shows a row per bound organisation per tier:
+
+```yaml
+githubRunnerApps:
+  tiers: [preview, stable]
+```
+
+An operator creates each App with the same two clicks as an
+organisation's App — create, then install — and types nothing. The App
+asks for `organization_self_hosted_runners: write` and nothing else; it
+is private and has no webhook. Nothing in this service acts with its key:
+it is kept for the deployment to hand to its runners.
+
+Every runner App lives in `Secret <release>-github-runner-apps`. An
+installed App is three keys, named as gha-runner-scale-set's
+`githubConfigSecret` reads them — `<tier>.<org>.github_app_id`,
+`<tier>.<org>.github_app_installation_id`,
+`<tier>.<org>.github_app_private_key` — beside its record. A deployment
+copies the three to its runners, for example with an External Secrets
+`PushSecret`. Until the App is installed its key is kept under another
+name, so a copy taken in between never hands runners an App they cannot
+register with. *Disconnect* uninstalls the App and forgets its keys;
+runners registered with it stop getting jobs.
+
 ## What connecting leaves behind
 
 | Object | Holds | Read by |
@@ -294,11 +337,17 @@ stops being managed.
 | ConfigMap `<release>-github-orgs` | one record per organisation: the App's id and slug, where it is installed, when and by whom it was connected | the console |
 | Secret `<release>-github-apps` | one credential per organisation: the App's id, its installation, its private key; and the link App's client id and secret under `_link.json` | the controller, as a mounted volume; this service to uninstall on Disconnect and to redeem a person's authorization |
 | Secret `<release>-github-links` | one link per GitHub account (`<id>.json`): its login, the addresses it proves, its state, the person's token pair | this service, which writes a link; the controller, which rewrites it as it checks — the one Secret its Role may update, by name |
+| Secret `<release>-github-runner-apps` | every runner App: its three keys once installed, its record beside them | this service, to find the installation and to uninstall; the deployment, copying the keys to its runners |
 
-Both exist, empty, from the service's first start, so the controller's
-volume always has a Secret behind it. Recovery for a lost key is
-Disconnect and Connect again; there is no backup, and no copy of the key
-anywhere else — not in git, not in a password manager.
+All of them exist, empty, from the service's first start, so the
+controller's volume always has a Secret behind it. Each credential
+carries a copy of its record, so these Secrets are a whole backup:
+put them back into an empty namespace and the next start rebuilds the
+records ([configuration](../reference/configuration.md#restoring-from-the-secrets-alone)).
+No copy of a key exists anywhere else — not in git, not in a password
+manager — so a deployment that wants one copies these Secrets, for
+example with an External Secrets `PushSecret` each. A person's link
+token may have rotated since the copy; that person links again.
 
 ## What the render refuses, and why each is silent otherwise
 

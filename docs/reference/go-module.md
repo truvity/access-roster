@@ -99,10 +99,15 @@ exchanger := &tokens.Exchanger{Issuer: "https://access.example", ClientID: "loca
 token, err := exchanger.Exchange(ctx, subject, tokens.TypeJWT, "aws:111122223333:power")
 ```
 
-The client is presented in **HTTP Basic**: the issuer reads an exchange's
-client from Basic alone and never from a posted `client_id`, so getting
-that wrong is refused as *invalid client* — an error about the client
-rather than about the mistake. A refusal comes back as
+`TypeJWT` labels a proof from outside — a GitHub job's token, a
+ServiceAccount token. A sign-in of this issuer's own is presented as
+`tokens.TypeAccessToken`, and only the access token of a live session at
+a `public` client declaring `sign_in_exchange: true`, presented by that
+client, is taken; an ID token, or any other token this issuer signs, is
+refused. The client is presented in **HTTP Basic**: the issuer reads an
+exchange's client from Basic alone and never from a posted `client_id`,
+so getting that wrong is refused as *invalid client* — an error about
+the client rather than about the mistake. A refusal comes back as
 `tokens.ErrRefused`, carrying the issuer's own sentence, which names the
 audience and the groups the proof holds.
 
@@ -128,6 +133,11 @@ result := set.Evaluate(policy.Input{
     Authoritative:   true,        // and whether that answer may be acted on
 })
 ```
+
+The same `Input` carries the other two proofs: `GitHub` — repository,
+owner, ref, workflow, environment, visibility, as the job's token says —
+and `ServiceAccount` — cluster, namespace, name. A person, a CI job and
+a workload are the same evaluation against the same matchers.
 
 One layer. There was a second that a console could write; it is gone
 (INF-694), because a console that can disagree with git is a second

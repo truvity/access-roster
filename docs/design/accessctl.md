@@ -1,6 +1,6 @@
 # accessctl and the GitHub Action
 
-**Status:** designed 2026-09-07; built with the issuer.
+**Status:** built; on laptops since 1.5.5 and inside GitHub Actions jobs since 1.4.0.
 
 ## Why a CLI at all
 
@@ -18,7 +18,7 @@ a login cache and an issuer configuration.
 
 | Command | Does | Used by |
 |---|---|---|
-| `login` | device or authorization-code flow against the issuer; caches the refresh token in the OS keyring or a file with mode 0600 | people |
+| `login` | authorization code with PKCE on a loopback port — the only browser flow served; caches the refresh token in a file with mode 0600. Its client is public and declares `sign_in_exchange: true`, the one thing that lets the exchange take a sign-in as a proof | people |
 | `whoami` | the identity and what the policy grants it | people |
 | `kubeconfig` | reads `/.access/grants`, writes a kubeconfig context per granted cluster, exec plugin `accessctl kube-token` (or kubelogin) | people |
 | `kube-token` | a Kubernetes exec credential for one cluster audience; refreshes silently from the cached login | people |
@@ -28,12 +28,14 @@ a login cache and an issuer configuration.
 | `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
 | `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
-**Machines do not run the CLI.** A job's exchange is one call to the
-issuer's token endpoint; the action below does it in shell. The CLI may
-later learn to detect a CI platform's identity-token environment and act
-as the kubeconfig exec plugin for jobs that outlive an exchanged token,
-but that is an option for the day such a job exists, not part of the
-shape.
+**A job runs the same commands.** With `ACTIONS_ID_TOKEN_REQUEST_URL`
+and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` set, `kube-token`, `aws` and
+`token` ask GitHub for the job's own identity token, minted for the
+issuer, and exchange that, presenting the audience as the client the way
+the action does. So one committed kubeconfig and one `aws.ini` serve a
+laptop and a job alike, where a repository used to keep a second copy of
+each for CI. The action below stays for a repository that would rather
+download nothing of ours into a job.
 
 ## The GitHub Action
 
@@ -41,7 +43,7 @@ One action, at the repository root, toggled by its inputs. It prepares
 exactly what is ours to prepare and stops:
 
 ```yaml
-- uses: truvity/access-roster@v1
+- uses: truvity/access-roster@v1.8.0   # pin a release; there is no floating v1
   with:
     issuer: https://issuer.example.internal
     audiences: k8s:devel, aws:111122223333:gitops-deployer, aws:444455556666:artifacts-reader
@@ -96,5 +98,6 @@ after a policy change.
 ## What it never does
 
 No stored secrets, no long-lived tokens on disk beyond the refresh token
-in the keyring, no cloud SDK inside, and no place in a job — it prints
-what the cloud CLI's credential process expects and stops.
+in its own file, no cloud SDK inside, and no cache in a job — there it
+exchanges the job's own token afresh, prints what the consumer expects
+and stops.

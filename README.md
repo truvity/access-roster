@@ -10,8 +10,9 @@ It reads the groups your people already have in the corporate directory
 and puts them in a token. Kubernetes, AWS, ArgoCD, Kargo and every
 console behind your gateway trust that one token. CI jobs and workloads
 get the same treatment from the identity token they already hold. The
-whole policy is one file in git, and a console shows you who holds what
-and why.
+whole policy is one file in git; the same file says who belongs in which
+GitHub team, and a controller keeps the teams that way. A console shows
+you who holds what and why, and an audit trail in S3 says who did what.
 
 Nothing here authenticates anyone. Sign-in, passwords, MFA and device
 policy stay with Google Workspace or Entra. This verifies the result,
@@ -43,21 +44,29 @@ is dex with a directory reader and a policy file.
 ## What you get
 
 **As a person.** Sign in once, at one page, with your corporate account.
-Every console behind the gateway opens without another login. `kubectl`
-works on every cluster you are granted, through kubelogin. `accessctl`
-gives you AWS credentials for testing, ECR and the rest, with a browser
-confirmation and no long-lived key. Sign out once and it ends everywhere.
+Every console behind the gateway opens without another login. One
+`accessctl login` on your laptop, and `kubectl` works on every cluster
+you are granted, AWS credentials come with no long-lived key, and a token
+for any other audience is one command away. Link your GitHub account
+once and the teams the policy puts you in follow. Sign out once and it
+ends everywhere.
 
 **As a machine.** A GitHub Actions job presents the identity token it
 already has and receives one for AWS or a cluster, under a rule that
-names the repository and the ref. A workload in any cluster does the
-same with its ServiceAccount token. No secret is stored anywhere, and
-the rule sits in the same file as the human ones.
+names the repository, the ref and, if you want, the repository's
+visibility. The same `accessctl`, kubeconfig and AWS profile a person
+uses on a laptop work unchanged inside the job. A workload in any
+cluster does the same with its ServiceAccount token. No secret is stored
+anywhere, and the rule sits in the same file as the human ones.
 
 **As the operator.** One chart. The policy is values. The console shows
 every person, every directory group, every internal group, every rule
-that grants one, and every open session. A leaver disappears from the
-directory and, within the freshness window, from everything downstream.
+that grants one, every open session, and every GitHub organisation with
+what the controller would change and why. A leaver disappears from the
+directory and, within the freshness window, from everything downstream,
+GitHub teams included. Every sign-in, refusal, exchange, revoke and
+console action is one record in an S3 bucket you own. What the console
+adds at runtime lives in a handful of Secrets that a copy of restores.
 
 ## Many in, many out, one point in the middle
 
@@ -65,20 +74,17 @@ directory and, within the freshness window, from everything downstream.
 |---|---|
 | corporate directories: several Google Workspaces, Entra next — each a workspace with its own credential and its own served domains | Kubernetes clusters: each trusts the one issuer as its identity provider |
 | GitHub Actions: one federated issuer, an owner allow-list | AWS accounts: each trusts the one issuer as an OIDC provider |
-| every cluster's own ServiceAccount tokens: one row per cluster naming its key set | GitHub organisations: one controller App each, bindings in the same policy |
+| every cluster's own ServiceAccount tokens: one row per cluster naming its key set | GitHub organisations: one controller App each, bindings in the same policy, and a runner App per tier for self-hosted runners |
 | | consoles and applications: one client row each |
 
 Adding one of anything is one row and one trust registration. The
 issuer URL, the policy file and the console never multiply.
 
-Built today: **one service**, three Google Workspaces on one cluster,
-four clients, workloads on any cluster proving themselves by that
-cluster's published key set, a GitHub Action that needs nothing of ours
-downloaded into a job, and `accessctl` for a laptop. Designed and
-ticketed, not yet built: the second directory connector, and the GitHub
-controller across organisations.
-[architecture.md](docs/architecture.md#fan-in-and-fan-out) says which
-is which, per row.
+Everything in both columns is built and in use, with one exception: the
+second directory backend (Entra) is designed behind the same workspace
+record and not written yet.
+[architecture.md](docs/architecture.md#fan-in-and-fan-out) says how each
+row is expressed in configuration.
 
 ## The shape
 
@@ -90,25 +96,35 @@ flowchart LR
 
   subgraph ar["access-roster"]
     iss["the issuer<br/>reads the directory · applies the policy · mints tokens<br/>serves the login page and the console"]
+    ctl["the GitHub controller<br/>keeps each organisation's teams as the policy says"]
   end
 
   proxy["access-proxy<br/>one per console with no OIDC of its own"]
   apps["Kubernetes · AWS · ArgoCD · Kargo · consoles"]
+  orgs["GitHub organisations"]
+  s3[("S3<br/>the audit trail")]
 
   idp -- "sign-in, and directory reads" --> iss
   gh -- "token exchange" --> iss
   k8s -- "token exchange" --> iss
   iss --> proxy --> apps
   iss -- "trusted by" --> apps
+  iss -. "who holds which group" .-> ctl
+  ctl -- "invites, teams, removals" --> orgs
+  iss -- "every event" --> s3
 ```
 
-One service and one Valkey. A login makes no network call except to the
-corporate directory. The proxy is upstream oauth2-proxy in a chart, for
-applications that cannot run an OpenID flow themselves; anything that can,
-such as ArgoCD or Kargo, talks to the issuer directly.
+One chart, one Valkey, one bucket. A login makes no network call except
+to the corporate directory. The proxy is upstream oauth2-proxy in a chart,
+for applications that cannot run an OpenID flow themselves; anything that
+can, such as ArgoCD or Kargo, talks to the issuer directly. The GitHub
+controller is a second process from the same chart, asking the issuer
+who holds which group and acting on GitHub with an App the organisation's
+owner created from the console.
 
-> **Status.** Running on one cluster with three Google Workspaces
-> connected and four relying parties on the issuer.
+> **Status.** In production for its authors: several corporate
+> directories connected, clusters, AWS accounts, GitHub organisations
+> and consoles on the one issuer, and CI jobs exchanging their way in.
 > [CHANGELOG.md](CHANGELOG.md) says what exists at each version, and the
 > documents below describe what is built.
 
@@ -148,8 +164,11 @@ Every column, and why, is in
 | learn the ten words used precisely | [docs/concepts.md](docs/concepts.md) |
 | write the policy | [docs/reference/policy.md](docs/reference/policy.md) |
 | deploy it | [docs/reference/configuration.md](docs/reference/configuration.md), then [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
+| run it: what to check, what to back up, how to restore | [docs/operations/runbook.md](docs/operations/runbook.md), [configuration.md — restoring from the Secrets alone](docs/reference/configuration.md#restoring-from-the-secrets-alone) |
+| use it from a laptop or a CI job | [docs/reference/accessctl.md](docs/reference/accessctl.md) |
 | put a console behind the gateway | [docs/connect/console-app.md](docs/connect/console-app.md) |
-| connect a cluster, an AWS account, a GitHub organisation, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
+| keep a GitHub organisation's teams in step with the policy | [docs/connect/github-organisation.md](docs/connect/github-organisation.md) |
+| connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
 | see what the conformance suite said, and why | [docs/conformance.md](docs/conformance.md) |
 | run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |
 | build a service that accepts both people and workloads | [docs/connect/service-to-service.md](docs/connect/service-to-service.md) |
@@ -158,13 +177,14 @@ Every column, and why, is in
 
 | Artifact | For |
 |---|---|
-| `access-issuer` service and chart | the installation, once. One process: the directory, the policy, the OpenID provider, the login page and the console |
+| `access-issuer` service and chart | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail |
+| `github-roster`, in the same chart | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console |
 | `access-proxy` chart | every console with no OpenID flow of its own |
 | Go module `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups |
-| TypeScript package `access-roster` | console UIs: `useIdentity()` over `/.access/whoami` |
-| `accessctl` | people on laptops: kubeconfigs and AWS credentials |
-| GitHub Action `truvity/access-roster@v1` | workflows: one exchange, then a kubeconfig and AWS profiles |
-| the policy | one file, one schema, both services |
+| TypeScript package `@truvity/access-roster`, on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer |
+| `accessctl`, a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials and a token for any audience |
+| GitHub Action `truvity/access-roster`, pinned to a release | workflows: one exchange, then a kubeconfig and AWS profiles |
+| the policy | one file, one schema, the issuer and the controller |
 
 ## Developing
 

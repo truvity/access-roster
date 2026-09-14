@@ -1,6 +1,6 @@
 # access-proxy — the console exposure
 
-**Status:** designed 2026-09-07; chart built 2026-09-08.
+**Status:** built; in front of every proxied console since 0.9.
 
 **Decided 2026-09-10 (supersedes 2026-09-08):** the client is **declared**,
 and that is permanent. Self-registration was designed and then dropped
@@ -29,22 +29,24 @@ and the consent callback. Found the hard way on the first real install: the
 operator connecting the first directory is one no directory can vouch for, so
 the gateway sent them to sign in against a directory that did not exist, and
 Google's consent redirect came back to a callback the proxy swallowed. It
-presents as a second account picker, not as a refusal. directory-roster
-renders those paths on a second HTTPRoute (`route.bootstrapPaths`) and the
-proxy attaches only to the main one.
+presents as a second account picker, not as a refusal. The issuer serves
+those paths at its origin root on a route of its own, and a proxy
+attaches only to the console's.
 
 The corollary, learned 2026-09-09 on the second real install step: a
 request on the bootstrap surface carries **no identity from the gateway**,
 so the consent callback cannot demand one — it takes its operator from
-the state the hub signed when an operator started the flow. A callback
+the state the service signed when an operator started the flow. A callback
 that checked the request instead refused the one flow the surface exists
 to finish.
 
-**Decided 2026-09-08:** its first consumer is the **directory-roster
-console**, in the `authenticated` posture. The hub resolves viewer/operator
-from the directory it owns, so the gateway gates on "signed in" and the
-application decides the rest; a `groups` rule here would be a second copy of
-that decision, and the stale one.
+**Decided 2026-09-08, superseded at 0.12:** its first consumer was the
+directory console, in the `authenticated` posture — the service resolves
+viewer and operator from the directory it owns, so the gateway gated on
+"signed in" and the application decided the rest. Since 0.12 that
+console signs in as a client of the issuer it shares an origin with and
+needs no proxy; the chart's consumers are consoles with no OpenID flow
+of their own.
 
 ## Purpose
 
@@ -71,10 +73,10 @@ to; the client it presents is declared alongside it.
 
 ```yaml
 exposure:
-  hostname: roster.example.internal
-  backend: { name: github-roster, port: 8080 }
+  hostname: myconsole.example.internal
+  backend: { name: myconsole, port: 8080 }
   posture: groups
-  allow: [roster:operator, roster:viewer]
+  allow: [all:myconsole:operator, all:myconsole:viewer]
 ```
 
 Everything else is derived or fleet-wide: the client id is the hostname,
@@ -122,7 +124,7 @@ console: a fleet egress policy that selects namespaces labelled
 
 ## The session store
 
-Valkey, external to the chart, exactly as for the hub and the issuer: the
+Valkey, external to the chart, exactly as for the service and the issuer: the
 chart takes an address and optional credentials and ships no Valkey of its
 own, because upstream's chart and the valkey.io operator already do that
 job. Two topologies, both a one-line value:
@@ -161,14 +163,18 @@ to match the landing page against and puts the person on its own page
 instead. And the landing page is the policy client's `signed_out`, a
 list kept **separate from `redirects`**, because a redirect URI starts a
 sign-in and landing there after a sign-out begins the login just ended.
-The console's own chart builds the whole chain from what it already
-knows (`access.signOutThroughIssuer` in directory-roster) and refuses to
-render half of it.
+This chart builds the whole chain from what it already knows and
+refuses to render half of it.
 
 A revoked person is stopped by the issuer refusing to refresh, with the
-hub's liveness signal behind it; the proxy's session then dies at its
-next refresh. That delay is why a SIGN-OUT revokes rather than waits: a
-person who signs out means now, and `cookie_refresh` can be hours.
+directory's liveness signal behind it; the proxy's session then dies at
+its next refresh. That delay is why a SIGN-OUT revokes rather than waits:
+a person who signs out means now. And it is why `session.refresh` ships
+at **one minute**: a proxied console cannot receive a back-channel
+logout — oauth2-proxy keeps each session under a key only the browser's
+cookie holds, so no server can open it — and the refresh interval is the
+whole dial for how long a revoked person keeps a page. `ttl_cap` on the
+client bounds the same window from the issuer's side.
 
 ## Why not something else
 

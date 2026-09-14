@@ -6,14 +6,15 @@ with its fake and its acceptance scenario, or it is not done.
 
 ## 1. A directory backend (Entra, LDAP, …)
 
-`backend/google` is the worked example, and `cmd/directory-roster`'s
-registry is where a new one is announced: a build that lacks a declared
-backend says exactly what it lacks rather than starting up empty.
+`backend/google` is the worked example, and the registry in
+`internal/app` (`backendOpeners`) is where a new one is announced: a
+build that lacks a declared backend says exactly what it lacks rather
+than starting up empty.
 
-`pkg/backend`: implement `Backend` — `Probe`, `Domains`, `Users`,
-`Groups`, `Members` (atomic per group), plus `Consent` for the
-admin-consent flow or `KeyCredential` for an uploaded key — and register
-it under a name. The hub's record, routing, snapshots, freshness and
+`backend/`: implement `Backend` — `Kind`, `Tenant`, `Probe`, `Accounts`,
+`Groups`, `Account`, `GroupsOf` and `Revoke` — and the way it is opened:
+from a consent the console runs, or from an uploaded key. Register it
+under a name. The service's record, routing, snapshots, freshness and
 console need no change; Providers gains a button. Ship: the
 backend's fake, a consent-runbook page, and the acceptance scenarios
 connect / revoke / domain move against the fake.
@@ -43,7 +44,7 @@ test.
 
 ## 3. A matcher kind, or a table
 
-`pkg/policy`: a matcher is a `Matcher` over a verified proof's claims; a
+`policy/`: a matcher is a `Matcher` over a verified proof's claims; a
 new proof kind brings its own. The five tables are the whole schema: a
 need that cannot be met by a new group, a new client or a new matcher
 kind is a need for a new dimension, and the answer to that is no — see
@@ -52,8 +53,7 @@ kind is a need for a new dimension, and the answer to that is no — see
 ## 4. A middleware adapter
 
 There are **no framework adapters yet** — `net/http` is what ships, and
-the fiber, gRPC and connect adapters are designed and ticketed
-(INF-648). Writing one means: read the token with `identity.TokenFrom`
+a fiber, gRPC or connect adapter would be additive. Writing one means: read the token with `identity.TokenFrom`
 or the framework's own accessor, ask each `identity.Verifier` in turn,
 put the resulting `identity.Verified` into the framework's context with
 `identity.WithVerified`, and serve `identity.WhoAmI` at
@@ -72,10 +72,23 @@ name it in [reference/policy.md](../reference/policy.md).
 
 ## 6. A CLI subcommand
 
-`cmd/accessctl`: subcommands share the login cache and the issuer client
-in `internal/cli`; a new one that needs neither probably belongs in a
-script. Keep the CI detection path working: every command must behave
-with an ambient platform token and no cache.
+`cmd/accessctl`: subcommands share the login cache, the issuer client
+and the ambient-token detection in that package; a new one that needs
+none of them probably belongs in a script. Keep the CI path working:
+every command must behave with an ambient platform token and no cache,
+and it ships to a job through the release's Nix flake like the rest.
+
+## 7. An audit writer
+
+`AuditSinkService` (`WriteAuditEvents`, `ListStoredAuditEvents`) is the
+contract between what records and what writes, and it is ConnectRPC so
+that a writer can live in another process. Two implement it today, the
+S3 writer and the in-memory one, joined in process by a client that
+calls the handler directly. A writer that forwards onto a queue or
+another store implements the same two calls and is reached through the
+generated client; nothing that records changes. Keep the one exception:
+`WriteAuditEvents` with `durable` set returns only once the record is
+kept, because a recovery sign-in waits on that answer.
 
 ## What is not an extension point
 

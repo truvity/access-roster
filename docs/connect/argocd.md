@@ -9,6 +9,8 @@ nothing about that policy changes when the issuer does.
    clients:
      argocd:
        kind: confidential
+       display_name: Argo CD          # the sign-in page: "Sign in to continue to Argo CD"
+       description: deployments on the kernel cluster
        secret: argocd-oidc-client
        redirects:  [https://argocd.example.internal/auth/callback]
        signed_out: [https://argocd.example.internal/]
@@ -36,3 +38,8 @@ nothing about that policy changes when the issuer does.
 
 The `argocd` CLI logs in through the same client with the browser flow;
 no separate client is needed.
+
+`display_name` and `description` are shown to anyone who starts a
+sign-in, so they carry nothing a stranger should not read. ArgoCD runs
+its own session, so a revoke at the issuer reaches it at its next token
+refresh; it does not consume a back-channel logout.

@@ -26,7 +26,7 @@ installation, never per company. About fifteen minutes.
      though everything appears to work without it. In Testing, a consent
      screen admits only the accounts listed as test users — so the FIRST
      tenant connects (the project's own account is one) and the second is
-     refused before the request ever reaches the hub, with Google's
+     refused before the request ever reaches the service, with Google's
      `Error 403: access_denied` and *"can only be accessed by
      developer-approved testers"*. Adding the admin as a test user
      unblocks that one consent and leaves the other half in place:
@@ -47,21 +47,21 @@ installation, never per company. About fifteen minutes.
    "sensitive", which only produces the unverified-app interstitial.
 4. **The OAuth client** (Clients → Create → Web application):
    - Authorised redirect URIs, **both** of them:
-     - `https://<hub host>/connect/google/callback` — an administrator
-       granting this hub read access to a company.
-     - `https://<hub host>/login/google/callback` — a person signing in.
+     - `https://<host>/connect/google/callback` — an administrator
+       granting this service read access to a company.
+     - `https://<host>/login/google/callback` — a person signing in.
 
      They are separate because the two endpoints have opposite
      authorisation: the first adopts a workspace and demands an operator,
      the second is how a person becomes anyone at all. A client missing
      the second one works perfectly until somebody tries to sign in.
-   - While the hub is being tried on a workstation, the same **pair** on
-     `http://localhost:8081` may sit on the client — 8081 is the console
-     listener, which is where both flows return. Remove them once the hub
+   - While the service is being tried on a workstation, the same **pair**
+     on `http://localhost:<port>` may sit on the client, the port being
+     the one it listens on, where both flows return. Remove them once it
      runs behind its real host.
-5. **Hand the client to the hub**, one of two ways:
+5. **Hand the client to the service**, one of two ways:
    - paste the client id and secret into the console's Settings once; or
-   - create a Secret with keys `client-id` and `client-secret` in the hub's
+   - create a Secret with keys `client-id` and `client-secret` in the service's
      namespace and set `oauthClient.existingSecret` — the console then
      shows the client read-only.
 
@@ -86,7 +86,7 @@ and only removes the interstitial.
    and *Domain management → Read*, and the last of those is the one a
    narrower role tends not to satisfy: Google treats reading a customer's
    domain list as a super-admin act, and domain discovery is not optional
-   here — it is what decides which addresses this hub answers for at all.
+   here — it is what decides which addresses this service answers for at all.
    A custom role carrying exactly the three may work; it fails as a 403 on
    the first read rather than at consent, which is a bad place to find
    out. This is also what Tailscale asks for, for the same scope.
@@ -96,8 +96,8 @@ and only removes the interstitial.
    users, groups, memberships and domains, and nothing else — not mail,
    not drive, and nothing writable.
 3. Click through the unverified-app interstitial if it appears, then
-   consent. The redirect brings the browser back to the hub.
-4. The hub records the consenting account, reads the tenant id and the
+   consent. The redirect brings the browser back to the service.
+4. The service records the consenting account, reads the tenant id and the
    domain list, and stores the workspace. If anything goes wrong here the
    console says so on a page, quoting the directory's own message. A
    consent Google granted and then refused on the first read is almost
@@ -107,7 +107,7 @@ and only removes the interstitial.
 5. **Choose the domains**. The consenting administrator's own
    domain is pre-selected; the tenant's other domains are listed and off;
    *all, including ones added later* is an explicit option. Pick what
-   this hub should answer for — the rest stays discovered and visible,
+   this service should answer for — the rest stays discovered and visible,
    but nothing routes to it and its accounts are never read.
 6. The first snapshot runs in the background. The tenant's page shows
    *first snapshot pending* until it lands — seconds for a small tenant,
@@ -140,3 +140,12 @@ impersonate. Same record, different credential type. A declared
   named domains will not pick the moved one up on its own — that is the
   point of narrowing — so add it there instead. During the overlap the
   domain is authoritative for neither; the console shows it contested.
+
+What consenting leaves behind is a record in a ConfigMap the console
+shows and the credential in `Secret <release>-workspace-credentials`,
+one key per workspace, with a copy of the record beside it. That Secret
+is part of the backup set
+([runbook](runbook.md#backing-up-and-restoring-what-the-console-holds)):
+a deployment that copies it can put a lost namespace back without
+another visit to the cloud console. The connect and every disconnect are
+recorded in the audit trail.

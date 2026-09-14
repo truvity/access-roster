@@ -6,11 +6,11 @@ The words this repository uses precisely.
 
 | Term | Means |
 |---|---|
-| **workspace** | one directory tenant the hub holds a credential for — a Google customer, later an Entra tenant. Identified by the backend's tenant id, never by a domain |
+| **workspace** | one directory tenant the service holds a credential for — a Google customer, later an Entra tenant. Identified by the backend's tenant id, never by a domain |
 | **domain** | discovered from the workspace, re-read on every probe, never typed. Addresses route to workspaces by domain |
-| **served** | which of a workspace's discovered domains this hub answers for. Chosen when the workspace is connected: the consenting administrator's own domain is pre-selected, the tenant's other domains are listed and off, and *all of them, including ones added later* is an explicit choice. Changeable afterwards on the directory's page; for a declared workspace it is in the values. An unserved domain routes nothing and its accounts are never read. The list is intersected with discovery, so it can never claim a domain the tenant does not own |
-| **synced** | which of a workspace's groups this hub keeps. All of them unless it is narrowed (values, or the console). It narrows what is KEPT, not what is read: the hub still lists the tenant's groups, because that list is what an operator chooses from. A group left out is not cached, not answered and not offered — and the choice is bounded by the last read, so nothing can be named that the directory does not hold |
-| **snapshot** | the hub's copy of one workspace: accounts with liveness, groups with flat members, domains, taken every refresh interval. Every read answers from it and says which one (`snapshot_at`) |
+| **served** | which of a workspace's discovered domains this service answers for. Chosen when the workspace is connected: the consenting administrator's own domain is pre-selected, the tenant's other domains are listed and off, and *all of them, including ones added later* is an explicit choice. Changeable afterwards on the directory's page; for a declared workspace it is in the values. An unserved domain routes nothing and its accounts are never read. The list is intersected with discovery, so it can never claim a domain the tenant does not own |
+| **synced** | which of a workspace's groups this service keeps. All of them unless it is narrowed (values, or the console). It narrows what is KEPT, not what is read: the service still lists the tenant's groups, because that list is what an operator chooses from. A group left out is not cached, not answered and not offered — and the choice is bounded by the last read, so nothing can be named that the directory does not hold |
+| **snapshot** | the service's copy of one workspace: accounts with liveness, groups with flat members, domains, taken every refresh interval. Every read answers from it and says which one (`snapshot_at`) |
 | **authoritative** | a domain's answers may be acted on: its workspace's last probe succeeded, its snapshot is inside the freshness window, and no other workspace serves the domain too. Anything else is *provisional* or *contested* |
 | **provisional** | a served domain whose answers may not be acted on for removals, **and why**: *first snapshot pending*, *snapshot stale*, or *probe failed*. Consumers add but never remove on it. The wire contract is the `authoritative` boolean and nothing else; this is the console's word for its `false`. It replaced *hold* on 2026-09-09: *hold* named what a consumer does, not what the domain is, and on a tenant connected ten seconds earlier it read as an alarm beside a green health chip. An unserved domain is neither — it is simply not read |
 | **contested** | a domain two workspaces both serve. Authoritative for neither until one of them stops serving it: a move in progress, or a misconfiguration |
@@ -40,12 +40,17 @@ The words this repository uses precisely.
 ## The console
 
 The console **reads**. It shows every person, every provider group, every
-internal group, every rule that grants one, and every open session — the
-whole chain from a directory to a client, and why each link exists. It
-changes exactly two things, and both are removals or bootstrap rather
-than policy: it **revokes** a session, and it **connects a provider** by
-admin consent, which genuinely needs a browser because there is no
-infrastructure-as-code way to obtain that credential.
+internal group, every rule that grants one, every open session, and
+every GitHub organisation with what the controller would change — the
+whole chain from a directory to a client or a team, and why each link
+exists. What it changes is bootstrap, removal and confirmation rather
+than policy: it **connects** a directory by admin consent and a GitHub
+organisation, the link App or a runner App by an owner creating the App,
+each of which genuinely needs a browser because there is no
+infrastructure-as-code way to obtain that credential; it **revokes** a
+session and **disconnects** what it connected; and it **confirms** a set
+of removals the controller held, or **imports** GitHub links approved
+elsewhere.
 
 It cannot change who is in a group. That is the policy, rendered from the
 installation's own access model and reviewed in git (INF-694), so `git
@@ -57,5 +62,27 @@ and a repository to disagree about.
 | **exposure** | a console placed behind `access-proxy`: a hostname, a backend, a posture. The proxy runs the login against the issuer, keeps the session, forwards the bearer |
 | **posture** | what an exposure enforces: `authenticated` — any identity the issuer would mint for this client passes, and the client's `requires` at the issuer is the gate; `groups` — the gateway itself checks the claim, which suits a caller that already carries a token and cannot serve a browser that does not yet have one |
 | **session** | what the issuer holds for one identity and one client: a refresh token and how it was obtained. Listed on a person's page and a client's page, revocable by an operator, and by the person for their own — "sign out everywhere". A proxy's browser session is one of them, seen from the proxy's side |
-| **bootstrap surface** | the paths a console publishes on a route the proxy does *not* cover: its sign-in page, recovery, and the consent callback — so that a redirect from a directory is never swallowed by a login prompt. A request there carries **no gateway identity, by design**; the consent callback takes its operator from the state the hub signed when an operator started the flow |
+| **bootstrap surface** | the paths a console publishes on a route the proxy does *not* cover: its sign-in page, recovery, and the consent callback — so that a redirect from a directory is never swallowed by a login prompt. A request there carries **no gateway identity, by design**; the consent callback takes its operator from the state the service signed when an operator started the flow |
 | **recovery** | the way in for the day no directory can vouch for anybody: a Kubernetes ServiceAccount token, checked by the API server against a mandatory audience. Nothing is stored, and it grants nothing by itself — at the issuer it completes as the ServiceAccount *subject*, and only a `service_account` matcher in the policy puts that subject in a group. It is the **cluster anchor used as the floor** — the issuer depends on the directory, and the directory is what is broken — not a third anchor and not a back door |
+
+## GitHub
+
+| Term | Means |
+|---|---|
+| **binding** | a row of the policy's `github` table: an organisation's own `members`, and each team's `members` and `maintainers`, every entry an internal group. The controller makes the team equal to who holds those groups |
+| **link** | the tie between a GitHub account and a person, by the work addresses GitHub verified on it. Made by the **person** authorizing the link App, **matched** from a public profile that shows a work address the directory has, or **imported** from a pairing approved elsewhere. A self-link is checked every pass; the other two hold no token and are not. A link is `linked`, `lost` (the address left GitHub) or `unverifiable` (the link App is gone) |
+| **dry run** | what every organisation is until the chart lists it in `githubRoster.actsIn`: derived every pass, shown on its page with what would change, and left alone |
+| **held** | a change the controller decided not to make because a person is needed: no free seat, an owner it would demote, a removal set over half the organisation. Shown as *needs you* |
+| **reported** | a fact the controller notes and never acts on: an owner's team or link, an outside collaborator |
+| **retrying** | a change that failed for a transient reason — the directory unable to vouch just now, a change GitHub refused — and is tried again next pass rather than held |
+| **breaker** | the rule that a pass whose removals concern more than half an organisation's members removes nobody until an operator confirms exactly that set |
+| **runner App** | the GitHub App a self-hosted runner scale set registers with: one per organisation per **tier**, created from the console, kept in a Secret for the deployment to hand to its runners. Nothing in the service acts with it |
+
+## The audit trail
+
+| Term | Means |
+|---|---|
+| **event** | one thing an identity did or was refused: a sign-in, a refusal, an exchange, a revoke, a connect, a console action, what the controller did. Every event is one record and one log line, sharing an `event.id` |
+| **record** | the durable copy: one Elastic Common Schema document appended to an S3 object keyed by the hour. What the console's Audit page reads back |
+| **reporter** | a component that records what it did through `RecordAuditEvents` rather than causing events itself: the GitHub controller, admitted by the `all:access-roster:reporter` group |
+| **durable** | written to the bucket before the caller is answered. Only a recovery sign-in asks for it, and is refused when the record cannot be written; every other event is queued in the replica and written when the bucket answers |

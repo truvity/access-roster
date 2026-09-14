@@ -1,19 +1,28 @@
 # access-issuer chart
 
-Deploys the token service. Published to `ghcr.io/truvity/charts/access-issuer`
-on every `v*` tag of the repository; the tag is the chart's version.
+Deploys the whole of access-roster: the directory reader, the policy,
+the OpenID provider, the login page, the console and the audit trail in
+one process, and, with `githubRoster.enabled`, the GitHub controller
+beside it. Published to `ghcr.io/truvity/charts/access-issuer` on every
+`v*` tag of the repository; the tag is the chart's version.
 
 What the chart includes, what it expects and every value are documented in
 [docs/reference/access-issuer.md](../../docs/reference/access-issuer.md).
 `values.schema.json` is strict at the top level: an unknown key fails the
 render.
 
-Two things it will not do for you. It does not create the signing key —
-cert-manager issues one, or external-secrets delivers one, because a
+Three things it will not do for you. It does not create the signing key
+— cert-manager issues one, or external-secrets delivers one, because a
 service that mints its own credential is an exception to how every other
-credential here is provisioned. And it does not put an authenticating
-proxy in front of the issuer: this *is* the thing that authenticates, and
-a proxy would have nowhere to send anyone.
+credential here is provisioned. It does not put an authenticating proxy
+in front of the issuer: this *is* the thing that authenticates, and a
+proxy would have nowhere to send anyone. And it does not back up what
+the console adds: the four Secrets that hold it are named in
+[docs/reference/configuration.md](../../docs/reference/configuration.md#restoring-from-the-secrets-alone),
+and copying them is the deployment's job.
+
+Without `audit.s3.bucket` the audit trail stays in one replica's memory,
+which is not a record; the service says so at start.
 
 ```sh
 helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \

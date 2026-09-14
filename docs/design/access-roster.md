@@ -33,12 +33,15 @@ store, and a class of failure where the two halves disagreed about the
 same person.
 
 So the answer about a person is a function call. What that leaves is one
-Deployment, one Valkey, one policy file, one health endpoint, and a
-console served on the issuer's own origin.
+chart, one Valkey, one policy file, one health endpoint, and a console
+served on the issuer's own origin — plus, beside the service, the one
+process that had to be separate, the GitHub controller, because it holds
+keys and writes somewhere else.
 
-The directory endpoint returns when something needs it again — the GitHub
-controller is the candidate — under the grant model already shipped, and
-authenticated by token exchange like every other machine. Not before.
+The directory's own endpoint stays unserved. The one candidate for it,
+the GitHub controller, reads the console's API instead, with its own
+ServiceAccount token verified against the cluster's published key set
+like any workload's.
 
 ## The directory model
 
@@ -225,12 +228,12 @@ and a machine that already holds a token.
 
 | Grant | For |
 |---|---|
-| authorization code + PKCE | every browser flow, and every CLI: kubelogin and `accessctl` open a browser and listen on a loopback port |
+| authorization code + PKCE | every browser flow, and every CLI: `accessctl login` and kubelogin open a browser and listen on a loopback port |
 | refresh | sessions that outlive a token |
 | userinfo | relying parties that ask |
 | `end_session` | sign-out ends the sign-in, not one application's cookie |
 | revocation | "sign out everywhere", and the operator's revoke |
-| **token exchange** | the one machine grant, and the CLI's re-audiencing for AWS |
+| **token exchange** | the one machine grant, and the CLI's re-audiencing for a cluster, AWS or any other audience |
 
 Three of the six are grants and three are endpoints, so
 `grant_types_supported` prints three and the rest are advertised in their
@@ -242,9 +245,18 @@ against a key set this process trusts and holds no credential for:
 
 | Subject | Verified against | Rule kind |
 |---|---|---|
-| a GitHub Actions token | GitHub's key set, an owner allow-list | CI job: repository and ref |
+| a GitHub Actions token | GitHub's key set, an owner allow-list | CI job: repository, ref, visibility |
 | a ServiceAccount token from any cluster | that cluster's key set | workload: cluster, namespace, name |
-| a person's own token | our own key set | none: re-audiencing for AWS or a cluster |
+| the access token of a CLI sign-in, presented by that client | our own key set, and the client's `sign_in_exchange` | none: re-audiencing for a cluster, AWS or another audience |
+
+The third row is narrower than it was. Through 1.5.4 the exchange took
+any token this process had signed whose claims named a person, and an
+ID token does: it is handed to every relying party a person signs in to,
+so a holder of one could have exchanged it for any audience the person's
+groups admit. Now the only token of its own the issuer takes is the
+access token of a live session at a **public** client that declares
+`sign_in_exchange: true`, presented by that client — the CLI — and
+everything else it signs is refused.
 
 The third row is why it is *one* grant. AWS accepts only a token whose
 `aud` matches a client on its OIDC provider, so `accessctl` trades the
@@ -293,8 +305,8 @@ The design used to say only that much, and leaned on the other sessions
 dying *"at their next refresh"*. They do not, because nothing was
 revoking the refresh tokens — so a console the person had already opened
 kept refreshing successfully and serving pages for as long as its own
-cookie lasted, after a sign-out that reported success. Reported from
-hubble; fixed in v0.14.2 for `/logout` and v0.14.4 for `end_session`,
+cookie lasted, after a sign-out that reported success. Reported from a
+proxied console; fixed in v0.14.2 for `/logout` and v0.14.4 for `end_session`,
 which is the door that actually mattered because it is the one a proxy
 uses.
 
@@ -318,7 +330,7 @@ browser client documentation rather than a gate — anybody this issuer
 would authenticate received a token for any declared client. What
 stopped them was whatever the application checked for itself, which for
 a console with no authorization of its own and a proxy posture of
-`authenticated` was nothing (INF-704).
+`authenticated` was nothing.
 
 The check cannot happen at `/authorize`: the request arrives before
 anyone has proved who they are, so there is nobody to judge. It happens
@@ -376,7 +388,7 @@ signed somebody in and has to be told when that ends. So the sign-in
 remembers which clients were issued an ID token under it, and at
 sign-out every one of them is told, with or without a refresh token. The
 token's `sid` is the one the relying party's ID token carried, which is
-the per-client session (INF-681) and not the browser sign-in it hangs
+the per-client session and not the browser sign-in it hangs
 off: a relying party matches the two by that value, and the first
 version named the sign-in instead — a token that verified and matched
 nothing. A client whose ID token carried no `sid` is told by `sub`
@@ -411,13 +423,16 @@ ends the SSO session and every session under it. The rows keep their
 narrow meaning, because ending one session that is not the one you are
 using is a real thing to want, and the two acts should not be one button.
 
-What none of this reaches is a relying party's **own** session. A console
-that ran its own flow holds its own cookie, and revoking here does not
-call it: `end_session` is front-channel, and back-channel logout is not
-built. Kargo signed in an hour ago still answers after every session here
-is gone, until its own session expires. That is the honest boundary of
-revocation at an issuer, and the reason a relying party's session
-lifetime is a decision rather than a detail.
+What none of this reaches by itself is a relying party's **own**
+session. A console that ran its own flow holds its own cookie, and
+`end_session` is front-channel. A client that opts in with
+`backchannel_logout_uri` is told at the moment of sign-out, as the
+section above says; one that does not — Kargo, which has no such
+endpoint, or any console behind `access-proxy`, whose session no server
+can open — answers until its own session expires or refreshes. That is
+the honest boundary of revocation at an issuer, and the reason a relying
+party's session lifetime, and `ttl_cap`, are decisions rather than
+details.
 
 ### One origin
 
@@ -471,32 +486,40 @@ The console **reads**. It shows every person, every provider group, every
 internal group, every rule that grants one, and every open session — the
 whole chain from a directory to a client, and why each link exists.
 
-It changes exactly two things, and both are removals or bootstrap rather
-than policy:
+What it changes is bootstrap, removals and confirmations — never policy:
 
-- **Connect a provider** by admin consent, or **a GitHub organisation**
-  by its owner creating and installing an App. Both genuinely need a
-  browser and neither credential can be obtained as code; what they
-  produce — a refresh token, an App's private key — is what this process
-  writes for itself.
+- **Connect** a provider by admin consent, a GitHub organisation by its
+  owner creating and installing an App, the link App people authorize,
+  and a **runner App** per organisation per tier for self-hosted
+  runners. Each genuinely needs a browser and no credential of theirs
+  can be obtained as code; what they produce — a refresh token, an App's
+  private key — is what this process writes for itself.
 - **Revoke a session.** A removal, and the lever between sign-out and
-  expiry. Disconnecting a provider or an organisation is the same kind of
-  removal: it revokes at the other side, then forgets.
+  expiry. Disconnecting a provider, an organisation or an App is the same
+  kind of removal: it revokes at the other side, then forgets.
+- **Confirm** a set of removals the controller held because it concerned
+  more than half an organisation, and **import** GitHub links approved
+  elsewhere. Both let the controller act on something it could not
+  decide alone; neither adds anybody to a group.
 
-It cannot change who is in a group. Operator therefore means *may connect
-a provider* and *may revoke*; everything else is a viewer.
+It cannot change who is in a group. Operator therefore means *may
+connect*, *may revoke* and *may confirm*; everything else is a viewer.
 
 **GitHub** is a page on the internal side, beside clients, because a
-GitHub team consumes internal groups the way a client does. Per
-organisation it shows the bindings from the policy beside the GitHub
-controller's last report: each bound team, the groups feeding it in both
-roles, and every person with their state — `synced`, `pending`,
-`invited`, `leaving`, or `held` with the reason — and what the controller
-does next. A disabled organisation is still derived every pass, so its
-page is the dry run an operator reads before enabling it. Nothing on it
-writes to GitHub; the report is read from a ConfigMap the controller
-writes, and a report that is missing or unreadable hides none of the
-bindings.
+GitHub team consumes internal groups the way a client does. It is three
+tabs, in the order the work happens. *Overview* says what needs attention
+next: a card per organisation, and the people who have not linked, with
+their addresses to copy. *Organisations* opens each one — what enabling
+it would do in one sentence, removals first, every person with a row
+that reads **OK**, **waiting for them** or **needs you** with the
+controller's exact state in the tooltip, and each team with a page.
+*Apps* holds the link App, every organisation's App and the runner Apps.
+A person's page shows them on GitHub and, on your own, a button to link
+your account; a group's page lists the teams it feeds. A disabled
+organisation is still derived every pass, so its page is the dry run an
+operator reads before enabling it. Nothing on it writes to GitHub; the
+report is read from a ConfigMap the controller writes, and a report that
+is missing or unreadable hides none of the bindings.
 
 Every page reads in the same direction, from the identity side toward the
 access side, and the two group pages carry the same sections mirrored. The
@@ -519,8 +542,14 @@ call. A GitHub account is matched to a person by the work addresses GitHub
 verified on it, which the person shows by authorizing a link App — GitHub
 discloses members' addresses to no organisation outside its Enterprise
 Cloud plan — so nobody types a GitHub username, and nobody else keeps a
-mapping. The controller checks every link again each pass, and an account
-whose link GitHub says is gone leaves the organisation at once.
+mapping. Two more ways exist, and neither displaces a link the person
+made: an account whose public profile shows a work address the directory
+has is matched, because GitHub lets an account publish only a verified
+address; and a pairing approved elsewhere is imported through an
+operator RPC, after three checks. A self-link is checked on GitHub every
+pass, and an account whose link GitHub says is gone leaves the
+organisation at once; a profile match or an import holds no token of the
+App's and is not re-checked.
 
 Every pass derives everything, for every bound organisation, and changes
 only those listed in `githubRoster.actsIn`: an organisation is born
@@ -532,9 +561,32 @@ address, and done only on an answer the directory vouches for. Somebody
 is removed from the organisation only when the directory no longer has
 them at all, and never if they are an owner.
 
-It writes GitHub, its report, and audit events through the service.
-Nothing else: no store of its own, and no Valkey credential, because that
-store holds every session and refresh token.
+It runs joiners, movers and leavers with nobody in the loop, and stops
+itself where a person is needed. Nobody is invited past the last free
+seat, and nobody at all while the seats cannot be read — which is why an
+organisation's App asks for `organization_administration: read`. A pass
+whose removals concern more than half an organisation removes nobody
+until an operator confirms exactly that set. Owners are added to teams
+and promoted, never removed or demoted: reported instead. An address or
+login the organisation's `ignore` list names is left alone whatever the
+bindings say. Transient trouble — the directory unable to vouch right
+now, a change GitHub refused — is retried next pass rather than held,
+and two expired invitations stop a third until the person links again.
+Outside collaborators are listed.
+
+Every answer the console gives carries the digest of the policy it was
+computed under, and the controller changes nothing on an answer under
+another policy: a rollout restarts the two at different moments, and
+across that gap a team the new policy binds looked to the old console
+like one nobody holds. A failed pass is reported over the last report
+with rows, so the page does not blank while passes fail; a restarted
+controller takes what it had already recorded from that report, so a
+restart is not news in the audit trail.
+
+It writes GitHub, its report, and audit events through the service, and
+pushes metrics over OTLP when a collector is named. Nothing else: no
+store of its own, and no Valkey credential, because that store holds
+every session and refresh token.
 
 ## Audit
 
@@ -605,7 +657,7 @@ and the in-memory one used without a bucket and by every test that checks
 what was recorded. In one process they are joined by a client that calls
 the handler directly, with no network. The point is the next step, which
 is not taken here: a dedicated writer in a process of its own, or a bridge
-onto a queue such as NATS (INF-726), implements the same service and is
+onto a queue, implements the same service and is
 reached through the generated client over HTTP, and nothing that records
 changes. No chart value or setting names a remote writer in this release,
 because none exists to name.
@@ -672,7 +724,11 @@ written once and read once, at the next start. Splitting them keeps a
 secret out of the type the console handles, and makes the failure modes
 independent — a record whose credential has gone is a workspace with no
 reader, which is reported as unhealthy, rather than a process that refuses
-to start.
+to start. The credentials of every console-connected workspace share one
+Secret, `<release>-workspace-credentials`, a key per workspace: a
+per-workspace object's name carries a hash of an id no deployment knows
+in advance, so nothing outside the service could have selected them one
+by one.
 
 Start-up has three cases. A workspace the values declare is opened from
 what the deployment mounts. A workspace whose stored record says it was
@@ -683,11 +739,17 @@ console and is opened from the credential stored beside it — and if that
 credential is missing or refused, the process says so and carries on,
 because refusing to start would take every other directory down with it.
 
-There is no backup mechanism: a consent credential is cheap to mint again,
-so the recovery for a lost workspace Secret is **Reconnect**, and a
-declared Secret is re-delivered by whatever declared it. The console never
-returns secret material, the logs never print it, and **Disconnect**
-revokes the token at the backend before the Secret is deleted.
+Each credential carries a copy of its record, without its health, so the
+Secrets alone restore a namespace: start-up puts back every workspace
+ConfigMap and every GitHub record that is missing beside a credential.
+The backup is therefore a copy of four named Secrets — the workspace
+credentials, the GitHub Apps, the links, the runner Apps — which a
+deployment makes with a `PushSecret` each; nothing in the service depends
+on the copy. Without one, the recovery for a lost workspace credential
+is **Reconnect**, and a declared Secret is re-delivered by whatever
+declared it. The console never returns secret material, the logs never
+print it, and **Disconnect** revokes the token at the backend before the
+credential is deleted.
 
 The GitHub controller's report is one more object here,
 `<release>-github-status`. The **service** creates it at start and the
@@ -700,11 +762,19 @@ GitOps sync reverts.
 
 A connected GitHub organisation is two objects for the reason a workspace
 is: a record in `<release>-github-orgs` that the console shows, and a
-credential — the App's private key — in `<release>-github-apps`. One
+credential — the App's private key, with a copy of the record beside it
+— in `<release>-github-apps`, the link App's under `_link.json`. One
 Secret for every organisation rather than one each, so that the
 controller mounts it by name as a volume and holds no permission to read
-Secrets at all. This process reads a key back for one thing: uninstalling
-the App on Disconnect.
+it through the API. This process reads a key back for one thing:
+uninstalling the App on Disconnect. People's links, tokens included,
+are `<release>-github-links`, the one Secret the controller's Role may
+update, by name, as it checks them. The runner Apps are
+`<release>-github-runner-apps`: an installed App is three keys named as
+the runner scale set reads them, so a deployment copies them to its
+runners without reshaping a document, and until the App is installed its
+key sits under another name, so a copy taken in between never hands
+runners an App they cannot register with.
 
 The signing key is a file, never read through the API, so a compromise of
 this process cannot become a read of every credential in its namespace.
@@ -772,17 +842,17 @@ adds one back without a reason.
 | the implicit and hybrid flows | superseded by code with PKCE, which is what PKCE exists for |
 | TokenReview for workload exchange | it works on one cluster and would need a kubeconfig per cluster for the rest. A published key set needs none. It stays for recovery alone |
 
-Not served, and never was: back-channel logout, the session-management
-iframe, front-channel logout, PAR, DPoP, mTLS and CIBA. Each is surface
-without a consumer.
+Not served, and never was: the session-management iframe, front-channel
+logout, PAR, DPoP, mTLS and CIBA. Each is surface without a consumer.
 
-Back-channel logout is the one with a real cost, and it is worth naming
-rather than waving past. Signing out revokes the sessions immediately, but
-a proxy only learns that at its next refresh — so it keeps serving for up
-to its `cookie_refresh`, five minutes on the consoles here. Back-channel
-logout would close that window by telling each client at the moment of
-sign-out. It stays unserved because oauth2-proxy does not consume it, so
-building it would buy nothing today; the window is the price, and it is
+Back-channel logout was on that list through 0.15, and the reason it
+left is worth naming. Signing out revokes the sessions immediately, but
+a proxied console only learns that at its next refresh — so it keeps
+serving for up to `cookie_refresh`, a minute on the shipped proxy chart.
+Back-channel logout closes that window for a client that runs its own
+session and opts in; oauth2-proxy cannot consume it, because it keeps
+each session under a key only the browser's cookie holds, so for a
+proxied console the refresh interval remains the whole dial, and it is
 bounded by a setting we choose.
 
 ## Build

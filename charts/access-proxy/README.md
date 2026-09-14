@@ -9,8 +9,8 @@ console implements none of it.
 
 ```yaml
 exposure:
-  hostname: roster.example.internal
-  backend: { name: github-roster, port: 8080 }
+  hostname: myconsole.example.internal
+  backend: { name: myconsole, port: 8080 }
   posture: authenticated
 ```
 
@@ -48,3 +48,6 @@ endpoint that mints clients is the one surface an issuer least wants.
 See [docs/reference/access-proxy.md](../../docs/reference/access-proxy.md)
 for every value, and [docs/design/access-proxy.md](../../docs/design/access-proxy.md)
 for why it is shaped this way.
+
+The console of access-roster itself needs none of this: it signs in as
+a client of the issuer it shares an origin with.

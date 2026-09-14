@@ -11,6 +11,7 @@ accessctl aws-config                         # a profile per granted cloud role
 kubectl --context kernel get nodes           # exec plugin: accessctl kube-token
 aws --profile power@1111 sts get-caller-identity   # credential_process: accessctl aws
 
+accessctl token --audience openbao              # one token for one audience, on stdout
 accessctl exchange --audience k8s:devel < subject-token
 ```
 
@@ -20,9 +21,21 @@ browser. So one small binary runs the flow once and then answers as a
 credential process, and the rest share that login's cache.
 
 `login` is authorization code with PKCE on a loopback port — the only
-browser flow served (INF-693). The client must be declared in the policy
-as `kind: public` with a loopback redirect; the default id is
-`accessctl`.
+browser flow served. The client must be declared in the policy as
+`kind: public` with a loopback redirect **and `sign_in_exchange: true`**:
+that key is what lets the exchange take a sign-in's access token as a
+proof, and without it every command after `login` is refused (exit 4).
+The default id is `accessctl`.
+
+Every command that names an audience takes `--audience`, `--issuer` and
+`--client`, defaulting to what `login` wrote; `aws` also takes `--role`
+for a role the audience does not encode.
+
+**Installing it.** Each release carries `accessctl_<version>_nix-flake.tar.gz`,
+a Nix flake over that release's own archives; a repository adds its URL
+with `#accessctl` to `devbox.json`
+([design](../design/accessctl.md#installing-it)). The release's archives
+are there too for a plain download.
 
 ## Where things are kept
 
@@ -62,11 +75,15 @@ holds no secret.
 
 ## In a job
 
-**Machines do not run this.** A job's exchange is one call to the token
-endpoint that any `curl` can make, and the GitHub Action at the
-repository root does exactly that in shell — so nothing of ours is
-downloaded into a job. See
-[../connect/github-actions.md](../connect/github-actions.md).
+The same files work unchanged in a GitHub Actions job granted
+`id-token: write`. When `ACTIONS_ID_TOKEN_REQUEST_URL` and
+`ACTIONS_ID_TOKEN_REQUEST_TOKEN` are set, `kube-token`, `aws` and `token`
+ask GitHub for the job's identity token — for the issuer's URL, the one
+audience it accepts — and exchange that, presenting the audience as the
+client, exactly as the GitHub Action does. There is no `login` in a job
+and no cache: every call exchanges afresh. A repository that would rather
+download nothing of ours uses the action, which is `curl` and `jq`
+([../connect/github-actions.md](../connect/github-actions.md)).
 
 ## Exit codes
 

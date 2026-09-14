@@ -13,7 +13,7 @@ An installation has **exactly two trust anchors**, and a service accepts
 
 | Anchor | Root of trust | Scope | Proves |
 |---|---|---|---|
-| **the cluster** | the API server: a ServiceAccount token checked with a TokenReview, bound to an audience | this cluster | **recovery alone** since INF-692: *somebody who can mint a token for the recovery account here*. A workload's token is now verified against the key set its own cluster publishes, so it is the issuer anchor and not this one — which is what lets one issuer serve many clusters while holding access to none |
+| **the cluster** | the API server: a ServiceAccount token checked with a TokenReview, bound to an audience | this cluster | **recovery alone**: *somebody who can mint a token for the recovery account here*. A workload's token is now verified against the key set its own cluster publishes, so it is the issuer anchor and not this one — which is what lets one issuer serve many clusters while holding access to none |
 | **the issuer** | access-issuer's signing key, published as JWKS | the estate: every cluster, every cloud account, CI, people | *an identity this installation's policy has resolved to internal groups* |
 
 They are not two authorities that could disagree. **The issuer is built
@@ -29,26 +29,29 @@ The choice is made by **scope**, and never by preference:
 | a workload in the **same cluster** as the service | its ServiceAccount token | the issuer would verify the same token and re-sign it: a hop that adds no trust, on the hottest path there is |
 | a workload in **another cluster** | an issuer token | ServiceAccount tokens do not cross clusters, and a service that verified N clusters' key sets directly would be the N×M problem the issuer exists to collapse |
 | a **person** | an issuer token, obtained by a sign-in the issuer ran against a corporate directory | people hold no ServiceAccount |
-| a **CI job** | an issuer token, obtained by exchanging the platform's identity token | the organisation allow-list and the matchers live in the issuer, once |
-| a **laptop over the network** | an issuer token | same as a person: that is what it is |
+| a **CI job** | an issuer token, obtained by exchanging the platform's identity token | the organisation allow-list and the matchers — repository, ref, visibility — live in the issuer, once |
+| a **laptop over the network** | an issuer token, obtained by `accessctl` trading its own sign-in for the audience | same as a person: that is what it is. Of the issuer's own tokens, only the access token of a sign-in at a public client declaring `sign_in_exchange`, presented by that client, is a proof — never an ID token, which every relying party is handed |
 | the **break-glass** operator | a ServiceAccount token, minted by hand with cluster RBAC | see *Recovery* below — this is the root showing through, not a third anchor |
 
 A service that serves only local workloads needs only the cluster
 anchor. A service that serves only people needs only the issuer. A
-service that serves both — the directory hub is the reference — serves
-them on **two listeners**, one anchor each, never mixed on one port.
+service that serves both — access-roster's own console API is the
+reference — keeps them apart by **verifier**: two listeners, or one on
+which every route says which proof it takes, and an operator RPC never
+admitted on a workload's proof alone.
 
 ## Why not the issuer for everything
 
 Three reasons, and the first one decides it alone.
 
-1. **Bootstrap.** The issuer asks the hub at every login. A hub that
-   required issuer tokens would deadlock the estate on cold start: no
-   token without the hub, no hub without a token. The cluster anchor is
+1. **Bootstrap.** The way in on the day the directory is broken cannot
+   depend on the issuer, which depends on the directory: no token
+   without a directory, no repair without a token. The cluster anchor is
    what the issuer itself stands on, so it has to be accepted beneath it.
-2. **The hottest call in the system** is the issuer asking the hub.
-   Putting an exchange in front of it adds a network round trip to every
-   human login for no gain in trust.
+2. **A same-cluster call gains nothing from an exchange.** The issuer
+   would verify the caller's ServiceAccount token and re-sign it: a
+   round trip that adds no trust, on paths that can be the hottest a
+   service has.
 3. **Cluster RBAC is already the authority for local workloads.** Who may
    mount which ServiceAccount is decided, audited and revoked in the
    cluster. Re-deriving that at the issuer duplicates a decision the
@@ -106,12 +109,12 @@ between, lowercase. *Role, on thing, in scope.*
 
 | Segment | Is | Examples |
 |---|---|---|
-| `scope` | an environment, a tenant id, or `all` | `kernel`, `prod`, `C03fwo7gy`, `all` |
+| `scope` | an environment, a tenant id, or `all` | `kernel`, `prod`, `C0north`, `all` |
 | `thing` | what the role is **on**: a subsystem, a project, an application | `k8s`, `eudi`, `github-roster`, `access-roster` |
 | `role` | from that thing's own ladder | `admin`, `viewer`, `auditor`, `deployer`, `approver`, `operator` |
 
 So: `kernel:k8s:admin`, `prod:eudi:deployer`, `all:access-roster:operator`,
-`C03fwo7gy:access-roster:viewer` — the last being a role held over one
+`C0north:access-roster:viewer` — the last being a role held over one
 directory rather than the installation, with the scope where every other
 name has it and the **workspace id** as the scope, never a domain.
 
@@ -158,7 +161,7 @@ would refuse a token from a release either side.
 
 ## Recovery is the root, not a back door
 
-Break-glass at the hub and at the issuer is a ServiceAccount token,
+Break-glass at the service and at the issuer is a ServiceAccount token,
 minted by a person with `kubectl create token`, for an account the chart
 creates bound to nobody. Under the rule above it is the **cluster
 anchor, used deliberately as the floor**: in the scenario it exists for,
@@ -188,34 +191,46 @@ whole*. Keep both; know which is which.
 
 ## A service that has both a console and an API
 
-The directory hub is the pattern, and every service of ours with both
-surfaces should look like it:
+The plain shape, and the one to copy when nothing argues otherwise:
 
 ```
-:8081  console listener   → behind access-proxy   → issuer anchor
-:8080  API listener       → reached by Service DNS → cluster anchor (+ issuer, for remote callers)
+console listener   → behind access-proxy, or its own code flow → issuer anchor
+API listener       → reached by Service DNS                    → cluster anchor (+ issuer, for remote callers)
 ```
 
-Two ports, two anchors, and an operator RPC is never mounted on the API
-port. The network policy admits the gateway to one and the consumers to
-the other, as the second layer — never the only one, because reaching a
-port proves nothing.
+Two anchors, and an operator RPC is never mounted where a workload's
+proof alone admits. The network policy admits the gateway to one and the
+consumers to the other, as the second layer — never the only one,
+because reaching a port proves nothing.
 
-The console listener may share the issuer's hostname under a path — the
-family's own console does, at `/console/`, so that its session pages are
-same-origin with the session service. The API listener never appears on
-any hostname: it is reached by Service DNS or not at all.
+access-roster itself serves both on one listener: the console's routes
+take the browser's own session, and its API takes an issuer token or a
+workload's ServiceAccount token — verified against the cluster's
+published key set, so the service holds access to no cluster — with the
+policy's `service_account` matchers deciding what that workload is in.
+The GitHub controller is that caller. One listener is fine when every
+route says which proof it takes; two is fine when it does not have to.
 
-When the API listener admits remote callers too, it accepts both anchors
-on that one port, and **the grant is keyed by the principal, not by the
-anchor**: a consumer proven either way is the same consumer and gets the
-same answer. One grant table, two doors.
+The console may share the issuer's hostname under a path — the family's
+own console does, at `/console/`, and since the two are one process its
+session pages are same-origin with the session service. An API listener
+never appears on any hostname: it is reached by Service DNS or not at
+all.
+
+When an API admits remote callers too, it accepts both anchors, and
+**the grant is keyed by the principal, not by the anchor**: a consumer
+proven either way is the same consumer and gets the same answer. One
+grant table, two doors.
 
 ### Admission is not authorization
 
+*The directory API these grants governed is not served today: its one
+consumer, the issuer, is the same process. The shape stays written down
+for the day it returns.*
+
 Being a consumer and being a consumer of *everything* were one decision,
 and that was the gap. A caller admitted at all could enumerate every
-group of every company the hub reads. One consumer — the issuer — needs
+group of every company the service reads. One consumer — the issuer — needs
 exactly that; the next one needs one directory and one question.
 
 So a consumer is declared with a grant along three axes: **which
@@ -226,13 +241,13 @@ grant is full read, so nothing that predates them changes meaning.
 Two properties follow, and both are deliberate:
 
 - **Outside the grant answers as unserved does.** Not found, not in
-  domain, no groups — identical to an address in a domain this hub never
+  domain, no groups — identical to an address in a domain this service never
   serves. A refusal would confirm the domain exists, which is what the
   grant withholds; and consumers already read the unserved answer
   fail-safe, so nothing has to learn a new failure mode.
 - **Discovery is itself scoped.** `Describe` lists only granted domains.
   A grant on the questions alone would still hand every admitted caller
-  the shape of every company the hub serves.
+  the shape of every company the service serves.
 
 The API listener stays read-only whatever a grant says: there is no read
 class that can be spelled to reach a write.
@@ -240,11 +255,12 @@ class that can be spelled to reach a write.
 ## The libraries are where the rule becomes shape
 
 The Go module offers **two verifiers and nothing else**: `Issuer`
-(bearer or forwarded token, issuer URL + audience) and `Cluster`
-(TokenReview, audience). A service composes them per listener. Both
-yield one `Principal` with `Groups []string`, so a handler never learns
-which anchor proved the caller and cannot come to depend on it. The
-TypeScript package reads that principal from `/.access/whoami` and
+(bearer or forwarded token, issuer URL + audience) and `Cluster` (a
+ServiceAccount token: a check you supply, an audience, the names it
+admits). A service composes them per route. Both yield one `Verified`
+with `Groups []string`, so a handler never learns which anchor proved
+the caller and cannot come to depend on it. The TypeScript package,
+`@truvity/access-roster`, reads that from `/.access/whoami` and
 translates nothing.
 
 There is no third verifier and no "trust this header" mode that outlives

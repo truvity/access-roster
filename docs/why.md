@@ -23,7 +23,7 @@ What it does not have is the connective tissue: something that turns
 "Alice is in group platform-admins in the globex.example Workspace" into
 "Alice may assume role power in account 1111, is cluster-admin on kernel,
 and is an operator in the directory console", and turns "this is job
-4711 of example-org/gitops on master" into "this job may deploy to
+4711 of acme/gitops on master" into "this job may deploy to
 devel" — with one place to read the policy and no stored secret
 anywhere.
 
@@ -80,16 +80,20 @@ earlier one wins.
    consent screen is an identity provider's job, not a feature here.
    There are no users in this system, only sessions.
 2. **Configuration is chart values.** No database, no operator, no
-   admin UI that writes. The policy is a file in git; the console reads
-   it and never edits it. `git log` is the complete history of access.
+   admin UI that writes policy. The policy is a file in git; the console
+   reads it and never edits it, so `git log` is the complete history of
+   access. What the console does write — a directory it connected, a
+   GitHub App an owner created, a confirmation — is bootstrap and
+   removal, kept in a handful of Secrets a copy of restores.
 3. **Almost nothing is a secret.** One signing key. The OAuth client
    credentials the corporate IdP issued. The refresh token a directory
-   admin's consent produced. Nothing else — machines prove themselves
+   admin's consent produced, and the key of a GitHub App an owner
+   created from the console. Nothing else — machines prove themselves
    with tokens their own platform issued, and the issuer holds no
    credential to verify them, only a public key set.
-4. **Strict where implemented, and not one grant more.** Six grants
-   cover a browser, a CLI with a browser to confirm in, and a machine
-   that already holds a token. Each one that is served passes the
+4. **Strict where implemented, and not one grant more.** Three grants
+   and three endpoints — six things — cover a browser, a CLI with a
+   browser to confirm in, and a machine that already holds a token. Each one that is served passes the
    conformance suite; each one that is not needed is not served, because
    every served endpoint is surface to keep truthful.
 5. **One issuer, one policy, one vocabulary.** However many clusters,

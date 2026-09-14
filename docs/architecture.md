@@ -36,6 +36,8 @@ flowchart TB
 
   idp["Corporate directories<br/>Google Workspace tenants, Entra later<br/>sign-in and MFA live here"]
   rp["Relying parties<br/>Kubernetes API servers · AWS accounts<br/>ArgoCD · Kargo · consoles"]
+  gho["GitHub organisations<br/>teams, invitations, removals"]
+  s3[("S3<br/>the audit trail, one record per event")]
 
   person -- "sign in once" --> ar
   ci -- "token exchange" --> ar
@@ -43,37 +45,45 @@ flowchart TB
   admin -. "admin consent" .-> idp
   ar -- "sign-in [OIDC]<br/>directory reads [Admin SDK]" --> idp
   ar -. "trusted issuer [key set]" .-> rp
+  ar -- "acts as each organisation's App" --> gho
+  ar -- "appends" --> s3
   person --> rp
   ci --> rp
 ```
 
 Nothing in access-roster has a database. Nothing authenticates anyone.
 The directories hold the people; the relying parties hold their own
-roles; access-roster holds the policy, a snapshot of the directory, and
-the sessions it has open.
+roles; access-roster holds the policy, a snapshot of the directory, the
+sessions it has open, and what an operator connected through the
+console: directory credentials, GitHub Apps and people's GitHub links.
+The audit trail is the one thing it writes that outlives it, and it
+lives in a bucket the operator owns.
 
 ## Containers
 
 ```mermaid
 flowchart TB
   browser["Browser"]
-  cli["kubelogin · accessctl"]
+  cli["accessctl · kubelogin"]
   ci["GitHub Actions"]
   gw["Envoy Gateway<br/>one data plane, ext_authz to a proxy per console"]
 
-  subgraph ar["access-roster — one Deployment"]
-    issuer["the issuer<br/>OpenID provider · six grants<br/>login page · session service"]
+  subgraph ar["access-roster — one chart, two Deployments"]
+    issuer["the issuer<br/>OpenID provider · six grants<br/>login page · session service · audit"]
     dir["the directory<br/>snapshots · routing by domain<br/>authoritative per domain"]
     con["the console<br/>React, mounted at /console/"]
+    ctl["the GitHub controller<br/>one pass per interval per organisation<br/>born disabled, dry run until listed"]
   end
 
   vk[("Valkey<br/>sessions · single sign-on · auth requests<br/>one snapshot per workspace")]
   cfg[("policy · clients · federated clusters<br/>ConfigMaps from the chart")]
-  sec[("signing key · workspace credentials<br/>Secrets")]
+  sec[("signing key · workspace credentials<br/>GitHub Apps · people's links · runner Apps<br/>Secrets")]
+  s3[("S3<br/>the audit trail")]
 
   proxy["access-proxy<br/>oauth2-proxy, one per console<br/>Valkey for sessions"]
   idp["Google Workspace"]
   rp["Kubernetes · AWS · ArgoCD · Kargo"]
+  gho["GitHub organisations"]
 
   browser --> gw
   gw -- "one host: / and /console/" --> issuer
@@ -87,12 +97,23 @@ flowchart TB
   issuer --> cfg
   issuer --> sec
   issuer -- "sign-in" --> idp
+  issuer -- "appends, by the hour" --> s3
   dir --> vk
   dir --> sec
   dir -- "reads" --> idp
   con -. "same origin, the browser's own cookie" .-> issuer
+  ctl -- "who holds which group, and its report<br/>[the console's API, its own ServiceAccount token]" --> issuer
+  ctl -- "as the organisation's App<br/>[a Secret mounted as files]" --> gho
   issuer -. "trusted by" .-> rp
 ```
+
+**The GitHub controller is a second process, not a second service.** It
+holds the GitHub App keys and writes to GitHub, neither of which belongs
+in the login path, so it runs in its own Deployment with no listener. It
+reads the console's API with its own ServiceAccount token, the way any
+workload would, and reports into a ConfigMap the console shows. Every
+organisation is a dry run until the chart lists it in
+`githubRoster.actsIn`; removing one from the list is the emergency stop.
 
 **A login makes no network call except to the corporate directory.** The
 answer about a person is a function call, so the ConnectRPC hop, the
@@ -113,7 +134,9 @@ JavaScript.
 | Valkey | auth requests, tokens, per-client sessions, the single sign-on record, one snapshot per workspace | everyone signs in again, and one refresh per directory |
 | the proxies' Valkey | browser sessions of every proxied console | one silent redirect per console; the issuer still knows the person |
 | ConfigMaps | the policy, the clients, the federated clusters | git |
-| Secrets | the signing key, the directories' credentials | the connect runbook, or whatever delivered them |
+| Secrets the chart delivers | the signing key, the OAuth client | whatever delivered them; the runbook |
+| Secrets the service writes | the directories' credentials, each GitHub organisation's App, the link App, people's link tokens, the runner Apps — each entry carrying a copy of its record | a copy of four Secrets restores every one of them, records included ([configuration](reference/configuration.md#restoring-from-the-secrets-alone)); a link token that rotated since means that person links again |
+| S3 | the audit trail: one Elastic Common Schema record per event, in JSON-lines objects keyed by the hour | the trail before the loss; while the bucket is unreachable events queue in the replica and are written when it answers, and a recovery sign-in is refused rather than left unrecorded |
 
 ## Fan-in and fan-out
 
@@ -123,13 +146,13 @@ expressed in configuration and whether it is built.
 
 | Many of | Expressed as | Status |
 |---|---|---|
-| corporate directories | one workspace per tenant: credential, served domains, synced groups; Google today, Entra as a second backend behind the same workspace record | **built**, three Workspaces live; Entra designed, not built |
-| clusters, for people | each cluster's identity-provider association names the issuer; RBAC binds `<env>:k8s:<role>` | designed (INF-652); bindings dual-bound and ready |
-| clusters, for workloads | one row per cluster naming its ServiceAccount-token key set; token exchange | **built** (INF-692). The issuer's own cluster is a row like any other, and the issuer holds access to none of them |
-| AWS accounts | the issuer registered once per account as an IAM OIDC provider; a `requires` list per role client | designed (INF-653) |
-| GitHub organisations | one controller App per org, connected like a directory; `github` bindings in the policy naming internal groups; an account matched to a person by the work addresses they linked it with, checked every pass | **built** (INF-696, INF-697): the bindings, the GitHub page, Connect, self-service linking, and the controller beside the service; not yet enabled against a real organisation |
-| CI platforms | one federated issuer row; `ci` rules on repository and ref | **built** (INF-649): the verifier, and the GitHub Action at the repository root — `curl` and `jq`, so nothing of ours is downloaded into a job |
-| consoles and applications | one client row each; a proxy only for those with no OpenID flow of their own | **built**: the directory console (no proxy since 0.12 — it signs in as a client of the issuer it shares an origin with), hubble (proxied), Kargo and its CLI |
+| corporate directories | one workspace per tenant: credential, served domains, synced groups; Google today, Entra as a second backend behind the same workspace record | **built**; Entra designed, not built |
+| clusters, for people | each cluster's identity-provider association names the issuer; RBAC binds `<env>:k8s:<role>`; one kubeconfig whose exec plugin is `accessctl kube-token`, the same file for a laptop and a CI job | **built** |
+| clusters, for workloads | one row per cluster naming its ServiceAccount-token key set; token exchange | **built**. The issuer's own cluster is a row like any other, and the issuer holds access to none of them |
+| AWS accounts | the issuer registered once per account as an IAM OIDC provider; a `requires` list per role client; `accessctl aws` as the credential process, one `aws.ini` for a laptop and a job | **built** |
+| GitHub organisations | one controller App per organisation, created and installed by its owner from the console; `github` bindings in the policy naming internal groups, with an `ignore` list per organisation; an account becomes a person's by their own link, a public-profile match or an import, and a link is checked every pass; one runner App per organisation per tier for self-hosted runners | **built and acting**: joiners, movers and leavers with nobody in the loop, and the controller stops itself where somebody is needed — seats, removals over half an organisation, owners |
+| CI platforms | one federated issuer row; `ci` rules on repository, ref and visibility | **built**: the verifier, `accessctl` inside a job, and the GitHub Action at the repository root — `curl` and `jq`, so nothing of ours is downloaded into a job |
+| consoles and applications | one client row each, with a display name and description the sign-in page shows; a proxy only for those with no OpenID flow of their own; back-channel logout for those that opt in | **built**: the directory console (no proxy since 0.12 — it signs in as a client of the issuer it shares an origin with), proxied consoles, Kargo and its CLI, `accessctl` as a public client |
 
 What never multiplies: the issuer URL, the signing key, the policy file,
 the console, the login page.
@@ -142,21 +165,26 @@ confirm in, and a machine that already holds a token.
 
 | Grant | For |
 |---|---|
-| authorization code + PKCE | every browser flow, and every CLI: kubelogin and `accessctl` open a browser and listen on a loopback port |
+| authorization code + PKCE | every browser flow, and every CLI: `accessctl login` and kubelogin open a browser and listen on a loopback port |
 | refresh | sessions that outlive a token |
 | userinfo | relying parties that ask |
 | `end_session` | sign-out ends the sign-in, not one application's cookie |
 | revocation | "sign out everywhere", and the operator's revoke |
-| **token exchange** | the one machine grant, and the CLI's re-audiencing for AWS |
+| **token exchange** | the one machine grant, and the CLI's re-audiencing for a cluster, AWS or any other audience |
 
 Token exchange takes three kinds of subject, all verified the same way,
 against a key set the issuer trusts and holding no credential for:
 
 | Subject | Verified against | Rule kind |
 |---|---|---|
-| a GitHub Actions token | GitHub's key set, an owner allow-list | CI job: repository and ref |
+| a GitHub Actions token | GitHub's key set, an owner allow-list | CI job: repository, ref, visibility |
 | a ServiceAccount token from any cluster | that cluster's key set | workload: cluster, namespace, name |
-| a person's own issuer token | our own key set | none needed: re-audiencing for AWS or a cluster |
+| the access token of a CLI sign-in, presented by that client | our own key set, and the client's `sign_in_exchange` | none needed: re-audiencing for a cluster, AWS or another audience |
+
+Of the tokens the issuer signs itself, only that last one is a proof. An
+ID token names a person too, and is handed to every relying party they
+sign in to, so it is refused: a holder of one could otherwise exchange
+it for any audience the person's groups admit.
 
 That is what makes one issuer serve many clusters cheaply: a new cluster
 is one row naming its key set, not a credential held anywhere. Device
@@ -200,8 +228,9 @@ Three layers, and none is the fallback for another.
 |---|---|
 | opens a console for the first time | the proxy sends the browser to the issuer, the issuer to Google, Google back; the issuer asks the directory who this is, checks the client's `requires`, mints; the proxy sets its cookie |
 | opens a second console | the proxy sends the browser to the issuer; the issuer recognises its own session and completes silently |
-| runs `kubectl` | kubelogin does code + PKCE on a loopback port; the cluster trusts the issuer and reads `groups` |
-| needs AWS credentials | `accessctl` exchanges the token it holds for one audienced at AWS; STS trusts the issuer |
+| runs `kubectl` | `accessctl kube-token`, the kubeconfig's exec plugin, exchanges the laptop sign-in for a token audienced at that cluster; the cluster trusts the issuer and reads `groups` |
+| needs AWS credentials | `accessctl aws`, the profile's credential process, exchanges the same sign-in for one audienced at AWS; STS trusts the issuer |
+| links their GitHub account | authorizes the link App once; every pass the controller checks the link and puts them in the teams the policy binds their groups to |
 | signs out | the proxy clears its cookie and calls `end_session`; the issuer ends the sign-in AND every session that browser opened, so every other console asks again rather than refreshing on |
 | leaves the company | the next snapshot no longer lists them; within the freshness window, the next refresh anywhere is refused |
 
@@ -209,7 +238,8 @@ Three layers, and none is the fallback for another.
 |---|---|
 | is a GitHub Actions job | presents GitHub's token; a CI rule names its repository and ref; the exchange returns a token for AWS or a cluster |
 | is a workload in a cluster | presents its ServiceAccount token; a workload rule names it; same exchange |
-| is the recovery path | a person mints a short-lived ServiceAccount token proving cluster access; a workload rule puts that subject in the operator group; it works when the directory does not |
+| is the recovery path | a person mints a short-lived ServiceAccount token proving cluster access; a workload rule puts that subject in the operator group; it works when the directory does not — and it is the one sign-in refused when its audit record cannot be written |
+| is the GitHub controller | each pass, asks the console who holds the groups an organisation's teams are bound to, compares with GitHub, invites, adds, promotes and removes — in the organisations it may act in — and reports the rest as what it would do |
 
 ## Failure semantics
 
@@ -227,6 +257,10 @@ Three layers, and none is the fallback for another.
 | A signed-in operator's own account turns non-authoritative | last granted role kept for a bounded window; nothing new granted |
 | A policy the issuer refuses to load | the new pod does not start and the previous pods keep serving the previous policy; nothing visible changes except the new clients are absent |
 | access-roster is down | no new sign-ins anywhere; existing sessions and tokens live to expiry; recovery is by cluster proof |
+| S3 unreachable | events queue in the replica and are written when it answers; the Audit page lists what is queued; a recovery sign-in is refused meanwhile |
+| a GitHub pass fails | the last report with rows stands; the pass is retried next interval; nothing is removed on a failed read |
+| the console answers the controller under another policy | the pass changes nothing and is retried: a rollout restarts the two at different moments, and a removal decided across that gap would be wrong |
+| an organisation's seats cannot be read | nobody is invited into it until they can |
 
 The rule under all of them: **access is removed only on an authoritative
 answer.** Everything that can go wrong degrades to *provisional*, never

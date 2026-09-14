@@ -1,4 +1,4 @@
-# TypeScript package `access-roster`
+# TypeScript package `@truvity/access-roster`
 
 What a console needs from the identity it is behind: who the caller is,
 what that gets them, and the way out. The browser half parses no token —
@@ -38,7 +38,7 @@ npmScopes:
 ```
 
 ```sh
-yarn add @truvity/access-roster@^1.5.0
+yarn add @truvity/access-roster@^1.8.0
 ```
 
 A git install (`github:truvity/access-roster#<tag>`) no longer works:
@@ -96,8 +96,8 @@ a poll would catch usefully.
 
 ## Not here
 
-Generated Connect-Web clients for the hub's console services. The hub's
-own console is in this repository and generates them itself; no other
+Generated Connect-Web clients for the console's services. The console
+is in this repository and generates them itself; no other
 console calls those services, so shipping them would be surface with no
 consumer. `fetchIdentity` is deliberately the whole of the network code.
 

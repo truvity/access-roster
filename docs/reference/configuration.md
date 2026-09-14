@@ -6,10 +6,9 @@ things it expects the deployment to provide.
 
 **One chart, `charts/access-issuer`, for one service.** It renders the
 whole of access-roster — the directory, the policy, the OpenID provider,
-the login page and the console (INF-691). The older
-`charts/directory-roster` still ships so an installation can move back,
-and it is documented by the git history of this page rather than by this
-page.
+the login page, the console and the audit trail — and, when enabled,
+the GitHub controller beside it. The pre-0.12 `directory-roster` chart
+has left the release; its history is this page's git history.
 
 ## What the chart includes, what it expects
 
@@ -29,7 +28,7 @@ Secret and the keys inside it**. The producer is free — external-secrets, a
 1Password operator, sealed-secrets, a hand `kubectl create secret`, a Job —
 because a chart that dictated key names could not read a Secret already
 sitting in the namespace. Key names are only ever fixed for a Secret the
-hub writes *itself*, where it is the producer and gets to choose.
+service writes *itself*, where it is the producer and gets to choose.
 
 ## Values
 
@@ -83,6 +82,8 @@ hub writes *itself*, where it is the producer and gets to choose.
 | `audit.s3.flushInterval` | `10s` | the longest an event waits in memory before it is written |
 | `audit.maxEvents` | `50000` | the in-memory trail's cap, used only without a bucket |
 | `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. An audit event's `client.address` is the entry just left of them, read from the right; the left end is whatever a caller sent, so the first entry is never taken. `0` records the connection's peer. Behind an edge that appends the client and a gateway that appends the edge's connector, it is `1` |
+| `telemetry.otlpEndpoint` | `""` | the collector's OTLP/HTTP endpoint for metrics, from the service and the controller. Empty exports nothing and opens no listener |
+| `image.pullPolicy`, `serviceAccount.name`, `resources`, `podAnnotations`, `nodeSelector`, `tolerations`, `githubRoster.image.pullPolicy`, `githubRoster.resources` | | passthrough |
 | `logLevel` | `info` | debug, info, warn, error |
 
 **Two routes, and the second is not tidiness.** A gateway policy attaches
@@ -112,7 +113,7 @@ workspaces:
 ```
 
 The chart renders the list into a ConfigMap and mounts each named Secret
-read-only. The hub merges declared workspaces with the ones connected
+read-only. The service merges declared workspaces with the ones connected
 through the console: declared ones are read-only in the console, cannot be
 disconnected there (remove them from the values instead) and win when a
 domain is claimed twice. Domains are discovered from the backend, exactly
@@ -148,15 +149,19 @@ live on day one, and connects through consent later at its own pace.
 
 ## Consumers of the directory
 
-**There is no API listener.** It went with the merge (INF-691): the
-issuer was its only consumer and is now the same process, so the
+**There is no directory API listener.** It went with the merge (INF-691):
+the issuer was its only consumer and is now the same process, so the
 question a consumer used to ask over the network is a function call.
+What the grant model protected is not lost, only unused; the shape stays
+written down in [design/trust.md](../design/trust.md#admission-is-not-authorization)
+for the day something needs it.
 
-What the grant model protected is not lost, only unused. It comes back
-on this service when something needs it again — the GitHub controller is
-the candidate — authenticated by token exchange like every other machine
-(INF-696). Until then there is nothing to grant and nothing to admit,
-which is the honest state for a listener with no callers.
+The one machine that reads the directory's answers today, the GitHub
+controller, asks the **console's** API — `Explain`, `ListHolders` — with
+its own ServiceAccount token, verified against its cluster's published
+key set, and the policy's `service_account` matchers put it in
+`all:access-roster:viewer` and `all:access-roster:reporter`. Any other
+workload may do the same.
 
 A service that needs to know who somebody is does not ask the directory
 at all: it verifies the issuer's token with the `identity` package and
@@ -173,8 +178,8 @@ policy from `policy:` in values, which is the same YAML:
 ```yaml
 policy:
   groups:
-    hub-operators: { members: [platform-admins@example.com] }
-    hub-viewers:   { members: [all@example.com] }
+    all:access-roster:operator: { members: [platform-admins@example.com] }
+    all:access-roster:viewer:   { members: [all@example.com] }
   lifetimes: { default: 12h }
 ```
 
@@ -192,13 +197,14 @@ so the hash carries the uniqueness the readable part may have lost.
 | `Secret <release>-workspace-credentials` | one entry per console-connected workspace, key `<tenant>.json`: the credential (refresh token, or service-account key) and a copy of the workspace's record without its health | the service (Connect, UploadKey), created empty at start. Releases before 1.7 kept a `Secret <release>-credential-<tenant>` each; start-up moves them in |
 | `Secret <release>-oauth-client` | OAuth client id and secret | declared via `oauthClient.secret.name` and read-only. The console used to be able to write one; it cannot since INF-694, because a credential a console can change is one somebody can change from a browser |
 | `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the service, generated on first start; rotate by deleting |
-| the signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it and holds no permission to read Secrets; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
+| the signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it from the file, never through the API; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 | `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** (INF-692) | the chart |
 | `ConfigMap <release>-github-status` | the GitHub controller's last report, one document per organisation | created empty by the service at start; its data replaced by the controller, which is granted this one name |
 | `ConfigMap <release>-github-orgs` | one record per connected GitHub organisation: App id and slug, installation, connected by and at | the service (Connect a GitHub organisation), created empty at start |
 | `Secret <release>-github-apps` | one credential per connected organisation: the App's id, installation and private key, and a copy of the organisation's record; the link App's likewise | the service (Connect), created empty at start so the controller's volume always has a Secret behind it; read by the service only to uninstall on Disconnect |
+| `Secret <release>-github-links` | one link per GitHub account (`<id>.json`): its login, the addresses it proves, its state, the person's token pair | the service, which writes a link; the controller, which rewrites it as it checks — the one Secret its Role may update, by name |
 | `Secret <release>-github-runner-apps` | every runner App. An installed App is `<tier>.<org>.github_app_id`, `.github_app_installation_id` and `.github_app_private_key` — the names gha-runner-scale-set's `githubConfigSecret` reads — beside `<tier>.<org>.record.json`. An App created and not yet installed has its record and `<tier>.<org>.pending_private_key` only, so a copy never hands runners an App they cannot register with | the service (a runner App's Create and Install), created empty at start; read by the service only to find the installation and to uninstall on Disconnect. A deployment copies the three keys to its runners, for example with an External Secrets `PushSecret` |
 
 The record and the credential are two objects on purpose. A record is
@@ -206,14 +212,15 @@ shown to anyone who may see the console; a credential is written once and
 read once, at start. Keeping them apart means the type the console handles
 cannot carry a secret by accident, and it makes the failure modes
 independent: a record whose credential is missing is a workspace with no
-reader, which the console shows as unhealthy with the reason — not a hub
+reader, which the console shows as unhealthy with the reason — not a service
 that will not start.
 
-Labels on every hub-written object: `app.kubernetes.io/managed-by=directory-roster`,
+Labels on every service-written object: `app.kubernetes.io/managed-by=directory-roster`,
 `app.kubernetes.io/part-of=<release>`, and
 `directory-roster.truvity.com/kind` = `workspace`, `workspace-credentials`,
-`settings`, `github-status`, `github-orgs`, `github-apps`, `github-links`
-or `github-runner-apps`. The workspace id as the backend spells it is the annotation
+`settings`, `github-status`, `github-orgs` (both the records ConfigMap and
+the Apps Secret), `github-links`, `github-runner-apps`, or `credential`
+on a per-workspace Secret a release before 1.7 wrote. The workspace id as the backend spells it is the annotation
 `directory-roster.truvity.com/workspace-id`. Export everything with
 
 ```sh
@@ -231,11 +238,11 @@ each under a name a deployment knows in advance:
 - `<release>-github-runner-apps`, whose records are already beside
   their keys.
 
-A deployment backs them up by copying those three objects, for example
+A deployment backs them up by copying those four objects, for example
 with an External Secrets `PushSecret` each. Nothing in the service depends
 on the copy.
 
-Each credential carries a copy of its record. So after the three Secrets
+Each credential carries a copy of its record. So after the four Secrets
 are put back into an empty namespace, the next start does the rest before
 reopening anything:
 
@@ -249,7 +256,7 @@ declared Secret is re-delivered by whatever declared it.
 **`STORE=memory`** turns all of it off: nothing is written, and a restart
 is a fresh installation. It is the default for the binary, because a local
 run and the demonstration should need no cluster; the chart always sets
-`kubernetes`. A hub started on the memory store says so at WARN on its
+`kubernetes`. A service started on the memory store says so at WARN on its
 first line, naming what a restart would lose.
 
 ## Environment
@@ -288,6 +295,8 @@ from the values above.
 | `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
 | `AUDIT_S3_BUCKET`, `AUDIT_S3_REGION`, `AUDIT_S3_PREFIX`, `AUDIT_S3_FLUSH_INTERVAL`, `AUDIT_MAX_EVENTS`, `AUDIT_FORWARDED_FOR_TRUSTED_HOPS` | `audit.*` |
 | `POD_NAME` | the pod's name, from the downward API: names the replica in audit object keys |
+| `CLIENT_SECRETS_DIR` | where the confidential clients' Secrets are mounted, one file per client |
+| `GITHUB_RUNNER_TIERS` | `githubRunnerApps.tiers`, comma-separated, set only when not empty |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty. Metrics are pushed over OTLP/HTTP; with nothing set, nothing is exported and no listener is opened. Every other `OTEL_*` variable OpenTelemetry defines is honoured too. Set on the GitHub controller as well |
 | `LOG_LEVEL` | `logLevel` |
 
@@ -306,11 +315,14 @@ The controller reads its own few, all set by
 | `APPS_DIR` | the mounted `<release>-github-apps` Secret, one file per connected organisation |
 | `INTERVAL` | `githubRoster.interval` |
 | `ENABLED_ORGS` | `githubRoster.actsIn` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty |
 | `LOG_LEVEL` | `logLevel` |
 
-Its account, `<release>-github-roster`, may `get`, `update` and `patch`
-the one ConfigMap `<release>-github-status`, and nothing else: the App keys
-are a volume, so it holds no permission to read Secrets.
+Its account, `<release>-github-roster`, has two permissions, each by
+name: `get`, `update` and `patch` on the ConfigMap
+`<release>-github-status` it reports into, and `get` and `update` on the
+Secret `<release>-github-links` it rewrites as it checks links. The App
+keys are a volume, so it holds no permission to read any other Secret.
 
 ## Roles
 
@@ -318,8 +330,9 @@ Two roles, held by membership of two declared internal groups.
 
 | Role | Group | May |
 |---|---|---|
-| viewer | `hub-viewers` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders` — the whole console, read-only |
-| operator | `hub-operators` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, SetOAuthClient, AddMembership, RemoveMembership |
+| viewer | `all:access-roster:viewer` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders`, `GetGitHubStatus`, `ListAuditEvents`, and listing one's own sessions — the whole console, read-only |
+| operator | `all:access-roster:operator` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, the GitHub connects and disconnects, `ConfirmGitHubRemovals`, `ImportGitHubLinks`, listing and revoking anyone's sessions |
+| reporter | `all:access-roster:reporter` | `RecordAuditEvents`: what the GitHub controller writes into the trail |
 
 Behind a gateway that forwards a token, the forwarded identity's email is
 resolved through the directory like any other; the groups in the token
@@ -328,16 +341,17 @@ from.
 
 ## The repository
 
-access-roster ships two components from one repository, each with its own
-binary and chart, installable alone: `directory-roster`, this hub, and
-later the token service. Shared Go packages — the backends, the Connect
-flow, the policy engine, the verifiers — are importable behind storage
-interfaces.
+access-roster ships from one repository: the `access-issuer` chart with
+its two images — the service and the GitHub controller — the
+`access-proxy` chart, `accessctl`, the GitHub Action, the Go module and
+the TypeScript package, all stamped with one tag. Shared Go packages —
+the backends, the policy engine, the verifiers, the exchange — are
+importable behind interfaces.
 
 ## Valkey: a recommendation
 
 Any Valkey or Redis-protocol server reachable from the namespace works.
-The hub stores one key set per workspace (the snapshot, its timestamp, a
+The service stores one key set per workspace (the snapshot, its timestamp, a
 short negative cache) and a lock per workspace; memory use is the size of
 the directories, tens of megabytes at most. Persistence is not required —
 a cold cache costs one fetch per workspace.
@@ -364,7 +378,7 @@ and, if the operator issues a password Secret, at that Secret.
 
 The console listener must only be reachable through an authenticating
 gateway that forwards the caller's identity and groups as headers. The
-hub ships an `HTTPRoute` (console slice) attaching to a Gateway the
+service ships an `HTTPRoute` (console slice) attaching to a Gateway the
 deployment names; the authentication layer (an OIDC-aware proxy or the
 gateway's own OIDC filter) is the deployment's. Set
 `networkPolicy.gatewayNamespace` so nothing else can reach the port.

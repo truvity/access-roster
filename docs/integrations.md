@@ -24,11 +24,12 @@ flowchart TB
 
   subgraph ar["access-roster"]
     direction LR
-    hub["directory-roster<br/>the directory hub"]:::hub
-    iss["access-issuer<br/>the issuer"]:::token
+    hub["the directory<br/>inside access-issuer"]:::hub
+    iss["access-issuer<br/>the issuer, the console, the audit trail"]:::token
+    ghr["github-roster<br/>the controller, same chart"]:::token
     proxy["access-proxy<br/>one per console"]:::token
     lib["Go module · TS package<br/>inside applications"]:::token
-    ctl["accessctl<br/>on laptops"]:::token
+    ctl["accessctl<br/>on laptops and in jobs"]:::token
     act["exchange action<br/>in workflows"]:::token
   end
 
@@ -38,7 +39,7 @@ flowchart TB
     aws["AWS accounts<br/>(IAM OIDC provider each)"]:::ext
     argo["ArgoCD · Kargo"]:::ext
     consoles["Consoles<br/>(ours and business test surfaces)"]:::ext
-    ghteams["GitHub teams<br/>via github-roster"]:::ext
+    ghteams["GitHub organisations<br/>teams, and runner Apps"]:::ext
     reg["ECR · CodeArtifact · any AWS service<br/>(on top of the profiles)"]:::ext
   end
 
@@ -47,7 +48,7 @@ flowchart TB
   gws -- "② OIDC sign-in<br/>people" --> iss
   gh -- "③ token exchange<br/>jobs" --> iss
   sa -- "④ token exchange<br/>workloads, by the cluster's key set" --> iss
-  iss -- "⑤ ResolveUser" --> hub
+  iss -- "⑤ who is this address<br/>a function call" --> hub
   iss -- "⑥ issuer + client id<br/>groups claim" --> eks
   iss -- "⑦ issuer + audience<br/>trust policy per role" --> aws
   iss -- "⑧ static clients<br/>groups claim" --> argo
@@ -56,7 +57,8 @@ flowchart TB
   lib -. "⑪ reads the bearer,<br/>serves /.access/whoami" .-> consoles
   ctl -- "⑫ code + PKCE on loopback,<br/>then exchange" --> iss
   act -- "⑬ exchange, shell only" --> iss
-  hub -- "⑭ groups, liveness,<br/>authoritative" --> ghteams
+  iss -. "⑭ who holds each group<br/>console API, own ServiceAccount token" .-> ghr
+  ghr -- "⑭ invites, teams, removals<br/>as each organisation's App" --> ghteams
   aws -. "⑮ AWS's own tooling<br/>with --profile" .-> reg
 
   classDef ext fill:#8A93A3,stroke:#5E6675,color:#fff
@@ -71,14 +73,15 @@ flowchart TB
 
 | Kind | Name | What it is | Who deploys or uses it | Status |
 |---|---|---|---|---|
-| **Service** | access-issuer | the whole of access-roster | the platform, once per installation | **running** since 0.6; the directory folded in at 0.12 ([design](design/access-roster.md)); Config profile green, two attended profiles pending |
-| **Helm chart** | `access-issuer` | the whole service; expects a Valkey | the platform | published per tag |
-| **Helm chart** | `directory-roster` | the pre-0.12 directory service, kept so an installation can move back | nobody new | published per tag; removed once nothing points at it |
+| **Service** | access-issuer | the whole of access-roster | the platform, once per installation | **running** since 0.6; the directory folded in at 0.12 ([design](design/access-roster.md)); all four OpenID profiles run with no failure ([conformance](conformance.md)) |
+| **Service** | github-roster | the GitHub controller: one loop beside the service that keeps every connected organisation's teams as the policy says | the platform, from the same chart | **acting** since 1.5; each organisation a dry run until listed in `githubRoster.actsIn` |
+| **Helm chart** | `access-issuer` | the whole service, both processes; expects a Valkey and an S3 bucket for the audit trail | the platform | published per tag |
 | **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console with no OpenID flow of its own; expects a Valkey; its client is one declared row | every team that ships a console, one release per console | published per tag; in front of hubble; the directory console left it at 0.12, because it signs in as a client of the issuer it shares an origin with |
-| **Go module** | `github.com/truvity/access-roster` | `policy`, `backend` today; `identity` with the two verifiers and the adapters, `authz`, `directory`, `tokens` to come | every Go service and console | `policy` + `backend` published; the rest with 1.0 |
-| **TypeScript package** | `access-roster` | `useIdentity()`, `<UserBadge/>` over `/.access/whoami` | every console UI | published per tag |
-| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `whoami`, `exchange`, `policy test` | people, on laptops, and a CI job with the same files | built, except `policy test` |
-| **GitHub Action** | `truvity/access-roster@v1` (root `action.yml`) | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | designed, not built; the issuer side (the GitHub verifier) is built |
+| **Go module** | `github.com/truvity/access-roster` | `identity` (the two verifiers and a net/http middleware), `policy`, `backend`, `tokens` | every Go service and console | published per tag |
+| **TypeScript package** | `@truvity/access-roster`, on GitHub Packages | `useIdentity()`, `<UserBadge/>` over `/.access/whoami`; `/server` verifies a bearer in Node | every console UI, and Node services | published per tag |
+| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `token`, `whoami`, `exchange` | people, on laptops, and a CI job with the same files | built; a Nix flake on every release, for devbox |
+| **GitHub Action** | `truvity/access-roster` (root `action.yml`), pinned to a release | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | built |
+| **Store** | the audit trail | one Elastic Common Schema record per event — sign-ins, refusals, exchanges, revokes, console actions, what the controller did — in JSON-lines objects by the hour, in a bucket the platform owns; the console's Audit page reads it back | the platform, one bucket with Object Lock | written since 1.6.2; a recovery sign-in is the one event that is refused when it cannot be written |
 | **File format** | the policy | groups, claims, lifetimes, clients — one schema for both services | the platform, in gitops, rendered from its access matrix | in force |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the console's own services | consumers of access-roster | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
@@ -87,7 +90,7 @@ flowchart TB
 
 | Ours (this repository) | Third-party, used as is |
 |---|---|
-| directory-roster, access-issuer, the access-proxy **chart** (wiring, conventions and a registration init step around a third-party proxy), the Go module, the TypeScript package, accessctl, the exchange action, the policy schema | Google Workspace and Entra (sign-in, MFA, directory), GitHub Actions OIDC, Envoy Gateway, **oauth2-proxy** (the process inside access-proxy), Valkey, kubelogin, kubectl, the AWS CLI, `curl` and `jq` in the action, the OpenID Provider library the issuer is built on |
+| access-issuer and its GitHub controller, the access-proxy **chart** (wiring, conventions and a registration init step around a third-party proxy), the Go module, the TypeScript package, accessctl, the exchange action, the policy schema | Google Workspace and Entra (sign-in, MFA, directory), GitHub Actions OIDC, Envoy Gateway, **oauth2-proxy** (the process inside access-proxy), Valkey, kubelogin, kubectl, the AWS CLI, `curl` and `jq` in the action, the OpenID Provider library the issuer is built on |
 
 ## Case by case
 
@@ -97,13 +100,13 @@ configure and where, what you get.
 ### ① A corporate directory → access-roster
 
 - **Anchor:** none of ours — the directory's own OAuth; access-roster is the client.
-- **Parties:** a Workspace admin (role account), directory-roster.
+- **Parties:** a Workspace admin (role account), access-issuer.
 - **Trust:** the Workspace grants our OAuth client read-only Admin
   SDK scopes by admin consent, or a service-account key with domain-wide
   delegation.
-- **Flow:** Connect in the console → consent → the refresh token is stored
-  token, discovers the tenant id and domains, takes the first snapshot,
-  then re-reads every 15 minutes and probes every 5.
+- **Flow:** Connect in the console → consent → the refresh token is
+  stored, the service discovers the tenant id and domains, takes the
+  first snapshot, then re-reads every 15 minutes and probes every 5.
 - **You configure:** once per installation, the OAuth client; once per
   Workspace, one consent click. Nothing per user or group.
 - **You get:** every address routed to its workspace; `live` and `groups`
@@ -164,7 +167,7 @@ configure and where, what you get.
   means holding access to every cluster — the N×M problem the issuer
   exists to collapse. The cluster anchor survives for RECOVERY alone: the
   way in on the day the directory is broken, which must depend on nothing
-  else (INF-692).
+  else.
 - Guide: [connect/service-to-service.md](connect/service-to-service.md).
 
 ### ⑤ The issuer asks the directory
@@ -185,18 +188,19 @@ configure and where, what you get.
 
 - **Anchor:** the issuer; the API server reads `groups` and binds the
   names as they are.
-- **Parties:** an EKS API server, access-issuer, kubelogin or accessctl
-  or a job's token.
+- **Parties:** an EKS API server, access-issuer, accessctl (or kubelogin)
+  on a laptop, and the same accessctl inside a job.
 - **Trust:** the cluster's single OIDC provider is the issuer, client id
   `k8s:<cluster>`, groups claim `groups`.
-- **Flow:** kubelogin's device or code flow (people) or the action's
-  exchange (jobs) → a token with the cluster's audience and the group
-  values → RBAC as today.
+- **Flow:** `accessctl kube-token` exchanges a laptop sign-in, or a job's
+  own GitHub token, for a token with the cluster's audience and the group
+  values → RBAC as today. kubelogin's code flow is an equivalent for
+  people.
 - **You configure:** the cluster's OIDC provider once; a public client
   `k8s:<cluster>` in the issuer; the internal groups it requires and the
   fragments that mint the values; RBAC bindings by group as before.
-- **You get:** kubeconfigs written by `accessctl kubeconfig` for every
-  cluster a person is granted; no kubeconfig generation elsewhere.
+- **You get:** one kubeconfig per cluster, its exec plugin `accessctl
+  kube-token`, the same file on a laptop and in a job.
 - Guide: [connect/kubernetes-cluster.md](connect/kubernetes-cluster.md).
 
 ### ⑦ The issuer → an AWS account
@@ -260,10 +264,11 @@ configure and where, what you get.
 - **Anchor:** whichever its listener was built for — the module offers
   exactly two verifiers, `Issuer` and `Cluster`, and a handler sees one
   `Identity{Groups}` either way.
-- **Go:** `identity` verifier + one of four middleware adapters
-  (net/http, fiber v3, gRPC, connect) puts an `Identity` in the context
-  and serves `/.access/whoami`; `authz.Role("operator")` gates a handler.
-- **TypeScript:** `useIdentity()` and `<UserBadge/>` read that endpoint.
+- **Go:** an `identity` verifier and its net/http middleware put an
+  `Identity` in the context and serve `/.access/whoami`; `Require` gates
+  a handler on groups. Other frameworks wrap the verifier themselves.
+- **TypeScript:** `useIdentity()` and `<UserBadge/>` read that endpoint;
+  `@truvity/access-roster/server` verifies a bearer in Node.
 - **You configure:** the issuer URL and your hostname as audience.
 - Reference: [reference/go-module.md](reference/go-module.md),
   [reference/typescript.md](reference/typescript.md).
@@ -273,8 +278,13 @@ configure and where, what you get.
 - **Anchor:** the issuer.
 - `accessctl login` once; `accessctl kubeconfig` and `aws-config` write
   the files for everything the policy grants; kubectl and the AWS CLI then
-  work as usual through the exec plugin and the credential process.
-  kubelogin is an equivalent for kubectl. Machines never run accessctl.
+  work as usual through `accessctl kube-token` and `accessctl aws`, and
+  `accessctl token --audience` answers any other consumer. The sign-in
+  is exchanged only because the CLI's client declares
+  `sign_in_exchange: true`; no other issuer-signed token is a proof.
+  kubelogin is an equivalent for kubectl. Inside a GitHub Actions job the
+  same commands exchange the job's own token instead, so the same files
+  serve both.
 - Reference: [reference/accessctl.md](reference/accessctl.md).
 
 ### ⑬ A workflow
@@ -286,14 +296,23 @@ configure and where, what you get.
 
 ### ⑭ GitHub teams
 
-- **Anchor:** none of ours yet, and that is the open work (INF-697).
-- The bindings are built: *directory group → GitHub team* lives in the
-  same policy file as every other grant, and the console lists them
-  beside every other rule. The controller that ACTS on them is not.
-- When it exists it will hold a GitHub App per organisation, act with its
-  own credential, and keep bound teams equal to directory groups —
-  removing only on authoritative answers. No issuer is involved: this is
-  the **sync model**, because GitHub can be written to.
+- **Anchor:** none of ours; a GitHub App per organisation, which the
+  organisation's owner creates from the console and this service holds.
+- The bindings — *internal group → GitHub team*, with both team roles —
+  live in the same policy file as every other grant, and the console
+  lists them beside every other rule.
+- The controller acts on them: one pass per interval per organisation,
+  asking the console who holds each bound group, then inviting, adding,
+  promoting and removing on GitHub, in the organisations listed in
+  `githubRoster.actsIn`; every other organisation is a dry run the console
+  shows. It stops itself where a person is needed: seats, removals over
+  half an organisation, owners. An account is a person's by their own
+  link, a public-profile match or an import, checked every pass. No
+  issuer token is involved: this is the **sync model**, because GitHub
+  can be written to.
+- The same tab creates a **runner App** per organisation per tier, the
+  App a self-hosted runner scale set registers with, kept in a Secret for
+  the deployment to hand to its runners.
 - Guide: [connect/github-organisation.md](connect/github-organisation.md).
 
 ### ⑮ Registries, artifacts and every other AWS service

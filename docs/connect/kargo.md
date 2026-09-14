@@ -8,6 +8,8 @@ clients:
 clients:
   kargo:
     kind: public              # PKCE in the browser; Kargo's UI holds no secret
+    display_name: Kargo       # the sign-in page: "Sign in to continue to Kargo"
+    description: promotions between environments
     redirects:
       - https://kargo.example.internal/
       - https://kargo.example.internal/login
@@ -15,7 +17,8 @@ clients:
     requires:   [kernel:k8s:admin, kernel:k8s:viewer]
     ttl_cap: 5m               # the revocation window, see below
   kargo-cli:
-    kind: public              # PKCE; the CLI's redirect is a loopback port
+    kind: public              # PKCE; the CLI's redirect is a loopback port — the page says a program on this computer is asking
+    display_name: Kargo CLI
     loopback: true
     requires:   [kernel:k8s:admin, kernel:k8s:viewer]
 ```

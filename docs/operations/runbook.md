@@ -1,7 +1,8 @@
 # Runbook
 
-Day-two operations. Everything here is visible on a tenant's page in the
-console and in `Describe`; nothing needs a shell except the export.
+Day-two operations. Everything here is visible in the console; a shell is
+needed for the export, a restore, and reading the audit trail's bucket
+directly.
 
 ## Day one
 
@@ -16,27 +17,27 @@ with this installation's own values to copy rather than a placeholder to
 translate — the redirect URI is its hostname, and that is where a day-one
 setup goes wrong.
 
-1. Install. The hub generates `Secret <release>-session-key` and creates
+1. Install. The service generates `Secret <release>-session-key` and creates
    the ServiceAccount `<release>-recovery`. There is no password anywhere.
 2. Mint a recovery token — a cluster administrator already has the RBAC
    for this, and granting `create` on `serviceaccounts/token` for that
    account is how you give it to somebody else:
 
    ```sh
-   kubectl -n directory-roster create token <release>-recovery \
+   kubectl -n access-issuer create token <release>-recovery \
      --audience <release>-recovery --duration 10m
    ```
 
-3. Port-forward the console port (or go through the gateway), open
+3. Port-forward the service's port (or go through the gateway), open
    `/login`, expand **Recovery sign-in** and paste the token.
 4. Follow Overview. It walks the four steps: register an OAuth client with
-   the directory, give it to the hub, connect the first directory, and
+   the directory, give it to the service, connect the first directory, and
    attach a directory group to the operators group. Each disappears as it
    completes.
 5. Sign out; sign in with the directory as yourself. Search for yourself:
    your page shows operator and the membership that granted it.
 
-Outside a cluster there is nothing to prove access to, so the hub prints a
+Outside a cluster there is nothing to prove access to, so the service prints a
 generated recovery password once at start and step 2 is reading it off the
 log. That installation gets a fifth setup step — turn the password off —
 because a stored password *is* a standing credential, which the token is
@@ -46,9 +47,8 @@ Step 4's first item is the only one that leaves the console:
 [the connect runbook](connect-runbook.md) has the full walk-through of the
 cloud-console visit, and Overview has the two values to paste into it.
 
-Behind an authenticating proxy, steps 3 and 5 go through the proxy's
-login; attaching the membership is unchanged, because the hub resolves the
-forwarded identity's address through the directory like any other;
+The console signs people in as a client of the issuer it shares an
+origin with, so steps 3 and 5 are the issuer's own sign-in page, and
 recovery stays reachable by port-forward.
 
 ## Lost operator access
@@ -58,12 +58,12 @@ sign-in is what is broken:
 
 - **recovery enabled (the default):** mint a token as in day one, sign in
   at `/login` under *Recovery sign-in*, fix the membership. Who did it is
-  in the hub's log and in the cluster's audit log, by name.
-- **recovery disabled:** set `access.recovery.enabled: true` in the values,
+  in the service's log and in the cluster's audit log, by name.
+- **recovery disabled:** set `recovery.enabled: true` in the values,
   roll the deployment, then as above. There is no password to recover,
   only RBAC to hold.
 - **`503 recovery could not be checked`:** the check did not run — the API
-  server is unreachable, or the hub may not create TokenReviews (the
+  server is unreachable, or the service may not create TokenReviews (the
   ClusterRole `<release>-<namespace>-tokenreview`). It is not a wrong
   token; do not go looking for one.
 - **`401 that proof was not accepted`:** the token expired (they are
@@ -75,18 +75,18 @@ sign-in is what is broken:
   once.
 
 Sessions are stateless signed cookies. To log everyone out at once,
-delete `Secret <release>-session-key`; the hub generates a new one on restart.
+delete `Secret <release>-session-key`; the service generates a new one on restart.
 
-Behind a proxy those cookies are not what signs anybody in, so neither is
-what signs them out: set `access.signOutThroughIssuer: true`, and the
-chart builds the whole chain — the proxy's `/oauth2/sign_out`, then the
-issuer's `end_session` with this console's client id, then back to the
-front page. Without it the console's sign-out clears a cookie nothing was
-using and the person comes back signed in ("sign out does nothing");
-with only the proxy's half, the issuer keeps the session and the next
-click at any console signs them straight back in, which looks exactly
-like success. The issuer's client must list the console's front page in
-`signed_out`, or the person lands on the issuer's own page instead.
+The console's own sign-out is the issuer's `/logout`, which ends the
+sign-in and every session under it. A console behind `access-proxy`
+has a cookie of the proxy's instead, and its sign-out has to run the
+whole chain — the proxy's `/oauth2/sign_out`, then the issuer's
+`end_session` with that console's client id, then back to its front
+page; the proxy chart builds it. With only the proxy's half, the issuer
+keeps the session and the next click at any console signs them straight
+back in, which looks exactly like success. The issuer's client must
+list the console's front page in `signed_out`, or the person lands on
+the issuer's own page instead.
 
 Recovery, for the record, is the **cluster anchor used as the floor**
 ([../design/trust.md](../design/trust.md)): the issuer depends on the
@@ -98,27 +98,54 @@ only thing left to trust is the API server.
 | Symptom (console) | Cause | Action |
 |---|---|---|
 | Health: error, domains *provisional — probe failed* | token revoked, admin suspended, tenant policy changed, scopes withdrawn | **Reconnect** (consent) or upload a new key. Nothing is lost meanwhile: the last snapshot is served, non-authoritative |
-| Health ok, domains *provisional — snapshot stale* | refresher cannot complete a full read (a page fails, quota, timeouts) | check the hub logs for the failing page; **Refresh** to retry now; the snapshot recovers on the next successful pass |
+| Health ok, domains *provisional — snapshot stale* | refresher cannot complete a full read (a page fails, quota, timeouts) | check the service logs for the failing page; **Refresh** to retry now; the snapshot recovers on the next successful pass |
 | Health ok, domains *provisional — first snapshot pending* | the workspace was connected moments ago, or its served list was just changed; the first snapshot runs detached | wait — seconds for a small tenant, a minute or two for a large one. Longer than a refresh interval: read the log for the failing page |
 | One replica answers *workspace not found* for a directory the other serves | before 0.8 the reader map was filled only at start, so a workspace connected on one replica was unknown to the other | restart the replica; from 0.8 a missing reader is opened from the stored credential on first use |
-| The consent callback shows the CDN's own *Bad gateway* page | the hub answered 5xx and the CDN replaced it — since 0.7.2 the callback never answers 5xx, so the request did not reach the hub | the gateway, the route, or the egress policy; the hub's log has nothing because nothing arrived |
+| The consent callback shows the CDN's own *Bad gateway* page | the service answered 5xx and the CDN replaced it — since 0.7.2 the callback never answers 5xx, so the request did not reach the service | the gateway, the route, or the egress policy; the service's log has nothing because nothing arrived |
 | One domain not authoritative on two workspaces, marked *conflict* | both tenants list the domain **and both serve it** — a move in progress, or a misconfiguration | wait for the move to complete, or narrow one of them: *Choose which to serve* on the directory's page, leaving the domain out of the tenant that should not answer for it |
-| A domain shows *not served* | this hub was narrowed to a subset of the tenant's domains, so nothing routes to it and its accounts are not cached | intended in most cases; *Choose which to serve* changes it. A declared workspace says so in the values (`workspaces[].serve`) |
+| A domain shows *not served* | this service was narrowed to a subset of the tenant's domains, so nothing routes to it and its accounts are not cached | intended in most cases; *Choose which to serve* changes it. A declared workspace says so in the values (`directory.workspaces[].serve`) |
 | A domain shows *no longer owned* | the served list names a domain the directory no longer lists — it has moved to another tenant | the hand-over already happened: the other workspace serves it as soon as its own discovery returns it. Drop the entry here so the list matches reality |
-| Every domain non-authoritative at once | Valkey unreachable | restore Valkey; the hub refills it within one refresh interval |
+| Every domain non-authoritative at once | Valkey unreachable | restore Valkey; the service refills it within one refresh interval |
 | A workspace shows *declared* and no Reconnect/Disconnect | it comes from the chart's overlay | change the deployment's values, not the console |
-| After a restart, a workspace is unhealthy with "no backend: the credential is not loaded" | its entry in `Secret <release>-workspace-credentials` is gone or unreadable — restored namespace without that Secret, hand-edited object, an entry deleted by hand | put the Secret back from a backup, or **Reconnect** (consent) or upload the key again. The record, its served domains and its memberships are intact; only the credential is missing. The hub logs the workspace id at start |
+| After a restart, a workspace is unhealthy with "no backend: the credential is not loaded" | its entry in `Secret <release>-workspace-credentials` is gone or unreadable — restored namespace without that Secret, hand-edited object, an entry deleted by hand | put the Secret back from a backup, or **Reconnect** (consent) or upload the key again. The record, its served domains and its memberships are intact; only the credential is missing. The service logs the workspace id at start |
 
 The rule consumers follow makes every row above safe: **a
 non-authoritative answer holds, it never removes.**
 
-## Recovering a lost credential
+## Backing up, and restoring, what the console holds
 
-Delete the Secret and the record for a workspace, or lose the namespace,
-and the workspace is simply gone from the list. Press **Connect** again as
-the same admin role account; the tenant id matches and the domains return
-authoritative after the first snapshot. There is no backup mechanism by
-design: the credential is cheaper to mint than to guard a copy of.
+Everything a console added that cannot be minted again is in four
+Secrets in the service's namespace, each under a name a deployment
+knows in advance:
+
+| Secret | Holds |
+|---|---|
+| `<release>-workspace-credentials` | every console-connected workspace's credential, one key per workspace, with a copy of its record |
+| `<release>-github-apps` | every connected organisation's App key and the link App's client, each with a copy of its record |
+| `<release>-github-links` | people's GitHub links, tokens included |
+| `<release>-github-runner-apps` | every runner App, its record beside its keys |
+
+**Back them up** by copying the four objects, for example with an
+External Secrets `PushSecret` each into a secret manager that travels
+with your backups. Nothing in the service depends on the copy.
+
+**Restore** by putting the four Secrets back into the namespace, with
+the labels they carried, before the service starts or before restarting
+it. At start it rebuilds every workspace ConfigMap and every GitHub
+record that is missing beside a credential, then reopens the
+workspaces. A restored workspace shows as never probed until its first
+probe; a link token that rotated since the copy means that person links
+again; a declared Secret is re-delivered by whatever declared it.
+
+**Without a copy**, a lost workspace credential is recovered by pressing
+**Connect** again as the same admin role account — the tenant id matches
+and the domains return authoritative after the first snapshot — and a
+lost App by *Disconnect* then *Create* on the GitHub page's Apps tab.
+
+A namespace that ran a release before 1.7 still holds one
+`<release>-credential-<tenant>` Secret per workspace beside the new one:
+start-up copied each in by name and left the old object for a rollback,
+and reconnecting or disconnecting that workspace removes it.
 
 ## Rotating
 
@@ -126,7 +153,7 @@ design: the credential is cheaper to mint than to guard a copy of.
   Google as part of it.
 - **Service-account key, connected through the console:** Upload key
   again with the new JSON; the old one is replaced.
-- **Service-account key, declared:** replace the named Secret; the hub
+- **Service-account key, declared:** replace the named Secret; the service
   picks up the mounted file within a minute. Delete the old key in
   Google Cloud afterwards.
 - **OAuth client secret:** Settings → set the new secret (or update the
@@ -136,8 +163,8 @@ design: the credential is cheaper to mint than to guard a copy of.
 ## Export
 
 ```sh
-kubectl -n directory-roster get secret,configmap \
-  -l app.kubernetes.io/managed-by=directory-roster -o yaml > directory-roster-export.yaml
+kubectl -n access-issuer get secret,configmap \
+  -l app.kubernetes.io/managed-by=directory-roster -o yaml > access-roster-export.yaml
 ```
 
 The export contains credentials. Treat it as one.
@@ -154,7 +181,7 @@ on the other replica is opened from its stored credential on first use
 
 ## Logs
 
-Structured JSON on stdout. The hub never logs a credential, a token or a
+Structured JSON on stdout. The service never logs a credential, a token or a
 key file, and never logs the members of a group; it logs workspace ids,
 domains, counts, durations and errors.
 
@@ -178,8 +205,12 @@ domains, counts, durations and errors.
    organisation is simply left as it is.
 
 If a pass fails, the section says why — an organisation not connected,
-an App GitHub refuses, a console that did not answer. A failed pass changes
-nothing.
+an App GitHub refuses, a console that did not answer. A failed pass
+changes nothing, and is reported over the last report that had rows, so
+the page does not blank while passes fail. A console that answers under
+a different policy than the controller loaded — the two restart at
+different moments during a rollout — is the same: the pass changes
+nothing and is retried next interval.
 
 **Needs you on a GitHub organisation:**
 
@@ -210,6 +241,27 @@ the person to open the link page and link again.
 removed or unverified, or the authorization revoked — and its account
 left the organisation (`github.link.lost`, then `github.member.remove`
 in the audit trail). Linking again brings it back in on the next pass.
+
+## Runner Apps
+
+The chart declares the tiers (`githubRunnerApps.tiers: [preview, stable]`)
+and the GitHub page's Apps tab then shows a row per bound organisation
+per tier. *Create* is the same two clicks as an organisation's App:
+GitHub's create page, then its install page, by an owner of the
+organisation. The App lands in `Secret <release>-github-runner-apps` as
+`<tier>.<org>.github_app_id`, `.github_app_installation_id` and
+`.github_app_private_key` — the keys a gha-runner-scale-set
+`githubConfigSecret` reads — and a deployment copies those three to its
+runners, for example with a `PushSecret`. Until the App is installed the
+key sits under `<tier>.<org>.pending_private_key`, so a copy taken in
+between never replaces working runners with an App they cannot register
+with.
+
+| Symptom | Means | Do |
+|---|---|---|
+| a row reads *created, not installed* | the owner stopped after Create | *Finish installing* on the row |
+| runners stop taking jobs after a Disconnect | the App was uninstalled and its keys forgotten, as Disconnect does | create a new App for that tier and hand its keys to the runners |
+| the runners' copy is empty | the App is not installed yet, or the copy runs before the keys exist | install it; the three keys appear only then |
 
 ## Audit: what happened lately
 

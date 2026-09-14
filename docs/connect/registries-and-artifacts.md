@@ -16,7 +16,7 @@ or a person who needs to push an image does not also get anything else:
 
 ```yaml
 groups:
-  ci-app:   { matchers: [{ github: { repository: example-org/app, ref: refs/heads/master } }] }
+  ci-app:   { matchers: [{ github: { repository: acme/app, ref: refs/heads/master } }] }
   engineer: { members: [engineers@example.com] }
 clients:
   aws:111122223333:ecr-push:         { kind: exchange, requires: [ci-app] }

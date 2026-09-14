@@ -45,14 +45,19 @@ region = eu-central-1
 
 `accessctl aws` exchanges the cached login for that audience and calls
 `AssumeRoleWithWebIdentity`; the cloud CLI sees ordinary temporary
-credentials.
+credentials. The issuer takes that sign-in as a proof only because
+accessctl's own client declares `sign_in_exchange: true`; no other token
+it signs is one.
 
 ## Job side
 
 The action with `audiences: aws:111122223333:gitops-deployer` exchanges
 the job's GitHub token at the issuer and writes the profile
 `gitops-deployer@111122223333` with `web_identity_token_file` pointing at
-the result; the AWS CLI does the rest. The account trusts the issuer, not
+the result; the AWS CLI does the rest. Or the same `aws.ini` a person
+uses works unchanged in a job granted `id-token: write`: `accessctl aws`
+exchanges the job's own token there
+([github-actions.md](github-actions.md#or-the-same-files-a-laptop-uses)). The account trusts the issuer, not
 GitHub: no direct GitHub provider is configured, and CI's entitlements
 live in the policy.
 

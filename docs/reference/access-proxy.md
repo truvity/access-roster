@@ -3,7 +3,7 @@
 | Value | Default | Meaning |
 |---|---|---|
 | `exposure.hostname` | required | the console host; also the client id and the cookie domain |
-| `exposure.backend.name`, `.port` | required | the console's Service |
+| `exposure.backend.name`, `.port` | required unless `attachRouteName` is set; `.port` `8080` | the console's Service |
 | `exposure.posture` | `groups` | `groups` or `authenticated` |
 | `exposure.allow[]` | `[]` | `groups` values that pass, for the `groups` posture |
 | `exposure.gateway.name`, `.namespace`, `.sectionName` | from the fleet values | the Gateway listener to attach the HTTPRoute to |
@@ -13,8 +13,11 @@
 | `issuer.url` | from the fleet values | |
 | `session.valkey.address` | from the fleet values | external to the chart: one Valkey per cluster shared by every proxy (recommended), or one per exposure |
 | `session.valkey.username`, `.passwordSecret` | `""` | an ACL user per proxy for isolation inside a shared instance, optional |
-| `session.lifetime`, `session.refresh` | `12h`, `5m` | |
-| `client.secret.name`, `.keys.clientId`, `.keys.clientSecret` | `""`, `client-id`, `client-secret` | a Secret holding the client, and what its keys are called — the same shape the hub and the issuer use |
+| `session.lifetime`, `session.refresh` | `12h`, `1m` | the refresh is the revocation window: a proxied console cannot receive a back-channel logout, so a revoke at the issuer reaches it at the next refresh, and a minute is what "how long until they are out" answers |
+| `session.valkey.cluster` | `false` | the cluster protocol. Off with one shard: in cluster mode the client pins to node addresses, and a Valkey that moves never comes back |
+| `session.identityClaim` | `sub` | the claim the session is keyed by. Getting it wrong locks the recovery sign-in out with "neither the id_token nor the profileURL set an email" |
+| `proxy.port` | `4180` | |
+| `client.secret.name`, `.keys.clientId`, `.keys.clientSecret` | `""`, `client-id`, `client-secret` | a Secret holding the client, and what its keys are called — the same shape the issuer uses |
 | `session.cookieSecret.name`, `.key` | required, `cookie-secret` | **an existing Secret; this chart will not mint one.** A generated cookie secret would be regenerated on every render that cannot read cluster state — which is what ArgoCD does — and every sync would sign everyone out |
 | `exposure.attachRouteName` | `""` | ATTACH mode: bind the `SecurityPolicy` to an `HTTPRoute` another chart owns, and render no app route here. The normal case for a console whose own chart routes its hostname |
 | `exposure.routes[]` | `[]` | more than one protected route on the same host, each `{name, attachRouteName \| backend+paths, posture, allow}` — a surface where a demo path is open to any employee and the app behind it is not. **Mutually exclusive** with the single-route fields above, which describe one route between them; setting both is refused, because the ignored one would be the protection somebody thought they had configured |
@@ -49,9 +52,10 @@ metadata:
   name: access-proxy-sessions
   namespace: access-system
 spec:
-  # One shard, no replica. The operator still forms a real Valkey Cluster,
-  # so `session.valkey.cluster` stays true here exactly as it would at
-  # more shards.
+  # One shard, no replica. Leave `session.valkey.cluster` at its default,
+  # false: with one shard there is nothing to shard, and cluster mode
+  # would make the client pin to a node address a moved Valkey no longer
+  # answers on.
   shards: 1
   replicas: 0
 ```

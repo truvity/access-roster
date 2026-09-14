@@ -20,8 +20,8 @@ write, what you deploy, what you never implement.
 serves, mounted on the issuer's own origin. It signs in as a client of
 the issuer and then reads the SSO session directly rather than redeeming
 the code, because the process holding the session is the one serving the
-page. That is the directory console (INF-701), and it is a property of
-that pair rather than a pattern to copy.
+page. That is the directory console, and it is a property of that pair
+rather than a pattern to copy.
 
 ## What you write
 
@@ -37,7 +37,9 @@ that pair rather than a pattern to copy.
   the same body Go does. Connect-style, so Express and Nest on Express
   take them as they are.
 - **Frontend**: `useIdentity()` and `<UserBadge/>` from the TypeScript
-  package. Views in the URL fragment, dist embedded in the binary.
+  package, `@truvity/access-roster` on GitHub Packages
+  ([installing it](../reference/typescript.md)). Views in the URL
+  fragment, dist embedded in the binary.
 - **Nothing else**: no login page, no session, no token parsing, no
   sign-out logic.
 
@@ -108,10 +110,22 @@ clients:
     # proxy's.
     kind: confidential
     secret: myconsole-client
+    display_name: My Console            # what the sign-in page says: "Sign in to continue to My Console"
+    description: the team's dashboard  # one line under it; both are shown to anyone who starts a sign-in
     redirects:  [https://myconsole.example.internal/oauth2/callback]
     signed_out: [https://myconsole.example.internal/]
     requires:   [all:myconsole:operator, all:myconsole:viewer]
+    # backchannel_logout_uri: https://myconsole.example.internal/backchannel   # only a console running its own flow can take one
 ```
+
+`display_name` and `description` are what the sign-in page shows in
+place of "the application that sent you here", which is what every
+phishing page also says; keep them free of anything a stranger should
+not read. A console behind `access-proxy` cannot receive a back-channel
+logout — oauth2-proxy keeps each session under a key only the browser's
+cookie holds — so its window after a revoke is the proxy's refresh
+interval; a console running its own flow may opt in with
+`backchannel_logout_uri`.
 
 `all:<app>:<role>` is an application role under the
 [naming rule](../design/trust.md#naming): scoped to the tenant the app

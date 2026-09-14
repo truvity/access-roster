@@ -21,7 +21,7 @@ and one suspended account, because a leaver is the case the whole design
 turns on.
 
 It is the same code path as a real install: nothing in the fixtures is a
-special case in the hub, only a backend with no network behind it.
+special case in the service, only a backend with no network behind it.
 
 ## Fakes
 
@@ -30,11 +30,21 @@ special case in the hub, only a backend with no network behind it.
   a not-found, a revoked token), and a tenant whose domain list can
   change between probes. Every handler test runs against it.
 - **Store fake:** the Kubernetes store behind an interface, with an
-  in-memory implementation; the real one is exercised against `envtest`
-  or a kind cluster.
+  in-memory implementation over the fake clientset; the real one is
+  exercised against a kind cluster in the acceptance suite. The restore
+  and migration paths — four Secrets rebuilding a namespace, pre-1.7
+  credential objects copied in by name — are tested here.
 - **Cache fake:** the snapshot store behind an interface; the in-memory
-  backend is the fake. The Valkey backend is exercised against a real
-  Valkey in the acceptance suite.
+  backend is the fake. The Valkey backend is exercised against an
+  in-process Valkey (`miniredis`).
+- **GitHub fake:** an in-memory organisation with members, teams,
+  invitations and seats, which the controller's reconcile and pass tests
+  drive through joiners, movers, leavers, the breaker and every held
+  state.
+- **Audit:** the S3 writer is tested for its ECS objects, its metrics and
+  what it drops when full; the issuer's tests hold the one fail-closed
+  path — an ordinary sign-in never waits on the trail, a recovery sign-in
+  is refused when its record cannot be written.
 
 Handler tests are at the join level, not the unit level: they call the
 Connect handler and assert the response, so a rule that exists but is
@@ -42,13 +52,16 @@ never wired shows up as a failing test.
 
 ## The wiring
 
-`internal/app` assembles the service from its configuration — which
-store, which shape of recovery, who may call the API listener, what URL
-the OAuth redirects are built from — and every one of those is somewhere a
-deployment can be quietly wrong. It is a package rather than the body of
-`main` for exactly that reason: `main()` cannot be tested and this can.
+`internal/rosterapp` assembles the service from its two halves —
+`internal/app`, the directory and the console, and `internal/issuerapp`,
+the OpenID provider — from their configuration: which store, which shape
+of recovery, what URL the OAuth redirects are built from. Every one of
+those is somewhere a deployment can be quietly wrong. They are packages
+rather than the body of `main` for exactly that reason: `main()` cannot
+be tested and these can, and each of the three carries an acceptance
+suite.
 
-Two suites live there. The **acceptance** tests boot a whole hub from the
+The **acceptance** tests boot the whole service from the
 environment, the way the chart configures one, and walk the use cases
 over the real handlers: a person signs in through a directory and reaches
 the console with the role their membership grants; recovery reaches it
@@ -91,9 +104,11 @@ labels it wrote, including when a check fails.
 ## Issuer, proxy and CLI
 
 The issuer's verifiers run against recorded tokens with rotated keys and
-a fake hub; the policy engine against fixtures; the OpenID Provider glue
-against the library's conformance tests plus kubelogin and an OAuth2
-proxy as real clients in the acceptance suite. `access-proxy` is tested by
+a fake directory; the policy engine against fixtures; the OpenID
+Provider surface against the library's own tests, and, by hand and
+before a release that touches it, against the OpenID Foundation's suite
+([operations/conformance.md](../operations/conformance.md)), whose
+results are [conformance.md](../conformance.md). `access-proxy` is tested by
 installing it in front of a fixture backend and driving a browser through
 login, sign-out and a revoked identity. `accessctl` is tested against the
 acceptance issuer with a fake cloud STS and a kind cluster, on a laptop
@@ -117,3 +132,13 @@ about and prints a table:
 | what the webhook sees | `ResolveUser` for live, suspended, deleted and out-of-domain addresses, with and without authority |
 | consumer authentication | a projected token from an allow-listed ServiceAccount is accepted; a wrong audience, a foreign ServiceAccount and no token are refused |
 | policy | day one end to end: admin → connect → membership from the picker → directory sign-in → operator → admin off; a suspended account cannot sign in; a declared membership cannot be removed; two fragments with a conflicting scalar fail to load; Explain names the membership behind every group held |
+
+## What CI runs
+
+`just check` runs every recipe CI runs — `build`, `test`, `lint`,
+`chart-lint`, `archive-check`, `docs-check`, `ts`, `console` — plus
+`vuln`, which CI runs in its own security workflow rather than on every
+push. `ts` typechecks and tests the published TypeScript package;
+`docs-check` refuses a documented Go symbol that does not exist;
+`console` builds the bundle the binary embeds, which is why every recipe
+that compiles Go runs it first.

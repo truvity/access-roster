@@ -34,8 +34,10 @@ clients:
   k8s:kernel: { kind: public, requires: [kernel:k8s:admin, kernel:k8s:viewer] }
 ```
 
-`requires` is what lets `accessctl kubeconfig` know this person may use
-this cluster; the group names in the token are what the cluster's RBAC
+The sign-in page names a `k8s:<cluster>` client *Kubernetes — `<cluster>`*
+on its own, or as `display_name` says; when the redirect is on the
+person's own computer it says a program there is asking. `requires` is
+what lets `accessctl kubeconfig` know this person may use this cluster; the group names in the token are what the cluster's RBAC
 binds — `<env>:k8s:<role>`, the cluster tier of the
 [naming rule](../design/trust.md#naming). An installation that renders
 its policy from an access matrix (see the gitops repository) mints these
@@ -60,14 +62,23 @@ users:
         args: [oidc-login, get-token, --oidc-issuer-url=https://issuer.example.internal, --oidc-client-id=k8s:kernel, --oidc-extra-scope=groups]
 ```
 
+On a laptop, `accessctl kube-token` trades the cached sign-in for the
+cluster's audience, which the issuer allows only because accessctl's own
+client declares `sign_in_exchange: true`
+([service-to-service.md](service-to-service.md#calling-with-an-issuer-token-anywhere-else)).
+
 ## Job side
 
 The API server trusts one issuer, access-issuer, so a job's GitHub token is
-never presented to it. `truvity/access-roster@v1` with
-`audiences: k8s:<cluster>` exchanges the job's token at the issuer and
-writes a kubeconfig with the resulting token; the machine group's
-matchers on repository and ref decide which jobs may. The token's lifetime is the issuer's CI client
-setting; a step that outlives it re-runs the action.
+never presented to it. Either the action, `truvity/access-roster` pinned
+to a release with `audiences: k8s:<cluster>`, exchanges the job's token
+at the issuer and writes a kubeconfig with the resulting token; or the
+same kubeconfig a person uses works unchanged in a job granted
+`id-token: write`, because `accessctl kube-token` exchanges the job's
+own token there ([github-actions.md](github-actions.md#or-the-same-files-a-laptop-uses)).
+The machine group's matchers on repository, ref and visibility decide
+which jobs may. The token's lifetime is the issuer's CI client setting;
+a step that outlives it re-runs the action.
 
 ## Break-glass
 

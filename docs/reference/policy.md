@@ -24,7 +24,7 @@ groups:                        # internal groups — the vocabulary, named <scop
     members: [role-sre@a.example, role-sre@b.example]
   ci:gitops:deployer:
     matchers:                                           # matched, not listed
-      - github: { repository: example-org/gitops, ref: refs/heads/master }
+      - github: { repository: acme/gitops, ref: refs/heads/master }
   all:access-roster:viewer:
     matchers: [{ email_domain: a.example }]              # the escape hatch, see below
   all:access-roster:operator:
@@ -52,7 +52,7 @@ clients:                       # who may be issued a token for what; the id is t
 | `groups` | internal group name | directory `members`, or `matchers`; a group with neither is one nobody is in yet, which is where a fresh installation starts | declared |
 | `claims` | internal group name | a claim fragment merged into the token | declared |
 | `lifetimes` | internal group name, or `default` | a duration | declared |
-| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap`, `sign_in_exchange`, `display_name`, `description` | declared |
+| `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap`, `sign_in_exchange`, `display_name`, `description`, `backchannel_logout_uri` | declared |
 | `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
 
 Five tables, one writer. There was another, `memberships`, which a
@@ -74,10 +74,10 @@ a name in neither shape.
 
 Decided 2026-09-09 (evening); in force since v0.9.3.
 
-## The hub's own two groups, and scoping them
+## The service's own two groups, and scoping them
 
 `all:access-roster:operator` and `all:access-roster:viewer` are the only
-names the hub reads out of the policy for itself. It holds no role
+names the service reads out of the policy for itself. It holds no role
 vocabulary of its own: an identity is an operator because the policy puts
 it in the operators group, exactly as any other relying party's roles
 work.
@@ -97,9 +97,9 @@ groups:
 
 A scope is a naming convention over the ordinary table rather than a
 column in it, because the table is already where an installation says who
-is in what, and the hub already reads two names out of it by convention.
+is in what, and the service already reads two names out of it by convention.
 A scope is a third: nothing in the schema, the merge or the validation has
-to know. Only the hub's two roles read a workspace out of the scope
+to know. Only the service's two roles read a workspace out of the scope
 position; `north.example:k8s:admin` would be an ordinary group and grants
 nothing over a workspace.
 
@@ -127,7 +127,7 @@ point a person and a job are the same thing.
 
 | Proof | Becomes the groups… |
 |---|---|
-| a corporate sign-in | whose `members` contain a directory group the hub confirms the account is in, **authoritatively** |
+| a corporate sign-in | whose `members` contain a directory group the service confirms the account is in, **authoritatively** |
 | a CI identity token | whose `matchers` the token's claims satisfy: `repository`, `owner`, `ref`, `workflow` and `environment` as globs, and `visibility` (`public`, `private` or `internal`) exactly |
 | a Kubernetes ServiceAccount token | whose `matchers` name that namespace and ServiceAccount |
 
@@ -178,7 +178,7 @@ working.
 
 > **`sub`, decided 2026-09-09 (INF-681).** A person is their **email**
 > address — readable in every audit log, no second lookup, and what the
-> hub already keys by; a rename becomes a new `sub` whose old sessions
+> service already keys by; a rename becomes a new `sub` whose old sessions
 > end, which for a controlled directory is acceptable, arguably correct.
 > A ServiceAccount is **`<cluster>:k8s:<namespace>:<name>`**, from the
 > issuer's `cluster` value; an installation that names no cluster keeps
@@ -281,6 +281,14 @@ file appears to. Everything is HTML-escaped when written.
 An issuer older than the release that introduced them refuses both keys
 as unknown, like any other: deploy the issuer before declaring them.
 
+**`backchannel_logout_uri`** opts a client into OIDC Back-Channel
+Logout: when a sign-in ends, the issuer POSTs a signed `logout+jwt`
+naming the session (`sid`) to every such client that signed the person
+in. It is for a client running its own session — a console behind
+`access-proxy` cannot take one, because oauth2-proxy keeps each session
+under a key only the browser's cookie holds, and so lives with the
+proxy's refresh interval instead.
+
 Clients are **declared**, and only declared: one row each in the
 deployment's values, with `requires` mandatory — an empty list means
 nobody, not everyone, and the issuer refuses to start on one. Never
@@ -380,7 +388,7 @@ file and nothing else, and `git log` is the complete history of access.
 ## Not in this file
 
 The **hold window** — how long a signed-in identity keeps its last granted
-role while the directory cannot be vouched for — is a property of the hub,
+role while the directory cannot be vouched for — is a property of the service,
 not of the policy: it belongs to the service that has to stay usable while
 its own directory is uncertain. It is a chart value.
 
@@ -389,9 +397,12 @@ its own directory is uncertain. It is a chart value.
 Unknown keys refused, `memberships` among them. Every key in `claims`
 and `lifetimes` names a declared group. Every `requires` entry names one.
 Every member address has a domain. No scalar conflict across any two
-fragments. A matcher has at least one field. A client's `display_name`
-and `description` are one bounded line each. A typo fails the rollout,
-not a login.
+fragments. A matcher has at least one field; a `service_account` matcher
+names `namespace` and `name`, with `cluster` optional; a `github`
+matcher's `visibility` is `public`, `private` or `internal`. A client's
+`display_name` and `description` are one bounded line each;
+`sign_in_exchange` is allowed on a `public` client only; a confidential
+client names its secret. A typo fails the rollout, not a login.
 
 ## What the console may change
 

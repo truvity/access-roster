@@ -58,7 +58,8 @@ the only one.
 > checked: against the cluster's published key set, the same rows token
 > exchange uses, rather than a TokenReview, so that the service holds no
 > access to the cluster it runs in. The directory's own
-> `DirectoryService` listener is still not served.
+> `DirectoryService` is still not served: the one consumer it had is the
+> same process now.
 
 ## Calling with an issuer token (anywhere else)
 
@@ -112,21 +113,29 @@ design is to hold almost no credential.
 A **CI job** does the same with its platform token: see
 [github-actions.md](github-actions.md). A **person** — a laptop over
 the network, a script an engineer runs — signs in once with `accessctl
-login` and exchanges from the cached login: `accessctl exchange
---audience <client id>`.
+login` and exchanges from the cached login: `accessctl token --audience
+<client id>` prints the token, `accessctl exchange` the whole response.
+
+That works because the CLI's own client, a `public` one, declares
+`sign_in_exchange: true`: of every token this issuer signs, the access
+token of a live sign-in at such a client, presented by that client, is
+the **only** one the exchange takes as a proof. An ID token names a
+person too, and is handed to every relying party they sign in to, so it
+is refused — a holder of one could otherwise exchange it for any
+audience the person's groups admit.
 
 Every one of these needs the service declared as a **client** in the
 policy, with `requires` naming the internal groups that may call it:
 
 ```yaml
 groups:
-  all:directory-roster:reader:
+  all:inventory:reader:
     matchers:
       - service_account: { namespace: team-sync, name: team-sync }   # a workload, this or any cluster the issuer trusts
 clients:
-  directory-roster:
+  inventory:
     kind: public
-    requires: [all:directory-roster:reader, all:access-roster:operator]
+    requires: [all:inventory:reader, all:access-roster:operator]
 ```
 
 The group is named for what it is a role *on* — `<scope>:<thing>:<role>`,
@@ -135,14 +144,21 @@ in it ([naming](../design/trust.md#naming)).
 
 ## Building a service that accepts callers
 
-Serve people and workloads on **two listeners**, one anchor each, and
-never mount an operator RPC on the workload port. The directory hub is
-the pattern:
+Serve people and workloads with **one anchor each**, and never mount an
+operator RPC where a workload's proof alone admits. Two listeners is the
+plain way to keep them apart; one listener with both verifiers, which is
+what access-roster's own API does, works when every route says which
+proof it takes:
 
 | Listener | Behind | Verifier | Accepts |
 |---|---|---|---|
-| console, `:8081` | `access-proxy` | `Issuer` (issuer URL + this console's client id) | people |
-| API, `:8080` | Service DNS | `Cluster` (TokenReview + audience + allow-list), and `Issuer` too when remote callers exist | workloads here; anything further away through the issuer |
+| console | `access-proxy`, or your own code flow | `Issuer` (issuer URL + this console's client id) | people |
+| API | Service DNS | `Cluster` (a token check, audience, the names it admits), and `Issuer` too when remote callers exist | workloads here; anything further away through the issuer |
+
+`Cluster` takes the check as a function: a TokenReview against your own
+API server, or a verification against the cluster's published key set
+as access-roster does, so that it holds no access to the cluster it runs
+in.
 
 In Go, both verifiers come from the module as **structs** and a listener
 composes what it needs:
@@ -205,7 +221,7 @@ caller appears, not before.
 
 ## Recovery is not one of these
 
-Break-glass at the hub and the issuer is a person minting a
+Break-glass at the service and the issuer is a person minting a
 ServiceAccount token by hand. It is the cluster anchor used deliberately
 as the floor for the day the issuer is unavailable, not a pattern for a
 service to imitate: see [design/trust.md](../design/trust.md#recovery-is-the-root-not-a-back-door).
