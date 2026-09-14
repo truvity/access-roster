@@ -39,17 +39,13 @@
 # and a set of objects already sitting in the namespace is exactly what
 # makes the next person skip the re-run.
 #
-# RUN IT FROM THE GITOPS REPO. The kernel context authenticates with
-# `kubectl oidc-login`, which is the kubelogin plugin, and kubectl finds
-# it only under the name `kubectl-oidc_login` -- which is in gitops'
-# devbox profile and not this one. This repo's devbox has `kubelogin`
-# under a name kubectl does not look for, and its own kubectl shadows
-# gitops'. The symptom is:
+# RUN IT WHERE THE CLUSTER'S KUBECONFIG LIVES. The script calls plain
+# `kubectl` and takes the context from --context; it brings no
+# credentials of its own. Run it from the repository whose environment
+# sets KUBECONFIG for the target cluster, calling the script by path:
 #
-#     error: unknown command "oidc-login" for "kubectl"
-#
-#     cd ~/github/truvity/gitops     # direnv brings the plugin and KUBECONFIG
-#     ~/github/truvity/access-roster/hack/migrate-workspaces.sh
+#     cd <the repository with the cluster's kubeconfig>
+#     <path to access-roster>/hack/migrate-workspaces.sh
 #
 # Usage:
 #   hack/migrate-workspaces.sh [--context CTX] [--from NS] [--to NS] \
