@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "@mui/material": "^9.4.0",
-    "@types/node": "^22.20.2",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.3.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
