@@ -269,6 +269,14 @@ chart-lint:
     # something else owns -- the shape a business surface needs, where a
     # demo path is open to any employee and the app behind it is not.
     helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml >/dev/null
+    # Routes can attach to a ListenerSet instead of a Gateway listener: the
+    # given parents land on BOTH routes (the proxy's own prefix and the
+    # console's), and no Gateway parent is invented beside them.
+    helm template access-proxy charts/access-proxy -f hack/access-proxy-listenerset.yaml > /tmp/access-proxy-listenerset.yaml
+    test "$(grep -c '^      kind: ListenerSet$' /tmp/access-proxy-listenerset.yaml)" = "2"
+    ! grep -q '^      kind: Gateway$' /tmp/access-proxy-listenerset.yaml
+    ! helm template access-proxy charts/access-proxy -f hack/access-proxy-listenerset.yaml \
+        --set 'exposure.parentRefs[0].name=' >/dev/null 2>&1
     # Describing one route twice, once with the single-route fields and
     # once in the list, silently ignores one of them -- and the ignored
     # one would be the protection somebody thought they configured.

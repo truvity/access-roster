@@ -31,6 +31,28 @@ A console whose own chart already routes its hostname sets
 only the `SecurityPolicy` and its own `/oauth2` route, and never claims the
 hostname twice.
 
+## Where the routes attach
+
+By default every route this chart renders attaches to one Gateway
+listener, named in `exposure.gateway`. Set `exposure.parentRefs` instead
+to attach to anything the Gateway API accepts as a parent — a
+`ListenerSet` that carries the hostname, or a Gateway and a ListenerSet
+together while the hostname moves from one to the other:
+
+```yaml
+exposure:
+  hostname: myconsole.example.internal
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: myconsole
+      namespace: gateway-system
+```
+
+The list is used as written, for the proxy's own route and the console's
+alike. Write `group` and `kind` out: the API server fills them in, and a
+tool comparing desired with live state reads their absence as drift.
+
 ## What it will not do for you
 
 **Mint the cookie secret.** A chart that generated one would generate a new

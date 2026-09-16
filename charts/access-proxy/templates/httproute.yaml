@@ -1,5 +1,4 @@
 {{- $e := .Values.exposure -}}
-{{- $gw := $e.gateway -}}
 # The proxy's own endpoints -- sign_in, start, callback, sign-out -- on the
 # console's hostname. Always rendered: they are this chart's, whether or
 # not it also routes the console itself.
@@ -12,13 +11,7 @@ metadata:
     {{- include "access-proxy.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: {{ required "exposure.gateway.name is required" $gw.name }}
-      namespace: {{ required "exposure.gateway.namespace is required" $gw.namespace }}
-      {{- with $gw.sectionName }}
-      sectionName: {{ . }}
-      {{- end }}
+    {{- include "access-proxy.parentRefs" $ | nindent 4 }}
   hostnames:
     - {{ required "exposure.hostname is required" $e.hostname | quote }}
   rules:
@@ -49,13 +42,7 @@ metadata:
     {{- include "access-proxy.labels" $ | nindent 4 }}
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: {{ $gw.name }}
-      namespace: {{ $gw.namespace }}
-      {{- with $gw.sectionName }}
-      sectionName: {{ . }}
-      {{- end }}
+    {{- include "access-proxy.parentRefs" $ | nindent 4 }}
   hostnames:
     - {{ $e.hostname | quote }}
   rules:

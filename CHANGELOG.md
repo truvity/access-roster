@@ -1,3 +1,11 @@
+## Unreleased
+
+- **access-proxy routes can attach to a ListenerSet.** `exposure.parentRefs`
+  replaces `exposure.gateway` when set and is used as written for every
+  route the chart renders, so a console's hostname can move to a
+  ListenerSet, or sit on a Gateway and a ListenerSet together while it
+  moves. Without it the chart renders exactly what it did.
+
 ## v1.8.1
 
 - **A rollout no longer leaves the GitHub controller failed for an
