@@ -1,4 +1,4 @@
-## Unreleased
+## v1.8.1
 
 - **A rollout no longer leaves the GitHub controller failed for an
   interval.** A policy change restarts the console's replicas and the
