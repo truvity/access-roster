@@ -578,7 +578,12 @@ Every answer the console gives carries the digest of the policy it was
 computed under, and the controller changes nothing on an answer under
 another policy: a rollout restarts the two at different moments, and
 across that gap a team the new policy binds looked to the old console
-like one nobody holds. A failed pass is reported over the last report
+like one nobody holds. Such a pass is tried again within seconds, not
+after an interval: the Service routes some questions to a replica on the
+previous policy until that replica has gone, and a whole interval of a
+failed report for a rollout that ended seconds later would be a false
+alarm. The retries are bounded, so a difference that does not end falls
+back to the interval. A failed pass is reported over the last report
 with rows, so the page does not blank while passes fail; a restarted
 controller takes what it had already recorded from that report, so a
 restart is not news in the audit trail.

@@ -42,6 +42,19 @@ const Source = "github-roster"
 // group here has, and the answer says when it was not enough.
 const holdersLimit = 10000
 
+// A console answering under another policy is, almost always, a rollout
+// still under way: the Service goes on routing some questions to a replica
+// on the previous policy until that replica has gone. A pass that met one
+// is tried again soon, not after a whole interval — policyRetries times,
+// each wait twice the last and no longer than policyRetryCap, then the
+// interval again. A difference that outlasts every retry is not a rollout,
+// and asking every few seconds would not end it.
+const (
+	defaultPolicyRetry = 5 * time.Second
+	policyRetryCap     = time.Minute
+	policyRetries      = 6
+)
+
 // StatusWriter replaces the report.
 type StatusWriter interface {
 	Replace(ctx context.Context, documents map[string]string) error
@@ -58,6 +71,10 @@ type StatusReader interface {
 type Config struct {
 	// Interval is how long between passes.
 	Interval time.Duration
+	// PolicyRetry is how soon a pass that met a console answering under
+	// another policy is tried again; each further retry waits twice as
+	// long. Zero is five seconds.
+	PolicyRetry time.Duration
 	// Enabled are the organisations the controller acts in. Every other
 	// bound organisation is derived and reported, and nothing is changed:
 	// an organisation is born disabled.
@@ -128,6 +145,9 @@ func New(cfg Config, deps Deps) *Controller {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 15 * time.Minute
 	}
+	if cfg.PolicyRetry <= 0 {
+		cfg.PolicyRetry = defaultPolicyRetry
+	}
 	return &Controller{
 		cfg: cfg, deps: deps, tokens: map[string]installationToken{}, held: map[string]map[string]bool{},
 		last:          map[string]status.Org{},
@@ -135,27 +155,44 @@ func New(cfg Config, deps Deps) *Controller {
 	}
 }
 
-// Run passes now and then every interval, until the context ends.
+// Run passes now and then every interval, until the context ends. A pass
+// that met a console answering under another policy is tried again soon
+// (see policyRetries).
 func (c *Controller) Run(ctx context.Context) error {
-	ticker := time.NewTicker(c.cfg.Interval)
-	defer ticker.Stop()
+	retries := 0
 	for {
-		c.Pass(ctx)
+		started := time.Now()
+		otherPolicy := c.Pass(ctx)
+		wait := c.cfg.Interval - time.Since(started)
+		if otherPolicy && retries < policyRetries {
+			wait = min(c.cfg.PolicyRetry<<retries, policyRetryCap, c.cfg.Interval)
+			retries++
+			c.deps.Log.InfoContext(ctx, "the console answered under another policy, as it does while a rollout replaces it; passing again soon",
+				"in", wait, "retry", retries, "of", policyRetries)
+		} else {
+			retries = 0
+		}
+		timer := time.NewTimer(max(wait, 0))
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return ctx.Err()
-		case <-ticker.C:
+		case <-timer.C:
 		}
 	}
 }
 
 // Pass goes over every bound organisation once and replaces the report.
-func (c *Controller) Pass(ctx context.Context) {
+// It says whether any answer it was given came from a console under
+// another policy — a pass worth trying again soon, because the difference
+// is usually a rollout that has not finished.
+func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
 	documents := map[string]string{}
 	links, linksErr := c.checkLinks(ctx)
 	confirmed := c.confirmations(ctx)
 	for _, org := range slices.Sorted(maps.Keys(c.deps.Bindings)) {
-		report := c.organisation(ctx, org, c.deps.Bindings[org], links, linksErr, confirmed[org])
+		report, differs := c.organisation(ctx, org, c.deps.Bindings[org], links, linksErr, confirmed[org])
+		otherPolicy = otherPolicy || differs
 		c.metrics.recordPass(ctx, &report)
 		document, err := status.Encode(report)
 		if err != nil {
@@ -167,25 +204,26 @@ func (c *Controller) Pass(ctx context.Context) {
 	if err := c.deps.Status.Replace(ctx, documents); err != nil {
 		c.deps.Log.ErrorContext(ctx, "the report could not be replaced", "error", err)
 	}
+	return otherPolicy
 }
 
 // organisation is one organisation's pass, ending in its report whatever
-// happened.
+// happened, and whether an answer came under another policy.
 func (c *Controller) organisation(
 	ctx context.Context, org string, binding policy.GitHubOrg, links []reconcile.Link, linksErr error, confirmed string,
-) status.Org {
+) (status.Org, bool) {
 	enabled := c.cfg.Enabled[org]
 	started := c.deps.Now().UTC()
 	// A failed pass reports the failure over what was last known: the page
 	// keeps its rows, and a controller that starts after the failure still
 	// finds the held and reported rows it recorded, rather than an empty
 	// report that would have it record them all again.
-	fail := func(err error) status.Org {
+	fail := func(err error) (status.Org, bool) {
 		c.deps.Log.WarnContext(ctx, "a pass over an organisation failed", "org", org, "error", err)
 		report := c.previous(ctx, org)
 		report.Org, report.Enabled = org, enabled
 		report.Tick = status.Tick{At: started, Outcome: status.OutcomeFailed, Error: err.Error()}
-		return report
+		return report, errors.Is(err, errPolicyDiffers)
 	}
 
 	// Without the links every linked member reads as unlinked: nothing
@@ -210,7 +248,8 @@ func (c *Controller) organisation(
 	guards := c.guards(ctx, client, token, state, confirmed)
 
 	draft := reconcile.Derive(org, binding, holders, state)
-	report, actions := draft.Decide(c.confirm(ctx, draft.Confirm()))
+	confirmations, otherPolicy := c.confirm(ctx, draft.Confirm())
+	report, actions := draft.Decide(confirmations)
 	actions = reconcile.Guard(&report, actions, guards)
 	report.OutsideCollaborators = c.collaborators(ctx, client, token)
 	report.Enabled = enabled
@@ -229,7 +268,7 @@ func (c *Controller) organisation(
 	c.mu.Lock()
 	c.last[org] = report
 	c.mu.Unlock()
-	return report
+	return report, otherPolicy
 }
 
 // previous is an organisation's last report with its rows: this process's
@@ -383,13 +422,16 @@ func (c *Controller) samePolicy(digest string) error {
 }
 
 // confirm asks about each address a removal would rest on. One that could
-// not be asked is simply not confirmed, which holds its removal.
-func (c *Controller) confirm(ctx context.Context, emails []string) map[string]reconcile.Confirmation {
+// not be asked is simply not confirmed, which holds its removal. It also
+// says whether any answer came under another policy.
+func (c *Controller) confirm(ctx context.Context, emails []string) (map[string]reconcile.Confirmation, bool) {
 	out := make(map[string]reconcile.Confirmation, len(emails))
+	otherPolicy := false
 	for _, email := range emails {
 		response, err := c.deps.Access.Explain(ctx, connect.NewRequest(&directoryrosterv1.ExplainRequest{Email: email}))
 		if err == nil {
 			err = c.samePolicy(response.Msg.GetPolicyDigest())
+			otherPolicy = otherPolicy || errors.Is(err, errPolicyDiffers)
 		}
 		if err != nil {
 			c.deps.Log.WarnContext(ctx, "a removal could not be confirmed and is held", "email", email, "error", err)
@@ -406,7 +448,7 @@ func (c *Controller) confirm(ctx context.Context, emails []string) map[string]re
 		}
 		out[email] = confirmation
 	}
-	return out
+	return out, otherPolicy
 }
 
 // act makes the changes. One that GitHub refuses becomes a held row with

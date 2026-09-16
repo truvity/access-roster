@@ -210,7 +210,14 @@ changes nothing, and is reported over the last report that had rows, so
 the page does not blank while passes fail. A console that answers under
 a different policy than the controller loaded — the two restart at
 different moments during a rollout — is the same: the pass changes
-nothing and is retried next interval.
+nothing. It is tried again within seconds rather than next interval,
+because the difference usually lasts only until the last replica on the
+previous policy has gone: after 5 seconds, then twice as long each time,
+up to a minute, six times. A difference that outlasts those retries is not
+a rollout — check that every console replica runs the policy the
+controller logged at start (`policy` on "the GitHub controller is
+assembled") — and the pass, with its retries, comes round again each
+interval.
 
 **Needs you on a GitHub organisation:**
 

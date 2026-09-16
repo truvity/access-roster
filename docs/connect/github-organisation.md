@@ -126,7 +126,9 @@ computed under; the controller changes nothing on a holders list under
 another policy, and confirms no removal on an `Explain` under another
 one. A rollout restarts the two at different moments, and without that
 rule a team the new policy binds would have been emptied by a controller
-asking a console that had not yet heard of it.
+asking a console that had not yet heard of it. Such a pass is tried again
+within seconds, so the page shows it failed only until the last replica
+on the previous policy has gone.
 
 The controller pushes metrics over OTLP when `telemetry.otlpEndpoint`
 is set: passes, changes, rows by state, seats, breaker trips, links by
