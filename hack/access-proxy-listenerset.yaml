@@ -1,0 +1,22 @@
+# An access-proxy exposure whose routes attach to a ListenerSet rather than
+# a Gateway listener, for chart-lint.
+exposure:
+  hostname: console.example
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: console
+      namespace: gateway-system
+  posture: authenticated
+  backend:
+    name: console
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: access-proxy-sessions.access-system.svc:6379
+  cookieSecret:
+    name: console-cookie

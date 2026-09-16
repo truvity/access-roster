@@ -29,6 +29,16 @@ exposure:
     name: ""
     namespace: ""
     sectionName: ""
+  # Parents for every route, written out in full; replaces `gateway` when
+  # set. For a ListenerSet, or a Gateway and a ListenerSet together while a
+  # hostname moves from one to the other. group and kind are best written:
+  # the API server fills them in, and a tool that compares desired with
+  # live state reads a missing field as drift.
+  #   - group: gateway.networking.k8s.io
+  #     kind: ListenerSet
+  #     name: console
+  #     namespace: gateway-system
+  parentRefs: []
   # Paths to protect. Anything unlisted gets no route from this chart and
   # so no policy: unprotected by omission is a decision, and it should
   # look like one.
