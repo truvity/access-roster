@@ -1,4 +1,4 @@
-## Unreleased
+## v1.9.0
 
 - **access-proxy routes can attach to a ListenerSet.** `exposure.parentRefs`
   replaces `exposure.gateway` when set and is used as written for every
