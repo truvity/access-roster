@@ -275,6 +275,9 @@ chart-lint:
     helm template access-proxy charts/access-proxy -f hack/access-proxy-listenerset.yaml > /tmp/access-proxy-listenerset.yaml
     test "$(grep -c '^      kind: ListenerSet$' /tmp/access-proxy-listenerset.yaml)" = "2"
     ! grep -q '^      kind: Gateway$' /tmp/access-proxy-listenerset.yaml
+    # Every field of the parent, not only its kind: a dropped group or a
+    # changed name or namespace is a different parent.
+    test "$(yq -o=json -I=0 'select(.kind == "HTTPRoute") | .spec.parentRefs' /tmp/access-proxy-listenerset.yaml | sort -u)" = '[{"group":"gateway.networking.k8s.io","kind":"ListenerSet","name":"console","namespace":"gateway-system"}]'
     ! helm template access-proxy charts/access-proxy -f hack/access-proxy-listenerset.yaml \
         --set 'exposure.parentRefs[0].name=' >/dev/null 2>&1
     # Describing one route twice, once with the single-route fields and
