@@ -259,7 +259,7 @@ Three layers, and none is the fallback for another.
 | access-roster is down | no new sign-ins anywhere; existing sessions and tokens live to expiry; recovery is by cluster proof |
 | S3 unreachable | events queue in the replica and are written when it answers; the Audit page lists what is queued; a recovery sign-in is refused meanwhile |
 | a GitHub pass fails | the last report with rows stands; the pass is retried next interval; nothing is removed on a failed read |
-| the console answers the controller under another policy | the pass changes nothing and is retried: a rollout restarts the two at different moments, and a removal decided across that gap would be wrong |
+| the console answers the controller under another policy | the pass changes nothing and is tried again within seconds, six times at most before the interval resumes: a rollout restarts the two at different moments, and a removal decided across that gap would be wrong |
 | an organisation's seats cannot be read | nobody is invited into it until they can |
 
 The rule under all of them: **access is removed only on an authoritative

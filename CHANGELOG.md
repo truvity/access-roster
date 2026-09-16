@@ -1,3 +1,18 @@
+## Unreleased
+
+- **A rollout no longer leaves the GitHub controller failed for an
+  interval.** A policy change restarts the console's replicas and the
+  controller at different moments, and for a few seconds the Service can
+  still route the controller's questions to a replica on the previous
+  policy. The controller rightly changed nothing on those answers — and
+  then waited its whole interval (15 minutes by default) before asking
+  again, so the GitHub page showed the pass failed and newly bound teams
+  stayed empty until then. A pass that meets another policy, in a holders
+  list or in a removal's confirmation, is now tried again after 5
+  seconds, then twice as long each time up to a minute, six times at
+  most; after that the interval resumes. Nothing is changed on an answer
+  under another policy, as before.
+
 ## v1.8.0
 
 - **Workspace credentials written by the release-rename script migrate

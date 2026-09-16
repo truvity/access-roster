@@ -45,6 +45,8 @@ type console struct {
 	// policy is the digest the console answers under; explainPolicy, when
 	// set, is a second replica's for Explain alone.
 	policy, explainPolicy string
+	// asked counts the holders questions, one per group asked about.
+	asked int
 }
 
 // testPolicy is the digest the rig's controller decides with.
@@ -55,6 +57,7 @@ func (c *console) ListHolders(
 ) (*connect.Response[directoryrosterv1.ListHoldersResponse], error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.asked++
 	out := &directoryrosterv1.ListHoldersResponse{PolicyDigest: c.policy}
 	for email, live := range c.holders[req.Msg.GetGroup()] {
 		out.Holders = append(out.Holders, &directoryrosterv1.Holder{Email: email, Live: live, Authoritative: true})
@@ -247,7 +250,9 @@ type rig struct {
 	audit   *auditLog
 	report  *report
 	links   *links
-	run     func(enabled bool)
+	// run passes once and says whether an answer came under another
+	// policy.
+	run func(enabled bool) bool
 	// newbie is the joiner's linked account.
 	newbie *githubfake.Account
 	// appsDir holds the Apps' credentials, for a second controller.
@@ -308,7 +313,7 @@ func newRig(t *testing.T) *rig {
 	// One controller per setting, kept across passes: what it remembers
 	// between passes is part of what is under test.
 	controllers := map[bool]*controller.Controller{}
-	r.run = func(enabled bool) {
+	r.run = func(enabled bool) bool {
 		c, ok := controllers[enabled]
 		if !ok {
 			c = controller.New(controller.Config{AppsDir: dir, Enabled: map[string]bool{"globex": enabled}}, controller.Deps{
@@ -317,7 +322,7 @@ func newRig(t *testing.T) *rig {
 			})
 			controllers[enabled] = c
 		}
-		c.Pass(context.Background())
+		return c.Pass(context.Background())
 	}
 	return r
 }
@@ -556,7 +561,9 @@ func TestAnAnswerUnderAnotherPolicyChangesNothing(t *testing.T) {
 
 	// The scenario has teeth: under one policy, dev leaves the team.
 	same := setup(t)
-	same.run(true)
+	if same.run(true) {
+		t.Error("a pass under one policy asked to be tried again soon")
+	}
 	if !removedDev(same) {
 		t.Fatalf("under one policy dev was not removed from team-platform: %v", same.github.Did())
 	}
@@ -564,7 +571,9 @@ func TestAnAnswerUnderAnotherPolicyChangesNothing(t *testing.T) {
 	// The console answers under another policy: the pass changes nothing.
 	other := setup(t)
 	other.console.policy = "old-policy"
-	other.run(true)
+	if !other.run(true) {
+		t.Error("a pass on holders under another policy did not ask to be tried again soon")
+	}
 	if did := other.github.Did(); len(did) != 0 {
 		t.Errorf("a pass on answers under another policy changed %v", did)
 	}
@@ -576,10 +585,98 @@ func TestAnAnswerUnderAnotherPolicyChangesNothing(t *testing.T) {
 	// removal is not confirmed, and waits.
 	mixed := setup(t)
 	mixed.console.explainPolicy = "old-policy"
-	mixed.run(true)
+	if !mixed.run(true) {
+		t.Error("a pass on a confirmation under another policy did not ask to be tried again soon")
+	}
 	if removedDev(mixed) {
 		t.Errorf("a removal was confirmed by an answer under another policy: %v", mixed.github.Did())
 	}
+}
+
+// A rollout ends: the replica still on the old policy goes, and the console
+// answers under the controller's. The controller does not wait out its
+// interval to notice — it tries again within seconds — and nothing is
+// changed while the answers differ. A difference that never ends is tried
+// a bounded number of times, then left to the interval.
+func TestAnotherPolicyIsTriedAgainSoonAndChangesNothingMeanwhile(t *testing.T) {
+	asked := func(r *rig) int {
+		r.console.mu.Lock()
+		defer r.console.mu.Unlock()
+		return r.console.asked
+	}
+	eventually := func(t *testing.T, what string, ok func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); !ok(); {
+			if time.Now().After(deadline) {
+				t.Fatalf("gave up waiting for %s", what)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	start := func(t *testing.T, r *rig) {
+		t.Helper()
+		// An interval no test outlives: every pass after the first is a
+		// retry.
+		c := controller.New(controller.Config{
+			AppsDir: r.appsDir, Enabled: map[string]bool{"globex": true}, Interval: time.Hour, PolicyRetry: time.Millisecond,
+		}, controller.Deps{
+			Log: slog.New(slog.NewTextHandler(io.Discard, nil)), GitHub: r.github.Client(),
+			Access: r.console, Audit: r.audit, Status: r.report, Links: r.links, Bindings: bindings, Policy: testPolicy,
+		})
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_ = c.Run(ctx)
+		}()
+		t.Cleanup(func() { cancel(); <-done })
+	}
+
+	t.Run("a rollout that ends", func(t *testing.T) {
+		r := newRig(t)
+		r.console.mu.Lock()
+		r.console.policy = "old-policy"
+		r.console.mu.Unlock()
+		start(t, r)
+
+		// Passes against the old policy: each is tried again, and none
+		// changes anything.
+		eventually(t, "a third pass under the old policy", func() bool { return asked(r) >= 3 })
+		if did := r.github.Did(); len(did) != 0 {
+			t.Fatalf("passes on answers under another policy changed %v", did)
+		}
+
+		r.console.mu.Lock()
+		r.console.policy = testPolicy
+		r.console.mu.Unlock()
+		eventually(t, "a pass under the same policy", func() bool {
+			documents, _ := r.report.Reports(context.Background())
+			got, err := status.Decode(documents[status.Key("globex")])
+			return err == nil && got.Tick.Outcome == status.OutcomeApplied
+		})
+		if !slices.Contains(r.github.Did(), "invite @newbie") {
+			t.Errorf("once both ran one policy the pass did not act: %v", r.github.Did())
+		}
+	})
+
+	t.Run("a difference that does not end", func(t *testing.T) {
+		r := newRig(t)
+		r.console.mu.Lock()
+		r.console.policy = "old-policy"
+		r.console.mu.Unlock()
+		start(t, r)
+
+		// The first pass and six retries, each stopped at its first
+		// holders question — then nothing until the interval.
+		eventually(t, "the last retry", func() bool { return asked(r) >= 7 })
+		time.Sleep(200 * time.Millisecond)
+		if n := asked(r); n != 7 {
+			t.Errorf("a lasting difference was asked about %d times, want a first pass and six retries", n)
+		}
+		if did := r.github.Did(); len(did) != 0 {
+			t.Errorf("passes on answers under another policy changed %v", did)
+		}
+	})
 }
 
 // GitHub's refusal of one change holds that change with GitHub's words,
