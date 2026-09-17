@@ -45,6 +45,7 @@ import (
 	"github.com/truvity/access-roster/internal/audit/sinkrpc"
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
+	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/githubroster/runnerapp"
@@ -112,6 +113,9 @@ type Config struct {
 	// githubRunnerTiers are the tiers an operator may create a runner App
 	// for, from GITHUB_RUNNER_TIERS, comma-separated. Empty keeps none.
 	githubRunnerTiers []string
+	// githubCatalogue is every GitHub App the deployment declares, from
+	// the file GITHUB_APPS_CATALOGUE_FILE names. Empty declares none.
+	githubCatalogue *catalogue.Catalogue
 }
 
 // Load reads the configuration from the environment.
@@ -208,6 +212,12 @@ func Load() (Config, error) {
 		default:
 			c.githubRunnerTiers = append(c.githubRunnerTiers, tier)
 		}
+	}
+	// A malformed catalogue stops the service: an App created from a wrong
+	// declaration holds the wrong permissions, and nothing here can change
+	// them afterwards.
+	if c.githubCatalogue, err = catalogue.Load(envString("GITHUB_APPS_CATALOGUE_FILE", "")); err != nil {
+		return Config{}, fmt.Errorf("GITHUB_APPS_CATALOGUE_FILE: %w", err)
 	}
 	return c, nil
 }
@@ -403,6 +413,9 @@ type stores struct {
 	// githubRunnerApps is where runner Apps are kept. Nil with the memory
 	// store, for the same reason.
 	githubRunnerApps *kube.GitHubRunnerApps
+	// githubCatalogueApps is where catalogue Apps are kept. Nil with the
+	// memory store, for the same reason.
+	githubCatalogueApps *kube.GitHubCatalogueApps
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -466,6 +479,12 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.WarnContext(ctx, "the Secret runner Apps are kept in could not be created",
 			"secret", githubRunnerApps.SecretName(), "error", err)
 	}
+	// And the Secret catalogue Apps are kept in, for the same reason.
+	githubCatalogueApps := kube.NewGitHubCatalogueApps(client)
+	if err = githubCatalogueApps.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the Secret catalogue Apps are kept in could not be created",
+			"secret", githubCatalogueApps.SecretName(), "error", err)
+	}
 	// Each connection's credential carries its record, so the GitHub Apps
 	// Secret alone restores every organisation: put back a record a
 	// restore left missing, and copy records into credentials written
@@ -509,8 +528,10 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		// is kept either way: an App created before a tier was dropped
 		// stays visible, so it can be disconnected.
 		githubRunnerApps: githubRunnerApps,
-		workspaces:       workspaces,
-		credentials:      credentials,
+		// Likewise an App whose entry the catalogue no longer declares.
+		githubCatalogueApps: githubCatalogueApps,
+		workspaces:          workspaces,
+		credentials:         credentials,
 		settings: kube.NewSettings(client, kube.DeclaredClient{
 			Name:      cfg.oauthSecretName,
 			IDKey:     cfg.oauthIDKey,
@@ -653,6 +674,13 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			"identity", "rung:<name>, emp:<slug>")
 	}
 
+	// A grant naming a group the policy does not declare would read as
+	// though somebody may ask for a token, and nobody could.
+	if undeclared := cfg.githubCatalogue.UndeclaredGroups(set.HasGroup); len(undeclared) > 0 {
+		return nil, fmt.Errorf("GITHUB_APPS_CATALOGUE_FILE: grants name groups the policy does not declare: %s",
+			strings.Join(undeclared, "; "))
+	}
+
 	authorizer := access.NewAuthorizer(set, directory, cfg.holdWindow)
 
 	sessionKey := kept.sessionKey
@@ -741,6 +769,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHubConfirmations: githubConfirmations(kept.githubOrgs),
 		GitHubRunnerApps:    githubRunnerApps(kept.githubRunnerApps),
 		GitHubRunnerTiers:   cfg.githubRunnerTiers,
+		GitHubCatalogue:     cfg.githubCatalogue,
+		GitHubCatalogueApps: githubCatalogueApps(kept.githubCatalogueApps),
 		Audit:               recorder,
 		AuditSink:           auditSink,
 	})
@@ -1183,6 +1213,14 @@ func githubConnections(store *kube.GitHubOrgs, demonstration bool) server.GitHub
 
 // githubRunnerApps is the store as the console's interface, or nil.
 func githubRunnerApps(store *kube.GitHubRunnerApps) server.GitHubRunnerApps {
+	if store == nil {
+		return nil
+	}
+	return store
+}
+
+// githubCatalogueApps is the store as the console's interface, or nil.
+func githubCatalogueApps(store *kube.GitHubCatalogueApps) server.GitHubCatalogueApps {
 	if store == nil {
 		return nil
 	}

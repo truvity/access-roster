@@ -1,0 +1,15 @@
+{{- if .Values.githubApps.catalogue }}
+# The GitHub Apps this deployment declares, created and installed by an
+# operator from the console. Nothing here is a secret: names, permissions
+# and grants. The keys GitHub hands over are kept by the service, in the
+# Secret <release>-github-catalogue-apps.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-issuer.fullname" . }}-github-apps-catalogue
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+data:
+  catalogue.yaml: |
+    {{- toYaml (dict "apps" .Values.githubApps.catalogue) | nindent 4 }}
+{{- end }}

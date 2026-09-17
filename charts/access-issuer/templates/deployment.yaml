@@ -28,6 +28,11 @@ spec:
         # git and nowhere in the running service.
         checksum/overlay: {{ include (print $.Template.BasePath "/overlay-configmap.yaml") . | sha256sum }}
         {{- end }}
+        {{- if .Values.githubApps.catalogue }}
+        # The catalogue is read once at start, so an App declared without a
+        # rollout is one the console does not offer.
+        checksum/github-apps-catalogue: {{ include (print $.Template.BasePath "/github-apps-catalogue-configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -145,6 +150,10 @@ spec:
             - name: GITHUB_RUNNER_TIERS
               value: {{ join "," . | quote }}
             {{- end }}
+            {{- if .Values.githubApps.catalogue }}
+            - name: GITHUB_APPS_CATALOGUE_FILE
+              value: /var/run/access-issuer/github-apps-catalogue.yaml
+            {{- end }}
             - name: POLICY_DIR
               value: /var/run/access-issuer/policy
             - name: TOKEN_LIFETIME
@@ -241,6 +250,12 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.githubApps.catalogue }}
+            - name: github-apps-catalogue
+              mountPath: /var/run/access-issuer/github-apps-catalogue.yaml
+              subPath: catalogue.yaml
+              readOnly: true
+            {{- end }}
             {{- if .Values.directory.workspaces }}
             - name: overlay
               mountPath: /var/run/access-issuer/directory/overlay.yaml
@@ -298,6 +313,11 @@ spec:
         - name: clusters
           configMap:
             name: {{ include "access-issuer.fullname" . }}-clusters
+        {{- end }}
+        {{- if .Values.githubApps.catalogue }}
+        - name: github-apps-catalogue
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-github-apps-catalogue
         {{- end }}
         {{- if .Values.directory.workspaces }}
         - name: overlay
