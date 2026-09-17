@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -771,7 +772,7 @@ type githubDisconnect struct {
 }
 
 // pinFlow pins a flow to this browser for as long as the two clicks have.
-func (c *Console) pinFlow(header interface{ Add(key, value string) }, state string) {
+func (c *Console) pinFlow(header http.Header, state string) {
 	header.Add("Set-Cookie", access.ConnectCookie(state, c.deps.SecureCookie, githubFlowWindow).String())
 }
 
