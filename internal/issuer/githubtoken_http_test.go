@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubapp/githubfake"
+	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/policy"
@@ -109,6 +111,9 @@ type githubTokenIssuer struct {
 	iss    *issuer.Issuer
 	github *githubfake.Org
 	trail  *audit.MemoryWriter
+	// recent is the ring an App's page reads: the same requests the trail
+	// gets, kept where a page load can reach them.
+	recent *mints.Ring
 }
 
 // serveGitHubTokens must not run in parallel: the fake GitHub moves the
@@ -133,8 +138,10 @@ func serveGitHubTokens(t *testing.T) githubTokenIssuer {
 	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, adaDirectory(), issuer.NewMemoryState())
 	trail := audit.NewMemoryWriter(100)
 	iss.UseAudit(audit.NewLog(slog.New(slog.DiscardHandler), sinkrpc.InProcess(trail), "test"))
+	recent := mints.New(0, time.Now())
 	iss.UseGitHubApps(issuer.GitHubApps{
 		Catalogue: listed,
+		Recent:    recent,
 		Store: catalogueStore{
 			"publisher":   {ID: "publisher", Org: "example-org", AppID: 7, AppSlug: "publisher", InstallationID: 42},
 			"pending":     {ID: "pending", Org: "example-org", AppID: 8, AppSlug: "pending"},
@@ -152,7 +159,7 @@ func serveGitHubTokens(t *testing.T) githubTokenIssuer {
 	}
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	return githubTokenIssuer{server: server, iss: iss, github: github, trail: trail}
+	return githubTokenIssuer{server: server, iss: iss, github: github, trail: trail, recent: recent}
 }
 
 // ask posts one installation token request.
@@ -477,5 +484,71 @@ func TestTheFirstGrantCoveringTheWholeRequestIsChosen(t *testing.T) {
 		if err != nil || grant.Group != tc.grant || !slices.Equal(asks.Repositories, tc.asks.Repositories) || !maps.Equal(asks.Permissions, tc.asks.Permissions) {
 			t.Errorf("%s = %s %+v %v, want %s %+v", name, grant.Group, asks, err, tc.grant, tc.asks)
 		}
+	}
+}
+
+// Every request an App's page shows is one the trail holds too: the ring
+// is made from the event, not beside it. A mint and a refusal both
+// arrive, the refusal saying why, and the token is in neither.
+func TestEveryRequestIsKeptForTheAppsPageAndForTheTrail(t *testing.T) {
+	g := serveGitHubTokens(t)
+
+	if status, body, _ := g.ask(t, "github-app:publisher", url.Values{
+		"subject_token": {"job:release.yml"}, "audience": {"github-app:publisher"},
+		"repositories": {"app"}, "scope": {"contents:write"},
+	}); status != http.StatusOK {
+		t.Fatalf("mint = %d %v", status, body)
+	}
+	if status, _, _ := g.ask(t, "github-app:publisher", url.Values{
+		"subject_token": {"job:release.yml"}, "audience": {"github-app:publisher"},
+		"repositories": {"payments"}, "scope": {"contents:write"},
+	}); status != http.StatusBadRequest {
+		t.Fatalf("a repository outside every grant = %d, want 400", status)
+	}
+
+	recent := g.recent.Recent("publisher")
+	if len(recent) != 2 {
+		t.Fatalf("the App's page would show %d requests, want 2", len(recent))
+	}
+	if recent[0].Outcome != audit.OutcomeRefused || !strings.Contains(recent[0].Reason, "payments") {
+		t.Errorf("the refusal reads %+v", recent[0])
+	}
+	if recent[1].Outcome != audit.OutcomeOK || recent[1].Grant != "all:release:publisher" {
+		t.Errorf("the mint reads %+v", recent[1])
+	}
+	if !slices.Equal(recent[1].Repositories, []string{"app"}) || recent[1].Permissions != "contents:write" {
+		t.Errorf("the mint lost what it was for: %+v", recent[1])
+	}
+	if recent[1].Subject == "" || recent[1].Proof != "ci" || recent[1].At.IsZero() {
+		t.Errorf("the mint lost who asked or when: %+v", recent[1])
+	}
+	if len(g.minted()) != 2 {
+		t.Errorf("the trail holds %d of the two requests", len(g.minted()))
+	}
+	for _, token := range recent {
+		if strings.Contains(token.Permissions+token.Reason+token.Subject, g.github.Token) {
+			t.Error("the installation token is in what the page shows")
+		}
+	}
+	g.assertTokenNotAudited(t)
+}
+
+// A ring keyed on whatever a caller asked for is a map an anonymous
+// caller can fill: the first refusals happen before anything is
+// authenticated. Only an App the catalogue declares is kept — the trail
+// keeps the rest, which is what the trail is for.
+func TestARequestForAnUndeclaredAppIsTrailedAndNotKept(t *testing.T) {
+	g := serveGitHubTokens(t)
+
+	if status, _, _ := g.ask(t, "", url.Values{
+		"audience": {"github-app:not-declared-anywhere"},
+	}); status != http.StatusBadRequest {
+		t.Fatalf("a request with no subject token = %d, want 400", status)
+	}
+	if kept := g.recent.Recent("not-declared-anywhere"); len(kept) != 0 {
+		t.Errorf("an undeclared App has a ring: %+v", kept)
+	}
+	if len(g.minted()) != 1 {
+		t.Errorf("the trail holds %d of the request, want 1", len(g.minted()))
 	}
 }

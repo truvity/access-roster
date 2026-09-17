@@ -25,7 +25,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
-import { ago, at, audit, github, reason } from "./api";
+import { ago, at, github, reason } from "./api";
 import type { GetGitHubStatusResponse, GitHubAppGrant, GitHubOrganisation, ListGitHubAppsResponse } from "./gen/directoryroster/v1/github_pb";
 import {
   appsNeedingYou,
@@ -42,6 +42,9 @@ import {
   peopleOf,
   permissionDiffers,
   purposeWords,
+  recentTokensEmpty,
+  recentTokensKept,
+  recentTokensProblem,
   repositoryWords,
   rowsOf,
   sentence,
@@ -1156,66 +1159,92 @@ function GrantLine({ grant, org }: { grant: GitHubAppGrant; org: string }) {
   );
 }
 
-/** How long the last tokens are waited for before the page says it could
- *  not load them, rather than leave a spinner that ends in a bare error. */
-const recentTokensWait = 8000;
+/** When this service started keeping the recent tokens, in words, or
+ *  empty where it does not say: `ago` answers "never" for nothing, which
+ *  is not what a missing answer means. */
+function sinceWords(keptSince?: { seconds: bigint; nanos: number }): string {
+  const when = at(keptSince);
+  return when ? ago(when) : "";
+}
 
-/** The last installation tokens asked of an App, minted or refused, from
- *  the audit trail the Audit page reads: who asked, for what, and what
- *  was decided. Never the token, which the trail does not hold. */
+/** The last installation tokens asked of an App, minted or refused: who
+ *  asked, under which grant, for what, and what was decided. Never the
+ *  token, which nothing keeps.
+ *
+ *  From the service's own memory of them rather than from the audit
+ *  trail. The trail holds every one of them for as long as the bucket
+ *  does, but narrowing it to one App scans object after object of hour
+ *  after hour: this section used to ask it, wait fifteen seconds and
+ *  apologise. The trail is one link away, narrowed to this App. */
 function RecentTokens({ id }: { id: string }) {
-  const recent = useAsync(() => audit.listAuditEvents({ kind: "github.token.minted", target: `github-app:${id}`, limit: 10 }, { timeoutMs: recentTokensWait }), [id]);
-  const events = recent.value?.events ?? [];
+  const recent = useAsync(() => github.listGitHubAppTokens({ id }), [id]);
+  const tokens = recent.value?.tokens ?? [];
+  const trail = (
+    <Ref to={paths.audit({ kind: "github.token.minted", target: `github-app:${id}` })}>Audit</Ref>
+  );
   return (
-    <Section title="Recent tokens" hint="the last ten asked for, from the audit trail; tokens themselves are never kept">
+    <Section title="Recent tokens" hint="the last ten asked for, minted or refused; tokens themselves are never kept">
       <Loading busy={recent.loading} />
       {recent.error ? (
         <Nothing>
-          Recent tokens could not be loaded right now. The <Ref to={paths.audit()}>Audit</Ref> page lists every token asked for.
+          {recentTokensProblem(recent.error)} The {trail} page holds every token asked for.
         </Nothing>
       ) : null}
-      {!recent.loading && !recent.error && events.length === 0 ? <Nothing>No token has been asked for lately.</Nothing> : null}
-      {events.length > 0 ? (
-        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>When</TableCell>
-                <TableCell>By</TableCell>
-                <TableCell>Repositories</TableCell>
-                <TableCell>Permissions</TableCell>
-                <TableCell>Outcome</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {events.map((event) => (
-                <TableRow key={event.id} hover>
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>{ago(at(event.at))}</TableCell>
-                  <TableCell>
-                    <Mono>{event.subject || "—"}</Mono>
-                    {event.attributes.grant ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        through{" "}
-                        <Ref to={paths.group(event.attributes.grant)} mono>
-                          {event.attributes.grant}
-                        </Ref>
-                      </Typography>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <Mono>{event.attributes.repositories || "every repository"}</Mono>
-                  </TableCell>
-                  <TableCell>
-                    <Mono>{event.attributes.permissions || "—"}</Mono>
-                  </TableCell>
-                  <TableCell>
-                    {event.outcome === "ok" ? "minted" : <State kind={event.outcome === "failed" ? "failed" : "refused"} title={event.reason || undefined} />}
-                  </TableCell>
+      {!recent.loading && !recent.error && tokens.length === 0 ? (
+        <Nothing>
+          {recentTokensEmpty(sinceWords(recent.value?.keptSince))} The {trail} page holds every token asked for, however long ago.
+        </Nothing>
+      ) : null}
+      {tokens.length > 0 ? (
+        <>
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>When</TableCell>
+                  <TableCell>By</TableCell>
+                  <TableCell>Repositories</TableCell>
+                  <TableCell>Permissions</TableCell>
+                  <TableCell>Outcome</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {tokens.map((token, i) => (
+                  <TableRow key={`${at(token.at)?.toISOString() ?? i}-${i}`} hover>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>
+                      <Tooltip title={at(token.at)?.toISOString() ?? ""}>
+                        <span>{ago(at(token.at))}</span>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      <Mono>{token.subject || "—"}</Mono>
+                      {token.grant ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                          through{" "}
+                          <Ref to={paths.group(token.grant)} mono>
+                            {token.grant}
+                          </Ref>
+                        </Typography>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <Mono>{token.repositories.length ? token.repositories.join(" ") : "every repository"}</Mono>
+                    </TableCell>
+                    <TableCell>
+                      <Mono>{token.permissions || "—"}</Mono>
+                    </TableCell>
+                    <TableCell>
+                      {token.outcome === "ok" ? "minted" : <State kind={token.outcome === "failed" ? "failed" : "refused"} title={token.reason || undefined} />}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+            {recentTokensKept(sinceWords(recent.value?.keptSince))} The {trail} page holds every token asked for, however long ago.
+          </Typography>
+        </>
       ) : null}
     </Section>
   );

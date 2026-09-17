@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
+	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
 	"github.com/truvity/access-roster/internal/githubroster/runnerapp"
 )
@@ -95,6 +96,53 @@ func GitHubCatalogueApps(now time.Time) []catalogueapp.Record {
 			Version: 1, ID: "docs-bot", Org: "example-org", AppID: 1000012, AppSlug: "example-org-docs-bot", InstallationID: 2000012,
 			HTMLURL: "https://github.com/apps/example-org-docs-bot", ConnectedAt: now.Add(-26 * time.Hour), ConnectedBy: "ada@north.example",
 		},
+	}
+}
+
+// SeedGitHubMints fills the ring of recent installation tokens for
+// release-bot: what an App's page shows once its tokens have been asked
+// for, including the two refusals that page exists to make findable — a
+// repository outside the grant, and an installation GitHub suspended.
+//
+// A demonstration mints nothing (there is no GitHub to mint against), so
+// the requests it would have recorded are put here directly. docs-bot is
+// left with none, which is the other thing the page has to say well.
+func SeedGitHubMints(ring *mints.Ring, now time.Time) {
+	asked := []struct {
+		ago   time.Duration
+		token mints.Token
+	}{
+		{26 * time.Hour, mints.Token{
+			Subject: "github:example-org/site", Proof: "ci", Grant: "rung:platform",
+			Repositories: []string{"site"}, Permissions: "contents:write", Outcome: "ok",
+		}},
+		{5 * time.Hour, mints.Token{
+			Subject: "github:example-org/gitops", Proof: "ci", Grant: "all:gitops:deployer",
+			Repositories: []string{"gitops"}, Permissions: "contents:read", Outcome: "ok",
+		}},
+		{3 * time.Hour, mints.Token{
+			Subject: "github:example-org/gitops", Proof: "ci", Grant: "all:gitops:deployer",
+			Repositories: []string{"payments"}, Permissions: "contents:read", Outcome: "refused",
+			Reason: "the request is wider than any grant this proof holds: repository \"payments\" is in no grant of \"release-bot\" this proof holds",
+		}},
+		{90 * time.Minute, mints.Token{
+			Subject: "ada@north.example", Proof: "person", Grant: "rung:platform",
+			Repositories: []string{"site", "docs"}, Permissions: "contents:write pull_requests:read", Outcome: "ok",
+		}},
+		{40 * time.Minute, mints.Token{
+			Subject: "system:serviceaccount:delivery:releaser", Proof: "workload", Grant: "rung:platform",
+			Repositories: []string{"site"}, Permissions: "contents:write", Outcome: "failed",
+			Reason: "GitHub did not mint the token: the installation is suspended",
+		}},
+		{7 * time.Minute, mints.Token{
+			Subject: "github:example-org/site", Proof: "ci", Grant: "rung:platform",
+			Repositories: []string{"site"}, Permissions: "contents:write pull_requests:read", Outcome: "ok",
+		}},
+	}
+	for i := range asked {
+		token := asked[i].token
+		token.At = now.Add(-asked[i].ago)
+		ring.Add("release-bot", token)
 	}
 }
 

@@ -1,3 +1,47 @@
+## v1.15.0
+
+- **An App's recent tokens load.** The *Recent tokens* section of a GitHub
+  App's page asked the audit trail for its own events — kind
+  `github.token.minted`, target `github-app:<id>` — and narrowing the trail
+  that way reads the objects of hour after hour, one by one, to find the
+  handful that match. Measured against a real installation the call was
+  still running fifteen seconds later when the gateway gave up on it, while
+  the same listing unfiltered came back at once; the page had been shipped
+  with an apology in place of the table. The service now keeps the last ten
+  requests of each App beside the half that mints them, and the page reads
+  those: when, who asked and how they proved it, the grant, the
+  repositories and permissions, and whether it was minted, refused or
+  failed, with the refusal's reason in the tooltip. A page load, not a
+  scan.
+  - **It is memory, not a record, and says so.** The ring is this replica's
+    own, bounded per App, and a restart forgets it — which the page prints
+    under the table and in place of the table when there is nothing yet
+    ("No token has been asked for since this service started, 3h ago"),
+    because "nothing has been asked for" on its own would be a claim about
+    all time that it cannot make. The audit trail remains the record and
+    holds every request for as long as the bucket does; **the token itself
+    is still in neither**.
+  - **A refusal is a row.** The refusals are usually why the page is open,
+    so they are shown as refused with the reason the caller was given,
+    rather than being the events that are hardest to find.
+  - **A section that cannot be read says so in words.** Where the Apps
+    cannot be read, or the deployment mints nothing here, the section
+    prints the sentence rather than an HTTP code — and never an empty
+    table, which reads as a quiet week.
+- **The Audit page can be narrowed by its address.** `#/audit` now takes
+  `source`, `kind`, `subject` and `target` as query parameters, and
+  narrowing the page by hand changes the address. So *Recent tokens* links
+  to the whole trail for that App — and any narrowing an operator is
+  looking at is a link they can send.
+- **A group's page says when each grant it holds was last used.** From the
+  same memory, so the page still costs no call to GitHub and reads no
+  store. A grant with nothing beside it is one nothing is remembered for,
+  never one known to be unused.
+- **A demonstration run has tokens to show.** `DEMO=1` seeds one App's
+  recent requests — mints by a workflow, a person and a workload, a
+  refusal outside the grant and a failure at GitHub — and leaves another
+  App with none, which is the other thing the page has to say well.
+
 ## v1.14.0
 
 - **One API for every GitHub App.** The console's Apps list and Apps pages

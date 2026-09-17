@@ -486,3 +486,27 @@ export function feedsOnlyItself(team: GitHubTeamStatus): boolean {
 export function appsNeedingYou(apps: GitHubAppView[], org: string): number {
   return apps.filter((app) => app.org === org && app.purpose !== "link" && app.label === "needs-you").length;
 }
+
+/** What *Recent tokens* says when it has none to show.
+ *
+ *  Two different facts, and saying the wrong one would be a lie: this
+ *  service keeps the last requests in memory, since it started, so
+ *  "nothing has been asked for" is only true of the time it has been
+ *  keeping them. `since` is that moment, already in words ("3h ago"), or
+ *  empty where the service does not say. */
+export function recentTokensEmpty(since: string): string {
+  return since ? `No token has been asked for since this service started, ${since}.` : "No token has been asked for yet.";
+}
+
+/** The line under the table, for the same reason: what is above it is
+ *  this service's memory and not the record. */
+export function recentTokensKept(since: string): string {
+  return since ? `Kept by this service since it started, ${since}; a restart forgets them.` : "Kept by this service; a restart forgets them.";
+}
+
+/** A section that could not be read says so in words — never a code, and
+ *  never an empty table, which would read as "nothing was asked for". */
+export function recentTokensProblem(error: string): string {
+  const said = error.trim() || "the reason is not known";
+  return `Recent tokens could not be read: ${said.replace(/\.$/, "")}.`;
+}

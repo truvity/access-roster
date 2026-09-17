@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -153,6 +154,55 @@ func (c *Console) GetGitHubApp(
 		return nil, err
 	}
 	return connect.NewResponse(&directoryrosterv1.GetGitHubAppResponse{App: c.githubAppView(ctx, spec, false)}), nil
+}
+
+// ListGitHubAppTokens implements an App's *Recent tokens*: the last
+// installation tokens asked of it, minted or refused, newest first.
+//
+// From this service's own memory of them rather than from the audit
+// trail. The trail is the record and holds every request, but narrowing
+// it by kind and target scans object after object of every hour in turn:
+// measured against a real bucket the call was still running when the
+// gateway gave up on it, and the section on the page was a sentence
+// apologising. What it costs to keep the answer to this one question
+// beside the process that answers it is a bounded ring per App.
+//
+// Operator, not viewer: a request names who asked for it, as the Audit
+// page does.
+func (c *Console) ListGitHubAppTokens(
+	ctx context.Context, req *connect.Request[directoryrosterv1.ListGitHubAppTokensRequest],
+) (*connect.Response[directoryrosterv1.ListGitHubAppTokensResponse], error) {
+	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+		return nil, err
+	}
+	// The App first, so an id nothing declares is not_found rather than an
+	// empty list, and a store that cannot be read says so rather than
+	// reporting that nothing has been asked for.
+	spec, err := c.githubAppSpec(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case spec.purpose != appTokens:
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"%s mints no installation tokens: only an App the catalogue declares does", spec.id))
+	case c.deps.GitHubMints == nil:
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+			"this deployment mints no installation tokens here, so it keeps none to show"))
+	}
+	out := &directoryrosterv1.ListGitHubAppTokensResponse{
+		Kept:      int32(c.deps.GitHubMints.PerAppKept()), //nolint:gosec // a page's worth
+		KeptSince: timestampOf(c.deps.GitHubMints.Since()),
+	}
+	recent := c.deps.GitHubMints.Recent(spec.id)
+	for i := range recent {
+		out.Tokens = append(out.Tokens, &directoryrosterv1.GitHubAppToken{
+			At: timestampOf(recent[i].At), Subject: recent[i].Subject, Proof: recent[i].Proof, Grant: recent[i].Grant,
+			Repositories: slices.Clone(recent[i].Repositories), Permissions: recent[i].Permissions,
+			Outcome: recent[i].Outcome, Reason: recent[i].Reason,
+		})
+	}
+	return connect.NewResponse(out), nil
 }
 
 // CheckGitHubApp asks GitHub again about one App, whichever kind it is.
@@ -747,10 +797,19 @@ func (c *Console) githubGroupGrants() map[string][]*directoryrosterv1.GitHubGrou
 	for i := range c.deps.GitHubCatalogue.Apps {
 		app := &c.deps.GitHubCatalogue.Apps[i]
 		for _, grant := range app.Grants {
-			out[grant.Group] = append(out[grant.Group], &directoryrosterv1.GitHubGroupGrant{
+			row := &directoryrosterv1.GitHubGroupGrant{
 				AppId: app.ID, AppName: app.DisplayName(), Org: app.Org,
 				Repositories: slices.Clone(grant.Repositories), Permissions: maps.Clone(grant.Permissions),
-			})
+			}
+			// When the grant was last used, where this service still
+			// remembers. It comes from the ring beside it — no store is
+			// read and no call is made to GitHub — so it stays as cheap as
+			// the rest of a group's page, and it is absent rather than
+			// "never" where nothing is remembered.
+			if at, minted := c.deps.GitHubMints.LastMinted(app.ID, grant.Group); minted {
+				row.LastMinted = timestampOf(at)
+			}
+			out[grant.Group] = append(out[grant.Group], row)
 		}
 	}
 	return out

@@ -246,6 +246,30 @@ given. Attributes:
 
 **The token itself is never recorded**, nor any part of it.
 
+### Recent tokens, on the App's page
+
+An App's page in the console shows the last ten requests made of it under
+*Recent tokens*: when, who asked and how they proved it, the grant it was
+decided under, the repositories and permissions, and whether it was
+minted, refused or failed — with the refusal's reason in the chip's
+tooltip. The token is not there, because nothing keeps it.
+
+It is this service's own memory of those requests, kept beside the half
+that mints them: bounded to the last ten of each App, since the process
+started, and forgotten on a restart, which the page says under the table.
+It is **not** the record. The record is the audit trail above, which holds
+every request for as long as the bucket does, and every reading of that
+section links to the [Audit](#audit) page narrowed to that App
+(`#/audit?kind=github.token.minted&target=github-app:<id>`, an address to
+send somebody). The section exists because narrowing the trail itself to
+one App means reading the objects of hour after hour: for a page load it
+is too slow, and it was.
+
+An internal group's page carries the one fact that falls out of the same
+memory: when each grant it holds was last used. A grant with nothing
+beside it is one nothing is remembered for — after a restart that is every
+grant — and never one that is known to be unused.
+
 ## Creating and installing
 
 The *Apps* tab of the GitHub page lists every App this service keeps a

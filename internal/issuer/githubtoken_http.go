@@ -102,7 +102,7 @@ func serveGitHubToken(
 	var proof Proof
 
 	refuse := func(outcome string, err *oidc.Error, minted GitHubToken) {
-		iss.record(ctx, githubTokenEvent(proof, request, minted, outcome, err.Description))
+		iss.recordGitHubToken(ctx, githubTokenEvent(proof, request, minted, outcome, err.Description))
 		op.RequestError(w, r, err, nil)
 	}
 
@@ -181,7 +181,7 @@ func serveGitHubToken(
 		refuse(outcome, githubTokenError(err), minted)
 		return
 	}
-	iss.record(ctx, githubTokenEvent(proof, request, minted, audit.OutcomeOK, ""))
+	iss.recordGitHubToken(ctx, githubTokenEvent(proof, request, minted, audit.OutcomeOK, ""))
 
 	response := githubTokenResponse{
 		AccessToken:     minted.Token,

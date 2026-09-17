@@ -15,6 +15,7 @@ import (
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
+	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
 	"github.com/truvity/access-roster/tokens"
 )
@@ -37,6 +38,11 @@ type GitHubApps struct {
 	HTTP *http.Client
 	// Now is the clock the App's JWT is signed against. Nil is time.Now.
 	Now func() time.Time
+	// Recent is where the last requests of each App are kept, for the
+	// console's page for that App to read without querying the trail.
+	// Nil keeps none, and the page then says so; the audit trail is the
+	// record either way.
+	Recent *mints.Ring
 }
 
 // UseGitHubApps gives the issuer the catalogue Apps it may mint
@@ -318,5 +324,47 @@ func githubTokenEvent(proof Proof, request GitHubTokenRequest, minted GitHubToke
 		Kind: "github.token.minted", Actor: subject, Subject: subject,
 		Target:  tokens.GitHubAppAudiencePrefix + request.App,
 		Outcome: outcome, Reason: reason, Attributes: attributes,
+	}
+}
+
+// recordGitHubToken writes one installation token request down and keeps
+// it in that App's ring of recent requests.
+//
+// One event, read twice: the trail gets it through the recorder as every
+// other event is, and the ring keeps what an App's page shows of it. They
+// cannot disagree, because the second is made from the first.
+//
+// Only an App the catalogue declares is kept. The id in a request is
+// whatever the caller asked for, and the earliest refusals happen before
+// anything has been authenticated at all — a ring keyed on that would be
+// a map an anonymous caller could fill.
+func (i *Issuer) recordGitHubToken(ctx context.Context, e audit.Event) {
+	if i == nil {
+		return
+	}
+	i.record(ctx, e)
+	apps := i.githubApps
+	if apps == nil || apps.Recent == nil || apps.Catalogue == nil {
+		return
+	}
+	app := strings.TrimPrefix(e.Target, tokens.GitHubAppAudiencePrefix)
+	if _, declared := apps.Catalogue.Get(app); !declared {
+		return
+	}
+	now := time.Now
+	if apps.Now != nil {
+		now = apps.Now
+	}
+	apps.Recent.Add(app, githubMintOf(e, now()))
+}
+
+// githubMintOf is one recorded request as an App's page reads it. The
+// attribute names are the ones githubTokenEvent writes, immediately
+// above: the event is the one source of both.
+func githubMintOf(e audit.Event, at time.Time) mints.Token {
+	return mints.Token{
+		At: at, Subject: e.Subject, Proof: e.Attributes["proof"], Grant: e.Attributes["grant"],
+		Repositories: strings.Fields(e.Attributes["repositories"]), Permissions: e.Attributes["permissions"],
+		Outcome: e.Outcome, Reason: e.Reason,
 	}
 }
