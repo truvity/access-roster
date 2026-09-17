@@ -338,6 +338,79 @@ nobody: whoever serves a writer decides who may reach it.
 | `WriteAuditEvents` | `events[]`, `durable` | `written` | keeps events. With `durable` it answers only once they are persisted, and an error means they are not (the S3 writer puts them in an object of their own); without it, once they are accepted. An event's `id` and `at` are kept when set and assigned when not, so a log line written before the write names the record's id. `unavailable` when the writer cannot keep them |
 | `ListStoredAuditEvents` | `query` (a `ListAuditEventsRequest`) | `events[]`, `cursor` | newest first, filtered and paged as `ListAuditEvents` is, which answers with it. `invalid_argument` for a cursor that is not one |
 
+## Installation tokens at `/token`
+
+Not a console service: the issuer's token endpoint, documented here
+because it is the contract a job, a script or `accessctl` codes against
+when it asks for a GitHub App installation token of a
+[catalogue App](../connect/github-apps-catalogue.md#minting-a-token). It
+is RFC 8693 token exchange on the same `/token` as every other exchange;
+a request is an installation token's when **both**
+`requested_token_type` is the type below **and** `audience` starts
+`github-app:`. Anything else is an ordinary exchange, handled exactly as
+before.
+
+**Request** — `POST /token`, `application/x-www-form-urlencoded`:
+
+| Parameter | Value |
+|---|---|
+| `grant_type` | `urn:ietf:params:oauth:grant-type:token-exchange` |
+| `requested_token_type` | `urn:access-roster:params:oauth:token-type:github-installation-token` (Go: `tokens.TypeGitHubInstallationToken`) |
+| `audience` | `github-app:<catalogue id>`, exactly one |
+| `subject_token` | a GitHub Actions identity token minted for the issuer's URL, a federated cluster's ServiceAccount token, or a sign-in's access token |
+| `subject_token_type` | `urn:ietf:params:oauth:token-type:jwt` for the first two, `urn:ietf:params:oauth:token-type:access_token` for a sign-in |
+| `repositories` | optional: repository names in the App's organisation, without the owner, space separated; at most 500 |
+| `scope` | optional: permissions as `name:level`, space separated, e.g. `contents:read pull_requests:write` |
+| `actor_token` | refused: delegation is not served |
+
+**Client.** HTTP Basic, form-encoded as RFC 6749 §2.3.1 requires. A job
+presents the audience itself (`github-app%3A<id>` with an empty
+password), or nothing; any other client id is authenticated as the
+issuer's clients are, and a sign-in is a proof only when presented by the
+client it was issued to, which declares `sign_in_exchange: true`.
+
+**Response** — `200`, `Cache-Control: no-store`:
+
+```json
+{
+  "access_token": "ghs_…",
+  "issued_token_type": "urn:access-roster:params:oauth:token-type:github-installation-token",
+  "token_type": "N_A",
+  "expires_in": 3599,
+  "repositories": ["app", "lib-core"],
+  "permissions": {"contents": "read", "pull_requests": "write"}
+}
+```
+
+`access_token` is GitHub's installation token, used as GitHub documents
+(`Authorization: Bearer`, or `x-access-token` as a git password).
+`token_type` is `N_A` because it is not an OAuth access token of this
+issuer. `expires_in` is from GitHub's `expires_at`. `repositories` and
+`permissions` are what GitHub says the token carries, not what was asked
+for; `repositories` is absent for a token not narrowed to any.
+
+**Decision.** The proof resolves to groups exactly as for any exchange;
+of the App's grants for those groups, in catalogue order, the first that
+covers **all** of the request is chosen. Named repositories must all
+match that one grant; no repositories requires a `["*"]` grant; named
+permissions must each be covered by it; no permissions asks for exactly
+its permissions. GitHub is sent that narrowing explicitly.
+
+**Errors** — RFC 6749 JSON, `{"error": "...", "error_description": "..."}`:
+
+| `error` | Status | When |
+|---|---|---|
+| `invalid_request` | 400 | malformed parameters, or `actor_token` |
+| `invalid_client` | 401 | a presented client that is not the audience did not authenticate |
+| `invalid_grant` | 400 | the subject token is not a proof |
+| `invalid_target` | 400 | the App is not declared, not created, not installed or uninstalled; or no grant names a group the proof holds |
+| `invalid_scope` | 400 | wider than any one grant the proof holds, or GitHub refused the narrowing (422) |
+| `server_error` | 500 | GitHub or the App's key failed |
+
+Every request, minted or refused, is one `github.token.minted` audit
+event ([fields](../connect/github-apps-catalogue.md#audit)); the token
+is never in it.
+
 ## The whoami endpoint
 
 `GET /.access/whoami` on the console's origin. The console's own answer

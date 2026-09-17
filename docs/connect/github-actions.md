@@ -47,6 +47,16 @@ repository. It reads GitHub's `repository_visibility` claim; `public`,
 other. Deploy the issuer before writing the key in a policy: an older
 one refuses it.
 
+`workflow_ref`, `job_workflow_ref`, `sha`, `event_name` and `ref_type`
+pin a job to one workflow file at one ref, what started it, and whether
+the ref is a branch or a tag:
+`{ repository: acme/gitops, ref: refs/heads/master, event_name: push,
+job_workflow_ref: acme/gitops/.github/workflows/deploy.yml@refs/heads/master }`
+admits the deploy workflow on master and not a pull request's run of an
+edited copy. The same groups can hold a grant of a
+[catalogue App](github-apps-catalogue.md#minting-a-token), and the job
+then asks for an installation token with the action's `github-app` input.
+
 ## Workflow side
 
 ```yaml

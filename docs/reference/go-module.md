@@ -111,6 +111,21 @@ the client rather than about the mistake. A refusal comes back as
 `tokens.ErrRefused`, carrying the issuer's own sentence, which names the
 audience and the groups the proof holds.
 
+A GitHub App installation token of a catalogue App is the same exchange
+with the App named instead of an audience, narrowed by repositories and
+permissions:
+
+```go
+exchanger := &tokens.Exchanger{Issuer: "https://access.example", ClientID: "github-app:publisher"}
+minted, err := exchanger.GitHubInstallationToken(ctx, subject, tokens.TypeJWT, "publisher",
+	[]string{"app"}, map[string]string{"contents": "read"})
+// minted.AccessToken, minted.Expires, and what GitHub granted: minted.Repositories, minted.Permissions
+```
+
+It asks for `tokens.TypeGitHubInstallationToken`, and a refusal is
+`tokens.ErrRefused` in the same way
+([contract](contracts.md#installation-tokens-at-token)).
+
 ```go
 tokens.WriteExecCredential(os.Stdout, apiVersion, token)   // kubectl reads this
 creds, _ := tokens.AssumeRoleWithWebIdentity(ctx, nil, roleARN, who, token.AccessToken)

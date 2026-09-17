@@ -187,9 +187,10 @@ func (g githubTokenIssuer) ask(t *testing.T, client string, form url.Values) (in
 // minted is the audit trail's installation token events.
 func (g githubTokenIssuer) minted() []audit.Event {
 	var out []audit.Event
-	for _, event := range g.trail.Events() {
-		if event.Kind == "github.token.minted" {
-			out = append(out, event)
+	events := g.trail.Events()
+	for i := range events {
+		if events[i].Kind == "github.token.minted" {
+			out = append(out, events[i])
 		}
 	}
 	return out
@@ -455,10 +456,22 @@ func TestTheFirstGrantCoveringTheWholeRequestIsChosen(t *testing.T) {
 		grant                string
 		asks                 githubapp.Narrowing
 	}{
-		"the first in order":        {[]string{"g1", "g2", "g3"}, []string{"app"}, nil, "g1", githubapp.Narrowing{Repositories: []string{"app"}, Permissions: map[string]string{"contents": "read"}}},
-		"the first that covers":     {[]string{"g1", "g2", "g3"}, []string{"app"}, map[string]string{"contents": "write"}, "g2", githubapp.Narrowing{Repositories: []string{"app"}, Permissions: map[string]string{"contents": "write"}}},
-		"only groups the proof has": {[]string{"g3"}, []string{"app", "lib"}, nil, "g3", githubapp.Narrowing{Repositories: []string{"app", "lib"}, Permissions: map[string]string{"contents": "admin"}}},
-		"every repository":          {[]string{"g1", "g2"}, nil, nil, "g2", githubapp.Narrowing{Permissions: map[string]string{"contents": "write"}}},
+		"the first in order": {
+			[]string{"g1", "g2", "g3"}, []string{"app"}, nil,
+			"g1", githubapp.Narrowing{Repositories: []string{"app"}, Permissions: map[string]string{"contents": "read"}},
+		},
+		"the first that covers": {
+			[]string{"g1", "g2", "g3"}, []string{"app"}, map[string]string{"contents": "write"},
+			"g2", githubapp.Narrowing{Repositories: []string{"app"}, Permissions: map[string]string{"contents": "write"}},
+		},
+		"only groups the proof has": {
+			[]string{"g3"}, []string{"app", "lib"}, nil,
+			"g3", githubapp.Narrowing{Repositories: []string{"app", "lib"}, Permissions: map[string]string{"contents": "admin"}},
+		},
+		"every repository": {
+			[]string{"g1", "g2"}, nil, nil,
+			"g2", githubapp.Narrowing{Permissions: map[string]string{"contents": "write"}},
+		},
 	} {
 		grant, asks, err := issuer.DecideGitHubGrant(app, tc.groups, tc.repositories, tc.permissions)
 		if err != nil || grant.Group != tc.grant || !slices.Equal(asks.Repositories, tc.asks.Repositories) || !maps.Equal(asks.Permissions, tc.asks.Permissions) {
