@@ -852,7 +852,17 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
         </TextField>
       ) : null}
       {shown.fix === "create" ? (
-        <Tooltip title={canCreate ? `Two clicks by an owner of ${shown.purpose === "link" ? "the organisation" : shown.org}: create, then install.` : "Bind the organisation in the policy first."}>
+        <Tooltip
+          title={
+            canCreate
+              ? shown.purpose === "link"
+                ? "One click by an owner of the organisation it is created under; it is installed nowhere."
+                : `Two clicks by an owner of ${shown.org}: create, then install.`
+              : shown.declared
+                ? "This deployment keeps no state in Kubernetes, so the App's key would not survive a restart."
+                : "The deployment no longer declares it."
+          }
+        >
           <span>
             <Button size="small" variant="contained" disabled={busy || !canCreate || (shown.purpose === "link" && !owner)} onClick={() => void begin()}>
               Create
