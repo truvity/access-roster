@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/truvity/access-roster/internal/logsafe"
 )
 
 // The trail speaks the Elastic Common Schema (decided 2026-09-13): in the
@@ -228,16 +230,30 @@ func ecsFields(e Event) []ecsField {
 // Flat rather than grouped, because that is what a line-oriented shipper
 // and a Loki query expect, and it keeps the time out: the log line's own
 // `time` is the event's.
+//
+// Every string passes through [logsafe.Value]: an event carries what a
+// caller sent — a user agent, a subject, an attribute of a request — and a
+// log line must not let any of it forge a record. The trail's own record
+// ([EncodeRecord]) keeps the values exactly; only the line is made safe.
 func LogAttrs(e Event) []any {
 	var out []any
 	for _, f := range ecsFields(e) {
-		if attributes, ok := f.value.(map[string]string); ok {
-			for _, name := range slices.Sorted(maps.Keys(attributes)) {
-				out = append(out, attributesField+"."+name, attributes[name])
+		switch value := f.value.(type) {
+		case map[string]string:
+			for _, name := range slices.Sorted(maps.Keys(value)) {
+				out = append(out, attributesField+"."+logsafe.Value(name), logsafe.Value(value[name]))
 			}
-			continue
+		case string:
+			out = append(out, f.name, logsafe.Value(value))
+		case []string:
+			safe := make([]string, len(value))
+			for i, one := range value {
+				safe[i] = logsafe.Value(one)
+			}
+			out = append(out, f.name, safe)
+		default:
+			out = append(out, f.name, value)
 		}
-		out = append(out, f.name, f.value)
 	}
 	return out
 }
