@@ -55,29 +55,30 @@ const (
 	catalogueDrifted    = "drifted"
 )
 
-// catalogueCacheWindow is how long what GitHub said of an App is shown
+// githubCacheWindow is how long what GitHub said of an App is shown
 // without asking again: long enough that a page left open does not spend
 // the App's rate limit, short enough that an edit on GitHub shows soon.
-const catalogueCacheWindow = time.Minute
+const githubCacheWindow = time.Minute
 
-// catalogueObservations remembers what GitHub last said of each App.
-type catalogueObservations struct {
+// githubObservations remembers what GitHub last said of each App, by the
+// id the Apps list gives it.
+type githubObservations struct {
 	mu   sync.Mutex
-	seen map[string]catalogueObservation
+	seen map[string]githubObservation
 	// clock is the time the window is measured by; nil is the wall clock.
 	clock func() time.Time
 }
 
-func (o *catalogueObservations) now() time.Time {
+func (o *githubObservations) now() time.Time {
 	if o.clock != nil {
 		return o.clock()
 	}
 	return time.Now()
 }
 
-// catalogueObservation is one answer from GitHub about one App, for the
-// App and installation it was asked about.
-type catalogueObservation struct {
+// githubObservation is one answer from GitHub about one App, for the App
+// and installation it was asked about.
+type githubObservation struct {
 	appID, installationID int64
 	at                    time.Time
 	app                   *githubapp.AppInfo
@@ -86,27 +87,29 @@ type catalogueObservation struct {
 	err                   string
 }
 
-func (o *catalogueObservations) get(record catalogueapp.Record) (catalogueObservation, bool) {
+// get is what GitHub said of this App, if it was this App it was asked
+// about and the answer is still fresh.
+func (o *githubObservations) get(id string, appID, installationID int64) (githubObservation, bool) {
 	now := o.now()
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	seen, ok := o.seen[record.ID]
-	if !ok || seen.appID != record.AppID || seen.installationID != record.InstallationID || now.Sub(seen.at) >= catalogueCacheWindow {
-		return catalogueObservation{}, false
+	seen, ok := o.seen[id]
+	if !ok || seen.appID != appID || seen.installationID != installationID || now.Sub(seen.at) >= githubCacheWindow {
+		return githubObservation{}, false
 	}
 	return seen, true
 }
 
-func (o *catalogueObservations) put(id string, seen catalogueObservation) {
+func (o *githubObservations) put(id string, seen githubObservation) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.seen == nil {
-		o.seen = map[string]catalogueObservation{}
+		o.seen = map[string]githubObservation{}
 	}
 	o.seen[id] = seen
 }
 
-func (o *catalogueObservations) forget(id string) {
+func (o *githubObservations) forget(id string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	delete(o.seen, id)
@@ -130,42 +133,51 @@ func (c *Console) BeginGitHubCatalogueAppConnect(
 	if err != nil {
 		return nil, err
 	}
-	store, err := c.catalogueStore()
+	begun, err := c.beginCatalogueAppConnect(ctx, who.Who(), strings.TrimSpace(req.Msg.GetId()))
 	if err != nil {
 		return nil, err
 	}
-	id := strings.TrimSpace(req.Msg.GetId())
+	response := connect.NewResponse(&directoryrosterv1.BeginGitHubCatalogueAppConnectResponse{Url: begun.url, Manifest: begun.manifest})
+	c.pinFlow(response.Header(), begun.state)
+	return response, nil
+}
+
+// beginCatalogueAppConnect is the work of it, which
+// [Console.BeginGitHubAppConnect] does too.
+func (c *Console) beginCatalogueAppConnect(ctx context.Context, actor, id string) (githubBegin, error) {
+	store, err := c.catalogueStore()
+	if err != nil {
+		return githubBegin{}, err
+	}
 	entry, declared := c.deps.GitHubCatalogue.Get(id)
 	if !declared {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("the catalogue declares no App %q", id))
+		return githubBegin{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("the catalogue declares no App %q", id))
 	}
 	existing, _, created, err := store.Get(ctx, id)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubBegin{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	if created && existing.Installed() {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("%s is already created and installed as %s: disconnect it first, or a second App would sit beside the first", id, existing.AppSlug))
 	}
 
-	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubCatalogueBind + id, Actor: who.Who()})
+	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubCatalogueBind + id, Actor: actor})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
 	}
-	out := &directoryrosterv1.BeginGitHubCatalogueAppConnectResponse{}
+	out := githubBegin{state: state}
 	if created {
-		out.Url = githubapp.InstallURL(existing.AppSlug, state)
-	} else {
-		root := c.githubRoot()
-		manifest, err := json.Marshal(githubapp.ManifestFor(entry, c.deps.PublicURL, root+githubCatalogueCallbackPath, root+githubCatalogueSetupPath, nil))
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-		out.Url, out.Manifest = githubapp.CreateURL(entry.Org, state), string(manifest)
+		out.url = githubapp.InstallURL(existing.AppSlug, state)
+		return out, nil
 	}
-	response := connect.NewResponse(out)
-	response.Header().Add("Set-Cookie", access.ConnectCookie(state, c.deps.SecureCookie, githubFlowWindow).String())
-	return response, nil
+	root := c.githubRoot()
+	manifest, err := json.Marshal(githubapp.ManifestFor(entry, c.deps.PublicURL, root+githubCatalogueCallbackPath, root+githubCatalogueSetupPath, nil))
+	if err != nil {
+		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
+	}
+	out.url, out.manifest = githubapp.CreateURL(entry.Org, state), string(manifest)
+	return out, nil
 }
 
 // DisconnectGitHubCatalogueApp uninstalls a catalogue App, then forgets
@@ -177,48 +189,46 @@ func (c *Console) DisconnectGitHubCatalogueApp(
 	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
-	store, err := c.catalogueStore()
+	gone, err := c.disconnectCatalogueApp(ctx, strings.TrimSpace(req.Msg.GetId()))
 	if err != nil {
 		return nil, err
 	}
-	id := strings.TrimSpace(req.Msg.GetId())
+	return connect.NewResponse(&directoryrosterv1.DisconnectGitHubCatalogueAppResponse{
+		Uninstalled: gone.uninstalled, Detail: gone.detail, AppSettingsUrl: gone.settingsURL,
+	}), nil
+}
+
+// disconnectCatalogueApp is the work of it, which
+// [Console.DisconnectGitHubApp] does too.
+func (c *Console) disconnectCatalogueApp(ctx context.Context, id string) (githubDisconnect, error) {
+	store, err := c.catalogueStore()
+	if err != nil {
+		return githubDisconnect{}, err
+	}
 	if !catalogue.ValidID(id) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not a catalogue id", id))
+		return githubDisconnect{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not a catalogue id", id))
 	}
 	record, key, created, err := store.Get(ctx, id)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	if !created {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no App %s has been created", id))
+		return githubDisconnect{}, connect.NewError(connect.CodeNotFound, fmt.Errorf("no App %s has been created", id))
 	}
 
-	out := &directoryrosterv1.DisconnectGitHubCatalogueAppResponse{AppSettingsUrl: appSettingsURL(record.Org, record.AppSlug)}
-	switch {
-	case key != "" && record.Installed():
-		token, err := githubapp.AppToken(record.AppID, key, time.Now())
-		if err == nil {
-			err = githubapp.DeleteInstallation(ctx, c.githubHTTP(), token, record.InstallationID)
-		}
-		if err != nil {
-			out.Detail = "The App could not be uninstalled, so uninstall it on GitHub: " + err.Error()
-		} else {
-			out.Uninstalled = true
-		}
-	default:
-		out.Detail = "The App was never installed, so there was nothing to uninstall."
-	}
+	out := c.uninstall(ctx, record.AppID, record.InstallationID, key)
+	out.settingsURL = appSettingsURL(record.Org, record.AppSlug)
 	if err = store.Delete(ctx, id); err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
-	c.catalogueSeen.forget(id)
+	c.githubSeen.forget(id)
 	c.record(ctx, audit.Event{
-		Kind: "github.catalogue-app.disconnected", Target: record.Org, Reason: out.GetDetail(),
+		Kind: "github.catalogue-app.disconnected", Target: record.Org, Reason: out.detail,
 		Attributes: map[string]string{
-			"id": id, "app": strconv.FormatInt(record.AppID, 10), "uninstalled": strconv.FormatBool(out.GetUninstalled()),
+			"id": id, "app": strconv.FormatInt(record.AppID, 10), "uninstalled": strconv.FormatBool(out.uninstalled),
 		},
 	})
-	return connect.NewResponse(out), nil
+	return out, nil
 }
 
 // CheckGitHubCatalogueApp asks GitHub again about one App.
@@ -228,146 +238,82 @@ func (c *Console) CheckGitHubCatalogueApp(
 	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
-	store, err := c.catalogueStore()
-	if err != nil {
+	if _, err := c.catalogueStore(); err != nil {
 		return nil, err
 	}
 	id := strings.TrimSpace(req.Msg.GetId())
-	entry, declared := c.deps.GitHubCatalogue.Get(id)
-	record, key, created, err := store.Get(ctx, id)
+	specs, err := c.catalogueAppSpecs(ctx, map[string]bool{})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	if !declared && !created {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("the catalogue declares no App %q and none was created", id))
+	for i := range specs {
+		if specs[i].id != id {
+			continue
+		}
+		app := legacyCatalogueApp(specs[i], c.githubAppView(ctx, specs[i], true))
+		return connect.NewResponse(&directoryrosterv1.CheckGitHubCatalogueAppResponse{App: app}), nil
 	}
-	var app *directoryrosterv1.GitHubCatalogueApp
-	if declared {
-		app = c.catalogueView(ctx, entry, record, func() string { return key }, created, true)
-	} else {
-		app = undeclaredView(record)
-	}
-	return connect.NewResponse(&directoryrosterv1.CheckGitHubCatalogueAppResponse{App: app}), nil
+	return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("the catalogue declares no App %q and none was created", id))
 }
 
 // catalogueStatus adds every declared App and every App created from an
 // entry no longer declared, never with a key.
+//
+// The Apps themselves are [Console.githubAppView]'s, turned back into the
+// shape GetGitHubStatus has always carried: one reading of an App, two
+// ways of saying it, for as long as both calls are served.
 func (c *Console) catalogueStatus(ctx context.Context, out *directoryrosterv1.GetGitHubStatusResponse) error {
-	store := c.deps.GitHubCatalogueApps
-	if store == nil {
+	if c.deps.GitHubCatalogueApps == nil {
 		return nil
 	}
 	out.CatalogueAvailable = true
-	records, err := store.List(ctx)
+	specs, err := c.catalogueAppSpecs(ctx, map[string]bool{})
 	if err != nil {
 		return err
 	}
-	byID := map[string]catalogueapp.Record{}
-	for i := range records {
-		byID[records[i].ID] = records[i]
-	}
-
-	var entries []catalogue.App
-	if c.deps.GitHubCatalogue != nil {
-		entries = c.deps.GitHubCatalogue.Apps
-	}
-	views := make([]*directoryrosterv1.GitHubCatalogueApp, len(entries))
-	var wait sync.WaitGroup
-	for i := range entries {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-			record, created := byID[entries[i].ID]
-			// Read only on a cache miss: the list above carries no key, and
-			// a hit needs none.
-			key := func() string {
-				_, key, _, _ := store.Get(ctx, record.ID)
-				return key
-			}
-			views[i] = c.catalogueView(ctx, entries[i], record, key, created, false)
-		}()
-	}
-	wait.Wait()
-	out.CatalogueApps = views
-	for i := range records {
-		if _, declared := c.deps.GitHubCatalogue.Get(records[i].ID); !declared {
-			out.CatalogueApps = append(out.CatalogueApps, undeclaredView(records[i]))
-		}
+	views := c.githubAppViews(ctx, specs)
+	for i := range specs {
+		out.CatalogueApps = append(out.CatalogueApps, legacyCatalogueApp(specs[i], views[i]))
 	}
 	return nil
 }
 
-// catalogueView is one declared App: the entry, its record, and what
-// GitHub says of it — asked through the cache unless fresh.
-func (c *Console) catalogueView(
-	ctx context.Context, entry catalogue.App, record catalogueapp.Record, key func() string, created, fresh bool,
-) *directoryrosterv1.GitHubCatalogueApp {
-	out := &directoryrosterv1.GitHubCatalogueApp{
-		Id: entry.ID, Org: entry.Org, Name: entry.DisplayName(), Description: entry.Description, Public: entry.Public,
-		Installation: entry.InstallationScope(), Events: slices.Clone(entry.Events), State: catalogueNotCreated, Declared: true,
+// legacyCatalogueApp is one App in the shape GetGitHubStatus and
+// CheckGitHubCatalogueApp answer in.
+func legacyCatalogueApp(spec githubAppSpec, app *directoryrosterv1.GitHubApp) *directoryrosterv1.GitHubCatalogueApp {
+	return &directoryrosterv1.GitHubCatalogueApp{
+		Id: app.GetId(), Org: app.GetOrg(), Name: spec.declaredName(), Description: app.GetDescription(), Public: app.GetPublic(),
+		Installation: app.GetInstallation(), Permissions: app.GetPermissions(), Events: app.GetEvents(), Grants: app.GetGrants(),
+		State: legacyState(app.GetState()), HtmlUrl: app.GetHtmlUrl(), Drift: app.GetDrift(), Reason: app.GetReason(),
+		AppId: app.GetAppId(), AppSlug: app.GetAppSlug(), InstallationId: app.GetInstallationId(),
+		ConnectedAt: app.GetConnectedAt(), ConnectedBy: app.GetConnectedBy(), CheckedAt: app.GetCheckedAt(),
+		RepositorySelection: app.GetRepositorySelection(), Declared: app.GetDeclared(),
 	}
-	for _, grant := range entry.Grants {
-		out.Grants = append(out.Grants, &directoryrosterv1.GitHubAppGrant{
-			Group: grant.Group, Repositories: slices.Clone(grant.Repositories), Permissions: maps.Clone(grant.Permissions),
-			GroupDeclared: c.deps.Authorizer != nil && c.deps.Authorizer.Policy().HasGroup(grant.Group),
-		})
-	}
-	if !created {
-		out.Permissions = permissionRows(entry.Permissions, nil, nil)
-		return out
-	}
-	recordFacts(out, record)
-	out.State = catalogueCreated
-	if record.Installed() {
-		out.State = catalogueInstalled
-	}
+}
 
-	seen, cached := c.catalogueSeen.get(record)
-	if fresh || !cached {
-		seen = c.observe(ctx, record, key())
-		c.catalogueSeen.put(record.ID, seen)
+func legacyState(state directoryrosterv1.AppState) string {
+	switch state {
+	case appCreated:
+		return catalogueCreated
+	case appInstalled:
+		return catalogueInstalled
+	case appDrifted:
+		return catalogueDrifted
+	default:
+		return catalogueNotCreated
 	}
-	out.CheckedAt = timestampOf(seen.at)
-	out.Reason = seen.err
-	var appPermissions, installationPermissions map[string]string
-	if seen.app != nil {
-		appPermissions = seen.app.Permissions
-		if seen.app.HTMLURL != "" {
-			out.HtmlUrl = seen.app.HTMLURL
-		}
-		out.Drift = append(out.Drift, appDrift(entry, *seen.app)...)
-	}
-	switch {
-	case seen.installationGone:
-		out.Drift = append(out.Drift, "The installation is gone on GitHub: somebody uninstalled the App there. Disconnect it here, then create and install it again.")
-	case seen.installation != nil:
-		installationPermissions = seen.installation.Permissions
-		out.RepositorySelection = seen.installation.RepositorySelection
-		if seen.installation.Suspended {
-			out.Drift = append(out.Drift, "The installation is suspended on GitHub: no token can be minted until an owner unsuspends it.")
-		}
-		if seen.app != nil && !samePermissions(seen.app.Permissions, installationPermissions) {
-			out.Drift = append(out.Drift, "The installation's accepted permissions differ from the App's: "+
-				"approve the permission request on GitHub, in the organisation's installed Apps.")
-		}
-	}
-	out.Permissions = permissionRows(entry.Permissions, appPermissions, installationPermissions)
-	if len(out.Drift) > 0 {
-		out.State = catalogueDrifted
-	}
-	return out
 }
 
 // observe asks GitHub, as the App, what the App and its installation hold
 // now. An error is kept as the observation's reason: it never fails the
 // page.
-func (c *Console) observe(ctx context.Context, record catalogueapp.Record, key string) catalogueObservation {
-	seen := catalogueObservation{appID: record.AppID, installationID: record.InstallationID, at: c.catalogueSeen.now().UTC()}
+func (c *Console) observe(ctx context.Context, appID, installationID int64, installed bool, key string) githubObservation {
+	seen := githubObservation{appID: appID, installationID: installationID, at: c.githubSeen.now().UTC()}
 	if key == "" {
 		seen.err = "The App's key is not kept here, so GitHub cannot be asked about it. Disconnect it and create it again."
 		return seen
 	}
-	token, err := githubapp.AppToken(record.AppID, key, time.Now())
+	token, err := githubapp.AppToken(appID, key, time.Now())
 	if err != nil {
 		seen.err = "The App's stored key is not usable: " + err.Error()
 		return seen
@@ -380,10 +326,10 @@ func (c *Console) observe(ctx context.Context, record catalogueapp.Record, key s
 		return seen
 	}
 	seen.app = &app
-	if !record.Installed() {
+	if !installed {
 		return seen
 	}
-	installation, err := githubapp.GetInstallation(ctx, c.githubHTTP(), token, record.InstallationID)
+	installation, err := githubapp.GetInstallation(ctx, c.githubHTTP(), token, installationID)
 	switch {
 	case errors.Is(err, githubapp.ErrInstallationGone):
 		seen.installationGone = true
@@ -399,8 +345,10 @@ func (c *Console) observe(ctx context.Context, record catalogueapp.Record, key s
 // own: every App may read repository metadata, declared or not.
 const impliedPermission = "metadata"
 
-// appDrift is every way the App on GitHub differs from its entry.
-func appDrift(entry catalogue.App, app githubapp.AppInfo) []string {
+// appDrift is every way the App on GitHub differs from its declaration.
+// declarer is what to call whoever declared it: a catalogue App's
+// declaration is the deployment's, a preset's is this service's own.
+func appDrift(entry catalogue.App, app githubapp.AppInfo, declarer string) []string {
 	var out []string
 	names := map[string]bool{}
 	for name := range entry.Permissions {
@@ -415,18 +363,18 @@ func appDrift(entry catalogue.App, app githubapp.AppInfo) []string {
 		case declared == held:
 		case declared == "" && name == impliedPermission && held == catalogue.LevelRead:
 		case declared == "":
-			out = append(out, fmt.Sprintf("The App holds %s: %s, which the catalogue does not declare. Remove it in the App's settings on GitHub.", name, held))
+			out = append(out, fmt.Sprintf("The App holds %s: %s, which %s does not declare. Remove it in the App's settings on GitHub.", name, held, declarer))
 		case held == "":
 			out = append(out, fmt.Sprintf("The App lacks %s: %s. Add it in the App's settings on GitHub.", name, declared))
 		default:
-			out = append(out, fmt.Sprintf("The App holds %s: %s, and the catalogue declares %s. Change it in the App's settings on GitHub.", name, held, declared))
+			out = append(out, fmt.Sprintf("The App holds %s: %s, and %s declares %s. Change it in the App's settings on GitHub.", name, held, declarer, declared))
 		}
 	}
 	if len(entry.Events) > 0 {
 		want, have := slices.Sorted(slices.Values(entry.Events)), slices.Sorted(slices.Values(app.Events))
 		if !slices.Equal(want, have) {
-			out = append(out, fmt.Sprintf("The App subscribes to %s, and the catalogue declares %s. Change them in the App's settings on GitHub.",
-				listOrNone(have), listOrNone(want)))
+			out = append(out, fmt.Sprintf("The App subscribes to %s, and %s declares %s. Change them in the App's settings on GitHub.",
+				listOrNone(have), declarer, listOrNone(want)))
 		}
 	}
 	return out
@@ -473,29 +421,9 @@ func permissionRows(declared, app, installation map[string]string) []*directoryr
 	return out
 }
 
-// recordFacts copies a record's facts onto a view.
-func recordFacts(out *directoryrosterv1.GitHubCatalogueApp, record catalogueapp.Record) {
-	out.AppId, out.AppSlug, out.InstallationId = record.AppID, record.AppSlug, record.InstallationID
-	out.HtmlUrl, out.ConnectedAt, out.ConnectedBy = record.HTMLURL, timestampOf(record.ConnectedAt), record.ConnectedBy
-}
-
-// undeclaredView is an App created from an entry the catalogue no longer
-// declares: what its record says, and nothing asked of GitHub.
-func undeclaredView(record catalogueapp.Record) *directoryrosterv1.GitHubCatalogueApp {
-	out := &directoryrosterv1.GitHubCatalogueApp{
-		Id: record.ID, Org: record.Org, Name: record.AppSlug, State: catalogueCreated,
-		Reason: "The catalogue no longer declares this App. Disconnect it, then delete it on GitHub.",
-	}
-	if record.Installed() {
-		out.State = catalogueInstalled
-	}
-	recordFacts(out, record)
-	return out
-}
-
 // appSettingsURL is where an organisation's owner edits or deletes an App.
 func appSettingsURL(org, slug string) string {
-	if slug == "" {
+	if org == "" || slug == "" {
 		return ""
 	}
 	return githubapp.WebBase + "/organizations/" + url.PathEscape(org) + "/settings/apps/" + url.PathEscape(slug)
@@ -557,7 +485,7 @@ func (s *ConsoleServer) githubCatalogueCallback(w http.ResponseWriter, r *http.R
 			"GitHub created the App, and it could not be saved here. Delete it on GitHub and create it again.", err.Error(), nil)
 		return
 	}
-	s.console.catalogueSeen.forget(entry.ID)
+	s.console.githubSeen.forget(entry.ID)
 	s.log.InfoContext(r.Context(), "catalogue App created", "id", entry.ID, "org", entry.Org, "app", registration.ID,
 		"slug", registration.Slug, "by", logsafe.Value(actor))
 	s.console.record(r.Context(), audit.Event{
@@ -609,7 +537,7 @@ func (s *ConsoleServer) githubCatalogueSetup(w http.ResponseWriter, r *http.Requ
 		s.githubProblem(w, r, http.StatusConflict, "The App is installed and could not be recorded here.", err.Error(), nil)
 		return
 	}
-	s.console.catalogueSeen.forget(entry.ID)
+	s.console.githubSeen.forget(entry.ID)
 	s.log.InfoContext(r.Context(), "catalogue App installed", "id", entry.ID, "org", record.Org, "installation", installation,
 		"by", logsafe.Value(actor))
 	s.console.record(r.Context(), audit.Event{

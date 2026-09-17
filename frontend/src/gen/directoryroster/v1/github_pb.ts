@@ -2,8 +2,8 @@
 // @generated from file directoryroster/v1/github.proto (package directoryroster.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { Message } from "@bufbuild/protobuf";
@@ -12,7 +12,528 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/github.proto.
  */
 export const file_directoryroster_v1_github: GenFile = /*@__PURE__*/
-  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvZ2l0aHViLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEiMwolQmVnaW5HaXRIdWJDYXRhbG9ndWVBcHBDb25uZWN0UmVxdWVzdBIKCgJpZBgBIAEoCSJHCiZCZWdpbkdpdEh1YkNhdGFsb2d1ZUFwcENvbm5lY3RSZXNwb25zZRILCgN1cmwYASABKAkSEAoIbWFuaWZlc3QYAiABKAkiMQojRGlzY29ubmVjdEdpdEh1YkNhdGFsb2d1ZUFwcFJlcXVlc3QSCgoCaWQYASABKAkiZQokRGlzY29ubmVjdEdpdEh1YkNhdGFsb2d1ZUFwcFJlc3BvbnNlEhMKC3VuaW5zdGFsbGVkGAEgASgIEg4KBmRldGFpbBgCIAEoCRIYChBhcHBfc2V0dGluZ3NfdXJsGAMgASgJIiwKHkNoZWNrR2l0SHViQ2F0YWxvZ3VlQXBwUmVxdWVzdBIKCgJpZBgBIAEoCSJWCh9DaGVja0dpdEh1YkNhdGFsb2d1ZUFwcFJlc3BvbnNlEjMKA2FwcBgBIAEoCzImLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJDYXRhbG9ndWVBcHAimwQKEkdpdEh1YkNhdGFsb2d1ZUFwcBIKCgJpZBgBIAEoCRILCgNvcmcYAiABKAkSDAoEbmFtZRgDIAEoCRITCgtkZXNjcmlwdGlvbhgEIAEoCRIOCgZwdWJsaWMYBSABKAgSFAoMaW5zdGFsbGF0aW9uGAYgASgJEjwKC3Blcm1pc3Npb25zGAcgAygLMicuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFwcFBlcm1pc3Npb24SDgoGZXZlbnRzGAggAygJEjIKBmdyYW50cxgJIAMoCzIiLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJBcHBHcmFudBINCgVzdGF0ZRgKIAEoCRIQCghodG1sX3VybBgLIAEoCRINCgVkcmlmdBgMIAMoCRIOCgZyZWFzb24YDSABKAkSDgoGYXBwX2lkGA4gASgDEhAKCGFwcF9zbHVnGA8gASgJEhcKD2luc3RhbGxhdGlvbl9pZBgQIAEoAxIwCgxjb25uZWN0ZWRfYXQYESABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhQKDGNvbm5lY3RlZF9ieRgSIAEoCRIuCgpjaGVja2VkX2F0GBMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIcChRyZXBvc2l0b3J5X3NlbGVjdGlvbhgUIAEoCRIQCghkZWNsYXJlZBgVIAEoCCJYChNHaXRIdWJBcHBQZXJtaXNzaW9uEgwKBG5hbWUYASABKAkSEAoIZGVjbGFyZWQYAiABKAkSCwoDYXBwGAMgASgJEhQKDGluc3RhbGxhdGlvbhgEIAEoCSLLAQoOR2l0SHViQXBwR3JhbnQSDQoFZ3JvdXAYASABKAkSFAoMcmVwb3NpdG9yaWVzGAIgAygJEkgKC3Blcm1pc3Npb25zGAMgAygLMjMuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFwcEdyYW50LlBlcm1pc3Npb25zRW50cnkSFgoOZ3JvdXBfZGVjbGFyZWQYBCABKAgaMgoQUGVybWlzc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIkAKHENvbmZpcm1HaXRIdWJSZW1vdmFsc1JlcXVlc3QSCwoDb3JnGAEgASgJEhMKC2ZpbmdlcnByaW50GAIgASgJIh8KHUNvbmZpcm1HaXRIdWJSZW1vdmFsc1Jlc3BvbnNlImEKGEltcG9ydEdpdEh1YkxpbmtzUmVxdWVzdBI1CgdyZWNvcmRzGAEgAygLMiQuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkxpbmtSZWNvcmQSDgoGb3JpZ2luGAIgASgJIncKEEdpdEh1YkxpbmtSZWNvcmQSDQoFbG9naW4YASABKAkSDgoGZW1haWxzGAIgAygJEhMKC2FwcHJvdmVkX2J5GAMgASgJEi8KC2FwcHJvdmVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKBAQoZSW1wb3J0R2l0SHViTGlua3NSZXNwb25zZRIwCghpbXBvcnRlZBgBIAMoCzIeLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJMaW5rEjIKB3NraXBwZWQYAiADKAsyIS5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQWNjb3VudCIxCiBCZWdpbkdpdEh1YkxpbmtBcHBDb25uZWN0UmVxdWVzdBINCgVvd25lchgBIAEoCSJCCiFCZWdpbkdpdEh1YkxpbmtBcHBDb25uZWN0UmVzcG9uc2USCwoDdXJsGAEgASgJEhAKCG1hbmlmZXN0GAIgASgJIj8KIkJlZ2luR2l0SHViUnVubmVyQXBwQ29ubmVjdFJlcXVlc3QSCwoDb3JnGAEgASgJEgwKBHRpZXIYAiABKAkiRAojQmVnaW5HaXRIdWJSdW5uZXJBcHBDb25uZWN0UmVzcG9uc2USCwoDdXJsGAEgASgJEhAKCG1hbmlmZXN0GAIgASgJIj0KIERpc2Nvbm5lY3RHaXRIdWJSdW5uZXJBcHBSZXF1ZXN0EgsKA29yZxgBIAEoCRIMCgR0aWVyGAIgASgJImIKIURpc2Nvbm5lY3RHaXRIdWJSdW5uZXJBcHBSZXNwb25zZRITCgt1bmluc3RhbGxlZBgBIAEoCBIOCgZkZXRhaWwYAiABKAkSGAoQYXBwX3NldHRpbmdzX3VybBgDIAEoCSIgCh5EaXNjb25uZWN0R2l0SHViTGlua0FwcFJlcXVlc3QiUAofRGlzY29ubmVjdEdpdEh1YkxpbmtBcHBSZXNwb25zZRITCgtpbnZhbGlkYXRlZBgBIAEoBRIYChBhcHBfc2V0dGluZ3NfdXJsGAIgASgJIigKGUJlZ2luR2l0SHViQ29ubmVjdFJlcXVlc3QSCwoDb3JnGAEgASgJIjsKGkJlZ2luR2l0SHViQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCRIQCghtYW5pZmVzdBgCIAEoCSIyCiNEaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uUmVxdWVzdBILCgNvcmcYASABKAkiZQokRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvblJlc3BvbnNlEhMKC3VuaW5zdGFsbGVkGAEgASgIEg4KBmRldGFpbBgCIAEoCRIYChBhcHBfc2V0dGluZ3NfdXJsGAMgASgJIhgKFkdldEdpdEh1YlN0YXR1c1JlcXVlc3QizwMKF0dldEdpdEh1YlN0YXR1c1Jlc3BvbnNlEj0KDW9yZ2FuaXNhdGlvbnMYASADKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViT3JnYW5pc2F0aW9uEhkKEXJlcG9ydHNfYXZhaWxhYmxlGAIgASgIEhwKFGNvbm5lY3RpbmdfYXZhaWxhYmxlGAMgASgIEhkKEWxpbmtpbmdfYXZhaWxhYmxlGAQgASgIEjMKCGxpbmtfYXBwGAUgASgLMiEuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkxpbmtBcHASEAoIbGlua191cmwYBiABKAkSLQoFbGlua3MYByADKAsyHi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViTGluaxIUCgxydW5uZXJfdGllcnMYCCADKAkSOAoLcnVubmVyX2FwcHMYCSADKAsyIy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViUnVubmVyQXBwEj4KDmNhdGFsb2d1ZV9hcHBzGAogAygLMiYuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkNhdGFsb2d1ZUFwcBIbChNjYXRhbG9ndWVfYXZhaWxhYmxlGAsgASgIIrsBCg9HaXRIdWJSdW5uZXJBcHASCwoDb3JnGAEgASgJEgwKBHRpZXIYAiABKAkSDgoGYXBwX2lkGAMgASgDEhAKCGFwcF9zbHVnGAQgASgJEhEKCWluc3RhbGxlZBgFIAEoCBIQCghodG1sX3VybBgGIAEoCRIwCgxjb25uZWN0ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhQKDGNvbm5lY3RlZF9ieRgIIAEoCSKaAQoNR2l0SHViTGlua0FwcBIOCgZhcHBfaWQYASABKAMSEAoIYXBwX3NsdWcYAiABKAkSDQoFb3duZXIYAyABKAkSEAoIaHRtbF91cmwYBCABKAkSMAoMY29ubmVjdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIUCgxjb25uZWN0ZWRfYnkYBiABKAkiiwIKCkdpdEh1YkxpbmsSEgoKYWNjb3VudF9pZBgBIAEoAxINCgVsb2dpbhgCIAEoCRIOCgZlbWFpbHMYAyADKAkSDQoFc3RhdGUYBCABKAkSDgoGcmVhc29uGAUgASgJEi0KCWxpbmtlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKY2hlY2tlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKY2hhbmdlZF9hdBgIIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDgoGc291cmNlGAkgASgJEgwKBG5vdGUYCiABKAkiiQUKEkdpdEh1Yk9yZ2FuaXNhdGlvbhILCgNvcmcYASABKAkSDQoFYm91bmQYAiABKAgSEAoIcmVwb3J0ZWQYAyABKAgSFAoMcmVwb3J0X2Vycm9yGAQgASgJEg8KB2VuYWJsZWQYBSABKAgSLAoEdGljaxgGIAEoCzIeLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJUaWNrEhUKDW1lbWJlcl9ncm91cHMYByADKAkSMQoHbWVtYmVycxgIIAMoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJNZW1iZXISMwoFdGVhbXMYCSADKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViVGVhbVN0YXR1cxIzCgh1bmxpbmtlZBgKIAMoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJBY2NvdW50EjgKCmNvbm5lY3Rpb24YCyABKAsyJC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQ29ubmVjdGlvbhJAChVvdXRzaWRlX2NvbGxhYm9yYXRvcnMYDCADKAsyIS5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQWNjb3VudBIuCgVzZWF0cxgNIAEoCzIfLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJTZWF0cxIyCgdicmVha2VyGA4gASgLMiEuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkJyZWFrZXISSwoUcmVtb3ZhbF9jb25maXJtYXRpb24YDyABKAsyLS5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViUmVtb3ZhbENvbmZpcm1hdGlvbhIPCgdpZ25vcmVkGBAgAygJImkKC0dpdEh1YlNlYXRzEg0KBWtub3duGAEgASgIEg0KBXRvdGFsGAIgASgFEg4KBmZpbGxlZBgDIAEoBRIPCgdwZW5kaW5nGAQgASgFEgwKBGZyZWUYBSABKAUSDQoFc2hvcnQYBiABKAUiWgoNR2l0SHViQnJlYWtlchIQCghhZmZlY3RlZBgBIAEoBRIPCgdtZW1iZXJzGAIgASgFEhMKC2ZpbmdlcnByaW50GAMgASgJEhEKCWNvbmZpcm1lZBgEIAEoCCJ4ChlHaXRIdWJSZW1vdmFsQ29uZmlybWF0aW9uEhMKC2ZpbmdlcnByaW50GAEgASgJEhQKDGNvbmZpcm1lZF9ieRgCIAEoCRIwCgxjb25maXJtZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIqEBChBHaXRIdWJDb25uZWN0aW9uEg4KBmFwcF9pZBgBIAEoAxIQCghhcHBfc2x1ZxgCIAEoCRIRCglpbnN0YWxsZWQYAyABKAgSEAoIaHRtbF91cmwYBCABKAkSMAoMY29ubmVjdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIUCgxjb25uZWN0ZWRfYnkYBiABKAkilgEKCkdpdEh1YlRpY2sSJgoCYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB291dGNvbWUYAiABKAkSDQoFZXJyb3IYAyABKAkSDwoHY2hhbmdlcxgEIAEoBRIMCgRoZWxkGAUgASgFEg8KB3dhaXRpbmcYBiABKAUSEAoIcmV0cnlpbmcYByABKAUilAEKEEdpdEh1YlRlYW1TdGF0dXMSDAoEdGVhbRgBIAEoCRINCgVib3VuZBgCIAEoCBIVCg1tZW1iZXJfZ3JvdXBzGAMgAygJEhkKEW1haW50YWluZXJfZ3JvdXBzGAQgAygJEjEKB21lbWJlcnMYBSADKAsyIC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViTWVtYmVyImkKDEdpdEh1Yk1lbWJlchINCgVlbWFpbBgBIAEoCRINCgVsb2dpbhgCIAEoCRIMCgRyb2xlGAMgASgJEg0KBXN0YXRlGAQgASgJEg4KBmFjdGlvbhgFIAEoCRIOCgZyZWFzb24YBiABKAkiLgoNR2l0SHViQWNjb3VudBINCgVsb2dpbhgBIAEoCRIOCgZyZWFzb24YAiABKAky0wwKDUdpdEh1YlNlcnZpY2USagoPR2V0R2l0SHViU3RhdHVzEiouZGlyZWN0b3J5cm9zdGVyLnYxLkdldEdpdEh1YlN0YXR1c1JlcXVlc3QaKy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0R2l0SHViU3RhdHVzUmVzcG9uc2UScwoSQmVnaW5HaXRIdWJDb25uZWN0Ei0uZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luR2l0SHViQ29ubmVjdFJlcXVlc3QaLi5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJDb25uZWN0UmVzcG9uc2USkQEKHERpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb24SNy5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvblJlcXVlc3QaOC5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvblJlc3BvbnNlEogBChlCZWdpbkdpdEh1YkxpbmtBcHBDb25uZWN0EjQuZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luR2l0SHViTGlua0FwcENvbm5lY3RSZXF1ZXN0GjUuZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luR2l0SHViTGlua0FwcENvbm5lY3RSZXNwb25zZRKOAQobQmVnaW5HaXRIdWJSdW5uZXJBcHBDb25uZWN0EjYuZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luR2l0SHViUnVubmVyQXBwQ29ubmVjdFJlcXVlc3QaNy5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJSdW5uZXJBcHBDb25uZWN0UmVzcG9uc2USiAEKGURpc2Nvbm5lY3RHaXRIdWJSdW5uZXJBcHASNC5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdEdpdEh1YlJ1bm5lckFwcFJlcXVlc3QaNS5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdEdpdEh1YlJ1bm5lckFwcFJlc3BvbnNlEoIBChdEaXNjb25uZWN0R2l0SHViTGlua0FwcBIyLmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViTGlua0FwcFJlcXVlc3QaMy5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdEdpdEh1YkxpbmtBcHBSZXNwb25zZRJ8ChVDb25maXJtR2l0SHViUmVtb3ZhbHMSMC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ29uZmlybUdpdEh1YlJlbW92YWxzUmVxdWVzdBoxLmRpcmVjdG9yeXJvc3Rlci52MS5Db25maXJtR2l0SHViUmVtb3ZhbHNSZXNwb25zZRJwChFJbXBvcnRHaXRIdWJMaW5rcxIsLmRpcmVjdG9yeXJvc3Rlci52MS5JbXBvcnRHaXRIdWJMaW5rc1JlcXVlc3QaLS5kaXJlY3Rvcnlyb3N0ZXIudjEuSW1wb3J0R2l0SHViTGlua3NSZXNwb25zZRKXAQoeQmVnaW5HaXRIdWJDYXRhbG9ndWVBcHBDb25uZWN0EjkuZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luR2l0SHViQ2F0YWxvZ3VlQXBwQ29ubmVjdFJlcXVlc3QaOi5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJDYXRhbG9ndWVBcHBDb25uZWN0UmVzcG9uc2USkQEKHERpc2Nvbm5lY3RHaXRIdWJDYXRhbG9ndWVBcHASNy5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdEdpdEh1YkNhdGFsb2d1ZUFwcFJlcXVlc3QaOC5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdEdpdEh1YkNhdGFsb2d1ZUFwcFJlc3BvbnNlEoIBChdDaGVja0dpdEh1YkNhdGFsb2d1ZUFwcBIyLmRpcmVjdG9yeXJvc3Rlci52MS5DaGVja0dpdEh1YkNhdGFsb2d1ZUFwcFJlcXVlc3QaMy5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2hlY2tHaXRIdWJDYXRhbG9ndWVBcHBSZXNwb25zZULZAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUILR2l0aHViUHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("Ch9kaXJlY3Rvcnlyb3N0ZXIvdjEvZ2l0aHViLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEivQYKCUdpdEh1YkFwcBIKCgJpZBgBIAEoCRILCgNvcmcYAiABKAkSLwoHcHVycG9zZRgDIAEoDjIeLmRpcmVjdG9yeXJvc3Rlci52MS5BcHBQdXJwb3NlEgwKBHRpZXIYBCABKAkSLQoGb3JpZ2luGAUgASgOMh0uZGlyZWN0b3J5cm9zdGVyLnYxLkFwcE9yaWdpbhIMCgRuYW1lGAYgASgJEhAKCGFwcF9zbHVnGAcgASgJEhMKC2Rlc2NyaXB0aW9uGAggASgJEg4KBnB1YmxpYxgJIAEoCBIUCgxpbnN0YWxsYXRpb24YCiABKAkSHAoUcmVwb3NpdG9yeV9zZWxlY3Rpb24YCyABKAkSKwoFc3RhdGUYDCABKA4yHC5kaXJlY3Rvcnlyb3N0ZXIudjEuQXBwU3RhdGUSMwoJYXR0ZW50aW9uGA0gASgOMiAuZGlyZWN0b3J5cm9zdGVyLnYxLkFwcEF0dGVudGlvbhIUCgxzdGF0ZV9kZXRhaWwYDiABKAkSEAoIZGVjbGFyZWQYDyABKAgSDQoFZHJpZnQYECADKAkSPAoLcGVybWlzc2lvbnMYESADKAsyJy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQXBwUGVybWlzc2lvbhIOCgZldmVudHMYEiADKAkSMgoGZ3JhbnRzGBMgAygLMiIuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFwcEdyYW50EhAKCGh0bWxfdXJsGBQgASgJEhQKDHNldHRpbmdzX3VybBgVIAEoCRIOCgZhcHBfaWQYFiABKAMSFwoPaW5zdGFsbGF0aW9uX2lkGBcgASgDEjAKDGNvbm5lY3RlZF9hdBgYIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFAoMY29ubmVjdGVkX2J5GBkgASgJEi4KCmNoZWNrZWRfYXQYGiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg4KBnJlYXNvbhgbIAEoCRIOCgZzZWNyZXQYHCABKAkSEwoLc2VjcmV0X2tleXMYHSADKAkSFwoPbGlua2VkX2FjY291bnRzGB4gASgFIhcKFUxpc3RHaXRIdWJBcHBzUmVxdWVzdCLgAQoWTGlzdEdpdEh1YkFwcHNSZXNwb25zZRIrCgRhcHBzGAEgAygLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFwcBIcChRjb25uZWN0aW5nX2F2YWlsYWJsZRgCIAEoCBIZChFsaW5raW5nX2F2YWlsYWJsZRgDIAEoCBIbChNjYXRhbG9ndWVfYXZhaWxhYmxlGAQgASgIEhQKDHJ1bm5lcl90aWVycxgFIAMoCRIbChNib3VuZF9vcmdhbmlzYXRpb25zGAYgAygJEhAKCGxpbmtfdXJsGAcgASgJIiEKE0dldEdpdEh1YkFwcFJlcXVlc3QSCgoCaWQYASABKAkiQgoUR2V0R2l0SHViQXBwUmVzcG9uc2USKgoDYXBwGAEgASgLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFwcCI5ChxCZWdpbkdpdEh1YkFwcENvbm5lY3RSZXF1ZXN0EgoKAmlkGAEgASgJEg0KBW93bmVyGAIgASgJIj4KHUJlZ2luR2l0SHViQXBwQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCRIQCghtYW5pZmVzdBgCIAEoCSIoChpEaXNjb25uZWN0R2l0SHViQXBwUmVxdWVzdBIKCgJpZBgBIAEoCSJxChtEaXNjb25uZWN0R2l0SHViQXBwUmVzcG9uc2USEwoLdW5pbnN0YWxsZWQYASABKAgSDgoGZGV0YWlsGAIgASgJEhgKEGFwcF9zZXR0aW5nc191cmwYAyABKAkSEwoLaW52YWxpZGF0ZWQYBCABKAUiIwoVQ2hlY2tHaXRIdWJBcHBSZXF1ZXN0EgoKAmlkGAEgASgJIkQKFkNoZWNrR2l0SHViQXBwUmVzcG9uc2USKgoDYXBwGAEgASgLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFwcCLXAQoQR2l0SHViR3JvdXBHcmFudBIOCgZhcHBfaWQYASABKAkSEAoIYXBwX25hbWUYAiABKAkSCwoDb3JnGAMgASgJEhQKDHJlcG9zaXRvcmllcxgEIAMoCRJKCgtwZXJtaXNzaW9ucxgFIAMoCzI1LmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJHcm91cEdyYW50LlBlcm1pc3Npb25zRW50cnkaMgoQUGVybWlzc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIjMKJUJlZ2luR2l0SHViQ2F0YWxvZ3VlQXBwQ29ubmVjdFJlcXVlc3QSCgoCaWQYASABKAkiRwomQmVnaW5HaXRIdWJDYXRhbG9ndWVBcHBDb25uZWN0UmVzcG9uc2USCwoDdXJsGAEgASgJEhAKCG1hbmlmZXN0GAIgASgJIjEKI0Rpc2Nvbm5lY3RHaXRIdWJDYXRhbG9ndWVBcHBSZXF1ZXN0EgoKAmlkGAEgASgJImUKJERpc2Nvbm5lY3RHaXRIdWJDYXRhbG9ndWVBcHBSZXNwb25zZRITCgt1bmluc3RhbGxlZBgBIAEoCBIOCgZkZXRhaWwYAiABKAkSGAoQYXBwX3NldHRpbmdzX3VybBgDIAEoCSIsCh5DaGVja0dpdEh1YkNhdGFsb2d1ZUFwcFJlcXVlc3QSCgoCaWQYASABKAkiVgofQ2hlY2tHaXRIdWJDYXRhbG9ndWVBcHBSZXNwb25zZRIzCgNhcHAYASABKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQ2F0YWxvZ3VlQXBwIpsEChJHaXRIdWJDYXRhbG9ndWVBcHASCgoCaWQYASABKAkSCwoDb3JnGAIgASgJEgwKBG5hbWUYAyABKAkSEwoLZGVzY3JpcHRpb24YBCABKAkSDgoGcHVibGljGAUgASgIEhQKDGluc3RhbGxhdGlvbhgGIAEoCRI8CgtwZXJtaXNzaW9ucxgHIAMoCzInLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJBcHBQZXJtaXNzaW9uEg4KBmV2ZW50cxgIIAMoCRIyCgZncmFudHMYCSADKAsyIi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQXBwR3JhbnQSDQoFc3RhdGUYCiABKAkSEAoIaHRtbF91cmwYCyABKAkSDQoFZHJpZnQYDCADKAkSDgoGcmVhc29uGA0gASgJEg4KBmFwcF9pZBgOIAEoAxIQCghhcHBfc2x1ZxgPIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYECABKAMSMAoMY29ubmVjdGVkX2F0GBEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIUCgxjb25uZWN0ZWRfYnkYEiABKAkSLgoKY2hlY2tlZF9hdBgTIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASHAoUcmVwb3NpdG9yeV9zZWxlY3Rpb24YFCABKAkSEAoIZGVjbGFyZWQYFSABKAgiWAoTR2l0SHViQXBwUGVybWlzc2lvbhIMCgRuYW1lGAEgASgJEhAKCGRlY2xhcmVkGAIgASgJEgsKA2FwcBgDIAEoCRIUCgxpbnN0YWxsYXRpb24YBCABKAkiywEKDkdpdEh1YkFwcEdyYW50Eg0KBWdyb3VwGAEgASgJEhQKDHJlcG9zaXRvcmllcxgCIAMoCRJICgtwZXJtaXNzaW9ucxgDIAMoCzIzLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJBcHBHcmFudC5QZXJtaXNzaW9uc0VudHJ5EhYKDmdyb3VwX2RlY2xhcmVkGAQgASgIGjIKEFBlcm1pc3Npb25zRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJAChxDb25maXJtR2l0SHViUmVtb3ZhbHNSZXF1ZXN0EgsKA29yZxgBIAEoCRITCgtmaW5nZXJwcmludBgCIAEoCSIfCh1Db25maXJtR2l0SHViUmVtb3ZhbHNSZXNwb25zZSJhChhJbXBvcnRHaXRIdWJMaW5rc1JlcXVlc3QSNQoHcmVjb3JkcxgBIAMoCzIkLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJMaW5rUmVjb3JkEg4KBm9yaWdpbhgCIAEoCSJ3ChBHaXRIdWJMaW5rUmVjb3JkEg0KBWxvZ2luGAEgASgJEg4KBmVtYWlscxgCIAMoCRITCgthcHByb3ZlZF9ieRgDIAEoCRIvCgthcHByb3ZlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAigQEKGUltcG9ydEdpdEh1YkxpbmtzUmVzcG9uc2USMAoIaW1wb3J0ZWQYASADKAsyHi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViTGluaxIyCgdza2lwcGVkGAIgAygLMiEuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFjY291bnQiMQogQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlcXVlc3QSDQoFb3duZXIYASABKAkiQgohQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCRIQCghtYW5pZmVzdBgCIAEoCSI/CiJCZWdpbkdpdEh1YlJ1bm5lckFwcENvbm5lY3RSZXF1ZXN0EgsKA29yZxgBIAEoCRIMCgR0aWVyGAIgASgJIkQKI0JlZ2luR2l0SHViUnVubmVyQXBwQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCRIQCghtYW5pZmVzdBgCIAEoCSI9CiBEaXNjb25uZWN0R2l0SHViUnVubmVyQXBwUmVxdWVzdBILCgNvcmcYASABKAkSDAoEdGllchgCIAEoCSJiCiFEaXNjb25uZWN0R2l0SHViUnVubmVyQXBwUmVzcG9uc2USEwoLdW5pbnN0YWxsZWQYASABKAgSDgoGZGV0YWlsGAIgASgJEhgKEGFwcF9zZXR0aW5nc191cmwYAyABKAkiIAoeRGlzY29ubmVjdEdpdEh1YkxpbmtBcHBSZXF1ZXN0IlAKH0Rpc2Nvbm5lY3RHaXRIdWJMaW5rQXBwUmVzcG9uc2USEwoLaW52YWxpZGF0ZWQYASABKAUSGAoQYXBwX3NldHRpbmdzX3VybBgCIAEoCSIoChlCZWdpbkdpdEh1YkNvbm5lY3RSZXF1ZXN0EgsKA29yZxgBIAEoCSI7ChpCZWdpbkdpdEh1YkNvbm5lY3RSZXNwb25zZRILCgN1cmwYASABKAkSEAoIbWFuaWZlc3QYAiABKAkiMgojRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvblJlcXVlc3QSCwoDb3JnGAEgASgJImUKJERpc2Nvbm5lY3RHaXRIdWJPcmdhbmlzYXRpb25SZXNwb25zZRITCgt1bmluc3RhbGxlZBgBIAEoCBIOCgZkZXRhaWwYAiABKAkSGAoQYXBwX3NldHRpbmdzX3VybBgDIAEoCSIYChZHZXRHaXRIdWJTdGF0dXNSZXF1ZXN0Is8DChdHZXRHaXRIdWJTdGF0dXNSZXNwb25zZRI9Cg1vcmdhbmlzYXRpb25zGAEgAygLMiYuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1Yk9yZ2FuaXNhdGlvbhIZChFyZXBvcnRzX2F2YWlsYWJsZRgCIAEoCBIcChRjb25uZWN0aW5nX2F2YWlsYWJsZRgDIAEoCBIZChFsaW5raW5nX2F2YWlsYWJsZRgEIAEoCBIzCghsaW5rX2FwcBgFIAEoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJMaW5rQXBwEhAKCGxpbmtfdXJsGAYgASgJEi0KBWxpbmtzGAcgAygLMh4uZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkxpbmsSFAoMcnVubmVyX3RpZXJzGAggAygJEjgKC3J1bm5lcl9hcHBzGAkgAygLMiMuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YlJ1bm5lckFwcBI+Cg5jYXRhbG9ndWVfYXBwcxgKIAMoCzImLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJDYXRhbG9ndWVBcHASGwoTY2F0YWxvZ3VlX2F2YWlsYWJsZRgLIAEoCCK7AQoPR2l0SHViUnVubmVyQXBwEgsKA29yZxgBIAEoCRIMCgR0aWVyGAIgASgJEg4KBmFwcF9pZBgDIAEoAxIQCghhcHBfc2x1ZxgEIAEoCRIRCglpbnN0YWxsZWQYBSABKAgSEAoIaHRtbF91cmwYBiABKAkSMAoMY29ubmVjdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIUCgxjb25uZWN0ZWRfYnkYCCABKAkimgEKDUdpdEh1YkxpbmtBcHASDgoGYXBwX2lkGAEgASgDEhAKCGFwcF9zbHVnGAIgASgJEg0KBW93bmVyGAMgASgJEhAKCGh0bWxfdXJsGAQgASgJEjAKDGNvbm5lY3RlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFAoMY29ubmVjdGVkX2J5GAYgASgJIosCCgpHaXRIdWJMaW5rEhIKCmFjY291bnRfaWQYASABKAMSDQoFbG9naW4YAiABKAkSDgoGZW1haWxzGAMgAygJEg0KBXN0YXRlGAQgASgJEg4KBnJlYXNvbhgFIAEoCRItCglsaW5rZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmNoZWNrZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmNoYW5nZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg4KBnNvdXJjZRgJIAEoCRIMCgRub3RlGAogASgJIokFChJHaXRIdWJPcmdhbmlzYXRpb24SCwoDb3JnGAEgASgJEg0KBWJvdW5kGAIgASgIEhAKCHJlcG9ydGVkGAMgASgIEhQKDHJlcG9ydF9lcnJvchgEIAEoCRIPCgdlbmFibGVkGAUgASgIEiwKBHRpY2sYBiABKAsyHi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViVGljaxIVCg1tZW1iZXJfZ3JvdXBzGAcgAygJEjEKB21lbWJlcnMYCCADKAsyIC5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViTWVtYmVyEjMKBXRlYW1zGAkgAygLMiQuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YlRlYW1TdGF0dXMSMwoIdW5saW5rZWQYCiADKAsyIS5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViQWNjb3VudBI4Cgpjb25uZWN0aW9uGAsgASgLMiQuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkNvbm5lY3Rpb24SQAoVb3V0c2lkZV9jb2xsYWJvcmF0b3JzGAwgAygLMiEuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YkFjY291bnQSLgoFc2VhdHMYDSABKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2l0SHViU2VhdHMSMgoHYnJlYWtlchgOIAEoCzIhLmRpcmVjdG9yeXJvc3Rlci52MS5HaXRIdWJCcmVha2VyEksKFHJlbW92YWxfY29uZmlybWF0aW9uGA8gASgLMi0uZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1YlJlbW92YWxDb25maXJtYXRpb24SDwoHaWdub3JlZBgQIAMoCSJpCgtHaXRIdWJTZWF0cxINCgVrbm93bhgBIAEoCBINCgV0b3RhbBgCIAEoBRIOCgZmaWxsZWQYAyABKAUSDwoHcGVuZGluZxgEIAEoBRIMCgRmcmVlGAUgASgFEg0KBXNob3J0GAYgASgFIloKDUdpdEh1YkJyZWFrZXISEAoIYWZmZWN0ZWQYASABKAUSDwoHbWVtYmVycxgCIAEoBRITCgtmaW5nZXJwcmludBgDIAEoCRIRCgljb25maXJtZWQYBCABKAgieAoZR2l0SHViUmVtb3ZhbENvbmZpcm1hdGlvbhITCgtmaW5nZXJwcmludBgBIAEoCRIUCgxjb25maXJtZWRfYnkYAiABKAkSMAoMY29uZmlybWVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKhAQoQR2l0SHViQ29ubmVjdGlvbhIOCgZhcHBfaWQYASABKAMSEAoIYXBwX3NsdWcYAiABKAkSEQoJaW5zdGFsbGVkGAMgASgIEhAKCGh0bWxfdXJsGAQgASgJEjAKDGNvbm5lY3RlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFAoMY29ubmVjdGVkX2J5GAYgASgJIpYBCgpHaXRIdWJUaWNrEiYKAmF0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIPCgdvdXRjb21lGAIgASgJEg0KBWVycm9yGAMgASgJEg8KB2NoYW5nZXMYBCABKAUSDAoEaGVsZBgFIAEoBRIPCgd3YWl0aW5nGAYgASgFEhAKCHJldHJ5aW5nGAcgASgFIpQBChBHaXRIdWJUZWFtU3RhdHVzEgwKBHRlYW0YASABKAkSDQoFYm91bmQYAiABKAgSFQoNbWVtYmVyX2dyb3VwcxgDIAMoCRIZChFtYWludGFpbmVyX2dyb3VwcxgEIAMoCRIxCgdtZW1iZXJzGAUgAygLMiAuZGlyZWN0b3J5cm9zdGVyLnYxLkdpdEh1Yk1lbWJlciJpCgxHaXRIdWJNZW1iZXISDQoFZW1haWwYASABKAkSDQoFbG9naW4YAiABKAkSDAoEcm9sZRgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZhY3Rpb24YBSABKAkSDgoGcmVhc29uGAYgASgJIi4KDUdpdEh1YkFjY291bnQSDQoFbG9naW4YASABKAkSDgoGcmVhc29uGAIgASgJKowBCgpBcHBQdXJwb3NlEhsKF0FQUF9QVVJQT1NFX1VOU1BFQ0lGSUVEEAASFAoQQVBQX1BVUlBPU0VfTElOSxABEhoKFkFQUF9QVVJQT1NFX0NPTlRST0xMRVIQAhIXChNBUFBfUFVSUE9TRV9SVU5ORVJTEAMSFgoSQVBQX1BVUlBPU0VfVE9LRU5TEAQqWAoJQXBwT3JpZ2luEhoKFkFQUF9PUklHSU5fVU5TUEVDSUZJRUQQABIVChFBUFBfT1JJR0lOX1BSRVNFVBABEhgKFEFQUF9PUklHSU5fQ0FUQUxPR1VFEAIqhwEKCEFwcFN0YXRlEhkKFUFQUF9TVEFURV9VTlNQRUNJRklFRBAAEhkKFUFQUF9TVEFURV9OT1RfQ1JFQVRFRBABEhUKEUFQUF9TVEFURV9DUkVBVEVEEAISFwoTQVBQX1NUQVRFX0lOU1RBTExFRBADEhUKEUFQUF9TVEFURV9EUklGVEVEEAQqqgEKDEFwcEF0dGVudGlvbhIdChlBUFBfQVRURU5USU9OX1VOU1BFQ0lGSUVEEAASFgoSQVBQX0FUVEVOVElPTl9ET05FEAESGwoXQVBQX0FUVEVOVElPTl9ORUVEU19ZT1UQAhIgChxBUFBfQVRURU5USU9OX1dBSVRJTkdfUEVSU09OEAMSJAogQVBQX0FUVEVOVElPTl9XQUlUSU5HX0NPTlRST0xMRVIQBDL+EAoNR2l0SHViU2VydmljZRJnCg5MaXN0R2l0SHViQXBwcxIpLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0R2l0SHViQXBwc1JlcXVlc3QaKi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdEdpdEh1YkFwcHNSZXNwb25zZRJhCgxHZXRHaXRIdWJBcHASJy5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0R2l0SHViQXBwUmVxdWVzdBooLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRHaXRIdWJBcHBSZXNwb25zZRJ8ChVCZWdpbkdpdEh1YkFwcENvbm5lY3QSMC5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJBcHBDb25uZWN0UmVxdWVzdBoxLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkFwcENvbm5lY3RSZXNwb25zZRJ2ChNEaXNjb25uZWN0R2l0SHViQXBwEi4uZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJBcHBSZXF1ZXN0Gi8uZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJBcHBSZXNwb25zZRJnCg5DaGVja0dpdEh1YkFwcBIpLmRpcmVjdG9yeXJvc3Rlci52MS5DaGVja0dpdEh1YkFwcFJlcXVlc3QaKi5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2hlY2tHaXRIdWJBcHBSZXNwb25zZRJqCg9HZXRHaXRIdWJTdGF0dXMSKi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0R2l0SHViU3RhdHVzUmVxdWVzdBorLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRHaXRIdWJTdGF0dXNSZXNwb25zZRJzChJCZWdpbkdpdEh1YkNvbm5lY3QSLS5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJDb25uZWN0UmVxdWVzdBouLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkNvbm5lY3RSZXNwb25zZRKRAQocRGlzY29ubmVjdEdpdEh1Yk9yZ2FuaXNhdGlvbhI3LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uUmVxdWVzdBo4LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViT3JnYW5pc2F0aW9uUmVzcG9uc2USiAEKGUJlZ2luR2l0SHViTGlua0FwcENvbm5lY3QSNC5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlcXVlc3QaNS5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJMaW5rQXBwQ29ubmVjdFJlc3BvbnNlEo4BChtCZWdpbkdpdEh1YlJ1bm5lckFwcENvbm5lY3QSNi5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJSdW5uZXJBcHBDb25uZWN0UmVxdWVzdBo3LmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YlJ1bm5lckFwcENvbm5lY3RSZXNwb25zZRKIAQoZRGlzY29ubmVjdEdpdEh1YlJ1bm5lckFwcBI0LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViUnVubmVyQXBwUmVxdWVzdBo1LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViUnVubmVyQXBwUmVzcG9uc2USggEKF0Rpc2Nvbm5lY3RHaXRIdWJMaW5rQXBwEjIuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RHaXRIdWJMaW5rQXBwUmVxdWVzdBozLmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViTGlua0FwcFJlc3BvbnNlEnwKFUNvbmZpcm1HaXRIdWJSZW1vdmFscxIwLmRpcmVjdG9yeXJvc3Rlci52MS5Db25maXJtR2l0SHViUmVtb3ZhbHNSZXF1ZXN0GjEuZGlyZWN0b3J5cm9zdGVyLnYxLkNvbmZpcm1HaXRIdWJSZW1vdmFsc1Jlc3BvbnNlEnAKEUltcG9ydEdpdEh1YkxpbmtzEiwuZGlyZWN0b3J5cm9zdGVyLnYxLkltcG9ydEdpdEh1YkxpbmtzUmVxdWVzdBotLmRpcmVjdG9yeXJvc3Rlci52MS5JbXBvcnRHaXRIdWJMaW5rc1Jlc3BvbnNlEpcBCh5CZWdpbkdpdEh1YkNhdGFsb2d1ZUFwcENvbm5lY3QSOS5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5HaXRIdWJDYXRhbG9ndWVBcHBDb25uZWN0UmVxdWVzdBo6LmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkdpdEh1YkNhdGFsb2d1ZUFwcENvbm5lY3RSZXNwb25zZRKRAQocRGlzY29ubmVjdEdpdEh1YkNhdGFsb2d1ZUFwcBI3LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViQ2F0YWxvZ3VlQXBwUmVxdWVzdBo4LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0R2l0SHViQ2F0YWxvZ3VlQXBwUmVzcG9uc2USggEKF0NoZWNrR2l0SHViQ2F0YWxvZ3VlQXBwEjIuZGlyZWN0b3J5cm9zdGVyLnYxLkNoZWNrR2l0SHViQ2F0YWxvZ3VlQXBwUmVxdWVzdBozLmRpcmVjdG9yeXJvc3Rlci52MS5DaGVja0dpdEh1YkNhdGFsb2d1ZUFwcFJlc3BvbnNlQtkBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQgtHaXRodWJQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+
+/**
+ * GitHubApp is one App, whichever of the four kinds it is: what the
+ * deployment declares of it, what this service recorded when it was
+ * created, and what GitHub says of it now. Never the key.
+ *
+ * @generated from message directoryroster.v1.GitHubApp
+ */
+export type GitHubApp = Message<"directoryroster.v1.GitHubApp"> & {
+  /**
+   * the App's id here, stable and the address of its page: `link`,
+   * `<org>-controller`, `<org>-runners-<tier>`, or the catalogue id. A
+   * catalogue id wins a collision — it is the operator's own name for an
+   * App — and the preset moves aside behind a `-preset` suffix.
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * the organisation it is installed on; for the link App, the one it was
+   * created under.
+   *
+   * @generated from field: string org = 2;
+   */
+  org: string;
+
+  /**
+   * @generated from field: directoryroster.v1.AppPurpose purpose = 3;
+   */
+  purpose: AppPurpose;
+
+  /**
+   * the runner tier, for a runner App alone.
+   *
+   * @generated from field: string tier = 4;
+   */
+  tier: string;
+
+  /**
+   * @generated from field: directoryroster.v1.AppOrigin origin = 5;
+   */
+  origin: AppOrigin;
+
+  /**
+   * the App's name on GitHub once created, and the name it is created
+   * with before that.
+   *
+   * @generated from field: string name = 6;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string app_slug = 7;
+   */
+  appSlug: string;
+
+  /**
+   * @generated from field: string description = 8;
+   */
+  description: string;
+
+  /**
+   * @generated from field: bool public = 9;
+   */
+  public: boolean;
+
+  /**
+   * all or selected: the repositories the installer is expected to
+   * choose.
+   *
+   * @generated from field: string installation = 10;
+   */
+  installation: string;
+
+  /**
+   * all or selected, as installed on GitHub.
+   *
+   * @generated from field: string repository_selection = 11;
+   */
+  repositorySelection: string;
+
+  /**
+   * @generated from field: directoryroster.v1.AppState state = 12;
+   */
+  state: AppState;
+
+  /**
+   * @generated from field: directoryroster.v1.AppAttention attention = 13;
+   */
+  attention: AppAttention;
+
+  /**
+   * the exact state in words, for a tooltip.
+   *
+   * @generated from field: string state_detail = 14;
+   */
+  stateDetail: string;
+
+  /**
+   * whether the deployment still declares it. An App created for a tier,
+   * an organisation or a catalogue entry since dropped can only be
+   * disconnected.
+   *
+   * @generated from field: bool declared = 15;
+   */
+  declared: boolean;
+
+  /**
+   * each way GitHub differs from the declaration, as a sentence.
+   *
+   * @generated from field: repeated string drift = 16;
+   */
+  drift: string[];
+
+  /**
+   * every permission declared or held, each with its declared level and
+   * what the App and its installation hold.
+   *
+   * @generated from field: repeated directoryroster.v1.GitHubAppPermission permissions = 17;
+   */
+  permissions: GitHubAppPermission[];
+
+  /**
+   * the webhook events declared. The webhook itself is never active.
+   *
+   * @generated from field: repeated string events = 18;
+   */
+  events: string[];
+
+  /**
+   * which internal groups may mint tokens of it, and for how much. Only a
+   * catalogue App has any.
+   *
+   * @generated from field: repeated directoryroster.v1.GitHubAppGrant grants = 19;
+   */
+  grants: GitHubAppGrant[];
+
+  /**
+   * @generated from field: string html_url = 20;
+   */
+  htmlUrl: string;
+
+  /**
+   * where the organisation's owner edits or deletes the App, which the
+   * API cannot do.
+   *
+   * @generated from field: string settings_url = 21;
+   */
+  settingsUrl: string;
+
+  /**
+   * @generated from field: int64 app_id = 22;
+   */
+  appId: bigint;
+
+  /**
+   * @generated from field: int64 installation_id = 23;
+   */
+  installationId: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp connected_at = 24;
+   */
+  connectedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: string connected_by = 25;
+   */
+  connectedBy: string;
+
+  /**
+   * when GitHub was last asked.
+   *
+   * @generated from field: google.protobuf.Timestamp checked_at = 26;
+   */
+  checkedAt?: Timestamp | undefined;
+
+  /**
+   * why GitHub could not be asked, when it could not. The state is then
+   * what the record says, and no drift is claimed either way.
+   *
+   * @generated from field: string reason = 27;
+   */
+  reason: string;
+
+  /**
+   * the Kubernetes Secret the App's key is kept in, and the keys within
+   * it, for a deployment copying one. Empty where the deployment keeps no
+   * state in Kubernetes.
+   *
+   * @generated from field: string secret = 28;
+   */
+  secret: string;
+
+  /**
+   * @generated from field: repeated string secret_keys = 29;
+   */
+  secretKeys: string[];
+
+  /**
+   * how many accounts people linked through it. The link App only.
+   *
+   * @generated from field: int32 linked_accounts = 30;
+   */
+  linkedAccounts: number;
+};
+
+/**
+ * Describes the message directoryroster.v1.GitHubApp.
+ * Use `create(GitHubAppSchema)` to create a new message.
+ */
+export const GitHubAppSchema: GenMessage<GitHubApp> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 0);
+
+/**
+ * @generated from message directoryroster.v1.ListGitHubAppsRequest
+ */
+export type ListGitHubAppsRequest = Message<"directoryroster.v1.ListGitHubAppsRequest"> & {
+};
+
+/**
+ * Describes the message directoryroster.v1.ListGitHubAppsRequest.
+ * Use `create(ListGitHubAppsRequestSchema)` to create a new message.
+ */
+export const ListGitHubAppsRequestSchema: GenMessage<ListGitHubAppsRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 1);
+
+/**
+ * @generated from message directoryroster.v1.ListGitHubAppsResponse
+ */
+export type ListGitHubAppsResponse = Message<"directoryroster.v1.ListGitHubAppsResponse"> & {
+  /**
+   * @generated from field: repeated directoryroster.v1.GitHubApp apps = 1;
+   */
+  apps: GitHubApp[];
+
+  /**
+   * false where connecting an organisation is not possible here, because
+   * there is nowhere to keep what it leaves behind.
+   *
+   * @generated from field: bool connecting_available = 2;
+   */
+  connectingAvailable: boolean;
+
+  /**
+   * false where people cannot link accounts here, for the same reason.
+   *
+   * @generated from field: bool linking_available = 3;
+   */
+  linkingAvailable: boolean;
+
+  /**
+   * false where this deployment keeps no catalogue Apps.
+   *
+   * @generated from field: bool catalogue_available = 4;
+   */
+  catalogueAvailable: boolean;
+
+  /**
+   * the runner tiers this deployment declares.
+   *
+   * @generated from field: repeated string runner_tiers = 5;
+   */
+  runnerTiers: string[];
+
+  /**
+   * the organisations the policy binds: the ones an App can be created
+   * under.
+   *
+   * @generated from field: repeated string bound_organisations = 6;
+   */
+  boundOrganisations: string[];
+
+  /**
+   * the page a person opens to link their account. Share it.
+   *
+   * @generated from field: string link_url = 7;
+   */
+  linkUrl: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.ListGitHubAppsResponse.
+ * Use `create(ListGitHubAppsResponseSchema)` to create a new message.
+ */
+export const ListGitHubAppsResponseSchema: GenMessage<ListGitHubAppsResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 2);
+
+/**
+ * @generated from message directoryroster.v1.GetGitHubAppRequest
+ */
+export type GetGitHubAppRequest = Message<"directoryroster.v1.GetGitHubAppRequest"> & {
+  /**
+   * the App's id, as ListGitHubApps gives it.
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.GetGitHubAppRequest.
+ * Use `create(GetGitHubAppRequestSchema)` to create a new message.
+ */
+export const GetGitHubAppRequestSchema: GenMessage<GetGitHubAppRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 3);
+
+/**
+ * @generated from message directoryroster.v1.GetGitHubAppResponse
+ */
+export type GetGitHubAppResponse = Message<"directoryroster.v1.GetGitHubAppResponse"> & {
+  /**
+   * @generated from field: directoryroster.v1.GitHubApp app = 1;
+   */
+  app?: GitHubApp | undefined;
+};
+
+/**
+ * Describes the message directoryroster.v1.GetGitHubAppResponse.
+ * Use `create(GetGitHubAppResponseSchema)` to create a new message.
+ */
+export const GetGitHubAppResponseSchema: GenMessage<GetGitHubAppResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 4);
+
+/**
+ * @generated from message directoryroster.v1.BeginGitHubAppConnectRequest
+ */
+export type BeginGitHubAppConnectRequest = Message<"directoryroster.v1.BeginGitHubAppConnectRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * the organisation the App is created under. Read for the link App
+   * alone, which belongs to no one organisation; every other App is
+   * created under the organisation it acts on.
+   *
+   * @generated from field: string owner = 2;
+   */
+  owner: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.BeginGitHubAppConnectRequest.
+ * Use `create(BeginGitHubAppConnectRequestSchema)` to create a new message.
+ */
+export const BeginGitHubAppConnectRequestSchema: GenMessage<BeginGitHubAppConnectRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 5);
+
+/**
+ * @generated from message directoryroster.v1.BeginGitHubAppConnectResponse
+ */
+export type BeginGitHubAppConnectResponse = Message<"directoryroster.v1.BeginGitHubAppConnectResponse"> & {
+  /**
+   * where the browser goes next.
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+
+  /**
+   * when set, the browser POSTs it as the form field `manifest` to url:
+   * GitHub creates an App only from a posted manifest. Empty means url is
+   * an ordinary navigation — the App exists and is to be installed.
+   *
+   * @generated from field: string manifest = 2;
+   */
+  manifest: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.BeginGitHubAppConnectResponse.
+ * Use `create(BeginGitHubAppConnectResponseSchema)` to create a new message.
+ */
+export const BeginGitHubAppConnectResponseSchema: GenMessage<BeginGitHubAppConnectResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 6);
+
+/**
+ * @generated from message directoryroster.v1.DisconnectGitHubAppRequest
+ */
+export type DisconnectGitHubAppRequest = Message<"directoryroster.v1.DisconnectGitHubAppRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.DisconnectGitHubAppRequest.
+ * Use `create(DisconnectGitHubAppRequestSchema)` to create a new message.
+ */
+export const DisconnectGitHubAppRequestSchema: GenMessage<DisconnectGitHubAppRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 7);
+
+/**
+ * @generated from message directoryroster.v1.DisconnectGitHubAppResponse
+ */
+export type DisconnectGitHubAppResponse = Message<"directoryroster.v1.DisconnectGitHubAppResponse"> & {
+  /**
+   * whether the installation was removed on GitHub. The App's record and
+   * key are forgotten either way.
+   *
+   * @generated from field: bool uninstalled = 1;
+   */
+  uninstalled: boolean;
+
+  /**
+   * why it could not be, when it could not.
+   *
+   * @generated from field: string detail = 2;
+   */
+  detail: string;
+
+  /**
+   * where the organisation's owner deletes the App itself, which the API
+   * cannot do.
+   *
+   * @generated from field: string app_settings_url = 3;
+   */
+  appSettingsUrl: string;
+
+  /**
+   * how many links became unverifiable. The link App only.
+   *
+   * @generated from field: int32 invalidated = 4;
+   */
+  invalidated: number;
+};
+
+/**
+ * Describes the message directoryroster.v1.DisconnectGitHubAppResponse.
+ * Use `create(DisconnectGitHubAppResponseSchema)` to create a new message.
+ */
+export const DisconnectGitHubAppResponseSchema: GenMessage<DisconnectGitHubAppResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 8);
+
+/**
+ * @generated from message directoryroster.v1.CheckGitHubAppRequest
+ */
+export type CheckGitHubAppRequest = Message<"directoryroster.v1.CheckGitHubAppRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.CheckGitHubAppRequest.
+ * Use `create(CheckGitHubAppRequestSchema)` to create a new message.
+ */
+export const CheckGitHubAppRequestSchema: GenMessage<CheckGitHubAppRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 9);
+
+/**
+ * @generated from message directoryroster.v1.CheckGitHubAppResponse
+ */
+export type CheckGitHubAppResponse = Message<"directoryroster.v1.CheckGitHubAppResponse"> & {
+  /**
+   * @generated from field: directoryroster.v1.GitHubApp app = 1;
+   */
+  app?: GitHubApp | undefined;
+};
+
+/**
+ * Describes the message directoryroster.v1.CheckGitHubAppResponse.
+ * Use `create(CheckGitHubAppResponseSchema)` to create a new message.
+ */
+export const CheckGitHubAppResponseSchema: GenMessage<CheckGitHubAppResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 10);
+
+/**
+ * GitHubGroupGrant is one App an internal group may mint installation
+ * tokens of, as that group's own page reads it. Derived from the
+ * catalogue, so it says nothing about the App's state on GitHub and costs
+ * no call to GitHub.
+ *
+ * @generated from message directoryroster.v1.GitHubGroupGrant
+ */
+export type GitHubGroupGrant = Message<"directoryroster.v1.GitHubGroupGrant"> & {
+  /**
+   * the App's id, which is also the address of its page.
+   *
+   * @generated from field: string app_id = 1;
+   */
+  appId: string;
+
+  /**
+   * the App's name on GitHub.
+   *
+   * @generated from field: string app_name = 2;
+   */
+  appName: string;
+
+  /**
+   * @generated from field: string org = 3;
+   */
+  org: string;
+
+  /**
+   * names or globs within the App's organisation; "*" is every one.
+   *
+   * @generated from field: repeated string repositories = 4;
+   */
+  repositories: string[];
+
+  /**
+   * the most a token may carry.
+   *
+   * @generated from field: map<string, string> permissions = 5;
+   */
+  permissions: { [key: string]: string };
+};
+
+/**
+ * Describes the message directoryroster.v1.GitHubGroupGrant.
+ * Use `create(GitHubGroupGrantSchema)` to create a new message.
+ */
+export const GitHubGroupGrantSchema: GenMessage<GitHubGroupGrant> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_github, 11);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubCatalogueAppConnectRequest
@@ -31,7 +552,7 @@ export type BeginGitHubCatalogueAppConnectRequest = Message<"directoryroster.v1.
  * Use `create(BeginGitHubCatalogueAppConnectRequestSchema)` to create a new message.
  */
 export const BeginGitHubCatalogueAppConnectRequestSchema: GenMessage<BeginGitHubCatalogueAppConnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 0);
+  messageDesc(file_directoryroster_v1_github, 12);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubCatalogueAppConnectResponse
@@ -58,7 +579,7 @@ export type BeginGitHubCatalogueAppConnectResponse = Message<"directoryroster.v1
  * Use `create(BeginGitHubCatalogueAppConnectResponseSchema)` to create a new message.
  */
 export const BeginGitHubCatalogueAppConnectResponseSchema: GenMessage<BeginGitHubCatalogueAppConnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 1);
+  messageDesc(file_directoryroster_v1_github, 13);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubCatalogueAppRequest
@@ -75,7 +596,7 @@ export type DisconnectGitHubCatalogueAppRequest = Message<"directoryroster.v1.Di
  * Use `create(DisconnectGitHubCatalogueAppRequestSchema)` to create a new message.
  */
 export const DisconnectGitHubCatalogueAppRequestSchema: GenMessage<DisconnectGitHubCatalogueAppRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 2);
+  messageDesc(file_directoryroster_v1_github, 14);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubCatalogueAppResponse
@@ -110,7 +631,7 @@ export type DisconnectGitHubCatalogueAppResponse = Message<"directoryroster.v1.D
  * Use `create(DisconnectGitHubCatalogueAppResponseSchema)` to create a new message.
  */
 export const DisconnectGitHubCatalogueAppResponseSchema: GenMessage<DisconnectGitHubCatalogueAppResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 3);
+  messageDesc(file_directoryroster_v1_github, 15);
 
 /**
  * @generated from message directoryroster.v1.CheckGitHubCatalogueAppRequest
@@ -127,7 +648,7 @@ export type CheckGitHubCatalogueAppRequest = Message<"directoryroster.v1.CheckGi
  * Use `create(CheckGitHubCatalogueAppRequestSchema)` to create a new message.
  */
 export const CheckGitHubCatalogueAppRequestSchema: GenMessage<CheckGitHubCatalogueAppRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 4);
+  messageDesc(file_directoryroster_v1_github, 16);
 
 /**
  * @generated from message directoryroster.v1.CheckGitHubCatalogueAppResponse
@@ -144,7 +665,7 @@ export type CheckGitHubCatalogueAppResponse = Message<"directoryroster.v1.CheckG
  * Use `create(CheckGitHubCatalogueAppResponseSchema)` to create a new message.
  */
 export const CheckGitHubCatalogueAppResponseSchema: GenMessage<CheckGitHubCatalogueAppResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 5);
+  messageDesc(file_directoryroster_v1_github, 17);
 
 /**
  * GitHubCatalogueApp is one App the catalogue declares, or one created
@@ -292,7 +813,7 @@ export type GitHubCatalogueApp = Message<"directoryroster.v1.GitHubCatalogueApp"
  * Use `create(GitHubCatalogueAppSchema)` to create a new message.
  */
 export const GitHubCatalogueAppSchema: GenMessage<GitHubCatalogueApp> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 6);
+  messageDesc(file_directoryroster_v1_github, 18);
 
 /**
  * GitHubAppPermission is one permission of a catalogue App: declared, on
@@ -327,7 +848,7 @@ export type GitHubAppPermission = Message<"directoryroster.v1.GitHubAppPermissio
  * Use `create(GitHubAppPermissionSchema)` to create a new message.
  */
 export const GitHubAppPermissionSchema: GenMessage<GitHubAppPermission> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 7);
+  messageDesc(file_directoryroster_v1_github, 19);
 
 /**
  * GitHubAppGrant is what one group may ask of a catalogue App.
@@ -367,7 +888,7 @@ export type GitHubAppGrant = Message<"directoryroster.v1.GitHubAppGrant"> & {
  * Use `create(GitHubAppGrantSchema)` to create a new message.
  */
 export const GitHubAppGrantSchema: GenMessage<GitHubAppGrant> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 8);
+  messageDesc(file_directoryroster_v1_github, 20);
 
 /**
  * @generated from message directoryroster.v1.ConfirmGitHubRemovalsRequest
@@ -391,7 +912,7 @@ export type ConfirmGitHubRemovalsRequest = Message<"directoryroster.v1.ConfirmGi
  * Use `create(ConfirmGitHubRemovalsRequestSchema)` to create a new message.
  */
 export const ConfirmGitHubRemovalsRequestSchema: GenMessage<ConfirmGitHubRemovalsRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 9);
+  messageDesc(file_directoryroster_v1_github, 21);
 
 /**
  * @generated from message directoryroster.v1.ConfirmGitHubRemovalsResponse
@@ -404,7 +925,7 @@ export type ConfirmGitHubRemovalsResponse = Message<"directoryroster.v1.ConfirmG
  * Use `create(ConfirmGitHubRemovalsResponseSchema)` to create a new message.
  */
 export const ConfirmGitHubRemovalsResponseSchema: GenMessage<ConfirmGitHubRemovalsResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 10);
+  messageDesc(file_directoryroster_v1_github, 22);
 
 /**
  * @generated from message directoryroster.v1.ImportGitHubLinksRequest
@@ -428,7 +949,7 @@ export type ImportGitHubLinksRequest = Message<"directoryroster.v1.ImportGitHubL
  * Use `create(ImportGitHubLinksRequestSchema)` to create a new message.
  */
 export const ImportGitHubLinksRequestSchema: GenMessage<ImportGitHubLinksRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 11);
+  messageDesc(file_directoryroster_v1_github, 23);
 
 /**
  * GitHubLinkRecord is one approved pairing to import.
@@ -465,7 +986,7 @@ export type GitHubLinkRecord = Message<"directoryroster.v1.GitHubLinkRecord"> & 
  * Use `create(GitHubLinkRecordSchema)` to create a new message.
  */
 export const GitHubLinkRecordSchema: GenMessage<GitHubLinkRecord> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 12);
+  messageDesc(file_directoryroster_v1_github, 24);
 
 /**
  * @generated from message directoryroster.v1.ImportGitHubLinksResponse
@@ -487,7 +1008,7 @@ export type ImportGitHubLinksResponse = Message<"directoryroster.v1.ImportGitHub
  * Use `create(ImportGitHubLinksResponseSchema)` to create a new message.
  */
 export const ImportGitHubLinksResponseSchema: GenMessage<ImportGitHubLinksResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 13);
+  messageDesc(file_directoryroster_v1_github, 25);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubLinkAppConnectRequest
@@ -506,7 +1027,7 @@ export type BeginGitHubLinkAppConnectRequest = Message<"directoryroster.v1.Begin
  * Use `create(BeginGitHubLinkAppConnectRequestSchema)` to create a new message.
  */
 export const BeginGitHubLinkAppConnectRequestSchema: GenMessage<BeginGitHubLinkAppConnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 14);
+  messageDesc(file_directoryroster_v1_github, 26);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubLinkAppConnectResponse
@@ -532,7 +1053,7 @@ export type BeginGitHubLinkAppConnectResponse = Message<"directoryroster.v1.Begi
  * Use `create(BeginGitHubLinkAppConnectResponseSchema)` to create a new message.
  */
 export const BeginGitHubLinkAppConnectResponseSchema: GenMessage<BeginGitHubLinkAppConnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 15);
+  messageDesc(file_directoryroster_v1_github, 27);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubRunnerAppConnectRequest
@@ -558,7 +1079,7 @@ export type BeginGitHubRunnerAppConnectRequest = Message<"directoryroster.v1.Beg
  * Use `create(BeginGitHubRunnerAppConnectRequestSchema)` to create a new message.
  */
 export const BeginGitHubRunnerAppConnectRequestSchema: GenMessage<BeginGitHubRunnerAppConnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 16);
+  messageDesc(file_directoryroster_v1_github, 28);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubRunnerAppConnectResponse
@@ -585,7 +1106,7 @@ export type BeginGitHubRunnerAppConnectResponse = Message<"directoryroster.v1.Be
  * Use `create(BeginGitHubRunnerAppConnectResponseSchema)` to create a new message.
  */
 export const BeginGitHubRunnerAppConnectResponseSchema: GenMessage<BeginGitHubRunnerAppConnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 17);
+  messageDesc(file_directoryroster_v1_github, 29);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubRunnerAppRequest
@@ -607,7 +1128,7 @@ export type DisconnectGitHubRunnerAppRequest = Message<"directoryroster.v1.Disco
  * Use `create(DisconnectGitHubRunnerAppRequestSchema)` to create a new message.
  */
 export const DisconnectGitHubRunnerAppRequestSchema: GenMessage<DisconnectGitHubRunnerAppRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 18);
+  messageDesc(file_directoryroster_v1_github, 30);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubRunnerAppResponse
@@ -641,7 +1162,7 @@ export type DisconnectGitHubRunnerAppResponse = Message<"directoryroster.v1.Disc
  * Use `create(DisconnectGitHubRunnerAppResponseSchema)` to create a new message.
  */
 export const DisconnectGitHubRunnerAppResponseSchema: GenMessage<DisconnectGitHubRunnerAppResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 19);
+  messageDesc(file_directoryroster_v1_github, 31);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubLinkAppRequest
@@ -654,7 +1175,7 @@ export type DisconnectGitHubLinkAppRequest = Message<"directoryroster.v1.Disconn
  * Use `create(DisconnectGitHubLinkAppRequestSchema)` to create a new message.
  */
 export const DisconnectGitHubLinkAppRequestSchema: GenMessage<DisconnectGitHubLinkAppRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 20);
+  messageDesc(file_directoryroster_v1_github, 32);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubLinkAppResponse
@@ -680,7 +1201,7 @@ export type DisconnectGitHubLinkAppResponse = Message<"directoryroster.v1.Discon
  * Use `create(DisconnectGitHubLinkAppResponseSchema)` to create a new message.
  */
 export const DisconnectGitHubLinkAppResponseSchema: GenMessage<DisconnectGitHubLinkAppResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 21);
+  messageDesc(file_directoryroster_v1_github, 33);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubConnectRequest
@@ -699,7 +1220,7 @@ export type BeginGitHubConnectRequest = Message<"directoryroster.v1.BeginGitHubC
  * Use `create(BeginGitHubConnectRequestSchema)` to create a new message.
  */
 export const BeginGitHubConnectRequestSchema: GenMessage<BeginGitHubConnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 22);
+  messageDesc(file_directoryroster_v1_github, 34);
 
 /**
  * @generated from message directoryroster.v1.BeginGitHubConnectResponse
@@ -727,7 +1248,7 @@ export type BeginGitHubConnectResponse = Message<"directoryroster.v1.BeginGitHub
  * Use `create(BeginGitHubConnectResponseSchema)` to create a new message.
  */
 export const BeginGitHubConnectResponseSchema: GenMessage<BeginGitHubConnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 23);
+  messageDesc(file_directoryroster_v1_github, 35);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubOrganisationRequest
@@ -744,7 +1265,7 @@ export type DisconnectGitHubOrganisationRequest = Message<"directoryroster.v1.Di
  * Use `create(DisconnectGitHubOrganisationRequestSchema)` to create a new message.
  */
 export const DisconnectGitHubOrganisationRequestSchema: GenMessage<DisconnectGitHubOrganisationRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 24);
+  messageDesc(file_directoryroster_v1_github, 36);
 
 /**
  * @generated from message directoryroster.v1.DisconnectGitHubOrganisationResponse
@@ -779,7 +1300,7 @@ export type DisconnectGitHubOrganisationResponse = Message<"directoryroster.v1.D
  * Use `create(DisconnectGitHubOrganisationResponseSchema)` to create a new message.
  */
 export const DisconnectGitHubOrganisationResponseSchema: GenMessage<DisconnectGitHubOrganisationResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 25);
+  messageDesc(file_directoryroster_v1_github, 37);
 
 /**
  * @generated from message directoryroster.v1.GetGitHubStatusRequest
@@ -792,7 +1313,7 @@ export type GetGitHubStatusRequest = Message<"directoryroster.v1.GetGitHubStatus
  * Use `create(GetGitHubStatusRequestSchema)` to create a new message.
  */
 export const GetGitHubStatusRequestSchema: GenMessage<GetGitHubStatusRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 26);
+  messageDesc(file_directoryroster_v1_github, 38);
 
 /**
  * @generated from message directoryroster.v1.GetGitHubStatusResponse
@@ -829,6 +1350,7 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
 
   /**
    * the connected link App; absent until an operator creates it.
+   * Superseded by the `link` App in ListGitHubApps.
    *
    * @generated from field: directoryroster.v1.GitHubLinkApp link_app = 5;
    */
@@ -858,6 +1380,7 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
 
   /**
    * every runner App created, never with its key.
+   * Superseded by the `runners` Apps in ListGitHubApps.
    *
    * @generated from field: repeated directoryroster.v1.GitHubRunnerApp runner_apps = 9;
    */
@@ -866,6 +1389,7 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
   /**
    * every App the deployment's catalogue declares, and every one created
    * from an entry it no longer declares, with its state on GitHub.
+   * Superseded by the `tokens` Apps in ListGitHubApps.
    *
    * @generated from field: repeated directoryroster.v1.GitHubCatalogueApp catalogue_apps = 10;
    */
@@ -884,7 +1408,7 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
  * Use `create(GetGitHubStatusResponseSchema)` to create a new message.
  */
 export const GetGitHubStatusResponseSchema: GenMessage<GetGitHubStatusResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 27);
+  messageDesc(file_directoryroster_v1_github, 39);
 
 /**
  * GitHubRunnerApp is the App one tier's runners register with in one
@@ -941,7 +1465,7 @@ export type GitHubRunnerApp = Message<"directoryroster.v1.GitHubRunnerApp"> & {
  * Use `create(GitHubRunnerAppSchema)` to create a new message.
  */
 export const GitHubRunnerAppSchema: GenMessage<GitHubRunnerApp> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 28);
+  messageDesc(file_directoryroster_v1_github, 40);
 
 /**
  * GitHubLinkApp is the App people authorize to link their accounts.
@@ -987,7 +1511,7 @@ export type GitHubLinkApp = Message<"directoryroster.v1.GitHubLinkApp"> & {
  * Use `create(GitHubLinkAppSchema)` to create a new message.
  */
 export const GitHubLinkAppSchema: GenMessage<GitHubLinkApp> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 29);
+  messageDesc(file_directoryroster_v1_github, 41);
 
 /**
  * GitHubLink is one GitHub account a person linked.
@@ -1061,7 +1585,7 @@ export type GitHubLink = Message<"directoryroster.v1.GitHubLink"> & {
  * Use `create(GitHubLinkSchema)` to create a new message.
  */
 export const GitHubLinkSchema: GenMessage<GitHubLink> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 30);
+  messageDesc(file_directoryroster_v1_github, 42);
 
 /**
  * GitHubOrganisation is one organisation: its bindings beside its report.
@@ -1140,6 +1664,7 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
 
   /**
    * how the controller acts in it. Absent until an operator connects it.
+   * Superseded by the organisation's `controller` App in ListGitHubApps.
    *
    * @generated from field: directoryroster.v1.GitHubConnection connection = 11;
    */
@@ -1187,7 +1712,7 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
  * Use `create(GitHubOrganisationSchema)` to create a new message.
  */
 export const GitHubOrganisationSchema: GenMessage<GitHubOrganisation> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 31);
+  messageDesc(file_directoryroster_v1_github, 43);
 
 /**
  * GitHubSeats is what the organisation pays for.
@@ -1235,7 +1760,7 @@ export type GitHubSeats = Message<"directoryroster.v1.GitHubSeats"> & {
  * Use `create(GitHubSeatsSchema)` to create a new message.
  */
 export const GitHubSeatsSchema: GenMessage<GitHubSeats> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 32);
+  messageDesc(file_directoryroster_v1_github, 44);
 
 /**
  * GitHubBreaker is a pass that would have removed more than half the
@@ -1272,7 +1797,7 @@ export type GitHubBreaker = Message<"directoryroster.v1.GitHubBreaker"> & {
  * Use `create(GitHubBreakerSchema)` to create a new message.
  */
 export const GitHubBreakerSchema: GenMessage<GitHubBreaker> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 33);
+  messageDesc(file_directoryroster_v1_github, 45);
 
 /**
  * GitHubRemovalConfirmation is an operator's confirmation of one set.
@@ -1301,7 +1826,7 @@ export type GitHubRemovalConfirmation = Message<"directoryroster.v1.GitHubRemova
  * Use `create(GitHubRemovalConfirmationSchema)` to create a new message.
  */
 export const GitHubRemovalConfirmationSchema: GenMessage<GitHubRemovalConfirmation> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 34);
+  messageDesc(file_directoryroster_v1_github, 46);
 
 /**
  * GitHubConnection is the App connecting an organisation left behind.
@@ -1349,7 +1874,7 @@ export type GitHubConnection = Message<"directoryroster.v1.GitHubConnection"> & 
  * Use `create(GitHubConnectionSchema)` to create a new message.
  */
 export const GitHubConnectionSchema: GenMessage<GitHubConnection> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 35);
+  messageDesc(file_directoryroster_v1_github, 47);
 
 /**
  * GitHubTick is how the controller's last pass over an organisation went.
@@ -1408,7 +1933,7 @@ export type GitHubTick = Message<"directoryroster.v1.GitHubTick"> & {
  * Use `create(GitHubTickSchema)` to create a new message.
  */
 export const GitHubTickSchema: GenMessage<GitHubTick> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 36);
+  messageDesc(file_directoryroster_v1_github, 48);
 
 /**
  * GitHubTeamStatus is one team: its binding beside what was derived.
@@ -1452,7 +1977,7 @@ export type GitHubTeamStatus = Message<"directoryroster.v1.GitHubTeamStatus"> & 
  * Use `create(GitHubTeamStatusSchema)` to create a new message.
  */
 export const GitHubTeamStatusSchema: GenMessage<GitHubTeamStatus> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 37);
+  messageDesc(file_directoryroster_v1_github, 49);
 
 /**
  * GitHubMember is one person's membership as the controller derived it.
@@ -1507,7 +2032,7 @@ export type GitHubMember = Message<"directoryroster.v1.GitHubMember"> & {
  * Use `create(GitHubMemberSchema)` to create a new message.
  */
 export const GitHubMemberSchema: GenMessage<GitHubMember> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 38);
+  messageDesc(file_directoryroster_v1_github, 50);
 
 /**
  * GitHubAccount is a login with a note.
@@ -1531,7 +2056,169 @@ export type GitHubAccount = Message<"directoryroster.v1.GitHubAccount"> & {
  * Use `create(GitHubAccountSchema)` to create a new message.
  */
 export const GitHubAccountSchema: GenMessage<GitHubAccount> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_github, 39);
+  messageDesc(file_directoryroster_v1_github, 51);
+
+/**
+ * AppPurpose is what a GitHub App is for. Four kinds, one list.
+ *
+ * Named for the field rather than for GitHubApp: the linter reads
+ * "GitHub" as two words and would want GIT_HUB_ on every value.
+ *
+ * @generated from enum directoryroster.v1.AppPurpose
+ */
+export enum AppPurpose {
+  /**
+   * @generated from enum value: APP_PURPOSE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * the one App people authorize to link their GitHub account.
+   *
+   * @generated from enum value: APP_PURPOSE_LINK = 1;
+   */
+  LINK = 1,
+
+  /**
+   * the App the controller manages one organisation's members and teams
+   * through.
+   *
+   * @generated from enum value: APP_PURPOSE_CONTROLLER = 2;
+   */
+  CONTROLLER = 2,
+
+  /**
+   * the App one tier's self-hosted runners register with.
+   *
+   * @generated from enum value: APP_PURPOSE_RUNNERS = 3;
+   */
+  RUNNERS = 3,
+
+  /**
+   * an App internal groups mint installation tokens of.
+   *
+   * @generated from enum value: APP_PURPOSE_TOKENS = 4;
+   */
+  TOKENS = 4,
+}
+
+/**
+ * Describes the enum directoryroster.v1.AppPurpose.
+ */
+export const AppPurposeSchema: GenEnum<AppPurpose> = /*@__PURE__*/
+  enumDesc(file_directoryroster_v1_github, 0);
+
+/**
+ * AppOrigin is where an App's declaration comes from: this
+ * service's own manifest builder, or the deployment's catalogue.
+ *
+ * @generated from enum directoryroster.v1.AppOrigin
+ */
+export enum AppOrigin {
+  /**
+   * @generated from enum value: APP_ORIGIN_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: APP_ORIGIN_PRESET = 1;
+   */
+  PRESET = 1,
+
+  /**
+   * @generated from enum value: APP_ORIGIN_CATALOGUE = 2;
+   */
+  CATALOGUE = 2,
+}
+
+/**
+ * Describes the enum directoryroster.v1.AppOrigin.
+ */
+export const AppOriginSchema: GenEnum<AppOrigin> = /*@__PURE__*/
+  enumDesc(file_directoryroster_v1_github, 1);
+
+/**
+ * AppState is how far along GitHub's two clicks an App is, and
+ * whether what GitHub holds still matches what the deployment declares.
+ * One vocabulary for all four kinds.
+ *
+ * @generated from enum directoryroster.v1.AppState
+ */
+export enum AppState {
+  /**
+   * @generated from enum value: APP_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: APP_STATE_NOT_CREATED = 1;
+   */
+  NOT_CREATED = 1,
+
+  /**
+   * created on GitHub and not installed: nothing can act through it yet.
+   *
+   * @generated from enum value: APP_STATE_CREATED = 2;
+   */
+  CREATED = 2,
+
+  /**
+   * @generated from enum value: APP_STATE_INSTALLED = 3;
+   */
+  INSTALLED = 3,
+
+  /**
+   * installed, and GitHub holds something other than the declaration.
+   *
+   * @generated from enum value: APP_STATE_DRIFTED = 4;
+   */
+  DRIFTED = 4,
+}
+
+/**
+ * Describes the enum directoryroster.v1.AppState.
+ */
+export const AppStateSchema: GenEnum<AppState> = /*@__PURE__*/
+  enumDesc(file_directoryroster_v1_github, 2);
+
+/**
+ * AppAttention is who has to move next, in the same four words the
+ * membership rows use. The exact state is state_detail.
+ *
+ * @generated from enum directoryroster.v1.AppAttention
+ */
+export enum AppAttention {
+  /**
+   * @generated from enum value: APP_ATTENTION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: APP_ATTENTION_DONE = 1;
+   */
+  DONE = 1,
+
+  /**
+   * @generated from enum value: APP_ATTENTION_NEEDS_YOU = 2;
+   */
+  NEEDS_YOU = 2,
+
+  /**
+   * @generated from enum value: APP_ATTENTION_WAITING_PERSON = 3;
+   */
+  WAITING_PERSON = 3,
+
+  /**
+   * @generated from enum value: APP_ATTENTION_WAITING_CONTROLLER = 4;
+   */
+  WAITING_CONTROLLER = 4,
+}
+
+/**
+ * Describes the enum directoryroster.v1.AppAttention.
+ */
+export const AppAttentionSchema: GenEnum<AppAttention> = /*@__PURE__*/
+  enumDesc(file_directoryroster_v1_github, 3);
 
 /**
  * GitHubService is the console's view of GitHub organisations: which the
@@ -1546,9 +2233,80 @@ export const GitHubAccountSchema: GenMessage<GitHubAccount> = /*@__PURE__*/
  */
 export const GitHubService: GenService<{
   /**
+   * ListGitHubApps returns every GitHub App this service keeps a key for
+   * or is declared to — the link App, one controller App per bound
+   * organisation, one runner App per organisation per declared tier, and
+   * every App the catalogue declares — each in the same shape, with what
+   * GitHub says of it beside what the deployment declares. Viewer.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.ListGitHubApps
+   */
+  listGitHubApps: {
+    methodKind: "unary";
+    input: typeof ListGitHubAppsRequestSchema;
+    output: typeof ListGitHubAppsResponseSchema;
+  },
+  /**
+   * GetGitHubApp returns one App by the id ListGitHubApps gives it.
+   * Viewer.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.GetGitHubApp
+   */
+  getGitHubApp: {
+    methodKind: "unary";
+    input: typeof GetGitHubAppRequestSchema;
+    output: typeof GetGitHubAppResponseSchema;
+  },
+  /**
+   * BeginGitHubAppConnect starts creating any one of those Apps, or
+   * finishing installing one created before: its manifest and where to
+   * post it, or where to install it. Sets the flow's state cookie.
+   * Operator.
+   *
+   * The state it issues is the one the App's kind has always used, so a
+   * browser part-way through a flow finishes at the same callback even if
+   * the service restarts under it.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.BeginGitHubAppConnect
+   */
+  beginGitHubAppConnect: {
+    methodKind: "unary";
+    input: typeof BeginGitHubAppConnectRequestSchema;
+    output: typeof BeginGitHubAppConnectResponseSchema;
+  },
+  /**
+   * DisconnectGitHubApp uninstalls one App, then forgets its record and
+   * key. The App itself stays on GitHub, for its owner to delete.
+   * Operator.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.DisconnectGitHubApp
+   */
+  disconnectGitHubApp: {
+    methodKind: "unary";
+    input: typeof DisconnectGitHubAppRequestSchema;
+    output: typeof DisconnectGitHubAppResponseSchema;
+  },
+  /**
+   * CheckGitHubApp asks GitHub again what one App and its installation
+   * hold, bypassing the short cache the list reads through. Operator.
+   *
+   * @generated from rpc directoryroster.v1.GitHubService.CheckGitHubApp
+   */
+  checkGitHubApp: {
+    methodKind: "unary";
+    input: typeof CheckGitHubAppRequestSchema;
+    output: typeof CheckGitHubAppResponseSchema;
+  },
+  /**
    * GetGitHubStatus returns every organisation the policy binds or the
    * controller reports on, each with its bound teams and the members the
    * controller derived for them. Viewer.
+   *
+   * Its four App-shaped fields — link_app, runner_apps, catalogue_apps
+   * and each organisation's connection — are superseded by
+   * ListGitHubApps, which says the same things about all four kinds of
+   * App at once. They are still filled in, for a console that has not
+   * moved yet; nothing new is added to them.
    *
    * @generated from rpc directoryroster.v1.GitHubService.GetGitHubStatus
    */
@@ -1567,6 +2325,9 @@ export const GitHubService: GenService<{
    * it again would create a second App beside the first, and the one
    * left installed would be the one nobody holds a key for.
    *
+   * Superseded by BeginGitHubAppConnect, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
+   *
    * @generated from rpc directoryroster.v1.GitHubService.BeginGitHubConnect
    */
   beginGitHubConnect: {
@@ -1577,6 +2338,9 @@ export const GitHubService: GenService<{
   /**
    * DisconnectGitHubOrganisation uninstalls the App, then forgets the
    * organisation's record and credential. Operator.
+   *
+   * Superseded by DisconnectGitHubApp, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
    *
    * @generated from rpc directoryroster.v1.GitHubService.DisconnectGitHubOrganisation
    */
@@ -1591,6 +2355,9 @@ export const GitHubService: GenService<{
    * work addresses. Public, installed nowhere, and asking only to read the
    * person's own email addresses. Created under an organisation the
    * operator owns. Operator.
+   *
+   * Superseded by BeginGitHubAppConnect, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
    *
    * @generated from rpc directoryroster.v1.GitHubService.BeginGitHubLinkAppConnect
    */
@@ -1610,6 +2377,9 @@ export const GitHubService: GenService<{
    * confined to its tier. A tier the deployment does not declare is
    * refused, and so is one already installed.
    *
+   * Superseded by BeginGitHubAppConnect, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
+   *
    * @generated from rpc directoryroster.v1.GitHubService.BeginGitHubRunnerAppConnect
    */
   beginGitHubRunnerAppConnect: {
@@ -1620,6 +2390,9 @@ export const GitHubService: GenService<{
   /**
    * DisconnectGitHubRunnerApp uninstalls a runner App, then forgets it.
    * Runners registered with it stop getting jobs. Operator.
+   *
+   * Superseded by DisconnectGitHubApp, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
    *
    * @generated from rpc directoryroster.v1.GitHubService.DisconnectGitHubRunnerApp
    */
@@ -1633,6 +2406,9 @@ export const GitHubService: GenService<{
    * becomes unverifiable — nothing can check its tokens any more — which
    * removes nobody and adds nobody until each person links again.
    * Operator.
+   *
+   * Superseded by DisconnectGitHubApp, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
    *
    * @generated from rpc directoryroster.v1.GitHubService.DisconnectGitHubLinkApp
    */
@@ -1680,6 +2456,9 @@ export const GitHubService: GenService<{
    * An id the catalogue does not declare is refused, and so is an App
    * already installed.
    *
+   * Superseded by BeginGitHubAppConnect, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
+   *
    * @generated from rpc directoryroster.v1.GitHubService.BeginGitHubCatalogueAppConnect
    */
   beginGitHubCatalogueAppConnect: {
@@ -1692,6 +2471,9 @@ export const GitHubService: GenService<{
    * its record and key. The App itself stays on GitHub, for its owner to
    * delete. Operator.
    *
+   * Superseded by DisconnectGitHubApp, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
+   *
    * @generated from rpc directoryroster.v1.GitHubService.DisconnectGitHubCatalogueApp
    */
   disconnectGitHubCatalogueApp: {
@@ -1703,6 +2485,9 @@ export const GitHubService: GenService<{
    * CheckGitHubCatalogueApp asks GitHub again what one catalogue App and
    * its installation hold, bypassing the short cache GetGitHubStatus reads
    * through. Operator.
+   *
+   * Superseded by CheckGitHubApp, which does this for every kind of
+   * App. Kept so a console mid-rollout keeps working.
    *
    * @generated from rpc directoryroster.v1.GitHubService.CheckGitHubCatalogueApp
    */

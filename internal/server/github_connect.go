@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -81,50 +80,59 @@ func (c *Console) BeginGitHubConnect(
 	if err != nil {
 		return nil, err
 	}
-	org := strings.TrimSpace(req.Msg.GetOrg())
+	begun, err := c.beginOrganisationConnect(ctx, id.Who(), strings.TrimSpace(req.Msg.GetOrg()))
+	if err != nil {
+		return nil, err
+	}
+	response := connect.NewResponse(&directoryrosterv1.BeginGitHubConnectResponse{Url: begun.url, Manifest: begun.manifest})
+	c.pinFlow(response.Header(), begun.state)
+	return response, nil
+}
+
+// beginOrganisationConnect is the work of it, which
+// [Console.BeginGitHubAppConnect] does too.
+func (c *Console) beginOrganisationConnect(ctx context.Context, actor, org string) (githubBegin, error) {
 	switch {
 	case !status.ValidOrg(org):
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", org))
+		return githubBegin{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", org))
 	case c.deps.GitHubOrgs == nil:
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("this deployment keeps no state in Kubernetes, so a connected organisation would not survive a restart"))
 	}
 	if _, bound := boundOrganisations(c.deps.Authorizer.Policy())[org]; !bound {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("the policy binds no organisation %s: bind its teams first, so nothing is connected that nothing manages", org))
 	}
 	records, err := c.deps.GitHubOrgs.List(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubBegin{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	existing, connected := recordOf(records, org)
 	if connected && existing.Installed() {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("%s is already connected through %s: disconnect it first, or a second App would sit beside the first", org, existing.AppSlug))
 	}
 
 	// The state carries who asked: the callbacks are redirects from GitHub
 	// and carry no identity of their own.
-	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubBind + org, Actor: id.Who()})
+	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubBind + org, Actor: actor})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
 	}
-	out := &directoryrosterv1.BeginGitHubConnectResponse{}
+	out := githubBegin{state: state}
 	if connected {
 		// Created and never installed: pick up where the owner left off
 		// rather than creating a second App.
-		out.Url = githubapp.InstallURL(existing.AppSlug, state)
-	} else {
-		root := c.githubRoot()
-		manifest, err := json.Marshal(githubapp.NewManifest(org, c.deps.PublicURL, root+githubCallbackPath, root+githubSetupPath))
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-		out.Url, out.Manifest = githubapp.CreateURL(org, state), string(manifest)
+		out.url = githubapp.InstallURL(existing.AppSlug, state)
+		return out, nil
 	}
-	response := connect.NewResponse(out)
-	response.Header().Add("Set-Cookie", access.ConnectCookie(state, c.deps.SecureCookie, githubFlowWindow).String())
-	return response, nil
+	root := c.githubRoot()
+	manifest, err := json.Marshal(githubapp.NewManifest(org, c.deps.PublicURL, root+githubCallbackPath, root+githubSetupPath))
+	if err != nil {
+		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
+	}
+	out.url, out.manifest = githubapp.CreateURL(org, state), string(manifest)
+	return out, nil
 }
 
 // DisconnectGitHubOrganisation revokes, then forgets.
@@ -141,52 +149,47 @@ func (c *Console) DisconnectGitHubOrganisation(
 	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
-	org := strings.TrimSpace(req.Msg.GetOrg())
+	gone, err := c.disconnectOrganisation(ctx, strings.TrimSpace(req.Msg.GetOrg()))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&directoryrosterv1.DisconnectGitHubOrganisationResponse{
+		Uninstalled: gone.uninstalled, Detail: gone.detail, AppSettingsUrl: gone.settingsURL,
+	}), nil
+}
+
+// disconnectOrganisation is the work of it, which
+// [Console.DisconnectGitHubApp] does too.
+func (c *Console) disconnectOrganisation(ctx context.Context, org string) (githubDisconnect, error) {
 	switch {
 	case !status.ValidOrg(org):
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", org))
+		return githubDisconnect{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", org))
 	case c.deps.GitHubOrgs == nil:
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no connected organisations"))
+		return githubDisconnect{}, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no connected organisations"))
 	}
 	records, err := c.deps.GitHubOrgs.List(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	record, connected := recordOf(records, org)
 	credential, hasCredential, err := c.deps.GitHubOrgs.Credential(ctx, org)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	if !connected && !hasCredential {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%s is not connected", org))
+		return githubDisconnect{}, connect.NewError(connect.CodeNotFound, fmt.Errorf("%s is not connected", org))
 	}
 
-	out := &directoryrosterv1.DisconnectGitHubOrganisationResponse{}
-	if record.AppSlug != "" {
-		out.AppSettingsUrl = githubapp.WebBase + "/organizations/" + url.PathEscape(org) + "/settings/apps/" + url.PathEscape(record.AppSlug)
-	}
-	switch {
-	case hasCredential && credential.InstallationID != 0:
-		token, err := githubapp.AppToken(credential.AppID, credential.PrivateKey, time.Now())
-		if err == nil {
-			err = githubapp.DeleteInstallation(ctx, c.githubHTTP(), token, credential.InstallationID)
-		}
-		if err != nil {
-			out.Detail = "The App could not be uninstalled, so uninstall it on GitHub: " + err.Error()
-		} else {
-			out.Uninstalled = true
-		}
-	default:
-		out.Detail = "The App was never installed, so there was nothing to uninstall."
-	}
+	out := c.uninstall(ctx, credential.AppID, credential.InstallationID, credential.PrivateKey)
+	out.settingsURL = appSettingsURL(org, record.AppSlug)
 	if err = c.deps.GitHubOrgs.Delete(ctx, org); err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	c.record(ctx, audit.Event{
-		Kind: "github.org.disconnected", Target: org, Reason: out.GetDetail(),
-		Attributes: map[string]string{"uninstalled": strconv.FormatBool(out.GetUninstalled())},
+		Kind: "github.org.disconnected", Target: org, Reason: out.detail,
+		Attributes: map[string]string{"uninstalled": strconv.FormatBool(out.uninstalled)},
 	})
-	return connect.NewResponse(out), nil
+	return out, nil
 }
 
 func recordOf(records []connection.Record, org string) (connection.Record, bool) {

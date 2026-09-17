@@ -26,17 +26,15 @@ import Typography from "@mui/material/Typography";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import { ago, at, audit, github, reason } from "./api";
-import type { GetGitHubStatusResponse, GitHubAppGrant, GitHubOrganisation } from "./gen/directoryroster/v1/github_pb";
+import type { GetGitHubStatusResponse, GitHubAppGrant, GitHubOrganisation, ListGitHubAppsResponse } from "./gen/directoryroster/v1/github_pb";
 import {
   appsNeedingYou,
-  appsOf,
+  appView,
   atMost,
-  catalogueView,
   countLabels,
   feedsOnlyItself,
   fixSentence,
   groupApps,
-  keyLocation,
   labelOf,
   linkPage,
   organisationNeeds,
@@ -59,16 +57,25 @@ import { Facts, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section
 type Props = { operator: boolean; onDone: (message: string) => void };
 
 /** GitHub, as tabs: what needs attention across every organisation, each
- *  organisation and its teams, and the Apps behind it all. One call feeds
- *  every tab, so moving between them never waits. */
+ *  organisation and its teams, and the Apps behind it all.
+ *
+ *  Two calls feed every tab — the organisations and their reports, and the
+ *  Apps — so moving between them never waits, and neither answer is
+ *  derived from the other. */
 export function GitHubPage({ section, rest, operator, onDone }: Props & { section?: string; rest: string[] }) {
   const status = useAsync(() => github.getGitHubStatus({}), []);
+  const listed = useAsync(() => github.listGitHubApps({}), []);
   const tab = section === "organisations" ? "organisations" : section === "apps" ? "apps" : "overview";
   const value = status.value;
-  const apps = value ? appsOf(value) : [];
+  const catalogue = listed.value;
+  const apps = (catalogue?.apps ?? []).map(appView);
+  const reload = () => {
+    status.reload();
+    listed.reload();
+  };
 
   let body: ReactNode = null;
-  if (value) {
+  if (value && catalogue) {
     if (tab === "organisations" && rest[0]) {
       const org = value.organisations.find((o) => o.org === rest[0]);
       body = !org ? (
@@ -76,21 +83,21 @@ export function GitHubPage({ section, rest, operator, onDone }: Props & { sectio
       ) : rest[1] === "teams" && rest[2] ? (
         <TeamPage org={org} team={rest[2]} />
       ) : (
-        <OrganisationPage org={org} apps={apps} operator={operator} onDone={onDone} reload={status.reload} />
+        <OrganisationPage org={org} apps={apps} operator={operator} onDone={onDone} reload={reload} />
       );
     } else if (tab === "organisations") {
       body = <OrganisationsList status={value} apps={apps} />;
     } else if (tab === "apps" && rest[0]) {
       const app = apps.find((a) => a.id === rest[0]);
       body = app ? (
-        <AppPage key={app.id} app={app} status={value} operator={operator} onDone={onDone} reload={status.reload} />
+        <AppPage key={app.id} app={app} listed={catalogue} status={value} operator={operator} onDone={onDone} reload={reload} />
       ) : (
         <Nothing>
           No App {rest[0]} is declared or created here. Every App is on the <Ref to={paths.githubApps()}>Apps</Ref> tab.
         </Nothing>
       );
     } else if (tab === "apps") {
-      body = <AppsList status={value} apps={apps} />;
+      body = <AppsList listed={catalogue} apps={apps} />;
     } else {
       body = <Overview status={value} apps={apps} />;
     }
@@ -109,8 +116,8 @@ export function GitHubPage({ section, rest, operator, onDone }: Props & { sectio
         <Tab value="organisations" label="Organisations" />
         <Tab value="apps" label="Apps" />
       </Tabs>
-      <Loading busy={status.loading} />
-      <Failure error={status.error} />
+      <Loading busy={status.loading || listed.loading} />
+      <Failure error={status.error ?? listed.error} />
       {value && !value.reportsAvailable ? (
         <Nothing>This deployment keeps no state in Kubernetes, so a controller has nowhere to report: only the bindings are shown.</Nothing>
       ) : null}
@@ -682,7 +689,7 @@ function Minters({ app }: { app: GitHubAppView }) {
 /** Every App in one list: the link App, then each organisation's Apps,
  *  those that need you first. What each is for is a word; what it holds
  *  and the buttons that change it are on its own page. */
-function AppsList({ status, apps }: { status: GetGitHubStatusResponse; apps: GitHubAppView[] }) {
+function AppsList({ listed, apps }: { listed: ListGitHubAppsResponse; apps: GitHubAppView[] }) {
   const groups = groupApps(apps);
   return (
     <Page
@@ -744,7 +751,7 @@ function AppsList({ status, apps }: { status: GetGitHubStatusResponse; apps: Git
           </Table>
         </TableContainer>
       )}
-      {!status.catalogueAvailable ? (
+      {!listed.catalogueAvailable ? (
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
           This deployment keeps no state in Kubernetes, so it keeps no catalogue Apps: their keys would not survive a restart.
         </Typography>
@@ -770,15 +777,21 @@ function consequence(app: GitHubAppView): string {
 
 /** One App, whatever made it: what it is for, where it stands, the one fix
  *  it needs, and the buttons that act on it. */
-function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHubAppView; status: GetGitHubStatusResponse; reload: () => void }) {
+function AppPage({
+  app,
+  listed,
+  status,
+  operator,
+  onDone,
+  reload,
+}: Props & { app: GitHubAppView; listed: ListGitHubAppsResponse; status: GetGitHubStatusResponse; reload: () => void }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const [checked, setChecked] = useState<GitHubAppView | undefined>();
   const [asking, setAsking] = useState(false);
-  const bound = status.organisations.filter((org) => org.bound);
-  const [owner, setOwner] = useState(bound[0]?.org ?? "");
+  const bound = listed.boundOrganisations;
+  const [owner, setOwner] = useState(bound[0] ?? "");
   const shown = checked ?? app;
-  const linked = status.links.filter((l) => l.state === "linked").length;
   const org = status.organisations.find((o) => o.org === shown.org);
 
   const act = async (work: () => Promise<void>) => {
@@ -793,40 +806,30 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
     }
   };
 
+  // One call for each of the three, whichever kind of App this is: the
+  // server knows from the id which flow it is, and starts the same one
+  // the per-kind call always did.
   const begin = () =>
     act(async () => {
-      const started =
-        shown.purpose === "link"
-          ? await github.beginGitHubLinkAppConnect({ owner })
-          : shown.purpose === "controller"
-            ? await github.beginGitHubConnect({ org: shown.org })
-            : shown.purpose === "runners"
-              ? await github.beginGitHubRunnerAppConnect({ org: shown.org, tier: shown.tier ?? "" })
-              : await github.beginGitHubCatalogueAppConnect({ id: shown.id });
+      const started = await github.beginGitHubAppConnect({ id: shown.id, owner });
       if (started.manifest) postManifest(started.url, started.manifest);
       else window.location.href = started.url;
     });
 
   const recheck = () =>
     act(async () => {
-      const answer = await github.checkGitHubCatalogueApp({ id: shown.id });
-      if (answer.app) setChecked(catalogueView(answer.app));
+      const answer = await github.checkGitHubApp({ id: shown.id });
+      if (answer.app) setChecked(appView(answer.app));
     });
 
   const disconnect = () =>
     act(async () => {
       setAsking(false);
       const settings = (url: string) => (url ? ` An owner deletes the App itself at ${url}.` : "");
+      const gone = await github.disconnectGitHubApp({ id: shown.id });
       if (shown.purpose === "link") {
-        const gone = await github.disconnectGitHubLinkApp({});
         onDone(`The link App is disconnected; ${gone.invalidated} links wait for their people to link again.${settings(gone.appSettingsUrl)}`);
       } else {
-        const gone =
-          shown.purpose === "controller"
-            ? await github.disconnectGitHubOrganisation({ org: shown.org })
-            : shown.purpose === "runners"
-              ? await github.disconnectGitHubRunnerApp({ org: shown.org, tier: shown.tier ?? "" })
-              : await github.disconnectGitHubCatalogueApp({ id: shown.id });
         onDone(`${shown.name} is disconnected${gone.uninstalled ? " and uninstalled" : `. ${gone.detail}`}.${settings(gone.appSettingsUrl)}`);
       }
       setChecked(undefined);
@@ -835,9 +838,9 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
 
   const canCreate =
     shown.purpose === "link"
-      ? status.linkingAvailable && bound.length > 0
+      ? listed.linkingAvailable && bound.length > 0
       : shown.purpose === "controller"
-        ? status.connectingAvailable && shown.declared
+        ? listed.connectingAvailable && shown.declared
         : shown.declared;
 
   const actions = !operator ? null : (
@@ -845,8 +848,8 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
       {shown.fix === "create" && shown.purpose === "link" && canCreate ? (
         <TextField select size="small" label="Under" value={owner} onChange={(event) => setOwner(event.target.value)} disabled={busy} sx={{ minWidth: 140 }}>
           {bound.map((o) => (
-            <MenuItem key={o.org} value={o.org}>
-              {o.org}
+            <MenuItem key={o} value={o}>
+              {o}
             </MenuItem>
           ))}
         </TextField>
@@ -875,7 +878,7 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
           Install
         </Button>
       ) : null}
-      {shown.purpose === "tokens" && shown.stage !== "not-created" && shown.declared ? (
+      {shown.purpose !== "link" && shown.stage !== "not-created" && shown.declared ? (
         <Tooltip title="Ask GitHub again now, rather than show what it said in the last minute.">
           <span>
             <Button size="small" variant={shown.fix === "recheck" ? "contained" : "text"} disabled={busy} onClick={() => void recheck()}>
@@ -893,15 +896,14 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
   );
 
   const needsYou = shown.label === "needs-you";
-  const permissions = shown.permissions ?? [];
+  const permissions = shown.permissions;
   const drifted = permissions.some(permissionDiffers);
-  const key = keyLocation(shown);
 
   return (
     <Page
       title={shown.name}
       mono={shown.stage !== "not-created"}
-      lede={summaryOf(shown, linked)}
+      lede={summaryOf(shown)}
       actions={actions}
       facts={[
         { label: "State", value: <AppState app={shown} /> },
@@ -1007,7 +1009,12 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
         <Section title="Linked accounts" hint="the accounts people linked through it; every organisation reads them">
           <Rows
             items={[
-              { key: "linked", label: `${linked} ${linked === 1 ? "account" : "accounts"} linked`, to: paths.peopleGitHub(true), note: "open People, narrowed to those who linked" },
+              {
+                key: "linked",
+                label: `${shown.linked} ${shown.linked === 1 ? "account" : "accounts"} linked`,
+                to: paths.peopleGitHub(true),
+                note: "open People, narrowed to those who linked",
+              },
               { key: "not-linked", label: "People who have not linked", to: paths.peopleGitHub(false), note: "send them the link page below" },
             ]}
             keyOf={(item) => item.key}
@@ -1015,12 +1022,12 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
             secondary={(item) => item.note}
             empty=""
           />
-          {status.linkApp ? (
+          {shown.stage !== "not-created" ? (
             <Box sx={{ mt: 1.5 }}>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                 Send people to
               </Typography>
-              <CopyLine value={linkPage(status.linkUrl)} />
+              <CopyLine value={linkPage(listed.linkUrl)} />
             </Box>
           ) : null}
         </Section>
@@ -1087,8 +1094,11 @@ function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHu
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Facts
             items={[
-              { label: "Kubernetes Secret", value: <Mono>{key.secret}</Mono> },
-              { label: "Keys in the Secret", value: <Mono>{key.keys.join(", ")}</Mono> },
+              {
+                label: "Kubernetes Secret",
+                value: shown.secret ? <Mono>{shown.secret}</Mono> : "none: this deployment keeps no state in Kubernetes",
+              },
+              { label: "Keys in the Secret", value: shown.secretKeys.length ? <Mono>{shown.secretKeys.join(", ")}</Mono> : undefined },
               { label: "App id", value: shown.appId ? String(shown.appId) : undefined },
               { label: "Installation id", value: shown.installationId ? String(shown.installationId) : undefined },
               { label: "Declared in", value: shown.origin === "catalogue" ? (shown.declared ? "catalogue" : "catalogue, no longer") : "built in" },

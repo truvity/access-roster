@@ -117,8 +117,21 @@ type githubAnswer struct {
 }
 
 // githubAnswers are keyed by App id: release-bot holds what it declares,
-// docs-bot was edited on GitHub and holds pull requests at read only.
+// docs-bot was edited on GitHub and holds pull requests at read only, the
+// organisation's controller App holds what this service declares for it,
+// and the standard tier's runner App was edited down to read — which is a
+// runner plane that cannot register a runner.
 var githubAnswers = map[int64]githubAnswer{
+	1000001: {
+		slug: "example-org-access-roster", selection: "all",
+		app:       map[string]string{"members": "write", "organization_administration": "read", "metadata": "read"},
+		installed: map[string]string{"members": "write", "organization_administration": "read", "metadata": "read"},
+	},
+	1000021: {
+		slug: "example-org-runners-standard", selection: "all",
+		app:       map[string]string{"organization_self_hosted_runners": "read", "metadata": "read"},
+		installed: map[string]string{"organization_self_hosted_runners": "read", "metadata": "read"},
+	},
 	1000011: {
 		slug: "example-org-release-bot", selection: "all",
 		app:       map[string]string{"contents": "write", "pull_requests": "read", "metadata": "read"},

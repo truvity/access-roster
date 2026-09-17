@@ -221,7 +221,7 @@ somebody can change from a browser, so the client is declared.
 |---|---|---|---|---|
 | `WhoAmI` | any signed-in identity | — | `identity{email, subject, source, role, groups[], given_name, family_name}`, `version` | groups are the internal groups the policy puts the caller in |
 | `Explain` | self: any; anything else: viewer | one proof: `email?`, `github{repository, owner, ref, workflow, environment, visibility}?` or `service_account{cluster, namespace, name}?` | the identity, the directory's answer (`in_domain`, `found`, `suspended`, `authoritative`), `workspace_id`, `directory_groups[]`, `held[]{group, via[]}`, `claims`, `lifetime`, `clients[]{id, kind, requires[], admitted, lifetime}`, `policy_digest` | what a proof effectively gets and why. `policy_digest` names the policy the answer was computed under; a consumer acting on `held` refuses an answer under a policy other than its own. A person, a CI job and a workload are the same question, so they are the same call; nothing set explains the caller |
-| `GetPolicy` | viewer | — | `groups[]{name, members[]{address}, rules[]{kind, rule}, claims, lifetime}`, `clients[]{id, kind, requires[], redirects[], ttl_cap, secret}`, `teams[]{org, team, members[], maintainers[]}`, `orgs[]{org, members[]}`, `recovery_enabled`, `recovery_kind`, `login_sources[]` | a confidential client names the Secret holding its secret, never the secret. A team's and an organisation's `members` are internal groups, as `requires` is; an organisation that binds only teams has no `orgs` row |
+| `GetPolicy` | viewer | — | `groups[]{name, members[]{address}, rules[]{kind, rule}, claims, lifetime, github_grants[]{app_id, app_name, org, repositories[], permissions{}}}`, `clients[]{id, kind, requires[], redirects[], ttl_cap, secret}`, `teams[]{org, team, members[], maintainers[]}`, `orgs[]{org, members[]}`, `recovery_enabled`, `recovery_kind`, `login_sources[]` | a confidential client names the Secret holding its secret, never the secret. A team's and an organisation's `members` are internal groups, as `requires` is; an organisation that binds only teams has no `orgs` row. `github_grants` is the reverse of a catalogue App's grants — which Apps this group may mint installation tokens of, and for how much — read from the catalogue alone, so it says nothing about an App's state on GitHub and costs no call to GitHub |
 | `ListHolders` | viewer | `group?` or `client?`, `limit?` | `holders[]{email, given_name, family_name, live, authoritative, via[], lifetime}`, `examined`, `truncated`, `policy_digest` | who holds a group, or reaches a client, right now. The policy says which directory groups count; only the directory knows who is in them. `truncated` is set when the limit cut the list **or** there were more accounts than one answer examines. **Absence is not evidence:** a workspace whose snapshot cannot be read contributes no accounts at all, so a consumer that removes access on absence confirms each account with `Explain` first. Nor is a group the answering policy does not define: it has no holders there, so `policy_digest` must match the consumer's own |
 | `SearchPeople` | viewer | `query?`, `workspace_id?`, `domain?`, `account?` (live, suspended), `github?` (linked, not linked), `limit?` | `people[]{email, given_name, family_name, workspace_id, live, github_login}`, `total`, `truncated`, `github_known` | accounts by address or name across every snapshot, or one tenant's accounts, so a console can start from a name and a tenant's page can list who it holds. Every filter is applied here, before the limit, so an answer is the first N that match rather than the matches among the first N. `github_login` is the GitHub account linked to the address, and `github_known` is false where links cannot be read at all — a deployment that keeps none, or a read that failed — which is not the same answer as nobody having linked; narrowing by `github` then fails rather than reporting everyone as unlinked |
 | `ListDirectoryGroups` | viewer | `domain?` | `groups[]{email, domain, workspace_id, members}` | the picker's source: the service's own snapshots |
@@ -240,6 +240,11 @@ acts, this shows. See [connect/github-organisation.md](../connect/github-organis
 |---|---|---|---|---|
 | `GetGitHubStatus` | installation-wide viewer | — | `organisations[]{org, bound, reported, report_error, enabled, tick{at, outcome, error, changes, held, waiting}, member_groups[], members[], teams[]{team, bound, member_groups[], maintainer_groups[], members[]}, unlinked[]{login, reason}}`, `reports_available` | every organisation the policy binds **or** the controller reports on, each with its bindings beside its report. A member is `{email, login, role, state, action, reason}`: state is `not-linked`, `pending`, `invited`, `synced`, `leaving` or `held`; action is `invite`, `add`, `set-role` or `remove`, and a held one carries its reason. Where the two sides disagree both show — a bound team nobody has reported, a report for a team the policy no longer binds — and an unreadable report hides no binding. **Not** a tenant-scoped viewer: a report names the members of every bound team in every company |
 
+| `ListGitHubApps` | installation-wide viewer | — | `apps[]` (below), `connecting_available`, `linking_available`, `catalogue_available`, `runner_tiers[]`, `bound_organisations[]`, `link_url` | every App this service keeps a key for or is declared to, in one shape: the link App, one controller App per bound organisation, one runner App per organisation per declared tier, and the catalogue's. An App the deployment no longer declares is listed with `declared` false, so it can be disconnected |
+| `GetGitHubApp` | installation-wide viewer | `id` | `app` | one App by the id the list gives it. `not_found` for an id nothing declares and nothing created |
+| `BeginGitHubAppConnect` | operator | `id`, `owner` | `url`, `manifest` | starts creating any of them, or finishing installing one created before, exactly as the per-kind call does — the signed state is the one that kind of App has always used, so a browser part-way through a flow finishes at the same callback even if the service restarts under it. `owner` is read for the link App alone, which belongs to no one organisation |
+| `DisconnectGitHubApp` | operator | `id` | `uninstalled`, `detail`, `app_settings_url`, `invalidated` | uninstalls where there is an installation, then forgets the record and the key — even when the uninstall fails, which `detail` explains. `invalidated` is how many links became unverifiable, for the link App alone |
+| `CheckGitHubApp` | operator | `id` | `app` | asks GitHub again, as the App, what the App and its installation hold, bypassing the minute the list caches it for |
 | `BeginGitHubConnect` | operator | `org` | `url`, `manifest` | starts connecting an organisation the policy binds, and sets the flow's state cookie. With `manifest` set the browser POSTs it as the form field `manifest` to `url`, GitHub's create page; without, `url` is the App's install page, for an App created and never installed. `failed_precondition` for an unbound organisation, for one already connected and installed, and where the deployment keeps no state in Kubernetes |
 | `DisconnectGitHubOrganisation` | operator | `org` | `uninstalled`, `detail`, `app_settings_url` | uninstalls the App, then forgets the record and the key — the latter even when the uninstall fails, which `detail` explains. `app_settings_url` is where the owner deletes the App, which the API cannot |
 | `BeginGitHubLinkAppConnect` | operator | `owner` | `url`, `manifest` | starts creating the link App under an organisation: public, `emails: read` alone, installed nowhere, calling back to the link callback. `failed_precondition` when one is connected already, or where the deployment keeps no state in Kubernetes |
@@ -281,6 +286,34 @@ declared. `state` is `not_created`, `created`, `installed` or `drifted`;
 `drift` says each way GitHub differs from the declaration, and `reason`
 why GitHub could not be asked — which never fails the call. What GitHub
 said is cached for a minute.
+
+Those four App-shaped answers — `link_app`, `runner_apps`,
+`catalogue_apps` and each organisation's `connection` — are superseded by
+`ListGitHubApps`, which says all of it about all four kinds of App at
+once. They are still filled in for a console mid-rollout; nothing new is
+added to them.
+
+**One App** is `{id, org, purpose, tier, origin, name, app_slug,
+description, public, installation, repository_selection, state,
+attention, state_detail, declared, drift[], permissions[]{name, declared,
+app, installation}, events[], grants[]{group, repositories[],
+permissions{}, group_declared}, html_url, settings_url, app_id,
+installation_id, connected_at, connected_by, checked_at, reason, secret,
+secret_keys[], linked_accounts}` — never the key. `id` is stable and is
+the address of the App's page: `link`, `<org>-controller`,
+`<org>-runners-<tier>`, or the catalogue id, which wins a collision and
+moves the preset aside behind a `-preset` suffix. `purpose` is `APP_PURPOSE_LINK`,
+`_CONTROLLER`, `_RUNNERS` or `_TOKENS`, `origin` `APP_ORIGIN_PRESET` or
+`_CATALOGUE`, `state` `APP_STATE_NOT_CREATED`, `_CREATED`, `_INSTALLED`
+or `_DRIFTED`, and `attention` `APP_ATTENTION_DONE`, `_NEEDS_YOU`,
+`_WAITING_PERSON` or `_WAITING_CONTROLLER`, with the exact state in
+`state_detail`. Every App
+is checked against its declaration, the presets' taken from the manifest
+builder that creates them; the link App is the exception, because it is
+used by being authorized rather than as the App and this service keeps no
+App key for it — it says so in `reason` and claims no match. `secret` and
+`secret_keys` are where the key is kept, empty where the deployment keeps
+no state in Kubernetes.
 
 **The link flows** are at the origin root too. `GET
 /connect/github/link-app/callback` after the owner creates the link App

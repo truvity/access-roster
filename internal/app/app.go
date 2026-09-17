@@ -795,7 +795,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		IssuerURL:    cfg.forwardedIssuer,
 		SignIn:       cfg.loginDirectory,
 		GitHub:       githubReports(kept.github, cfg.demo),
-		GitHubOrgs:   githubConnections(kept.githubOrgs, cfg.demo),
+		GitHubOrgs:   githubConnections(kept.githubOrgs, cfg.demo, demoAppKey),
 		// Typed nils again: an interface holding a nil store is not nil.
 		GitHubLinkApp:       githubLinkApp(kept.githubOrgs, cfg.demo),
 		GitHubLinks:         githubLinks(kept.githubLinks, cfg.demo),
@@ -1236,12 +1236,12 @@ func (r fixedReports) Reports(context.Context) (map[string]string, error) { retu
 // githubConnections is the store as the console's interface, or nil — for
 // the same typed-nil reason as githubReports. A demonstration run with no
 // Kubernetes shows its one organisation connected, and connects nothing.
-func githubConnections(store *kube.GitHubOrgs, demonstration bool) server.GitHubConnections {
+func githubConnections(store *kube.GitHubOrgs, demonstration bool, key string) server.GitHubConnections {
 	switch {
 	case store != nil:
 		return store
 	case demonstration:
-		return demoConnections{record: demo.GitHubConnection(time.Now())}
+		return demoConnections{record: demo.GitHubConnection(time.Now()), key: key}
 	default:
 		return nil
 	}
@@ -1404,15 +1404,24 @@ func githubConfirmations(store *kube.GitHubOrgs) server.GitHubConfirmations {
 // connection: there is no GitHub organisation behind it.
 var errDemoConnect = errors.New("a demonstration run connects and disconnects nothing: there is no GitHub organisation behind it")
 
-// demoConnections is one fixed, connected organisation.
-type demoConnections struct{ record connection.Record }
+// demoConnections is one fixed, connected organisation, with a key the
+// console asks the demonstration's GitHub about the App with.
+type demoConnections struct {
+	record connection.Record
+	key    string
+}
 
 func (d demoConnections) List(context.Context) ([]connection.Record, error) {
 	return []connection.Record{d.record}, nil
 }
 
-func (demoConnections) Credential(context.Context, string) (connection.Credential, bool, error) {
-	return connection.Credential{}, false, nil
+func (d demoConnections) Credential(_ context.Context, org string) (connection.Credential, bool, error) {
+	if org != d.record.Org {
+		return connection.Credential{}, false, nil
+	}
+	return connection.Credential{
+		Org: d.record.Org, AppID: d.record.AppID, InstallationID: d.record.InstallationID, PrivateKey: d.key,
+	}, true, nil
 }
 
 func (demoConnections) Put(context.Context, connection.Record, connection.Credential) error {

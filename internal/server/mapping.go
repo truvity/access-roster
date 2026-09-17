@@ -187,15 +187,19 @@ func claimsProto(claims map[string]any) (*structpb.Struct, error) {
 	return out, nil
 }
 
-func policyGroupProto(view *policy.GroupView) (*directoryrosterv1.PolicyGroup, error) {
+// policyGroupProto is one internal group for the wire, with the GitHub
+// Apps it may mint tokens of: the reverse of an App's grants, which the
+// group's own page needs and cannot derive from the policy.
+func policyGroupProto(view *policy.GroupView, githubGrants []*directoryrosterv1.GitHubGroupGrant) (*directoryrosterv1.PolicyGroup, error) {
 	claims, err := claimsProto(view.Claims)
 	if err != nil {
 		return nil, fmt.Errorf("group %s: %w", view.Name, err)
 	}
 	out := &directoryrosterv1.PolicyGroup{
-		Name:    view.Name,
-		Claims:  claims,
-		Members: make([]*directoryrosterv1.GroupMember, 0, len(view.Members)),
+		Name:         view.Name,
+		Claims:       claims,
+		Members:      make([]*directoryrosterv1.GroupMember, 0, len(view.Members)),
+		GithubGrants: githubGrants,
 	}
 	if view.Lifetime > 0 {
 		out.Lifetime = durationpb.New(view.Lifetime)

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -69,44 +68,53 @@ func (c *Console) BeginGitHubRunnerAppConnect(
 	if err != nil {
 		return nil, err
 	}
-	org, tier := strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetTier())
-	if !status.ValidOrg(org) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", org))
-	}
-	if err = c.runnerTier(tier); err != nil {
+	begun, err := c.beginRunnerAppConnect(ctx, id.Who(), strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetTier()))
+	if err != nil {
 		return nil, err
 	}
+	response := connect.NewResponse(&directoryrosterv1.BeginGitHubRunnerAppConnectResponse{Url: begun.url, Manifest: begun.manifest})
+	c.pinFlow(response.Header(), begun.state)
+	return response, nil
+}
+
+// beginRunnerAppConnect is the work of it, which
+// [Console.BeginGitHubAppConnect] does too.
+func (c *Console) beginRunnerAppConnect(ctx context.Context, actor, org, tier string) (githubBegin, error) {
+	if !status.ValidOrg(org) {
+		return githubBegin{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", org))
+	}
+	if err := c.runnerTier(tier); err != nil {
+		return githubBegin{}, err
+	}
 	if _, bound := boundOrganisations(c.deps.Authorizer.Policy())[org]; !bound {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("the policy binds no organisation %s: bind its teams first", org))
 	}
 	existing, created, err := c.runnerApp(ctx, tier, org)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubBegin{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	if created && existing.Installed() {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("%s already has a %s runner App, %s: disconnect it first, or a second App would sit beside the first", org, tier, existing.AppSlug))
 	}
 
-	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubRunnerBind + tier + ":" + org, Actor: id.Who()})
+	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubRunnerBind + tier + ":" + org, Actor: actor})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
 	}
-	out := &directoryrosterv1.BeginGitHubRunnerAppConnectResponse{}
+	out := githubBegin{state: state}
 	if created {
-		out.Url = githubapp.InstallURL(existing.AppSlug, state)
-	} else {
-		root := c.githubRoot()
-		manifest, err := json.Marshal(githubapp.NewRunnerManifest(org, tier, c.deps.PublicURL, root+githubRunnerCallbackPath, root+githubRunnerSetupPath))
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-		out.Url, out.Manifest = githubapp.CreateURL(org, state), string(manifest)
+		out.url = githubapp.InstallURL(existing.AppSlug, state)
+		return out, nil
 	}
-	response := connect.NewResponse(out)
-	response.Header().Add("Set-Cookie", access.ConnectCookie(state, c.deps.SecureCookie, githubFlowWindow).String())
-	return response, nil
+	root := c.githubRoot()
+	manifest, err := json.Marshal(githubapp.NewRunnerManifest(org, tier, c.deps.PublicURL, root+githubRunnerCallbackPath, root+githubRunnerSetupPath))
+	if err != nil {
+		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
+	}
+	out.url, out.manifest = githubapp.CreateURL(org, state), string(manifest)
+	return out, nil
 }
 
 // DisconnectGitHubRunnerApp uninstalls a runner App, then forgets it. A
@@ -117,51 +125,46 @@ func (c *Console) DisconnectGitHubRunnerApp(
 	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
-	org, tier := strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetTier())
+	gone, err := c.disconnectRunnerApp(ctx, strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetTier()))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&directoryrosterv1.DisconnectGitHubRunnerAppResponse{
+		Uninstalled: gone.uninstalled, Detail: gone.detail, AppSettingsUrl: gone.settingsURL,
+	}), nil
+}
+
+// disconnectRunnerApp is the work of it, which
+// [Console.DisconnectGitHubApp] does too.
+func (c *Console) disconnectRunnerApp(ctx context.Context, org, tier string) (githubDisconnect, error) {
 	switch {
 	case !status.ValidOrg(org) || !runnerapp.ValidTier(tier):
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q/%q is not an organisation and a tier", org, tier))
+		return githubDisconnect{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q/%q is not an organisation and a tier", org, tier))
 	case c.deps.GitHubRunnerApps == nil:
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no runner Apps"))
+		return githubDisconnect{}, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no runner Apps"))
 	}
 	record, created, err := c.runnerApp(ctx, tier, org)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	key, hasKey, err := c.deps.GitHubRunnerApps.PrivateKey(ctx, tier, org)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	if !created && !hasKey {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%s has no %s runner App", org, tier))
+		return githubDisconnect{}, connect.NewError(connect.CodeNotFound, fmt.Errorf("%s has no %s runner App", org, tier))
 	}
 
-	out := &directoryrosterv1.DisconnectGitHubRunnerAppResponse{}
-	if record.AppSlug != "" {
-		out.AppSettingsUrl = githubapp.WebBase + "/organizations/" + url.PathEscape(org) + "/settings/apps/" + url.PathEscape(record.AppSlug)
-	}
-	switch {
-	case hasKey && record.Installed():
-		token, err := githubapp.AppToken(record.AppID, key, time.Now())
-		if err == nil {
-			err = githubapp.DeleteInstallation(ctx, c.githubHTTP(), token, record.InstallationID)
-		}
-		if err != nil {
-			out.Detail = "The App could not be uninstalled, so uninstall it on GitHub: " + err.Error()
-		} else {
-			out.Uninstalled = true
-		}
-	default:
-		out.Detail = "The App was never installed, so there was nothing to uninstall."
-	}
+	out := c.uninstall(ctx, record.AppID, record.InstallationID, key)
+	out.settingsURL = appSettingsURL(org, record.AppSlug)
 	if err = c.deps.GitHubRunnerApps.Delete(ctx, tier, org); err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	c.record(ctx, audit.Event{
-		Kind: "github.runner-app.disconnected", Target: org, Reason: out.GetDetail(),
-		Attributes: map[string]string{"tier": tier, "uninstalled": strconv.FormatBool(out.GetUninstalled())},
+		Kind: "github.runner-app.disconnected", Target: org, Reason: out.detail,
+		Attributes: map[string]string{"tier": tier, "uninstalled": strconv.FormatBool(out.uninstalled)},
 	})
-	return connect.NewResponse(out), nil
+	return out, nil
 }
 
 // runnerApp finds one runner App's record.

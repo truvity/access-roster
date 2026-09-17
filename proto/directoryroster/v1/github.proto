@@ -12,9 +12,45 @@ import "google/protobuf/timestamp.proto";
 // console for GitHub — connecting an organisation — gives the controller
 // a credential rather than telling it what to do.
 service GitHubService {
+  // ListGitHubApps returns every GitHub App this service keeps a key for
+  // or is declared to — the link App, one controller App per bound
+  // organisation, one runner App per organisation per declared tier, and
+  // every App the catalogue declares — each in the same shape, with what
+  // GitHub says of it beside what the deployment declares. Viewer.
+  rpc ListGitHubApps(ListGitHubAppsRequest) returns (ListGitHubAppsResponse);
+
+  // GetGitHubApp returns one App by the id ListGitHubApps gives it.
+  // Viewer.
+  rpc GetGitHubApp(GetGitHubAppRequest) returns (GetGitHubAppResponse);
+
+  // BeginGitHubAppConnect starts creating any one of those Apps, or
+  // finishing installing one created before: its manifest and where to
+  // post it, or where to install it. Sets the flow's state cookie.
+  // Operator.
+  //
+  // The state it issues is the one the App's kind has always used, so a
+  // browser part-way through a flow finishes at the same callback even if
+  // the service restarts under it.
+  rpc BeginGitHubAppConnect(BeginGitHubAppConnectRequest) returns (BeginGitHubAppConnectResponse);
+
+  // DisconnectGitHubApp uninstalls one App, then forgets its record and
+  // key. The App itself stays on GitHub, for its owner to delete.
+  // Operator.
+  rpc DisconnectGitHubApp(DisconnectGitHubAppRequest) returns (DisconnectGitHubAppResponse);
+
+  // CheckGitHubApp asks GitHub again what one App and its installation
+  // hold, bypassing the short cache the list reads through. Operator.
+  rpc CheckGitHubApp(CheckGitHubAppRequest) returns (CheckGitHubAppResponse);
+
   // GetGitHubStatus returns every organisation the policy binds or the
   // controller reports on, each with its bound teams and the members the
   // controller derived for them. Viewer.
+  //
+  // Its four App-shaped fields — link_app, runner_apps, catalogue_apps
+  // and each organisation's connection — are superseded by
+  // ListGitHubApps, which says the same things about all four kinds of
+  // App at once. They are still filled in, for a console that has not
+  // moved yet; nothing new is added to them.
   rpc GetGitHubStatus(GetGitHubStatusRequest) returns (GetGitHubStatusResponse);
 
   // BeginGitHubConnect starts connecting an organisation the policy
@@ -25,10 +61,16 @@ service GitHubService {
   // An organisation already connected and installed is refused: connecting
   // it again would create a second App beside the first, and the one
   // left installed would be the one nobody holds a key for.
+  //
+  // Superseded by BeginGitHubAppConnect, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc BeginGitHubConnect(BeginGitHubConnectRequest) returns (BeginGitHubConnectResponse);
 
   // DisconnectGitHubOrganisation uninstalls the App, then forgets the
   // organisation's record and credential. Operator.
+  //
+  // Superseded by DisconnectGitHubApp, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc DisconnectGitHubOrganisation(DisconnectGitHubOrganisationRequest) returns (DisconnectGitHubOrganisationResponse);
 
   // BeginGitHubLinkAppConnect starts creating the link App: the one App
@@ -36,6 +78,9 @@ service GitHubService {
   // work addresses. Public, installed nowhere, and asking only to read the
   // person's own email addresses. Created under an organisation the
   // operator owns. Operator.
+  //
+  // Superseded by BeginGitHubAppConnect, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc BeginGitHubLinkAppConnect(BeginGitHubLinkAppConnectRequest) returns (BeginGitHubLinkAppConnectResponse);
 
   // BeginGitHubRunnerAppConnect starts creating a runner App: the App a
@@ -47,16 +92,25 @@ service GitHubService {
   // One App per organisation per tier, so a compromised runner plane is
   // confined to its tier. A tier the deployment does not declare is
   // refused, and so is one already installed.
+  //
+  // Superseded by BeginGitHubAppConnect, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc BeginGitHubRunnerAppConnect(BeginGitHubRunnerAppConnectRequest) returns (BeginGitHubRunnerAppConnectResponse);
 
   // DisconnectGitHubRunnerApp uninstalls a runner App, then forgets it.
   // Runners registered with it stop getting jobs. Operator.
+  //
+  // Superseded by DisconnectGitHubApp, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc DisconnectGitHubRunnerApp(DisconnectGitHubRunnerAppRequest) returns (DisconnectGitHubRunnerAppResponse);
 
   // DisconnectGitHubLinkApp forgets the link App. Every link made with it
   // becomes unverifiable — nothing can check its tokens any more — which
   // removes nobody and adds nobody until each person links again.
   // Operator.
+  //
+  // Superseded by DisconnectGitHubApp, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc DisconnectGitHubLinkApp(DisconnectGitHubLinkAppRequest) returns (DisconnectGitHubLinkAppResponse);
 
   // ConfirmGitHubRemovals lets a pass that would remove more than half an
@@ -82,17 +136,228 @@ service GitHubService {
   //
   // An id the catalogue does not declare is refused, and so is an App
   // already installed.
+  //
+  // Superseded by BeginGitHubAppConnect, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc BeginGitHubCatalogueAppConnect(BeginGitHubCatalogueAppConnectRequest) returns (BeginGitHubCatalogueAppConnectResponse);
 
   // DisconnectGitHubCatalogueApp uninstalls a catalogue App, then forgets
   // its record and key. The App itself stays on GitHub, for its owner to
   // delete. Operator.
+  //
+  // Superseded by DisconnectGitHubApp, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc DisconnectGitHubCatalogueApp(DisconnectGitHubCatalogueAppRequest) returns (DisconnectGitHubCatalogueAppResponse);
 
   // CheckGitHubCatalogueApp asks GitHub again what one catalogue App and
   // its installation hold, bypassing the short cache GetGitHubStatus reads
   // through. Operator.
+  //
+  // Superseded by CheckGitHubApp, which does this for every kind of
+  // App. Kept so a console mid-rollout keeps working.
   rpc CheckGitHubCatalogueApp(CheckGitHubCatalogueAppRequest) returns (CheckGitHubCatalogueAppResponse);
+}
+
+// AppPurpose is what a GitHub App is for. Four kinds, one list.
+//
+// Named for the field rather than for GitHubApp: the linter reads
+// "GitHub" as two words and would want GIT_HUB_ on every value.
+enum AppPurpose {
+  APP_PURPOSE_UNSPECIFIED = 0;
+  // the one App people authorize to link their GitHub account.
+  APP_PURPOSE_LINK = 1;
+  // the App the controller manages one organisation's members and teams
+  // through.
+  APP_PURPOSE_CONTROLLER = 2;
+  // the App one tier's self-hosted runners register with.
+  APP_PURPOSE_RUNNERS = 3;
+  // an App internal groups mint installation tokens of.
+  APP_PURPOSE_TOKENS = 4;
+}
+
+// AppOrigin is where an App's declaration comes from: this
+// service's own manifest builder, or the deployment's catalogue.
+enum AppOrigin {
+  APP_ORIGIN_UNSPECIFIED = 0;
+  APP_ORIGIN_PRESET = 1;
+  APP_ORIGIN_CATALOGUE = 2;
+}
+
+// AppState is how far along GitHub's two clicks an App is, and
+// whether what GitHub holds still matches what the deployment declares.
+// One vocabulary for all four kinds.
+enum AppState {
+  APP_STATE_UNSPECIFIED = 0;
+  APP_STATE_NOT_CREATED = 1;
+  // created on GitHub and not installed: nothing can act through it yet.
+  APP_STATE_CREATED = 2;
+  APP_STATE_INSTALLED = 3;
+  // installed, and GitHub holds something other than the declaration.
+  APP_STATE_DRIFTED = 4;
+}
+
+// AppAttention is who has to move next, in the same four words the
+// membership rows use. The exact state is state_detail.
+enum AppAttention {
+  APP_ATTENTION_UNSPECIFIED = 0;
+  APP_ATTENTION_DONE = 1;
+  APP_ATTENTION_NEEDS_YOU = 2;
+  APP_ATTENTION_WAITING_PERSON = 3;
+  APP_ATTENTION_WAITING_CONTROLLER = 4;
+}
+
+// GitHubApp is one App, whichever of the four kinds it is: what the
+// deployment declares of it, what this service recorded when it was
+// created, and what GitHub says of it now. Never the key.
+message GitHubApp {
+  // the App's id here, stable and the address of its page: `link`,
+  // `<org>-controller`, `<org>-runners-<tier>`, or the catalogue id. A
+  // catalogue id wins a collision — it is the operator's own name for an
+  // App — and the preset moves aside behind a `-preset` suffix.
+  string id = 1;
+  // the organisation it is installed on; for the link App, the one it was
+  // created under.
+  string org = 2;
+  AppPurpose purpose = 3;
+  // the runner tier, for a runner App alone.
+  string tier = 4;
+  AppOrigin origin = 5;
+  // the App's name on GitHub once created, and the name it is created
+  // with before that.
+  string name = 6;
+  string app_slug = 7;
+  string description = 8;
+  bool public = 9;
+  // all or selected: the repositories the installer is expected to
+  // choose.
+  string installation = 10;
+  // all or selected, as installed on GitHub.
+  string repository_selection = 11;
+  AppState state = 12;
+  AppAttention attention = 13;
+  // the exact state in words, for a tooltip.
+  string state_detail = 14;
+  // whether the deployment still declares it. An App created for a tier,
+  // an organisation or a catalogue entry since dropped can only be
+  // disconnected.
+  bool declared = 15;
+  // each way GitHub differs from the declaration, as a sentence.
+  repeated string drift = 16;
+  // every permission declared or held, each with its declared level and
+  // what the App and its installation hold.
+  repeated GitHubAppPermission permissions = 17;
+  // the webhook events declared. The webhook itself is never active.
+  repeated string events = 18;
+  // which internal groups may mint tokens of it, and for how much. Only a
+  // catalogue App has any.
+  repeated GitHubAppGrant grants = 19;
+  string html_url = 20;
+  // where the organisation's owner edits or deletes the App, which the
+  // API cannot do.
+  string settings_url = 21;
+  int64 app_id = 22;
+  int64 installation_id = 23;
+  google.protobuf.Timestamp connected_at = 24;
+  string connected_by = 25;
+  // when GitHub was last asked.
+  google.protobuf.Timestamp checked_at = 26;
+  // why GitHub could not be asked, when it could not. The state is then
+  // what the record says, and no drift is claimed either way.
+  string reason = 27;
+  // the Kubernetes Secret the App's key is kept in, and the keys within
+  // it, for a deployment copying one. Empty where the deployment keeps no
+  // state in Kubernetes.
+  string secret = 28;
+  repeated string secret_keys = 29;
+  // how many accounts people linked through it. The link App only.
+  int32 linked_accounts = 30;
+}
+
+message ListGitHubAppsRequest {}
+
+message ListGitHubAppsResponse {
+  repeated GitHubApp apps = 1;
+  // false where connecting an organisation is not possible here, because
+  // there is nowhere to keep what it leaves behind.
+  bool connecting_available = 2;
+  // false where people cannot link accounts here, for the same reason.
+  bool linking_available = 3;
+  // false where this deployment keeps no catalogue Apps.
+  bool catalogue_available = 4;
+  // the runner tiers this deployment declares.
+  repeated string runner_tiers = 5;
+  // the organisations the policy binds: the ones an App can be created
+  // under.
+  repeated string bound_organisations = 6;
+  // the page a person opens to link their account. Share it.
+  string link_url = 7;
+}
+
+message GetGitHubAppRequest {
+  // the App's id, as ListGitHubApps gives it.
+  string id = 1;
+}
+
+message GetGitHubAppResponse {
+  GitHubApp app = 1;
+}
+
+message BeginGitHubAppConnectRequest {
+  string id = 1;
+  // the organisation the App is created under. Read for the link App
+  // alone, which belongs to no one organisation; every other App is
+  // created under the organisation it acts on.
+  string owner = 2;
+}
+
+message BeginGitHubAppConnectResponse {
+  // where the browser goes next.
+  string url = 1;
+  // when set, the browser POSTs it as the form field `manifest` to url:
+  // GitHub creates an App only from a posted manifest. Empty means url is
+  // an ordinary navigation — the App exists and is to be installed.
+  string manifest = 2;
+}
+
+message DisconnectGitHubAppRequest {
+  string id = 1;
+}
+
+message DisconnectGitHubAppResponse {
+  // whether the installation was removed on GitHub. The App's record and
+  // key are forgotten either way.
+  bool uninstalled = 1;
+  // why it could not be, when it could not.
+  string detail = 2;
+  // where the organisation's owner deletes the App itself, which the API
+  // cannot do.
+  string app_settings_url = 3;
+  // how many links became unverifiable. The link App only.
+  int32 invalidated = 4;
+}
+
+message CheckGitHubAppRequest {
+  string id = 1;
+}
+
+message CheckGitHubAppResponse {
+  GitHubApp app = 1;
+}
+
+// GitHubGroupGrant is one App an internal group may mint installation
+// tokens of, as that group's own page reads it. Derived from the
+// catalogue, so it says nothing about the App's state on GitHub and costs
+// no call to GitHub.
+message GitHubGroupGrant {
+  // the App's id, which is also the address of its page.
+  string app_id = 1;
+  // the App's name on GitHub.
+  string app_name = 2;
+  string org = 3;
+  // names or globs within the App's organisation; "*" is every one.
+  repeated string repositories = 4;
+  // the most a token may carry.
+  map<string, string> permissions = 5;
 }
 
 message BeginGitHubCatalogueAppConnectRequest {
@@ -316,6 +581,7 @@ message GetGitHubStatusResponse {
   // false where people cannot link accounts here, for the same reason.
   bool linking_available = 4;
   // the connected link App; absent until an operator creates it.
+  // Superseded by the `link` App in ListGitHubApps.
   GitHubLinkApp link_app = 5;
   // the page a person opens to link their account. Share it.
   string link_url = 6;
@@ -325,9 +591,11 @@ message GetGitHubStatusResponse {
   // runner Apps.
   repeated string runner_tiers = 8;
   // every runner App created, never with its key.
+  // Superseded by the `runners` Apps in ListGitHubApps.
   repeated GitHubRunnerApp runner_apps = 9;
   // every App the deployment's catalogue declares, and every one created
   // from an entry it no longer declares, with its state on GitHub.
+  // Superseded by the `tokens` Apps in ListGitHubApps.
   repeated GitHubCatalogueApp catalogue_apps = 10;
   // false where this deployment keeps no catalogue Apps.
   bool catalogue_available = 11;
@@ -402,6 +670,7 @@ message GitHubOrganisation {
   // are, so they are listed and never touched.
   repeated GitHubAccount unlinked = 10;
   // how the controller acts in it. Absent until an operator connects it.
+  // Superseded by the organisation's `controller` App in ListGitHubApps.
   GitHubConnection connection = 11;
   // accounts with access to repositories without membership: reported.
   repeated GitHubAccount outside_collaborators = 12;

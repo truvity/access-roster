@@ -33,6 +33,21 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// GitHubServiceListGitHubAppsProcedure is the fully-qualified name of the GitHubService's
+	// ListGitHubApps RPC.
+	GitHubServiceListGitHubAppsProcedure = "/directoryroster.v1.GitHubService/ListGitHubApps"
+	// GitHubServiceGetGitHubAppProcedure is the fully-qualified name of the GitHubService's
+	// GetGitHubApp RPC.
+	GitHubServiceGetGitHubAppProcedure = "/directoryroster.v1.GitHubService/GetGitHubApp"
+	// GitHubServiceBeginGitHubAppConnectProcedure is the fully-qualified name of the GitHubService's
+	// BeginGitHubAppConnect RPC.
+	GitHubServiceBeginGitHubAppConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubAppConnect"
+	// GitHubServiceDisconnectGitHubAppProcedure is the fully-qualified name of the GitHubService's
+	// DisconnectGitHubApp RPC.
+	GitHubServiceDisconnectGitHubAppProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubApp"
+	// GitHubServiceCheckGitHubAppProcedure is the fully-qualified name of the GitHubService's
+	// CheckGitHubApp RPC.
+	GitHubServiceCheckGitHubAppProcedure = "/directoryroster.v1.GitHubService/CheckGitHubApp"
 	// GitHubServiceGetGitHubStatusProcedure is the fully-qualified name of the GitHubService's
 	// GetGitHubStatus RPC.
 	GitHubServiceGetGitHubStatusProcedure = "/directoryroster.v1.GitHubService/GetGitHubStatus"
@@ -73,9 +88,40 @@ const (
 
 // GitHubServiceClient is a client for the directoryroster.v1.GitHubService service.
 type GitHubServiceClient interface {
+	// ListGitHubApps returns every GitHub App this service keeps a key for
+	// or is declared to — the link App, one controller App per bound
+	// organisation, one runner App per organisation per declared tier, and
+	// every App the catalogue declares — each in the same shape, with what
+	// GitHub says of it beside what the deployment declares. Viewer.
+	ListGitHubApps(context.Context, *connect.Request[v1.ListGitHubAppsRequest]) (*connect.Response[v1.ListGitHubAppsResponse], error)
+	// GetGitHubApp returns one App by the id ListGitHubApps gives it.
+	// Viewer.
+	GetGitHubApp(context.Context, *connect.Request[v1.GetGitHubAppRequest]) (*connect.Response[v1.GetGitHubAppResponse], error)
+	// BeginGitHubAppConnect starts creating any one of those Apps, or
+	// finishing installing one created before: its manifest and where to
+	// post it, or where to install it. Sets the flow's state cookie.
+	// Operator.
+	//
+	// The state it issues is the one the App's kind has always used, so a
+	// browser part-way through a flow finishes at the same callback even if
+	// the service restarts under it.
+	BeginGitHubAppConnect(context.Context, *connect.Request[v1.BeginGitHubAppConnectRequest]) (*connect.Response[v1.BeginGitHubAppConnectResponse], error)
+	// DisconnectGitHubApp uninstalls one App, then forgets its record and
+	// key. The App itself stays on GitHub, for its owner to delete.
+	// Operator.
+	DisconnectGitHubApp(context.Context, *connect.Request[v1.DisconnectGitHubAppRequest]) (*connect.Response[v1.DisconnectGitHubAppResponse], error)
+	// CheckGitHubApp asks GitHub again what one App and its installation
+	// hold, bypassing the short cache the list reads through. Operator.
+	CheckGitHubApp(context.Context, *connect.Request[v1.CheckGitHubAppRequest]) (*connect.Response[v1.CheckGitHubAppResponse], error)
 	// GetGitHubStatus returns every organisation the policy binds or the
 	// controller reports on, each with its bound teams and the members the
 	// controller derived for them. Viewer.
+	//
+	// Its four App-shaped fields — link_app, runner_apps, catalogue_apps
+	// and each organisation's connection — are superseded by
+	// ListGitHubApps, which says the same things about all four kinds of
+	// App at once. They are still filled in, for a console that has not
+	// moved yet; nothing new is added to them.
 	GetGitHubStatus(context.Context, *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error)
 	// BeginGitHubConnect starts connecting an organisation the policy
 	// binds: the App's manifest and where to post it, or — for an App
@@ -85,15 +131,24 @@ type GitHubServiceClient interface {
 	// An organisation already connected and installed is refused: connecting
 	// it again would create a second App beside the first, and the one
 	// left installed would be the one nobody holds a key for.
+	//
+	// Superseded by BeginGitHubAppConnect, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error)
 	// DisconnectGitHubOrganisation uninstalls the App, then forgets the
 	// organisation's record and credential. Operator.
+	//
+	// Superseded by DisconnectGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error)
 	// BeginGitHubLinkAppConnect starts creating the link App: the one App
 	// people authorize, as themselves, to link their GitHub account to their
 	// work addresses. Public, installed nowhere, and asking only to read the
 	// person's own email addresses. Created under an organisation the
 	// operator owns. Operator.
+	//
+	// Superseded by BeginGitHubAppConnect, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubLinkAppConnect(context.Context, *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error)
 	// BeginGitHubRunnerAppConnect starts creating a runner App: the App a
 	// self-hosted runner scale set in one tier registers with in one
@@ -104,14 +159,23 @@ type GitHubServiceClient interface {
 	// One App per organisation per tier, so a compromised runner plane is
 	// confined to its tier. A tier the deployment does not declare is
 	// refused, and so is one already installed.
+	//
+	// Superseded by BeginGitHubAppConnect, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubRunnerAppConnect(context.Context, *connect.Request[v1.BeginGitHubRunnerAppConnectRequest]) (*connect.Response[v1.BeginGitHubRunnerAppConnectResponse], error)
 	// DisconnectGitHubRunnerApp uninstalls a runner App, then forgets it.
 	// Runners registered with it stop getting jobs. Operator.
+	//
+	// Superseded by DisconnectGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	DisconnectGitHubRunnerApp(context.Context, *connect.Request[v1.DisconnectGitHubRunnerAppRequest]) (*connect.Response[v1.DisconnectGitHubRunnerAppResponse], error)
 	// DisconnectGitHubLinkApp forgets the link App. Every link made with it
 	// becomes unverifiable — nothing can check its tokens any more — which
 	// removes nobody and adds nobody until each person links again.
 	// Operator.
+	//
+	// Superseded by DisconnectGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error)
 	// ConfirmGitHubRemovals lets a pass that would remove more than half an
 	// organisation go ahead — for exactly the set of removals the operator
@@ -134,14 +198,23 @@ type GitHubServiceClient interface {
 	//
 	// An id the catalogue does not declare is refused, and so is an App
 	// already installed.
+	//
+	// Superseded by BeginGitHubAppConnect, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubCatalogueAppConnect(context.Context, *connect.Request[v1.BeginGitHubCatalogueAppConnectRequest]) (*connect.Response[v1.BeginGitHubCatalogueAppConnectResponse], error)
 	// DisconnectGitHubCatalogueApp uninstalls a catalogue App, then forgets
 	// its record and key. The App itself stays on GitHub, for its owner to
 	// delete. Operator.
+	//
+	// Superseded by DisconnectGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	DisconnectGitHubCatalogueApp(context.Context, *connect.Request[v1.DisconnectGitHubCatalogueAppRequest]) (*connect.Response[v1.DisconnectGitHubCatalogueAppResponse], error)
 	// CheckGitHubCatalogueApp asks GitHub again what one catalogue App and
 	// its installation hold, bypassing the short cache GetGitHubStatus reads
 	// through. Operator.
+	//
+	// Superseded by CheckGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	CheckGitHubCatalogueApp(context.Context, *connect.Request[v1.CheckGitHubCatalogueAppRequest]) (*connect.Response[v1.CheckGitHubCatalogueAppResponse], error)
 }
 
@@ -156,6 +229,36 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 	baseURL = strings.TrimRight(baseURL, "/")
 	gitHubServiceMethods := v1.File_directoryroster_v1_github_proto.Services().ByName("GitHubService").Methods()
 	return &gitHubServiceClient{
+		listGitHubApps: connect.NewClient[v1.ListGitHubAppsRequest, v1.ListGitHubAppsResponse](
+			httpClient,
+			baseURL+GitHubServiceListGitHubAppsProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("ListGitHubApps")),
+			connect.WithClientOptions(opts...),
+		),
+		getGitHubApp: connect.NewClient[v1.GetGitHubAppRequest, v1.GetGitHubAppResponse](
+			httpClient,
+			baseURL+GitHubServiceGetGitHubAppProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("GetGitHubApp")),
+			connect.WithClientOptions(opts...),
+		),
+		beginGitHubAppConnect: connect.NewClient[v1.BeginGitHubAppConnectRequest, v1.BeginGitHubAppConnectResponse](
+			httpClient,
+			baseURL+GitHubServiceBeginGitHubAppConnectProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubAppConnect")),
+			connect.WithClientOptions(opts...),
+		),
+		disconnectGitHubApp: connect.NewClient[v1.DisconnectGitHubAppRequest, v1.DisconnectGitHubAppResponse](
+			httpClient,
+			baseURL+GitHubServiceDisconnectGitHubAppProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubApp")),
+			connect.WithClientOptions(opts...),
+		),
+		checkGitHubApp: connect.NewClient[v1.CheckGitHubAppRequest, v1.CheckGitHubAppResponse](
+			httpClient,
+			baseURL+GitHubServiceCheckGitHubAppProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("CheckGitHubApp")),
+			connect.WithClientOptions(opts...),
+		),
 		getGitHubStatus: connect.NewClient[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse](
 			httpClient,
 			baseURL+GitHubServiceGetGitHubStatusProcedure,
@@ -233,6 +336,11 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 
 // gitHubServiceClient implements GitHubServiceClient.
 type gitHubServiceClient struct {
+	listGitHubApps                 *connect.Client[v1.ListGitHubAppsRequest, v1.ListGitHubAppsResponse]
+	getGitHubApp                   *connect.Client[v1.GetGitHubAppRequest, v1.GetGitHubAppResponse]
+	beginGitHubAppConnect          *connect.Client[v1.BeginGitHubAppConnectRequest, v1.BeginGitHubAppConnectResponse]
+	disconnectGitHubApp            *connect.Client[v1.DisconnectGitHubAppRequest, v1.DisconnectGitHubAppResponse]
+	checkGitHubApp                 *connect.Client[v1.CheckGitHubAppRequest, v1.CheckGitHubAppResponse]
 	getGitHubStatus                *connect.Client[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse]
 	beginGitHubConnect             *connect.Client[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse]
 	disconnectGitHubOrganisation   *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
@@ -245,6 +353,31 @@ type gitHubServiceClient struct {
 	beginGitHubCatalogueAppConnect *connect.Client[v1.BeginGitHubCatalogueAppConnectRequest, v1.BeginGitHubCatalogueAppConnectResponse]
 	disconnectGitHubCatalogueApp   *connect.Client[v1.DisconnectGitHubCatalogueAppRequest, v1.DisconnectGitHubCatalogueAppResponse]
 	checkGitHubCatalogueApp        *connect.Client[v1.CheckGitHubCatalogueAppRequest, v1.CheckGitHubCatalogueAppResponse]
+}
+
+// ListGitHubApps calls directoryroster.v1.GitHubService.ListGitHubApps.
+func (c *gitHubServiceClient) ListGitHubApps(ctx context.Context, req *connect.Request[v1.ListGitHubAppsRequest]) (*connect.Response[v1.ListGitHubAppsResponse], error) {
+	return c.listGitHubApps.CallUnary(ctx, req)
+}
+
+// GetGitHubApp calls directoryroster.v1.GitHubService.GetGitHubApp.
+func (c *gitHubServiceClient) GetGitHubApp(ctx context.Context, req *connect.Request[v1.GetGitHubAppRequest]) (*connect.Response[v1.GetGitHubAppResponse], error) {
+	return c.getGitHubApp.CallUnary(ctx, req)
+}
+
+// BeginGitHubAppConnect calls directoryroster.v1.GitHubService.BeginGitHubAppConnect.
+func (c *gitHubServiceClient) BeginGitHubAppConnect(ctx context.Context, req *connect.Request[v1.BeginGitHubAppConnectRequest]) (*connect.Response[v1.BeginGitHubAppConnectResponse], error) {
+	return c.beginGitHubAppConnect.CallUnary(ctx, req)
+}
+
+// DisconnectGitHubApp calls directoryroster.v1.GitHubService.DisconnectGitHubApp.
+func (c *gitHubServiceClient) DisconnectGitHubApp(ctx context.Context, req *connect.Request[v1.DisconnectGitHubAppRequest]) (*connect.Response[v1.DisconnectGitHubAppResponse], error) {
+	return c.disconnectGitHubApp.CallUnary(ctx, req)
+}
+
+// CheckGitHubApp calls directoryroster.v1.GitHubService.CheckGitHubApp.
+func (c *gitHubServiceClient) CheckGitHubApp(ctx context.Context, req *connect.Request[v1.CheckGitHubAppRequest]) (*connect.Response[v1.CheckGitHubAppResponse], error) {
+	return c.checkGitHubApp.CallUnary(ctx, req)
 }
 
 // GetGitHubStatus calls directoryroster.v1.GitHubService.GetGitHubStatus.
@@ -310,9 +443,40 @@ func (c *gitHubServiceClient) CheckGitHubCatalogueApp(ctx context.Context, req *
 
 // GitHubServiceHandler is an implementation of the directoryroster.v1.GitHubService service.
 type GitHubServiceHandler interface {
+	// ListGitHubApps returns every GitHub App this service keeps a key for
+	// or is declared to — the link App, one controller App per bound
+	// organisation, one runner App per organisation per declared tier, and
+	// every App the catalogue declares — each in the same shape, with what
+	// GitHub says of it beside what the deployment declares. Viewer.
+	ListGitHubApps(context.Context, *connect.Request[v1.ListGitHubAppsRequest]) (*connect.Response[v1.ListGitHubAppsResponse], error)
+	// GetGitHubApp returns one App by the id ListGitHubApps gives it.
+	// Viewer.
+	GetGitHubApp(context.Context, *connect.Request[v1.GetGitHubAppRequest]) (*connect.Response[v1.GetGitHubAppResponse], error)
+	// BeginGitHubAppConnect starts creating any one of those Apps, or
+	// finishing installing one created before: its manifest and where to
+	// post it, or where to install it. Sets the flow's state cookie.
+	// Operator.
+	//
+	// The state it issues is the one the App's kind has always used, so a
+	// browser part-way through a flow finishes at the same callback even if
+	// the service restarts under it.
+	BeginGitHubAppConnect(context.Context, *connect.Request[v1.BeginGitHubAppConnectRequest]) (*connect.Response[v1.BeginGitHubAppConnectResponse], error)
+	// DisconnectGitHubApp uninstalls one App, then forgets its record and
+	// key. The App itself stays on GitHub, for its owner to delete.
+	// Operator.
+	DisconnectGitHubApp(context.Context, *connect.Request[v1.DisconnectGitHubAppRequest]) (*connect.Response[v1.DisconnectGitHubAppResponse], error)
+	// CheckGitHubApp asks GitHub again what one App and its installation
+	// hold, bypassing the short cache the list reads through. Operator.
+	CheckGitHubApp(context.Context, *connect.Request[v1.CheckGitHubAppRequest]) (*connect.Response[v1.CheckGitHubAppResponse], error)
 	// GetGitHubStatus returns every organisation the policy binds or the
 	// controller reports on, each with its bound teams and the members the
 	// controller derived for them. Viewer.
+	//
+	// Its four App-shaped fields — link_app, runner_apps, catalogue_apps
+	// and each organisation's connection — are superseded by
+	// ListGitHubApps, which says the same things about all four kinds of
+	// App at once. They are still filled in, for a console that has not
+	// moved yet; nothing new is added to them.
 	GetGitHubStatus(context.Context, *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error)
 	// BeginGitHubConnect starts connecting an organisation the policy
 	// binds: the App's manifest and where to post it, or — for an App
@@ -322,15 +486,24 @@ type GitHubServiceHandler interface {
 	// An organisation already connected and installed is refused: connecting
 	// it again would create a second App beside the first, and the one
 	// left installed would be the one nobody holds a key for.
+	//
+	// Superseded by BeginGitHubAppConnect, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error)
 	// DisconnectGitHubOrganisation uninstalls the App, then forgets the
 	// organisation's record and credential. Operator.
+	//
+	// Superseded by DisconnectGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error)
 	// BeginGitHubLinkAppConnect starts creating the link App: the one App
 	// people authorize, as themselves, to link their GitHub account to their
 	// work addresses. Public, installed nowhere, and asking only to read the
 	// person's own email addresses. Created under an organisation the
 	// operator owns. Operator.
+	//
+	// Superseded by BeginGitHubAppConnect, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubLinkAppConnect(context.Context, *connect.Request[v1.BeginGitHubLinkAppConnectRequest]) (*connect.Response[v1.BeginGitHubLinkAppConnectResponse], error)
 	// BeginGitHubRunnerAppConnect starts creating a runner App: the App a
 	// self-hosted runner scale set in one tier registers with in one
@@ -341,14 +514,23 @@ type GitHubServiceHandler interface {
 	// One App per organisation per tier, so a compromised runner plane is
 	// confined to its tier. A tier the deployment does not declare is
 	// refused, and so is one already installed.
+	//
+	// Superseded by BeginGitHubAppConnect, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubRunnerAppConnect(context.Context, *connect.Request[v1.BeginGitHubRunnerAppConnectRequest]) (*connect.Response[v1.BeginGitHubRunnerAppConnectResponse], error)
 	// DisconnectGitHubRunnerApp uninstalls a runner App, then forgets it.
 	// Runners registered with it stop getting jobs. Operator.
+	//
+	// Superseded by DisconnectGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	DisconnectGitHubRunnerApp(context.Context, *connect.Request[v1.DisconnectGitHubRunnerAppRequest]) (*connect.Response[v1.DisconnectGitHubRunnerAppResponse], error)
 	// DisconnectGitHubLinkApp forgets the link App. Every link made with it
 	// becomes unverifiable — nothing can check its tokens any more — which
 	// removes nobody and adds nobody until each person links again.
 	// Operator.
+	//
+	// Superseded by DisconnectGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	DisconnectGitHubLinkApp(context.Context, *connect.Request[v1.DisconnectGitHubLinkAppRequest]) (*connect.Response[v1.DisconnectGitHubLinkAppResponse], error)
 	// ConfirmGitHubRemovals lets a pass that would remove more than half an
 	// organisation go ahead — for exactly the set of removals the operator
@@ -371,14 +553,23 @@ type GitHubServiceHandler interface {
 	//
 	// An id the catalogue does not declare is refused, and so is an App
 	// already installed.
+	//
+	// Superseded by BeginGitHubAppConnect, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubCatalogueAppConnect(context.Context, *connect.Request[v1.BeginGitHubCatalogueAppConnectRequest]) (*connect.Response[v1.BeginGitHubCatalogueAppConnectResponse], error)
 	// DisconnectGitHubCatalogueApp uninstalls a catalogue App, then forgets
 	// its record and key. The App itself stays on GitHub, for its owner to
 	// delete. Operator.
+	//
+	// Superseded by DisconnectGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	DisconnectGitHubCatalogueApp(context.Context, *connect.Request[v1.DisconnectGitHubCatalogueAppRequest]) (*connect.Response[v1.DisconnectGitHubCatalogueAppResponse], error)
 	// CheckGitHubCatalogueApp asks GitHub again what one catalogue App and
 	// its installation hold, bypassing the short cache GetGitHubStatus reads
 	// through. Operator.
+	//
+	// Superseded by CheckGitHubApp, which does this for every kind of
+	// App. Kept so a console mid-rollout keeps working.
 	CheckGitHubCatalogueApp(context.Context, *connect.Request[v1.CheckGitHubCatalogueAppRequest]) (*connect.Response[v1.CheckGitHubCatalogueAppResponse], error)
 }
 
@@ -389,6 +580,36 @@ type GitHubServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	gitHubServiceMethods := v1.File_directoryroster_v1_github_proto.Services().ByName("GitHubService").Methods()
+	gitHubServiceListGitHubAppsHandler := connect.NewUnaryHandler(
+		GitHubServiceListGitHubAppsProcedure,
+		svc.ListGitHubApps,
+		connect.WithSchema(gitHubServiceMethods.ByName("ListGitHubApps")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceGetGitHubAppHandler := connect.NewUnaryHandler(
+		GitHubServiceGetGitHubAppProcedure,
+		svc.GetGitHubApp,
+		connect.WithSchema(gitHubServiceMethods.ByName("GetGitHubApp")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceBeginGitHubAppConnectHandler := connect.NewUnaryHandler(
+		GitHubServiceBeginGitHubAppConnectProcedure,
+		svc.BeginGitHubAppConnect,
+		connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubAppConnect")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceDisconnectGitHubAppHandler := connect.NewUnaryHandler(
+		GitHubServiceDisconnectGitHubAppProcedure,
+		svc.DisconnectGitHubApp,
+		connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubApp")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceCheckGitHubAppHandler := connect.NewUnaryHandler(
+		GitHubServiceCheckGitHubAppProcedure,
+		svc.CheckGitHubApp,
+		connect.WithSchema(gitHubServiceMethods.ByName("CheckGitHubApp")),
+		connect.WithHandlerOptions(opts...),
+	)
 	gitHubServiceGetGitHubStatusHandler := connect.NewUnaryHandler(
 		GitHubServiceGetGitHubStatusProcedure,
 		svc.GetGitHubStatus,
@@ -463,6 +684,16 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 	)
 	return "/directoryroster.v1.GitHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case GitHubServiceListGitHubAppsProcedure:
+			gitHubServiceListGitHubAppsHandler.ServeHTTP(w, r)
+		case GitHubServiceGetGitHubAppProcedure:
+			gitHubServiceGetGitHubAppHandler.ServeHTTP(w, r)
+		case GitHubServiceBeginGitHubAppConnectProcedure:
+			gitHubServiceBeginGitHubAppConnectHandler.ServeHTTP(w, r)
+		case GitHubServiceDisconnectGitHubAppProcedure:
+			gitHubServiceDisconnectGitHubAppHandler.ServeHTTP(w, r)
+		case GitHubServiceCheckGitHubAppProcedure:
+			gitHubServiceCheckGitHubAppHandler.ServeHTTP(w, r)
 		case GitHubServiceGetGitHubStatusProcedure:
 			gitHubServiceGetGitHubStatusHandler.ServeHTTP(w, r)
 		case GitHubServiceBeginGitHubConnectProcedure:
@@ -495,6 +726,26 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 
 // UnimplementedGitHubServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedGitHubServiceHandler struct{}
+
+func (UnimplementedGitHubServiceHandler) ListGitHubApps(context.Context, *connect.Request[v1.ListGitHubAppsRequest]) (*connect.Response[v1.ListGitHubAppsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.ListGitHubApps is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) GetGitHubApp(context.Context, *connect.Request[v1.GetGitHubAppRequest]) (*connect.Response[v1.GetGitHubAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.GetGitHubApp is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) BeginGitHubAppConnect(context.Context, *connect.Request[v1.BeginGitHubAppConnectRequest]) (*connect.Response[v1.BeginGitHubAppConnectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.BeginGitHubAppConnect is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) DisconnectGitHubApp(context.Context, *connect.Request[v1.DisconnectGitHubAppRequest]) (*connect.Response[v1.DisconnectGitHubAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.DisconnectGitHubApp is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) CheckGitHubApp(context.Context, *connect.Request[v1.CheckGitHubAppRequest]) (*connect.Response[v1.CheckGitHubAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.CheckGitHubApp is not implemented"))
+}
 
 func (UnimplementedGitHubServiceHandler) GetGitHubStatus(context.Context, *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.GetGitHubStatus is not implemented"))

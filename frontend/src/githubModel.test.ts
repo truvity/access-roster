@@ -1,197 +1,157 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 
-import { GetGitHubStatusResponseSchema, GitHubCatalogueAppSchema, GitHubTeamStatusSchema } from "./gen/directoryroster/v1/github_pb";
-import { appsOf, atMost, feedsOnlyItself, fixSentence, githubCell, groupApps, keyLocation, organisationNeeds, permissionDiffers, sentence, summaryOf } from "./githubModel";
+import {
+  AppAttention,
+  AppOrigin,
+  AppPurpose,
+  AppState,
+  GetGitHubStatusResponseSchema,
+  GitHubAppSchema,
+  GitHubTeamStatusSchema,
+} from "./gen/directoryroster/v1/github_pb";
+import { appView, atMost, feedsOnlyItself, fixSentence, githubCell, groupApps, organisationNeeds, permissionDiffers, sentence, summaryOf } from "./githubModel";
 
-type StatusInit = MessageInitShape<typeof GetGitHubStatusResponseSchema>;
-type CatalogueInit = MessageInitShape<typeof GitHubCatalogueAppSchema>;
+type AppInit = MessageInitShape<typeof GitHubAppSchema>;
 
-function status(init: StatusInit) {
-  return create(GetGitHubStatusResponseSchema, { reportsAvailable: true, connectingAvailable: true, linkingAvailable: true, ...init });
+/** One App as the server sends it. The defaults are an installed App
+ *  the deployment still declares, which is the uninteresting case every
+ *  test then varies one thing of. */
+function app(init: AppInit) {
+  return appView(
+    create(GitHubAppSchema, {
+      org: "example-org",
+      origin: AppOrigin.CATALOGUE,
+      purpose: AppPurpose.TOKENS,
+      state: AppState.INSTALLED,
+      attention: AppAttention.DONE,
+      declared: true,
+      installation: "all",
+      ...init,
+    }),
+  );
 }
 
-function tokensApp(init: CatalogueInit): CatalogueInit {
-  return { org: "example-org", declared: true, installation: "all", ...init };
-}
-
-const byId = (s: ReturnType<typeof status>) => new Map(appsOf(s).map((app) => [app.id, app]));
-
-describe("appsOf", () => {
-  it("turns every shape the status carries into one kind of row", () => {
-    const apps = byId(
-      status({
-        organisations: [{ org: "example-org", bound: true, reported: true, connection: { appSlug: "example-org-roster", installed: true, appId: 1n } }],
-        linkApp: { appSlug: "example-org-link", owner: "example-org", appId: 3n },
-        links: [{ login: "ada", emails: ["ada@example.com"], state: "linked" }],
-        runnerTiers: ["standard", "large"],
-        runnerApps: [{ org: "example-org", tier: "standard", appSlug: "example-org-runners-standard", installed: true }],
-        catalogueApps: [tokensApp({ id: "release-bot", state: "installed", appSlug: "example-org-release", grants: [{ group: "all:platform", repositories: ["*"] }] })],
-      }),
-    );
-
-    expect([...apps.keys()].sort()).toEqual(["example-org-controller", "example-org-runners-large", "example-org-runners-standard", "link", "release-bot"]);
-
-    expect(apps.get("link")).toMatchObject({ purpose: "link", origin: "preset", stage: "installed", label: "done", org: "example-org" });
-    expect(apps.get("example-org-controller")).toMatchObject({ purpose: "controller", stage: "installed", label: "done", name: "example-org-roster" });
-    expect(apps.get("example-org-runners-standard")).toMatchObject({ purpose: "runners", tier: "standard", stage: "installed", label: "done" });
-    expect(apps.get("example-org-runners-large")).toMatchObject({ purpose: "runners", tier: "large", stage: "not-created", label: "needs-you", fix: "create" });
-    expect(apps.get("release-bot")).toMatchObject({ purpose: "tokens", origin: "catalogue", stage: "installed", label: "done", repositories: "every repository" });
-    expect(apps.get("release-bot")?.settingsUrl).toBe("https://github.com/organizations/example-org/settings/apps/example-org-release");
+describe("appView", () => {
+  it("reads every kind of App as one kind of row", () => {
+    expect(app({ id: "link", purpose: AppPurpose.LINK, origin: AppOrigin.PRESET, name: "example-org-link", linkedAccounts: 4 })).toMatchObject({
+      purpose: "link",
+      origin: "preset",
+      stage: "installed",
+      label: "done",
+      fix: "none",
+      repositories: "installed nowhere",
+      linked: 4,
+    });
+    expect(app({ id: "example-org-controller", purpose: AppPurpose.CONTROLLER, origin: AppOrigin.PRESET })).toMatchObject({
+      purpose: "controller",
+      repositories: "none: members and teams only",
+    });
+    expect(app({ id: "example-org-runners-standard", purpose: AppPurpose.RUNNERS, origin: AppOrigin.PRESET, tier: "standard" })).toMatchObject({
+      purpose: "runners",
+      tier: "standard",
+      repositories: "none: registers runners with the organisation",
+    });
+    expect(app({ id: "release-bot", repositorySelection: "selected" })).toMatchObject({
+      purpose: "tokens",
+      origin: "catalogue",
+      repositories: "selected repositories",
+    });
+    // Nothing is installed yet, so what the installer is expected to
+    // choose is what the row says.
+    expect(app({ id: "release-bot", state: AppState.NOT_CREATED }).repositories).toBe("every repository");
   });
 
-  it("says who moves next for every stage", () => {
-    const apps = byId(
-      status({
-        organisations: [
-          { org: "created-org", bound: true, connection: { appSlug: "created", installed: false } },
-          { org: "missing-org", bound: true },
-          { org: "quiet-org", bound: true, reported: false, connection: { appSlug: "quiet", installed: true } },
-          { org: "dropped-org", bound: false, reported: true, connection: { appSlug: "dropped", installed: true } },
-          { org: "forgotten-org", bound: false, reported: true },
-        ],
-        linkingAvailable: true,
-        catalogueApps: [
-          tokensApp({ id: "drifted", state: "drifted", appSlug: "d", drift: ["The App lacks contents: write."] }),
-          tokensApp({ id: "created", state: "created", appSlug: "c" }),
-          tokensApp({ id: "fresh", state: "not_created" }),
-          tokensApp({ id: "gone", state: "installed", appSlug: "g", declared: false }),
-        ],
-      }),
-    );
-
-    expect(apps.get("created-org-controller")).toMatchObject({ stage: "created", label: "needs-you", fix: "install" });
-    expect(apps.get("missing-org-controller")).toMatchObject({ stage: "not-created", label: "needs-you", fix: "create" });
-    expect(apps.get("quiet-org-controller")).toMatchObject({ stage: "installed", label: "waiting-controller" });
-    expect(apps.get("dropped-org-controller")).toMatchObject({ label: "needs-you", fix: "disconnect", declared: false });
-    // Nothing was ever created for an organisation the policy no longer
-    // binds, so there is no App to show.
-    expect(apps.has("forgotten-org-controller")).toBe(false);
-    expect(apps.get("link")).toMatchObject({ stage: "not-created", label: "needs-you", fix: "create" });
-    expect(apps.get("drifted")).toMatchObject({ stage: "drifted", label: "needs-you", fix: "recheck", exact: "differs on GitHub" });
-    expect(apps.get("created")).toMatchObject({ stage: "created", label: "needs-you", fix: "install" });
-    expect(apps.get("fresh")).toMatchObject({ stage: "not-created", label: "needs-you", fix: "create" });
-    expect(apps.get("gone")).toMatchObject({ label: "needs-you", fix: "disconnect" });
+  it("turns each state into the one fix it asks for", () => {
+    const fixes = (declared: boolean) =>
+      [AppState.NOT_CREATED, AppState.CREATED, AppState.INSTALLED, AppState.DRIFTED].map(
+        (state) => app({ id: "x", state, declared }).fix,
+      );
+    expect(fixes(true)).toEqual(["create", "install", "none", "recheck"]);
+    // An App the deployment no longer declares has one thing left to do,
+    // and nothing at all if it was never created.
+    expect(fixes(false)).toEqual(["none", "disconnect", "disconnect", "disconnect"]);
   });
 
-  it("waits on people while nobody has linked through the link App", () => {
-    const apps = byId(status({ linkApp: { appSlug: "link", owner: "example-org" } }));
-    expect(apps.get("link")).toMatchObject({ label: "waiting-person" });
+  it("says who moves next in the server's words, not its own", () => {
+    expect(
+      app({ id: "link", purpose: AppPurpose.LINK, attention: AppAttention.WAITING_PERSON, stateDetail: "created; nobody has linked an account through it yet" }),
+    ).toMatchObject({ label: "waiting-person", exact: "created; nobody has linked an account through it yet" });
+    expect(app({ id: "c", attention: AppAttention.WAITING_CONTROLLER }).label).toBe("waiting-controller");
+    expect(app({ id: "c", attention: AppAttention.NEEDS_YOU }).label).toBe("needs-you");
   });
 
-  it("shows no link App where linking is not possible and none was created", () => {
-    expect(byId(status({ linkingAvailable: false })).has("link")).toBe(false);
-  });
-
-  it("keeps a runner App for a tier no longer declared, to disconnect", () => {
-    const apps = byId(
-      status({
-        organisations: [{ org: "example-org", bound: true }],
-        runnerTiers: [],
-        runnerApps: [{ org: "example-org", tier: "old", appSlug: "old", installed: true }],
-      }),
-    );
-    expect(apps.get("example-org-runners-old")).toMatchObject({ declared: false, fix: "disconnect" });
-  });
-
-  it("lets a catalogue id keep its name and moves the preset aside", () => {
-    const apps = byId(
-      status({
-        organisations: [{ org: "example-org", bound: true }],
-        linkingAvailable: true,
-        catalogueApps: [tokensApp({ id: "link", state: "not_created" }), tokensApp({ id: "example-org-controller", state: "not_created" })],
-      }),
-    );
-    expect(apps.get("link")).toMatchObject({ origin: "catalogue", purpose: "tokens" });
-    expect(apps.get("link-preset")).toMatchObject({ origin: "preset", purpose: "link" });
-    expect(apps.get("example-org-controller")).toMatchObject({ origin: "catalogue" });
-    expect(apps.get("example-org-controller-preset")).toMatchObject({ origin: "preset", purpose: "controller" });
-    expect(new Set(appsOf(status({ catalogueApps: [tokensApp({ id: "link" }), tokensApp({ id: "link-preset" })] })).map((a) => a.id)).size).toBe(3);
+  it("carries what the App holds and where its key is kept", () => {
+    const view = app({
+      id: "release-bot",
+      appSlug: "example-org-release-bot",
+      settingsUrl: "https://github.com/organizations/example-org/settings/apps/example-org-release-bot",
+      permissions: [{ name: "contents", declared: "write", app: "write", installation: "write" }],
+      drift: ["The App lacks issues: write. Add it in the App's settings on GitHub."],
+      secret: "access-issuer-github-catalogue-apps",
+      secretKeys: ["release-bot.record.json", "release-bot.github_app_private_key"],
+    });
+    expect(view.settingsUrl).toBe("https://github.com/organizations/example-org/settings/apps/example-org-release-bot");
+    expect(view.permissions).toHaveLength(1);
+    expect(view.drift).toHaveLength(1);
+    expect(view.secret).toBe("access-issuer-github-catalogue-apps");
+    expect(view.secretKeys).toHaveLength(2);
   });
 });
 
 describe("groupApps", () => {
   it("puts the link App first, then organisations with something to fix, needs-you rows first", () => {
-    const groups = groupApps(
-      appsOf(
-        status({
-          organisations: [
-            { org: "a-org", bound: true, reported: true, connection: { appSlug: "a", installed: true } },
-            { org: "b-org", bound: true, reported: true, connection: { appSlug: "b", installed: true } },
-          ],
-          linkApp: { appSlug: "link", owner: "a-org" },
-          links: [{ state: "linked", emails: ["ada@example.com"] }],
-          catalogueApps: [tokensApp({ id: "b-tokens", org: "b-org", state: "created", appSlug: "bt" })],
-        }),
-      ),
-    );
+    const groups = groupApps([
+      app({ id: "link", purpose: AppPurpose.LINK, origin: AppOrigin.PRESET, org: "a-org" }),
+      app({ id: "a-org-controller", purpose: AppPurpose.CONTROLLER, origin: AppOrigin.PRESET, org: "a-org" }),
+      app({ id: "b-org-controller", purpose: AppPurpose.CONTROLLER, origin: AppOrigin.PRESET, org: "b-org" }),
+      app({ id: "b-tokens", org: "b-org", state: AppState.CREATED, attention: AppAttention.NEEDS_YOU }),
+    ]);
     expect(groups.map((g) => g.org)).toEqual(["", "b-org", "a-org"]);
     expect(groups[1].apps.map((a) => a.id)).toEqual(["b-tokens", "b-org-controller"]);
   });
 });
 
 describe("summaryOf", () => {
-  const one = (s: ReturnType<typeof status>, id: string) => byId(s).get(id)!;
-
   it("says what a token App mints, where, and where it stands", () => {
-    const s = status({
-      catalogueApps: [
-        tokensApp({
-          id: "release-bot",
-          state: "installed",
-          appSlug: "r",
-          grants: [
-            { group: "all:platform", repositories: ["*"] },
-            { group: "all:release", repositories: ["*"] },
-            { group: "all:release", repositories: ["*"] },
-          ],
-        }),
-        tokensApp({ id: "docs-bot", state: "drifted", appSlug: "d", grants: [{ group: "all:docs", repositories: ["docs"] }] }),
-        tokensApp({ id: "lonely", state: "not_created" }),
-      ],
-    });
-    expect(summaryOf(one(s, "release-bot"))).toBe("Mints tokens for 2 internal groups on every repository in example-org; installed, matches its declaration.");
-    expect(summaryOf(one(s, "docs-bot"))).toBe("Mints tokens for 1 internal group on docs in example-org; installed, and differs from its declaration on GitHub.");
-    expect(summaryOf(one(s, "lonely"))).toBe("No internal group may mint tokens of it in example-org; not created yet.");
+    const grants = (...groups: string[]) => groups.map((group) => ({ group, repositories: ["*"] }));
+    expect(summaryOf(app({ id: "release-bot", grants: grants("all:platform", "all:release", "all:release") }))).toBe(
+      "Mints tokens for 2 internal groups on every repository in example-org; installed, matches its declaration.",
+    );
+    expect(
+      summaryOf(app({ id: "docs-bot", state: AppState.DRIFTED, grants: [{ group: "all:docs", repositories: ["docs"] }] })),
+    ).toBe("Mints tokens for 1 internal group on docs in example-org; installed, and differs from its declaration on GitHub.");
+    expect(summaryOf(app({ id: "lonely", state: AppState.NOT_CREATED }))).toBe("No internal group may mint tokens of it in example-org; not created yet.");
   });
 
-  it("says what a preset App is for", () => {
-    const s = status({
-      organisations: [{ org: "example-org", bound: true, reported: true, connection: { appSlug: "c", installed: false } }],
-      runnerTiers: ["standard"],
-      runnerApps: [{ org: "example-org", tier: "standard", appSlug: "r", installed: true }],
-      linkApp: { appSlug: "l", owner: "example-org" },
-    });
-    expect(summaryOf(one(s, "example-org-runners-standard"))).toBe("The standard runners register with example-org through it; installed.");
-    expect(summaryOf(one(s, "example-org-controller"))).toBe("The controller manages example-org's members and teams through it; created, not installed yet.");
-    expect(summaryOf(one(s, "link"), 4)).toBe("People link their GitHub account through it; 4 accounts linked.");
-    expect(summaryOf(one(s, "link"), 1)).toBe("People link their GitHub account through it; 1 account linked.");
+  it("says what a preset App is for, and never claims a match nobody checked", () => {
+    expect(summaryOf(app({ id: "r", purpose: AppPurpose.RUNNERS, origin: AppOrigin.PRESET, tier: "standard" }))).toBe(
+      "The standard runners register with example-org through it; installed, matches its declaration.",
+    );
+    expect(summaryOf(app({ id: "c", purpose: AppPurpose.CONTROLLER, origin: AppOrigin.PRESET, state: AppState.CREATED }))).toBe(
+      "The controller manages example-org's members and teams through it; created, not installed yet.",
+    );
+    // GitHub could not be asked: "installed" is all that can be said.
+    expect(
+      summaryOf(app({ id: "c", purpose: AppPurpose.CONTROLLER, origin: AppOrigin.PRESET, reason: "The App's key is not kept here." })),
+    ).toBe("The controller manages example-org's members and teams through it; installed.");
+    expect(summaryOf(app({ id: "link", purpose: AppPurpose.LINK, origin: AppOrigin.PRESET, linkedAccounts: 4 }))).toBe(
+      "People link their GitHub account through it; 4 accounts linked.",
+    );
+    expect(summaryOf(app({ id: "link", purpose: AppPurpose.LINK, origin: AppOrigin.PRESET, linkedAccounts: 1 }))).toBe(
+      "People link their GitHub account through it; 1 account linked.",
+    );
   });
 
   it("gives every App that needs you exactly one fix", () => {
-    const s = status({
-      organisations: [{ org: "example-org", bound: true }],
-      catalogueApps: [tokensApp({ id: "drifted", state: "drifted", appSlug: "d" })],
-    });
-    for (const app of appsOf(s).filter((a) => a.label === "needs-you")) expect(fixSentence(app)).not.toBe("");
+    for (const state of [AppState.NOT_CREATED, AppState.CREATED, AppState.DRIFTED]) {
+      expect(fixSentence(app({ id: "x", state, attention: AppAttention.NEEDS_YOU }))).not.toBe("");
+    }
+    expect(fixSentence(app({ id: "x", declared: false, attention: AppAttention.NEEDS_YOU }))).not.toBe("");
   });
 });
 
 describe("the rest of the App page", () => {
-  it("names the Secret each kind of App keeps its key in", () => {
-    const apps = byId(
-      status({
-        organisations: [{ org: "example-org", bound: true }],
-        runnerTiers: ["standard"],
-        catalogueApps: [tokensApp({ id: "release-bot", state: "not_created" })],
-      }),
-    );
-    expect(keyLocation(apps.get("example-org-controller")!)).toEqual({ secret: "<release>-github-apps", keys: ["example-org.json"] });
-    expect(keyLocation(apps.get("link")!).keys).toEqual(["_link.json"]);
-    expect(keyLocation(apps.get("example-org-runners-standard")!).keys[0]).toBe("standard.example-org.github_app_id");
-    expect(keyLocation(apps.get("release-bot")!)).toMatchObject({ secret: "<release>-github-catalogue-apps" });
-  });
-
   it("reads GitHub's implied metadata permission as no difference", () => {
     expect(permissionDiffers({ name: "metadata", declared: "", app: "read", installation: "read" } as never)).toBe(false);
     expect(permissionDiffers({ name: "contents", declared: "write", app: "write", installation: "write" } as never)).toBe(false);
@@ -207,12 +167,14 @@ describe("the rest of the App page", () => {
 
 describe("organisation pages", () => {
   it("counts an organisation's Apps that need you, not the link App", () => {
-    const s = status({
-      organisations: [{ org: "example-org", bound: true, reported: true }],
-      runnerTiers: ["standard"],
-    });
-    expect(organisationNeeds(s.organisations[0], appsOf(s))).toEqual(["2 Apps need you"]);
-    expect(organisationNeeds(s.organisations[0])).toEqual([]);
+    const org = create(GetGitHubStatusResponseSchema, { organisations: [{ org: "example-org", bound: true, reported: true }] }).organisations[0];
+    const apps = [
+      app({ id: "link", purpose: AppPurpose.LINK, origin: AppOrigin.PRESET, attention: AppAttention.NEEDS_YOU }),
+      app({ id: "example-org-controller", purpose: AppPurpose.CONTROLLER, origin: AppOrigin.PRESET, attention: AppAttention.NEEDS_YOU }),
+      app({ id: "example-org-runners-large", purpose: AppPurpose.RUNNERS, origin: AppOrigin.PRESET, tier: "large", attention: AppAttention.NEEDS_YOU }),
+    ];
+    expect(organisationNeeds(org, apps)).toEqual(["2 Apps need you"]);
+    expect(organisationNeeds(org)).toEqual([]);
   });
 
   it("hides a Fed by that only repeats the team", () => {
@@ -226,13 +188,6 @@ describe("organisation pages", () => {
 
   it("states the owner rule once, not on each owner's row", () => {
     expect(sentence({ state: "reported", reason: "an owner, managed outside" } as never, true)).toBe("");
-  });
-});
-
-describe("catalogueView", () => {
-  it("carries the reason GitHub could not be asked into the exact state", () => {
-    const app = byId(status({ catalogueApps: [tokensApp({ id: "x", state: "installed", appSlug: "x", reason: "GitHub could not be asked" })] })).get("x");
-    expect(app?.exact).toBe("installed: GitHub could not be asked");
   });
 });
 
