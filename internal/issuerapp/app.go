@@ -203,6 +203,11 @@ type Deps struct {
 	// origin. It is mounted under /console/ with the prefix stripped,
 	// which is exactly what the gateway used to do for it.
 	Console http.Handler
+	// GitHubApps are the catalogue Apps this issuer mints installation
+	// tokens for, under the catalogue's grants: the directory half's
+	// catalogue and the Secret it keeps each App's key in. Nil mints none,
+	// and every such request is refused as naming an App that cannot.
+	GitHubApps *issuer.GitHubApps
 	// Around wraps everything this issuer serves on its port, the console
 	// included. It is applied to the one handler both [App.Handler] and
 	// [App.Run] use, so what a caller tests through the first is what the
@@ -276,6 +281,10 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		core.UseAudit(deps.Audit)
 	} else {
 		core.UseAudit(audit.NewLog(log, nil, ""))
+	}
+
+	if deps.GitHubApps != nil {
+		core.UseGitHubApps(*deps.GitHubApps)
 	}
 
 	key, err := signingKey(ctx, cfg, log)

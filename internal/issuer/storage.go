@@ -1400,7 +1400,7 @@ func (s *Storage) ValidateTokenExchangeRequest(ctx context.Context, request op.T
 // relying party, an access token to whatever a gateway forwards it to. So
 // it is a proof only as the access token of a live session, at a client
 // that allows [policy.Client.SignInExchange], presented by that client.
-func (s *Storage) proofOf(ctx context.Context, request op.TokenExchangeRequest) (Proof, error) {
+func (s *Storage) proofOf(ctx context.Context, request exchangeSubject) (Proof, error) {
 	if carried, ok := request.GetExchangeSubjectTokenClaims()[verifiedKey].(verified); ok {
 		return carried.proof, nil
 	}
@@ -1408,9 +1408,21 @@ func (s *Storage) proofOf(ctx context.Context, request op.TokenExchangeRequest) 
 	return s.signInProof(ctx, request)
 }
 
+// exchangeSubject is the part of an exchange a proof is read from: the
+// subject token as the library verified it, and the client presenting it.
+// Narrower than [op.TokenExchangeRequest] so that an exchange the library
+// does not serve -- an installation token -- reads its proof by the same
+// rules rather than a copy of them.
+type exchangeSubject interface {
+	GetExchangeSubjectTokenClaims() map[string]any
+	GetExchangeSubjectTokenType() oidc.TokenType
+	GetExchangeSubjectTokenIDOrToken() string
+	GetClientID() string
+}
+
 // signInProof accepts one of this issuer's own tokens as a person's proof,
 // or says which rule refused it.
-func (s *Storage) signInProof(ctx context.Context, request op.TokenExchangeRequest) (Proof, error) {
+func (s *Storage) signInProof(ctx context.Context, request exchangeSubject) (Proof, error) {
 	refuse := func(format string, args ...any) (Proof, error) {
 		return Proof{}, oidc.ErrInvalidGrant().WithDescription("subject_token: "+format, args...)
 	}

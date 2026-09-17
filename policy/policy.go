@@ -300,6 +300,21 @@ type GitHubMatcher struct {
 	// is every private repository of an organisation — which a fork's run
 	// is not, because a fork is another repository.
 	Visibility string `yaml:"visibility,omitempty"`
+	// WorkflowRef and JobWorkflowRef pin the workflow FILE a run was
+	// started from and the one its job is defined in, each at its ref:
+	// `org/repo/.github/workflows/release.yml@refs/heads/main`. A
+	// repository and a branch admit every workflow on that branch; one
+	// of these admits the one file somebody reviewed. Globs, like the
+	// rest, where `*` does not cross a `/`.
+	WorkflowRef    string `yaml:"workflow_ref,omitempty"`
+	JobWorkflowRef string `yaml:"job_workflow_ref,omitempty"`
+	// SHA is the commit, for a rule that admits exactly one.
+	SHA string `yaml:"sha,omitempty"`
+	// EventName is what started the run: `push`, `workflow_dispatch`...
+	// Pinning it keeps a `pull_request` run of the same file out.
+	EventName string `yaml:"event_name,omitempty"`
+	// RefType is `branch` or `tag`.
+	RefType string `yaml:"ref_type,omitempty"`
 }
 
 // visibilities are the values GitHub's repository_visibility claim takes.
@@ -425,6 +440,8 @@ func (m Matcher) Describe() string {
 		for label, value := range map[string]string{
 			"repository": m.GitHub.Repository, "owner": m.GitHub.Owner, "ref": m.GitHub.Ref,
 			"workflow": m.GitHub.Workflow, "environment": m.GitHub.Environment, "visibility": m.GitHub.Visibility,
+			"workflow_ref": m.GitHub.WorkflowRef, "job_workflow_ref": m.GitHub.JobWorkflowRef, "sha": m.GitHub.SHA,
+			"event_name": m.GitHub.EventName, "ref_type": m.GitHub.RefType,
 		} {
 			if value != "" {
 				parts = append(parts, label+" "+value)
@@ -491,6 +508,11 @@ func (m Matcher) matches(in Input) bool {
 			globs(m.GitHub.Ref, in.GitHub.Ref) &&
 			globs(m.GitHub.Workflow, in.GitHub.Workflow) &&
 			globs(m.GitHub.Environment, in.GitHub.Environment) &&
+			globs(m.GitHub.WorkflowRef, in.GitHub.WorkflowRef) &&
+			globs(m.GitHub.JobWorkflowRef, in.GitHub.JobWorkflowRef) &&
+			globs(m.GitHub.SHA, in.GitHub.SHA) &&
+			globs(m.GitHub.EventName, in.GitHub.EventName) &&
+			globs(m.GitHub.RefType, in.GitHub.RefType) &&
 			(m.GitHub.Visibility == "" || m.GitHub.Visibility == in.GitHub.Visibility)
 	case m.ServiceAccount != nil:
 		if in.ServiceAccount == nil {

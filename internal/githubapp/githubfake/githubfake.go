@@ -65,6 +65,16 @@ type Org struct {
 	// AppReads counts the calls made as the App to read it or one of its
 	// installations.
 	AppReads int
+	// TokenRequests are the installation tokens asked for, in order, with
+	// the narrowing each asked for.
+	TokenRequests []TokenRequest
+	// Uninstalled are installation ids GitHub no longer knows: minting a
+	// token for one is a 404.
+	Uninstalled map[int64]bool
+	// Repositories are the repositories every installation can reach.
+	// Empty reaches any; otherwise a token narrowed to another is a 422,
+	// as GitHub answers.
+	Repositories []string
 
 	nextID int64
 	server *httptest.Server
@@ -106,6 +116,13 @@ type Installation struct {
 	Account             string
 	Permissions         map[string]string
 	RepositorySelection string
+}
+
+// TokenRequest is one installation token asked for.
+type TokenRequest struct {
+	Installation int64
+	// Body is the narrowing as sent, nil when the request had no body.
+	Body *githubapp.Narrowing
 }
 
 // Member is one member.
@@ -570,9 +587,45 @@ func (o *Org) act(w http.ResponseWriter, action string) bool {
 	return true
 }
 
-func (o *Org) accessToken(w http.ResponseWriter, _ *http.Request) {
+func (o *Org) accessToken(w http.ResponseWriter, r *http.Request) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	request := TokenRequest{Installation: id}
+	if raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20)); len(raw) > 0 {
+		request.Body = &githubapp.Narrowing{}
+		if err := json.Unmarshal(raw, request.Body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"message":"Problems parsing JSON"}`)
+			return
+		}
+	}
+	o.TokenRequests = append(o.TokenRequests, request)
+	if o.Uninstalled[id] {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"message":"Not Found"}`)
+		return
+	}
+	answer := map[string]any{"token": o.Token, "expires_at": time.Now().Add(time.Hour).UTC().Truncate(time.Second)}
+	if request.Body != nil {
+		var repositories []map[string]any
+		for _, name := range request.Body.Repositories {
+			if len(o.Repositories) > 0 && !slices.Contains(o.Repositories, name) {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = io.WriteString(w, `{"message":"There is at least one repository that does not exist or is not accessible to the parent installation."}`)
+				return
+			}
+			repositories = append(repositories, map[string]any{"name": name, "full_name": o.Login + "/" + name})
+		}
+		if repositories != nil {
+			answer["repositories"] = repositories
+		}
+		if request.Body.Permissions != nil {
+			answer["permissions"] = request.Body.Permissions
+		}
+	}
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]any{"token": o.Token, "expires_at": time.Now().Add(time.Hour)})
+	_ = json.NewEncoder(w).Encode(answer)
 }
 
 func (o *Org) graphql(w http.ResponseWriter, r *http.Request) {

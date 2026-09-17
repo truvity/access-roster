@@ -34,6 +34,20 @@ type GitHubClaims struct {
 	// Visibility is the repository's visibility: public, private or
 	// internal.
 	Visibility string
+	// WorkflowRef is the workflow file the run was started from, at the
+	// ref it was read at: `org/repo/.github/workflows/release.yml@refs/heads/main`.
+	WorkflowRef string
+	// JobWorkflowRef is the workflow file the JOB is defined in. It
+	// differs from WorkflowRef in a reusable workflow, and it is the one
+	// that says which code holds the token.
+	JobWorkflowRef string
+	// SHA is the commit the run is for.
+	SHA string
+	// EventName is what started the run: push, pull_request,
+	// workflow_dispatch...
+	EventName string
+	// RefType is branch or tag.
+	RefType string
 }
 
 // ServiceAccountRef is a verified Kubernetes ServiceAccount.

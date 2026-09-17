@@ -559,6 +559,9 @@ type App struct {
 	log     *slog.Logger
 	close   func()
 	audit   audit.Recorder
+	// catalogueApps is where created catalogue Apps are kept, nil where
+	// the deployment keeps no state in Kubernetes.
+	catalogueApps server.GitHubCatalogueApps
 }
 
 // Audit is the service's one recorder, for the half assembled after this
@@ -601,6 +604,15 @@ func (a *App) ConsoleServer() *server.ConsoleServer { return a.server }
 // refusing to start — or worse, two policies that agree until one of
 // them is changed.
 func (a *App) Policy() *policy.Set { return a.policy }
+
+// GitHubCatalogue is every GitHub App the deployment declares, for the
+// half that mints their installation tokens under its grants.
+func (a *App) GitHubCatalogue() *catalogue.Catalogue { return a.cfg.githubCatalogue }
+
+// GitHubCatalogueApps is where created catalogue Apps and their keys are
+// kept, or nil where the deployment keeps none: what the issuer half
+// reads an App's key from to mint a token.
+func (a *App) GitHubCatalogueApps() server.GitHubCatalogueApps { return a.catalogueApps }
 
 // Readiness is the snapshot store as a dependency, for a caller that
 // assembles a health endpoint of its own. The merged service has one
@@ -843,6 +855,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		log:     log,
 		close:   closeStores,
 		audit:   recorder,
+
+		catalogueApps: githubCatalogueApps(kept.githubCatalogueApps),
 	}, nil
 }
 

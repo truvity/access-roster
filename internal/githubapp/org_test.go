@@ -2,6 +2,7 @@ package githubapp_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -116,5 +117,36 @@ func TestAnInstallationTokenIsMintedForTheInstallation(t *testing.T) {
 	token, expires, err := githubapp.InstallationToken(context.Background(), fake.Client(), "app-jwt", 7)
 	if err != nil || token != fake.Token || expires.IsZero() {
 		t.Errorf("InstallationToken = %q, %v, %v", token, expires, err)
+	}
+}
+
+// A narrowed token asks GitHub for exactly the repositories and
+// permissions named, and reports what GitHub says it granted; an
+// unnarrowed one sends no body at all.
+func TestAnInstallationTokenIsNarrowedInTheRequestBody(t *testing.T) {
+	fake := githubfake.Start(t, "globex")
+	fake.Repositories = []string{"app", "infra"}
+	narrowing := githubapp.Narrowing{Repositories: []string{"app"}, Permissions: map[string]string{"contents": "read"}}
+	minted, err := githubapp.InstallationTokenFor(context.Background(), fake.Client(), "app-jwt", 7, narrowing)
+	if err != nil {
+		t.Fatalf("InstallationTokenFor: %v", err)
+	}
+	if minted.Token != fake.Token || minted.ExpiresAt.IsZero() ||
+		!slices.Equal(minted.Repositories, []string{"app"}) || minted.Permissions["contents"] != "read" {
+		t.Errorf("minted = %+v", minted)
+	}
+	if _, _, err = githubapp.InstallationToken(context.Background(), fake.Client(), "app-jwt", 7); err != nil {
+		t.Fatalf("InstallationToken: %v", err)
+	}
+	if len(fake.TokenRequests) != 2 || fake.TokenRequests[0].Body == nil || fake.TokenRequests[1].Body != nil {
+		t.Fatalf("requests = %+v, want one narrowed body and one without", fake.TokenRequests)
+	}
+
+	// A repository the installation cannot reach is GitHub's 422.
+	_, err = githubapp.InstallationTokenFor(context.Background(), fake.Client(), "app-jwt", 7,
+		githubapp.Narrowing{Repositories: []string{"elsewhere"}})
+	var status *githubapp.StatusError
+	if !errors.As(err, &status) || status.Code != 422 {
+		t.Errorf("an unreachable repository = %v, want GitHub's 422", err)
 	}
 }

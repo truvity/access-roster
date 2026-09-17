@@ -34,6 +34,15 @@ const (
 	TypeJWT           = "urn:ietf:params:oauth:token-type:jwt"
 )
 
+// TypeGitHubInstallationToken is the requested_token_type that asks for a
+// GitHub App installation token instead of a token this issuer signs. The
+// audience then names a catalogue App, `github-app:<id>`.
+const TypeGitHubInstallationToken = "urn:access-roster:params:oauth:token-type:github-installation-token"
+
+// GitHubAppAudiencePrefix is what an installation token's audience starts
+// with; the catalogue id follows it.
+const GitHubAppAudiencePrefix = "github-app:"
+
 // ErrRefused is an exchange the issuer declined: the proof did not carry
 // a group the requested audience admits. It is separated from a
 // transport failure because a caller should retry one and not the other.
