@@ -75,6 +75,11 @@
   refuses the keys.
 - The roster's own three Apps are built from the same catalogue shape by
   one manifest builder; the manifests GitHub is posted are unchanged.
+- **The audit log line cannot be forged by what a caller sent.** Every
+  string on the `audit` log line — a user agent, a subject, a request
+  attribute — now drops record separators and control characters and is
+  cut to 256 bytes, as the service's other log lines already were. The
+  record kept in the trail is unchanged and keeps each value exactly.
 
 ## v1.10.0
 

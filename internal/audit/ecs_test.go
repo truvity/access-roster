@@ -205,3 +205,56 @@ func TestEveryKindHasItsECSClass(t *testing.T) {
 		}
 	}
 }
+
+// A log line is built from what callers sent, so it must not carry a
+// record separator: a newline in a user agent or an attribute would let
+// the caller write a second, forged audit line. The durable record keeps
+// the value as it was.
+func TestTheLogLineCannotForgeARecord(t *testing.T) {
+	forged := "curl/8\n{\"audit\":true,\"event.outcome\":\"success\"}"
+	e := audit.Event{
+		ID:         "01J",
+		Source:     "issuer",
+		Kind:       "token.exchanged",
+		Subject:    "someone\r\nelse",
+		Outcome:    "denied",
+		UserAgent:  forged,
+		Attributes: map[string]string{"repo\nsitory": "a\tb\nc"},
+	}
+
+	attrs := audit.LogAttrs(e)
+	for i := 0; i+1 < len(attrs); i += 2 {
+		name, _ := attrs[i].(string)
+		if strings.ContainsAny(name, "\r\n\t") {
+			t.Fatalf("attribute name %q carries a separator", name)
+		}
+		switch value := attrs[i+1].(type) {
+		case string:
+			if strings.ContainsAny(value, "\r\n\t") {
+				t.Fatalf("%s = %q carries a separator", name, value)
+			}
+		case []string:
+			for _, one := range value {
+				if strings.ContainsAny(one, "\r\n\t") {
+					t.Fatalf("%s carries a separator in %q", name, one)
+				}
+			}
+		}
+	}
+
+	record, err := audit.EncodeRecord(e)
+	if err != nil {
+		t.Fatalf("EncodeRecord: %v", err)
+	}
+	var document struct {
+		UserAgent struct {
+			Original string `json:"original"`
+		} `json:"user_agent"`
+	}
+	if err := json.Unmarshal(record, &document); err != nil {
+		t.Fatalf("unmarshal record: %v", err)
+	}
+	if document.UserAgent.Original != forged {
+		t.Fatalf("the record changed the value: got %q", document.UserAgent.Original)
+	}
+}
