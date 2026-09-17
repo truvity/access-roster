@@ -224,6 +224,22 @@
         "host": {
           "type": "string"
         },
+        "parentRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "group": {"type": "string"},
+              "kind": {"type": "string"},
+              "name": {"type": "string", "minLength": 1},
+              "namespace": {"type": "string"},
+              "sectionName": {"type": "string"},
+              "port": {"type": "integer"}
+            }
+          }
+        },
         "gatewayClassName": {
           "type": "string"
         },

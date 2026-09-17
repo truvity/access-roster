@@ -93,3 +93,24 @@ logins to a process that has no listener.
 app.kubernetes.io/name: {{ include "access-issuer.name" . }}-github-roster
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+Where the issuer's routes attach. route.parentRefs, when given, is used as
+written -- the platform's ListenerSet carrying route.host -- and the chart
+then renders no Gateway or Certificate of its own: the listener and its
+certificate belong to whatever that parent is. Otherwise the chart's own
+Gateway listener, as before.
+*/}}
+{{- define "access-issuer.parentRefs" -}}
+{{- if .Values.route.parentRefs -}}
+{{- range .Values.route.parentRefs }}
+{{- if not .name }}{{ fail "route.parentRefs: every entry needs a name" }}{{ end }}
+{{- end -}}
+{{ toYaml .Values.route.parentRefs }}
+{{- else -}}
+- group: gateway.networking.k8s.io
+  kind: Gateway
+  name: {{ include "access-issuer.fullname" . }}
+  sectionName: issuer
+{{- end -}}
+{{- end -}}
