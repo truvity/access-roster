@@ -126,7 +126,13 @@ export type StateKind =
   // row, over the controller's exact states.
   | "ok"
   | "their-move"
-  | "needs-you";
+  | "needs-you"
+  // A catalogue App, from declared to installed, and differing from its
+  // declaration on GitHub.
+  | "not-created"
+  | "created"
+  | "installed"
+  | "drifted";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The provider reports this account as active." },
@@ -186,6 +192,15 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   ok: { label: "OK", color: "success", title: "Done, or the controller does it on its own." },
   "their-move": { label: "waiting for them", color: "default", title: "Only the person can move this forward: link, accept, link again." },
   "needs-you": { label: "needs you", color: "warning", filled: true, title: "Nothing moves until a person acts. The reason says what to do." },
+  "not-created": { label: "not created", color: "default", title: "Declared in the catalogue, and nobody has created it on GitHub yet." },
+  created: { label: "created, not installed", color: "secondary", title: "Created on GitHub and not installed: no token can be minted for it yet. Finish installing." },
+  installed: { label: "installed", color: "success", title: "Installed, and GitHub holds what the catalogue declares." },
+  drifted: {
+    label: "differs on GitHub",
+    color: "warning",
+    filled: true,
+    title: "GitHub holds something other than the catalogue declares. GitHub has no API to change an App's permissions: an owner edits it there.",
+  },
   unverifiable: {
     label: "unverifiable",
     color: "warning",
