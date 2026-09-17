@@ -332,6 +332,10 @@ name, so a copy taken in between never hands runners an App they cannot
 register with. *Disconnect* uninstalls the App and forgets its keys;
 runners registered with it stop getting jobs.
 
+Any other GitHub App a deployment needs — for dependency updates, for
+releases — is declared in a catalogue and created the same way: see
+[github-apps-catalogue.md](github-apps-catalogue.md).
+
 ## What connecting leaves behind
 
 | Object | Holds | Read by |

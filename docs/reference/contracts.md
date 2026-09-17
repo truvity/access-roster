@@ -246,6 +246,9 @@ acts, this shows. See [connect/github-organisation.md](../connect/github-organis
 | `DisconnectGitHubLinkApp` | operator | — | `invalidated`, `app_settings_url` | makes every self-link unverifiable — a profile match or an import stands — then forgets the App |
 | `BeginGitHubRunnerAppConnect` | operator | `org`, `tier` | `url`, `manifest` | starts creating a runner App — the App one tier's self-hosted runners register with in one organisation — or finishing installing one; the same two clicks as an organisation's App. `invalid_argument` for a tier the deployment does not declare in `githubRunnerApps.tiers`; `failed_precondition` for an unbound organisation or one whose App for that tier is already installed |
 | `DisconnectGitHubRunnerApp` | operator | `org`, `tier` | `uninstalled`, `detail`, `app_settings_url` | uninstalls the runner App and forgets its keys; runners registered with it stop getting jobs |
+| `BeginGitHubCatalogueAppConnect` | operator | `id` | `url`, `manifest` | starts creating an App the catalogue declares, under the organisation its entry names, or finishing installing one created before; the same two clicks as an organisation's App. `invalid_argument` for an id the catalogue does not declare; `failed_precondition` for one already installed, and where the deployment keeps no state in Kubernetes. See [connect/github-apps-catalogue.md](../connect/github-apps-catalogue.md) |
+| `DisconnectGitHubCatalogueApp` | operator | `id` | `uninstalled`, `detail`, `app_settings_url` | uninstalls the App, then forgets its record and keys — even when the uninstall fails, which `detail` explains. The App stays on GitHub; `app_settings_url` is where its owner deletes it. Works for an App whose entry the catalogue no longer declares |
+| `CheckGitHubCatalogueApp` | operator | `id` | `app` | asks GitHub again, as the App, what the App and its installation hold, bypassing the minute `GetGitHubStatus` caches it for |
 | `ConfirmGitHubRemovals` | operator | `org`, `fingerprint` | — | lets exactly the removal set the organisation's latest report names go ahead. `failed_precondition` when the report shows a different set. Lapses after a day |
 | `ImportGitHubLinks` | operator | `records[]{login, emails[], approved_by, approved_at}`, `origin` | `imported[]` (links), `skipped[]{login, reason}` | adopts approved pairings as links after three checks each: approved, an address the directory vouches for and has live, the account a member of a connected organisation. Never displaces a link the person made. At most 500 records |
 
@@ -267,7 +270,17 @@ policy says to leave alone. A member's state adds `retrying`, `ignored`
 and `reported`; a tick adds `retrying`. `runner_tiers[]` are the tiers
 the deployment declares, and `runner_apps[]{org, tier, app_id, app_slug,
 installed, html_url, connected_at, connected_by}` every runner App
-created — never a key.
+created — never a key. `catalogue_available` is false where nothing could
+keep a catalogue App, and `catalogue_apps[]{id, org, name, description,
+public, installation, permissions[]{name, declared, app, installation},
+events[], grants[]{group, repositories[], permissions{}, group_declared},
+state, html_url, drift[], reason, app_id, app_slug, installation_id,
+connected_at, connected_by, checked_at, repository_selection, declared}`
+is every declared App and every App created from an entry no longer
+declared. `state` is `not_created`, `created`, `installed` or `drifted`;
+`drift` says each way GitHub differs from the declaration, and `reason`
+why GitHub could not be asked — which never fails the call. What GitHub
+said is cached for a minute.
 
 **The link flows** are at the origin root too. `GET
 /connect/github/link-app/callback` after the owner creates the link App
@@ -288,7 +301,9 @@ cookie against a state signed by this service that names the organisation
 and the operator who pressed Connect, and every failure is a page with a
 4xx and GitHub's own words. A runner App's two are `GET
 /connect/github/runner/callback` and `GET /connect/github/runner/setup`,
-the same shape under a state that names the tier as well.
+the same shape under a state that names the tier as well; a catalogue
+App's are `GET /connect/github/catalogue/callback` and `GET
+/connect/github/catalogue/setup`, under a state that names its id.
 
 The report is the ConfigMap `<release>-github-status` in the service's
 namespace, one key per organisation (`<login>.json`), each a versioned

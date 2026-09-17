@@ -313,7 +313,12 @@ configure and where, what you get.
 - The same tab creates a **runner App** per organisation per tier, the
   App a self-hosted runner scale set registers with, kept in a Secret for
   the deployment to hand to its runners.
-- Guide: [connect/github-organisation.md](connect/github-organisation.md).
+- And a **catalogue** of GitHub Apps declared as data in the values —
+  each created and installed in two clicks, its key kept in a Secret, its
+  permissions compared with GitHub's; grants say which groups will be
+  able to ask for its installation tokens.
+- Guides: [connect/github-organisation.md](connect/github-organisation.md),
+  [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md).
 
 ### ⑮ Registries, artifacts and every other AWS service
 

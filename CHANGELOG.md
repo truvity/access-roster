@@ -1,3 +1,41 @@
+## v1.11.0
+
+- **A catalogue of GitHub Apps, created and installed from the console.**
+  A deployment needs more GitHub Apps than the three this service creates
+  for itself; each is now a declaration and two clicks.
+  - **Declaring.** `githubApps.catalogue` lists Apps as data: `id`, `org`,
+    optional `name`, `description`, `public`, `permissions`, `events`,
+    `installation` (`all` or `selected`) and `grants`. It is rendered to
+    `ConfigMap <release>-github-apps-catalogue` and read once at start
+    from `GITHUB_APPS_CATALOGUE_FILE`. The service refuses to start on a
+    malformed entry: an unknown key, a duplicate id, a level that is not
+    `read`, `write` or `admin`, a name over GitHub's 34 characters, a
+    grant above the App's permissions or naming a group the policy does
+    not declare.
+  - **Creating one.** On the GitHub page, *Apps*, then *Catalogue*: an
+    operator presses *Create* on an App's page, an owner of its
+    organisation confirms on GitHub, then installs. The App is created
+    under the organisation the entry names and no other.
+  - **Where it is kept.** `Secret <release>-github-catalogue-apps`, created
+    empty at start: `<id>.github_app_id`, `<id>.github_app_installation_id`
+    and `<id>.github_app_private_key` beside `<id>.record.json` once
+    installed, `<id>.pending_private_key` until then. A deployment backs it
+    up like the other Secrets, for example with a `PushSecret`.
+  - **Drift.** Each App shows whether GitHub still holds what was
+    declared: the App's permissions and events, and the permissions its
+    installation accepted — a pending permission request reads as drift.
+    GitHub has no API to change an App's permissions, so the page links
+    to the App's settings; *Re-check* asks again. Answers are cached for a
+    minute, and a failure to ask is the App's reason, never the page's
+    error.
+  - **Disconnect** uninstalls the App and forgets its keys. It does not
+    delete the App on GitHub; its owner does, from the linked settings.
+  - **Grants** — which groups may ask for an App's installation tokens,
+    for which repositories, with at most which permissions — are declared,
+    validated and shown. Minting those tokens is not built yet.
+- The roster's own three Apps are built from the same catalogue shape by
+  one manifest builder; the manifests GitHub is posted are unchanged.
+
 ## v1.10.0
 
 - **access-issuer's routes can attach to a ListenerSet.** `route.parentRefs`,

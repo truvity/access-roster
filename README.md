@@ -168,6 +168,7 @@ Every column, and why, is in
 | use it from a laptop or a CI job | [docs/reference/accessctl.md](docs/reference/accessctl.md) |
 | put a console behind the gateway | [docs/connect/console-app.md](docs/connect/console-app.md) |
 | keep a GitHub organisation's teams in step with the policy | [docs/connect/github-organisation.md](docs/connect/github-organisation.md) |
+| declare GitHub Apps as data and create them from the console | [docs/connect/github-apps-catalogue.md](docs/connect/github-apps-catalogue.md) |
 | connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
 | see what the conformance suite said, and why | [docs/conformance.md](docs/conformance.md) |
 | run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |

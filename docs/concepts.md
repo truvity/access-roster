@@ -77,6 +77,7 @@ and a repository to disagree about.
 | **retrying** | a change that failed for a transient reason — the directory unable to vouch just now, a change GitHub refused — and is tried again next pass rather than held |
 | **breaker** | the rule that a pass whose removals concern more than half an organisation's members removes nobody until an operator confirms exactly that set |
 | **runner App** | the GitHub App a self-hosted runner scale set registers with: one per organisation per **tier**, created from the console, kept in a Secret for the deployment to hand to its runners. Nothing in the service acts with it |
+| **catalogue App** | a GitHub App the deployment declares as data (`githubApps.catalogue`): created and installed from the console, its key kept in a Secret by its catalogue id, its permissions compared with what GitHub holds. Its **grants** name the groups that may ask for its installation tokens |
 
 ## The audit trail
 
