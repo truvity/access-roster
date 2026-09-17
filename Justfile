@@ -407,7 +407,12 @@ ts: ts-package
 # something current to read. There is no drift check any more because
 # drift is not possible: the bundle is produced from the lockfile every
 # time, and if it is absent the compiler says so.
+#
+# The console's own unit tests run first: the pure models its pages read
+# (which App needs you, what a page's first line says) and the router's
+# moved addresses. They need no browser.
 console: ts-package
+    cd frontend && npm test
     cd frontend && npm run build
 
 # Run all checks (build + test + lint + chart-lint + vuln)

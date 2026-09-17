@@ -1,3 +1,58 @@
+## v1.12.0
+
+- **One list and one page for every GitHub App.** The console's *Apps* tab
+  was five unrelated blocks — a card for the link App, a table of
+  organisations that linked the organisation rather than its App, a table
+  of runner Apps, a box counting a catalogue behind a third level, and a
+  directory-length table of linked accounts. It is now one list: every App
+  this service keeps a key for or is declared to, grouped by organisation,
+  those needing an operator first, with columns for what each App is for
+  in plain words, where it stands, the repositories it reaches and the
+  internal groups that may mint its tokens.
+  - **Every App has a page**, at `#/github/apps/<id>`, not only the
+    catalogue's. It opens with a sentence built from its facts — "Mints
+    tokens for 2 internal groups on every repository in example-org;
+    installed, matches its declaration" — then its facts, then its edges:
+    who may mint its tokens, the organisation it acts on, the accounts
+    linked through it, the last tokens asked for. Permissions, events, the
+    Kubernetes Secret its key is in and its ids on GitHub are reference
+    material behind a disclosure, and the permissions table is one column
+    unless GitHub holds something other than the declaration.
+  - **One vocabulary of state.** An App is *done*, *needs you*, *waiting on
+    person* or *waiting on controller*, with the exact state in the
+    tooltip — the same four words the membership rows use. An App that
+    needs an operator says the single thing to do, and those Apps are now
+    counted on the GitHub overview's *Next* line and on each
+    organisation's card, which they never were.
+  - **Create, Install, Re-check and Disconnect** sit on the App they
+    change, and *Disconnect* asks first, stating what it does: what stops
+    working, that the key is forgotten here, and that the App itself stays
+    on GitHub with a link to its settings.
+  - **Old addresses still work.** `#/github/apps/catalogue` opens the Apps
+    list and `#/github/apps/catalogue/<id>` opens that App's page.
+- **Organisation, team and person pages say each thing once.** An
+  organisation lists the Apps installed or declared for it; what the
+  controller leaves alone — owners, ignored addresses, outside
+  collaborators and members nobody linked — moved into a *Left alone*
+  disclosure, so "Nothing to change." is only said when there is nothing
+  to change; people waiting to link or accept are counted rather than
+  repeated once per team; a *Fed by* column that only repeats each team's
+  own group is dropped; and the rule that owners are managed outside the
+  policy is stated once above a table instead of on every owner's row.
+- **An internal group says what it may mint.** A group granted tokens of a
+  GitHub App now shows those Apps, their repositories and the most a token
+  may carry, instead of reading "it only adds claims to a token".
+- **People can be narrowed to who linked a GitHub account**, with a
+  *GitHub: linked / not linked* facet, which the link App's page links to.
+  The narrowing is applied to the page in hand for now.
+- **The last tokens of an App degrade gracefully.** Where the audit query
+  behind *Recent tokens* is slow or fails, the page says so in words and
+  points at the Audit page, rather than showing a bare HTTP code after
+  fifteen seconds.
+- **A demonstration run shows the whole Apps page.** `DEMO=1` now declares
+  runner tiers and a catalogue, with one App of each state: installed as
+  declared, edited on GitHub since, and not created yet.
+
 ## v1.11.1
 
 - **The audit log line is safe on every branch, not only the typed ones.**

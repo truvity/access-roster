@@ -18,7 +18,7 @@ import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { labelOf, linkPage, rowsOf, sentence, tooltipOf } from "./githubModel";
-import { loginCell, sourceName as linkSourceName } from "./GitHub";
+import { loginCell, OwnerRule, sourceName as linkSourceName } from "./GitHub";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type Fact } from "./ui";
 import { SessionsPanel } from "./Sessions";
 
@@ -342,6 +342,8 @@ function GitHubSection({ email, self }: { email: string; self: boolean }) {
         }
       >
         {rows.length ? (
+          <>
+          <OwnerRule rows={rows} />
           <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
             <Table size="small">
               <TableHead>
@@ -368,7 +370,7 @@ function GitHubSection({ email, self }: { email: string; self: boolean }) {
                       )}
                     </TableCell>
                     <TableCell>{loginCell(row.member.login)}</TableCell>
-                    <TableCell>{row.member.role}</TableCell>
+                    <TableCell>{row.member.state === "reported" ? "owner" : row.member.role}</TableCell>
                     <TableCell>
                       <State kind={labelOf(row.member.state)} title={tooltipOf(row.member)} />
                     </TableCell>
@@ -380,6 +382,7 @@ function GitHubSection({ email, self }: { email: string; self: boolean }) {
               </TableBody>
             </Table>
           </TableContainer>
+          </>
         ) : (
           <Typography variant="body2" color="text.secondary">
             {self

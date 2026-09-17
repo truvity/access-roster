@@ -1,10 +1,12 @@
 package demo_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/truvity/access-roster/internal/demo"
+	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/policy"
 )
@@ -68,5 +70,61 @@ func TestTheDemonstrationFixturesAreOnesTheServiceAccepts(t *testing.T) {
 		if connected := demo.GitHubConnection(time.Now()); connected.Org != org || !connected.Installed() {
 			t.Errorf("the demonstration connection %+v does not match the report for %s", connected, org)
 		}
+	}
+}
+
+// The Apps page is half the GitHub console, and a demonstration that
+// declares no runner tier and no catalogue cannot show it: the fixtures
+// have to be ones a real deployment's rules accept, or the walkthrough
+// shows a refusal instead of the mechanic.
+func TestTheDemonstrationAppsAreOnesTheServiceAccepts(t *testing.T) {
+	t.Parallel()
+
+	declared, err := policy.Parse([]byte(demo.Policy))
+	if err != nil {
+		t.Fatalf("the demonstration policy does not parse: %v", err)
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("the demonstration policy is refused: %v", err)
+	}
+
+	apps := demo.GitHubCatalogue()
+	if len(apps.Apps) == 0 {
+		t.Fatal("the demonstration catalogue declares no App")
+	}
+	if undeclared := apps.UndeclaredGroups(set.HasGroup); len(undeclared) > 0 {
+		t.Errorf("the demonstration catalogue grants to groups the policy does not declare: %v", undeclared)
+	}
+	created := map[string]bool{}
+	for _, record := range demo.GitHubCatalogueApps(time.Now()) {
+		if _, ok := apps.Get(record.ID); !ok {
+			t.Errorf("an App is created from %q, which the catalogue does not declare", record.ID)
+		}
+		created[record.ID] = true
+	}
+	if len(created) == len(apps.Apps) {
+		t.Error("every declared App is created, so the demonstration cannot show one waiting to be")
+	}
+
+	tiers := demo.GitHubRunnerTiers()
+	for _, record := range demo.GitHubRunnerApps(time.Now()) {
+		if !slices.Contains(tiers, record.Tier) {
+			t.Errorf("a runner App is created for tier %q, which the demonstration does not declare", record.Tier)
+		}
+	}
+	if len(demo.GitHubRunnerApps(time.Now())) >= len(tiers) {
+		t.Error("every declared tier has its App, so the demonstration cannot show one waiting to be created")
+	}
+
+	key, err := demo.GitHubAppKey()
+	if err != nil {
+		t.Fatalf("a key for the demonstration Apps: %v", err)
+	}
+	// The console signs its questions about an App with this key, so a key
+	// the signer refuses is a demonstration whose Apps all read "the App's
+	// stored key is not usable".
+	if _, err = githubapp.AppToken(1000011, key, time.Now()); err != nil {
+		t.Errorf("the demonstration App key does not sign: %v", err)
 	}
 }

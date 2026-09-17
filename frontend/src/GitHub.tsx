@@ -3,6 +3,11 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Collapse from "@mui/material/Collapse";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
 import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -21,11 +26,35 @@ import Typography from "@mui/material/Typography";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import { ago, at, audit, github, reason } from "./api";
-import type { GetGitHubStatusResponse, GitHubCatalogueApp, GitHubOrganisation, GitHubRunnerApp } from "./gen/directoryroster/v1/github_pb";
-import { countLabels, labelOf, linkPage, organisationNeeds, peopleOf, rowsOf, sentence, tooltipOf, type Row } from "./githubModel";
+import type { GetGitHubStatusResponse, GitHubAppGrant, GitHubOrganisation } from "./gen/directoryroster/v1/github_pb";
+import {
+  appsNeedingYou,
+  appsOf,
+  atMost,
+  catalogueView,
+  countLabels,
+  feedsOnlyItself,
+  fixSentence,
+  groupApps,
+  keyLocation,
+  labelOf,
+  linkPage,
+  organisationNeeds,
+  ownerRule,
+  peopleOf,
+  permissionDiffers,
+  purposeWords,
+  repositoryWords,
+  rowsOf,
+  sentence,
+  summaryOf,
+  tooltipOf,
+  type GitHubAppView,
+  type Row,
+} from "./githubModel";
 import { useAsync } from "./hooks";
 import { go, paths } from "./router";
-import { Facts, Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type StateKind } from "./ui";
+import { Facts, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, ShortNames, State, type StateKind } from "./ui";
 
 type Props = { operator: boolean; onDone: (message: string) => void };
 
@@ -36,6 +65,7 @@ export function GitHubPage({ section, rest, operator, onDone }: Props & { sectio
   const status = useAsync(() => github.getGitHubStatus({}), []);
   const tab = section === "organisations" ? "organisations" : section === "apps" ? "apps" : "overview";
   const value = status.value;
+  const apps = value ? appsOf(value) : [];
 
   let body: ReactNode = null;
   if (value) {
@@ -46,23 +76,23 @@ export function GitHubPage({ section, rest, operator, onDone }: Props & { sectio
       ) : rest[1] === "teams" && rest[2] ? (
         <TeamPage org={org} team={rest[2]} />
       ) : (
-        <OrganisationPage org={org} operator={operator} onDone={onDone} reload={status.reload} />
+        <OrganisationPage org={org} apps={apps} operator={operator} onDone={onDone} reload={status.reload} />
       );
     } else if (tab === "organisations") {
-      body = <OrganisationsList status={value} />;
-    } else if (tab === "apps" && rest[0] === "catalogue" && rest[1]) {
-      const app = value.catalogueApps.find((a) => a.id === rest[1]);
+      body = <OrganisationsList status={value} apps={apps} />;
+    } else if (tab === "apps" && rest[0]) {
+      const app = apps.find((a) => a.id === rest[0]);
       body = app ? (
-        <CatalogueAppPage app={app} operator={operator} onDone={onDone} reload={status.reload} />
+        <AppPage key={app.id} app={app} status={value} operator={operator} onDone={onDone} reload={status.reload} />
       ) : (
-        <Nothing>The catalogue declares no App {rest[1]}, and none was created from it.</Nothing>
+        <Nothing>
+          No App {rest[0]} is declared or created here. Every App is on the <Ref to={paths.githubApps()}>Apps</Ref> tab.
+        </Nothing>
       );
-    } else if (tab === "apps" && rest[0] === "catalogue") {
-      body = <CataloguePage status={value} />;
     } else if (tab === "apps") {
-      body = <AppsPage status={value} operator={operator} onDone={onDone} reload={status.reload} />;
+      body = <AppsList status={value} apps={apps} />;
     } else {
-      body = <Overview status={value} />;
+      body = <Overview status={value} apps={apps} />;
     }
   }
 
@@ -71,6 +101,8 @@ export function GitHubPage({ section, rest, operator, onDone }: Props & { sectio
       <Tabs
         value={tab}
         onChange={(_, next: string) => go(next === "overview" ? paths.github() : next === "apps" ? paths.githubApps() : paths.githubOrganisations())}
+        variant="scrollable"
+        allowScrollButtonsMobile
         sx={{ mb: 3 }}
       >
         <Tab value="overview" label="Overview" />
@@ -89,7 +121,20 @@ export function GitHubPage({ section, rest, operator, onDone }: Props & { sectio
 
 // ---------------------------------------------------------------- overview
 
-function Overview({ status }: { status: GetGitHubStatusResponse }) {
+/** What the Apps that need you are waiting for, counted by the fix. */
+function appNeedsWords(apps: GitHubAppView[]): string {
+  const count = (fix: GitHubAppView["fix"]) => apps.filter((app) => app.fix === fix).length;
+  return [
+    count("create") && `${count("create")} not created`,
+    count("install") && `${count("install")} not installed`,
+    count("recheck") && `${count("recheck")} differing on GitHub`,
+    count("disconnect") && `${count("disconnect")} no longer declared`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function Overview({ status, apps }: { status: GetGitHubStatusResponse; apps: GitHubAppView[] }) {
   const people = peopleOf(status.organisations);
   const waiting = people.filter((p) => p.label === "their-move");
   const needs = status.organisations.flatMap((org) => [
@@ -98,13 +143,15 @@ function Overview({ status }: { status: GetGitHubStatusResponse }) {
       .filter((row) => labelOf(row.member.state) === "needs-you")
       .map((row) => ({ org: org.org, what: `${row.member.email || row.member.login}: ${row.member.reason}` })),
   ]);
+  const appsNeeding = apps.filter((app) => app.label === "needs-you");
   const dryRun = status.organisations.filter((org) => org.bound && org.connection?.installed && !org.enabled);
 
   let next: ReactNode;
-  if (!status.linkApp || status.organisations.some((org) => org.bound && !org.connection?.installed)) {
+  if (appsNeeding.length) {
     next = (
       <>
-        Create the GitHub Apps on the <Ref to={paths.githubApps()}>Apps</Ref> tab.
+        {appsNeeding.length} {appsNeeding.length === 1 ? "App needs" : "Apps need"} you ({appNeedsWords(appsNeeding)}): open{" "}
+        {appsNeeding.length === 1 ? <Ref to={paths.githubApp(appsNeeding[0].id)}>it</Ref> : <Ref to={paths.githubApps()}>the Apps tab</Ref>}.
       </>
     );
   } else if (needs.length) {
@@ -114,18 +161,18 @@ function Overview({ status }: { status: GetGitHubStatusResponse }) {
   } else if (dryRun.length) {
     next = `Read ${dryRun.map((org) => org.org).join(" and ")}'s dry run, then add ${dryRun.length === 1 ? "it" : "them"} to githubRoster.actsIn.`;
   } else {
-    next = "Nothing to do: every organisation matches the policy.";
+    next = "Nothing to do: every organisation matches the policy, and every App is installed as declared.";
   }
 
   return (
     <Page title="GitHub" lede="Who belongs in which GitHub team is the policy's; the controller makes every organisation match. This is what needs attention.">
-      <Alert severity={needs.length ? "warning" : "info"} sx={{ mb: 3 }}>
+      <Alert severity={needs.length || appsNeeding.length ? "warning" : "info"} sx={{ mb: 3 }}>
         <strong>Next:</strong> {next}
       </Alert>
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" }, gap: 2, mb: 4 }}>
         {status.organisations.map((org) => (
-          <OrganisationCard key={org.org} org={org} />
+          <OrganisationCard key={org.org} org={org} apps={apps} />
         ))}
       </Box>
 
@@ -147,9 +194,10 @@ function Overview({ status }: { status: GetGitHubStatusResponse }) {
   );
 }
 
-function OrganisationCard({ org }: { org: GitHubOrganisation }) {
+function OrganisationCard({ org, apps }: { org: GitHubOrganisation; apps: GitHubAppView[] }) {
   const counts = countLabels(rowsOf(org).map((row) => row.member));
-  const needs = organisationNeeds(org);
+  const needs = organisationNeeds(org, apps);
+  const own = organisationNeeds(org).length + appsNeedingYou(apps, org.org);
   return (
     <Paper variant="outlined" sx={{ p: 2, minWidth: 0 }}>
       <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", gap: 1, mb: 1 }}>
@@ -159,14 +207,14 @@ function OrganisationCard({ org }: { org: GitHubOrganisation }) {
         {outcome(org)}
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        {!org.connection?.installed ? "App not installed" : org.enabled ? "the controller acts" : "dry run"}
+        {!org.connection?.installed ? "controller App not installed" : org.enabled ? "the controller acts" : "dry run"}
         {at(org.tick?.at) ? ` · last pass ${ago(at(org.tick?.at))}` : ""}
         {org.seats?.known ? ` · ${org.seats.free} ${org.seats.free === 1 ? "seat" : "seats"} free` : ""}
       </Typography>
       <Stack direction="row" sx={{ gap: 3, flexWrap: "wrap" }}>
         <Count label="OK" value={counts.ok} />
         <Count label="Waiting for them" value={counts["their-move"]} />
-        <Count label="Needs you" value={counts["needs-you"] + needs.length} strong />
+        <Count label="Needs you" value={counts["needs-you"] + own} strong />
       </Stack>
       {needs.length ? (
         <Typography variant="body2" sx={{ mt: 1.5 }}>
@@ -192,7 +240,7 @@ function Count({ label, value, strong }: { label: string; value: number; strong?
 
 // ----------------------------------------------------------- organisations
 
-function OrganisationsList({ status }: { status: GetGitHubStatusResponse }) {
+function OrganisationsList({ status, apps }: { status: GetGitHubStatusResponse; apps: GitHubAppView[] }) {
   return (
     <Page title="Organisations" lede="Every GitHub organisation the policy binds or the controller reports on.">
       {status.organisations.length === 0 ? (
@@ -224,7 +272,7 @@ function OrganisationsList({ status }: { status: GetGitHubStatusResponse }) {
                     <TableCell>{org.teams.length}</TableCell>
                     <TableCell align="right">{counts.ok}</TableCell>
                     <TableCell align="right">{counts["their-move"]}</TableCell>
-                    <TableCell align="right">{counts["needs-you"] + organisationNeeds(org).length}</TableCell>
+                    <TableCell align="right">{counts["needs-you"] + organisationNeeds(org).length + appsNeedingYou(apps, org.org)}</TableCell>
                   </TableRow>
                 );
               })}
@@ -236,23 +284,58 @@ function OrganisationsList({ status }: { status: GetGitHubStatusResponse }) {
   );
 }
 
-function OrganisationPage({ org, operator, onDone, reload }: Props & { org: GitHubOrganisation; reload: () => void }) {
+function OrganisationPage({ org, apps, operator, onDone, reload }: Props & { org: GitHubOrganisation; apps: GitHubAppView[]; reload: () => void }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
-  const [others, setOthers] = useState(false);
   const rows = rowsOf(org);
   const acting = org.enabled;
   const changes = rows.filter((row) => row.member.action);
   const removals = changes.filter((row) => row.member.action === "remove");
-  const rest = rows.filter(
-    (row) => row.member.action !== "remove" && (Boolean(row.member.action) || ["held", "retrying", "reported", "ignored", "not-linked", "invited"].includes(row.member.state)),
-  );
+  const others = rows.filter((row) => row.member.action && row.member.action !== "remove");
+  const retrying = rows.filter((row) => !row.member.action && row.member.state === "retrying");
   // People, not rows: an invitation shows on the organisation's row and on
   // every team row for the same person, and is one invitation.
+  const people = (state: string) => [...new Set(rows.filter((row) => row.member.state === state && row.member.email).map((row) => row.member.email))];
+  const notLinked = people("not-linked");
+  const invited = people("invited");
+  const lapsed = people("ignored");
   const count = (action: string) =>
     new Set(changes.filter((row) => row.member.action === action).map((row) => (action === "invite" ? row.member.email : `${row.team}|${row.member.login}`))).size;
   const breaker = org.breaker;
   const seats = org.seats;
+  const own = apps.filter((app) => app.org === org.org && app.purpose !== "link");
+
+  // What the controller leaves alone here, whatever the groups say.
+  const owners = [
+    ...new Map(rows.filter((row) => row.member.state === "reported").map((row) => [row.member.email || row.member.login, row.member])).values(),
+  ];
+  const leftAlone = [
+    {
+      key: "owners",
+      what: "Owners",
+      why: ownerRule,
+      items: owners.map((m) => (m.email ? { label: m.email, to: paths.person(m.email), mono: true } : { label: m.login, mono: true })),
+    },
+    {
+      key: "ignored",
+      what: "Ignored",
+      why: "left alone here, whatever the groups say — declared in the policy, in git",
+      items: org.ignored.map((entry) => (entry.includes("@") ? { label: entry, to: paths.person(entry), mono: true } : { label: entry, mono: true })),
+    },
+    {
+      key: "outside",
+      what: "Outside collaborators",
+      why: "access to repositories without membership: reported, never managed",
+      items: org.outsideCollaborators.map((account) => ({ label: account.login, mono: true })),
+    },
+    {
+      key: "unlinked",
+      what: "Members nobody linked",
+      why: "in the organisation, and nobody can say who they are: never touched",
+      items: org.unlinked.map((account) => ({ label: account.login, mono: true })),
+    },
+  ].filter((group) => group.items.length);
+  const leftAloneCount = leftAlone.reduce((n, group) => n + group.items.length, 0);
 
   const confirm = async () => {
     if (!breaker) return;
@@ -275,6 +358,9 @@ function OrganisationPage({ org, operator, onDone, reload }: Props & { org: GitH
     count("set-role") && `change ${count("set-role")} ${count("set-role") === 1 ? "role" : "roles"}`,
     count("remove") && `remove ${count("remove")}`,
   ].filter(Boolean);
+  const waitingOn = new Set([...notLinked, ...invited, ...lapsed]).size;
+
+  const hideFedBy = org.teams.length > 0 && org.teams.every(feedsOnlyItself);
 
   return (
     <Page
@@ -284,8 +370,10 @@ function OrganisationPage({ org, operator, onDone, reload }: Props & { org: GitH
         !org.reported
           ? "The controller has not reported on this organisation yet."
           : plan.length
-            ? `${acting ? "This pass will" : "If enabled now, the controller would"} ${plan.join(", ")}.`
-            : "Nothing to change."
+            ? `${acting ? "This pass will" : "If enabled now, the controller would"} ${plan.join(", ")}${waitingOn ? `, and waits on ${waitingOn} ${waitingOn === 1 ? "person" : "people"}` : ""}.`
+            : waitingOn
+              ? `Nothing to change until ${waitingOn} ${waitingOn === 1 ? "person links or accepts" : "people link or accept"}.`
+              : "Nothing to change."
       }
       facts={[
         { label: "Controller", value: outcome(org) },
@@ -337,29 +425,35 @@ function OrganisationPage({ org, operator, onDone, reload }: Props & { org: GitH
         </Section>
       ) : null}
 
-      {rest.length ? (
-        <Section
-          title={acting ? "Everything else" : "Everything else it would do"}
-          hint={`${rest.length} rows — invitations, team changes, and who it is waiting on`}
-          action={
-            <Button size="small" onClick={() => setOthers(!others)}>
-              {others ? "Hide" : "Show"}
-            </Button>
-          }
-        >
-          <Collapse in={others}>
-            <RowsTable rows={rest} acting={acting} />
-          </Collapse>
+      {others.length || retrying.length ? (
+        <Section title={acting ? "Other changes" : "Other changes it would make"} hint="invitations, team changes and roles, with anything held for you">
+          <RowsTable rows={[...others, ...retrying]} acting={acting} />
         </Section>
       ) : null}
 
-      <Section title="Teams" hint="each fed by internal groups; open one for its members">
+      {waitingOn ? (
+        <Section title="Waiting for them" hint="only they can move these forward; send them the link page">
+          <Rows
+            items={[
+              { key: "not-linked", what: "have not linked a GitHub account", who: notLinked },
+              { key: "invited", what: "invited, and not accepted yet", who: invited },
+              { key: "ignored", what: "let two invitations expire; invited again once they link again", who: lapsed },
+            ].filter((group) => group.who.length)}
+            keyOf={(group) => group.key}
+            primary={(group) => <ShortNames items={group.who.map((email) => ({ label: email, to: paths.person(email), mono: true }))} noun={["person", "people"]} />}
+            secondary={(group) => group.what}
+            empty=""
+          />
+        </Section>
+      ) : null}
+
+      <Section title="Teams" hint={hideFedBy ? "each fed by the internal group of the same name; open one for its members" : "each fed by internal groups; open one for its members"}>
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Team</TableCell>
-                <TableCell>Fed by</TableCell>
+                {hideFedBy ? null : <TableCell>Fed by</TableCell>}
                 <TableCell align="right">OK</TableCell>
                 <TableCell align="right">Waiting for them</TableCell>
                 <TableCell align="right">Needs you</TableCell>
@@ -380,9 +474,11 @@ function OrganisationPage({ org, operator, onDone, reload }: Props & { org: GitH
                         </Typography>
                       ) : null}
                     </TableCell>
-                    <TableCell>
-                      <Names items={[...team.memberGroups, ...team.maintainerGroups].map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="—" />
-                    </TableCell>
+                    {hideFedBy ? null : (
+                      <TableCell>
+                        <Names items={[...team.memberGroups, ...team.maintainerGroups].map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="—" />
+                      </TableCell>
+                    )}
                     <TableCell align="right">{counts.ok}</TableCell>
                     <TableCell align="right">{counts["their-move"]}</TableCell>
                     <TableCell align="right">{counts["needs-you"]}</TableCell>
@@ -399,22 +495,38 @@ function OrganisationPage({ org, operator, onDone, reload }: Props & { org: GitH
         ) : null}
       </Section>
 
-      {org.ignored.length ? (
-        <Section title="Ignored" hint="left alone here, whatever the groups say — declared in the policy, in git">
-          <Names items={org.ignored.map((entry) => (entry.includes("@") ? { label: entry, to: paths.person(entry), mono: true } : { label: entry, mono: true }))} />
-        </Section>
-      ) : null}
+      <Section title="Apps" hint="installed here, or declared for it; the link App serves every organisation">
+        <Rows
+          items={own}
+          keyOf={(app) => app.id}
+          primary={(app) => (
+            <Ref to={paths.githubApp(app.id)} mono>
+              {app.name}
+            </Ref>
+          )}
+          secondary={(app) => purposeWords(app)}
+          right={(app) => <AppState app={app} />}
+          empty="No App is installed or declared for this organisation."
+        />
+      </Section>
 
-      {org.outsideCollaborators.length ? (
-        <Section title="Outside collaborators" hint="access to repositories without membership: reported, never managed">
-          <Names items={org.outsideCollaborators.map((account) => ({ label: account.login, mono: true }))} />
-        </Section>
-      ) : null}
-
-      {org.unlinked.length ? (
-        <Section title="Members nobody linked" hint="in the organisation, and nobody can say who they are: never touched">
-          <Names items={org.unlinked.map((account) => ({ label: account.login, mono: true }))} />
-        </Section>
+      {leftAloneCount ? (
+        <Disclosure title="Left alone" hint={`${leftAloneCount} ${leftAloneCount === 1 ? "account" : "accounts"} the controller reports and never changes`}>
+          <Rows
+            items={leftAlone}
+            keyOf={(group) => group.key}
+            primary={(group) => (
+              <>
+                <Typography component="span" variant="body2" sx={{ fontWeight: 500 }}>
+                  {group.what}:{" "}
+                </Typography>
+                <ShortNames items={group.items} noun={["account", "accounts"]} />
+              </>
+            )}
+            secondary={(group) => group.why}
+            empty=""
+          />
+        </Disclosure>
       ) : null}
     </Page>
   );
@@ -448,9 +560,26 @@ function TeamPage({ org, team: slug }: { org: GitHubOrganisation; team: string }
         />
       </Section>
       <Section title="Members" hint="as the controller found them">
-        {rows.length ? <RowsTable rows={rows} acting={org.enabled} hideWhere /> : <Nothing>Nobody is wanted in this team.</Nothing>}
+        {rows.length ? (
+          <>
+            <OwnerRule rows={rows} />
+            <RowsTable rows={rows} acting={org.enabled} hideWhere />
+          </>
+        ) : (
+          <Nothing>Nobody is wanted in this team.</Nothing>
+        )}
       </Section>
     </Page>
+  );
+}
+
+/** The owner rule, once, above a table that has an owner in it. */
+export function OwnerRule({ rows }: { rows: Row[] }) {
+  if (!rows.some((row) => row.member.state === "reported")) return null;
+  return (
+    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+      {ownerRule}
+    </Typography>
   );
 }
 
@@ -492,7 +621,7 @@ function RowsTable({ rows, acting, hideWhere, hideState }: { rows: Row[]; acting
                   )}
                 </TableCell>
               )}
-              <TableCell>{row.member.role}</TableCell>
+              <TableCell>{row.member.state === "reported" ? "owner" : row.member.role}</TableCell>
               {hideState ? null : (
                 <TableCell>
                   <State kind={labelOf(row.member.state) as StateKind} title={tooltipOf(row.member)} />
@@ -511,393 +640,146 @@ function RowsTable({ rows, acting, hideWhere, hideState }: { rows: Row[]; acting
 
 // -------------------------------------------------------------------- apps
 
-function AppsPage({ status, operator, onDone, reload }: Props & { status: GetGitHubStatusResponse; reload: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | undefined>();
-  const bound = status.organisations.filter((org) => org.bound);
-  const [owner, setOwner] = useState(bound[0]?.org ?? "");
-  const app = status.linkApp;
-
-  const leave = async (start: () => Promise<{ url: string; manifest: string }>) => {
-    setBusy(true);
-    setFailure(undefined);
-    try {
-      const started = await start();
-      if (started.manifest) postManifest(started.url, started.manifest);
-      else window.location.href = started.url;
-    } catch (error) {
-      setFailure(reason(error));
-      setBusy(false);
-    }
-  };
-  const run = async (work: () => Promise<void>) => {
-    setBusy(true);
-    setFailure(undefined);
-    try {
-      await work();
-    } catch (error) {
-      setFailure(reason(error));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const settingsNote = (url: string) => (url ? ` Its owner can delete the App on GitHub: ${url}` : "");
-  const links = status.links;
-  const linked = links.filter((l) => l.state === "linked").length;
-  const attention = links.length - linked;
-
-  const disconnectLinkApp = () =>
-    run(async () => {
-      const gone = await github.disconnectGitHubLinkApp({});
-      onDone(`The link App is disconnected; ${gone.invalidated} links wait for their people to link again.${settingsNote(gone.appSettingsUrl)}`);
-      reload();
-    });
-  const disconnectRunnerApp = (org: string, tier: string) =>
-    run(async () => {
-      const gone = await github.disconnectGitHubRunnerApp({ org, tier });
-      onDone(
-        `${org}'s ${tier} runner App is disconnected${gone.uninstalled ? " and uninstalled" : `. ${gone.detail}`}.${settingsNote(gone.appSettingsUrl)}`,
-      );
-      reload();
-    });
-  const runnerRows = runnerAppRows(status);
-  const disconnectOrganisation = (org: string) =>
-    run(async () => {
-      const gone = await github.disconnectGitHubOrganisation({ org });
-      onDone(`${org} is disconnected${gone.uninstalled ? " and its App uninstalled" : `. ${gone.detail}`}.${settingsNote(gone.appSettingsUrl)}`);
-      reload();
-    });
-
+/** A block of reference material, closed until asked for. */
+function Disclosure({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Page
-      title="Apps"
-      lede="One link App people authorize, for every organisation, one App per organisation the controller acts through, and — where the deployment declares runner tiers — one runner App per organisation per tier."
+    <Section
+      title={title}
+      hint={hint}
+      action={
+        <Button size="small" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "Hide" : "Show"}
+        </Button>
+      }
     >
-      <Failure error={failure} />
-      <Section
-        title="Link App"
-        hint="for every organisation"
-        action={
-          !operator || !status.linkingAvailable ? null : app ? (
-            <Tooltip title="Forget the link App. Every link it made becomes unverifiable: nobody is added or removed on its account until the person links again.">
-              <span>
-                <Button size="small" color="warning" disabled={busy} onClick={() => void disconnectLinkApp()}>
-                  Disconnect
-                </Button>
-              </span>
-            </Tooltip>
-          ) : (
-            <Stack direction="row" sx={{ gap: 1, alignItems: "center" }}>
-              <TextField select size="small" label="Under" value={owner} onChange={(event) => setOwner(event.target.value)} disabled={busy} sx={{ minWidth: 140 }}>
-                {bound.map((org) => (
-                  <MenuItem key={org.org} value={org.org}>
-                    {org.org}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <Button size="small" variant="outlined" disabled={busy || !owner} onClick={() => void leave(() => github.beginGitHubLinkAppConnect({ owner }))}>
-                Create
-              </Button>
-            </Stack>
-          )
-        }
-      >
-        {!status.linkingAvailable ? (
-          <Nothing>This deployment keeps no state in Kubernetes, so a link would not survive a restart.</Nothing>
-        ) : (
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Facts
-              items={[
-                { label: "App", value: app ? appLink(app.appSlug, app.htmlUrl) : "not created" },
-                { label: "Created under", value: app?.owner },
-                { label: "Connected", value: app ? since(app.connectedAt, app.connectedBy) : undefined },
-                { label: "Linked", value: app ? String(linked) : undefined },
-                { label: "Not counting", value: app && attention ? String(attention) : undefined },
-                { label: "Send people to", value: app ? <CopyLine value={linkPage(status.linkUrl)} /> : undefined },
-              ]}
-            />
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-              Public, reads a person&apos;s own email addresses and nothing else, installed nowhere. The organisation it is created under only
-              hosts it.
-            </Typography>
-          </Paper>
-        )}
-      </Section>
-
-      <Section title="Organisation Apps" hint="one per organisation, installed on it">
-        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Organisation</TableCell>
-                <TableCell>Team App</TableCell>
-                <TableCell>State</TableCell>
-                <TableCell>Connected</TableCell>
-                <TableCell />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {status.organisations.map((org) => {
-                const c = org.connection;
-                return (
-                  <TableRow key={org.org} hover>
-                    <TableCell>
-                      <Ref to={paths.githubOrganisation(org.org)} mono>
-                        {org.org}
-                      </Ref>
-                    </TableCell>
-                    <TableCell>{c ? appLink(c.appSlug, c.htmlUrl) : "—"}</TableCell>
-                    <TableCell>
-                      <Typography variant="body2">{!c ? "not created" : c.installed ? "installed" : "created, not installed"}</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary">
-                        {c ? since(c.connectedAt, c.connectedBy) : "—"}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      {!operator ? null : !c ? (
-                        <Tooltip title={!org.bound ? "Bind the organisation's teams in the policy first." : "Two clicks by the organisation's owner: create, then install."}>
-                          <span>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              disabled={busy || !org.bound || !status.connectingAvailable}
-                              onClick={() => void leave(() => github.beginGitHubConnect({ org: org.org }))}
-                            >
-                              Create
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      ) : (
-                        <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
-                          {!c.installed ? (
-                            <Button size="small" variant="outlined" disabled={busy} onClick={() => void leave(() => github.beginGitHubConnect({ org: org.org }))}>
-                              Finish installing
-                            </Button>
-                          ) : null}
-                          <Tooltip title="Uninstall the App and forget the organisation. Its teams stop being managed; nobody is removed.">
-                            <span>
-                              <Button size="small" color="warning" disabled={busy} onClick={() => void disconnectOrganisation(org.org)}>
-                                Disconnect
-                              </Button>
-                            </span>
-                          </Tooltip>
-                        </Stack>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Section>
-
-      {runnerRows.length ? (
-        <Section title="Runner Apps" hint="one per organisation per tier, for its self-hosted runners">
-          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Organisation</TableCell>
-                  <TableCell>Tier</TableCell>
-                  <TableCell>Runner App</TableCell>
-                  <TableCell>State</TableCell>
-                  <TableCell>Connected</TableCell>
-                  <TableCell />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {runnerRows.map(({ org, tier, app: r, declared, bound: isBound }) => (
-                  <TableRow key={`${org}/${tier}`} hover>
-                    <TableCell>
-                      <Ref to={paths.githubOrganisation(org)} mono>
-                        {org}
-                      </Ref>
-                    </TableCell>
-                    <TableCell>
-                      <Mono>{tier}</Mono>
-                    </TableCell>
-                    <TableCell>{r ? appLink(r.appSlug, r.htmlUrl) : "—"}</TableCell>
-                    <TableCell>
-                      <Typography variant="body2">{!r ? "not created" : r.installed ? "installed" : "created, not installed"}</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary">
-                        {r ? since(r.connectedAt, r.connectedBy) : "—"}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      {!operator ? null : !r ? (
-                        <Tooltip title={!isBound ? "Bind the organisation's teams in the policy first." : "Two clicks by the organisation's owner: create, then install."}>
-                          <span>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              disabled={busy || !isBound || !declared}
-                              onClick={() => void leave(() => github.beginGitHubRunnerAppConnect({ org, tier }))}
-                            >
-                              Create
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      ) : (
-                        <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
-                          {!r.installed && declared ? (
-                            <Button size="small" variant="outlined" disabled={busy} onClick={() => void leave(() => github.beginGitHubRunnerAppConnect({ org, tier }))}>
-                              Finish installing
-                            </Button>
-                          ) : null}
-                          <Tooltip title="Uninstall the App and forget its key. Runners registered with it stop getting jobs.">
-                            <span>
-                              <Button size="small" color="warning" disabled={busy} onClick={() => void disconnectRunnerApp(org, tier)}>
-                                Disconnect
-                              </Button>
-                            </span>
-                          </Tooltip>
-                        </Stack>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Section>
-      ) : null}
-
-      {status.catalogueAvailable && status.catalogueApps.length ? (
-        <Section title="Catalogue" hint="Apps the deployment declares as data, each created and installed from its own page">
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Stack direction="row" sx={{ gap: 3, flexWrap: "wrap", alignItems: "center" }}>
-              <Count label="Declared" value={status.catalogueApps.filter((a) => a.declared).length} />
-              <Count label="Installed" value={status.catalogueApps.filter((a) => a.state === "installed").length} />
-              <Count label="Differ on GitHub" value={status.catalogueApps.filter((a) => a.state === "drifted").length} strong />
-              <Box sx={{ flexGrow: 1 }} />
-              <Ref to={paths.githubCatalogue()}>Open the catalogue</Ref>
-            </Stack>
-          </Paper>
-        </Section>
-      ) : null}
-
-      {links.length ? (
-        <Section title="Linked accounts" hint={`${linked} linked${attention ? `, ${attention} not counting` : ""}`}>
-          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>GitHub</TableCell>
-                  <TableCell>Work addresses</TableCell>
-                  <TableCell>How</TableCell>
-                  <TableCell>State</TableCell>
-                  <TableCell>Checked</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {links.map((l) => (
-                  <TableRow key={String(l.accountId)} hover>
-                    <TableCell>{loginCell(l.login)}</TableCell>
-                    <TableCell>
-                      <Names items={l.emails.map((email) => ({ label: email, to: paths.person(email), mono: true }))} empty="—" />
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip title={l.note || "They authorized the link App; checked on GitHub every pass."}>
-                        <Typography variant="body2" component="span">
-                          {sourceName(l.source)}
-                        </Typography>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>
-                      <State kind={linkKind(l.state)} title={l.reason || undefined} />
-                    </TableCell>
-                    <TableCell>{at(l.checkedAt) ? ago(at(l.checkedAt)) : "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Section>
-      ) : null}
-    </Page>
+      <Collapse in={open} unmountOnExit>
+        {children}
+      </Collapse>
+    </Section>
   );
 }
 
-// --------------------------------------------------------------- catalogue
+function AppState({ app }: { app: GitHubAppView }) {
+  return <State kind={app.label} title={app.exact} />;
+}
 
-/** Every App the catalogue declares, one row each: what it is and where it
- *  stands. Its permissions, grants and actions are on its own page, so a
- *  long catalogue stays a list. */
-function CataloguePage({ status }: { status: GetGitHubStatusResponse }) {
-  const apps = status.catalogueApps;
+/** The groups that may mint an App's tokens: names up to three, a count
+ *  beyond. */
+function Minters({ app }: { app: GitHubAppView }) {
+  if (app.purpose !== "tokens") return <Typography variant="body2" color="text.secondary">—</Typography>;
+  const groups = [...new Set(app.grants.map((grant) => grant.group))];
+  if (groups.length > 3) {
+    return (
+      <Ref to={paths.githubApp(app.id)}>
+        {groups.length} groups
+      </Ref>
+    );
+  }
+  return <Names items={groups.map((group) => ({ label: group, to: paths.group(group), mono: true }))} empty="nobody" />;
+}
+
+/** Every App in one list: the link App, then each organisation's Apps,
+ *  those that need you first. What each is for is a word; what it holds
+ *  and the buttons that change it are on its own page. */
+function AppsList({ status, apps }: { status: GetGitHubStatusResponse; apps: GitHubAppView[] }) {
+  const groups = groupApps(apps);
   return (
     <Page
-      title="Catalogue"
-      lede={
-        <>
-          GitHub Apps declared in the deployment&apos;s values (<Mono>githubApps.catalogue</Mono>). Each is created and installed by an owner of its
-          organisation in two clicks, and this service keeps its key. Back to <Ref to={paths.githubApps()}>Apps</Ref>.
-        </>
-      }
+      title="Apps"
+      lede="Every GitHub App this service keeps a key for, or is declared to: the link App people authorize, one App per organisation the controller manages teams through, one per organisation per runner tier, and the Apps declared in the catalogue that mint tokens for internal groups. Open one to create, install, re-check or disconnect it."
     >
-      {!status.catalogueAvailable ? (
-        <Nothing>This deployment keeps no state in Kubernetes, so an App&apos;s key would not survive a restart.</Nothing>
-      ) : apps.length === 0 ? (
-        <Nothing>The catalogue declares no App. Declare one in githubApps.catalogue and roll the service out.</Nothing>
+      {groups.length === 0 ? (
+        <Nothing>No App is declared or created. Bind an organisation in the policy, or declare an App in githubApps.catalogue.</Nothing>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-          <Table size="small">
+          <Table size="small" sx={{ minWidth: 640 }}>
             <TableHead>
               <TableRow>
                 <TableCell>App</TableCell>
-                <TableCell>Organisation</TableCell>
+                <TableCell>Purpose</TableCell>
                 <TableCell>State</TableCell>
-                <TableCell>Installed on</TableCell>
-                <TableCell align="right">Permissions</TableCell>
-                <TableCell align="right">Grants</TableCell>
+                <TableCell>Repositories</TableCell>
+                <TableCell>Who may mint</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {apps.map((app) => (
-                <TableRow key={app.id} hover>
-                  <TableCell>
-                    <Ref to={paths.githubCatalogueApp(app.id)} mono>
-                      {app.id}
-                    </Ref>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                      {app.declared ? app.description || app.name : "no longer declared"}
-                    </Typography>
+              {groups.map((group) => [
+                <TableRow key={`org:${group.org}`}>
+                  <TableCell colSpan={5} sx={{ bgcolor: "action.hover", py: 0.75 }}>
+                    {group.org ? (
+                      <Ref to={paths.githubOrganisation(group.org)} mono>
+                        {group.org}
+                      </Ref>
+                    ) : (
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        Every organisation
+                      </Typography>
+                    )}
                   </TableCell>
-                  <TableCell>
-                    <Mono>{app.org}</Mono>
-                  </TableCell>
-                  <TableCell>
-                    <State kind={catalogueKind(app.state)} title={app.reason || undefined} />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">{scopeName(app.repositorySelection || app.installation)}</Typography>
-                  </TableCell>
-                  <TableCell align="right">{app.permissions.filter((p) => p.declared).length}</TableCell>
-                  <TableCell align="right">{app.grants.length}</TableCell>
-                </TableRow>
-              ))}
+                </TableRow>,
+                ...group.apps.map((app) => (
+                  <TableRow key={app.id} hover>
+                    <TableCell>
+                      <Ref to={paths.githubApp(app.id)} mono>
+                        {app.name}
+                      </Ref>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{purposeWords(app)}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <AppState app={app} />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{app.repositories}</Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Minters app={app} />
+                    </TableCell>
+                  </TableRow>
+                )),
+              ])}
             </TableBody>
           </Table>
         </TableContainer>
       )}
+      {!status.catalogueAvailable ? (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+          This deployment keeps no state in Kubernetes, so it keeps no catalogue Apps: their keys would not survive a restart.
+        </Typography>
+      ) : null}
     </Page>
   );
 }
 
-/** One catalogue App: what it may do beside what GitHub holds, who may ask
- *  for its tokens, and the two clicks that create and install it. */
-function CatalogueAppPage({ app, operator, onDone, reload }: Props & { app: GitHubCatalogueApp; reload: () => void }) {
+/** What disconnecting an App does, said before it is done. */
+function consequence(app: GitHubAppView): string {
+  const stays = "The App itself stays on GitHub, for an owner to delete in its settings.";
+  switch (app.purpose) {
+    case "link":
+      return `Forgets the link App. Every link made through it becomes unverifiable: nobody is added or removed on its account until they link again. ${stays}`;
+    case "controller":
+      return `Uninstalls it from ${app.org} and forgets its key. The organisation's teams stop being managed; nobody is removed. ${stays}`;
+    case "runners":
+      return `Uninstalls it from ${app.org} and forgets its key. The ${app.tier} runners registered with it stop getting jobs. ${stays}`;
+    default:
+      return `Uninstalls it from ${app.org} and forgets its key here: no token can be minted from it any more. ${stays}`;
+  }
+}
+
+/** One App, whatever made it: what it is for, where it stands, the one fix
+ *  it needs, and the buttons that act on it. */
+function AppPage({ app, status, operator, onDone, reload }: Props & { app: GitHubAppView; status: GetGitHubStatusResponse; reload: () => void }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
-  const [checked, setChecked] = useState<GitHubCatalogueApp | undefined>();
-  const shown = checked && checked.id === app.id ? checked : app;
-  const settings = settingsURL(shown);
-  const drifted = shown.state === "drifted";
+  const [checked, setChecked] = useState<GitHubAppView | undefined>();
+  const [asking, setAsking] = useState(false);
+  const bound = status.organisations.filter((org) => org.bound);
+  const [owner, setOwner] = useState(bound[0]?.org ?? "");
+  const shown = checked ?? app;
+  const linked = status.links.filter((l) => l.state === "linked").length;
+  const org = status.organisations.find((o) => o.org === shown.org);
 
   const act = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -910,238 +792,368 @@ function CatalogueAppPage({ app, operator, onDone, reload }: Props & { app: GitH
       setBusy(false);
     }
   };
+
   const begin = () =>
     act(async () => {
-      const started = await github.beginGitHubCatalogueAppConnect({ id: app.id });
+      const started =
+        shown.purpose === "link"
+          ? await github.beginGitHubLinkAppConnect({ owner })
+          : shown.purpose === "controller"
+            ? await github.beginGitHubConnect({ org: shown.org })
+            : shown.purpose === "runners"
+              ? await github.beginGitHubRunnerAppConnect({ org: shown.org, tier: shown.tier ?? "" })
+              : await github.beginGitHubCatalogueAppConnect({ id: shown.id });
       if (started.manifest) postManifest(started.url, started.manifest);
       else window.location.href = started.url;
     });
+
   const recheck = () =>
     act(async () => {
-      const answer = await github.checkGitHubCatalogueApp({ id: app.id });
-      setChecked(answer.app);
+      const answer = await github.checkGitHubCatalogueApp({ id: shown.id });
+      if (answer.app) setChecked(catalogueView(answer.app));
     });
+
   const disconnect = () =>
     act(async () => {
-      const gone = await github.disconnectGitHubCatalogueApp({ id: app.id });
-      onDone(
-        `${app.id} is disconnected${gone.uninstalled ? " and uninstalled" : `. ${gone.detail}`}. The App itself stays on GitHub${
-          gone.appSettingsUrl ? `; its owner deletes it at ${gone.appSettingsUrl}` : ""
-        }.`,
-      );
+      setAsking(false);
+      const settings = (url: string) => (url ? ` An owner deletes the App itself at ${url}.` : "");
+      if (shown.purpose === "link") {
+        const gone = await github.disconnectGitHubLinkApp({});
+        onDone(`The link App is disconnected; ${gone.invalidated} links wait for their people to link again.${settings(gone.appSettingsUrl)}`);
+      } else {
+        const gone =
+          shown.purpose === "controller"
+            ? await github.disconnectGitHubOrganisation({ org: shown.org })
+            : shown.purpose === "runners"
+              ? await github.disconnectGitHubRunnerApp({ org: shown.org, tier: shown.tier ?? "" })
+              : await github.disconnectGitHubCatalogueApp({ id: shown.id });
+        onDone(`${shown.name} is disconnected${gone.uninstalled ? " and uninstalled" : `. ${gone.detail}`}.${settings(gone.appSettingsUrl)}`);
+      }
       setChecked(undefined);
       reload();
     });
 
+  const canCreate =
+    shown.purpose === "link"
+      ? status.linkingAvailable && bound.length > 0
+      : shown.purpose === "controller"
+        ? status.connectingAvailable && shown.declared
+        : shown.declared;
+
   const actions = !operator ? null : (
     <>
-      {shown.state === "not_created" && shown.declared ? (
-        <Tooltip title={`Two clicks by an owner of ${shown.org}: create, then install.`}>
+      {shown.fix === "create" && shown.purpose === "link" && canCreate ? (
+        <TextField select size="small" label="Under" value={owner} onChange={(event) => setOwner(event.target.value)} disabled={busy} sx={{ minWidth: 140 }}>
+          {bound.map((o) => (
+            <MenuItem key={o.org} value={o.org}>
+              {o.org}
+            </MenuItem>
+          ))}
+        </TextField>
+      ) : null}
+      {shown.fix === "create" ? (
+        <Tooltip title={canCreate ? `Two clicks by an owner of ${shown.purpose === "link" ? "the organisation" : shown.org}: create, then install.` : "Bind the organisation in the policy first."}>
           <span>
-            <Button size="small" variant="outlined" disabled={busy} onClick={() => void begin()}>
+            <Button size="small" variant="contained" disabled={busy || !canCreate || (shown.purpose === "link" && !owner)} onClick={() => void begin()}>
               Create
             </Button>
           </span>
         </Tooltip>
       ) : null}
-      {shown.state === "created" && shown.declared ? (
-        <Button size="small" variant="outlined" disabled={busy} onClick={() => void begin()}>
+      {shown.fix === "install" ? (
+        <Button size="small" variant="contained" disabled={busy} onClick={() => void begin()}>
           Install
         </Button>
       ) : null}
-      {shown.state !== "not_created" && shown.declared ? (
+      {shown.purpose === "tokens" && shown.stage !== "not-created" && shown.declared ? (
         <Tooltip title="Ask GitHub again now, rather than show what it said in the last minute.">
           <span>
-            <Button size="small" disabled={busy} onClick={() => void recheck()}>
+            <Button size="small" variant={shown.fix === "recheck" ? "contained" : "text"} disabled={busy} onClick={() => void recheck()}>
               Re-check
             </Button>
           </span>
         </Tooltip>
       ) : null}
-      {shown.state !== "not_created" ? (
-        <Tooltip title="Uninstall the App and forget its key here. The App stays on GitHub for its owner to delete; nothing minted from it works once uninstalled.">
-          <span>
-            <Button size="small" color="warning" disabled={busy} onClick={() => void disconnect()}>
-              Disconnect
-            </Button>
-          </span>
-        </Tooltip>
+      {shown.stage !== "not-created" ? (
+        <Button size="small" color="warning" disabled={busy} onClick={() => setAsking(true)}>
+          Disconnect
+        </Button>
       ) : null}
     </>
   );
 
+  const needsYou = shown.label === "needs-you";
+  const permissions = shown.permissions ?? [];
+  const drifted = permissions.some(permissionDiffers);
+  const key = keyLocation(shown);
+
   return (
     <Page
-      title={shown.id}
-      mono
-      lede={shown.description || `A GitHub App in ${shown.org}, declared in the catalogue.`}
+      title={shown.name}
+      mono={shown.stage !== "not-created"}
+      lede={summaryOf(shown, linked)}
       actions={actions}
       facts={[
-        { label: "State", value: <State kind={catalogueKind(shown.state)} /> },
-        { label: "Organisation", value: <Mono>{shown.org}</Mono> },
-        { label: "Name on GitHub", value: shown.appSlug ? appLink(shown.appSlug, shown.htmlUrl) : <Mono>{shown.name}</Mono> },
-        { label: "Visibility", value: shown.declared ? (shown.public ? "public: any account may install it" : "private: installs only on its organisation") : undefined },
+        { label: "State", value: <AppState app={shown} /> },
         {
-          label: "Installed on",
-          value: shown.declared ? `${scopeName(shown.installation)} declared${shown.repositorySelection ? `, ${scopeName(shown.repositorySelection)} on GitHub` : ""}` : undefined,
+          label: shown.purpose === "link" ? "Created under" : "Organisation",
+          value: shown.org ? (
+            <Ref to={paths.githubOrganisation(shown.org)} mono>
+              {shown.org}
+            </Ref>
+          ) : undefined,
         },
-        { label: "Created", value: shown.appSlug ? since(shown.connectedAt, shown.connectedBy) : undefined },
+        { label: "Purpose", value: purposeWords(shown) },
+        { label: "Repositories", value: shown.repositories },
+        { label: "On GitHub", value: shown.slug ? appLink(shown.slug, shown.htmlUrl) : undefined },
+        { label: "Created", value: shown.slug ? since(shown.connectedAt, shown.connectedBy) : undefined },
         { label: "Checked", value: at(shown.checkedAt) ? ago(at(shown.checkedAt)) : undefined },
       ]}
     >
       <Stack sx={{ gap: 2, mb: 4 }}>
         <Failure error={failure} />
-        {shown.reason ? <Alert severity="warning">{shown.reason}</Alert> : null}
-        {drifted ? (
+        {needsYou ? (
           <Alert severity="warning">
-            <strong>GitHub differs from the catalogue.</strong> GitHub has no API to change an App&apos;s permissions or events, so an owner of{" "}
-            {shown.org} edits them{" "}
-            {settings ? (
-              <a href={settings} target="_blank" rel="noreferrer">
-                in the App&apos;s settings
+            <strong>Needs you.</strong> {fixSentence(shown)}{" "}
+            {shown.fix === "recheck" && shown.settingsUrl ? (
+              <a href={shown.settingsUrl} target="_blank" rel="noreferrer">
+                Open its settings on GitHub.
               </a>
-            ) : (
-              "in the App's settings"
-            )}{" "}
-            — or the catalogue changes to match — and then Re-check.
-            <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
-              {shown.drift.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </Box>
+            ) : null}
+            {!operator && shown.fix !== "none" ? " An operator does this." : null}
+            {shown.drift.length ? (
+              <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
+                {shown.drift.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </Box>
+            ) : null}
           </Alert>
         ) : null}
+        {shown.label === "waiting-person" || shown.label === "waiting-controller" ? <Alert severity="info">Nothing to do here: {shown.exact}.</Alert> : null}
+        {shown.reason ? <Alert severity="warning">{shown.reason}</Alert> : null}
       </Stack>
 
-      <Section title="Permissions" hint={shown.state === "not_created" ? "what the App will ask for" : "declared, beside what the App and its installation hold on GitHub"}>
-        {shown.permissions.length === 0 ? (
-          <Nothing>No permission is declared or held.</Nothing>
-        ) : (
+      {shown.purpose === "tokens" ? (
+        <Section title="Who may mint tokens" hint="each internal group, the repositories it may ask for, and the most a token may carry">
+          <Rows
+            items={shown.grants.map((grant, i) => ({ grant, i }))}
+            keyOf={({ grant, i }) => `${grant.group}:${i}`}
+            primary={({ grant }) => (
+              <>
+                <Ref to={paths.group(grant.group)} mono>
+                  {grant.group}
+                </Ref>
+                {!grant.groupDeclared ? (
+                  <Typography component="span" variant="caption" color="warning.main">
+                    {" "}
+                    the policy declares no such group
+                  </Typography>
+                ) : null}
+              </>
+            )}
+            secondary={({ grant }) => <GrantLine grant={grant} org={shown.org} />}
+            empty="No internal group may mint tokens of this App."
+          />
+        </Section>
+      ) : null}
+
+      {shown.purpose === "tokens" && operator && shown.installationId ? <RecentTokens id={shown.id} /> : null}
+
+      {shown.purpose === "controller" ? (
+        <Section title="Acts on" hint="the organisation whose members and teams the controller manages through it">
+          <Rows
+            items={org ? [org] : []}
+            keyOf={(o) => o.org}
+            primary={(o) => (
+              <Ref to={paths.githubOrganisation(o.org)} mono>
+                {o.org}
+              </Ref>
+            )}
+            secondary={(o) => `${o.teams.length} ${o.teams.length === 1 ? "team" : "teams"}${at(o.tick?.at) ? ` · last pass ${ago(at(o.tick?.at))}` : ""}`}
+            right={(o) => outcome(o)}
+            empty={`${shown.org} is not bound or reported.`}
+          />
+        </Section>
+      ) : null}
+
+      {shown.purpose === "runners" ? (
+        <Section title="Registers runners for" hint="one App per organisation per tier, so a compromised runner plane stays in its tier">
+          <Rows
+            items={[shown]}
+            keyOf={(a) => a.id}
+            primary={(a) => (
+              <Ref to={paths.githubOrganisation(a.org)} mono>
+                {a.org}
+              </Ref>
+            )}
+            secondary={(a) => `the ${a.tier} tier's runner scale sets`}
+            empty=""
+          />
+        </Section>
+      ) : null}
+
+      {shown.purpose === "link" ? (
+        <Section title="Linked accounts" hint="the accounts people linked through it; every organisation reads them">
+          <Rows
+            items={[
+              { key: "linked", label: `${linked} ${linked === 1 ? "account" : "accounts"} linked`, to: paths.peopleGitHub(true), note: "open People, narrowed to those who linked" },
+              { key: "not-linked", label: "People who have not linked", to: paths.peopleGitHub(false), note: "send them the link page below" },
+            ]}
+            keyOf={(item) => item.key}
+            primary={(item) => <Ref to={item.to}>{item.label}</Ref>}
+            secondary={(item) => item.note}
+            empty=""
+          />
+          {status.linkApp ? (
+            <Box sx={{ mt: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                Send people to
+              </Typography>
+              <CopyLine value={linkPage(status.linkUrl)} />
+            </Box>
+          ) : null}
+        </Section>
+      ) : null}
+
+      {permissions.length ? (
+        <Disclosure
+          title="Permissions"
+          hint={drifted ? "declared, beside what the App and its installation hold on GitHub" : shown.stage === "not-created" ? "what the App will ask for" : "declared, and held as declared"}
+        >
           <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>Permission</TableCell>
-                  <TableCell>Declared</TableCell>
-                  {shown.state !== "not_created" ? <TableCell>App</TableCell> : null}
-                  {shown.installationId ? <TableCell>Installation</TableCell> : null}
+                  {drifted ? (
+                    <>
+                      <TableCell>Declared</TableCell>
+                      <TableCell>App</TableCell>
+                      {shown.installationId ? <TableCell>Installation</TableCell> : null}
+                    </>
+                  ) : (
+                    <TableCell>Level</TableCell>
+                  )}
                 </TableRow>
               </TableHead>
               <TableBody>
-                {shown.permissions.map((p) => {
-                  const differs = shown.state !== "not_created" && p.app !== p.declared && !(p.name === "metadata" && !p.declared && p.app === "read");
+                {permissions.map((p) => {
+                  const differs = permissionDiffers(p);
                   return (
                     <TableRow key={p.name} hover>
                       <TableCell>
                         <Mono>{p.name}</Mono>
                       </TableCell>
-                      <TableCell>{p.declared || "—"}</TableCell>
-                      {shown.state !== "not_created" ? (
-                        <TableCell>
-                          <Typography variant="body2" color={differs ? "warning.main" : undefined} sx={{ fontWeight: differs ? 600 : undefined }}>
-                            {p.app || "—"}
-                          </Typography>
-                        </TableCell>
-                      ) : null}
-                      {shown.installationId ? (
-                        <TableCell>
-                          <Typography variant="body2" color={p.installation !== p.app ? "warning.main" : undefined}>
-                            {p.installation || "—"}
-                          </Typography>
-                        </TableCell>
-                      ) : null}
+                      {drifted ? (
+                        <>
+                          <TableCell>{p.declared || "—"}</TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color={differs ? "warning.main" : undefined} sx={{ fontWeight: differs ? 600 : undefined }}>
+                              {p.app || "—"}
+                            </Typography>
+                          </TableCell>
+                          {shown.installationId ? <TableCell>{p.installation || "—"}</TableCell> : null}
+                        </>
+                      ) : (
+                        <TableCell>{p.declared || p.app || "—"}</TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           </TableContainer>
-        )}
-        {shown.events.length ? (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Events: <Mono>{shown.events.join(", ")}</Mono> — the webhook stays inactive.
-          </Typography>
-        ) : null}
-      </Section>
-
-      {shown.declared ? (
-        <Section title="Grants" hint="who may ask for a token of this App, for which repositories, and at most with what">
-          {shown.grants.length === 0 ? (
-            <Nothing>No group may ask for a token of this App.</Nothing>
-          ) : (
-            <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Group</TableCell>
-                    <TableCell>Repositories</TableCell>
-                    <TableCell>At most</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {shown.grants.map((grant, i) => (
-                    <TableRow key={`${grant.group}:${i}`} hover>
-                      <TableCell>
-                        <Ref to={paths.group(grant.group)} mono>
-                          {grant.group}
-                        </Ref>
-                        {!grant.groupDeclared ? (
-                          <Typography variant="caption" color="warning.main" sx={{ display: "block" }}>
-                            the policy declares no such group
-                          </Typography>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        <Mono>{grant.repositories.map((r) => (r === "*" ? `every repository in ${shown.org}` : r)).join(", ")}</Mono>
-                      </TableCell>
-                      <TableCell>
-                        <Mono>
-                          {Object.entries(grant.permissions)
-                            .sort(([a], [b]) => a.localeCompare(b))
-                            .map(([name, level]) => `${name}: ${level}`)
-                            .join(", ")}
-                        </Mono>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </Section>
+        </Disclosure>
       ) : null}
 
-      {operator && shown.installationId ? <RecentTokens id={shown.id} /> : null}
+      {shown.events.length ? (
+        <Disclosure title="Events" hint="the webhook events declared; the webhook itself stays inactive">
+          <Names items={shown.events.map((event) => ({ label: event, mono: true }))} />
+        </Disclosure>
+      ) : null}
 
-      {shown.installationId ? (
-        <Section title="Where the key is" hint="for a deployment copying it, for example with an External Secrets PushSecret">
+      <Disclosure title="Where it is kept" hint="the Kubernetes Secret its key is in, and its ids on GitHub">
+        <Paper variant="outlined" sx={{ p: 2 }}>
           <Facts
             items={[
-              { label: "Secret", value: <Mono>{"<release>-github-catalogue-apps"}</Mono> },
-              {
-                label: "Keys",
-                value: <Mono>{["github_app_id", "github_app_installation_id", "github_app_private_key", "record.json"].map((k) => `${shown.id}.${k}`).join(", ")}</Mono>,
-              },
-              { label: "App id", value: String(shown.appId) },
-              { label: "Installation id", value: String(shown.installationId) },
+              { label: "Kubernetes Secret", value: <Mono>{key.secret}</Mono> },
+              { label: "Keys in the Secret", value: <Mono>{key.keys.join(", ")}</Mono> },
+              { label: "App id", value: shown.appId ? String(shown.appId) : undefined },
+              { label: "Installation id", value: shown.installationId ? String(shown.installationId) : undefined },
+              { label: "Declared in", value: shown.origin === "catalogue" ? (shown.declared ? "catalogue" : "catalogue, no longer") : "built in" },
             ]}
           />
-        </Section>
-      ) : null}
+        </Paper>
+      </Disclosure>
+
+      <Dialog open={asking} onClose={() => setAsking(false)}>
+        <DialogTitle>Disconnect {shown.name}?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{consequence(shown)}</DialogContentText>
+          {shown.settingsUrl ? (
+            <DialogContentText sx={{ mt: 1.5 }}>
+              <a href={shown.settingsUrl} target="_blank" rel="noreferrer">
+                Its settings on GitHub
+              </a>
+            </DialogContentText>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAsking(false)}>Keep it</Button>
+          <Button color="warning" variant="contained" disabled={busy} onClick={() => void disconnect()}>
+            Disconnect
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Page>
   );
 }
+
+/** One grant's reach, short, with every permission a click away. */
+function GrantLine({ grant, org }: { grant: GitHubAppGrant; org: string }) {
+  const [open, setOpen] = useState(false);
+  const all = Object.entries(grant.permissions)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, level]) => `${name}: ${level}`);
+  return (
+    <>
+      {repositoryWords(grant.repositories, org)} · at most {atMost(grant.permissions)}
+      {all.length > 2 ? (
+        <>
+          {" "}
+          <Button size="small" variant="text" onClick={() => setOpen(!open)} sx={{ textTransform: "none", p: 0, minWidth: 0, verticalAlign: "baseline", fontSize: "inherit" }}>
+            {open ? "hide" : "show all"}
+          </Button>
+          {open ? (
+            <Box sx={{ mt: 0.5 }}>
+              <Mono>{all.join(", ")}</Mono>
+            </Box>
+          ) : null}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** How long the last tokens are waited for before the page says it could
+ *  not load them, rather than leave a spinner that ends in a bare error. */
+const recentTokensWait = 8000;
 
 /** The last installation tokens asked of an App, minted or refused, from
  *  the audit trail the Audit page reads: who asked, for what, and what
  *  was decided. Never the token, which the trail does not hold. */
 function RecentTokens({ id }: { id: string }) {
-  const recent = useAsync(() => audit.listAuditEvents({ kind: "github.token.minted", target: `github-app:${id}`, limit: 10 }), [id]);
+  const recent = useAsync(() => audit.listAuditEvents({ kind: "github.token.minted", target: `github-app:${id}`, limit: 10 }, { timeoutMs: recentTokensWait }), [id]);
   const events = recent.value?.events ?? [];
   return (
     <Section title="Recent tokens" hint="the last ten asked for, from the audit trail; tokens themselves are never kept">
       <Loading busy={recent.loading} />
-      {recent.error ? <Nothing>{recent.error}</Nothing> : null}
+      {recent.error ? (
+        <Nothing>
+          Recent tokens could not be loaded right now. The <Ref to={paths.audit()}>Audit</Ref> page lists every token asked for.
+        </Nothing>
+      ) : null}
       {!recent.loading && !recent.error && events.length === 0 ? <Nothing>No token has been asked for lately.</Nothing> : null}
       {events.length > 0 ? (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
@@ -1163,7 +1175,10 @@ function RecentTokens({ id }: { id: string }) {
                     <Mono>{event.subject || "—"}</Mono>
                     {event.attributes.grant ? (
                       <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        through <Mono>{event.attributes.grant}</Mono>
+                        through{" "}
+                        <Ref to={paths.group(event.attributes.grant)} mono>
+                          {event.attributes.grant}
+                        </Ref>
                       </Typography>
                     ) : null}
                   </TableCell>
@@ -1186,47 +1201,7 @@ function RecentTokens({ id }: { id: string }) {
   );
 }
 
-function catalogueKind(state: string): StateKind {
-  switch (state) {
-    case "installed":
-      return "installed";
-    case "created":
-      return "created";
-    case "drifted":
-      return "drifted";
-    default:
-      return "not-created";
-  }
-}
-
-function scopeName(scope: string): string {
-  return ({ all: "all repositories", selected: "selected repositories" } as Record<string, string>)[scope] ?? scope;
-}
-
-/** Where an owner edits the App: the organisation's settings page for it,
- *  which is also where it is deleted. */
-function settingsURL(app: GitHubCatalogueApp): string {
-  return app.appSlug ? `https://github.com/organizations/${encodeURIComponent(app.org)}/settings/apps/${encodeURIComponent(app.appSlug)}` : "";
-}
-
 // ----------------------------------------------------------------- helpers
-
-/** One row per bound organisation per declared tier, plus any App created
- * for a tier or an organisation no longer declared or bound, so it can
- * still be disconnected. */
-function runnerAppRows(status: GetGitHubStatusResponse) {
-  const rows = new Map<string, { org: string; tier: string; app?: GitHubRunnerApp; declared: boolean; bound: boolean }>();
-  const bound = new Set(status.organisations.filter((org) => org.bound).map((org) => org.org));
-  for (const org of [...bound].sort()) {
-    for (const tier of status.runnerTiers) rows.set(`${org}/${tier}`, { org, tier, declared: true, bound: true });
-  }
-  for (const app of status.runnerApps) {
-    const key = `${app.org}/${app.tier}`;
-    const row = rows.get(key) ?? { org: app.org, tier: app.tier, declared: status.runnerTiers.includes(app.tier), bound: bound.has(app.org) };
-    rows.set(key, { ...row, app });
-  }
-  return [...rows.values()].sort((a, b) => a.org.localeCompare(b.org) || a.tier.localeCompare(b.tier));
-}
 
 export function sourceName(source: string): string {
   return ({ self: "linked by them", profile: "public profile", imported: "imported" } as Record<string, string>)[source] ?? source;

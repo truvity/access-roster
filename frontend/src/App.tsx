@@ -334,7 +334,7 @@ function PageFor({
     case "directory-groups":
       return id ? <DirectoryGroup email={id} /> : <DirectoryGroups />;
     case "people":
-      return id ? <Person email={id} me={me} operator={operator} onDone={onDone} /> : <People />;
+      return id ? <Person email={id} me={me} operator={operator} onDone={onDone} /> : <People key={query.get("github") ?? ""} github={query.get("github") ?? ""} />;
     case "rules":
       return <Rules />;
     case "groups":
