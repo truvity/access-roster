@@ -60,6 +60,15 @@ const (
 	// GitHubServiceImportGitHubLinksProcedure is the fully-qualified name of the GitHubService's
 	// ImportGitHubLinks RPC.
 	GitHubServiceImportGitHubLinksProcedure = "/directoryroster.v1.GitHubService/ImportGitHubLinks"
+	// GitHubServiceBeginGitHubCatalogueAppConnectProcedure is the fully-qualified name of the
+	// GitHubService's BeginGitHubCatalogueAppConnect RPC.
+	GitHubServiceBeginGitHubCatalogueAppConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubCatalogueAppConnect"
+	// GitHubServiceDisconnectGitHubCatalogueAppProcedure is the fully-qualified name of the
+	// GitHubService's DisconnectGitHubCatalogueApp RPC.
+	GitHubServiceDisconnectGitHubCatalogueAppProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubCatalogueApp"
+	// GitHubServiceCheckGitHubCatalogueAppProcedure is the fully-qualified name of the GitHubService's
+	// CheckGitHubCatalogueApp RPC.
+	GitHubServiceCheckGitHubCatalogueAppProcedure = "/directoryroster.v1.GitHubService/CheckGitHubCatalogueApp"
 )
 
 // GitHubServiceClient is a client for the directoryroster.v1.GitHubService service.
@@ -117,6 +126,23 @@ type GitHubServiceClient interface {
 	// a connected organisation; a link the person made is never displaced.
 	// Operator.
 	ImportGitHubLinks(context.Context, *connect.Request[v1.ImportGitHubLinksRequest]) (*connect.Response[v1.ImportGitHubLinksResponse], error)
+	// BeginGitHubCatalogueAppConnect starts creating an App the deployment
+	// declares in its catalogue, under the organisation the entry names: its
+	// manifest and where to post it, or — for an App already created and not
+	// yet installed — where to install it. Sets the flow's state cookie.
+	// Operator.
+	//
+	// An id the catalogue does not declare is refused, and so is an App
+	// already installed.
+	BeginGitHubCatalogueAppConnect(context.Context, *connect.Request[v1.BeginGitHubCatalogueAppConnectRequest]) (*connect.Response[v1.BeginGitHubCatalogueAppConnectResponse], error)
+	// DisconnectGitHubCatalogueApp uninstalls a catalogue App, then forgets
+	// its record and key. The App itself stays on GitHub, for its owner to
+	// delete. Operator.
+	DisconnectGitHubCatalogueApp(context.Context, *connect.Request[v1.DisconnectGitHubCatalogueAppRequest]) (*connect.Response[v1.DisconnectGitHubCatalogueAppResponse], error)
+	// CheckGitHubCatalogueApp asks GitHub again what one catalogue App and
+	// its installation hold, bypassing the short cache GetGitHubStatus reads
+	// through. Operator.
+	CheckGitHubCatalogueApp(context.Context, *connect.Request[v1.CheckGitHubCatalogueAppRequest]) (*connect.Response[v1.CheckGitHubCatalogueAppResponse], error)
 }
 
 // NewGitHubServiceClient constructs a client for the directoryroster.v1.GitHubService service. By
@@ -184,20 +210,41 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(gitHubServiceMethods.ByName("ImportGitHubLinks")),
 			connect.WithClientOptions(opts...),
 		),
+		beginGitHubCatalogueAppConnect: connect.NewClient[v1.BeginGitHubCatalogueAppConnectRequest, v1.BeginGitHubCatalogueAppConnectResponse](
+			httpClient,
+			baseURL+GitHubServiceBeginGitHubCatalogueAppConnectProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubCatalogueAppConnect")),
+			connect.WithClientOptions(opts...),
+		),
+		disconnectGitHubCatalogueApp: connect.NewClient[v1.DisconnectGitHubCatalogueAppRequest, v1.DisconnectGitHubCatalogueAppResponse](
+			httpClient,
+			baseURL+GitHubServiceDisconnectGitHubCatalogueAppProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubCatalogueApp")),
+			connect.WithClientOptions(opts...),
+		),
+		checkGitHubCatalogueApp: connect.NewClient[v1.CheckGitHubCatalogueAppRequest, v1.CheckGitHubCatalogueAppResponse](
+			httpClient,
+			baseURL+GitHubServiceCheckGitHubCatalogueAppProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("CheckGitHubCatalogueApp")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // gitHubServiceClient implements GitHubServiceClient.
 type gitHubServiceClient struct {
-	getGitHubStatus              *connect.Client[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse]
-	beginGitHubConnect           *connect.Client[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse]
-	disconnectGitHubOrganisation *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
-	beginGitHubLinkAppConnect    *connect.Client[v1.BeginGitHubLinkAppConnectRequest, v1.BeginGitHubLinkAppConnectResponse]
-	beginGitHubRunnerAppConnect  *connect.Client[v1.BeginGitHubRunnerAppConnectRequest, v1.BeginGitHubRunnerAppConnectResponse]
-	disconnectGitHubRunnerApp    *connect.Client[v1.DisconnectGitHubRunnerAppRequest, v1.DisconnectGitHubRunnerAppResponse]
-	disconnectGitHubLinkApp      *connect.Client[v1.DisconnectGitHubLinkAppRequest, v1.DisconnectGitHubLinkAppResponse]
-	confirmGitHubRemovals        *connect.Client[v1.ConfirmGitHubRemovalsRequest, v1.ConfirmGitHubRemovalsResponse]
-	importGitHubLinks            *connect.Client[v1.ImportGitHubLinksRequest, v1.ImportGitHubLinksResponse]
+	getGitHubStatus                *connect.Client[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse]
+	beginGitHubConnect             *connect.Client[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse]
+	disconnectGitHubOrganisation   *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
+	beginGitHubLinkAppConnect      *connect.Client[v1.BeginGitHubLinkAppConnectRequest, v1.BeginGitHubLinkAppConnectResponse]
+	beginGitHubRunnerAppConnect    *connect.Client[v1.BeginGitHubRunnerAppConnectRequest, v1.BeginGitHubRunnerAppConnectResponse]
+	disconnectGitHubRunnerApp      *connect.Client[v1.DisconnectGitHubRunnerAppRequest, v1.DisconnectGitHubRunnerAppResponse]
+	disconnectGitHubLinkApp        *connect.Client[v1.DisconnectGitHubLinkAppRequest, v1.DisconnectGitHubLinkAppResponse]
+	confirmGitHubRemovals          *connect.Client[v1.ConfirmGitHubRemovalsRequest, v1.ConfirmGitHubRemovalsResponse]
+	importGitHubLinks              *connect.Client[v1.ImportGitHubLinksRequest, v1.ImportGitHubLinksResponse]
+	beginGitHubCatalogueAppConnect *connect.Client[v1.BeginGitHubCatalogueAppConnectRequest, v1.BeginGitHubCatalogueAppConnectResponse]
+	disconnectGitHubCatalogueApp   *connect.Client[v1.DisconnectGitHubCatalogueAppRequest, v1.DisconnectGitHubCatalogueAppResponse]
+	checkGitHubCatalogueApp        *connect.Client[v1.CheckGitHubCatalogueAppRequest, v1.CheckGitHubCatalogueAppResponse]
 }
 
 // GetGitHubStatus calls directoryroster.v1.GitHubService.GetGitHubStatus.
@@ -243,6 +290,22 @@ func (c *gitHubServiceClient) ConfirmGitHubRemovals(ctx context.Context, req *co
 // ImportGitHubLinks calls directoryroster.v1.GitHubService.ImportGitHubLinks.
 func (c *gitHubServiceClient) ImportGitHubLinks(ctx context.Context, req *connect.Request[v1.ImportGitHubLinksRequest]) (*connect.Response[v1.ImportGitHubLinksResponse], error) {
 	return c.importGitHubLinks.CallUnary(ctx, req)
+}
+
+// BeginGitHubCatalogueAppConnect calls
+// directoryroster.v1.GitHubService.BeginGitHubCatalogueAppConnect.
+func (c *gitHubServiceClient) BeginGitHubCatalogueAppConnect(ctx context.Context, req *connect.Request[v1.BeginGitHubCatalogueAppConnectRequest]) (*connect.Response[v1.BeginGitHubCatalogueAppConnectResponse], error) {
+	return c.beginGitHubCatalogueAppConnect.CallUnary(ctx, req)
+}
+
+// DisconnectGitHubCatalogueApp calls directoryroster.v1.GitHubService.DisconnectGitHubCatalogueApp.
+func (c *gitHubServiceClient) DisconnectGitHubCatalogueApp(ctx context.Context, req *connect.Request[v1.DisconnectGitHubCatalogueAppRequest]) (*connect.Response[v1.DisconnectGitHubCatalogueAppResponse], error) {
+	return c.disconnectGitHubCatalogueApp.CallUnary(ctx, req)
+}
+
+// CheckGitHubCatalogueApp calls directoryroster.v1.GitHubService.CheckGitHubCatalogueApp.
+func (c *gitHubServiceClient) CheckGitHubCatalogueApp(ctx context.Context, req *connect.Request[v1.CheckGitHubCatalogueAppRequest]) (*connect.Response[v1.CheckGitHubCatalogueAppResponse], error) {
+	return c.checkGitHubCatalogueApp.CallUnary(ctx, req)
 }
 
 // GitHubServiceHandler is an implementation of the directoryroster.v1.GitHubService service.
@@ -300,6 +363,23 @@ type GitHubServiceHandler interface {
 	// a connected organisation; a link the person made is never displaced.
 	// Operator.
 	ImportGitHubLinks(context.Context, *connect.Request[v1.ImportGitHubLinksRequest]) (*connect.Response[v1.ImportGitHubLinksResponse], error)
+	// BeginGitHubCatalogueAppConnect starts creating an App the deployment
+	// declares in its catalogue, under the organisation the entry names: its
+	// manifest and where to post it, or — for an App already created and not
+	// yet installed — where to install it. Sets the flow's state cookie.
+	// Operator.
+	//
+	// An id the catalogue does not declare is refused, and so is an App
+	// already installed.
+	BeginGitHubCatalogueAppConnect(context.Context, *connect.Request[v1.BeginGitHubCatalogueAppConnectRequest]) (*connect.Response[v1.BeginGitHubCatalogueAppConnectResponse], error)
+	// DisconnectGitHubCatalogueApp uninstalls a catalogue App, then forgets
+	// its record and key. The App itself stays on GitHub, for its owner to
+	// delete. Operator.
+	DisconnectGitHubCatalogueApp(context.Context, *connect.Request[v1.DisconnectGitHubCatalogueAppRequest]) (*connect.Response[v1.DisconnectGitHubCatalogueAppResponse], error)
+	// CheckGitHubCatalogueApp asks GitHub again what one catalogue App and
+	// its installation hold, bypassing the short cache GetGitHubStatus reads
+	// through. Operator.
+	CheckGitHubCatalogueApp(context.Context, *connect.Request[v1.CheckGitHubCatalogueAppRequest]) (*connect.Response[v1.CheckGitHubCatalogueAppResponse], error)
 }
 
 // NewGitHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -363,6 +443,24 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(gitHubServiceMethods.ByName("ImportGitHubLinks")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gitHubServiceBeginGitHubCatalogueAppConnectHandler := connect.NewUnaryHandler(
+		GitHubServiceBeginGitHubCatalogueAppConnectProcedure,
+		svc.BeginGitHubCatalogueAppConnect,
+		connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubCatalogueAppConnect")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceDisconnectGitHubCatalogueAppHandler := connect.NewUnaryHandler(
+		GitHubServiceDisconnectGitHubCatalogueAppProcedure,
+		svc.DisconnectGitHubCatalogueApp,
+		connect.WithSchema(gitHubServiceMethods.ByName("DisconnectGitHubCatalogueApp")),
+		connect.WithHandlerOptions(opts...),
+	)
+	gitHubServiceCheckGitHubCatalogueAppHandler := connect.NewUnaryHandler(
+		GitHubServiceCheckGitHubCatalogueAppProcedure,
+		svc.CheckGitHubCatalogueApp,
+		connect.WithSchema(gitHubServiceMethods.ByName("CheckGitHubCatalogueApp")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/directoryroster.v1.GitHubService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GitHubServiceGetGitHubStatusProcedure:
@@ -383,6 +481,12 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 			gitHubServiceConfirmGitHubRemovalsHandler.ServeHTTP(w, r)
 		case GitHubServiceImportGitHubLinksProcedure:
 			gitHubServiceImportGitHubLinksHandler.ServeHTTP(w, r)
+		case GitHubServiceBeginGitHubCatalogueAppConnectProcedure:
+			gitHubServiceBeginGitHubCatalogueAppConnectHandler.ServeHTTP(w, r)
+		case GitHubServiceDisconnectGitHubCatalogueAppProcedure:
+			gitHubServiceDisconnectGitHubCatalogueAppHandler.ServeHTTP(w, r)
+		case GitHubServiceCheckGitHubCatalogueAppProcedure:
+			gitHubServiceCheckGitHubCatalogueAppHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -426,4 +530,16 @@ func (UnimplementedGitHubServiceHandler) ConfirmGitHubRemovals(context.Context, 
 
 func (UnimplementedGitHubServiceHandler) ImportGitHubLinks(context.Context, *connect.Request[v1.ImportGitHubLinksRequest]) (*connect.Response[v1.ImportGitHubLinksResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.ImportGitHubLinks is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) BeginGitHubCatalogueAppConnect(context.Context, *connect.Request[v1.BeginGitHubCatalogueAppConnectRequest]) (*connect.Response[v1.BeginGitHubCatalogueAppConnectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.BeginGitHubCatalogueAppConnect is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) DisconnectGitHubCatalogueApp(context.Context, *connect.Request[v1.DisconnectGitHubCatalogueAppRequest]) (*connect.Response[v1.DisconnectGitHubCatalogueAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.DisconnectGitHubCatalogueApp is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) CheckGitHubCatalogueApp(context.Context, *connect.Request[v1.CheckGitHubCatalogueAppRequest]) (*connect.Response[v1.CheckGitHubCatalogueAppResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.CheckGitHubCatalogueApp is not implemented"))
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/settings"
 	"github.com/truvity/access-roster/internal/version"
@@ -137,6 +138,12 @@ type ConsoleDeps struct {
 	// GitHubRunnerTiers are the runner tiers an operator may create an App
 	// for. Empty keeps no runner Apps, whatever the store.
 	GitHubRunnerTiers []string
+	// GitHubCatalogue is every App the deployment declares. Nil declares
+	// none.
+	GitHubCatalogue *catalogue.Catalogue
+	// GitHubCatalogueApps is where catalogue Apps are kept. Nil is a
+	// deployment keeping no state in Kubernetes, which can create none.
+	GitHubCatalogueApps GitHubCatalogueApps
 	// GitHubHTTP makes the calls to GitHub that connecting and
 	// disconnecting need. Nil is a client with a short timeout.
 	GitHubHTTP *http.Client
@@ -154,6 +161,8 @@ type ConsoleDeps struct {
 type Console struct {
 	deps       ConsoleDeps
 	connectors map[string]Connector
+	// catalogueSeen is what GitHub last said of each catalogue App.
+	catalogueSeen catalogueObservations
 }
 
 var (

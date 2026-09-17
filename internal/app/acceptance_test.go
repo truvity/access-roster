@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -275,6 +277,53 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 			t.Errorf("%s was accepted", tc.name)
 		}
 		t.Setenv(tc.key, "")
+	}
+}
+
+// A GitHub App catalogue that cannot be right stops the service at start:
+// an App created from it would hold permissions nothing here can change
+// afterwards, and a grant to a group nobody declares grants nobody.
+func TestAMalformedGitHubAppCatalogueIsRefusedAtStart(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	t.Setenv("GITHUB_APPS_CATALOGUE_FILE", write("level.yaml", "apps:\n  - id: renovate\n    org: example-org\n    permissions: {contents: owner}\n"))
+	if _, err := app.Load(); err == nil || !strings.Contains(err.Error(), "GITHUB_APPS_CATALOGUE_FILE") {
+		t.Errorf("a permission level GitHub does not have = %v", err)
+	}
+	t.Setenv("GITHUB_APPS_CATALOGUE_FILE", filepath.Join(dir, "absent.yaml"))
+	if _, err := app.Load(); err == nil {
+		t.Error("a catalogue file that is not there was accepted")
+	}
+
+	t.Setenv("GITHUB_APPS_CATALOGUE_FILE", write("grant.yaml", `
+apps:
+  - id: renovate
+    org: example-org
+    permissions: {contents: write}
+    grants:
+      - group: nobody:declares:this
+        repositories: ["*"]
+        permissions: {contents: read}
+`))
+	for k, v := range map[string]string{"DEMO": "1", "STORE": "memory", "ADMIN_PASSWORD": "recover-me"} {
+		t.Setenv(k, v)
+	}
+	cfg, err := app.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if assembled, err := app.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+		assembled.Close()
+		t.Error("a grant to a group the policy does not declare was accepted")
+	} else if !strings.Contains(err.Error(), "nobody:declares:this") {
+		t.Errorf("the refusal does not name the group: %v", err)
 	}
 }
 

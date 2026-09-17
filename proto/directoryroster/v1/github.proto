@@ -73,6 +73,124 @@ service GitHubService {
   // a connected organisation; a link the person made is never displaced.
   // Operator.
   rpc ImportGitHubLinks(ImportGitHubLinksRequest) returns (ImportGitHubLinksResponse);
+
+  // BeginGitHubCatalogueAppConnect starts creating an App the deployment
+  // declares in its catalogue, under the organisation the entry names: its
+  // manifest and where to post it, or — for an App already created and not
+  // yet installed — where to install it. Sets the flow's state cookie.
+  // Operator.
+  //
+  // An id the catalogue does not declare is refused, and so is an App
+  // already installed.
+  rpc BeginGitHubCatalogueAppConnect(BeginGitHubCatalogueAppConnectRequest) returns (BeginGitHubCatalogueAppConnectResponse);
+
+  // DisconnectGitHubCatalogueApp uninstalls a catalogue App, then forgets
+  // its record and key. The App itself stays on GitHub, for its owner to
+  // delete. Operator.
+  rpc DisconnectGitHubCatalogueApp(DisconnectGitHubCatalogueAppRequest) returns (DisconnectGitHubCatalogueAppResponse);
+
+  // CheckGitHubCatalogueApp asks GitHub again what one catalogue App and
+  // its installation hold, bypassing the short cache GetGitHubStatus reads
+  // through. Operator.
+  rpc CheckGitHubCatalogueApp(CheckGitHubCatalogueAppRequest) returns (CheckGitHubCatalogueAppResponse);
+}
+
+message BeginGitHubCatalogueAppConnectRequest {
+  // the App's id in the catalogue.
+  string id = 1;
+}
+
+message BeginGitHubCatalogueAppConnectResponse {
+  // where the browser goes next.
+  string url = 1;
+  // when set, the browser POSTs it as the form field `manifest` to url.
+  // Empty means url is an ordinary navigation to install the App.
+  string manifest = 2;
+}
+
+message DisconnectGitHubCatalogueAppRequest {
+  string id = 1;
+}
+
+message DisconnectGitHubCatalogueAppResponse {
+  // whether the installation was removed on GitHub. The App's record and
+  // key are forgotten either way.
+  bool uninstalled = 1;
+  // why it could not be, when it could not.
+  string detail = 2;
+  // where the organisation's owner deletes the App itself, which the API
+  // cannot do.
+  string app_settings_url = 3;
+}
+
+message CheckGitHubCatalogueAppRequest {
+  string id = 1;
+}
+
+message CheckGitHubCatalogueAppResponse {
+  GitHubCatalogueApp app = 1;
+}
+
+// GitHubCatalogueApp is one App the catalogue declares, or one created
+// from an entry the catalogue no longer declares, beside what GitHub says
+// of it. Never the key.
+message GitHubCatalogueApp {
+  // the App's id in the catalogue, which is also where it is kept.
+  string id = 1;
+  string org = 2;
+  // the name it is created with.
+  string name = 3;
+  string description = 4;
+  bool public = 5;
+  // all or selected: the repositories the installer is expected to choose.
+  string installation = 6;
+  // every permission declared or held, each with its declared level and
+  // what the App and its installation hold.
+  repeated GitHubAppPermission permissions = 7;
+  // the webhook events declared.
+  repeated string events = 8;
+  // which groups may ask for tokens of it, and for how much.
+  repeated GitHubAppGrant grants = 9;
+  // not_created, created, installed or drifted.
+  string state = 10;
+  string html_url = 11;
+  // each way GitHub differs from the catalogue, as a sentence.
+  repeated string drift = 12;
+  // why GitHub could not be asked, when it could not. The state is then
+  // what the record says.
+  string reason = 13;
+  int64 app_id = 14;
+  string app_slug = 15;
+  int64 installation_id = 16;
+  google.protobuf.Timestamp connected_at = 17;
+  string connected_by = 18;
+  // when GitHub was last asked.
+  google.protobuf.Timestamp checked_at = 19;
+  // all or selected, as installed on GitHub.
+  string repository_selection = 20;
+  // false for an App created from an entry the catalogue no longer
+  // declares: it can be disconnected and not created again.
+  bool declared = 21;
+}
+
+// GitHubAppPermission is one permission of a catalogue App: declared, on
+// the App, and accepted by its installation. Empty is none.
+message GitHubAppPermission {
+  string name = 1;
+  string declared = 2;
+  string app = 3;
+  string installation = 4;
+}
+
+// GitHubAppGrant is what one group may ask of a catalogue App.
+message GitHubAppGrant {
+  string group = 1;
+  // names or globs within the App's organisation; "*" is every one.
+  repeated string repositories = 2;
+  // the most a token may carry.
+  map<string, string> permissions = 3;
+  // whether the policy declares the group.
+  bool group_declared = 4;
 }
 
 message ConfirmGitHubRemovalsRequest {
@@ -208,6 +326,11 @@ message GetGitHubStatusResponse {
   repeated string runner_tiers = 8;
   // every runner App created, never with its key.
   repeated GitHubRunnerApp runner_apps = 9;
+  // every App the deployment's catalogue declares, and every one created
+  // from an entry it no longer declares, with its state on GitHub.
+  repeated GitHubCatalogueApp catalogue_apps = 10;
+  // false where this deployment keeps no catalogue Apps.
+  bool catalogue_available = 11;
 }
 
 // GitHubRunnerApp is the App one tier's runners register with in one

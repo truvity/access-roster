@@ -390,6 +390,30 @@ githubRunnerApps:
   # Empty creates none.
   tiers: []
 
+# A catalogue of GitHub Apps, declared as data and created by an operator
+# on the console's GitHub page (Apps, then Catalogue) with two clicks each:
+# create, then install. The service keeps every App in the Secret
+# `<release>-github-catalogue-apps`, an installed App as
+# `<id>.github_app_id`, `<id>.github_app_installation_id` and
+# `<id>.github_app_private_key` beside `<id>.record.json`. Read once at
+# start; a malformed entry stops the service. Needs
+# `directory.store: kubernetes`. See docs/connect/github-apps-catalogue.md.
+githubApps:
+  # Each entry:
+  #   - id: renovate               # [a-z0-9-], at most 32, unique; never changes
+  #     org: example-org           # the organisation the App is created under
+  #     name: example-org-renovate # optional; default <org>-<id>, at most 34
+  #     description: Dependency updates
+  #     public: false
+  #     permissions: {contents: write, pull_requests: write}
+  #     events: []                 # optional; the webhook stays inactive
+  #     installation: selected     # all | selected (default)
+  #     grants:                    # who may ask for tokens of it, and for how much
+  #       - group: all:platform:engineer
+  #         repositories: ["*"]
+  #         permissions: {contents: read}
+  catalogue: []
+
 # The audit trail: sign-ins, refusals, exchanges, revokes, connects, and
 # what a reporting component (the GitHub controller) did. Kept in S3 — the
 # durable record, and what the console's Audit page reads — and never in

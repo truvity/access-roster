@@ -1,0 +1,25 @@
+# A catalogue of GitHub Apps, for chart-lint: one App with a grant, one
+# with defaults. Rendered, then parsed by the service's own loader in
+# internal/app's tests.
+issuerURL: https://access.example
+githubApps:
+  catalogue:
+    - id: renovate
+      org: example-org
+      name: example-org-renovate
+      description: Dependency updates
+      public: false
+      permissions:
+        contents: write
+        pull_requests: write
+      events: [pull_request]
+      installation: all
+      grants:
+        - group: all:platform:engineer
+          repositories: ["*"]
+          permissions:
+            contents: read
+    - id: releases
+      org: example-org
+      permissions:
+        contents: write

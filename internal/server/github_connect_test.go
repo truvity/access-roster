@@ -77,6 +77,14 @@ type fakeGitHub struct {
 	pem         string
 	owner       string
 	uninstalled []string
+
+	mu sync.Mutex
+	// app and installed are the permissions the App and its installation
+	// 7 hold, as GET /app and GET /app/installations/7 answer; a nil
+	// installed is an installation removed on GitHub.
+	app, installed map[string]string
+	// reads counts those two calls.
+	reads int
 }
 
 func startFakeGitHub(t *testing.T) *fakeGitHub {
@@ -104,6 +112,28 @@ func startFakeGitHub(t *testing.T) *fakeGitHub {
 	})
 	mux.HandleFunc("GET /app/installations", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 7, "account": map[string]any{"login": "globex"}}})
+	})
+	mux.HandleFunc("GET /app", func(w http.ResponseWriter, _ *http.Request) {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		fake.reads++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": 42, "slug": "globex-access-roster", "html_url": "https://github.com/apps/globex-access-roster",
+			"owner": map[string]any{"login": fake.owner}, "permissions": fake.app,
+		})
+	})
+	mux.HandleFunc("GET /app/installations/{id}", func(w http.ResponseWriter, r *http.Request) {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		fake.reads++
+		if r.PathValue("id") != "7" || fake.installed == nil {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": 7, "account": map[string]any{"login": "globex"}, "permissions": fake.installed, "repository_selection": "selected",
+		})
 	})
 	mux.HandleFunc("DELETE /app/installations/{id}", func(w http.ResponseWriter, r *http.Request) {
 		fake.uninstalled = append(fake.uninstalled, r.PathValue("id"))

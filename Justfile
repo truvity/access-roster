@@ -215,6 +215,18 @@ chart-lint:
     # a pod that will not start.
     ! helm template access-issuer charts/access-issuer \
         --set issuerURL=https://access.example | grep -q 'CLUSTERS_FILE'
+    # A catalogue of GitHub Apps is a file the service reads once at start:
+    # rendered, mounted, named by one variable, and rolled out on change.
+    helm template t charts/access-issuer -f hack/access-issuer-catalogue.yaml > /tmp/access-issuer-catalogue.yaml
+    grep -q 'name: t-access-issuer-github-apps-catalogue$' /tmp/access-issuer-catalogue.yaml
+    grep -q 'checksum/github-apps-catalogue:' /tmp/access-issuer-catalogue.yaml
+    grep -A1 'name: GITHUB_APPS_CATALOGUE_FILE' /tmp/access-issuer-catalogue.yaml | grep -q 'value: /var/run/access-issuer/github-apps-catalogue.yaml'
+    test "$(yq 'select(.kind == "ConfigMap" and .metadata.name == "t-access-issuer-github-apps-catalogue") | .data["catalogue.yaml"] | from_yaml | .apps[0].grants[0].permissions.contents' /tmp/access-issuer-catalogue.yaml)" = "read"
+    # No catalogue, no file: a mount of nothing is a pod that will not start.
+    ! helm template t charts/access-issuer --set issuerURL=https://access.example | grep -q 'GITHUB_APPS_CATALOGUE_FILE\|github-apps-catalogue'
+    # A permission level GitHub does not have fails the render, not the pod.
+    ! helm template t charts/access-issuer -f hack/access-issuer-catalogue.yaml \
+        --set 'githubApps.catalogue[1].permissions.contents=owner' >/dev/null 2>&1
     # The TokenReview permission belongs to recovery and to nothing else.
     test "$(helm template access-issuer charts/access-issuer \
         --set issuerURL=https://access.example --set recovery.enabled=false \
