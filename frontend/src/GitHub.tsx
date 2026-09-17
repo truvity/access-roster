@@ -21,7 +21,7 @@ import Typography from "@mui/material/Typography";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 import { ago, at, github, reason } from "./api";
-import type { GetGitHubStatusResponse, GitHubOrganisation, GitHubRunnerApp } from "./gen/directoryroster/v1/github_pb";
+import type { GetGitHubStatusResponse, GitHubCatalogueApp, GitHubOrganisation, GitHubRunnerApp } from "./gen/directoryroster/v1/github_pb";
 import { countLabels, labelOf, linkPage, organisationNeeds, peopleOf, rowsOf, sentence, tooltipOf, type Row } from "./githubModel";
 import { useAsync } from "./hooks";
 import { go, paths } from "./router";
@@ -50,6 +50,15 @@ export function GitHubPage({ section, rest, operator, onDone }: Props & { sectio
       );
     } else if (tab === "organisations") {
       body = <OrganisationsList status={value} />;
+    } else if (tab === "apps" && rest[0] === "catalogue" && rest[1]) {
+      const app = value.catalogueApps.find((a) => a.id === rest[1]);
+      body = app ? (
+        <CatalogueAppPage app={app} operator={operator} onDone={onDone} reload={status.reload} />
+      ) : (
+        <Nothing>The catalogue declares no App {rest[1]}, and none was created from it.</Nothing>
+      );
+    } else if (tab === "apps" && rest[0] === "catalogue") {
+      body = <CataloguePage status={value} />;
     } else if (tab === "apps") {
       body = <AppsPage status={value} operator={operator} onDone={onDone} reload={status.reload} />;
     } else {
@@ -758,6 +767,20 @@ function AppsPage({ status, operator, onDone, reload }: Props & { status: GetGit
         </Section>
       ) : null}
 
+      {status.catalogueAvailable && status.catalogueApps.length ? (
+        <Section title="Catalogue" hint="Apps the deployment declares as data, each created and installed from its own page">
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack direction="row" sx={{ gap: 3, flexWrap: "wrap", alignItems: "center" }}>
+              <Count label="Declared" value={status.catalogueApps.filter((a) => a.declared).length} />
+              <Count label="Installed" value={status.catalogueApps.filter((a) => a.state === "installed").length} />
+              <Count label="Differ on GitHub" value={status.catalogueApps.filter((a) => a.state === "drifted").length} strong />
+              <Box sx={{ flexGrow: 1 }} />
+              <Ref to={paths.githubCatalogue()}>Open the catalogue</Ref>
+            </Stack>
+          </Paper>
+        </Section>
+      ) : null}
+
       {links.length ? (
         <Section title="Linked accounts" hint={`${linked} linked${attention ? `, ${attention} not counting` : ""}`}>
           <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
@@ -798,6 +821,336 @@ function AppsPage({ status, operator, onDone, reload }: Props & { status: GetGit
       ) : null}
     </Page>
   );
+}
+
+// --------------------------------------------------------------- catalogue
+
+/** Every App the catalogue declares, one row each: what it is and where it
+ *  stands. Its permissions, grants and actions are on its own page, so a
+ *  long catalogue stays a list. */
+function CataloguePage({ status }: { status: GetGitHubStatusResponse }) {
+  const apps = status.catalogueApps;
+  return (
+    <Page
+      title="Catalogue"
+      lede={
+        <>
+          GitHub Apps declared in the deployment&apos;s values (<Mono>githubApps.catalogue</Mono>). Each is created and installed by an owner of its
+          organisation in two clicks, and this service keeps its key. Back to <Ref to={paths.githubApps()}>Apps</Ref>.
+        </>
+      }
+    >
+      {!status.catalogueAvailable ? (
+        <Nothing>This deployment keeps no state in Kubernetes, so an App&apos;s key would not survive a restart.</Nothing>
+      ) : apps.length === 0 ? (
+        <Nothing>The catalogue declares no App. Declare one in githubApps.catalogue and roll the service out.</Nothing>
+      ) : (
+        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>App</TableCell>
+                <TableCell>Organisation</TableCell>
+                <TableCell>State</TableCell>
+                <TableCell>Installed on</TableCell>
+                <TableCell align="right">Permissions</TableCell>
+                <TableCell align="right">Grants</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {apps.map((app) => (
+                <TableRow key={app.id} hover>
+                  <TableCell>
+                    <Ref to={paths.githubCatalogueApp(app.id)} mono>
+                      {app.id}
+                    </Ref>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                      {app.declared ? app.description || app.name : "no longer declared"}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Mono>{app.org}</Mono>
+                  </TableCell>
+                  <TableCell>
+                    <State kind={catalogueKind(app.state)} title={app.reason || undefined} />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">{scopeName(app.repositorySelection || app.installation)}</Typography>
+                  </TableCell>
+                  <TableCell align="right">{app.permissions.filter((p) => p.declared).length}</TableCell>
+                  <TableCell align="right">{app.grants.length}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Page>
+  );
+}
+
+/** One catalogue App: what it may do beside what GitHub holds, who may ask
+ *  for its tokens, and the two clicks that create and install it. */
+function CatalogueAppPage({ app, operator, onDone, reload }: Props & { app: GitHubCatalogueApp; reload: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | undefined>();
+  const [checked, setChecked] = useState<GitHubCatalogueApp | undefined>();
+  const shown = checked && checked.id === app.id ? checked : app;
+  const settings = settingsURL(shown);
+  const drifted = shown.state === "drifted";
+
+  const act = async (work: () => Promise<void>) => {
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      await work();
+    } catch (error) {
+      setFailure(reason(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const begin = () =>
+    act(async () => {
+      const started = await github.beginGitHubCatalogueAppConnect({ id: app.id });
+      if (started.manifest) postManifest(started.url, started.manifest);
+      else window.location.href = started.url;
+    });
+  const recheck = () =>
+    act(async () => {
+      const answer = await github.checkGitHubCatalogueApp({ id: app.id });
+      setChecked(answer.app);
+    });
+  const disconnect = () =>
+    act(async () => {
+      const gone = await github.disconnectGitHubCatalogueApp({ id: app.id });
+      onDone(
+        `${app.id} is disconnected${gone.uninstalled ? " and uninstalled" : `. ${gone.detail}`}. The App itself stays on GitHub${
+          gone.appSettingsUrl ? `; its owner deletes it at ${gone.appSettingsUrl}` : ""
+        }.`,
+      );
+      setChecked(undefined);
+      reload();
+    });
+
+  const actions = !operator ? null : (
+    <>
+      {shown.state === "not_created" && shown.declared ? (
+        <Tooltip title={`Two clicks by an owner of ${shown.org}: create, then install.`}>
+          <span>
+            <Button size="small" variant="outlined" disabled={busy} onClick={() => void begin()}>
+              Create
+            </Button>
+          </span>
+        </Tooltip>
+      ) : null}
+      {shown.state === "created" && shown.declared ? (
+        <Button size="small" variant="outlined" disabled={busy} onClick={() => void begin()}>
+          Install
+        </Button>
+      ) : null}
+      {shown.state !== "not_created" && shown.declared ? (
+        <Tooltip title="Ask GitHub again now, rather than show what it said in the last minute.">
+          <span>
+            <Button size="small" disabled={busy} onClick={() => void recheck()}>
+              Re-check
+            </Button>
+          </span>
+        </Tooltip>
+      ) : null}
+      {shown.state !== "not_created" ? (
+        <Tooltip title="Uninstall the App and forget its key here. The App stays on GitHub for its owner to delete; nothing minted from it works once uninstalled.">
+          <span>
+            <Button size="small" color="warning" disabled={busy} onClick={() => void disconnect()}>
+              Disconnect
+            </Button>
+          </span>
+        </Tooltip>
+      ) : null}
+    </>
+  );
+
+  return (
+    <Page
+      title={shown.id}
+      mono
+      lede={shown.description || `A GitHub App in ${shown.org}, declared in the catalogue.`}
+      actions={actions}
+      facts={[
+        { label: "State", value: <State kind={catalogueKind(shown.state)} /> },
+        { label: "Organisation", value: <Mono>{shown.org}</Mono> },
+        { label: "Name on GitHub", value: shown.appSlug ? appLink(shown.appSlug, shown.htmlUrl) : <Mono>{shown.name}</Mono> },
+        { label: "Visibility", value: shown.declared ? (shown.public ? "public: any account may install it" : "private: installs only on its organisation") : undefined },
+        {
+          label: "Installed on",
+          value: shown.declared ? `${scopeName(shown.installation)} declared${shown.repositorySelection ? `, ${scopeName(shown.repositorySelection)} on GitHub` : ""}` : undefined,
+        },
+        { label: "Created", value: shown.appSlug ? since(shown.connectedAt, shown.connectedBy) : undefined },
+        { label: "Checked", value: at(shown.checkedAt) ? ago(at(shown.checkedAt)) : undefined },
+      ]}
+    >
+      <Stack sx={{ gap: 2, mb: 4 }}>
+        <Failure error={failure} />
+        {shown.reason ? <Alert severity="warning">{shown.reason}</Alert> : null}
+        {drifted ? (
+          <Alert severity="warning">
+            <strong>GitHub differs from the catalogue.</strong> GitHub has no API to change an App&apos;s permissions or events, so an owner of{" "}
+            {shown.org} edits them{" "}
+            {settings ? (
+              <a href={settings} target="_blank" rel="noreferrer">
+                in the App&apos;s settings
+              </a>
+            ) : (
+              "in the App's settings"
+            )}{" "}
+            — or the catalogue changes to match — and then Re-check.
+            <Box component="ul" sx={{ mt: 1, mb: 0, pl: 3 }}>
+              {shown.drift.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </Box>
+          </Alert>
+        ) : null}
+      </Stack>
+
+      <Section title="Permissions" hint={shown.state === "not_created" ? "what the App will ask for" : "declared, beside what the App and its installation hold on GitHub"}>
+        {shown.permissions.length === 0 ? (
+          <Nothing>No permission is declared or held.</Nothing>
+        ) : (
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Permission</TableCell>
+                  <TableCell>Declared</TableCell>
+                  {shown.state !== "not_created" ? <TableCell>App</TableCell> : null}
+                  {shown.installationId ? <TableCell>Installation</TableCell> : null}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {shown.permissions.map((p) => {
+                  const differs = shown.state !== "not_created" && p.app !== p.declared && !(p.name === "metadata" && !p.declared && p.app === "read");
+                  return (
+                    <TableRow key={p.name} hover>
+                      <TableCell>
+                        <Mono>{p.name}</Mono>
+                      </TableCell>
+                      <TableCell>{p.declared || "—"}</TableCell>
+                      {shown.state !== "not_created" ? (
+                        <TableCell>
+                          <Typography variant="body2" color={differs ? "warning.main" : undefined} sx={{ fontWeight: differs ? 600 : undefined }}>
+                            {p.app || "—"}
+                          </Typography>
+                        </TableCell>
+                      ) : null}
+                      {shown.installationId ? (
+                        <TableCell>
+                          <Typography variant="body2" color={p.installation !== p.app ? "warning.main" : undefined}>
+                            {p.installation || "—"}
+                          </Typography>
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+        {shown.events.length ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Events: <Mono>{shown.events.join(", ")}</Mono> — the webhook stays inactive.
+          </Typography>
+        ) : null}
+      </Section>
+
+      {shown.declared ? (
+        <Section title="Grants" hint="who may ask for a token of this App, for which repositories, and at most with what">
+          {shown.grants.length === 0 ? (
+            <Nothing>No group may ask for a token of this App.</Nothing>
+          ) : (
+            <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Group</TableCell>
+                    <TableCell>Repositories</TableCell>
+                    <TableCell>At most</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {shown.grants.map((grant, i) => (
+                    <TableRow key={`${grant.group}:${i}`} hover>
+                      <TableCell>
+                        <Ref to={paths.group(grant.group)} mono>
+                          {grant.group}
+                        </Ref>
+                        {!grant.groupDeclared ? (
+                          <Typography variant="caption" color="warning.main" sx={{ display: "block" }}>
+                            the policy declares no such group
+                          </Typography>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>
+                        <Mono>{grant.repositories.map((r) => (r === "*" ? `every repository in ${shown.org}` : r)).join(", ")}</Mono>
+                      </TableCell>
+                      <TableCell>
+                        <Mono>
+                          {Object.entries(grant.permissions)
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([name, level]) => `${name}: ${level}`)
+                            .join(", ")}
+                        </Mono>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Section>
+      ) : null}
+
+      {shown.installationId ? (
+        <Section title="Where the key is" hint="for a deployment copying it, for example with an External Secrets PushSecret">
+          <Facts
+            items={[
+              { label: "Secret", value: <Mono>{"<release>-github-catalogue-apps"}</Mono> },
+              {
+                label: "Keys",
+                value: <Mono>{["github_app_id", "github_app_installation_id", "github_app_private_key", "record.json"].map((k) => `${shown.id}.${k}`).join(", ")}</Mono>,
+              },
+              { label: "App id", value: String(shown.appId) },
+              { label: "Installation id", value: String(shown.installationId) },
+            ]}
+          />
+        </Section>
+      ) : null}
+    </Page>
+  );
+}
+
+function catalogueKind(state: string): StateKind {
+  switch (state) {
+    case "installed":
+      return "installed";
+    case "created":
+      return "created";
+    case "drifted":
+      return "drifted";
+    default:
+      return "not-created";
+  }
+}
+
+function scopeName(scope: string): string {
+  return ({ all: "all repositories", selected: "selected repositories" } as Record<string, string>)[scope] ?? scope;
+}
+
+/** Where an owner edits the App: the organisation's settings page for it,
+ *  which is also where it is deleted. */
+function settingsURL(app: GitHubCatalogueApp): string {
+  return app.appSlug ? `https://github.com/organizations/${encodeURIComponent(app.org)}/settings/apps/${encodeURIComponent(app.appSlug)}` : "";
 }
 
 // ----------------------------------------------------------------- helpers

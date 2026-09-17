@@ -76,6 +76,9 @@ export const paths = {
   githubOrganisation: (org: string) => `/github/organisations/${encodeURIComponent(org)}`,
   githubTeam: (org: string, team: string) => `/github/organisations/${encodeURIComponent(org)}/teams/${encodeURIComponent(team)}`,
   githubApps: () => "/github/apps",
+  // Apps the deployment declares as data, each a page of its own.
+  githubCatalogue: () => "/github/apps/catalogue",
+  githubCatalogueApp: (id: string) => `/github/apps/catalogue/${encodeURIComponent(id)}`,
   // Every open session in the installation (INF-682). Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",
