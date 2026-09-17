@@ -346,7 +346,7 @@ function PageFor({
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "audit":
-      return <AuditPage />;
+      return <AuditPage query={query} />;
     case "settings":
       return <SettingsView />;
     default:

@@ -46,6 +46,7 @@ import (
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
+	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/link"
@@ -574,6 +575,10 @@ type App struct {
 	// catalogueApps is where created catalogue Apps are kept, nil where
 	// the deployment keeps no state in Kubernetes.
 	catalogueApps server.GitHubCatalogueApps
+	// githubMints is the last installation tokens asked of each App: made
+	// here, read by the console's Apps pages, written by the half that
+	// mints them. Nil where the deployment declares no App.
+	githubMints *mints.Ring
 }
 
 // Audit is the service's one recorder, for the half assembled after this
@@ -625,6 +630,12 @@ func (a *App) GitHubCatalogue() *catalogue.Catalogue { return a.cfg.githubCatalo
 // kept, or nil where the deployment keeps none: what the issuer half
 // reads an App's key from to mint a token.
 func (a *App) GitHubCatalogueApps() server.GitHubCatalogueApps { return a.catalogueApps }
+
+// GitHubMints is the ring of recent installation token requests, for the
+// half that mints them to write into. The console reads the same ring:
+// an App's page shows what this service minted without asking the audit
+// trail for a listing narrowed to one App, which is a scan.
+func (a *App) GitHubMints() *mints.Ring { return a.githubMints }
 
 // Readiness is the snapshot store as a dependency, for a caller that
 // assembles a health endpoint of its own. The merged service has one
@@ -780,6 +791,19 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		}
 	}
 
+	// The last installation tokens asked of each App, kept beside the half
+	// that mints them so that an App's page need not ask the audit trail
+	// for a listing narrowed to one App -- which is a scan of every hour's
+	// objects, and outlived a gateway's patience. Only where an App is
+	// declared: nothing else can mint one.
+	var githubMints *mints.Ring
+	if cfg.githubCatalogue != nil && len(cfg.githubCatalogue.Apps) > 0 {
+		githubMints = mints.New(0, time.Now())
+		if cfg.demo {
+			demo.SeedGitHubMints(githubMints, time.Now())
+		}
+	}
+
 	console, err := server.NewConsole(ctx, server.ConsoleDeps{
 		Hub:          directory,
 		Authorizer:   authorizer,
@@ -804,6 +828,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHubRunnerTiers:   cfg.githubRunnerTiers,
 		GitHubCatalogue:     cfg.githubCatalogue,
 		GitHubCatalogueApps: githubCatalogueApps(kept.githubCatalogueApps, cfg.demo, demoAppKey),
+		GitHubMints:         githubMints,
 		GitHubHTTP:          demoGitHub(cfg.demo && kept.githubCatalogueApps == nil),
 		Audit:               recorder,
 		AuditSink:           auditSink,
@@ -879,6 +904,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		audit:   recorder,
 
 		catalogueApps: githubCatalogueApps(kept.githubCatalogueApps, cfg.demo, demoAppKey),
+		githubMints:   githubMints,
 	}, nil
 }
 

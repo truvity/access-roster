@@ -59,6 +59,9 @@ export function go(to: string) {
   window.location.hash = to;
 }
 
+/** How the Audit page can be narrowed, and what its address carries. */
+export type AuditFilters = { source?: string; kind?: string; subject?: string; target?: string };
+
 /** Two hierarchies, joined by the membership. The identity side is where
  *  people come from: a directory, its groups, its accounts, and the
  *  rules that put them into an internal group. The access side is what
@@ -97,6 +100,13 @@ export const paths = {
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",
   // What happened lately, installation-wide. Operator-only.
-  audit: () => "/audit",
+  //
+  // A narrowing is part of the address, not a state the page happens to
+  // be in: an App's page links here filtered to its own tokens, and an
+  // operator who narrows the page by hand gets a link they can send.
+  audit: (filters?: AuditFilters) => {
+    const query = new URLSearchParams(Object.entries(filters ?? {}).filter(([, value]) => value) as [string, string][]).toString();
+    return query ? `/audit?${query}` : "/audit";
+  },
   settings: () => "/settings",
 };

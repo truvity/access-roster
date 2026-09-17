@@ -23,6 +23,15 @@ service GitHubService {
   // Viewer.
   rpc GetGitHubApp(GetGitHubAppRequest) returns (GetGitHubAppResponse);
 
+  // ListGitHubAppTokens returns the last installation tokens asked of one
+  // App, minted or refused, newest first. Operator: a request names who
+  // asked for it.
+  //
+  // This service's own memory of them, kept since it started and bounded
+  // per App — not the audit trail, which holds every request for as long
+  // as the bucket does and is one link away on an App's page.
+  rpc ListGitHubAppTokens(ListGitHubAppTokensRequest) returns (ListGitHubAppTokensResponse);
+
   // BeginGitHubAppConnect starts creating any one of those Apps, or
   // finishing installing one created before: its manifest and where to
   // post it, or where to install it. Sets the flow's state cookie.
@@ -336,6 +345,46 @@ message DisconnectGitHubAppResponse {
   int32 invalidated = 4;
 }
 
+// GitHubAppToken is one installation token asked of an App, minted or
+// refused. **Never the token**, nor any part of it.
+message GitHubAppToken {
+  // when it was asked for.
+  google.protobuf.Timestamp at = 1;
+  // who asked: the proof's subject.
+  string subject = 2;
+  // how they proved it: ci, workload or person.
+  string proof = 3;
+  // the internal group whose grant it was minted under. Empty where no
+  // grant was chosen, which is what a refusal before the decision looks
+  // like.
+  string grant = 4;
+  // what GitHub granted, or what was asked for when refused. Empty is
+  // every repository the installation holds.
+  repeated string repositories = 5;
+  // `name:level`, space separated, as a request spells them.
+  string permissions = 6;
+  // ok, refused or failed.
+  string outcome = 7;
+  // why it was refused or failed: the description the caller was given.
+  string reason = 8;
+}
+
+message ListGitHubAppTokensRequest {
+  // the App's id, as ListGitHubApps gives it.
+  string id = 1;
+}
+
+message ListGitHubAppTokensResponse {
+  // newest first, at most `kept` of them.
+  repeated GitHubAppToken tokens = 1;
+  // how many this service keeps per App.
+  int32 kept = 2;
+  // since when it has been keeping them: this replica's start. Nothing
+  // asked for before that is here, and nothing here survives a restart —
+  // the audit trail is the record.
+  google.protobuf.Timestamp kept_since = 3;
+}
+
 message CheckGitHubAppRequest {
   string id = 1;
 }
@@ -358,6 +407,11 @@ message GitHubGroupGrant {
   repeated string repositories = 4;
   // the most a token may carry.
   map<string, string> permissions = 5;
+  // when a token was last minted under this grant, where this service
+  // still remembers: its memory of the last tokens, not the trail, so it
+  // is empty after a restart and never means "never". Absent for a grant
+  // nothing has used.
+  google.protobuf.Timestamp last_minted = 6;
 }
 
 message BeginGitHubCatalogueAppConnectRequest {

@@ -39,6 +39,9 @@ const (
 	// GitHubServiceGetGitHubAppProcedure is the fully-qualified name of the GitHubService's
 	// GetGitHubApp RPC.
 	GitHubServiceGetGitHubAppProcedure = "/directoryroster.v1.GitHubService/GetGitHubApp"
+	// GitHubServiceListGitHubAppTokensProcedure is the fully-qualified name of the GitHubService's
+	// ListGitHubAppTokens RPC.
+	GitHubServiceListGitHubAppTokensProcedure = "/directoryroster.v1.GitHubService/ListGitHubAppTokens"
 	// GitHubServiceBeginGitHubAppConnectProcedure is the fully-qualified name of the GitHubService's
 	// BeginGitHubAppConnect RPC.
 	GitHubServiceBeginGitHubAppConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubAppConnect"
@@ -97,6 +100,14 @@ type GitHubServiceClient interface {
 	// GetGitHubApp returns one App by the id ListGitHubApps gives it.
 	// Viewer.
 	GetGitHubApp(context.Context, *connect.Request[v1.GetGitHubAppRequest]) (*connect.Response[v1.GetGitHubAppResponse], error)
+	// ListGitHubAppTokens returns the last installation tokens asked of one
+	// App, minted or refused, newest first. Operator: a request names who
+	// asked for it.
+	//
+	// This service's own memory of them, kept since it started and bounded
+	// per App — not the audit trail, which holds every request for as long
+	// as the bucket does and is one link away on an App's page.
+	ListGitHubAppTokens(context.Context, *connect.Request[v1.ListGitHubAppTokensRequest]) (*connect.Response[v1.ListGitHubAppTokensResponse], error)
 	// BeginGitHubAppConnect starts creating any one of those Apps, or
 	// finishing installing one created before: its manifest and where to
 	// post it, or where to install it. Sets the flow's state cookie.
@@ -241,6 +252,12 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(gitHubServiceMethods.ByName("GetGitHubApp")),
 			connect.WithClientOptions(opts...),
 		),
+		listGitHubAppTokens: connect.NewClient[v1.ListGitHubAppTokensRequest, v1.ListGitHubAppTokensResponse](
+			httpClient,
+			baseURL+GitHubServiceListGitHubAppTokensProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("ListGitHubAppTokens")),
+			connect.WithClientOptions(opts...),
+		),
 		beginGitHubAppConnect: connect.NewClient[v1.BeginGitHubAppConnectRequest, v1.BeginGitHubAppConnectResponse](
 			httpClient,
 			baseURL+GitHubServiceBeginGitHubAppConnectProcedure,
@@ -338,6 +355,7 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 type gitHubServiceClient struct {
 	listGitHubApps                 *connect.Client[v1.ListGitHubAppsRequest, v1.ListGitHubAppsResponse]
 	getGitHubApp                   *connect.Client[v1.GetGitHubAppRequest, v1.GetGitHubAppResponse]
+	listGitHubAppTokens            *connect.Client[v1.ListGitHubAppTokensRequest, v1.ListGitHubAppTokensResponse]
 	beginGitHubAppConnect          *connect.Client[v1.BeginGitHubAppConnectRequest, v1.BeginGitHubAppConnectResponse]
 	disconnectGitHubApp            *connect.Client[v1.DisconnectGitHubAppRequest, v1.DisconnectGitHubAppResponse]
 	checkGitHubApp                 *connect.Client[v1.CheckGitHubAppRequest, v1.CheckGitHubAppResponse]
@@ -363,6 +381,11 @@ func (c *gitHubServiceClient) ListGitHubApps(ctx context.Context, req *connect.R
 // GetGitHubApp calls directoryroster.v1.GitHubService.GetGitHubApp.
 func (c *gitHubServiceClient) GetGitHubApp(ctx context.Context, req *connect.Request[v1.GetGitHubAppRequest]) (*connect.Response[v1.GetGitHubAppResponse], error) {
 	return c.getGitHubApp.CallUnary(ctx, req)
+}
+
+// ListGitHubAppTokens calls directoryroster.v1.GitHubService.ListGitHubAppTokens.
+func (c *gitHubServiceClient) ListGitHubAppTokens(ctx context.Context, req *connect.Request[v1.ListGitHubAppTokensRequest]) (*connect.Response[v1.ListGitHubAppTokensResponse], error) {
+	return c.listGitHubAppTokens.CallUnary(ctx, req)
 }
 
 // BeginGitHubAppConnect calls directoryroster.v1.GitHubService.BeginGitHubAppConnect.
@@ -452,6 +475,14 @@ type GitHubServiceHandler interface {
 	// GetGitHubApp returns one App by the id ListGitHubApps gives it.
 	// Viewer.
 	GetGitHubApp(context.Context, *connect.Request[v1.GetGitHubAppRequest]) (*connect.Response[v1.GetGitHubAppResponse], error)
+	// ListGitHubAppTokens returns the last installation tokens asked of one
+	// App, minted or refused, newest first. Operator: a request names who
+	// asked for it.
+	//
+	// This service's own memory of them, kept since it started and bounded
+	// per App — not the audit trail, which holds every request for as long
+	// as the bucket does and is one link away on an App's page.
+	ListGitHubAppTokens(context.Context, *connect.Request[v1.ListGitHubAppTokensRequest]) (*connect.Response[v1.ListGitHubAppTokensResponse], error)
 	// BeginGitHubAppConnect starts creating any one of those Apps, or
 	// finishing installing one created before: its manifest and where to
 	// post it, or where to install it. Sets the flow's state cookie.
@@ -592,6 +623,12 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(gitHubServiceMethods.ByName("GetGitHubApp")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gitHubServiceListGitHubAppTokensHandler := connect.NewUnaryHandler(
+		GitHubServiceListGitHubAppTokensProcedure,
+		svc.ListGitHubAppTokens,
+		connect.WithSchema(gitHubServiceMethods.ByName("ListGitHubAppTokens")),
+		connect.WithHandlerOptions(opts...),
+	)
 	gitHubServiceBeginGitHubAppConnectHandler := connect.NewUnaryHandler(
 		GitHubServiceBeginGitHubAppConnectProcedure,
 		svc.BeginGitHubAppConnect,
@@ -688,6 +725,8 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 			gitHubServiceListGitHubAppsHandler.ServeHTTP(w, r)
 		case GitHubServiceGetGitHubAppProcedure:
 			gitHubServiceGetGitHubAppHandler.ServeHTTP(w, r)
+		case GitHubServiceListGitHubAppTokensProcedure:
+			gitHubServiceListGitHubAppTokensHandler.ServeHTTP(w, r)
 		case GitHubServiceBeginGitHubAppConnectProcedure:
 			gitHubServiceBeginGitHubAppConnectHandler.ServeHTTP(w, r)
 		case GitHubServiceDisconnectGitHubAppProcedure:
@@ -733,6 +772,10 @@ func (UnimplementedGitHubServiceHandler) ListGitHubApps(context.Context, *connec
 
 func (UnimplementedGitHubServiceHandler) GetGitHubApp(context.Context, *connect.Request[v1.GetGitHubAppRequest]) (*connect.Response[v1.GetGitHubAppResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.GetGitHubApp is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) ListGitHubAppTokens(context.Context, *connect.Request[v1.ListGitHubAppTokensRequest]) (*connect.Response[v1.ListGitHubAppTokensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.ListGitHubAppTokens is not implemented"))
 }
 
 func (UnimplementedGitHubServiceHandler) BeginGitHubAppConnect(context.Context, *connect.Request[v1.BeginGitHubAppConnectRequest]) (*connect.Response[v1.BeginGitHubAppConnectResponse], error) {

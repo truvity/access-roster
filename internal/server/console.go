@@ -22,6 +22,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
+	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/settings"
 	"github.com/truvity/access-roster/internal/version"
@@ -144,6 +145,11 @@ type ConsoleDeps struct {
 	// GitHubCatalogueApps is where catalogue Apps are kept. Nil is a
 	// deployment keeping no state in Kubernetes, which can create none.
 	GitHubCatalogueApps GitHubCatalogueApps
+	// GitHubMints is the last installation tokens asked of each App, kept
+	// by the half of this service that mints them. Nil is a deployment
+	// that mints none, or one whose issuer is another process; an App's
+	// page then says it keeps none rather than showing an empty table.
+	GitHubMints *mints.Ring
 	// GitHubHTTP makes the calls to GitHub that connecting and
 	// disconnecting need. Nil is a client with a short timeout.
 	GitHubHTTP *http.Client

@@ -29,4 +29,20 @@ describe("parse", () => {
   it("keeps renamed views", () => {
     expect(parse("#/matchers").view).toBe("rules");
   });
+
+  it("opens the Audit page narrowed to one App's tokens", () => {
+    // The link an App's page offers. It is an address, so it can be
+    // sent to somebody: the page opens already narrowed.
+    const to = paths.audit({ kind: "github.token.minted", target: "github-app:release-bot" });
+    const route = parse(`#${to}`);
+    expect(route.view).toBe("audit");
+    expect(route.query.get("kind")).toBe("github.token.minted");
+    expect(route.query.get("target")).toBe("github-app:release-bot");
+  });
+
+  it("leaves the Audit page's address bare when nothing narrows it", () => {
+    expect(paths.audit()).toBe("/audit");
+    expect(paths.audit({ kind: "", target: "" })).toBe("/audit");
+    expect(parse("#/audit").query.get("kind")).toBeNull();
+  });
 });

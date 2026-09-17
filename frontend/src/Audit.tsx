@@ -16,11 +16,29 @@ import Typography from "@mui/material/Typography";
 
 import { ago, at, audit, reason } from "./api";
 import type { AuditEvent } from "./gen/directoryroster/v1/audit_pb";
+import { go, paths } from "./router";
 import { Failure, Loading, Mono, Nothing, Page, State } from "./ui";
 
 type Filters = { source: string; kind: string; subject: string; target: string };
 
-const empty: Filters = { source: "", kind: "", subject: "", target: "" };
+/** The narrowing in the address. The page is opened narrowed — from an
+ *  App's recent tokens, say — and narrowing it by hand changes the
+ *  address, so what an operator is looking at is always a link they can
+ *  send. */
+function fromQuery(query?: URLSearchParams): Filters {
+  return {
+    source: query?.get("source") ?? "",
+    kind: query?.get("kind") ?? "",
+    subject: query?.get("subject") ?? "",
+    target: query?.get("target") ?? "",
+  };
+}
+
+/** One filter as an address carries it, and the key a load is keyed on:
+ *  two filters that read the same are the same listing. */
+function queryOf(filters: Filters): string {
+  return paths.audit(filters);
+}
 
 /** What happened lately, in the whole installation.
  *
@@ -28,9 +46,10 @@ const empty: Filters = { source: "", kind: "", subject: "", target: "" };
  *  the console's connects and disconnects; and what a reporting component
  *  says it did, beside the identity it proved. Operator-only, because it
  *  names every sign-in. Capped — the log holds every event for good. */
-export function AuditPage() {
-  const [draft, setDraft] = useState<Filters>(empty);
-  const [filters, setFilters] = useState<Filters>(empty);
+export function AuditPage({ query }: { query?: URLSearchParams }) {
+  const asked = fromQuery(query);
+  const [draft, setDraft] = useState<Filters>(asked);
+  const [filters, setFilters] = useState<Filters>(asked);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [cursor, setCursor] = useState("");
   const [loading, setLoading] = useState(true);
@@ -50,8 +69,20 @@ export function AuditPage() {
     }
   };
 
+  // Keyed on what the filters SAY rather than on the object: applying
+  // the same narrowing twice — by pressing Show, or by following the
+  // link already open — is one listing, not two calls.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => void load("", true), [filters]);
+  useEffect(() => void load("", true), [queryOf(filters)]);
+
+  // The address changing is what narrows the page, whichever end it
+  // changed at: a link followed from an App, or Show pressed here.
+  const address = queryOf(asked);
+  useEffect(() => {
+    setDraft(asked);
+    setFilters(asked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   return (
     <Page
@@ -65,6 +96,7 @@ export function AuditPage() {
         onSubmit={(e) => {
           e.preventDefault();
           setFilters(draft);
+          go(paths.audit(draft));
         }}
       >
         <TextField select size="small" label="Source" value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} sx={{ minWidth: 160 }}>
@@ -80,6 +112,11 @@ export function AuditPage() {
         <Button type="submit" variant="outlined" size="small">
           Show
         </Button>
+        {address !== paths.audit() ? (
+          <Button variant="text" size="small" onClick={() => go(paths.audit())}>
+            Clear
+          </Button>
+        ) : null}
       </Stack>
 
       <Loading busy={loading} />

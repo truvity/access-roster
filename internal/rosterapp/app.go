@@ -131,8 +131,10 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	// Installation tokens for catalogue Apps are minted at the issuer's
 	// token endpoint, from the keys the console created each App with:
-	// the same catalogue, and the same Secret, in the same process.
-	apps := issuer.GitHubApps{Catalogue: directory.GitHubCatalogue()}
+	// the same catalogue, and the same Secret, in the same process. The
+	// ring of recent requests is one more thing both halves share: this
+	// one writes it, the console's Apps pages read it.
+	apps := issuer.GitHubApps{Catalogue: directory.GitHubCatalogue(), Recent: directory.GitHubMints()}
 	if store := directory.GitHubCatalogueApps(); store != nil {
 		apps.Store = store
 	}

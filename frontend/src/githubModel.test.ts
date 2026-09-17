@@ -10,7 +10,21 @@ import {
   GitHubAppSchema,
   GitHubTeamStatusSchema,
 } from "./gen/directoryroster/v1/github_pb";
-import { appView, atMost, feedsOnlyItself, fixSentence, githubCell, groupApps, organisationNeeds, permissionDiffers, sentence, summaryOf } from "./githubModel";
+import {
+  appView,
+  atMost,
+  feedsOnlyItself,
+  fixSentence,
+  githubCell,
+  groupApps,
+  organisationNeeds,
+  permissionDiffers,
+  recentTokensEmpty,
+  recentTokensKept,
+  recentTokensProblem,
+  sentence,
+  summaryOf,
+} from "./githubModel";
 
 type AppInit = MessageInitShape<typeof GitHubAppSchema>;
 
@@ -215,5 +229,38 @@ describe("the People list's GitHub column", () => {
     expect(githubCell("", false).kind).toBe("unknown");
     expect(githubCell("ada-north", false).kind).toBe("unknown");
     expect(githubCell("", false).title).toBe("Whether a GitHub account is linked could not be read.");
+  });
+});
+
+describe("an App's recent tokens, when there are none to show", () => {
+  it("says nothing has been asked for SINCE THE SERVICE STARTED", () => {
+    // The difference matters: what this service keeps is its own memory
+    // of the last requests, so "no token has been asked for" on its own
+    // would be a claim about all time that it cannot make.
+    expect(recentTokensEmpty("3h ago")).toBe("No token has been asked for since this service started, 3h ago.");
+  });
+
+  it("says only what it knows where it is not told since when", () => {
+    expect(recentTokensEmpty("")).toBe("No token has been asked for yet.");
+  });
+
+  it("says what could not be read, in words and never as a code", () => {
+    const said = recentTokensProblem("this deployment mints no installation tokens here, so it keeps none to show");
+    expect(said).toBe("Recent tokens could not be read: this deployment mints no installation tokens here, so it keeps none to show.");
+    expect(said).not.toMatch(/\[[a-z_]+\]/);
+  });
+
+  it("does not end a reason that already ends in a full stop with two", () => {
+    expect(recentTokensProblem("the API server is not answering.")).toBe("Recent tokens could not be read: the API server is not answering.");
+  });
+
+  it("still says something when the failure said nothing", () => {
+    expect(recentTokensProblem("  ")).toBe("Recent tokens could not be read: the reason is not known.");
+  });
+
+  it("says under the table that a restart forgets them", () => {
+    expect(recentTokensKept("2h ago")).toContain("a restart forgets them");
+    expect(recentTokensKept("2h ago")).toContain("2h ago");
+    expect(recentTokensKept("")).toBe("Kept by this service; a restart forgets them.");
   });
 });

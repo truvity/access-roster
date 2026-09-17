@@ -9,7 +9,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, adds, forHowLong, matcherKind, people as peopleCount, personName } from "./api";
+import { access, adds, ago, at, forHowLong, matcherKind, people as peopleCount, personName } from "./api";
 import { atMost, repositoryWords } from "./githubModel";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
@@ -233,7 +233,9 @@ export function Group({ name }: { name: string }) {
                 {m.grant.appName}
               </Ref>
             )}
-            secondary={(m) => `${repositoryWords(m.grant.repositories, m.grant.org)} · at most ${atMost(m.grant.permissions)}`}
+            secondary={(m) =>
+              `${repositoryWords(m.grant.repositories, m.grant.org)} · at most ${atMost(m.grant.permissions)}${lastMinted(at(m.grant.lastMinted))}`
+            }
             empty=""
           />
         </Section>
@@ -262,4 +264,14 @@ export function Group({ name }: { name: string }) {
       ) : null}
     </Page>
   );
+}
+
+/** When the grant was last used, where this service still remembers it.
+ *
+ *  It comes from the same ring an App's *Recent tokens* reads, so it
+ *  costs the group's page nothing. Absent means nothing is remembered —
+ *  a restart forgets them — and never "never", which would say the
+ *  grant is unused when it may be the busiest one here. */
+function lastMinted(when?: Date): string {
+  return when ? ` · last minted ${ago(when)}` : "";
 }
