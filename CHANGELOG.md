@@ -1,3 +1,11 @@
+## v1.11.1
+
+- **The audit log line is safe on every branch, not only the typed ones.**
+  A field of a type the line does not expect is now rendered and escaped
+  like any other caller-supplied value instead of being logged as is. No
+  field takes that path today; the line no longer depends on that staying
+  true.
+
 ## v1.11.0
 
 - **A catalogue of GitHub Apps, created and installed from the console.**
