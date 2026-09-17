@@ -2,7 +2,7 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 
 import { GetGitHubStatusResponseSchema, GitHubCatalogueAppSchema, GitHubTeamStatusSchema } from "./gen/directoryroster/v1/github_pb";
-import { appsOf, atMost, feedsOnlyItself, fixSentence, groupApps, keyLocation, organisationNeeds, permissionDiffers, sentence, summaryOf } from "./githubModel";
+import { appsOf, atMost, feedsOnlyItself, fixSentence, githubCell, groupApps, keyLocation, organisationNeeds, permissionDiffers, sentence, summaryOf } from "./githubModel";
 
 type StatusInit = MessageInitShape<typeof GetGitHubStatusResponseSchema>;
 type CatalogueInit = MessageInitShape<typeof GitHubCatalogueAppSchema>;
@@ -233,5 +233,32 @@ describe("catalogueView", () => {
   it("carries the reason GitHub could not be asked into the exact state", () => {
     const app = byId(status({ catalogueApps: [tokensApp({ id: "x", state: "installed", appSlug: "x", reason: "GitHub could not be asked" })] })).get("x");
     expect(app?.exact).toBe("installed: GitHub could not be asked");
+  });
+});
+
+describe("the People list's GitHub column", () => {
+  it("links a linked account to its page on GitHub", () => {
+    expect(githubCell("ada-north", true)).toEqual({
+      kind: "linked",
+      login: "ada-north",
+      url: "https://github.com/ada-north",
+      title: "@ada-north on GitHub",
+    });
+  });
+
+  it("says nobody linked, without claiming it as a state", () => {
+    const cell = githubCell("", true);
+    expect(cell.kind).toBe("not-linked");
+    expect(cell.title).toBe("No GitHub account is linked to this address.");
+  });
+
+  it("keeps unknown apart from not linked", () => {
+    // The two arrive on the wire identically -- an empty login -- and
+    // only the response's github_known tells them apart. A column that
+    // merged them would report a whole company as unlinked on a read
+    // that simply failed.
+    expect(githubCell("", false).kind).toBe("unknown");
+    expect(githubCell("ada-north", false).kind).toBe("unknown");
+    expect(githubCell("", false).title).toBe("Whether a GitHub account is linked could not be read.");
   });
 });

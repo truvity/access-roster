@@ -192,6 +192,59 @@ func (AccountFilter) EnumDescriptor() ([]byte, []int) {
 	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{2}
 }
 
+// LinkFilter narrows by whether a person linked a GitHub account. It is
+// spelled without "GitHub" because the linter reads that name as two
+// words and would want GIT_HUB_ on every value; there is one kind of link
+// in this service, and it is that one.
+type LinkFilter int32
+
+const (
+	LinkFilter_LINK_FILTER_UNSPECIFIED LinkFilter = 0
+	LinkFilter_LINK_FILTER_LINKED      LinkFilter = 1
+	LinkFilter_LINK_FILTER_NOT_LINKED  LinkFilter = 2
+)
+
+// Enum value maps for LinkFilter.
+var (
+	LinkFilter_name = map[int32]string{
+		0: "LINK_FILTER_UNSPECIFIED",
+		1: "LINK_FILTER_LINKED",
+		2: "LINK_FILTER_NOT_LINKED",
+	}
+	LinkFilter_value = map[string]int32{
+		"LINK_FILTER_UNSPECIFIED": 0,
+		"LINK_FILTER_LINKED":      1,
+		"LINK_FILTER_NOT_LINKED":  2,
+	}
+)
+
+func (x LinkFilter) Enum() *LinkFilter {
+	p := new(LinkFilter)
+	*p = x
+	return p
+}
+
+func (x LinkFilter) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (LinkFilter) Descriptor() protoreflect.EnumDescriptor {
+	return file_directoryroster_v1_access_proto_enumTypes[3].Descriptor()
+}
+
+func (LinkFilter) Type() protoreflect.EnumType {
+	return &file_directoryroster_v1_access_proto_enumTypes[3]
+}
+
+func (x LinkFilter) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use LinkFilter.Descriptor instead.
+func (LinkFilter) EnumDescriptor() ([]byte, []int) {
+	return file_directoryroster_v1_access_proto_rawDescGZIP(), []int{3}
+}
+
 type Identity struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Email string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
@@ -1737,7 +1790,12 @@ type SearchPeopleRequest struct {
 	// to the person reviewing it, and the filter has to be server-side:
 	// narrowing a truncated page in the browser would say "nobody" while
 	// the snapshot holds hundreds.
-	Domain        string `protobuf:"bytes,5,opt,name=domain,proto3" json:"domain,omitempty"`
+	Domain string `protobuf:"bytes,5,opt,name=domain,proto3" json:"domain,omitempty"`
+	// github restricts the answer to people who have, or have not, linked
+	// a GitHub account. Server-side for the same reason as domain: the
+	// answer must be the first N that match, not the matches among the
+	// first N.
+	Github        LinkFilter `protobuf:"varint,6,opt,name=github,proto3,enum=directoryroster.v1.LinkFilter" json:"github,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1807,14 +1865,30 @@ func (x *SearchPeopleRequest) GetDomain() string {
 	return ""
 }
 
+func (x *SearchPeopleRequest) GetGithub() LinkFilter {
+	if x != nil {
+		return x.Github
+	}
+	return LinkFilter_LINK_FILTER_UNSPECIFIED
+}
+
 // PersonSummary is one account as a search result shows it.
 type PersonSummary struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
-	GivenName     string                 `protobuf:"bytes,2,opt,name=given_name,json=givenName,proto3" json:"given_name,omitempty"`
-	FamilyName    string                 `protobuf:"bytes,3,opt,name=family_name,json=familyName,proto3" json:"family_name,omitempty"`
-	WorkspaceId   string                 `protobuf:"bytes,4,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
-	Live          bool                   `protobuf:"varint,5,opt,name=live,proto3" json:"live,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Email       string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	GivenName   string                 `protobuf:"bytes,2,opt,name=given_name,json=givenName,proto3" json:"given_name,omitempty"`
+	FamilyName  string                 `protobuf:"bytes,3,opt,name=family_name,json=familyName,proto3" json:"family_name,omitempty"`
+	WorkspaceId string                 `protobuf:"bytes,4,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	Live        bool                   `protobuf:"varint,5,opt,name=live,proto3" json:"live,omitempty"`
+	// github_login is the GitHub account linked to this address, empty
+	// where none is. It is the account's login, so it is also its page:
+	// github.com/<login>.
+	//
+	// It is not the whole GitHub report — which names members across every
+	// company and is why GetGitHubStatus demands an installation-wide
+	// viewer. This is one login, on a person the caller may already list,
+	// so it is no wider than the row it sits on.
+	GithubLogin   string `protobuf:"bytes,6,opt,name=github_login,json=githubLogin,proto3" json:"github_login,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1884,13 +1958,27 @@ func (x *PersonSummary) GetLive() bool {
 	return false
 }
 
+func (x *PersonSummary) GetGithubLogin() string {
+	if x != nil {
+		return x.GithubLogin
+	}
+	return ""
+}
+
 type SearchPeopleResponse struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	People    []*PersonSummary       `protobuf:"bytes,1,rep,name=people,proto3" json:"people,omitempty"`
 	Truncated bool                   `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	// total is how many matched before the limit, so a page can say
 	// "holding 1,204 accounts" while showing 200.
-	Total         int32 `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`
+	Total int32 `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`
+	// github_known says whether links could be read at all. False is a
+	// deployment where nobody can link an account, or a read that failed:
+	// every github_login is then empty because nothing is known, which is
+	// not the same answer as nobody having linked, and a console that
+	// showed the two alike would report a whole company as unlinked on a
+	// bad read.
+	GithubKnown   bool `protobuf:"varint,4,opt,name=github_known,json=githubKnown,proto3" json:"github_known,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1944,6 +2032,13 @@ func (x *SearchPeopleResponse) GetTotal() int32 {
 		return x.Total
 	}
 	return 0
+}
+
+func (x *SearchPeopleResponse) GetGithubKnown() bool {
+	if x != nil {
+		return x.GithubKnown
+	}
+	return false
 }
 
 type ListDirectoryGroupsRequest struct {
@@ -2496,13 +2591,14 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\aholders\x18\x01 \x03(\v2\x1a.directoryroster.v1.HolderR\aholders\x12\x1a\n" +
 	"\bexamined\x18\x02 \x01(\x05R\bexamined\x12\x1c\n" +
 	"\ttruncated\x18\x03 \x01(\bR\ttruncated\x12#\n" +
-	"\rpolicy_digest\x18\x04 \x01(\tR\fpolicyDigest\"\xb9\x01\n" +
+	"\rpolicy_digest\x18\x04 \x01(\tR\fpolicyDigest\"\xf1\x01\n" +
 	"\x13SearchPeopleRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12!\n" +
 	"\fworkspace_id\x18\x03 \x01(\tR\vworkspaceId\x12;\n" +
 	"\aaccount\x18\x04 \x01(\x0e2!.directoryroster.v1.AccountFilterR\aaccount\x12\x16\n" +
-	"\x06domain\x18\x05 \x01(\tR\x06domain\"\x9c\x01\n" +
+	"\x06domain\x18\x05 \x01(\tR\x06domain\x126\n" +
+	"\x06github\x18\x06 \x01(\x0e2\x1e.directoryroster.v1.LinkFilterR\x06github\"\xbf\x01\n" +
 	"\rPersonSummary\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1d\n" +
 	"\n" +
@@ -2510,11 +2606,13 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\vfamily_name\x18\x03 \x01(\tR\n" +
 	"familyName\x12!\n" +
 	"\fworkspace_id\x18\x04 \x01(\tR\vworkspaceId\x12\x12\n" +
-	"\x04live\x18\x05 \x01(\bR\x04live\"\x85\x01\n" +
+	"\x04live\x18\x05 \x01(\bR\x04live\x12!\n" +
+	"\fgithub_login\x18\x06 \x01(\tR\vgithubLogin\"\xa8\x01\n" +
 	"\x14SearchPeopleResponse\x129\n" +
 	"\x06people\x18\x01 \x03(\v2!.directoryroster.v1.PersonSummaryR\x06people\x12\x1c\n" +
 	"\ttruncated\x18\x02 \x01(\bR\ttruncated\x12\x14\n" +
-	"\x05total\x18\x03 \x01(\x05R\x05total\"4\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total\x12!\n" +
+	"\fgithub_known\x18\x04 \x01(\bR\vgithubKnown\"4\n" +
 	"\x1aListDirectoryGroupsRequest\x12\x16\n" +
 	"\x06domain\x18\x01 \x01(\tR\x06domain\"`\n" +
 	"\x1bListDirectoryGroupsResponse\x12A\n" +
@@ -2560,7 +2658,12 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\rAccountFilter\x12\x1e\n" +
 	"\x1aACCOUNT_FILTER_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13ACCOUNT_FILTER_LIVE\x10\x01\x12\x1c\n" +
-	"\x18ACCOUNT_FILTER_SUSPENDED\x10\x022\xbb\x05\n" +
+	"\x18ACCOUNT_FILTER_SUSPENDED\x10\x02*]\n" +
+	"\n" +
+	"LinkFilter\x12\x1b\n" +
+	"\x17LINK_FILTER_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12LINK_FILTER_LINKED\x10\x01\x12\x1a\n" +
+	"\x16LINK_FILTER_NOT_LINKED\x10\x022\xbb\x05\n" +
 	"\rAccessService\x12O\n" +
 	"\x06WhoAmI\x12!.directoryroster.v1.WhoAmIRequest\x1a\".directoryroster.v1.WhoAmIResponse\x12R\n" +
 	"\aExplain\x12\".directoryroster.v1.ExplainRequest\x1a#.directoryroster.v1.ExplainResponse\x12^\n" +
@@ -2583,97 +2686,99 @@ func file_directoryroster_v1_access_proto_rawDescGZIP() []byte {
 	return file_directoryroster_v1_access_proto_rawDescData
 }
 
-var file_directoryroster_v1_access_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_directoryroster_v1_access_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_directoryroster_v1_access_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_directoryroster_v1_access_proto_goTypes = []any{
 	(Role)(0),                           // 0: directoryroster.v1.Role
 	(IdentitySource)(0),                 // 1: directoryroster.v1.IdentitySource
 	(AccountFilter)(0),                  // 2: directoryroster.v1.AccountFilter
-	(*Identity)(nil),                    // 3: directoryroster.v1.Identity
-	(*WorkspaceScope)(nil),              // 4: directoryroster.v1.WorkspaceScope
-	(*WhoAmIRequest)(nil),               // 5: directoryroster.v1.WhoAmIRequest
-	(*WhoAmIResponse)(nil),              // 6: directoryroster.v1.WhoAmIResponse
-	(*HeldGroup)(nil),                   // 7: directoryroster.v1.HeldGroup
-	(*GitHubProof)(nil),                 // 8: directoryroster.v1.GitHubProof
-	(*ServiceAccountProof)(nil),         // 9: directoryroster.v1.ServiceAccountProof
-	(*ExplainRequest)(nil),              // 10: directoryroster.v1.ExplainRequest
-	(*ExplainResponse)(nil),             // 11: directoryroster.v1.ExplainResponse
-	(*ClientAdmission)(nil),             // 12: directoryroster.v1.ClientAdmission
-	(*GroupMember)(nil),                 // 13: directoryroster.v1.GroupMember
-	(*PolicyGroup)(nil),                 // 14: directoryroster.v1.PolicyGroup
-	(*PolicyMatcher)(nil),               // 15: directoryroster.v1.PolicyMatcher
-	(*PolicyClient)(nil),                // 16: directoryroster.v1.PolicyClient
-	(*GetPolicyRequest)(nil),            // 17: directoryroster.v1.GetPolicyRequest
-	(*GetPolicyResponse)(nil),           // 18: directoryroster.v1.GetPolicyResponse
-	(*PolicyTeam)(nil),                  // 19: directoryroster.v1.PolicyTeam
-	(*PolicyOrg)(nil),                   // 20: directoryroster.v1.PolicyOrg
-	(*ListHoldersRequest)(nil),          // 21: directoryroster.v1.ListHoldersRequest
-	(*Holder)(nil),                      // 22: directoryroster.v1.Holder
-	(*ListHoldersResponse)(nil),         // 23: directoryroster.v1.ListHoldersResponse
-	(*SearchPeopleRequest)(nil),         // 24: directoryroster.v1.SearchPeopleRequest
-	(*PersonSummary)(nil),               // 25: directoryroster.v1.PersonSummary
-	(*SearchPeopleResponse)(nil),        // 26: directoryroster.v1.SearchPeopleResponse
-	(*ListDirectoryGroupsRequest)(nil),  // 27: directoryroster.v1.ListDirectoryGroupsRequest
-	(*ListDirectoryGroupsResponse)(nil), // 28: directoryroster.v1.ListDirectoryGroupsResponse
-	(*DirectoryGroupSummary)(nil),       // 29: directoryroster.v1.DirectoryGroupSummary
-	(*GetDirectoryGroupRequest)(nil),    // 30: directoryroster.v1.GetDirectoryGroupRequest
-	(*DirectoryGroupMember)(nil),        // 31: directoryroster.v1.DirectoryGroupMember
-	(*DirectoryGroupFeed)(nil),          // 32: directoryroster.v1.DirectoryGroupFeed
-	(*GetDirectoryGroupResponse)(nil),   // 33: directoryroster.v1.GetDirectoryGroupResponse
-	(*structpb.Struct)(nil),             // 34: google.protobuf.Struct
-	(*durationpb.Duration)(nil),         // 35: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),       // 36: google.protobuf.Timestamp
+	(LinkFilter)(0),                     // 3: directoryroster.v1.LinkFilter
+	(*Identity)(nil),                    // 4: directoryroster.v1.Identity
+	(*WorkspaceScope)(nil),              // 5: directoryroster.v1.WorkspaceScope
+	(*WhoAmIRequest)(nil),               // 6: directoryroster.v1.WhoAmIRequest
+	(*WhoAmIResponse)(nil),              // 7: directoryroster.v1.WhoAmIResponse
+	(*HeldGroup)(nil),                   // 8: directoryroster.v1.HeldGroup
+	(*GitHubProof)(nil),                 // 9: directoryroster.v1.GitHubProof
+	(*ServiceAccountProof)(nil),         // 10: directoryroster.v1.ServiceAccountProof
+	(*ExplainRequest)(nil),              // 11: directoryroster.v1.ExplainRequest
+	(*ExplainResponse)(nil),             // 12: directoryroster.v1.ExplainResponse
+	(*ClientAdmission)(nil),             // 13: directoryroster.v1.ClientAdmission
+	(*GroupMember)(nil),                 // 14: directoryroster.v1.GroupMember
+	(*PolicyGroup)(nil),                 // 15: directoryroster.v1.PolicyGroup
+	(*PolicyMatcher)(nil),               // 16: directoryroster.v1.PolicyMatcher
+	(*PolicyClient)(nil),                // 17: directoryroster.v1.PolicyClient
+	(*GetPolicyRequest)(nil),            // 18: directoryroster.v1.GetPolicyRequest
+	(*GetPolicyResponse)(nil),           // 19: directoryroster.v1.GetPolicyResponse
+	(*PolicyTeam)(nil),                  // 20: directoryroster.v1.PolicyTeam
+	(*PolicyOrg)(nil),                   // 21: directoryroster.v1.PolicyOrg
+	(*ListHoldersRequest)(nil),          // 22: directoryroster.v1.ListHoldersRequest
+	(*Holder)(nil),                      // 23: directoryroster.v1.Holder
+	(*ListHoldersResponse)(nil),         // 24: directoryroster.v1.ListHoldersResponse
+	(*SearchPeopleRequest)(nil),         // 25: directoryroster.v1.SearchPeopleRequest
+	(*PersonSummary)(nil),               // 26: directoryroster.v1.PersonSummary
+	(*SearchPeopleResponse)(nil),        // 27: directoryroster.v1.SearchPeopleResponse
+	(*ListDirectoryGroupsRequest)(nil),  // 28: directoryroster.v1.ListDirectoryGroupsRequest
+	(*ListDirectoryGroupsResponse)(nil), // 29: directoryroster.v1.ListDirectoryGroupsResponse
+	(*DirectoryGroupSummary)(nil),       // 30: directoryroster.v1.DirectoryGroupSummary
+	(*GetDirectoryGroupRequest)(nil),    // 31: directoryroster.v1.GetDirectoryGroupRequest
+	(*DirectoryGroupMember)(nil),        // 32: directoryroster.v1.DirectoryGroupMember
+	(*DirectoryGroupFeed)(nil),          // 33: directoryroster.v1.DirectoryGroupFeed
+	(*GetDirectoryGroupResponse)(nil),   // 34: directoryroster.v1.GetDirectoryGroupResponse
+	(*structpb.Struct)(nil),             // 35: google.protobuf.Struct
+	(*durationpb.Duration)(nil),         // 36: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),       // 37: google.protobuf.Timestamp
 }
 var file_directoryroster_v1_access_proto_depIdxs = []int32{
 	1,  // 0: directoryroster.v1.Identity.source:type_name -> directoryroster.v1.IdentitySource
 	0,  // 1: directoryroster.v1.Identity.role:type_name -> directoryroster.v1.Role
-	4,  // 2: directoryroster.v1.Identity.scopes:type_name -> directoryroster.v1.WorkspaceScope
+	5,  // 2: directoryroster.v1.Identity.scopes:type_name -> directoryroster.v1.WorkspaceScope
 	0,  // 3: directoryroster.v1.WorkspaceScope.role:type_name -> directoryroster.v1.Role
-	3,  // 4: directoryroster.v1.WhoAmIResponse.identity:type_name -> directoryroster.v1.Identity
-	8,  // 5: directoryroster.v1.ExplainRequest.github:type_name -> directoryroster.v1.GitHubProof
-	9,  // 6: directoryroster.v1.ExplainRequest.service_account:type_name -> directoryroster.v1.ServiceAccountProof
-	3,  // 7: directoryroster.v1.ExplainResponse.identity:type_name -> directoryroster.v1.Identity
-	7,  // 8: directoryroster.v1.ExplainResponse.held:type_name -> directoryroster.v1.HeldGroup
-	34, // 9: directoryroster.v1.ExplainResponse.claims:type_name -> google.protobuf.Struct
-	35, // 10: directoryroster.v1.ExplainResponse.lifetime:type_name -> google.protobuf.Duration
-	12, // 11: directoryroster.v1.ExplainResponse.clients:type_name -> directoryroster.v1.ClientAdmission
-	35, // 12: directoryroster.v1.ClientAdmission.lifetime:type_name -> google.protobuf.Duration
-	13, // 13: directoryroster.v1.PolicyGroup.members:type_name -> directoryroster.v1.GroupMember
-	15, // 14: directoryroster.v1.PolicyGroup.rules:type_name -> directoryroster.v1.PolicyMatcher
-	34, // 15: directoryroster.v1.PolicyGroup.claims:type_name -> google.protobuf.Struct
-	35, // 16: directoryroster.v1.PolicyGroup.lifetime:type_name -> google.protobuf.Duration
-	35, // 17: directoryroster.v1.PolicyClient.ttl_cap:type_name -> google.protobuf.Duration
-	14, // 18: directoryroster.v1.GetPolicyResponse.groups:type_name -> directoryroster.v1.PolicyGroup
-	16, // 19: directoryroster.v1.GetPolicyResponse.clients:type_name -> directoryroster.v1.PolicyClient
-	19, // 20: directoryroster.v1.GetPolicyResponse.teams:type_name -> directoryroster.v1.PolicyTeam
-	20, // 21: directoryroster.v1.GetPolicyResponse.orgs:type_name -> directoryroster.v1.PolicyOrg
-	35, // 22: directoryroster.v1.Holder.lifetime:type_name -> google.protobuf.Duration
-	22, // 23: directoryroster.v1.ListHoldersResponse.holders:type_name -> directoryroster.v1.Holder
+	4,  // 4: directoryroster.v1.WhoAmIResponse.identity:type_name -> directoryroster.v1.Identity
+	9,  // 5: directoryroster.v1.ExplainRequest.github:type_name -> directoryroster.v1.GitHubProof
+	10, // 6: directoryroster.v1.ExplainRequest.service_account:type_name -> directoryroster.v1.ServiceAccountProof
+	4,  // 7: directoryroster.v1.ExplainResponse.identity:type_name -> directoryroster.v1.Identity
+	8,  // 8: directoryroster.v1.ExplainResponse.held:type_name -> directoryroster.v1.HeldGroup
+	35, // 9: directoryroster.v1.ExplainResponse.claims:type_name -> google.protobuf.Struct
+	36, // 10: directoryroster.v1.ExplainResponse.lifetime:type_name -> google.protobuf.Duration
+	13, // 11: directoryroster.v1.ExplainResponse.clients:type_name -> directoryroster.v1.ClientAdmission
+	36, // 12: directoryroster.v1.ClientAdmission.lifetime:type_name -> google.protobuf.Duration
+	14, // 13: directoryroster.v1.PolicyGroup.members:type_name -> directoryroster.v1.GroupMember
+	16, // 14: directoryroster.v1.PolicyGroup.rules:type_name -> directoryroster.v1.PolicyMatcher
+	35, // 15: directoryroster.v1.PolicyGroup.claims:type_name -> google.protobuf.Struct
+	36, // 16: directoryroster.v1.PolicyGroup.lifetime:type_name -> google.protobuf.Duration
+	36, // 17: directoryroster.v1.PolicyClient.ttl_cap:type_name -> google.protobuf.Duration
+	15, // 18: directoryroster.v1.GetPolicyResponse.groups:type_name -> directoryroster.v1.PolicyGroup
+	17, // 19: directoryroster.v1.GetPolicyResponse.clients:type_name -> directoryroster.v1.PolicyClient
+	20, // 20: directoryroster.v1.GetPolicyResponse.teams:type_name -> directoryroster.v1.PolicyTeam
+	21, // 21: directoryroster.v1.GetPolicyResponse.orgs:type_name -> directoryroster.v1.PolicyOrg
+	36, // 22: directoryroster.v1.Holder.lifetime:type_name -> google.protobuf.Duration
+	23, // 23: directoryroster.v1.ListHoldersResponse.holders:type_name -> directoryroster.v1.Holder
 	2,  // 24: directoryroster.v1.SearchPeopleRequest.account:type_name -> directoryroster.v1.AccountFilter
-	25, // 25: directoryroster.v1.SearchPeopleResponse.people:type_name -> directoryroster.v1.PersonSummary
-	29, // 26: directoryroster.v1.ListDirectoryGroupsResponse.groups:type_name -> directoryroster.v1.DirectoryGroupSummary
-	36, // 27: directoryroster.v1.GetDirectoryGroupResponse.snapshot_at:type_name -> google.protobuf.Timestamp
-	31, // 28: directoryroster.v1.GetDirectoryGroupResponse.members:type_name -> directoryroster.v1.DirectoryGroupMember
-	32, // 29: directoryroster.v1.GetDirectoryGroupResponse.feeds:type_name -> directoryroster.v1.DirectoryGroupFeed
-	5,  // 30: directoryroster.v1.AccessService.WhoAmI:input_type -> directoryroster.v1.WhoAmIRequest
-	10, // 31: directoryroster.v1.AccessService.Explain:input_type -> directoryroster.v1.ExplainRequest
-	21, // 32: directoryroster.v1.AccessService.ListHolders:input_type -> directoryroster.v1.ListHoldersRequest
-	24, // 33: directoryroster.v1.AccessService.SearchPeople:input_type -> directoryroster.v1.SearchPeopleRequest
-	17, // 34: directoryroster.v1.AccessService.GetPolicy:input_type -> directoryroster.v1.GetPolicyRequest
-	27, // 35: directoryroster.v1.AccessService.ListDirectoryGroups:input_type -> directoryroster.v1.ListDirectoryGroupsRequest
-	30, // 36: directoryroster.v1.AccessService.GetDirectoryGroup:input_type -> directoryroster.v1.GetDirectoryGroupRequest
-	6,  // 37: directoryroster.v1.AccessService.WhoAmI:output_type -> directoryroster.v1.WhoAmIResponse
-	11, // 38: directoryroster.v1.AccessService.Explain:output_type -> directoryroster.v1.ExplainResponse
-	23, // 39: directoryroster.v1.AccessService.ListHolders:output_type -> directoryroster.v1.ListHoldersResponse
-	26, // 40: directoryroster.v1.AccessService.SearchPeople:output_type -> directoryroster.v1.SearchPeopleResponse
-	18, // 41: directoryroster.v1.AccessService.GetPolicy:output_type -> directoryroster.v1.GetPolicyResponse
-	28, // 42: directoryroster.v1.AccessService.ListDirectoryGroups:output_type -> directoryroster.v1.ListDirectoryGroupsResponse
-	33, // 43: directoryroster.v1.AccessService.GetDirectoryGroup:output_type -> directoryroster.v1.GetDirectoryGroupResponse
-	37, // [37:44] is the sub-list for method output_type
-	30, // [30:37] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	3,  // 25: directoryroster.v1.SearchPeopleRequest.github:type_name -> directoryroster.v1.LinkFilter
+	26, // 26: directoryroster.v1.SearchPeopleResponse.people:type_name -> directoryroster.v1.PersonSummary
+	30, // 27: directoryroster.v1.ListDirectoryGroupsResponse.groups:type_name -> directoryroster.v1.DirectoryGroupSummary
+	37, // 28: directoryroster.v1.GetDirectoryGroupResponse.snapshot_at:type_name -> google.protobuf.Timestamp
+	32, // 29: directoryroster.v1.GetDirectoryGroupResponse.members:type_name -> directoryroster.v1.DirectoryGroupMember
+	33, // 30: directoryroster.v1.GetDirectoryGroupResponse.feeds:type_name -> directoryroster.v1.DirectoryGroupFeed
+	6,  // 31: directoryroster.v1.AccessService.WhoAmI:input_type -> directoryroster.v1.WhoAmIRequest
+	11, // 32: directoryroster.v1.AccessService.Explain:input_type -> directoryroster.v1.ExplainRequest
+	22, // 33: directoryroster.v1.AccessService.ListHolders:input_type -> directoryroster.v1.ListHoldersRequest
+	25, // 34: directoryroster.v1.AccessService.SearchPeople:input_type -> directoryroster.v1.SearchPeopleRequest
+	18, // 35: directoryroster.v1.AccessService.GetPolicy:input_type -> directoryroster.v1.GetPolicyRequest
+	28, // 36: directoryroster.v1.AccessService.ListDirectoryGroups:input_type -> directoryroster.v1.ListDirectoryGroupsRequest
+	31, // 37: directoryroster.v1.AccessService.GetDirectoryGroup:input_type -> directoryroster.v1.GetDirectoryGroupRequest
+	7,  // 38: directoryroster.v1.AccessService.WhoAmI:output_type -> directoryroster.v1.WhoAmIResponse
+	12, // 39: directoryroster.v1.AccessService.Explain:output_type -> directoryroster.v1.ExplainResponse
+	24, // 40: directoryroster.v1.AccessService.ListHolders:output_type -> directoryroster.v1.ListHoldersResponse
+	27, // 41: directoryroster.v1.AccessService.SearchPeople:output_type -> directoryroster.v1.SearchPeopleResponse
+	19, // 42: directoryroster.v1.AccessService.GetPolicy:output_type -> directoryroster.v1.GetPolicyResponse
+	29, // 43: directoryroster.v1.AccessService.ListDirectoryGroups:output_type -> directoryroster.v1.ListDirectoryGroupsResponse
+	34, // 44: directoryroster.v1.AccessService.GetDirectoryGroup:output_type -> directoryroster.v1.GetDirectoryGroupResponse
+	38, // [38:45] is the sub-list for method output_type
+	31, // [31:38] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_access_proto_init() }
@@ -2686,7 +2791,7 @@ func file_directoryroster_v1_access_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_access_proto_rawDesc), len(file_directoryroster_v1_access_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      4,
 			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,

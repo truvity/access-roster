@@ -368,12 +368,27 @@ message SearchPeopleRequest {
   // narrowing a truncated page in the browser would say "nobody" while
   // the snapshot holds hundreds.
   string domain = 5;
+  // github restricts the answer to people who have, or have not, linked
+  // a GitHub account. Server-side for the same reason as domain: the
+  // answer must be the first N that match, not the matches among the
+  // first N.
+  LinkFilter github = 6;
 }
 
 enum AccountFilter {
   ACCOUNT_FILTER_UNSPECIFIED = 0;
   ACCOUNT_FILTER_LIVE = 1;
   ACCOUNT_FILTER_SUSPENDED = 2;
+}
+
+// LinkFilter narrows by whether a person linked a GitHub account. It is
+// spelled without "GitHub" because the linter reads that name as two
+// words and would want GIT_HUB_ on every value; there is one kind of link
+// in this service, and it is that one.
+enum LinkFilter {
+  LINK_FILTER_UNSPECIFIED = 0;
+  LINK_FILTER_LINKED = 1;
+  LINK_FILTER_NOT_LINKED = 2;
 }
 
 // PersonSummary is one account as a search result shows it.
@@ -383,6 +398,15 @@ message PersonSummary {
   string family_name = 3;
   string workspace_id = 4;
   bool live = 5;
+  // github_login is the GitHub account linked to this address, empty
+  // where none is. It is the account's login, so it is also its page:
+  // github.com/<login>.
+  //
+  // It is not the whole GitHub report — which names members across every
+  // company and is why GetGitHubStatus demands an installation-wide
+  // viewer. This is one login, on a person the caller may already list,
+  // so it is no wider than the row it sits on.
+  string github_login = 6;
 }
 
 message SearchPeopleResponse {
@@ -391,6 +415,13 @@ message SearchPeopleResponse {
   // total is how many matched before the limit, so a page can say
   // "holding 1,204 accounts" while showing 200.
   int32 total = 3;
+  // github_known says whether links could be read at all. False is a
+  // deployment where nobody can link an account, or a read that failed:
+  // every github_login is then empty because nothing is known, which is
+  // not the same answer as nobody having linked, and a console that
+  // showed the two alike would report a whole company as unlinked on a
+  // bad read.
+  bool github_known = 4;
 }
 
 message ListDirectoryGroupsRequest {

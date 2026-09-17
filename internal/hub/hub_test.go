@@ -573,3 +573,70 @@ workspaces:
 		t.Errorf("a missing overlay = %+v, %v", o, err)
 	}
 }
+
+// The GitHub column and its facet are the hub's answer, not the browser's,
+// for the same reason the domain filter is: a page of 200 narrowed in the
+// browser says "nobody" while the snapshot holds hundreds. The hub keeps
+// no links of its own — they live beside the GitHub controller — so the
+// caller hands them in, and the hub matches them by address, cases and all.
+func TestPeopleCarryAndFilterByTheGitHubAccountTheyLinked(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	ctx := context.Background()
+
+	logins := map[string]string{"alice@one.example": "alice-a", "carol@two.example": "carol-c"}
+	all, total, err := h.hub.People(ctx, hub.PeopleQuery{GitHubLogins: logins}, 0)
+	if err != nil || total != 3 {
+		t.Fatalf("People(with links) = %d, %v", total, err)
+	}
+	got := map[string]string{}
+	for _, person := range all {
+		got[person.Email] = person.GitHubLogin
+	}
+	want := map[string]string{"alice@one.example": "alice-a", "bob@one.example": "", "carol@two.example": "carol-c"}
+	if len(got) != len(want) {
+		t.Fatalf("logins = %+v", got)
+	}
+	for email, login := range want {
+		if got[email] != login {
+			t.Errorf("login of %s = %q, want %q", email, got[email], login)
+		}
+	}
+
+	linked := true
+	who, total, err := h.hub.People(ctx, hub.PeopleQuery{GitHubLogins: logins, GitHubLinked: &linked}, 0)
+	if err != nil || total != 2 || len(who) != 2 {
+		t.Errorf("People(linked) = %+v, %d, %v", who, total, err)
+	}
+	// The count is of everyone who matches, not of the page: that is what
+	// lets the console say "the first N of M that match" honestly.
+	if _, total, err = h.hub.People(ctx, hub.PeopleQuery{GitHubLogins: logins, GitHubLinked: &linked}, 1); err != nil || total != 2 {
+		t.Errorf("People(linked, limit 1) = %d, %v", total, err)
+	}
+	notLinked := false
+	rest, total, err := h.hub.People(ctx, hub.PeopleQuery{GitHubLogins: logins, GitHubLinked: &notLinked}, 0)
+	if err != nil || total != 1 || len(rest) != 1 || rest[0].Email != "bob@one.example" {
+		t.Errorf("People(not linked) = %+v, %d, %v", rest, total, err)
+	}
+
+	// It narrows WITHIN the other facets rather than replacing them.
+	if _, total, err = h.hub.People(ctx, hub.PeopleQuery{
+		Workspace: twoID, GitHubLogins: logins, GitHubLinked: &notLinked,
+	}, 0); err != nil || total != 0 {
+		t.Errorf("People(two, not linked) = %d, %v", total, err)
+	}
+
+	// No links passed is nobody linked, as far as the hub is concerned:
+	// whether that means "nobody has" or "we could not read them" is the
+	// caller's to know, and the caller must not set the facet when it
+	// does not.
+	blind, _, err := h.hub.People(ctx, hub.PeopleQuery{}, 0)
+	if err != nil {
+		t.Fatalf("People(no links) = %v", err)
+	}
+	for _, person := range blind {
+		if person.GitHubLogin != "" {
+			t.Errorf("login of %s = %q with no links passed", person.Email, person.GitHubLogin)
+		}
+	}
+}

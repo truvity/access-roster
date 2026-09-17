@@ -126,6 +126,33 @@ export function peopleOf(organisations: GitHubOrganisation[]): Person[] {
   return [...byEmail.values()].sort((a, b) => rank[a.label] - rank[b.label] || a.email.localeCompare(b.email));
 }
 
+/** What the People list's GitHub column says about one person: the
+ *  account they linked, that they linked none, or that links could not be
+ *  read at all.
+ *
+ *  The third is a separate answer on purpose. A deployment where nobody
+ *  can link, and a link store that would not read, both come back with
+ *  every login empty — and a column that drew those the same way would
+ *  quietly report an entire company as having linked nothing. */
+export type GitHubCell =
+  | { kind: "linked"; login: string; url: string; title: string }
+  | { kind: "not-linked"; title: string }
+  | { kind: "unknown"; title: string };
+
+/** The cell for one person, from the login the search returned and
+ *  whether the search could read links at all. A login is a name, so it
+ *  is a link to the account it names; the other two are states, and a
+ *  state is never a chip on a row that already has one. */
+export function githubCell(login: string, known: boolean): GitHubCell {
+  if (!known) {
+    return { kind: "unknown", title: "Whether a GitHub account is linked could not be read." };
+  }
+  if (!login) {
+    return { kind: "not-linked", title: "No GitHub account is linked to this address." };
+  }
+  return { kind: "linked", login, url: `https://github.com/${login}`, title: `@${login} on GitHub` };
+}
+
 /** Where a person links, at the origin root beside the other GitHub pages. */
 export function linkPage(url?: string): string {
   return url || `${window.location.origin}/connect/github/link`;
