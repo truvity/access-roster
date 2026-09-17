@@ -1,14 +1,13 @@
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import type {
-  GetGitHubStatusResponse,
-  GitHubAppGrant,
-  GitHubAppPermission,
-  GitHubCatalogueApp,
-  GitHubMember,
-  GitHubOrganisation,
-  GitHubRunnerApp,
-  GitHubTeamStatus,
+// The wire enums, under other names: this module's own words for the
+// same four things are what every page is written in.
+import {
+  AppAttention as WireAttention,
+  AppOrigin as WireOrigin,
+  AppPurpose as WirePurpose,
+  AppState as WireState,
 } from "./gen/directoryroster/v1/github_pb";
+import type { GitHubApp, GitHubAppGrant, GitHubAppPermission, GitHubMember, GitHubOrganisation, GitHubTeamStatus } from "./gen/directoryroster/v1/github_pb";
 
 /** What a row means to a reader: done or in hand, waiting on the person,
  *  or waiting on an operator. The controller's exact state stays in the
@@ -173,9 +172,8 @@ export type AppStage = "not-created" | "created" | "installed" | "drifted";
 /** The single fix an App that needs you asks for. */
 export type AppFix = "create" | "install" | "recheck" | "disconnect" | "none";
 
-/** One App, whichever of the four shapes the status carries it in: the
- *  link App, an organisation's controller App, a runner App, or an App the
- *  catalogue declares. Every list row and every App page reads this. */
+/** One App, whatever kind: the list, the App page, an organisation's
+ *  Apps section and a group's minting section all read this. */
 export type GitHubAppView = {
   /** Stable, and the page's address: `link`, `<org>-controller`,
    *  `<org>-runners-<tier>`, or the catalogue id. */
@@ -201,8 +199,8 @@ export type GitHubAppView = {
   /** Plain words for the repositories it reaches. */
   repositories: string;
   grants: GitHubAppGrant[];
-  /** Declared beside held; absent where the status has none to show. */
-  permissions?: GitHubAppPermission[];
+  /** Declared beside held, once there is anything to hold. */
+  permissions: GitHubAppPermission[];
   drift: string[];
   events: string[];
   description: string;
@@ -217,21 +215,17 @@ export type GitHubAppView = {
   checkedAt?: Timestamp;
   installation: string;
   public: boolean;
+  /** Where its key is kept, for a deployment copying it. */
+  secret: string;
+  secretKeys: string[];
+  /** Accounts linked through it. The link App only. */
+  linked: number;
 };
 
 const purposeOrder: Record<AppPurpose, number> = { link: 0, controller: 1, runners: 2, tokens: 3 };
 
-/** The id a preset App would have, unless the catalogue already uses it:
- *  a catalogue id is the operator's own name for an App, so it wins and the
- *  preset moves aside. */
-function presetId(base: string, taken: Set<string>): string {
-  let id = base;
-  while (taken.has(id)) id = `${id}-preset`;
-  taken.add(id);
-  return id;
-}
-
-/** Where an owner edits an App, and deletes it. */
+/** Where an owner edits an App, and deletes it. Only for a name the
+ *  server did not give us one for. */
 export function appSettingsURL(org: string, slug: string): string {
   return org && slug ? `https://github.com/organizations/${encodeURIComponent(org)}/settings/apps/${encodeURIComponent(slug)}` : "";
 }
@@ -240,170 +234,96 @@ function scopeWords(scope: string): string {
   return ({ all: "every repository", selected: "selected repositories" } as Record<string, string>)[scope] ?? scope;
 }
 
-function stageLabel(stage: AppStage, declared: boolean): { label: AppLabel; fix: AppFix } {
-  if (!declared) return { label: "needs-you", fix: stage === "not-created" ? "none" : "disconnect" };
+/** The single fix an App that needs you asks for. Which one follows from
+ *  how far along it is and whether the deployment still declares it. */
+function fixOf(stage: AppStage, declared: boolean): AppFix {
+  if (!declared) return stage === "not-created" ? "none" : "disconnect";
   switch (stage) {
     case "not-created":
-      return { label: "needs-you", fix: "create" };
+      return "create";
     case "created":
-      return { label: "needs-you", fix: "install" };
+      return "install";
     case "drifted":
-      return { label: "needs-you", fix: "recheck" };
+      return "recheck";
     default:
-      return { label: "done", fix: "none" };
+      return "none";
   }
 }
 
-const exactStage: Record<AppStage, string> = {
-  "not-created": "not created",
-  created: "created, not installed",
-  installed: "installed",
-  drifted: "differs on GitHub",
-};
-
-/** Every App the status knows of, as one kind of row. */
-export function appsOf(status: GetGitHubStatusResponse): GitHubAppView[] {
-  const out: GitHubAppView[] = [];
-  const taken = new Set(status.catalogueApps.map((app) => app.id));
-  const bound = new Set(status.organisations.filter((org) => org.bound).map((org) => org.org));
-  const blank = {
-    tier: undefined,
-    grants: [] as GitHubAppGrant[],
-    permissions: undefined,
-    drift: [] as string[],
-    events: [] as string[],
-    description: "",
-    reason: "",
-    installationId: 0n,
-    checkedAt: undefined,
-    installation: "",
-    public: false,
-  };
-
-  // The link App: one, for every organisation.
-  if (status.linkApp || status.linkingAvailable) {
-    const app = status.linkApp;
-    const linked = status.links.filter((l) => l.state === "linked").length;
-    const stage: AppStage = app ? "installed" : "not-created";
-    let { label, fix } = stageLabel(stage, true);
-    let exact = app ? "created; installed nowhere, by design" : "not created";
-    if (app && linked === 0) {
-      label = "waiting-person";
-      exact = "created; nobody has linked an account through it yet";
-    }
-    out.push({
-      ...blank,
-      id: presetId("link", taken),
-      org: app?.owner ?? "",
-      purpose: "link",
-      origin: "preset",
-      name: app?.appSlug || "link App",
-      slug: app?.appSlug ?? "",
-      stage,
-      label,
-      exact,
-      fix,
-      declared: true,
-      repositories: "installed nowhere",
-      htmlUrl: app?.htmlUrl ?? "",
-      settingsUrl: app ? appSettingsURL(app.owner, app.appSlug) : "",
-      appId: app?.appId ?? 0n,
-      connectedBy: app?.connectedBy ?? "",
-      connectedAt: app?.connectedAt,
-      public: true,
-    });
+function purposeOf(purpose: WirePurpose): AppPurpose {
+  switch (purpose) {
+    case WirePurpose.LINK:
+      return "link";
+    case WirePurpose.CONTROLLER:
+      return "controller";
+    case WirePurpose.RUNNERS:
+      return "runners";
+    default:
+      return "tokens";
   }
-
-  // One controller App per organisation.
-  for (const org of status.organisations) {
-    const c = org.connection;
-    if (!c && !org.bound) continue;
-    const stage: AppStage = !c ? "not-created" : c.installed ? "installed" : "created";
-    let { label, fix } = stageLabel(stage, org.bound);
-    let exact = org.bound ? exactStage[stage] : `${exactStage[stage]}; ${org.org} is no longer bound in the policy`;
-    if (org.bound && stage === "installed" && status.reportsAvailable && !org.reported) {
-      label = "waiting-controller";
-      exact = "installed; the controller has not reported on the organisation yet";
-    }
-    out.push({
-      ...blank,
-      id: presetId(`${org.org}-controller`, taken),
-      org: org.org,
-      purpose: "controller",
-      origin: "preset",
-      name: c?.appSlug || `${org.org} controller App`,
-      slug: c?.appSlug ?? "",
-      stage,
-      label,
-      exact,
-      fix,
-      declared: org.bound,
-      repositories: "none: members and teams only",
-      htmlUrl: c?.htmlUrl ?? "",
-      settingsUrl: c ? appSettingsURL(org.org, c.appSlug) : "",
-      appId: c?.appId ?? 0n,
-      connectedBy: c?.connectedBy ?? "",
-      connectedAt: c?.connectedAt,
-    });
-  }
-
-  // One runner App per bound organisation per declared tier, and any
-  // created for a tier or an organisation since dropped.
-  const runners = new Map<string, { org: string; tier: string; app?: GitHubRunnerApp }>();
-  for (const org of [...bound].sort()) for (const tier of status.runnerTiers) runners.set(`${org}/${tier}`, { org, tier });
-  for (const app of status.runnerApps) runners.set(`${app.org}/${app.tier}`, { org: app.org, tier: app.tier, app });
-  for (const { org, tier, app } of runners.values()) {
-    const declared = bound.has(org) && status.runnerTiers.includes(tier);
-    const stage: AppStage = !app ? "not-created" : app.installed ? "installed" : "created";
-    const { label, fix } = stageLabel(stage, declared);
-    out.push({
-      ...blank,
-      id: presetId(`${org}-runners-${tier}`, taken),
-      org,
-      purpose: "runners",
-      tier,
-      origin: "preset",
-      name: app?.appSlug || `${org} ${tier} runner App`,
-      slug: app?.appSlug ?? "",
-      stage,
-      label,
-      exact: declared ? exactStage[stage] : `${exactStage[stage]}; the ${tier} tier in ${org} is no longer declared`,
-      fix,
-      declared,
-      repositories: "none: registers runners with the organisation",
-      htmlUrl: app?.htmlUrl ?? "",
-      settingsUrl: app ? appSettingsURL(org, app.appSlug) : "",
-      appId: app?.appId ?? 0n,
-      connectedBy: app?.connectedBy ?? "",
-      connectedAt: app?.connectedAt,
-    });
-  }
-
-  // Every App the catalogue declares, or was created from.
-  for (const app of status.catalogueApps) out.push(catalogueView(app));
-
-  return out;
 }
 
-/** One catalogue App as a row. Exported for the page that re-checks one
- *  App on its own and has only the answer to show. */
-export function catalogueView(app: GitHubCatalogueApp): GitHubAppView {
-  const stage: AppStage = app.state === "installed" ? "installed" : app.state === "created" ? "created" : app.state === "drifted" ? "drifted" : "not-created";
-  const { label, fix } = stageLabel(stage, app.declared);
-  const word = app.declared ? exactStage[stage] : `${exactStage[stage]}; the catalogue no longer declares it`;
+function stageOf(state: WireState): AppStage {
+  switch (state) {
+    case WireState.CREATED:
+      return "created";
+    case WireState.INSTALLED:
+      return "installed";
+    case WireState.DRIFTED:
+      return "drifted";
+    default:
+      return "not-created";
+  }
+}
+
+function attentionOf(attention: WireAttention): AppLabel {
+  switch (attention) {
+    case WireAttention.DONE:
+      return "done";
+    case WireAttention.WAITING_PERSON:
+      return "waiting-person";
+    case WireAttention.WAITING_CONTROLLER:
+      return "waiting-controller";
+    default:
+      return "needs-you";
+  }
+}
+
+/** What the repositories an App reaches amount to, in words. Three of the
+ *  four reach none, each for its own reason. */
+function repositoryScope(app: GitHubApp): string {
+  switch (purposeOf(app.purpose)) {
+    case "link":
+      return "installed nowhere";
+    case "controller":
+      return "none: members and teams only";
+    case "runners":
+      return "none: registers runners with the organisation";
+    default:
+      return scopeWords(app.repositorySelection || app.installation);
+  }
+}
+
+/** One App as every page reads it: the server's answer, with the words
+ *  the pages are written in. Nothing is derived here that the server
+ *  knows — it says which state an App is in and who moves next; this
+ *  turns that into the one fix to offer and the repositories in words. */
+export function appView(app: GitHubApp): GitHubAppView {
+  const stage = stageOf(app.state);
   return {
     id: app.id,
     org: app.org,
-    purpose: "tokens",
-    origin: "catalogue",
-    name: app.appSlug || app.name || app.id,
+    purpose: purposeOf(app.purpose),
+    tier: app.tier || undefined,
+    origin: app.origin === WireOrigin.CATALOGUE ? "catalogue" : "preset",
+    name: app.name,
     slug: app.appSlug,
     stage,
-    label,
-    exact: app.reason ? `${word}: ${app.reason}` : word,
-    fix,
+    label: attentionOf(app.attention),
+    exact: app.stateDetail,
+    fix: fixOf(stage, app.declared),
     declared: app.declared,
-    repositories: scopeWords(app.repositorySelection || app.installation),
+    repositories: repositoryScope(app),
     grants: app.grants,
     permissions: app.permissions,
     drift: app.drift,
@@ -411,7 +331,7 @@ export function catalogueView(app: GitHubCatalogueApp): GitHubAppView {
     description: app.description,
     reason: app.reason,
     htmlUrl: app.htmlUrl,
-    settingsUrl: appSettingsURL(app.org, app.appSlug),
+    settingsUrl: app.settingsUrl,
     appId: app.appId,
     installationId: app.installationId,
     connectedBy: app.connectedBy,
@@ -419,6 +339,9 @@ export function catalogueView(app: GitHubCatalogueApp): GitHubAppView {
     checkedAt: app.checkedAt,
     installation: app.installation,
     public: app.public,
+    secret: app.secret,
+    secretKeys: app.secretKeys,
+    linked: app.linkedAccounts,
   };
 }
 
@@ -479,17 +402,20 @@ function stageClause(app: GitHubAppView): string {
     case "drifted":
       return "installed, and differs from its declaration on GitHub";
     default:
-      return app.purpose === "tokens" ? "installed, matches its declaration" : "installed";
+      // Only an App whose declaration was actually checked may claim a
+      // match: the link App is never asked about, and neither is one
+      // whose key could not be read.
+      return app.purpose === "link" || app.reason ? "installed" : "installed, matches its declaration";
   }
 }
 
 /** The one line an App's page opens with, from its facts. */
-export function summaryOf(app: GitHubAppView, linked = 0): string {
+export function summaryOf(app: GitHubAppView): string {
   switch (app.purpose) {
     case "link":
       return app.stage === "not-created"
         ? "People link their GitHub account through it, once it is created; nobody can link until then."
-        : `People link their GitHub account through it; ${plural(linked, "account", "accounts")} linked.`;
+        : `People link their GitHub account through it; ${plural(app.linked, "account", "accounts")} linked.`;
     case "controller":
       return `The controller manages ${app.org}'s members and teams through it; ${stageClause(app)}.`;
     case "runners":
@@ -533,21 +459,6 @@ export function atMost(permissions: Record<string, string>): string {
 /** The repositories a grant names, in words. */
 export function repositoryWords(repositories: string[], org: string): string {
   return repositories.map((r) => (r === "*" ? `every repository in ${org}` : r)).join(", ");
-}
-
-/** Where an App's key is kept, for a deployment copying it. */
-export function keyLocation(app: GitHubAppView): { secret: string; keys: string[] } {
-  const properties = (prefix: string) => ["github_app_id", "github_app_installation_id", "github_app_private_key", "record.json"].map((k) => `${prefix}.${k}`);
-  switch (app.purpose) {
-    case "link":
-      return { secret: "<release>-github-apps", keys: ["_link.json"] };
-    case "controller":
-      return { secret: "<release>-github-apps", keys: [`${app.org}.json`] };
-    case "runners":
-      return { secret: "<release>-github-runner-apps", keys: properties(`${app.tier}.${app.org}`) };
-    default:
-      return { secret: "<release>-github-catalogue-apps", keys: properties(app.id) };
-  }
 }
 
 /** Whether a permission row differs anywhere. GitHub adds metadata: read

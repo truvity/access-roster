@@ -9,8 +9,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, adds, forHowLong, github, matcherKind, people as peopleCount, personName } from "./api";
-import { appsOf, atMost, repositoryWords } from "./githubModel";
+import { access, adds, forHowLong, matcherKind, people as peopleCount, personName } from "./api";
+import { atMost, repositoryWords } from "./githubModel";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
@@ -83,16 +83,15 @@ export function Groups() {
 export function Group({ name }: { name: string }) {
   const policy = useAsync(() => access.getPolicy({}), []);
   const holders = useAsync(() => access.listHolders({ group: name }), [name]);
-  // The GitHub Apps this group may mint tokens of are declared beside the
-  // Apps, not in the policy, so they come from the GitHub status. A viewer
-  // may read it; where it cannot be read the section is simply absent.
-  const githubStatus = useAsync(() => github.getGitHubStatus({}), []);
-  const mints = (githubStatus.value ? appsOf(githubStatus.value) : []).flatMap((app) =>
-    app.grants.filter((grant) => grant.group === name).map((grant, i) => ({ app, grant, key: `${app.id}:${i}` })),
-  );
-  const mintApps = new Set(mints.map((m) => m.app.id)).size;
-
   const group = (policy.value?.groups ?? []).find((g) => g.name === name);
+  // The GitHub Apps this group may mint tokens of come with the group:
+  // they are declared beside the Apps rather than in the policy, and the
+  // reverse edge is the server's to draw. Reading the whole GitHub report
+  // to work it out here would ask every connected organisation for its
+  // status to render one section.
+  const mints = (group?.githubGrants ?? []).map((grant, i) => ({ grant, key: `${grant.appId}:${i}` }));
+  const mintApps = new Set(mints.map((m) => m.grant.appId)).size;
+
   const opens = (policy.value?.clients ?? []).filter((client) => client.requires.includes(name));
   const feeds = [
     ...(policy.value?.teams ?? []).flatMap((team) => [
@@ -230,12 +229,11 @@ export function Group({ name }: { name: string }) {
             items={mints}
             keyOf={(m) => m.key}
             primary={(m) => (
-              <Ref to={paths.githubApp(m.app.id)} mono>
-                {m.app.name}
+              <Ref to={paths.githubApp(m.grant.appId)} mono>
+                {m.grant.appName}
               </Ref>
             )}
-            secondary={(m) => `${repositoryWords(m.grant.repositories, m.app.org)} · at most ${atMost(m.grant.permissions)}`}
-            right={(m) => <State kind={m.app.label} title={m.app.exact} />}
+            secondary={(m) => `${repositoryWords(m.grant.repositories, m.grant.org)} · at most ${atMost(m.grant.permissions)}`}
             empty=""
           />
         </Section>

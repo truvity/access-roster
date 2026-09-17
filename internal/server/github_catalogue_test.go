@@ -327,7 +327,7 @@ func TestWhatGitHubSaysOfACatalogueAppIsCachedBriefly(t *testing.T) {
 	github := startFakeGitHub(t)
 	_, console, _, _ := catalogueServer(t)
 	now := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
-	console.catalogueSeen.clock = func() time.Time { return now }
+	console.githubSeen.clock = func() time.Time { return now }
 	github.app = map[string]string{"contents": "write"}
 	github.installed = map[string]string{"contents": "write"}
 	if err := console.deps.GitHubCatalogueApps.Put(context.Background(), catalogueapp.Record{

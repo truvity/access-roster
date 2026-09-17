@@ -161,8 +161,8 @@ type ConsoleDeps struct {
 type Console struct {
 	deps       ConsoleDeps
 	connectors map[string]Connector
-	// catalogueSeen is what GitHub last said of each catalogue App.
-	catalogueSeen catalogueObservations
+	// githubSeen is what GitHub last said of each GitHub App.
+	githubSeen githubObservations
 }
 
 var (
@@ -693,8 +693,9 @@ func (c *Console) GetPolicy(
 		LoginSources:    c.deps.LoginSources,
 		Groups:          make([]*directoryrosterv1.PolicyGroup, 0, len(groups)),
 	}
+	githubGrants := c.githubGroupGrants()
 	for i := range groups {
-		group, err := policyGroupProto(&groups[i])
+		group, err := policyGroupProto(&groups[i], githubGrants[groups[i].Name])
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}

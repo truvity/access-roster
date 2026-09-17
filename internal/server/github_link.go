@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -71,34 +70,41 @@ func (c *Console) BeginGitHubLinkAppConnect(
 	if err != nil {
 		return nil, err
 	}
-	owner := strings.TrimSpace(req.Msg.GetOwner())
+	begun, err := c.beginLinkAppConnect(ctx, id.Who(), strings.TrimSpace(req.Msg.GetOwner()))
+	if err != nil {
+		return nil, err
+	}
+	response := connect.NewResponse(&directoryrosterv1.BeginGitHubLinkAppConnectResponse{Url: begun.url, Manifest: begun.manifest})
+	c.pinFlow(response.Header(), begun.state)
+	return response, nil
+}
+
+// beginLinkAppConnect is the work of it, which
+// [Console.BeginGitHubAppConnect] does too.
+func (c *Console) beginLinkAppConnect(ctx context.Context, actor, owner string) (githubBegin, error) {
 	switch {
 	case !status.ValidOrg(owner):
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", owner))
+		return githubBegin{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", owner))
 	case c.deps.GitHubLinkApp == nil || c.deps.GitHubLinks == nil:
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("this deployment keeps no state in Kubernetes, so a link would not survive a restart"))
 	}
 	if existing, connected, err := c.deps.GitHubLinkApp.LinkApp(ctx); err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubBegin{}, connect.NewError(connect.CodeUnavailable, err)
 	} else if connected {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
+		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("the link App %s is already connected: disconnect it first", existing.AppSlug))
 	}
-	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubLinkAppBind + owner, Actor: id.Who()})
+	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubLinkAppBind + owner, Actor: actor})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
 	}
 	root := c.githubRoot()
 	manifest, err := json.Marshal(githubapp.NewLinkManifest(owner, c.deps.PublicURL, root+githubLinkAppCallbackPath, root+githubLinkCallbackPath))
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
 	}
-	response := connect.NewResponse(&directoryrosterv1.BeginGitHubLinkAppConnectResponse{
-		Url: githubapp.CreateURL(owner, state), Manifest: string(manifest),
-	})
-	response.Header().Add("Set-Cookie", access.ConnectCookie(state, c.deps.SecureCookie, githubFlowWindow).String())
-	return response, nil
+	return githubBegin{url: githubapp.CreateURL(owner, state), manifest: string(manifest), state: state}, nil
 }
 
 // DisconnectGitHubLinkApp forgets the link App, and makes every link made
@@ -111,36 +117,51 @@ func (c *Console) DisconnectGitHubLinkApp(
 	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
+	gone, err := c.disconnectLinkApp(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&directoryrosterv1.DisconnectGitHubLinkAppResponse{
+		Invalidated:    int32(gone.invalidated), //nolint:gosec // a count of people
+		AppSettingsUrl: gone.settingsURL,
+	}), nil
+}
+
+// disconnectLinkApp is the work of it, which [Console.DisconnectGitHubApp]
+// does too.
+func (c *Console) disconnectLinkApp(ctx context.Context) (githubDisconnect, error) {
 	if c.deps.GitHubLinkApp == nil || c.deps.GitHubLinks == nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no link App"))
+		return githubDisconnect{}, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no link App"))
 	}
 	record, connected, err := c.deps.GitHubLinkApp.LinkApp(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	_, hasCredential, err := c.deps.GitHubLinkApp.LinkAppCredential(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	if !connected && !hasCredential {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("no link App is connected"))
+		return githubDisconnect{}, connect.NewError(connect.CodeNotFound, errors.New("no link App is connected"))
 	}
 	invalidated, err := c.deps.GitHubLinks.Invalidate(ctx, "the link App was disconnected: link the account again", time.Now().UTC())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	if err = c.deps.GitHubLinkApp.DeleteLinkApp(ctx); err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
-	out := &directoryrosterv1.DisconnectGitHubLinkAppResponse{Invalidated: int32(invalidated)} //nolint:gosec // a count of people
-	if record.AppSlug != "" && record.Owner != "" {
-		out.AppSettingsUrl = githubapp.WebBase + "/organizations/" + url.PathEscape(record.Owner) + "/settings/apps/" + url.PathEscape(record.AppSlug)
+	// Nothing to uninstall: the link App is installed nowhere, by design.
+	out := githubDisconnect{
+		invalidated: invalidated,
+		settingsURL: appSettingsURL(record.Owner, record.AppSlug),
+		detail:      "The link App is installed nowhere, so there was nothing to uninstall.",
 	}
 	c.record(ctx, audit.Event{
 		Kind: "github.link-app.disconnected", Target: record.AppSlug,
 		Attributes: map[string]string{"invalidated": strconv.Itoa(invalidated)},
 	})
-	return connect.NewResponse(out), nil
+	return out, nil
 }
 
 // githubLinkAppCallback is where GitHub sends the owner after creating the

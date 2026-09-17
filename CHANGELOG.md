@@ -1,3 +1,56 @@
+## v1.14.0
+
+- **One API for every GitHub App.** The console's Apps list and Apps pages
+  were one list assembled in the browser out of four unrelated answers —
+  a link App, an organisation's connection, a table of runner Apps and a
+  table of catalogue Apps. The service now answers the question the page
+  asks: `ListGitHubApps` returns every App this deployment keeps a key for
+  or is declared to, in one shape, and `GetGitHubApp` returns one of them
+  by the id its page is addressed by. Nothing about the pages changes;
+  what changes is that the ids, the states and the words for them are the
+  service's, so anything else that asks — a script, a second console — is
+  told the same thing.
+- **The service's own Apps are checked against their declaration, like the
+  catalogue's.** The link App, each organisation's controller App and each
+  tier's runner App are created from a manifest this service writes, and
+  until now nothing ever compared that manifest with what GitHub holds. An
+  owner could edit the permissions of an organisation's App on GitHub and
+  the console would go on reporting it installed. Each of them now shows
+  its permissions — before it is created, as what it will ask for — and
+  after it is installed, what GitHub says it holds beside what was
+  declared, with *Re-check* on the page to ask again.
+  - **The runner App that cannot register a runner** is the case this was
+    built for: an owner narrows `organization_self_hosted_runners` to
+    read, every scale set stops registering, and nothing but the runners'
+    own logs said why. It is now an App that *needs you*, with the single
+    sentence that fixes it.
+  - **A preset whose key cannot be read says so, and claims nothing.** The
+    link App is authorized by a person rather than acted as, so this
+    service holds no App key for it and cannot ask GitHub what it holds:
+    its page says that, and no App ever reports "matches its declaration"
+    on a check that did not happen.
+- **Create, Install, Re-check and Disconnect are one call each.** They
+  take the App's id and work for all four kinds. The calls they replace
+  still answer, so a console and a service mid-rollout are never a broken
+  page, and a browser part-way through GitHub's two clicks when the
+  service restarts finishes exactly where it was going to: the generic
+  call starts the same flow, under the same signed state, ending at the
+  same callback.
+- **A group's page says which GitHub tokens it may mint, from the
+  service.** It used to fetch the whole GitHub report — which asks every
+  connected organisation for its status — and work the reverse edge out in
+  the browser, to render one section. The internal group now carries its
+  `github_grants` from the catalogue: the Apps it may mint installation
+  tokens of, the repositories each covers and the most a token may carry.
+  The section no longer shows each App's state on GitHub, because reading
+  the policy should not cost a call to GitHub; the App's own page is one
+  click away and says it.
+- **The Apps list says where each App's key is kept.** The Kubernetes
+  Secret and the keys within it were a shape the console guessed from the
+  release name; they are now the names the service actually writes, and a
+  deployment that keeps no state in Kubernetes names no Secret instead of
+  naming one that does not exist.
+
 ## v1.13.0
 
 - **The People list shows the GitHub account each person linked.** The

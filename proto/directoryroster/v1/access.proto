@@ -6,6 +6,8 @@ import "google/protobuf/duration.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
+import "directoryroster/v1/github.proto";
+
 // AccessService is how the console learns who is signed in, what the
 // policy says, and what any identity would effectively get.
 //
@@ -230,6 +232,11 @@ message PolicyGroup {
   google.protobuf.Struct claims = 4;
   // how long a token lives for someone in this group alone.
   google.protobuf.Duration lifetime = 5;
+  // the GitHub Apps this group may mint installation tokens of, from the
+  // deployment's catalogue: the reverse of an App's grants, which the
+  // group's own page needs and cannot derive. Empty where the deployment
+  // declares no catalogue.
+  repeated GitHubGroupGrant github_grants = 7;
 }
 
 // PolicyClient is one declared client as the console shows it. A
