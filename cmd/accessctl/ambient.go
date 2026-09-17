@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
+
 	"github.com/truvity/access-roster/tokens"
 )
 
@@ -83,35 +85,44 @@ func githubToken(ctx context.Context, requestURL, grant, issuer string) (string,
 	query.Set("audience", issuer)
 	parsed.RawQuery = query.Encode()
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	return retry(ctx, func() (string, error) {
+		return askGitHub(ctx, parsed.String(), grant)
+	})
+}
+
+// askGitHub is one attempt at the job's token. A failure that another
+// attempt cannot change is marked [backoff.Permanent].
+func askGitHub(ctx context.Context, requestURL, grant string) (string, error) {
+	attemptCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	request, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, requestURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("%w: build the GitHub token request: %w", errUnreachable, err)
+		return "", backoff.Permanent(fmt.Errorf("%w: build the GitHub token request: %w", errUnreachable, err))
 	}
 	request.Header.Set("Authorization", "bearer "+grant)
 	request.Header.Set("Accept", "application/json")
 
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("%w: ask GitHub for the job's token: %w", errUnreachable, err)
+		return "", transient(transientTransport(ctx, err), fmt.Errorf("%w: ask GitHub for the job's token: %w", errUnreachable, err))
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("%w: read the job's token: %w", errUnreachable, err)
+		return "", transient(transientTransport(ctx, err), fmt.Errorf("%w: read the job's token: %w", errUnreachable, err))
 	}
 	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%w: GitHub answered %s for the job's token", errUnreachable, response.Status)
+		return "", transient(transientStatus(response.StatusCode),
+			fmt.Errorf("%w: GitHub answered %s for the job's token", errUnreachable, response.Status))
 	}
 
 	var answer struct {
 		Value string `json:"value"`
 	}
 	if err = json.Unmarshal(body, &answer); err != nil || strings.TrimSpace(answer.Value) == "" {
-		return "", errors.Join(errUnreachable, errors.New("GitHub returned no identity token for this job"))
+		return "", backoff.Permanent(errors.Join(errUnreachable, errors.New("GitHub returned no identity token for this job")))
 	}
 	return answer.Value, nil
 }

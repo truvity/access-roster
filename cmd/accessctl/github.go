@@ -38,7 +38,7 @@ func githubTokenCommand(args []string) error {
 		return err
 	}
 
-	exchanger := &tokens.Exchanger{Issuer: cfg.Issuer, ClientID: held.Client}
+	exchanger := &tokens.Exchanger{Issuer: cfg.Issuer, ClientID: held.Client, Client: retryingClient()}
 	minted, err := exchanger.GitHubInstallationToken(ctx, held.Subject, held.Type, request.app,
 		request.repositories, request.permissions)
 	switch {

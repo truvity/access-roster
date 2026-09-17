@@ -80,6 +80,19 @@
   attribute — now drops record separators and control characters and is
   cut to 256 bytes, as the service's other log lines already were. The
   record kept in the trail is unchanged and keeps each value exactly.
+- **accessctl rides out a dropped connection in a job.** Every tool call
+  that runs `accessctl kube-token` (or `aws`, `token`, `github-token`)
+  asks the job's token service and then the issuer again, so a long job
+  makes many round trips, and one network blip among them used to fail
+  the step. Both requests are now tried up to four times, waiting about
+  a quarter of a second, then twice as long each time up to two seconds,
+  jittered, when the failure may pass: no answer at all (a connection
+  reset or refused, a timeout, a temporary DNS failure), `429` or a
+  `5xx`. A refusal, any other `4xx`, a certificate that is not trusted, a
+  name that does not exist, or an answer with no token is final at once,
+  as before. The exchange is retried the same way on a laptop. A failure
+  that outlasts the attempts exits as it did; the job's token, and an
+  exchange that never got an answer, say so — `(after 4 attempts)`.
 
 ## v1.10.0
 
