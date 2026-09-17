@@ -20,7 +20,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
-import { ago, at, github, reason } from "./api";
+import { ago, at, audit, github, reason } from "./api";
 import type { GetGitHubStatusResponse, GitHubCatalogueApp, GitHubOrganisation, GitHubRunnerApp } from "./gen/directoryroster/v1/github_pb";
 import { countLabels, labelOf, linkPage, organisationNeeds, peopleOf, rowsOf, sentence, tooltipOf, type Row } from "./githubModel";
 import { useAsync } from "./hooks";
@@ -1111,6 +1111,8 @@ function CatalogueAppPage({ app, operator, onDone, reload }: Props & { app: GitH
         </Section>
       ) : null}
 
+      {operator && shown.installationId ? <RecentTokens id={shown.id} /> : null}
+
       {shown.installationId ? (
         <Section title="Where the key is" hint="for a deployment copying it, for example with an External Secrets PushSecret">
           <Facts
@@ -1127,6 +1129,60 @@ function CatalogueAppPage({ app, operator, onDone, reload }: Props & { app: GitH
         </Section>
       ) : null}
     </Page>
+  );
+}
+
+/** The last installation tokens asked of an App, minted or refused, from
+ *  the audit trail the Audit page reads: who asked, for what, and what
+ *  was decided. Never the token, which the trail does not hold. */
+function RecentTokens({ id }: { id: string }) {
+  const recent = useAsync(() => audit.listAuditEvents({ kind: "github.token.minted", target: `github-app:${id}`, limit: 10 }), [id]);
+  const events = recent.value?.events ?? [];
+  return (
+    <Section title="Recent tokens" hint="the last ten asked for, from the audit trail; tokens themselves are never kept">
+      <Loading busy={recent.loading} />
+      {recent.error ? <Nothing>{recent.error}</Nothing> : null}
+      {!recent.loading && !recent.error && events.length === 0 ? <Nothing>No token has been asked for lately.</Nothing> : null}
+      {events.length > 0 ? (
+        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>When</TableCell>
+                <TableCell>By</TableCell>
+                <TableCell>Repositories</TableCell>
+                <TableCell>Permissions</TableCell>
+                <TableCell>Outcome</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {events.map((event) => (
+                <TableRow key={event.id} hover>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>{ago(at(event.at))}</TableCell>
+                  <TableCell>
+                    <Mono>{event.subject || "—"}</Mono>
+                    {event.attributes.grant ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        through <Mono>{event.attributes.grant}</Mono>
+                      </Typography>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    <Mono>{event.attributes.repositories || "every repository"}</Mono>
+                  </TableCell>
+                  <TableCell>
+                    <Mono>{event.attributes.permissions || "—"}</Mono>
+                  </TableCell>
+                  <TableCell>
+                    {event.outcome === "ok" ? "minted" : <State kind={event.outcome === "failed" ? "failed" : "refused"} title={event.reason || undefined} />}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : null}
+    </Section>
   );
 }
 

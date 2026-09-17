@@ -128,8 +128,20 @@ point a person and a job are the same thing.
 | Proof | Becomes the groups… |
 |---|---|
 | a corporate sign-in | whose `members` contain a directory group the service confirms the account is in, **authoritatively** |
-| a CI identity token | whose `matchers` the token's claims satisfy: `repository`, `owner`, `ref`, `workflow` and `environment` as globs, and `visibility` (`public`, `private` or `internal`) exactly |
+| a CI identity token | whose `matchers` the token's claims satisfy: `repository`, `owner`, `ref`, `workflow`, `environment`, `workflow_ref`, `job_workflow_ref`, `sha`, `event_name` and `ref_type` as globs, and `visibility` (`public`, `private` or `internal`) exactly |
 | a Kubernetes ServiceAccount token | whose `matchers` name that namespace and ServiceAccount |
+
+Globs are Go's `path.Match`, where `*` does not cross a `/`. Every field
+left out matches anything, so a matcher written before a field existed
+keeps meaning what it meant. `job_workflow_ref` —
+`example-org/app/.github/workflows/release.yml@refs/heads/main` — is the
+workflow file the job is defined in (the called file, for a reusable
+workflow), and `workflow_ref` the file the run started from: together
+with `ref` and `event_name` they pin a group to one reviewed workflow on
+one branch, run the way it is meant to run, rather than to every job a
+repository can run. That is the shape a group behind a write grant of a
+[catalogue App](../connect/github-apps-catalogue.md#pinning-a-grant-to-one-workflow)
+should have.
 
 `matchers` are conditions on a verified proof, so they also cover a
 signed-in address (`email`) or its domain (`email_domain`). Those are the

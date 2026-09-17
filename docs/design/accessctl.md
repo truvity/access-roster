@@ -25,12 +25,13 @@ a login cache and an issuer configuration.
 | `aws-config` | writes a profile per granted cloud role with `credential_process = accessctl aws --audience aws:<account>:<role>` | people |
 | `aws` | exchanges the cached login for the role's audience and answers the credential-process JSON | people |
 | `token` | prints a token for one audience on stdout and nothing else, for a caller that is neither kubectl nor an AWS SDK: `accessctl token --audience openbao \| bao write -field=token auth/jwt-roster/login role=roster jwt=-`. The laptop sign-in, or the job's own token in CI | people, jobs |
+| `github-token` | prints a GitHub App installation token of a catalogue App, `--app <id>`, narrowed by `--repository` and `--permission name=level`, under the catalogue's grants; `--json` prints what GitHub granted beside it. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
 | `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
 **A job runs the same commands.** With `ACTIONS_ID_TOKEN_REQUEST_URL`
-and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` set, `kube-token`, `aws` and
-`token` ask GitHub for the job's own identity token, minted for the
+and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` set, `kube-token`, `aws`,
+`token` and `github-token` ask GitHub for the job's own identity token, minted for the
 issuer, and exchange that, presenting the audience as the client the way
 the action does. So one committed kubeconfig and one `aws.ini` serve a
 laptop and a job alike, where a repository used to keep a second copy of
@@ -54,7 +55,9 @@ exactly what is ours to prepare and stops:
 
 | Input | Effect |
 |---|---|
-| `issuer`, `audiences` | required: one exchange per audience; each client's `requires` decides |
+| `issuer` | required |
+| `audiences` | one exchange per audience; each client's `requires` decides. Optional when `github-app` is given |
+| `github-app`, `repositories`, `permissions` | an installation token of a catalogue App, narrowed to those repositories (names, without the owner) and `name:level` permissions, under the catalogue's grants; output `github-token`, masked |
 | `kubeconfig` | write a kubeconfig with one context per `k8s:<cluster>` audience, the cluster token as bearer |
 | `default-profile` | export `AWS_PROFILE` |
 | `region` | the region written into each profile |

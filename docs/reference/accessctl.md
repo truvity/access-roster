@@ -12,6 +12,7 @@ kubectl --context kernel get nodes           # exec plugin: accessctl kube-token
 aws --profile power@1111 sts get-caller-identity   # credential_process: accessctl aws
 
 accessctl token --audience openbao              # one token for one audience, on stdout
+accessctl github-token --app publisher --repository app --permission contents=read
 accessctl exchange --audience k8s:devel < subject-token
 ```
 
@@ -30,6 +31,15 @@ The default id is `accessctl`.
 Every command that names an audience takes `--audience`, `--issuer` and
 `--client`, defaulting to what `login` wrote; `aws` also takes `--role`
 for a role the audience does not encode.
+
+`github-token` names a [catalogue App](../connect/github-apps-catalogue.md#minting-a-token)
+instead: `--app <id>`, `--repository <name>` (repeatable, without the
+owner; none asks for a token not narrowed to any, which only a grant of
+every repository allows), `--permission <name>=<level>` (repeatable; none
+asks for exactly what the grant allows), and `--json` to print
+`{"token", "expires_at", "repositories", "permissions"}` — what GitHub
+granted — instead of the bare token. It takes `--issuer` and `--client`
+like the rest.
 
 **Installing it.** Each release carries `accessctl_<version>_nix-flake.tar.gz`,
 a Nix flake over that release's own archives; a repository adds its URL
@@ -77,8 +87,8 @@ holds no secret.
 
 The same files work unchanged in a GitHub Actions job granted
 `id-token: write`. When `ACTIONS_ID_TOKEN_REQUEST_URL` and
-`ACTIONS_ID_TOKEN_REQUEST_TOKEN` are set, `kube-token`, `aws` and `token`
-ask GitHub for the job's identity token — for the issuer's URL, the one
+`ACTIONS_ID_TOKEN_REQUEST_TOKEN` are set, `kube-token`, `aws`, `token` and
+`github-token` ask GitHub for the job's identity token — for the issuer's URL, the one
 audience it accepts — and exchange that, presenting the audience as the
 client, exactly as the GitHub Action does. There is no `login` in a job
 and no cache: every call exchanges afresh. A repository that would rather
@@ -96,5 +106,5 @@ retry a refusal.
 | `0` | ok |
 | `2` | usage: something in the command line is wrong |
 | `3` | not signed in — run `accessctl login` |
-| `4` | that audience is not granted to you; retrying will not help |
+| `4` | that audience, or that App's token, is not granted to you; retrying will not help |
 | `5` | the issuer could not be reached; retrying might |

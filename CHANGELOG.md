@@ -32,7 +32,47 @@
     delete the App on GitHub; its owner does, from the linked settings.
   - **Grants** — which groups may ask for an App's installation tokens,
     for which repositories, with at most which permissions — are declared,
-    validated and shown. Minting those tokens is not built yet.
+    validated and shown on the App's page.
+- **Installation tokens for catalogue Apps, minted under the grants.** A
+  job, a workload or a person exchanges the proof it already holds at
+  `/token` for a GitHub App installation token: RFC 8693 with
+  `requested_token_type=urn:access-roster:params:oauth:token-type:github-installation-token`,
+  `audience=github-app:<id>`, and optional `repositories` (names) and
+  `scope` (`name:level` permissions). The response carries GitHub's token
+  with `token_type: N_A`, its `expires_in`, and the repositories and
+  permissions GitHub granted, under `Cache-Control: no-store`.
+  - **One grant covers the whole request.** Of the App's grants for the
+    proof's groups, in catalogue order, the first covering every named
+    repository and permission is used; no repositories needs a `["*"]`
+    grant; no permissions asks for exactly the grant's. GitHub is always
+    sent that narrowing, so nothing the installation holds beyond the
+    grant reaches a token.
+  - **Errors** are RFC 6749's: `invalid_target` for an App that cannot
+    mint or a proof no grant names, `invalid_scope` for a request wider
+    than any one grant (or refused by GitHub), `invalid_grant` for a
+    subject that is not a proof, `invalid_request` for a malformed request
+    or an `actor_token`.
+  - **Proofs are the same.** The verifier chain, the sign-in exchange's
+    client rule and the group evaluation are the ones every exchange uses;
+    ordinary exchanges are unchanged.
+  - **Audited, never stored.** Every request is one `github.token.minted`
+    event — proof kind, App, organisation, grant, repositories,
+    permissions, installation, expiry — minted or refused. The token is
+    never recorded and never kept.
+  - **`accessctl github-token --app <id> [--repository name]...
+    [--permission name=level]... [--json]`**, from the job's identity in
+    CI and the sign-in on a laptop, and `Exchanger.GitHubInstallationToken`
+    in the `tokens` package.
+  - **The action** takes `github-app`, `repositories` and `permissions`,
+    and sets the masked `github-token` output. `audiences` is now optional
+    when `github-app` is given.
+- **A GitHub matcher can pin the workflow file.** `workflow_ref`,
+  `job_workflow_ref`, `sha`, `event_name` and `ref_type` are read from the
+  job's identity token and matched as globs, so a group — and the grant
+  that names it — can admit one reviewed workflow on one branch rather
+  than every job in a repository. Matchers without them are unchanged;
+  deploy the issuer before writing them in a policy, as an older one
+  refuses the keys.
 - The roster's own three Apps are built from the same catalogue shape by
   one manifest builder; the manifests GitHub is posted are unchanged.
 
