@@ -1,4 +1,4 @@
-## Unreleased
+## v1.10.0
 
 - **access-issuer's routes can attach to a ListenerSet.** `route.parentRefs`,
   when set, is used as written for both of the issuer's routes, and the
