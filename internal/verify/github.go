@@ -119,6 +119,14 @@ func (g *GitHub) Verify(ctx context.Context, token, tokenType string) (issuer.Pr
 		Workflow:    strings.TrimSpace(claims.Workflow),
 		Environment: strings.TrimSpace(claims.Environment),
 		Visibility:  strings.TrimSpace(claims.RepositoryVisibility),
+		// What a rule pins a job's CODE with: the workflow file it was
+		// started from, the file its job is defined in, the commit, and
+		// what started it. Verbatim, for the same reason as `ref`.
+		WorkflowRef:    strings.TrimSpace(claims.WorkflowRef),
+		JobWorkflowRef: strings.TrimSpace(claims.JobWorkflowRef),
+		SHA:            strings.TrimSpace(claims.SHA),
+		EventName:      strings.TrimSpace(claims.EventName),
+		RefType:        strings.TrimSpace(claims.RefType),
 	}}, nil
 }
 
@@ -197,6 +205,11 @@ type githubClaims struct {
 	Environment     string `json:"environment,omitempty"`
 	// RepositoryVisibility is public, private or internal.
 	RepositoryVisibility string `json:"repository_visibility,omitempty"`
+	WorkflowRef          string `json:"workflow_ref,omitempty"`
+	JobWorkflowRef       string `json:"job_workflow_ref,omitempty"`
+	SHA                  string `json:"sha,omitempty"`
+	EventName            string `json:"event_name,omitempty"`
+	RefType              string `json:"ref_type,omitempty"`
 }
 
 // hasAudience reports whether the token was minted for us.

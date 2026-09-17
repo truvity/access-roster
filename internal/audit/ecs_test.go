@@ -159,6 +159,10 @@ func TestEveryKindHasItsECSClass(t *testing.T) {
 		// internal/issuer
 		{"token.exchanged", audit.OutcomeOK, c("authentication", "access")},
 		{"token.exchanged", audit.OutcomeRefused, c("authentication", "access", "denied")},
+		// internal/issuer/githubtoken_http.go
+		{"github.token.minted", audit.OutcomeOK, c("authentication", "access")},
+		{"github.token.minted", audit.OutcomeRefused, c("authentication", "access", "denied")},
+		{"github.token.minted", audit.OutcomeFailed, c("authentication", "access")},
 		{"session.refresh-refused", "", c("session", "denied")},
 		{"session.ended", "", c("session", "end")},
 		{"session.revoked", "", c("session", "end", "admin")},

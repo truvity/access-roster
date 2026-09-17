@@ -63,6 +63,9 @@ type Issuer struct {
 	sessions *Sessions
 	sso      *SSO
 	audit    audit.Recorder
+	// githubApps are the catalogue Apps installation tokens are minted
+	// for. Nil refuses every such request.
+	githubApps *GitHubApps
 }
 
 // UseAudit gives the issuer the service's recorder. The directory half

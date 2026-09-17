@@ -69,6 +69,7 @@ var kinds = map[string]classes{
 	"sign-in.refused":         class(categoryAuthentication, typeDenied),
 	"recovery.sign-in":        class(categoryAuthentication, typeStart, typeAdmin),
 	"token.exchanged":         class(categoryAuthentication, typeAccess),
+	"github.token.minted":     class(categoryAuthentication, typeAccess),
 	"session.refresh-refused": class(categorySession, typeDenied),
 	"session.ended":           class(categorySession, typeEnd),
 	"session.revoked":         class(categorySession, typeEnd, typeAdmin),
@@ -120,7 +121,7 @@ var prefixes = []struct {
 }
 
 // Classify is a kind's ECS event.category and event.type. A token exchange
-// that was refused is also `denied`: the exchange is the access, and its
+// (or an installation token) that was refused is also `denied`: the exchange is the access, and its
 // refusal is a control acting. Anything unknown is `iam`/`info`, which is
 // true of every event here and claims nothing more.
 func Classify(kind, outcome string) (category, types []string) {
@@ -135,7 +136,7 @@ func Classify(kind, outcome string) (category, types []string) {
 		}
 	}
 	category, types = slices.Clone(c.category), slices.Clone(c.types)
-	if kind == "token.exchanged" && outcome == OutcomeRefused {
+	if (kind == "token.exchanged" || kind == "github.token.minted") && outcome == OutcomeRefused {
 		types = append(types, typeDenied)
 	}
 	return category, types

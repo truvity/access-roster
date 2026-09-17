@@ -270,18 +270,66 @@ func FindInstallation(ctx context.Context, client *http.Client, appToken, org st
 // InstallationToken is what the App acts in one installation with: an
 // hour-long token GitHub mints on request, signed for by the App JWT.
 func InstallationToken(ctx context.Context, client *http.Client, appToken string, installation int64) (string, time.Time, error) {
+	minted, err := InstallationTokenFor(ctx, client, appToken, installation, Narrowing{})
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return minted.Token, minted.ExpiresAt, nil
+}
+
+// Narrowing is what an installation token is cut down to: some of the
+// installation's repositories, some of its permissions. Empty fields
+// narrow nothing, and GitHub then grants everything the installation has.
+type Narrowing struct {
+	// Repositories are names within the installation's account, without
+	// the owner.
+	Repositories []string `json:"repositories,omitempty"`
+	// Permissions are GitHub permission names to read, write or admin.
+	Permissions map[string]string `json:"permissions,omitempty"`
+}
+
+// MintedToken is an installation token and what GitHub says it carries,
+// which is what was granted rather than what was asked for.
+type MintedToken struct {
+	Token     string
+	ExpiresAt time.Time
+	// Repositories are the repositories the token is narrowed to, by name.
+	// Empty is every repository the installation can reach.
+	Repositories []string
+	// Permissions are what the token carries.
+	Permissions map[string]string
+}
+
+// InstallationTokenFor mints an installation token narrowed to some
+// repositories and permissions. GitHub refuses a narrowing wider than the
+// installation with a 422, returned as a [StatusError].
+func InstallationTokenFor(
+	ctx context.Context, client *http.Client, appToken string, installation int64, narrowing Narrowing,
+) (MintedToken, error) {
 	endpoint := APIBase + "/app/installations/" + strconv.FormatInt(installation, 10) + "/access_tokens"
 	var body struct {
-		Token     string    `json:"token"`
-		ExpiresAt time.Time `json:"expires_at"`
+		Token        string            `json:"token"`
+		ExpiresAt    time.Time         `json:"expires_at"`
+		Permissions  map[string]string `json:"permissions"`
+		Repositories []struct {
+			Name string `json:"name"`
+		} `json:"repositories"`
 	}
-	if err := call(ctx, client, http.MethodPost, endpoint, appToken, http.StatusCreated, &body); err != nil {
-		return "", time.Time{}, fmt.Errorf("github: an installation token: %w", err)
+	var request any
+	if len(narrowing.Repositories) > 0 || len(narrowing.Permissions) > 0 {
+		request = narrowing
+	}
+	if err := send(ctx, client, http.MethodPost, endpoint, appToken, request, http.StatusCreated, &body); err != nil {
+		return MintedToken{}, fmt.Errorf("github: an installation token: %w", err)
 	}
 	if body.Token == "" {
-		return "", time.Time{}, errors.New("github: GitHub minted an empty installation token")
+		return MintedToken{}, errors.New("github: GitHub minted an empty installation token")
 	}
-	return body.Token, body.ExpiresAt, nil
+	out := MintedToken{Token: body.Token, ExpiresAt: body.ExpiresAt, Permissions: body.Permissions}
+	for _, repository := range body.Repositories {
+		out.Repositories = append(out.Repositories, repository.Name)
+	}
+	return out, nil
 }
 
 // DeleteInstallation uninstalls the App from wherever that installation

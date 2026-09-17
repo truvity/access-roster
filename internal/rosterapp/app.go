@@ -27,6 +27,7 @@ import (
 	"github.com/truvity/access-roster/internal/app"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hublocal"
+	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/issuerapp"
 )
 
@@ -128,6 +129,14 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// one bare, and every event on a deployment without its request.
 		Around: directory.AuditRequests,
 	}
+	// Installation tokens for catalogue Apps are minted at the issuer's
+	// token endpoint, from the keys the console created each App with:
+	// the same catalogue, and the same Secret, in the same process.
+	apps := issuer.GitHubApps{Catalogue: directory.GitHubCatalogue()}
+	if store := directory.GitHubCatalogueApps(); store != nil {
+		apps.Store = store
+	}
+	deps.GitHubApps = &apps
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {
 		directory.Close()

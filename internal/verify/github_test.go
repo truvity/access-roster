@@ -123,6 +123,11 @@ func TestAGitHubTokenBecomesAProof(t *testing.T) {
 		"workflow":              "Release",
 		"environment":           "prod",
 		"repository_visibility": "private",
+		"workflow_ref":          "globex/gitops/.github/workflows/release.yml@refs/heads/master",
+		"job_workflow_ref":      "globex/shared/.github/workflows/deploy.yml@refs/tags/v1",
+		"sha":                   "0123456789abcdef",
+		"event_name":            "push",
+		"ref_type":              "branch",
 	}, nil)
 
 	proof, err := githubVerifier(fake).Verify(context.Background(), token, verify.TypeJWT)
@@ -135,12 +140,17 @@ func TestAGitHubTokenBecomesAProof(t *testing.T) {
 	}
 
 	for name, got := range map[string]struct{ have, want string }{
-		"repository":  {proof.GitHub.Repository, "globex/gitops"},
-		"owner":       {proof.GitHub.Owner, "globex"},
-		"ref":         {proof.GitHub.Ref, "refs/heads/master"},
-		"workflow":    {proof.GitHub.Workflow, "Release"},
-		"environment": {proof.GitHub.Environment, "prod"},
-		"visibility":  {proof.GitHub.Visibility, "private"},
+		"repository":       {proof.GitHub.Repository, "globex/gitops"},
+		"owner":            {proof.GitHub.Owner, "globex"},
+		"ref":              {proof.GitHub.Ref, "refs/heads/master"},
+		"workflow":         {proof.GitHub.Workflow, "Release"},
+		"environment":      {proof.GitHub.Environment, "prod"},
+		"visibility":       {proof.GitHub.Visibility, "private"},
+		"workflow_ref":     {proof.GitHub.WorkflowRef, "globex/gitops/.github/workflows/release.yml@refs/heads/master"},
+		"job_workflow_ref": {proof.GitHub.JobWorkflowRef, "globex/shared/.github/workflows/deploy.yml@refs/tags/v1"},
+		"sha":              {proof.GitHub.SHA, "0123456789abcdef"},
+		"event_name":       {proof.GitHub.EventName, "push"},
+		"ref_type":         {proof.GitHub.RefType, "branch"},
 	} {
 		if got.have != got.want {
 			t.Errorf("%s = %q, want %q", name, got.have, got.want)

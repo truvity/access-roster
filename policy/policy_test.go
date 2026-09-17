@@ -690,3 +690,72 @@ clients:
 		}
 	}
 }
+
+// A repository and a branch admit every workflow on that branch. Pinning
+// the job's workflow file, what started the run and the ref type admits
+// the one file somebody reviewed, run the way it is meant to be run —
+// and a matcher written without them keeps meaning what it meant.
+func TestAMatcherMayPinTheWorkflowFileAndTheEvent(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+groups:
+  all:release:job:
+    matchers:
+      - github:
+          repository: example-org/app
+          ref: refs/heads/main
+          ref_type: branch
+          event_name: push
+          job_workflow_ref: example-org/app/.github/workflows/release.yml@refs/heads/main
+          workflow_ref: example-org/app/.github/workflows/*.yml@refs/heads/main
+          sha: "*"
+  all:any:job:
+    matchers: [{ github: { repository: example-org/app } }]
+clients:
+  k8s:devel: { kind: exchange, requires: [all:release:job] }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := policy.NewSet(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned := func(change func(*policy.GitHubClaims)) *policy.GitHubClaims {
+		claims := &policy.GitHubClaims{
+			Repository: "example-org/app", Owner: "example-org", Ref: "refs/heads/main", RefType: "branch",
+			EventName:      "push",
+			JobWorkflowRef: "example-org/app/.github/workflows/release.yml@refs/heads/main",
+			WorkflowRef:    "example-org/app/.github/workflows/release.yml@refs/heads/main",
+			SHA:            "0123456789abcdef",
+		}
+		if change != nil {
+			change(claims)
+		}
+		return claims
+	}
+	for name, c := range map[string]struct {
+		claims *policy.GitHubClaims
+		holds  bool
+	}{
+		"the reviewed file on main": {pinned(nil), true},
+		"another workflow file": {pinned(func(g *policy.GitHubClaims) {
+			g.JobWorkflowRef = "example-org/app/.github/workflows/test.yml@refs/heads/main"
+		}), false},
+		"a reusable workflow of a fork": {pinned(func(g *policy.GitHubClaims) {
+			g.JobWorkflowRef = "someone/app/.github/workflows/release.yml@refs/heads/main"
+		}), false},
+		"a pull request run":         {pinned(func(g *policy.GitHubClaims) { g.EventName = "pull_request" }), false},
+		"a tag":                      {pinned(func(g *policy.GitHubClaims) { g.RefType = "tag" }), false},
+		"a token without the claims": {pinned(func(g *policy.GitHubClaims) { g.JobWorkflowRef, g.WorkflowRef, g.EventName, g.RefType = "", "", "", "" }), false},
+	} {
+		got := s.Evaluate(policy.Input{GitHub: c.claims})
+		if got.Has("all:release:job") != c.holds {
+			t.Errorf("%s: holds = %v, want %v", name, got.Has("all:release:job"), c.holds)
+		}
+		if !got.Has("all:any:job") {
+			t.Errorf("%s: the unpinned matcher stopped matching", name)
+		}
+	}
+}

@@ -84,19 +84,10 @@ func (i *Issuer) Exchange(ctx context.Context, proof Proof, audience string) (Gr
 		return Grant{}, fmt.Errorf("%w: %q", ErrUnknownTarget, audience)
 	}
 
-	in := policy.Input{GitHub: proof.GitHub, ServiceAccount: proof.ServiceAccount}
-	var held bool
-	if proof.Email != "" {
-		resolved, err := i.resolver.Resolve(ctx, proof.Email)
-		if err != nil {
-			return Grant{}, err
-		}
-		in = resolved.Input(proof.Email)
-		in.GitHub, in.ServiceAccount = proof.GitHub, proof.ServiceAccount
-		held = resolved.Held
+	result, held, err := i.evaluate(ctx, proof)
+	if err != nil {
+		return Grant{}, err
 	}
-
-	result := i.set.Evaluate(in)
 	if !client.Admits(result) {
 		i.record(ctx, exchangeEvent(proof, audience, audit.OutcomeRefused, "the proof holds no group this client requires"))
 		return Grant{}, fmt.Errorf("%w: %q requires any of %v, this proof holds %v",
@@ -113,6 +104,25 @@ func (i *Issuer) Exchange(ctx context.Context, proof Proof, audience string) (Gr
 	}, nil
 }
 
+// evaluate resolves a proof to the groups it holds: a person's through
+// the directory, a machine's through matchers alone. It is the one place
+// a proof becomes groups, so a token exchange and an installation token
+// cannot disagree about what the same caller holds.
+func (i *Issuer) evaluate(ctx context.Context, proof Proof) (policy.Result, bool, error) {
+	in := policy.Input{GitHub: proof.GitHub, ServiceAccount: proof.ServiceAccount}
+	var held bool
+	if proof.Email != "" {
+		resolved, err := i.resolver.Resolve(ctx, proof.Email)
+		if err != nil {
+			return policy.Result{}, false, err
+		}
+		in = resolved.Input(proof.Email)
+		in.GitHub, in.ServiceAccount = proof.GitHub, proof.ServiceAccount
+		held = resolved.Held
+	}
+	return i.set.Evaluate(in), held, nil
+}
+
 // Lifetime is how long a token for this grant lives: the shortest across
 // the held groups, then capped by the client. Both halves matter — the
 // groups say what the access is worth, the client says what it can bear.
@@ -127,16 +137,23 @@ func (i *Issuer) Lifetime(grant Grant) (out policy.Duration) {
 // exchangeEvent is one token exchange, by the kind of proof it was: the
 // question an operator asks of it is usually "which job, for what".
 func exchangeEvent(proof Proof, audience, outcome, reason string) audit.Event {
-	kind := "person"
-	switch {
-	case proof.GitHub != nil:
-		kind = "ci"
-	case proof.ServiceAccount != nil:
-		kind = "workload"
-	}
 	subject := proof.Subject()
 	return audit.Event{
 		Kind: "token.exchanged", Actor: subject, Subject: subject, Target: audience,
-		Outcome: outcome, Reason: reason, Attributes: map[string]string{"proof": kind},
+		Outcome: outcome, Reason: reason, Attributes: map[string]string{"proof": proof.kind()},
+	}
+}
+
+// kind is how an audit event names the proof: person, ci or workload.
+func (p Proof) kind() string {
+	switch {
+	case p.GitHub != nil:
+		return "ci"
+	case p.ServiceAccount != nil:
+		return "workload"
+	case p.Email != "":
+		return "person"
+	default:
+		return ""
 	}
 }
