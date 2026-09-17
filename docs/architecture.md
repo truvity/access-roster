@@ -135,7 +135,7 @@ JavaScript.
 | the proxies' Valkey | browser sessions of every proxied console | one silent redirect per console; the issuer still knows the person |
 | ConfigMaps | the policy, the clients, the federated clusters | git |
 | Secrets the chart delivers | the signing key, the OAuth client | whatever delivered them; the runbook |
-| Secrets the service writes | the directories' credentials, each GitHub organisation's App, the link App, people's link tokens, the runner Apps — each entry carrying a copy of its record | a copy of four Secrets restores every one of them, records included ([configuration](reference/configuration.md#restoring-from-the-secrets-alone)); a link token that rotated since means that person links again |
+| Secrets the service writes | the directories' credentials, each GitHub organisation's App, the link App, people's link tokens, the runner Apps, the catalogue Apps — each entry carrying a copy of its record | a copy of five Secrets restores every one of them, records included ([configuration](reference/configuration.md#restoring-from-the-secrets-alone)); a link token that rotated since means that person links again |
 | S3 | the audit trail: one Elastic Common Schema record per event, in JSON-lines objects keyed by the hour | the trail before the loss; while the bucket is unreachable events queue in the replica and are written when it answers, and a recovery sign-in is refused rather than left unrecorded |
 
 ## Fan-in and fan-out

@@ -513,7 +513,10 @@ their addresses to copy. *Organisations* opens each one — what enabling
 it would do in one sentence, removals first, every person with a row
 that reads **OK**, **waiting for them** or **needs you** with the
 controller's exact state in the tooltip, and each team with a page.
-*Apps* holds the link App, every organisation's App and the runner Apps.
+*Apps* holds the link App, every organisation's App and the runner Apps,
+and links to the *Catalogue*: one row per declared App, each with a page
+of its own for its permissions beside GitHub's, its grants, and the two
+clicks that create and install it.
 A person's page shows them on GitHub and, on your own, a button to link
 your account; a group's page lists the teams it feeds. A disabled
 organisation is still derived every pass, so its page is the dry run an
@@ -747,8 +750,9 @@ because refusing to start would take every other directory down with it.
 Each credential carries a copy of its record, without its health, so the
 Secrets alone restore a namespace: start-up puts back every workspace
 ConfigMap and every GitHub record that is missing beside a credential.
-The backup is therefore a copy of four named Secrets — the workspace
-credentials, the GitHub Apps, the links, the runner Apps — which a
+The backup is therefore a copy of five named Secrets — the workspace
+credentials, the GitHub Apps, the links, the runner Apps, the catalogue
+Apps — which a
 deployment makes with a `PushSecret` each; nothing in the service depends
 on the copy. Without one, the recovery for a lost workspace credential
 is **Reconnect**, and a declared Secret is re-delivered by whatever
@@ -779,7 +783,12 @@ update, by name, as it checks them. The runner Apps are
 the runner scale set reads them, so a deployment copies them to its
 runners without reshaping a document, and until the App is installed its
 key sits under another name, so a copy taken in between never hands
-runners an App they cannot register with.
+runners an App they cannot register with. The catalogue Apps — Apps a
+deployment declares as data in its values — are
+`<release>-github-catalogue-apps` in the same shape, keyed by catalogue
+id rather than by tier and organisation; this process reads a key back
+to ask GitHub, as the App, whether the App and its installation still
+hold what was declared, and to uninstall on Disconnect.
 
 The signing key is a file, never read through the API, so a compromise of
 this process cannot become a read of every credential in its namespace.

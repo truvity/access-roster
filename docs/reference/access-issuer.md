@@ -30,6 +30,7 @@ thing that authenticates, and a proxy would have nowhere to send anyone.
 | `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | caps; the policy may ask for shorter |
 | `policy` | `{}` | the declared policy ([policy.md](policy.md)); `clients` carry `redirects` **and** `signed_out` |
 | `githubRoster.enabled`, `.actsIn[]` | `false`, `[]` | the GitHub controller beside the service, and the organisations it may **change**; every other bound organisation is a dry run the console shows |
+| `githubApps.catalogue[]` | `[]` | GitHub Apps declared as data, created and installed from the console, their keys kept in `Secret <release>-github-catalogue-apps` ([guide](../connect/github-apps-catalogue.md)) |
 | `githubRunnerApps.tiers[]` | `[]` | the runner tiers an operator may create a runner App for, one per organisation per tier |
 | `audit.s3.bucket` | `""` | where the audit trail is kept. Empty keeps it in one replica's memory, which is not a record, and the service says so at start |
 | `github.owners[]` | `[]` | the GitHub organisations (or users) whose workflows may exchange a token. **The trust boundary, not tuning:** anybody may run a workflow in their own repository and get a valid token from GitHub, so signature and expiry prove only that a job ran somewhere; this list is the whole of what makes one of them ours. Empty verifies no CI token at all. The audience a workflow must request is `issuerURL` and is not configurable |

@@ -114,7 +114,7 @@ non-authoritative answer holds, it never removes.**
 
 ## Backing up, and restoring, what the console holds
 
-Everything a console added that cannot be minted again is in four
+Everything a console added that cannot be minted again is in five
 Secrets in the service's namespace, each under a name a deployment
 knows in advance:
 
@@ -124,12 +124,13 @@ knows in advance:
 | `<release>-github-apps` | every connected organisation's App key and the link App's client, each with a copy of its record |
 | `<release>-github-links` | people's GitHub links, tokens included |
 | `<release>-github-runner-apps` | every runner App, its record beside its keys |
+| `<release>-github-catalogue-apps` | every catalogue App, its record beside its keys |
 
-**Back them up** by copying the four objects, for example with an
+**Back them up** by copying the five objects, for example with an
 External Secrets `PushSecret` each into a secret manager that travels
 with your backups. Nothing in the service depends on the copy.
 
-**Restore** by putting the four Secrets back into the namespace, with
+**Restore** by putting the five Secrets back into the namespace, with
 the labels they carried, before the service starts or before restarting
 it. At start it rebuilds every workspace ConfigMap and every GitHub
 record that is missing beside a credential, then reopens the

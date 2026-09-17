@@ -51,6 +51,7 @@ service writes *itself*, where it is the producer and gets to choose.
 | `directory.sessionLifetime` | `12h` | how long the console's own session lasts |
 | `directory.login` | `true` | whether the console offers a sign-in of its own, under `<mount>/login`. With `console.client` set it is a second door: the issuer's page is the one people use |
 | `directory.workspaces[]` | `[]` | declared workspaces, see below |
+| `githubApps.catalogue[]` | `[]` | GitHub Apps declared as data — `{id, org, name, description, public, permissions, events, installation, grants}` each — created and installed by an operator on the GitHub page (Apps, then Catalogue). Rendered to `ConfigMap <release>-github-apps-catalogue`; the service refuses to start on a malformed entry or a grant naming a group the policy does not declare. See [connect/github-apps-catalogue.md](../connect/github-apps-catalogue.md) |
 | `githubRunnerApps.tiers` | `[]` | the runner tiers an operator may create a runner App for on the GitHub page (Apps), one App per bound organisation per tier — e.g. `[preview, stable]`. Empty creates none. The Apps are kept in `Secret <release>-github-runner-apps` for the deployment to hand to its runners |
 | `oauthClient.secret.name` | `""` | a Secret holding the client for sign-in and admin consent. Empty means nobody can sign in and this installation issues tokens to machines only, which is a real posture and is said at start |
 | `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the service does not produce this object: whatever delivers it already had an opinion, and a chart that insisted on two names could not read a Secret already in the namespace |
@@ -202,11 +203,13 @@ so the hash carries the uniqueness the readable part may have lost.
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 | `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** (INF-692) | the chart |
+| `ConfigMap <release>-github-apps-catalogue` | the declared GitHub App catalogue, `catalogue.yaml`. **No secret in it** | the chart, when `githubApps.catalogue` is not empty |
 | `ConfigMap <release>-github-status` | the GitHub controller's last report, one document per organisation | created empty by the service at start; its data replaced by the controller, which is granted this one name |
 | `ConfigMap <release>-github-orgs` | one record per connected GitHub organisation: App id and slug, installation, connected by and at | the service (Connect a GitHub organisation), created empty at start |
 | `Secret <release>-github-apps` | one credential per connected organisation: the App's id, installation and private key, and a copy of the organisation's record; the link App's likewise | the service (Connect), created empty at start so the controller's volume always has a Secret behind it; read by the service only to uninstall on Disconnect |
 | `Secret <release>-github-links` | one link per GitHub account (`<id>.json`): its login, the addresses it proves, its state, the person's token pair | the service, which writes a link; the controller, which rewrites it as it checks — the one Secret its Role may update, by name |
 | `Secret <release>-github-runner-apps` | every runner App. An installed App is `<tier>.<org>.github_app_id`, `.github_app_installation_id` and `.github_app_private_key` — the names gha-runner-scale-set's `githubConfigSecret` reads — beside `<tier>.<org>.record.json`. An App created and not yet installed has its record and `<tier>.<org>.pending_private_key` only, so a copy never hands runners an App they cannot register with | the service (a runner App's Create and Install), created empty at start; read by the service only to find the installation and to uninstall on Disconnect. A deployment copies the three keys to its runners, for example with an External Secrets `PushSecret` |
+| `Secret <release>-github-catalogue-apps` | every catalogue App, by its catalogue id. An installed App is `<id>.github_app_id`, `<id>.github_app_installation_id` and `<id>.github_app_private_key` beside `<id>.record.json` (`version, id, org, app_id, app_slug, installation_id, html_url, connected_at, connected_by`). An App created and not yet installed has its record and `<id>.pending_private_key` only | the service (a catalogue App's Create and Install), created empty at start; read by the service to ask GitHub, as the App, what the App and its installation hold, and to uninstall on Disconnect. A deployment copies it for backup, for example with an External Secrets `PushSecret` |
 
 The record and the credential are two objects on purpose. A record is
 shown to anyone who may see the console; a credential is written once and
@@ -220,7 +223,7 @@ Labels on every service-written object: `app.kubernetes.io/managed-by=directory-
 `app.kubernetes.io/part-of=<release>`, and
 `directory-roster.truvity.com/kind` = `workspace`, `workspace-credentials`,
 `settings`, `github-status`, `github-orgs` (both the records ConfigMap and
-the Apps Secret), `github-links`, `github-runner-apps`, or `credential`
+the Apps Secret), `github-links`, `github-runner-apps`, `github-catalogue-apps`, or `credential`
 on a per-workspace Secret a release before 1.7 wrote. The workspace id as the backend spells it is the annotation
 `directory-roster.truvity.com/workspace-id`. Export everything with
 
@@ -230,20 +233,20 @@ kubectl -n directory-roster get secret,configmap -l app.kubernetes.io/managed-by
 
 ### Restoring from the Secrets alone
 
-Four Secrets hold everything a console added that cannot be minted again,
+Five Secrets hold everything a console added that cannot be minted again,
 each under a name a deployment knows in advance:
 
 - `<release>-workspace-credentials`;
 - `<release>-github-apps`;
 - `<release>-github-links`;
-- `<release>-github-runner-apps`, whose records are already beside
-  their keys.
+- `<release>-github-runner-apps` and `<release>-github-catalogue-apps`,
+  whose records are already beside their keys.
 
-A deployment backs them up by copying those four objects, for example
+A deployment backs them up by copying those five objects, for example
 with an External Secrets `PushSecret` each. Nothing in the service depends
 on the copy.
 
-Each credential carries a copy of its record. So after the four Secrets
+Each credential carries a copy of its record. So after the five Secrets
 are put back into an empty namespace, the next start does the rest before
 reopening anything:
 
@@ -298,6 +301,7 @@ from the values above.
 | `POD_NAME` | the pod's name, from the downward API: names the replica in audit object keys |
 | `CLIENT_SECRETS_DIR` | where the confidential clients' Secrets are mounted, one file per client |
 | `GITHUB_RUNNER_TIERS` | `githubRunnerApps.tiers`, comma-separated, set only when not empty |
+| `GITHUB_APPS_CATALOGUE_FILE` | the mounted `githubApps.catalogue`, set only when not empty. Read once at start; a malformed catalogue stops the service |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty. Metrics are pushed over OTLP/HTTP; with nothing set, nothing is exported and no listener is opened. Every other `OTEL_*` variable OpenTelemetry defines is honoured too. Set on the GitHub controller as well |
 | `LOG_LEVEL` | `logLevel` |
 
