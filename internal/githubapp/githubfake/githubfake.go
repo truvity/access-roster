@@ -58,6 +58,13 @@ type Org struct {
 	Collaborators []string
 	// Public are the addresses accounts show on their profiles, by login.
 	Public map[string]string
+	// App is what GET /app answers, asked as the App.
+	App App
+	// Installations are the App's installations, by id.
+	Installations map[int64]*Installation
+	// AppReads counts the calls made as the App to read it or one of its
+	// installations.
+	AppReads int
 
 	nextID int64
 	server *httptest.Server
@@ -82,6 +89,23 @@ type Account struct {
 	// Access and Refresh are the pair currently valid, empty when none is.
 	Access, Refresh string
 	issued          int
+}
+
+// App is the App as GitHub holds it: what its owner last saved in its
+// settings.
+type App struct {
+	ID          int64
+	Slug        string
+	Permissions map[string]string
+	Events      []string
+}
+
+// Installation is one installation of the App: the permissions its owner
+// accepted, which lag the App's until they approve a request.
+type Installation struct {
+	Account             string
+	Permissions         map[string]string
+	RepositorySelection string
 }
 
 // Member is one member.
@@ -117,10 +141,12 @@ func Start(t *testing.T, login string) *Org {
 		Login: login, Members: map[string]*Member{}, Teams: map[string]*Team{},
 		Invitations: map[string]*Invitation{}, Token: "installation-token", Refuse: map[string]string{}, nextID: 100,
 		Accounts: map[string]*Account{}, codes: map[string]string{}, access: map[string]string{}, fresh: map[string]string{},
-		Public: map[string]string{}, Seats: 100,
+		Public: map[string]string{}, Seats: 100, Installations: map[int64]*Installation{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /app/installations/{id}/access_tokens", org.accessToken)
+	mux.HandleFunc("GET /app", org.app)
+	mux.HandleFunc("GET /app/installations/{id}", org.installation)
 	mux.HandleFunc("POST /graphql", org.graphql)
 	mux.HandleFunc("GET /orgs/{org}/invitations", org.invitations)
 	mux.HandleFunc("POST /orgs/{org}/invitations", org.invite)
@@ -144,6 +170,50 @@ func Start(t *testing.T, login string) *Org {
 	githubapp.APIBase, githubapp.WebBase = org.server.URL, org.server.URL
 	t.Cleanup(func() { githubapp.APIBase, githubapp.WebBase = api, web })
 	return org
+}
+
+// appBearer refuses a call carrying no bearer, as GitHub would; the fake
+// does not verify the App's signature.
+func appBearer(w http.ResponseWriter, r *http.Request) bool {
+	if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"message":"A JSON web token could not be decoded"}`)
+		return false
+	}
+	return true
+}
+
+func (o *Org) app(w http.ResponseWriter, r *http.Request) {
+	if !appBearer(w, r) {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.AppReads++
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": o.App.ID, "slug": o.App.Slug, "html_url": "https://github.com/apps/" + o.App.Slug,
+		"owner": map[string]any{"login": o.Login}, "permissions": o.App.Permissions, "events": o.App.Events,
+	})
+}
+
+func (o *Org) installation(w http.ResponseWriter, r *http.Request) {
+	if !appBearer(w, r) {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.AppReads++
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	installation := o.Installations[id]
+	if installation == nil {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"message":"Not Found"}`)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": id, "account": map[string]any{"login": installation.Account}, "permissions": installation.Permissions,
+		"repository_selection": installation.RepositorySelection, "suspended_at": nil,
+	})
 }
 
 func (o *Org) plan(w http.ResponseWriter, r *http.Request) {

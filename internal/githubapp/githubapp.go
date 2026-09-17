@@ -27,14 +27,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+
+	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 )
 
 // The hosts every call goes to. Variables rather than constants for one
@@ -63,6 +67,12 @@ type Manifest struct {
 	// CallbackURLs are where GitHub may send somebody back after they
 	// authorize the App as themselves. Only the link App has one.
 	CallbackURLs []string `json:"callback_urls,omitempty"`
+	// Description is shown on the App's page. Only a catalogue App has
+	// one.
+	Description string `json:"description,omitempty"`
+	// DefaultEvents are the webhook events the App subscribes to. The
+	// webhook stays inactive whatever they are.
+	DefaultEvents []string `json:"default_events,omitempty"`
 }
 
 // HookAttributes is an App's webhook. The controller polls, so it is
@@ -73,10 +83,36 @@ type HookAttributes struct {
 }
 
 // nameLimit is GitHub's length limit on an App's name.
-const nameLimit = 34
+const nameLimit = catalogue.NameLimit
 
-// NewManifest is the App the GitHub controller acts through in one
-// organisation.
+// ManifestFor is the one manifest builder: every App this service creates,
+// its own and a catalogue's, is an entry of the catalogue's shape turned
+// into what GitHub's create page takes.
+//
+// homepage is where the App's page links; redirect and setup are the two
+// callbacks, after Create and after Install (setup empty for an App that
+// is installed nowhere); callbacks are where a person authorizing the App
+// as themselves may be sent back to.
+//
+// The webhook is never active: nothing here receives one, so no endpoint
+// of ours has to be reachable from GitHub, whatever events are declared.
+func ManifestFor(app catalogue.App, homepage, redirect, setup string, callbacks []string) Manifest {
+	return Manifest{
+		Name:               app.DisplayName(),
+		URL:                homepage,
+		HookAttributes:     HookAttributes{URL: homepage, Active: false},
+		RedirectURL:        redirect,
+		SetupURL:           setup,
+		Public:             app.Public,
+		DefaultPermissions: maps.Clone(app.Permissions),
+		CallbackURLs:       slices.Clone(callbacks),
+		Description:        app.Description,
+		DefaultEvents:      slices.Clone(app.Events),
+	}
+}
+
+// OrganisationApp is the App the GitHub controller acts through in one
+// organisation, as a catalogue entry.
 //
 // Private, because a public App can be installed by anybody on anything,
 // and one App per organisation is what a private App forces anyway: it
@@ -86,28 +122,29 @@ const nameLimit = 34
 // repository. No webhook: the controller asks, so nothing needs to be
 // delivered to it and no endpoint of ours has to be reachable from
 // GitHub.
-//
-// homepage is where the App's page links; redirect and setup are the two
-// callbacks, after Create and after Install.
-func NewManifest(org, homepage, redirect, setup string) Manifest {
+func OrganisationApp(org string) catalogue.App {
 	name := org + "-access-roster"
 	if len(name) > nameLimit {
 		// GitHub refuses a longer name on the create page. Cut rather than
 		// let the owner meet that refusal: they can still rename it there.
 		name = strings.TrimRight(name[:nameLimit], "-")
 	}
-	return Manifest{
-		Name:           name,
-		URL:            homepage,
-		HookAttributes: HookAttributes{URL: homepage, Active: false},
-		RedirectURL:    redirect,
-		SetupURL:       setup,
-		Public:         false,
+	return catalogue.App{
+		ID:   "access-roster",
+		Org:  org,
+		Name: name,
 		// Organisation administration, read-only, for one thing: the plan's
 		// seats. Without it the controller cannot tell a full organisation
 		// from one with room, and it never invites into a paid seat blind.
-		DefaultPermissions: map[string]string{"members": "write", "organization_administration": "read"},
+		Permissions:  map[string]string{"members": "write", "organization_administration": "read"},
+		Installation: catalogue.InstallationAll,
 	}
+}
+
+// NewManifest is [OrganisationApp]'s manifest: redirect and setup are the
+// two callbacks, after Create and after Install.
+func NewManifest(org, homepage, redirect, setup string) Manifest {
+	return ManifestFor(OrganisationApp(org), homepage, redirect, setup, nil)
 }
 
 // CreateURL is where the owner is sent to create the App, by a form POST
@@ -348,11 +385,21 @@ func statusError(response *http.Response) error {
 		Message string `json:"message"`
 	}
 	raw, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	text := response.Status
 	if json.Unmarshal(raw, &body) == nil && body.Message != "" {
-		return fmt.Errorf("%s: %s", response.Status, body.Message)
+		text = fmt.Sprintf("%s: %s", response.Status, body.Message)
 	}
-	return errors.New(response.Status)
+	return &StatusError{Code: response.StatusCode, text: text}
 }
+
+// StatusError is GitHub answering with a status other than the one a call
+// expected, in GitHub's own words.
+type StatusError struct {
+	Code int
+	text string
+}
+
+func (e *StatusError) Error() string { return e.text }
 
 // nextLink reads the `rel="next"` URL out of a Link header.
 func nextLink(header string) string {
