@@ -3,6 +3,7 @@ package audit
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -252,7 +253,9 @@ func LogAttrs(e Event) []any {
 			}
 			out = append(out, f.name, safe)
 		default:
-			out = append(out, f.name, value)
+			// No field is another type today; one that becomes one is
+			// still made safe rather than trusted.
+			out = append(out, f.name, logsafe.Value(fmt.Sprint(value)))
 		}
 	}
 	return out
