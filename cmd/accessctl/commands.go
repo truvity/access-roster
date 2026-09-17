@@ -183,7 +183,7 @@ func exchangeFor(ctx context.Context, cfg Config, subject, audience string) (tok
 // exchangeAs is the exchange with the presented client named, which a
 // job's proof needs: it presents the audience, never a sign-in client.
 func exchangeAs(ctx context.Context, issuer, client, subject, subjectType, audience string) (tokens.Token, error) {
-	exchanger := &tokens.Exchanger{Issuer: issuer, ClientID: client}
+	exchanger := &tokens.Exchanger{Issuer: issuer, ClientID: client, Client: retryingClient()}
 	token, err := exchanger.Exchange(ctx, subject, subjectType, audience)
 	switch {
 	case errors.Is(err, tokens.ErrRefused):
