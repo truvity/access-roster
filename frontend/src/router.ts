@@ -12,14 +12,25 @@ export function parse(hash: string): Route {
   // its domain chooser open, rather than the operator having to find it.
   const [path, search = ""] = raw.split("?");
   const [, view, id, ...rest] = path.split("/");
+  const normalised = renamed[view] ?? view ?? "overview";
   return {
-    view: renamed[view] ?? view ?? "overview",
+    view: normalised,
     id: id ? decodeURIComponent(id) : undefined,
-    // Deeper segments, for the one page nested more than one level: an
-    // organisation's team.
-    rest: rest.filter(Boolean).map(decodeURIComponent),
+    // Deeper segments, for the pages nested more than one level: an
+    // organisation's team, an App.
+    rest: movedRest(normalised, id, rest.filter(Boolean).map(decodeURIComponent)),
     query: new URLSearchParams(search),
   };
+}
+
+/** Deeper paths that moved, for the same reason views are renamed: a
+ *  bookmark is a URL. Catalogue Apps had a list and pages of their own a
+ *  level below every other App; every App is now one list and one page at
+ *  the same level, so `apps/catalogue` is the list and
+ *  `apps/catalogue/<id>` is that App's page. */
+function movedRest(view: string, id: string | undefined, rest: string[]): string[] {
+  if (view === "github" && id === "apps" && rest[0] === "catalogue") return rest.slice(1);
+  return rest;
 }
 
 /** Views that have been renamed, and the name they answer to now.
@@ -63,6 +74,8 @@ export const paths = {
   directoryGroups: () => "/directory-groups",
   directoryGroup: (email: string) => `/directory-groups/${encodeURIComponent(email)}`,
   people: () => "/people",
+  // People, narrowed to whether they linked a GitHub account.
+  peopleGitHub: (linked: boolean) => `/people?github=${linked ? "linked" : "not-linked"}`,
   person: (email: string) => `/people/${encodeURIComponent(email)}`,
   rules: () => "/rules",
   // access
@@ -76,9 +89,10 @@ export const paths = {
   githubOrganisation: (org: string) => `/github/organisations/${encodeURIComponent(org)}`,
   githubTeam: (org: string, team: string) => `/github/organisations/${encodeURIComponent(org)}/teams/${encodeURIComponent(team)}`,
   githubApps: () => "/github/apps",
-  // Apps the deployment declares as data, each a page of its own.
-  githubCatalogue: () => "/github/apps/catalogue",
-  githubCatalogueApp: (id: string) => `/github/apps/catalogue/${encodeURIComponent(id)}`,
+  // Every App, whatever made it, is a page of its own. An App whose id is
+  // literally "catalogue" keeps the old prefix, which the parser strips,
+  // so it is not read as the old list's address.
+  githubApp: (id: string) => (id === "catalogue" ? "/github/apps/catalogue/catalogue" : `/github/apps/${encodeURIComponent(id)}`),
   // Every open session in the installation (INF-682). Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",

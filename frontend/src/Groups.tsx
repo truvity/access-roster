@@ -9,7 +9,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, adds, forHowLong, matcherKind, people as peopleCount, personName } from "./api";
+import { access, adds, forHowLong, github, matcherKind, people as peopleCount, personName } from "./api";
+import { appsOf, atMost, repositoryWords } from "./githubModel";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
@@ -82,6 +83,14 @@ export function Groups() {
 export function Group({ name }: { name: string }) {
   const policy = useAsync(() => access.getPolicy({}), []);
   const holders = useAsync(() => access.listHolders({ group: name }), [name]);
+  // The GitHub Apps this group may mint tokens of are declared beside the
+  // Apps, not in the policy, so they come from the GitHub status. A viewer
+  // may read it; where it cannot be read the section is simply absent.
+  const githubStatus = useAsync(() => github.getGitHubStatus({}), []);
+  const mints = (githubStatus.value ? appsOf(githubStatus.value) : []).flatMap((app) =>
+    app.grants.filter((grant) => grant.group === name).map((grant, i) => ({ app, grant, key: `${app.id}:${i}` })),
+  );
+  const mintApps = new Set(mints.map((m) => m.app.id)).size;
 
   const group = (policy.value?.groups ?? []).find((g) => g.name === name);
   const opens = (policy.value?.clients ?? []).filter((client) => client.requires.includes(name));
@@ -118,7 +127,7 @@ export function Group({ name }: { name: string }) {
       mono
       lede={`${peopleCount(people.length)} in it, fed by ${plural(group.members.length, "provider group", "provider groups")}${
         group.rules.length ? ` and ${plural(group.rules.length, "matcher", "matchers")}` : ""
-      }, opening ${plural(opens.length, "client", "clients")}.`}
+      }, opening ${plural(opens.length, "client", "clients")}${mintApps ? ` and minting tokens of ${plural(mintApps, "GitHub App", "GitHub Apps")}` : ""}.`}
       facts={[{ label: "Token lifetime", value: forHowLong(group.lifetime) }]}
       aside={
         <>
@@ -207,9 +216,30 @@ export function Group({ name }: { name: string }) {
           )}
           secondary={(client) => client.kind}
           right={(client) => (client.ttlCap ? <span>capped at {forHowLong(client.ttlCap)}</span> : null)}
-          empty="No client requires this group, so it only adds claims to a token."
+          empty={
+            mintApps
+              ? "No client requires this group: what it is for is the GitHub tokens below."
+              : "No client requires this group, so it only adds claims to a token."
+          }
         />
       </Section>
+
+      {mints.length ? (
+        <Section title="May mint GitHub tokens" hint="installation tokens of these Apps, for these repositories, and at most this much">
+          <Rows
+            items={mints}
+            keyOf={(m) => m.key}
+            primary={(m) => (
+              <Ref to={paths.githubApp(m.app.id)} mono>
+                {m.app.name}
+              </Ref>
+            )}
+            secondary={(m) => `${repositoryWords(m.grant.repositories, m.app.org)} · at most ${atMost(m.grant.permissions)}`}
+            right={(m) => <State kind={m.app.label} title={m.app.exact} />}
+            empty=""
+          />
+        </Section>
+      ) : null}
 
       {feeds.length ? (
         <Section title="GitHub teams it feeds" hint="its holders belong in these teams; the controller makes GitHub match">

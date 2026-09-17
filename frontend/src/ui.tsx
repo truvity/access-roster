@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { DomainReason } from "./gen/directoryroster/v1/workspace_pb";
 import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
@@ -84,6 +85,30 @@ export function Names({
   );
 }
 
+/** A run of names that says the same thing about each: up to `max` read
+ *  as names, more collapse to a count that opens into them, so one finding
+ *  about forty people does not become the page. */
+export function ShortNames({
+  items,
+  max = 3,
+  noun,
+  empty,
+}: {
+  items: { label: string; to?: string; mono?: boolean; note?: string }[];
+  max?: number;
+  /** One and many, e.g. ["person", "people"]. */
+  noun: [string, string];
+  empty?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (items.length <= max || open) return <Names items={items} empty={empty} />;
+  return (
+    <Button size="small" variant="text" onClick={() => setOpen(true)} sx={{ textTransform: "none", p: 0, minWidth: 0, verticalAlign: "baseline" }}>
+      {items.length} {items.length === 1 ? noun[0] : noun[1]}
+    </Button>
+  );
+}
+
 export type StateKind =
   | "live"
   | "suspended"
@@ -132,7 +157,11 @@ export type StateKind =
   | "not-created"
   | "created"
   | "installed"
-  | "drifted";
+  | "drifted"
+  // Where any GitHub App stands, for a reader: done, or who moves next.
+  | "done"
+  | "waiting-person"
+  | "waiting-controller";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The provider reports this account as active." },
@@ -201,6 +230,9 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
     filled: true,
     title: "GitHub holds something other than the catalogue declares. GitHub has no API to change an App's permissions: an owner edits it there.",
   },
+  done: { label: "done", color: "success", title: "Created and installed as declared: nothing to do." },
+  "waiting-person": { label: "waiting on person", color: "default", title: "Nothing to do here: it waits on people doing their part." },
+  "waiting-controller": { label: "waiting on controller", color: "secondary", title: "Nothing to do here: the controller picks it up on its next pass." },
   unverifiable: {
     label: "unverifiable",
     color: "warning",
@@ -392,7 +424,7 @@ export function Page({
   if (aside !== undefined) {
     return (
       <Box>
-        <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 2, mb: 3 }}>
+        <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 2, mb: 3 }}>
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="h5" sx={{ fontFamily: mono ? "monospace" : undefined, wordBreak: "break-word" }}>
               {title}
@@ -404,7 +436,7 @@ export function Page({
             ) : null}
           </Box>
           {actions ? (
-            <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
+            <Stack direction="row" sx={{ flexShrink: 0, alignItems: "center", flexWrap: "wrap", gap: 1 }}>
               {actions}
             </Stack>
           ) : null}
@@ -425,7 +457,7 @@ export function Page({
   }
   return (
     <Box>
-      <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 2, mb: facts?.length ? 2 : 3 }}>
+      <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 2, mb: facts?.length ? 2 : 3 }}>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="h5" sx={{ fontFamily: mono ? "monospace" : undefined, wordBreak: "break-word" }}>
             {title}
@@ -437,7 +469,7 @@ export function Page({
           ) : null}
         </Box>
         {actions ? (
-          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, alignItems: "center" }}>
+          <Stack direction="row" sx={{ flexShrink: 0, alignItems: "center", flexWrap: "wrap", gap: 1 }}>
             {actions}
           </Stack>
         ) : null}

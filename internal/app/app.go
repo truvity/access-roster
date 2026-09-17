@@ -46,6 +46,7 @@ import (
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
+	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/githubroster/runnerapp"
@@ -218,6 +219,17 @@ func Load() (Config, error) {
 	// them afterwards.
 	if c.githubCatalogue, err = catalogue.Load(envString("GITHUB_APPS_CATALOGUE_FILE", "")); err != nil {
 		return Config{}, fmt.Errorf("GITHUB_APPS_CATALOGUE_FILE: %w", err)
+	}
+	// A demonstration run declares its own tiers and catalogue, unless the
+	// run declares some: the Apps page is otherwise the two Apps this
+	// service makes for itself, and half the page cannot be walked through.
+	if c.demo {
+		if len(c.githubRunnerTiers) == 0 {
+			c.githubRunnerTiers = demo.GitHubRunnerTiers()
+		}
+		if len(c.githubCatalogue.Apps) == 0 {
+			c.githubCatalogue = demo.GitHubCatalogue()
+		}
 	}
 	return c, nil
 }
@@ -759,6 +771,15 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		loginSources = append(loginSources, "directory")
 	}
 
+	// A demonstration run's Apps are signed for with a key made here, so
+	// nothing outside this process ever accepts it.
+	var demoAppKey string
+	if cfg.demo {
+		if demoAppKey, err = demo.GitHubAppKey(); err != nil {
+			return nil, fmt.Errorf("a key for the demonstration Apps: %w", err)
+		}
+	}
+
 	console, err := server.NewConsole(ctx, server.ConsoleDeps{
 		Hub:          directory,
 		Authorizer:   authorizer,
@@ -779,10 +800,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHubLinkApp:       githubLinkApp(kept.githubOrgs, cfg.demo),
 		GitHubLinks:         githubLinks(kept.githubLinks, cfg.demo),
 		GitHubConfirmations: githubConfirmations(kept.githubOrgs),
-		GitHubRunnerApps:    githubRunnerApps(kept.githubRunnerApps),
+		GitHubRunnerApps:    githubRunnerApps(kept.githubRunnerApps, cfg.demo, demoAppKey),
 		GitHubRunnerTiers:   cfg.githubRunnerTiers,
 		GitHubCatalogue:     cfg.githubCatalogue,
-		GitHubCatalogueApps: githubCatalogueApps(kept.githubCatalogueApps),
+		GitHubCatalogueApps: githubCatalogueApps(kept.githubCatalogueApps, cfg.demo, demoAppKey),
+		GitHubHTTP:          demoGitHub(cfg.demo && kept.githubCatalogueApps == nil),
 		Audit:               recorder,
 		AuditSink:           auditSink,
 	})
@@ -856,7 +878,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		close:   closeStores,
 		audit:   recorder,
 
-		catalogueApps: githubCatalogueApps(kept.githubCatalogueApps),
+		catalogueApps: githubCatalogueApps(kept.githubCatalogueApps, cfg.demo, demoAppKey),
 	}, nil
 }
 
@@ -1225,21 +1247,80 @@ func githubConnections(store *kube.GitHubOrgs, demonstration bool) server.GitHub
 	}
 }
 
-// githubRunnerApps is the store as the console's interface, or nil.
-func githubRunnerApps(store *kube.GitHubRunnerApps) server.GitHubRunnerApps {
-	if store == nil {
+// githubRunnerApps is the store as the console's interface, or nil. A
+// demonstration run shows one tier's App created and one left to create.
+func githubRunnerApps(store *kube.GitHubRunnerApps, demonstration bool, key string) server.GitHubRunnerApps {
+	switch {
+	case store != nil:
+		return store
+	case demonstration:
+		return demoRunnerApps{records: demo.GitHubRunnerApps(time.Now()), key: key}
+	default:
 		return nil
 	}
-	return store
 }
 
-// githubCatalogueApps is the store as the console's interface, or nil.
-func githubCatalogueApps(store *kube.GitHubCatalogueApps) server.GitHubCatalogueApps {
-	if store == nil {
+// githubCatalogueApps is the store as the console's interface, or nil. A
+// demonstration run shows Apps created from its catalogue, one of them
+// edited on GitHub since.
+func githubCatalogueApps(store *kube.GitHubCatalogueApps, demonstration bool, key string) server.GitHubCatalogueApps {
+	switch {
+	case store != nil:
+		return store
+	case demonstration:
+		return demoCatalogueApps{records: demo.GitHubCatalogueApps(time.Now()), key: key}
+	default:
 		return nil
 	}
-	return store
 }
+
+// demoRunnerApps are fixed runner Apps that nobody can create or forget.
+type demoRunnerApps struct {
+	records []runnerapp.Record
+	key     string
+}
+
+func (demoRunnerApps) Put(context.Context, runnerapp.Record, string) error { return errDemoConnect }
+
+func (d demoRunnerApps) List(context.Context) ([]runnerapp.Record, error) { return d.records, nil }
+
+func (d demoRunnerApps) PrivateKey(_ context.Context, tier, org string) (string, bool, error) {
+	for i := range d.records {
+		if d.records[i].Tier == tier && d.records[i].Org == org {
+			return d.key, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+func (demoRunnerApps) Delete(context.Context, string, string) error { return errDemoConnect }
+
+// demoCatalogueApps are fixed catalogue Apps, with a key this process
+// made: the console asks the demonstration's GitHub about them as it would
+// ask the real one.
+type demoCatalogueApps struct {
+	records []catalogueapp.Record
+	key     string
+}
+
+func (demoCatalogueApps) Put(context.Context, catalogueapp.Record, string) error {
+	return errDemoConnect
+}
+
+func (d demoCatalogueApps) List(context.Context) ([]catalogueapp.Record, error) {
+	return d.records, nil
+}
+
+func (d demoCatalogueApps) Get(_ context.Context, id string) (catalogueapp.Record, string, bool, error) {
+	for i := range d.records {
+		if d.records[i].ID == id {
+			return d.records[i], d.key, true, nil
+		}
+	}
+	return catalogueapp.Record{}, "", false, nil
+}
+
+func (demoCatalogueApps) Delete(context.Context, string) error { return errDemoConnect }
 
 // githubLinkApp is the store as the console's interface, or nil. A
 // demonstration run shows a link App already created.
@@ -1265,6 +1346,17 @@ func githubLinks(store *kube.GitHubLinks, demonstration bool) server.GitHubLinks
 	default:
 		return nil
 	}
+}
+
+// demoGitHub is the demonstration's GitHub, or nil for the real one: the
+// console asks it about the demonstration's Apps exactly as it asks GitHub
+// about real ones, so the Apps page shows an App matching its declaration
+// beside one an owner edited since.
+func demoGitHub(demonstration bool) *http.Client {
+	if !demonstration {
+		return nil
+	}
+	return &http.Client{Transport: demo.GitHubAPI(), Timeout: 10 * time.Second}
 }
 
 // demoLinkApp is a fixed link App that nobody can authorize.

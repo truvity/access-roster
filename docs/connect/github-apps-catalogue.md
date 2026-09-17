@@ -248,8 +248,11 @@ given. Attributes:
 
 ## Creating and installing
 
-The *Apps* tab of the GitHub page links to the **Catalogue**, one row per
-declared App; each App has a page of its own.
+The *Apps* tab of the GitHub page lists every App this service keeps a
+key for or is declared to — the link App, each organisation's controller
+App, each runner tier's App and every App the catalogue declares —
+grouped by organisation, those needing an operator first. Each App has a
+page of its own.
 
 1. **Create.** An operator presses *Create*. The browser posts the App's
    manifest to GitHub's create page for the organisation; an owner of
