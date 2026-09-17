@@ -265,3 +265,84 @@ func assumeAt(t *testing.T, server *httptest.Server, role, session, token string
 	t.Helper()
 	return tokens.AssumeAt(context.Background(), server.URL, server.Client(), role, session, token)
 }
+
+// An installation token is asked for by type and App, narrowed in the
+// request's own parameters, and what comes back is what GitHub granted.
+func TestAnInstallationTokenIsAskedForByTypeAndApp(t *testing.T) {
+	t.Parallel()
+
+	var got url.Values
+	var client string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, _, _ := r.BasicAuth()
+		client, _ = url.QueryUnescape(user)
+		_ = r.ParseForm()
+		got = r.PostForm
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "ghs_minted", "issued_token_type": tokens.TypeGitHubInstallationToken, "token_type": "N_A",
+			"expires_in": 3600, "repositories": []string{"app"}, "permissions": map[string]string{"contents": "read"},
+		})
+	}))
+	t.Cleanup(server.Close)
+
+	exchanger := &tokens.Exchanger{Issuer: server.URL, ClientID: "github-app:publisher", Client: server.Client()}
+	minted, err := exchanger.GitHubInstallationToken(context.Background(), "a-subject", "", "publisher",
+		[]string{"app", "lib"}, map[string]string{"pull_requests": "write", "contents": "read"})
+	if err != nil {
+		t.Fatalf("GitHubInstallationToken: %v", err)
+	}
+	if minted.AccessToken != "ghs_minted" || minted.Expires.IsZero() || len(minted.Repositories) != 1 || minted.Permissions["contents"] != "read" {
+		t.Errorf("minted = %+v", minted)
+	}
+	for name, want := range map[string]string{
+		"grant_type":           tokens.GrantTypeExchange,
+		"requested_token_type": tokens.TypeGitHubInstallationToken,
+		"audience":             "github-app:publisher",
+		"subject_token_type":   tokens.TypeJWT,
+		"repositories":         "app lib",
+		"scope":                "contents:read pull_requests:write",
+	} {
+		if got.Get(name) != want {
+			t.Errorf("%s = %q, want %q", name, got.Get(name), want)
+		}
+	}
+	if client != "github-app:publisher" {
+		t.Errorf("client = %q", client)
+	}
+
+	// Nothing narrowed is nothing sent.
+	if _, err = exchanger.GitHubInstallationToken(context.Background(), "a-subject", "", "publisher", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got.Has("repositories") || got.Has("scope") {
+		t.Errorf("an unnarrowed request carried %v", got)
+	}
+}
+
+// A refusal is ErrRefused with the issuer's sentence, and an answer that
+// is not an installation token is not taken for one.
+func TestAnInstallationTokenRefusalCarriesTheIssuersSentence(t *testing.T) {
+	t.Parallel()
+
+	answering := func(status int, answer map[string]any) *tokens.Exchanger {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			_ = json.NewEncoder(w).Encode(answer)
+		}))
+		t.Cleanup(server.Close)
+		return &tokens.Exchanger{Issuer: server.URL, Client: server.Client()}
+	}
+
+	refusing := answering(http.StatusBadRequest, map[string]any{"error": "invalid_scope", "error_description": "repository \"infra\" is in no grant"})
+	_, err := refusing.GitHubInstallationToken(context.Background(), "a-subject", "", "publisher", []string{"infra"}, nil)
+	if !errors.Is(err, tokens.ErrRefused) || !strings.Contains(err.Error(), "in no grant") {
+		t.Errorf("refusal = %v", err)
+	}
+
+	signing := answering(http.StatusOK, map[string]any{"access_token": "a.jwt", "issued_token_type": tokens.TypeAccessToken})
+	if _, err = signing.GitHubInstallationToken(context.Background(), "a-subject", "", "publisher", nil, nil); err == nil {
+		t.Error("a JWT was taken for an installation token")
+	}
+}
