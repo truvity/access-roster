@@ -11,13 +11,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 )
 
 // linkNameSuffix names the link App after the organisation that owns it.
 const linkNameSuffix = "-access-roster-link"
 
-// NewLinkManifest is the App a person authorizes to link their GitHub
-// account to their work identity.
+// LinkApp is the App a person authorizes to link their GitHub account to
+// their work identity, as a catalogue entry.
 //
 // It is a different App from an organisation's, on purpose. A person's
 // token for an App carries that App's permissions, so a token for the
@@ -30,20 +32,25 @@ const linkNameSuffix = "-access-roster-link"
 // yet, and a partner company's people who never will be, could not link.
 // Anybody may install a public App, and installing this one grants
 // nothing — it has no permission on any organisation or repository.
-func NewLinkManifest(owner, homepage, redirect, callback string) Manifest {
+func LinkApp(owner string) catalogue.App {
 	name := owner + linkNameSuffix
 	if len(name) > nameLimit {
 		name = strings.TrimRight(owner[:nameLimit-len(linkNameSuffix)], "-") + linkNameSuffix
 	}
-	return Manifest{
-		Name:               name,
-		URL:                homepage,
-		HookAttributes:     HookAttributes{URL: homepage, Active: false},
-		RedirectURL:        redirect,
-		Public:             true,
-		DefaultPermissions: map[string]string{"emails": "read"},
-		CallbackURLs:       []string{callback},
+	return catalogue.App{
+		ID:          "access-roster-link",
+		Org:         owner,
+		Name:        name,
+		Public:      true,
+		Permissions: map[string]string{"emails": "read"},
 	}
+}
+
+// NewLinkManifest is [LinkApp]'s manifest: no setup callback, because it
+// is installed nowhere, and the one callback a person's authorization
+// returns to.
+func NewLinkManifest(owner, homepage, redirect, callback string) Manifest {
+	return ManifestFor(LinkApp(owner), homepage, redirect, "", []string{callback})
 }
 
 // AuthorizeURL is where a person is sent to authorize the link App.
