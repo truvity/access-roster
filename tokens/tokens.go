@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -103,11 +104,116 @@ func (e *Exchanger) Exchange(ctx context.Context, subject, subjectType, audience
 		"audience":           {audience},
 		"scope":              {"openid"},
 	}
+	var granted struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+	}
+	if err := e.post(ctx, form, &granted); err != nil {
+		return Token{}, err
+	}
+	if granted.AccessToken == "" {
+		return Token{}, errors.New("tokens: the exchange returned no token")
+	}
+	return Token{AccessToken: granted.AccessToken, Expires: expiresIn(granted.ExpiresIn)}, nil
+}
+
+// InstallationToken is a GitHub App installation token and what GitHub
+// says it carries: that, and not what was asked for, is what was granted.
+type InstallationToken struct {
+	Token
+	// Repositories are the repository names the token is narrowed to.
+	// Empty is every repository the installation reaches.
+	Repositories []string
+	// Permissions are name to read, write or admin.
+	Permissions map[string]string
+}
+
+// GitHubInstallationToken trades subject for an installation token of a
+// catalogue App, under the grants its groups hold.
+//
+// app is the catalogue id; the audience asked for is `github-app:<app>`.
+// repositories are names without the owner, and empty asks for a token not
+// narrowed to any, which only a grant of every repository allows.
+// permissions are name to level, and empty asks for exactly what the grant
+// allows. A refusal is [ErrRefused], with the issuer's sentence.
+func (e *Exchanger) GitHubInstallationToken(
+	ctx context.Context, subject, subjectType, app string, repositories []string, permissions map[string]string,
+) (InstallationToken, error) {
+	switch {
+	case e == nil || strings.TrimSpace(e.Issuer) == "":
+		return InstallationToken{}, errors.New("tokens: no issuer is configured")
+	case strings.TrimSpace(subject) == "":
+		return InstallationToken{}, errors.New("tokens: no subject token to exchange")
+	case strings.TrimSpace(app) == "":
+		return InstallationToken{}, errors.New("tokens: no GitHub App was asked for")
+	}
+	if subjectType == "" {
+		subjectType = TypeJWT
+	}
+
+	form := url.Values{
+		"grant_type":           {GrantTypeExchange},
+		"subject_token":        {subject},
+		"subject_token_type":   {subjectType},
+		"audience":             {GitHubAppAudiencePrefix + app},
+		"requested_token_type": {TypeGitHubInstallationToken},
+	}
+	if len(repositories) > 0 {
+		form.Set("repositories", strings.Join(repositories, " "))
+	}
+	if len(permissions) > 0 {
+		names := make([]string, 0, len(permissions))
+		for name := range permissions {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		scope := make([]string, 0, len(names))
+		for _, name := range names {
+			scope = append(scope, name+":"+permissions[name])
+		}
+		form.Set("scope", strings.Join(scope, " "))
+	}
+
+	var granted struct {
+		AccessToken     string            `json:"access_token"`
+		IssuedTokenType string            `json:"issued_token_type"`
+		ExpiresIn       int64             `json:"expires_in"`
+		Repositories    []string          `json:"repositories"`
+		Permissions     map[string]string `json:"permissions"`
+	}
+	if err := e.post(ctx, form, &granted); err != nil {
+		return InstallationToken{}, err
+	}
+	if granted.AccessToken == "" {
+		return InstallationToken{}, errors.New("tokens: the exchange returned no token")
+	}
+	if granted.IssuedTokenType != TypeGitHubInstallationToken {
+		// An issuer that predates installation tokens hands the request to
+		// its OpenID library, which refuses the type; one that answered
+		// with anything else is not answering this question.
+		return InstallationToken{}, fmt.Errorf("tokens: the issuer answered with a %q, not an installation token", granted.IssuedTokenType)
+	}
+	return InstallationToken{
+		Token:        Token{AccessToken: granted.AccessToken, Expires: expiresIn(granted.ExpiresIn)},
+		Repositories: granted.Repositories,
+		Permissions:  granted.Permissions,
+	}, nil
+}
+
+func expiresIn(seconds int64) time.Time {
+	if seconds <= 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(time.Duration(seconds) * time.Second)
+}
+
+// post makes one token request and decodes a 200 into out.
+func (e *Exchanger) post(ctx context.Context, form url.Values, out any) error {
 	endpoint := strings.TrimSuffix(e.Issuer, "/") + "/token"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint,
 		strings.NewReader(form.Encode()))
 	if err != nil {
-		return Token{}, fmt.Errorf("tokens: build the exchange: %w", err)
+		return fmt.Errorf("tokens: build the exchange: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	// Form-encoded BEFORE Basic, as RFC 6749 §2.3.1 requires and as the
@@ -123,13 +229,13 @@ func (e *Exchanger) Exchange(ctx context.Context, subject, subjectType, audience
 	}
 	response, err := httpClient.Do(request)
 	if err != nil {
-		return Token{}, fmt.Errorf("tokens: exchange at %s: %w", endpoint, err)
+		return fmt.Errorf("tokens: exchange at %s: %w", endpoint, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
-		return Token{}, fmt.Errorf("tokens: read the exchange: %w", err)
+		return fmt.Errorf("tokens: read the exchange: %w", err)
 	}
 	if response.StatusCode != http.StatusOK {
 		var failure struct {
@@ -147,23 +253,11 @@ func (e *Exchanger) Exchange(ctx context.Context, subject, subjectType, audience
 		if detail == "" {
 			detail = response.Status
 		}
-		return Token{}, fmt.Errorf("%w: %s", ErrRefused, detail)
+		return fmt.Errorf("%w: %s", ErrRefused, detail)
 	}
 
-	var granted struct {
-		AccessToken string `json:"access_token"`
-		ExpiresIn   int64  `json:"expires_in"`
+	if err = json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("tokens: parse the exchange: %w", err)
 	}
-	if err = json.Unmarshal(body, &granted); err != nil {
-		return Token{}, fmt.Errorf("tokens: parse the exchange: %w", err)
-	}
-	if granted.AccessToken == "" {
-		return Token{}, errors.New("tokens: the exchange returned no token")
-	}
-
-	out := Token{AccessToken: granted.AccessToken}
-	if granted.ExpiresIn > 0 {
-		out.Expires = time.Now().Add(time.Duration(granted.ExpiresIn) * time.Second)
-	}
-	return out, nil
+	return nil
 }

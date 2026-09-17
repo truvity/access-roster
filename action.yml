@@ -10,7 +10,7 @@
 # else. This does not wrap them, on purpose: many registries and many
 # artifact domains are many profiles and many `--profile` flags.
 name: access-roster
-description: Exchange this job's identity token for the clusters and cloud roles its rules grant.
+description: Exchange this job's identity token for the clusters, cloud roles and GitHub App tokens its rules grant.
 
 inputs:
   issuer:
@@ -20,8 +20,10 @@ inputs:
     description: >-
       What to exchange for, comma or newline separated. Each is a client
       id in the policy — `k8s:<cluster>` or `aws:<account>:<role>` — and
-      that client's `requires` decides whether this job gets it.
-    required: true
+      that client's `requires` decides whether this job gets it. May be
+      empty when the job asks only for a `github-app` token.
+    required: false
+    default: ""
   kubeconfig:
     description: Write a kubeconfig with a context per `k8s:` audience.
     required: false
@@ -34,6 +36,28 @@ inputs:
     description: The region written into every profile.
     required: false
     default: ""
+  github-app:
+    description: >-
+      A catalogue App to mint an installation token of, by its catalogue
+      id. The catalogue's grants for the groups this job holds decide
+      whether it gets one, for which repositories and with what.
+    required: false
+    default: ""
+  repositories:
+    description: >-
+      Repositories of the App's organisation to narrow the token to, by
+      name without the owner, comma, space or newline separated. Empty
+      asks for a token that is not narrowed, which only a grant of every
+      repository allows.
+    required: false
+    default: ""
+  permissions:
+    description: >-
+      Permissions to narrow the token to, as name:level (or name=level),
+      comma, space or newline separated, e.g. `contents:read`. Empty asks
+      for exactly what the grant allows.
+    required: false
+    default: ""
 
 outputs:
   profiles:
@@ -42,6 +66,9 @@ outputs:
   kubeconfig:
     description: The kubeconfig path, when one was written.
     value: ${{ steps.exchange.outputs.kubeconfig }}
+  github-token:
+    description: The installation token, masked, when `github-app` was given.
+    value: ${{ steps.exchange.outputs.github-token }}
 
 runs:
   using: composite
@@ -54,8 +81,16 @@ runs:
         WANT_KUBECONFIG: ${{ inputs.kubeconfig }}
         DEFAULT_PROFILE: ${{ inputs.default-profile }}
         REGION: ${{ inputs.region }}
+        GITHUB_APP: ${{ inputs.github-app }}
+        REPOSITORIES: ${{ inputs.repositories }}
+        PERMISSIONS: ${{ inputs.permissions }}
       run: |
         set -euo pipefail
+
+        if [ -z "$(printf '%s' "${AUDIENCES}" | tr -d '[:space:],')" ] && [ -z "${GITHUB_APP}" ]; then
+          echo "::error::nothing to exchange for: give audiences, github-app, or both." >&2
+          exit 1
+        fi
 
         if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
           echo "::error::this job has no id-token permission. Add 'permissions: { id-token: write }' to the job." >&2
@@ -83,6 +118,7 @@ runs:
         profiles=""
         kubeconfig=""
         aws_config="${work}/aws-config"
+        : > "${work}/wanted"
 
         # Audiences may be comma OR newline separated, because a YAML
         # list folded into a string arrives as either and a person should
@@ -172,6 +208,47 @@ runs:
               ;;
           esac
         done < "${work}/wanted"
+
+        if [ -n "${GITHUB_APP}" ]; then
+          app="${GITHUB_APP#github-app:}"
+          # The id goes into the audience and the Basic client, so it is
+          # held to what a catalogue id can be before it goes anywhere.
+          case "${app}" in
+            ""|*[!a-z0-9-]*)
+              echo "::error::github-app ${app} is not a catalogue id: lower-case letters, digits and dashes." >&2
+              exit 1
+              ;;
+          esac
+          # Comma, space or newline separated in, space separated out: the
+          # form the issuer reads. `name=level` is accepted as `name:level`.
+          repositories=$(printf '%s\n' "${REPOSITORIES}" | tr ',\n\t' '   ' | xargs)
+          scope=$(printf '%s\n' "${PERMISSIONS}" | tr ',\n\t=' '   :' | xargs)
+          # The App's audience is the client, as for every exchange a job
+          # makes; the requested token type is what makes this GitHub's
+          # token rather than one the issuer signs.
+          client=$(printf '%s' "github-app:${app}" | jq -sRr @uri)
+          response=$(curl --fail-with-body --silent --show-error \
+            -u "${client}:" \
+            --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+            --data-urlencode "subject_token=${subject}" \
+            --data-urlencode "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
+            --data-urlencode "requested_token_type=urn:access-roster:params:oauth:token-type:github-installation-token" \
+            --data-urlencode "audience=github-app:${app}" \
+            --data-urlencode "repositories=${repositories}" \
+            --data-urlencode "scope=${scope}" \
+            "${ISSUER}/token") || {
+              echo "::error::the issuer refused github-app:${app}: $(printf '%s' "${response}" | jq -r '.error_description // .error // .')" >&2
+              exit 1
+            }
+          github_token=$(printf '%s' "${response}" | jq -r '.access_token')
+          if [ -z "${github_token}" ] || [ "${github_token}" = "null" ]; then
+            echo "::error::the issuer returned no token for github-app:${app}." >&2
+            exit 1
+          fi
+          # Masked before it is written anywhere, as every token here is.
+          echo "::add-mask::${github_token}"
+          echo "github-token=${github_token}" >> "${GITHUB_OUTPUT}"
+        fi
 
         if [ -f "${aws_config}" ]; then
           echo "AWS_CONFIG_FILE=${aws_config}" >> "${GITHUB_ENV}"
