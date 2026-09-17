@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -365,5 +366,62 @@ func TestDisconnectingTheLinkAppMakesLinksUnverifiable(t *testing.T) {
 	}
 	if _, found, _ := r.app.LinkAppCredential(context.Background()); found {
 		t.Error("the link App's credential was kept")
+	}
+}
+
+// failingLinks is a link store that will not read: the case the People
+// list must never render as "nobody linked an account".
+type failingLinks struct{ memoryLinks }
+
+func (*failingLinks) List(context.Context) ([]link.Link, error) {
+	return nil, errors.New("the link store cannot be read")
+}
+
+// The People list shows the GitHub account beside the person, so the
+// index behind that column has to agree with what the person's own page
+// calls their account: the link that counts, and only that one.
+func TestTheGitHubLoginIndexHoldsOnlyLinksThatCount(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	store := &memoryLinks{byID: map[int64]link.Link{
+		11: {ID: 11, Login: "ada-a", Emails: []string{"ada@globex.example", "a.person@globex.example"}, State: link.StateLinked, LinkedAt: now},
+		// Lost and unverifiable are not links any more: the person is
+		// unlinked on their own page, and must be unlinked in the column.
+		12: {ID: 12, Login: "gone-g", Emails: []string{"gone@globex.example"}, State: link.StateLost, LinkedAt: now},
+		13: {ID: 13, Login: "unsure-u", Emails: []string{"unsure@globex.example"}, State: link.StateUnverifiable, LinkedAt: now},
+		// A link narrowed to nothing proves nobody, whatever its state.
+		14: {ID: 14, Login: "empty-e", State: link.StateLinked, LinkedAt: now},
+		// The directory's casing is not GitHub's; the index is matched
+		// against an address, so it is lowercased on both sides.
+		15: {ID: 15, Login: "cleo-c", Emails: []string{"Cleo@Globex.example"}, State: link.StateLinked, LinkedAt: now},
+	}}
+	console := &Console{deps: ConsoleDeps{GitHubLinks: store}}
+	logins, known, err := console.githubLogins(ctx)
+	if err != nil || !known {
+		t.Fatalf("githubLogins = %v, %v", known, err)
+	}
+	want := map[string]string{"ada@globex.example": "ada-a", "a.person@globex.example": "ada-a", "cleo@globex.example": "cleo-c"}
+	if len(logins) != len(want) {
+		t.Fatalf("logins = %+v, want %+v", logins, want)
+	}
+	for email, login := range want {
+		if logins[email] != login {
+			t.Errorf("login of %s = %q, want %q", email, logins[email], login)
+		}
+	}
+
+	// Not known, twice over, and both say so rather than answering that
+	// nobody linked: a deployment that keeps no links, and a read that
+	// failed. Only the second carries an error, which is how a caller
+	// asked to narrow by something unknown can say which it was.
+	none := &Console{deps: ConsoleDeps{}}
+	if logins, known, err = none.githubLogins(ctx); logins != nil || known || err != nil {
+		t.Errorf("githubLogins(no store) = %+v, %v, %v", logins, known, err)
+	}
+	broken := &Console{deps: ConsoleDeps{GitHubLinks: &failingLinks{}}}
+	if logins, known, err = broken.githubLogins(ctx); logins != nil || known || err == nil {
+		t.Errorf("githubLogins(unreadable) = %+v, %v, %v", logins, known, err)
 	}
 }

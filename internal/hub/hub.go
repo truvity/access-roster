@@ -1356,6 +1356,9 @@ type Person struct {
 	Live            bool
 	Authoritative   bool
 	DirectoryGroups []string
+	// GitHubLogin is the GitHub account linked to the address, empty
+	// where none is or where the caller passed no links to match against.
+	GitHubLogin string
 }
 
 // PeopleQuery narrows People. Every field is optional; the zero value
@@ -1375,6 +1378,17 @@ type PeopleQuery struct {
 	// tenant serving several domains is several companies to whoever is
 	// reviewing it.
 	Domain string
+	// GitHubLogins is every address a GitHub link proves, lowercased,
+	// against the account that proves it. The hub keeps no links of its
+	// own — they live beside the GitHub controller, in one object — so the
+	// caller reads them once and passes them here, where they can be
+	// applied with the other facets and BEFORE the limit.
+	GitHubLogins map[string]string
+	// GitHubLinked, when set, keeps only people who have linked a GitHub
+	// account (true) or who have not (false). It is read against
+	// GitHubLogins, so a caller that could not read the links must not
+	// set it: every person would come back unlinked.
+	GitHubLinked *bool
 }
 
 // People returns the accounts every snapshot holds, filtered by a
@@ -1432,6 +1446,10 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 			if domain != "" && !inDomain(account.Email, domain) {
 				continue
 			}
+			login := query.GitHubLogins[strings.ToLower(account.Email)]
+			if query.GitHubLinked != nil && (login != "") != *query.GitHubLinked {
+				continue
+			}
 			out = append(out, Person{
 				Email:           account.Email,
 				GivenName:       account.GivenName,
@@ -1440,6 +1458,7 @@ func (h *Hub) People(ctx context.Context, query PeopleQuery, limit int) ([]Perso
 				Live:            account.Live,
 				Authoritative:   authoritative,
 				DirectoryGroups: snap.GroupsOf(email),
+				GitHubLogin:     login,
 			})
 		}
 	}

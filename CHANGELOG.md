@@ -1,3 +1,30 @@
+## v1.13.0
+
+- **The People list shows the GitHub account each person linked.** The
+  *GitHub: linked / not linked* facet told you a person had linked
+  something without ever saying what; there is now a **GitHub** column
+  beside the address, holding the login, linking to that account's page on
+  GitHub. It is the same account the person's own page calls theirs — one
+  rule, read in one place — so the two can no longer disagree. Somebody
+  who has linked nothing gets an em dash, not a chip: a chip is a state,
+  and a state on every second row of a directory-length table is a wall of
+  grey that says nothing.
+- **The GitHub facet is now the service's answer, not the browser's.**
+  It used to be applied to the page in hand: with a snapshot of hundreds
+  and a page of two hundred, "GitHub: linked" could report a handful while
+  the rest of the company sat past the cut. `SearchPeople` now takes the
+  filter and returns the login on each row, narrowing before the limit
+  like the provider, domain and account filters always have — so the
+  caption reads "the first 200 of 1,204 that match" and means it. The page
+  also makes one call again instead of two: it no longer fetches the whole
+  GitHub report, which asks every connected organisation for its status,
+  to colour one column.
+- **An unreadable link store says so instead of reporting a clean
+  company.** Where links cannot be read — a deployment where nobody can
+  link an account, or a failed read — the column is blank for everyone and
+  the page says why underneath. Narrowing by *linked* or *not linked* then
+  fails outright rather than answering "nobody".
+
 ## v1.12.0
 
 - **One list and one page for every GitHub App.** The console's *Apps* tab

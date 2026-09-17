@@ -834,14 +834,44 @@ func (c *Console) SearchPeople(
 		query.Live = &live
 	case directoryrosterv1.AccountFilter_ACCOUNT_FILTER_UNSPECIFIED:
 	}
+	// The links are read here, once, and handed to the hub with the rest
+	// of the query: the column needs a login on every row, and the facet
+	// has to narrow before the limit or "the first 200" would mean the
+	// matches among the first 200 — which answers "nobody" while the
+	// snapshot holds hundreds. It is one object read, not the GitHub
+	// report: no organisation is asked anything.
+	logins, known, linksErr := c.githubLogins(ctx)
+	query.GitHubLogins = logins
+	switch req.Msg.GetGithub() {
+	case directoryrosterv1.LinkFilter_LINK_FILTER_LINKED:
+		linked := true
+		query.GitHubLinked = &linked
+	case directoryrosterv1.LinkFilter_LINK_FILTER_NOT_LINKED:
+		linked := false
+		query.GitHubLinked = &linked
+	case directoryrosterv1.LinkFilter_LINK_FILTER_UNSPECIFIED:
+	}
+	// Narrowing by something unknown is the one case that must fail
+	// loudly. Unasked, an unreadable link store only empties a column,
+	// and github_known says so; asked, it would silently answer "nobody
+	// linked" or "everybody did".
+	if query.GitHubLinked != nil && !known {
+		if linksErr != nil {
+			return nil, connect.NewError(connect.CodeUnavailable,
+				fmt.Errorf("whether people linked a GitHub account cannot be read: %w", linksErr))
+		}
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("nobody can link a GitHub account in this deployment: there is nowhere links are kept"))
+	}
 	people, total, err := c.deps.Hub.People(ctx, query, limit)
 	if err != nil {
 		return nil, rpcError(err)
 	}
 	out := &directoryrosterv1.SearchPeopleResponse{
-		Truncated: total > len(people),
-		Total:     int32(total), //nolint:gosec // a snapshot's account count never overflows
-		People:    make([]*directoryrosterv1.PersonSummary, 0, len(people)),
+		Truncated:   total > len(people),
+		Total:       int32(total), //nolint:gosec // a snapshot's account count never overflows
+		People:      make([]*directoryrosterv1.PersonSummary, 0, len(people)),
+		GithubKnown: known,
 	}
 	for i := range people {
 		person := &people[i]
@@ -851,9 +881,41 @@ func (c *Console) SearchPeople(
 			FamilyName:  person.FamilyName,
 			WorkspaceId: person.Workspace,
 			Live:        person.Live,
+			GithubLogin: person.GitHubLogin,
 		})
 	}
 	return connect.NewResponse(out), nil
+}
+
+// githubLogins indexes every address a link proves against the GitHub
+// account that proves it, lowercased.
+//
+// Only a link that counts is in it — one GitHub still verifies an address
+// for — so the login beside a person here is the same one their own page
+// calls their account, and a lost or unverifiable link leaves them
+// unlinked on both.
+//
+// The second value is whether the links are KNOWN. False is a deployment
+// that keeps none, or a read that failed; the error is returned beside it
+// so a caller that cannot go on can say which.
+func (c *Console) githubLogins(ctx context.Context) (map[string]string, bool, error) {
+	if c.deps.GitHubLinks == nil {
+		return nil, false, nil
+	}
+	links, err := c.deps.GitHubLinks.List(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	out := make(map[string]string, len(links))
+	for i := range links {
+		if !links[i].Active() {
+			continue
+		}
+		for _, email := range links[i].Emails {
+			out[strings.ToLower(email)] = links[i].Login
+		}
+	}
+	return out, true, nil
 }
 
 // GetDirectoryGroup implements the operator contract: one directory group,
