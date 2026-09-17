@@ -327,6 +327,17 @@ route:
   #
   # Empty keeps `from: Same`, today's shape exactly.
   sharedWith: []
+  # Parents for the issuer's routes, written out in full. When set, the
+  # chart renders no Gateway and no Certificate: the parent -- typically a
+  # platform ListenerSet carrying route.host -- owns the listener and its
+  # certificate, and gatewayClassName, certificate and sharedWith have no
+  # effect. Write group and kind out; the API server fills them in and a
+  # desired/live comparison reads their absence as drift.
+  #   - group: gateway.networking.k8s.io
+  #     kind: ListenerSet
+  #     name: issuer
+  #     namespace: gateway-system
+  parentRefs: []
 
 networkPolicy:
   enabled: false

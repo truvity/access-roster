@@ -1,3 +1,11 @@
+## Unreleased
+
+- **access-issuer's routes can attach to a ListenerSet.** `route.parentRefs`,
+  when set, is used as written for both of the issuer's routes, and the
+  chart then renders no Gateway or TLS Certificate of its own: the parent
+  owns the listener for `route.host` and its certificate. Without it the
+  chart renders exactly what it did.
+
 ## v1.9.0
 
 - **access-proxy routes can attach to a ListenerSet.** `exposure.parentRefs`

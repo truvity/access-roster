@@ -297,6 +297,16 @@ chart-lint:
     # later wave. One `weight` per backend, in routes and policies alike.
     test "$(grep -c '^      backendRefs:$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^          weight: 1$' /tmp/access-proxy-routes.yaml)"
     test "$(helm template t charts/access-issuer --set issuerURL=https://i.example --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
+    # route.parentRefs moves the issuer's routes to a parent the platform
+    # owns (a ListenerSet): both routes carry exactly that parent, and the
+    # chart renders no Gateway or TLS Certificate of its own beside it.
+    helm template t charts/access-issuer --set issuerURL=https://iss.example --set route.host=iss.example \
+        --set 'route.parentRefs[0].group=gateway.networking.k8s.io' --set 'route.parentRefs[0].kind=ListenerSet' \
+        --set 'route.parentRefs[0].name=issuer' --set 'route.parentRefs[0].namespace=gateway-system' > /tmp/access-issuer-listenerset.yaml
+    test "$(yq -o=json -I=0 'select(.kind == "HTTPRoute") | .spec.parentRefs' /tmp/access-issuer-listenerset.yaml | sort -u)" = '[{"group":"gateway.networking.k8s.io","kind":"ListenerSet","name":"issuer","namespace":"gateway-system"}]'
+    test "$(grep -c '^kind: HTTPRoute$' /tmp/access-issuer-listenerset.yaml)" = "2"
+    ! grep -q '^kind: Gateway$' /tmp/access-issuer-listenerset.yaml
+    ! grep -q 'name: t-access-issuer-tls$' /tmp/access-issuer-listenerset.yaml
     # The issuer's root: a bare GET of the host lands somewhere useful
     # when a console shares it, and 404s honestly when one does not.
     helm template t charts/access-issuer --set issuerURL=https://a.example \

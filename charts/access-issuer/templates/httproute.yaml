@@ -8,6 +8,7 @@
   No authenticating proxy in front: this IS the thing that authenticates,
   and a proxy would have nowhere to send anyone.
 */}}
+{{- if not .Values.route.parentRefs }}
 {{- if .Values.route.certificate.issuerName }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -79,6 +80,7 @@ spec:
             kind: Secret
             name: {{ include "access-issuer.fullname" . }}-tls
 ---
+{{- end }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -87,10 +89,7 @@ metadata:
     {{- include "access-issuer.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: {{ include "access-issuer.fullname" . }}
-      sectionName: issuer
+    {{- include "access-issuer.parentRefs" . | nindent 4 }}
   hostnames:
     - {{ .Values.route.host | quote }}
   rules:
@@ -153,10 +152,7 @@ metadata:
     {{- include "access-issuer.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: {{ include "access-issuer.fullname" . }}
-      sectionName: issuer
+    {{- include "access-issuer.parentRefs" . | nindent 4 }}
   hostnames:
     - {{ .Values.route.host | quote }}
   rules:
