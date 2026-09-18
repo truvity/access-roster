@@ -53,8 +53,8 @@ is `ssh`, `db` or `client`. Each one is the same four steps:
 
 1. exchange the sign-in (or the job's own token) for `aud=openbao`;
 2. log in on the JWT mount in that environment's namespace;
-3. make **one** call — `ssh/sign/<role>`, `pki/issue/db-client`,
-   `pki/issue/client`;
+3. make **one** call — `ssh/sign/<role>`, `pki/sign/db-client`,
+   `pki/sign/client` — over a key made on this machine;
 4. deliver the result, and revoke the OpenBAO token on the way out.
 
 **Nothing here chooses a lifetime.** No request carries a TTL: the role's
@@ -77,8 +77,8 @@ as one story about one subject.
 | Kind | Asks for | Delivers |
 |---|---|---|
 | `ssh` | a key pair generated for this certificate alone; `--principal` (repeatable) | the certificate and key into the **ssh-agent**, with a lifetime the certificate decides; or, with `--identity`, into `~/.ssh` as `<name>`, `<name>.pub` and `<name>-cert.pub` — the certificate beside the key, where `ssh -i <name>` finds both |
-| `db` | `--host`, `--dbname`, `--port`, `--service`; `--project` for a role in a project's own namespace | the certificate, key and CA under `~/.config/accessctl/credentials/<env>/`, and a **psql service entry** (`~/.pg_service.conf`, or `PGSERVICEFILE`) whose `user` is the certificate's common name, for `psql "service=<name>"` |
-| `client` | `--out`, `--uri-san` (repeatable) | `<out>.crt`, `<out>.key` and `<out>-ca.crt`, at the path the caller named |
+| `db` | an ECDSA P-384 key generated for this certificate alone, sent as a CSR; `--host`, `--dbname`, `--port`, `--service`; `--project` for a role in a project's own namespace | the certificate, key (`0600`) and CA under `~/.config/accessctl/credentials/<env>/`, and a **psql service entry** (`~/.pg_service.conf`, or `PGSERVICEFILE`) whose `user` is the certificate's common name, for `psql "service=<name>"` |
+| `client` | the same, as a CSR; `--out`, `--uri-san` (repeatable) | `<out>.crt`, `<out>.key` (`0600`) and `<out>-ca.crt`, at the path the caller named |
 
 `--identity id_example` (a bare name) means `~/.ssh/id_example`; a path
 with a separator is taken as given. A key this tool did not write is

@@ -12,8 +12,8 @@ import (
 )
 
 // The OpenBAO API this speaks, which is three calls: log in, write once,
-// revoke. No client library, deliberately — a login, one `sign` or
-// `issue` and a revoke are plain JSON over HTTP, and the alternative is a
+// revoke. No client library, deliberately — a login, one `sign` and a
+// revoke are plain JSON over HTTP, and the alternative is a
 // dependency tree larger than the rest of this binary inside a tool
 // people install to avoid installing things.
 //
@@ -80,7 +80,7 @@ func (b *openbao) login(ctx context.Context, mount, role, jwt string) error {
 }
 
 // write is the one call that mints: `ssh/sign/<role>` or
-// `pki/issue/<role>`, and nothing else in the whole command.
+// `pki/sign/<role>`, and nothing else in the whole command.
 func (b *openbao) write(ctx context.Context, path string, body map[string]any) (map[string]any, error) {
 	answer, err := b.call(ctx, path, body)
 	if err != nil {

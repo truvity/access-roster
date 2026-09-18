@@ -2,9 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,12 +29,27 @@ type leaf struct {
 	Parsed *x509.Certificate
 }
 
-// issue makes the one call that mints a certificate.
+// leafCurve is the key a PKI credential is made with: ECDSA on P-384,
+// which is what a role with `key_type=ec` and `key_bits=384` signs, and
+// what a role with `key_type=any` accepts. A role that insists on another
+// key type refuses the request, and says so.
+var leafCurve = elliptic.P384()
+
+// issue makes the one call that mints a certificate: `sign`, over a
+// certificate request for a key made here.
+//
+// The private key never leaves this process except into the file it is
+// written to. OpenBAO is sent a CSR — the public key, and the names asked
+// for — and returns a certificate for that key; there is no call in this
+// command that would have the manager generate a key and send it back
+// over the wire, and a role can therefore offer `sign` alone.
 //
 // The common name is REQUESTED and not decided here: accessctl asks for
 // the roster subject it is already holding, and the role says whether
-// that is a name it will sign. No TTL is sent, so `max_ttl` on the role
-// is the only thing that decides how long this lives.
+// that is a name it will sign. It is carried in the CSR, for a role that
+// reads names from it (`use_csr_common_name`), and in the request, for one
+// that does not; the URI SANs likewise. No TTL is sent, so `max_ttl` on
+// the role is the only thing that decides how long this lives.
 func issue(ctx context.Context, bao *openbao, request credentialRequest, subject string) (leaf, error) {
 	name := strings.TrimSpace(request.commonName)
 	if name == "" {
@@ -39,7 +59,16 @@ func issue(ctx context.Context, bao *openbao, request credentialRequest, subject
 		return leaf{}, badUsage("no common name to ask for: sign in again, or pass --common-name")
 	}
 
-	body := map[string]any{"common_name": name}
+	private, err := ecdsa.GenerateKey(leafCurve, rand.Reader)
+	if err != nil {
+		return leaf{}, fmt.Errorf("generate a key: %w", err)
+	}
+	csr, err := certificateRequest(private, name, request.uris)
+	if err != nil {
+		return leaf{}, err
+	}
+
+	body := map[string]any{"csr": csr, "common_name": name}
 	if len(request.uris) > 0 {
 		body["uri_sans"] = strings.Join(request.uris, ",")
 	}
@@ -50,16 +79,53 @@ func issue(ctx context.Context, bao *openbao, request credentialRequest, subject
 
 	issued := leaf{
 		Certificate: text(data["certificate"]),
-		Key:         text(data["private_key"]),
 		Authority:   authorityOf(data),
 	}
-	if issued.Certificate == "" || issued.Key == "" {
-		return leaf{}, fmt.Errorf("%s returned no certificate and key", request.path())
+	if issued.Certificate == "" {
+		return leaf{}, fmt.Errorf("%s returned no certificate", request.path())
 	}
 	if issued.Parsed, err = parseLeaf(issued.Certificate); err != nil {
 		return leaf{}, err
 	}
+	// A certificate for some other key is no use with this one, and
+	// writing the two side by side would leave a pair that fails only
+	// when a server is asked to accept it.
+	if !private.PublicKey.Equal(issued.Parsed.PublicKey) {
+		return leaf{}, fmt.Errorf("%s returned a certificate for a key other than the one it was asked to sign", request.path())
+	}
+	if issued.Key, err = encodeKey(private); err != nil {
+		return leaf{}, err
+	}
 	return issued, nil
+}
+
+// certificateRequest is the CSR for the key: the common name and the URI
+// SANs asked for, signed by the key itself so the manager can check the
+// caller holds it.
+func certificateRequest(private *ecdsa.PrivateKey, name string, uris []string) (string, error) {
+	template := &x509.CertificateRequest{Subject: pkix.Name{CommonName: name}}
+	for _, raw := range uris {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return "", badUsage("--uri-san %q is not a URI: %v", raw, err)
+		}
+		template.URIs = append(template.URIs, parsed)
+	}
+	der, err := x509.CreateCertificateRequest(rand.Reader, template, private)
+	if err != nil {
+		return "", fmt.Errorf("build the certificate request: %w", err)
+	}
+	return strings.TrimSpace(string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der}))), nil
+}
+
+// encodeKey is the key as PKCS #8 PEM, the form libpq, OpenSSL and Go
+// all read.
+func encodeKey(private *ecdsa.PrivateKey) (string, error) {
+	der, err := x509.MarshalPKCS8PrivateKey(private)
+	if err != nil {
+		return "", fmt.Errorf("encode the key: %w", err)
+	}
+	return strings.TrimSpace(string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))), nil
 }
 
 // authorityOf is the chain to verify a server against, the whole chain
@@ -114,7 +180,7 @@ func colonHex(raw []byte) string {
 	return strings.Join(parts, ":")
 }
 
-// dbCredential issues a client certificate for a database and leaves
+// dbCredential has a client certificate signed for a database and leaves
 // behind a psql service entry that uses it.
 //
 // A service entry rather than a printed connection string: `psql
@@ -158,7 +224,7 @@ func dbCredential(ctx context.Context, bao *openbao, request credentialRequest, 
 	return nil
 }
 
-// clientCredential issues a client certificate and writes it where the
+// clientCredential has a client certificate signed and writes it where the
 // caller said, for a workload or a person calling something that wants
 // mutual TLS.
 func clientCredential(ctx context.Context, bao *openbao, request credentialRequest, subject string) error {

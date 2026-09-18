@@ -354,7 +354,7 @@ configure and where, what you get.
 - **Trust:** one JWT auth mount per namespace, bound to the audience
   `openbao`; one role per credential, bound to the internal groups.
 - **Flow:** exchange for `openbao`, gated by that client's `requires` →
-  log in on the mount → one `sign` or `issue` call → the certificate is
+  log in on the mount → one `sign` call → the certificate is
   delivered and the manager's token revoked.
 - **You configure:** the mount and the roles in the manager; the
   `openbao` client and the groups it requires in the policy.
