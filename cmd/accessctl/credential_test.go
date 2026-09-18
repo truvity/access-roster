@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"flag"
 	"io/fs"
 	"math/big"
 	"net"
@@ -29,8 +30,9 @@ import (
 const theSubject = "ada@north.example"
 
 // The flags become exactly the request, and the defaults are the layout
-// the roles are rendered into: the platform's namespace per environment
-// for SSH and machine certificates, the project's for a database.
+// the roles are rendered into: one namespace per environment, named for
+// it, for every kind — and a project's own namespace for a database only
+// when --project asks for it.
 func TestCredentialFlagsAreReadAsTheRequest(t *testing.T) {
 	t.Setenv(envOpenBAOAddress, "https://openbao.example")
 	t.Setenv(envVaultAddress, "")
@@ -45,7 +47,7 @@ func TestCredentialFlagsAreReadAsTheRequest(t *testing.T) {
 	}{
 		"ssh, as short as it gets": {
 			args:      []string{"ssh", "--env", "staging"},
-			namespace: "platform/staging",
+			namespace: "staging",
 			path:      "ssh/sign/user",
 			check: func(got credentialRequest) error {
 				if got.mount != rosterMount || got.loginRole != rosterLoginRole || got.audience != openbaoAudience {
@@ -56,7 +58,7 @@ func TestCredentialFlagsAreReadAsTheRequest(t *testing.T) {
 		},
 		"ssh, the privileged role asked for by name": {
 			args:      []string{"ssh", "--env", "staging", "--role", "admin", "--principal", "deploy", "--principal", "ops"},
-			namespace: "platform/staging",
+			namespace: "staging",
 			path:      "ssh/sign/admin",
 			check: func(got credentialRequest) error {
 				if !slices.Equal(got.principals, []string{"deploy", "ops"}) {
@@ -65,10 +67,9 @@ func TestCredentialFlagsAreReadAsTheRequest(t *testing.T) {
 				return nil
 			},
 		},
-		"a database, in its project's namespace": {
-			args: []string{"db", "--env", "staging", "--project", "example",
-				"--host", "db.example", "--dbname", "orders"},
-			namespace: "example/staging",
+		"a database, in the environment's namespace": {
+			args:      []string{"db", "--env", "staging", "--host", "db.example", "--dbname", "orders"},
+			namespace: "staging",
 			path:      "pki/issue/db-client",
 			check: func(got credentialRequest) error {
 				if got.service != "staging" || got.port != "5432" {
@@ -77,9 +78,16 @@ func TestCredentialFlagsAreReadAsTheRequest(t *testing.T) {
 				return nil
 			},
 		},
+		"a database, in a project's own namespace": {
+			args: []string{"db", "--env", "staging", "--project", "example",
+				"--host", "db.example", "--dbname", "orders"},
+			namespace: "example/staging",
+			path:      "pki/issue/db-client",
+			check:     func(credentialRequest) error { return nil },
+		},
 		"a machine certificate": {
 			args:      []string{"client", "--env", "staging", "--out", "/tmp/example.crt"},
-			namespace: "platform/staging",
+			namespace: "staging",
 			path:      "pki/issue/client",
 			check:     func(credentialRequest) error { return nil },
 		},
@@ -125,7 +133,6 @@ func TestACredentialNobodyCouldMintIsAUsageError(t *testing.T) {
 		"a flag where the kind goes":       {"--env", "staging"},
 		"a kind that is not one":           {"vpn", "--env", "staging"},
 		"no environment":                   {"ssh"},
-		"a database with no project":       {"db", "--env", "staging", "--host", "db.example", "--dbname", "orders"},
 		"a database going nowhere":         {"db", "--env", "staging", "--project", "example", "--dbname", "orders"},
 		"a database with no database":      {"db", "--env", "staging", "--project", "example", "--host", "db.example"},
 		"a client certificate with no out": {"client", "--env", "staging"},
@@ -140,10 +147,79 @@ func TestACredentialNobodyCouldMintIsAUsageError(t *testing.T) {
 	}
 
 	// And with no address there is nothing to call, which is the same
-	// kind of mistake.
+	// kind of mistake — and the message is the fix: the flag and the
+	// variable, each with the shape of a value.
 	t.Setenv(envOpenBAOAddress, "")
-	if _, err := parseCredentialFlags([]string{"ssh", "--env", "staging"}); codeFor(err) != exitUsage {
+	_, err := parseCredentialFlags([]string{"ssh", "--env", "staging"})
+	if codeFor(err) != exitUsage {
 		t.Errorf("no address: %v, want a usage error", err)
+	}
+	for _, says := range []string{"--address https://", "export " + envOpenBAOAddress + "=https://", envVaultAddress} {
+		if err == nil || !strings.Contains(err.Error(), says) {
+			t.Errorf("no address: %v, want it to say %q", err, says)
+		}
+	}
+}
+
+// The namespace is the first of: the flag, BAO_NAMESPACE, VAULT_NAMESPACE,
+// and the environment itself. A shell already pointed at an installation
+// keeps working, and a flag still wins over the shell.
+func TestCredentialNamespacePrecedence(t *testing.T) {
+	t.Setenv(envOpenBAOAddress, "https://openbao.example")
+	t.Setenv(envVaultAddress, "")
+
+	for name, tc := range []struct {
+		bao, vault string
+		args       []string
+		want       string
+	}{
+		{args: []string{"ssh", "--env", "staging"}, want: "staging"},
+		{vault: "from-vault", args: []string{"ssh", "--env", "staging"}, want: "from-vault"},
+		{bao: "from-bao", vault: "from-vault", args: []string{"ssh", "--env", "staging"}, want: "from-bao"},
+		{bao: "from-bao", args: []string{"ssh", "--env", "staging", "--namespace", "from-flag"}, want: "from-flag"},
+		{bao: "from-bao", args: []string{"db", "--env", "staging", "--project", "example",
+			"--host", "db.example", "--dbname", "orders"}, want: "from-bao"},
+	} {
+		t.Setenv(envOpenBAONamespace, tc.bao)
+		t.Setenv(envVaultNamespace, tc.vault)
+		got, err := parseCredentialFlags(tc.args)
+		if err != nil {
+			t.Errorf("case %d: %v", name, err)
+			continue
+		}
+		if got.namespace != tc.want {
+			t.Errorf("case %d: namespace %q, want %q", name, got.namespace, tc.want)
+		}
+	}
+}
+
+// `--help` on ssh is where somebody deciding whether they need the
+// privileged role looks, so it says what each of the two is for, and
+// which one is the default.
+func TestSSHHelpSaysWhatEachRoleIsFor(t *testing.T) {
+	t.Setenv(envOpenBAOAddress, "https://openbao.example")
+
+	// The flag package prints help to os.Stderr, read when it prints.
+	out, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := os.Stderr
+	os.Stderr = out
+	_, err = parseCredentialFlags([]string{"ssh", "--help"})
+	os.Stderr = saved
+	if codeFor(err) != exitUsage || !strings.Contains(err.Error(), flag.ErrHelp.Error()) {
+		t.Errorf("--help: %v, want the help printed and a usage exit", err)
+	}
+
+	help, _ := os.ReadFile(out.Name())
+	for _, says := range []string{
+		"'user' for everyday logins", "'admin' for administering the host", `(default "user")`,
+		envOpenBAOAddress, "--env value itself",
+	} {
+		if !strings.Contains(string(help), says) {
+			t.Errorf("--help is\n%s\nwant it to say %q", help, says)
+		}
 	}
 }
 
@@ -166,7 +242,7 @@ func TestSSHCertificateIsSignedAndAddedToTheAgent(t *testing.T) {
 	if got := bao.calls; !slices.Equal(got, []string{"auth/jwt-roster/login", "ssh/sign/user", "auth/token/revoke-self"}) {
 		t.Fatalf("called %v, want a login, one signing and a revoke", got)
 	}
-	if bao.namespaces["ssh/sign/user"] != "platform/staging" {
+	if bao.namespaces["ssh/sign/user"] != "staging" {
 		t.Errorf("signed in namespace %q", bao.namespaces["ssh/sign/user"])
 	}
 	if bao.bodies["auth/jwt-roster/login"]["jwt"] != "for-openbao" ||
@@ -308,7 +384,7 @@ func TestDatabaseCredentialBecomesAPsqlService(t *testing.T) {
 	home := signedInHome(t)
 
 	_ = captureStdout(t, func() error {
-		return credential([]string{"db", "--env", "staging", "--project", "example",
+		return credential([]string{"db", "--env", "staging",
 			"--host", "db.example", "--dbname", "orders", "--service", "orders",
 			"--issuer", issuer, "--address", bao.URL})
 	})
@@ -316,8 +392,8 @@ func TestDatabaseCredentialBecomesAPsqlService(t *testing.T) {
 	if !slices.Contains(bao.calls, "pki/issue/db-client") {
 		t.Fatalf("called %v, want the database role", bao.calls)
 	}
-	if bao.namespaces["pki/issue/db-client"] != "example/staging" {
-		t.Errorf("issued in namespace %q, want the project's", bao.namespaces["pki/issue/db-client"])
+	if bao.namespaces["pki/issue/db-client"] != "staging" {
+		t.Errorf("issued in namespace %q, want the environment's", bao.namespaces["pki/issue/db-client"])
 	}
 	if bao.bodies["pki/issue/db-client"]["common_name"] != theSubject {
 		t.Errorf("asked for common name %v, want the roster subject", bao.bodies["pki/issue/db-client"]["common_name"])

@@ -89,16 +89,26 @@ which is a decision to write down rather than to discover.
 accessctl credential ssh --env staging --principal deploy
 ssh deploy@host.example                 # the agent offers the certificate
 
-accessctl credential db --env staging --project example \
+accessctl credential db --env staging \
     --host db.example --dbname orders --service orders
 psql "service=orders"
 
 accessctl credential client --env staging --out ./gateway.crt
 ```
 
-`--address` names the manager, or `BAO_ADDR` in the environment. The
-namespace defaults to `platform/<env>` for `ssh` and `client` and to
-`<project>/<env>` for `db`; `--namespace` overrides it.
+`--address` names the manager, or `BAO_ADDR` in the environment
+(`VAULT_ADDR` is read too); with neither, the command stops and says
+which to set. The namespace is the environment's own, named for it —
+`--env staging` works in `staging` — for every kind. `--namespace`, or
+`BAO_NAMESPACE` (then `VAULT_NAMESPACE`), overrides it, the flag first;
+a database role kept in a project's own namespace is reached with
+`--project <project>`, which means `<project>/<env>`.
+
+The SSH role is `user` unless `--role admin` asks for the other one:
+`user` for everyday logins as the account a host admits its ordinary
+users as, `admin` for the account that administers it. The two are two
+groups, granted separately, and which OS accounts each signs for is the
+role's `allowed_users`, not a flag.
 
 Each command prints the certificate's `key_id` or common name and its
 serial — the handle for finding it in the audit trail — and never the

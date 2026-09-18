@@ -77,7 +77,7 @@ as one story about one subject.
 | Kind | Asks for | Delivers |
 |---|---|---|
 | `ssh` | a key pair generated for this certificate alone; `--principal` (repeatable) | the certificate and key into the **ssh-agent**, with a lifetime the certificate decides; or, with `--identity`, into `~/.ssh` as `<name>`, `<name>.pub` and `<name>-cert.pub` — the certificate beside the key, where `ssh -i <name>` finds both |
-| `db` | `--project`, `--host`, `--dbname`, `--port`, `--service` | the certificate, key and CA under `~/.config/accessctl/credentials/<env>/`, and a **psql service entry** (`~/.pg_service.conf`, or `PGSERVICEFILE`) whose `user` is the certificate's common name, for `psql "service=<name>"` |
+| `db` | `--host`, `--dbname`, `--port`, `--service`; `--project` for a role in a project's own namespace | the certificate, key and CA under `~/.config/accessctl/credentials/<env>/`, and a **psql service entry** (`~/.pg_service.conf`, or `PGSERVICEFILE`) whose `user` is the certificate's common name, for `psql "service=<name>"` |
 | `client` | `--out`, `--uri-san` (repeatable) | `<out>.crt`, `<out>.key` and `<out>-ca.crt`, at the path the caller named |
 
 `--identity id_example` (a bare name) means `~/.ssh/id_example`; a path
@@ -88,12 +88,22 @@ a key somebody has used for years.
 The service file holds one block per service (`# >>> accessctl <name> >>>`),
 so a credential for a second database leaves the first entry alone.
 
+**Which role.** Each kind signs with its ordinary role unless `--role`
+names another: `user` for `ssh`, `db-client` for `db`, `client` for
+`client`. SSH has a second, `admin`, which is never a default: `user` is
+for everyday logins as a host's ordinary account, `admin` for the
+account that administers it, and the two are granted separately.
+
 **Where it points.** `--address` names the OpenBAO API, or `BAO_ADDR`
-(`VAULT_ADDR` is read too). The namespace defaults to `platform/<env>` for
-`ssh` and `client` and to `<project>/<env>` for `db`, and `--namespace`
-overrides it; `--mount`, `--login-role` and `--audience` name the JWT
-mount (`jwt-roster`), its role (`roster`) and the exchange client
-(`openbao`) for an installation that spells them differently.
+(`VAULT_ADDR` is read too); with none of the three the command exits 2
+and says how to set it. The namespace is the environment's own —
+`--env staging` works in `staging` — for every kind, and the first of
+`--namespace`, `BAO_NAMESPACE` and `VAULT_NAMESPACE` overrides it;
+`--project <project>` on `db` reaches a role kept in `<project>/<env>`
+instead.
+`--mount`, `--login-role` and `--audience` name the JWT mount
+(`jwt-roster`), its role (`roster`) and the exchange client (`openbao`)
+for an installation that spells them differently.
 
 **Installing it.** Each release carries `accessctl_<version>_nix-flake.tar.gz`,
 a Nix flake over that release's own archives; a repository adds its URL
