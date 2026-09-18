@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,7 +47,52 @@ const (
 	envVaultAddress     = "VAULT_ADDR"
 	envOpenBAONamespace = "BAO_NAMESPACE"
 	envVaultNamespace   = "VAULT_NAMESPACE"
+	envOpenBAOCACert    = "BAO_CACERT"
+	envVaultCACert      = "VAULT_CACERT"
 )
+
+// openbaoRoots is what the OpenBAO connection verifies against when an
+// installation serves its API under a private root: the system's roots
+// with the bundle at path ADDED, never in their place.
+//
+// Added, because replacing them would make the option a trap: an
+// installation whose certificate a public CA signs, or which moves to
+// one, would stop verifying the day somebody's shell exported the
+// bundle for another. And only this connection: the exchange at the
+// issuer keeps the system's trust, so a bundle handed to accessctl for
+// OpenBAO cannot vouch for anything else it talks to. The alternative
+// people reached for, SSL_CERT_FILE, does the opposite on both counts.
+//
+// A bundle that cannot be read, or holds no certificate, is refused
+// rather than ignored: a flag that silently trusts nothing extra reads,
+// later, as an outage.
+func openbaoRoots(path string) (*x509.CertPool, error) {
+	bundle, err := os.ReadFile(path) //nolint:gosec // the path the caller named
+	if err != nil {
+		return nil, badUsage("read the OpenBAO CA bundle: %w", err)
+	}
+	roots, err := x509.SystemCertPool()
+	if err != nil {
+		// A platform with no system roots to add to: the bundle alone is
+		// still strictly more than the nothing this connection had.
+		roots = x509.NewCertPool()
+	}
+	if !roots.AppendCertsFromPEM(bundle) {
+		return nil, badUsage("the OpenBAO CA bundle %s holds no PEM certificate", path)
+	}
+	return roots, nil
+}
+
+// untrusted says whether a request failed because the server's
+// certificate did not verify, which on this connection is almost always
+// a private root the system does not know.
+func untrusted(err error) bool {
+	var (
+		unknownCA x509.UnknownAuthorityError
+		verify    *tls.CertificateVerificationError
+	)
+	return errors.As(err, &unknownCA) || errors.As(err, &verify)
+}
 
 // namespaceHeader carries the namespace on every call. The name is the
 // Vault-compatible one, which OpenBAO kept.
@@ -152,6 +200,10 @@ func (b *openbao) call(ctx context.Context, path string, body map[string]any) (a
 	}
 	response, err := client.Do(request)
 	if err != nil {
+		if untrusted(err) {
+			return answer{}, fmt.Errorf("%w: %s: %w (a private root? pass --ca-cert <bundle>, or export %s)",
+				errUnreachable, path, err, envOpenBAOCACert)
+		}
 		return answer{}, fmt.Errorf("%w: %s: %w", errUnreachable, path, err)
 	}
 	defer func() { _ = response.Body.Close() }()

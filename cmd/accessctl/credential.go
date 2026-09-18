@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"flag"
 	"slices"
 	"strings"
@@ -52,7 +53,7 @@ func credential(args []string) error {
 		return err
 	}
 
-	bao := &openbao{Address: request.address, Namespace: request.namespace, Client: retryingClient()}
+	bao := &openbao{Address: request.address, Namespace: request.namespace, Client: retryingClientTrusting(request.roots)}
 	if err = bao.login(ctx, request.mount, request.loginRole, issued.AccessToken); err != nil {
 		return err
 	}
@@ -103,6 +104,12 @@ type credentialRequest struct {
 	address   string
 	namespace string
 	project   string
+
+	// caCert is the PEM bundle the OpenBAO connection trusts on top of
+	// the system's roots, and roots the pool read from it: nil, the
+	// system's alone, when no bundle was named.
+	caCert string
+	roots  *x509.CertPool
 
 	issuer    string
 	clientID  string
@@ -179,6 +186,9 @@ func parseCredentialFlags(args []string) (credentialRequest, error) {
 		"the OpenBAO API, e.g. https://openbao.example:8200 (default: $"+envOpenBAOAddress+", then $"+envVaultAddress+")")
 	flags.StringVar(&request.namespace, "namespace", "",
 		"the OpenBAO namespace (default: $"+envOpenBAONamespace+", then $"+envVaultNamespace+", then the --env value itself)")
+	flags.StringVar(&request.caCert, "ca-cert", "",
+		"a PEM bundle to trust for the OpenBAO connection, added to the system's roots "+
+			"(default: $"+envOpenBAOCACert+", then $"+envVaultCACert+")")
 	flags.StringVar(&request.mount, "mount", rosterMount, "the JWT auth mount to log in on")
 	flags.StringVar(&request.loginRole, "login-role", rosterLoginRole, "the role on that mount")
 	flags.StringVar(&request.issuer, "issuer", "", "the issuer, when not configured")
@@ -233,6 +243,17 @@ func (r credentialRequest) resolve() (credentialRequest, error) {
 			"or export %s=https://openbao.example:8200 (%s is read too)", envOpenBAOAddress, envVaultAddress)
 	}
 	r.address = strings.TrimSuffix(r.address, "/")
+
+	if r.caCert = strings.TrimSpace(r.caCert); r.caCert == "" {
+		r.caCert = firstEnv(envOpenBAOCACert, envVaultCACert)
+	}
+	if r.caCert != "" {
+		roots, err := openbaoRoots(r.caCert)
+		if err != nil {
+			return r, err
+		}
+		r.roots = roots
+	}
 
 	if r.namespace = strings.TrimSpace(r.namespace); r.namespace == "" {
 		r.namespace = firstEnv(envOpenBAONamespace, envVaultNamespace)

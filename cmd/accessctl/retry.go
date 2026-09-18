@@ -170,8 +170,17 @@ func (t retryingTransport) RoundTrip(request *http.Request) (*http.Response, err
 // retryingClient is the HTTP client for token requests: retried, each
 // attempt's answer bounded, and the whole request bounded too.
 func retryingClient() *http.Client {
+	return retryingClientTrusting(nil)
+}
+
+// retryingClientTrusting is retryingClient verifying servers against
+// roots; nil is the system's, as for retryingClient.
+func retryingClientTrusting(roots *x509.CertPool) *http.Client {
 	base := http.DefaultTransport.(*http.Transport).Clone()
 	base.ResponseHeaderTimeout = 30 * time.Second
+	if roots != nil {
+		base.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
+	}
 	return &http.Client{
 		Transport: retryingTransport{base: base},
 		Timeout:   2 * time.Minute,

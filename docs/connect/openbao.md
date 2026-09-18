@@ -111,6 +111,14 @@ which to set. The namespace is the environment's own, named for it —
 a database role kept in a project's own namespace is reached with
 `--project <project>`, which means `<project>/<env>`.
 
+A manager whose API certificate chains to a private root is reached by
+naming that root: `--ca-cert <file>` (a PEM bundle), or `BAO_CACERT`
+(then `VAULT_CACERT`), the flag first — the same variables the `bao` CLI
+reads. The bundle is added to the system's roots for the connection to
+the manager and nothing else, so there is no need to point
+`SSL_CERT_FILE` at it, which would replace the roots of every connection
+the command makes.
+
 The SSH role is `user` unless `--role admin` asks for the other one:
 `user` for everyday logins as the account a host admits its ordinary
 users as, `admin` for the account that administers it. The two are two
