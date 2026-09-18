@@ -58,10 +58,13 @@ Only the latest release is supported with security updates.
   its own tokens, only the access token of a CLI sign-in at a public
   client declaring `sign_in_exchange` is a proof for exchange; an ID
   token is not (1.5.5).
-- The **audit trail** is one record per event in an S3 bucket the
-  operator owns, written by the pod's own AWS identity; put Object Lock
-  on it. Ordinary events never wait on the bucket; a recovery sign-in
-  does, and is refused when its record cannot be written. The client
+- The **audit trail** is kept by an audit installation connected as a
+  plugin, which access-roster reaches as its own workload (a projected
+  service-account token) and holds no bucket or key for. Ordinary records
+  never wait on it; a recovery sign-in does, and is refused when its record
+  cannot be kept. The console's Audit page reads the installation with a
+  short-lived token minted for the person signed in, never passed to the
+  browser. The client
   address in a record is read from `X-Forwarded-For` only as far as
   `audit.forwardedForTrustedHops` says, so set it to the deployment's
   own proxies and no more.

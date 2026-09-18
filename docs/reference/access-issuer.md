@@ -4,7 +4,7 @@
 
 | Renders | Expects to exist |
 |---|---|
-| Deployment, Service, ServiceAccount, a namespaced Role for the Secrets and ConfigMaps it writes, the TokenReview ClusterRole (with `recovery.enabled`), NetworkPolicy, the policy, overlay and cluster ConfigMaps, the Gateway API routes for its host, the cert-manager `Certificate` that produces its signing key, and — with `githubRoster.enabled` — a second Deployment for the GitHub controller | a Valkey, for more than one replica; a cert-manager issuer; the Secret holding the OAuth client, if people sign in here; an S3 bucket for the audit trail, if it is to be a record |
+| Deployment, Service, ServiceAccount, a namespaced Role for the Secrets and ConfigMaps it writes, the TokenReview ClusterRole (with `recovery.enabled`), NetworkPolicy, the policy, overlay and cluster ConfigMaps, the Gateway API routes for its host, the cert-manager `Certificate` that produces its signing key, and — with `githubRoster.enabled` — a second Deployment for the GitHub controller | a Valkey, for more than one replica; a cert-manager issuer; the Secret holding the OAuth client, if people sign in here; an audit installation to connect to, if there is to be an audit trail |
 
 This page keeps the values that carry a reason, and the endpoints. The
 full list is [configuration.md](configuration.md).
@@ -32,7 +32,7 @@ thing that authenticates, and a proxy would have nowhere to send anyone.
 | `githubRoster.enabled`, `.actsIn[]` | `false`, `[]` | the GitHub controller beside the service, and the organisations it may **change**; every other bound organisation is a dry run the console shows |
 | `githubApps.catalogue[]` | `[]` | GitHub Apps declared as data, created and installed from the console, their keys kept in `Secret <release>-github-catalogue-apps` ([guide](../connect/github-apps-catalogue.md)) |
 | `githubRunnerApps.tiers[]` | `[]` | the runner tiers an operator may create a runner App for, one per organisation per tier |
-| `audit.s3.bucket` | `""` | where the audit trail is kept. Empty keeps it in one replica's memory, which is not a record, and the service says so at start |
+| `audit.writer`, `.registry`, `.query` | `""` | the audit installation this connects to as a plugin; empty keeps nothing beyond log lines and shows no Audit page ([configuration](configuration.md)) |
 | `github.owners[]` | `[]` | the GitHub organisations (or users) whose workflows may exchange a token. **The trust boundary, not tuning:** anybody may run a workflow in their own repository and get a valid token from GitHub, so signature and expiry prove only that a job ran somewhere; this list is the whole of what makes one of them ours. Empty verifies no CI token at all. The audience a workflow must request is `issuerURL` and is not configurable |
 | `route.host` | `""` | empty renders no route, for an issuer reached by port-forward while it is being tried |
 | `route.rootRedirect` | `""` | where a bare GET of the host root goes. The issuer serves nothing at `/` — every endpoint it answers is a named one — so somebody who types the domain gets a 404. Where a console shares the host under a path, point this at it (`/console/`). Empty keeps the 404, which is the honest answer for an issuer deployed alone |

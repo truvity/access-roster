@@ -10,9 +10,8 @@ without a generated client.
 
 | Services | Reached by | Path prefix |
 |---|---|---|
-| `directoryroster.v1.WorkspaceService`, `SettingsService`, `AccessService`, `GitHubService`, `AuditService`, and the SPA | the console, same-origin under `console.mount`; a workload with its own ServiceAccount token | `/directoryroster.v1.*/` |
+| `directoryroster.v1.WorkspaceService`, `SettingsService`, `AccessService`, `GitHubService`, and the SPA; the audit installation's `QueryService`, forwarded under `/audit/` | the console, same-origin under `console.mount`; a workload with its own ServiceAccount token | `/directoryroster.v1.*/` |
 | `/login/*`, `/connect/*`, `/.access/*` | the origin root: the bootstrap surface, and the endpoints a CLI reads | — |
-| `AuditSinkService` | in process only: the contract between what records and what writes | — |
 
 > **`directory.v1.DirectoryService` is not served.** It had one listener
 > and one consumer — the issuer — and the issuer is now the same process,
@@ -345,31 +344,20 @@ which is what lets the controller's Role name that one object.
 `reports_available` is false only for a deployment keeping no state in
 Kubernetes.
 
-## `directoryroster.v1.AuditService`
+## The audit trail
 
-What happened lately, in the whole installation. See
+Not a service of this one. access-roster records into an audit
+installation ([truvity/audit](https://github.com/truvity/audit)) through its
+contracts: it registers its catalogue with the installation's
+`audit.v1.RegistryService` at start, and sends records to its
+`audit.v1.SinkService`, each with the process's own projected
+service-account token. The console's Audit page reads the installation's
+`audit.v1.QueryService`, forwarded by the console under `<mount>/audit/`
+with a token minted for the person signed in; only that service's methods
+pass, and only for somebody signed in. See
 [operations/runbook.md](../operations/runbook.md#audit-what-happened-lately).
-
-| RPC | Role | Request | Response | Notes |
-|---|---|---|---|---|
-| `ListAuditEvents` | operator | `source?`, `kind?`, `subject?`, `target?`, `since?`, `limit?`, `cursor?` | `events[]{id, at, source, kind, actor, reporter, subject, target, outcome, reason, attributes, client_address, user_agent, request_id}`, `cursor` | newest first. The last three are what the event kept of the request that caused it — the client's address (read from the right of `X-Forwarded-For` past `audit.forwardedForTrustedHops` of the deployment's own proxies, the peer when that is 0), its User-Agent, the gateway's `X-Request-Id` — and are empty for background work and for events recorded before they were kept. A narrow filter over a busy stream may return fewer than `limit` with a cursor: the read is bounded, and the cursor continues from where it stopped. Operator, because the stream names every sign-in. `failed_precondition` where there is no stream at all |
-| `RecordAuditEvents` | a **workload** in `all:access-roster:reporter` | `events[]` | `recorded` | a component reporting what it did. The service stamps `reporter` with the caller it verified and `at` with arrival, and refuses — whole, recording none of the batch — a reserved source (`issuer`, `directory`, `console`), a supplied `reporter`, an unknown outcome, or anything over the bounds (200 events, 512-byte fields, 20 attributes, and `client_address` 64, `user_agent` 256, `request_id` 128 bytes). The three request fields are the reporter's own to supply — never taken from its connection — and are kept with line breaks removed. A person holding the group is refused too |
-
-## `directoryroster.v1.AuditSinkService`
-
-Where audit events are kept: the contract between what records them and
-what writes them down, not an API anybody calls. The service holds its
-client; a writer implements its handler — S3, or one replica's memory
-without a bucket — and in one process the two are joined without a
-network. A writer in another process (a dedicated writer, a bridge onto a
-queue) would implement the same service behind the generated client; this
-release serves it on no listener and names no remote writer. It authorises
-nobody: whoever serves a writer decides who may reach it.
-
-| RPC | Request | Response | Notes |
-|---|---|---|---|
-| `WriteAuditEvents` | `events[]`, `durable` | `written` | keeps events. With `durable` it answers only once they are persisted, and an error means they are not (the S3 writer puts them in an object of their own); without it, once they are accepted. An event's `id` and `at` are kept when set and assigned when not, so a log line written before the write names the record's id. `unavailable` when the writer cannot keep them |
-| `ListStoredAuditEvents` | `query` (a `ListAuditEventsRequest`) | `events[]`, `cursor` | newest first, filtered and paged as `ListAuditEvents` is, which answers with it. `invalid_argument` for a cursor that is not one |
+The actions and what each carries are the catalogue,
+[`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml).
 
 ## Installation tokens at `/token`
 
@@ -440,8 +428,8 @@ its permissions. GitHub is sent that narrowing explicitly.
 | `invalid_scope` | 400 | wider than any one grant the proof holds, or GitHub refused the narrowing (422) |
 | `server_error` | 500 | GitHub or the App's key failed |
 
-Every request, minted or refused, is one `github.token.minted` audit
-event ([fields](../connect/github-apps-catalogue.md#audit)); the token
+Every request, minted or refused, is one `roster.github_token.minted`
+record ([fields](../connect/github-apps-catalogue.md#audit)); the token
 is never in it. The same request is also kept in this service's own
 memory, so that the App's page can show the last ten without narrowing
 the trail to one App — `ListGitHubAppTokens` above.

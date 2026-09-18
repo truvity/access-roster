@@ -1,0 +1,462 @@
+# What access-roster records: every action, what it carries, who it concerns,
+# which profiles keep it, and how it reads as a sentence.
+#
+# This is the contract with the audit trail (github.com/truvity/audit). Every
+# action here is emitted by a constructor in internal/audit/events.go, and
+# `just audit-catalogue` holds the two together: an action emitted and not
+# declared, or declared and not emitted, fails the gate.
+#
+# A change to what an action carries is a new version. The installation keeps
+# every version it was sent, so records already written keep their meaning.
+source: roster
+version: "1.0.0"
+locales: [en]
+
+actor_kinds:
+  person:
+    category: internal
+    description: A member of the organisation, by the address the directory knows them by.
+  recovery:
+    category: internal
+    description: The recovery identity, for the day the directory is not there to sign in with.
+  ci:
+    category: machine
+    description: A CI job, by the repository it runs for (github:<owner>/<repo>).
+  workload:
+    category: machine
+    description: A cluster workload, by its service account (system:serviceaccount:<namespace>:<name>).
+  system:
+    category: machine
+    description: access-roster acting on its own, with nobody asking.
+  anonymous:
+    category: external
+    description: A caller refused before it proved who it is; the request's address is in the record's context.
+
+target_types:
+  client:
+    description: An application that relies on the issuer, by client id; `console` is this service's own console.
+  workspace:
+    description: A connected directory, by workspace id.
+  organisation:
+    description: A GitHub organisation, by login.
+  team:
+    description: A GitHub team, as <organisation>/<team>.
+  github_account:
+    description: A person's GitHub account, by login.
+    is_person: true
+  github_app:
+    description: A GitHub App, by the id access-roster catalogues it under, or its slug where it has none.
+
+actions:
+  # ------------------------------------------------------------ signing in
+
+  roster.person.signed_in:
+    summary: A person signed in to a client, or was refused.
+    operation: authentication
+    categories: [authentication]
+    profiles: [security]
+    target_types: [client]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/sign-in.json
+    message:
+      en: "{outcome, select, success {{actor} signed in to {targets_0_id}} denied {{actor} was refused sign-in to {targets_0_id}} other {{actor} could not sign in to {targets_0_id}}}"
+
+  roster.recovery.signed_in:
+    summary: Somebody signed in with the recovery identity, which bypasses the directory.
+    operation: authentication
+    categories: [authentication, privileged_access]
+    profiles: [security, history]
+    target_types: [client]
+    # Recorded before it succeeds, and refused when it cannot be: the way in
+    # that bypasses the directory must never be used off the record.
+    delivery: block
+    data_schema: https://schemas.truvity.com/access-roster/v1/sign-in.json
+    message:
+      en: "{outcome, select, success {{actor} signed in to {targets_0_id} by recovery} other {a recovery sign-in to {targets_0_id} did not complete}}"
+
+  roster.token.exchanged:
+    summary: A token was exchanged for one another client accepts, or the exchange was refused.
+    operation: authentication
+    categories: [authentication, authorization_decision]
+    profiles: [security]
+    target_types: [client]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/token-exchanged.json
+    message:
+      en: "{outcome, select, success {{actor} exchanged a token for {targets_0_id}} denied {{actor} was refused a token for {targets_0_id}} other {{actor} could not exchange a token for {targets_0_id}}}"
+
+  roster.github_token.minted:
+    summary: A GitHub App installation token was minted, or refused. Never the token.
+    operation: create
+    categories: [credential_lifecycle, authorization_decision]
+    profiles: [security]
+    target_types: [github_app]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/github-token.json
+    message:
+      en: "{outcome, select, success {{actor} was given a {targets_0_id} token for {data_org}} denied {{actor} was refused a {targets_0_id} token} other {{actor} could not be given a {targets_0_id} token}}"
+
+  # -------------------------------------------------------------- sessions
+
+  roster.session.ended:
+    summary: A person signed out, ending their sessions.
+    operation: authentication
+    categories: [authentication]
+    profiles: [security]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/sessions-ended.json
+    message:
+      en: "{actor} signed out, ending {data_ended, plural, one {# session} other {# sessions}}"
+
+  roster.session.revoked:
+    summary: A person's sessions were revoked.
+    operation: remove
+    categories: [authentication, account_lifecycle]
+    profiles: [security, history]
+    target_types: [client]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/session-revoked.json
+    message:
+      en: "{actor} revoked {subject}'s sessions, ending {data_ended, plural, one {#} other {#}}"
+
+  roster.session.refresh_refused:
+    summary: A session was refused a refresh because its holder is no longer admitted to the client.
+    operation: authentication
+    categories: [authentication, authorization_decision]
+    profiles: [security]
+    target_types: [client]
+    delivery: outbox
+    message:
+      en: "{subject}'s session at {targets_0_id} was refused a refresh"
+
+  # ------------------------------------------------------------ directories
+
+  roster.workspace.connected:
+    summary: A directory was connected.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [workspace]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/workspace-connected.json
+    message:
+      en: "{actor} connected directory {targets_0_id}"
+
+  roster.workspace.reconnected:
+    summary: A connected directory was given a new consent.
+    operation: modify
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [workspace]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/workspace-connected.json
+    message:
+      en: "{actor} reconnected directory {targets_0_id}"
+
+  roster.workspace.disconnected:
+    summary: A directory was disconnected.
+    operation: remove
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [workspace]
+    delivery: outbox
+    message:
+      en: "{actor} disconnected directory {targets_0_id}"
+
+  roster.workspace.domains_changed:
+    summary: The domains a directory answers for changed.
+    operation: modify
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [workspace]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/workspace-domains.json
+    message:
+      en: "{actor} changed the domains directory {targets_0_id} answers for"
+
+  roster.workspace.groups_changed:
+    summary: The groups served from a directory changed.
+    operation: modify
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [workspace]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/workspace-groups.json
+    message:
+      en: "{actor} changed the groups served from directory {targets_0_id}, now {data_groups}"
+
+  # ------------------------------------------------- GitHub: organisations
+
+  roster.github_app.created:
+    summary: A GitHub App was created for an organisation.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app, organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-created.json
+    message:
+      en: "{actor} created GitHub App {targets_0_id} for {targets_1_id}"
+
+  roster.github_org.connected:
+    summary: A GitHub organisation was connected by installing the App.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-installed.json
+    message:
+      en: "{actor} connected GitHub organisation {targets_0_id}"
+
+  roster.github_org.disconnected:
+    summary: A GitHub organisation was disconnected.
+    operation: remove
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-disconnected.json
+    message:
+      en: "{actor} disconnected GitHub organisation {targets_0_id}"
+
+  roster.github_removals.confirmed:
+    summary: An operator confirmed a set of removals the safety breaker had held.
+    operation: modify
+    categories: [privileged_access, account_lifecycle]
+    profiles: [security, history]
+    target_types: [organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/removals-confirmed.json
+    message:
+      en: "{actor} confirmed the removal of {data_affected} of {data_members} members of {targets_0_id}"
+
+  # ----------------------------------------------- GitHub: the other Apps
+
+  roster.link_app.connected:
+    summary: The App that links people's GitHub accounts was connected.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/link-app-connected.json
+    message:
+      en: "{actor} connected the account-linking App {targets_0_id}"
+
+  roster.link_app.disconnected:
+    summary: The App that links people's GitHub accounts was disconnected.
+    operation: remove
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/link-app-disconnected.json
+    message:
+      en: "{actor} disconnected the account-linking App {targets_0_id}"
+
+  roster.catalogue_app.created:
+    summary: A catalogued GitHub App was created.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app, organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-created.json
+    message:
+      en: "{actor} created GitHub App {targets_0_id} for {targets_1_id}"
+
+  roster.catalogue_app.installed:
+    summary: A catalogued GitHub App was installed.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app, organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-installed.json
+    message:
+      en: "{actor} installed GitHub App {targets_0_id} on {targets_1_id}"
+
+  roster.catalogue_app.disconnected:
+    summary: A catalogued GitHub App was disconnected.
+    operation: remove
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app, organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-disconnected.json
+    message:
+      en: "{actor} disconnected GitHub App {targets_0_id} from {targets_1_id}"
+
+  roster.runner_app.created:
+    summary: A GitHub App for self-hosted runners was created.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app, organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-created.json
+    message:
+      en: "{actor} created runner App {targets_0_id} for {targets_1_id}"
+
+  roster.runner_app.installed:
+    summary: A GitHub App for self-hosted runners was installed.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app, organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-installed.json
+    message:
+      en: "{actor} installed runner App {targets_0_id} on {targets_1_id}"
+
+  roster.runner_app.disconnected:
+    summary: A GitHub App for self-hosted runners was disconnected.
+    operation: remove
+    categories: [configuration_change]
+    profiles: [security, history]
+    target_types: [github_app, organisation]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/app-disconnected.json
+    message:
+      en: "{actor} disconnected runner App {targets_0_id} from {targets_1_id}"
+
+  # ------------------------------------------------- GitHub: accounts
+
+  roster.github_link.created:
+    summary: A person linked their GitHub account.
+    operation: create
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [github_account]
+    delivery: outbox
+    message:
+      en: "{actor} linked a GitHub account"
+
+  roster.github_link.matched:
+    summary: A GitHub account was linked to a person because its profile publishes their work address.
+    operation: create
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [github_account]
+    delivery: outbox
+    message:
+      en: "a GitHub account was linked to {subject} by the address its profile publishes"
+
+  roster.github_link.imported:
+    summary: An operator imported a link between a GitHub account and a person.
+    operation: create
+    categories: [account_lifecycle, privileged_access]
+    profiles: [security, history]
+    target_types: [github_account]
+    delivery: outbox
+    message:
+      en: "{actor} linked a GitHub account to {subject}"
+
+  roster.github_link.moved:
+    summary: A link moved to another address of the same person.
+    operation: modify
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [github_account]
+    delivery: outbox
+    message:
+      en: "{subject}'s GitHub link moved"
+
+  roster.github_link.narrowed:
+    summary: A link lost some of its addresses.
+    operation: modify
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [github_account]
+    delivery: outbox
+    message:
+      en: "{subject}'s GitHub link was narrowed"
+
+  roster.github_link.unverifiable:
+    summary: A link could no longer be verified.
+    operation: modify
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [github_account]
+    delivery: outbox
+    message:
+      en: "{subject}'s GitHub link can no longer be verified"
+
+  roster.github_link.lost:
+    summary: A link was lost.
+    operation: remove
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [github_account]
+    delivery: outbox
+    message:
+      en: "{subject}'s GitHub link was lost"
+
+  # ------------------------------------------------- GitHub: members
+
+  roster.github_member.invited:
+    summary: A person was invited to a GitHub organisation or team.
+    operation: create
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [organisation, team, github_account]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/member-changed.json
+    message:
+      en: "{outcome, select, success {{subject} was invited to {targets_0_id}} other {GitHub refused to invite {subject} to {targets_0_id}}}"
+
+  roster.github_member.added:
+    summary: A person was added to a GitHub team.
+    operation: create
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [organisation, team, github_account]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/member-changed.json
+    message:
+      en: "{outcome, select, success {{subject} was added to {targets_0_id}} other {GitHub refused to add {subject} to {targets_0_id}}}"
+
+  roster.github_member.role_set:
+    summary: A person's role on a GitHub team changed.
+    operation: modify
+    categories: [account_lifecycle, privileged_access]
+    profiles: [security, history]
+    target_types: [organisation, team, github_account]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/member-changed.json
+    message:
+      en: "{outcome, select, success {{subject} became {data_role} of {targets_0_id}} other {GitHub refused to make {subject} {data_role} of {targets_0_id}}}"
+
+  roster.github_member.removed:
+    summary: A person was removed from a GitHub organisation or team.
+    operation: remove
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [organisation, team, github_account]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/member-changed.json
+    message:
+      en: "{outcome, select, success {{subject} was removed from {targets_0_id}} other {GitHub refused to remove {subject} from {targets_0_id}}}"
+
+  roster.github_member.held:
+    summary: A change to a person's GitHub membership is held, and needs an operator.
+    operation: modify
+    categories: [account_lifecycle]
+    profiles: [security, history]
+    target_types: [organisation, team, github_account]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/member-held.json
+    message:
+      en: "a change to {subject} on {targets_0_id} is held: {outcome_reason}"
+
+  roster.github_owner.reported:
+    summary: An organisation owner the directory does not vouch for was reported rather than removed.
+    operation: access
+    categories: [privileged_access]
+    profiles: [security, history]
+    target_types: [organisation, github_account]
+    delivery: outbox
+    data_schema: https://schemas.truvity.com/access-roster/v1/member-held.json
+    message:
+      en: "an owner of {targets_0_id} was reported: {outcome_reason}"

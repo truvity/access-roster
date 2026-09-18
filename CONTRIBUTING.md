@@ -8,7 +8,8 @@ importable alone:
 ```
 cmd/access-issuer         the whole service: the directory, the policy,
                           the OpenID provider, the login page, the
-                          console, the audit trail
+                          console, and what it records to the audit
+                          trail
 cmd/github-roster         the GitHub controller, a second process from
                           the same chart
 cmd/accessctl             the CLI, for laptops and CI jobs
@@ -28,8 +29,9 @@ internal/                 hub (snapshots, routing, authority), issuer
                           access (roles, sessions, Explain), server
                           (ConnectRPC handlers, HTTP), verify (the
                           proofs), kube (what the console writes),
-                          githubroster (the controller), audit and
-                          s3audit (the trail), demo (fixtures). app and
+                          githubroster (the controller), audit (the
+                          catalogue, one constructor per action, and
+                          the emitter), demo (fixtures). app and
                           issuerapp assemble the two halves; rosterapp
                           is the wiring that makes them one process
 hack/                     the scripts the recipes call
@@ -134,7 +136,8 @@ exactly what each battery exposes; `CHANGELOG.md` says what exists today.
 The service is one process, at 1.8: several directories connected, the
 policy rendered from the installation's access matrix, clusters, AWS
 accounts and CI on the issuer, the GitHub controller acting in real
-organisations, runner Apps from the console, the audit trail in S3, and
+organisations, runner Apps from the console, the audit trail kept by an audit
+installation, and
 the console's state restorable from four Secrets. The conformance run at
 1.0 is in [docs/conformance.md](docs/conformance.md).
 [CHANGELOG.md](CHANGELOG.md) is the record of what exists at each

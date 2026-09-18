@@ -18,17 +18,22 @@ package rosterapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/app"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hublocal"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/issuerapp"
+	"github.com/truvity/access-roster/internal/server"
 )
 
 // Config is both halves' configuration. Each is read from the
@@ -120,7 +125,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		// sets. The console is built before the issuer exists, so it is
 		// handed the reader rather than building one.
 		UseWorkloads: directory.ConsoleServer().UseWorkloads,
-		// One audit stream for both halves: a sign-in and the connect that
+		// One audit trail for both halves: a sign-in and the connect that
 		// made it possible belong to one history.
 		Audit: directory.Audit(),
 		// What an audit event keeps of a request goes into its context at
@@ -144,6 +149,21 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		directory.Close()
 		return nil, err
 	}
+	// The console's Audit page reads the audit installation's query
+	// service as the person signed in, with a token minted here for the
+	// installation's audience. Only now can it be: the issuer that mints
+	// it did not exist when the console was built.
+	if queryURL, audience := directory.AuditQuery(); queryURL != "" {
+		target, err := url.Parse(queryURL)
+		if err != nil || target.Scheme == "" || target.Host == "" {
+			directory.Close()
+			return nil, fmt.Errorf("access-roster: AUDIT_QUERY_URL %q is not a URL", queryURL)
+		}
+		directory.ConsoleServer().UseAuditQuery(&server.AuditQuery{
+			URL:   target,
+			Token: auditToken(assembled, audience),
+		})
+	}
 	log.InfoContext(ctx, "access-roster assembled as one service: a login makes no network "+
 		"call except to the corporate directory")
 	return &App{directory: directory, issuer: assembled, log: log}, nil
@@ -159,4 +179,27 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("access-roster: %w", err)
 	}
 	return nil
+}
+
+// auditTokenLifetime is how long a token the console mints for the audit
+// trail lives. Short, because the console keeps it for as long as it lives:
+// a person taken out of the group that admits them to the trail stops
+// reading it within this, not within the issuer's hour.
+const auditTokenLifetime = 5 * time.Minute
+
+// auditToken mints the Audit page's tokens: for a person, for the audit
+// installation's audience, as a token exchange would decide it. Somebody the
+// audience does not admit, and a sign-in with no address (a recovery, a
+// workload), may not read the trail through the console.
+func auditToken(assembled *issuerapp.App, audience string) func(context.Context, access.Identity) (string, time.Time, error) {
+	return func(ctx context.Context, id access.Identity) (string, time.Time, error) {
+		if id.Email == "" {
+			return "", time.Time{}, server.ErrNotAdmitted
+		}
+		token, expires, err := assembled.MintFor(ctx, id.Email, audience, auditTokenLifetime)
+		if errors.Is(err, issuer.ErrRefused) || errors.Is(err, issuer.ErrUnknownTarget) {
+			return "", time.Time{}, fmt.Errorf("%w: %w", server.ErrNotAdmitted, err)
+		}
+		return token, expires, err
+	}
 }

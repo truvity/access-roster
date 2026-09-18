@@ -1,0 +1,13 @@
+{
+  "$id": "https://schemas.truvity.com/access-roster/v1/workspace-groups.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "groups": {
+      "type": "integer",
+      "description": "How many groups are now served.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

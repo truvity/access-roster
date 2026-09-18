@@ -125,16 +125,16 @@ func (r *Ring) LastMinted(app, group string) (time.Time, bool) {
 	defer r.mu.Unlock()
 	kept := r.byApp[strings.TrimSpace(app)]
 	for i := len(kept) - 1; i >= 0; i-- {
-		if kept[i].Outcome == outcomeOK && kept[i].Grant == group {
+		if kept[i].Outcome == OutcomeOK && kept[i].Grant == group {
 			return kept[i].At, true
 		}
 	}
 	return time.Time{}, false
 }
 
-// outcomeOK is audit.OutcomeOK, spelled here so that keeping a ring of
-// what happened does not depend on the package that writes it down.
-const outcomeOK = "ok"
+// OutcomeOK is the outcome of a request that minted a token; the others
+// are "refused" and "failed".
+const OutcomeOK = "ok"
 
 // PerAppKept is how many requests per App this ring holds, for a page
 // that says so.

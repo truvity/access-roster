@@ -1,0 +1,25 @@
+{
+  "$id": "https://schemas.truvity.com/access-roster/v1/workspace-domains.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "domains": {
+      "type": "array",
+      "description": "The domains this installation now answers for.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "items": {
+        "type": "string",
+        "x-audit-class": "shared",
+        "x-audit-pii": "none"
+      }
+    },
+    "every": {
+      "type": "boolean",
+      "description": "The directory answers for every domain the tenant owns: no list was set.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    }
+  }
+}

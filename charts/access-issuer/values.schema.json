@@ -441,34 +441,41 @@
     "audit": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The audit trail, kept in S3 and never in Valkey. Every event is also a log line.",
+      "description": "The audit installation (github.com/truvity/audit) this service connects to as a plugin. Empty keeps nothing beyond log lines, and shows no Audit page.",
       "properties": {
-        "s3": {
+        "writer": {
+          "type": "string",
+          "pattern": "^(https?://.+)?$",
+          "description": "The installation's writer. Set with registry, or neither."
+        },
+        "registry": {
+          "type": "string",
+          "pattern": "^(https?://.+)?$",
+          "description": "The installation's registry. Set with writer, or neither."
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^(https?://.+)?$",
+          "description": "The installation's query service, for the console's Audit page. Empty shows no page."
+        },
+        "audience": {
+          "type": "string",
+          "description": "The policy client whose audience the Audit page's tokens carry, and which the query service trusts."
+        },
+        "token": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "bucket": {
-              "type": "string",
-              "description": "The bucket. Empty keeps the trail in one replica's memory, which is not a record."
-            },
-            "region": {
-              "type": "string",
-              "description": "The bucket's region; empty takes the AWS SDK's own resolution."
-            },
-            "prefix": {
-              "type": "string",
-              "description": "Prepended to every key."
-            },
-            "flushInterval": {
-              "$ref": "#/definitions/duration",
-              "description": "The longest an event waits in memory before it is written."
-            }
+            "audience": {"type": "string", "minLength": 1, "description": "The audience of the projected token presented to the writer and registry."},
+            "expirationSeconds": {"type": "integer", "minimum": 600}
           }
         },
-        "maxEvents": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "The in-memory trail's cap, used only without a bucket."
+        "outbox": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sizeLimit": {"type": "string", "description": "The emptyDir records wait in until the writer takes them."}
+          }
         },
         "forwardedForTrustedHops": {
           "type": "integer",

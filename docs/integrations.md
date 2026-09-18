@@ -25,7 +25,7 @@ flowchart TB
   subgraph ar["access-roster"]
     direction LR
     hub["the directory<br/>inside access-issuer"]:::hub
-    iss["access-issuer<br/>the issuer, the console, the audit trail"]:::token
+    iss["access-issuer<br/>the issuer, the console"]:::token
     ghr["github-roster<br/>the controller, same chart"]:::token
     proxy["access-proxy<br/>one per console"]:::token
     lib["Go module · TS package<br/>inside applications"]:::token
@@ -75,13 +75,13 @@ flowchart TB
 |---|---|---|---|---|
 | **Service** | access-issuer | the whole of access-roster | the platform, once per installation | **running** since 0.6; the directory folded in at 0.12 ([design](design/access-roster.md)); all four OpenID profiles run with no failure ([conformance](conformance.md)) |
 | **Service** | github-roster | the GitHub controller: one loop beside the service that keeps every connected organisation's teams as the policy says | the platform, from the same chart | **acting** since 1.5; each organisation a dry run until listed in `githubRoster.actsIn` |
-| **Helm chart** | `access-issuer` | the whole service, both processes; expects a Valkey and an S3 bucket for the audit trail | the platform | published per tag |
+| **Helm chart** | `access-issuer` | the whole service, both processes; expects a Valkey, and an audit installation for the audit trail | the platform | published per tag |
 | **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console with no OpenID flow of its own; expects a Valkey; its client is one declared row | every team that ships a console, one release per console | published per tag; in front of hubble; the directory console left it at 0.12, because it signs in as a client of the issuer it shares an origin with |
 | **Go module** | `github.com/truvity/access-roster` | `identity` (the two verifiers and a net/http middleware), `policy`, `backend`, `tokens` | every Go service and console | published per tag |
 | **TypeScript package** | `@truvity/access-roster`, on GitHub Packages | `useIdentity()`, `<UserBadge/>` over `/.access/whoami`; `/server` verifies a bearer in Node | every console UI, and Node services | published per tag |
 | **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `token`, `whoami`, `exchange` | people, on laptops, and a CI job with the same files | built; a Nix flake on every release, for devbox |
 | **GitHub Action** | `truvity/access-roster` (root `action.yml`), pinned to a release | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | built |
-| **Store** | the audit trail | one Elastic Common Schema record per event — sign-ins, refusals, exchanges, revokes, console actions, what the controller did — in JSON-lines objects by the hour, in a bucket the platform owns; the console's Audit page reads it back | the platform, one bucket with Object Lock | written since 1.6.2; a recovery sign-in is the one event that is refused when it cannot be written |
+| **Catalogue** | the audit trail | what access-roster records — sign-ins, refusals, exchanges, revokes, console actions, what the controller did — declared in `internal/audit/catalogue/roster.yaml` and registered with an audit installation, which keeps the records; the console's Audit page reads them back through it | the platform, one audit installation | a plugin since this release (it kept its own bucket from 1.6.2); a recovery sign-in is the one record that is refused when it cannot be kept |
 | **File format** | the policy | groups, claims, lifetimes, clients — one schema for both services | the platform, in gitops, rendered from its access matrix | in force |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the console's own services | consumers of access-roster | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |

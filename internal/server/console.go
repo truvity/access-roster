@@ -7,7 +7,6 @@ import (
 	"maps"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -156,10 +155,6 @@ type ConsoleDeps struct {
 	// Audit records what an identity did through the console. Nil records
 	// nothing.
 	Audit audit.Recorder
-	// AuditSink is the writer the audit page reads back from, through its
-	// AuditSinkService client: the same writer Audit records through. Nil
-	// is a deployment keeping no trail, whose events are in the log alone.
-	AuditSink directoryrosterv1connect.AuditSinkServiceClient
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on
@@ -176,7 +171,6 @@ var (
 	_ directoryrosterv1connect.SettingsServiceHandler  = (*Console)(nil)
 	_ directoryrosterv1connect.AccessServiceHandler    = (*Console)(nil)
 	_ directoryrosterv1connect.GitHubServiceHandler    = (*Console)(nil)
-	_ directoryrosterv1connect.AuditServiceHandler     = (*Console)(nil)
 )
 
 // NewConsole returns the operator services.
@@ -343,10 +337,7 @@ func (c *Console) UploadKey(
 	if err != nil {
 		return nil, err
 	}
-	c.record(ctx, audit.Event{
-		Source: audit.SourceDirectory, Kind: "workspace.connected", Target: ws.ID,
-		Attributes: map[string]string{"backend": b.Kind(), "via": "key"},
-	})
+	c.record(ctx, audit.WorkspaceConnected(actorOf(ctx), ws.ID, b.Kind(), "key"))
 	return connect.NewResponse(&directoryrosterv1.UploadKeyResponse{Workspace: adopted}), nil
 }
 
@@ -383,10 +374,7 @@ func (c *Console) SetServedDomains(
 	if _, err := c.deps.Hub.SetServed(ctx, id, req.Msg.GetDomains()); err != nil {
 		return nil, rpcError(err)
 	}
-	c.record(ctx, audit.Event{
-		Source: audit.SourceDirectory, Kind: "workspace.domains-changed", Target: id,
-		Attributes: map[string]string{"domains": servedList(req.Msg.GetDomains())},
-	})
+	c.record(ctx, audit.WorkspaceDomainsChanged(actorOf(ctx), id, req.Msg.GetDomains()))
 	views, err := c.deps.Hub.WorkspaceViews(ctx)
 	if err != nil {
 		return nil, rpcError(err)
@@ -413,10 +401,7 @@ func (c *Console) SetSyncedGroups(
 	if _, err := c.deps.Hub.SetSynced(ctx, id, req.Msg.GetGroups()); err != nil {
 		return nil, rpcError(err)
 	}
-	c.record(ctx, audit.Event{
-		Source: audit.SourceDirectory, Kind: "workspace.groups-changed", Target: id,
-		Attributes: map[string]string{"groups": strconv.Itoa(len(req.Msg.GetGroups()))},
-	})
+	c.record(ctx, audit.WorkspaceGroupsChanged(actorOf(ctx), id, len(req.Msg.GetGroups())))
 	views, err := c.deps.Hub.WorkspaceViews(ctx)
 	if err != nil {
 		return nil, rpcError(err)
@@ -487,17 +472,8 @@ func (c *Console) Disconnect(
 	if err := c.deps.Hub.Disconnect(ctx, req.Msg.GetWorkspaceId()); err != nil {
 		return nil, rpcError(err)
 	}
-	c.record(ctx, audit.Event{Source: audit.SourceDirectory, Kind: "workspace.disconnected", Target: req.Msg.GetWorkspaceId()})
+	c.record(ctx, audit.WorkspaceDisconnected(actorOf(ctx), req.Msg.GetWorkspaceId()))
 	return connect.NewResponse(&directoryrosterv1.DisconnectResponse{}), nil
-}
-
-// servedList is a served-domains setting as an audit attribute: the
-// domains, or what an empty list means.
-func servedList(domains []string) string {
-	if len(domains) == 0 {
-		return "every domain the tenant owns"
-	}
-	return strings.Join(domains, ",")
 }
 
 // -------------------------------------------------------- SettingsService

@@ -11,6 +11,7 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/google/uuid"
+	"github.com/truvity/audit/record"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"github.com/zitadel/oidc/v3/pkg/op"
 
@@ -507,8 +508,8 @@ func (s *Storage) Complete(ctx context.Context, id string, who Authenticated) er
 	// one a code can be issued for.
 	if err = s.entitled(ctx, req.Req.ClientID, who.Subject); err != nil {
 		if errors.Is(err, ErrNotEntitled) {
-			s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeRefused,
-				"signed in, and admitted to no group this client requires"))
+			s.iss.record(ctx, signInEvent(who, req.Req.ClientID,
+				audit.Denied("signed in, and admitted to no group this client requires")))
 		}
 		return err
 	}
@@ -528,9 +529,9 @@ func (s *Storage) Complete(ctx context.Context, id string, who Authenticated) er
 	// alone, nothing this service runs.
 	recovery := who.How == RecoveryHow
 	if recovery {
-		if err = s.iss.recordDurable(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeOK, "")); err != nil {
-			s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeRefused,
-				"the audit trail could not be written, and a recovery sign-in is refused without its record"))
+		if err = s.iss.recordDurable(ctx, signInEvent(who, req.Req.ClientID, audit.Succeeded())); err != nil {
+			s.iss.record(ctx, signInEvent(who, req.Req.ClientID,
+				audit.Denied("the audit trail could not be written, and a recovery sign-in is refused without its record")))
 			return fmt.Errorf("%w: %w", ErrUnaudited, err)
 		}
 	}
@@ -538,12 +539,12 @@ func (s *Storage) Complete(ctx context.Context, id string, who Authenticated) er
 	if err = setJSON(ctx, s.state, requestKey(id), req, authRequestTTL); err != nil {
 		if recovery {
 			// Its record already says it succeeded; this says it did not.
-			s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeFailed, "the sign-in could not be saved"))
+			s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.Failed("the sign-in could not be saved")))
 		}
 		return err
 	}
 	if !recovery {
-		s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.OutcomeOK, ""))
+		s.iss.record(ctx, signInEvent(who, req.Req.ClientID, audit.Succeeded()))
 	}
 	return nil
 }
@@ -555,20 +556,11 @@ var ErrUnaudited = errors.New("the audit trail could not be written")
 // signInEvent is a completed or refused sign-in at one client. A recovery
 // sign-in is its own kind, because it is the way in that bypasses the
 // directory and has to be findable as such.
-func signInEvent(who Authenticated, clientID, outcome, reason string) audit.Event {
-	kind := "sign-in"
+func signInEvent(who Authenticated, clientID string, o audit.Outcome) *record.Record {
 	if who.How == RecoveryHow {
-		kind = "recovery.sign-in"
+		return audit.RecoverySignedIn(audit.RecoveryIdentity(who.Subject), clientID, who.How, o)
 	}
-	return audit.Event{
-		Kind:       kind,
-		Actor:      who.Subject,
-		Subject:    who.Subject,
-		Target:     clientID,
-		Outcome:    outcome,
-		Reason:     reason,
-		Attributes: map[string]string{"how": who.How},
-	}
+	return audit.SignedIn(audit.Identified(who.Subject), clientID, who.How, o)
 }
 
 // Pending reports what an authorization request asks of a sign-in, so
@@ -898,11 +890,8 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken s
 				"client_id", logsafe.Value(session.ClientID), "error", logsafe.Error(err))
 			// A refresh is not an event; a refused one is — it is the
 			// moment somebody taken out of a group lost a client.
-			s.iss.record(ctx, audit.Event{
-				Kind: "session.refresh-refused", Actor: audit.ActorSystem, Subject: session.Identity,
-				Target: session.ClientID, Outcome: audit.OutcomeRefused,
-				Reason: "no longer admitted to any group this client requires",
-			})
+			s.iss.record(ctx, audit.SessionRefreshRefused(session.Identity, session.ClientID,
+				"no longer admitted to any group this client requires"))
 
 			return nil, oidc.ErrInvalidGrant().WithDescription("this identity is not admitted to this client")
 		}

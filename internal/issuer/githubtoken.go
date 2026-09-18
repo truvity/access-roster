@@ -8,16 +8,16 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
+
+	auditv1 "github.com/truvity/audit/gen/audit/v1"
 
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
-	"github.com/truvity/access-roster/tokens"
 )
 
 // GitHubAppStore is where a created catalogue App's record and key are
@@ -297,74 +297,74 @@ func ParseGitHubTokenRequest(app, repositories, scope string) (GitHubTokenReques
 	return out, nil
 }
 
-// githubTokenEvent is one installation token request, minted or refused.
-// Never the token.
-func githubTokenEvent(proof Proof, request GitHubTokenRequest, minted GitHubToken, outcome, reason string) audit.Event {
-	subject := proof.Subject()
-	attributes := map[string]string{"app": request.App}
-	set := func(name, value string) {
-		if value != "" {
-			attributes[name] = value
-		}
+// githubTokenOf is what the trail keeps of one installation token request:
+// what was asked for when it was refused, what was granted when it was
+// minted. Never the token.
+func githubTokenOf(proof Proof, request GitHubTokenRequest, minted GitHubToken) audit.GitHubToken {
+	t := audit.GitHubToken{
+		Proof: proof.kind(), Org: minted.Org, Grant: minted.Grant.Group,
+		Installation: minted.Installation,
 	}
-	set("proof", proof.kind())
-	set("org", minted.Org)
-	set("grant", minted.Grant.Group)
 	repositories, permissions := request.Repositories, request.Permissions
 	if minted.Token != "" {
 		repositories, permissions = minted.Repositories, minted.Permissions
-		set("expires_at", minted.ExpiresAt.UTC().Format(time.RFC3339))
+		t.ExpiresAt = minted.ExpiresAt
 	}
-	set("repositories", strings.Join(repositories, " "))
-	set("permissions", FormatPermissions(permissions))
-	if minted.Installation != 0 {
-		set("installation", strconv.FormatInt(minted.Installation, 10))
-	}
-	return audit.Event{
-		Kind: "github.token.minted", Actor: subject, Subject: subject,
-		Target:  tokens.GitHubAppAudiencePrefix + request.App,
-		Outcome: outcome, Reason: reason, Attributes: attributes,
-	}
+	t.Repositories = repositories
+	t.Permissions = FormatPermissions(permissions)
+	return t
 }
 
 // recordGitHubToken writes one installation token request down and keeps
 // it in that App's ring of recent requests.
 //
-// One event, read twice: the trail gets it through the recorder as every
-// other event is, and the ring keeps what an App's page shows of it. They
-// cannot disagree, because the second is made from the first.
+// One request, read twice: the trail gets it through the recorder as every
+// other record is, and the ring keeps what an App's page shows of it. They
+// cannot disagree, because both are made from the same account of it.
 //
 // Only an App the catalogue declares is kept. The id in a request is
 // whatever the caller asked for, and the earliest refusals happen before
 // anything has been authenticated at all — a ring keyed on that would be
 // a map an anonymous caller could fill.
-func (i *Issuer) recordGitHubToken(ctx context.Context, e audit.Event) {
+func (i *Issuer) recordGitHubToken(
+	ctx context.Context, proof Proof, request GitHubTokenRequest, minted GitHubToken, o audit.Outcome,
+) {
 	if i == nil {
 		return
 	}
-	i.record(ctx, e)
+	t := githubTokenOf(proof, request, minted)
+	i.record(ctx, audit.GitHubTokenMinted(proof.actor(), request.App, t, o))
 	apps := i.githubApps
 	if apps == nil || apps.Recent == nil || apps.Catalogue == nil {
 		return
 	}
-	app := strings.TrimPrefix(e.Target, tokens.GitHubAppAudiencePrefix)
-	if _, declared := apps.Catalogue.Get(app); !declared {
+	if _, declared := apps.Catalogue.Get(request.App); !declared {
 		return
 	}
 	now := time.Now
 	if apps.Now != nil {
 		now = apps.Now
 	}
-	apps.Recent.Add(app, githubMintOf(e, now()))
+	apps.Recent.Add(request.App, githubMintOf(proof.Subject(), t, o, now()))
 }
 
-// githubMintOf is one recorded request as an App's page reads it. The
-// attribute names are the ones githubTokenEvent writes, immediately
-// above: the event is the one source of both.
-func githubMintOf(e audit.Event, at time.Time) mints.Token {
+// githubMintOf is one request as an App's page reads it.
+func githubMintOf(subject string, t audit.GitHubToken, o audit.Outcome, at time.Time) mints.Token {
 	return mints.Token{
-		At: at, Subject: e.Subject, Proof: e.Attributes["proof"], Grant: e.Attributes["grant"],
-		Repositories: strings.Fields(e.Attributes["repositories"]), Permissions: e.Attributes["permissions"],
-		Outcome: e.Outcome, Reason: e.Reason,
+		At: at, Subject: subject, Proof: t.Proof, Grant: t.Grant,
+		Repositories: t.Repositories, Permissions: t.Permissions,
+		Outcome: mintOutcome(o), Reason: o.Reason,
+	}
+}
+
+// mintOutcome is the word an App's page shows for an outcome.
+func mintOutcome(o audit.Outcome) string {
+	switch {
+	case o.Succeeded():
+		return mints.OutcomeOK
+	case o.Result == auditv1.Outcome_RESULT_DENIED:
+		return "refused"
+	default:
+		return "failed"
 	}
 }

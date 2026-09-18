@@ -1,246 +1,40 @@
-import { useEffect, useState } from "react";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import MenuItem from "@mui/material/MenuItem";
-import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-import TextField from "@mui/material/TextField";
-import Tooltip from "@mui/material/Tooltip";
-import Typography from "@mui/material/Typography";
+import { AuditProvider, AuditView } from "@truvity/audit/react";
 
-import { ago, at, audit, reason } from "./api";
-import type { AuditEvent } from "./gen/directoryroster/v1/audit_pb";
-import { go, paths } from "./router";
-import { Failure, Loading, Mono, Nothing, Page, State } from "./ui";
+import { audit } from "./api";
+import { roster } from "./auditSentences";
+import { paths } from "./router";
+import { Nothing, Page } from "./ui";
 
-type Filters = { source: string; kind: string; subject: string; target: string };
+const sentences = [roster];
 
-/** The narrowing in the address. The page is opened narrowed — from an
- *  App's recent tokens, say — and narrowing it by hand changes the
- *  address, so what an operator is looking at is always a link they can
- *  send. */
-function fromQuery(query?: URLSearchParams): Filters {
-  return {
-    source: query?.get("source") ?? "",
-    kind: query?.get("kind") ?? "",
-    subject: query?.get("subject") ?? "",
-    target: query?.get("target") ?? "",
-  };
-}
-
-/** One filter as an address carries it, and the key a load is keyed on:
- *  two filters that read the same are the same listing. */
-function queryOf(filters: Filters): string {
-  return paths.audit(filters);
-}
-
-/** What happened lately, in the whole installation.
+/** The audit trail, as the connected installation keeps it.
  *
- *  One stream: the issuer's sign-ins, refusals, exchanges and revokes;
- *  the console's connects and disconnects; and what a reporting component
- *  says it did, beside the identity it proved. Operator-only, because it
- *  names every sign-in. Capped — the log holds every event for good. */
-export function AuditPage({ query }: { query?: URLSearchParams }) {
-  const asked = fromQuery(query);
-  const [draft, setDraft] = useState<Filters>(asked);
-  const [filters, setFilters] = useState<Filters>(asked);
-  const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [cursor, setCursor] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [failure, setFailure] = useState<string | undefined>();
-
-  const load = async (from: string, replace: boolean) => {
-    setLoading(true);
-    setFailure(undefined);
-    try {
-      const page = await audit.listAuditEvents({ ...filters, cursor: from, limit: 100 });
-      setEvents((previous) => (replace ? page.events : [...previous, ...page.events]));
-      setCursor(page.cursor);
-    } catch (error) {
-      setFailure(reason(error));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Keyed on what the filters SAY rather than on the object: applying
-  // the same narrowing twice — by pressing Show, or by following the
-  // link already open — is one listing, not two calls.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => void load("", true), [queryOf(filters)]);
-
-  // The address changing is what narrows the page, whichever end it
-  // changed at: a link followed from an App, or Show pressed here.
-  const address = queryOf(asked);
-  useEffect(() => {
-    setDraft(asked);
-    setFilters(asked);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address]);
-
+ *  The installation's own view: its profiles along the top, the ones this
+ *  person may read (the installation says which); the qualifier box; and
+ *  every record as the sentence access-roster's catalogue gives it. The
+ *  console only carries the calls, with a token for the person, so what
+ *  anyone sees here is decided by the installation's grants and every
+ *  read is itself recorded there. */
+export function AuditPage({ query, connected }: { query?: URLSearchParams; connected: boolean }) {
   return (
     <Page
       title="Audit"
-      lede="What happened lately: sign-ins and refusals, token exchanges, revokes, connects and disconnects, and what a reporting component such as the GitHub controller did. Newest first. The trail is kept in S3: the durable record, retained under the bucket's own lock, and never in Valkey."
+      lede="What happened: sign-ins, token exchanges, connects and every change to GitHub, kept by the audit installation."
     >
-      <Stack
-        component="form"
-        direction="row"
-        sx={{ flexWrap: "wrap", gap: 1.5, alignItems: "center", mb: 2 }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          setFilters(draft);
-          go(paths.audit(draft));
-        }}
-      >
-        <TextField select size="small" label="Source" value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} sx={{ minWidth: 160 }}>
-          <MenuItem value="">Any</MenuItem>
-          <MenuItem value="issuer">issuer</MenuItem>
-          <MenuItem value="directory">directory</MenuItem>
-          <MenuItem value="console">console</MenuItem>
-          <MenuItem value="github-roster">github-roster</MenuItem>
-        </TextField>
-        <TextField size="small" label="Kind" placeholder="sign-in" value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} />
-        <TextField size="small" label="Concerning" placeholder="an address" value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
-        <TextField size="small" label="Where" placeholder="a client, workspace or organisation" value={draft.target} onChange={(e) => setDraft({ ...draft, target: e.target.value })} />
-        <Button type="submit" variant="outlined" size="small">
-          Show
-        </Button>
-        {address !== paths.audit() ? (
-          <Button variant="text" size="small" onClick={() => go(paths.audit())}>
-            Clear
-          </Button>
-        ) : null}
-      </Stack>
-
-      <Loading busy={loading} />
-      <Failure error={failure} />
-
-      {!loading && events.length === 0 && !failure ? (
-        <Nothing>Nothing recorded matches. The stream holds only the last while; older events are in the log.</Nothing>
-      ) : null}
-
-      {events.length > 0 ? (
-        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>When</TableCell>
-                <TableCell>What</TableCell>
-                <TableCell>By</TableCell>
-                <TableCell>Concerning</TableCell>
-                <TableCell>Where</TableCell>
-                <TableCell>Outcome</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {events.map((event) => (
-                <TableRow key={event.id} hover>
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>
-                    <Tooltip title={at(event.at)?.toISOString() ?? ""}>
-                      <span>{ago(at(event.at))}</span>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>
-                    <Mono>{event.kind}</Mono>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                      {event.source}
-                      {attributes(event)}
-                    </Typography>
-                    <RequestDetails event={event} />
-                  </TableCell>
-                  <TableCell>
-                    <Mono>{event.actor || "—"}</Mono>
-                    {event.clientAddress ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        from <Mono>{event.clientAddress}</Mono>
-                      </Typography>
-                    ) : null}
-                    {event.reporter ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        reported by <Mono>{event.reporter}</Mono>
-                      </Typography>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <Mono>{event.subject || "—"}</Mono>
-                  </TableCell>
-                  <TableCell>
-                    <Mono>{event.target || "—"}</Mono>
-                  </TableCell>
-                  <TableCell>
-                    {outcome(event)}
-                    {event.reason ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                        {event.reason}
-                      </Typography>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
-
-      {cursor ? (
-        <Button sx={{ mt: 2 }} disabled={loading} onClick={() => void load(cursor, false)}>
-          Older
-        </Button>
-      ) : null}
+      {connected ? (
+      <AuditProvider client={audit} sentences={sentences}>
+        <AuditView
+          query={query?.get("q") ?? ""}
+          {...(query?.get("profile") ? { profile: query.get("profile") ?? "" } : {})}
+          permalink={(profile, id) => `#${paths.audit(`id:${id}`, profile)}`}
+        />
+      </AuditProvider>
+      ) : (
+        <Nothing>
+          No audit installation is connected to this console, so nothing is kept beyond the service's log. Set audit.writer,
+          audit.registry and audit.query to connect one.
+        </Nothing>
+      )}
     </Page>
   );
-}
-
-function outcome(event: AuditEvent) {
-  switch (event.outcome) {
-    case "refused":
-      return <State kind="refused" />;
-    case "failed":
-      return <State kind="failed" />;
-    case "held":
-      return <State kind="held" />;
-    default:
-      return <Typography variant="body2">ok</Typography>;
-  }
-}
-
-/** The request an event came from, beyond its address: the gateway's id
- *  for it, which finds the same request in the gateway's access log, and
- *  what sent it. Folded away, because they are for following a trail and
- *  not for reading the page; absent for what no request caused, and for
- *  every event recorded before they were kept. */
-function RequestDetails({ event }: { event: AuditEvent }) {
-  if (!event.requestId && !event.userAgent) {
-    return null;
-  }
-  return (
-    <Box component="details" sx={{ mt: 0.25 }}>
-      <Typography component="summary" variant="caption" color="text.secondary" sx={{ cursor: "pointer" }}>
-        request
-      </Typography>
-      {event.requestId ? (
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-          id <Mono>{event.requestId}</Mono>
-        </Typography>
-      ) : null}
-      {event.userAgent ? (
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
-          user agent <Mono>{event.userAgent}</Mono>
-        </Typography>
-      ) : null}
-    </Box>
-  );
-}
-
-/** The attributes worth a glance, inline after the source. */
-function attributes(event: AuditEvent): string {
-  const entries = Object.entries(event.attributes ?? {});
-  return entries.length ? ` · ${entries.map(([key, value]) => `${key} ${value}`).join(" · ")}` : "";
 }

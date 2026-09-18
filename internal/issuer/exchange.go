@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/truvity/audit/record"
+
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/policy"
 )
@@ -89,11 +91,11 @@ func (i *Issuer) Exchange(ctx context.Context, proof Proof, audience string) (Gr
 		return Grant{}, err
 	}
 	if !client.Admits(result) {
-		i.record(ctx, exchangeEvent(proof, audience, audit.OutcomeRefused, "the proof holds no group this client requires"))
+		i.record(ctx, exchangeEvent(proof, audience, audit.Denied("the proof holds no group this client requires")))
 		return Grant{}, fmt.Errorf("%w: %q requires any of %v, this proof holds %v",
 			ErrRefused, audience, client.Requires, result.Groups)
 	}
-	i.record(ctx, exchangeEvent(proof, audience, audit.OutcomeOK, ""))
+	i.record(ctx, exchangeEvent(proof, audience, audit.Succeeded()))
 
 	return Grant{
 		Subject:  proof.Subject(),
@@ -136,11 +138,22 @@ func (i *Issuer) Lifetime(grant Grant) (out policy.Duration) {
 
 // exchangeEvent is one token exchange, by the kind of proof it was: the
 // question an operator asks of it is usually "which job, for what".
-func exchangeEvent(proof Proof, audience, outcome, reason string) audit.Event {
-	subject := proof.Subject()
-	return audit.Event{
-		Kind: "token.exchanged", Actor: subject, Subject: subject, Target: audience,
-		Outcome: outcome, Reason: reason, Attributes: map[string]string{"proof": proof.kind()},
+func exchangeEvent(proof Proof, audience string, o audit.Outcome) *record.Record {
+	return audit.TokenExchanged(proof.actor(), audience, proof.kind(), o)
+}
+
+// actor is who presented the proof, as the trail names them. A request
+// refused before any proof was read has nobody behind it yet.
+func (p Proof) actor() audit.Actor {
+	switch {
+	case p.Email != "":
+		return audit.Person(p.Email)
+	case p.GitHub != nil:
+		return audit.CI(p.Subject())
+	case p.ServiceAccount != nil:
+		return audit.Workload(p.Subject())
+	default:
+		return audit.Anonymous()
 	}
 }
 

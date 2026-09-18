@@ -1,0 +1,20 @@
+{
+  "$id": "https://schemas.truvity.com/access-roster/v1/session-revoked.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scope": {
+      "type": "string",
+      "description": "What was revoked: one client's session, or all of a person's.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "ended": {
+      "type": "integer",
+      "description": "How many client sessions ended.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

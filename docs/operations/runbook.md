@@ -1,8 +1,8 @@
 # Runbook
 
 Day-two operations. Everything here is visible in the console; a shell is
-needed for the export, a restore, and reading the audit trail's bucket
-directly.
+needed for the export, a restore, and reading the log lines of an
+installation with no audit trail connected.
 
 ## Day one
 
@@ -201,7 +201,7 @@ domains, counts, durations and errors.
    links` when the only thing left is people who have not linked — that
    is not in sync, and enabling changes nothing for them.
 3. Add the login to `githubRoster.actsIn` and roll out. The next pass
-   acts; its changes appear in the audit trail as `github.member.*`.
+   acts; its changes appear in the audit trail as `roster.github_member.*`.
 4. To stop acting in it, remove the login again. Nothing is undone: the
    organisation is simply left as it is.
 
@@ -230,7 +230,7 @@ interval.
   for it already.
 - *Removals held* — more than half the organisation would leave in one
   pass. Read the removals; if they are right, press **Confirm**
-  (`github.removals.confirmed` in the audit trail). If they are a policy
+  (`roster.github_removals.confirmed` in the audit trail). If they are a policy
   mistake, fix the policy: the set changes and the confirmation would not
   cover it anyway.
 
@@ -247,8 +247,8 @@ the person to open the link page and link again.
 
 **A link that is `lost`** was withdrawn on GitHub — the work address
 removed or unverified, or the authorization revoked — and its account
-left the organisation (`github.link.lost`, then `github.member.remove`
-in the audit trail). Linking again brings it back in on the next pass.
+left the organisation (`roster.github_link.lost`, then
+`roster.github_member.removed` in the audit trail). Linking again brings it back in on the next pass.
 
 ## Runner Apps
 
@@ -273,155 +273,107 @@ with.
 
 ## Audit: what happened lately
 
-The console's **Audit** page (operators only) is one stream for the whole
-service, newest first: sign-ins and their refusals — at the issuer and at
-the console's own door, recovery marked as its own kind — refused
-refreshes, token exchanges by proof kind, revokes and sign-outs, provider
-connects, disconnects and domain or group changes, GitHub Apps created,
-organisations connected and disconnected, and whatever a reporting
-component such as the GitHub controller did, shown with the identity it
-proved. A refused event carries its reason.
+access-roster keeps no audit trail of its own. It records into an **audit
+installation** ([truvity/audit](https://github.com/truvity/audit)), deployed
+as its own release, and connects to it as a plugin: `audit.writer`,
+`audit.registry` and `audit.query` in the chart. What it records is its
+catalogue, [`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml):
+sign-ins and their refusals — at the issuer and at the console's own door,
+recovery as its own action — token exchanges and GitHub installation tokens
+by the kind of proof, refused refreshes, sign-outs and revokes, directory
+connects and changes, GitHub Apps created, installed and disconnected, and
+what the GitHub controller did to memberships and links.
 
-**The trail is kept in S3** (`audit.s3.bucket`), one JSON-lines object per
-batch under `<prefix>YYYY/MM/DD/HH/`, written at most `audit.s3.flushInterval`
-after the event. That bucket is the record: read it directly for anything
-older than the console pages through, or to hand an auditor an hour:
+The installation pseudonymises, locks, signs and indexes; retention is its
+profiles' (`security`, and `history` for changes), not a setting here. Its
+own documentation is where to go for the archive, verification, legal
+holds and erasure.
 
-```sh
-hour=s3://<bucket>/events/2026/09/13/16/
-for key in $(aws s3 ls "$hour" | awk '{print $4}'); do aws s3 cp "$hour$key" -; done > hour.jsonl
-```
+**The console's Audit page** is the installation's view, shown when
+`audit.query` is set. The console forwards the page's calls to the query
+service with a token it mints for the person signed in (audience
+`audit.audience`), so what anyone sees is decided by the installation's
+grants — with the `access-roster` grants preset, groups named
+`<scope>:audit:<role>` — and every read is itself recorded there. The policy
+must declare the client `audit.audience` names, requiring those groups;
+somebody it does not admit is told the page is not theirs. A recovery
+sign-in has no address and cannot read the page.
 
-**Each line is an Elastic Common Schema document**, nested as ECS nests
-it; fields with no value are left out:
-
-```json
-{"@timestamp":"2026-09-13T16:58:01.123456789Z","access_roster":{"attributes":{"how":"google"},"outcome":"refused","target":"console"},"client":{"address":"203.0.113.7"},"ecs":{"version":"8.11.0"},"event":{"action":"sign-in.refused","category":["authentication"],"dataset":"access_roster.audit","id":"1789318681123456789-access-issuer-7d9f8c6b5-x2x4q-1","kind":"event","outcome":"failure","provider":"console","reason":"the directory says this account is not live","type":["denied"]},"http":{"request":{"id":"5f0c1a9e-6b1d-4c1e-9a0b-2d3e4f5a6b7c"}},"service":{"target":{"name":"console"}},"user":{"name":"ada@north.example","target":{"name":"ada@north.example"}},"user_agent":{"original":"Mozilla/5.0 (X11; Linux x86_64)"}}
-```
-
-`event.action` is the kind (`sign-in`, `token.exchanged`,
-`github.member.invite`…), `event.provider` the source, `user.name` who did
-it, `user.target.name` who it concerns, `observer.name` the verified
-reporter of a reported event, and `event.outcome` is `success`, `failure`
-or `unknown`. ECS cannot tell refused from failed, nor say `held`, so the
-native outcome is `access_roster.outcome`, beside `access_roster.target`
-and `access_roster.attributes`. `event.category` and `event.type` are
-ECS's own values, decided per kind in `internal/audit/ecs.go`.
-
-Objects written by 1.6.2 hold its own lines instead (`id`, `at`, `kind`,
-`actor`, … at the top level); the console reads both, and so can `jq`:
-
-```sh
-# recovery sign-ins in the hour, newest format only
-jq -c 'select(.event.action == "recovery.sign-in") | {at: ."@timestamp", who: .user.name, from: .client.address, outcome: .access_roster.outcome}' hour.jsonl
-# every event in either format, as one shape
-jq -c 'if .event then {id: .event.id, kind: .event.action, subject: .user.target.name, outcome: .access_roster.outcome}
-       else {id, kind, subject, outcome} end' hour.jsonl
-```
-
-**Every event is also one log line** with `"audit":true`, carrying the
-same fields under their dotted names, flat — `event.action`, `user.name`,
-`client.address`, and each attribute as `access_roster.attributes.<name>`
-— with the line's own `time` as the timestamp. `event.id` is the same id
-as the kept record's, so a line finds its record and back. The lines are
-all that remains of a queue a replica could not write before it stopped:
+**Every record is also one log line** with `"audit":true`: `audit.id` (the
+record's id, which finds it in the installation), `audit.action`,
+`audit.outcome`, `audit.actor.kind`, `audit.actor.id`, `audit.subject.id`,
+`audit.targets.N` and `audit.reason`. With no installation connected, the
+lines are all there is:
 
 ```sh
 kubectl -n access-issuer logs deploy/access-issuer --since=24h | jq 'select(.audit == true)'
 kubectl -n access-issuer logs deploy/access-issuer --since=24h \
-  | jq -c 'select(.audit == true and ."event.action" == "sign-in.refused") | {time, who: ."user.name", from: ."client.address", why: ."event.reason"}'
+  | jq -c 'select(.audit == true and ."audit.outcome" == "denied") | {time, action: ."audit.action", who: ."audit.actor.id", why: ."audit.reason"}'
 ```
 
-In Loki, whose `json` stage turns dots into underscores, the trail is
-`{app="access-issuer"} | json | event_dataset="access_roster.audit"`.
+**Where a record came from**, for one a request caused, is its context: the
+client address, the user agent, the gateway's `X-Request-Id` and the trace.
+The address is the connection's peer unless `audit.forwardedForTrustedHops`
+is set, and then the `X-Forwarded-For` entry just left of that many of the
+deployment's own proxies, read from the right. Count the proxies that
+append: behind an edge that appends the client and a gateway that appends
+the edge's connector, it is 1.
 
-**Three fields say where an event came from**, for an event a request
-caused: `client.address`, `user_agent.original`, and `http.request.id` —
-the gateway's `X-Request-Id`, which finds the same request in the
-gateway's access log. The address is the connection's peer unless
-`audit.forwardedForTrustedHops` is set, and then the `X-Forwarded-For`
-entry just left of that many of the deployment's own proxies, read from
-the right. Count the proxies that append: behind an edge that appends
-the client and a gateway that appends the edge's connector, it is 1. The
-gateway's access log shows the header as it arrives, which is how to
-count them. Background work leaves all three
-empty, and a reporter supplies its own.
+**The GitHub controller records for itself**, with its own service
+account's token, and the installation stamps it as those records' observer.
+Both service accounts must be mapped to the source `roster` in the
+installation's `workloadIdentity.workloads`.
 
-Without a bucket the trail is one replica's memory, capped by
-`audit.maxEvents` and gone on restart — right for a laptop, and warned
-about at start anywhere else.
+### Connecting an installation
 
-**A component reports** by calling `AuditService.RecordAuditEvents` with
-its own ServiceAccount token. The policy has to put it in
-`all:access-roster:reporter` through a `service_account` matcher; nothing
-else — no person, no other workload — may report, and a report naming
-`issuer`, `directory` or `console` as its source is refused.
+1. Deploy the installation and give it the deployment document its
+   profiles come from; see its deploy guide.
+2. Map this release's service account, and the controller's when it runs,
+   to the source `roster` in its `workloadIdentity.workloads`, with the
+   audience `audit.token.audience` (default `audit`).
+3. Declare a client for the page in the policy — its id is
+   `audit.audience`, default `audit` — requiring the groups that may read
+   the trail, and trust this issuer in the query service's grants file
+   with that audience.
+4. Set `audit.writer`, `audit.registry` and `audit.query`. At start the
+   service registers its catalogue; `audit installation connected` in the
+   log says it did.
 
-### When the audit trail cannot be written
+### When the installation cannot be reached
 
-**Nothing but a recovery sign-in waits for S3.** Every event is a log line
-first. An ordinary event is then queued in the replica that recorded it,
-listed from there, and written when S3 answers; the writer tries again
-every `audit.s3.flushInterval`. Past 50 000 unwritten events in one
-replica the oldest are dropped, and their log lines are then the only
-copy. A replica that stops while S3 refuses keeps nothing but those lines.
-This is fail-open by decision: an audit outage must not become an access
-outage.
+**Nothing but a recovery sign-in waits for it.** Every other action is
+written to an outbox on the pod's disk before the request completes and
+delivered when the writer answers; an outage is a delay, and the outbox's
+size is the signal. A pod deleted while the writer is down loses what its
+outbox held — the log lines remain. This is fail-open by decision: an audit
+outage must not become an access outage.
 
-**A recovery sign-in fails closed.** Its record is put in S3 before the
-sign-in succeeds, and when the put fails the sign-in is refused — a page
-at the issuer, a 503 at the console's own door, both saying the audit
-trail could not be written — and the refusal is recorded the ordinary way,
-as `recovery.sign-in` with outcome `refused`. The proof was good; fix the
-write and recover again. That write depends on S3 and the pod's AWS
-identity only, so check those: the bucket, `s3:PutObject` under the
-prefix, the bucket key's `kms:GenerateDataKey`, and the pod's egress to
-S3. A recovery sign-in waits for the trail: there is no override.
+**A recovery sign-in fails closed.** Its catalogue entry says `block`: it is
+written to the installation before the sign-in succeeds, and when it cannot
+be, the sign-in is refused — a page at the issuer, a 503 at the console's
+own door — and the refusal is recorded the ordinary way. The proof was
+good; bring the writer back and recover again. There is no override. With
+no installation connected at all, recovery is not refused: a deployment
+that keeps no trail has nothing to wait for.
+
+**A registry that cannot be reached at start** does not stop the start:
+records wait in the outbox, and registration is retried until it answers.
+**A registry that refuses the catalogue** stops the start, with the
+problems it gave; `just audit-catalogue` finds most of them before a
+release does.
 
 **The signals**, in the log:
 
 | Line | Means |
 |---|---|
-| `the audit trail could not be written to S3; tried again next interval` (Warn) | a queued batch was refused; it is retried |
-| `an audit event was logged and not stored` (Warn) | the writer would not even accept an event, as a replica shutting down does; the log line is its only copy |
-| `the audit trail cannot be written and is full; the oldest unwritten events are dropped (their log lines remain)` (Warn) | events have been lost from the trail, with `dropped` counting them |
-| `an audit event was logged and could not be written durably` (Warn) and `recovery refused: the audit trail could not be written` (Error) | a recovery sign-in was refused |
-| `the audit trail could not be written before shutdown; those events are in the log only` (Error) | a replica stopped with events unwritten |
+| `audit installation connected` (Info) | registered; records are delivered |
+| `the audit registry could not be reached; records wait in the outbox, and registration is retried` (Warn) | started unregistered |
+| `audit records could not be delivered yet` (Warn) | the writer refused or could not be reached; the outbox holds them |
+| `audit record not kept` (Warn) | one record did not reach the outbox, or a `block` record did not reach the writer |
+| `an audit record does not satisfy the catalogue` (Error) | a bug: the code built a record its catalogue refuses |
+| `no audit installation is connected: records are validated and logged, and kept nowhere else` (Warn, at start) | the deployment keeps no trail |
 
-and as metrics, pushed over OTLP when `telemetry.otlpEndpoint` is set:
-
-| Metric | Kind | Attributes |
-|---|---|---|
-| `access_roster.audit.writes` | counter: objects put | `outcome` (`ok`, `failed`), `durable` |
-| `access_roster.audit.dropped` | counter: events dropped unwritten | |
-| `access_roster.audit.queue` | gauge: events accepted and not yet written | |
-
-No collector is deployed for these yet. When one is, these are the rules,
-in Prometheus form (an OTLP counter arrives as `…_total`, dots as
-underscores):
-
-```yaml
-groups:
-  - name: access-roster-audit
-    rules:
-      - alert: AccessRosterAuditUnwritable
-        expr: sum(increase(access_roster_audit_writes_total{outcome="failed"}[10m])) > 0
-        for: 10m
-        annotations:
-          summary: the audit trail has not been written to S3 for 10 minutes; recovery sign-ins are refused
-      - alert: AccessRosterAuditDropping
-        expr: sum(increase(access_roster_audit_dropped_total[5m])) > 0
-        annotations:
-          summary: audit events were dropped unwritten; their log lines are the only copy
-      - alert: AccessRosterAuditQueueGrowing
-        expr: max(access_roster_audit_queue) > 5000
-        for: 15m
-        annotations:
-          summary: a replica holds thousands of audit events it has not written
-```
-
-and the same without metrics, over the log lines in Loki:
-
-```logql
-sum(count_over_time({app="access-issuer"} |= "the audit trail could not be written" [10m])) > 0
-```
+and as metrics, from the emitter, pushed over OTLP when
+`telemetry.otlpEndpoint` is set: `audit.emit.outbox.pending` (a number that
+only grows is a writer gone too long), `audit.emit.batches.failed`,
+`audit.emit.records.refused` (a bug), `audit.emit.records.written`.

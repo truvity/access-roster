@@ -78,17 +78,24 @@ none of them probably belongs in a script. Keep the CI path working:
 every command must behave with an ambient platform token and no cache,
 and it ships to a job through the release's Nix flake like the rest.
 
-## 7. An audit writer
+## 7. An audit action
 
-`AuditSinkService` (`WriteAuditEvents`, `ListStoredAuditEvents`) is the
-contract between what records and what writes, and it is ConnectRPC so
-that a writer can live in another process. Two implement it today, the
-S3 writer and the in-memory one, joined in process by a client that
-calls the handler directly. A writer that forwards onto a queue or
-another store implements the same two calls and is reached through the
-generated client; nothing that records changes. Keep the one exception:
-`WriteAuditEvents` with `durable` set returns only once the record is
-kept, because a recovery sign-in waits on that answer.
+What access-roster records is its catalogue,
+[`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml),
+held to the audit component's own toolchain. To record something new:
+declare the action there — a fact, `roster.<thing>.<verb>` in the past
+tense, with its operation, categories, profiles, target types, a data
+schema beside it for anything it carries, and a sentence whose arguments
+name the record's fields with underscores (`{targets_0_id}`,
+`{data_org}`) — and add one constructor for it in
+[`internal/audit/events.go`](../../internal/audit/events.go), the only
+place its name is spelled. `just audit-catalogue` validates the document,
+fails on an action emitted and not declared, and regenerates the console's
+sentences; `TestTheConstructorsAreTheCatalogue` fails on one declared with
+no constructor. A change to what an existing action carries is a new
+catalogue `version`. Never put an address, a name or a secret in data: an
+identifier belongs in the actor, the subject or a target, where the
+installation's profiles treat it.
 
 ## What is not an extension point
 

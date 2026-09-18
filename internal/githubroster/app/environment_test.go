@@ -19,6 +19,10 @@ func TestTheChartSetsEverythingTheControllerReads(t *testing.T) {
 	reads := matches(t, "app.go", regexp.MustCompile(`envString\("([A-Z_]+)"`))
 	sets := matches(t, filepath.Join("..", "..", "..", "charts", "access-issuer", "templates", "github-roster.yaml"),
 		regexp.MustCompile(`(?m)^\s+- name: ([A-Z_]+)\s*$`))
+	// And what the helper it includes sets: the audit connection, shared
+	// with the service.
+	sets = append(sets, matches(t, filepath.Join("..", "..", "..", "charts", "access-issuer", "templates", "_helpers.tpl"),
+		regexp.MustCompile(`(?m)^- name: ([A-Z_]+)\s*$`))...)
 	if len(reads) == 0 || len(sets) == 0 {
 		t.Fatalf("read %d and set %d; the patterns have stopped matching", len(reads), len(sets))
 	}

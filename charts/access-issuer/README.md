@@ -21,8 +21,10 @@ the console adds: the four Secrets that hold it are named in
 [docs/reference/configuration.md](../../docs/reference/configuration.md#restoring-from-the-secrets-alone),
 and copying them is the deployment's job.
 
-Without `audit.s3.bucket` the audit trail stays in one replica's memory,
-which is not a record; the service says so at start.
+Without `audit.writer` and `audit.registry` no audit trail is kept beyond
+log lines, and the console has no Audit page; the service says so at
+start. The trail is an audit installation of its own, connected as a
+plugin: see `audit` in the values.
 
 ```sh
 helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \

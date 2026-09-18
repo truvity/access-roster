@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"connectrpc.com/connect"
+	"github.com/truvity/audit/record"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 	"github.com/zitadel/oidc/v3/pkg/op"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -31,7 +31,7 @@ type SessionsService struct {
 	sessions *Sessions
 	// record writes a revoke down: ending somebody's access is the event
 	// an audit exists to find.
-	record func(context.Context, audit.Event)
+	record func(context.Context, *record.Record)
 	// sso is the browser-session store, for two things: authorizing a
 	// same-origin call from the account page by cookie, and ending the
 	// sign-in when a revoke means "everywhere".
@@ -470,10 +470,7 @@ func (s *SessionsService) revoked(ctx context.Context, actor, identity, clientID
 	if s.record == nil {
 		return
 	}
-	s.record(ctx, audit.Event{
-		Kind: "session.revoked", Actor: actor, Subject: identity, Target: clientID,
-		Attributes: map[string]string{"scope": scope, "ended": strconv.Itoa(ended)},
-	})
+	s.record(ctx, audit.SessionRevoked(audit.Identified(actor), identity, clientID, scope, ended))
 }
 
 func boolToCount(gone bool) int32 {
