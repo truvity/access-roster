@@ -1,0 +1,19 @@
+{
+  "$id": "https://schemas.truvity.com/access-roster/v1/link-app-connected.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "app": {
+      "type": "string",
+      "description": "The GitHub App's id.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "owner": {
+      "type": "string",
+      "description": "The account that owns the App.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

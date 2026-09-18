@@ -1,0 +1,63 @@
+{
+  "$id": "https://schemas.truvity.com/access-roster/v1/github-token.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "proof": {
+      "type": "string",
+      "description": "The kind of proof presented: a person's token, a CI job's, or a workload's.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true,
+      "enum": [
+        "person",
+        "ci",
+        "workload"
+      ]
+    },
+    "org": {
+      "type": "string",
+      "description": "The GitHub organisation the installation token is for.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "grant": {
+      "type": "string",
+      "description": "The group whose grant the token was minted under.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "repositories": {
+      "type": "array",
+      "description": "The repositories the token covers; asked for when refused, granted when minted.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "items": {
+        "type": "string",
+        "x-audit-class": "shared",
+        "x-audit-pii": "none"
+      }
+    },
+    "permissions": {
+      "type": "string",
+      "description": "The permissions, as name:level pairs; asked for when refused, granted when minted.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "installation": {
+      "type": "string",
+      "description": "The GitHub App installation that minted it.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "expires_at": {
+      "type": "string",
+      "description": "When the token expires.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "format": "date-time"
+    }
+  }
+}

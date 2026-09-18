@@ -12,29 +12,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/truvity/audit/emit"
+	auditv1 "github.com/truvity/audit/gen/audit/v1"
+	"github.com/truvity/audit/record"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
 	"github.com/truvity/access-roster/internal/access"
-	"github.com/truvity/access-roster/internal/audit"
-	"github.com/truvity/access-roster/internal/audit/sinkrpc"
+	"github.com/truvity/access-roster/internal/audit/audittest"
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/policy"
 )
 
-// recordingStorage is an issuer's storage whose events land in a writer
-// the test reads back.
-func recordingStorage(t *testing.T) (*issuer.Storage, *audit.MemoryWriter) {
+// recordingStorage is an issuer's storage whose records land in a
+// recorder the test reads back.
+func recordingStorage(t *testing.T) (*issuer.Storage, *audittest.Recorder) {
 	t.Helper()
 	iss := newIssuer(t, &fakeDirectory{})
-	writer := audit.NewMemoryWriter(100)
-	iss.UseAudit(audit.NewLog(slog.New(slog.DiscardHandler), sinkrpc.InProcess(writer), "test"))
+	trail := audittest.New(t)
+	iss.UseAudit(trail)
 	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, issuer.NewMemoryState())
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
-	return storage, writer
+	return storage, trail
 }
 
 // The issuer's recovery sign-in does not complete without its record: the
@@ -43,44 +45,49 @@ func recordingStorage(t *testing.T) (*issuer.Storage, *audit.MemoryWriter) {
 // recorded. Every other sign-in fails open, as ever.
 func TestTheIssuersRecoverySignInIsRefusedWithoutItsRecord(t *testing.T) {
 	t.Parallel()
-	storage, writer := recordingStorage(t)
+	storage, trail := recordingStorage(t)
 	// What the server in front read of the request.
-	ctx := audit.WithRequest(context.Background(), audit.Request{ClientAddress: "198.51.100.23", UserAgent: "Mozilla/5.0", RequestID: "gw-9"})
+	ctx := emit.WithRequest(context.Background(), &record.Context{
+		ClientAddresses: []string{"198.51.100.23"}, UserAgent: "Mozilla/5.0", RequestId: "gw-9",
+	})
 	recovering := issuer.Authenticated{Subject: "cluster:k8s:ops:recovery", How: issuer.RecoveryHow}
 
 	id, err := storage.CreatePendingAuthRequestForTest(ctx, "req-recovery", "an-undeclared-client")
 	if err != nil {
 		t.Fatal(err)
 	}
-	writer.FailDurableWrites(errors.New("S3 refused the put"))
+	trail.Fail = errors.New("the writer refused the record")
 	if err = storage.Complete(ctx, id, recovering); !errors.Is(err, issuer.ErrUnaudited) {
 		t.Fatalf("Complete while the trail cannot be written = %v, want ErrUnaudited", err)
 	}
 	if request, _ := storage.AuthRequestByID(ctx, id); request == nil || request.Done() {
 		t.Fatal("the request was marked done without its record: a code could be issued for it")
 	}
-	written := writer.Written()
-	if len(written) != 1 || written[0].Durable || written[0].Event.Kind != "recovery.sign-in" || written[0].Event.Outcome != audit.OutcomeRefused {
-		t.Fatalf("written = %+v, want the refusal only, recorded the ordinary way", written)
+	written := trail.Records()
+	if len(written) != 1 || written[0].GetAction() != "roster.recovery.signed_in" ||
+		written[0].GetOutcome().GetResult() != auditv1.Outcome_RESULT_DENIED {
+		t.Fatalf("written = %v, want the refusal only", trail.Actions())
 	}
 
-	writer.FailDurableWrites(nil)
+	trail.Fail = nil
 	if err = storage.Complete(ctx, id, recovering); err != nil {
 		t.Fatalf("Complete once the trail can be written: %v", err)
 	}
 	if request, _ := storage.AuthRequestByID(ctx, id); request == nil || !request.Done() {
 		t.Error("the recovery did not complete once its record was written")
 	}
-	durable := writer.Durable()
-	if len(durable) != 1 || durable[0].Outcome != audit.OutcomeOK || durable[0].Source != audit.SourceIssuer {
-		t.Fatalf("durable = %+v, want the recovery sign-in", durable)
+	written = trail.Records()
+	durable := written[len(written)-1]
+	if durable.GetAction() != "roster.recovery.signed_in" || durable.GetOutcome().GetResult() != auditv1.Outcome_RESULT_SUCCESS {
+		t.Fatalf("recorded %v, want the recovery sign-in last", trail.Actions())
 	}
-	if got := durable[0]; got.ClientAddress != "198.51.100.23" || got.UserAgent != "Mozilla/5.0" || got.RequestID != "gw-9" {
-		t.Errorf("request fields = %q %q %q, want what the server read", got.ClientAddress, got.UserAgent, got.RequestID)
+	if got := durable.GetContext(); emit.Client(got) != "198.51.100.23" || got.GetUserAgent() != "Mozilla/5.0" || got.GetRequestId() != "gw-9" {
+		t.Errorf("request = %v, want what the server read", got)
 	}
 
-	// An ordinary sign-in with a writer refusing everything still completes.
-	writer.FailWrites(errors.New("the writer is down"))
+	// An ordinary sign-in with a trail refusing what must be kept still
+	// completes: it is not one of those.
+	trail.Fail = errors.New("the writer is down")
 	id, err = storage.CreatePendingAuthRequestForTest(ctx, "req-person", "an-undeclared-client")
 	if err != nil {
 		t.Fatal(err)
@@ -142,8 +149,8 @@ func TestATokenExchangeKeepsItsRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, &fakeDirectory{}, issuer.NewMemoryState())
-	writer := audit.NewMemoryWriter(100)
-	iss.UseAudit(audit.NewLog(slog.New(slog.DiscardHandler), sinkrpc.InProcess(writer), "test"))
+	trail := audittest.New(t)
+	iss.UseAudit(trail)
 	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -177,12 +184,13 @@ func TestATokenExchangeKeepsItsRequest(t *testing.T) {
 		t.Fatalf("exchange = %d", response.StatusCode)
 	}
 
-	events := writer.Events()
-	if len(events) != 1 || events[0].Kind != "token.exchanged" {
-		t.Fatalf("recorded %v, want the exchange", writer.Kinds())
+	records := trail.Records()
+	if len(records) != 1 || records[0].GetAction() != "roster.token.exchanged" {
+		t.Fatalf("recorded %v, want the exchange", trail.Actions())
 	}
-	if got := events[0]; got.ClientAddress != "198.51.100.40" || got.UserAgent != "access-roster-action/1" || got.RequestID != "gw-exchange" {
-		t.Errorf("request fields = %q %q %q", got.ClientAddress, got.UserAgent, got.RequestID)
+	got := records[0].GetContext()
+	if emit.Client(got) != "198.51.100.40" || got.GetUserAgent() != "access-roster-action/1" || got.GetRequestId() != "gw-exchange" {
+		t.Errorf("request = %v", got)
 	}
 }
 

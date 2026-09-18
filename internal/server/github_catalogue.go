@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -222,12 +221,8 @@ func (c *Console) disconnectCatalogueApp(ctx context.Context, id string) (github
 		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	c.githubSeen.forget(id)
-	c.record(ctx, audit.Event{
-		Kind: "github.catalogue-app.disconnected", Target: record.Org, Reason: out.detail,
-		Attributes: map[string]string{
-			"id": id, "app": strconv.FormatInt(record.AppID, 10), "uninstalled": strconv.FormatBool(out.uninstalled),
-		},
-	})
+	c.record(ctx, audit.CatalogueAppDisconnected(actorOf(ctx), record.Org,
+		audit.App{Name: id, ID: record.AppID, Slug: record.AppSlug}, out.uninstalled, out.detail))
 	return out, nil
 }
 
@@ -488,10 +483,8 @@ func (s *ConsoleServer) githubCatalogueCallback(w http.ResponseWriter, r *http.R
 	s.console.githubSeen.forget(entry.ID)
 	s.log.InfoContext(r.Context(), "catalogue App created", "id", entry.ID, "org", entry.Org, "app", registration.ID,
 		"slug", registration.Slug, "by", logsafe.Value(actor))
-	s.console.record(r.Context(), audit.Event{
-		Kind: "github.catalogue-app.created", Actor: actor, Target: entry.Org,
-		Attributes: map[string]string{"id": entry.ID, "app": strconv.FormatInt(registration.ID, 10), "slug": registration.Slug},
-	})
+	s.console.record(r.Context(), audit.CatalogueAppCreated(audit.Identified(actor), entry.Org,
+		audit.App{Name: entry.ID, ID: registration.ID, Slug: registration.Slug}))
 
 	state, err := s.state.IssueAs(access.Binding{Bind: githubCatalogueBind + entry.ID, Actor: actor})
 	if err != nil {
@@ -540,11 +533,7 @@ func (s *ConsoleServer) githubCatalogueSetup(w http.ResponseWriter, r *http.Requ
 	s.console.githubSeen.forget(entry.ID)
 	s.log.InfoContext(r.Context(), "catalogue App installed", "id", entry.ID, "org", record.Org, "installation", installation,
 		"by", logsafe.Value(actor))
-	s.console.record(r.Context(), audit.Event{
-		Kind: "github.catalogue-app.installed", Actor: actor, Target: record.Org,
-		Attributes: map[string]string{
-			"id": entry.ID, "app": strconv.FormatInt(record.AppID, 10), "installation": strconv.FormatInt(installation, 10),
-		},
-	})
+	s.console.record(r.Context(), audit.CatalogueAppInstalled(audit.Identified(actor), record.Org,
+		audit.App{Name: entry.ID, ID: record.AppID, Slug: record.AppSlug}, installation))
 	http.Redirect(w, r, s.at("/#/github/apps/catalogue"), http.StatusFound)
 }

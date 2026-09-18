@@ -1,3 +1,49 @@
+## v1.17.0
+
+- **The audit trail is an audit installation's, connected as a plugin.**
+  access-roster no longer keeps its own: the S3 writer, the in-memory trail,
+  the ECS mapping, `AuditService` (`ListAuditEvents`, `RecordAuditEvents`)
+  and `AuditSinkService` are gone. It records into an installation of
+  [truvity/audit](https://github.com/truvity/audit), deployed as its own
+  release: set `audit.writer` and `audit.registry` and the service and the
+  GitHub controller each register the catalogue and send their records with
+  their own projected token (`audit.token`), through an outbox on the pod's
+  disk (`audit.outbox`); set `audit.query` and the console shows the
+  installation's view as its Audit page. With none set, every record is
+  still validated and logged (`audit=true`), and nothing else is kept.
+  **Upgrading:** remove `audit.s3.*` and `audit.maxEvents` from the values
+  (the schema refuses them). Objects the old trail wrote stay under their
+  own lock until they age out; nothing reads or migrates them.
+- **What access-roster records is a catalogue**,
+  `internal/audit/catalogue/roster.yaml`: thirty-seven actions under the
+  source `roster` — `roster.person.signed_in`, `roster.token.exchanged`,
+  `roster.github_member.invited` and the rest — each with its operation,
+  categories, profiles, typed targets (client, workspace, organisation,
+  team, GitHub account, GitHub App), actor kinds (person, recovery, CI job,
+  workload, the service itself, anonymous), a data schema and a sentence.
+  One constructor per action in `internal/audit/events.go` is the only
+  place a name is spelled; `just audit-catalogue`, in `check` and in CI,
+  validates the document with the audit component's own toolchain, fails on
+  an action emitted and not declared, and regenerates the console's
+  sentences. Kinds that had drifted apart (`github.member.invite` and
+  `…invited`), a target that meant a client, a workspace or `@login`
+  depending on the kind, the actor repeated as the subject, and addresses in
+  free attributes are all gone with it.
+- **The Audit page reads as the person signed in.** The console forwards
+  `<mount>/audit/` to the installation's query service with a five-minute
+  token the issuer mints for the person, for the client `audit.audience`
+  (default `audit`), through the same decision a token exchange makes; the
+  token never reaches the browser. What anyone may read is the
+  installation's grants' to say, and every read is recorded there. The page
+  shows when an installation is connected, not only to operators.
+- **A recovery sign-in still fails closed**, now on the installation: its
+  action is `block`, so the sign-in is refused when the writer cannot take
+  its record. Everything else waits in the outbox when the writer is down.
+  With no installation connected, recovery is not refused.
+- **The GitHub controller records as itself.** It no longer reports through
+  the console; `all:access-roster:reporter` and `policy.GroupReporters` are
+  deprecated and read by nothing.
+
 ## v1.16.2
 
 - **`accessctl credential` trusts a private root for OpenBAO when told

@@ -227,19 +227,20 @@ issuer cannot be reached.
 
 ### Audit
 
-One event per request, minted or refused: kind `github.token.minted`,
-outcome `ok`, `refused` (ECS `failure`, with `event.type` `denied`) or
-`failed` (GitHub or the key). Actor and subject are the proof's subject
-(`github:example-org/app`, a ServiceAccount, a person's address); target
-is `github-app:<id>`; the reason is the description the caller was
-given. Attributes:
+One record per request, minted or refused: action
+`roster.github_token.minted`, outcome `success`, `denied` (refused) or
+`failure` (GitHub or the key). The actor is the proof's subject, by kind —
+a CI job (`github:example-org/app`), a workload (its ServiceAccount), a
+person (their address) — or `anonymous` for a request refused before any
+proof was read; the target is the App (`github_app`, its catalogue id); the
+reason is the description the caller was given. Its data:
 
-| Attribute | Holds |
+| Property | Holds |
 |---|---|
 | `proof` | `ci`, `workload` or `person` |
-| `app`, `org` | the catalogue id and its organisation |
+| `org` | the App's organisation |
 | `grant` | the group of the grant the token was minted under |
-| `repositories` | space separated: what GitHub granted, or what was asked for when refused |
+| `repositories` | a list: what GitHub granted, or what was asked for when refused |
 | `permissions` | `name:level`, space separated, likewise |
 | `installation` | the installation id |
 | `expires_at` | when the token stops working |
@@ -258,12 +259,12 @@ It is this service's own memory of those requests, kept beside the half
 that mints them: bounded to the last ten of each App, since the process
 started, and forgotten on a restart, which the page says under the table.
 It is **not** the record. The record is the audit trail above, which holds
-every request for as long as the bucket does, and every reading of that
-section links to the [Audit](#audit) page narrowed to that App
-(`#/audit?kind=github.token.minted&target=github-app:<id>`, an address to
-send somebody). The section exists because narrowing the trail itself to
-one App means reading the objects of hour after hour: for a page load it
-is too slow, and it was.
+every request for as long as the installation keeps it, and every reading
+of that section links to the console's Audit page narrowed to that App
+(`#/audit?q=action:roster.github_token.minted target:github_app:<id>`, an
+address to send somebody). The section exists so that an App's page loads
+without asking the trail anything, and works with no installation
+connected.
 
 An internal group's page carries the one fact that falls out of the same
 memory: when each grant it holds was last used. A grant with nothing
@@ -426,8 +427,8 @@ be created again under that id until it is declared again.
 | ConfigMap `<release>-github-apps-catalogue` | the declaration, `catalogue.yaml` | the chart, when `githubApps.catalogue` is not empty |
 | Secret `<release>-github-catalogue-apps` | every catalogue App's keys and record, as above | the service, on Create and Install; created empty at start |
 
-Audit events: `github.catalogue-app.created`, `.installed` and
-`.disconnected`, each naming the App's id and GitHub id; and
-`github.token.minted` for every installation token asked for
+Audit records: `roster.catalogue_app.created`, `.installed` and
+`.disconnected`, each naming the App by catalogue id and carrying GitHub's
+id; and `roster.github_token.minted` for every installation token asked for
 ([above](#audit)). Nothing is left behind by minting: tokens are never
 kept.

@@ -76,6 +76,10 @@ func TestTheChartSetsEverythingTheBinaryReads(t *testing.T) {
 	// chart does the setting.
 	sets := found(t, filepath.Join("..", "..", "charts", "access-issuer", "templates", "deployment.yaml"),
 		regexp.MustCompile(`(?m)^\s+- name: ([A-Z_]+)\s*$`))
+	// And what the helpers the deployment includes set: the audit
+	// connection is one helper, shared with the controller.
+	sets = append(sets, found(t, filepath.Join("..", "..", "charts", "access-issuer", "templates", "_helpers.tpl"),
+		regexp.MustCompile(`(?m)^- name: ([A-Z_]+)\s*$`))...)
 
 	if len(reads) == 0 || len(sets) == 0 {
 		t.Fatalf("read %d variables and %d settings; the patterns have stopped matching", len(reads), len(sets))

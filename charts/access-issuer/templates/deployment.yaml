@@ -67,8 +67,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            # Names this replica in the audit trail's object keys, so two
-            # replicas never write the same key.
+            # Names this replica on every audit record, as the instance
+            # that emitted it.
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -86,16 +86,11 @@ spec:
               value: {{ .Values.directory.freshness.freshnessWindow | quote }}
             - name: PROBE_INTERVAL
               value: {{ .Values.directory.freshness.probeInterval | quote }}
-            - name: AUDIT_MAX_EVENTS
-              value: {{ .Values.audit.maxEvents | quote }}
-            - name: AUDIT_S3_BUCKET
-              value: {{ .Values.audit.s3.bucket | quote }}
-            - name: AUDIT_S3_REGION
-              value: {{ .Values.audit.s3.region | quote }}
-            - name: AUDIT_S3_PREFIX
-              value: {{ .Values.audit.s3.prefix | quote }}
-            - name: AUDIT_S3_FLUSH_INTERVAL
-              value: {{ .Values.audit.s3.flushInterval | quote }}
+            {{- include "access-issuer.auditEnv" . | nindent 12 }}
+            - name: AUDIT_QUERY_URL
+              value: {{ .Values.audit.query | quote }}
+            - name: AUDIT_AUDIENCE
+              value: {{ .Values.audit.audience | quote }}
             - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
               value: {{ .Values.audit.forwardedForTrustedHops | quote }}
 {{- with .Values.telemetry.otlpEndpoint }}
@@ -250,6 +245,7 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
+            {{- include "access-issuer.auditMounts" . | nindent 12 }}
             {{- if .Values.githubApps.catalogue }}
             - name: github-apps-catalogue
               mountPath: /var/run/access-issuer/github-apps-catalogue.yaml
@@ -309,6 +305,7 @@ spec:
         # want somewhere to write.
         - name: tmp
           emptyDir: {}
+        {{- include "access-issuer.auditVolumes" . | nindent 8 }}
         {{- if .Values.exchange.clusters }}
         - name: clusters
           configMap:

@@ -185,10 +185,7 @@ func (c *Console) disconnectOrganisation(ctx context.Context, org string) (githu
 	if err = c.deps.GitHubOrgs.Delete(ctx, org); err != nil {
 		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
-	c.record(ctx, audit.Event{
-		Kind: "github.org.disconnected", Target: org, Reason: out.detail,
-		Attributes: map[string]string{"uninstalled": strconv.FormatBool(out.uninstalled)},
-	})
+	c.record(ctx, audit.GitHubOrgDisconnected(actorOf(ctx), org, out.uninstalled, out.detail))
 	return out, nil
 }
 
@@ -249,10 +246,8 @@ func (s *ConsoleServer) githubCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.InfoContext(r.Context(), "GitHub App created", "org", org, "app", registration.ID,
 		"slug", registration.Slug, "by", logsafe.Value(actor))
-	s.console.record(r.Context(), audit.Event{
-		Kind: "github.app.created", Actor: actor, Target: org,
-		Attributes: map[string]string{"app": strconv.FormatInt(registration.ID, 10), "slug": registration.Slug},
-	})
+	s.console.record(r.Context(), audit.GitHubAppCreated(audit.Identified(actor), org,
+		audit.App{ID: registration.ID, Slug: registration.Slug}))
 
 	state, err := s.state.IssueAs(access.Binding{Bind: githubBind + org, Actor: actor})
 	if err != nil {
@@ -322,10 +317,7 @@ func (s *ConsoleServer) githubSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.InfoContext(r.Context(), "GitHub App installed", "org", org, "installation", installation, "by", logsafe.Value(actor))
-	s.console.record(r.Context(), audit.Event{
-		Kind: "github.org.connected", Actor: actor, Target: org,
-		Attributes: map[string]string{"app": strconv.FormatInt(credential.AppID, 10), "installation": strconv.FormatInt(installation, 10)},
-	})
+	s.console.record(r.Context(), audit.GitHubOrgConnected(audit.Identified(actor), org, credential.AppID, installation))
 	http.Redirect(w, r, s.at("/#/github"), http.StatusFound)
 }
 

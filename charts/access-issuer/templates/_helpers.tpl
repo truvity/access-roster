@@ -114,3 +114,67 @@ Gateway listener, as before.
   sectionName: issuer
 {{- end -}}
 {{- end -}}
+
+{{/*
+Whether an audit installation is connected: its writer and registry, both
+or neither. One without the other is refused here rather than at start-up,
+where it would be a crash loop.
+*/}}
+{{- define "access-issuer.auditConnected" -}}
+{{- $a := .Values.audit -}}
+{{- if and $a.writer (not $a.registry) }}{{ fail "audit.writer needs audit.registry: the catalogue its records are held to would never be registered" }}{{ end -}}
+{{- if and $a.registry (not $a.writer) }}{{ fail "audit.registry needs audit.writer: records would have nowhere to go" }}{{ end -}}
+{{- if and $a.query (not $a.audience) }}{{ fail "audit.query needs audit.audience: the client the page's tokens are minted for" }}{{ end -}}
+{{- if $a.writer }}true{{ end -}}
+{{- end -}}
+
+{{/*
+The environment that connects a process to the audit installation: the
+service and the GitHub controller both record, each with its own identity.
+*/}}
+{{- define "access-issuer.auditEnv" -}}
+- name: AUDIT_WRITER_URL
+  value: {{ .Values.audit.writer | quote }}
+- name: AUDIT_REGISTRY_URL
+  value: {{ .Values.audit.registry | quote }}
+{{- if include "access-issuer.auditConnected" . }}
+- name: AUDIT_TOKEN_FILE
+  value: /var/run/audit/token
+- name: AUDIT_OUTBOX_DIR
+  value: /var/lib/audit-outbox
+{{- else }}
+- name: AUDIT_TOKEN_FILE
+  value: ""
+- name: AUDIT_OUTBOX_DIR
+  value: ""
+{{- end }}
+{{- end -}}
+
+{{- define "access-issuer.auditMounts" -}}
+{{- if include "access-issuer.auditConnected" . }}
+- name: audit-token
+  mountPath: /var/run/audit
+  readOnly: true
+- name: audit-outbox
+  mountPath: /var/lib/audit-outbox
+{{- end }}
+{{- end -}}
+
+{{/*
+The projected token the installation knows this workload by, with its
+audience, and the outbox records wait in.
+*/}}
+{{- define "access-issuer.auditVolumes" -}}
+{{- if include "access-issuer.auditConnected" . }}
+- name: audit-token
+  projected:
+    sources:
+      - serviceAccountToken:
+          audience: {{ .Values.audit.token.audience | quote }}
+          expirationSeconds: {{ .Values.audit.token.expirationSeconds }}
+          path: token
+- name: audit-outbox
+  emptyDir:
+    sizeLimit: {{ .Values.audit.outbox.sizeLimit }}
+{{- end }}
+{{- end -}}

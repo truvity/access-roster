@@ -1,0 +1,14 @@
+{
+  "$id": "https://schemas.truvity.com/access-roster/v1/member-changed.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "role": {
+      "type": "string",
+      "description": "The role on the team or organisation.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    }
+  }
+}

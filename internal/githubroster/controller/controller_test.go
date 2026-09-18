@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -23,7 +22,7 @@ import (
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
-	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/audit/audittest"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubapp/githubfake"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
@@ -83,37 +82,17 @@ func (c *console) Explain(
 	return connect.NewResponse(out), nil
 }
 
-// auditLog collects what the controller reports.
+// auditLog collects what the controller records, held to the catalogue.
 type auditLog struct {
-	directoryrosterv1connect.AuditServiceClient
-	mu     sync.Mutex
-	events []*directoryrosterv1.AuditEvent
+	*audittest.Recorder
 }
 
-func (a *auditLog) RecordAuditEvents(
-	_ context.Context, req *connect.Request[directoryrosterv1.RecordAuditEventsRequest],
-) (*connect.Response[directoryrosterv1.RecordAuditEventsResponse], error) {
-	// Refused as the service refuses it: one event with an outcome the
-	// audit stream does not have loses the whole batch.
-	for i, e := range req.Msg.GetEvents() {
-		switch e.GetOutcome() {
-		case "", audit.OutcomeOK, audit.OutcomeRefused, audit.OutcomeFailed, audit.OutcomeHeld:
-		default:
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("event %d: outcome %q", i, e.GetOutcome()))
-		}
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.events = append(a.events, req.Msg.GetEvents()...)
-	return connect.NewResponse(&directoryrosterv1.RecordAuditEventsResponse{}), nil
-}
-
+// kinds is each record as "action subject outcome".
 func (a *auditLog) kinds() []string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	var out []string
-	for _, e := range a.events {
-		out = append(out, e.GetKind()+" "+e.GetSubject()+" "+e.GetOutcome())
+	for _, r := range a.Records() {
+		outcome := strings.ToLower(strings.TrimPrefix(r.GetOutcome().GetResult().String(), "RESULT_"))
+		out = append(out, r.GetAction()+" "+r.GetSubject().GetId()+" "+outcome)
 	}
 	return out
 }
@@ -303,7 +282,7 @@ func newRig(t *testing.T) *rig {
 				"leaver@globex.example": {Authoritative: true, Found: true, Suspended: true},
 			},
 		},
-		audit:  &auditLog{},
+		audit:  &auditLog{audittest.New(t)},
 		report: &report{},
 		links:  &links{byID: map[int64]link.Link{}},
 	}
@@ -375,7 +354,9 @@ func TestAnEnabledOrganisationIsMadeToMatch(t *testing.T) {
 	}
 	events := r.audit.kinds()
 	for _, want := range []string{
-		"github.member.invite new@globex.example ok", "github.member.add ada@globex.example ok", "github.member.remove leaver@globex.example ok",
+		"roster.github_member.invited new@globex.example success",
+		"roster.github_member.added ada@globex.example success",
+		"roster.github_member.removed leaver@globex.example success",
 	} {
 		if !slices.Contains(events, want) {
 			t.Errorf("audit = %v, want %q", events, want)
@@ -416,7 +397,7 @@ func TestAnOwnerWhoLeavesIsReportedAndRecordedOnce(t *testing.T) {
 	}
 	reported := 0
 	for _, kind := range r.audit.kinds() {
-		if kind == "github.owner.reported boss@globex.example ok" {
+		if kind == "roster.github_owner.reported boss@globex.example success" {
 			reported++
 		}
 	}
@@ -434,7 +415,7 @@ func TestAnOwnerWhoLeavesIsReportedAndRecordedOnce(t *testing.T) {
 	restarted.Pass(context.Background())
 	again := 0
 	for _, kind := range r.audit.kinds() {
-		if kind == "github.owner.reported boss@globex.example ok" {
+		if kind == "roster.github_owner.reported boss@globex.example success" {
 			again++
 		}
 	}
@@ -456,7 +437,7 @@ func TestAFailedPassKeepsItsRowsAndARestartAfterItRecordsNothingAgain(t *testing
 	owners := func() int {
 		n := 0
 		for _, kind := range r.audit.kinds() {
-			if kind == "github.owner.reported boss@globex.example ok" {
+			if kind == "roster.github_owner.reported boss@globex.example success" {
 				n++
 			}
 		}
@@ -690,7 +671,7 @@ func TestARefusedChangeIsHeldAndTheRestGoOn(t *testing.T) {
 	if !slices.Contains(r.github.Did(), "add team-platform/ada as maintainer") {
 		t.Errorf("a refused invitation stopped the other changes: %v", r.github.Did())
 	}
-	if !slices.Contains(r.audit.kinds(), "github.member.invite new@globex.example failed") {
+	if !slices.Contains(r.audit.kinds(), "roster.github_member.invited new@globex.example failure") {
 		t.Errorf("audit = %v, want the refused invitation recorded as failed", r.audit.kinds())
 	}
 	got := r.report.org(t, "globex")
@@ -763,7 +744,7 @@ func TestAnAddressGoneFromGitHubRemovesTheAccount(t *testing.T) {
 			if got.State != link.StateLost || got.AccessToken != "" || got.RefreshToken != "" {
 				t.Errorf("link = %+v, want lost with its tokens forgotten", got)
 			}
-			if !slices.Contains(r.audit.kinds(), "github.link.lost new@globex.example ok") {
+			if !slices.Contains(r.audit.kinds(), "roster.github_link.lost new@globex.example success") {
 				t.Errorf("audit = %v, want the lost link recorded", r.audit.kinds())
 			}
 		})
@@ -898,7 +879,7 @@ func TestAPublishedWorkAddressLinksTheMember(t *testing.T) {
 	if got.Source != link.SourceProfile || !got.Active() || got.Checked() || got.Emails[0] != "pub@globex.example" {
 		t.Errorf("link = %+v, want an active profile link, never re-checked with tokens", got)
 	}
-	if !slices.Contains(r.audit.kinds(), "github.link.matched pub@globex.example ok") {
+	if !slices.Contains(r.audit.kinds(), "roster.github_link.matched pub@globex.example success") {
 		t.Errorf("audit = %v, want the match recorded", r.audit.kinds())
 	}
 	// bot publishes nothing: remembered, not asked again next pass.

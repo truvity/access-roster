@@ -12,7 +12,8 @@ console behind your gateway trust that one token. CI jobs and workloads
 get the same treatment from the identity token they already hold. The
 whole policy is one file in git; the same file says who belongs in which
 GitHub team, and a controller keeps the teams that way. A console shows
-you who holds what and why, and an audit trail in S3 says who did what.
+you who holds what and why, and an audit installation, connected as a
+plugin, keeps who did what.
 
 Nothing here authenticates anyone. Sign-in, passwords, MFA and device
 policy stay with Google Workspace or Entra. This verifies the result,
@@ -102,7 +103,7 @@ flowchart LR
   proxy["access-proxy<br/>one per console with no OIDC of its own"]
   apps["Kubernetes · AWS · ArgoCD · Kargo · consoles"]
   orgs["GitHub organisations"]
-  s3[("S3<br/>the audit trail")]
+  s3[("audit installation<br/>the audit trail")]
 
   idp -- "sign-in, and directory reads" --> iss
   gh -- "token exchange" --> iss
@@ -111,7 +112,8 @@ flowchart LR
   iss -- "trusted by" --> apps
   iss -. "who holds which group" .-> ctl
   ctl -- "invites, teams, removals" --> orgs
-  iss -- "every event" --> s3
+  iss -- "every record" --> s3
+  ctl -- "what it did" --> s3
 ```
 
 One chart, one Valkey, one bucket. A login makes no network call except
@@ -179,7 +181,7 @@ Every column, and why, is in
 
 | Artifact | For |
 |---|---|
-| `access-issuer` service and chart | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail |
+| `access-issuer` service and chart | the installation, once. One process: the directory, the policy, the OpenID provider, the login page and the console, recording into an audit installation |
 | `github-roster`, in the same chart | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console |
 | `access-proxy` chart | every console with no OpenID flow of its own |
 | Go module `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups |

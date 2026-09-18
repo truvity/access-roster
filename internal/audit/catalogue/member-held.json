@@ -1,0 +1,20 @@
+{
+  "$id": "https://schemas.truvity.com/access-roster/v1/member-held.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "change": {
+      "type": "string",
+      "description": "The change that is held or was reported.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true,
+      "enum": [
+        "invite",
+        "add",
+        "set-role",
+        "remove"
+      ]
+    }
+  }
+}
