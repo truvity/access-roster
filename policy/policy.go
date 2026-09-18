@@ -102,24 +102,46 @@ func ScopedGroup(workspace, role string) string {
 // installation-wide, which is the absence of a scope rather than a scope
 // named "all".
 func SplitScopedGroup(name string) (workspace, role string, mine bool) {
+	scope, thing, role, ok := SplitGroup(name)
+	if !ok || thing != ThingSelf {
+		return "", "", false
+	}
+
+	if role != RoleOperator && role != RoleViewer {
+		return "", "", false
+	}
+
+	if scope == ScopeAll {
+		return "", role, true
+	}
+
+	return scope, role, true
+}
+
+// SplitGroup reads any grant back into its three segments — role, on
+// thing, in scope — and reports false for a name that is not a grant.
+//
+// It is the one place the estate takes the shape apart. This hub reads
+// its own two roles through it, and a relying party that keys its
+// authorization on the scope or the role (an audit log granting a tenant's
+// history to `<tenant>:audit:viewer`, say) imports it rather than writing
+// a second reader that agrees with this one until the day it does not.
+//
+// The scope is returned as written: [ScopeAll] comes back as "all", and
+// what that means is the reader's to decide, because it differs — this
+// hub reads it as the absence of a scope, an audit log as every tenant.
+// A two-segment name, an empty segment or a fourth one is not a grant.
+func SplitGroup(name string) (scope, thing, role string, ok bool) {
 	parts := strings.Split(name, Separator)
-	if len(parts) != 3 || parts[1] != ThingSelf {
-		return "", "", false
+	if len(parts) != 3 {
+		return "", "", "", false
 	}
 
-	if parts[0] == "" || parts[2] == "" {
-		return "", "", false
+	if parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", "", false
 	}
 
-	if parts[2] != RoleOperator && parts[2] != RoleViewer {
-		return "", "", false
-	}
-
-	if parts[0] == ScopeAll {
-		return "", parts[2], true
-	}
-
-	return parts[0], parts[2], true
+	return parts[0], parts[1], parts[2], true
 }
 
 // The client kinds.
