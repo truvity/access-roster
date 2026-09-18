@@ -1,3 +1,45 @@
+## v1.16.0
+
+- **`accessctl credential`: short-lived SSH, database and machine
+  certificates, minted by OpenBAO and keyed by the roster subject.** One
+  command family, three kinds — `accessctl credential ssh|db|client --env
+  <env> [--role <role>]` — and one sentence behind all three: the sign-in
+  (or the job's own token) is exchanged for `aud=openbao`, that token logs
+  in on the JWT mount in the environment's namespace, and **one** call is
+  made, `ssh/sign/<role>`, `pki/issue/db-client` or `pki/issue/client`.
+  Three records then name the same subject: the issuer's audit trail for
+  the exchange, OpenBAO's for the signing, and the server's own log for
+  the certificate's `key_id` or common name — which the command prints,
+  because a credential nobody can find afterwards is a credential nobody
+  can investigate.
+  - **The CLI decides nothing about the credential.** No request carries a
+    TTL: the role's `ttl` and `max_ttl` are the whole answer, so
+    shortening a role shortens every credential in flight and no flag here
+    can ask for longer. What is sent is a public key, and the principals
+    or common name that were asked for; a role that will not sign them
+    refuses, which is where that decision belongs.
+  - **The OpenBAO token is never written anywhere.** It lives in memory
+    for one command and is revoked on the way out — and a mount handing
+    out batch tokens refuses that revoke, which is not an error: such a
+    token cannot be revoked, it was never on disk, and it expires on its
+    own.
+  - **Delivered where each kind is actually used.** SSH: a key pair
+    generated for this one certificate, added to the **ssh-agent** with a
+    lifetime the certificate decides, so the agent forgets it exactly when
+    it stops working; or, with `--identity`, written into `~/.ssh` with
+    the certificate beside the key where `ssh -i` finds both — and never
+    over a key this tool did not write. Database: the files, plus a
+    **psql service entry** whose `user` is the certificate's common name,
+    for `psql "service=<name>"`, one block per service so a second
+    database does not delete the first. Machine: the certificate, its key
+    and the chain at the path the caller named.
+  - **It works unchanged in a job**, like `kube-token`, `aws` and `token`
+    before it: with the Actions variables set it exchanges the job's own
+    identity token instead of a sign-in.
+  - The OpenBAO roles this calls are the other half of the arrangement and
+    are deployed separately; the command is proven here against a fake
+    installation that signs and issues for real.
+
 ## v1.15.0
 
 - **An App's recent tokens load.** The *Recent tokens* section of a GitHub

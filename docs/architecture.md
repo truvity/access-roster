@@ -230,6 +230,7 @@ Three layers, and none is the fallback for another.
 | opens a second console | the proxy sends the browser to the issuer; the issuer recognises its own session and completes silently |
 | runs `kubectl` | `accessctl kube-token`, the kubeconfig's exec plugin, exchanges the laptop sign-in for a token audienced at that cluster; the cluster trusts the issuer and reads `groups` |
 | needs AWS credentials | `accessctl aws`, the profile's credential process, exchanges the same sign-in for one audienced at AWS; STS trusts the issuer |
+| needs an SSH, database or client certificate | `accessctl credential <kind> --env <env>` exchanges the same sign-in for `openbao`, logs in on the JWT mount and makes ONE `sign` or `issue` call; the certificate names the roster subject, and nothing that could mint another outlives the command |
 | links their GitHub account | authorizes the link App once; every pass the controller checks the link and puts them in the teams the policy binds their groups to |
 | signs out | the proxy clears its cookie and calls `end_session`; the issuer ends the sign-in AND every session that browser opened, so every other console asks again rather than refreshing on |
 | leaves the company | the next snapshot no longer lists them; within the freshness window, the next refresh anywhere is refused |

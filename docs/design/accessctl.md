@@ -26,6 +26,7 @@ a login cache and an issuer configuration.
 | `aws` | exchanges the cached login for the role's audience and answers the credential-process JSON | people |
 | `token` | prints a token for one audience on stdout and nothing else, for a caller that is neither kubectl nor an AWS SDK: `accessctl token --audience openbao \| bao write -field=token auth/jwt-roster/login role=roster jwt=-`. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `github-token` | prints a GitHub App installation token of a catalogue App, `--app <id>`, narrowed by `--repository` and `--permission name=level`, under the catalogue's grants; `--json` prints what GitHub granted beside it. The laptop sign-in, or the job's own token in CI | people, jobs |
+| `credential` | mints a short-lived certificate through OpenBAO: `credential ssh\|db\|client --env <env>`, one exchange for `openbao`, one login on the JWT mount, one `sign` or `issue` call, delivered into the ssh-agent, a psql service entry or a named path. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
 | `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
@@ -74,6 +75,38 @@ The action does not wrap them, on purpose — many registries and many
 artifact domains are just many profiles and many `--profile` flags, and no
 version of ours moves when Amazon's tooling does. The recipes are in
 [connect/registries-and-artifacts.md](../connect/registries-and-artifacts.md).
+
+## `credential`: the broker for what OpenBAO mints
+
+Three kinds of credential that nothing else in this tool can serve — an
+SSH certificate, a database client certificate, a machine client
+certificate — and one security model for all three. The command is a
+courier, and the design is mostly a list of decisions it does **not**
+make:
+
+| Decided by | What |
+|---|---|
+| the exchange client's `requires` | who may ask at all. A session revoked in the console stops issuance within the exchange's token cap, because every run exchanges afresh |
+| the OpenBAO role | the lifetime, the extensions, the key id, which principals and names are allowed. No request from here carries a TTL, so a role change reaches every credential in flight |
+| the caller | which public key is signed, and which principals or names are asked for — a request, never a grant |
+
+**The key is generated for the certificate, not decorated by it.** For
+SSH the pair is made in the process, signed once, and handed to the agent
+with the certificate's own lifetime; nothing long-lived survives the
+expiry to be signed again by somebody else. For the PKI kinds the role
+`issue`s both halves, which is what the roles are specified as.
+
+**Nothing that could mint a second credential outlives the command.** The
+OpenBAO token is held in memory and revoked on the way out; a batch token
+refuses that revoke and says so, which is swallowed rather than turned
+into a failed exit for a credential that was delivered — it was never on
+disk and it expires on its own.
+
+**Delivery is where each kind is actually consumed**: the ssh-agent (or
+`~/.ssh`, certificate beside key, the way OpenSSH looks for it), a psql
+service entry naming the files, or a path the caller gives. What is
+printed is what an investigator needs — the `key_id` or common name, the
+principals, the serial and the expiry — and never the key.
 
 ## Installing it
 
