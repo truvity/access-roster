@@ -18,7 +18,37 @@ Nothing here authenticates anyone. Sign-in, passwords, MFA and device
 policy stay with Google Workspace or Entra. This verifies the result,
 knows the directory, and applies the policy.
 
-## The niche
+## What ships
+
+Every artifact is stamped by one tag, `vX.Y.Z`; pin one version of this
+repository.
+
+| Artifact | Published at | For | |
+|---|---|---|---|
+| `access-issuer` chart and image | `oci://ghcr.io/truvity/charts/access-issuer`, `ghcr.io/truvity/access-roster/access-issuer` | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail | shipped |
+| `github-roster` image, in the same chart | `ghcr.io/truvity/access-roster/github-roster` | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console | shipped |
+| `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | every console with no OpenID flow of its own | shipped |
+| Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
+| TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
+| `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, and short-lived certificates a secret manager mints | shipped |
+| GitHub Action | `truvity/access-roster@<commit>` | workflows: one exchange, then a kubeconfig, AWS profiles, or a GitHub App token | shipped |
+| the policy | one file, one schema | the issuer and the controller | shipped |
+| an Entra directory backend | — | a second corporate directory, behind the same workspace record | planned |
+
+## Who it is for
+
+A platform team running Kubernetes, with the Gateway API, cert-manager,
+and a corporate directory in Google Workspace, that wants one issuer for
+its clusters, cloud accounts, consoles and CI instead of an identity
+product. `access-proxy` needs Envoy Gateway. A Valkey (for more than one
+replica and for every proxy), an S3 bucket (for an audit trail that is a
+record) and OpenBAO (for certificates) are optional. **None of those is
+installed here**: the charts point at them. Nor is the signing key minted
+here — cert-manager issues it, or the installation delivers it — and no
+password, MFA or device policy lives here: sign-in stays with the
+corporate directory.
+
+### The niche
 
 Every mature identity provider can do this. None of them is built for
 it, and the difference is what you run to get it.
@@ -41,7 +71,7 @@ says. The heavy providers can be made to do all of it, at the cost of
 running an identity product to use about a fifth of one. access-roster
 is dex with a directory reader and a policy file.
 
-## What you get
+### What you get
 
 **As a person.** Sign in once, at one page, with your corporate account.
 Every console behind the gateway opens without another login. One
@@ -68,25 +98,17 @@ GitHub teams included. Every sign-in, refusal, exchange, revoke and
 console action is one record in an S3 bucket you own. What the console
 adds at runtime lives in a handful of Secrets that a copy of restores.
 
-## Many in, many out, one point in the middle
+## The model
 
-| Fans in | Fans out |
-|---|---|
-| corporate directories: several Google Workspaces, Entra next — each a workspace with its own credential and its own served domains | Kubernetes clusters: each trusts the one issuer as its identity provider |
-| GitHub Actions: one federated issuer, an owner allow-list | AWS accounts: each trusts the one issuer as an OIDC provider |
-| every cluster's own ServiceAccount tokens: one row per cluster naming its key set | GitHub organisations: one controller App each, bindings in the same policy, and a runner App per tier for self-hosted runners |
-| | consoles and applications: one client row each |
+Four nouns. The **directory** says who a person is and which directory
+groups they are in. The **policy** maps directory groups, CI jobs and
+workloads into **internal groups**, named `<scope>:<thing>:<role>`. A
+**client** is everything that trusts the issuer — a cluster, a cloud
+role, a console — and names the internal groups it `requires`. A token
+is minted for one client, carries the internal groups, and is refused
+before it exists when none of them is required.
 
-Adding one of anything is one row and one trust registration. The
-issuer URL, the policy file and the console never multiply.
-
-Everything in both columns is built and in use, with one exception: the
-second directory backend (Entra) is designed behind the same workspace
-record and not written yet.
-[architecture.md](docs/architecture.md#fan-in-and-fan-out) says how each
-row is expressed in configuration.
-
-## The shape
+### The shape
 
 ```mermaid
 flowchart LR
@@ -122,11 +144,67 @@ controller is a second process from the same chart, asking the issuer
 who holds which group and acting on GitHub with an App the organisation's
 owner created from the console.
 
-> **Status.** In production for its authors: several corporate
-> directories connected, clusters, AWS accounts, GitHub organisations
-> and consoles on the one issuer, and CI jobs exchanging their way in.
-> [CHANGELOG.md](CHANGELOG.md) says what exists at each version, and the
-> documents below describe what is built.
+### Many in, many out, one point in the middle
+
+| Fans in | Fans out |
+|---|---|
+| corporate directories: several Google Workspaces, Entra next — each a workspace with its own credential and its own served domains | Kubernetes clusters: each trusts the one issuer as its identity provider |
+| GitHub Actions: one federated issuer, an owner allow-list | AWS accounts: each trusts the one issuer as an OIDC provider |
+| every cluster's own ServiceAccount tokens: one row per cluster naming its key set | GitHub organisations: one controller App each, bindings in the same policy, and a runner App per tier for self-hosted runners |
+| | consoles and applications: one client row each |
+
+Adding one of anything is one row and one trust registration. The
+issuer URL, the policy file and the console never multiply.
+
+Everything in both columns is built and in use, with one exception: the
+second directory backend (Entra) is designed behind the same workspace
+record and not written yet.
+[architecture.md](docs/architecture.md#fan-in-and-fan-out) says how each
+row is expressed in configuration.
+
+## Install and a worked example
+
+```sh
+helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \
+  --version X.Y.Z --namespace access-issuer --create-namespace \
+  --values issuer-values.yaml
+```
+
+```yaml
+issuerURL: https://access.example.com      # stable for the life of the installation
+route:
+  host: access.example.com
+  rootRedirect: /console/
+  gatewayClassName: example-gateway-class
+  certificate: { issuerName: example-ca, issuerKind: ClusterIssuer }
+valkey:
+  address: valkey.access-issuer.svc:6379
+oauthClient:
+  secret: { name: access-issuer-google-client }   # keys client-id and client-secret
+console:
+  client: access-console
+policy:
+  groups:
+    all:access-roster:operator:
+      members: [platform-admins@example.com]
+      matchers:                                   # the first way in: recovery
+        - service_account: { namespace: access-issuer, name: access-issuer-recovery }
+    all:access-roster:viewer:
+      matchers: [{ email_domain: example.com }]
+  clients:
+    access-console:
+      kind: public
+      redirects: [https://access.example.com/console/]
+      requires: [all:access-roster:operator, all:access-roster:viewer]
+```
+
+Then sign in once with a recovery token
+(`kubectl -n access-issuer create token access-issuer-recovery --audience access-issuer-recovery`),
+and the console's Overview walks the rest: connecting the directory, and
+the first operator who signs in as themselves.
+[docs/operations/adoption-plain-helm.md](docs/operations/adoption-plain-helm.md)
+is the whole walk-through, with the prerequisites and an `access-proxy`
+beside it.
 
 ## Conformance
 
@@ -155,7 +233,19 @@ time; the first Back-Channel run found two defects, fixed in v0.17.1.
 Every column, and why, is in
 [docs/conformance.md](docs/conformance.md).
 
-## Read next
+## Documentation
+
+- [docs/adoption.md](docs/adoption.md) — prerequisites, install order,
+  connecting things, migrating, and the zero-diff gate
+- [docs/safety.md](docs/safety.md) — what is refused and why, the
+  failure semantics, and the traps
+- [docs/reference.md](docs/reference.md) — every value, flag, input and
+  output
+- [docs/doctrine.md](docs/doctrine.md) — the design rules, and who owns
+  what
+- [CHANGELOG.md](CHANGELOG.md) — what changed for a consumer, per version
+
+### Read next
 
 | You want to | Read |
 |---|---|
@@ -163,7 +253,7 @@ Every column, and why, is in
 | see every piece and how they connect | [docs/architecture.md](docs/architecture.md) |
 | learn the ten words used precisely | [docs/concepts.md](docs/concepts.md) |
 | write the policy | [docs/reference/policy.md](docs/reference/policy.md) |
-| deploy it | [docs/reference/configuration.md](docs/reference/configuration.md), then [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
+| deploy it | [docs/operations/adoption-plain-helm.md](docs/operations/adoption-plain-helm.md), [docs/reference/configuration.md](docs/reference/configuration.md), then [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
 | run it: what to check, what to back up, how to restore | [docs/operations/runbook.md](docs/operations/runbook.md), [configuration.md — restoring from the Secrets alone](docs/reference/configuration.md#restoring-from-the-secrets-alone) |
 | use it from a laptop or a CI job | [docs/reference/accessctl.md](docs/reference/accessctl.md) |
 | put a console behind the gateway | [docs/connect/console-app.md](docs/connect/console-app.md) |
@@ -175,24 +265,45 @@ Every column, and why, is in
 | run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |
 | build a service that accepts both people and workloads | [docs/connect/service-to-service.md](docs/connect/service-to-service.md) |
 
-## What ships
+## The rule that makes this repository public
 
-| Artifact | For |
-|---|---|
-| `access-issuer` service and chart | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail |
-| `github-roster`, in the same chart | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console |
-| `access-proxy` chart | every console with no OpenID flow of its own |
-| Go module `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups |
-| TypeScript package `@truvity/access-roster`, on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer |
-| `accessctl`, a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, and short-lived certificates a secret manager mints |
-| GitHub Action `truvity/access-roster`, pinned to a release | workflows: one exchange, then a kubeconfig and AWS profiles |
-| the policy | one file, one schema, the issuer and the controller |
+**Mechanism only.** Nothing here names an account, a zone, a hostname, a
+cluster, an issuer or a secret path of any installation: every such thing
+is a value with a neutral example, and the installation supplies it from
+its own repository. Examples use `example.com`, `*.example` and the
+`acme` and `globex` organisations. The rule covers code, docs, the
+CHANGELOG, tests, commit messages and pull request text, because public
+history cannot be unpublished. Review enforces it today; the shared leak
+canary is not vendored in this repository yet.
 
-## Developing
+This repository follows the shared
+[component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
 
-`devbox shell` (or direnv), then `just check`. See
-[CONTRIBUTING.md](CONTRIBUTING.md).
+## Status
 
-## License
+Used in production by its maintainers. [CHANGELOG.md](CHANGELOG.md) says
+what exists at each version, and releases are on the
+[releases page](https://github.com/truvity/access-roster/releases).
 
-[MIT](LICENSE).
+## Development
+
+```sh
+devbox shell        # or direnv: Go, buf, golangci-lint, helm, just, lefthook
+just check          # build, test, lint, chart-lint, archive-check, docs-check, ts, console, vuln
+just generate       # proto → gen/ after a contract change; the generated code is committed
+```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the conventions and the console's
+build order.
+
+## Releasing
+
+Push a tag `vX.Y.Z`: the release workflow publishes the images, both
+charts, `accessctl` and its Nix flake, and the TypeScript package at that
+version, and the Go module and the Action are the same tag. Auto-release
+is present but not armed, so every release today is a manual tag; when
+armed it cuts patches only, and minors and majors stay manual.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).

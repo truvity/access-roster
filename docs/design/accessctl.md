@@ -48,9 +48,9 @@ exactly what is ours to prepare and stops:
 - uses: truvity/access-roster@v1.8.0   # pin a release; there is no floating v1
   with:
     issuer: https://issuer.example.internal
-    audiences: k8s:devel, aws:111122223333:gitops-deployer, aws:444455556666:artifacts-reader
+    audiences: k8s:staging, aws:111122223333:deployer, aws:444455556666:artifacts-reader
     kubeconfig: true                            # a context per k8s:* audience
-    default-profile: gitops-deployer@111122223333
+    default-profile: deployer@111122223333
     region: eu-central-1                        # written into every profile
 ```
 

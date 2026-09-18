@@ -59,11 +59,12 @@ installation, never per company. About fifteen minutes.
      on `http://localhost:<port>` may sit on the client, the port being
      the one it listens on, where both flows return. Remove them once it
      runs behind its real host.
-5. **Hand the client to the service**, one of two ways:
-   - paste the client id and secret into the console's Settings once; or
-   - create a Secret with keys `client-id` and `client-secret` in the service's
-     namespace and set `oauthClient.existingSecret` — the console then
-     shows the client read-only.
+5. **Hand the client to the service**: create a Secret with keys
+   `client-id` and `client-secret` in the service's namespace and set
+   `oauthClient.secret.name` (and `oauthClient.secret.keys.*` if the keys
+   are called something else). The console shows the client read-only; it
+   cannot write one, because a credential a console can change is one
+   somebody can change from a browser.
 
 Verification by Google is optional. Unverified, the consent screen shows
 "Google hasn't verified this app" and the admin clicks *Advanced → Go to

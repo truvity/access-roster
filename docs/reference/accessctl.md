@@ -8,12 +8,12 @@ accessctl setup                              # both of the next two
 accessctl kubeconfig                         # a context per granted cluster
 accessctl aws-config                         # a profile per granted cloud role
 
-kubectl --context kernel get nodes           # exec plugin: accessctl kube-token
-aws --profile power@1111 sts get-caller-identity   # credential_process: accessctl aws
+kubectl --context staging get nodes          # exec plugin: accessctl kube-token
+aws --profile deployer@111122223333 sts get-caller-identity   # credential_process: accessctl aws
 
 accessctl token --audience openbao              # one token for one audience, on stdout
 accessctl github-token --app publisher --repository app --permission contents=read
-accessctl exchange --audience k8s:devel < subject-token
+accessctl exchange --audience k8s:staging < subject-token
 
 accessctl credential ssh --env staging --principal deploy      # into the ssh-agent
 accessctl credential db  --env staging --project example \
@@ -53,16 +53,16 @@ is `ssh`, `db` or `client`. Each one is the same four steps:
 
 1. exchange the sign-in (or the job's own token) for `aud=openbao`;
 2. log in on the JWT mount in that environment's namespace;
-3. make **one** call — `ssh/sign/<role>`, `pki/sign/db-client`,
-   `pki/sign/client` — over a key made on this machine;
+3. make **one** call — `ssh/sign/<role>` or `pki/sign/<role>` — over a
+   key made on this machine;
 4. deliver the result, and revoke the OpenBAO token on the way out.
 
 **Nothing here chooses a lifetime.** No request carries a TTL: the role's
 `ttl` and `max_ttl` are the whole answer, so shortening the role shortens
 every credential in flight and no flag can ask for longer. What accessctl
-does send is a public key, the principals or the common name asked for,
-and nothing else — a role that will not sign them refuses, which is the
-right place for that decision.
+does send is a public key (or a CSR over one), the principals or the
+common name asked for, and nothing else — a role that will not sign them
+refuses, which is the right place for that decision.
 
 **The OpenBAO token is never written anywhere.** It lives in memory for
 the length of one command and is revoked at the end; a mount that hands
@@ -70,52 +70,134 @@ out batch tokens refuses the revoke, which is not an error, because such
 a token cannot be revoked and expires on its own.
 
 Each kind prints what the audit trail will show — the certificate's
-`key_id` or common name, and its serial — so a line in an sshd log, a row
-in the issuer's trail and OpenBAO's own record of the signing can be read
-as one story about one subject.
+`key_id` or common name, and its serial or principals, and its expiry —
+so a line in an sshd log, a row in the issuer's trail and OpenBAO's own
+record of the signing can be read as one story about one subject. The
+key is never printed.
 
-| Kind | Asks for | Delivers |
+### Flags
+
+Every kind takes these:
+
+| Flag | Default | |
 |---|---|---|
-| `ssh` | a key pair generated for this certificate alone; `--principal` (repeatable) | the certificate and key into the **ssh-agent**, with a lifetime the certificate decides; or, with `--identity`, into `~/.ssh` as `<name>`, `<name>.pub` and `<name>-cert.pub` — the certificate beside the key, where `ssh -i <name>` finds both |
-| `db` | an ECDSA P-384 key generated for this certificate alone, sent as a CSR; `--host`, `--dbname`, `--port`, `--service`; `--project` for a role in a project's own namespace | the certificate, key (`0600`) and CA under `~/.config/accessctl/credentials/<env>/`, and a **psql service entry** (`~/.pg_service.conf`, or `PGSERVICEFILE`) whose `user` is the certificate's common name, for `psql "service=<name>"` |
-| `client` | the same, as a CSR; `--out`, `--uri-san` (repeatable) | `<out>.crt`, `<out>.key` (`0600`) and `<out>-ca.crt`, at the path the caller named |
+| `--env` | — | **required.** The environment to mint in; it names the namespace and, for `db`, the service entry |
+| `--role` | `user` (`ssh`), `db-client` (`db`), `client` (`client`) | the OpenBAO role on the kind's engine. Empty means the default |
+| `--address` | `$BAO_ADDR`, then `$VAULT_ADDR` | the OpenBAO API, e.g. `https://openbao.example:8200` |
+| `--namespace` | `$BAO_NAMESPACE`, then `$VAULT_NAMESPACE`, then the `--env` value | the OpenBAO namespace, sent as `X-Vault-Namespace` on every call |
+| `--ca-cert` | `$BAO_CACERT`, then `$VAULT_CACERT` | a PEM bundle the OpenBAO connection trusts **in addition to** the system's roots |
+| `--mount` | `jwt-roster` | the JWT auth mount to log in on |
+| `--login-role` | `roster` | the role on that mount |
+| `--audience` | `openbao` | the exchange client OpenBAO accepts; empty is refused |
+| `--issuer`, `--client` | what `login` wrote | as for every other command |
 
-`--identity id_example` (a bare name) means `~/.ssh/id_example`; a path
-with a separator is taken as given. A key this tool did not write is
-**never** overwritten — `--identity id_ed25519` is one keystroke away from
-a key somebody has used for years.
+And each kind its own, so that a flag of another kind is a usage error
+rather than something quietly ignored:
 
-The service file holds one block per service (`# >>> accessctl <name> >>>`),
-so a credential for a second database leaves the first entry alone.
+| Kind | Flag | Default | |
+|---|---|---|---|
+| `ssh` | `--principal` | none | an OS account to ask the certificate for; repeatable. None sends none, and the role decides |
+| `ssh` | `--identity` | none: the ssh-agent | write the key and certificate to files instead: a bare name means `~/.ssh/<name>`, a path with a separator (or `~/`) is taken as given |
+| `db` | `--host` | — | **required.** The database host the service entry points at |
+| `db` | `--dbname` | — | **required.** The database the service entry opens |
+| `db` | `--port` | `5432` | |
+| `db` | `--service` | the `--env` value | the psql service entry to write |
+| `db` | `--project` | none | a project whose own namespace, `<project>/<env>`, holds the database role |
+| `db`, `client` | `--common-name` | the signed-in identity | the common name to ask for: the sign-in's email (or subject), or `github-<owner>-<repo>` in a job |
+| `client` | `--out` | — | **required.** Where the certificate goes; the key and the CA go beside it |
+| `client` | `--uri-san` | none | a URI SAN to ask for; repeatable |
 
-**Which role.** Each kind signs with its ordinary role unless `--role`
-names another: `user` for `ssh`, `db-client` for `db`, `client` for
-`client`. SSH has a second, `admin`, which is never a default: `user` is
-for everyday logins as a host's ordinary account, `admin` for the
-account that administers it, and the two are granted separately.
+### Which role
 
-**Where it points.** `--address` names the OpenBAO API, or `BAO_ADDR`
-(`VAULT_ADDR` is read too); with none of the three the command exits 2
-and says how to set it. The namespace is the environment's own —
-`--env staging` works in `staging` — for every kind, and the first of
-`--namespace`, `BAO_NAMESPACE` and `VAULT_NAMESPACE` overrides it;
-`--project <project>` on `db` reaches a role kept in `<project>/<env>`
-instead.
+Each kind signs with its ordinary role unless `--role` names another:
+`user` for `ssh`, `db-client` for `db`, `client` for `client`. SSH has a
+second, `admin`, which is never a default: `user` is for everyday logins
+as a host's ordinary account, `admin` for the account that administers
+it, and the two are granted separately. Which OS accounts each role signs
+for is the role's `allowed_users`, not a flag here.
 
-**Which roots it trusts.** The OpenBAO connection verifies against the
-system's roots. An installation that serves its API under a private root
-is trusted by naming that root: `--ca-cert <file>`, a PEM bundle, or
-`BAO_CACERT` (`VAULT_CACERT` is read too), the flag first. The bundle is
-**added** to the system's roots, not put in their place, and it is used
-for OpenBAO alone — the exchange at the issuer keeps the system's trust.
-A bundle that cannot be read or holds no certificate exits 2 before
-anything is exchanged, and a server the roots do not verify is refused
-with a pointer to the flag.
-`--mount`, `--login-role` and `--audience` name the JWT mount
-(`jwt-roster`), its role (`roster`) and the exchange client (`openbao`)
-for an installation that spells them differently.
+### Where it points: the order each value is read in
 
-**Installing it.** Each release carries `accessctl_<version>_nix-flake.tar.gz`,
+The first one that is set wins; a variable holding only whitespace counts
+as unset.
+
+| Value | 1st | 2nd | 3rd | Otherwise |
+|---|---|---|---|---|
+| the OpenBAO address | `--address` | `BAO_ADDR` | `VAULT_ADDR` | exit 2, naming the flag and the variable |
+| the namespace | `--namespace` | `BAO_NAMESPACE` | `VAULT_NAMESPACE` | `<env>`; for `db` with `--project`, `<project>/<env>` |
+| the extra roots | `--ca-cert` | `BAO_CACERT` | `VAULT_CACERT` | the system's roots alone |
+
+**The namespace is the environment's own.** One namespace per
+environment, named for it, holds every role this command signs with, so
+`--env staging` works in `staging` for all three kinds. An installation
+laid out otherwise says so with `--namespace` (or the variables), and a
+database role kept in a project's own namespace is reached with
+`--project`.
+
+**The bundle is added, not substituted, and for OpenBAO alone.** It is
+appended to the system's roots, so an OpenBAO whose certificate a public
+CA signs still verifies; and only the connection to OpenBAO uses it — the
+exchange at the issuer keeps the system's trust, so a bundle handed over
+for OpenBAO cannot vouch for anything else. (`SSL_CERT_FILE` does the
+opposite on both counts.) A bundle that cannot be read, or holds no PEM
+certificate, exits 2 before anything is exchanged. A server the roots do
+not verify exits 5 with a pointer to `--ca-cert` and `BAO_CACERT`.
+
+### Keys, and where the files go
+
+**Every key is made on this machine and none is sent.** OpenBAO receives
+a public key or a certificate request, never a private key, and no call
+in the command asks it to make one — so a role can offer `sign` alone.
+
+| Kind | Key | Sent to OpenBAO | Delivered |
+|---|---|---|---|
+| `ssh` | Ed25519, made for this certificate alone | `ssh/sign/<role>`: the public key and `valid_principals`, nothing else | into the **ssh-agent**, with a lifetime the certificate's expiry sets, so the agent forgets it when it expires. With `--identity`: the private key `0600`, `<name>.pub` and the certificate `<name>-cert.pub` `0644`, where `ssh -i <name>` finds both |
+| `db` | ECDSA P-384 | `pki/sign/<role>`: a CSR carrying the common name, and the common name again in the request | `<service>.crt`, `<service>.key` and `<service>-ca.crt`, all `0600`, under `<config>/credentials/<env>/` (a directory made `0700`); and a **psql service entry** for `psql "service=<service>"` |
+| `client` | ECDSA P-384 | `pki/sign/<role>`: a CSR carrying the common name and the URI SANs, both repeated in the request | `<out>.crt`, `<out>.key` and `<out>-ca.crt`, all `0600`, with `.crt` or `.pem` taken off `--out` first; a missing parent directory is made `0700` |
+
+The certificate that comes back is checked against the key before
+anything is written: one issued for another key is refused rather than
+left beside a key it does not match. The CA file is the chain OpenBAO
+returned, or the issuing CA alone, and is not written when it returned
+neither. The PKI key is PKCS #8 PEM, which libpq, OpenSSL and Go all read.
+A PKI role must accept `key_type: ec` with `key_bits: 384`, or `any`;
+the CSR and the request both carry the names, so a role with
+`use_csr_common_name` or `use_csr_sans` works either way.
+
+`<config>` is `accessctl` under the operating system's configuration
+directory: `$XDG_CONFIG_HOME/accessctl` or `~/.config/accessctl` on
+Linux, `~/Library/Application Support/accessctl` on macOS. The psql
+service file is `PGSERVICEFILE` when that is set and `~/.pg_service.conf`
+otherwise, created `0600`; it holds one block per service between
+`# >>> accessctl <service> >>>` and `# <<< accessctl <service> <<<`
+markers, so a
+credential for a second database leaves the first entry alone. The
+entry's `user` is the certificate's common name — the server maps it
+through `pg_ident` — with `sslmode=verify-full`.
+
+A key this tool did not write is **never** overwritten:
+`--identity id_ed25519` is one keystroke away from a key somebody has
+used for years, and a key counts as this tool's only when the `.pub`
+beside it carries the `accessctl` comment. Each key, certificate and CA
+file is removed and created afresh rather than truncated, so a file that
+existed with a wider mode does not keep it.
+
+### What each failure exits with
+
+The codes are the [table below](#exit-codes); for `credential` they
+mean:
+
+| Code | When |
+|---|---|
+| `2` | no kind, an unknown kind, a flag of another kind; no `--env`, no address, `db` without `--host` or `--dbname`, `client` without `--out`; an empty `--audience`; a `--uri-san` that is not a URI; a CA bundle that cannot be read or holds no certificate; no common name to ask for |
+| `3` | not signed in (on a laptop): run `accessctl login` |
+| `4` | the issuer refused the exchange for `openbao`, or OpenBAO answered `403` — the login or the signing is not granted |
+| `5` | the issuer or OpenBAO could not be reached, answered `5xx`, presented a certificate the roots do not verify, or answered a login with no token or a signing with no data |
+| `1` | anything else: OpenBAO answered `404` (the mount or the role does not exist in that namespace — the message says so) or another status; the certificate was for another key; `--identity` names a key this tool did not write; no ssh-agent to add to |
+
+## Installing it
+
+Each release carries `accessctl_<version>_nix-flake.tar.gz`,
 a Nix flake over that release's own archives; a repository adds its URL
 with `#accessctl` to `devbox.json`
 ([design](../design/accessctl.md#installing-it)). The release's archives
@@ -123,8 +205,9 @@ are there too for a plain download.
 
 ## Where things are kept
 
-`~/.config/accessctl/config.yaml` holds the issuer and the client id,
-written by `login`. `session.json` beside it holds the refresh token,
+`<config>/config.yaml` (`~/.config/accessctl/config.yaml` on Linux; see
+[above](#keys-and-where-the-files-go) for the directory) holds the issuer
+and the client id, written by `login`. `session.json` beside it holds the refresh token,
 mode `0600`.
 
 **A file rather than the OS keyring**, deliberately: a keyring is a
@@ -178,7 +261,8 @@ retry a refusal.
 | Code | Means |
 |---|---|
 | `0` | ok |
+| `1` | anything the codes below do not name: read the message |
 | `2` | usage: something in the command line is wrong |
 | `3` | not signed in — run `accessctl login` |
-| `4` | that audience, or that App's token, is not granted to you; retrying will not help |
-| `5` | the issuer could not be reached; retrying might |
+| `4` | that audience, or that App's token, is not granted to you (for `credential`, also OpenBAO's `403`); retrying will not help |
+| `5` | the issuer could not be reached (for `credential`, also OpenBAO); retrying might |

@@ -4,7 +4,12 @@
 requests its identity token, exchanges it at the issuer for the clients
 its groups admit it to, and uses the result.
 
-
+Two ways to do that, and they exchange the same thing: **the action** in
+this repository (`uses: truvity/access-roster@…`), which is `curl` and
+`jq` and downloads nothing of ours, and **`accessctl`** with the same
+kubeconfig and AWS profile a person uses. A shared workflow that wants no
+stored key picks the action through its own input — see
+[a reusable workflow](#in-a-reusable-workflow-token-source-access-roster).
 
 ## Issuer side
 
@@ -30,14 +35,14 @@ token for list that group:
 
 ```yaml
 groups:
-  ci-gitops:   { matchers: [{ github: { repository: acme/gitops, ref: refs/heads/master } }] }
+  ci-deploy:   { matchers: [{ github: { repository: acme/platform, ref: refs/heads/main } }] }
   ci-any-main: { matchers: [{ github: { owner: acme, ref: refs/heads/* } }] }
   ci-private:  { matchers: [{ github: { owner: acme, visibility: private } }] }
-lifetimes: { ci-gitops: 1h, ci-any-main: 1h, ci-private: 1h }
+lifetimes: { ci-deploy: 1h, ci-any-main: 1h, ci-private: 1h }
 clients:
-  aws:111122223333:gitops-deployer: { kind: exchange, requires: [ci-gitops] }
-  k8s:devel:                        { kind: public,   requires: [ci-gitops, engineer] }
-  k8s:devel-readonly:               { kind: public,   requires: [ci-any-main] }
+  aws:111122223333:deployer: { kind: exchange, requires: [ci-deploy] }
+  k8s:staging:               { kind: public,   requires: [ci-deploy, engineer] }
+  k8s:staging-readonly:      { kind: public,   requires: [ci-any-main] }
 ```
 
 `visibility` admits every private repository of an organisation and
@@ -50,39 +55,120 @@ one refuses it.
 `workflow_ref`, `job_workflow_ref`, `sha`, `event_name` and `ref_type`
 pin a job to one workflow file at one ref, what started it, and whether
 the ref is a branch or a tag:
-`{ repository: acme/gitops, ref: refs/heads/master, event_name: push,
-job_workflow_ref: acme/gitops/.github/workflows/deploy.yml@refs/heads/master }`
-admits the deploy workflow on master and not a pull request's run of an
+`{ repository: acme/platform, ref: refs/heads/main, event_name: push,
+job_workflow_ref: acme/platform/.github/workflows/deploy.yml@refs/heads/main }`
+admits the deploy workflow on main and not a pull request's run of an
 edited copy. The same groups can hold a grant of a
 [catalogue App](github-apps-catalogue.md#minting-a-token), and the job
 then asks for an installation token with the action's `github-app` input.
 
-## Workflow side
+## Workflow side: the action
 
 ```yaml
 permissions:
-  id-token: write
+  id-token: write          # lets the action ask GitHub for this job's identity token
+  contents: read
 steps:
-  # The action requests the job's identity token itself, for the issuer's
-  # URL as audience, so nothing else in the job handles a token. The
-  # `id-token: write` permission above is what lets it.
-  - uses: truvity/access-roster@v1.8.0   # pin a release; there is no floating `v1`
+  - id: access
+    # Pin a release by commit; there is no floating `v1` tag.
+    uses: truvity/access-roster@<commit-sha>   # vX.Y.Z
     with:
-      issuer: https://issuer.example.internal
-      audiences: k8s:devel, aws:111122223333:gitops-deployer
+      issuer: https://access.example
+      audiences: k8s:staging, aws:111122223333:deployer
       kubeconfig: true
-      default-profile: gitops-deployer@111122223333
-      region: eu-central-1
-  - run: kubectl -n demo rollout status deploy/app
+      default-profile: deployer@111122223333
+      region: eu-example-1
+  - run: kubectl --context staging -n demo rollout status deploy/app
   - run: aws s3 ls
 ```
 
-The action is shell only: one `curl` to `/token` per audience with
-`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`,
-`subject_token=<the job's token>` and `audience=<one audience>`, then a
-kubeconfig with the cluster token and a profile `<role>@<account>` per
-cloud audience with `web_identity_token_file`. Nothing is downloaded into
-the job.
+**What it exchanges.** The action asks GitHub for the job's OIDC identity
+token with the issuer's own URL as its audience — the one audience the
+issuer accepts from GitHub — and then makes one RFC 8693 token exchange
+per audience at `<issuer>/token`: `grant_type` token-exchange,
+`subject_token` the job's token (type `jwt`), `audience` the client, the
+same client presented in HTTP Basic with an empty secret. What comes
+back is an **access-issuer token for that one client**, carrying the
+groups the job's matchers put it in; the client's `requires` decided
+whether it was minted at all. For `github-app` the same exchange asks for
+`requested_token_type=urn:access-roster:params:oauth:token-type:github-installation-token`
+and gets a GitHub installation token back instead
+([contract](../reference/contracts.md#installation-tokens-at-token)).
+Every token is masked before it is written anywhere.
+
+| Input | Default | |
+|---|---|---|
+| `issuer` | — | **required.** The issuer's URL, which is also the audience the job's identity token is minted for |
+| `audiences` | `""` | the clients to exchange for, comma or newline separated: `k8s:<cluster>` or `aws:<account>:<role>`. Anything else fails the step. May be empty when `github-app` is given |
+| `kubeconfig` | `"false"` | `"true"` writes a kubeconfig with one user and one context per `k8s:` audience, the token as bearer, and exports `KUBECONFIG`. The cluster entry (address, CA) is not written: it comes from the platform's own kubeconfig |
+| `default-profile` | `""` | a profile to export as `AWS_PROFILE`; it must be one this run wrote, or the step fails |
+| `region` | `""` | written into every AWS profile |
+| `github-app` | `""` | a [catalogue App](github-apps-catalogue.md#minting-a-token) id to mint an installation token of, under the catalogue's grants |
+| `repositories` | `""` | names without the owner, comma, space or newline separated, to narrow that token to. Empty asks for a token not narrowed to any, which only a grant of every repository allows |
+| `permissions` | `""` | `name:level` (or `name=level`), to narrow that token to. Empty asks for exactly what the grant allows |
+
+| Output | |
+|---|---|
+| `profiles` | the AWS profile names written, `<role>@<account>`, space separated |
+| `kubeconfig` | the kubeconfig's path, when one was written |
+| `github-token` | the installation token, masked, when `github-app` was given |
+
+For every `aws:<account>:<role>` audience the action writes a profile
+`<role>@<account>` with `role_arn` and `web_identity_token_file`
+(the exchanged token, `0600`, under `$RUNNER_TEMP`), and exports
+`AWS_CONFIG_FILE`. A job with no `id-token: write`, an issuer that
+refuses an audience, or an audience of neither shape fails the step with
+the issuer's own sentence, before anything later runs.
+
+## In a reusable workflow: `token-source: access-roster`
+
+A shared workflow that needs a GitHub App token — to push a tag, open a
+pull request — does not have to take a private key from every caller.
+It calls the action with `github-app` inside its own job and lets the
+caller choose the source with an input; the shared auto-release workflow
+this repository's own release uses spells it `token-source`:
+
+```yaml
+# the caller
+permissions:
+  contents: read
+  id-token: write            # a called workflow can narrow this, never widen it
+jobs:
+  tag:
+    uses: example-org/shared-workflows/.github/workflows/auto-release.yaml@<commit-sha>   # vX.Y.Z
+    with:
+      token-source: access-roster
+      access-roster-issuer: https://access.example
+      github-app: ci-automation          # the catalogue id
+```
+
+```yaml
+# inside the shared workflow's job
+- id: access
+  uses: truvity/access-roster@<commit-sha>   # vX.Y.Z
+  with:
+    issuer: ${{ inputs.access-roster-issuer }}
+    github-app: ${{ inputs.github-app }}
+    repositories: ${{ github.event.repository.name }}
+    permissions: contents:write
+- run: gh release create "v${VERSION}" --target "${GITHUB_SHA}" --generate-notes
+  env:
+    GH_TOKEN: ${{ steps.access.outputs.github-token }}
+```
+
+Nothing is stored in the calling repository and nothing needs rotating
+there: what the job may have is the catalogue App's grant for the groups
+the job's matchers put it in, which is where a `job_workflow_ref` pin
+belongs ([pinning a grant](github-apps-catalogue.md#pinning-a-grant-to-one-workflow)).
+Keep the two sources in two jobs if the workflow offers both: a job's
+`permissions` are static, and one that asks for `id-token: write` fails
+every caller that did not grant it.
+
+**Self-hosted runners** are the other GitHub App a deployment needs:
+the console creates one [runner App](github-organisation.md#runner-apps)
+per organisation per tier, and the deployment hands its key to the runner
+scale set. Runners register with it; the jobs on them still exchange
+their own identity token as above.
 
 ## Or: the same files a laptop uses
 
@@ -94,7 +180,7 @@ person's kubeconfig runs,
 ```yaml
 exec:
   command: accessctl
-  args: [kube-token, --audience, k8s:devel, --issuer, https://issuer.example.internal]
+  args: [kube-token, --audience, k8s:staging, --issuer, https://issuer.example.internal]
 ```
 
 and the line a person's `aws.ini` runs,
