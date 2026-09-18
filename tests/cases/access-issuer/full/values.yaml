@@ -1,0 +1,221 @@
+# Every value the chart reads, set. Where one value switches another off
+# -- signingKey.existingSecret drops the signing-key Certificate,
+# route.parentRefs drops the Gateway and its certificate, directory.store
+# memory drops the Role, recovery.enabled false drops recovery -- this case
+# keeps the side that renders more, and the other side is its own case
+# (`headless`, `listenerset`).
+replicaCount: 3
+
+image:
+  repository: registry.example/access-roster/access-issuer
+  tag: v1.2.3
+  pullPolicy: Always
+
+issuerURL: https://access.example
+
+listeners:
+  port: 8443
+  healthPort: 9090
+
+directory:
+  store: kubernetes
+  freshness:
+    refreshInterval: 10m
+    freshnessWindow: 20m
+    probeInterval: 2m
+  sessionLifetime: 8h
+  login: false
+  workspaces:
+    - backend: google
+      admin: admin@acme.example
+      secretName: acme-directory-key
+      secretKey: service-account.json
+      id: C0acme
+      serve:
+        - acme.example
+      syncGroups:
+        - engineering@acme.example
+    - backend: google
+      admin: admin@globex.example
+      secretName: globex-directory-key
+
+signingKey:
+  existingSecret: ""
+  key: tls.key
+  certificate:
+    issuerName: signing-issuer
+    issuerKind: Issuer
+    size: 4096
+    renewBefore: 360h
+    duration: 4380h
+
+oauthClient:
+  secret:
+    name: sign-in-client
+    keys:
+      clientId: id
+      clientSecret: secret
+
+cluster: example-cluster
+
+exchange:
+  audience: access-exchange
+  clusters:
+    - name: example-cluster
+      issuer: https://oidc.eu-example-1.example/id/EXAMPLE
+      jwksUri: https://oidc.eu-example-1.example/id/EXAMPLE/keys
+    - name: example-edge
+      issuer: https://edge.example
+
+recovery:
+  enabled: true
+  serviceAccountName: break-glass
+  audience: break-glass-audience
+
+lifetimes:
+  token: 30m
+  refresh: 6h
+  hold: 2h
+
+valkey:
+  address: valkey.example.svc:6379
+  passwordSecret:
+    name: valkey-password
+    key: secret
+  tls: true
+  cluster: true
+
+# A declared `version` is dropped: the chart writes its own.
+policy:
+  version: 1
+  groups:
+    all:access-roster:operator:
+      members:
+        - platform@acme.example
+    all:platform:engineer:
+      members:
+        - engineering@acme.example
+        - engineering@globex.example
+  clients:
+    access-console:
+      kind: confidential
+      secret: access-console-client
+      redirects:
+        - https://access.example/console/
+      requires:
+        - all:access-roster:operator
+    reports:
+      kind: confidential
+      secret: reports-client
+      secretKey: oidc-secret
+      redirects:
+        - https://reports.example/oauth2/callback
+      requires:
+        - all:platform:engineer
+    accessctl:
+      kind: public
+      redirects:
+        - http://127.0.0.1/callback
+      requires:
+        - all:platform:engineer
+
+route:
+  host: access.example
+  rootRedirect: /console/
+  gatewayClassName: shared
+  certificate:
+    issuerName: web-ca
+    issuerKind: Issuer
+  sharedWith:
+    - consoles
+  parentRefs: []
+
+networkPolicy:
+  enabled: true
+  clients:
+    - workloads
+    - proxies
+  gatewayNamespace: gateway-system
+
+serviceAccount:
+  name: issuer
+
+githubRoster:
+  enabled: true
+  image:
+    repository: registry.example/access-roster/github-roster
+    tag: v1.2.3
+    pullPolicy: Always
+  interval: 5m
+  actsIn:
+    - acme
+    - globex
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+githubRunnerApps:
+  tiers:
+    - preview
+    - stable
+
+githubApps:
+  catalogue:
+    - id: dependency-bot
+      org: acme
+      name: acme-dependency-bot
+      description: Dependency updates
+      public: false
+      permissions:
+        contents: write
+        pull_requests: write
+      events:
+        - pull_request
+      installation: selected
+      grants:
+        - group: all:platform:engineer
+          repositories:
+            - "*"
+          permissions:
+            contents: read
+
+audit:
+  forwardedForTrustedHops: 1
+  s3:
+    bucket: example-audit
+    region: eu-example-1
+    prefix: issuer/
+    flushInterval: 5s
+  maxEvents: 1000
+
+telemetry:
+  otlpEndpoint: http://otel-collector.observability.svc:4318
+
+logLevel: debug
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+podAnnotations:
+  example.com/scrape: "false"
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: identity
+    effect: NoSchedule
+
+github:
+  owners:
+    - acme
+    - globex
+
+console:
+  origin: https://access.example
+  mount: /console
+  client: access-console

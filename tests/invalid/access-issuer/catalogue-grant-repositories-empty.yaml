@@ -1,0 +1,12 @@
+# A catalogue grant names at least one repository.
+# error: at '/githubApps/catalogue/0/grants/0/repositories': minItems
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {contents: write}
+      grants:
+        - group: all:platform:engineer
+          repositories: []
+          permissions: {contents: read}

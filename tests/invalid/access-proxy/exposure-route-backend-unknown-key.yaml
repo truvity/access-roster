@@ -1,0 +1,27 @@
+# A key under an exposure.routes entry's backend does not know must fail the render, not be ignored.
+# error: at '/exposure/routes/0/backend': additional properties 'namespace' not allowed
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  routes:
+  - name: demo
+    backend:
+      name: demo
+      namespace: x
+    posture: authenticated
+  - name: app
+    attachRouteName: surface-app
+    allow:
+    - surface:operator
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

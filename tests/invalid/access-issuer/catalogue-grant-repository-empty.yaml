@@ -1,0 +1,12 @@
+# A catalogue grant's repository may not be empty.
+# error: at '/githubApps/catalogue/0/grants/0/repositories/0': minLength
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {contents: write}
+      grants:
+        - group: all:platform:engineer
+          repositories: [""]
+          permissions: {contents: read}

@@ -1,0 +1,6 @@
+# signingKey.certificate.issuerKind is Issuer or ClusterIssuer.
+# error: at '/signingKey/certificate/issuerKind': value must be one of
+issuerURL: https://issuer.example
+signingKey:
+  certificate:
+    issuerKind: CA

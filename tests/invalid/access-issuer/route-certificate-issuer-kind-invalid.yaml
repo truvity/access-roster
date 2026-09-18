@@ -1,0 +1,7 @@
+# route.certificate.issuerKind is Issuer or ClusterIssuer.
+# error: at '/route/certificate/issuerKind': value must be one of
+issuerURL: https://issuer.example
+route:
+  host: issuer.example
+  certificate:
+    issuerKind: Vault

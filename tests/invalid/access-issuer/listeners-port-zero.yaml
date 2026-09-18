@@ -1,0 +1,5 @@
+# listeners.port has a minimum of 1.
+# error: at '/listeners/port': minimum
+issuerURL: https://issuer.example
+listeners:
+  port: 0

@@ -1,0 +1,5 @@
+# A key under directory does not know must fail the render, not be ignored.
+# error: at '/directory': additional properties
+issuerURL: https://issuer.example
+directory:
+  stores: memory

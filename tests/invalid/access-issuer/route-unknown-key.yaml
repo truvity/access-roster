@@ -1,0 +1,5 @@
+# A key under route does not know must fail the render, not be ignored.
+# error: at '/route': additional properties
+issuerURL: https://issuer.example
+route:
+  hostname: issuer.example

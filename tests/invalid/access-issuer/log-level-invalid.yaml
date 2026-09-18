@@ -1,0 +1,4 @@
+# logLevel is debug, info, warn or error.
+# error: at '/logLevel': value must be one of
+issuerURL: https://issuer.example
+logLevel: trace

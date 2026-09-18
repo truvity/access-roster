@@ -1,0 +1,23 @@
+# An exposure.parentRefs entry's name may not be empty (the template refuses it too, as a backstop).
+# error: at '/exposure/parentRefs/0/name': minLength
+exposure:
+  hostname: console.example
+  backend:
+    name: console
+  allow:
+  - console:operator
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: ListenerSet
+    name: ''
+    namespace: gateway-system
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

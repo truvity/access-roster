@@ -1,0 +1,5 @@
+# A key under console does not know must fail the render, not be ignored.
+# error: at '/console': additional properties
+issuerURL: https://issuer.example
+console:
+  path: /console

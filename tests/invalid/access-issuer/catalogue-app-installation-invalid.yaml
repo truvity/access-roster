@@ -1,0 +1,9 @@
+# A catalogue App installation is all or selected.
+# error: at '/githubApps/catalogue/0/installation': value must be one of
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {contents: write}
+      installation: some

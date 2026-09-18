@@ -1,0 +1,5 @@
+# githubRunnerApps.tiers are unique.
+# error: at '/githubRunnerApps/tiers': items at
+issuerURL: https://issuer.example
+githubRunnerApps:
+  tiers: [stable, stable]

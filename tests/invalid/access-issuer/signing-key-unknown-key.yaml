@@ -1,0 +1,5 @@
+# A key under signingKey does not know must fail the render, not be ignored.
+# error: at '/signingKey': additional properties
+issuerURL: https://issuer.example
+signingKey:
+  existingSecrets: key

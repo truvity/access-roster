@@ -178,7 +178,7 @@ func TestUndeclaredGrantGroupsAreNamed(t *testing.T) {
 // values schema and this parser describe one shape.
 func TestTheChartsCatalogueExampleParses(t *testing.T) {
 	t.Parallel()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "hack", "access-issuer-catalogue.yaml"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "cases", "access-issuer", "catalogue", "values.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,8 @@
+# A catalogue App org is a GitHub login.
+# error: at '/githubApps/catalogue/0/org': '-acme' does not match pattern
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: -acme
+      permissions: {contents: write}

@@ -1,0 +1,3 @@
+# issuerURL is required: it is baked into every token (template `required`).
+# error: issuerURL is required
+{}

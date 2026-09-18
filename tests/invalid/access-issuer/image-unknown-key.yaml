@@ -1,0 +1,5 @@
+# A key under image does not know must fail the render, not be ignored.
+# error: at '/image': additional properties
+issuerURL: https://issuer.example
+image:
+  tagg: v1

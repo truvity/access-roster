@@ -1,0 +1,5 @@
+# A key under githubApps does not know must fail the render, not be ignored.
+# error: at '/githubApps': additional properties
+issuerURL: https://issuer.example
+githubApps:
+  apps: []

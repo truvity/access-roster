@@ -1,0 +1,22 @@
+# A key under issuer does not know must fail the render, not be ignored.
+# error: at '/issuer': additional properties 'jwks' not allowed
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  backend:
+    name: console
+  allow:
+  - console:operator
+issuer:
+  url: https://issuer.example
+  jwks: x
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

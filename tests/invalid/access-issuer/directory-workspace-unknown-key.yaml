@@ -1,0 +1,9 @@
+# A key in a declared workspace does not know must fail the render, not be ignored.
+# error: at '/directory/workspaces/0': additional properties
+issuerURL: https://issuer.example
+directory:
+  workspaces:
+    - backend: google
+      admin: admin@acme.example
+      secretName: acme-key
+      domains: [acme.example]

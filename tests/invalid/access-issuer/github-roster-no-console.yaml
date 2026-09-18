@@ -1,0 +1,11 @@
+# githubRoster.enabled needs console.mount (template `fail`).
+# error: githubRoster.enabled needs console.mount
+issuerURL: https://issuer.example
+githubRoster:
+  enabled: true
+exchange:
+  clusters:
+    - name: example
+      issuer: https://oidc.example
+console:
+  mount: ""

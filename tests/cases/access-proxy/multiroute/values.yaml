@@ -1,6 +1,6 @@
-# A multi-route access-proxy exposure, for chart-lint. Two protected
-# routes on one host with different postures, each attached to an
-# HTTPRoute another chart owns -- the url-shortener / eudi shape.
+# Several protected routes on one host with different postures, each
+# attached to an HTTPRoute another chart owns: a demo path open to any
+# signed-in person, and the application behind it limited to a group.
 exposure:
   hostname: surface.example
   gateway:

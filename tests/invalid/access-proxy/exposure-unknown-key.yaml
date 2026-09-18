@@ -1,0 +1,22 @@
+# A key under exposure does not know must fail the render, not be ignored.
+# error: at '/exposure': additional properties 'host' not allowed
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  backend:
+    name: console
+  allow:
+  - console:operator
+  host: x
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

@@ -1,0 +1,5 @@
+# A key under githubRoster does not know must fail the render, not be ignored.
+# error: at '/githubRoster': additional properties
+issuerURL: https://issuer.example
+githubRoster:
+  acts_in: [acme]

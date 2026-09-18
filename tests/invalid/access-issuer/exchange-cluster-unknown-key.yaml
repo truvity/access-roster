@@ -1,0 +1,8 @@
+# A key in an exchange.clusters row does not know must fail the render, not be ignored.
+# error: at '/exchange/clusters/0': additional properties
+issuerURL: https://issuer.example
+exchange:
+  clusters:
+    - name: example
+      issuer: https://oidc.example
+      jwks: https://oidc.example/keys

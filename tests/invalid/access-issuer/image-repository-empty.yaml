@@ -1,0 +1,5 @@
+# image.repository may not be empty.
+# error: at '/image/repository': minLength
+issuerURL: https://issuer.example
+image:
+  repository: ""

@@ -1,0 +1,1000 @@
+---
+# Source: access-issuer/templates/networkpolicy.yaml
+# Ingress only. Everything with a browser arrives through the gateway;
+# these are the in-cluster callers — the proxies verifying tokens and the
+# workloads exchanging them.
+#
+# No egress rules: this service has to reach the API server, the hub and
+# whichever directory a person signs in with, and a chart that guessed at
+# that list would be a chart that breaks a login the day a provider adds
+# a hostname. The fleet's own egress policy is where that belongs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: access-issuer
+      app.kubernetes.io/instance: access-issuer
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: workloads
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: proxies
+      ports:
+        - port: 8443
+    # The GitHub controller beside it, reading the console's API with its
+    # own ServiceAccount token.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: access-issuer-github-roster
+              app.kubernetes.io/instance: access-issuer
+      ports:
+        - port: 8443
+
+---
+# Source: access-issuer/templates/github-roster.yaml
+# The controller's own account. It holds two permissions: updating its one
+# report, and updating the one Secret people's linked GitHub accounts are
+# kept in — each link's token pair rotates every time it is renewed, and
+# the renewed pair has to be written back. The Secret with the Apps' keys
+# is a mounted volume, so no other Secret is readable at all.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer-github-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: github-roster
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The account a recovery token is minted for. Deliberately bound to
+# NOTHING: it needs no permissions, because the token is a proof of
+# identity and not a way to act. Granting `create` on
+# `serviceaccounts/token` for this account is how an installation says who
+# may recover, and that grant is the whole of the access control.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: break-glass
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: access-issuer/templates/clusters-configmap.yaml
+# The clusters whose workloads may exchange a ServiceAccount token for one
+# of this issuer's, each verified against the key set that cluster
+# publishes for itself.
+#
+# Nothing here is a secret: a name and two URLs per cluster. That is the
+# whole point — the alternative is a kubeconfig per cluster held by the
+# service whose design is to hold almost no credential.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-clusters
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  clusters.yaml: |
+    clusters:
+      - name: "example-cluster"
+        issuer: "https://oidc.eu-example-1.example/id/EXAMPLE"
+        jwksUri: "https://oidc.eu-example-1.example/id/EXAMPLE/keys"
+      - name: "example-edge"
+        issuer: "https://edge.example"
+
+---
+# Source: access-issuer/templates/github-apps-catalogue-configmap.yaml
+# The GitHub Apps this deployment declares, created and installed by an
+# operator from the console. Nothing here is a secret: names, permissions
+# and grants. The keys GitHub hands over are kept by the service, in the
+# Secret <release>-github-catalogue-apps.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-github-apps-catalogue
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  catalogue.yaml: |
+    apps:
+    - description: Dependency updates
+      events:
+      - pull_request
+      grants:
+      - group: all:platform:engineer
+        permissions:
+          contents: read
+        repositories:
+        - '*'
+      id: dependency-bot
+      installation: selected
+      name: acme-dependency-bot
+      org: acme
+      permissions:
+        contents: write
+        pull_requests: write
+      public: false
+
+---
+# Source: access-issuer/templates/overlay-configmap.yaml
+# Declared workspaces (the overlay). This service reads the file at start
+# and on change; the credential of each is the named Secret, mounted
+# beside it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-overlay
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  overlay.yaml: |
+    workspaces:
+      - id: "C0acme"
+        backend: "google"
+        admin: "admin@acme.example"
+        keyFile: /var/run/access-issuer/directory/keys/acme-directory-key/service-account.json
+        serve:
+          - "acme.example"
+        syncGroups:
+          - "engineering@acme.example"
+      - backend: "google"
+        admin: "admin@globex.example"
+        keyFile: /var/run/access-issuer/directory/keys/globex-directory-key/key.json
+
+---
+# Source: access-issuer/templates/policy-configmap.yaml
+# The declared layer of the policy — the same file the hub reads, and the
+# same schema. See docs/reference/policy.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-policy
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  policy.yaml: |
+    # The version belongs to the chart, not to the values: the loader
+    # refuses a document whose version it does not know, so a policy
+    # written without one is a service that will not start.
+    version: 1
+    clients:
+      access-console:
+        kind: confidential
+        redirects:
+        - https://access.example/console/
+        requires:
+        - all:access-roster:operator
+        secret: access-console-client
+      accessctl:
+        kind: public
+        redirects:
+        - http://127.0.0.1/callback
+        requires:
+        - all:platform:engineer
+      reports:
+        kind: confidential
+        redirects:
+        - https://reports.example/oauth2/callback
+        requires:
+        - all:platform:engineer
+        secret: reports-client
+        secretKey: oidc-secret
+    groups:
+      all:access-roster:operator:
+        members:
+        - platform@acme.example
+      all:platform:engineer:
+        members:
+        - engineering@acme.example
+        - engineering@globex.example
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The one cluster-scoped permission this service ever needs, and the one
+# thing left that asks the API server anything: creating TokenReviews, so
+# that recovery can check a token proving cluster access. It reads
+# nothing.
+#
+# Workloads used to need it too. They do not any more: a
+# ServiceAccount token is verified against the key set its own cluster
+# publishes, so this service holds no access to any cluster including its
+# own. Recovery keeps it because on the day everything else is broken it
+# should depend on nothing but the cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: access-issuer-identity-tokenreview
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: access-issuer-identity-tokenreview
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: access-issuer-identity-tokenreview
+subjects:
+  - kind: ServiceAccount
+    name: issuer
+    namespace: identity
+
+---
+# Source: access-issuer/templates/github-roster.yaml
+# Update, by name, the one ConfigMap it reports into. The service creates
+# that object — `create` cannot be narrowed to a name — so this account
+# cannot create any ConfigMap, and in particular none that would read to
+# the service as a workspace record.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: access-issuer-github-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: github-roster
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["access-issuer-github-status"]
+    verbs: ["get", "update", "patch"]
+  # Created by the service, like the report, so this can name it.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["access-issuer-github-links"]
+    verbs: ["get", "update"]
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The directory store is plain Kubernetes objects in THIS namespace:
+# workspace records (ConfigMaps) and their credentials (Secrets), written
+# by this service itself. A namespaced Role and never a ClusterRole —
+# which is why this service gets a namespace of its own.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+# Source: access-issuer/templates/github-roster.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: access-issuer-github-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: github-roster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: access-issuer-github-roster
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer-github-roster
+    namespace: identity
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: access-issuer
+subjects:
+  - kind: ServiceAccount
+    name: issuer
+    namespace: identity
+
+---
+# Source: access-issuer/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+  ports:
+    - name: issuer
+      port: 8443
+      targetPort: issuer
+
+---
+# Source: access-issuer/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: access-issuer
+      app.kubernetes.io/instance: access-issuer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: access-issuer
+        app.kubernetes.io/instance: access-issuer
+      annotations:
+        # A policy change is a rollout: the file is read at start.
+        checksum/policy: 965badeda797e9dffee9caa0f389683d5697ef863a8500eb793c358efdecb3df
+        # A federated cluster is read once at start. A row added without a
+        # rollout is a cluster whose workloads go on being refused, with
+        # nothing to see but an error naming the wrong cause.
+        checksum/clusters: 8cae85f24bdedc9b3e5da732b7a1ff510b8a4df3098b3ed32f44d73b016bb903
+        # A declared workspace is read once at start, so a workspace added
+        # to the values without a rollout is one an operator can see in
+        # git and nowhere in the running service.
+        checksum/overlay: 1ce510b529806919a3f1d1ab8ba1b64e6f205eccccd8f07e45da32dcf9c39ff8
+        # The catalogue is read once at start, so an App declared without a
+        # rollout is one the console does not offer.
+        checksum/github-apps-catalogue: 851f0fb3efd9deb4d3cbc1deb7ad162cf8131e1c98fc3ea0eddc3d60927c4acf
+        example.com/scrape: "false"
+    spec:
+      serviceAccountName: issuer
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: access-issuer
+          image: "registry.example/access-roster/access-issuer:v1.2.3"
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: issuer
+              containerPort: 8443
+            - name: health
+              containerPort: 9090
+          env:
+            - name: ISSUER_URL
+              value: "https://access.example"
+            - name: PORT
+              value: "8443"
+            - name: HEALTH_PORT
+              value: "9090"
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Names this replica in the audit trail's object keys, so two
+            # replicas never write the same key.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # What an operator connected — the workspaces and their
+            # credentials, the memberships, the OAuth client it was
+            # given, the session key — kept as ConfigMaps and Secrets in
+            # this namespace. Anything else and a restart is a fresh
+            # installation.
+            - name: STORE
+              value: "kubernetes"
+            - name: REFRESH_INTERVAL
+              value: "10m"
+            - name: FRESHNESS_WINDOW
+              value: "20m"
+            - name: PROBE_INTERVAL
+              value: "2m"
+            - name: AUDIT_MAX_EVENTS
+              value: "1000"
+            - name: AUDIT_S3_BUCKET
+              value: "example-audit"
+            - name: AUDIT_S3_REGION
+              value: "eu-example-1"
+            - name: AUDIT_S3_PREFIX
+              value: "issuer/"
+            - name: AUDIT_S3_FLUSH_INTERVAL
+              value: "5s"
+            - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
+              value: "1"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability.svc:4318"
+            - name: SESSION_LIFETIME
+              value: "8h"
+            - name: LOGIN_DIRECTORY
+              value: "false"
+            - name: OVERLAY_FILE
+              value: /var/run/access-issuer/directory/overlay.yaml
+            # Where a browser reaches the console, and where this origin's
+            # root is. Everything that has to name itself to somebody else
+            # is built from the first: the admin-consent redirect URI, and
+            # the values the setup steps tell an operator to paste into a
+            # cloud console.
+            - name: PUBLIC_URL
+              value: https://access.example/console
+            # The admin-consent callback stays at the origin ROOT. It is
+            # the one flow that runs before anybody can be signed in, and
+            # its redirect URI is registered with every corporate tenant —
+            # so moving it under the console's path would mean
+            # re-registering it in each of them.
+            - name: PUBLIC_ROOT_URL
+              value: https://access.example
+            # Provisioned, never minted here — see values.yaml.
+            - name: SIGNING_KEY_FILE
+              value: /var/run/access-issuer/signing-key/tls.key
+            - name: VALKEY_ADDRESS
+              value: "valkey.example.svc:6379"
+            - name: VALKEY_TLS
+              value: "true"
+            - name: VALKEY_CLUSTER
+              value: "true"
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: valkey-password
+                  key: secret
+            - name: RELEASE_NAME
+              value: access-issuer
+            - name: GITHUB_RUNNER_TIERS
+              value: "preview,stable"
+            - name: GITHUB_APPS_CATALOGUE_FILE
+              value: /var/run/access-issuer/github-apps-catalogue.yaml
+            - name: POLICY_DIR
+              value: /var/run/access-issuer/policy
+            - name: TOKEN_LIFETIME
+              value: "30m"
+            - name: REFRESH_LIFETIME
+              value: "6h"
+            - name: HOLD_WINDOW
+              value: "2h"
+            - name: CLUSTER
+              value: "example-cluster"
+            - name: EXCHANGE_AUDIENCE
+              value: "access-exchange"
+            - name: CLUSTERS_FILE
+              value: /var/run/access-issuer/clusters.yaml
+            # Recovery is the one thing left that asks the API server, and
+            # deliberately so: on the day everything else is broken it
+            # should depend on nothing but the cluster.
+            - name: IN_CLUSTER
+              value: "true"
+            - name: CLIENT_SECRETS_DIR
+              value: /var/run/access-issuer/clients
+            - name: CONSOLE_ORIGIN
+              value: "https://access.example"
+            - name: CONSOLE_CLIENT_ID
+              value: "access-console"
+            - name: GITHUB_OWNERS
+              value: "acme,globex"
+            - name: RECOVERY_ENABLED
+              value: "true"
+            - name: RECOVERY_SERVICE_ACCOUNT
+              value: "break-glass"
+            - name: RECOVERY_AUDIENCE
+              value: "break-glass-audience"
+            # ONE credential, read two ways, because the two halves want
+            # different things of it. Signing a person in reads it from a
+            # FILE, so this service holds no RBAC to read Secrets and a
+            # compromise of it cannot become a read of every credential in
+            # the namespace. Connecting a directory reads it through the
+            # API, because that one the console can also WRITE: an
+            # installation with no client yet is bootstrapped by pasting
+            # one into Settings.
+            - name: OAUTH_CLIENT_ID_FILE
+              value: /var/run/access-issuer/oauth-client/id
+            - name: OAUTH_CLIENT_SECRET_FILE
+              value: /var/run/access-issuer/oauth-client/secret
+            - name: OAUTH_CLIENT_SECRET_NAME
+              value: "sign-in-client"
+            - name: OAUTH_CLIENT_ID_KEY
+              value: "id"
+            - name: OAUTH_CLIENT_SECRET_KEY
+              value: "secret"
+            # Served over TLS, so its cookies say so. Stated rather
+            # than left to the binary's default, which reads the same
+            # scheme off the issuer url above: a chart that says it
+            # out loud is a chart a reader can check against the route.
+            - name: SECURE_COOKIES
+              value: "true"
+            - name: LOG_LEVEL
+              value: "debug"
+          volumeMounts:
+            - name: signing-key
+              mountPath: /var/run/access-issuer/signing-key
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/access-issuer/policy
+              readOnly: true
+            - name: clusters
+              mountPath: /var/run/access-issuer/clusters.yaml
+              subPath: clusters.yaml
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: github-apps-catalogue
+              mountPath: /var/run/access-issuer/github-apps-catalogue.yaml
+              subPath: catalogue.yaml
+              readOnly: true
+            - name: overlay
+              mountPath: /var/run/access-issuer/directory/overlay.yaml
+              subPath: overlay.yaml
+              readOnly: true
+            - name: key-acme-directory-key
+              mountPath: /var/run/access-issuer/directory/keys/acme-directory-key
+              readOnly: true
+            - name: key-globex-directory-key
+              mountPath: /var/run/access-issuer/directory/keys/globex-directory-key
+              readOnly: true
+            - name: client-secrets
+              mountPath: /var/run/access-issuer/clients
+              readOnly: true
+            - name: oauth-client
+              mountPath: /var/run/access-issuer/oauth-client
+              readOnly: true
+          livenessProbe:
+            httpGet: { path: /healthz, port: health }
+          readinessProbe:
+            # Readiness follows the shared store; liveness deliberately
+            # does not. A replica that cannot reach it leaves the
+            # rotation, and the gateway answers fast instead of hanging;
+            # nothing is restarted, so one blip cannot restart the fleet.
+            #
+            # timeoutSeconds exceeds the service's own 2s check so the
+            # answer is the reason ("the session store does not answer:
+            # i/o timeout") rather than the kubelet's timeout. Three
+            # failures at ten seconds is thirty seconds of trouble before
+            # a replica leaves, which a reconnect comfortably beats.
+            httpGet: { path: /readyz, port: health }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            limits:
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+      volumes:
+        - name: signing-key
+          secret:
+            secretName: access-issuer-signing-key
+        - name: policy
+          configMap:
+            name: access-issuer-policy
+        # The root filesystem is read-only, and the directory backends
+        # want somewhere to write.
+        - name: tmp
+          emptyDir: {}
+        - name: clusters
+          configMap:
+            name: access-issuer-clusters
+        - name: github-apps-catalogue
+          configMap:
+            name: access-issuer-github-apps-catalogue
+        - name: overlay
+          configMap:
+            name: access-issuer-overlay
+        - name: key-acme-directory-key
+          secret:
+            secretName: acme-directory-key
+        - name: key-globex-directory-key
+          secret:
+            secretName: globex-directory-key
+        # One file per confidential client, named after the client id, so
+        # the service resolves a secret by reading a path and never by
+        # holding RBAC to read Secrets -- the same reason the signing key
+        # is a file.
+        - name: client-secrets
+          projected:
+            sources:
+              - secret:
+                  name: access-console-client
+                  items:
+                    - key: client-secret
+                      path: access-console
+              - secret:
+                  name: reports-client
+                  items:
+                    - key: oidc-secret
+                      path: reports
+        - name: oauth-client
+          secret:
+            secretName: sign-in-client
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - effect: NoSchedule
+          key: dedicated
+          operator: Equal
+          value: identity
+
+---
+# Source: access-issuer/templates/github-roster.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: access-issuer-github-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: github-roster
+spec:
+  # One: two controllers would make every change twice, and GitHub's answer
+  # to the second is an error that reads as a failure.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: access-issuer-github-roster
+      app.kubernetes.io/instance: access-issuer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: access-issuer-github-roster
+        app.kubernetes.io/instance: access-issuer
+      annotations:
+        # The bindings are read at start, like the service's policy.
+        checksum/policy: 965badeda797e9dffee9caa0f389683d5697ef863a8500eb793c358efdecb3df
+    spec:
+      serviceAccountName: access-issuer-github-roster
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: github-roster
+          image: "registry.example/access-roster/github-roster:v1.2.3"
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: RELEASE_NAME
+              value: access-issuer
+            - name: POLICY_DIR
+              value: /var/run/github-roster/policy
+            - name: CONSOLE_URL
+              value: "http://access-issuer.identity.svc:8443/console"
+            - name: TOKEN_FILE
+              value: /var/run/secrets/github-roster/token
+            - name: APPS_DIR
+              value: /var/run/github-roster/apps
+            - name: INTERVAL
+              value: "5m"
+            - name: ENABLED_ORGS
+              value: "acme,globex"
+            - name: LOG_LEVEL
+              value: "debug"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability.svc:4318"
+          volumeMounts:
+            - name: policy
+              mountPath: /var/run/github-roster/policy
+              readOnly: true
+            - name: token
+              mountPath: /var/run/secrets/github-roster
+              readOnly: true
+            - name: apps
+              mountPath: /var/run/github-roster/apps
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+      volumes:
+        - name: policy
+          configMap:
+            name: access-issuer-policy
+        # The token the console verifies, for the audience it accepts a
+        # workload's token for. Rotated by the kubelet; the controller reads
+        # the file on every call.
+        - name: token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: access-exchange
+                  expirationSeconds: 3600
+                  path: token
+        # One file per connected organisation. Optional: before anything is
+        # connected there may be nothing, and the controller reports each
+        # bound organisation as not connected rather than failing to start.
+        - name: apps
+          secret:
+            secretName: access-issuer-github-apps
+            optional: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - effect: NoSchedule
+          key: dedicated
+          operator: Equal
+          value: identity
+
+---
+# Source: access-issuer/templates/httproute.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: access-issuer-tls
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: access-issuer-tls
+  dnsNames:
+    - "access.example"
+  issuerRef:
+    name: "web-ca"
+    kind: "Issuer"
+    group: cert-manager.io
+
+---
+# Source: access-issuer/templates/signing-key.yaml
+# The signing key, issued by cert-manager.
+#
+# The certificate is a by-product: only the key is used. cert-manager is
+# here because it generates the key in the cluster, keeps it out of every
+# other system, and rotates it on a schedule the platform already
+# understands — none of which is true of a key this service minted for
+# itself, and the last of which is the reason it does not.
+#
+# `rotationPolicy: Always` makes a renewal a *new key*, which is the
+# point: a renewed certificate over the same key would rotate nothing.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: access-issuer-signing-key
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: access-issuer-signing-key
+  commonName: access-issuer
+  duration: "4380h"
+  renewBefore: "360h"
+  privateKey:
+    algorithm: RSA
+    size: 4096
+    encoding: PKCS1
+    rotationPolicy: Always
+  issuerRef:
+    name: "signing-issuer"
+    kind: "Issuer"
+    group: cert-manager.io
+
+---
+# Source: access-issuer/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  gatewayClassName: "shared"
+  listeners:
+    - name: issuer
+      protocol: HTTPS
+      port: 443
+      hostname: "access.example"
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - "consoles"
+                  - "identity"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: access-issuer-tls
+
+---
+# Source: access-issuer/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: access-issuer
+      sectionName: issuer
+  hostnames:
+    - "access.example"
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: "/console/"
+            statusCode: 302
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: access-issuer
+          port: 8443
+          weight: 1
+
+---
+# Source: access-issuer/templates/httproute.yaml
+# The console's own route, and the reason it is a SEPARATE object rather
+# than another rule above: a gateway policy attaches to an HTTPRoute, so
+# anything put in front of the console would otherwise also sit in front
+# of /token, /keys and discovery. Every relying party in the estate would
+# be asked to sign in to fetch a key set.
+#
+# It renders whether or not anything attaches to it. An empty route costs
+# a few lines of YAML; discovering at cutover that there is nothing to
+# attach to costs an evening, and the alternative in that moment —
+# attaching to the catch-all — is the outage described above.
+#
+# The path is NOT rewritten. The merged service strips the prefix
+# itself, so a gateway that stripped it too would hand the console a path
+# it never serves.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: access-issuer-console
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: access-issuer
+      sectionName: issuer
+  hostnames:
+    - "access.example"
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: "/console"
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: "/console/"
+            statusCode: 302
+    - matches:
+        - path:
+            type: PathPrefix
+            value: "/console/"
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: access-issuer
+          port: 8443
+          weight: 1

@@ -1,0 +1,5 @@
+# audit.maxEvents has a minimum of 1.
+# error: at '/audit/maxEvents': minimum
+issuerURL: https://issuer.example
+audit:
+  maxEvents: 0

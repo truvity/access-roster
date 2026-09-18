@@ -1,0 +1,5 @@
+# lifetimes.refresh is a Go duration.
+# error: at '/lifetimes/refresh': '12' does not match pattern
+issuerURL: https://issuer.example
+lifetimes:
+  refresh: "12"

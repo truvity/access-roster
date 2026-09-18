@@ -1,0 +1,22 @@
+# exposure.proxyPrefix is an absolute path.
+# error: at '/exposure/proxyPrefix': 'oauth2' does not match pattern
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  backend:
+    name: console
+  allow:
+  - console:operator
+  proxyPrefix: oauth2
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

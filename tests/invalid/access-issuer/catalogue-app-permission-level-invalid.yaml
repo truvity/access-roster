@@ -1,0 +1,8 @@
+# A permission level GitHub does not have fails the render, not the pod.
+# error: at '/githubApps/catalogue/0/permissions/contents': value must be one of
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {contents: owner}

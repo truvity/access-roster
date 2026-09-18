@@ -1,0 +1,5 @@
+# listeners.healthPort has a minimum of 1.
+# error: at '/listeners/healthPort': minimum
+issuerURL: https://issuer.example
+listeners:
+  healthPort: 0

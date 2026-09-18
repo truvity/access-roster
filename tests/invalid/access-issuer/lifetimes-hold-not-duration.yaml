@@ -1,0 +1,5 @@
+# lifetimes.hold is a Go duration.
+# error: at '/lifetimes/hold': '4hours' does not match pattern
+issuerURL: https://issuer.example
+lifetimes:
+  hold: "4hours"

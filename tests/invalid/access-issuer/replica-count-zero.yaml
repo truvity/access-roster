@@ -1,0 +1,4 @@
+# replicaCount has a minimum of 1.
+# error: at '/replicaCount': minimum
+issuerURL: https://issuer.example
+replicaCount: 0

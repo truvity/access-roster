@@ -1,0 +1,4 @@
+# An unknown top-level key must fail the render, not be ignored.
+# error: additional properties 'bogusKey' not allowed
+issuerURL: https://issuer.example
+bogusKey: 1

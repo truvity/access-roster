@@ -1,0 +1,5 @@
+# A key under github does not know must fail the render, not be ignored.
+# error: at '/github': additional properties
+issuerURL: https://issuer.example
+github:
+  organisations: [acme]

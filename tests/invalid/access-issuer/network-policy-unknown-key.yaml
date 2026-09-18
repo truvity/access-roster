@@ -1,0 +1,5 @@
+# A key under networkPolicy does not know must fail the render, not be ignored.
+# error: at '/networkPolicy': additional properties
+issuerURL: https://issuer.example
+networkPolicy:
+  enable: true
