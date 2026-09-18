@@ -1,0 +1,24 @@
+# proxy.image.repository may not be empty.
+# error: at '/proxy/image/repository': minLength
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  backend:
+    name: console
+  allow:
+  - console:operator
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie
+proxy:
+  image:
+    repository: ''

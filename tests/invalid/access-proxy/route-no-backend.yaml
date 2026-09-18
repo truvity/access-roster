@@ -1,0 +1,19 @@
+# A single route with no backend.name and no attachRouteName has nothing to route to (template `required`).
+# error: route "app" needs backend.name
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  allow:
+  - console:operator
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

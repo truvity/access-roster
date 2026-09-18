@@ -1,0 +1,9 @@
+# A route.parentRefs entry needs a name.
+# error: at '/route/parentRefs/0': missing property 'name'
+issuerURL: https://issuer.example
+route:
+  host: issuer.example
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      namespace: gateway-system

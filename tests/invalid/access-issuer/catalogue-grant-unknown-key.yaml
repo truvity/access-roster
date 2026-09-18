@@ -1,0 +1,13 @@
+# A key in a catalogue grant does not know must fail the render, not be ignored.
+# error: at '/githubApps/catalogue/0/grants/0': additional properties
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {contents: write}
+      grants:
+        - group: all:platform:engineer
+          repositories: ["*"]
+          permissions: {contents: read}
+          ttl: 1h

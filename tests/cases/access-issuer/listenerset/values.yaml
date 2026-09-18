@@ -1,0 +1,11 @@
+# route.parentRefs: both of the issuer's routes attach to a parent the
+# platform owns, written out in full, and the chart renders no Gateway
+# and no TLS Certificate of its own beside it.
+issuerURL: https://issuer.example
+route:
+  host: issuer.example
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: issuer
+      namespace: gateway-system

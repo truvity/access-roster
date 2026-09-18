@@ -1,0 +1,24 @@
+# An exposure.routes entry needs a name.
+# error: at '/exposure/routes/0': missing property 'name'
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  routes:
+  - attachRouteName: surface-demo
+    posture: authenticated
+  - name: app
+    attachRouteName: surface-app
+    allow:
+    - surface:operator
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

@@ -1,0 +1,8 @@
+# A catalogue App id is [a-z0-9-], at most 32.
+# error: at '/githubApps/catalogue/0/id': 'Releases' does not match pattern
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: Releases
+      org: acme
+      permissions: {contents: write}

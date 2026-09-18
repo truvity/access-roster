@@ -1,0 +1,5 @@
+# A key under exchange does not know must fail the render, not be ignored.
+# error: at '/exchange': additional properties
+issuerURL: https://issuer.example
+exchange:
+  audiences: [example]

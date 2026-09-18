@@ -1,0 +1,6 @@
+# audit.s3.flushInterval is a Go duration.
+# error: at '/audit/s3/flushInterval': '10' does not match pattern
+issuerURL: https://issuer.example
+audit:
+  s3:
+    flushInterval: "10"

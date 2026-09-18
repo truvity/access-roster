@@ -1,0 +1,11 @@
+# The issuer on its own host, with the console at its default mount: the
+# chart's own Gateway (routes from the same namespace only) and TLS
+# Certificate, the issuer's route, and the console's separate route -- a
+# gateway policy attaches to a route, so anything put in front of the
+# console must not also sit in front of /token and /keys. The console's
+# prefix is not rewritten away: the service strips it itself.
+issuerURL: https://access.example
+route:
+  host: access.example
+console:
+  mount: /console

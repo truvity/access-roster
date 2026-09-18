@@ -1,0 +1,6 @@
+# signingKey.certificate.renewBefore is a Go duration.
+# error: at '/signingKey/certificate/renewBefore': '30d' does not match pattern
+issuerURL: https://issuer.example
+signingKey:
+  certificate:
+    renewBefore: 30d

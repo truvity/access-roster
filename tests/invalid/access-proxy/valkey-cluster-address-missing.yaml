@@ -1,0 +1,21 @@
+# session.valkey.address is required in cluster mode too (template `required`).
+# error: session.valkey.address is required
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  backend:
+    name: console
+  allow:
+  - console:operator
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    cluster: true
+  cookieSecret:
+    name: console-cookie

@@ -4,6 +4,8 @@
 # Disable go.work (a parent workspace interferes with standalone module builds)
 export GOWORK := "off"
 
+charts := "access-issuer access-proxy"
+
 # Format all Go files
 fmt:
     golangci-lint fmt ./...
@@ -90,283 +92,75 @@ tidy:
 clean:
     rm -rf dist/ frontend/dist/ ts/dist/ coverage.out
 
-# Render the chart with the shipped values plus a fully-featured set;
-# prove the schema rejects an unknown key (values.schema.json is the
-# contract — a typo must fail the render, not be silently ignored).
+# Lint both charts, compare their golden renders, and render every
+# negative fixture.
+#
+# The schema is part of the lint: an unknown key must fail the render,
+# not be silently ignored. Everything a schema cannot express -- a value
+# the service cannot start without, a posture that admits nobody, one
+# route described twice -- is refused by the chart's own render-time
+# validation. Every rule of either kind has a fixture under
+# tests/invalid/<chart>/ that must FAIL, and fail for the reason on its
+# second line (`# error: ...`): a fixture that fails for some other
+# reason proves nothing about its own rule.
+#
+# The golden renders (tests/cases -> tests/golden, `just golden` to
+# regenerate) pin every byte of output. The checks after them are the
+# properties a regenerated golden could lose without anyone noticing in
+# review.
 chart-lint:
-    # Bare first: the shipped values must satisfy their own schema, or
-    # anyone who lints the chart as published gets a failure.
-    helm lint charts/access-issuer
-    helm lint charts/access-issuer \
-        --set issuerURL=https://issuer.example
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://issuer.example >/dev/null
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://issuer.example \
-        --set route.host=issuer.example \
-        --set networkPolicy.enabled=true \
-        --set 'networkPolicy.clients[0]=example-ns' \
-        --set oauthClient.secret.name=oauth-client \
-        --set signingKey.existingSecret=delivered-by-eso \
-        --set valkey.address=valkey.example.svc:6379 \
-        --set 'policy.groups.platform.members[0]=platform@example.com' >/dev/null
-    # One service (INF-691). The chart used to render an issuer that
-    # dialled a hub; it now renders the whole of access-roster. Three
-    # things have to be true of that render, and each of them was a way
-    # the split could come back by accident:
-    #
-    #   - nothing dials a hub any more, and no ServiceAccount token is
-    #     projected for one;
-    #   - the directory's own store is wired, so an operator's connected
-    #     workspaces survive a restart;
-    #   - the console is told where it sits, because the prefix the
-    #     gateway used to strip is also what every link the console hands
-    #     a browser has to carry.
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example \
-        --set route.host=access.example \
-        --set 'directory.workspaces[0].backend=google' \
-        --set 'directory.workspaces[0].admin=admin@example.com' \
-        --set 'directory.workspaces[0].secretName=example-key' \
-        > /tmp/access-issuer-merged.yaml
-    ! grep -q 'HUB_ADDRESS\|HUB_TOKEN_FILE\|hub-token' /tmp/access-issuer-merged.yaml
-    grep -q 'name: STORE' /tmp/access-issuer-merged.yaml
-    grep -q 'value: https://access.example/console$' /tmp/access-issuer-merged.yaml
-    grep -q 'value: https://access.example$' /tmp/access-issuer-merged.yaml
-    grep -q 'name: OVERLAY_FILE' /tmp/access-issuer-merged.yaml
-    grep -q 'secretName: example-key' /tmp/access-issuer-merged.yaml
-    # Runner tiers reach the service as one variable, and none renders
-    # nothing: a deployment that declares no tier creates no runner App.
-    ! grep -q 'GITHUB_RUNNER_TIERS' /tmp/access-issuer-merged.yaml
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example \
-        --set 'githubRunnerApps.tiers={preview,stable}' \
-        | grep -A1 'name: GITHUB_RUNNER_TIERS' | grep -q 'value: "preview,stable"'
-    # "/console" and "/console/" are the same place, and the chart used
-    # to render the second as a route to "/console//" -- a path the
-    # console does not serve, from a value nothing rejects. Our own
-    # configuration writes it both ways, so both must render the same.
-    for mount in /console /console/; do \
-        helm template access-issuer charts/access-issuer \
-            --set issuerURL=https://access.example \
-            --set route.host=access.example \
-            --set console.mount="$mount" \
-            --set console.client=directory-console \
-            > "/tmp/access-issuer-mount$(echo "$mount" | tr / -).yaml"; \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for chart in {{ charts }}; do
+      # Bare first: the shipped values must satisfy their own schema, or
+      # anyone who lints the chart as published gets a failure.
+      helm lint "charts/$chart"
+      helm lint "charts/$chart" -f "tests/cases/$chart/minimal/values.yaml"
+      # `if`, not `!`: under `set -e` a negated command that fails does
+      # not stop the script, so `! cmd` would check nothing.
+      if helm template x "charts/$chart" --set bogusKey=1 >/dev/null 2>&1; then
+        echo "$chart: an unknown key rendered" >&2
+        exit 1
+      fi
+      for values in tests/invalid/"$chart"/*.yaml; do
+        if err="$(helm template invalid "charts/$chart" -f "$values" 2>&1 >/dev/null)"; then
+          echo "RENDERED BUT SHOULD HAVE FAILED: $values" >&2
+          exit 1
+        fi
+        want="$(sed -n '2s/^# error: //p' "$values")"
+        if [ -z "$want" ]; then
+          echo "NO '# error:' LINE: $values" >&2
+          exit 1
+        fi
+        if ! grep -qF -- "$want" <<<"$err"; then
+          printf 'FAILED FOR ANOTHER REASON: %s\n  want: %s\n  got:  %s\n' "$values" "$want" "$err" >&2
+          exit 1
+        fi
+      done
+      echo "$chart: schema and $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
     done
-    diff /tmp/access-issuer-mount-console.yaml /tmp/access-issuer-mount-console-.yaml
-    ! grep -q 'console//' /tmp/access-issuer-mount-console-.yaml
-    # The namespaced Role comes with the Kubernetes store and only with
-    # it: a deployment keeping nothing needs no permission to write.
-    test "$(grep -c '^kind: Role$' /tmp/access-issuer-merged.yaml)" = "1"
-    test "$(helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example --set directory.store=memory \
-        | grep -c '^kind: Role$')" = "0"
-    # The console is not mounted without a mount, and PUBLIC_URL then has
-    # nothing to say.
-    ! helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example --set route.host=access.example \
-        --set console.mount= | grep -q 'PUBLIC_URL'
-
-    # The console gets its own HTTPRoute, and that is not tidiness: a
-    # gateway policy attaches to a ROUTE, so anything put in front of the
-    # console on a shared route would also sit in front of /token, /keys
-    # and discovery -- every relying party in the estate asked to sign in
-    # to fetch a key set. It renders whether or not anything attaches to
-    # it, because discovering at cutover that there is nothing to attach
-    # to leaves only the bad option.
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example --set route.host=access.example \
-        > /tmp/access-issuer-console-route.yaml
-    test "$(grep -c '^kind: HTTPRoute$' /tmp/access-issuer-console-route.yaml)" = "2"
-    grep -q 'name: access-issuer-console$' /tmp/access-issuer-console-route.yaml
-    grep -q 'value: "/console/"' /tmp/access-issuer-console-route.yaml
-    # The prefix is NOT rewritten away: the service strips it itself, so a
-    # gateway that stripped it too would hand the console a path it never
-    # serves.
-    ! grep -q 'ReplacePrefixMatch' /tmp/access-issuer-console-route.yaml
-    # No console, no second route.
-    test "$(helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example --set route.host=access.example \
-        --set console.mount= | grep -c '^kind: HTTPRoute$')" = "1"
-
-    # The console signs people in as a CLIENT of the issuer (INF-701),
-    # which is what makes one binary mean one door. No client declared,
-    # no entry -- and then the console keeps a sign-in page of its own,
-    # which in a deployment with an issuer beside it is a second door.
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example --set console.client=directory-console \
-        | grep -q 'CONSOLE_CLIENT_ID'
-    ! helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example | grep -q 'CONSOLE_CLIENT_ID'
-
-    # Federated clusters (INF-692). No row is a secret, and the point of
-    # the render is that the service ends up holding no cluster access at
-    # all: IN_CLUSTER is recovery's, never a workload's.
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example \
-        --set 'exchange.clusters[0].name=devel' \
-        --set 'exchange.clusters[0].issuer=https://oidc.eks.example/id/ABC' \
-        > /tmp/access-issuer-federated.yaml
-    grep -q 'name: CLUSTERS_FILE' /tmp/access-issuer-federated.yaml
-    grep -q 'checksum/clusters:' /tmp/access-issuer-federated.yaml
-    grep -q 'issuer: "https://oidc.eks.example/id/ABC"' /tmp/access-issuer-federated.yaml
-    # No cluster declared, no file and no ConfigMap: a mount of nothing is
-    # a pod that will not start.
-    ! helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example | grep -q 'CLUSTERS_FILE'
-    # A catalogue of GitHub Apps is a file the service reads once at start:
-    # rendered, mounted, named by one variable, and rolled out on change.
-    helm template t charts/access-issuer -f hack/access-issuer-catalogue.yaml > /tmp/access-issuer-catalogue.yaml
-    grep -q 'name: t-access-issuer-github-apps-catalogue$' /tmp/access-issuer-catalogue.yaml
-    grep -q 'checksum/github-apps-catalogue:' /tmp/access-issuer-catalogue.yaml
-    grep -A1 'name: GITHUB_APPS_CATALOGUE_FILE' /tmp/access-issuer-catalogue.yaml | grep -q 'value: /var/run/access-issuer/github-apps-catalogue.yaml'
-    test "$(yq 'select(.kind == "ConfigMap" and .metadata.name == "t-access-issuer-github-apps-catalogue") | .data["catalogue.yaml"] | from_yaml | .apps[0].grants[0].permissions.contents' /tmp/access-issuer-catalogue.yaml)" = "read"
-    # No catalogue, no file: a mount of nothing is a pod that will not start.
-    ! helm template t charts/access-issuer --set issuerURL=https://access.example | grep -q 'GITHUB_APPS_CATALOGUE_FILE\|github-apps-catalogue'
-    # A permission level GitHub does not have fails the render, not the pod.
-    ! helm template t charts/access-issuer -f hack/access-issuer-catalogue.yaml \
-        --set 'githubApps.catalogue[1].permissions.contents=owner' >/dev/null 2>&1
-    # The TokenReview permission belongs to recovery and to nothing else.
-    test "$(helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example --set recovery.enabled=false \
-        | grep -c 'tokenreviews')" = "0"
-    test "$(helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://access.example --set recovery.enabled=false \
-        | grep -c 'name: IN_CLUSTER')" = "0"
-
-    # route.sharedWith (INF-687): the other half of the console's
-    # pathPrefix. Empty keeps `from: Same`; naming a namespace renders a
-    # Selector over it AND this issuer's own -- dropping its own would
-    # lock this chart's own HTTPRoute out of the Gateway it just rendered.
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://issuer.example \
-        --set route.host=issuer.example --namespace issuer-ns \
-        > /tmp/access-issuer-noshare.yaml
-    grep -q 'from: Same' /tmp/access-issuer-noshare.yaml
-    ! grep -q 'from: Selector' /tmp/access-issuer-noshare.yaml
-    helm template access-issuer charts/access-issuer \
-        --set issuerURL=https://issuer.example \
-        --set route.host=issuer.example --set 'route.sharedWith[0]=hub-ns' --namespace issuer-ns \
-        > /tmp/access-issuer-shared.yaml
-    grep -q 'from: Selector' /tmp/access-issuer-shared.yaml
-    ! grep -q 'from: Same' /tmp/access-issuer-shared.yaml
-    grep -q '"hub-ns"' /tmp/access-issuer-shared.yaml
-    grep -q '"issuer-ns"' /tmp/access-issuer-shared.yaml
-    ! helm template access-issuer charts/access-issuer --set bogusKey=1 >/dev/null 2>&1
-    # The two settings without which the service refuses to start must
-    # fail the render too, not the pod.
-    ! helm template access-issuer charts/access-issuer >/dev/null 2>&1
-
-    # access-proxy: the shipped values must satisfy their own schema, and
-    # every guard that exists to stop a working-looking install that locks
-    # everyone out must fail the RENDER.
-    helm lint charts/access-proxy
-    helm template access-proxy charts/access-proxy \
-        --set exposure.hostname=console.example \
-        --set exposure.gateway.name=internal --set exposure.gateway.namespace=envoy-gateway-system \
-        --set exposure.posture=authenticated --set exposure.attachRouteName=console \
-        --set issuer.url=https://issuer.example --set client.secret.name=client \
-        --set session.cookieSecret.name=cookie --set session.valkey.address=valkey.example.svc:6379 >/dev/null
-    # `groups` with an empty allow-list renders a policy that admits
-    # NOBODY. `required` does not catch an empty list.
-    ! helm template access-proxy charts/access-proxy \
-        --set exposure.hostname=console.example \
-        --set exposure.gateway.name=internal --set exposure.gateway.namespace=envoy-gateway-system \
-        --set exposure.backend.name=console \
-        --set issuer.url=https://issuer.example --set client.secret.name=client \
-        --set session.cookieSecret.name=cookie --set session.valkey.address=valkey.example.svc:6379 >/dev/null 2>&1
-    ! helm template access-proxy charts/access-proxy --set bogusKey=1 >/dev/null 2>&1
-    # Several protected routes on one host, each attaching to a route
-    # something else owns -- the shape a business surface needs, where a
-    # demo path is open to any employee and the app behind it is not.
-    helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml >/dev/null
-    # Routes can attach to a ListenerSet instead of a Gateway listener: the
-    # given parents land on BOTH routes (the proxy's own prefix and the
-    # console's), and no Gateway parent is invented beside them.
-    helm template access-proxy charts/access-proxy -f hack/access-proxy-listenerset.yaml > /tmp/access-proxy-listenerset.yaml
-    test "$(grep -c '^      kind: ListenerSet$' /tmp/access-proxy-listenerset.yaml)" = "2"
-    ! grep -q '^      kind: Gateway$' /tmp/access-proxy-listenerset.yaml
-    # Every field of the parent, not only its kind: a dropped group or a
-    # changed name or namespace is a different parent.
-    test "$(yq -o=json -I=0 'select(.kind == "HTTPRoute") | .spec.parentRefs' /tmp/access-proxy-listenerset.yaml | sort -u)" = '[{"group":"gateway.networking.k8s.io","kind":"ListenerSet","name":"console","namespace":"gateway-system"}]'
-    ! helm template access-proxy charts/access-proxy -f hack/access-proxy-listenerset.yaml \
-        --set 'exposure.parentRefs[0].name=' >/dev/null 2>&1
-    # Describing one route twice, once with the single-route fields and
-    # once in the list, silently ignores one of them -- and the ignored
-    # one would be the protection somebody thought they configured.
-    ! helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml \
-        --set exposure.backend.name=app >/dev/null 2>&1
-    # EVERY policy must ask Envoy for the session cookie. An HTTP ext_authz
-    # service is sent only Host, Method, Path, Content-Length and
-    # Authorization by default, and a policy missing `cookie` loops
+    hack/golden.sh
+    # "/console" and "/console/" are the same place: both spellings must
+    # render the same, and never a route to "/console//".
+    diff tests/golden/access-issuer/route.yaml tests/golden/access-issuer/route-trailing-slash.yaml
+    if grep -l 'console//' tests/golden/access-issuer/*.yaml; then exit 1; fi
+    # EVERY SecurityPolicy must ask Envoy for the session cookie. An HTTP
+    # ext_authz service is sent only Host, Method, Path, Content-Length
+    # and Authorization by default, and a policy missing `cookie` loops
     # forever through a login that succeeds and is never seen again.
-    helm template access-proxy charts/access-proxy -f hack/access-proxy-multiroute.yaml > /tmp/access-proxy-routes.yaml
-    test "$(grep -c '^kind: SecurityPolicy$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^      - cookie$' /tmp/access-proxy-routes.yaml)"
-    # Every backendRefs entry must write `weight` out. ArgoCD normalises
-    # core-API defaults but NOT CRDs, so a field the API server fills in
-    # is a PERMANENT OutOfSync -- which counts unhealthy and gates every
-    # later wave. One `weight` per backend, in routes and policies alike.
-    test "$(grep -c '^      backendRefs:$' /tmp/access-proxy-routes.yaml)" = "$(grep -c '^          weight: 1$' /tmp/access-proxy-routes.yaml)"
-    test "$(helm template t charts/access-issuer --set issuerURL=https://i.example --set 'policy.groups.g.members[0]=a@example.com' | grep -c 'checksum/policy:')" = "1"
-    # route.parentRefs moves the issuer's routes to a parent the platform
-    # owns (a ListenerSet): both routes carry exactly that parent, and the
-    # chart renders no Gateway or TLS Certificate of its own beside it.
-    helm template t charts/access-issuer --set issuerURL=https://iss.example --set route.host=iss.example \
-        --set 'route.parentRefs[0].group=gateway.networking.k8s.io' --set 'route.parentRefs[0].kind=ListenerSet' \
-        --set 'route.parentRefs[0].name=issuer' --set 'route.parentRefs[0].namespace=gateway-system' > /tmp/access-issuer-listenerset.yaml
-    test "$(yq -o=json -I=0 'select(.kind == "HTTPRoute") | .spec.parentRefs' /tmp/access-issuer-listenerset.yaml | sort -u)" = '[{"group":"gateway.networking.k8s.io","kind":"ListenerSet","name":"issuer","namespace":"gateway-system"}]'
-    test "$(grep -c '^kind: HTTPRoute$' /tmp/access-issuer-listenerset.yaml)" = "2"
-    ! grep -q '^kind: Gateway$' /tmp/access-issuer-listenerset.yaml
-    ! grep -q 'name: t-access-issuer-tls$' /tmp/access-issuer-listenerset.yaml
-    # The issuer's root: a bare GET of the host lands somewhere useful
-    # when a console shares it, and 404s honestly when one does not.
-    helm template t charts/access-issuer --set issuerURL=https://a.example \
-        --set route.host=a.example \
-        --set route.rootRedirect=/console/ | grep -q 'replaceFullPath: "/console/"'
-    # Said with console.mount emptied, because the console's own route
-    # always redirects its bare prefix to the trailing slash — a different
-    # rule on a different object, and not the root redirect under test.
-    ! helm template t charts/access-issuer --set issuerURL=https://a.example \
-        --set route.host=a.example --set console.mount= \
-        | grep -q 'RequestRedirect'
-    # CI identity is opt-in by naming the organisations. A chart that
-    # rendered GITHUB_OWNERS from nothing would admit every repository on
-    # GitHub, because anybody may run a workflow in their own and get a
-    # valid token: the verifier refuses to run without the list, and the
-    # chart must not invent one.
-    ! helm template t charts/access-issuer --set issuerURL=https://iss.example | grep -q GITHUB_OWNERS
-    helm template t charts/access-issuer --set issuerURL=https://iss.example --set 'github.owners={globex}' | grep -q GITHUB_OWNERS
-    # The GitHub controller (INF-697): off unless asked for, refused
-    # without the cluster row the service verifies its token against, and
-    # never selected by the service's own Service — which would send logins
-    # to a process with no listener.
-    ! helm template t charts/access-issuer --set issuerURL=https://iss.example | grep -q github-roster
-    ! helm template t charts/access-issuer --set issuerURL=https://iss.example --set githubRoster.enabled=true >/dev/null 2>&1
-    helm template t charts/access-issuer --set issuerURL=https://iss.example \
-        --set githubRoster.enabled=true --set 'githubRoster.actsIn={globex}' \
-        --set networkPolicy.enabled=true \
-        --set 'exchange.clusters[0].name=kernel' --set 'exchange.clusters[0].issuer=https://oidc.example' \
-        --set 'exchange.clusters[0].jwksUri=https://oidc.example/keys' > /tmp/access-issuer-github.yaml
-    grep -q 'value: "http://t-access-issuer.default.svc:8080/console"' /tmp/access-issuer-github.yaml
-    grep -q 'value: "globex"' /tmp/access-issuer-github.yaml
-    grep -q 'secretName: t-access-issuer-github-apps' /tmp/access-issuer-github.yaml
-    grep -q 'resourceNames: \["t-access-issuer-github-status"\]' /tmp/access-issuer-github.yaml
-    # The one Secret the controller may touch is the links', by name.
-    grep -q 'resourceNames: \["t-access-issuer-github-links"\]' /tmp/access-issuer-github.yaml
-    [ "$(grep -c 'resources: \["secrets"\]' /tmp/access-issuer-github.yaml)" = 1 ]
-    grep -q 'app.kubernetes.io/name: access-issuer-github-roster' /tmp/access-issuer-github.yaml
-    helm template t charts/access-issuer --set issuerURL=https://iss.example --set githubRoster.enabled=true \
-        --set 'exchange.clusters[0].name=kernel' --set 'exchange.clusters[0].issuer=https://oidc.example' \
-        --set 'exchange.clusters[0].jwksUri=https://oidc.example/keys' \
-        --show-only templates/service.yaml > /tmp/access-issuer-github-service.yaml
-    grep -q 'app.kubernetes.io/name: access-issuer$' /tmp/access-issuer-github-service.yaml
-    ! grep -q github-roster /tmp/access-issuer-github-service.yaml
-    helm template t charts/access-issuer --set issuerURL=https://iss.example --set githubRoster.enabled=true \
-        --set networkPolicy.enabled=true \
-        --set 'exchange.clusters[0].name=kernel' --set 'exchange.clusters[0].issuer=https://oidc.example' \
-        --set 'exchange.clusters[0].jwksUri=https://oidc.example/keys' \
-        --show-only templates/networkpolicy.yaml | grep -q 'app.kubernetes.io/name: access-issuer-github-roster'
+    for golden in tests/golden/access-proxy/*.yaml; do
+      test "$(grep -c '^kind: SecurityPolicy$' "$golden")" = "$(grep -c '^      - cookie$' "$golden")"
+    done
+    # Every backendRefs entry writes `weight` out. A desired/live
+    # comparison normalises core-API defaults but not CRDs, so a field the
+    # API server fills in is a permanent diff. Routes and policies alike.
+    for golden in tests/golden/*/*.yaml; do
+      test "$(yq ea '[.. | select(tag == "!!map" and has("backendRefs")) | .backendRefs[] | select(has("weight") | not)] | length' "$golden")" = "0"
+    done
+
+# Regenerate the golden renders -- review the diff before committing.
+golden:
+    hack/golden.sh update
 
 # Install every toolchain dependency, on both sides. Separate from the
 # builds because `npm ci` is the slow part and it does not change

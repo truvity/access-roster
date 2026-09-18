@@ -1,0 +1,25 @@
+# An exposure.routes entry's name may not be empty.
+# error: at '/exposure/routes/0/name': minLength
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  routes:
+  - name: ''
+    attachRouteName: surface-demo
+    posture: authenticated
+  - name: app
+    attachRouteName: surface-app
+    allow:
+    - surface:operator
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

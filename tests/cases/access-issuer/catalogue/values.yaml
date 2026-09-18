@@ -1,6 +1,8 @@
-# A catalogue of GitHub Apps, for chart-lint: one App with a grant, one
-# with defaults. Rendered, then parsed by the service's own loader in
-# internal/app's tests.
+# A catalogue of GitHub Apps: one App with a grant, one with defaults.
+# Rendered to a mounted file named by one variable and rolled out on
+# change; the same values are parsed by the service's own loader in
+# internal/githubapp/catalogue's tests, so the schema and the parser
+# describe one shape.
 issuerURL: https://access.example
 githubApps:
   catalogue:

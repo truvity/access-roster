@@ -1,0 +1,10 @@
+# A route.parentRefs entry's name may not be empty (the template refuses it too, as a backstop).
+# error: at '/route/parentRefs/0/name': minLength
+issuerURL: https://issuer.example
+route:
+  host: issuer.example
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: ""
+      namespace: gateway-system

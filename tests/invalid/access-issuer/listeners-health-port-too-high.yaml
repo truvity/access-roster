@@ -1,0 +1,5 @@
+# listeners.healthPort has a maximum of 65535.
+# error: at '/listeners/healthPort': maximum
+issuerURL: https://issuer.example
+listeners:
+  healthPort: 70000

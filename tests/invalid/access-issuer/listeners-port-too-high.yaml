@@ -1,0 +1,5 @@
+# listeners.port has a maximum of 65535.
+# error: at '/listeners/port': maximum
+issuerURL: https://issuer.example
+listeners:
+  port: 65536

@@ -133,6 +133,37 @@ about and prints a table:
 | consumer authentication | a projected token from an allow-listed ServiceAccount is accepted; a wrong audience, a foreign ServiceAccount and no token are refused |
 | policy | day one end to end: admin → connect → membership from the picker → directory sign-in → operator → admin off; a suspended account cannot sign in; a declared membership cannot be removed; two fragments with a conflicting scalar fail to load; Explain names the membership behind every group held |
 
+## Charts
+
+Both charts are tested without a cluster, in `just chart-lint`:
+
+- **Golden renders.** Every `tests/cases/<chart>/<case>/values.yaml` is
+  rendered with `helm template` (release name = chart name, namespace
+  from an optional `namespace` file beside it) and compared byte for
+  byte with `tests/golden/<chart>/<case>.yaml` by `hack/golden.sh`. A
+  template change therefore arrives as a reviewable diff of what the
+  cluster will be sent. Each chart has a `minimal` case and a `full` case
+  that sets every value; the other cases take the other side of each
+  switch (`headless`, `listenerset`, `attach`, `multiroute`, ...). After
+  changing a template or a case, run `just golden` and review the diff
+  before committing it.
+- **Negative fixtures.** `tests/invalid/<chart>/<rule>.yaml`, one per
+  refusal: every schema rule (an unknown key at each level, `required`,
+  `enum`, `pattern`, `minLength` and the rest) and every render-time
+  `required` or `fail` in a template. Each is otherwise valid, says on
+  its first line why it must fail, and on its second (`# error: ...`)
+  what the refusal says. The recipe renders every one and fails if one
+  renders, or fails for any other reason. A new rule gets a fixture in
+  the same change; a rule without one is a rule that can quietly stop
+  working.
+- **Properties across the goldens** that a regenerated golden could
+  lose without anyone noticing: `/console` and `/console/` render the
+  same, every SecurityPolicy asks Envoy for the session cookie, and every
+  `backendRefs` entry writes its `weight` out.
+
+`hack/golden.sh` is vendored verbatim from the shared CI repository;
+update it by copying the canonical file again, not by editing this copy.
+
 ## What CI runs
 
 `just check` runs every recipe CI runs — `build`, `test`, `lint`,

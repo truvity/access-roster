@@ -1,0 +1,454 @@
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The account a recovery token is minted for. Deliberately bound to
+# NOTHING: it needs no permissions, because the token is a proof of
+# identity and not a way to act. Granting `create` on
+# `serviceaccounts/token` for this account is how an installation says who
+# may recover, and that grant is the whole of the access control.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer-recovery
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: access-issuer/templates/policy-configmap.yaml
+# The declared layer of the policy — the same file the hub reads, and the
+# same schema. See docs/reference/policy.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-policy
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  policy.yaml: |
+    # The version belongs to the chart, not to the values: the loader
+    # refuses a document whose version it does not know, so a policy
+    # written without one is a service that will not start.
+    version: 1
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The one cluster-scoped permission this service ever needs, and the one
+# thing left that asks the API server anything: creating TokenReviews, so
+# that recovery can check a token proving cluster access. It reads
+# nothing.
+#
+# Workloads used to need it too. They do not any more: a
+# ServiceAccount token is verified against the key set its own cluster
+# publishes, so this service holds no access to any cluster including its
+# own. Recovery keeps it because on the day everything else is broken it
+# should depend on nothing but the cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: access-issuer-default-tokenreview
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: access-issuer-default-tokenreview
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: access-issuer-default-tokenreview
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer
+    namespace: default
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The directory store is plain Kubernetes objects in THIS namespace:
+# workspace records (ConfigMaps) and their credentials (Secrets), written
+# by this service itself. A namespaced Role and never a ClusterRole —
+# which is why this service gets a namespace of its own.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: access-issuer
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer
+    namespace: default
+
+---
+# Source: access-issuer/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+  ports:
+    - name: issuer
+      port: 8080
+      targetPort: issuer
+
+---
+# Source: access-issuer/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: access-issuer
+      app.kubernetes.io/instance: access-issuer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: access-issuer
+        app.kubernetes.io/instance: access-issuer
+      annotations:
+        # A policy change is a rollout: the file is read at start.
+        checksum/policy: f5c82283eed74b86b5e454b26352ac8643e60badea3b25b6ec910431fa4c1a0c
+    spec:
+      serviceAccountName: access-issuer
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: access-issuer
+          image: "ghcr.io/truvity/access-roster/access-issuer:0.0.0"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: issuer
+              containerPort: 8080
+            - name: health
+              containerPort: 7070
+          env:
+            - name: ISSUER_URL
+              value: "https://issuer.example"
+            - name: PORT
+              value: "8080"
+            - name: HEALTH_PORT
+              value: "7070"
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Names this replica in the audit trail's object keys, so two
+            # replicas never write the same key.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # What an operator connected — the workspaces and their
+            # credentials, the memberships, the OAuth client it was
+            # given, the session key — kept as ConfigMaps and Secrets in
+            # this namespace. Anything else and a restart is a fresh
+            # installation.
+            - name: STORE
+              value: "kubernetes"
+            - name: REFRESH_INTERVAL
+              value: "15m"
+            - name: FRESHNESS_WINDOW
+              value: "30m"
+            - name: PROBE_INTERVAL
+              value: "5m"
+            - name: AUDIT_MAX_EVENTS
+              value: "50000"
+            - name: AUDIT_S3_BUCKET
+              value: ""
+            - name: AUDIT_S3_REGION
+              value: ""
+            - name: AUDIT_S3_PREFIX
+              value: "events/"
+            - name: AUDIT_S3_FLUSH_INTERVAL
+              value: "10s"
+            - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
+              value: "0"
+            - name: SESSION_LIFETIME
+              value: "12h"
+            - name: LOGIN_DIRECTORY
+              value: "true"
+            # Where a browser reaches the console, and where this origin's
+            # root is. Everything that has to name itself to somebody else
+            # is built from the first: the admin-consent redirect URI, and
+            # the values the setup steps tell an operator to paste into a
+            # cloud console.
+            - name: PUBLIC_URL
+              value: https://issuer.example/console
+            # The admin-consent callback stays at the origin ROOT. It is
+            # the one flow that runs before anybody can be signed in, and
+            # its redirect URI is registered with every corporate tenant —
+            # so moving it under the console's path would mean
+            # re-registering it in each of them.
+            - name: PUBLIC_ROOT_URL
+              value: https://issuer.example
+            # Provisioned, never minted here — see values.yaml.
+            - name: SIGNING_KEY_FILE
+              value: /var/run/access-issuer/signing-key/tls.key
+            - name: RELEASE_NAME
+              value: access-issuer
+            - name: POLICY_DIR
+              value: /var/run/access-issuer/policy
+            - name: TOKEN_LIFETIME
+              value: "1h"
+            - name: REFRESH_LIFETIME
+              value: "12h"
+            - name: HOLD_WINDOW
+              value: "4h"
+            - name: EXCHANGE_AUDIENCE
+              value: "access-issuer"
+            # Recovery is the one thing left that asks the API server, and
+            # deliberately so: on the day everything else is broken it
+            # should depend on nothing but the cluster.
+            - name: IN_CLUSTER
+              value: "true"
+            - name: RECOVERY_ENABLED
+              value: "true"
+            - name: RECOVERY_SERVICE_ACCOUNT
+              value: "access-issuer-recovery"
+            - name: RECOVERY_AUDIENCE
+              value: "access-issuer-recovery"
+            # Served over TLS, so its cookies say so. Stated rather
+            # than left to the binary's default, which reads the same
+            # scheme off the issuer url above: a chart that says it
+            # out loud is a chart a reader can check against the route.
+            - name: SECURE_COOKIES
+              value: "true"
+            - name: LOG_LEVEL
+              value: "info"
+          volumeMounts:
+            - name: signing-key
+              mountPath: /var/run/access-issuer/signing-key
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/access-issuer/policy
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet: { path: /healthz, port: health }
+          readinessProbe:
+            # Readiness follows the shared store; liveness deliberately
+            # does not. A replica that cannot reach it leaves the
+            # rotation, and the gateway answers fast instead of hanging;
+            # nothing is restarted, so one blip cannot restart the fleet.
+            #
+            # timeoutSeconds exceeds the service's own 2s check so the
+            # answer is the reason ("the session store does not answer:
+            # i/o timeout") rather than the kubelet's timeout. Three
+            # failures at ten seconds is thirty seconds of trouble before
+            # a replica leaves, which a reconnect comfortably beats.
+            httpGet: { path: /readyz, port: health }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: signing-key
+          secret:
+            secretName: access-issuer-signing-key
+        - name: policy
+          configMap:
+            name: access-issuer-policy
+        # The root filesystem is read-only, and the directory backends
+        # want somewhere to write.
+        - name: tmp
+          emptyDir: {}
+
+---
+# Source: access-issuer/templates/signing-key.yaml
+# The signing key, issued by cert-manager.
+#
+# The certificate is a by-product: only the key is used. cert-manager is
+# here because it generates the key in the cluster, keeps it out of every
+# other system, and rotates it on a schedule the platform already
+# understands — none of which is true of a key this service minted for
+# itself, and the last of which is the reason it does not.
+#
+# `rotationPolicy: Always` makes a renewal a *new key*, which is the
+# point: a renewed certificate over the same key would rotate nothing.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: access-issuer-signing-key
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: access-issuer-signing-key
+  commonName: access-issuer
+  duration: "8760h"
+  renewBefore: "720h"
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS1
+    rotationPolicy: Always
+  issuerRef:
+    name: "selfsigned"
+    kind: "ClusterIssuer"
+    group: cert-manager.io
+
+---
+# Source: access-issuer/templates/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: issuer
+      namespace: gateway-system
+  hostnames:
+    - "issuer.example"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: access-issuer
+          port: 8080
+          weight: 1
+
+---
+# Source: access-issuer/templates/httproute.yaml
+# The console's own route, and the reason it is a SEPARATE object rather
+# than another rule above: a gateway policy attaches to an HTTPRoute, so
+# anything put in front of the console would otherwise also sit in front
+# of /token, /keys and discovery. Every relying party in the estate would
+# be asked to sign in to fetch a key set.
+#
+# It renders whether or not anything attaches to it. An empty route costs
+# a few lines of YAML; discovering at cutover that there is nothing to
+# attach to costs an evening, and the alternative in that moment —
+# attaching to the catch-all — is the outage described above.
+#
+# The path is NOT rewritten. The merged service strips the prefix
+# itself, so a gateway that stripped it too would hand the console a path
+# it never serves.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: access-issuer-console
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: issuer
+      namespace: gateway-system
+  hostnames:
+    - "issuer.example"
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: "/console"
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: "/console/"
+            statusCode: 302
+    - matches:
+        - path:
+            type: PathPrefix
+            value: "/console/"
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: access-issuer
+          port: 8080
+          weight: 1

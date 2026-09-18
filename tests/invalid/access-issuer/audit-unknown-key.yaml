@@ -1,0 +1,5 @@
+# A key under audit does not know must fail the render, not be ignored.
+# error: at '/audit': additional properties
+issuerURL: https://issuer.example
+audit:
+  bucket: example-audit

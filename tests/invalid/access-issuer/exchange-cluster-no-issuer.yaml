@@ -1,0 +1,6 @@
+# An exchange.clusters row needs an issuer.
+# error: at '/exchange/clusters/0': missing property 'issuer'
+issuerURL: https://issuer.example
+exchange:
+  clusters:
+    - name: example

@@ -1,0 +1,19 @@
+# Everything that can be switched off, switched off: an in-memory store
+# (no Role to write ConfigMaps and Secrets), recovery off (no TokenReview
+# permission, no IN_CLUSTER, no recovery ServiceAccount), no console mount
+# (one HTTPRoute, no PUBLIC_URL), a signing key delivered from elsewhere
+# (no signing-key Certificate), and a route with no certificate issuer (no
+# TLS Certificate either).
+issuerURL: https://issuer.example
+directory:
+  store: memory
+recovery:
+  enabled: false
+console:
+  mount: ""
+signingKey:
+  existingSecret: delivered-signing-key
+route:
+  host: issuer.example
+  certificate:
+    issuerName: ""

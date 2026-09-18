@@ -1,0 +1,5 @@
+# A key under recovery does not know must fail the render, not be ignored.
+# error: at '/recovery': additional properties
+issuerURL: https://issuer.example
+recovery:
+  enable: false

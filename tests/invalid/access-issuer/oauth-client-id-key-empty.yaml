@@ -1,0 +1,8 @@
+# oauthClient.secret.keys.clientId may not be empty.
+# error: at '/oauthClient/secret/keys/clientId': minLength
+issuerURL: https://issuer.example
+oauthClient:
+  secret:
+    name: sign-in-client
+    keys:
+      clientId: ""

@@ -1,0 +1,5 @@
+# A key under telemetry does not know must fail the render, not be ignored.
+# error: at '/telemetry': additional properties
+issuerURL: https://issuer.example
+telemetry:
+  endpoint: http://collector.example:4318

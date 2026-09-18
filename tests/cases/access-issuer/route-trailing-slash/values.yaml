@@ -1,0 +1,9 @@
+# The `route` case with the console mount written with a trailing slash.
+# "/console" and "/console/" are the same place, so this must render
+# byte-for-byte the same as `route` (the lint recipe diffs the two), and
+# never a route to "/console//".
+issuerURL: https://access.example
+route:
+  host: access.example
+console:
+  mount: /console/

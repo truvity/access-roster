@@ -1,5 +1,7 @@
-# An access-proxy exposure whose routes attach to a ListenerSet rather than
-# a Gateway listener, for chart-lint.
+# An exposure whose routes attach to a ListenerSet rather than a Gateway
+# listener: the given parent lands on both routes (the proxy's own prefix
+# and the console's), written out in full, and no Gateway parent is
+# invented beside it.
 exposure:
   hostname: console.example
   parentRefs:

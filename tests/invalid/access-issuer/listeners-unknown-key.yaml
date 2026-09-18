@@ -1,0 +1,5 @@
+# A key under listeners does not know must fail the render, not be ignored.
+# error: at '/listeners': additional properties
+issuerURL: https://issuer.example
+listeners:
+  metricsPort: 9090

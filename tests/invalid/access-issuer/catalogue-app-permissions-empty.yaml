@@ -1,0 +1,8 @@
+# A catalogue App asks for at least one permission.
+# error: at '/githubApps/catalogue/0/permissions': minProperties
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {}

@@ -1,0 +1,5 @@
+# audit.forwardedForTrustedHops has a minimum of 0.
+# error: at '/audit/forwardedForTrustedHops': minimum
+issuerURL: https://issuer.example
+audit:
+  forwardedForTrustedHops: -1

@@ -1,0 +1,5 @@
+# A key under valkey does not know must fail the render, not be ignored.
+# error: at '/valkey': additional properties
+issuerURL: https://issuer.example
+valkey:
+  addr: valkey.example.svc:6379

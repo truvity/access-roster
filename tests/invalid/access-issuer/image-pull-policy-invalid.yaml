@@ -1,0 +1,5 @@
+# image.pullPolicy is one of Always, IfNotPresent, Never.
+# error: at '/image/pullPolicy': value must be one of
+issuerURL: https://issuer.example
+image:
+  pullPolicy: Sometimes

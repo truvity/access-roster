@@ -1,0 +1,5 @@
+# A key under githubRunnerApps does not know must fail the render, not be ignored.
+# error: at '/githubRunnerApps': additional properties
+issuerURL: https://issuer.example
+githubRunnerApps:
+  tier: [stable]

@@ -1,0 +1,6 @@
+# A key under route.certificate does not know must fail the render, not be ignored.
+# error: at '/route/certificate': additional properties
+issuerURL: https://issuer.example
+route:
+  certificate:
+    issuer: web-ca

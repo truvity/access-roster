@@ -1,0 +1,20 @@
+# issuer.url is required (template `required`).
+# error: issuer.url is required
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  backend:
+    name: console
+  allow:
+  - console:operator
+issuer: {}
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

@@ -1,0 +1,8 @@
+# A catalogue App permission is named in GitHub's snake_case.
+# error: invalid propertyName 'Contents'
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {Contents: write}

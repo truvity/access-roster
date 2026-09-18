@@ -1,0 +1,5 @@
+# githubRoster.actsIn names GitHub logins.
+# error: at '/githubRoster/actsIn/0': 'acme_corp' does not match pattern
+issuerURL: https://issuer.example
+githubRoster:
+  actsIn: [acme_corp]

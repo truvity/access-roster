@@ -141,9 +141,9 @@ spec:
 # attach to costs an evening, and the alternative in that moment —
 # attaching to the catch-all — is the outage described above.
 #
-# The path is NOT rewritten. The merged service strips the prefix itself
-# (INF-691), so a gateway that stripped it too would hand the console a
-# path it never serves.
+# The path is NOT rewritten. The merged service strips the prefix
+# itself, so a gateway that stripped it too would hand the console a path
+# it never serves.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

@@ -1,0 +1,9 @@
+# A catalogue App event is named in GitHub's snake_case.
+# error: at '/githubApps/catalogue/0/events/0': 'pull-request' does not match pattern
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {contents: write}
+      events: [pull-request]

@@ -1,0 +1,4 @@
+# The least an installation can say: the issuer URL, without which the
+# service refuses to start. No route, no directory, no console route, no
+# CI identity; recovery and the Kubernetes store are on by default.
+issuerURL: https://issuer.example

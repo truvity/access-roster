@@ -1,0 +1,12 @@
+# A catalogue grant permission is named in GitHub's snake_case.
+# error: invalid propertyName 'pull-requests'
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {contents: write}
+      grants:
+        - group: all:platform:engineer
+          repositories: ["*"]
+          permissions: {pull-requests: read}

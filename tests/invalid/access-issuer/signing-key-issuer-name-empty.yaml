@@ -1,0 +1,6 @@
+# signingKey.certificate.issuerName may not be empty.
+# error: at '/signingKey/certificate/issuerName': minLength
+issuerURL: https://issuer.example
+signingKey:
+  certificate:
+    issuerName: ""

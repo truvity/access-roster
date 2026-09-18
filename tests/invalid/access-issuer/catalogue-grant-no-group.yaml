@@ -1,0 +1,11 @@
+# A catalogue grant needs group.
+# error: at '/githubApps/catalogue/0/grants/0': missing property 'group'
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: releases
+      org: acme
+      permissions: {contents: write}
+      grants:
+        - repositories: ["*"]
+          permissions: {contents: read}

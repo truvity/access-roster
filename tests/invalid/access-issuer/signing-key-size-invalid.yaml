@@ -1,0 +1,6 @@
+# signingKey.certificate.size is 2048, 3072 or 4096.
+# error: at '/signingKey/certificate/size': value must be one of
+issuerURL: https://issuer.example
+signingKey:
+  certificate:
+    size: 1024

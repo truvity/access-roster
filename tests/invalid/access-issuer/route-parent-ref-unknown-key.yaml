@@ -1,0 +1,8 @@
+# A key in a route.parentRefs entry does not know must fail the render, not be ignored.
+# error: at '/route/parentRefs/0': additional properties
+issuerURL: https://issuer.example
+route:
+  host: issuer.example
+  parentRefs:
+    - name: issuer
+      section: https

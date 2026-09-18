@@ -1,0 +1,7 @@
+# A declared workspace needs backend.
+# error: at '/directory/workspaces/0': missing property 'backend'
+issuerURL: https://issuer.example
+directory:
+  workspaces:
+    - admin: admin@acme.example
+      secretName: acme-key

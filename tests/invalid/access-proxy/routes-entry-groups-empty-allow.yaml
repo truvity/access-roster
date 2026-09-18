@@ -1,0 +1,23 @@
+# An exposure.routes entry with the groups posture and an empty allow-list admits nobody (template `fail`).
+# error: route "app" uses the `groups` posture with an empty allow-list
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  routes:
+  - name: demo
+    attachRouteName: surface-demo
+    posture: authenticated
+  - name: app
+    attachRouteName: surface-app
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie

@@ -1,0 +1,5 @@
+# githubRoster.enabled needs exchange.clusters (template `fail`).
+# error: githubRoster.enabled needs exchange.clusters
+issuerURL: https://issuer.example
+githubRoster:
+  enabled: true
