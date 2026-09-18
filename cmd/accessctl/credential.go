@@ -89,9 +89,6 @@ const (
 	rosterMount = "jwt-roster"
 	// rosterLoginRole is the one role on that mount; groups decide the rest.
 	rosterLoginRole = "roster"
-	// platformNamespace holds the SSH CA and the machine client role; an
-	// environment's namespace sits under it.
-	platformNamespace = "platform"
 	// sshMount and pkiMount are the engines the roles live on.
 	sshMount = "ssh"
 	pkiMount = "pki"
@@ -132,6 +129,12 @@ type credentialRequest struct {
 // defaultRole is the role each kind signs with when nothing says
 // otherwise: the ordinary one, never the privileged one. `admin` exists
 // for SSH and has to be asked for by name.
+//
+// The two SSH roles are two classes of login rather than two strengths
+// of the same one: `user` signs for the ordinary account a host admits
+// everybody who may use it as, `admin` for the account that administers
+// the host. Which OS accounts each role will sign for is the role's to
+// say, not this tool's.
 func defaultRole(kind string) string {
 	switch kind {
 	case kindSSH:
@@ -169,9 +172,11 @@ func parseCredentialFlags(args []string) (credentialRequest, error) {
 
 	flags := flag.NewFlagSet("credential "+request.kind, flag.ContinueOnError)
 	flags.StringVar(&request.env, "env", "", "the environment to mint in")
-	flags.StringVar(&request.role, "role", "", "the OpenBAO role, when not the usual one for this kind")
-	flags.StringVar(&request.address, "address", "", "the OpenBAO address, when not in "+envOpenBAOAddress)
-	flags.StringVar(&request.namespace, "namespace", "", "the OpenBAO namespace, when not the usual one")
+	flags.StringVar(&request.role, "role", defaultRole(request.kind), roleUsage(request.kind))
+	flags.StringVar(&request.address, "address", "",
+		"the OpenBAO API, e.g. https://openbao.example:8200 (default: $"+envOpenBAOAddress+", then $"+envVaultAddress+")")
+	flags.StringVar(&request.namespace, "namespace", "",
+		"the OpenBAO namespace (default: $"+envOpenBAONamespace+", then $"+envVaultNamespace+", then the --env value itself)")
 	flags.StringVar(&request.mount, "mount", rosterMount, "the JWT auth mount to log in on")
 	flags.StringVar(&request.loginRole, "login-role", rosterLoginRole, "the role on that mount")
 	flags.StringVar(&request.issuer, "issuer", "", "the issuer, when not configured")
@@ -185,7 +190,8 @@ func parseCredentialFlags(args []string) (credentialRequest, error) {
 		flags.StringVar(&request.identity, "identity", "",
 			"write the key and certificate here instead of into the agent (a bare name means ~/.ssh)")
 	case kindDB:
-		flags.StringVar(&request.project, "project", "", "the project whose namespace holds the database role")
+		flags.StringVar(&request.project, "project", "",
+			"a project whose own namespace, <project>/<env>, holds the database role (default: the environment's)")
 		flags.StringVar(&request.service, "service", "", "the psql service entry to write (default: the environment)")
 		flags.StringVar(&request.host, "host", "", "the database host the service entry points at")
 		flags.StringVar(&request.port, "port", "5432", "its port")
@@ -221,7 +227,8 @@ func (r credentialRequest) resolve() (credentialRequest, error) {
 		r.address = firstEnv(envOpenBAOAddress, envVaultAddress)
 	}
 	if r.address == "" {
-		return r, badUsage("no OpenBAO address: pass --address, or set %s", envOpenBAOAddress)
+		return r, badUsage("no OpenBAO address: pass --address https://openbao.example:8200, "+
+			"or export %s=https://openbao.example:8200 (%s is read too)", envOpenBAOAddress, envVaultAddress)
 	}
 	r.address = strings.TrimSuffix(r.address, "/")
 
@@ -229,17 +236,15 @@ func (r credentialRequest) resolve() (credentialRequest, error) {
 		r.namespace = firstEnv(envOpenBAONamespace, envVaultNamespace)
 	}
 	if r.namespace == "" {
-		// The layout the roles are rendered into: the platform's own
-		// namespace per environment holds the SSH CA and the machine
-		// client role, and a database role belongs to the project whose
-		// database it opens.
-		if r.kind == kindDB {
-			if strings.TrimSpace(r.project) == "" {
-				return r, badUsage("--project is required for a database credential: whose database this is")
-			}
-			r.namespace = strings.TrimSpace(r.project) + "/" + r.env
-		} else {
-			r.namespace = platformNamespace + "/" + r.env
+		// One namespace per environment, named for it, holds every role
+		// this command signs with: the SSH CA, the database client role
+		// and the machine client role. An installation that keeps a
+		// project's database role in a namespace of the project's own
+		// says so with --project, and one laid out any other way with
+		// --namespace.
+		r.namespace = r.env
+		if project := strings.TrimSpace(r.project); r.kind == kindDB && project != "" {
+			r.namespace = project + "/" + r.env
 		}
 	}
 
@@ -267,6 +272,19 @@ func (r credentialRequest) resolve() (credentialRequest, error) {
 }
 
 func credentialKinds() []string { return []string{kindSSH, kindDB, kindClient} }
+
+// roleUsage is the --role line of each kind's help. For SSH it says what
+// the two roles are FOR, because the flag is where somebody deciding
+// whether they need the privileged one looks.
+func roleUsage(kind string) string {
+	if kind == kindSSH {
+		// No backquotes: the flag package reads the first backquoted word
+		// of a usage line as the name of the flag's argument.
+		return "the SSH role: 'user' for everyday logins as the host's ordinary account; " +
+			"'admin' for administering the host, granted separately and signed only when asked for by name"
+	}
+	return "the OpenBAO role, when not the usual one for this kind"
+}
 
 // cleaned drops the empty values a repeatable flag can be given, so that
 // a stray `--principal ""` asks for nothing rather than for a principal

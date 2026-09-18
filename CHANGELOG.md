@@ -1,3 +1,24 @@
+## v1.16.1
+
+- **`accessctl credential` works in the environment's own namespace by
+  default.** v1.16.0 defaulted `ssh` and `client` to `platform/<env>` and
+  `db` to `<project>/<env>` — a layout the command assumed rather than one
+  an installation had, so the shortest command logged in on a namespace
+  that did not exist and every caller had to add `--namespace <env>`. The
+  default is now `<env>` for all three kinds: `--env staging` works in
+  `staging`. `--namespace`, `BAO_NAMESPACE` and `VAULT_NAMESPACE` still
+  override it, in that order.
+  - **`db --project` is optional.** Without it the database role is looked
+    for in the environment's namespace; with it, in `<project>/<env>` as
+    before, so a command line written for v1.16.0 means what it meant.
+  - **`credential ssh --help` says what the two roles are for**: `user`,
+    the default, for everyday logins as a host's ordinary account; `admin`
+    for the account that administers it, granted separately and signed
+    only when asked for by name.
+  - **A missing OpenBAO address says how to give one** — the `--address`
+    flag or `BAO_ADDR` (`VAULT_ADDR` is read too), each with the shape of
+    a value — and the flag's help names both variables.
+
 ## v1.16.0
 
 - **`policy.SplitGroup` reads any grant back into scope, thing and role.**
