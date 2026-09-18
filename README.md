@@ -170,6 +170,7 @@ Every column, and why, is in
 | keep a GitHub organisation's teams in step with the policy | [docs/connect/github-organisation.md](docs/connect/github-organisation.md) |
 | declare GitHub Apps as data and create them from the console | [docs/connect/github-apps-catalogue.md](docs/connect/github-apps-catalogue.md) |
 | connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
+| mint a short-lived SSH, database or client certificate | [docs/connect/openbao.md](docs/connect/openbao.md) |
 | see what the conformance suite said, and why | [docs/conformance.md](docs/conformance.md) |
 | run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |
 | build a service that accepts both people and workloads | [docs/connect/service-to-service.md](docs/connect/service-to-service.md) |
@@ -183,7 +184,7 @@ Every column, and why, is in
 | `access-proxy` chart | every console with no OpenID flow of its own |
 | Go module `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups |
 | TypeScript package `@truvity/access-roster`, on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer |
-| `accessctl`, a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials and a token for any audience |
+| `accessctl`, a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, and short-lived certificates a secret manager mints |
 | GitHub Action `truvity/access-roster`, pinned to a release | workflows: one exchange, then a kubeconfig and AWS profiles |
 | the policy | one file, one schema, the issuer and the controller |
 

@@ -14,6 +14,11 @@ aws --profile power@1111 sts get-caller-identity   # credential_process: accessc
 accessctl token --audience openbao              # one token for one audience, on stdout
 accessctl github-token --app publisher --repository app --permission contents=read
 accessctl exchange --audience k8s:devel < subject-token
+
+accessctl credential ssh --env staging --principal deploy      # into the ssh-agent
+accessctl credential db  --env staging --project example \
+    --host db.example --dbname orders                          # a psql service entry
+accessctl credential client --env staging --out ./gateway.crt  # a certificate and its key
 ```
 
 It exists for one reason: **the cloud CLI has no interactive login.**
@@ -40,6 +45,55 @@ asks for exactly what the grant allows), and `--json` to print
 `{"token", "expires_at", "repositories", "permissions"}` — what GitHub
 granted — instead of the bare token. It takes `--issuer` and `--client`
 like the rest.
+
+## `credential`: certificates OpenBAO mints
+
+`accessctl credential <kind> --env <env> [--role <role>]`, where the kind
+is `ssh`, `db` or `client`. Each one is the same four steps:
+
+1. exchange the sign-in (or the job's own token) for `aud=openbao`;
+2. log in on the JWT mount in that environment's namespace;
+3. make **one** call — `ssh/sign/<role>`, `pki/issue/db-client`,
+   `pki/issue/client`;
+4. deliver the result, and revoke the OpenBAO token on the way out.
+
+**Nothing here chooses a lifetime.** No request carries a TTL: the role's
+`ttl` and `max_ttl` are the whole answer, so shortening the role shortens
+every credential in flight and no flag can ask for longer. What accessctl
+does send is a public key, the principals or the common name asked for,
+and nothing else — a role that will not sign them refuses, which is the
+right place for that decision.
+
+**The OpenBAO token is never written anywhere.** It lives in memory for
+the length of one command and is revoked at the end; a mount that hands
+out batch tokens refuses the revoke, which is not an error, because such
+a token cannot be revoked and expires on its own.
+
+Each kind prints what the audit trail will show — the certificate's
+`key_id` or common name, and its serial — so a line in an sshd log, a row
+in the issuer's trail and OpenBAO's own record of the signing can be read
+as one story about one subject.
+
+| Kind | Asks for | Delivers |
+|---|---|---|
+| `ssh` | a key pair generated for this certificate alone; `--principal` (repeatable) | the certificate and key into the **ssh-agent**, with a lifetime the certificate decides; or, with `--identity`, into `~/.ssh` as `<name>`, `<name>.pub` and `<name>-cert.pub` — the certificate beside the key, where `ssh -i <name>` finds both |
+| `db` | `--project`, `--host`, `--dbname`, `--port`, `--service` | the certificate, key and CA under `~/.config/accessctl/credentials/<env>/`, and a **psql service entry** (`~/.pg_service.conf`, or `PGSERVICEFILE`) whose `user` is the certificate's common name, for `psql "service=<name>"` |
+| `client` | `--out`, `--uri-san` (repeatable) | `<out>.crt`, `<out>.key` and `<out>-ca.crt`, at the path the caller named |
+
+`--identity id_example` (a bare name) means `~/.ssh/id_example`; a path
+with a separator is taken as given. A key this tool did not write is
+**never** overwritten — `--identity id_ed25519` is one keystroke away from
+a key somebody has used for years.
+
+The service file holds one block per service (`# >>> accessctl <name> >>>`),
+so a credential for a second database leaves the first entry alone.
+
+**Where it points.** `--address` names the OpenBAO API, or `BAO_ADDR`
+(`VAULT_ADDR` is read too). The namespace defaults to `platform/<env>` for
+`ssh` and `client` and to `<project>/<env>` for `db`, and `--namespace`
+overrides it; `--mount`, `--login-role` and `--audience` name the JWT
+mount (`jwt-roster`), its role (`roster`) and the exchange client
+(`openbao`) for an installation that spells them differently.
 
 **Installing it.** Each release carries `accessctl_<version>_nix-flake.tar.gz`,
 a Nix flake over that release's own archives; a repository adds its URL
@@ -87,8 +141,8 @@ holds no secret.
 
 The same files work unchanged in a GitHub Actions job granted
 `id-token: write`. When `ACTIONS_ID_TOKEN_REQUEST_URL` and
-`ACTIONS_ID_TOKEN_REQUEST_TOKEN` are set, `kube-token`, `aws`, `token` and
-`github-token` ask GitHub for the job's identity token — for the issuer's URL, the one
+`ACTIONS_ID_TOKEN_REQUEST_TOKEN` are set, `kube-token`, `aws`, `token`,
+`github-token` and `credential` ask GitHub for the job's identity token — for the issuer's URL, the one
 audience it accepts — and exchange that, presenting the audience as the
 client, exactly as the GitHub Action does. There is no `login` in a job
 and no cache: every call exchanges afresh. A repository that would rather

@@ -95,6 +95,8 @@ func run(args []string) error {
 		return kubeToken(args[1:])
 	case "aws":
 		return awsCredentials(args[1:])
+	case "credential":
+		return credential(args[1:])
 	case "kubeconfig":
 		return kubeconfig(args[1:])
 	case "aws-config":
@@ -124,6 +126,7 @@ func usage(to *os.File) {
   github-token  a GitHub App installation token, under the catalogue's grants
   kube-token    a Kubernetes exec credential      (run by kubectl)
   aws           an AWS credential process answer  (run by the AWS SDKs)
+  credential    a short-lived ssh, db or client certificate, minted by OpenBAO
   exchange      the raw exchange: a token in, a token for an audience out
 
 Exit codes: 0 ok, 2 usage, 3 not signed in, 4 audience or App not granted,

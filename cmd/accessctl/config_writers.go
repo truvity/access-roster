@@ -162,11 +162,16 @@ const (
 // strip removes a block this tool wrote before, so profiles for roles
 // somebody no longer holds do not survive as entries that fail only when
 // used.
-func strip(body string) string {
-	start := strings.Index(body, marker)
+func strip(body string) string { return stripBlock(body, marker, endMarker) }
+
+// stripBlock is the same for any pair of markers: the AWS configuration
+// has one block, and a libpq service file has one per service
+// (credential_pki.go), which is the same rewriting done twice.
+func stripBlock(body, opens, closes string) string {
+	start := strings.Index(body, opens)
 	if start >= 0 {
-		if end := strings.Index(body[start:], endMarker); end >= 0 {
-			body = body[:start] + body[start+end+len(endMarker):]
+		if end := strings.Index(body[start:], closes); end >= 0 {
+			body = body[:start] + body[start+end+len(closes):]
 		} else {
 			// A half-written block: interrupted, or edited by hand. What
 			// follows it is ours too, so it goes with it rather than

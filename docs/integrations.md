@@ -346,9 +346,26 @@ configure and where, what you get.
   Not a third anchor, and the only human path that bypasses the issuer.
 - Guide: [operations/runbook.md](operations/runbook.md#lost-operator-access).
 
+### ⑰ The issuer → a secret manager that mints certificates
+
+- **Anchor:** the issuer; the manager's JWT mount reads `aud` and `groups`.
+- **Parties:** OpenBAO (or a Vault that speaks the same API),
+  access-issuer, `accessctl credential` on a laptop or in a job.
+- **Trust:** one JWT auth mount per namespace, bound to the audience
+  `openbao`; one role per credential, bound to the internal groups.
+- **Flow:** exchange for `openbao`, gated by that client's `requires` →
+  log in on the mount → one `sign` or `issue` call → the certificate is
+  delivered and the manager's token revoked.
+- **You configure:** the mount and the roles in the manager; the
+  `openbao` client and the groups it requires in the policy.
+- **You get:** SSH, database and machine credentials that expire on their
+  own, each naming the same subject the issuer's audit trail does, and
+  nothing long-lived on a laptop.
+- Guide: [connect/openbao.md](connect/openbao.md).
+
 ## Reading the two models together
 
-Cases ⑥ ⑦ ⑧ ⑩ ⑮ are the **claims model**: the decision rides in a token,
+Cases ⑥ ⑦ ⑧ ⑩ ⑮ ⑰ are the **claims model**: the decision rides in a token,
 because a cluster, a cloud account or a session cannot call a directory.
 Case ⑭ is the **sync model**: the decision is materialized where it is
 enforced, because GitHub can be written to. Both draw from the same directory

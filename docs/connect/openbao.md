@@ -1,0 +1,113 @@
+# Connect a secret manager that mints certificates
+
+**Anchor:** the issuer. A secret manager — OpenBAO, or a Vault that
+speaks the same API — trusts it on a JWT auth mount and mints
+**short-lived certificates** for things that speak neither OpenID nor a
+cloud's own protocol: an SSH server, a database, a service that wants
+mutual TLS. `accessctl credential` is the courier
+([reference](../reference/accessctl.md#credential-certificates-openbao-mints)).
+
+Nothing here is a second identity system. The policy decides **who may
+ask**; the manager's roles decide **what they get**; the certificate
+carries the same subject the issuer's audit trail does.
+
+## The shape
+
+```
+accessctl                the issuer               OpenBAO
+  sign-in  ──exchange──▶ aud=openbao ──login───▶  the jwt mount's role
+                                                  ssh/sign/<role>
+                                                  pki/issue/<role>
+  ssh-agent ◀──────────── the certificate ──────  one call, no TTL asked
+```
+
+One exchange, one login, one `sign` or `issue`, and then the manager's
+token is revoked. A session revoked in the console stops issuance within
+the exchange's token cap, because every run exchanges afresh and nothing
+is cached.
+
+## Policy
+
+One exchange client, and one group per thing that may be minted. The
+client's `requires` is the whole answer to *who may ask*:
+
+```yaml
+groups:
+  staging:ssh:user:         { members: [team-eng@example.com] }
+  staging:ssh:admin:        { members: [role-sre@example.com] }
+  staging:db:orders:client: { members: [team-eng@example.com] }
+  staging:machine:gateway:  { members: [role-sre@example.com] }
+clients:
+  openbao:
+    kind: static
+    requires: [staging:ssh:user, staging:ssh:admin, staging:db:orders:client, staging:machine:gateway]
+```
+
+The group names follow the [naming rule](../design/trust.md#naming) as
+everywhere else: environment, tier, then role. They are what the
+manager's own policies bind to, so the groups in the token and the
+policy that admits it cannot drift apart.
+
+## Manager side
+
+- **A JWT auth mount** per namespace, trusting the issuer's discovery
+  document, with `bound_audiences: [openbao]` — the audience the exchange
+  mints, and the only one it accepts. `accessctl` logs in on `jwt-roster`
+  with the role `roster` unless `--mount` and `--login-role` say
+  otherwise. Short token lifetimes: the login exists to make one call.
+- **An SSH CA per environment**, with a role per group:
+  - `allow_user_certificates: true`, `allow_host_certificates: false`;
+  - `allowed_users` spelled out — the OS accounts that group may become;
+  - a `key_id_format` naming the token's display name, so **every
+    certificate carries the roster subject** and a line in an sshd log
+    can be read against the issuer's audit trail;
+  - `allow_user_key_ids: false`, so a caller cannot name itself;
+  - `default_extensions` no wider than the group needs;
+  - `ttl` and `max_ttl` short. `accessctl` never asks for a lifetime, so
+    these two are the only answer, and shortening them shortens every
+    certificate in flight.
+- **A PKI role for database clients** (`db-client`): the common name is
+  the roster subject, client-auth extended key usage only, a short
+  `max_ttl` — and on the database side a `pg_ident` map from that subject
+  to a database role. The certificate is the credential; there is no
+  password to rotate.
+- **A PKI role for machine clients** (`client`): client-auth extended key
+  usage, a short `max_ttl`, and whatever SAN the consumer matches on.
+- **Policies granting the sign or issue path and nothing else.** No
+  `read` and no `list` on role or configuration paths: a credential group
+  has no business reading how its own role is defined.
+- **An audit device**, so every sign and issue is queryable by subject
+  beside the issuer's own trail.
+
+The roles are the installation's to create, and the revocation model is
+the TTL: these leaves are short enough that no revocation list is kept,
+which is a decision to write down rather than to discover.
+
+## Person side
+
+```sh
+accessctl credential ssh --env staging --principal deploy
+ssh deploy@host.example                 # the agent offers the certificate
+
+accessctl credential db --env staging --project example \
+    --host db.example --dbname orders --service orders
+psql "service=orders"
+
+accessctl credential client --env staging --out ./gateway.crt
+```
+
+`--address` names the manager, or `BAO_ADDR` in the environment. The
+namespace defaults to `platform/<env>` for `ssh` and `client` and to
+`<project>/<env>` for `db`; `--namespace` overrides it.
+
+Each command prints the certificate's `key_id` or common name and its
+serial — the handle for finding it in the audit trail — and never the
+key.
+
+## Job side
+
+The same commands run in a GitHub Actions job granted `id-token: write`:
+the job's own identity token is exchanged instead of a sign-in, and the
+`ci` rules decide which repository and ref may hold those groups
+([github-actions.md](github-actions.md)). A job has no ssh-agent, so
+`--identity` is how it gets a usable certificate on disk.
