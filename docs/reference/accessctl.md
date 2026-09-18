@@ -101,6 +101,16 @@ and says how to set it. The namespace is the environment's own —
 `--namespace`, `BAO_NAMESPACE` and `VAULT_NAMESPACE` overrides it;
 `--project <project>` on `db` reaches a role kept in `<project>/<env>`
 instead.
+
+**Which roots it trusts.** The OpenBAO connection verifies against the
+system's roots. An installation that serves its API under a private root
+is trusted by naming that root: `--ca-cert <file>`, a PEM bundle, or
+`BAO_CACERT` (`VAULT_CACERT` is read too), the flag first. The bundle is
+**added** to the system's roots, not put in their place, and it is used
+for OpenBAO alone — the exchange at the issuer keeps the system's trust.
+A bundle that cannot be read or holds no certificate exits 2 before
+anything is exchanged, and a server the roots do not verify is refused
+with a pointer to the flag.
 `--mount`, `--login-role` and `--audience` name the JWT mount
 (`jwt-roster`), its role (`roster`) and the exchange client (`openbao`)
 for an installation that spells them differently.

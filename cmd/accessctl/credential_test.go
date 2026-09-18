@@ -42,6 +42,8 @@ func TestCredentialFlagsAreReadAsTheRequest(t *testing.T) {
 	t.Setenv(envVaultAddress, "")
 	t.Setenv(envOpenBAONamespace, "")
 	t.Setenv(envVaultNamespace, "")
+	t.Setenv(envOpenBAOCACert, "")
+	t.Setenv(envVaultCACert, "")
 
 	for name, tc := range map[string]struct {
 		args      []string
@@ -131,6 +133,8 @@ func TestACredentialNobodyCouldMintIsAUsageError(t *testing.T) {
 	t.Setenv(envVaultAddress, "")
 	t.Setenv(envOpenBAONamespace, "")
 	t.Setenv(envVaultNamespace, "")
+	t.Setenv(envOpenBAOCACert, "")
+	t.Setenv(envVaultCACert, "")
 
 	for name, args := range map[string][]string{
 		"no kind at all":                   {},
@@ -171,6 +175,8 @@ func TestACredentialNobodyCouldMintIsAUsageError(t *testing.T) {
 func TestCredentialNamespacePrecedence(t *testing.T) {
 	t.Setenv(envOpenBAOAddress, "https://openbao.example")
 	t.Setenv(envVaultAddress, "")
+	t.Setenv(envOpenBAOCACert, "")
+	t.Setenv(envVaultCACert, "")
 
 	for name, tc := range []struct {
 		bao, vault string
@@ -202,6 +208,8 @@ func TestCredentialNamespacePrecedence(t *testing.T) {
 // which one is the default.
 func TestSSHHelpSaysWhatEachRoleIsFor(t *testing.T) {
 	t.Setenv(envOpenBAOAddress, "https://openbao.example")
+	t.Setenv(envOpenBAOCACert, "")
+	t.Setenv(envVaultCACert, "")
 
 	// The flag package prints help to os.Stderr, read when it prints.
 	out, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
@@ -640,6 +648,8 @@ func signedInHome(t *testing.T) string {
 	t.Setenv(envGitHubTokenGrant, "")
 	t.Setenv(envOpenBAONamespace, "")
 	t.Setenv(envVaultNamespace, "")
+	t.Setenv(envOpenBAOCACert, "")
+	t.Setenv(envVaultCACert, "")
 	t.Setenv("SSH_AUTH_SOCK", "")
 
 	if err := saveSession(Session{RefreshToken: "a-refresh", Email: theSubject}); err != nil {
@@ -694,6 +704,18 @@ type fakeOpenBAO struct {
 func newFakeOpenBAO(t *testing.T) *fakeOpenBAO {
 	t.Helper()
 
+	fake := unstartedFakeOpenBAO(t)
+	server := httptest.NewServer(http.HandlerFunc(fake.serve))
+	t.Cleanup(server.Close)
+	fake.URL = server.URL
+	return fake
+}
+
+// unstartedFakeOpenBAO is the installation's state, for a test to serve
+// however it needs to.
+func unstartedFakeOpenBAO(t *testing.T) *fakeOpenBAO {
+	t.Helper()
+
 	_, caKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate the SSH CA: %v", err)
@@ -725,7 +747,7 @@ func newFakeOpenBAO(t *testing.T) *fakeOpenBAO {
 		t.Fatalf("read back the issuing CA: %v", err)
 	}
 
-	fake := &fakeOpenBAO{
+	return &fakeOpenBAO{
 		bodies:     map[string]map[string]any{},
 		namespaces: map[string]string{},
 		tokens:     map[string]string{},
@@ -733,10 +755,6 @@ func newFakeOpenBAO(t *testing.T) *fakeOpenBAO {
 		pkiKey:     pkiKey,
 		pki:        authority,
 	}
-	server := httptest.NewServer(http.HandlerFunc(fake.serve))
-	t.Cleanup(server.Close)
-	fake.URL = server.URL
-	return fake
 }
 
 func (f *fakeOpenBAO) serve(w http.ResponseWriter, r *http.Request) {

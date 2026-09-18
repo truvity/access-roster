@@ -1,3 +1,21 @@
+## v1.16.2
+
+- **`accessctl credential` trusts a private root for OpenBAO when told
+  to.** The connection to OpenBAO verified against the system's roots
+  only, so an installation serving its API under a private root could
+  not be reached from a machine whose system did not trust that root —
+  short of pointing `SSL_CERT_FILE` at the bundle, which replaces the
+  roots of every connection the command makes. `ssh`, `db` and `client`
+  now take `--ca-cert <file>`, a PEM bundle, or read `BAO_CACERT` (then
+  `VAULT_CACERT`), the flag first. The bundle is **added** to the
+  system's roots and used for the OpenBAO connection alone: the exchange
+  at the issuer keeps the system's trust.
+  - **A bundle that trusts nothing is refused**: one that cannot be read,
+    or holds no PEM certificate, exits 2 before anything is exchanged,
+    rather than being ignored.
+  - **An untrusted OpenBAO certificate says how to trust it**: the error
+    names `--ca-cert` and `BAO_CACERT`.
+
 ## v1.16.1
 
 - **`accessctl credential db` and `client` make the key on this machine
