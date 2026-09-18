@@ -26,7 +26,7 @@ a login cache and an issuer configuration.
 | `aws` | exchanges the cached login for the role's audience and answers the credential-process JSON | people |
 | `token` | prints a token for one audience on stdout and nothing else, for a caller that is neither kubectl nor an AWS SDK: `accessctl token --audience openbao \| bao write -field=token auth/jwt-roster/login role=roster jwt=-`. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `github-token` | prints a GitHub App installation token of a catalogue App, `--app <id>`, narrowed by `--repository` and `--permission name=level`, under the catalogue's grants; `--json` prints what GitHub granted beside it. The laptop sign-in, or the job's own token in CI | people, jobs |
-| `credential` | mints a short-lived certificate through OpenBAO: `credential ssh\|db\|client --env <env>`, one exchange for `openbao`, one login on the JWT mount, one `sign` or `issue` call, delivered into the ssh-agent, a psql service entry or a named path. The laptop sign-in, or the job's own token in CI | people, jobs |
+| `credential` | mints a short-lived certificate through OpenBAO: `credential ssh\|db\|client --env <env>`, one exchange for `openbao`, one login on the JWT mount, one `sign` call, delivered into the ssh-agent, a psql service entry or a named path. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
 | `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
@@ -93,8 +93,11 @@ make:
 **The key is generated for the certificate, not decorated by it.** For
 SSH the pair is made in the process, signed once, and handed to the agent
 with the certificate's own lifetime; nothing long-lived survives the
-expiry to be signed again by somebody else. For the PKI kinds the role
-`issue`s both halves, which is what the roles are specified as.
+expiry to be signed again by somebody else. The PKI kinds are the same:
+an ECDSA P-384 key is made in the process, a CSR for it goes to
+`pki/sign/<role>`, and the key is written beside the certificate that
+comes back — never sent, so a role can offer `sign` alone and no call
+exists that would have the manager make a key and put it on the wire.
 
 **Nothing that could mint a second credential outlives the command.** The
 OpenBAO token is held in memory and revoked on the way out; a batch token

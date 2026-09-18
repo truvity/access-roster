@@ -1,5 +1,16 @@
 ## v1.16.1
 
+- **`accessctl credential db` and `client` make the key on this machine
+  and never send it.** v1.16.0 called `pki/issue/<role>`, which has the
+  manager generate the private key and return it in the response — and a
+  role that offers only `sign`, as a role that keeps keys off the wire
+  does, refused it. Both kinds now generate an ECDSA P-384 key locally,
+  send a CSR to `pki/sign/<role>` (the common name, and any URI SANs, in
+  the CSR and in the request, so `use_csr_common_name` and `use_csr_sans`
+  work either way), check the certificate that comes back is for that
+  key, and write the key `0600` where the issued one used to go: the
+  files and their names are unchanged. A role must accept `key_type: ec`
+  with `key_bits: 384`, or `any`.
 - **`accessctl credential` works in the environment's own namespace by
   default.** v1.16.0 defaulted `ssh` and `client` to `platform/<env>` and
   `db` to `<project>/<env>` — a layout the command assumed rather than one

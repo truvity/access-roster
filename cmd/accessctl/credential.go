@@ -146,12 +146,14 @@ func defaultRole(kind string) string {
 	}
 }
 
-// path is the one endpoint this command calls.
+// path is the one endpoint this command calls. Every kind SIGNS: a
+// public key for SSH, a certificate request for the PKI kinds. None of
+// them asks the manager to make a key.
 func (r credentialRequest) path() string {
 	if r.kind == kindSSH {
 		return sshMount + "/sign/" + r.role
 	}
-	return pkiMount + "/issue/" + r.role
+	return pkiMount + "/sign/" + r.role
 }
 
 // parseCredentialFlags reads the command line into a request.

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -9,11 +11,13 @@ import (
 	"encoding/pem"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -70,7 +74,7 @@ func TestCredentialFlagsAreReadAsTheRequest(t *testing.T) {
 		"a database, in the environment's namespace": {
 			args:      []string{"db", "--env", "staging", "--host", "db.example", "--dbname", "orders"},
 			namespace: "staging",
-			path:      "pki/issue/db-client",
+			path:      "pki/sign/db-client",
 			check: func(got credentialRequest) error {
 				if got.service != "staging" || got.port != "5432" {
 					return errors.New("the service entry did not default to the environment on 5432")
@@ -82,13 +86,13 @@ func TestCredentialFlagsAreReadAsTheRequest(t *testing.T) {
 			args: []string{"db", "--env", "staging", "--project", "example",
 				"--host", "db.example", "--dbname", "orders"},
 			namespace: "example/staging",
-			path:      "pki/issue/db-client",
+			path:      "pki/sign/db-client",
 			check:     func(credentialRequest) error { return nil },
 		},
 		"a machine certificate": {
 			args:      []string{"client", "--env", "staging", "--out", "/tmp/example.crt"},
 			namespace: "staging",
-			path:      "pki/issue/client",
+			path:      "pki/sign/client",
 			check:     func(credentialRequest) error { return nil },
 		},
 		"a second installation naming everything itself": {
@@ -374,7 +378,7 @@ func TestSSHCertificateCanBeWrittenBesideTheKey(t *testing.T) {
 	}
 }
 
-// A database credential is one `issue` call and a psql service entry that
+// A database credential is one `sign` call and a psql service entry that
 // names the files it wrote. The database role is the certificate's common
 // name — the server maps it through `pg_ident` — so the entry must not
 // invent a user of its own.
@@ -389,18 +393,20 @@ func TestDatabaseCredentialBecomesAPsqlService(t *testing.T) {
 			"--issuer", issuer, "--address", bao.URL})
 	})
 
-	if !slices.Contains(bao.calls, "pki/issue/db-client") {
+	if !slices.Contains(bao.calls, "pki/sign/db-client") {
 		t.Fatalf("called %v, want the database role", bao.calls)
 	}
-	if bao.namespaces["pki/issue/db-client"] != "staging" {
-		t.Errorf("issued in namespace %q, want the environment's", bao.namespaces["pki/issue/db-client"])
+	if bao.namespaces["pki/sign/db-client"] != "staging" {
+		t.Errorf("signed in namespace %q, want the environment's", bao.namespaces["pki/sign/db-client"])
 	}
-	if bao.bodies["pki/issue/db-client"]["common_name"] != theSubject {
-		t.Errorf("asked for common name %v, want the roster subject", bao.bodies["pki/issue/db-client"]["common_name"])
+	if bao.bodies["pki/sign/db-client"]["common_name"] != theSubject {
+		t.Errorf("asked for common name %v, want the roster subject", bao.bodies["pki/sign/db-client"]["common_name"])
 	}
-	if _, sent := bao.bodies["pki/issue/db-client"]["ttl"]; sent {
+	if _, sent := bao.bodies["pki/sign/db-client"]["ttl"]; sent {
 		t.Error("the request carries a ttl, which is the role's to decide")
 	}
+	signedLocally(t, bao, "pki/sign/db-client",
+		filepath.Join(home, ".config", "accessctl", "credentials", "staging", "orders"))
 
 	service, err := os.ReadFile(filepath.Join(home, ".pg_service.conf"))
 	if err != nil {
@@ -457,8 +463,8 @@ func TestClientCertificateIsWrittenWhereTheCallerAsked(t *testing.T) {
 			"--uri-san", "spiffe://example/workload", "--issuer", issuer, "--address", bao.URL})
 	})
 
-	if bao.bodies["pki/issue/client"]["uri_sans"] != "spiffe://example/workload" {
-		t.Errorf("asked for %v, want the URI SAN requested", bao.bodies["pki/issue/client"]["uri_sans"])
+	if bao.bodies["pki/sign/client"]["uri_sans"] != "spiffe://example/workload" {
+		t.Errorf("asked for %v, want the URI SAN requested", bao.bodies["pki/sign/client"]["uri_sans"])
 	}
 	base := strings.TrimSuffix(out, ".crt")
 	for _, path := range []string{base + ".crt", base + ".key", base + "-ca.crt"} {
@@ -480,6 +486,103 @@ func TestClientCertificateIsWrittenWhereTheCallerAsked(t *testing.T) {
 	}
 	if parsed.Subject.CommonName != theSubject {
 		t.Errorf("common name = %q", parsed.Subject.CommonName)
+	}
+	if len(parsed.URIs) != 1 || parsed.URIs[0].String() != "spiffe://example/workload" {
+		t.Errorf("URI SANs = %v, want the one requested", parsed.URIs)
+	}
+	signedLocally(t, bao, "pki/sign/client", base)
+}
+
+// signedLocally is the PKI kinds' one promise: the key was made here and
+// never sent. The request to `path` is a CSR for exactly the key written
+// at `<base>.key` (0600, ECDSA P-384), the certificate at `<base>.crt` is
+// for that key, no request carried a private key in any field, and the
+// manager was never asked to generate one.
+func signedLocally(t *testing.T, bao *fakeOpenBAO, path, base string) {
+	t.Helper()
+
+	for _, called := range bao.calls {
+		if strings.HasPrefix(called, "pki/issue/") {
+			t.Errorf("called %s: the manager was asked to make the key", called)
+		}
+	}
+	for called, body := range bao.bodies {
+		for field, value := range body {
+			if field == "private_key" || strings.Contains(fmt.Sprint(value), "PRIVATE KEY") {
+				t.Errorf("%s carried a private key in %q", called, field)
+			}
+		}
+	}
+
+	block, _ := pem.Decode([]byte(fmt.Sprint(bao.bodies[path]["csr"])))
+	if block == nil || block.Type != "CERTIFICATE REQUEST" {
+		t.Fatalf("%s was sent no CSR: %v", path, bao.bodies[path])
+	}
+	request, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse the CSR: %v", err)
+	}
+	if request.Subject.CommonName != theSubject {
+		t.Errorf("the CSR asks for %q, want the roster subject", request.Subject.CommonName)
+	}
+
+	info, err := os.Stat(base + ".key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("%s.key is %v, want 0600", base, info.Mode().Perm())
+	}
+	raw, err := os.ReadFile(base + ".key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyBlock, _ := pem.Decode(raw)
+	if keyBlock == nil {
+		t.Fatalf("%s.key is not PEM", base)
+	}
+	parsedKey, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+	if err != nil {
+		t.Fatalf("read the written key: %v", err)
+	}
+	key, ok := parsedKey.(*ecdsa.PrivateKey)
+	if !ok || key.Curve != elliptic.P384() {
+		t.Fatalf("the written key is %T, want ECDSA on P-384", parsedKey)
+	}
+	if !key.PublicKey.Equal(request.PublicKey) {
+		t.Error("the CSR is for a key other than the one written")
+	}
+
+	certificate, err := os.ReadFile(base + ".crt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafCert, err := parseLeaf(string(certificate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !key.PublicKey.Equal(leafCert.PublicKey) {
+		t.Error("the certificate is for a key other than the one written")
+	}
+}
+
+// A certificate for a key other than the one asked about is refused
+// rather than written beside it: the pair would fail only when a server
+// is asked to accept it.
+func TestACertificateForAnotherKeyIsNotWritten(t *testing.T) {
+	bao := newFakeOpenBAO(t)
+	bao.swapKey = true
+	issuer := newFakeIssuer(t)
+	home := signedInHome(t)
+	out := filepath.Join(home, "certs", "gateway.crt")
+
+	err := credential([]string{"client", "--env", "staging", "--out", out,
+		"--issuer", issuer, "--address", bao.URL})
+	if err == nil || !strings.Contains(err.Error(), "other than the one it was asked to sign") {
+		t.Fatalf("a mismatched certificate = %v, want it refused", err)
+	}
+	if _, statErr := os.Stat(strings.TrimSuffix(out, ".crt") + ".key"); !os.IsNotExist(statErr) {
+		t.Errorf("a key was written for a certificate that does not match it: %v", statErr)
 	}
 }
 
@@ -568,7 +671,7 @@ func newFakeIssuer(t *testing.T) string {
 }
 
 // fakeOpenBAO is an installation with the two engines and the JWT mount,
-// which signs and issues for real so that what this tool parses is what
+// which signs for real so that what this tool parses is what
 // OpenBAO would have returned.
 type fakeOpenBAO struct {
 	URL string
@@ -580,6 +683,8 @@ type fakeOpenBAO struct {
 
 	refuse       map[string]int
 	revokeStatus int
+	// swapKey signs a key of the fake's own instead of the CSR's.
+	swapKey bool
 
 	ca     ssh.Signer
 	pkiKey ed25519.PrivateKey
@@ -663,8 +768,8 @@ func (f *fakeOpenBAO) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	case strings.HasPrefix(path, "ssh/sign/"):
 		f.sign(w, body)
-	case strings.HasPrefix(path, "pki/issue/"):
-		f.issue(w, body)
+	case strings.HasPrefix(path, "pki/sign/"):
+		f.signRequest(w, body)
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
@@ -699,36 +804,67 @@ func (f *fakeOpenBAO) sign(w http.ResponseWriter, body map[string]any) {
 	}})
 }
 
-// issue is the PKI engine, which mints the key as well as the
-// certificate — `issue` rather than `sign`, as the roles are specified.
-func (f *fakeOpenBAO) issue(w http.ResponseWriter, body map[string]any) {
-	name, _ := body["common_name"].(string)
-	public, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+// signRequest is the PKI engine's `sign`, with a role shaped the way a
+// credential role is: key_type ec and key_bits 384, the common name read
+// from the CSR (use_csr_common_name) and the SANs from the request
+// (use_csr_sans off). A CSR that does not verify, or is for another kind
+// of key, is refused as the role would refuse it.
+func (f *fakeOpenBAO) signRequest(w http.ResponseWriter, body map[string]any) {
+	refuse := func(why string) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"errors": []string{why}})
+	}
+	csr, _ := body["csr"].(string)
+	block, _ := pem.Decode([]byte(csr))
+	if block == nil {
+		refuse("no csr")
 		return
 	}
+	request, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil || request.CheckSignature() != nil {
+		refuse("the csr does not verify")
+		return
+	}
+	public, ok := request.PublicKey.(*ecdsa.PublicKey)
+	if !ok || public.Curve != elliptic.P384() {
+		refuse("role requires key type ec with 384 bits")
+		return
+	}
+	var signed any = public
+	if f.swapKey {
+		other, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		signed = &other.PublicKey
+	}
+
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject:      pkix.Name{CommonName: name},
+		Subject:      pkix.Name{CommonName: request.Subject.CommonName},
 		NotBefore:    time.Now().Add(-time.Minute),
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}
-	raw, err := x509.CreateCertificate(rand.Reader, template, f.pki, public, f.pkiKey)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	if uris, _ := body["uri_sans"].(string); uris != "" {
+		for _, raw := range strings.Split(uris, ",") {
+			parsed, err := url.Parse(raw)
+			if err != nil {
+				refuse("bad uri_sans")
+				return
+			}
+			template.URIs = append(template.URIs, parsed)
+		}
 	}
-	key, err := x509.MarshalPKCS8PrivateKey(private)
+	raw, err := x509.CreateCertificate(rand.Reader, template, f.pki, signed, f.pkiKey)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
 		"certificate":   string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: raw})),
-		"private_key":   string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key})),
 		"issuing_ca":    string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.pki.Raw})),
 		"serial_number": template.SerialNumber.String(),
 	}})

@@ -17,12 +17,14 @@ carries the same subject the issuer's audit trail does.
 accessctl                the issuer               OpenBAO
   sign-in  ──exchange──▶ aud=openbao ──login───▶  the jwt mount's role
                                                   ssh/sign/<role>
-                                                  pki/issue/<role>
+                                                  pki/sign/<role>
   ssh-agent ◀──────────── the certificate ──────  one call, no TTL asked
 ```
 
-One exchange, one login, one `sign` or `issue`, and then the manager's
-token is revoked. A session revoked in the console stops issuance within
+One exchange, one login, one `sign`, and then the manager's token is
+revoked. Every kind signs a key made on the caller's machine — a public
+key for SSH, a CSR for the PKI kinds — so the private key never crosses
+the wire and no role needs to offer `issue`. A session revoked in the console stops issuance within
 the exchange's token cap, because every run exchanges afresh and nothing
 is cached.
 
@@ -66,17 +68,22 @@ policy that admits it cannot drift apart.
   - `ttl` and `max_ttl` short. `accessctl` never asks for a lifetime, so
     these two are the only answer, and shortening them shortens every
     certificate in flight.
-- **A PKI role for database clients** (`db-client`): the common name is
-  the roster subject, client-auth extended key usage only, a short
-  `max_ttl` — and on the database side a `pg_ident` map from that subject
+- **A PKI role for database clients** (`db-client`), used through
+  `pki/sign/db-client`: `key_type: ec` with `key_bits: 384` (or `any`) —
+  `accessctl` sends a CSR for an ECDSA P-384 key — the common name is
+  the roster subject (`use_csr_common_name` reads it from the CSR, and it
+  is also in the request for a role that does not), client-auth extended
+  key usage only, a short `max_ttl` — and on the database side a `pg_ident` map from that subject
   to a database role. The certificate is the credential; there is no
   password to rotate.
-- **A PKI role for machine clients** (`client`): client-auth extended key
-  usage, a short `max_ttl`, and whatever SAN the consumer matches on.
-- **Policies granting the sign or issue path and nothing else.** No
+- **A PKI role for machine clients** (`client`), through
+  `pki/sign/client`: the same key type, client-auth extended key usage, a
+  short `max_ttl`, and whatever SAN the consumer matches on (the URI SANs
+  are in both the CSR and the request, so `use_csr_sans` either way works).
+- **Policies granting the sign path and nothing else.** No
   `read` and no `list` on role or configuration paths: a credential group
   has no business reading how its own role is defined.
-- **An audit device**, so every sign and issue is queryable by subject
+- **An audit device**, so every signing is queryable by subject
   beside the issuer's own trail.
 
 The roles are the installation's to create, and the revocation model is
