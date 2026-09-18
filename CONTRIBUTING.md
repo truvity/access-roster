@@ -62,7 +62,13 @@ hook) runs the same.
 ## Conventions
 
 - **Conventional commits** (`feat:`, `fix:`, `docs:`, `chore:` …). The
-  history is the changelog's source.
+  history is the source of each GitHub Release's generated notes.
+- **`CHANGELOG.md` is written by hand, for the consumer.** The pull
+  request that makes a change someone using a release would notice adds
+  its bullet under `## vX.Y.Z`, the version it will be tagged as, creating
+  the heading if it is the first. A breaking bullet starts with
+  **Breaking:** and says what to do first. A patch cut only for
+  dependency bumps has no heading.
 - **Rebase-merge only.** Branch from `master`, never stack pull requests.
 - **Generated code is committed.** `just generate` rebuilds `gen/` from
   `proto/`; CI does not run buf. A contract change and its generated code
@@ -159,3 +165,15 @@ Push a `v*` tag. The release workflow builds the binaries, the images
 the two charts (`ghcr.io/truvity/charts/access-issuer` and
 `/access-proxy`), `accessctl`'s archives and its Nix flake, and publishes
 the TypeScript package to GitHub Packages, all stamped with the tag.
+The Go module and the GitHub Action are the same tag. One tag, every
+artifact: a consumer pins one version of this repository.
+
+Auto-release is present but not armed (`vars.AUTO_RELEASE` is unset), so
+every release today is a manual tag. When armed it cuts **patches
+only**: at once for a merged `security`-labelled pull request, weekly for
+dependency bumps. Minors and majors are always manual — tag them when the
+change merges, after its CHANGELOG heading has landed, because an armed
+weekly run would otherwise ship an untagged feature as a patch.
+
+This repository follows the shared
+[component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
