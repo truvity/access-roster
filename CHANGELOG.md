@@ -1,5 +1,14 @@
 ## v1.16.0
 
+- **`policy.SplitGroup` reads any grant back into scope, thing and role.**
+  The shape `<scope>:<thing>:<role>` was documented in trust.md and taken
+  apart in one place, `SplitScopedGroup`, which only answered for this
+  hub's own two roles. A relying party keying its authorization on the
+  scope or the role — the audit log granting `<tenant>:audit:viewer` — had
+  no reader to import and would have written a second one. Now there is
+  one; `SplitScopedGroup` is a thin reading of it. The scope comes back as
+  written, `all` included, because what `all` means is the reader's:
+  this hub reads it as the absence of a scope, an audit log as every tenant.
 - **`accessctl credential`: short-lived SSH, database and machine
   certificates, minted by OpenBAO and keyed by the roster subject.** One
   command family, three kinds — `accessctl credential ssh|db|client --env

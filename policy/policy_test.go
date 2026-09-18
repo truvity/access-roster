@@ -759,3 +759,39 @@ clients:
 		}
 	}
 }
+
+// Every grant in the estate has the one shape, and this is the reader
+// every relying party shares. A name that is not a grant — two segments,
+// an empty segment, four — is reported as not one, rather than as a grant
+// with something missing.
+func TestSplitGroupReadsAnyGrant(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name                   string
+		group                  string
+		ok                     bool
+		scope, thing, wantRole string
+	}{
+		{"this hub's own", policy.GroupOperators, true, "all", "access-roster", "operator"},
+		{"a cluster role", "kernel:k8s:admin", true, "kernel", "k8s", "admin"},
+		{"a project role", "prod:eudi:deployer", true, "prod", "eudi", "deployer"},
+		{"another relying party, tenant-scoped", "C0north:audit:viewer", true, "C0north", "audit", "viewer"},
+		// The scope comes back as written; what "all" means is the
+		// reader's, because it differs between relying parties.
+		{"another relying party, installation-wide", "all:audit:auditor", true, "all", "audit", "auditor"},
+		{"a rung", "rung:sre", false, "", "", ""},
+		{"an employee", "emp:otsar", false, "", "", ""},
+		{"an ordinary name", "platform", false, "", "", ""},
+		{"an address", "team@north.example", false, "", "", ""},
+		{"an empty scope", ":access-roster:operator", false, "", "", ""},
+		{"an empty role", "kernel:k8s:", false, "", "", ""},
+		{"four segments", "kernel:k8s:admin:extra", false, "", "", ""},
+	} {
+		scope, thing, role, ok := policy.SplitGroup(tc.group)
+		if ok != tc.ok || scope != tc.scope || thing != tc.thing || role != tc.wantRole {
+			t.Errorf("%s: %q → (%q, %q, %q, %v), want (%q, %q, %q, %v)",
+				tc.name, tc.group, scope, thing, role, ok, tc.scope, tc.thing, tc.wantRole, tc.ok)
+		}
+	}
+}
