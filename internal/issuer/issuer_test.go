@@ -134,7 +134,7 @@ func TestExchangeMergesClaimsAndCapsLifetime(t *testing.T) {
 	groups, _ := grant.Claims["groups"].([]any)
 	want := map[string]bool{
 		"rung:platform": true, "rung:engineering": true, "all:access-roster:operator": true,
-		"kernel:k8s:admin": true, "devel:k8s:admin": true, "devel:k8s:viewer": true,
+		"mgmt:k8s:admin": true, "devel:k8s:admin": true, "devel:k8s:viewer": true,
 	}
 	for _, g := range groups {
 		delete(want, g.(string))
@@ -300,7 +300,7 @@ func TestSessions(t *testing.T) {
 	}
 
 	record("ada@north.example", "argocd", issuer.HowCode, "t-argocd")
-	kubectl := record("ada@north.example", "k8s:kernel", issuer.HowDevice, "t-kubectl")
+	kubectl := record("ada@north.example", "k8s:mgmt", issuer.HowDevice, "t-kubectl")
 	record("eli@south.example", "argocd", issuer.HowCode, "t-eli")
 
 	if got := counted(issuer.Query{}); got != 3 {

@@ -104,8 +104,8 @@ func TestTheChooserFallsBackToTheClientID(t *testing.T) {
 		want   string
 	}{
 		{id: "billing", want: "<strong>billing</strong>"},
-		{id: "k8s:kernel", want: "<strong>Kubernetes — kernel</strong>"},
-		{id: "k8s:kernel", client: policy.Client{DisplayName: "Headlamp on kernel"}, want: "<strong>Headlamp on kernel</strong>"},
+		{id: "k8s:mgmt", want: "<strong>Kubernetes — mgmt</strong>"},
+		{id: "k8s:mgmt", client: policy.Client{DisplayName: "Headlamp on mgmt"}, want: "<strong>Headlamp on mgmt</strong>"},
 		// A prefix and no cluster is not a cluster.
 		{id: "k8s:", want: "<strong>k8s:</strong>"},
 		{id: "aws:1111:power", want: "<strong>aws:1111:power</strong>"},
@@ -242,7 +242,7 @@ clients:
     description: Not the one that asked.
     redirects: ["https://elsewhere.example/callback"]
     requires: ["all:everyone"]
-  k8s:kernel:
+  k8s:mgmt:
     kind: public
     redirects: ["http://localhost:8000/callback"]
     requires: ["all:everyone"]
@@ -325,7 +325,7 @@ func TestAClusterSignInFromThisComputerIsNamedForTheCluster(t *testing.T) {
 	server := chooserServer(t, namedClientsPolicy)
 	b := newBrowser(t, server)
 
-	where := loginPageFor(t, b, "k8s:kernel", "http://localhost:8000/callback")
+	where := loginPageFor(t, b, "k8s:mgmt", "http://localhost:8000/callback")
 
 	status, _, page := b.do(http.MethodGet, where)
 	if status != http.StatusOK {
@@ -333,8 +333,8 @@ func TestAClusterSignInFromThisComputerIsNamedForTheCluster(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"Sign in to continue to <strong>Kubernetes — kernel</strong>",
-		"A program on this computer, not a website, is asking you to sign in to <strong>Kubernetes — kernel</strong>",
+		"Sign in to continue to <strong>Kubernetes — mgmt</strong>",
+		"A program on this computer, not a website, is asking you to sign in to <strong>Kubernetes — mgmt</strong>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the chooser does not say %q:\n%s", want, page)

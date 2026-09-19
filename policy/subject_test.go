@@ -13,8 +13,8 @@ import (
 func TestAServiceAccountSubjectNamesItsCluster(t *testing.T) {
 	t.Parallel()
 
-	named := policy.ServiceAccountRef{Cluster: "kernel", Namespace: "access-issuer", Name: "recovery"}
-	if got := named.Subject(); got != "kernel:k8s:access-issuer:recovery" {
+	named := policy.ServiceAccountRef{Cluster: "mgmt", Namespace: "access-issuer", Name: "recovery"}
+	if got := named.Subject(); got != "mgmt:k8s:access-issuer:recovery" {
 		t.Errorf("subject = %q, want the cluster first, like every group name", got)
 	}
 
@@ -49,9 +49,9 @@ func TestEverySpellingOfAServiceAccountIsRead(t *testing.T) {
 			want:    policy.ServiceAccountRef{Namespace: "access-issuer", Name: "recovery"},
 		},
 		{
-			subject: "kernel:k8s:access-issuer:recovery",
+			subject: "mgmt:k8s:access-issuer:recovery",
 			want: policy.ServiceAccountRef{
-				Cluster: "kernel", Namespace: "access-issuer", Name: "recovery",
+				Cluster: "mgmt", Namespace: "access-issuer", Name: "recovery",
 			},
 		},
 	} {
@@ -64,7 +64,7 @@ func TestEverySpellingOfAServiceAccountIsRead(t *testing.T) {
 	// A person's address is not a ServiceAccount, and neither is a group
 	// name that happens to have colons in it.
 	for _, notOne := range []string{
-		"ada@north.example", "kernel:k8s:admin", "", "k8s::recovery", "system:serviceaccount:",
+		"ada@north.example", "mgmt:k8s:admin", "", "k8s::recovery", "system:serviceaccount:",
 	} {
 		if got, ok := policy.ParseServiceAccountSubject(notOne); ok {
 			t.Errorf("%q parsed as a ServiceAccount: %+v", notOne, got)
@@ -84,16 +84,16 @@ groups:
   anywhere:
     matchers:
       - service_account: { namespace: authz, name: webhook }
-  kernel-only:
+  mgmt-only:
     matchers:
-      - service_account: { cluster: kernel, namespace: authz, name: webhook }
+      - service_account: { cluster: mgmt, namespace: authz, name: webhook }
 `)
 
-	onKernel := set.Evaluate(policy.Input{ServiceAccount: &policy.ServiceAccountRef{
-		Cluster: "kernel", Namespace: "authz", Name: "webhook",
+	onMgmt := set.Evaluate(policy.Input{ServiceAccount: &policy.ServiceAccountRef{
+		Cluster: "mgmt", Namespace: "authz", Name: "webhook",
 	}})
-	if !onKernel.Has("anywhere") || !onKernel.Has("kernel-only") {
-		t.Errorf("on kernel = %v, want both rules", onKernel.Groups)
+	if !onMgmt.Has("anywhere") || !onMgmt.Has("mgmt-only") {
+		t.Errorf("on mgmt = %v, want both rules", onMgmt.Groups)
 	}
 
 	// The same account on another cluster is a different machine.
@@ -104,7 +104,7 @@ groups:
 		t.Errorf("on devel = %v, want the unqualified rule to still hold", onDevel.Groups)
 	}
 
-	if onDevel.Has("kernel-only") {
+	if onDevel.Has("mgmt-only") {
 		t.Errorf("on devel = %v, want another cluster's account refused by the narrowed rule", onDevel.Groups)
 	}
 }

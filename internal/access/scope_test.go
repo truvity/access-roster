@@ -134,7 +134,7 @@ func TestOnlyTheHubsOwnGroupsCarryAScope(t *testing.T) {
 		{"installation-wide", policy.GroupOperators, true, policy.RoleOperator, ""},
 		// Another relying party's grant has the same shape and is not
 		// this hub's to read.
-		{"another thing's grant", "kernel:k8s:admin", false, "", ""},
+		{"another thing's grant", "mgmt:k8s:admin", false, "", ""},
 		{"a project grant", "prod:shop:deployer", false, "", ""},
 		// Two segments are never a grant.
 		{"a rung", "rung:sre", false, "", ""},

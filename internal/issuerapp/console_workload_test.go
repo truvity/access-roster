@@ -88,9 +88,9 @@ func (c *keySetCluster) token(t *testing.T, subject, audience string) string {
 func TestAWorkloadReadsTheConsoleWithItsOwnServiceAccountToken(t *testing.T) {
 	t.Parallel()
 
-	kernel := newKeySetCluster(t)
+	mgmt := newKeySetCluster(t)
 	clusters := issuer.Verifiers{&verify.Cluster{
-		Name: "kernel", Issuer: kernel.URL, Audience: "access-issuer", Client: kernel.Client(),
+		Name: "mgmt", Issuer: mgmt.URL, Audience: "access-issuer", Client: mgmt.Client(),
 	}}
 	read := workloadBearer(clusters, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if read == nil {
@@ -105,16 +105,16 @@ func TestAWorkloadReadsTheConsoleWithItsOwnServiceAccountToken(t *testing.T) {
 		return read(request)
 	}
 
-	got, ok := call(kernel.token(t, "system:serviceaccount:access-issuer:github-roster", "access-issuer"))
+	got, ok := call(mgmt.token(t, "system:serviceaccount:access-issuer:github-roster", "access-issuer"))
 	if !ok {
 		t.Fatal("the controller's own token was refused")
 	}
 	if got.Source != access.SourceWorkload {
 		t.Errorf("source = %q, want workload — never recovery, which is an operator", got.Source)
 	}
-	if got.ServiceAccount == nil || got.ServiceAccount.Cluster != "kernel" ||
+	if got.ServiceAccount == nil || got.ServiceAccount.Cluster != "mgmt" ||
 		got.ServiceAccount.Namespace != "access-issuer" || got.ServiceAccount.Name != "github-roster" {
-		t.Errorf("account = %+v, want kernel/access-issuer/github-roster", got.ServiceAccount)
+		t.Errorf("account = %+v, want mgmt/access-issuer/github-roster", got.ServiceAccount)
 	}
 	if got.Email != "" {
 		t.Errorf("a workload was given an address: %q", got.Email)
@@ -123,7 +123,7 @@ func TestAWorkloadReadsTheConsoleWithItsOwnServiceAccountToken(t *testing.T) {
 	// A token for another audience is a credential for another service.
 	// Accepting it would make every projected token in the cluster a
 	// credential here.
-	if _, ok := call(kernel.token(t, "system:serviceaccount:access-issuer:github-roster", "vault")); ok {
+	if _, ok := call(mgmt.token(t, "system:serviceaccount:access-issuer:github-roster", "vault")); ok {
 		t.Error("a token minted for another audience was accepted")
 	}
 

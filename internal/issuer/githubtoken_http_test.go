@@ -54,7 +54,7 @@ apps:
       - group: all:release:publisher
         repositories: [docs]
         permissions: { issues: write }
-      - group: kernel:k8s:admin
+      - group: mgmt:k8s:admin
         repositories: ["*"]
         permissions: { metadata: read, contents: read }
   - id: pending

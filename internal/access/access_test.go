@@ -192,7 +192,7 @@ groups:
 lifetimes: { default: 12h, all:gitops:deployer: 1h }
 clients:
   aws:1111:deployer: { kind: exchange, requires: [all:gitops:deployer] }
-  k8s:kernel:        { kind: public, requires: [all:access-roster:operator], ttl_cap: 30m }
+  k8s:mgmt:        { kind: public, requires: [all:access-roster:operator], ttl_cap: 30m }
 `
 	p, err := policy.Parse([]byte(withMachines))
 	if err != nil {

@@ -98,7 +98,7 @@ func TestARefusalCarriesTheIssuersReason(t *testing.T) {
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"error":             "invalid_target",
-			"error_description": `"aws:1111:power" requires any of [kernel:k8s:admin], this proof holds []`,
+			"error_description": `"aws:1111:power" requires any of [mgmt:k8s:admin], this proof holds []`,
 		})
 	}))
 	t.Cleanup(server.Close)

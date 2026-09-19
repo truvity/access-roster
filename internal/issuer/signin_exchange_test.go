@@ -19,7 +19,7 @@ import (
 // whose sign-in may be exchanged, the way `accessctl` is declared.
 var cliPolicy = strings.Replace(demo.Policy, "clients:\n",
 	"clients:\n  cli: { kind: public, redirects: [http://127.0.0.1/callback], "+
-		"requires: [devel:k8s:viewer, kernel:k8s:admin], sign_in_exchange: true }\n", 1)
+		"requires: [devel:k8s:viewer, mgmt:k8s:admin], sign_in_exchange: true }\n", 1)
 
 // serveCLIIssuer is the real OpenID surface under cliPolicy.
 func serveCLIIssuer(t *testing.T) (*httptest.Server, *issuer.Issuer) {
@@ -53,7 +53,7 @@ func serveCLIIssuer(t *testing.T) (*httptest.Server, *issuer.Issuer) {
 	return server, iss
 }
 
-// ada holds kernel:k8s:admin (directory-admins) and devel:k8s:viewer
+// ada holds mgmt:k8s:admin (directory-admins) and devel:k8s:viewer
 // (engineering) in the demonstration policy, so she is admitted to
 // `aws:1111:power` and to the `local-dev` client alike.
 func adaDirectory() *fakeDirectory {

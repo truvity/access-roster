@@ -29,15 +29,15 @@ groups:
     matchers:
       - github: { repository: example-org/gitops, ref: refs/heads/master }
 claims:
-  sre: { groups: [kernel:k8s:admin, prod:k8s:admin], tailnet: { tiers: [vpc, service] } }
-  dpo: { groups: [kernel:k8s:auditor], tailnet: { tiers: [vpc] } }
+  sre: { groups: [mgmt:k8s:admin, prod:k8s:admin], tailnet: { tiers: [vpc, service] } }
+  dpo: { groups: [mgmt:k8s:auditor], tailnet: { tiers: [vpc] } }
   all:access-roster:operator: { groups: [hub:operator] }
 lifetimes:
   default: 12h
   sre: 8h
   all:gitops:deployer: 1h
 clients:
-  k8s:kernel:        { kind: public, requires: [sre, dpo] }
+  k8s:mgmt:        { kind: public, requires: [sre, dpo] }
   aws:1111:deployer: { kind: exchange, requires: [all:gitops:deployer] }
   argocd:            { kind: confidential, secret: argocd-oidc, redirects: [https://argo.example/cb], requires: [sre, dpo], ttl_cap: 4h }
 `
@@ -92,8 +92,8 @@ func TestClaimsDeepMerge(t *testing.T) {
 
 	groups, _ := got.Claims["groups"].([]any)
 	want := []string{
-		"all:access-roster:viewer", "dpo", "kernel:k8s:admin",
-		"kernel:k8s:auditor", "prod:k8s:admin", "sre",
+		"all:access-roster:viewer", "dpo", "mgmt:k8s:admin",
+		"mgmt:k8s:auditor", "prod:k8s:admin", "sre",
 	}
 	if len(groups) != len(want) {
 		t.Fatalf("groups claim = %v, want %v", groups, want)
@@ -546,7 +546,7 @@ clients:
 	accepted := map[string]string{
 		"plain name":           client("display_name", "Argo CD"),
 		"name at the limit":    client("display_name", strings.Repeat("é", policy.MaxDisplayName)),
-		"punctuation and dash": client("display_name", "Kubernetes — kernel (read-only) & more"),
+		"punctuation and dash": client("display_name", "Kubernetes — mgmt (read-only) & more"),
 		"description":          client("description", "Deploys what gitops declares."),
 		"description at limit": client("description", strings.Repeat("x", policy.MaxDescription)),
 	}
@@ -612,8 +612,8 @@ func TestClientTitle(t *testing.T) {
 	}{
 		{id: "argocd", client: policy.Client{DisplayName: "Argo CD"}, want: "Argo CD"},
 		{id: "argocd", want: "argocd"},
-		{id: "k8s:kernel", want: "Kubernetes — kernel"},
-		{id: "k8s:kernel", client: policy.Client{DisplayName: "Headlamp"}, want: "Headlamp"},
+		{id: "k8s:mgmt", want: "Kubernetes — mgmt"},
+		{id: "k8s:mgmt", client: policy.Client{DisplayName: "Headlamp"}, want: "Headlamp"},
 		{id: "k8s:", want: "k8s:"},
 		{id: "aws:1111:power", want: "aws:1111:power"},
 	}
@@ -774,7 +774,7 @@ func TestSplitGroupReadsAnyGrant(t *testing.T) {
 		scope, thing, wantRole string
 	}{
 		{"this hub's own", policy.GroupOperators, true, "all", "access-roster", "operator"},
-		{"a cluster role", "kernel:k8s:admin", true, "kernel", "k8s", "admin"},
+		{"a cluster role", "mgmt:k8s:admin", true, "mgmt", "k8s", "admin"},
 		{"a project role", "prod:shop:deployer", true, "prod", "shop", "deployer"},
 		{"another relying party, tenant-scoped", "C0north:audit:viewer", true, "C0north", "audit", "viewer"},
 		// The scope comes back as written; what "all" means is the
@@ -785,8 +785,8 @@ func TestSplitGroupReadsAnyGrant(t *testing.T) {
 		{"an ordinary name", "platform", false, "", "", ""},
 		{"an address", "team@north.example", false, "", "", ""},
 		{"an empty scope", ":access-roster:operator", false, "", "", ""},
-		{"an empty role", "kernel:k8s:", false, "", "", ""},
-		{"four segments", "kernel:k8s:admin:extra", false, "", "", ""},
+		{"an empty role", "mgmt:k8s:", false, "", "", ""},
+		{"four segments", "mgmt:k8s:admin:extra", false, "", "", ""},
 	} {
 		scope, thing, role, ok := policy.SplitGroup(tc.group)
 		if ok != tc.ok || scope != tc.scope || thing != tc.thing || role != tc.wantRole {
