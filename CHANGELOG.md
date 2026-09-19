@@ -1,3 +1,12 @@
+## v1.16.3
+
+- **`access-proxy`: an `exposure.routes` entry with no `backend` at all
+  gets the chart's own message.** It failed the render with `nil pointer
+  evaluating interface {}.name`; it now fails with the same `route "…"
+  needs backend.name, or attachRouteName …` as an entry whose `backend`
+  has no `name`. Only the error changed: every values file that rendered
+  still renders the same.
+
 ## v1.16.2
 
 - **`accessctl credential` trusts a private root for OpenBAO when told

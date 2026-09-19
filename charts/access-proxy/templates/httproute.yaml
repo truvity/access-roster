@@ -54,8 +54,8 @@ spec:
       backendRefs:
         - group: ""
           kind: Service
-          name: {{ required (printf "route %q needs backend.name, or attachRouteName to bind to a route that already exists" $route.name) $route.backend.name }}
-          port: {{ $route.backend.port | default 8080 }}
+          name: {{ required (printf "route %q needs backend.name, or attachRouteName to bind to a route that already exists" $route.name) ($route.backend | default dict).name }}
+          port: {{ ($route.backend | default dict).port | default 8080 }}
           weight: 1
     {{- end }}
 {{- end }}
