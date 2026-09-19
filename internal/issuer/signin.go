@@ -182,8 +182,8 @@ func SignInRoutes(mux *http.ServeMux, deps SignInDeps) {
 	// button that ends all of them. It lived here because it needed to be
 	// same-origin with the session service, and it is not needed here any
 	// more: the console is same-origin with this issuer and is now the
-	// same process, and its own page for a person already shows both
-	// (INF-695). One directory UI; this service's UI is the login form.
+	// same process, and its own page for a person already shows both.
+	// One directory UI; this service's UI is the login form.
 	//
 	// What is left is the redirect, because the address was linked to and
 	// bookmarked, and a 404 is a worse answer than the page somebody
@@ -963,7 +963,7 @@ func (s *signIn) established(w http.ResponseWriter, r *http.Request, identity, h
 
 // account sends an old bookmark to the console's page for the person.
 //
-// The page itself is gone (INF-695). It lived here because it had to be
+// The page itself is gone. It lived here because it had to be
 // same-origin with the session service; the console is same-origin with
 // this issuer and now the same process, and its own page for a person
 // already lists their sessions and offers *sign out everywhere*. Two

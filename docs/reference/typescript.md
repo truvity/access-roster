@@ -106,11 +106,11 @@ consumer. `fetchIdentity` is deliberately the whole of the network code.
 ```ts
 import { Issuer, middleware, requireGroups, whoami, whoamiPath, identityOf } from "@truvity/access-roster/server";
 
-const issuer = new Issuer({ url: "https://access.example", audience: "url-shortener-devel" });
+const issuer = new Issuer({ url: "https://access.example", audience: "url-shortener-dev" });
 
 app.use(middleware(issuer));                       // establishes, never refuses
 app.get(whoamiPath, whoami(version));              // what useIdentity() asks
-app.use("/admin", requireGroups("devel:url-shortener:deployer"));
+app.use("/admin", requireGroups("dev:url-shortener:deployer"));
 app.get("/me", (req, res) => res.json(identityOf(req)));
 ```
 

@@ -95,7 +95,7 @@ Connecting a cluster's workloads is therefore one row and no credential:
 ```yaml
 exchange:
   clusters:
-    - name: devel
+    - name: dev
       issuer: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE
 ```
 
@@ -167,8 +167,8 @@ composes what it needs:
 cluster := &identity.Cluster{
     Review:   kube.ReviewToken,        // yours, or client-go's
     Audience: "my-service",
-    Name:     "kernel",                // so the same namespace on two clusters is two callers
-    Groups:   []string{"kernel:k8s:admin"},
+    Name:     "prod",                  // so the same namespace on two clusters is two callers
+    Groups:   []string{"prod:k8s:admin"},
 }
 issuer := &identity.Issuer{
     URL:      "https://issuer.example.internal",

@@ -8,7 +8,7 @@ import react from "@vitejs/plugin-react";
 // `base` is RELATIVE, and that is the whole trick. The built bundle is
 // committed and embedded in the hub's binary, so one build has to work
 // wherever the chart mounts it: at its host's root, or under a path when
-// the console shares its issuer's origin (`route.pathPrefix`, INF-687).
+// the console shares its issuer's origin (`route.pathPrefix`).
 // An absolute "/assets/..." cannot do that — served under /console/ the
 // browser resolves it against the ORIGIN, asks the issuer at the root,
 // and gets a 404 for every asset. A build-time env var cannot do it

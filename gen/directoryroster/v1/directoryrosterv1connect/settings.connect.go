@@ -43,7 +43,7 @@ type SettingsServiceClient interface {
 	// GetSettings returns the OAuth client's public half and the read-only
 	// knobs. Never the client secret. Viewer.
 	//
-	// There is no SetOAuthClient beside it any more (INF-694): the client
+	// There is no SetOAuthClient beside it any more: the client
 	// is a Secret, delivered the way every other credential in the estate
 	// is delivered, and a console that could write one was a second way to
 	// provision it.
@@ -85,7 +85,7 @@ type SettingsServiceHandler interface {
 	// GetSettings returns the OAuth client's public half and the read-only
 	// knobs. Never the client secret. Viewer.
 	//
-	// There is no SetOAuthClient beside it any more (INF-694): the client
+	// There is no SetOAuthClient beside it any more: the client
 	// is a Secret, delivered the way every other credential in the estate
 	// is delivered, and a console that could write one was a second way to
 	// provision it.

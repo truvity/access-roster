@@ -210,7 +210,7 @@ type ListSessionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Narrows to their intersection: "Ada's ArgoCD sessions". Naming
 	// neither is the global listing — every session in the installation —
-	// which is operator-only (INF-682): the two questions anybody else has
+	// which is operator-only: the two questions anybody else has
 	// are "what does this person have open" and "who is on this client".
 	Identity string `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
 	ClientId string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`

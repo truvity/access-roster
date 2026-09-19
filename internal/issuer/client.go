@@ -62,7 +62,7 @@ func (c *client) ResponseTypes() []oidc.ResponseType {
 }
 
 // GrantTypes is the whole of what this issuer will honour, for every
-// client, confidential or not (INF-693). Three grants cover the three
+// client, confidential or not. Three grants cover the three
 // needs: a browser reaching a web UI, a CLI on a laptop with a browser to
 // confirm in, and a machine that already holds a token.
 //

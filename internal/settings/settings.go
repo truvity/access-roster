@@ -32,8 +32,8 @@ func (c OAuthClient) Configured() bool { return c.ID != "" && c.Secret != "" }
 // Store keeps what the deployment configured for the console to read.
 //
 // It used to keep what the console WROTE — the OAuth client somebody
-// pasted in, and the memberships layer. Neither is written any more
-// (INF-694): the client is a Secret, delivered the way every other
+// pasted in, and the memberships layer. Neither is written any more:
+// the client is a Secret, delivered the way every other
 // credential in the estate is, and who is in which internal group is the
 // policy, rendered from the installation's own access model and reviewed
 // in git.

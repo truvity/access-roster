@@ -71,7 +71,7 @@ func signInServerWith(t *testing.T, email, policyYAML string) (*httptest.Server,
 		Providers: []issuer.SignIn{oneProvider{email: email}},
 		State:     access.NewStateCodec([]byte("a-test-key-for-signing-state"), 0),
 		// Where an old /account bookmark is sent, now that the page it
-		// named lives in the console (INF-695).
+		// named lives in the console.
 		ConsoleMount: "/console",
 	})
 	if err != nil {
@@ -269,7 +269,7 @@ func TestSigningOutEndsTheBrowserSession(t *testing.T) {
 }
 
 // `/account` was the person's own page here — their sessions, and the
-// button that ends all of them. It has moved into the console (INF-695),
+// button that ends all of them. It has moved into the console,
 // which is same-origin with this issuer and now the same process, and
 // whose page for a person already shows both. One directory UI; this
 // service's UI is the login form.
@@ -947,7 +947,7 @@ func TestBackChannelLogoutTellsAClientThatHoldsNoRefreshToken(t *testing.T) {
 
 // The relying party matches a logout token to its session by `sid`, so
 // the logout token must name the SAME one its ID token did -- which is
-// the per-client session (INF-681), not the browser sign-in it hangs off.
+// the per-client session, not the browser sign-in it hangs off.
 // The first version named the sign-in: a token that verified and matched
 // nothing, a sign-out that silently did not happen.
 func TestTheLogoutTokenNamesTheSessionTheIDTokenDid(t *testing.T) {
@@ -1062,7 +1062,7 @@ func (b *browser) authorizeFor(clientID string) (int, string, string) {
 	return b.do(http.MethodGet, "/login/google/callback?code=x&state="+state)
 }
 
-// A client's `requires` is the gate, and until INF-704 it was the gate on
+// A client's `requires` is the gate, and it used to be the gate on
 // token exchange only -- so anybody the issuer would authenticate got a
 // token for any declared client, and what stopped them was whatever the
 // application checked for itself. A console with no authorization of its

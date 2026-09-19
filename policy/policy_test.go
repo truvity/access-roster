@@ -168,7 +168,7 @@ func TestMachineGroupsAndClientGate(t *testing.T) {
 	}
 }
 
-// The policy has ONE layer (INF-694). A console that could add a
+// The policy has ONE layer. A console that could add a
 // membership was a second source of truth beside git and a merge to
 // reconcile them, so a group's members are exactly what the deployment
 // declared — and every member reads back the same way, with no layer to
@@ -212,8 +212,8 @@ func TestRejectsBadPolicies(t *testing.T) {
 		"lifetime unknown": "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { b: 1h }\n",
 		// `memberships` was a second table that could add directory
 		// groups to a declared group, and the one table a console could
-		// write. There is one place a group's members come from now
-		// (INF-694), so the key is not merely ignored — it is refused,
+		// write. There is one place a group's members come from now,
+		// so the key is not merely ignored — it is refused,
 		// the way any other unknown key is.
 		"memberships table":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nmemberships: { a: [x@y.example] }\n",
 		"client no kind":     "version: 1\ngroups: { a: { members: [g@h.example] } }\nclients: { c: { requires: [a] } }\n",
@@ -316,7 +316,7 @@ func refused(t *testing.T, document, complaint string) {
 // both of GitHub's team roles. It grants nothing and reaches no token —
 // a controller makes the organisation match it — and it lives in this
 // file for one reason: a reader of the access model sees every team's
-// source without opening GitHub (INF-696).
+// source without opening GitHub.
 func TestGitHubTeamBindingsAreReadAsWritten(t *testing.T) {
 	t.Parallel()
 	declared, err := policy.Parse([]byte(`
@@ -775,7 +775,7 @@ func TestSplitGroupReadsAnyGrant(t *testing.T) {
 	}{
 		{"this hub's own", policy.GroupOperators, true, "all", "access-roster", "operator"},
 		{"a cluster role", "kernel:k8s:admin", true, "kernel", "k8s", "admin"},
-		{"a project role", "prod:eudi:deployer", true, "prod", "eudi", "deployer"},
+		{"a project role", "prod:shop:deployer", true, "prod", "shop", "deployer"},
 		{"another relying party, tenant-scoped", "C0north:audit:viewer", true, "C0north", "audit", "viewer"},
 		// The scope comes back as written; what "all" means is the
 		// reader's, because it differs between relying parties.

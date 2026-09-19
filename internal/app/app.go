@@ -78,7 +78,7 @@ type Config struct {
 	demo      bool
 	publicURL string
 	// publicRootURL is the host's root, never carrying route.pathPrefix
-	// (INF-687) even where publicURL does: the bootstrap surface -- the
+	// even where publicURL does: the bootstrap surface -- the
 	// admin-consent callback, and this hub's own sign-in when it runs
 	// one -- stays at the domain root on its own HTTPRoute. Empty falls
 	// back to publicURL in the console, which is exactly right wherever
@@ -363,7 +363,7 @@ func consumers(
 			"this hub reads", "port", cfg.apiPort)
 		return nil
 	}
-	// One spelling for who may call: the mounted file (INF-679). It
+	// One spelling for who may call: the mounted file. It
 	// replaced a comma-separated environment list, which could name a
 	// consumer and could not describe what that consumer may ask -- and
 	// keeping both would have been one place to add a consumer and
@@ -613,8 +613,8 @@ func (a *App) ConsoleServer() *server.ConsoleServer { return a.server }
 // Policy is the policy in force, for a caller that has to act on the
 // SAME one.
 //
-// The merged service loads it once and hands it to both halves
-// (INF-691). Two halves loading it independently is precisely the class
+// The merged service loads it once and hands it to both halves.
+// Two halves loading it independently is precisely the class
 // of failure the merge existed to end: they read the same file today,
 // but their fallbacks differ, so a deployment that configured neither
 // would run a directory answering from a built-in policy and an issuer
@@ -645,7 +645,7 @@ func (a *App) Readiness() health.Dependency { return a.ready }
 
 // RunLoops drives the refresher and the probes, and serves nothing.
 //
-// It is what the merged service runs (INF-691): one process, one set of
+// It is what the merged service runs: one process, one set of
 // listeners, and this half contributing its background work rather than
 // three listeners of its own.
 func (a *App) RunLoops(ctx context.Context) error { return a.hub.Run(ctx) }

@@ -75,7 +75,7 @@ const internalSide: Item[] = [
   // them, so it belongs on this side.
   { value: "github", label: "GitHub", to: paths.github(), icon: <GitHubIcon fontSize="small" /> },
 ];
-// Every open session in the installation (INF-682). It only exists once
+// Every open session in the installation. It only exists once
 // an issuer shares this console's origin, and even then it is
 // operator-only: the rail entry must not render for a viewer.
 const sessionsItem: Item = { value: "sessions", label: "Sessions", to: paths.sessions(), icon: <KeyIcon fontSize="small" /> };
@@ -99,7 +99,7 @@ export function App() {
   // that does not exist yet all ask this one.
   const operator = roles.includes("operator");
   // One line of roles: the installation-wide one, then any held over a
-  // single directory (INF-665), which the wide answer does not include.
+  // single directory, which the wide answer does not include.
   const roleLine =
     [roles[0], ...Object.entries(identityInfo?.scopes ?? {}).map(([workspace, held]) => (held[0] ? `${held[0]} of ${workspace}` : ""))]
       .filter(Boolean)
@@ -175,7 +175,7 @@ export function App() {
         <Box sx={{ px: 2, py: 1.5 }}>
           {/* The console's own root, never the issuer's /login: the
               server sends an unauthenticated visitor through /authorize
-              with this console as the client (INF-701), and /login on its
+              with this console as the client, and /login on its
               own is a page that cannot sign anybody in. */}
           <Button size="small" variant="contained" href={mounted(".")} fullWidth>
             Sign in

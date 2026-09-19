@@ -33,7 +33,7 @@ listeners:
 
 # The corporate directories this service reads.
 #
-# It reads them ITSELF (INF-691). There is no second deployment to ask:
+# It reads them ITSELF. There is no second deployment to ask:
 # the answer about a person is a function call, so a login makes no
 # network call except to the corporate directory. What that buys is not
 # only a hop — it is the end of a class of failure where two services
@@ -150,7 +150,7 @@ oauthClient:
 # A pod cannot discover the name of the cluster it runs in, and the same
 # namespace and name exist on every cluster in an estate — so without this
 # two different machines are one `sub`, and an audit log cannot tell them
-# apart. Use the name the estate already uses for the cluster (`kernel`,
+# apart. Use the name the estate already uses for the cluster (`dev`,
 # `prod`), the same word that is the scope of a group name.
 #
 # Empty keeps the older unqualified subject, `k8s:<namespace>:<name>`,
@@ -165,8 +165,7 @@ exchange:
   audience: ""
 
   # The clusters whose workloads may exchange, each verified against the
-  # key set that cluster publishes for its own ServiceAccount tokens
-  # (INF-692).
+  # key set that cluster publishes for its own ServiceAccount tokens.
   #
   # This is what makes ONE issuer serve MANY clusters. The other way to
   # check such a token is a TokenReview, which means asking the cluster —
@@ -185,7 +184,7 @@ exchange:
   # keeps TokenReview — on the day everything else is broken it should
   # depend on nothing but the API server.
   clusters: []
-  #  - name: kernel          # the estate's own word for it, and what a
+  #  - name: prod            # the estate's own word for it, and what a
   #                          # `workload` matcher names. Renaming a row
   #                          # changes every rule about that cluster.
   #    issuer: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE
@@ -306,7 +305,7 @@ route:
   # Namespaces, besides this issuer's own, allowed to attach an HTTPRoute
   # to this Gateway.
   #
-  # This is the other half of the one-origin console (INF-687): the
+  # This is the other half of the one-origin console: the
   # directory console shares this issuer's HOSTNAME, so it also has to
   # share this issuer's GATEWAY -- two Gateways declaring a listener for
   # the same route.host collide (Envoy Gateway merges every Gateway of
@@ -490,7 +489,7 @@ console:
   # is every page on the internet being able to list and end a signed-in
   # person's sessions through their own browser.
   #
-  # Since the merge (INF-691) the console is served by this process on
+  # Since the merge the console is served by this process on
   # this origin, so nothing cross-origin is involved and this can stay
   # empty. It remains for a console served from somewhere else.
   origin: ""
@@ -508,7 +507,7 @@ console:
   # issuer's own page is, not the console's. Empty serves no console.
   mount: /console
 
-  # The client id the console signs people in as (INF-701).
+  # The client id the console signs people in as.
   #
   # The console is a client of this issuer like any other application:
   # somebody with no session is sent to /authorize, signs in once, and

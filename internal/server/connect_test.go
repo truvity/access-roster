@@ -230,7 +230,7 @@ func TestTheSetupNamesWhereEachFlowActuallyLands(t *testing.T) {
 		t.Errorf("no sign-in anywhere: %v, want %v", got, want)
 	}
 
-	// The console mounted under a path (INF-687): the registered
+	// The console mounted under a path: the registered
 	// redirects are at the host ROOT (RootURL), never under
 	// route.pathPrefix -- a provider redirects to the literal URI on
 	// file, and PublicURL is the console's own, prefixed address.

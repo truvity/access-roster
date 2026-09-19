@@ -48,7 +48,7 @@ spec:
                    Gateway accepts a route from another namespace at all
                    is decided entirely here.
 
-                   route.sharedWith (INF-687) is how the directory
+                   route.sharedWith is how the directory
                    console attaches its own HTTPRoutes to THIS Gateway
                    instead of rendering its own for the same route.host
                    -- two Gateways declaring a listener for one hostname
@@ -97,7 +97,7 @@ spec:
       {{- /* The issuer owns this host's ROOT, and has nothing to serve
              there: everything it answers is a named endpoint, so "/" is
              a 404 for anyone who simply types the domain. Where a console
-             shares the host under a path (INF-687), sending them there
+             shares the host under a path, sending them there
              is kinder than that 404 and costs nothing -- an Exact match
              outranks the catch-all below, so it takes only "/" itself
              and no endpoint moves. Empty serves the 404, which is the

@@ -19,7 +19,7 @@ import (
 
 // serveTwoTenants is [serve] with a second company, which is the case
 // per-consumer grants exist for: one hub reading two directories, and a
-// consumer that should see exactly one of them (INF-679).
+// consumer that should see exactly one of them.
 func serveTwoTenants(t *testing.T, grant *server.Grant) directoryv1connect.DirectoryServiceClient {
 	t.Helper()
 

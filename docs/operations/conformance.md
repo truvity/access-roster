@@ -3,8 +3,8 @@
 access-issuer claims four OpenID Foundation profiles, and the claim is
 worth exactly what the suite says about it. This is how to run it.
 
-> The exit criterion for `v1.0.0` is a green run of all four
-> (INF-683). One of them runs unattended; three need a person at a
+> The exit criterion for `v1.0.0` is a green run of all four.
+> One of them runs unattended; three need a person at a
 > browser, because the whole point of them is that a person signs in.
 
 | profile | plan | attended |
@@ -51,9 +51,9 @@ screenshot shows the wrong page is a failure that the suite cannot see.
 
 **It runs in the cluster**, from the Foundation's published image, and
 it exists exactly while the conformance client rows are declared: the
-two rows in gitops' `cfg/access.yaml` render the suite with them
-(`stacks/identity`, namespace `conformance`), and removing the rows
-removes the suite. One thing to add for a run, one thing to take out.
+installation's configuration renders the suite together with those two
+rows (namespace `conformance`), and removing the rows removes the
+suite. One thing to add for a run, one thing to take out.
 
 Why in the cluster and not on a laptop, where it used to run at
 `localhost.emobix.co.uk`. Three of the four plans are driven by a
@@ -61,7 +61,7 @@ browser and work against an issuer anywhere. The fourth, Back-Channel
 Logout, is the one place the **issuer has to reach the suite**: a logout
 token is a server-to-server POST, and a name that resolves to
 `127.0.0.1` is, from the pod, the pod's own loopback. Pods cannot reach
-the tailnet either. So the suite has a kernel hostname like every other
+the tailnet either. So the suite has a hostname on the cluster like every other
 console, and the issuer reaches it through the same edge with a
 certificate it already verifies.
 
@@ -135,7 +135,7 @@ The plans want **three** client slots and they map onto **two** clients:
 | `client_secret_post` | the same client again — the library takes the credential from the Basic header *or* the form, so one confidential client serves both |
 | `client2` | a second client, for the tests that check a code issued to one cannot be redeemed by another |
 
-They are ordinary declared rows (INF-688) in the estate's access matrix,
+They are ordinary declared rows in the estate's access matrix,
 under `roster.clients`, and they are **temporary**: add them for the run
 and take them out afterwards. A standing client whose only purpose was a
 certification is surface with no consumer.
@@ -145,12 +145,12 @@ certification is surface with no consumer.
     # The suite's own hostname. Every path below is host-relative, so
     # this one name is the redirect the issuer accepts, the landing
     # page, and the BASE_URL the suite starts with.
-    hostname: conformance.kernel.example.com
+    hostname: conformance.prod.example.com
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     requires: [all:access-roster:operator, all:access-roster:viewer]
   - name: conformance-2
-    hostname: conformance.kernel.example.com
+    hostname: conformance.prod.example.com
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     requires: [all:access-roster:operator, all:access-roster:viewer]
@@ -160,13 +160,13 @@ certification is surface with no consumer.
   # back-channel request it did not expect, and since 0.17.1 every
   # sign-out sends one to every client that signed somebody in.
   - name: conformance-bc
-    hostname: conformance.kernel.example.com
+    hostname: conformance.prod.example.com
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     backchannel_logout: /test/a/access-issuer/backchannel_logout
     requires: [all:access-roster:operator, all:access-roster:viewer]
   - name: conformance-bc-2
-    hostname: conformance.kernel.example.com
+    hostname: conformance.prod.example.com
     redirects:  [/test/a/access-issuer/callback]
     signed_out: [/test/a/access-issuer/post_logout_redirect]
     backchannel_logout: /test/a/access-issuer/backchannel_logout
@@ -218,7 +218,7 @@ The whole of this section is one script, which reads the secrets
 itself and prints the four plan ids:
 
 ```bash
-ISSUER=https://access.example.com KUBECTL="kubectl --context kernel@oidc" hack/conformance-plans.sh v1.0.0
+ISSUER=https://access.example.com KUBECTL="kubectl --context prod@oidc" hack/conformance-plans.sh v1.0.0
 ```
 
 What follows is what it does, for when a plan has to be made by hand.
@@ -244,7 +244,7 @@ curl -s -H "$H" -X POST "$S/api/plan?planName=oidcc-basic-certification-test-pla
 Then run every module of the plan in order:
 
 ```bash
-ISSUER=https://access.example.com hack/conformance_drive.py <plan-id>
+ISSUER=https://access.example.com CONTEXT=prod@oidc hack/conformance_drive.py <plan-id>
 ```
 
 **In headless Chrome, and it has to be a browser**, with `SUITE=$S` so
@@ -404,7 +404,7 @@ v0.10.0.
 
 Token exchange is served and is **not** part of any profile claimed
 here. It is now the only one: the device flow, JWT bearer and client
-credentials were served through 0.11 and are gone (INF-693).
+credentials were served through 0.11 and are gone.
 
 The reverse also has to hold, and since 0.11 it is the half worth
 running: nothing this family's design names as *out* may be found

@@ -103,7 +103,7 @@ export type ListSessionsRequest = Message<"accessissuer.v1.ListSessionsRequest">
   /**
    * Narrows to their intersection: "Ada's ArgoCD sessions". Naming
    * neither is the global listing — every session in the installation —
-   * which is operator-only (INF-682): the two questions anybody else has
+   * which is operator-only: the two questions anybody else has
    * are "what does this person have open" and "who is on this client".
    *
    * @generated from field: string identity = 1;
@@ -375,8 +375,8 @@ export const SessionService: GenService<{
   /**
    * ListSessions answers what is open. Narrow it to one identity or one
    * client, which anybody may ask about their own; naming neither is the
-   * global listing, and it is refused unless the caller is an operator
-   * (INF-682), paged by page_size/page_token.
+   * global listing, and it is refused unless the caller is an operator,
+   * paged by page_size/page_token.
    *
    * @generated from rpc accessissuer.v1.SessionService.ListSessions
    */

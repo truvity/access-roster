@@ -55,7 +55,7 @@ func token(args []string) error {
 // that is not the credential is parsed as the credential.
 func kubeToken(args []string) error {
 	flags := flag.NewFlagSet("kube-token", flag.ContinueOnError)
-	audience := flags.String("audience", "", "the cluster's client id, e.g. k8s:kernel")
+	audience := flags.String("audience", "", "the cluster's client id, e.g. k8s:prod")
 	issuer := flags.String("issuer", "", "the issuer, when not configured")
 	clientID := flags.String("client", "", "the client to present")
 	if err := flags.Parse(args); err != nil {

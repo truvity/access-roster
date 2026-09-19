@@ -40,7 +40,7 @@ function movedRest(view: string, id: string | undefined, rest: string[]): string
  *  what makes the old name invisible rather than merely working. */
 const renamed: Record<string, string> = {
   // Matchers showed the rules that admit a proof by its shape, which was
-  // two thirds of them (INF-689).
+  // two thirds of them.
   matchers: "rules",
 };
 
@@ -96,7 +96,7 @@ export const paths = {
   // literally "catalogue" keeps the old prefix, which the parser strips,
   // so it is not read as the old list's address.
   githubApp: (id: string) => (id === "catalogue" ? "/github/apps/catalogue/catalogue" : `/github/apps/${encodeURIComponent(id)}`),
-  // Every open session in the installation (INF-682). Operator-only, and
+  // Every open session in the installation. Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",
   // What happened lately, installation-wide. Operator-only.

@@ -320,7 +320,7 @@ type ProofKind = "ci" | "workload";
 
 function Simulator() {
   const [kind, setKind] = useState<ProofKind>("ci");
-  const [repository, setRepository] = useState("example-org/gitops");
+  const [repository, setRepository] = useState("example-org/platform");
   const [ref, setRef] = useState("refs/heads/master");
   const [namespace, setNamespace] = useState("identity-system");
   const [name, setName] = useState("authorization-webhook");

@@ -28,10 +28,10 @@ the internal groups; nothing is re-mapped on the way:
 
 ```yaml
 groups:
-  kernel:k8s:admin:  { members: [role-sre@example.com, role-admin@example.com] }
-  kernel:k8s:viewer: { members: [team-eng@example.com] }
+  prod:k8s:admin:  { members: [role-sre@example.com, role-admin@example.com] }
+  prod:k8s:viewer: { members: [team-eng@example.com] }
 clients:
-  k8s:kernel: { kind: public, requires: [kernel:k8s:admin, kernel:k8s:viewer] }
+  k8s:prod: { kind: public, requires: [prod:k8s:admin, prod:k8s:viewer] }
 ```
 
 The sign-in page names a `k8s:<cluster>` client *Kubernetes — `<cluster>`*
@@ -40,7 +40,7 @@ person's own computer it says a program there is asking. `requires` is
 what lets `accessctl kubeconfig` know this person may use this cluster; the group names in the token are what the cluster's RBAC
 binds — `<env>:k8s:<role>`, the cluster tier of the
 [naming rule](../design/trust.md#naming). An installation that renders
-its policy from an access matrix (see the gitops repository) mints these
+its policy from an access matrix mints these
 names from one function, so the binding and the token cannot drift
 apart. Renaming an installation's existing bindings is safe to do
 gradually: RBAC binds any number of group names to one ClusterRole, so
@@ -54,12 +54,12 @@ context with kubelogin:
 
 ```yaml
 users:
-  - name: kernel
+  - name: prod
     user:
       exec:
         apiVersion: client.authentication.k8s.io/v1
         command: kubectl
-        args: [oidc-login, get-token, --oidc-issuer-url=https://issuer.example.internal, --oidc-client-id=k8s:kernel, --oidc-extra-scope=groups]
+        args: [oidc-login, get-token, --oidc-issuer-url=https://issuer.example.internal, --oidc-client-id=k8s:prod, --oidc-extra-scope=groups]
 ```
 
 On a laptop, `accessctl kube-token` trades the cached sign-in for the

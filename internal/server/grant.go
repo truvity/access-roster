@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// What one consumer of the API listener may ask (INF-679).
+// What one consumer of the API listener may ask.
 //
 // Admission and authorization were one decision: an admitted consumer
 // was admitted to everything. `ListGroups` returned every group of every

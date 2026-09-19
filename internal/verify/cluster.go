@@ -26,7 +26,7 @@ import (
 // Cluster verifies a Kubernetes ServiceAccount token against the key set
 // its own API server publishes.
 //
-// This is what makes ONE issuer serve MANY clusters (INF-692). The other
+// This is what makes ONE issuer serve MANY clusters. The other
 // way to check such a token is a TokenReview, which asks the cluster —
 // and asking means holding a kubeconfig for every cluster whose workloads
 // may exchange, inside the service whose whole point is to hold almost no

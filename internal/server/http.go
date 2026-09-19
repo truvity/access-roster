@@ -106,7 +106,7 @@ type ConsoleServerDeps struct {
 	Forwarded  ForwardedIdentity
 	// SignInEntry is where an unauthenticated browser is sent to GET a
 	// session: the issuer's authorization endpoint, with this console as
-	// the client (INF-701).
+	// the client.
 	//
 	// [SignedIn] reads a session somebody already has; this is how they
 	// come by one. Both are needed and neither replaces the other. Nil
@@ -115,7 +115,7 @@ type ConsoleServerDeps struct {
 	// gateway turns off.
 	SignInEntry func() string
 	// SignedIn reads the ISSUER's own browser session, when the console
-	// is served by the same process on the same origin (INF-691).
+	// is served by the same process on the same origin.
 	//
 	// It is what lets a person who already signed in — at any console
 	// behind this issuer — reach this one with no second session and no
@@ -948,7 +948,7 @@ type whoamiBody struct {
 	// it without a second call.
 	Version    string `json:"version"`
 	SignOutURL string `json:"signOutUrl,omitempty"`
-	// IssuerURL is where this console's shared issuer sits (INF-687),
+	// IssuerURL is where this console's shared issuer sits,
 	// same origin as the console, so the browser reaches its
 	// SessionService directly with the SSO cookie. Empty for a hub
 	// deployed alone with no issuer -- which is what every deployment

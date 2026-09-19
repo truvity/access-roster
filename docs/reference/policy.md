@@ -14,37 +14,37 @@ survives only as the matchers inside machine groups.
 version: 1
 
 groups:                        # internal groups — the vocabulary, named <scope>:<thing>:<role>
-  kernel:k8s:admin:
+  prod:k8s:admin:
     members: [role-sre@a.example, role-sre@b.example]   # directory groups, any workspace
-  kernel:k8s:auditor:
+  prod:k8s:auditor:
     members: [role-security@a.example]
-  prod:eudi:deployer:
-    members: [team-eudi@a.example]
+  prod:shop:deployer:
+    members: [team-shop@a.example]
   rung:sre:                                             # two segments: a lifetime carrier, not a grant
     members: [role-sre@a.example, role-sre@b.example]
-  ci:gitops:deployer:
+  ci:platform:deployer:
     matchers:                                           # matched, not listed
-      - github: { repository: acme/gitops, ref: refs/heads/master }
+      - github: { repository: acme/platform, ref: refs/heads/master }
   all:access-roster:viewer:
     matchers: [{ email_domain: a.example }]              # the escape hatch, see below
   all:access-roster:operator:
     members: [directory-admins@a.example]
 
 claims:                        # what a group adds beyond its own name — sparse, usually empty
-  kernel:k8s:auditor: { tailnet: { tiers: [vpc] } }
+  prod:k8s:auditor: { tailnet: { tiers: [vpc] } }
 
 lifetimes:                     # how long — default plus the rungs
   default: 4h
   rung:sre: 8h
-  ci:gitops:deployer: 1h
+  ci:platform:deployer: 1h
 
 clients:                       # who may be issued a token for what; the id is the audience
-  k8s:kernel:        { kind: public,       requires: [kernel:k8s:admin, kernel:k8s:auditor] }
-  aws:1111:power:    { kind: exchange,     requires: [kernel:k8s:admin] }
-  aws:1111:deployer: { kind: exchange,     requires: [ci:gitops:deployer] }
-  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [kernel:k8s:admin, kernel:k8s:auditor], ttl_cap: 12h, display_name: Argo CD, description: Continuous delivery for the kernel cluster. }
-  local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [prod:eudi:deployer] }
-  accessctl:         { kind: public,       redirects: [http://127.0.0.1/callback], requires: [kernel:k8s:admin, kernel:k8s:auditor], sign_in_exchange: true, display_name: accessctl }
+  k8s:prod:        { kind: public,       requires: [prod:k8s:admin, prod:k8s:auditor] }
+  aws:1111:power:    { kind: exchange,     requires: [prod:k8s:admin] }
+  aws:1111:deployer: { kind: exchange,     requires: [ci:platform:deployer] }
+  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [prod:k8s:admin, prod:k8s:auditor], ttl_cap: 12h, display_name: Argo CD, description: Continuous delivery for the kernel cluster. }
+  local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [prod:shop:deployer] }
+  accessctl:         { kind: public,       redirects: [http://127.0.0.1/callback], requires: [prod:k8s:admin, prod:k8s:auditor], sign_in_exchange: true, display_name: accessctl }
 ```
 
 | Table | Key | Holds | Who writes it |
@@ -56,7 +56,7 @@ clients:                       # who may be issued a token for what; the id is t
 | `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
 
 Five tables, one writer. There was another, `memberships`, which a
-console could extend; it is gone with the read-only console (INF-694),
+console could extend; it is gone with the read-only console,
 and the key is now refused like any other unknown one rather than
 ignored. A directory group that should feed an internal group is named
 in that group's `members`, here, in git.
@@ -66,7 +66,7 @@ in that group's `members`, here, in git.
 Every grant is named **`<scope>:<thing>:<role>`** — *role, on thing, in
 scope* — and the reasoning is in [design/trust.md](../design/trust.md#naming).
 `scope` is an environment, a tenant id, or `all`; `thing` is what the role
-is on (a subsystem such as `k8s`, a project such as `eudi`, an application
+is on (a subsystem such as `k8s`, a project such as `shop`, an application
 such as `access-roster`); `role` is from that thing's own ladder. The two
 exceptions are not grants and are two segments on purpose: `rung:<name>`
 carries a session lifetime, `emp:<slug>` is a person. The loader warns on
@@ -188,7 +188,7 @@ directory vouched for this — it goes into the string
 (`<workspace id>:access-roster:viewer`), where every consumer keeps
 working.
 
-> **`sub`, decided 2026-09-09 (INF-681).** A person is their **email**
+> **`sub`, decided 2026-09-09.** A person is their **email**
 > address — readable in every audit log, no second lookup, and what the
 > service already keys by; a rename becomes a new `sub` whose old sessions
 > end, which for a controlled directory is acceptable, arguably correct.
@@ -199,7 +199,7 @@ working.
 > a `cluster` to narrow to one; naming none matches any, so every rule
 > written before clusters were named still means what it meant.
 
-> **Which clusters, decided 2026-09-10 (INF-692).** The clusters whose
+> **Which clusters, decided 2026-09-10.** The clusters whose
 > ServiceAccount tokens count are **not** in this file. They are chart
 > values — `exchange.clusters`, one row of `{name, issuer, jwksUri}` per
 > cluster — because they are not a statement about who may do what, which
@@ -336,7 +336,7 @@ which accounts hold a group is a question only the directory answers,
 and it is answered once, in `groups`.
 
 That is the whole reason this table names internal groups rather than
-provider addresses (INF-696): everything the policy already does applies
+provider addresses: everything the policy already does applies
 to a team for free. Holders from two workspaces, a matcher for the day
 before a group exists, the naming convention, the console's holders
 view — a team gets all of it by being an ordinary consumer.
@@ -394,7 +394,7 @@ twice is refused.
 
 Through 0.11 a second, console-written layer carried `memberships`
 attached in the console, merged under the declared one. It is gone with
-the read-only console (INF-694): who is in which internal group is this
+the read-only console: who is in which internal group is this
 file and nothing else, and `git log` is the complete history of access.
 
 ## Not in this file
@@ -421,15 +421,16 @@ client names its secret. A typo fails the rollout, not a login.
 Nothing in this file. The console reads the policy and shows it — every
 group, every rule, every client — and its only writes are removals of
 sessions (revoke, *sign out everywhere*). Through 0.10 it could also
-attach directory groups; that goes with INF-694.
+attach directory groups; that went with the read-only console.
 
 ## Testing the file
 
 Three ways, at three moments.
 
 **Before it ships:** the file is parsed by the issuer's own loader, the
-same code that refuses it at startup. In gitops that is a test that runs
-on every render (`TestTheRenderedIssuerPolicyLoads`, INF-690), so an
+same code that refuses it at startup. Run it as a test on every render
+of the policy (for example a `TestTheRenderedIssuerPolicyLoads` of your
+own), so an
 unknown key, a client with no `requires` or a redirect that is also a
 landing page fails the pull request rather than the rollout — and a
 rollout the issuer refuses is the worst case, because the previous pods

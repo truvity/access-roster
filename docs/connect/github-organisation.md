@@ -96,7 +96,7 @@ githubRoster:
   actsIn: []            # born disabled: nothing is changed until an organisation is listed
 exchange:
   clusters:
-    - name: kernel      # this cluster: the service verifies the controller's token against its key set
+    - name: prod        # this cluster: the service verifies the controller's token against its key set
       issuer: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE
       jwksUri: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE/keys
 ```
@@ -108,10 +108,10 @@ and recording what it did:
 groups:
   all:access-roster:viewer:
     matchers:
-      - service_account: { cluster: kernel, namespace: access-issuer, name: access-issuer-github-roster }
+      - service_account: { cluster: prod, namespace: access-issuer, name: access-issuer-github-roster }
   all:access-roster:reporter:
     matchers:
-      - service_account: { cluster: kernel, namespace: access-issuer, name: access-issuer-github-roster }
+      - service_account: { cluster: prod, namespace: access-issuer, name: access-issuer-github-roster }
 ```
 
 The account's name is `<release>-github-roster`. The chart refuses to

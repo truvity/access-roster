@@ -35,7 +35,7 @@ var localOnly = []string{
 	//   FORWARDED_*              who the proxy in front of the console
 	//                            said you were -- there is no proxy in
 	//                            front of the console any more, it reads
-	//                            the issuer's own session (INF-701)
+	//                            the issuer's own session
 	//   SIGN_OUT_URL             where the console's sign-out pointed;
 	//                            the issuer serves /logout itself now
 	//
@@ -69,7 +69,7 @@ func TestTheChartSetsEverythingTheBinaryReads(t *testing.T) {
 		found(t, filepath.Join("..", "issuerapp", "app.go"), pattern)...,
 	)
 	// The ISSUER's chart, because the issuer is what deploys this code:
-	// INF-691 folded the hub into it and internal/rosterapp runs it in
+	// the merge folded the hub into it and internal/rosterapp runs it in
 	// process. The hub's own chart is gone, and this check followed the
 	// deployment rather than being deleted with it -- what it catches is
 	// a variable read here and set nowhere, which does not care which

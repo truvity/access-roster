@@ -194,8 +194,8 @@ func cookieIn(header http.Header, name string) string {
 	return cookie.Value
 }
 
-// defaultSessionsPageSize and maxSessionsPageSize bound the global listing
-// (INF-682). Narrowed to one identity or one client a listing is already
+// defaultSessionsPageSize and maxSessionsPageSize bound the global listing.
+// Narrowed to one identity or one client a listing is already
 // small — an account or a client does not hold thousands of open
 // sessions — so only the unnarrowed, operator-only listing needs a cap at
 // all; applying the same cap there too keeps one rule rather than two.

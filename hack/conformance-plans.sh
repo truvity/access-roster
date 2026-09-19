@@ -11,7 +11,7 @@
 # plane is not public (docs/operations/conformance.md).
 #
 # Usage:
-#   KUBECTL="kubectl --context kernel@oidc" hack/conformance-plans.sh [<version label>]
+#   KUBECTL="kubectl --context prod@oidc" hack/conformance-plans.sh [<version label>]
 #
 # KUBECTL is how the cluster is reached (a context that authenticates
 # through OIDC needs kubectl-oidc_login on PATH). The label goes into the
@@ -25,7 +25,7 @@ echo "SUITE=$S"
 curl -sf -H "$H" -o /dev/null "$S/api/runner/available" || { echo "suite not answering at $S"; exit 1; }
 DIR=$(mktemp -d); trap 'rm -rf "$DIR"' EXIT
 secret() { $K -n access-issuer get secret "$1" -o jsonpath='{.data.client-secret}' | base64 -d; }
-# Two pairs of clients (cfg/access.yaml in gitops): `conformance` and
+# Two pairs of clients (declared in the installation's policy): `conformance` and
 # `conformance-2` register NO back-channel address and serve Basic OP and
 # RP-Initiated Logout, whose modules fail a test that receives a logout
 # token they did not expect; `conformance-bc` and `conformance-bc-2`

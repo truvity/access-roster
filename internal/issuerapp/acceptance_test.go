@@ -110,7 +110,7 @@ func TestDiscoveryDescribesWhatIsActuallyServed(t *testing.T) {
 			t.Errorf("%s = %q, want it under the issuer URL", field, value)
 		}
 	}
-	// The device flow is not served (INF-693): nobody signs in from a
+	// The device flow is not served: nobody signs in from a
 	// machine with no browser here, because both headless cases — a CI
 	// job and a workload — are token exchange. Its address advertised is
 	// a promise to nobody.
@@ -184,7 +184,7 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 
 	// Where the answer about a person comes from is checked at ASSEMBLY,
 	// not at load, because there are now two ways to supply it: an
-	// address to dial, or a directory in this process (INF-691). Neither
+	// address to dial, or a directory in this process. Neither
 	// is a failure on its own; having neither is.
 	t.Setenv("ISSUER_URL", "https://issuer.example")
 	t.Setenv("TOKEN_LIFETIME", "")
