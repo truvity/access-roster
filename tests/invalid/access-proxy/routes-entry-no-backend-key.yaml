@@ -1,0 +1,24 @@
+# An exposure.routes entry with no backend key at all and no attachRouteName has nothing to route to (template `required`, not a nil pointer).
+# error: route "demo" needs backend.name
+exposure:
+  hostname: console.example
+  gateway:
+    name: internal
+    namespace: gateway-system
+  routes:
+  - name: demo
+    posture: authenticated
+  - name: app
+    attachRouteName: surface-app
+    allow:
+    - surface:operator
+issuer:
+  url: https://issuer.example
+client:
+  secret:
+    name: console-client
+session:
+  valkey:
+    address: valkey.example.svc:6379
+  cookieSecret:
+    name: console-cookie
