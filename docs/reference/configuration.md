@@ -221,11 +221,16 @@ that will not start.
 
 Labels on every service-written object: `app.kubernetes.io/managed-by=directory-roster`,
 `app.kubernetes.io/part-of=<release>`, and
-`directory-roster.truvity.com/kind` = `workspace`, `workspace-credentials`,
+`access-roster.truvity.github.io/kind` = `workspace`, `workspace-credentials`,
 `settings`, `github-status`, `github-orgs` (both the records ConfigMap and
 the Apps Secret), `github-links`, `github-runner-apps`, `github-catalogue-apps`, or `credential`
 on a per-workspace Secret a release before 1.7 wrote. The workspace id as the backend spells it is the annotation
-`directory-roster.truvity.com/workspace-id`. Export everything with
+`access-roster.truvity.github.io/workspace-id`. Releases before these keys
+wrote the kind label and the annotation under an older prefix; the service
+moves every object of its release to the keys above when it starts, before
+it reads any of them, so an upgrade, or a restore of objects an older
+release wrote, needs no step of its own (a rollback past it does: see the
+CHANGELOG). Export everything with
 
 ```sh
 kubectl -n directory-roster get secret,configmap -l app.kubernetes.io/managed-by=directory-roster -o yaml

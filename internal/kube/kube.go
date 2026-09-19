@@ -40,12 +40,12 @@ import (
 const (
 	managedByLabel = "app.kubernetes.io/managed-by"
 	partOfLabel    = "app.kubernetes.io/part-of"
-	kindLabel      = "directory-roster.truvity.com/kind"
+	kindLabel      = "access-roster.truvity.github.io/kind"
 	// idAnnotation carries the workspace id as the backend spells it. It
 	// is an annotation and not a label because a tenant id is not
 	// constrained to what a label value may hold, and truncating one to
 	// fit would make two workspaces look like one.
-	idAnnotation = "directory-roster.truvity.com/workspace-id"
+	idAnnotation = "access-roster.truvity.github.io/workspace-id"
 )
 
 // The kinds of object this package writes, which are also the middle

@@ -429,6 +429,9 @@ type stores struct {
 	// githubCatalogueApps is where catalogue Apps are kept. Nil with the
 	// memory store, for the same reason.
 	githubCatalogueApps *kube.GitHubCatalogueApps
+	// relabel moves objects an older release labelled to the current
+	// keys; see [kube.Client.RelabelLegacy]. Nil with the memory store.
+	relabel func(context.Context) ([]string, error)
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -452,6 +455,18 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 	client, err := kube.InCluster(cfg.release)
 	if err != nil {
 		return stores{}, err
+	}
+	// First, before anything lists by label: objects an older release
+	// wrote carry the label keys it used, and the stores below read only
+	// the current ones. A workspace record left under the old keys is a
+	// workspace this process would not see, so a failure here stops the
+	// start rather than serving a directory with workspaces missing.
+	moved, err := client.RelabelLegacy(ctx)
+	if err != nil {
+		return stores{}, fmt.Errorf("move objects an older release labelled to the current label keys: %w", err)
+	}
+	if len(moved) > 0 {
+		log.InfoContext(ctx, "moved objects an older release labelled to the current label keys", "objects", moved)
 	}
 	key, err := client.SessionKey(ctx, access.NewSessionKey)
 	if err != nil {
@@ -553,7 +568,41 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		sessionKey:  key,
 		reviewToken: client.ReviewToken,
 		namespace:   client.Namespace(),
+		relabel:     client.RelabelLegacy,
 	}, nil
+}
+
+// legacyLabelSweep is how often the relabel runs again after start-up.
+const legacyLabelSweep = time.Minute
+
+// sweepLegacyLabels repeats the start-up relabel until ctx is done.
+//
+// A rolling upgrade runs replicas of the older release beside this one,
+// and they keep writing objects under the old keys — a probe rewrites
+// every workspace record — which this process would then not list. The
+// sweep moves them within a minute. After the upgrade it finds nothing,
+// at the cost of two List calls a minute.
+func sweepLegacyLabels(ctx context.Context, relabel func(context.Context) ([]string, error), log *slog.Logger) error {
+	if relabel == nil {
+		return nil
+	}
+	tick := time.NewTicker(legacyLabelSweep)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
+			moved, err := relabel(ctx)
+			if err != nil {
+				log.WarnContext(ctx, "objects an older release labelled could not be moved to the current label keys",
+					"objects", moved, "error", err)
+			} else if len(moved) > 0 {
+				log.InfoContext(ctx, "moved objects an older release labelled to the current label keys",
+					"objects", moved)
+			}
+		}
+	}
 }
 
 // LogLevel is the level the process should log at.
@@ -579,6 +628,9 @@ type App struct {
 	// here, read by the console's Apps pages, written by the half that
 	// mints them. Nil where the deployment declares no App.
 	githubMints *mints.Ring
+	// relabel is the legacy label sweep's work, nil where the deployment
+	// keeps no state in Kubernetes.
+	relabel func(context.Context) ([]string, error)
 }
 
 // Audit is the service's one recorder, for the half assembled after this
@@ -648,7 +700,12 @@ func (a *App) Readiness() health.Dependency { return a.ready }
 // It is what the merged service runs: one process, one set of
 // listeners, and this half contributing its background work rather than
 // three listeners of its own.
-func (a *App) RunLoops(ctx context.Context) error { return a.hub.Run(ctx) }
+func (a *App) RunLoops(ctx context.Context) error {
+	group, gctx := errgroup.WithContext(ctx)
+	group.Go(func() error { return a.hub.Run(gctx) })
+	group.Go(func() error { return sweepLegacyLabels(gctx, a.relabel, a.log) })
+	return group.Wait()
+}
 
 // Close releases what New opened.
 func (a *App) Close() {
@@ -905,6 +962,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 
 		catalogueApps: githubCatalogueApps(kept.githubCatalogueApps, cfg.demo, demoAppKey),
 		githubMints:   githubMints,
+		relabel:       kept.relabel,
 	}, nil
 }
 
@@ -915,7 +973,7 @@ func (a *App) Run(ctx context.Context) error {
 	group.Go(func() error { return serve(gctx, a.cfg.apiPort, a.api, "api", a.log) })
 	group.Go(func() error { return serve(gctx, a.cfg.consolePort, a.console, "console", a.log) })
 	group.Go(func() error { return serve(gctx, a.cfg.healthPort, a.health, "health", a.log) })
-	group.Go(func() error { return a.hub.Run(gctx) })
+	group.Go(func() error { return a.RunLoops(gctx) })
 	return group.Wait()
 }
 

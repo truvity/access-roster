@@ -26,7 +26,7 @@ func TestCatalogueAppsAreKeptByIDInOneSecret(t *testing.T) {
 		t.Errorf("name = %s", store.SecretName())
 	}
 	secret, err := client.API().CoreV1().Secrets(client.Namespace()).Get(ctx, store.SecretName(), metav1.GetOptions{})
-	if err != nil || secret.Labels["directory-roster.truvity.com/kind"] != "github-catalogue-apps" {
+	if err != nil || secret.Labels["access-roster.truvity.github.io/kind"] != "github-catalogue-apps" {
 		t.Fatalf("the Secret = %+v, %v", secret, err)
 	}
 

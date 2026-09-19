@@ -1,3 +1,38 @@
+## Unreleased
+
+- **Breaking:** anything that selects the service's objects by their old
+  kind label — a backup, a script, a dashboard — must switch to the new
+  one with this upgrade. **The service's own label keys are under the
+  project's prefix.** Every ConfigMap and Secret the service writes is
+  labelled `access-roster.truvity.github.io/kind`, and a workspace record
+  is annotated `access-roster.truvity.github.io/workspace-id`, in place
+  of the `directory-roster.truvity.com/` keys earlier releases wrote.
+  `app.kubernetes.io/managed-by` and `app.kubernetes.io/part-of` are
+  unchanged.
+  - **Upgrading needs no step.** At start, before it reads anything, the
+    service moves every object of its release (`managed-by` and
+    `part-of` its own) from the old keys to the new ones, by a merge patch
+    that two replicas can apply at once; a start with nothing to move
+    writes nothing. While a rolling upgrade still runs replicas of the
+    older release, which keep writing the old keys, the move repeats
+    every minute. A start that cannot move them stops, rather than serve a
+    directory missing the workspaces it could not see.
+  - **Upgrade note — rolling back past this release needs a manual
+    reverse relabel.** An older release reads only the old keys, so after
+    the rollback it sees no connected workspace. Once no replica of this
+    release is left running (it would move them straight back), run, with
+    your namespace and release name:
+
+    ```sh
+    kubectl -n <namespace> get configmap,secret -o json \
+      -l 'app.kubernetes.io/part-of=<release>,access-roster.truvity.github.io/kind' \
+      | jq '.items[].metadata |= (.labels["directory-roster.truvity.com/kind"] = .labels["access-roster.truvity.github.io/kind"] | del(.labels["access-roster.truvity.github.io/kind"]) | if .annotations["access-roster.truvity.github.io/workspace-id"] then .annotations["directory-roster.truvity.com/workspace-id"] = .annotations["access-roster.truvity.github.io/workspace-id"] | del(.annotations["access-roster.truvity.github.io/workspace-id"]) else . end)' \
+      | kubectl replace -f -
+    ```
+
+    then restart the service (`kubectl rollout restart`), which reopens
+    stored workspaces only at start.
+
 ## v1.16.3
 
 - **`access-proxy`: an `exposure.routes` entry with no `backend` at all
