@@ -7,6 +7,12 @@ cloud's own protocol: an SSH server, a database, a service that wants
 mutual TLS. `accessctl credential` is the courier
 ([reference](../reference/accessctl.md#credential-certificates-openbao-mints)).
 
+The contract between the two sides — the doors, the claims, the two
+clients, the credential paths and every failure mode — is
+[truvity/openbao's docs/integrations/access-roster.md](https://github.com/truvity/openbao/blob/master/docs/integrations/access-roster.md),
+tested there against a real server; what this side must provide for it is
+[integrations/openbao.md](../integrations/openbao.md).
+
 Nothing here is a second identity system. The policy decides **who may
 ask**; the manager's roles decide **what they get**; the certificate
 carries the same subject the issuer's audit trail does.
