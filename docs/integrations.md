@@ -362,6 +362,9 @@ configure and where, what you get.
   own, each naming the same subject the issuer's audit trail does, and
   nothing long-lived on a laptop.
 - Guide: [connect/openbao.md](connect/openbao.md).
+- Contract: [integrations/openbao.md](integrations/openbao.md) — what
+  this side provides; the whole contract, tested against a real server,
+  is in truvity/openbao.
 
 ## Reading the two models together
 
