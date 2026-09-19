@@ -220,7 +220,7 @@ func TestAssumingARoleSendsTheTokenAndNoSignature(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	creds, err := assumeAt(t, server, "arn:aws:iam::1111:role/power", "ada@north.example", "a-token")
+	creds, err := assumeAt(t, server, "arn:aws:iam::111122223333:role/power", "ada@north.example", "a-token")
 	if err != nil {
 		t.Fatalf("assume: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestARefusedRoleCarriesWhatSTSSaid(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	_, err := assumeAt(t, server, "arn:aws:iam::1111:role/power", "ada", "a-token")
+	_, err := assumeAt(t, server, "arn:aws:iam::111122223333:role/power", "ada", "a-token")
 	if err == nil {
 		t.Fatal("a refused role was accepted")
 	}
