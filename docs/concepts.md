@@ -53,7 +53,7 @@ of removals the controller held, or **imports** GitHub links approved
 elsewhere.
 
 It cannot change who is in a group. That is the policy, rendered from the
-installation's own access model and reviewed in git (INF-694), so `git
+installation's own access model and reviewed in git, so `git
 log` is the complete history of access and there is nothing for a console
 and a repository to disagree about.
 

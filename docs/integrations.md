@@ -82,7 +82,7 @@ flowchart TB
 | **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `token`, `whoami`, `exchange` | people, on laptops, and a CI job with the same files | built; a Nix flake on every release, for devbox |
 | **GitHub Action** | `truvity/access-roster` (root `action.yml`), pinned to a release | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | built |
 | **Store** | the audit trail | one Elastic Common Schema record per event — sign-ins, refusals, exchanges, revokes, console actions, what the controller did — in JSON-lines objects by the hour, in a bucket the platform owns; the console's Audit page reads it back | the platform, one bucket with Object Lock | written since 1.6.2; a recovery sign-in is the one event that is refused when it cannot be written |
-| **File format** | the policy | groups, claims, lifetimes, clients — one schema for both services | the platform, in gitops, rendered from its access matrix | in force |
+| **File format** | the policy | groups, claims, lifetimes, clients — one schema for both services | the platform, in its own repository, rendered from its access matrix | in force |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the console's own services | consumers of access-roster | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
 

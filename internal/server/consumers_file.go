@@ -8,8 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The declared consumers of the API listener, with their grants
-// (INF-679).
+// The declared consumers of the API listener, with their grants.
 //
 // A list of subjects fits in an environment variable; a grant does not,
 // and squeezing one in would produce a syntax nobody can read in a

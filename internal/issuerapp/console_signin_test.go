@@ -7,8 +7,8 @@ import (
 )
 
 // The console is a client of this issuer like any other application, so
-// what it sends a browser to is an ordinary authorization request
-// (INF-701). Everything in it has to be right: a client the policy
+// what it sends a browser to is an ordinary authorization request.
+// Everything in it has to be right: a client the policy
 // declares, a redirect the client declares back, and a challenge,
 // because a public client is a native one and the library requires one.
 func TestTheConsoleSendsAnOrdinaryAuthorizationRequest(t *testing.T) {

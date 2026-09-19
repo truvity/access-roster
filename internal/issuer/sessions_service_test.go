@@ -106,7 +106,7 @@ func TestYourOwnSessionsAreYours(t *testing.T) {
 }
 
 // A request that narrows to neither an identity nor a client names every
-// person signed in. That is the global listing (INF-682), and a
+// person signed in. That is the global listing, and a
 // non-operator does not get it.
 func TestListingEverythingIsRefused(t *testing.T) {
 	t.Parallel()
@@ -169,7 +169,7 @@ func TestRevokeNarrowsToOneClient(t *testing.T) {
 }
 
 // The global listing -- neither identity nor client named -- is every
-// session in the installation, and it is operator-only (INF-682): the
+// session in the installation, and it is operator-only: the
 // incident case is the one where you do not know WHOSE session to look
 // for.
 func TestGlobalListingIsOperatorOnly(t *testing.T) {

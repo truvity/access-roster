@@ -336,7 +336,7 @@ func TestDiscoveryDescribesWhatIsServed(t *testing.T) {
 			t.Errorf("discovery does not advertise %s", want)
 		}
 	}
-	// And nothing else (INF-693). This is the assertion that matters:
+	// And nothing else. This is the assertion that matters:
 	// a relying party PICKS from this list, so a grant advertised and not
 	// honoured is an error arriving in a browser redirect where nobody
 	// sees the reason. Each of these was served through 0.11.

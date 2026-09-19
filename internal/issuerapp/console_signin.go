@@ -9,8 +9,7 @@ import (
 )
 
 // signInEntry is where the console sends a browser that has no session:
-// this issuer's authorization endpoint, with the console as the client
-// (INF-701).
+// this issuer's authorization endpoint, with the console as the client.
 //
 // The console is a client of the issuer like any other application, and
 // that is the whole design — one door, and the console holds nothing

@@ -29,7 +29,7 @@ const (
 	ClientSource_CLIENT_SOURCE_UNSPECIFIED ClientSource = 0
 	// a Secret named by the deployment; read-only in the console.
 	ClientSource_CLIENT_SOURCE_DECLARED ClientSource = 1
-	// stored by a console, which no installation does any more (INF-694).
+	// stored by a console, which no installation does any more.
 	// The value stays so an older stored client still reads back as what
 	// it is rather than as "unspecified".
 	ClientSource_CLIENT_SOURCE_CONSOLE ClientSource = 2

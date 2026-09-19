@@ -3,9 +3,9 @@
 #
 # The hand-rolled copy this replaces was one of NINE identical ones
 # across the public estate, and the shared workflow it now calls had sat
-# in ci-workflows with zero callers. That gap is not theoretical: bar's
-# release workflows drifted out of sync with the tool they invoked and
-# nobody noticed until a tag was cut months later, because release
+# in ci-workflows with zero callers. That gap is not theoretical: one
+# repository's release workflows drifted out of sync with the tool they
+# invoked and nobody noticed until a tag was cut months later, because release
 # machinery is exercised only by a tag.
 #
 # The caller must grant the permissions below — a reusable workflow can
@@ -45,20 +45,20 @@ jobs:
       # deleted, which failed the release on `copy chart: lstat
       # charts/directory-roster: no such file or directory`.
       charts: '["access-issuer", "access-proxy"]'
-      # Nest the images under the repo namespace (INF-574 / INF-584 N1):
+      # Nest the images under the repo namespace:
       # ko names each artifact after its cmd dir, so the published slug
       # is ghcr.io/truvity/access-roster/access-issuer.
       ko-docker-repo: ghcr.io/truvity/access-roster
       # accessctl as a Nix flake: the release carries
       # accessctl_<version>_nix-flake.tar.gz, which another repository's
-      # devbox installs by URL (gitops, instead of a hand-downloaded binary).
+      # devbox installs by URL, instead of a hand-downloaded binary.
       nix-flakes: '["accessctl"]'
 
   # The TypeScript package, to GitHub Packages, at the tag's version.
   #
   # Built here rather than on install. A git dependency builds itself
   # through `prepare`, and a package manager is free to pack it without
-  # running that: yarn 4 did, and bar received a package with no ts/dist
+  # running that: yarn 4 did, and a consumer received a package with no ts/dist
   # at all. A registry holds exactly what was built and tested, once.
   #
   # After the binaries, image and charts: a release whose artifacts
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          # The estate's pinned Node (bar .prototools), not whatever the
+          # A pinned Node, not whatever the
           # runner image carries today.
           node-version: 24.21.0
           registry-url: https://npm.pkg.github.com

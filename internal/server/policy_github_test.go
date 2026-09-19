@@ -16,7 +16,7 @@ import (
 // so what it cannot see here it cannot show: a maintainer role dropped on
 // the way to the wire reads, in the console, as a lead demoted to member
 // — and an organisation's own members, dropped, read as nobody being in
-// the organisation without a team (INF-696).
+// the organisation without a team.
 func TestGetPolicyCarriesBothTeamRolesAndAnOrganisationsOwnMembers(t *testing.T) {
 	t.Parallel()
 

@@ -197,7 +197,7 @@ func (p Policy) Evaluate(in Input) Result {
 
 // effectiveMembers is a group's declared directory groups.
 //
-// It survives the removal of the memberships table (INF-694) because
+// It survives the removal of the memberships table because
 // every caller reads a group's members through one function, and one
 // function is where a future second source would have to announce
 // itself.

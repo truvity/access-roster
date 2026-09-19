@@ -193,9 +193,9 @@ function Tile({ label, value, hint, bad, to }: { label: string; value: string; h
  *  once there are many.
  *
  *  The length of these lists is decided by the policy, not by anything
- *  being wrong. On this installation 73 internal groups open no client
- *  yet, because the clusters and cloud accounts that will require them
- *  are Phase 2 — so the page rendered 73 near-identical rows under a
+ *  being wrong. An installation can have 73 internal groups that open no
+ *  client yet, because the clusters and cloud accounts that will require
+ *  them are not connected yet — so the page rendered 73 near-identical rows under a
  *  heading that says "Needs attention", pushed the working state off the
  *  screen, and made a healthy installation read as a broken one.
  *

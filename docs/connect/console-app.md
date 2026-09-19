@@ -131,7 +131,7 @@ interval; a console running its own flow may opt in with
 [naming rule](../design/trust.md#naming): scoped to the tenant the app
 serves, and `all` until the app can tell tenants apart. A console that
 is really a view onto one cluster binds that cluster's tier instead
-(`kernel:k8s:viewer`), the way ArgoCD does.
+(`prod:k8s:viewer`), the way ArgoCD does.
 
 `requires` is the primary gate — nobody outside those groups gets a
 token at all, so on the proxied shape the proxy never sees a session. The

@@ -834,7 +834,7 @@ rather than reinterpreted.
 
 
 - **A GitHub team binding now names internal groups, not provider
-  addresses**, and declares both of GitHub's team roles (INF-696):
+  addresses**, and declares both of GitHub's team roles:
 
   ```yaml
   github:
@@ -915,7 +915,7 @@ rather than reinterpreted.
   both created empty at start. The service now calls `api.github.com`,
   which a default-deny egress policy has to allow.
 
-- **An audit stream for the whole service** (INF-686), and an operator-only
+- **An audit stream for the whole service**, and an operator-only
   **Audit** page. The issuer records sign-ins and their refusals, recovery
   sign-ins as their own kind, refused refreshes, token exchanges, revokes
   and sign-outs; the console records its own sign-ins, provider connects,
@@ -933,7 +933,7 @@ rather than reinterpreted.
   writes to Valkey itself: that store holds every session and refresh
   token. Recording never fails what it records.
 
-- **The GitHub controller** (INF-697): `github-roster`, a second binary
+- **The GitHub controller**: `github-roster`, a second binary
   and image from this repository and a second process from this chart,
   behind `githubRoster.enabled`. It makes each organisation's teams match
   the policy's `github` table and reports on the GitHub page.
@@ -993,8 +993,7 @@ rather than reinterpreted.
   renewing and starts a new authorization, which meets the same gate.
 
   Found by migrating a console and watching an identity that held none
-  of its groups be admitted by the issuer and refused by the console
-  (INF-704).
+  of its groups be admitted by the issuer and refused by the console.
 
 ## v1.0.0
 
@@ -1013,7 +1012,7 @@ changed since 0.17.1; what changed is what can be said about it.
   [docs/conformance.md](docs/conformance.md) carries the run and what
   each column means.
 
-- **Documentation at 1.0** (INF-698): one design document for the one
+- **Documentation at 1.0**: one design document for the one
   service, the architecture drawn as shipped, a connect guide per row of
   the fan-out table, references that match the schema, and nothing in
   the tree describing what is not built except under a heading that
@@ -1033,14 +1032,14 @@ changed since 0.17.1; what changed is what can be said about it.
   it ends, whether or not it holds a refresh token.
 
   And the logout token carried the browser sign-in's id as `sid`, while
-  the ID token had carried the per-client session's (INF-681). A relying
+  the ID token had carried the per-client session's. A relying
   party matches the two by that value; a token that verified and matched
   nothing was a sign-out that silently did not happen. The logout token
   now names the `sid` the ID token did, and a client whose ID token had
   none is told by `sub` alone, which the specification allows.
 
 - **The conformance suite runs in the cluster**, rendered exactly while
-  its client rows are declared, at a kernel hostname of its own. Only the
+  its client rows are declared, at a hostname of its own. Only the
   relying-party paths are public; the control plane is reached over the
   tailnet. It is the only way the Back-Channel module can be witnessed
   at all: the issuer has to POST to the suite, and a laptop suite is the
@@ -1125,7 +1124,7 @@ changed since 0.17.1; what changed is what can be said about it.
   one identity and the rows carry information.
 
 - **The column is *Identity*, not *Person*.** The row that made the case
-  reads `kernel:k8s:access-issuer:access-issuer-recovery`, which is a
+  reads `prod:k8s:access-issuer:access-issuer-recovery`, which is a
   ServiceAccount. People still means people — the directory-backed page
   is unchanged — but a session listing holds workloads and CI jobs too.
 
@@ -1194,7 +1193,7 @@ changed since 0.17.1; what changed is what can be said about it.
 
 - **The split deployment is gone from the code, not just from the
   cluster.** `HUB_ADDRESS` and `HUB_TOKEN_FILE`, the branch that dialled
-  a directory over the network, and the whole `hubclient` package. INF-691
+  a directory over the network, and the whole `hubclient` package. The merge
   folded the hub into this process and nothing has dialled it since, so
   what was left was a branch that could not run and two settings nothing
   set — configuration that reads as a supported deployment and is not one.
@@ -1248,7 +1247,7 @@ this point cannot be fast-forwarded; re-clone instead.
   `go get`-able without buf.
 
 - **`directory-roster` leaves the release.** One service, one image, one
-  chart. The hub was a second binary until INF-691 folded it into the
+  chart. The hub was a second binary until the merge folded it into the
   issuer, which runs it in process — `internal/app` is still here and
   still does the directory work. What goes is the separate deployment,
   which had gone on being built and pushed for a service deployed
@@ -1628,15 +1627,15 @@ the caller first.
   which it did not. The issuer serves `/logout` now: it ends the browser's
   sign-in, clears the cookie and lands on the signed-out page.
 
-  `/logout` rather than pointing the console at `/end_session`, on Oleg's
-  call and it is the right one: this is the address a person expects and
+  `/logout` rather than pointing the console at `/end_session`, and
+  that is the right call: this is the address a person expects and
   types, `end_session` is a name from a specification, and the console
   could not supply the `id_token_hint` that endpoint wants anyway — it
   never redeems the code it gets back, so it holds no ID token. Both end
   the same thing.
 
 - **The signed-out page stopped linking to a page that was deleted.** It
-  sent people to `/account`, which went with INF-695. It now says what
+  sent people to `/account`, whose page went into the console. It now says what
   ending a sign-in does and does not reach, and points at the console's
   Sessions page for the rest.
 
@@ -1705,12 +1704,13 @@ the caller first.
 
 ## v0.12.6
 
-Found by signing in to the live console with a headless browser and
+Found by signing in to a running console with a headless browser and
 looking at every page at 1440px and at 390px.
 
 - **The Overview stopped shouting.** "Needs attention" rendered one row
   per internal group that opens no client — **73 of them**, because the
-  clusters and cloud accounts that will require those groups are Phase 2.
+  clusters and cloud accounts that will require those groups are not
+  connected yet.
   A healthy installation read as a broken one, the page was 4832px tall,
   and the working state was pushed off the screen. Runs of the same
   finding now collapse into one row with a count once there are more than
@@ -1731,8 +1731,8 @@ looking at every page at 1440px and at 390px.
 
 ## v0.12.5
 
-- **The conformance runbook was followed, and it was wrong twice**
-  (INF-683). It told you to leave `requires` off the two temporary
+- **The conformance runbook was followed, and it was wrong twice.**
+  It told you to leave `requires` off the two temporary
   clients — the policy refuses a client that requires no group, so the
   render would have failed before a single test ran — and it gave their
   hostname without the port, which the render also refuses, because a row
@@ -1744,7 +1744,7 @@ looking at every page at 1440px and at 390px.
   browser and are the remaining gate.
 
 
-- **The documentation describes what ships** (INF-698). The sweep found
+- **The documentation describes what ships**. The sweep found
   seven Go symbols the guides promised and the module does not export —
   `identity.NewIssuerVerifier`, `identity.ClusterConfig`,
   `identity.ServiceAccountRef`, a `directory` package, an `authz`
@@ -1824,7 +1824,7 @@ looking at every page at 1440px and at 390px.
   buttons that return nothing, and hid the ones that work among them.
 
 
-- **`hack/cutover-cleanup.sh`**, for the two messes the INF-691 cutover
+- **`hack/cutover-cleanup.sh`**, for the two messes the one-service cutover
   leaves that will not resolve on their own.
 
   A **stuck ValkeyCluster**: the retired store was pruned with foreground
@@ -1859,7 +1859,7 @@ looking at every page at 1440px and at 390px.
   `mount: /console/`. The Go side already trimmed it; now the chart does
   too, and `just check` renders both spellings and diffs them.
 
-  Found while pointing the live gitops values at the merged chart, which
+  Found while pointing a live installation's values at the merged chart, which
   is exactly where it would have bitten.
 
 # Changelog
@@ -1926,7 +1926,7 @@ git history.
   surface as an AWS error three steps later about a profile that does
   not exist.
 
-- **The GitHub Action** (INF-649, the other half). One action at the
+- **The GitHub Action** (the other half). One action at the
   repository root, `curl` and `jq` and two files: nothing of ours is
   downloaded into a job, and there is no version of ours to bump when
   Amazon's tooling moves. One exchange per audience, a profile per
@@ -1940,7 +1940,7 @@ git history.
   audience of every job was silently discarded** — surfacing as a missing
   profile rather than an error.
 
-- **`accessctl`** (INF-649, the CLI half). `login` runs the browser flow
+- **`accessctl`** (the CLI half). `login` runs the browser flow
   once — authorization code with PKCE on a loopback port, the only
   browser flow left since the device flow was withdrawn — and caches the
   refresh token in a 0600 file. Everything else shares that cache:
@@ -1978,7 +1978,7 @@ git history.
   AWS path needs no stored key: the token is the proof and the account's
   trust policy decides what it opens.
 
-- **A public `identity` package, and access-roster uses it** (INF-648, the
+- **A public `identity` package, and access-roster uses it** (the
   Go half). Two verifiers, one per anchor: `Issuer` for a token this
   installation signed, `Cluster` for a ServiceAccount token from the pod
   next door. Both yield one `Verified`, so a handler never learns which
@@ -2004,7 +2004,7 @@ git history.
   real clients send both spellings, and a caller that had done nothing
   wrong would have been refused.
 
-- **GitHub team bindings are a table in the policy** (INF-696, the
+- **GitHub team bindings are a table in the policy** (the
   access-roster half). `github: <org>: <team>: [provider groups]`, read
   exactly like a group's `members`: the people the directory puts in
   those groups are the people that team should contain. It grants
@@ -2022,10 +2022,10 @@ git history.
   first.
 
   The controller, the read-only GitHub page and the directory endpoint it
-  authenticates against are the other three parts of INF-696 and wait for
-  github-roster.
+  authenticates against are the other three parts of this work and wait
+  for github-roster.
 
-- **The console signs people in as a client of the issuer** (INF-701),
+- **The console signs people in as a client of the issuer**,
   which is what makes one binary mean one door. Somebody with no session
   is sent to `/authorize` with the console's declared client, signs in at
   the issuer's page, and comes back with the issuer's session set. No
@@ -2076,7 +2076,7 @@ git history.
 
 - **The endpoint reference no longer promises two endpoints that do not
   exist.** `/.access/grants` and `/.access/simulate` were listed as
-  served. Neither is implemented; both belong to `accessctl` (INF-649),
+  served. Neither is implemented; both belong to `accessctl`,
   and the table now says so and names what answers the same question
   today.
 
@@ -2118,7 +2118,7 @@ git history.
   old shape; it is rewritten with the rest of the documentation at 1.0.
 
 - **The console reads.** It no longer writes who is in which internal
-  group (INF-694). A console that could add a membership was a second
+  group. A console that could add a membership was a second
   source of truth beside git and a merge layer to reconcile them; who is
   in a group is now the policy, rendered from the installation's own
   access model, and `git log` is the complete history of access. Gone:
@@ -2140,7 +2140,7 @@ git history.
 
 - **The issuer's UI is the login page.** `/account` — a person's own
   sessions and *sign out everywhere* — was server-rendered by the issuer
-  because it had to be same-origin with the session service (INF-695).
+  because it had to be same-origin with the session service.
   The console is same-origin and, since the merge, the same process, and
   its page for a person already shows both. Two pages showing one thing
   is two things to keep true of each other, so the issuer's is deleted
@@ -2154,7 +2154,7 @@ git history.
 
 - **One issuer, many clusters, access to none of them.** A workload's
   ServiceAccount token is verified against the key set its own cluster
-  publishes, never by asking the cluster (INF-692). Asking meant a
+  publishes, never by asking the cluster. Asking meant a
   TokenReview, and a TokenReview against a cluster elsewhere meant holding
   a kubeconfig for it — inside the service whose whole design is to hold
   almost no credential. A key set is public: EKS publishes one per cluster
@@ -2176,7 +2176,7 @@ git history.
 
 - **Six grants, and the four that were served are gone.** The issuer
   serves the code flow with PKCE, refresh, userinfo, `end_session`,
-  revocation and token exchange, and nothing else (INF-693). The device
+  revocation and token exchange, and nothing else. The device
   flow is for a machine with no browser, and both headless cases here — a
   CI job and a workload — are token exchange. Client credentials is a
   machine with a stored secret, which is the thing this design exists not
@@ -2197,8 +2197,8 @@ git history.
   their own. Listing an endpoint as a grant type would be the metadata
   lying in a new way.
 
-- **One service.** The directory hub and the issuer are one process
-  (INF-691). The issuer asks the directory by calling a function instead
+- **One service.** The directory hub and the issuer are one process.
+  The issuer asks the directory by calling a function instead
   of dialling a service, so a login now makes no network call except to
   the corporate directory: gone from every single sign-in are a
   ConnectRPC round trip, a TokenReview, a NetworkPolicy hop, and the
@@ -2270,9 +2270,9 @@ git history.
   and names the merge that follows; `why.md` carries the seven problems
   and seven principles and nothing the README already says. Seven
   decisions taken 2026-09-10 are recorded where they land — one
-  service (INF-691), machines by a federated key set with token exchange
-  as the one machine grant (INF-692), six grants (INF-693), a read-only
-  console (INF-694), the login page as the issuer's only UI (INF-695) —
+  service, machines by a federated key set with token exchange
+  as the one machine grant, six grants, a read-only
+  console, the login page as the issuer's only UI —
   and the two design documents carry a banner saying which of their
   sections are current and which are history. No code changes.
 
@@ -2291,8 +2291,8 @@ git history.
   error and no challenge, which is the one shape a conforming client
   cannot act on — it is told it is unauthenticated and not told what
   would fix it, so a client library reports a transport failure or
-  retries the same token for ever. Found by the conformance work
-  (INF-683), fixed in a wrapper because the header has to be set before
+  retries the same token for ever. Found by the conformance work,
+  fixed in a wrapper because the header has to be set before
   the status is.
 
 - **The API listener's consumers hold a grant.** Admission and
@@ -2339,7 +2339,7 @@ git history.
   answered 404 while `/account`, server-rendered beside them off the same
   store, worked perfectly: the half a person is most likely to try
   working, and the half a console shows not. The value now decides only
-  whether the CORS wrapper goes on. (INF-682)
+  whether the CORS wrapper goes on.
 
 ## v0.9.14
 
@@ -2371,7 +2371,7 @@ git history.
   into it would ship that prefix to all of them. `./assets/…` resolves
   against the page instead. It requires the trailing slash, so the bare
   prefix now redirects to itself with one, and the Connect transport
-  resolves its base from the page rather than a literal. (INF-687)
+  resolves its base from the page rather than a literal.
 - **A bare GET of the issuer's host can land somewhere useful.**
   `route.rootRedirect` on the issuer — the issuer serves nothing at `/`,
   every endpoint it answers being a named one, so a person who types the
@@ -2385,7 +2385,7 @@ git history.
   leaves the access-proxy chart, `/register` leaves the issuer's surface,
   and the console's Clients page is read-only by construction rather than
   by policy. The drift it would have prevented is closed by generating a
-  console's client from one row instead. (INF-664, INF-688)
+  console's client from one row instead.
 
 ## v0.9.12
 
@@ -2398,7 +2398,7 @@ git history.
   404s, the other is a sign-out that worked and reads as though it did
   not. The proxy prefix now derives from `route.pathPrefix` when unset,
   so the two cannot drift, and three guards hold the chain. No prefix
-  renders exactly what it always did. (INF-687)
+  renders exactly what it always did.
 
 ## v0.9.11
 
@@ -2414,7 +2414,7 @@ git history.
   `from: Same`, does not imply it). Both default to today's shape.
   Whether a Gateway accepts a route from another namespace is decided
   there and not by a ReferenceGrant, which governs `backendRefs` and has
-  nothing to say about `parentRefs`. (INF-687)
+  nothing to say about `parentRefs`.
 
 ## v0.9.10
 
@@ -2430,8 +2430,8 @@ git history.
 
 ## v0.9.9
 
-- **Docs: one domain, and where session management lives.** Decided with
-  Oleg 2026-09-10: the issuer, the directory's console and the shared UI
+- **Docs: one domain, and where session management lives.** Decided
+  2026-09-10: the issuer, the directory's console and the shared UI
   live on one hostname. The issuer sits at the **root** — its URL is the
   `iss` claim and discovery lives at the origin root, so it cannot take a
   path — and the console is mounted under **`/console/`**, the gateway
@@ -2441,7 +2441,7 @@ git history.
   listing **exists**: operator-only, capped, audited. The issuer's plain
   `/account` page stays as the fallback for an installation with no
   console. `docs/design/access-issuer.md` *One origin*, `docs/design/hub.md`,
-  `docs/architecture.md`, the references. (INF-687, INF-682)
+  `docs/architecture.md`, the references.
 
 ## Unreleased
 
@@ -2453,7 +2453,6 @@ git history.
   registered OAuth redirect URIs, and a provider returns to the literal
   address on file, so a prefixed one would be a callback nothing points
   at. Two chart guards hold both halves. Empty is exactly today's shape.
-  (INF-687)
 - **The global session listing exists, for an operator.** A request
   naming neither an identity nor a client used to be refused outright;
   it now answers for an operator and is refused for everyone else. It is
@@ -2462,7 +2461,7 @@ git history.
   an offset, because an offset is invalidated by every session that opens
   or closes between two calls and this index is precisely the thing that
   changes constantly. Capped, and a session now reports the browser
-  session that parented it. (INF-682)
+  session that parented it.
 - **Sessions in the console.** *Active sessions* with Revoke on a
   person's page and *Sign out everywhere* on your own; *Open sessions* on
   a client's page; and a new operator-only **Sessions** page listing the
@@ -2470,7 +2469,7 @@ git history.
   browser group together. They call the issuer's session service
   same-origin with the browser's own session cookie — no bearer, no CORS
   — and render only when the console knows of an issuer. Removal only,
-  never a grant. (INF-682)
+  never a grant.
 
 ## v0.9.8
 
@@ -2483,7 +2482,7 @@ git history.
   cluster keeps the unqualified form, so nothing changes until it is set.
   A `service_account` matcher may name a `cluster` to narrow to one, and
   naming none matches any — every rule written so far still means what it
-  meant. (INF-681)
+  meant.
 - **One spelling for a ServiceAccount, and one reader for all three.**
   A recovery sign-in completed as the API server's
   `system:serviceaccount:<ns>:<name>` while a token exchange minted
@@ -2493,7 +2492,7 @@ git history.
   has minted is still **read** — by one function, in `policy` — because a
   reader that knew only its own would refuse a token from a release either
   side of it, and for recovery that is exactly the day it is the only way
-  in. (INF-681)
+  in.
 
 ## v0.9.7
 
@@ -2510,7 +2509,6 @@ git history.
   suspended account stops being admitted instead of coasting on a browser
   session. `end_session` ends the sign-in, not only one application's
   tokens — the half-sign-out that looks exactly like a whole one.
-  (INF-685)
 - **An account page, served by the issuer at its own host.** `/account`
   lists what you have open and ends all of it. Being same-origin with the
   session service is the point: the browser already holds this issuer's
@@ -2519,17 +2517,16 @@ git history.
   everywhere* ends both halves — the sessions already running and the
   sign-in that would silently open more. Per-client sessions now record
   the browser session that parented them and the time it authenticated.
-  (INF-685)
 - **Docs: the SSO session and where session management lives.** The
   design now says plainly that the issuer holds a first-class **SSO
-  session** (to build, INF-685) and that session management is served at
+  session** (to build) and that session management is served at
   the **issuer's own host** — an account page, same-origin with the
   session service — rather than through a cross-origin bearer from each
   console. The v0.9.4 `console.origin` CORS path becomes the optional way
   to weave the operator view into the directory console. `docs/design/access-issuer.md`.
 - **Docs: `sub` is decided.** A person is their email; a ServiceAccount is
   `<cluster>:k8s:<namespace>:<name>` (the cluster qualifier is the one part
-  still to land in code, INF-681). `docs/reference/policy.md`,
+  still to land in code). `docs/reference/policy.md`,
   `docs/design/trust.md`.
 
 ## v0.9.6
@@ -2551,7 +2548,7 @@ git history.
   the one the userinfo *endpoint* uses. Supplying nothing did not leave
   the ID token's own claims alone; it overwrote them. A relying party
   that reads the ID token rather than calling userinfo — ArgoCD and Kargo
-  both do — saw nobody. (INF-681)
+  both do — saw nobody.
 - **A token says which session it belongs to, and when the person signed
   in.** `sid` is the session id the console lists and revokes, so a
   relying party can say WHICH of a person's sessions it holds rather than
@@ -2560,7 +2557,7 @@ git history.
   the minting: a refresh an hour later carries the same `auth_time` and a
   fresh `iat`, and that difference is the whole of what a
   "re-authenticate for this action" rule reads. Both are identity;
-  `groups` still decides. (INF-681)
+  `groups` still decides.
 - **A session remembers the scopes it was granted.** It did not, and a
   refresh arrives carrying a token and nothing else — so the answer to
   "what may this session ask for" was *nothing*. Two consequences, both
@@ -2581,7 +2578,7 @@ git history.
   A request that narrows to neither an identity nor a client is refused —
   "everything" names every person signed in. A session id alone is never
   enough to end somebody else's, and a mismatch answers exactly as an
-  absent session does, so an id cannot be probed. (INF-682)
+  absent session does, so an id cannot be probed.
 - **A token names the person, not only the address.** `ResolveUser`
   carries the account's given and family names (additive fields 7 and 8),
   the issuer puts them in `userinfo` and the ID token as `name`,
@@ -2592,7 +2589,7 @@ git history.
   workload or a recovery sign-in, which have no names to give. A **held**
   answer carries the last known grants and no names: the hold window
   exists for authorization, and a name recovered from memory would be a
-  claim the issuer cannot currently vouch for. (INF-681)
+  claim the issuer cannot currently vouch for.
 
 ## v0.9.3
 
@@ -2608,9 +2605,9 @@ git history.
   both shapes at once. The demonstration policy is written in the shape
   it documents. **This must be pinned in the same window as the
   installation's own policy rename**, or the console stops recognising
-  its operators. (INF-684)
+  its operators.
 - **Docs: the naming rule.** Every grant is `<scope>:<thing>:<role>` —
-  `kernel:k8s:admin`, `prod:eudi:deployer`, `all:access-roster:operator`
+  `prod:k8s:admin`, `prod:shop:deployer`, `all:access-roster:operator`
   — with `rung:` and `emp:` the only two-segment families and neither a
   grant. The reasoning is in `docs/design/trust.md`.
 
@@ -2627,7 +2624,7 @@ git history.
   not configurable, so a token minted for a cloud provider cannot be
   replayed here. A token from another issuer comes back *unrecognised* so
   the next verifier may try it; one this verifier owns and refuses is
-  final. (INF-646)
+  final.
 - **The session index is shared, not per-process.** It answered from
   whatever one replica happened to record: a listing was arbitrary rather
   than wrong, and a revocation reported success while the session went on
@@ -2636,7 +2633,7 @@ git history.
   logins in progress. Sets make it findable, the record's TTL is the whole
   of expiry, and a listing repairs the sets it walks. A refresh token is
   hashed into its key rather than written into the keyspace: an index that
-  can be read must not be an index that can be replayed. (INF-646)
+  can be read must not be an index that can be replayed.
 - **The rule under everything is written down.** `docs/design/trust.md`:
   a service trusts exactly two anchors — the cluster for a workload next
   door, the issuer for everything further away — chosen by scope, never
@@ -2660,7 +2657,7 @@ git history.
   A client's landing pages are a new `signed_out` list in the policy,
   separate from `redirects`: a redirect URI *starts* a sign-in, so landing
   there after signing out begins the login just ended — and listing one
-  address as both now fails the load. (INF-676)
+  address as both now fails the load.
 
 ## v0.8.6
 
@@ -2669,8 +2666,8 @@ git history.
   the ConfigMap changed, kubelet wrote the file a minute later, and every
   replica went on answering from the policy it booted with — a grant
   visible in git, in the ConfigMap and in ArgoCD's *Synced*, and nowhere
-  in the running service. Seen live rolling out the derived policy
-  (INF-662). The issuer has carried `checksum/policy` since its first
+  in the running service. Seen live rolling out the derived policy.
+  The issuer has carried `checksum/policy` since its first
   release; the hub reads the same file the same way and now does too, and
   `just chart-lint` fails either chart that loses it.
 - The console's account block is three lines — name, address, roles —

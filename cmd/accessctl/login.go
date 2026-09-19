@@ -23,7 +23,7 @@ import (
 // login runs the browser flow once and caches what came back.
 //
 // Authorization code with PKCE on a LOOPBACK port, which is the only
-// browser flow left: the device flow was withdrawn (INF-693) because
+// browser flow left: the device flow was withdrawn because
 // nobody signs in from a machine with no browser here. A loopback
 // redirect is what makes a public client safe without a secret — the
 // code comes back to a port only this process is listening on, and PKCE

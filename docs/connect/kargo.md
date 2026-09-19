@@ -14,13 +14,13 @@ clients:
       - https://kargo.example.internal/
       - https://kargo.example.internal/login
     signed_out: [https://kargo.example.internal]
-    requires:   [kernel:k8s:admin, kernel:k8s:viewer]
+    requires:   [prod:k8s:admin, prod:k8s:viewer]
     ttl_cap: 5m               # the revocation window, see below
   kargo-cli:
     kind: public              # PKCE; the CLI's redirect is a loopback port — the page says a program on this computer is asking
     display_name: Kargo CLI
     loopback: true
-    requires:   [kernel:k8s:admin, kernel:k8s:viewer]
+    requires:   [prod:k8s:admin, prod:k8s:viewer]
 ```
 
 Both are **public**: Kargo's UI is a single-page application that runs
@@ -37,7 +37,7 @@ api:
     issuerURL: https://issuer.example.internal
     clientID: kargo
     cliClientID: kargo-cli
-    admins: { claims: { groups: [kernel:k8s:admin] } }   # the cluster tier, reused
+    admins: { claims: { groups: [prod:k8s:admin] } }   # the cluster tier, reused
 ```
 
 Per-project roles bind on the `groups` claim through Kargo's own RBAC —

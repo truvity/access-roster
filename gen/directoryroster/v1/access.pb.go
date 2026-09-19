@@ -987,7 +987,7 @@ func (x *ClientAdmission) GetLifetime() *durationpb.Duration {
 // GroupMember is one directory group inside an internal group.
 //
 // Field 2 was `layer`, saying whether the deployment declared it or an
-// operator added it in the console. There is one layer now (INF-694).
+// operator added it in the console. There is one layer now.
 type GroupMember struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
@@ -1133,7 +1133,7 @@ type PolicyMatcher struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// kind is ci, workload or sign-in.
 	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
-	// rule is the pattern, in words: "repository example-org/gitops, ref
+	// rule is the pattern, in words: "repository example-org/platform, ref
 	// refs/heads/master", "identity-system/authorization-webhook".
 	Rule          string `protobuf:"bytes,2,opt,name=rule,proto3" json:"rule,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1420,8 +1420,8 @@ type PolicyTeam struct {
 	// leaves alone.
 	Team string `protobuf:"bytes,2,opt,name=team,proto3" json:"team,omitempty"`
 	// the internal groups whose holders belong in the team, read exactly
-	// like a client's `requires`. They were provider addresses until
-	// INF-696 made a team a consumer of a group like anything else.
+	// like a client's `requires`. They were provider addresses until a
+	// team became a consumer of a group like anything else.
 	Members []string `protobuf:"bytes,3,rep,name=members,proto3" json:"members,omitempty"`
 	// the internal groups whose holders maintain it. GitHub has two team
 	// roles; a holder of both is a maintainer.
@@ -2338,7 +2338,7 @@ func (x *DirectoryGroupMember) GetLive() bool {
 
 // DirectoryGroupFeed is one internal group this directory group is a
 // member of. Field 2 was the layer that put it there; there is one
-// layer now (INF-694).
+// layer now.
 type DirectoryGroupFeed struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Group         string                 `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`

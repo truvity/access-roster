@@ -330,7 +330,7 @@ apps:
 // The console admits somebody the ISSUER signed in, with no console
 // session of its own and no proxy in front of it.
 //
-// This is what one origin and one process buy (INF-691). Before it, a
+// This is what one origin and one process buy. Before it, a
 // console on the issuer's own host was authenticated either by a proxy —
 // which ran an OpenID flow against a service in the same process, a
 // network round trip and a second session store to learn something
@@ -367,7 +367,7 @@ func TestTheConsoleAdmitsWhoeverTheIssuerSignedIn(t *testing.T) {
 }
 
 // Somebody with no session is sent to the ISSUER to get one, not to a
-// sign-in page of the console's own (INF-701). That is what makes one
+// sign-in page of the console's own. That is what makes one
 // door: the console is a client of the issuer like any other
 // application, and holds nothing special.
 func TestSomebodyWithNoSessionIsSentToTheIssuer(t *testing.T) {

@@ -313,7 +313,7 @@ function SignIns({
                             {/* IDENTITY, not "person". These rows are as
                                 often a ServiceAccount or a CI job as a
                                 human -- the one that made it obvious reads
-                                kernel:k8s:access-issuer:access-issuer-recovery
+                                prod:k8s:access-issuer:access-issuer-recovery
                                 under a column headed PERSON. */}
                             <TableCell>Identity</TableCell>
                             <TableCell>Proved by</TableCell>
@@ -499,7 +499,7 @@ function SessionsTable({
     );
 }
 
-/** Every open session in the installation, newest first (INF-682). It
+/** Every open session in the installation, newest first. It
  *  exists for the incident where you do not know WHOSE session to look
  *  for, which is also why it is operator-only and every read of it is
  *  audited on the issuer's side. The rail hides the entry for anyone
@@ -623,7 +623,7 @@ export function SessionsPage({ operator }: { operator: boolean }) {
     // a button that returns nothing.
     //
     // Both boxes MATCH rather than equal: prefix, suffix and middle, so
-    // that "tsarev" finds the address and "karg" finds the client. A box
+    // that "alice" finds the address and "karg" finds the client. A box
     // you have to fill in exactly is a box you can only use when you
     // already know the answer, which is not the state anyone is in on
     // this page.

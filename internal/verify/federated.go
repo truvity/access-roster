@@ -12,14 +12,14 @@ import (
 // Federation is the set of clusters whose ServiceAccount tokens this
 // installation will act on. It is the whole of what makes one issuer
 // serve many clusters, and it holds no secret: every row is a name and
-// two URLs (INF-692).
+// two URLs.
 type Federation struct {
 	Clusters []FederatedCluster `yaml:"clusters"`
 }
 
 // FederatedCluster is one cluster's row.
 type FederatedCluster struct {
-	// Name is the estate's own word for the cluster — `kernel`, `devel`
+	// Name is the estate's own word for the cluster — `dev`, `prod`
 	// — the same one that scopes a group name. It becomes the cluster in
 	// a `workload` matcher and in the subject of the minted token, so a
 	// row renamed is every rule about it changed.

@@ -59,7 +59,7 @@ func (d *Directory) Describe(
 	if err != nil {
 		return nil, rpcError(err)
 	}
-	// Discovery itself is scoped (INF-679): a consumer granted one
+	// Discovery itself is scoped: a consumer granted one
 	// directory is not told the others exist. Without this a grant on
 	// the reads would still leak the shape of every company the hub
 	// serves to anyone admitted at all.

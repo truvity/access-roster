@@ -3,7 +3,7 @@
 
 Documentation drifts from a module silently: nothing compiles a code
 block in a Markdown file, so a rename leaves the old name in the guide
-and the first person to notice is a stranger following it. INF-698 found
+and the first person to notice is a stranger following it. One sweep found
 seven such symbols at once — `identity.NewIssuerVerifier`,
 `identity.ClusterConfig`, a `directory` package that was never built —
 and every one of them had been written down as though it shipped.

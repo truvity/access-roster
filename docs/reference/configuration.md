@@ -56,10 +56,10 @@ service writes *itself*, where it is the producer and gets to choose.
 | `oauthClient.secret.name` | `""` | a Secret holding the client for sign-in and admin consent. Empty means nobody can sign in and this installation issues tokens to machines only, which is a real posture and is said at start |
 | `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the service does not produce this object: whatever delivers it already had an opinion, and a chart that insisted on two names could not read a Secret already in the namespace |
 | `console.mount` | `/console` | where the console sits on this origin. A **path** and not a host, because discovery must be at the root of the origin named in every token's `iss`. It is also what the console prefixes onto every link it hands a browser — `/login` resolves against the origin, where the issuer's page is. Empty serves no console |
-| `console.client` | `""` | the declared client the console signs people in as (INF-701). Somebody with no session is sent to `/authorize`, signs in at the issuer's page, and comes back with the issuer's session set. Its `redirects` must name this origin plus the mount with a trailing slash. Empty keeps the console's own page, which in a deployment with an issuer beside it is a second door |
+| `console.client` | `""` | the declared client the console signs people in as. Somebody with no session is sent to `/authorize`, signs in at the issuer's page, and comes back with the issuer's session set. Its `redirects` must name this origin plus the mount with a trailing slash. Empty keeps the console's own page, which in a deployment with an issuer beside it is a second door |
 | `console.origin` | `""` | the one **other** origin allowed to call `SessionService` from a browser. Obsolete on one origin, which is the shipped shape; it remains for a console served from somewhere else |
 | `exchange.audience` | the release name | the audience a workload's ServiceAccount token must be minted for. Without one, every mounted token in every federated cluster would be a proof |
-| `exchange.clusters[]` | `[]` | the clusters whose workloads may exchange: `{name, issuer, jwksUri}` per cluster, verified against the key set that cluster publishes (INF-692). **No secret in any row**, and this service holds access to no cluster — including its own, which is a row like any other |
+| `exchange.clusters[]` | `[]` | the clusters whose workloads may exchange: `{name, issuer, jwksUri}` per cluster, verified against the key set that cluster publishes. **No secret in any row**, and this service holds access to no cluster — including its own, which is a row like any other |
 | `github.owners[]` | `[]` | the GitHub organisations whose workflows may exchange. **Empty verifies no CI token at all**, deliberately: anybody may run a workflow in their own repository and get a valid GitHub token, so a list invented by the chart would admit every repository there is |
 | `cluster` | `""` | what this cluster is called, which becomes part of a ServiceAccount's subject. Empty keeps the older unqualified form |
 | `lifetimes.token` / `.refresh` / `.hold` | | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch |
@@ -151,7 +151,7 @@ live on day one, and connects through consent later at its own pace.
 
 ## Consumers of the directory
 
-**There is no directory API listener.** It went with the merge (INF-691):
+**There is no directory API listener.** It went with the merge:
 the issuer was its only consumer and is now the same process, so the
 question a consumer used to ask over the network is a function call.
 What the grant model protected is not lost, only unused; the shape stays
@@ -173,7 +173,7 @@ reads the `groups` claim. That is [../connect/service-to-service.md](../connect/
 
 The service loads the family's [policy](policy.md) — `groups`,
 `claims`, `lifetimes`, `clients` and `github` — from the deployment's
-ConfigMap(s). There is one layer: the console is read-only (INF-694), so
+ConfigMap(s). There is one layer: the console is read-only, so
 nothing it does can add to what is declared here. The chart renders the
 policy from `policy:` in values, which is the same YAML:
 
@@ -197,12 +197,12 @@ so the hash carries the uniqueness the readable part may have lost.
 |---|---|---|
 | `ConfigMap <release>-workspace-<tenant>` | backend, domains, served domains, admin, connected by/at, last health, credential type | the service |
 | `Secret <release>-workspace-credentials` | one entry per console-connected workspace, key `<tenant>.json`: the credential (refresh token, or service-account key) and a copy of the workspace's record without its health | the service (Connect, UploadKey), created empty at start. Releases before 1.7 kept a `Secret <release>-credential-<tenant>` each; start-up moves them in |
-| `Secret <release>-oauth-client` | OAuth client id and secret | declared via `oauthClient.secret.name` and read-only. The console used to be able to write one; it cannot since INF-694, because a credential a console can change is one somebody can change from a browser |
+| `Secret <release>-oauth-client` | OAuth client id and secret | declared via `oauthClient.secret.name` and read-only. The console used to be able to write one; it cannot since the console became read-only, because a credential a console can change is one somebody can change from a browser |
 | `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the service, generated on first start; rotate by deleting |
 | the signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it from the file, never through the API; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
-| `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** (INF-692) | the chart |
+| `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** | the chart |
 | `ConfigMap <release>-github-apps-catalogue` | the declared GitHub App catalogue, `catalogue.yaml`. **No secret in it** | the chart, when `githubApps.catalogue` is not empty |
 | `ConfigMap <release>-github-status` | the GitHub controller's last report, one document per organisation | created empty by the service at start; its data replaced by the controller, which is granted this one name |
 | `ConfigMap <release>-github-orgs` | one record per connected GitHub organisation: App id and slug, installation, connected by and at | the service (Connect a GitHub organisation), created empty at start |

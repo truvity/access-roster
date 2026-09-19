@@ -84,8 +84,8 @@ type AccessServiceClient interface {
 	// adds, the state of the break-glass admin, and the enabled sign-in
 	// sources. Viewer.
 	//
-	// There is no AddMembership or RemoveMembership beside it any more
-	// (INF-694). Who is in which internal group is the policy, rendered
+	// There is no AddMembership or RemoveMembership beside it any more.
+	// Who is in which internal group is the policy, rendered
 	// from the installation's own access model and reviewed in git; a
 	// console that could disagree with git was a second source of truth
 	// and a merge to reconcile them.
@@ -237,8 +237,8 @@ type AccessServiceHandler interface {
 	// adds, the state of the break-glass admin, and the enabled sign-in
 	// sources. Viewer.
 	//
-	// There is no AddMembership or RemoveMembership beside it any more
-	// (INF-694). Who is in which internal group is the policy, rendered
+	// There is no AddMembership or RemoveMembership beside it any more.
+	// Who is in which internal group is the policy, rendered
 	// from the installation's own access model and reviewed in git; a
 	// console that could disagree with git was a second source of truth
 	// and a merge to reconcile them.

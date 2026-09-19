@@ -21,8 +21,8 @@ var ErrUnknownGroup = errors.New("policy: not a declared group")
 // Member is one directory group in an internal group.
 //
 // There used to be a Layer here, saying whether the deployment declared
-// it or an operator added it in the console. There is one layer now
-// (INF-694): who is in which internal group is the policy, rendered from
+// it or an operator added it in the console. There is one layer now:
+// who is in which internal group is the policy, rendered from
 // the installation's own access model and reviewed in git, and nothing
 // else. A console that could disagree with git was a second source of
 // truth and a merge to reconcile them.

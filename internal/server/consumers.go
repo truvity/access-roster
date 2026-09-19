@@ -33,7 +33,7 @@ type Consumers struct {
 	// Allowed subjects, as the API server spells them.
 	Allowed []string
 	// Grants is what each admitted subject may ask, keyed the same way
-	// as Allowed (INF-679). A subject with no entry keeps full read, so
+	// as Allowed. A subject with no entry keeps full read, so
 	// a deployment that declares consumers and no grants behaves exactly
 	// as it did.
 	Grants map[string]*Grant

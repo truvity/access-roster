@@ -5,8 +5,8 @@
 // distinction between "the directory says no" and "I could not ask". The
 // split that made the network version necessary — one deployment holding
 // every corporate credential, another minting tokens — stopped earning
-// its keep when the issuer became the directory's only consumer
-// (INF-691). What it cost was paid on every single login: a ConnectRPC
+// its keep when the issuer became the directory's only consumer.
+// What it cost was paid on every single login: a ConnectRPC
 // call, a TokenReview, a NetworkPolicy hop, and a class of failure where
 // the two halves disagree.
 package hublocal

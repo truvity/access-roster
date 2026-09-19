@@ -455,7 +455,7 @@ func (h *Hub) reopen(ctx context.Context, id string) (backend.Backend, bool) {
 // which is the right cost for a caller that wants freshness and the
 // wrong one for a caller that only wants to know which tenant a domain
 // belongs to. A per-consumer grant written in workspaces needs exactly
-// that and nothing else (INF-679), and it needs it on the request path.
+// that and nothing else, and it needs it on the request path.
 func (h *Hub) Routing(ctx context.Context) (map[string]string, error) {
 	v, err := h.view(ctx)
 	if err != nil {

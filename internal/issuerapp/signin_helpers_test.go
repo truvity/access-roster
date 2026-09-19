@@ -59,7 +59,7 @@ func (h *hubStub) ResolveUser(context.Context, string) (issuer.Standing, error) 
 // stubHub is the directory's answer, IN PROCESS. It used to be an HTTP
 // server the issuer dialled, which was the shape when the hub was a
 // service of its own -- and the last caller of the network client after
-// INF-691 folded the hub in. Keeping it would have meant keeping a
+// the merge folded the hub in. Keeping it would have meant keeping a
 // deployment nothing runs alive for the sake of a test.
 func stubHub(_ *testing.T, found, suspended bool) issuer.Directory {
 	return &hubStub{found: found, suspended: suspended}

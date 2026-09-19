@@ -2,8 +2,8 @@
 // the directory connectors, the snapshot and its refresher, the policy,
 // the OpenID provider, the login page and the console.
 //
-// It exists because the split into two services stopped earning its keep
-// (INF-691). The hub was built as a directory of record that several
+// It exists because the split into two services stopped earning its keep.
+// The hub was built as a directory of record that several
 // things could ask; the issuer became its only consumer, and the split
 // then cost — on every single login — a ConnectRPC call, a TokenReview,
 // a NetworkPolicy hop, a second store, and a class of failure where the

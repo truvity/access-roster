@@ -55,8 +55,8 @@ const (
 type SessionServiceClient interface {
 	// ListSessions answers what is open. Narrow it to one identity or one
 	// client, which anybody may ask about their own; naming neither is the
-	// global listing, and it is refused unless the caller is an operator
-	// (INF-682), paged by page_size/page_token.
+	// global listing, and it is refused unless the caller is an operator,
+	// paged by page_size/page_token.
 	ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error)
 	// RevokeSessions ends a set of them and says how many it ended.
 	RevokeSessions(context.Context, *connect.Request[v1.RevokeSessionsRequest]) (*connect.Response[v1.RevokeSessionsResponse], error)
@@ -108,8 +108,8 @@ func (c *sessionServiceClient) RevokeSessions(ctx context.Context, req *connect.
 type SessionServiceHandler interface {
 	// ListSessions answers what is open. Narrow it to one identity or one
 	// client, which anybody may ask about their own; naming neither is the
-	// global listing, and it is refused unless the caller is an operator
-	// (INF-682), paged by page_size/page_token.
+	// global listing, and it is refused unless the caller is an operator,
+	// paged by page_size/page_token.
 	ListSessions(context.Context, *connect.Request[v1.ListSessionsRequest]) (*connect.Response[v1.ListSessionsResponse], error)
 	// RevokeSessions ends a set of them and says how many it ended.
 	RevokeSessions(context.Context, *connect.Request[v1.RevokeSessionsRequest]) (*connect.Response[v1.RevokeSessionsResponse], error)

@@ -66,8 +66,8 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		// session for a console running no OpenID flow of its own.
 		//
 		// The session flag says the logout token carries `sid`. It does,
-		// and the ID token has carried one since INF-681, so a relying
-		// party can match them.
+		// and the ID token carries the same one, so a relying party can
+		// match them.
 		BackChannelLogoutSupported:        true,
 		BackChannelLogoutSessionSupported: true,
 		// Where `/end_session` puts a person when the request named
@@ -445,7 +445,7 @@ var servedResponseTypes = []string{"code"}
 // and picks; offered `implicit`, a library will happily use it, and the
 // refusal arrives in a browser redirect where nobody sees the reason.
 //
-// Three grants cover the three needs (INF-693): the code flow with PKCE
+// Three grants cover the three needs: the code flow with PKCE
 // for every browser and every CLI, its refresh, and token exchange for
 // machines that already hold a token. The device flow, client
 // credentials and JWT bearer were served through 0.11 and are gone —
@@ -496,7 +496,7 @@ func truthfulDiscovery(next http.Handler) http.Handler {
 		// sign-in has to know the value to refuse.
 		doc["acr_values_supported"] = servedACRValues
 		// The library advertises a device endpoint from its own defaults,
-		// whatever the configuration says. The grant is gone (INF-693),
+		// whatever the configuration says. The grant is gone,
 		// so the address of it is a promise to nobody.
 		delete(doc, "device_authorization_endpoint")
 

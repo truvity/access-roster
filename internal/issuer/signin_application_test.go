@@ -103,7 +103,7 @@ func TestTheChooserFallsBackToTheClientID(t *testing.T) {
 		client policy.Client
 		want   string
 	}{
-		{id: "gemaal", want: "<strong>gemaal</strong>"},
+		{id: "billing", want: "<strong>billing</strong>"},
 		{id: "k8s:kernel", want: "<strong>Kubernetes — kernel</strong>"},
 		{id: "k8s:kernel", client: policy.Client{DisplayName: "Headlamp on kernel"}, want: "<strong>Headlamp on kernel</strong>"},
 		// A prefix and no cluster is not a cluster.
@@ -380,14 +380,14 @@ func TestThePromptNoneFallbackNamesTheApplication(t *testing.T) {
 
 	handler := signInHandlerWith(t, nil, stubPending{asks: issuer.Pending{
 		ForbidsUI: true,
-		ClientID:  "gemaal",
-		Client:    policy.Client{DisplayName: "Gemaal <panel>"},
+		ClientID:  "billing",
+		Client:    policy.Client{DisplayName: "Billing <panel>"},
 	}})
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/login?auth=abc", nil))
 
-	if !strings.Contains(recorder.Body.String(), "<strong>Gemaal &lt;panel&gt;</strong> asked to continue without prompting") {
+	if !strings.Contains(recorder.Body.String(), "<strong>Billing &lt;panel&gt;</strong> asked to continue without prompting") {
 		t.Errorf("the page does not name the application:\n%s", recorder.Body.String())
 	}
 }

@@ -10,11 +10,11 @@ nothing about that policy changes when the issuer does.
      argocd:
        kind: confidential
        display_name: Argo CD          # the sign-in page: "Sign in to continue to Argo CD"
-       description: deployments on the kernel cluster
+       description: deployments on the prod cluster
        secret: argocd-oidc-client
        redirects:  [https://argocd.example.internal/auth/callback]
        signed_out: [https://argocd.example.internal/]
-       requires:   [kernel:k8s:admin, kernel:k8s:viewer]
+       requires:   [prod:k8s:admin, prod:k8s:viewer]
    ```
 2. ArgoCD's `oidc.config`:
    ```yaml
@@ -26,8 +26,8 @@ nothing about that policy changes when the issuer does.
    logoutURL: https://issuer.example.internal/end_session?id_token_hint={{token}}&post_logout_redirect_uri=https://argocd.example.internal
    ```
 3. `policy.csv` binds the **cluster tier** of its own scope —
-   `g, kernel:k8s:admin, role:admin` — rather than owning a
-   `kernel:argocd:*` name: being admin of the cluster is the
+   `g, prod:k8s:admin, role:admin` — rather than owning a
+   `prod:argocd:*` name: being admin of the cluster is the
    qualification for being admin of the ArgoCD that manages it
    ([naming](../design/trust.md#naming)). Give ArgoCD a `thing` of its
    own only when its ladder genuinely diverges from the cluster's.

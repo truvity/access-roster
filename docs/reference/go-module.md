@@ -60,8 +60,8 @@ ordinary bearer.
 cluster := &identity.Cluster{
     Review:   kube.ReviewToken,          // yours, or client-go's
     Audience: "the-service",
-    Name:     "kernel",
-    Groups:   []string{"kernel:k8s:admin"},
+    Name:     "prod",
+    Groups:   []string{"prod:k8s:admin"},
 }
 
 http.ListenAndServe(":8080", identity.Middleware(cluster, issuer)(mux))
@@ -154,8 +154,8 @@ owner, ref, workflow, environment, visibility, as the job's token says —
 and `ServiceAccount` — cluster, namespace, name. A person, a CI job and
 a workload are the same evaluation against the same matchers.
 
-One layer. There was a second that a console could write; it is gone
-(INF-694), because a console that can disagree with git is a second
+One layer. There was a second that a console could write; it is gone,
+because a console that can disagree with git is a second
 source of truth and a merge to reconcile them.
 
 ## Not built yet
@@ -163,4 +163,4 @@ source of truth and a merge to reconcile them.
 `authz` (role helpers over `Verified`), `directory` (a client for the
 endpoint that returns when something needs it again), and the adapters
 for fiber, gRPC and connect. Each is additive: they sit on the same
-`Verified` and change nothing above. Tracked in INF-648.
+`Verified` and change nothing above.

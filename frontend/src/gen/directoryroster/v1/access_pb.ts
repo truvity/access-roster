@@ -421,7 +421,7 @@ export const ClientAdmissionSchema: GenMessage<ClientAdmission> = /*@__PURE__*/
  * GroupMember is one directory group inside an internal group.
  *
  * Field 2 was `layer`, saying whether the deployment declared it or an
- * operator added it in the console. There is one layer now (INF-694).
+ * operator added it in the console. There is one layer now.
  *
  * @generated from message directoryroster.v1.GroupMember
  */
@@ -512,7 +512,7 @@ export type PolicyMatcher = Message<"directoryroster.v1.PolicyMatcher"> & {
   kind: string;
 
   /**
-   * rule is the pattern, in words: "repository example-org/gitops, ref
+   * rule is the pattern, in words: "repository example-org/platform, ref
    * refs/heads/master", "identity-system/authorization-webhook".
    *
    * @generated from field: string rule = 2;
@@ -672,8 +672,8 @@ export type PolicyTeam = Message<"directoryroster.v1.PolicyTeam"> & {
 
   /**
    * the internal groups whose holders belong in the team, read exactly
-   * like a client's `requires`. They were provider addresses until
-   * INF-696 made a team a consumer of a group like anything else.
+   * like a client's `requires`. They were provider addresses until a
+   * team became a consumer of a group like anything else.
    *
    * @generated from field: repeated string members = 3;
    */
@@ -1152,7 +1152,7 @@ export const DirectoryGroupMemberSchema: GenMessage<DirectoryGroupMember> = /*@_
 /**
  * DirectoryGroupFeed is one internal group this directory group is a
  * member of. Field 2 was the layer that put it there; there is one
- * layer now (INF-694).
+ * layer now.
  *
  * @generated from message directoryroster.v1.DirectoryGroupFeed
  */
@@ -1442,8 +1442,8 @@ export const AccessService: GenService<{
    * adds, the state of the break-glass admin, and the enabled sign-in
    * sources. Viewer.
    *
-   * There is no AddMembership or RemoveMembership beside it any more
-   * (INF-694). Who is in which internal group is the policy, rendered
+   * There is no AddMembership or RemoveMembership beside it any more.
+   * Who is in which internal group is the policy, rendered
    * from the installation's own access model and reviewed in git; a
    * console that could disagree with git was a second source of truth
    * and a merge to reconcile them.

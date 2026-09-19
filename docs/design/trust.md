@@ -109,11 +109,11 @@ between, lowercase. *Role, on thing, in scope.*
 
 | Segment | Is | Examples |
 |---|---|---|
-| `scope` | an environment, a tenant id, or `all` | `kernel`, `prod`, `C0north`, `all` |
-| `thing` | what the role is **on**: a subsystem, a project, an application | `k8s`, `eudi`, `github-roster`, `access-roster` |
+| `scope` | an environment, a tenant id, or `all` | `dev`, `prod`, `C0north`, `all` |
+| `thing` | what the role is **on**: a subsystem, a project, an application | `k8s`, `shop`, `github-roster`, `access-roster` |
 | `role` | from that thing's own ladder | `admin`, `viewer`, `auditor`, `deployer`, `approver`, `operator` |
 
-So: `kernel:k8s:admin`, `prod:eudi:deployer`, `all:access-roster:operator`,
+So: `prod:k8s:admin`, `prod:shop:deployer`, `all:access-roster:operator`,
 `C0north:access-roster:viewer` — the last being a role held over one
 directory rather than the installation, with the scope where every other
 name has it and the **workspace id** as the scope, never a domain.
@@ -133,12 +133,12 @@ Two rules that follow from the shape:
   diverges. That is an escape hatch; the default keeps a token at a few
   dozen groups rather than a few dozen per subsystem.
 
-Why the shape and not the one before it: `cluster-kernel:cluster:admin`
+Why the shape and not the one before it: `cluster-prod:cluster:admin`
 said "cluster" twice because the two occurrences meant different things.
 The prefix was the identity provider's project name leaking through the
 mapper that flattened it — residue of the thing being decommissioned —
 and the tier meant *Kubernetes*, which `k8s` says. The old shape also
-put an application role (`cluster-kernel:roster:operator`) under a
+put an application role (`cluster-prod:roster:operator`) under a
 cluster scope it had nothing to do with, so nothing could tell an app
 role from a project role from a tier role by looking. The new one is
 parseable in three positions, sorts scope-first, and carries none of the

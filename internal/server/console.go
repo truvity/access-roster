@@ -92,7 +92,7 @@ type ConsoleDeps struct {
 	LoginSources []string
 	CacheBackend string
 	SecureCookie bool
-	// PublicURL is where a browser reaches this console -- INF-687:
+	// PublicURL is where a browser reaches this console,
 	// including route.pathPrefix, when one is set, because this is the
 	// console's own address and the console may sit under a path.
 	//
@@ -183,7 +183,7 @@ var (
 //
 // It used to install a console layer of the policy here, so that a
 // membership added before a restart was in force after it. There is no
-// console layer any more (INF-694): who is in which internal group is
+// console layer any more: who is in which internal group is
 // the policy, rendered from the installation's own access model and
 // reviewed in git. A console that could disagree with git was a second
 // source of truth and a merge to reconcile them.
@@ -549,7 +549,7 @@ func (c *Console) connectorKinds() []directoryrosterv1.Backend {
 
 // consentRedirects is where a backend's CONSENT flow comes back: always
 // this console, because connecting a directory is this console's job --
-// but at the HOST ROOT (RootURL), never under route.pathPrefix (INF-687).
+// but at the HOST ROOT (RootURL), never under route.pathPrefix.
 // /connect is a bootstrap path, served on its own HTTPRoute precisely so
 // the operator connecting the FIRST directory -- who by definition no
 // directory can vouch for yet -- is not sent through whatever gates the

@@ -3,8 +3,8 @@
 **Status:** built; in front of every proxied console since 0.9.
 
 **Decided 2026-09-10 (supersedes 2026-09-08):** the client is **declared**,
-and that is permanent. Self-registration was designed and then dropped
-(INF-664): only this proxy could ever have called such an endpoint, an
+and that is permanent. Self-registration was designed and then dropped:
+only this proxy could ever have called such an endpoint, an
 endpoint that mints clients is the one surface an issuer least wants, and
 declaring them keeps *who can obtain tokens for which audience* answerable
 by reading a repository. So an installation names a Secret holding the
@@ -16,7 +16,7 @@ a proxy uses and the one the issuer has on file cannot drift. That is a
 real property — drift broke sign-in twice and sign-out once during the
 one-domain cutover — and it is recovered by generating a console's
 hostname, proxy configuration and client entry from a single row of the
-access matrix (INF-688), rather than by an endpoint.
+access matrix, rather than by an endpoint.
 
 **Decided 2026-09-08:** the chart never mints the **cookie secret** either,
 and that one is not interim. A chart that generated it would generate a new

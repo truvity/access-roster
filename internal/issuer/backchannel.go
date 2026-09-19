@@ -139,7 +139,7 @@ func (s *Storage) mintLogoutToken(session *Session) (string, error) {
 		JWTID:    uuid.NewString(),
 		Subject:  session.Identity,
 		// The SAME `sid` the relying party's ID token carried, which is
-		// this per-client session (INF-681) and not the browser sign-in
+		// this per-client session and not the browser sign-in
 		// it hangs off. A relying party matches a logout token to its
 		// session by that value; naming the sign-in instead was a token
 		// that verified and matched nothing. Empty for a client whose ID

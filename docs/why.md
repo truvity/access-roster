@@ -21,10 +21,10 @@ An installation already has, or can have for free:
 
 What it does not have is the connective tissue: something that turns
 "Alice is in group platform-admins in the globex.example Workspace" into
-"Alice may assume role power in account 1111, is cluster-admin on kernel,
+"Alice may assume role power in account 1111, is cluster-admin on prod,
 and is an operator in the directory console", and turns "this is job
-4711 of acme/gitops on master" into "this job may deploy to
-devel" — with one place to read the policy and no stored secret
+4711 of acme/platform on master" into "this job may deploy to
+dev" — with one place to read the policy and no stored secret
 anywhere.
 
 ## The problems, concretely

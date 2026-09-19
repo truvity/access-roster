@@ -16,7 +16,7 @@ without a generated client.
 
 > **`directory.v1.DirectoryService` is not served.** It had one listener
 > and one consumer — the issuer — and the issuer is now the same process,
-> so the question is a function call (INF-691). The proto stays, and the
+> so the question is a function call. The proto stays, and the
 > endpoint returns on this service when something needs it again,
 > authenticated by token exchange like every other machine. The
 > paragraphs below about its audience, its consumers and their grants
@@ -463,7 +463,7 @@ carries its roles and scopes beside the fields the Go module's
   "roles": ["operator", "viewer"],
   "scopes": ["C0north"],
   "source": "session",
-  "groups": ["kernel:k8s:viewer", "all:access-roster:operator"],
+  "groups": ["prod:k8s:viewer", "all:access-roster:operator"],
   "version": "v1.8.0",
   "signOutUrl": "/logout",
   "issuerUrl": "https://access.example"
@@ -483,6 +483,6 @@ curl -s -H "authorization: Bearer $TOKEN" \
 
 # ListHolders, over POST
 curl -s -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d '{"group":"kernel:k8s:viewer"}' \
+  -d '{"group":"prod:k8s:viewer"}' \
   http://access-issuer.access-issuer.svc:8080/console/directoryroster.v1.AccessService/ListHolders
 ```

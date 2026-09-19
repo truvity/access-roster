@@ -27,8 +27,8 @@ import (
 )
 
 // Every grant in this policy is named `<scope>:<thing>:<role>` — role,
-// on thing, in scope. `kernel:k8s:admin` is admin of kernel's Kubernetes;
-// `prod:eudi:deployer` deploys the eudi project on prod;
+// on thing, in scope. `dev:k8s:admin` is admin of dev's Kubernetes;
+// `prod:shop:deployer` deploys the shop project on prod;
 // `all:access-roster:operator` operates this hub across every directory
 // it serves. The reasoning is in docs/design/trust.md under "Naming";
 // what matters here is that the name is the whole of the fact, carried
@@ -203,7 +203,7 @@ type Policy struct {
 	// audience.
 	Clients map[string]Client `yaml:"clients,omitempty"`
 	// GitHub binds internal groups to GitHub teams, keyed by the
-	// organisation's login (INF-696). It grants nothing here and appears
+	// organisation's login. It grants nothing here and appears
 	// in no token: a controller reads it and makes each organisation's
 	// membership match.
 	//

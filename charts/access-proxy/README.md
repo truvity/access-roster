@@ -63,8 +63,8 @@ what produced it is your business.
 **Mint the client.** Every client of the issuer is **declared**, so that
 the set of them is answerable by reading a repository rather than by
 querying the running service. Name the Secret holding this one in
-`client.secret.name`. Self-registration was designed and dropped
-(INF-664): only a proxy could ever have called such an endpoint, and an
+`client.secret.name`. Self-registration was designed and dropped:
+only a proxy could ever have called such an endpoint, and an
 endpoint that mints clients is the one surface an issuer least wants.
 
 See [docs/reference/access-proxy.md](../../docs/reference/access-proxy.md)

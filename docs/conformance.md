@@ -96,7 +96,7 @@ Its end-to-end module is the one place the **issuer has to reach the
 suite**: a logout token is a server-to-server POST. A suite on a laptop
 at a name that resolves to `127.0.0.1` is, from the pod, the pod's own
 loopback, and pods cannot reach the tailnet either. So the suite runs in
-the cluster, at a kernel hostname of its own, exactly while the
+the cluster, at a hostname of its own, exactly while the
 conformance client rows are declared — see
 [operations/conformance.md](operations/conformance.md). Only its
 relying-party paths are public; the control plane is reached over the
@@ -111,7 +111,7 @@ code flow and read what the listening relying party is sent:
   it and, at sign-out, announced nothing. The sign-in now remembers which
   clients were issued an ID token under it, and every one is told.
 - The logout token named the browser sign-in as `sid` while the ID token
-  had named the per-client session (INF-681). A relying party matches
+  had named the per-client session. A relying party matches
   the two by that value; a token that verified and matched nothing was a
   sign-out that silently did not happen. The logout token now names the
   `sid` the ID token did, and a client whose ID token carried none is

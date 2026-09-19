@@ -14,7 +14,7 @@ import { SessionService, How } from "./gen/accessissuer/v1/session_pb";
 
 // The hub's own services, reached under wherever this console is
 // mounted. `import.meta.env.BASE_URL` is "/" by default and carries
-// `route.pathPrefix` (INF-687, e.g. "/console/") when the build sets one
+// `route.pathPrefix` (e.g. "/console/") when the build sets one
 // — see vite.config.ts. A bare "/" would resolve to the ORIGIN root
 // regardless of that prefix, which is right for the issuer below and
 // wrong for the hub: its services live only under the console's own
@@ -42,8 +42,8 @@ export const access = createClient(AccessService, transport);
 export const github = createClient(GitHubService, transport);
 export const audit = createClient(AuditService, transport);
 
-// The issuer's SessionService, same-origin at the domain root (INF-687,
-// INF-682) — never under this console's own path, however it is
+// The issuer's SessionService, same-origin at the domain root — never
+// under this console's own path, however it is
 // mounted. A plain "/" is exactly that root, unaffected by the prefix
 // above. The fetch override is what carries the browser's issuer SSO
 // cookie on a same-origin call, the same cookie `/account` on the issuer
@@ -70,7 +70,7 @@ export type Me = Identity & {
   /** roles held over ONE directory each, keyed by its id. `roles` is the
    *  installation-wide answer and is not a summary of these. */
   scopes?: Record<string, string[]>;
-  /** the issuer this console shares its origin with (INF-687), or empty
+  /** the issuer this console shares its origin with, or empty
    *  for a console deployed alone with no issuer. Sessions sections
    *  render only when this is set, because there is nothing to read or
    *  end otherwise. */
@@ -80,7 +80,7 @@ export type Me = Identity & {
 /** Whether the issuer shares this page's origin.
  *
  *  The session service is called SAME-ORIGIN, with the browser's issuer
- *  cookie and no bearer — that is the whole design (INF-687). So a console
+ *  cookie and no bearer — that is the whole design. So a console
  *  served from a different host than its issuer cannot reach it, and must
  *  not render sections that would call its own origin and 404. This is
  *  true of every deployment until the console is mounted under its

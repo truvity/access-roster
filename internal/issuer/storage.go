@@ -287,7 +287,7 @@ func NewStorage(
 		state = NewMemoryState()
 	}
 	// Nothing here implements op.DeviceAuthorizationStorage, and that is
-	// the mechanism by which the device flow is not served (INF-693). The
+	// the mechanism by which the device flow is not served. The
 	// library type-asserts for it and refuses the grant when the
 	// assertion fails, so there is no device state to keep and no way for
 	// a device code to be stored by something that changed its mind.
@@ -1211,7 +1211,7 @@ var ErrNotEntitled = errors.New("no group this client requires")
 // browser client was documentation: anybody the issuer would authenticate
 // was issued a token for any declared client, and what stopped them was
 // whatever the application checked for itself. For a console with no
-// authorization of its own -- hubble -- nothing did (INF-704).
+// authorization of its own -- hubble -- nothing did.
 //
 // Here rather than at /authorize because there is nobody to judge until
 // the sign-in finishes: the request arrives before anyone has proved who

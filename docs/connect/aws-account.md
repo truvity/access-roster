@@ -29,7 +29,7 @@ Each role is a client of kind `exchange`; `requires` says who may assume it:
 ```yaml
 clients:
   aws:111122223333:power:           { kind: exchange, requires: [sre] }
-  aws:111122223333:gitops-deployer: { kind: exchange, requires: [ci-gitops] }
+  aws:111122223333:platform-deployer: { kind: exchange, requires: [ci-platform] }
 ```
 
 ## Person side
@@ -51,9 +51,9 @@ it signs is one.
 
 ## Job side
 
-The action with `audiences: aws:111122223333:gitops-deployer` exchanges
+The action with `audiences: aws:111122223333:platform-deployer` exchanges
 the job's GitHub token at the issuer and writes the profile
-`gitops-deployer@111122223333` with `web_identity_token_file` pointing at
+`platform-deployer@111122223333` with `web_identity_token_file` pointing at
 the result; the AWS CLI does the rest. Or the same `aws.ini` a person
 uses works unchanged in a job granted `id-token: write`: `accessctl aws`
 exchanges the job's own token there

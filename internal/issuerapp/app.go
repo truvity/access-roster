@@ -148,13 +148,13 @@ func Load() (Config, error) {
 }
 
 // Deps are the things a caller supplies instead of letting this package
-// build them. Both are how the merged service is assembled (INF-691):
+// build them. Both are how the merged service is assembled:
 // one process holds the directory, so the issuer calls it rather than
 // dialling it, and the console is served from the issuer's own origin
 // instead of a listener of its own.
 //
 // Directory is REQUIRED. It was optional while the hub was a service of
-// its own, reached over the network at HUB_ADDRESS; INF-691 folded it
+// its own, reached over the network at HUB_ADDRESS; the merge folded it
 // into this process and nothing has dialled it since. What was left was
 // a branch that could not run, two settings nothing set, and a network
 // client with no caller -- config that reads as a supported deployment
@@ -662,8 +662,8 @@ func openState(ctx context.Context, cfg Config, log *slog.Logger) (issuer.State,
 func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (all, clusters issuer.Verifiers, err error) {
 	var verifiers issuer.Verifiers
 
-	// Clusters, by their own published key set and NEVER by asking them
-	// (INF-692). The other way to check a ServiceAccount token is a
+	// Clusters, by their own published key set and NEVER by asking them.
+	// The other way to check a ServiceAccount token is a
 	// TokenReview, which means holding a kubeconfig for every cluster
 	// whose workloads may exchange — inside the service whose whole point
 	// is to hold almost no credential. A key set is public, so a remote

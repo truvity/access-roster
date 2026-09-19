@@ -107,7 +107,7 @@ kos:
   # One SERVICE image, because there is one service. (The GitHub
   # controller below is a second process beside it, not a second service.)
   # The hub was a second binary
-  # and a second image until INF-691 folded it into the issuer, which
+  # and a second image until the merge folded it into the issuer, which
   # runs it in process -- internal/app is still here and still does the
   # directory work; what is gone is the separate deployment of it. It
   # went on being built and pushed on every release for a while after
