@@ -42,7 +42,7 @@ clients:                       # who may be issued a token for what; the id is t
   k8s:prod:        { kind: public,       requires: [prod:k8s:admin, prod:k8s:auditor] }
   aws:1111:power:    { kind: exchange,     requires: [prod:k8s:admin] }
   aws:1111:deployer: { kind: exchange,     requires: [ci:platform:deployer] }
-  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [prod:k8s:admin, prod:k8s:auditor], ttl_cap: 12h, display_name: Argo CD, description: Continuous delivery for the kernel cluster. }
+  argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [prod:k8s:admin, prod:k8s:auditor], ttl_cap: 12h, display_name: Argo CD, description: Continuous delivery for the mgmt cluster. }
   local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [prod:shop:deployer] }
   accessctl:         { kind: public,       redirects: [http://127.0.0.1/callback], requires: [prod:k8s:admin, prod:k8s:auditor], sign_in_exchange: true, display_name: accessctl }
 ```

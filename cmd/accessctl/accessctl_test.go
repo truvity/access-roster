@@ -44,7 +44,7 @@ func TestTheRoleComesFromTheAudience(t *testing.T) {
 		t.Errorf("arn = %q", arn)
 	}
 
-	for _, bad := range []string{"aws:111122223333", "k8s:kernel", "aws::power", "aws:111122223333:", ""} {
+	for _, bad := range []string{"aws:111122223333", "k8s:mgmt", "aws::power", "aws:111122223333:", ""} {
 		if _, err = roleFromAudience(bad); err == nil {
 			t.Errorf("%q was turned into a role anyway", bad)
 		} else if codeFor(err) != exitUsage {

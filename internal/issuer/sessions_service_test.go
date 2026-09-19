@@ -142,7 +142,7 @@ func TestRevokeNarrowsToOneClient(t *testing.T) {
 	sessions := issuer.NewSessions(state, time.Hour)
 	svc := service(t, state)
 
-	for _, client := range []string{"argocd", "k8s:kernel"} {
+	for _, client := range []string{"argocd", "k8s:mgmt"} {
 		if _, err := sessions.Record(ctx, issuer.Opened{Identity: "ada@north.example", ClientID: client, How: issuer.HowCode, Token: "t-" + client}); err != nil {
 			t.Fatalf("record: %v", err)
 		}
@@ -163,7 +163,7 @@ func TestRevokeNarrowsToOneClient(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 
-	if len(left) != 1 || left[0].ClientID != "k8s:kernel" {
+	if len(left) != 1 || left[0].ClientID != "k8s:mgmt" {
 		t.Errorf("Ada keeps %v, want only her kubectl session", left)
 	}
 }
@@ -320,7 +320,7 @@ func TestSigningABrowserOutEndsTheSignInToo(t *testing.T) {
 	}
 
 	if _, err = sessions.Record(ctx, issuer.Opened{
-		Identity: "ada@north.example", ClientID: "k8s:kernel",
+		Identity: "ada@north.example", ClientID: "k8s:mgmt",
 		How: issuer.HowCode, Token: "t-laptop", SSO: "another-browser",
 	}); err != nil {
 		t.Fatalf("record: %v", err)
@@ -349,7 +349,7 @@ func TestSigningABrowserOutEndsTheSignInToo(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 
-	if len(left) != 1 || left[0].ClientID != "k8s:kernel" {
+	if len(left) != 1 || left[0].ClientID != "k8s:mgmt" {
 		t.Errorf("left with %v, want only the other browser's session", left)
 	}
 }

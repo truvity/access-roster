@@ -23,7 +23,7 @@ groups:
   all:access-roster:operator: { members: [platform@example.com] }
   all:access-roster:viewer:
     matchers:
-      - service_account: { cluster: kernel, namespace: access-issuer, name: github-roster }
+      - service_account: { cluster: mgmt, namespace: access-issuer, name: github-roster }
 `))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -35,7 +35,7 @@ groups:
 	authorizer := access.NewAuthorizer(set, nil, 0)
 
 	workload := func(namespace, name string) access.Principal {
-		account := policy.ServiceAccountRef{Cluster: "kernel", Namespace: namespace, Name: name}
+		account := policy.ServiceAccountRef{Cluster: "mgmt", Namespace: namespace, Name: name}
 		return access.Principal{
 			Subject:        account.Subject(),
 			Source:         access.SourceWorkload,

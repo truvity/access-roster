@@ -49,10 +49,10 @@ type Tenant struct {
 const Policy = `
 version: 1
 groups:
-  kernel:k8s:admin:    { members: [directory-admins@north.example] }
+  mgmt:k8s:admin:    { members: [directory-admins@north.example] }
   devel:k8s:admin:     { members: [directory-admins@north.example] }
   devel:k8s:viewer:    { members: [engineering@north.example, engineering@south.example] }
-  kernel:k8s:auditor:  { members: [security@south.example] }
+  mgmt:k8s:auditor:  { members: [security@south.example] }
   rung:platform:       { members: [directory-admins@north.example] }
   rung:engineering:    { members: [engineering@north.example, engineering@south.example] }
   rung:security:       { members: [security@south.example] }
@@ -68,7 +68,7 @@ groups:
     matchers:
       - service_account: { namespace: identity-system, name: authorization-webhook }
 claims:
-  kernel:k8s:admin:   { tailnet: { tiers: [vpc, service] } }
+  mgmt:k8s:admin:   { tailnet: { tiers: [vpc, service] } }
   devel:k8s:viewer:   { tailnet: { tiers: [vpc] } }
 lifetimes:
   default: 12h
@@ -77,9 +77,9 @@ lifetimes:
   all:gitops:deployer: 1h
   all:gitops:builder: 30m
 clients:
-  k8s:kernel:        { kind: public, requires: [kernel:k8s:admin, kernel:k8s:auditor] }
+  k8s:mgmt:        { kind: public, requires: [mgmt:k8s:admin, mgmt:k8s:auditor] }
   k8s:devel:         { kind: public, requires: [devel:k8s:admin, devel:k8s:viewer, all:gitops:deployer] }
-  aws:1111:power:    { kind: exchange, requires: [kernel:k8s:admin] }
+  aws:1111:power:    { kind: exchange, requires: [mgmt:k8s:admin] }
   aws:1111:deployer: { kind: exchange, requires: [all:gitops:deployer] }
   directory-roster:  { kind: exchange, requires: [all:directory-roster:reader] }
   argocd:
@@ -87,7 +87,7 @@ clients:
     secret: argocd-oidc-client
     redirects: [https://argocd.demo.example/auth/callback]
     signed_out: [https://argocd.demo.example/]
-    requires: [kernel:k8s:admin, devel:k8s:viewer, kernel:k8s:auditor]
+    requires: [mgmt:k8s:admin, devel:k8s:viewer, mgmt:k8s:auditor]
     ttl_cap: 2h
   local-dev:
     kind: public
@@ -99,9 +99,9 @@ github:
     teams:
       team-engineering:
         members: [devel:k8s:viewer]
-        maintainers: [kernel:k8s:admin]
+        maintainers: [mgmt:k8s:admin]
       team-security:
-        members: [kernel:k8s:auditor]
+        members: [mgmt:k8s:auditor]
 `
 
 // Tenants returns the two workspaces the prototype starts with: one

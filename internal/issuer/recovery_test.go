@@ -46,9 +46,9 @@ func TestRecoveryRefuses(t *testing.T) {
 			name: "a named cluster is carried into the subject",
 			recovery: issuer.TokenRecovery{
 				Review: review(good, nil), Audience: "aud", Subjects: []string{good},
-				Cluster: "kernel",
+				Cluster: "mgmt",
 			},
-			proof: "token", want: "kernel:k8s:access-issuer:access-issuer-recovery",
+			proof: "token", want: "mgmt:k8s:access-issuer:access-issuer-recovery",
 		},
 		{
 			// Any workload in the cluster can mint itself a token. If
