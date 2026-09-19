@@ -41,7 +41,9 @@ SUITE = os.environ.get("SUITE", "https://localhost.emobix.co.uk:8443")
 # The issuer under test: no default, so a run never certifies an
 # installation nobody named.
 ISSUER = os.environ.get("ISSUER") or sys.exit("ISSUER: set it to the issuer to certify, e.g. https://access.example.com")
-CONTEXT = os.environ.get("CONTEXT", "kernel@oidc")
+# The kubectl context of the issuer's cluster: no default either, for the
+# same reason.
+CONTEXT = os.environ.get("CONTEXT") or sys.exit("CONTEXT: set it to the kubectl context of the issuer's cluster, e.g. prod@oidc")
 # How to run kubectl, because reaching the cluster can need more than the
 # binary. A context that authenticates through OIDC needs the
 # `kubectl-oidc_login` credential plugin on PATH, and when it is missing
