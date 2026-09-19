@@ -79,7 +79,7 @@ for want in "svc/valkey-access-proxy-sessions" "valkeycluster/access-proxy-sessi
   fi
 done
 
-records=$(kube get configmap -l directory-roster.truvity.com/kind=workspace \
+records=$(kube get configmap -l access-roster.truvity.github.io/kind=workspace \
   --no-headers 2>/dev/null | wc -l)
 if [ "$records" -eq 0 ]; then
   echo "REFUSING: no workspace records here, so this is not the namespace" >&2
@@ -108,4 +108,4 @@ echo
 echo "--- what is left in $NS"
 kube get all 2>/dev/null | head -20
 echo
-echo "Workspace records kept: $(kube get configmap -l directory-roster.truvity.com/kind=workspace --no-headers 2>/dev/null | wc -l)"
+echo "Workspace records kept: $(kube get configmap -l access-roster.truvity.github.io/kind=workspace --no-headers 2>/dev/null | wc -l)"

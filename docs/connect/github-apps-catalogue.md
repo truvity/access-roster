@@ -364,7 +364,7 @@ that needs the App — a job that mints its own tokens today — reads, under
 names that do not change for the life of the App.
 
 **Restoring** is putting the Secret back, with its label
-`directory-roster.truvity.com/kind: github-catalogue-apps`, before the
+`access-roster.truvity.github.io/kind: github-catalogue-apps`, before the
 service starts. The records are beside the keys, so nothing else is
 needed ([configuration](../reference/configuration.md#restoring-from-the-secrets-alone)).
 

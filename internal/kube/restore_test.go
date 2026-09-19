@@ -184,9 +184,9 @@ func TestAnOlderReleasesCredentialsMoveIntoOneSecret(t *testing.T) {
 			Name:      "directory-roster-credential-" + segment,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":      "directory-roster",
-				"app.kubernetes.io/part-of":         "directory-roster",
-				"directory-roster.truvity.com/kind": "credential",
+				"app.kubernetes.io/managed-by": "directory-roster",
+				"app.kubernetes.io/part-of":    "directory-roster",
+				kube.LegacyKindLabel:           "credential",
 			},
 		},
 		Data: map[string][]byte{"type": []byte(backend.CredentialOAuth), "admin": []byte("admin@north.example"), "credential": []byte("refresh")},
