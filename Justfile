@@ -78,6 +78,10 @@ release-check: console
 archive-check:
     ./hack/check-archives.py
 
+# The reason this repository can be public. Runs in CI as its own job.
+leak-canary:
+    hack/leak-canary.sh
+
 # Every Go symbol the documentation names must exist. Nothing compiles a
 # code block in a Markdown file, so a rename leaves the old name in the
 # guide and the first person to notice is a stranger following it.
@@ -209,10 +213,10 @@ console: ts-package
     cd frontend && npm test
     cd frontend && npm run build
 
-# Run all checks (build + test + lint + chart-lint + vuln)
+# Run all checks (build + test + lint + chart-lint + leak-canary + vuln)
 # Everything CI runs, so that the pre-push hook catches what CI would.
 #
 # `ts` is in here despite being slow: it typechecks and tests the
 # published package, which nothing else does. `console` arrives through
 # `build`, which needs it.
-check: build test lint chart-lint archive-check docs-check ts vuln
+check: build test lint chart-lint archive-check docs-check leak-canary ts vuln
