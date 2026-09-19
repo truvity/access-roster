@@ -1,4 +1,4 @@
-## Unreleased
+## v1.17.0
 
 - **Breaking:** anything that selects the service's objects by their old
   kind label — a backup, a script, a dashboard — must switch to the new
@@ -32,6 +32,13 @@
 
     then restart the service (`kubectl rollout restart`), which reopens
     stored workspaces only at start.
+
+- **The repository runs a leak canary.** Every pull request is scanned
+  for particulars (account ids, ARNs, internal hostnames, credential
+  prefixes) in tracked files; the few mechanism shapes it allows (AWS's
+  documented example account ids, ARNs composed from inputs, the pod
+  secrets mount root) are listed with their reasons in
+  `hack/leak-canary.sh`.
 
 ## v1.16.3
 
