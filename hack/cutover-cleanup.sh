@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Clean up after the INF-691 cutover.
+# Clean up after the cutover to one service (the hub folded into the issuer).
 #
 # Two separate messes, both of which need a person because neither will
 # resolve on its own.
@@ -33,7 +33,7 @@
 # answer.
 set -euo pipefail
 
-CONTEXT="${CONTEXT:-kernel@oidc}"
+CONTEXT="${CONTEXT:?set CONTEXT to the kubectl context of the cluster, e.g. prod@oidc}"
 NS="${NS:-directory-roster}"
 
 kube() { kubectl --context "$CONTEXT" -n "$NS" "$@"; }

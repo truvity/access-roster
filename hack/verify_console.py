@@ -34,7 +34,8 @@ leaves the sign-in that admits the next visit. The run that showed it
 had every issuer-side fact right and reported two failures anyway.
 
 Usage:
-  hack/verify_console.py <host> [--client <id>]
+  ISSUER=<issuer> CONTEXT=<kubectl context> RECOVERY_IDENTITY=<subject> \
+    hack/verify_console.py <host> [--client <id>]
 
 Sign-in is RECOVERY, the audited break-glass path, which is why this runs
 unattended. The identity must hold a group the client's `requires` names
@@ -160,7 +161,11 @@ class Observer:
     # console it walks is a live one, and an operator debugging beside it
     # holds sessions of their own on the same client; a harness that
     # revoked "every session for hubble" would sign them out mid-thought.
-    OWN = "kernel:k8s:access-issuer:access-issuer-recovery"
+    # The subject a recovery sign-in carries: `<cluster>:k8s:<namespace>:
+    # <name>` of the recovery ServiceAccount, with the chart's `cluster`.
+    OWN = os.environ.get("RECOVERY_IDENTITY") or sys.exit(
+        "RECOVERY_IDENTITY: set it to the recovery sign-in's subject, "
+        "e.g. prod:k8s:access-issuer:access-issuer-recovery")
 
     def sessions(self, client):
         every = self.call("ListSessions", {"clientId": client}).get("sessions") or []
@@ -223,7 +228,7 @@ def stamp():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("host", help="e.g. https://hubble.kernel.example.com")
+    parser.add_argument("host", help="e.g. https://hubble.prod.example.com")
     parser.add_argument("--client", help="the client id, for the session query")
     args = parser.parse_args()
     host = args.host.rstrip("/")
@@ -262,7 +267,7 @@ def main():
         else:
             # Not a failure. A client that never redeems its code holds no
             # per-client session at all -- the console is exactly that, by
-            # design (INF-701), and it is the reason the console's own
+            # design, and it is the reason the console's own
             # sign-in never showed up on its own Sessions page.
             print("  NOTE %s opened no session: it does not redeem its code" % client)
 
