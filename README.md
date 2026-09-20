@@ -259,6 +259,7 @@ Every column, and why, is in
 | put a console behind the gateway | [docs/connect/console-app.md](docs/connect/console-app.md) |
 | keep a GitHub organisation's teams in step with the policy | [docs/connect/github-organisation.md](docs/connect/github-organisation.md) |
 | declare GitHub Apps as data and create them from the console | [docs/connect/github-apps-catalogue.md](docs/connect/github-apps-catalogue.md) |
+| give a Pulumi or Terraform program that manages the organisation an identity of its own | [docs/connect/infrastructure-as-code.md](docs/connect/infrastructure-as-code.md) |
 | connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
 | mint a short-lived SSH, database or client certificate | [docs/connect/openbao.md](docs/connect/openbao.md) |
 | see what the conformance suite said, and why | [docs/conformance.md](docs/conformance.md) |

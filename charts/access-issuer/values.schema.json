@@ -432,6 +432,34 @@
                     }
                   }
                 }
+              },
+              "push": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Copy this App's credential to a secret store with an External Secrets PushSecret: its three property keys only, to the store and path named here. Absent pushes nothing.",
+                "required": ["secretStore", "remoteKey"],
+                "properties": {
+                  "secretStore": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name"],
+                    "properties": {
+                      "name": { "type": "string", "minLength": 1 },
+                      "kind": { "type": "string", "enum": ["SecretStore", "ClusterSecretStore"] }
+                    }
+                  },
+                  "remoteKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "refreshInterval": {
+                    "$ref": "#/definitions/duration"
+                  },
+                  "deletionPolicy": {
+                    "type": "string",
+                    "enum": ["None", "Delete"]
+                  }
+                }
               }
             }
           }

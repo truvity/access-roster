@@ -1,0 +1,76 @@
+{{- /*
+One PushSecret per catalogue entry that carries `push`: the supported way
+one App's credential leaves this service.
+
+The doctrine everywhere else is that a key GitHub hands over has ONE copy,
+held by the service, and that anything wanting to act as an App asks the
+issuer for a short-lived installation token instead. That holds for
+anything that can ask — a job, a person, a workload. It does not hold for
+a program that must not depend on the issuer being up at the moment it
+runs: an infrastructure-as-code apply reaches for a credential before it
+reaches for anything else, and an apply that cannot start because the
+issuer is being upgraded is a worse failure than the copy is a risk.
+
+So the copy is made deliberately, per App, to a store and a path the
+operator names — this chart invents neither — and it is exactly three
+keys: the App's id, its installation id and its private key. Never the
+record, never another App's keys, never the whole Secret. What lands in
+the store IS the App's key: it is rotated as one, and a store that holds
+it is in the blast radius of the App.
+*/ -}}
+{{- $root := . }}
+{{- $pushed := dict }}
+{{- range .Values.githubApps.catalogue }}
+{{- if .push }}
+{{- if ne $root.Values.directory.store "kubernetes" }}
+{{- fail (printf "githubApps.catalogue[%s].push needs directory.store: kubernetes: the App's key is kept in a Secret only that store writes, so with any other there is nothing to push" .id) }}
+{{- end }}
+{{- $kind := .push.secretStore.kind | default "SecretStore" }}
+{{- $where := printf "%s/%s/%s" $kind .push.secretStore.name .push.remoteKey }}
+{{- if hasKey $pushed $where }}
+{{- fail (printf "githubApps.catalogue: %s and %s both push to remoteKey %s in %s %s: one would overwrite the other, and whoever read that path could not tell which App's key they held" (index $pushed $where) .id .push.remoteKey $kind .push.secretStore.name) }}
+{{- end }}
+{{- $_ := set $pushed $where .id }}
+---
+# The credential of catalogue App {{ .id }}, copied to {{ $kind }} {{ .push.secretStore.name }}.
+# A consumer reads the three properties from {{ .push.remoteKey }}; the
+# names below are the contract and do not change for the life of the App.
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: {{ include "access-issuer.fullname" $root }}-github-app-{{ .id }}
+  labels:
+    {{- include "access-issuer.labels" $root | nindent 4 }}
+spec:
+  refreshInterval: {{ .push.refreshInterval | default "1h" }}
+  # None by default: a declaration removed here, or an App disconnected,
+  # leaves the copy for somebody to remove deliberately rather than
+  # breaking a consumer's next apply from a distance.
+  deletionPolicy: {{ .push.deletionPolicy | default "None" }}
+  secretStoreRefs:
+    - name: {{ .push.secretStore.name }}
+      kind: {{ $kind }}
+  selector:
+    secret:
+      # The one Secret the service keeps every catalogue App in. The three
+      # property keys below exist only once the App is INSTALLED, so
+      # nothing is pushed for an App an operator created and stopped at.
+      name: {{ include "access-issuer.fullname" $root }}-github-catalogue-apps
+  data:
+    - match:
+        secretKey: {{ .id }}.github_app_id
+        remoteRef:
+          remoteKey: {{ .push.remoteKey }}
+          property: app_id
+    - match:
+        secretKey: {{ .id }}.github_app_installation_id
+        remoteRef:
+          remoteKey: {{ .push.remoteKey }}
+          property: installation_id
+    - match:
+        secretKey: {{ .id }}.github_app_private_key
+        remoteRef:
+          remoteKey: {{ .push.remoteKey }}
+          property: private_key
+{{- end }}
+{{- end }}

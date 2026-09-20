@@ -411,6 +411,24 @@ githubApps:
   #       - group: all:platform:engineer
   #         repositories: ["*"]
   #         permissions: {contents: read}
+  #     push:                      # optional; off unless written out, see below
+  #       secretStore: {name: example-store, kind: SecretStore}
+  #       remoteKey: platform/github-apps/iac
+  #
+  # `push` is the one way a credential leaves this service. External
+  # Secrets copies exactly the App's three property keys -- the id, the
+  # installation id and the private key, never the whole Secret -- to the
+  # store and path the entry names, for a consumer that cannot ask the
+  # issuer at the moment it runs: an infrastructure-as-code apply,
+  # typically. Off unless an entry carries it, and what it writes is a
+  # REAL credential: a second durable copy of the App's key, to be rotated
+  # as one. See docs/connect/infrastructure-as-code.md.
+  #
+  # A default set an estate can copy -- dependency updates split public
+  # from private, a bot that approves and tags, and one App for the
+  # program that manages the organisation -- is shipped beside this file
+  # as examples/github-apps.yaml, with what each App is for and why they
+  # are separate identities.
   catalogue: []
 
 # The audit trail: sign-ins, refusals, exchanges, revokes, connects, and

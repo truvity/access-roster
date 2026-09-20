@@ -39,6 +39,7 @@ shows the comparison with nothing but `helm template` and `diff`.
   [GitHub Actions](connect/github-actions.md),
   [a GitHub organisation](connect/github-organisation.md),
   [catalogue GitHub Apps](connect/github-apps-catalogue.md),
+  [an infrastructure-as-code program](connect/infrastructure-as-code.md),
   [registries and artifacts](connect/registries-and-artifacts.md),
   [a service called by workloads](connect/service-to-service.md),
   [a secret manager that mints certificates](connect/openbao.md),

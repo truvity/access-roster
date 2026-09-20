@@ -1,3 +1,44 @@
+## Unreleased
+
+- **A default set of GitHub Apps, shipped as values to copy.** Every
+  estate needs the same few automations, and every estate has been
+  building them by hand. `charts/access-issuer/examples/github-apps.yaml`
+  declares four — `renovate-public` and `renovate-private` (split so the
+  App whose pull requests are world-readable cannot reach a private
+  repository; the installation is what enforces it), `ci-automation`
+  (approves bot pull requests so a required-approvals rule is satisfied
+  without a person rubber-stamping a version bump, and cuts release
+  tags), and `iac` (a Pulumi or Terraform program that manages the
+  organisation) — each with the permissions it needs and why. It is
+  values to read and copy, not a default the chart applies: creating an
+  App stays an owner of the organisation confirming a manifest. The
+  guide's new [*A default set*](docs/connect/github-apps-catalogue.md#a-default-set)
+  says why they are four identities and not one.
+- **A catalogue App's credential can be projected to a secret store.**
+  An entry may carry `push: {secretStore: {name, kind}, remoteKey,
+  refreshInterval, deletionPolicy}`, and the chart renders an External
+  Secrets `PushSecret <release>-github-app-<id>` that copies exactly that
+  App's three property keys — `app_id`, `installation_id`, `private_key`
+  — to the path the operator names. Off unless an entry carries it; the
+  chart invents neither store nor path; the record and every other App's
+  keys stay where they are. It is refused at render when two entries
+  share one path in one store, or without `directory.store: kubernetes`.
+  This is for a consumer that cannot ask the issuer at the moment it runs
+  — an infrastructure-as-code apply that must work while this service is
+  upgraded or restored. Everything that *can* ask should still exchange a
+  token per run and hold nothing. **What lands in the store is a real
+  credential**: the App's private key, a second durable copy, to be
+  rotated as one, and the store that holds it is in the App's blast
+  radius.
+- **New guide:
+  [connect/infrastructure-as-code.md](docs/connect/infrastructure-as-code.md)**
+  — the line between the two sides (this service owns identities and
+  credentials; the program owns structure and names identities), a worked
+  Pulumi program in Go that reads the credential from the store and
+  builds a GitHub provider with it, the Terraform equivalent, the
+  run-time exchange a CI job should prefer instead and when to choose
+  which, and the rotation procedure for the copy.
+
 ## v1.17.0
 
 - **Breaking:** anything that selects the service's objects by their old

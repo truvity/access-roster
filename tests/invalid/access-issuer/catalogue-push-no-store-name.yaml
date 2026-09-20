@@ -1,0 +1,11 @@
+# A push block naming no store must fail the render: the chart never invents one.
+# error: at '/githubApps/catalogue/0/push/secretStore': missing property 'name'
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: iac
+      org: acme
+      permissions: {contents: read}
+      push:
+        secretStore: {kind: ClusterSecretStore}
+        remoteKey: platform/github-apps/iac
