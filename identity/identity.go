@@ -160,7 +160,17 @@ func (i *Issuer) resolve(ctx context.Context) (*op.AccessTokenVerifier, error) {
 	if err != nil {
 		return nil, fmt.Errorf("identity: discover %s: %w", issuer, err)
 	}
-	i.verifier = op.NewAccessTokenVerifier(issuer, rp.NewRemoteKeySet(httpClient, config.JwksURI))
+	// The algorithms come from the issuer's own discovery document rather
+	// than the library's default of RS256, ES256 and PS256 -- which does
+	// not include ES384 or ES512, so an issuer signing with a P-384 key
+	// would hand out tokens this verifier rejects as "not supported". An
+	// issuer that advertises nothing leaves the list empty and the
+	// library's default applies, as before.
+	i.verifier = op.NewAccessTokenVerifier(
+		issuer,
+		rp.NewRemoteKeySet(httpClient, config.JwksURI),
+		op.WithSupportedAccessTokenSigningAlgorithms(config.IDTokenSigningAlgValuesSupported...),
+	)
 
 	return i.verifier, nil
 }

@@ -1,6 +1,7 @@
 package issuer_test
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,6 +9,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"testing"
+
+	jose "github.com/go-jose/go-jose/v4"
 
 	"github.com/truvity/access-roster/internal/issuer"
 )
@@ -77,11 +80,14 @@ func TestASigningKeyIsReadWhicheverWayItWasWritten(t *testing.T) {
 func TestAnUnreadableSigningKeyIsRefused(t *testing.T) {
 	t.Parallel()
 
-	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	// A curve this issuer has no JOSE algorithm for. P-224 is a real
+	// curve with no `ES*` pairing in RFC 7518, so it exercises the
+	// refusal without needing a malformed key.
+	weak, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	ecBytes, err := x509.MarshalPKCS8PrivateKey(ec)
+	weakBytes, err := x509.MarshalPKCS8PrivateKey(weak)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -89,11 +95,55 @@ func TestAnUnreadableSigningKeyIsRefused(t *testing.T) {
 		"not PEM at all":  []byte("hello"),
 		"empty":           nil,
 		"PEM with no key": []byte("-----BEGIN PRIVATE KEY-----\nZm9v\n-----END PRIVATE KEY-----\n"),
-		"an EC key, which this issuer does not sign with": pem.EncodeToMemory(
-			&pem.Block{Type: "PRIVATE KEY", Bytes: ecBytes}),
+		"an EC key on a curve with no JOSE algorithm": pem.EncodeToMemory(
+			&pem.Block{Type: "PRIVATE KEY", Bytes: weakBytes}),
 	} {
 		if _, err := issuer.ParseSigningKey(encoded); err == nil {
 			t.Errorf("%s was accepted as a signing key", name)
 		}
 	}
+}
+
+// TestEachKeyKindSignsItsOwnAlgorithm is the pairing RFC 7518 fixes: the
+// curve decides the hash, and an RSA key still signs RS256 so an
+// installation that keeps its key keeps its tokens.
+func TestEachKeyKindSignsItsOwnAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate rsa: %v", err)
+	}
+
+	for name, tc := range map[string]struct {
+		key  crypto.Signer
+		want jose.SignatureAlgorithm
+	}{
+		"RSA":   {key: rsaKey, want: jose.RS256},
+		"P-256": {key: mustEC(t, elliptic.P256()), want: jose.ES256},
+		"P-384": {key: mustEC(t, elliptic.P384()), want: jose.ES384},
+		"P-521": {key: mustEC(t, elliptic.P521()), want: jose.ES512},
+	} {
+		encoded, err := x509.MarshalPKCS8PrivateKey(tc.key)
+		if err != nil {
+			t.Fatalf("%s: marshal: %v", name, err)
+		}
+		parsed, err := issuer.ParseSigningKey(pem.EncodeToMemory(
+			&pem.Block{Type: "PRIVATE KEY", Bytes: encoded}))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := parsed.SignatureAlgorithm(); got != tc.want {
+			t.Errorf("%s signs %s, want %s", name, got, tc.want)
+		}
+	}
+}
+
+func mustEC(t *testing.T, curve elliptic.Curve) *ecdsa.PrivateKey {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		t.Fatalf("generate %s: %v", curve.Params().Name, err)
+	}
+	return key
 }

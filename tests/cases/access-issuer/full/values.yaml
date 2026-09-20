@@ -45,7 +45,9 @@ signingKey:
   certificate:
     issuerName: signing-issuer
     issuerKind: Issuer
+    algorithm: RSA
     size: 4096
+    encoding: PKCS1
     renewBefore: 360h
     duration: 4380h
 
@@ -126,6 +128,11 @@ route:
   certificate:
     issuerName: web-ca
     issuerKind: Issuer
+    privateKey:
+      algorithm: ECDSA
+      size: 384
+      encoding: PKCS8
+      rotationPolicy: Always
   sharedWith:
     - consoles
   parentRefs: []

@@ -1,3 +1,37 @@
+## v1.19.0
+
+- **Breaking: the signing key is an EC P-384 key, and the issuer signs
+  ES384.** The algorithm follows from the key rather than being declared
+  beside it — an RSA key signs RS256, and P-256, P-384 and P-521 sign
+  ES256, ES384 and ES512 — and it is what
+  `id_token_signing_alg_values_supported` advertises, so **every relying
+  party has to accept it before you upgrade**. Check each one; a verifier
+  built on a library's defaults is the one to look at, because several
+  default to RS256, ES256 and PS256 and would reject ES384 with a message
+  that names the algorithm rather than the token. To stay as you were, set
+  `signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`
+  before upgrading and nothing changes. Upgrading rotates the key either
+  way: tokens signed with the previous one stop verifying once the old
+  public key leaves the JWKS, so do it when a token lifetime of downtime
+  for in-flight tokens is acceptable.
+- **`signingKey.certificate.algorithm`, `.size` and `.encoding` are
+  values.** `RSA` or `ECDSA`, sizes per algorithm (ECDSA 256, 384 or 521;
+  RSA 2048, 3072 or 4096), `PKCS1` or `PKCS8`. A combination that
+  cert-manager would decline is refused at render with the reason, rather
+  than issuing a Certificate that never becomes a Secret and a listener
+  that stays dark. An installation reading a key from
+  `signingKey.existingSecret` is unaffected and may hand over either kind.
+- **`route.certificate.privateKey` is passed through to the route's
+  Certificate.** Empty by default, so nothing changes; set it when the
+  issuer signs only one kind of key. A PKI role pinned to an algorithm
+  refuses the request at issuance, long after the render succeeded, with
+  the reason on the CertificateRequest where nobody is watching.
+- **Verifiers accept what the issuer advertises.** The `identity` package
+  and the GitHub verifier take their algorithms from the issuer's
+  discovery document instead of the library's default, so an issuer
+  signing with P-384 or P-521 is verifiable by a consumer that did not
+  have to be told.
+
 ## v1.18.0
 
 - **A default set of GitHub Apps, shipped as values to copy.** Every

@@ -1,0 +1,7 @@
+# PKCS1 cannot encode an ECDSA key.
+# error: PKCS1 encodes only RSA keys; an ECDSA key is PKCS8
+issuerURL: https://issuer.example
+signingKey:
+  certificate:
+    algorithm: ECDSA
+    encoding: PKCS1

@@ -188,7 +188,13 @@ func (g *GitHub) resolve(ctx context.Context) (*op.AccessTokenVerifier, error) {
 
 	// The key set refetches when a signature names a key it has not seen,
 	// which is what makes GitHub's key rotation a non-event here.
-	g.verifier = op.NewAccessTokenVerifier(g.from(), rp.NewRemoteKeySet(httpClient, config.JwksURI))
+	// Accept what the issuer says it signs with; see identity/identity.go
+	// for why the library's default is not enough.
+	g.verifier = op.NewAccessTokenVerifier(
+		g.from(),
+		rp.NewRemoteKeySet(httpClient, config.JwksURI),
+		op.WithSupportedAccessTokenSigningAlgorithms(config.IDTokenSigningAlgValuesSupported...),
+	)
 
 	return g.verifier, nil
 }

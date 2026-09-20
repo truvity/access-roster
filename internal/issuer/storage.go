@@ -305,9 +305,13 @@ func NewStorage(
 // SigningKey implements [op.AuthStorage].
 func (s *Storage) SigningKey(context.Context) (op.SigningKey, error) { return s.key, nil }
 
-// SignatureAlgorithms implements [op.AuthStorage].
+// SignatureAlgorithms implements [op.AuthStorage]. It is what the
+// discovery document advertises as `id_token_signing_alg_values_supported`,
+// so it has to name what the key actually signs with rather than a
+// constant: a client that read RS256 here and met an ES384 token would
+// reject it.
 func (s *Storage) SignatureAlgorithms(context.Context) ([]jose.SignatureAlgorithm, error) {
-	return []jose.SignatureAlgorithm{jose.RS256}, nil
+	return []jose.SignatureAlgorithm{s.key.SignatureAlgorithm()}, nil
 }
 
 // KeySet implements [op.AuthStorage].

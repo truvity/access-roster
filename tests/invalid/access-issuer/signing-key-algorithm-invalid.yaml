@@ -1,0 +1,6 @@
+# signingKey.certificate.algorithm is one cert-manager knows.
+# error: at '/signingKey/certificate/algorithm': value must be one of
+issuerURL: https://issuer.example
+signingKey:
+  certificate:
+    algorithm: P384

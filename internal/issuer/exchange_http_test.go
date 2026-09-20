@@ -158,7 +158,11 @@ func claimsOf(t *testing.T, server *httptest.Server, raw string) map[string]any 
 		t.Fatalf("the JWKS carries %d keys, want one", len(keys.Keys))
 	}
 
-	parsed, err := jose.ParseSigned(raw, []jose.SignatureAlgorithm{jose.RS256})
+	// Every algorithm the issuer may sign with, so this helper does not
+	// have to be edited each time the default key type changes.
+	parsed, err := jose.ParseSigned(raw, []jose.SignatureAlgorithm{
+		jose.RS256, jose.ES256, jose.ES384, jose.ES512,
+	})
 	if err != nil {
 		t.Fatalf("parse the access token: %v", err)
 	}

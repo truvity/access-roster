@@ -157,8 +157,38 @@ func TestTheKeysAreServedAndCarryAnId(t *testing.T) {
 	if len(jwks.Keys) == 0 {
 		t.Fatal("the JWKS is empty: nothing this issuer signs can be verified")
 	}
-	if jwks.Keys[0].Kid == "" || jwks.Keys[0].Use != "sig" || jwks.Keys[0].Kty != "RSA" {
+	if jwks.Keys[0].Kid == "" || jwks.Keys[0].Use != "sig" {
 		t.Errorf("key = %+v", jwks.Keys[0])
+	}
+
+	// The published key and the advertised algorithm have to agree. A
+	// client reads `id_token_signing_alg_values_supported` to decide what
+	// to accept and then meets whatever is in the JWKS, so a disagreement
+	// is a token nobody can verify -- and it is exactly what a change of
+	// key kind would break if nothing checked it.
+	code, body = get(t, app.Handler(), "/.well-known/openid-configuration")
+	if code != http.StatusOK {
+		t.Fatalf("discovery = %d, %q", code, body)
+	}
+	var discovery struct {
+		Algs []string `json:"id_token_signing_alg_values_supported"`
+	}
+	if err := json.Unmarshal([]byte(body), &discovery); err != nil {
+		t.Fatalf("the discovery document is not JSON: %v", err)
+	}
+	if len(discovery.Algs) == 0 {
+		t.Fatal("discovery advertises no signing algorithm")
+	}
+	want := map[string]string{
+		"RS256": "RSA", "RS384": "RSA", "RS512": "RSA",
+		"PS256": "RSA", "PS384": "RSA", "PS512": "RSA",
+		"ES256": "EC", "ES384": "EC", "ES512": "EC",
+	}[discovery.Algs[0]]
+	if want == "" {
+		t.Fatalf("discovery advertises %q, which is not an algorithm this issuer signs", discovery.Algs[0])
+	}
+	if jwks.Keys[0].Kty != want {
+		t.Errorf("discovery advertises %s but the JWKS holds a %s key", discovery.Algs[0], jwks.Keys[0].Kty)
 	}
 }
 

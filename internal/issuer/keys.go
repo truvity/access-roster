@@ -2,6 +2,8 @@ package issuer
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -15,9 +17,15 @@ import (
 	jose "github.com/go-jose/go-jose/v4"
 )
 
-// SigningKey is one RSA key with an id, satisfying both of the library's
-// key interfaces: the private half signs, the public half is published in
-// the JWKS.
+// SigningKey is one key with an id, satisfying both of the library's key
+// interfaces: the private half signs, the public half is published in the
+// JWKS.
+//
+// RSA and ECDSA are both accepted, and the algorithm follows from the key
+// rather than being configured beside it: an RSA key signs RS256, a P-256
+// key ES256, P-384 ES384, P-521 ES512. Nothing has to declare which,
+// because a key that disagreed with its declaration would produce tokens
+// no relying party could verify.
 //
 // **The issuer does not create it.** It reads a key some other part of
 // the platform put in a Secret — cert-manager issuing one, or
@@ -37,14 +45,19 @@ import (
 // key is a new id, so the previous public key can stay in the JWKS for one
 // token lifetime without either being mistaken for the other.
 type SigningKey struct {
-	id  string
-	key *rsa.PrivateKey
+	id   string
+	key  crypto.Signer
+	alg  jose.SignatureAlgorithm
+	seed []byte
 }
 
 // NewSigningKey generates one, for a local run. A deployment reads the
 // key it was given; see [ParseSigningKey].
+//
+// P-384 rather than RSA: a local run should exercise the same shape a
+// deployment gets, and the chart's default is a P-384 key.
 func NewSigningKey() (*SigningKey, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generate a signing key: %w", err)
 	}
@@ -71,28 +84,76 @@ func ParseSigningKey(encoded []byte) (*SigningKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("issuer: read the signing key: %w", err)
 	}
-	key, ok := parsed.(*rsa.PrivateKey)
+	key, ok := parsed.(crypto.Signer)
 	if !ok {
-		// An EC key is a perfectly good signing key and this issuer does
-		// not sign with one yet, so say which it got rather than failing
-		// on a type assertion.
-		return nil, fmt.Errorf("issuer: the signing key is %T; this issuer signs RS256 and needs an RSA key", parsed)
+		// Say which key arrived rather than failing on a type assertion.
+		return nil, fmt.Errorf("issuer: the signing key is %T, which cannot sign", parsed)
 	}
 	return newSigningKey(key)
 }
 
-func newSigningKey(key *rsa.PrivateKey) (*SigningKey, error) {
+func newSigningKey(key crypto.Signer) (*SigningKey, error) {
+	alg, err := signatureAlgorithm(key)
+	if err != nil {
+		return nil, err
+	}
 	id, err := thumbprint(key)
 	if err != nil {
 		return nil, err
 	}
-	return &SigningKey{id: id, key: key}, nil
+	sd, err := seed(key)
+	if err != nil {
+		return nil, err
+	}
+	return &SigningKey{id: id, key: key, alg: alg, seed: sd}, nil
+}
+
+// signatureAlgorithm is what a key of this kind signs with. The curve
+// decides the hash for ECDSA -- that pairing is fixed by RFC 7518, not a
+// preference -- so there is nothing here to configure.
+func signatureAlgorithm(key crypto.Signer) (jose.SignatureAlgorithm, error) {
+	switch key := key.(type) {
+	case *rsa.PrivateKey:
+		return jose.RS256, nil
+	case *ecdsa.PrivateKey:
+		switch key.Curve {
+		case elliptic.P256():
+			return jose.ES256, nil
+		case elliptic.P384():
+			return jose.ES384, nil
+		case elliptic.P521():
+			return jose.ES512, nil
+		}
+		return "", fmt.Errorf("issuer: the signing key is an EC key on %s; this issuer signs with P-256, P-384 or P-521", key.Curve.Params().Name)
+	}
+	return "", fmt.Errorf("issuer: the signing key is %T; this issuer signs with an RSA or ECDSA key", key)
+}
+
+// seed is a stable secret encoding of the private half, for [SigningKey.Derive].
+//
+// PKCS#1 for RSA, which is what it was before EC keys were accepted, so an
+// installation that keeps its RSA key derives exactly what it derived
+// before and no half-finished login is invalidated by the upgrade. PKCS#1
+// encodes only RSA, hence the second form.
+func seed(key crypto.Signer) ([]byte, error) {
+	if key, ok := key.(*rsa.PrivateKey); ok {
+		return x509.MarshalPKCS1PrivateKey(key), nil
+	}
+	encoded, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("issuer: encode the signing key: %w", err)
+	}
+	return encoded, nil
 }
 
 // thumbprint is the RFC 7638 JWK thumbprint of the public half, which is
 // what every JWKS consumer already knows how to compute.
-func thumbprint(key *rsa.PrivateKey) (string, error) {
-	jwk := jose.JSONWebKey{Key: &key.PublicKey, Algorithm: string(jose.RS256), Use: "sig"}
+//
+// RFC 7638 hashes only the key's required members -- kty, n and e for RSA,
+// kty, crv, x and y for EC -- so neither `alg` nor `use` enters it, and an
+// RSA key keeps the id it had before this function stopped naming RS256.
+func thumbprint(key crypto.Signer) (string, error) {
+	jwk := jose.JSONWebKey{Key: key.Public(), Use: "sig"}
 	sum, err := jwk.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return "", fmt.Errorf("issuer: derive the key id: %w", err)
@@ -100,9 +161,9 @@ func thumbprint(key *rsa.PrivateKey) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(sum), nil
 }
 
-// SignatureAlgorithm is what this key signs with. RS256 because every
-// relying party understands it, including the ones this replaces.
-func (k *SigningKey) SignatureAlgorithm() jose.SignatureAlgorithm { return jose.RS256 }
+// SignatureAlgorithm is what this key signs with, derived from the key
+// itself; see [signatureAlgorithm].
+func (k *SigningKey) SignatureAlgorithm() jose.SignatureAlgorithm { return k.alg }
 
 // Key is the private half, which the library signs with and nothing else
 // ever sees.
@@ -125,7 +186,7 @@ func (k *SigningKey) ID() string { return k.id }
 // The label separates purposes: two derivations of the same key are
 // unrelated, so a value one of them signs cannot be replayed at another.
 func (k *SigningKey) Derive(label string) []byte {
-	mac := hmac.New(sha256.New, x509.MarshalPKCS1PrivateKey(k.key))
+	mac := hmac.New(sha256.New, k.seed)
 	mac.Write([]byte(label))
 	return mac.Sum(nil)
 }
@@ -134,6 +195,6 @@ func (k *SigningKey) Derive(label string) []byte {
 type publicKey struct{ *SigningKey }
 
 func (k publicKey) ID() string                         { return k.id }
-func (k publicKey) Algorithm() jose.SignatureAlgorithm { return jose.RS256 }
+func (k publicKey) Algorithm() jose.SignatureAlgorithm { return k.alg }
 func (k publicKey) Use() string                        { return "sig" }
-func (k publicKey) Key() any                           { return &k.key.PublicKey }
+func (k publicKey) Key() any                           { return k.key.Public() }

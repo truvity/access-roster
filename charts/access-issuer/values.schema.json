@@ -74,12 +74,27 @@
                 "ClusterIssuer"
               ]
             },
+            "algorithm": {
+              "enum": [
+                "RSA",
+                "ECDSA"
+              ]
+            },
             "size": {
               "type": "integer",
               "enum": [
+                256,
+                384,
+                521,
                 2048,
                 3072,
                 4096
+              ]
+            },
+            "encoding": {
+              "enum": [
+                "PKCS1",
+                "PKCS8"
               ]
             },
             "renewBefore": {
@@ -255,6 +270,9 @@
                 "Issuer",
                 "ClusterIssuer"
               ]
+            },
+            "privateKey": {
+              "$ref": "#/definitions/privateKey"
             }
           }
         },
@@ -655,6 +673,41 @@
     }
   },
   "definitions": {
+    "privateKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "RSA",
+            "ECDSA"
+          ]
+        },
+        "size": {
+          "type": "integer",
+          "enum": [
+            256,
+            384,
+            521,
+            2048,
+            3072,
+            4096
+          ]
+        },
+        "encoding": {
+          "enum": [
+            "PKCS1",
+            "PKCS8"
+          ]
+        },
+        "rotationPolicy": {
+          "enum": [
+            "Never",
+            "Always"
+          ]
+        }
+      }
+    },
     "duration": {
       "type": "string",
       "pattern": "^[0-9]+(ns|us|\u00b5s|ms|s|m|h)([0-9]+(ns|us|\u00b5s|ms|s|m|h))*$"

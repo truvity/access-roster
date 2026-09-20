@@ -43,7 +43,7 @@ service writes *itself*, where it is the producer and gets to choose.
 | `valkey.passwordSecret.name` / `.key` | `""` / `password` | optional Secret with the password |
 | `valkey.tls` | `false` | |
 | `valkey.cluster` | `false` | speak the cluster protocol. **Off by default since 2026-09-10**: with one shard it makes the client learn node addresses from `CLUSTER SLOTS` and talk to those, bypassing the Service — the one mechanism whose job is to survive a pod moving. Turn it on when the store has three shards |
-| `signingKey.existingSecret` / `.key` | `""` / `tls.key` | a Secret holding a PEM RSA private key. Empty renders a cert-manager `Certificate` instead. **Never minted by the service**: two replicas with two keys hand out tokens half the fleet cannot verify |
+| `signingKey.existingSecret` / `.key` | `""` / `tls.key` | a Secret holding a PEM private key -- RSA, or ECDSA on P-256, P-384 or P-521. Empty renders a cert-manager `Certificate` instead. **Never minted by the service**: two replicas with two keys hand out tokens half the fleet cannot verify |
 | `directory.store` | `kubernetes` | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
 | `directory.freshness.refreshInterval` | `15m` | how often the refresher takes a new snapshot per workspace |
 | `directory.freshness.freshnessWindow` | `30m` | how old a snapshot may be before its domains stop being authoritative |

@@ -18,8 +18,11 @@ already does; a change here that breaks one breaks OpenBAO sign-in.
 
 - **Discovery and keys reachable from OpenBAO.** The mount fetches
   `/.well-known/openid-configuration` and the key set when it is
-  configured and when keys rotate. Tokens are RS256, the only algorithm
-  this issuer signs.
+  configured and when keys rotate. Tokens are signed with
+  whatever `signingKey.certificate.algorithm` chose -- ES384 by default,
+  RS256 for an RSA key -- and the discovery document says which. OpenBAO's
+  JWT auth reads the key set, so it follows either; a configuration that
+  pins `jwt_supported_algs` must name the same one.
 - **`iss` is the issuer URL exactly.** It is OpenBAO's bound issuer: a
   trailing slash on one side and not the other refuses every login.
 - **`sub` and `groups` in every token**, ID tokens included: `sub` names
