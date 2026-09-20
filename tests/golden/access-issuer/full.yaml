@@ -825,6 +825,11 @@ spec:
   secretName: access-issuer-tls
   dnsNames:
     - "access.example"
+  privateKey:
+    algorithm: ECDSA
+    encoding: PKCS8
+    rotationPolicy: Always
+    size: 384
   issuerRef:
     name: "web-ca"
     kind: "Issuer"
@@ -842,6 +847,12 @@ spec:
 #
 # `rotationPolicy: Always` makes a renewal a *new key*, which is the
 # point: a renewed certificate over the same key would rotate nothing.
+#
+# The algorithm decides what the issuer signs with -- RSA signs RS256, and
+# P-256, P-384 and P-521 sign ES256, ES384 and ES512 -- and that is what
+# the discovery document advertises, so every relying party has to accept
+# it. Changing it here rotates the key, so tokens signed with the previous
+# one stop verifying once the old public key leaves the JWKS.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

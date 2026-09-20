@@ -101,7 +101,8 @@ directory:
 # point `existingSecret` at one external-secrets delivers.
 signingKey:
   # Name a Secret that already holds the key, and no Certificate is
-  # rendered. It must carry a PEM RSA private key under `key`.
+  # rendered. It must carry a PEM private key under `key`: RSA, or ECDSA
+  # on P-256, P-384 or P-521.
   existingSecret: ""
   key: tls.key
   certificate:
@@ -110,9 +111,20 @@ signingKey:
     # by-product and only the key is used.
     issuerName: selfsigned
     issuerKind: ClusterIssuer
-    # RSA because this issuer signs RS256. An EC key is refused at start,
-    # by name, rather than failing somewhere later.
-    size: 2048
+    # What the issuer signs with follows from the key and is not
+    # configured beside it: RSA signs RS256, P-256 ES256, P-384 ES384,
+    # P-521 ES512. It is what `id_token_signing_alg_values_supported`
+    # advertises, so every relying party has to accept it -- RS256 is the
+    # one every client understands, and is the answer for an installation
+    # with a verifier it does not control.
+    #
+    # Sizes are per algorithm: ECDSA takes 256, 384 or 521; RSA takes
+    # 2048, 3072 or 4096. The chart refuses a combination cert-manager
+    # would not issue.
+    algorithm: ECDSA
+    size: 384
+    # PKCS8 encodes either kind; PKCS1 encodes only RSA.
+    encoding: PKCS8
     # How long before expiry cert-manager replaces it. A new key is a new
     # key id, so tokens signed with the old one keep verifying only while
     # the old public key is still published — keep this comfortably longer
@@ -302,6 +314,17 @@ route:
   certificate:
     issuerName: internal-ca
     issuerKind: ClusterIssuer
+    # The key this certificate is issued for. Empty leaves every field to
+    # cert-manager's own defaults, which is an RSA 2048 key. Set it when
+    # the issuer will only sign one kind of key: a PKI role pinned to an
+    # algorithm refuses the request at issuance, long after the render
+    # succeeded, and the listener stays dark with the reason on the
+    # CertificateRequest.
+    #   algorithm: ECDSA         # RSA | ECDSA
+    #   size: 384                # ECDSA 256|384|521, RSA 2048|3072|4096
+    #   encoding: PKCS8          # PKCS1 | PKCS8
+    #   rotationPolicy: Always   # a renewal over the same key rotates nothing
+    privateKey: {}
   # Namespaces, besides this issuer's own, allowed to attach an HTTPRoute
   # to this Gateway.
   #

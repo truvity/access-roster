@@ -10,6 +10,7 @@
 */}}
 {{- if not .Values.route.parentRefs }}
 {{- if .Values.route.certificate.issuerName }}
+{{- include "access-issuer.privateKey" (dict "spec" .Values.route.certificate.privateKey "path" "route.certificate.privateKey") }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -20,6 +21,10 @@ spec:
   secretName: {{ include "access-issuer.fullname" . }}-tls
   dnsNames:
     - {{ .Values.route.host | quote }}
+  {{- with .Values.route.certificate.privateKey }}
+  privateKey:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   issuerRef:
     name: {{ .Values.route.certificate.issuerName | quote }}
     kind: {{ .Values.route.certificate.issuerKind | quote }}

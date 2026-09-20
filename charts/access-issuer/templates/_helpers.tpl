@@ -114,3 +114,31 @@ Gateway listener, as before.
   sectionName: issuer
 {{- end -}}
 {{- end -}}
+
+{{/*
+access-issuer.privateKey refuses a key the issuer could not use.
+
+A size that does not belong to its algorithm renders a Certificate
+cert-manager declines, and an ECDSA key in PKCS1 cannot be encoded at all --
+both of which fail after the render, on a CertificateRequest nobody is
+watching, with the listener simply dark. The schema states the shape; this
+states the combination, because a JSON Schema `allOf` reports only that
+`allOf` failed and three different mistakes would read the same.
+
+Takes a dict: `spec` (the privateKey map) and `path` (where to say it is).
+*/}}
+{{- define "access-issuer.privateKey" -}}
+{{- $spec := .spec | default dict -}}
+{{- $alg := $spec.algorithm | default "" -}}
+{{- $size := $spec.size | default 0 -}}
+{{- $encoding := $spec.encoding | default "" -}}
+{{- if and (eq $alg "ECDSA") $size (not (has (int $size) (list 256 384 521))) -}}
+{{- fail (printf "%s: an ECDSA key takes size 256, 384 or 521, not %v -- the curve decides the algorithm, so P-256 signs ES256, P-384 ES384 and P-521 ES512" .path $size) -}}
+{{- end -}}
+{{- if and (eq $alg "RSA") $size (not (has (int $size) (list 2048 3072 4096))) -}}
+{{- fail (printf "%s: an RSA key takes size 2048, 3072 or 4096, not %v" .path $size) -}}
+{{- end -}}
+{{- if and (eq $alg "ECDSA") (eq $encoding "PKCS1") -}}
+{{- fail (printf "%s: PKCS1 encodes only RSA keys; an ECDSA key is PKCS8" .path) -}}
+{{- end -}}
+{{- end -}}

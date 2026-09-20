@@ -11,6 +11,7 @@ full list is [configuration.md](configuration.md).
 
 Two things it will not do. **It does not create the signing key** —
 cert-manager issues one, or `signingKey.existingSecret` names one
+(RSA, or ECDSA on P-256, P-384 or P-521)
 external-secrets delivered — because a service that mints its own
 credential is an exception to how every other credential in this estate is
 provisioned. And **it puts no authenticating proxy in front**: this is the
@@ -21,7 +22,7 @@ thing that authenticates, and a proxy would have nowhere to send anyone.
 | `issuerURL` | — | **required.** Baked into every token and every relying party's trust, so it must be stable for the life of the installation |
 | `signingKey.existingSecret` | `""` | a Secret external-secrets delivered; empty renders a cert-manager `Certificate` instead |
 | `signingKey.certificate.issuerName` / `.issuerKind` | `selfsigned` / `ClusterIssuer` | the certificate is a by-product; only the key is used |
-| `signingKey.certificate.size` | `2048` | RSA, because this issuer signs RS256; an EC key is refused at start by name |
+| `signingKey.certificate.algorithm` / `.size` / `.encoding` | `ECDSA` / `384` / `PKCS8` | what the issuer signs with follows from the key: RSA signs RS256, and P-256, P-384 and P-521 sign ES256, ES384 and ES512. It is what discovery advertises, so every relying party must accept it. ECDSA takes 256, 384 or 521; RSA takes 2048, 3072 or 4096; a combination cert-manager would decline is refused at render |
 | `oauthClient.secret.name` | `""` | a Secret holding the client. Empty means nobody can sign in and this issuer serves token exchange only, which it says at start |
 | `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | what those keys are called. **Both halves come from the one Secret** — the same shape the proxy uses — so they travel together; a client whose id and secret are configured in two places is one that can be half rotated. Both are mounted as files, never environment variables |
 | `cluster` | `""` | what this cluster is called, which becomes part of a ServiceAccount's subject: `<cluster>:k8s:<namespace>:<name>`. A pod cannot discover it, and the same namespace and name exist on every cluster — so without it two different machines are one `sub`. Use the word the estate already uses (`mgmt`, `prod`), the same one that is a group's scope. Empty keeps the older unqualified `k8s:<namespace>:<name>` |

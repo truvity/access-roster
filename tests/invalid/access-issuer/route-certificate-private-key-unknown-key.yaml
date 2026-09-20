@@ -1,0 +1,8 @@
+# A key under route.certificate.privateKey the chart does not know.
+# error: at '/route/certificate/privateKey': additional properties
+issuerURL: https://issuer.example
+route:
+  host: issuer.example
+  certificate:
+    privateKey:
+      algo: ECDSA

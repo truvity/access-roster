@@ -1,0 +1,7 @@
+# An ECDSA signing key takes a curve size, not an RSA one.
+# error: an ECDSA key takes size 256, 384 or 521, not 2048
+issuerURL: https://issuer.example
+signingKey:
+  certificate:
+    algorithm: ECDSA
+    size: 2048

@@ -1,4 +1,5 @@
 {{- if not .Values.signingKey.existingSecret }}
+{{- include "access-issuer.privateKey" (dict "spec" .Values.signingKey.certificate "path" "signingKey.certificate") }}
 # The signing key, issued by cert-manager.
 #
 # The certificate is a by-product: only the key is used. cert-manager is
@@ -9,6 +10,12 @@
 #
 # `rotationPolicy: Always` makes a renewal a *new key*, which is the
 # point: a renewed certificate over the same key would rotate nothing.
+#
+# The algorithm decides what the issuer signs with -- RSA signs RS256, and
+# P-256, P-384 and P-521 sign ES256, ES384 and ES512 -- and that is what
+# the discovery document advertises, so every relying party has to accept
+# it. Changing it here rotates the key, so tokens signed with the previous
+# one stop verifying once the old public key leaves the JWKS.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -21,9 +28,9 @@ spec:
   duration: {{ .Values.signingKey.certificate.duration | quote }}
   renewBefore: {{ .Values.signingKey.certificate.renewBefore | quote }}
   privateKey:
-    algorithm: RSA
+    algorithm: {{ .Values.signingKey.certificate.algorithm }}
     size: {{ .Values.signingKey.certificate.size }}
-    encoding: PKCS1
+    encoding: {{ .Values.signingKey.certificate.encoding }}
     rotationPolicy: Always
   issuerRef:
     name: {{ .Values.signingKey.certificate.issuerName | quote }}

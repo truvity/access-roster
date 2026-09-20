@@ -1,0 +1,8 @@
+# An RSA signing key takes an RSA size, not a curve.
+# error: an RSA key takes size 2048, 3072 or 4096, not 384
+issuerURL: https://issuer.example
+signingKey:
+  certificate:
+    algorithm: RSA
+    size: 384
+    encoding: PKCS1

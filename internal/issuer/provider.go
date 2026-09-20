@@ -91,6 +91,29 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		options = append(options, op.WithAllowInsecure())
 	}
 
+	// Tell the library which algorithms its OWN verifiers accept.
+	//
+	// Left alone it defaults to RS256, ES256 and PS256 -- a list that does
+	// not include ES384 or ES512 -- so a P-384 signing key produces tokens
+	// the provider refuses to verify, and the refusal surfaces a long way
+	// from the cause: a token exchange answers "subject_token is invalid"
+	// rather than naming the rule that turned it down.
+	//
+	// The list comes from the storage's own key, so it can never disagree
+	// with what is signed or with what discovery advertises.
+	algs, err := storage.SignatureAlgorithms(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("read the signing algorithms: %w", err)
+	}
+	supported := make([]string, 0, len(algs))
+	for _, alg := range algs {
+		supported = append(supported, string(alg))
+	}
+	options = append(options,
+		op.WithAccessTokenVerifierOpts(op.WithSupportedAccessTokenSigningAlgorithms(supported...)),
+		op.WithIDTokenHintVerifierOpts(op.WithSupportedIDTokenHintSigningAlgorithms(supported...)),
+	)
+
 	provider, err := op.NewProvider(config, storage, op.StaticIssuer(iss.Config().URL), options...)
 	if err != nil {
 		return nil, fmt.Errorf("open the provider: %w", err)
@@ -168,7 +191,24 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// A console sharing this issuer's origin reaches it with the
 	// browser's own session cookie and needs no CORS at all; the wrapper
 	// below is for the other shape, a console on a host of its own.
-	verifier := op.NewAccessTokenVerifier(iss.Config().URL, keySetOf(storage))
+	// The verifier is told which algorithm to accept, because the
+	// library's default when it is not told is RS256, ES256 and PS256 --
+	// so a P-384 or P-521 signing key produces tokens this service would
+	// refuse to verify itself, and the refusal arrives as a generic
+	// "invalid" a long way from the cause.
+	algs, err := storage.SignatureAlgorithms(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("issuer: read the signing algorithms: %w", err)
+	}
+	supported := make([]string, 0, len(algs))
+	for _, alg := range algs {
+		supported = append(supported, string(alg))
+	}
+	verifier := op.NewAccessTokenVerifier(
+		iss.Config().URL,
+		keySetOf(storage),
+		op.WithSupportedAccessTokenSigningAlgorithms(supported...),
+	)
 	path, sessions := accessissuerv1connect.NewSessionServiceHandler(NewSessionsService(iss, verifier))
 	if signIn.ConsoleOrigin != "" {
 		sessions = browserAllowed(signIn.ConsoleOrigin, sessions)
