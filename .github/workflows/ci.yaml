@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   recipes:
-    uses: truvity/ci-workflows/.github/workflows/check.yaml@d467b48789d8953b121991877cb98e67220b7588 # v2.22.2
+    uses: truvity/ci-workflows/.github/workflows/check.yaml@ea3c238133634f69f0c51240ede27bb270e24dc0 # v3.0.1
     with:
       recipes: '["build","test","lint","chart-lint","archive-check","docs-check","leak-canary","ts","console"]'
 
