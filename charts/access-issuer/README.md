@@ -24,6 +24,15 @@ and copying them is the deployment's job.
 Without `audit.s3.bucket` the audit trail stays in one replica's memory,
 which is not a record; the service says so at start.
 
+`examples/github-apps.yaml` ships beside the values: a default set of
+GitHub Apps an estate can copy — dependency updates split public from
+private, a bot that approves pull requests and cuts tags, and one App for
+the program that manages the organisation — with what each is for and why
+they are separate identities. It is values to read and copy, not a
+default: creating an App is an owner of the organisation confirming a
+manifest
+([guide](../../docs/connect/github-apps-catalogue.md#a-default-set)).
+
 ```sh
 helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \
   --namespace access-issuer --create-namespace \

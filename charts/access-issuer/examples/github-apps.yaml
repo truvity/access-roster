@@ -1,0 +1,155 @@
+# A default set of GitHub Apps, to copy into an installation's values.
+#
+# Every estate on GitHub ends up needing the same few automations, and
+# every estate builds them by hand: a form on GitHub, a permission
+# picked, a key downloaded, an id written down. This is that set,
+# declared as data. Copy the entries you want into your own values under
+# `githubApps.catalogue`, change `example-org` to your organisation, and
+# create and install each App from the console's GitHub page (Apps, then
+# Catalogue). Nothing here creates anything by itself: this file is a
+# starting point an operator reads, not a default the chart applies —
+# creating an App is an owner of the organisation confirming a manifest,
+# and that stays a deliberate act.
+#
+# Why four Apps and not one. An App is an identity, and its permissions
+# are the whole of what a stolen key can do. One App with every
+# permission is one key that can do everything, installed on every
+# repository, used by every automation — and nothing that reads the
+# audit trail afterwards can say which automation acted. Four Apps cost
+# four creations once, and each is separately installable, separately
+# scoped and separately revocable.
+#
+#   renovate-public    dependency updates in public repositories
+#   renovate-private   dependency updates in private repositories
+#   ci-automation      approves bot pull requests, cuts release tags
+#   iac                the program that manages the organisation itself
+#
+# See docs/connect/github-apps-catalogue.md for the field-by-field
+# meaning, and docs/connect/infrastructure-as-code.md for handing the
+# `iac` App's credential to a Pulumi or Terraform program.
+githubApps:
+  catalogue:
+    # Dependency updates, SPLIT IN TWO. The split is the privilege
+    # boundary, and the installation is what enforces it: the public App
+    # is installed on the public repositories and the private App on the
+    # private ones, so the App whose pull requests, logs and forks are
+    # world-readable cannot read a private repository at all. One App
+    # installed on both would be a single key reaching everything, and no
+    # amount of configuration inside the updater would change that.
+    #
+    # `workflows: write` is there because a dependency update touches
+    # .github/workflows (an action pinned by digest is a dependency like
+    # any other), and GitHub refuses a push touching a workflow file from
+    # a token without it. `checks: read` lets the updater see whether its
+    # own pull request went green before it proposes the next one.
+    - id: renovate-public
+      org: example-org
+      description: Dependency updates in public repositories
+      permissions:
+        contents: write
+        pull_requests: write
+        issues: write
+        workflows: write
+        checks: read
+        metadata: read
+      # Selected, always: "all repositories" would quietly add every
+      # repository made after it, including the first private one.
+      installation: selected
+
+    - id: renovate-private
+      org: example-org
+      description: Dependency updates in private repositories
+      permissions:
+        contents: write
+        pull_requests: write
+        issues: write
+        workflows: write
+        checks: read
+        metadata: read
+      installation: selected
+
+    # The bot that approves and tags. Two jobs, one identity, because
+    # both are "CI acting on a pull request it did not write":
+    #
+    #  - it APPROVES a bot's pull request, so that a ruleset requiring an
+    #    approval is satisfied without a person rubber-stamping a version
+    #    bump. An App's review counts as an approving review, which is
+    #    what makes this work at all; the ruleset stays on, and the
+    #    approval is a reviewable act in the pull request's timeline.
+    #  - it CUTS TAGS, because a release tag pushed by a person's account
+    #    is a release nobody can attribute afterwards.
+    #
+    # It is deliberately NOT an administrator: it cannot change a
+    # ruleset, a team or a repository's settings. An approver that can
+    # edit the rule it satisfies satisfies nothing.
+    - id: ci-automation
+      org: example-org
+      description: Approves bot pull requests and cuts release tags
+      permissions:
+        contents: write          # tags and releases
+        pull_requests: write     # the approving review
+        checks: read
+        metadata: read
+      installation: selected
+      # Who may mint a token of it. Pin the group to the ONE workflow
+      # that is allowed to approve, on the default branch -- a pull
+      # request's run of an edited workflow is a job in the repository
+      # too. See the guide's "Pinning a grant to one workflow".
+      #
+      # The group must be one YOUR policy declares: a grant naming a group
+      # the policy does not have stops the service at start. Declare it,
+      # or drop the grants block and add one when the policy has a group
+      # for it.
+      grants:
+        - group: all:ci:approver
+          repositories: ["*"]
+          permissions:
+            pull_requests: write
+
+    # The program that manages the organisation: repositories, teams,
+    # rulesets, organisation settings — a Pulumi or Terraform program,
+    # run from CI or from an operator's machine.
+    #
+    # This is the estate's other half of the split this project draws:
+    # access-roster owns identities and credentials, and the
+    # infrastructure-as-code program owns structure and refers to
+    # identities by name. So this App is an administrator, and its
+    # permissions are the widest in the set.
+    #
+    # It is deliberately NOT the App that approves or merges anything.
+    # It holds `administration: write`, which includes editing a
+    # repository's rulesets and branch protection; an identity that can
+    # both change the rule and satisfy it is an identity for which the
+    # rule does not exist. Approving belongs to ci-automation above,
+    # which cannot change a rule. Keep them apart even when the same
+    # pipeline runs both.
+    - id: iac
+      org: example-org
+      description: The program that manages the organisation
+      permissions:
+        organization_administration: write   # org settings, org rulesets
+        members: write                       # teams and their membership
+        administration: write                # repositories, their settings and rulesets
+        contents: read                       # read a repository's files, never write them
+        metadata: read
+      # The one entry in this set where "all repositories" is right: a
+      # program that creates repositories must reach the ones it creates,
+      # and a selected-repositories installation would need a human click
+      # after every `pulumi up`.
+      installation: all
+      # Copy this App's credential to a secret store, so the program can
+      # read it at the moment it applies without asking the issuer for
+      # anything. Name your own store and path; there is no default, and
+      # nothing is pushed until you write this block.
+      #
+      # What lands in the store IS the App's private key — a second
+      # durable copy, rotated as one, and a store that holds it is in the
+      # App's blast radius. A CI job that CAN ask the issuer should
+      # exchange its own identity token instead and hold nothing:
+      # docs/connect/infrastructure-as-code.md weighs the two.
+      #
+      # push:
+      #   secretStore:
+      #     name: example-store
+      #     kind: ClusterSecretStore
+      #   remoteKey: platform/github-apps/iac

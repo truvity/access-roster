@@ -1,0 +1,11 @@
+# A store kind External Secrets does not have must fail the render, not reach the cluster.
+# error: at '/githubApps/catalogue/0/push/secretStore/kind': value must be one of
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: iac
+      org: acme
+      permissions: {contents: read}
+      push:
+        secretStore: {name: example-store, kind: VaultStore}
+        remoteKey: platform/github-apps/iac

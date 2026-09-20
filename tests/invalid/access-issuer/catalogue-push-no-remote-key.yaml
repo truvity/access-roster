@@ -1,0 +1,10 @@
+# A push block with no destination path must fail the render: the chart never invents one.
+# error: at '/githubApps/catalogue/0/push': missing property 'remoteKey'
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: iac
+      org: acme
+      permissions: {contents: read}
+      push:
+        secretStore: {name: example-store}

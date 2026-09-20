@@ -1,4 +1,13 @@
 {{- if .Values.githubApps.catalogue }}
+{{- /*
+`push` is dropped from every entry: it is a chart-side instruction to
+External Secrets, not part of an App's declaration, and the service's
+loader refuses a key it does not know rather than ignoring it.
+*/ -}}
+{{- $apps := list }}
+{{- range .Values.githubApps.catalogue }}
+{{- $apps = append $apps (omit . "push") }}
+{{- end }}
 # The GitHub Apps this deployment declares, created and installed by an
 # operator from the console. Nothing here is a secret: names, permissions
 # and grants. The keys GitHub hands over are kept by the service, in the
@@ -11,5 +20,5 @@ metadata:
     {{- include "access-issuer.labels" . | nindent 4 }}
 data:
   catalogue.yaml: |
-    {{- toYaml (dict "apps" .Values.githubApps.catalogue) | nindent 4 }}
+    {{- toYaml (dict "apps" $apps) | nindent 4 }}
 {{- end }}

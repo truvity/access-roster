@@ -1,0 +1,12 @@
+# A refresh interval that is not a duration must fail the render.
+# error: at '/githubApps/catalogue/0/push/refreshInterval': 'hourly' does not match pattern
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: iac
+      org: acme
+      permissions: {contents: read}
+      push:
+        secretStore: {name: example-store}
+        remoteKey: platform/github-apps/iac
+        refreshInterval: hourly

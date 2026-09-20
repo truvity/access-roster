@@ -1,0 +1,13 @@
+# Pushing a credential the service keeps nowhere must fail the render rather than render a PushSecret over a Secret that does not exist.
+# error: needs directory.store: kubernetes
+issuerURL: https://issuer.example
+directory:
+  store: memory
+githubApps:
+  catalogue:
+    - id: iac
+      org: acme
+      permissions: {contents: read}
+      push:
+        secretStore: {name: example-store}
+        remoteKey: platform/github-apps/iac

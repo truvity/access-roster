@@ -1,0 +1,39 @@
+# A catalogue App whose credential is copied out to a secret store, and
+# one beside it that is not. `push` is the only key of an entry the
+# service never sees: it is stripped from the rendered catalogue, because
+# the loader refuses an unknown key rather than ignoring it — which this
+# render pins.
+issuerURL: https://access.example
+githubApps:
+  catalogue:
+    - id: iac
+      org: example-org
+      description: The program that manages the organisation
+      permissions:
+        organization_administration: write
+        members: write
+        administration: write
+        contents: read
+        metadata: read
+      installation: all
+      push:
+        secretStore:
+          name: example-store
+          kind: ClusterSecretStore
+        remoteKey: platform/github-apps/iac
+        refreshInterval: 30m
+        deletionPolicy: Delete
+    - id: renovate-public
+      org: example-org
+      permissions:
+        contents: write
+        pull_requests: write
+      push:
+        secretStore:
+          name: example-store
+        remoteKey: platform/github-apps/renovate-public
+    - id: ci-automation
+      org: example-org
+      permissions:
+        pull_requests: write
+        contents: write

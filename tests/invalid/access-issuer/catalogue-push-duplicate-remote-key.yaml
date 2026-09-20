@@ -1,0 +1,17 @@
+# Two Apps pushed to one path would overwrite each other, and nothing downstream could tell which App's key it read.
+# error: both push to remoteKey platform/github-apps/shared
+issuerURL: https://issuer.example
+githubApps:
+  catalogue:
+    - id: iac
+      org: acme
+      permissions: {contents: read}
+      push:
+        secretStore: {name: example-store}
+        remoteKey: platform/github-apps/shared
+    - id: releases
+      org: acme
+      permissions: {contents: write}
+      push:
+        secretStore: {name: example-store}
+        remoteKey: platform/github-apps/shared

@@ -55,6 +55,7 @@ githubApps:
 | `events` | the webhook events the App subscribes to. The webhook is never active: nothing in this service receives one |
 | `installation` | `all` or `selected`. GitHub's install page is where the installer chooses; this says which choice the deployment expects, and the console shows both |
 | `grants` | who may ask for a token of this App — see below |
+| `push` | optional: copy this App's credential to a secret store, for a consumer that cannot ask the issuer when it runs — see [Projecting one App to a secret store](#projecting-one-app-to-a-secret-store) |
 
 The catalogue is rendered into `ConfigMap <release>-github-apps-catalogue`,
 mounted, and read once at start; a change rolls the service out. **The
@@ -64,6 +65,60 @@ grant above the App, a glob that does not compile, or a grant naming a
 group the policy does not declare. A wrong declaration found at start
 costs a rollout; one found after the App was created costs an owner's
 edit on GitHub, because nothing here can change an App's permissions.
+
+## A default set
+
+Every estate on GitHub needs the same few automations, and every estate
+builds them by hand. The set below is shipped as values to copy —
+`charts/access-issuer/examples/github-apps.yaml` in this repository —
+rather than as a default the chart applies, because creating an App is an
+owner of the organisation confirming a manifest, and that stays a
+deliberate act.
+
+| App | Does | Permissions | Installed on |
+|---|---|---|---|
+| `renovate-public` | dependency updates in **public** repositories | `contents: write`, `pull_requests: write`, `issues: write`, `workflows: write`, `checks: read` | the public repositories, selected |
+| `renovate-private` | the same, in **private** repositories | the same | the private repositories, selected |
+| `ci-automation` | approves bot pull requests; cuts release tags | `contents: write`, `pull_requests: write`, `checks: read` | selected |
+| `iac` | the program that manages the organisation: repositories, teams, rulesets, settings | `organization_administration: write`, `members: write`, `administration: write`, `contents: read` | all repositories |
+
+**Why four identities and not one.** An App *is* an identity, and its
+permissions are the whole of what a stolen key can do. One App with every
+permission is one key that can do everything, installed everywhere, used
+by every automation — and nothing reading the audit trail afterwards can
+say which automation acted. Four Apps cost four creations once, and each
+is separately installable, scoped and revocable.
+
+The three separations that carry weight:
+
+- **Public and private dependency updates are two Apps.** The split is
+  the privilege boundary, and the **installation** enforces it: the
+  public App is installed on the public repositories only, so the App
+  whose pull requests, logs and forks are world-readable cannot read a
+  private repository at all. One App installed on both would be a single
+  key reaching everything, and no setting inside the updater would change
+  that.
+- **`ci-automation` approves, and cannot change what it satisfies.** An
+  App's review counts as an approving review, so a ruleset requiring one
+  is satisfied without a person rubber-stamping a version bump, and the
+  approval is a reviewable act in the pull request's timeline. It holds
+  no administration permission: an approver that can edit the rule it
+  satisfies satisfies nothing.
+- **`iac` administers, and approves nothing.** It holds
+  `administration: write`, which includes a repository's rulesets and
+  branch protection. Keep it out of the approving and merging path even
+  when one pipeline runs both — that is the same rule read from the other
+  side.
+
+`workflows: write` is on the updaters because a dependency update touches
+`.github/workflows` (an action pinned by digest is a dependency like any
+other) and GitHub refuses such a push from a token without it. `metadata:
+read` is on every App; GitHub gives it to anything that touches
+repositories, and it is never drift.
+
+Copy the entries, change `example-org`, add `grants` for whoever should
+be able to mint tokens of each, and for `iac` add the `push` block that
+[hands its credential to the program](infrastructure-as-code.md).
 
 ## Grants
 
@@ -368,6 +423,58 @@ names that do not change for the life of the App.
 service starts. The records are beside the keys, so nothing else is
 needed ([configuration](../reference/configuration.md#restoring-from-the-secrets-alone)).
 
+That is a **backup**: every App, every key, one place, read by nobody
+until a restore. Handing one App to a consumer is the next section, and
+it is deliberately a different object.
+
+### Projecting one App to a secret store
+
+Some consumers cannot ask the issuer at the moment they run. The one this
+was built for is the program that manages the estate — a Pulumi or
+Terraform apply that must work while this service is being upgraded,
+replaced or restored. For those, an entry may carry `push`, and the chart
+renders a `PushSecret` that copies **that App's three property keys** to
+a store and a path the operator names:
+
+```yaml
+githubApps:
+  catalogue:
+    - id: iac
+      org: example-org
+      permissions: {organization_administration: write, members: write, administration: write, contents: read}
+      installation: all
+      push:
+        secretStore:
+          name: example-store        # a store you already have
+          kind: ClusterSecretStore   # SecretStore (default) | ClusterSecretStore
+        remoteKey: platform/github-apps/iac
+        refreshInterval: 1h          # optional; 1h
+        deletionPolicy: None         # optional; None (default) | Delete
+```
+
+| At `remoteKey` | From the Secret | Is |
+|---|---|---|
+| `app_id` | `<id>.github_app_id` | the App's numeric id |
+| `installation_id` | `<id>.github_app_installation_id` | its installation on the organisation |
+| `private_key` | `<id>.github_app_private_key` | the App's private key, PEM |
+
+- **Off unless written.** No entry pushes anything by default, and the
+  chart invents neither the store nor the path.
+- **Three keys, never the Secret.** The record is not pushed, and no
+  other App's keys are in the object. The three exist only once the App
+  is installed, so an App created and left uninstalled pushes nothing.
+- **Refused at render:** two entries pushing to one path in one store
+  (one would overwrite the other, and the reader could not tell which
+  App's key it held), and `push` without `directory.store: kubernetes`
+  (there would be no Secret to push from).
+- **What lands there is a real credential** — the App's private key, a
+  second durable copy, to be rotated as one, and the store that holds it
+  is in the App's blast radius.
+
+The worked consumer, the rotation procedure and when to prefer the
+run-time exchange instead are in
+[Connect an infrastructure-as-code program](infrastructure-as-code.md).
+
 ## State and drift
 
 Each App reads one of four states:
@@ -425,6 +532,7 @@ be created again under that id until it is declared again.
 |---|---|---|
 | ConfigMap `<release>-github-apps-catalogue` | the declaration, `catalogue.yaml` | the chart, when `githubApps.catalogue` is not empty |
 | Secret `<release>-github-catalogue-apps` | every catalogue App's keys and record, as above | the service, on Create and Install; created empty at start |
+| PushSecret `<release>-github-app-<id>` | the copy instruction for one App's three property keys | the chart, for each entry carrying `push` |
 
 Audit events: `github.catalogue-app.created`, `.installed` and
 `.disconnected`, each naming the App's id and GitHub id; and

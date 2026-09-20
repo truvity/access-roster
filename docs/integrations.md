@@ -317,8 +317,14 @@ configure and where, what you get.
   each created and installed in two clicks, its key kept in a Secret, its
   permissions compared with GitHub's; grants say which groups will be
   able to ask for its installation tokens.
+- The catalogue ships a **default set** to copy — dependency updates
+  split public from private, a bot that approves pull requests and cuts
+  tags, and one App for the program that manages the organisation — and
+  that last App's credential can be projected to a secret store, for an
+  apply that must not wait on this service.
 - Guides: [connect/github-organisation.md](connect/github-organisation.md),
-  [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md).
+  [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md),
+  [connect/infrastructure-as-code.md](connect/infrastructure-as-code.md).
 
 ### ⑮ Registries, artifacts and every other AWS service
 

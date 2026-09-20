@@ -141,9 +141,26 @@ chart-lint:
           exit 1
         fi
       done
+      # Every example the chart SHIPS must render on top of its own
+      # minimal values. An example is something a reader copies, so one
+      # that no longer renders is a broken instruction found by a
+      # stranger; nothing else in this repository reads these files.
+      for example in charts/"$chart"/examples/*.yaml; do
+        [ -e "$example" ] || continue
+        helm template x "charts/$chart" \
+          -f "tests/cases/$chart/minimal/values.yaml" -f "$example" >/dev/null
+      done
       echo "$chart: schema and $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
     done
     hack/golden.sh
+    # `push` is a chart-side instruction to External Secrets and not part
+    # of an App's declaration: the service's loader refuses a key it does
+    # not know, so an entry's push block reaching the rendered catalogue
+    # would stop the service at start.
+    if grep -n '^      push:' tests/golden/access-issuer/*.yaml; then
+      echo "a catalogue entry's push block reached the rendered catalogue" >&2
+      exit 1
+    fi
     # "/console" and "/console/" are the same place: both spellings must
     # render the same, and never a route to "/console//".
     diff tests/golden/access-issuer/route.yaml tests/golden/access-issuer/route-trailing-slash.yaml
