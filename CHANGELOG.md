@@ -1,4 +1,4 @@
-## Unreleased
+## v1.18.0
 
 - **A default set of GitHub Apps, shipped as values to copy.** Every
   estate needs the same few automations, and every estate has been
