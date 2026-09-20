@@ -4,7 +4,7 @@
 
 | Renders | Expects to exist |
 |---|---|
-| Deployment, Service, ServiceAccount, a namespaced Role for the Secrets and ConfigMaps it writes, the TokenReview ClusterRole (with `recovery.enabled`), NetworkPolicy, the policy, overlay and cluster ConfigMaps, the Gateway API routes for its host, the cert-manager `Certificate` that produces its signing key, and — with `githubRoster.enabled` — a second Deployment for the GitHub controller | a Valkey, for more than one replica; a cert-manager issuer; the Secret holding the OAuth client, if people sign in here; an S3 bucket for the audit trail, if it is to be a record |
+| Deployment, Service, ServiceAccount, a namespaced Role for the Secrets and ConfigMaps it writes, the TokenReview ClusterRole (with `recovery.enabled`), NetworkPolicy, the policy, overlay and cluster ConfigMaps, the Gateway API routes for its host, the cert-manager `Certificate` that produces its signing key, and — with `githubRoster.enabled` — a second Deployment for the GitHub controller; an External Secrets `PushSecret` for each catalogue App carrying `push` | a Valkey, for more than one replica; a cert-manager issuer; the Secret holding the OAuth client, if people sign in here; an S3 bucket for the audit trail, if it is to be a record; External Secrets and the store named, for a catalogue App carrying `push` |
 
 This page keeps the values that carry a reason, and the endpoints. The
 full list is [configuration.md](configuration.md).
