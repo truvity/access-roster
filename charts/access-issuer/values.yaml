@@ -371,6 +371,16 @@ networkPolicy:
 
 serviceAccount:
   name: ""
+  # Annotations on the ServiceAccount. The reason this exists is cloud
+  # identity: an admission webhook (EKS Pod Identity, GKE Workload
+  # Identity, or the self-hosted amazon-eks-pod-identity-webhook) reads an
+  # annotation here and injects the credentials into every pod that uses
+  # the account. Without it a self-hosted installation has no way to give
+  # this service an AWS identity, and audit.s3 cannot be reached.
+  #
+  #   annotations:
+  #     eks.amazonaws.com/role-arn: <the role's ARN>
+  annotations: {}
 
 # The GitHub controller: makes each GitHub organisation's teams match the
 # policy's `github` table, and reports on the console's GitHub page.

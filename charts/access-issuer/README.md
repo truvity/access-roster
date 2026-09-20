@@ -22,7 +22,10 @@ the console adds: the four Secrets that hold it are named in
 and copying them is the deployment's job.
 
 Without `audit.s3.bucket` the audit trail stays in one replica's memory,
-which is not a record; the service says so at start.
+which is not a record; the service says so at start. A bucket needs an
+identity to write with, and the chart carries no credential of its own:
+set `serviceAccount.annotations` and let the cluster's pod-identity
+webhook inject one, rather than handing this service a long-lived key.
 
 `examples/github-apps.yaml` ships beside the values: a default set of
 GitHub Apps an estate can copy — dependency updates split public from
