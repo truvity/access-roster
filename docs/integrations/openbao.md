@@ -1,8 +1,9 @@
 # OpenBAO — the issuer's side of the contract
 
 OpenBAO trusts this issuer on two auth mounts per namespace, maps the
-`groups` claim onto its identity groups by name, and signs the SSH and
-database certificates `accessctl credential` asks for. **The contract,
+`groups` claim onto its identity groups by name, signs the SSH and
+database certificates `accessctl credential` asks for, and answers the
+reads `accessctl secrets env` makes under a project's prefix. **The contract,
 end to end, lives with OpenBAO**:
 [truvity/openbao docs/integrations/access-roster.md](https://github.com/truvity/openbao/blob/master/docs/integrations/access-roster.md).
 It is proven there by a conformance test that runs a real OpenBAO server
