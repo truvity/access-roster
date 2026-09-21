@@ -1,3 +1,12 @@
+## v1.24.0
+
+- **`secretManagers[].caCertConfigMap`** names a store's private root in
+  a ConfigMap instead of a Secret. A root is not a secret, and
+  cert-manager's trust-manager distributes one as a ConfigMap into every
+  namespace — an installation that has it there had to copy it into a
+  Secret to use it here. Name one of the two, never both: two bundles at
+  one path is one of them silently unused, and the render refuses it.
+
 ## v1.23.0
 
 - **The console shows a secret store.** A deployment declares one in

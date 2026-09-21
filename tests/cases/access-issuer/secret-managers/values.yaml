@@ -23,9 +23,9 @@ secretManagers:
     mount: jwt-partner
     role: reader
     audience: partner-openbao
-    caCertSecret:
-      name: partner-ca
-      key: root.pem
+    caCertConfigMap:
+      name: truvity-private-ca
+      key: ca-certificates.crt
     namespaces:
       - name: sandbox
         environment: devel

@@ -541,6 +541,9 @@ githubApps:
 #     caCertSecret:                      # optional; a private root
 #       name: openbao-ca
 #       key: ca.crt
+#     caCertConfigMap:                   # the same, from a ConfigMap
+#       name: truvity-private-ca         # (what trust-manager writes);
+#       key: ca-certificates.crt         # name one of the two, never both
 #     namespaces:                        # at least one
 #       - name: devel
 #         environment: devel             # optional; defaults to the name
