@@ -43,6 +43,13 @@ metadata:
     {{- include "access-issuer.labels" $root | nindent 4 }}
 spec:
   refreshInterval: {{ .push.refreshInterval | default "1h" }}
+  # Declared rather than left to the API's default, and `conversionStrategy`
+  # below likewise. A field the CRD defaults but the manifest omits reads
+  # as drift to anything that compares desired against live: an ArgoCD
+  # Application carrying this chart sits permanently OutOfSync on a
+  # PushSecret that is doing its job, and a permanent OutOfSync is a
+  # health signal nobody can read any more.
+  updatePolicy: Replace
   # None by default: a declaration removed here, or an App disconnected,
   # leaves the copy for somebody to remove deliberately rather than
   # breaking a consumer's next apply from a distance.
@@ -57,17 +64,20 @@ spec:
       # nothing is pushed for an App an operator created and stopped at.
       name: {{ include "access-issuer.fullname" $root }}-github-catalogue-apps
   data:
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: {{ .id }}.github_app_id
         remoteRef:
           remoteKey: {{ .push.remoteKey }}
           property: app_id
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: {{ .id }}.github_app_installation_id
         remoteRef:
           remoteKey: {{ .push.remoteKey }}
           property: installation_id
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: {{ .id }}.github_app_private_key
         remoteRef:
           remoteKey: {{ .push.remoteKey }}

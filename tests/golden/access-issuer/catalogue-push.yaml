@@ -419,6 +419,13 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 spec:
   refreshInterval: 30m
+  # Declared rather than left to the API's default, and `conversionStrategy`
+  # below likewise. A field the CRD defaults but the manifest omits reads
+  # as drift to anything that compares desired against live: an ArgoCD
+  # Application carrying this chart sits permanently OutOfSync on a
+  # PushSecret that is doing its job, and a permanent OutOfSync is a
+  # health signal nobody can read any more.
+  updatePolicy: Replace
   # None by default: a declaration removed here, or an App disconnected,
   # leaves the copy for somebody to remove deliberately rather than
   # breaking a consumer's next apply from a distance.
@@ -433,17 +440,20 @@ spec:
       # nothing is pushed for an App an operator created and stopped at.
       name: access-issuer-github-catalogue-apps
   data:
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: iac.github_app_id
         remoteRef:
           remoteKey: platform/github-apps/iac
           property: app_id
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: iac.github_app_installation_id
         remoteRef:
           remoteKey: platform/github-apps/iac
           property: installation_id
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: iac.github_app_private_key
         remoteRef:
           remoteKey: platform/github-apps/iac
@@ -465,6 +475,13 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 spec:
   refreshInterval: 1h
+  # Declared rather than left to the API's default, and `conversionStrategy`
+  # below likewise. A field the CRD defaults but the manifest omits reads
+  # as drift to anything that compares desired against live: an ArgoCD
+  # Application carrying this chart sits permanently OutOfSync on a
+  # PushSecret that is doing its job, and a permanent OutOfSync is a
+  # health signal nobody can read any more.
+  updatePolicy: Replace
   # None by default: a declaration removed here, or an App disconnected,
   # leaves the copy for somebody to remove deliberately rather than
   # breaking a consumer's next apply from a distance.
@@ -479,17 +496,20 @@ spec:
       # nothing is pushed for an App an operator created and stopped at.
       name: access-issuer-github-catalogue-apps
   data:
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: renovate-public.github_app_id
         remoteRef:
           remoteKey: platform/github-apps/renovate-public
           property: app_id
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: renovate-public.github_app_installation_id
         remoteRef:
           remoteKey: platform/github-apps/renovate-public
           property: installation_id
-    - match:
+    - conversionStrategy: None
+      match:
         secretKey: renovate-public.github_app_private_key
         remoteRef:
           remoteKey: platform/github-apps/renovate-public
