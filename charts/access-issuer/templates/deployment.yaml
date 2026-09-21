@@ -235,6 +235,18 @@ spec:
             {{- end }}
             - name: LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
+            {{- if .Values.secretManagers }}
+            # The secret stores the console SHOWS. The reader's identity
+            # is the projected token below -- this service's own
+            # ServiceAccount, exchanged at its own issuer for the store's
+            # audience, exactly as a CI job's is. No second credential.
+            - name: SECRET_MANAGERS_FILE
+              value: /var/run/access-issuer/secret-managers.yaml
+            - name: SECRET_MANAGERS_TOKEN_FILE
+              value: /var/run/access-issuer/secret-managers-token/token
+            - name: SECRET_MANAGERS_ISSUER
+              value: {{ .Values.issuerURL | quote }}
+            {{- end }}
           volumeMounts:
             - name: signing-key
               mountPath: /var/run/access-issuer/signing-key
@@ -255,6 +267,22 @@ spec:
               mountPath: /var/run/access-issuer/github-apps-catalogue.yaml
               subPath: catalogue.yaml
               readOnly: true
+            {{- end }}
+            {{- if .Values.secretManagers }}
+            - name: secret-managers
+              mountPath: /var/run/access-issuer/secret-managers.yaml
+              subPath: managers.yaml
+              readOnly: true
+            - name: secret-managers-token
+              mountPath: /var/run/access-issuer/secret-managers-token
+              readOnly: true
+            {{- range $manager := .Values.secretManagers }}
+            {{- if $manager.caCertSecret }}
+            - name: secret-managers-ca-{{ $manager.name }}
+              mountPath: /var/run/access-issuer/secret-managers-ca/{{ $manager.name }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
             {{- end }}
             {{- if .Values.directory.workspaces }}
             - name: overlay
@@ -318,6 +346,33 @@ spec:
         - name: github-apps-catalogue
           configMap:
             name: {{ include "access-issuer.fullname" . }}-github-apps-catalogue
+        {{- end }}
+        {{- if .Values.secretManagers }}
+        - name: secret-managers
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-secret-managers
+        # The reader's proof: this service's OWN ServiceAccount token,
+        # projected for the exchange audience rather than the API
+        # server's. A token minted for another audience is a perfectly
+        # valid token and no proof at all, which is the whole point of
+        # the audience being the trust boundary. Rotated under the pod by
+        # the kubelet, which is why the file is read per call.
+        - name: secret-managers-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: {{ .Values.exchange.audience | default (include "access-issuer.fullname" .) }}
+                  expirationSeconds: 3600
+        {{- range $manager := .Values.secretManagers }}
+        {{- if $manager.caCertSecret }}
+        # A store behind a private root. The bundle is trusted IN
+        # ADDITION to the system's, for connections to that store alone.
+        - name: secret-managers-ca-{{ $manager.name }}
+          secret:
+            secretName: {{ $manager.caCertSecret.name }}
+        {{- end }}
+        {{- end }}
         {{- end }}
         {{- if .Values.directory.workspaces }}
         - name: overlay

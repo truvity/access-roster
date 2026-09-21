@@ -1,0 +1,31 @@
+# The console showing two secret stores: one reached over the public
+# roots, one behind a private root whose bundle is a Secret. The same
+# declarations are parsed by the service's own loader in
+# internal/secretmanager's tests, so the schema and the parser describe
+# one shape.
+#
+# READ-ONLY, which is what this fixture pins: the rendered ConfigMap is
+# names, addresses and namespaces, and the only credential in the whole
+# render is a PROJECTED ServiceAccount token — this service's own
+# identity, audienced at the exchange rather than at the API server.
+issuerURL: https://access.example
+exchange:
+  audience: access-issuer
+secretManagers:
+  - name: kernel
+    address: https://openbao.example.private
+    namespaces:
+      - name: devel
+      - name: stage
+      - name: prod
+  - name: partner
+    address: https://bao.partner.example
+    mount: jwt-partner
+    role: reader
+    audience: partner-openbao
+    caCertSecret:
+      name: partner-ca
+      key: root.pem
+    namespaces:
+      - name: sandbox
+        environment: devel
