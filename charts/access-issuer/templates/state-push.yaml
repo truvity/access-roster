@@ -1,0 +1,90 @@
+{{- /*
+Second copies of the two Secrets this service writes and nothing else can
+re-deliver: the workspace credential an operator connected, and the Apps
+the service acts as.
+
+These are RECOVERY copies, which is what separates them from
+github-apps-push.yaml beside this file. That one exists so a consumer can
+act as a catalogue App without asking the issuer; these exist so an
+operator can put back what a deleted Secret took away. Same machinery,
+different reason, and the reason is why neither is on by default.
+
+Both push the WHOLE Secret under one remote key rather than mapping keys.
+The names inside are not stable -- `<workspace-id>.json` changes on
+reconnect, and `<org>.json` appears when an organisation is bound -- so a
+per-key mapping written today stops matching later, silently, and leaves a
+copy that is stale while still reporting healthy. A backup that lies is
+worse than none.
+
+WHAT IS NOT HERE: the session key. The service writes it, it is a Secret,
+and copying it would be a mistake -- losing it signs everyone out and a
+fresh one is minted, which is correct behaviour rather than a fault, while
+a durable copy widens what a compromise of the store is worth. values.yaml
+carries the argument in full.
+*/ -}}
+{{- $root := . }}
+{{- $pushes := list }}
+{{- if .Values.directory.push }}
+{{- $pushes = append $pushes (dict
+      "name" "workspace"
+      "push" .Values.directory.push
+      "secret" (printf "%s-workspace-credentials" (include "access-issuer.fullname" $root))
+      "what" "the credential of every connected workspace") }}
+{{- end }}
+{{- if .Values.githubApps.push }}
+{{- $pushes = append $pushes (dict
+      "name" "github-apps"
+      "push" .Values.githubApps.push
+      "secret" (printf "%s-github-apps" (include "access-issuer.fullname" $root))
+      "what" "the link App and one App per bound organisation") }}
+{{- end }}
+{{- $seen := dict }}
+{{- range $pushes }}
+{{- if ne $root.Values.directory.store "kubernetes" }}
+{{- fail (printf "%s.push needs directory.store: kubernetes: with any other store this service keeps no Secret, so there is nothing to copy" .name) }}
+{{- end }}
+{{- if not .push.secretStore }}
+{{- fail (printf "%s.push needs a secretStore: this chart does not invent where a credential is written" .name) }}
+{{- end }}
+{{- if not .push.remoteKey }}
+{{- fail (printf "%s.push needs a remoteKey: a copy with no address is not one" .name) }}
+{{- end }}
+{{- $kind := .push.secretStore.kind | default "SecretStore" }}
+{{- $where := printf "%s/%s/%s" $kind .push.secretStore.name .push.remoteKey }}
+{{- if hasKey $seen $where }}
+{{- fail (printf "%s.push and %s.push both write remoteKey %s in %s %s: one would overwrite the other, and whoever restored from that path could not tell which Secret they were holding" (index $seen $where) .name .push.remoteKey $kind .push.secretStore.name) }}
+{{- end }}
+{{- $_ := set $seen $where .name }}
+---
+# A recovery copy of {{ .what }}, to {{ $kind }} {{ .push.secretStore.name }}
+# at {{ .push.remoteKey }}. Every key of the Secret lands there as one JSON
+# object; restoring is an operator writing it back, deliberately.
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: {{ include "access-issuer.fullname" $root }}-{{ .name }}-copy
+  labels:
+    {{- include "access-issuer.labels" $root | nindent 4 }}
+spec:
+  refreshInterval: {{ .push.refreshInterval | default "1h" }}
+  # Declared rather than defaulted, as in github-apps-push.yaml: a field
+  # the CRD fills in but the manifest omits reads as drift to anything
+  # comparing desired against live, so an ArgoCD Application carrying this
+  # chart would sit permanently OutOfSync on a PushSecret that is doing its
+  # job -- and a permanent OutOfSync is a health signal nobody reads.
+  updatePolicy: Replace
+  # None, and not overridable to Delete by accident: the case this exists
+  # for IS the Secret going away. A copy that leaves with its source is not
+  # a backup. An installation that truly wants the copy removed can remove
+  # it where it lives.
+  deletionPolicy: None
+  secretStoreRefs:
+    - name: {{ .push.secretStore.name }}
+      kind: {{ $kind }}
+  selector:
+    secret:
+      name: {{ .secret }}
+  dataTo:
+    - conversionStrategy: None
+      remoteKey: {{ .push.remoteKey }}
+{{- end }}

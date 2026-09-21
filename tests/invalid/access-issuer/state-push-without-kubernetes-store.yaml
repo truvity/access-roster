@@ -1,0 +1,8 @@
+# Copying a Secret the service keeps nowhere must fail the render rather than render a PushSecret over a Secret that does not exist.
+# error: needs directory.store: kubernetes
+issuerURL: https://issuer.example
+directory:
+  store: memory
+  push:
+    secretStore: {name: example-store}
+    remoteKey: platform/access-issuer/workspace

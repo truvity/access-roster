@@ -1,0 +1,11 @@
+# Two recovery copies written to one remote key must fail the render: one would overwrite the other, and whoever restored from that path could not tell which Secret they held.
+# error: both write remoteKey
+issuerURL: https://issuer.example
+directory:
+  push:
+    secretStore: {name: example-store, kind: ClusterSecretStore}
+    remoteKey: platform/access-issuer/state
+githubApps:
+  push:
+    secretStore: {name: example-store, kind: ClusterSecretStore}
+    remoteKey: platform/access-issuer/state
