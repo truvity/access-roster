@@ -1,3 +1,28 @@
+## v1.22.0
+
+- **`accessctl secrets env` fetches the values a team shares while it
+  develops.** `accessctl secrets env --namespace staging --prefix
+  orders/local-dev/checkout --out .env` exchanges the sign-in for
+  `openbao`, logs in on the same JWT mount `credential` uses, walks a KV
+  version 2 prefix to its leaves and writes one `KEY=value` line per leaf,
+  `0600`, by rename. Nothing new is granted: reading a project's prefix is
+  its `{env}:{project}:viewer` group, writing it is `deployer` and
+  `approver`, and a `403` says so by name instead of repeating "permission
+  denied". A run that reads **zero** keys fails rather than writing an
+  empty `.env`, which is the failure nobody notices. Only the key names
+  are printed, never a value.
+  [docs/connect/openbao.md](docs/connect/openbao.md#and-holds-a-teams-secrets),
+  [docs/reference/accessctl.md](docs/reference/accessctl.md#secrets-a-teams-shared-values-as-a-file).
+
+## v1.21.0
+
+- **`access-issuer` keeps a recovery copy of the two Secrets nothing can
+  re-deliver**, and `accessctl kubeconfig` writes `interactiveMode` on the
+  entries it generates, without which kubectl refuses them.
+- A pushed credential now declares the fields the `PushSecret` CRD
+  defaults, so a deployment comparing desired against live stops reporting
+  drift on a resource that is working.
+
 ## v1.19.0
 
 - **Breaking: the signing key is an EC P-384 key, and the issuer signs
@@ -31,19 +56,6 @@
   discovery document instead of the library's default, so an issuer
   signing with P-384 or P-521 is verifiable by a consumer that did not
   have to be told.
-- **`accessctl secrets env` fetches the values a team shares while it
-  develops.** `accessctl secrets env --namespace staging --prefix
-  orders/local-dev/checkout --out .env` exchanges the sign-in for
-  `openbao`, logs in on the same JWT mount `credential` uses, walks a KV
-  version 2 prefix to its leaves and writes one `KEY=value` line per leaf,
-  `0600`, by rename. Nothing new is granted: reading a project's prefix is
-  its `{env}:{project}:viewer` group, writing it is `deployer` and
-  `approver`, and a `403` says so by name instead of repeating "permission
-  denied". A run that reads **zero** keys fails rather than writing an
-  empty `.env`, which is the failure nobody notices. Only the key names
-  are printed, never a value.
-  [docs/connect/openbao.md](docs/connect/openbao.md#and-holds-a-teams-secrets),
-  [docs/reference/accessctl.md](docs/reference/accessctl.md#secrets-a-teams-shared-values-as-a-file).
 
 ## v1.18.0
 
