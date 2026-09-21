@@ -1,6 +1,7 @@
 package secretmanager_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/truvity/access-roster/internal/secretmanager"
@@ -22,7 +23,7 @@ func stateOf(t *testing.T, views []secretmanager.GroupView, name string) secretm
 func TestTheFourStatesOfAGroup(t *testing.T) {
 	t.Parallel()
 	views := secretmanager.Compare(
-		[]string{"devel:platform:viewer", "devel:platform:deployer"},
+		secretmanager.Declared{Expected: []string{"devel:platform:viewer", "devel:platform:deployer"}},
 		secretmanager.Live{
 			Policies: []string{"devel:platform:viewer", "devel:leftover:deployer"},
 			Groups: map[string]secretmanager.Group{
@@ -70,7 +71,7 @@ func TestTheFourStatesOfAGroup(t *testing.T) {
 func TestAGroupInARefusedNamespaceIsUnreadableRatherThanAbsent(t *testing.T) {
 	t.Parallel()
 	views := secretmanager.Compare(
-		[]string{"devel:platform:viewer"},
+		secretmanager.Declared{Expected: []string{"devel:platform:viewer"}},
 		secretmanager.Live{GroupsUnreadable: true},
 	)
 	if got := stateOf(t, views, "devel:platform:viewer"); got.State != secretmanager.StateUnreadable {
@@ -87,7 +88,7 @@ func TestAGroupInARefusedNamespaceIsUnreadableRatherThanAbsent(t *testing.T) {
 func TestAGroupWhosePolicyIsMissingSaysSo(t *testing.T) {
 	t.Parallel()
 	views := secretmanager.Compare(
-		[]string{"devel:platform:viewer"},
+		secretmanager.Declared{Expected: []string{"devel:platform:viewer"}},
 		secretmanager.Live{
 			Policies: []string{"default"},
 			Groups:   map[string]secretmanager.Group{"devel:platform:viewer": {Name: "devel:platform:viewer"}},
@@ -106,7 +107,7 @@ func TestAGroupWhosePolicyIsMissingSaysSo(t *testing.T) {
 func TestPoliciesItCouldNotListAreNotReportedMissing(t *testing.T) {
 	t.Parallel()
 	views := secretmanager.Compare(
-		[]string{"devel:platform:viewer"},
+		secretmanager.Declared{Expected: []string{"devel:platform:viewer"}},
 		secretmanager.Live{
 			PoliciesUnreadable: true,
 			Groups:             map[string]secretmanager.Group{"devel:platform:viewer": {Name: "devel:platform:viewer"}},
@@ -128,9 +129,23 @@ func TestOnlyTheEnvironmentsOwnGroupsAreDeclaredForIt(t *testing.T) {
 		"all:openbao:operator",
 		"devel:ssh:admin",
 	})
+
 	want := []string{"devel:platform:viewer", "devel:ssh:admin"}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("declared for devel = %v, want %v", got, want)
+	if len(got.Expected) != len(want) || got.Expected[0] != want[0] || got.Expected[1] != want[1] {
+		t.Errorf("expected for devel = %v, want %v", got.Expected, want)
+	}
+	// An `all:` group is legitimate here and missing from nothing: it is
+	// never reported absent, and never drawn as drift when it appears.
+	if len(got.Optional) != 1 || got.Optional[0] != "all:openbao:operator" {
+		t.Errorf("optional for devel = %v, want the all: group", got.Optional)
+	}
+	// Another environment's is neither.
+	for _, list := range [][]string{got.Expected, got.Optional} {
+		for _, name := range list {
+			if strings.HasPrefix(name, "stage:") {
+				t.Errorf("%s is drawn in devel's namespace", name)
+			}
+		}
 	}
 }
 
@@ -138,11 +153,124 @@ func TestOnlyTheEnvironmentsOwnGroupsAreDeclaredForIt(t *testing.T) {
 // not a failure.
 func TestAnEmptyNamespaceIsEmpty(t *testing.T) {
 	t.Parallel()
-	views := secretmanager.Compare(nil, secretmanager.Live{})
+	views := secretmanager.Compare(secretmanager.Declared{}, secretmanager.Live{})
 	if len(views) != 0 {
 		t.Fatalf("an empty namespace produced %d rows", len(views))
 	}
 	if counts := secretmanager.Count(views); counts != (secretmanager.Counts{}) {
 		t.Errorf("counts = %+v, want all zero", counts)
+	}
+}
+
+// THE BUG THE LIVE PAGE FOUND. A store holds one alias per identity
+// group, so admitting one group at two doors takes two identity groups:
+// the bare name, and `<name>@<door>` carrying the same policy. Drawn as
+// separate rows, every group in the installation appeared twice — once
+// as drift nobody declared — and the one row worth reading was buried in
+// thirty that were not.
+func TestADoorsTwinIsTheSameGroupRatherThanDrift(t *testing.T) {
+	t.Parallel()
+	views := secretmanager.Compare(
+		secretmanager.Declared{Expected: []string{"devel:platform:viewer"}},
+		secretmanager.Live{
+			Policies: []string{"devel:platform:viewer"},
+			Groups: map[string]secretmanager.Group{
+				"devel:platform:viewer": {
+					Name: "devel:platform:viewer", Policies: []string{"devel:platform:viewer"}, Members: 4,
+					Aliases: []secretmanager.GroupAlias{{Mount: "jwt-roster"}},
+				},
+				// The web door's twin: same policy, its own alias.
+				"devel:platform:viewer@oidc": {
+					Name: "devel:platform:viewer@oidc", Policies: []string{"devel:platform:viewer"},
+					Aliases: []secretmanager.GroupAlias{{Mount: "oidc"}},
+				},
+			},
+		})
+
+	if len(views) != 1 {
+		t.Fatalf("the twin was drawn as its own row: %+v", views)
+	}
+
+	got := stateOf(t, views, "devel:platform:viewer")
+	if got.State != secretmanager.StateBound {
+		t.Errorf("state = %q, want bound", got.State)
+	}
+	// Both doors on one row, which is what the page was for: a group
+	// admitted at one and refused at the other is the thing to see.
+	if len(got.Doors) != 2 || got.Doors[0] != "jwt-roster" || got.Doors[1] != "oidc" {
+		t.Errorf("doors = %v, want both", got.Doors)
+	}
+	// The twin does not overwrite what the bare group says.
+	if got.Members != 4 || !got.HasPolicy {
+		t.Errorf("view = %+v, want the bare group's members and policy", got)
+	}
+}
+
+// A twin whose bare group is gone is still one row, and still drift.
+func TestATwinWithoutItsGroupIsOneUnexpectedRow(t *testing.T) {
+	t.Parallel()
+	views := secretmanager.Compare(secretmanager.Declared{}, secretmanager.Live{
+		Groups: map[string]secretmanager.Group{
+			"devel:leftover:viewer@oidc": {Name: "devel:leftover:viewer@oidc", Aliases: []secretmanager.GroupAlias{{Mount: "oidc"}}},
+		},
+	})
+
+	if len(views) != 1 {
+		t.Fatalf("views = %+v, want one", views)
+	}
+	if views[0].Name != "devel:leftover:viewer" || views[0].State != secretmanager.StateUnexpected {
+		t.Errorf("view = %+v, want the logical name, unexpected", views[0])
+	}
+}
+
+// A name with an `@` that is not a door twin — an address, say — is not
+// split into something else.
+func TestOnlyAGroupWithADoorIsSplit(t *testing.T) {
+	t.Parallel()
+	for name, wantBase := range map[string]string{
+		"devel:platform:viewer":      "devel:platform:viewer",
+		"devel:platform:viewer@oidc": "devel:platform:viewer",
+		"@oidc":                      "@oidc",
+		"devel:platform:viewer@":     "devel:platform:viewer@",
+	} {
+		if base, _ := secretmanager.SplitDoor(name); base != wantBase {
+			t.Errorf("SplitDoor(%q) = %q, want %q", name, base, wantBase)
+		}
+	}
+}
+
+// The installation's OWN reader is an `all:` group and the store holds
+// it in every namespace. Reported as drift it would put a red row on
+// every page — the console accusing itself.
+func TestAnAllScopedGroupTheStoreHoldsIsNotDrift(t *testing.T) {
+	t.Parallel()
+	views := secretmanager.Compare(
+		secretmanager.Declared{
+			Expected: []string{"devel:platform:viewer"},
+			Optional: []string{"all:openbao:console"},
+		},
+		secretmanager.Live{
+			Policies: []string{"all:openbao:console"},
+			Groups: map[string]secretmanager.Group{
+				"all:openbao:console": {Name: "all:openbao:console", Policies: []string{"all:openbao:console"}},
+			},
+		})
+
+	if got := stateOf(t, views, "all:openbao:console"); got.State != secretmanager.StateBound || !got.Declared {
+		t.Errorf("the installation's own reader is %q (declared=%v), want bound", got.State, got.Declared)
+	}
+}
+
+// And an `all:` group the store does NOT hold is not drawn at all: its
+// scope is no single namespace, so its absence here says nothing.
+func TestAnAllScopedGroupTheStoreLacksIsNotReportedMissing(t *testing.T) {
+	t.Parallel()
+	views := secretmanager.Compare(
+		secretmanager.Declared{Optional: []string{"all:openbao:operator"}},
+		secretmanager.Live{},
+	)
+
+	if len(views) != 0 {
+		t.Errorf("views = %+v, want none: an all: group missing here proves nothing", views)
 	}
 }

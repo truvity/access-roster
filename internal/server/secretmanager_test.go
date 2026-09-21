@@ -23,8 +23,20 @@ version: 1
 groups:
   devel:platform:viewer: { members: [team-platform@globex.example] }
   devel:platform:deployer: { members: [role-devops@globex.example] }
+  devel:k8s:admin: { members: [role-sre@globex.example] }
   stage:platform:viewer: { members: [team-platform@globex.example] }
   all:openbao:operator: { members: [role-sre@globex.example] }
+clients:
+  # The store's own audience. Its requirements ARE the list of groups the
+  # store holds a policy for -- devel:k8s:admin is a group of this
+  # environment that it does not.
+  openbao:
+    kind: exchange
+    requires:
+      - devel:platform:viewer
+      - devel:platform:deployer
+      - stage:platform:viewer
+      - all:openbao:operator
 `
 
 // fakeStore answers the reads the console makes, and can be told to
@@ -411,5 +423,48 @@ func TestEveryCallNeedsAtLeastAViewer(t *testing.T) {
 	if _, err := console.ListSecretManagerReach(ctx,
 		connect.NewRequest(&directoryrosterv1.ListSecretManagerReachRequest{})); err == nil {
 		t.Error("an unauthenticated caller read a reach")
+	}
+}
+
+// THE SECOND BUG THE LIVE PAGE FOUND. A cluster's tier, a CI job's
+// group, the console's own: all of them are groups of the environment,
+// and the store holds a policy for NONE of them. Drawn as "not applied
+// yet" they send somebody to look for an apply that was never going to
+// make them.
+//
+// The list the page uses is the store's own exchange audience, which is
+// admitted exactly to the groups it holds a policy for.
+func TestOnlyGroupsTheStoreHoldsAPolicyForAreExpected(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{
+		groups:   []string{"devel:platform:viewer"},
+		policies: []string{"devel:platform:viewer"},
+	}
+	got := namespaceOf(t, consoleWithStore(t, store, nil))
+
+	for _, group := range got.GetGroups() {
+		if group.GetName() == "devel:k8s:admin" {
+			t.Errorf("a cluster tier group is drawn as %s; this store holds no policy for it", group.GetState())
+		}
+	}
+
+	// The deployer IS admitted to the audience and the store does not
+	// hold it: that one is genuinely not applied yet.
+	if deployer := groupOf(t, got, "devel:platform:deployer"); deployer.GetState() != directoryrosterv1.GroupState_GROUP_STATE_ABSENT {
+		t.Errorf("the deployer is %s, want absent", deployer.GetState())
+	}
+}
+
+// An `all:`-scoped group spans environments and is not every namespace's
+// to hold -- the operator's group lives in the root namespace alone. It
+// is drawn where the store has it and never as absent.
+func TestAnAllScopedGroupIsNotMissingFromEveryNamespace(t *testing.T) {
+	t.Parallel()
+	got := namespaceOf(t, consoleWithStore(t, &fakeStore{}, nil))
+
+	for _, group := range got.GetGroups() {
+		if strings.HasPrefix(group.GetName(), "all:") {
+			t.Errorf("%s is drawn in devel's namespace as %s", group.GetName(), group.GetState())
+		}
 	}
 }

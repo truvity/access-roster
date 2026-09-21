@@ -197,10 +197,15 @@ func (c *Console) ListSecretManagerReach(
 	for i := range managers.Catalogue.Managers {
 		declared := &managers.Catalogue.Managers[i]
 		for _, namespace := range declared.Namespaces {
-			mine := secretmanager.DeclaredFor(namespace.Environment, held)
+			// Both kinds: a group of this environment, and an `all:`
+			// one, which opens the same paths in every namespace.
+			held := secretmanager.DeclaredFor(namespace.Environment, held)
+			mine := append(slices.Clone(held.Expected), held.Optional...)
+
 			if len(mine) == 0 {
 				continue
 			}
+
 			view := c.namespaceOf(ctx, declared, namespace)
 			for _, name := range mine {
 				rules, read := view.rules[name]
@@ -355,12 +360,7 @@ func (c *Console) readNamespace(
 
 	view.doors, _ = session.AuthMounts(ctx)
 
-	set := c.deps.Authorizer.Policy()
-	names = make([]string, 0, len(set.Groups()))
-	for _, group := range set.Groups() {
-		names = append(names, group.Name)
-	}
-	view.groups = secretmanager.Compare(secretmanager.DeclaredFor(namespace.Environment, names), live)
+	view.groups = secretmanager.Compare(c.declaredFor(declared, namespace), live)
 
 	// The policy of each group that is there. A group the store does not
 	// hold has none to read, and reading every policy in the namespace
@@ -378,6 +378,32 @@ func (c *Console) readNamespace(
 		view.rules[group.Name] = secretmanager.ParsePolicy(document)
 	}
 	return view
+}
+
+// declaredFor is the groups this deployment expects THIS store to hold
+// in one namespace.
+//
+// Not every internal group of the environment: the console's own groups,
+// a cluster's tier, a CI job's — the store holds a policy for none of
+// them, and drawing them as "not applied yet" sends somebody to look for
+// an apply that was never going to make them.
+//
+// The answer the installation already has is the store's own exchange
+// audience: a group is admitted to it exactly when the store holds a
+// policy for it, which is how the client's `requires` is derived in the
+// first place. So the page reads the same list the issuer enforces, and
+// the two cannot disagree.
+//
+// An `all:`-scoped group spans environments and is not every namespace's
+// to hold — the operator's group lives in root alone — so one is drawn
+// only where the store actually has it, never as absent.
+func (c *Console) declaredFor(manager *secretmanager.Manager, namespace secretmanager.Namespace) secretmanager.Declared {
+	client, ok := c.deps.Authorizer.Policy().Client(manager.Audience)
+	if !ok {
+		return secretmanager.Declared{}
+	}
+
+	return secretmanager.DeclaredFor(namespace.Environment, client.Requires)
 }
 
 // appendReason joins the sentences a partly-readable namespace has to

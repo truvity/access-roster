@@ -1,3 +1,25 @@
+## v1.25.0
+
+- **A group's door twin is one row, not drift.** A store holds one alias
+  per identity group, so admitting a group at two doors takes two
+  identity groups — the bare name, and `<name>@<door>` carrying the same
+  policy. The page drew them separately, which reported every group in
+  the installation twice, the second time as drift nobody declared. They
+  are now one row carrying both doors, which is what the column was for.
+- **Only the groups the store holds a policy for are expected.** A
+  cluster's tier, a CI job's group, the console's own: all of them are
+  groups of the environment, and no secret store holds a policy for any
+  of them. Reported as "not applied yet" they sent a reader looking for
+  an apply that was never going to make them. The list is now the
+  store's own exchange audience — a group is admitted to it exactly when
+  the store holds a policy for it — so the page reads the same list the
+  issuer enforces.
+- **A group that spans environments is legitimate wherever it appears.**
+  An `all:`-scoped group belongs to no single namespace: drawn as
+  expected it was missing from every one of them, and left out entirely
+  the installation's own reader appeared as drift. It is now shown where
+  the store has it and never reported absent.
+
 ## v1.24.0
 
 - **`secretManagers[].caCertConfigMap`** names a store's private root in
