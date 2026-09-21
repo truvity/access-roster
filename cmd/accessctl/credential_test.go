@@ -690,6 +690,14 @@ type fakeOpenBAO struct {
 	bodies     map[string]map[string]any
 	namespaces map[string]string
 	tokens     map[string]string
+	methods    map[string]string
+	queries    map[string]string
+
+	// kv is a KV version 2 engine: the full path under the mount, to the
+	// fields at it. deleted is a path whose latest version was soft
+	// deleted, which still lists and no longer reads.
+	kv      map[string]map[string]any
+	deleted map[string]bool
 
 	refuse       map[string]int
 	revokeStatus int
@@ -751,6 +759,10 @@ func unstartedFakeOpenBAO(t *testing.T) *fakeOpenBAO {
 		bodies:     map[string]map[string]any{},
 		namespaces: map[string]string{},
 		tokens:     map[string]string{},
+		methods:    map[string]string{},
+		queries:    map[string]string{},
+		kv:         map[string]map[string]any{},
+		deleted:    map[string]bool{},
 		ca:         signer,
 		pkiKey:     pkiKey,
 		pki:        authority,
@@ -766,6 +778,8 @@ func (f *fakeOpenBAO) serve(w http.ResponseWriter, r *http.Request) {
 	f.bodies[path] = body
 	f.namespaces[path] = r.Header.Get(namespaceHeader)
 	f.tokens[path] = r.Header.Get("X-Vault-Token")
+	f.methods[path] = r.Method
+	f.queries[path] = r.URL.RawQuery
 
 	if status, refused := f.refuse[path]; refused {
 		w.WriteHeader(status)
@@ -788,6 +802,10 @@ func (f *fakeOpenBAO) serve(w http.ResponseWriter, r *http.Request) {
 		f.sign(w, body)
 	case strings.HasPrefix(path, "pki/sign/"):
 		f.signRequest(w, body)
+	case strings.Contains(path, "/metadata/"):
+		f.listKV(w, r, after(path, "/metadata/"))
+	case strings.Contains(path, "/data/"):
+		f.readKV(w, after(path, "/data/"))
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
