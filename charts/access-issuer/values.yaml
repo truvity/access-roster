@@ -521,6 +521,44 @@ githubApps:
   # adds a key, and a per-key mapping written today would not carry it.
   # (absent by default — the block above is the shape)
 
+# THE SECRET STORES THE CONSOLE SHOWS. Read-only, and not by omission.
+#
+# A store's desired state is written in your own repository and applied
+# by whatever applies it; this console reads it and draws what it found
+# beside what the deployment declares. Nothing here can write to a store,
+# and the reader cannot read a secret's VALUE at all -- it is granted the
+# declared state (policies, identity groups, their aliases, the auth
+# mounts) and nothing else.
+#
+# Empty declares none, and the console then has no such page rather than
+# an empty one. Each entry:
+#
+#   - name: kernel                       # [a-z0-9-], unique; names the page
+#     address: https://openbao.internal  # the API, no path
+#     mount: jwt-roster                  # optional; the JWT auth mount
+#     role: roster                       # optional; the role on it
+#     audience: openbao                  # optional; the exchange audience
+#     caCertSecret:                      # optional; a private root
+#       name: openbao-ca
+#       key: ca.crt
+#     namespaces:                        # at least one
+#       - name: devel
+#         environment: devel             # optional; defaults to the name
+#
+# A NAMESPACE IS AN ENVIRONMENT. The model is one level deep, and
+# `environment` exists only for a store that names its namespaces
+# differently -- the page still has to say which environment it is
+# looking at.
+#
+# HOW IT READS THEM. As this service's own ServiceAccount: a projected
+# token, audienced at `exchange.audience`, exchanged at the issuer for
+# the store's audience exactly as a CI job's is. There is no second
+# credential and nothing is stored. That exchange has to be granted --
+# the store's `requires` must admit the group this service's workload
+# identity holds -- and a refusal is drawn on the page, naming the
+# audience, rather than raised as an error.
+secretManagers: []
+
 # THE SESSION KEY IS DELIBERATELY NOT PUSHABLE, and this note is the
 # feature.
 #
