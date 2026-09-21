@@ -78,13 +78,50 @@ type Live struct {
 	PoliciesUnreadable bool
 }
 
+// DoorSuffix separates a group's name from the door it was created for.
+//
+// A store holds ONE alias per identity group, so admitting one group at
+// two doors takes two identity groups: the bare name at the first, and
+// `<name>@<door>` at the second, both carrying the policy of the bare
+// name. That is an implementation detail of the second door, not a
+// second group — and a page that drew it as one reports every group in
+// the installation twice, once as drift nobody declared.
+const DoorSuffix = "@"
+
+// SplitDoor is a store group's logical name and the door its identity
+// group was made for, which is empty for the one that keeps the bare
+// name.
+func SplitDoor(name string) (string, string) {
+	base, door, found := strings.Cut(name, DoorSuffix)
+	if !found || base == "" || door == "" {
+		return name, ""
+	}
+
+	return base, door
+}
+
+// Declared is what a deployment expects one namespace to hold, in two
+// lists, because "declared" means two different things here.
+//
+// Expected belongs to THIS namespace: missing, it is `absent` — the
+// apply has not run. Optional spans environments (`all:` groups, whose
+// scope is no single namespace): legitimate where it appears, and not
+// evidence of anything where it does not, so it is never reported
+// missing. Drawing the second kind as absent puts a false row in every
+// namespace; leaving it out of both puts the installation's own reader
+// on the page as drift.
+type Declared struct {
+	Expected []string
+	Optional []string
+}
+
 // Compare lays the groups a deployment declares for one namespace beside
 // what the store holds, and returns one view per group, sorted by name.
 //
 // Declared groups come from the installation's own policy — the same
 // file that decides who is in them — so "declared" here means "the
 // estate asks for this", never "somebody typed it into the console".
-func Compare(declared []string, live Live) []GroupView {
+func Compare(declared Declared, live Live) []GroupView {
 	views := map[string]*GroupView{}
 
 	policies := map[string]bool{}
@@ -92,14 +129,41 @@ func Compare(declared []string, live Live) []GroupView {
 		policies[name] = true
 	}
 
-	for _, name := range declared {
+	for _, name := range declared.Expected {
 		views[name] = &GroupView{Name: name, Declared: true, State: StateAbsent}
 	}
-	for name, group := range live.Groups {
+
+	// Legitimate where it appears and absent from nothing: a row exists
+	// only once the store shows one.
+	optional := map[string]bool{}
+	for _, name := range declared.Optional {
+		optional[name] = true
+	}
+	for stored, group := range live.Groups {
+		name, door := SplitDoor(stored)
+
 		view, ok := views[name]
 		if !ok {
-			view = &GroupView{Name: name}
+			view = &GroupView{Name: name, Declared: optional[name]}
 			views[name] = view
+		}
+
+		// The second door's twin adds a door and nothing else: its
+		// policies, members and aliases are the bare group's, read
+		// again.
+		if door != "" && !slices.Contains(view.Doors, door) {
+			view.Doors = append(view.Doors, door)
+			sort.Strings(view.Doors)
+
+			if view.State == "" {
+				view.State = StateUnexpected
+			}
+
+			if view.Declared {
+				view.State = StateBound
+			}
+
+			continue
 		}
 		view.Policies = slices.Clone(group.Policies)
 		view.Members = group.Members
@@ -140,24 +204,38 @@ func Compare(declared []string, live Live) []GroupView {
 	return out
 }
 
-// DeclaredFor is the groups of one environment, out of every internal
-// group the installation declares: the ones whose first segment is the
-// environment's name.
+// ScopeAll is the scope of a group that belongs to no single
+// environment: the operator's, and the reader this console uses.
+const ScopeAll = "all:"
+
+// DeclaredFor splits the groups an installation declares into what one
+// namespace must hold and what may legitimately appear in it.
 //
-// The convention this reads is the whole naming scheme —
-// `{environment}:{project}:{role}` — and a group that does not follow it
-// belongs to no namespace, which is why `all:` groups (the ones that
-// span environments) are not shown under any one of them.
-func DeclaredFor(environment string, groups []string) []string {
+// The convention it reads is the whole naming scheme —
+// `{environment}:{project}:{role}` — so a group whose first segment is
+// this environment belongs here and is missing when it is not there. An
+// `all:` group spans environments: it is fine where it appears and
+// proves nothing where it does not.
+//
+// Anything else belongs to another environment and is neither.
+func DeclaredFor(environment string, groups []string) Declared {
 	prefix := environment + ":"
-	out := make([]string, 0, len(groups))
+
+	var declared Declared
+
 	for _, name := range groups {
-		if strings.HasPrefix(name, prefix) {
-			out = append(out, name)
+		switch {
+		case strings.HasPrefix(name, prefix):
+			declared.Expected = append(declared.Expected, name)
+		case strings.HasPrefix(name, ScopeAll):
+			declared.Optional = append(declared.Optional, name)
 		}
 	}
-	sort.Strings(out)
-	return out
+
+	sort.Strings(declared.Expected)
+	sort.Strings(declared.Optional)
+
+	return declared
 }
 
 // Counts is how many groups are in each state, for a namespace's summary
