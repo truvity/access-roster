@@ -45,6 +45,42 @@ directory:
   # fresh installation, which is right for a laptop and nothing else.
   store: kubernetes
 
+  # THESE OBJECTS ARE A PROJECTION, NOT A LIVE SOURCE. Writing a new value
+  # into one does not rotate anything on a running pod, and nothing here
+  # watches them. Which ones need a restart differs, so the rule is per
+  # object rather than general:
+  #
+  #   workspace-credentials  RESTART. The credential is read once, when a
+  #                          replica first opens that workspace -- at
+  #                          start, or at the console's connect ceremony.
+  #                          After that the open reader is held in memory
+  #                          and the Secret is never read again. The only
+  #                          thing that drops a reader is DISCONNECTING
+  #                          the workspace, which also revokes the
+  #                          credential and deletes the snapshot: that is
+  #                          removal, not rotation.
+  #   session-key            RESTART. Read once while the stores are
+  #                          wired. Deleting it is the documented "sign
+  #                          everyone out" lever, and it takes effect on
+  #                          the restart, not on the delete.
+  #   github-links (App)     NO RESTART. The record and its credential are
+  #                          read from the API on every use, so a rotated
+  #                          value is picked up by the next request.
+  #
+  # The silence is the hazard: a rotation that has not taken effect looks
+  # exactly like one that has, until a restart hours or weeks later picks
+  # up the new value -- or, if the written value was wrong, takes the
+  # directory down at a moment nobody connects to the change. Measured on
+  # 2026-09-21: a deliberately corrupted credential went unnoticed for 14
+  # minutes of normal operation, probes and a successful directory read
+  # included, and would have gone unnoticed indefinitely.
+  #
+  # TO ROTATE a workspace credential or the session key: write the value,
+  # then restart the Deployment, then confirm from the logs that the new
+  # value was read ("opened a workspace this replica had not seen" for a
+  # workspace). RESTORING FROM A BACKUP IS A ROTATION and needs the same
+  # restart -- writing the good value back is not enough on its own.
+
   freshness:
     # how often the background refresher takes a new snapshot per
     # workspace.
