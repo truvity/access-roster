@@ -42,13 +42,8 @@ func kubeconfig(args []string) error {
 		// The exec plugin, which kubectl runs when it needs a token. The
 		// audience is the cluster's client id, so one plugin serves
 		// every cluster and nothing is duplicated per context.
-		if err = kubectl("config", "set-credentials", user,
-			"--exec-api-version="+execAPIVersion,
-			"--exec-command="+binary,
-			"--exec-arg=kube-token",
-			"--exec-arg=--audience="+one.Audience,
-			"--exec-arg=--issuer="+cfg.Issuer,
-		); err != nil {
+		if err = kubectl(append([]string{"config", "set-credentials", user},
+			credentialArgs(binary, one.Audience, cfg.Issuer)...)...); err != nil {
 			return err
 		}
 		if err = kubectl("config", "set-context", name, "--user="+user, "--cluster="+name); err != nil {
@@ -74,6 +69,40 @@ func kubeconfig(args []string) error {
 // choice at run time and the plugin answers that; this is only what the
 // entry is created with.
 const execAPIVersion = "client.authentication.k8s.io/v1"
+
+// credentialArgs is the `kubectl config set-credentials` tail for one
+// cluster, separated from the call so it can be asserted on: every
+// context this tool writes is only as good as this list, and the cost of
+// one wrong entry is a context that cannot authenticate at all.
+func credentialArgs(binary, audience, issuer string) []string {
+	return []string{
+		"--exec-api-version=" + execAPIVersion,
+		"--exec-command=" + binary,
+		"--exec-arg=kube-token",
+		"--exec-arg=--audience=" + audience,
+		"--exec-arg=--issuer=" + issuer,
+		// REQUIRED, and its absence is why every context this tool wrote
+		// was unusable. `interactiveMode` is optional in
+		// client.authentication.k8s.io/v1beta1, which defaults it, and
+		// MANDATORY in v1 -- which is what execAPIVersion above declares.
+		// kubectl refuses the entry outright:
+		//
+		//   error: interactiveMode must be specified for <user> to use
+		//   exec authentication plugin
+		//
+		// and refuses it before running the plugin, so the failure looks
+		// like a broken tool rather than a missing field.
+		//
+		// `Never` rather than IfAvailable because it is the truth:
+		// kube-token loads a cached sign-in, exchanges it and prints the
+		// credential. It never prompts and never opens a browser -- an
+		// expired sign-in is an error telling the person to run
+		// `accessctl login`. Never also means kubectl runs the plugin
+		// whether or not stdin exists, which is what makes the same
+		// kubeconfig work unchanged in CI.
+		"--exec-interactive-mode=Never",
+	}
+}
 
 func kubectl(args ...string) error {
 	command := exec.Command("kubectl", args...) //nolint:gosec // arguments this tool built
