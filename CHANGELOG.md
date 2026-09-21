@@ -1,3 +1,39 @@
+## v1.23.0
+
+- **The console shows a secret store.** A deployment declares one in
+  `secretManagers:` — its address, the door to log in on, and which
+  namespaces mirror which environments — and the console draws, per
+  namespace, every group the deployment declares beside what the store
+  holds, what each group's policy opens, and which doors admit it. A
+  person's page gains what their own groups reach. `ListSecretManagers`,
+  `GetSecretManagerNamespace` and `ListSecretManagerReach`, all viewer.
+- **Read-only, and not by omission.** A store's desired state is written
+  where you write it and applied by whatever applies it; a console that
+  also wrote would make two custodians of one thing. No call here takes a
+  write path, and the reader is granted the declared state — policies,
+  identity groups, their aliases, the auth mounts — and **no KV path at
+  all**, so a page built on this cannot show a secret's value however it
+  is later changed. A drift row links to where the fix is made.
+- **Four states, because a refused read is not an empty namespace.**
+  `bound`, `not applied yet` (declared and not in the store — not drift:
+  this side is already right), `not declared` (in the store and declared
+  by nothing, the row worth opening the page for) and `cannot read`. The
+  last is never inferred from an empty answer: the two are identical
+  except in the status of the call, and reporting one as the other sends
+  somebody to look at an apply that is fine.
+- **The reader is this service's own ServiceAccount**, projected for the
+  exchange audience and traded at the issuer for the store's audience
+  exactly as a CI job's token is. No second credential, nothing stored,
+  and the file is read per call because the kubelet rotates it under the
+  pod. Give that identity `list` on `sys/policies/acl`,
+  `identity/group/name` and `identity/group-alias/id`, `read` on each of
+  their children and on `sys/auth`, and nothing else
+  ([docs/connect/openbao.md](docs/connect/openbao.md#console-side)). An
+  exchange it is not granted is drawn on the page, naming the audience,
+  rather than raised as an error.
+- **`secretManagers[].caCertSecret`** mounts a PEM bundle trusted in
+  addition to the system's roots, for that store alone.
+
 ## v1.22.0
 
 - **`accessctl secrets env` fetches the values a team shares while it
