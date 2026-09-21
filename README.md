@@ -263,6 +263,7 @@ Every column, and why, is in
 | connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
 | mint a short-lived SSH, database or client certificate | [docs/connect/openbao.md](docs/connect/openbao.md) |
 | fetch the values a team shares while it develops into a `.env` file | [docs/connect/openbao.md](docs/connect/openbao.md#and-holds-a-teams-secrets) |
+| see a secret store's namespaces, groups and who reaches what — read-only | [docs/connect/openbao.md](docs/connect/openbao.md#console-side) |
 | see what the conformance suite said, and why | [docs/conformance.md](docs/conformance.md) |
 | run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |
 | build a service that accepts both people and workloads | [docs/connect/service-to-service.md](docs/connect/service-to-service.md) |
