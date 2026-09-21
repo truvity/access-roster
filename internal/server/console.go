@@ -160,6 +160,11 @@ type ConsoleDeps struct {
 	// AuditSinkService client: the same writer Audit records through. Nil
 	// is a deployment keeping no trail, whose events are in the log alone.
 	AuditSink directoryrosterv1connect.AuditSinkServiceClient
+	// SecretManagers are the secret stores this console SHOWS -- never
+	// writes. Nil is a deployment that declares none, which is every
+	// installation running no store: the console then has no such page
+	// rather than an empty one.
+	SecretManagers *SecretManagers
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on
@@ -177,6 +182,8 @@ var (
 	_ directoryrosterv1connect.AccessServiceHandler    = (*Console)(nil)
 	_ directoryrosterv1connect.GitHubServiceHandler    = (*Console)(nil)
 	_ directoryrosterv1connect.AuditServiceHandler     = (*Console)(nil)
+
+	_ directoryrosterv1connect.SecretManagerServiceHandler = (*Console)(nil)
 )
 
 // NewConsole returns the operator services.
