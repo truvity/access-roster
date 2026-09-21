@@ -161,7 +161,13 @@ export type StateKind =
   // Where any GitHub App stands, for a reader: done, or who moves next.
   | "done"
   | "waiting-person"
-  | "waiting-controller";
+  | "waiting-controller"
+  // A group of a secret store's namespace: what the deployment declares
+  // laid beside what the store holds.
+  | "bound"
+  | "absent"
+  | "unexpected"
+  | "unreadable";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The provider reports this account as active." },
@@ -237,6 +243,23 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
     label: "unverifiable",
     color: "warning",
     title: "The link can no longer be checked, and GitHub did not say it is gone. It neither adds nor removes anybody until the person links again.",
+  },
+  bound: { label: "bound", color: "success", title: "Declared here, present in the store, and carrying a policy of its own name." },
+  absent: {
+    label: "not applied yet",
+    color: "secondary",
+    title: "Declared here and not in the store. Not drift: this side is already right, and the store has yet to hear it — whatever applies the store's desired state has not run, or refused.",
+  },
+  unexpected: {
+    label: "not declared",
+    color: "warning",
+    filled: true,
+    title: "In the store and declared by nothing here. Somebody has access no reviewed file asks for; it is removed where the store's desired state is written, never from this console.",
+  },
+  unreadable: {
+    label: "cannot read",
+    color: "default",
+    title: "This service was refused the read. NOT an empty namespace: the two look identical except in the status of the call, and the difference is the whole reason this is a state of its own.",
   },
 };
 

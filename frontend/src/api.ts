@@ -10,6 +10,7 @@ import { SettingsService } from "./gen/directoryroster/v1/settings_pb";
 import { AccessService, Role } from "./gen/directoryroster/v1/access_pb";
 import { GitHubService } from "./gen/directoryroster/v1/github_pb";
 import { AuditService } from "./gen/directoryroster/v1/audit_pb";
+import { SecretManagerService } from "./gen/directoryroster/v1/openbao_pb";
 import { SessionService, How } from "./gen/accessissuer/v1/session_pb";
 
 // The hub's own services, reached under wherever this console is
@@ -41,6 +42,8 @@ export const settings = createClient(SettingsService, transport);
 export const access = createClient(AccessService, transport);
 export const github = createClient(GitHubService, transport);
 export const audit = createClient(AuditService, transport);
+// The secret stores, read-only: this client has no write call to make.
+export const secretStores = createClient(SecretManagerService, transport);
 
 // The issuer's SessionService, same-origin at the domain root — never
 // under this console's own path, however it is

@@ -12,12 +12,13 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 
-import { access, forHowLong, github, issuerIsSameOrigin, personName, reason, roleName, sessions, sourceName, type Me } from "./api";
+import { access, forHowLong, github, issuerIsSameOrigin, personName, reason, roleName, secretStores, sessions, sourceName, type Me } from "./api";
 import type { ExplainRequest, ExplainResponse } from "./gen/directoryroster/v1/access_pb";
 import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { labelOf, linkPage, rowsOf, sentence, tooltipOf } from "./githubModel";
+import { byNamespace, opens, prefixes } from "./secretStoresModel";
 import { loginCell, OwnerRule, sourceName as linkSourceName } from "./GitHub";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type Fact } from "./ui";
 import { SessionsPanel } from "./Sessions";
@@ -258,6 +259,8 @@ export function Explanation({
         </Section>
       ) : null}
 
+      {isPerson && identity?.email ? <SecretReach email={identity.email} /> : null}
+
       {isPerson ? (
         <Section title="Provider groups" hint="every group the provider puts them in, before the policy looks at any of it">
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -392,5 +395,67 @@ function GitHubSection({ email, self }: { email: string; self: boolean }) {
         )}
       </Section>
     </Box>
+  );
+}
+
+/** What this person's groups open in the declared secret stores, read
+ *  from the policy each STORE holds rather than from what this side
+ *  declares — the gap between the two is what somebody looking here is
+ *  trying to find.
+ *
+ *  Empty is the ordinary answer and draws nothing: most people are in no
+ *  group any store admits, and an empty section on every page would be a
+ *  question mark where there is no question. */
+function SecretReach({ email }: { email: string }) {
+  const answer = useAsync(() => secretStores.listSecretManagerReach({ email }), [email]);
+  const reach = answer.value?.reach ?? [];
+  if (answer.loading || reach.length === 0) return null;
+
+  return (
+    <Section
+      title="Secret stores they can reach"
+      hint={`${prefixes(reach).length} path${prefixes(reach).length === 1 ? "" : "s"}, through ${reach.length} group${reach.length === 1 ? "" : "s"} — what the store's own policy grants, not what this side declares`}
+    >
+      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Store</TableCell>
+              <TableCell>Namespace</TableCell>
+              <TableCell>Through</TableCell>
+              <TableCell>Opens</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {byNamespace(reach).flatMap((group) =>
+              group.reach.map((one) => (
+                <TableRow key={`${one.manager}/${one.namespace}/${one.group}`} hover>
+                  <TableCell>
+                    <Ref to={paths.secretStores()} mono>
+                      {one.manager}
+                    </Ref>
+                  </TableCell>
+                  <TableCell>
+                    <Ref to={paths.secretNamespace(one.manager, one.namespace)} mono>
+                      {one.namespace}
+                    </Ref>
+                  </TableCell>
+                  <TableCell>
+                    <Ref to={paths.group(one.group)} mono>
+                      {one.group}
+                    </Ref>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color={one.writes ? "warning.main" : "text.secondary"} sx={{ fontFamily: "monospace" }}>
+                      {one.unreadable ? "could not be read" : opens(one.rules) || "nothing"}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )),
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Section>
   );
 }
