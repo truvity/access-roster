@@ -178,6 +178,16 @@ chart-lint:
     for golden in tests/golden/*/*.yaml; do
       test "$(yq ea '[.. | select(tag == "!!map" and has("backendRefs")) | .backendRefs[] | select(has("weight") | not)] | length' "$golden")" = "0"
     done
+    # Every PushSecret dataTo entry carries its own storeRef. external-
+    # secrets validates this with a CEL rule in the CRD, so nothing that
+    # only RENDERS can see it: helm template, the values schema and the
+    # golden diff all pass on a manifest the API server refuses outright
+    # with "storeRef must specify either name or labelSelector". It
+    # shipped that way once, and Argo retried the rejected task forever
+    # while the resource simply never existed.
+    for golden in tests/golden/*/*.yaml; do
+      test "$(yq ea '[.. | select(tag == "!!map" and has("dataTo")) | .dataTo[] | select(has("storeRef") | not)] | length' "$golden")" = "0"
+    done
 
 # Regenerate the golden renders -- review the diff before committing.
 golden:

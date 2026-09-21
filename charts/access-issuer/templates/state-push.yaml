@@ -87,4 +87,25 @@ spec:
   dataTo:
     - conversionStrategy: None
       remoteKey: {{ .push.remoteKey }}
+      # REQUIRED PER ENTRY. The top-level secretStoreRefs above does NOT
+      # satisfy it: external-secrets puts a CEL rule on every dataTo item,
+      #
+      #   has(self.storeRef) && (has(self.storeRef.name) ||
+      #                          has(self.storeRef.labelSelector))
+      #
+      # and an API server refuses the object outright without it --
+      # "spec.dataTo[0]: Invalid value: storeRef must specify either name
+      # or labelSelector", which names storeRef while pointing at dataTo
+      # and so reads as though the store block above were wrong.
+      #
+      # THE SAME STORE as secretStoreRefs, never a second value. A push
+      # already names where it writes; letting the two diverge would put
+      # the copy somewhere nobody looks for it.
+      #
+      # This shipped broken once. `helm template`, the values schema and
+      # the golden renders all passed, because a CEL rule lives in the CRD
+      # and none of them has one -- so chart-lint pins the shape instead.
+      storeRef:
+        name: {{ .push.secretStore.name }}
+        kind: {{ $kind }}
 {{- end }}
