@@ -96,6 +96,12 @@ export const paths = {
   // literally "catalogue" keeps the old prefix, which the parser strips,
   // so it is not read as the old list's address.
   githubApp: (id: string) => (id === "catalogue" ? "/github/apps/catalogue/catalogue" : `/github/apps/${encodeURIComponent(id)}`),
+  // The secret stores this deployment declares, and one namespace of
+  // one store. A namespace is an environment, so its address is the pair
+  // that names it rather than a synthetic id.
+  secretStores: () => "/secret-stores",
+  secretNamespace: (manager: string, namespace: string) =>
+    `/secret-stores/${encodeURIComponent(manager)}/${encodeURIComponent(namespace)}`,
   // Every open session in the installation. Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",

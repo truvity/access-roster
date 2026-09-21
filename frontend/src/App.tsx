@@ -18,6 +18,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import AppsIcon from "@mui/icons-material/Apps";
 import GitHubIcon from "@mui/icons-material/GitHub";
+import LockIcon from "@mui/icons-material/Lock";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import DomainIcon from "@mui/icons-material/Domain";
 import GroupsIcon from "@mui/icons-material/Groups";
@@ -35,6 +36,7 @@ import { useAsync } from "./hooks";
 import { paths, useRoute } from "./router";
 import { Search } from "./Search";
 import { Overview } from "./Overview";
+import { SecretNamespace, SecretStores } from "./SecretStores";
 import { Directories, Directory } from "./Directories";
 import { DirectoryGroups, DirectoryGroup } from "./DirectoryGroups";
 import { People } from "./People";
@@ -74,6 +76,11 @@ const internalSide: Item[] = [
   // A GitHub team is fed by internal groups the way a client is opened by
   // them, so it belongs on this side.
   { value: "github", label: "GitHub", to: paths.github(), icon: <GitHubIcon fontSize="small" /> },
+  // A secret store's namespaces admit the same internal groups, so it
+  // reads here beside the other things those groups open. READ-ONLY:
+  // this side of the console shows what the store holds, and the store's
+  // desired state is written where it is applied from.
+  { value: "secret-stores", label: "Secret stores", to: paths.secretStores(), icon: <LockIcon fontSize="small" /> },
 ];
 // Every open session in the installation. It only exists once
 // an issuer shares this console's origin, and even then it is
@@ -343,6 +350,8 @@ function PageFor({
       return id ? <Client id={id} issuerUrl={issuerIsSameOrigin(me?.issuerUrl) ? me?.issuerUrl : undefined} operator={operator} onDone={onDone} /> : <Clients />;
     case "github":
       return <GitHubPage section={id} rest={rest} operator={operator} onDone={onDone} />;
+    case "secret-stores":
+      return id && rest[0] ? <SecretNamespace manager={id} namespace={rest[0]} /> : <SecretStores />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "audit":
