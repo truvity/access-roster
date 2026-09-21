@@ -1,0 +1,21 @@
+# Recovery copies of the two Secrets this service writes and nothing else
+# can re-deliver. Both are bundled under one remote key rather than mapped
+# per key, because the key names inside are not stable — the render pins
+# that, since a per-key mapping would look correct today and stop matching
+# after a reconnect or a newly bound organisation.
+#
+# deletionPolicy is NOT settable here and the golden shows None on both:
+# the case these exist for is the Secret going away.
+issuerURL: https://access.example
+directory:
+  push:
+    secretStore:
+      name: example-store
+      kind: ClusterSecretStore
+    remoteKey: platform/access-issuer/workspace
+githubApps:
+  push:
+    secretStore:
+      name: example-store
+    remoteKey: platform/access-issuer/github-apps
+    refreshInterval: 30m

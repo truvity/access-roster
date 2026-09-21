@@ -59,6 +59,42 @@ directory:
   # How long the console's own session lasts.
   sessionLifetime: 12h
 
+  # A SECOND COPY OF THE WORKSPACE CREDENTIAL, for recovery. Off unless
+  # written out.
+  #
+  #   push:
+  #     secretStore: {name: openbao, kind: ClusterSecretStore}
+  #     remoteKey: infra/access-issuer-workspace
+  #
+  # WHY THIS EXISTS. With `store: kubernetes` the credential an operator
+  # connected lives in exactly one place: a Secret this service writes
+  # during the connect ceremony. Every other secret an installation runs on
+  # arrives FROM somewhere and can be re-delivered; this one has no
+  # upstream. Delete the Secret -- a drill, a rebuilt namespace, a
+  # mistyped `kubectl delete` -- and the only way back is an operator
+  # reconnecting the workspace in a browser.
+  #
+  # IT CANNOT BE AN ExternalSecret INSTEAD, and that is the whole reason
+  # this is a push. The service is the writer. Pulling the credential from
+  # a store would let the store overwrite a freshly connected workspace
+  # with a stale copy: a backup that corrupts the thing it backs up.
+  #
+  # BE HONEST ABOUT WHAT IT PROTECTS. It protects the COPY, not the
+  # credential. If Google revokes the key, what is in the store is equally
+  # dead and an operator needs a new one from Google either way. This is
+  # for losing the Secret while the credential is still good.
+  #
+  # And what it writes IS the credential -- a second durable copy of a key
+  # that can read the directory, rotated as one, and the store that holds
+  # it is in its blast radius. Name a store the installation already trusts
+  # with material of that weight.
+  #
+  # The whole Secret goes, bundled under one remote key, because the key
+  # name inside it is `<workspace-id>.json` and a reconnect mints a new id.
+  # A per-key mapping would stop matching silently and the copy would go
+  # stale while still reporting healthy.
+  # (absent by default — the block above is the shape)
+
   # Whether the console offers a sign-in of its own, under /console/login.
   # The issuer's page at the origin root is the one people use; this is
   # the door for an installation reached without it.
@@ -463,6 +499,41 @@ githubApps:
   # as examples/github-apps.yaml, with what each App is for and why they
   # are separate identities.
   catalogue: []
+
+  # A SECOND COPY OF THE APPS THIS SERVICE ACTS AS -- the link App and one
+  # per bound organisation, the Secret `<release>-github-apps`. Off unless
+  # written out, same shape as `directory.push`:
+  #
+  #   push:
+  #     secretStore: {name: openbao, kind: ClusterSecretStore}
+  #     remoteKey: infra/access-issuer-github-apps
+  #
+  # Distinct from `catalogue[].push` above, which copies ONE catalogue
+  # App's three keys to a consumer that must act as that App. This copies
+  # the service's OWN identities, and only so they can be restored.
+  #
+  # Losing them is worse than it sounds: an App cannot be re-created with
+  # its old id, so recovery is not "make another one" -- every grant that
+  # names the App rebinds, and every installation is re-authorised by hand.
+  #
+  # Bundled under one remote key, like the workspace credential, because
+  # the keys are `_link.json` and `<org>.json`: an organisation bound later
+  # adds a key, and a per-key mapping written today would not carry it.
+  # (absent by default — the block above is the shape)
+
+# THE SESSION KEY IS DELIBERATELY NOT PUSHABLE, and this note is the
+# feature.
+#
+# It is the obvious next candidate -- the service writes it, it is a
+# Secret, the machinery is right here -- and copying it would make the
+# installation worse. Losing it signs everyone out and the service mints a
+# fresh one: correct behaviour, not a failure, and nothing an operator
+# must recover. A durable copy buys none of that back and widens what a
+# compromise of the store is worth, from reading secrets to forging
+# sessions.
+#
+# So there is no `session.push`. If a later installation asks for one, the
+# answer is this paragraph rather than a knob.
 
 # The audit trail: sign-ins, refusals, exchanges, revokes, connects, and
 # what a reporting component (the GitHub controller) did. Kept in S3 — the

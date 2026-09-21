@@ -244,14 +244,29 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "properties": {
-              "group": {"type": "string"},
-              "kind": {"type": "string"},
-              "name": {"type": "string", "minLength": 1},
-              "namespace": {"type": "string"},
-              "sectionName": {"type": "string"},
-              "port": {"type": "integer"}
+              "group": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "sectionName": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer"
+              }
             }
           }
         },
@@ -392,7 +407,11 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "org", "permissions"],
+            "required": [
+              "id",
+              "org",
+              "permissions"
+            ],
             "properties": {
               "id": {
                 "type": "string",
@@ -415,8 +434,17 @@
               "permissions": {
                 "type": "object",
                 "minProperties": 1,
-                "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
-                "additionalProperties": { "type": "string", "enum": ["read", "write", "admin"] }
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "write",
+                    "admin"
+                  ]
+                }
               },
               "events": {
                 "type": "array",
@@ -427,14 +455,21 @@
               },
               "installation": {
                 "type": "string",
-                "enum": ["all", "selected"]
+                "enum": [
+                  "all",
+                  "selected"
+                ]
               },
               "grants": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["group", "repositories", "permissions"],
+                  "required": [
+                    "group",
+                    "repositories",
+                    "permissions"
+                  ],
                   "properties": {
                     "group": {
                       "type": "string",
@@ -451,8 +486,17 @@
                     "permissions": {
                       "type": "object",
                       "minProperties": 1,
-                      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
-                      "additionalProperties": { "type": "string", "enum": ["read", "write", "admin"] }
+                      "propertyNames": {
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                          "read",
+                          "write",
+                          "admin"
+                        ]
+                      }
                     }
                   }
                 }
@@ -461,15 +505,29 @@
                 "type": "object",
                 "additionalProperties": false,
                 "description": "Copy this App's credential to a secret store with an External Secrets PushSecret: its three property keys only, to the store and path named here. Absent pushes nothing.",
-                "required": ["secretStore", "remoteKey"],
+                "required": [
+                  "secretStore",
+                  "remoteKey"
+                ],
                 "properties": {
                   "secretStore": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["name"],
+                    "required": [
+                      "name"
+                    ],
                     "properties": {
-                      "name": { "type": "string", "minLength": 1 },
-                      "kind": { "type": "string", "enum": ["SecretStore", "ClusterSecretStore"] }
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "SecretStore",
+                          "ClusterSecretStore"
+                        ]
+                      }
                     }
                   },
                   "remoteKey": {
@@ -481,10 +539,51 @@
                   },
                   "deletionPolicy": {
                     "type": "string",
-                    "enum": ["None", "Delete"]
+                    "enum": [
+                      "None",
+                      "Delete"
+                    ]
                   }
                 }
               }
+            }
+          }
+        },
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Copy the link App and one App per bound organisation to a secret store with an External Secrets PushSecret, for recovery: the whole Secret bundled under one remote key, because the key names inside it are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "required": [
+            "secretStore",
+            "remoteKey"
+          ],
+          "properties": {
+            "secretStore": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ]
+                }
+              }
+            },
+            "remoteKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
             }
           }
         }
@@ -661,6 +760,44 @@
                   "type": "string"
                 }
               }
+            }
+          }
+        },
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Copy the credential of every connected workspace to a secret store with an External Secrets PushSecret, for recovery: the whole Secret bundled under one remote key, because the key names inside it are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "required": [
+            "secretStore",
+            "remoteKey"
+          ],
+          "properties": {
+            "secretStore": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ]
+                }
+              }
+            },
+            "remoteKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
             }
           }
         }
