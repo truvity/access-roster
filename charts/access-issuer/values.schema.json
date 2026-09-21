@@ -644,6 +644,25 @@
               }
             }
           },
+          "caCertConfigMap": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "description": "A ConfigMap holding a PEM bundle, trusted IN ADDITION to the system's roots for this store alone. What trust-manager writes into every namespace; name this OR caCertSecret, never both.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Default ca.crt."
+              }
+            }
+          },
           "namespaces": {
             "type": "array",
             "minItems": 1,

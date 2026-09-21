@@ -277,7 +277,7 @@ spec:
               mountPath: /var/run/access-issuer/secret-managers-token
               readOnly: true
             {{- range $manager := .Values.secretManagers }}
-            {{- if $manager.caCertSecret }}
+            {{- if or $manager.caCertSecret $manager.caCertConfigMap }}
             - name: secret-managers-ca-{{ $manager.name }}
               mountPath: /var/run/access-issuer/secret-managers-ca/{{ $manager.name }}
               readOnly: true
@@ -365,12 +365,20 @@ spec:
                   audience: {{ .Values.exchange.audience | default (include "access-issuer.fullname" .) }}
                   expirationSeconds: 3600
         {{- range $manager := .Values.secretManagers }}
-        {{- if $manager.caCertSecret }}
+        {{- if or $manager.caCertSecret $manager.caCertConfigMap }}
         # A store behind a private root. The bundle is trusted IN
         # ADDITION to the system's, for connections to that store alone.
+        # A Secret or a ConfigMap: a root is not a secret, and
+        # trust-manager writes it as the second into every namespace.
         - name: secret-managers-ca-{{ $manager.name }}
+        {{- with $manager.caCertSecret }}
           secret:
-            secretName: {{ $manager.caCertSecret.name }}
+            secretName: {{ .name }}
+        {{- end }}
+        {{- with $manager.caCertConfigMap }}
+          configMap:
+            name: {{ .name }}
+        {{- end }}
         {{- end }}
         {{- end }}
         {{- end }}
