@@ -10,15 +10,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
 
-// The OpenBAO API this speaks, which is three calls: log in, write once,
-// revoke. No client library, deliberately — a login, one `sign` and a
-// revoke are plain JSON over HTTP, and the alternative is a
-// dependency tree larger than the rest of this binary inside a tool
-// people install to avoid installing things.
+// The OpenBAO API this speaks, which is a handful of calls: log in,
+// write once, read, list, revoke. No client library, deliberately — each
+// of them is plain JSON over HTTP, and the alternative is a dependency
+// tree larger than the rest of this binary inside a tool people install
+// to avoid installing things.
 //
 // The token a login returns lives in this struct and nowhere else. It is
 // never written to a file, never printed, and never passed as an
@@ -116,7 +117,7 @@ func firstEnv(names ...string) string {
 // half can be skipped, which is why a session revoked in the console
 // stops issuance within the exchange's token cap.
 func (b *openbao) login(ctx context.Context, mount, role, jwt string) error {
-	data, err := b.call(ctx, "auth/"+mount+"/login", map[string]any{"role": role, "jwt": jwt})
+	data, err := b.call(ctx, http.MethodPost, "auth/"+mount+"/login", nil, map[string]any{"role": role, "jwt": jwt})
 	if err != nil {
 		return fmt.Errorf("log in on %s: %w", mount, err)
 	}
@@ -130,7 +131,7 @@ func (b *openbao) login(ctx context.Context, mount, role, jwt string) error {
 // write is the one call that mints: `ssh/sign/<role>` or
 // `pki/sign/<role>`, and nothing else in the whole command.
 func (b *openbao) write(ctx context.Context, path string, body map[string]any) (map[string]any, error) {
-	answer, err := b.call(ctx, path, body)
+	answer, err := b.call(ctx, http.MethodPost, path, nil, body)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +139,67 @@ func (b *openbao) write(ctx context.Context, path string, body map[string]any) (
 		return nil, fmt.Errorf("%w: %s answered with no data", errUnreachable, path)
 	}
 	return answer.Data, nil
+}
+
+// read is one value out of a KV version 2 engine: the fields of the
+// latest version at `<mount>/data/<path>`, and no metadata.
+//
+// `data/` is the API path, not the path `bao kv get` prints. `bao kv get
+// -mount=kv orders/checkout/API_TOKEN` reads `kv/data/orders/checkout/API_TOKEN`,
+// and a policy written on the path off the command line grants nothing at
+// all — which shows up as a 403 for somebody who is plainly in the group,
+// and sends people looking at the issuer.
+//
+// The answer's envelope nests the value one level down (`data.data`),
+// beside the version metadata this never reads: what is wanted is the
+// fields, and the version a value came from is not something to write
+// into a file that is regenerated on every run.
+func (b *openbao) read(ctx context.Context, mount, path string) (map[string]any, error) {
+	// A deleted latest version is a 404 carrying the version's metadata,
+	// and `call`'s 404 sentence is about a mount or a role — which is
+	// true of the paths `credential` calls and nonsense on this one. The
+	// difference matters because a deleted version still LISTS: the name
+	// is there, the value is not, and the message has to say which.
+	gone := func() error {
+		return notFound{fmt.Errorf("%s/data/%s holds no current value: either it was removed "+
+			"between the listing and this read, or its latest version was deleted", mount, path)}
+	}
+	answer, err := b.call(ctx, http.MethodGet, mount+"/data/"+path, nil, nil)
+	if nothingThere(err) {
+		return nil, gone()
+	}
+	if err != nil {
+		return nil, err
+	}
+	fields, ok := answer.Data["data"].(map[string]any)
+	if !ok || fields == nil {
+		return nil, gone()
+	}
+	return fields, nil
+}
+
+// list is the names directly under a KV version 2 prefix, a name ending
+// in `/` being a prefix of its own rather than a value.
+//
+// GET with `?list=true` rather than the `LIST` method, although OpenBAO
+// routes both to the same handler: LIST is not a method anything between
+// a laptop and the API is obliged to forward, and the one that refuses it
+// answers 405 — which arrives here as a failure about the path rather
+// than about the proxy. Vault's own client sends GET for the same reason,
+// so this is the spelling installations are known to serve.
+func (b *openbao) list(ctx context.Context, mount, prefix string) ([]string, error) {
+	answer, err := b.call(ctx, http.MethodGet, mount+"/metadata/"+prefix, url.Values{"list": {"true"}}, nil)
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := answer.Data["keys"].([]any)
+	names := make([]string, 0, len(raw))
+	for _, one := range raw {
+		if name, ok := one.(string); ok && strings.TrimSpace(name) != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
 }
 
 // revokeSelf ends the login, and is deliberately best-effort.
@@ -152,8 +214,20 @@ func (b *openbao) revokeSelf(ctx context.Context) {
 	if b.token == "" {
 		return
 	}
-	_, _ = b.call(ctx, "auth/token/revoke-self", nil)
+	_, _ = b.call(ctx, http.MethodPost, "auth/token/revoke-self", nil, nil)
 	b.token = ""
+}
+
+// notFound is a path OpenBAO has nothing at, typed because the two
+// callers read it differently: a missing role is the end of the command,
+// while a KV prefix with nothing under it is an empty listing — OpenBAO
+// answers 404 rather than an empty one — and the caller decides what an
+// empty answer means.
+type notFound struct{ error }
+
+func nothingThere(err error) bool {
+	var missing notFound
+	return errors.As(err, &missing)
 }
 
 // answer is as much of OpenBAO's envelope as anything here reads.
@@ -165,14 +239,19 @@ type answer struct {
 	Errors []string `json:"errors"`
 }
 
-// call is one POST, with the status turned into this tool's exit codes.
+// call is one request, with the status turned into this tool's exit
+// codes. Everything this tool asks OpenBAO goes through here — the POSTs
+// that log in, sign and revoke, and the GETs that read and list — so a
+// status means one thing in one place.
 //
 // The mapping is the contract the rest of the tool already keeps: a
 // refusal is final and a script should stop, an outage is worth another
 // try. A 404 gets a sentence of its own because on a path of this shape
 // it almost always means the role has not been created yet, which reads
-// as nothing at all when it arrives as "404 Not Found".
-func (b *openbao) call(ctx context.Context, path string, body map[string]any) (answer, error) {
+// as nothing at all when it arrives as "404 Not Found"; it is also typed,
+// because on a KV path it means something else entirely and only the
+// caller can tell which.
+func (b *openbao) call(ctx context.Context, method, path string, query url.Values, body map[string]any) (answer, error) {
 	var payload io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -182,7 +261,11 @@ func (b *openbao) call(ctx context.Context, path string, body map[string]any) (a
 		payload = bytes.NewReader(encoded)
 	}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, b.Address+"/v1/"+path, payload)
+	address := b.Address + "/v1/" + path
+	if len(query) > 0 {
+		address += "?" + query.Encode()
+	}
+	request, err := http.NewRequestWithContext(ctx, method, address, payload)
 	if err != nil {
 		return answer{}, fmt.Errorf("%w: build the request to %s: %w", errUnreachable, path, err)
 	}
@@ -226,8 +309,8 @@ func (b *openbao) call(ctx context.Context, path string, body map[string]any) (a
 	case response.StatusCode == http.StatusForbidden:
 		return answer{}, fmt.Errorf("%w: %s: %s", errNotGranted, path, or(said, "refused"))
 	case response.StatusCode == http.StatusNotFound:
-		return answer{}, fmt.Errorf("%s does not exist: %s",
-			path, or(said, "the mount or the role has not been created in this namespace"))
+		return answer{}, notFound{fmt.Errorf("%s does not exist: %s",
+			path, or(said, "the mount or the role has not been created in this namespace"))}
 	case response.StatusCode >= http.StatusInternalServerError:
 		return answer{}, fmt.Errorf("%w: %s answered %s: %s", errUnreachable, path, response.Status, said)
 	default:

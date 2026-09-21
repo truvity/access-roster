@@ -97,6 +97,8 @@ func run(args []string) error {
 		return awsCredentials(args[1:])
 	case "credential":
 		return credential(args[1:])
+	case "secrets":
+		return secrets(args[1:])
 	case "kubeconfig":
 		return kubeconfig(args[1:])
 	case "aws-config":
@@ -127,6 +129,7 @@ func usage(to *os.File) {
   kube-token    a Kubernetes exec credential      (run by kubectl)
   aws           an AWS credential process answer  (run by the AWS SDKs)
   credential    a short-lived ssh, db or client certificate, minted by OpenBAO
+  secrets       a team's shared values, out of OpenBAO and into a .env file
   exchange      the raw exchange: a token in, a token for an audience out
 
 Exit codes: 0 ok, 2 usage, 3 not signed in, 4 audience or App not granted,
