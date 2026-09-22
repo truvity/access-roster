@@ -7,8 +7,7 @@ things it expects the deployment to provide.
 **One chart, `charts/access-issuer`, for one service.** It renders the
 whole of access-roster — the directory, the policy, the OpenID provider,
 the login page, the console and the audit trail — and, when enabled,
-the GitHub controller beside it. The pre-0.12 `directory-roster` chart
-has left the release; its history is this page's git history.
+the GitHub controller beside it.
 
 ## What the chart includes, what it expects
 

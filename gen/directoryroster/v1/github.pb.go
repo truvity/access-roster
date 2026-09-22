@@ -3024,7 +3024,7 @@ type GetGitHubStatusResponse struct {
 	// false where people cannot link accounts here, for the same reason.
 	LinkingAvailable bool `protobuf:"varint,4,opt,name=linking_available,json=linkingAvailable,proto3" json:"linking_available,omitempty"`
 	// the connected link App; absent until an operator creates it.
-	// Superseded by the `link` App in ListGitHubApps.
+	// Also in ListGitHubApps, as the `link` App, which is what the console reads.
 	LinkApp *GitHubLinkApp `protobuf:"bytes,5,opt,name=link_app,json=linkApp,proto3" json:"link_app,omitempty"`
 	// the page a person opens to link their account. Share it.
 	LinkUrl string `protobuf:"bytes,6,opt,name=link_url,json=linkUrl,proto3" json:"link_url,omitempty"`
@@ -3034,11 +3034,11 @@ type GetGitHubStatusResponse struct {
 	// runner Apps.
 	RunnerTiers []string `protobuf:"bytes,8,rep,name=runner_tiers,json=runnerTiers,proto3" json:"runner_tiers,omitempty"`
 	// every runner App created, never with its key.
-	// Superseded by the `runners` Apps in ListGitHubApps.
+	// Also in ListGitHubApps, as the `runners` Apps, which is what the console reads.
 	RunnerApps []*GitHubRunnerApp `protobuf:"bytes,9,rep,name=runner_apps,json=runnerApps,proto3" json:"runner_apps,omitempty"`
 	// every App the deployment's catalogue declares, and every one created
 	// from an entry it no longer declares, with its state on GitHub.
-	// Superseded by the `tokens` Apps in ListGitHubApps.
+	// Also in ListGitHubApps, as the `tokens` Apps, which is what the console reads.
 	CatalogueApps []*GitHubCatalogueApp `protobuf:"bytes,10,rep,name=catalogue_apps,json=catalogueApps,proto3" json:"catalogue_apps,omitempty"`
 	// false where this deployment keeps no catalogue Apps.
 	CatalogueAvailable bool `protobuf:"varint,11,opt,name=catalogue_available,json=catalogueAvailable,proto3" json:"catalogue_available,omitempty"`
@@ -3490,7 +3490,7 @@ type GitHubOrganisation struct {
 	// are, so they are listed and never touched.
 	Unlinked []*GitHubAccount `protobuf:"bytes,10,rep,name=unlinked,proto3" json:"unlinked,omitempty"`
 	// how the controller acts in it. Absent until an operator connects it.
-	// Superseded by the organisation's `controller` App in ListGitHubApps.
+	// Also in ListGitHubApps, as the organisation's `controller` App, which is what the console reads.
 	Connection *GitHubConnection `protobuf:"bytes,11,opt,name=connection,proto3" json:"connection,omitempty"`
 	// accounts with access to repositories without membership: reported.
 	OutsideCollaborators []*GitHubAccount `protobuf:"bytes,12,rep,name=outside_collaborators,json=outsideCollaborators,proto3" json:"outside_collaborators,omitempty"`

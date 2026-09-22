@@ -1,6 +1,14 @@
 # access-proxy — the console exposure
 
-**Status:** built; in front of every proxied console since 0.9.
+**Status:** built and published. **Nothing in this repository needs it,
+and no console this repository knows of runs behind it**: a console that
+can run an OpenID flow signs in as a client of the issuer directly, and
+since 0.12 the directory console is one of those. The chart stays, and
+is released with every tag, for the two cases that remain — a console
+with no OpenID flow of its own, and one that wants a **server-side
+session store** in front of it rather than a token in a cookie. Read
+this page as the description of a chart you may deploy, not of a
+component the installation already has.
 
 **Decided 2026-09-10 (supersedes 2026-09-08):** the client is **declared**,
 and that is permanent. Self-registration was designed and then dropped:
@@ -40,13 +48,14 @@ the state the service signed when an operator started the flow. A callback
 that checked the request instead refused the one flow the surface exists
 to finish.
 
-**Decided 2026-09-08, superseded at 0.12:** its first consumer was the
-directory console, in the `authenticated` posture — the service resolves
-viewer and operator from the directory it owns, so the gateway gated on
-"signed in" and the application decided the rest. Since 0.12 that
-console signs in as a client of the issuer it shares an origin with and
-needs no proxy; the chart's consumers are consoles with no OpenID flow
-of their own.
+**Decided 2026-09-08:** a console that already resolves viewer and
+operator from a directory it owns belongs in the `authenticated`
+posture — the gateway gates on "signed in" and the application decides
+the rest, because a `groups` rule at the gateway would be the stale copy
+of a decision the application makes anyway. That posture is still the
+right one for such a console; the directory console itself no longer
+needs a proxy at all, because it signs in as a client of the issuer it
+shares an origin with.
 
 ## Purpose
 

@@ -1550,7 +1550,7 @@ the caller first.
   the browser had opened; `/end_session` — what oauth2-proxy chains to —
   only ended the sign-in. So a console behind a proxy went on refreshing
   and serving pages after a sign-out that reported success, which is how
-  it was reported from hubble. Both call one `SignOut` now.
+  it was reported from a proxied console. Both call one `SignOut` now.
 
 ## v0.14.3
 
@@ -2047,7 +2047,7 @@ looking at every page at 1440px and at 390px.
   will ever prune them — and an orphaned HTTPRoute still competes for its
   hostname.
 
-  It refuses to run unless hubble's session store and the workspace
+  It refuses to run unless the proxies' session store and the workspace
   records are both present, because those are what must survive, and it
   names every object rather than selecting by label: a selector here
   would also match what the service itself wrote.
@@ -2453,7 +2453,7 @@ git history.
   nothing bookmarked or scripted moves.
 
 - **A moved Valkey no longer needs a human.** On 2026-09-10 a Valkey pod
-  was rescheduled onto a new address; the issuer and hubble's proxy went
+  was rescheduled onto a new address; the issuer and a console's proxy went
   on dialling the old one for half an hour, reported **Ready**
   throughout, and had to be restarted by hand. Three things were wrong
   and all three are fixed. **Cluster mode is off by default**: with one

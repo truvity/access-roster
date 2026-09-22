@@ -23,7 +23,7 @@
 # WHAT IS DELIBERATELY KEPT, and the reason each would hurt:
 #
 #   - the `directory-roster` NAMESPACE, and the access-proxy-sessions
-#     ValkeyCluster in it: that store is HUBBLE's, not the console's.
+#     ValkeyCluster in it: that store is the PROXIES', not the console's.
 #     Moving it is a separate change.
 #   - the workspace records and credentials the old release wrote: the
 #     migration COPIED them, and they are what makes the rollback a
@@ -64,8 +64,8 @@ for kind in $(printf '%s\n' "${!ORPHANS[@]}" | sort); do
   done
 done
 echo
-echo "WILL KEEP: the namespace, the access-proxy-sessions Valkey (hubble's"
-echo "sessions), and every workspace record and credential."
+echo "WILL KEEP: the namespace, the access-proxy-sessions Valkey (the"
+echo "proxies' sessions), and every workspace record and credential."
 echo
 
 # The guard that matters. If any of these is missing the cluster is not
@@ -86,7 +86,7 @@ if [ "$records" -eq 0 ]; then
   echo "the cutover left behind. Nothing has been changed." >&2
   exit 1
 fi
-echo "Checked: hubble's store is present, and $records workspace record(s) are here to keep."
+echo "Checked: the proxies' store is present, and $records workspace record(s) are here to keep."
 echo
 
 read -r -p "Proceed? [yes/NO] " answer
