@@ -632,8 +632,14 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 	// A refresh spends the old token: the session carries on, the
 	// credential does not, so a stolen refresh token is good for one use
 	// before its rightful holder's next refresh reveals the theft.
+	//
+	// Refreshed decides which token the caller leaves with. Normally that
+	// is the one minted above; for a replay inside the grace window it is
+	// the successor the winning refresh already produced, so a burst of
+	// concurrent refreshes converges on ONE credential instead of
+	// refusing all but the first.
 	if currentRefreshToken != "" {
-		live, ok, err := s.iss.Sessions().Refreshed(ctx, currentRefreshToken, refresh)
+		live, successor, ok, err := s.iss.Sessions().Refreshed(ctx, currentRefreshToken, refresh)
 		if err != nil {
 			return "", "", time.Time{}, oidc.ErrServerError().WithDescription("%s", err)
 		}
@@ -641,6 +647,8 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 		if !ok {
 			return "", "", time.Time{}, oidc.ErrInvalidGrant().WithDescription("the refresh token is not live")
 		}
+
+		refresh = successor
 
 		// A renewed access token names its session exactly as the first
 		// one does. It did not, so revoking a session stopped `userinfo`

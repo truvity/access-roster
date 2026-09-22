@@ -120,6 +120,22 @@ func sessionTokenKey(token string) string {
 	return "issuer:session-token:" + hex.EncodeToString(sum[:])
 }
 
+// sessionRotatedKey records what a spent refresh token became, for
+// [refreshGrace] after it was spent. Hashed like the token key it shadows,
+// for the same reason: an index that can be read must not be an index that
+// can be replayed.
+func sessionRotatedKey(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return "issuer:session-rotated:" + hex.EncodeToString(sum[:])
+}
+
+// refreshGrace is how long a refresh token that has just been rotated
+// still answers, with the successor it produced. It is a property of the
+// protocol rather than of an estate, so it is not configurable: long
+// enough to cover one page's burst of concurrent calls, short enough that
+// a stolen token is worth nothing by the time anyone could use it.
+const refreshGrace = 30 * time.Second
+
 // sessionAllKey is every session, for the operator's "what is open right
 // now". It is a set of ids and nothing more; the records it points at are
 // what expire.
@@ -186,14 +202,29 @@ func (s *Sessions) Record(ctx context.Context, o Opened) (Session, error) {
 // does: the old token is spent and must stop working, and the session it
 // belongs to carries on with its identity, its client and its history.
 // It reports whether the old token named a live session.
-func (s *Sessions) Refreshed(ctx context.Context, oldToken, newToken string) (Session, bool, error) {
+func (s *Sessions) Refreshed(ctx context.Context, oldToken, newToken string) (Session, string, bool, error) {
 	session, found, err := s.ByToken(ctx, oldToken)
-	if err != nil || !found {
-		return Session{}, false, err
+	if err != nil {
+		return Session{}, "", false, err
+	}
+
+	// The token is spent. Either this is the replay of a refresh that has
+	// just happened -- in which case the caller is handed the SAME
+	// successor the winner got, not a second live credential -- or it is
+	// a reuse worth refusing.
+	if !found {
+		return s.replayed(ctx, oldToken)
 	}
 
 	if err = s.state.Delete(ctx, sessionTokenKey(oldToken)); err != nil {
-		return Session{}, false, err
+		return Session{}, "", false, err
+	}
+
+	// What the spent token became, for the grace window. Written before
+	// the new token is, so a replay can never find a successor that is
+	// not yet resolvable.
+	if err = s.state.Set(ctx, sessionRotatedKey(oldToken), []byte(newToken), refreshGrace); err != nil {
+		return Session{}, "", false, err
 	}
 
 	now := s.now()
@@ -201,11 +232,11 @@ func (s *Sessions) Refreshed(ctx context.Context, oldToken, newToken string) (Se
 	session.ExpiresAt = now.Add(s.lifetime)
 
 	if err = s.put(ctx, session); err != nil {
-		return Session{}, false, err
+		return Session{}, "", false, err
 	}
 
 	if err = s.state.Set(ctx, sessionTokenKey(newToken), []byte(session.ID), s.lifetime); err != nil {
-		return Session{}, false, err
+		return Session{}, "", false, err
 	}
 
 	// The sets carry the session forward too: their expiry is refreshed
@@ -213,11 +244,47 @@ func (s *Sessions) Refreshed(ctx context.Context, oldToken, newToken string) (Se
 	// findable.
 	for _, key := range []string{sessionAllKey, sessionOfKey(session.Identity), sessionForKey(session.ClientID)} {
 		if err = s.state.Add(ctx, key, session.ID, s.lifetime); err != nil {
-			return Session{}, false, err
+			return Session{}, "", false, err
 		}
 	}
 
-	return session, true, nil
+	return session, newToken, true, nil
+}
+
+// replayed answers a refresh presented with a token that was rotated
+// moments ago: it returns the successor that rotation produced, so the
+// loser of a race ends up holding exactly what the winner holds.
+//
+// A browser does not refresh once. A page that opens with several calls
+// at once, behind a gateway that refreshes PER REQUEST rather than per
+// session, presents one spent token several times within the same second
+// -- and across replicas, so no in-process lock would see it. Refusing
+// those is refusing the legitimate holder: the gateway treats the
+// refusal as a dead session and sends the person back to sign in,
+// intermittently and for no reason they can see.
+//
+// The window is deliberately short and does not mint anything. Outside
+// it, reuse is refused exactly as before, which is the detection this
+// rotation exists for; inside it, the replay is answered with the one
+// credential already in flight rather than a second one.
+func (s *Sessions) replayed(ctx context.Context, oldToken string) (Session, string, bool, error) {
+	raw, found, err := s.state.Get(ctx, sessionRotatedKey(oldToken))
+	if err != nil || !found {
+		return Session{}, "", false, err
+	}
+
+	successor := string(raw)
+
+	// The successor must still resolve to a live session. It may not: the
+	// session can have been ended, or refreshed again, between the
+	// rotation and this replay -- and an ended session must not be handed
+	// back a working credential.
+	session, live, err := s.ByToken(ctx, successor)
+	if err != nil || !live {
+		return Session{}, "", false, err
+	}
+
+	return session, successor, true, nil
 }
 
 // ByToken resolves a refresh token to its session.

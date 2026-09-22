@@ -316,7 +316,7 @@ func TestSessions(t *testing.T) {
 	}
 
 	// A refresh spends the old token and carries the session on.
-	if _, ok, err := sessions.Refreshed(ctx, "t-kubectl", "t-kubectl-2"); err != nil || !ok {
+	if _, _, ok, err := sessions.Refreshed(ctx, "t-kubectl", "t-kubectl-2"); err != nil || !ok {
 		t.Fatalf("refresh did not find the session: ok=%v err=%v", ok, err)
 	}
 
@@ -523,5 +523,91 @@ groups:
 
 	if got, want := capped.Cap(deployment), 5*time.Minute; got != want {
 		t.Errorf("ttl_cap: 5m got %v, want %v", got, want)
+	}
+}
+
+// A page that opens with several calls at once refreshes several times at
+// once, because the gateway in front of it refreshes PER REQUEST and its
+// replicas share nothing but the store. Rotation spends the token on the
+// first of those, so every other one presents a token that no longer
+// exists -- and a refusal there is read as a dead session and sends the
+// person back to sign in, at random and for no reason they can see.
+//
+// Inside the grace window a replay is answered with the successor the
+// winning refresh produced. One credential is in flight, not two, and the
+// losers carry on with exactly what the winner holds.
+func TestAConcurrentRefreshGetsTheWinnersToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	shared := issuer.NewMemoryState()
+	replicaA := issuer.NewSessions(shared, time.Hour)
+	replicaB := issuer.NewSessions(shared, time.Hour)
+
+	opened, err := replicaA.Record(ctx, issuer.Opened{
+		Identity: "ada@north.example", ClientID: "console", How: issuer.HowCode, Token: "t-1",
+	})
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	// The winner rotates t-1 into t-2.
+	session, successor, ok, err := replicaA.Refreshed(ctx, "t-1", "t-2")
+	if err != nil || !ok {
+		t.Fatalf("the first refresh failed: ok=%v err=%v", ok, err)
+	}
+	if successor != "t-2" {
+		t.Fatalf("the winner left with %q, want the token it minted", successor)
+	}
+	if session.ID != opened.ID {
+		t.Fatalf("the refresh moved the session from %q to %q", opened.ID, session.ID)
+	}
+
+	// The loser, on the other replica, presents the same spent token and
+	// offers a different new one. It must be handed the WINNER's token:
+	// a second live credential would fork the session.
+	session, successor, ok, err = replicaB.Refreshed(ctx, "t-1", "t-3")
+	if err != nil || !ok {
+		t.Fatalf("the concurrent refresh was refused: ok=%v err=%v", ok, err)
+	}
+	if successor != "t-2" {
+		t.Fatalf("the loser left with %q, want the winner's token", successor)
+	}
+	if session.ID != opened.ID {
+		t.Fatalf("the replay resolved to session %q, want %q", session.ID, opened.ID)
+	}
+
+	// And the token it offered was never minted, so nothing answers to it.
+	if _, live, err := replicaA.ByToken(ctx, "t-3"); err != nil || live {
+		t.Errorf("the losing refresh minted a second live credential")
+	}
+}
+
+// The grace window answers a replay; it does not resurrect a session. A
+// session ended between the rotation and the replay must refuse, or
+// ending a session would depend on nobody having refreshed recently.
+func TestAReplayAfterRevocationIsRefused(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	shared := issuer.NewMemoryState()
+	sessions := issuer.NewSessions(shared, time.Hour)
+
+	if _, err := sessions.Record(ctx, issuer.Opened{
+		Identity: "ada@north.example", ClientID: "console", How: issuer.HowCode, Token: "t-1",
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if _, _, ok, err := sessions.Refreshed(ctx, "t-1", "t-2"); err != nil || !ok {
+		t.Fatalf("the first refresh failed: ok=%v err=%v", ok, err)
+	}
+
+	if gone, err := sessions.RevokeToken(ctx, "t-2"); err != nil || !gone {
+		t.Fatalf("could not end the session: gone=%v err=%v", gone, err)
+	}
+
+	if _, _, ok, err := sessions.Refreshed(ctx, "t-1", "t-3"); err != nil || ok {
+		t.Errorf("a replay was honoured after the session was ended: ok=%v err=%v", ok, err)
 	}
 }
