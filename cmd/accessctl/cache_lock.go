@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 // withCacheLock runs fn while holding an exclusive lock for one cache
@@ -36,10 +35,18 @@ func withCacheLock(path string, fn func() error) error {
 	}
 	defer func() { _ = lock.Close() }()
 
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+	if err = lockFile(lock); err != nil {
 		return fn()
 	}
-	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) }()
+	defer func() { _ = unlockFile(lock) }()
 
 	return fn()
 }
+
+// lockFile and unlockFile are the one part of this that is not portable,
+// so they live in cache_lock_unix.go and cache_lock_windows.go. accessctl
+// is built for Windows deliberately -- the credential helpers are what
+// kubectl and the AWS SDKs run, and both exist there -- and `go build`
+// for the host platform never says so: the first thing to notice was a
+// release, which failed at `syscall.Flock` for windows/arm64 with the
+// change already on master.

@@ -11,8 +11,26 @@ fmt:
     golangci-lint fmt ./...
 
 # Build (compile check)
-build: fmt console
+build: fmt console cross
     go build ./...
+
+# Compile accessctl for every platform the release builds it for.
+#
+# `go build ./...` proves the host platform and nothing else, so a call
+# that does not exist elsewhere — syscall.Flock, which Windows has no
+# equivalent name for — compiles here, passes CI, merges, and is first
+# refused by goreleaser, with the change already on master and a version
+# already burned on the tag (2026-09-22, v1.25.1).
+#
+# Only accessctl: it is the one binary .goreleaser.yaml builds for
+# Windows, on the grounds that a laptop is a laptop. The rest are Linux
+# and macOS, which `go build ./...` plus CI's own runner already cover.
+cross:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
+        GOOS="${target%%/*}" GOARCH="${target##*/}" go build -o /dev/null ./cmd/accessctl
+    done
 
 # Run unit tests
 # `console` first, and the same on every recipe that COMPILES Go: CI
