@@ -37,7 +37,7 @@ flowchart TB
   idp["Corporate directories<br/>Google Workspace tenants, Entra later<br/>sign-in and MFA live here"]
   rp["Relying parties<br/>Kubernetes API servers · AWS accounts<br/>ArgoCD · Kargo · consoles"]
   gho["GitHub organisations<br/>teams, invitations, removals"]
-  s3[("audit installation<br/>its own release; the trail, one record per action")]
+  aud[("audit installation<br/>in this service's namespace; the trail, one record per action")]
 
   person -- "sign in once" --> ar
   ci -- "token exchange" --> ar
@@ -46,7 +46,7 @@ flowchart TB
   ar -- "sign-in [OIDC]<br/>directory reads [Admin SDK]" --> idp
   ar -. "trusted issuer [key set]" .-> rp
   ar -- "acts as each organisation's App" --> gho
-  ar -- "records, as itself" --> s3
+  ar -- "records, as itself" --> aud
   person --> rp
   ci --> rp
 ```
@@ -98,8 +98,8 @@ flowchart TB
   issuer --> cfg
   issuer --> sec
   issuer -- "sign-in" --> idp
-  issuer -- "records; the Audit page reads as the person" --> s3
-  ctl -- "records, as itself" --> s3
+  issuer -- "records; the Audit page reads as the person" --> aud
+  ctl -- "records, as itself" --> aud
   dir --> vk
   dir --> sec
   dir -- "reads" --> idp
