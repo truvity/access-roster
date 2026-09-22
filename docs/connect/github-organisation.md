@@ -108,10 +108,11 @@ groups:
   all:access-roster:viewer:
     matchers:
       - service_account: { cluster: prod, namespace: access-issuer, name: access-issuer-github-roster }
-  all:access-roster:reporter:
-    matchers:
-      - service_account: { cluster: prod, namespace: access-issuer, name: access-issuer-github-roster }
 ```
+
+One group, not two. The controller used to need a `reporter` group as well,
+to report what it did back through this service; it records into the audit
+installation itself now, as itself, so there is nobody left to vouch for it.
 
 What it does is recorded in the audit trail by the controller itself, with
 its own token, when an audit installation is connected (`audit.*`); the

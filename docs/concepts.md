@@ -83,7 +83,8 @@ and a repository to disagree about.
 
 | Term | Means |
 |---|---|
-| **audit installation** | an installation of [truvity/audit](https://github.com/truvity/audit), deployed on its own, that keeps the trail: access-roster connects to it as a plugin, registering its catalogue and sending its records |
+| **audit installation** | an installation of [truvity/audit](https://github.com/truvity/audit) that keeps the trail. It belongs to this application and runs in its namespace: one address takes both the catalogue this service registers at start-up and every record it sends |
 | **action** | one thing that can happen, declared in the catalogue (`internal/audit/catalogue/roster.yaml`): `roster.person.signed_in`, `roster.github_member.invited`, … Each has one constructor in `internal/audit/events.go` |
 | **record** | one action that happened, or was refused: who acted, who it concerns, what it was about, how it ended. Every record is also one log line, sharing its id |
-| **block** | the one delivery that waits: a recovery sign-in is kept by the installation before it succeeds, and refused when it cannot be. Every other record goes through an outbox on the pod's disk and is delivered when the writer answers |
+| **block** | the one delivery that waits: a recovery sign-in is kept by the installation before it succeeds, and refused when it cannot be |
+| **async** | every other delivery: the record goes on a bounded queue in the process and is retried with backoff until the writer takes it. A restart loses what the queue held, and past its bound the oldest are dropped and counted -- which is the trade a trail that must not block the request makes, deliberately |
