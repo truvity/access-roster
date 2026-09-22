@@ -123,15 +123,10 @@ func awsCredentials(args []string) error {
 	if err != nil {
 		return err
 	}
-	held, err := proofFor(context.Background(), cfg, *audience)
-	if err != nil {
-		return err
-	}
-	token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, held.Type, *audience)
-	if err != nil {
-		return err
-	}
 
+	// The role is resolved BEFORE anything is exchanged, because it is half
+	// of the cache key and because an audience in the wrong shape should
+	// fail as usage rather than after a round trip.
 	arn := strings.TrimSpace(*roleARN)
 	if arn == "" {
 		if arn, err = roleFromAudience(*audience); err != nil {
@@ -139,11 +134,53 @@ func awsCredentials(args []string) error {
 		}
 	}
 
-	creds, err := tokens.AssumeRoleWithWebIdentity(context.Background(), nil, arn, sessionName(held.Name), token.AccessToken)
-	if err != nil {
-		return err
+	// A cached credential ends it here, and that is the common case: every
+	// provider process of a tool like Pulumi runs this command, and only
+	// the first of them should reach the issuer. See aws_cache.go for what
+	// goes wrong when they all do.
+	cache, cacheErr := awsCachePath(*audience, arn)
+	if cacheErr == nil {
+		if creds, ok := readAWSCache(cache); ok {
+			return tokens.WriteCredentialProcess(stdout, creds)
+		}
 	}
-	return tokens.WriteCredentialProcess(stdout, creds)
+
+	mint := func() error {
+		// Re-read under the lock. A process that waited here while another
+		// minted finds the answer already written, which is the whole
+		// point: one refresh, not one per caller.
+		if cacheErr == nil {
+			if creds, ok := readAWSCache(cache); ok {
+				return tokens.WriteCredentialProcess(stdout, creds)
+			}
+		}
+
+		held, err := proofFor(context.Background(), cfg, *audience)
+		if err != nil {
+			return err
+		}
+		token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, held.Type, *audience)
+		if err != nil {
+			return err
+		}
+		creds, err := tokens.AssumeRoleWithWebIdentity(context.Background(), nil, arn, sessionName(held.Name), token.AccessToken)
+		if err != nil {
+			return err
+		}
+		// A cache that cannot be written is not a reason to withhold a
+		// credential the caller already has.
+		if cacheErr == nil {
+			_ = writeAWSCache(cache, creds)
+		}
+
+		return tokens.WriteCredentialProcess(stdout, creds)
+	}
+
+	if cacheErr != nil {
+		return mint()
+	}
+
+	return withAWSCacheLock(cache, mint)
 }
 
 // roleFromAudience turns `aws:<account>:<role>` into an ARN.
