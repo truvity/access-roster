@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 // withCacheLock runs fn while holding an exclusive lock for one cache
@@ -23,6 +22,12 @@ import (
 // Shared by the AWS credential cache (aws_cache.go) and the kubectl token
 // cache (kube_cache.go): both are one file per credential, and the way
 // they are raced is the same.
+//
+// The lock itself is per-platform (cache_lock_unix.go,
+// cache_lock_windows.go). Windows is not a formality here: .goreleaser.yaml
+// builds it because a laptop is a laptop, and the credential helpers are
+// exactly what the AWS SDKs and kubectl run there, so it races the same way
+// and needs a real lock rather than a no-op.
 func withCacheLock(path string, fn func() error) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)
@@ -36,10 +41,11 @@ func withCacheLock(path string, fn func() error) error {
 	}
 	defer func() { _ = lock.Close() }()
 
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+	unlock, ok := lockExclusive(lock)
+	if !ok {
 		return fn()
 	}
-	defer func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) }()
+	defer unlock()
 
 	return fn()
 }

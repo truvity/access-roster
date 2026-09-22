@@ -14,6 +14,12 @@ fmt:
 build: fmt console
     go build ./...
 
+# Every platform goreleaser ships, not just this host. `go build ./...`
+# compiles for the host alone, so a platform-specific call passes here and
+# fails in the release -- which is how v1.25.1 got a tag with no release.
+cross:
+    hack/cross-build.sh
+
 # Run unit tests
 # `console` first, and the same on every recipe that COMPILES Go: CI
 # runs each recipe as its own job in a fresh checkout, so nothing else
@@ -246,4 +252,4 @@ console: ts-package
 # `ts` is in here despite being slow: it typechecks and tests the
 # published package, which nothing else does. `console` arrives through
 # `build`, which needs it.
-check: build test lint chart-lint archive-check docs-check leak-canary ts vuln
+check: build cross test lint chart-lint archive-check docs-check leak-canary ts vuln
