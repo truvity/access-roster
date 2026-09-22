@@ -41,7 +41,12 @@ rather than a pattern to copy.
   ([installing it](../reference/typescript.md)). Views in the URL
   fragment, dist embedded in the binary.
 - **Nothing else**: no login page, no session, no token parsing, no
-  sign-out logic.
+  sign-out logic — and no signing-algorithm setting. Both verifiers accept
+  what the issuer's discovery document advertises, so they follow the
+  installation's key (ES384 with the chart's default, RS256 with an RSA
+  key set at `signingKey.certificate`, e.g. `{algorithm: RSA, size: 2048,
+  encoding: PKCS1}` for an installation whose other relying parties need
+  RS256 — [reference](../reference/access-issuer.md)).
 
 ```go
 issuer := &identity.Issuer{URL: "https://access.example", Audience: "myconsole.example.internal"}

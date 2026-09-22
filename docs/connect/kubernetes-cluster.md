@@ -17,6 +17,17 @@ is the other anchor and does not come here:
   kubeadm: `--oidc-*` flags): issuer URL, client id `k8s:<cluster>`,
   username claim `email`, groups claim `groups`, a groups prefix if you
   want one.
+- The signing algorithm. kube-apiserver's `--oidc-signing-algs` defaults
+  to `RS256`, and the chart's default key signs ES384, so the flag must
+  list `ES384` (its allowed values include it). An `AuthenticationConfiguration`
+  file has no such setting: kube-apiserver's source allows every known
+  algorithm when the file is used. A managed cluster's identity-provider
+  configuration exposes no algorithm setting either (EKS takes the issuer
+  URL, client id, claims and prefixes and documents no algorithm), so
+  confirm with the cluster's documentation that it verifies ES384 tokens,
+  or give the installation an RSA key: `signingKey.certificate:
+  {algorithm: RSA, size: 2048, encoding: PKCS1}`
+  ([reference](../reference/access-issuer.md)).
 - RBAC bindings by group name — the internal group's name, as it stands
   in the policy. Name the groups after what the bindings already say and
   the cutover changes no binding.

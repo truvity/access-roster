@@ -17,6 +17,13 @@ policy that names the role's audience:
 }
 ```
 
+IAM's OIDC provider documentation lists RS256, RS384, RS512, ES256, ES384
+and ES512 as the `id_token_signing_alg_values_supported` a provider may
+advertise, so the chart's default ES384 key is accepted as an RSA one is;
+an installation whose other relying parties need RS256 sets
+`signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`
+([reference](../reference/access-issuer.md)) and the account needs no change.
+
 One trust policy per role. No per-user statements, no group claims: for a
 custom issuer the trust policy can see `sub`, `aud`, `amr` and `email`,
 and the decision rides in `aud`. Add a `sub` condition when a role is for

@@ -2,7 +2,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from "jose";
+import { exportJWK, generateKeyPair, SignJWT, UnsecuredJWT, type JWTPayload } from "jose";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -41,7 +41,7 @@ beforeAll(async () => {
   issuer = await listen((request, response) => {
     response.setHeader("Content-Type", "application/json");
     if (request.url === "/.well-known/openid-configuration") {
-      response.end(JSON.stringify({ issuer: issuer.url, jwks_uri: `${issuer.url}/keys` }));
+      response.end(JSON.stringify({ issuer: issuer.url, jwks_uri: `${issuer.url}/keys`, id_token_signing_alg_values_supported: ["RS256"] }));
       return;
     }
     if (request.url === "/keys") {
@@ -57,9 +57,12 @@ afterAll(() => {
   issuer.server.close();
 });
 
-async function mint(claims: JWTPayload, options: { key?: Key; audience?: string; issuer?: string } = {}): Promise<string> {
+async function mint(
+  claims: JWTPayload,
+  options: { key?: Key; audience?: string; issuer?: string; alg?: string; kid?: string } = {},
+): Promise<string> {
   return new SignJWT(claims)
-    .setProtectedHeader({ alg: "RS256", kid: "one" })
+    .setProtectedHeader({ alg: options.alg ?? "RS256", kid: options.kid ?? "one" })
     .setIssuer(options.issuer ?? issuer.url)
     .setAudience(options.audience ?? "url-shortener-devel")
     .setIssuedAt()
@@ -149,6 +152,107 @@ describe("Issuer", () => {
 
   it("will not be built without an audience", () => {
     expect(() => new Issuer({ url: issuer.url, audience: "" })).toThrow(/audience/);
+  });
+});
+
+// The chart's default key is P-384, so a default install signs ES384. A
+// verifier that pinned RS256 refused every one of its tokens; this one
+// takes the algorithms discovery advertises, as Go's does.
+describe("Issuer and the signing algorithm", () => {
+  let ecdsa: Key;
+  let rsa: Key;
+  let keys: Record<string, unknown>[];
+
+  /** An issuer holding both keys, advertising whichever algorithms it is told to. */
+  async function issuerAdvertising(algorithms?: string[]): Promise<{ server: Server; url: string }> {
+    const one = await listen((request, response) => {
+      response.setHeader("Content-Type", "application/json");
+      if (request.url === "/.well-known/openid-configuration") {
+        const config: Record<string, unknown> = { issuer: one.url, jwks_uri: `${one.url}/keys` };
+        if (algorithms) config.id_token_signing_alg_values_supported = algorithms;
+        response.end(JSON.stringify(config));
+        return;
+      }
+      response.end(JSON.stringify({ keys }));
+    });
+    return one;
+  }
+
+  beforeAll(async () => {
+    const ec = await generateKeyPair("ES384");
+    const rs = await generateKeyPair("RS256");
+    ecdsa = ec.privateKey;
+    rsa = rs.privateKey;
+    keys = [
+      { ...(await exportJWK(ec.publicKey)), kid: "p384", alg: "ES384", use: "sig" },
+      { ...(await exportJWK(rs.publicKey)), kid: "rsa", alg: "RS256", use: "sig" },
+    ];
+  });
+
+  it("verifies an ES384 token from an issuer that advertises ES384", async () => {
+    const one = await issuerAdvertising(["ES384"]);
+    try {
+      const verifier = new Issuer({ url: one.url, audience: "url-shortener-devel" });
+      const token = await mint(person, { issuer: one.url, key: ecdsa, alg: "ES384", kid: "p384" });
+      await expect(verifier.verify(token)).resolves.toMatchObject({ subject: "ada@north.example" });
+    } finally {
+      one.server.close();
+    }
+  });
+
+  it("refuses a token whose algorithm the issuer does not advertise, even with the key published", async () => {
+    const one = await issuerAdvertising(["ES384"]);
+    try {
+      const verifier = new Issuer({ url: one.url, audience: "url-shortener-devel" });
+      const token = await mint(person, { issuer: one.url, key: rsa, alg: "RS256", kid: "rsa" });
+      await expect(verifier.verify(token)).rejects.toBeInstanceOf(Unverified);
+    } finally {
+      one.server.close();
+    }
+  });
+
+  it("falls back to what the issuer can sign with when discovery advertises nothing", async () => {
+    const one = await issuerAdvertising(undefined);
+    try {
+      const verifier = new Issuer({ url: one.url, audience: "url-shortener-devel" });
+      const es = await mint(person, { issuer: one.url, key: ecdsa, alg: "ES384", kid: "p384" });
+      const rs = await mint(person, { issuer: one.url, key: rsa, alg: "RS256", kid: "rsa" });
+      await expect(verifier.verify(es)).resolves.toMatchObject({ subject: "ada@north.example" });
+      await expect(verifier.verify(rs)).resolves.toMatchObject({ subject: "ada@north.example" });
+    } finally {
+      one.server.close();
+    }
+  });
+
+  it("lets a caller narrow to fewer algorithms than the issuer advertises", async () => {
+    const one = await issuerAdvertising(["ES384", "RS256"]);
+    try {
+      const verifier = new Issuer({ url: one.url, audience: "url-shortener-devel", algorithms: ["ES384"] });
+      const es = await mint(person, { issuer: one.url, key: ecdsa, alg: "ES384", kid: "p384" });
+      const rs = await mint(person, { issuer: one.url, key: rsa, alg: "RS256", kid: "rsa" });
+      await expect(verifier.verify(es)).resolves.toMatchObject({ subject: "ada@north.example" });
+      await expect(verifier.verify(rs)).rejects.toBeInstanceOf(Unverified);
+    } finally {
+      one.server.close();
+    }
+  });
+
+  it("ignores an advertised `none` or HMAC algorithm rather than accepting it", async () => {
+    const one = await issuerAdvertising(["none", "HS256", "ES384"]);
+    try {
+      const verifier = new Issuer({ url: one.url, audience: "url-shortener-devel" });
+      const es = await mint(person, { issuer: one.url, key: ecdsa, alg: "ES384", kid: "p384" });
+      await expect(verifier.verify(es)).resolves.toMatchObject({ subject: "ada@north.example" });
+      const unsigned = new UnsecuredJWT(person).setIssuer(one.url).setAudience("url-shortener-devel").setIssuedAt().setExpirationTime("5m").encode();
+      await expect(verifier.verify(unsigned)).rejects.toBeInstanceOf(Unverified);
+    } finally {
+      one.server.close();
+    }
+  });
+
+  it("will not be built to accept `none`", () => {
+    expect(() => new Issuer({ url: issuer.url, audience: "x", algorithms: ["none"] })).toThrow(/none/);
+    expect(() => new Issuer({ url: issuer.url, audience: "x", algorithms: [] })).toThrow(/at least one/);
   });
 });
 

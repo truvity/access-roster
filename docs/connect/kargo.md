@@ -40,6 +40,15 @@ api:
     admins: { claims: { groups: [prod:k8s:admin] } }   # the cluster tier, reused
 ```
 
+**Kargo accepts RS256 only.** Its `api.oidc` values carry no
+signing-algorithm setting, and its API server builds go-oidc's verifier
+without one (`pkg/server/auth_middleware.go`, `oidc.NewVerifier` with a
+`Config` naming only the client id), which leaves go-oidc's default of
+RS256 — it does not read what discovery advertises. The chart's default
+key signs ES384, so an installation Kargo signs into must set
+`signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`
+([reference](../reference/access-issuer.md)).
+
 Per-project roles bind on the `groups` claim through Kargo's own RBAC —
 `<env>:<project>:approver` is the promotion gate, the same name the
 policy mints for the project's approver unit.

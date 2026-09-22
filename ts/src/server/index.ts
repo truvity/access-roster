@@ -82,13 +82,40 @@ export interface IssuerOptions {
    * another service is a perfectly valid token, and accepting it here
    * would make every audience that issuer serves a way in. */
   audience: string;
+  /** The signing algorithms accepted, in place of what the issuer's
+   * discovery document advertises, for a service that wants to pin one.
+   * Left out, the verifier follows discovery — see {@link Issuer}. `none`
+   * and HMAC are refused here. */
+  algorithms?: string[];
   /** Replaces the global fetch for discovery, for tests and for a proxy. */
   fetch?: typeof fetch;
 }
 
 type KeySet = ReturnType<typeof createRemoteJWKSet>;
 
+/** What discovery yielded: where the keys are, and what they sign. */
+interface Discovered {
+  keys: KeySet;
+  algorithms: string[];
+}
+
+/** The algorithms access-issuer can sign with, one per kind of key its
+ * chart accepts: an RSA key signs RS256, and a P-256, P-384 or P-521 key
+ * signs ES256, ES384 or ES512. The answer for an issuer whose discovery
+ * document advertises nothing. */
+export const issuerAlgorithms: readonly string[] = ["RS256", "ES256", "ES384", "ES512"];
+
 /** Verifies a token access-roster signed, against the key set it publishes.
+ *
+ * The signing algorithms accepted are the ones the issuer's discovery
+ * document advertises as `id_token_signing_alg_values_supported`, as the
+ * Go `identity` package does. They follow from the installation's key —
+ * the chart's default is a P-384 key, so ES384 — and a verifier that
+ * pinned RS256 would refuse every token from a default install. An issuer
+ * that advertises nothing gets {@link issuerAlgorithms}; a caller may
+ * narrow either with the `algorithms` option. `none` and the HMAC family
+ * are never accepted: a published key set holds public keys, and a
+ * symmetric algorithm has nothing there to verify against.
  *
  * Discovery is lazy and cached: a service must start whether or not the
  * issuer is up. The first request after it returns pays for discovery, and
@@ -97,12 +124,21 @@ type KeySet = ReturnType<typeof createRemoteJWKSet>;
 export class Issuer {
   private readonly url: string;
   private readonly audience: string;
+  private readonly narrowed?: string[];
   private readonly fetch: typeof fetch;
-  private keys?: Promise<KeySet>;
+  private discovered?: Promise<Discovered>;
 
   constructor(options: IssuerOptions) {
     if (!options.url) throw new Error("access-roster: an issuer url is required");
     if (!options.audience) throw new Error("access-roster: an audience — this service's client id — is required");
+    if (options.algorithms !== undefined) {
+      const refused = options.algorithms.filter((alg) => !asymmetric(alg));
+      if (refused.length > 0) {
+        throw new Error(`access-roster: ${refused.join(", ")} cannot verify against a published key set`);
+      }
+      if (options.algorithms.length === 0) throw new Error("access-roster: algorithms must name at least one");
+      this.narrowed = [...options.algorithms];
+    }
     this.url = trimTrailingSlashes(options.url);
     this.audience = options.audience;
     this.fetch = options.fetch ?? fetch;
@@ -111,13 +147,13 @@ export class Issuer {
   /** Checks a bearer token and returns the caller. Throws Unverified for a
    * token that does not verify, IssuerUnreachable when it could not ask. */
   async verify(token: string): Promise<Verified> {
-    const keys = await this.resolve();
+    const { keys, algorithms } = await this.resolve();
     let payload: JWTPayload;
     try {
       ({ payload } = await jwtVerify(token, keys, {
         issuer: this.url,
         audience: this.audience,
-        algorithms: ["RS256"],
+        algorithms,
         clockTolerance: 10,
       }));
     } catch (cause) {
@@ -129,20 +165,20 @@ export class Issuer {
     return fromClaims(payload);
   }
 
-  private resolve(): Promise<KeySet> {
-    if (!this.keys) {
-      this.keys = this.discover().catch((cause: unknown) => {
+  private resolve(): Promise<Discovered> {
+    if (!this.discovered) {
+      this.discovered = this.discover().catch((cause: unknown) => {
         // Forget the failure, so the next request asks again rather than
         // this outage becoming the answer until a restart.
-        this.keys = undefined;
+        this.discovered = undefined;
         throw cause;
       });
     }
-    return this.keys;
+    return this.discovered;
   }
 
-  private async discover(): Promise<KeySet> {
-    let config: { issuer?: string; jwks_uri?: string };
+  private async discover(): Promise<Discovered> {
+    let config: { issuer?: string; jwks_uri?: string; id_token_signing_alg_values_supported?: unknown };
     try {
       const response = await this.fetch(`${this.url}/.well-known/openid-configuration`, {
         headers: { Accept: "application/json" },
@@ -161,8 +197,24 @@ export class Issuer {
     if (!config.jwks_uri) {
       throw new IssuerUnreachable(`access-roster: ${this.url} publishes no key set`);
     }
-    return createRemoteJWKSet(new URL(config.jwks_uri), { timeoutDuration: 10_000 });
+    return {
+      keys: createRemoteJWKSet(new URL(config.jwks_uri), { timeoutDuration: 10_000 }),
+      algorithms: this.narrowed ?? advertised(config.id_token_signing_alg_values_supported),
+    };
   }
+}
+
+/** The algorithms discovery advertises that a key set can verify, or the
+ * issuer's own when it advertises none. */
+function advertised(value: unknown): string[] {
+  const listed = Array.isArray(value) ? value.filter((one): one is string => typeof one === "string" && asymmetric(one)) : [];
+  return listed.length > 0 ? listed : [...issuerAlgorithms];
+}
+
+/** Whether an algorithm verifies against a public key. `none` signs
+ * nothing, and HS* signs with a secret a key set does not publish. */
+function asymmetric(alg: string): boolean {
+  return alg !== "" && alg.toLowerCase() !== "none" && !alg.toUpperCase().startsWith("HS");
 }
 
 function fromClaims(claims: JWTPayload): Verified {
