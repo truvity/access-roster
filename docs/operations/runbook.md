@@ -274,8 +274,9 @@ with.
 ## Audit: what happened lately
 
 access-roster keeps no audit trail of its own. It records into an **audit
-installation** ([truvity/audit](https://github.com/truvity/audit)), deployed
-in its own namespace: `audit.writer` and `audit.query` in the chart. What it records is its
+installation** ([truvity/audit](https://github.com/truvity/audit)) of its
+own, rendered beside it in the same namespace: `audit.writer` and
+`audit.query` in the chart. What it records is its
 catalogue, [`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml):
 sign-ins and their refusals — at the issuer and at the console's own door,
 recovery as its own action — token exchanges and GitHub installation tokens
@@ -283,10 +284,10 @@ by the kind of proof, refused refreshes, sign-outs and revokes, directory
 connects and changes, GitHub Apps created, installed and disconnected, and
 what the GitHub controller did to memberships and links.
 
-The installation pseudonymises, locks, signs and indexes; retention is its
-profiles' (`security`, and `history` for changes), not a setting here. Its
-own documentation is where to go for the archive, verification, legal
-holds and erasure.
+The installation locks, indexes and signs; retention is its profile's
+(`security`, every action, people in clear), not a setting here. Its own
+documentation is where to go for the archive, verification and legal
+holds.
 
 **The console's Audit page** is the installation's view, shown when
 `audit.query` is set. The console forwards the page's calls to the query
@@ -335,8 +336,9 @@ installation's `workloadIdentity.workloads`.
    the trail, and trust this issuer in the query service's grants file
    with that audience.
 4. Set `audit.writer` and `audit.query`. At start the service registers
-   its catalogue on the writer's own address; `audit catalogue registered`
-   in the log says it did.
+   its catalogue on the writer's own address; `audit installation connected`
+   in the log says it did on the first try, `audit catalogue registered`
+   that a retry did.
 
 ### When the installation cannot be reached
 
@@ -358,9 +360,14 @@ keeps no trail has nothing to wait for.
 
 **An installation that cannot be reached at start** does not stop the start:
 records wait in the queue, and the catalogue's registration is retried until
-it answers. **An installation that refuses the catalogue** leaves the service
-running and keeping nothing, saying so; `just audit-catalogue` finds most of
-those before a release does.
+it answers. **An installation that refuses the catalogue stops the process**,
+whether it refuses at start — the start fails, with the problems it gave —
+or first answers after an unreachable start, which ends the process the same
+way rather than leaving it running for the life of the pod with records
+nobody accepts. `just audit-catalogue` finds most refusals before a release
+does. **A token the installation does not trust** is said at Error, naming
+the token file, and retried: it is a configuration to fix, and until it is
+the queue fills and, past its bound, drops.
 
 **The signals**, in the log:
 
@@ -369,8 +376,11 @@ those before a release does.
 | `audit installation connected` (Info) | the address answered |
 | `audit catalogue registered` (Info) | it accepted this service's catalogue; records are kept |
 | `the audit installation could not be reached; records wait in the emitter's queue, and registration is retried` (Warn) | started unregistered |
-| `the audit installation refused the catalogue; records will not be kept until it is fixed` (Warn) | the catalogue and the installation disagree |
+| `the audit installation refused the catalogue; records will not be kept until it is fixed` (Error) | the catalogue and the installation disagree; the process ends |
+| `the audit installation does not trust this workload's token; …` (Error) | the writer answered 401 or 403: the token file, its audience, or the installation's `workloadIdentity` |
 | `audit records could not be delivered yet` (Warn) | the writer refused or could not be reached; the queue holds them |
+| `audit record not kept` (Warn) | one record: a `block` record the writer would not take, and the request it was for was refused |
+| `audit record dropped and is not in the trail` (Error) | the queue gave one up; its `audit.id` names the Info line that reads as kept |
 | `an audit record does not satisfy the catalogue` (Error) | a bug: the code built a record its catalogue refuses |
 | `no audit installation is connected: records are validated and logged, and kept nowhere else` (Warn, at start) | the deployment keeps no trail |
 

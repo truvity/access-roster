@@ -216,7 +216,7 @@ owner is added to the teams the policy wants them in and promoted to
 maintainer where it wants that, like anybody; an owner is never removed
 from a team, never demoted in one, and never removed from the
 organisation. Each of those is said on the page and in the audit trail
-(`github.owner.reported`), once.
+(`roster.github_owner.reported`), once.
 **Outside collaborators** are listed and never managed.
 
 **Never touched:** a member nobody linked (listed as *not linked*), a

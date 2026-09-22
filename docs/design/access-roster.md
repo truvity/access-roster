@@ -605,7 +605,7 @@ that belongs to this application and runs in its namespace: with
 `audit.writer` set it registers its catalogue and sends its records to that
 one address, and with `audit.query` set it shows the installation's view as
 the console's Audit page; with neither it keeps nothing beyond the log line
-every record also is, and has no page. Until 1.x it kept Elastic Common Schema objects in an
+every record also is, and has no page. Until 1.26 it kept Elastic Common Schema objects in an
 Object-Locked bucket of its own, written and listed by this service; that
 was a second audit component, without pseudonymisation, a signed chain,
 an index or retention per purpose, and the installation has all of them.
@@ -615,8 +615,9 @@ them.
 **The catalogue is the model.** [`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml)
 declares every action — `roster.person.signed_in`, `roster.token.exchanged`,
 `roster.github_member.invited`, … thirty-seven of them — with what kind of
-operation it is, the framework categories it answers, which profiles keep
-it (`security`, and `history` for every change to the access system), the
+operation it is, the framework categories it answers, which profile keeps
+it (`security`, every one of them: this service serves one organisation,
+and a second copy under a second retention would answer nothing), the
 types of its targets (a client, a workspace, an organisation, a team, a
 GitHub account, a GitHub App), the kinds of actor (a person, recovery, a CI
 job, a workload, the service itself), a schema for its data, and how it
@@ -632,10 +633,11 @@ free attributes; the catalogue's validator refuses each of those.
 **Who is who.** The actor is who acted, by kind; the subject is who it
 concerns, and differs from the actor as often as not — an operator revokes
 a person's sessions, the controller invites a person. A person is named by
-the address the directory knows them by, and the installation's profiles
-decide how that is kept: in clear in `security`, pseudonymised in
-`history`. A GitHub account is a person's, so its login is treated the
-same way. No address is ever data.
+the address the directory knows them by, and `security` keeps it in clear,
+because a trail of staff whose subjects are pseudonyms answers none of the
+questions it exists for; the installation runs no pseudonymisation keys. A
+GitHub account is a person's, so its login is treated the same way. No
+address is ever data.
 
 **Every record belongs to the installation**, the audit tenant
 `@platform`: an installation of access-roster serves one organisation, and
@@ -654,9 +656,10 @@ server reads them once, at the outermost handler, and they travel in the
 request's context to wherever the record is made — including the token
 endpoint's storage, which an OpenID library calls with a context and
 nothing else. The address is the peer's unless the deployment says how many
-of its own proxies append to `X-Forwarded-For`
-(`audit.forwardedForTrustedHops`); the header is then read from the right,
-because only the right end is written by those proxies.
+of its own proxies sit in front of the service
+(`audit.forwardedForTrustedHops`), counted the way the audit emitter counts
+them, with the peer as one: the forwarded chain is then read from the
+right, because only the right end is written by those proxies.
 
 **The Audit page reads as the person.** The console forwards the page's
 calls to the query service with a token it mints for the person signed in,

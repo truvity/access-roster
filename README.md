@@ -12,8 +12,8 @@ console behind your gateway trust that one token. CI jobs and workloads
 get the same treatment from the identity token they already hold. The
 whole policy is one file in git; the same file says who belongs in which
 GitHub team, and a controller keeps the teams that way. A console shows
-you who holds what and why, and an audit installation, connected as a
-plugin, keeps who did what.
+you who holds what and why, and an audit installation of its own, rendered
+beside it, keeps who did what.
 
 Nothing here authenticates anyone. Sign-in, passwords, MFA and device
 policy stay with Google Workspace or Entra. This verifies the result,
@@ -42,7 +42,7 @@ A platform team running Kubernetes, with the Gateway API, cert-manager,
 and a corporate directory in Google Workspace, that wants one issuer for
 its clusters, cloud accounts, consoles and CI instead of an identity
 product. `access-proxy` needs Envoy Gateway. A Valkey (for more than one
-replica and for every proxy), an S3 bucket (for an audit trail that is a
+replica and for every proxy), an audit installation (for a trail that is a
 record) and OpenBAO (for certificates) are optional. **None of those is
 installed here**: the charts point at them. Nor is the signing key minted
 here — cert-manager issues it, or the installation delivers it — and no
@@ -125,7 +125,7 @@ flowchart LR
   proxy["access-proxy<br/>one per console with no OIDC of its own"]
   apps["Kubernetes · AWS · ArgoCD · Kargo · consoles"]
   orgs["GitHub organisations"]
-  s3[("audit installation<br/>the audit trail")]
+  aud[("audit installation<br/>the audit trail, in this service's namespace")]
 
   idp -- "sign-in, and directory reads" --> iss
   gh -- "token exchange" --> iss

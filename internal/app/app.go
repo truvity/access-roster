@@ -599,6 +599,9 @@ func (c Config) LogLevel() slog.Level { return c.logLevel }
 
 // App is an assembled hub: three handlers and the background loops.
 type App struct {
+	// fatal carries the one error that ends the process from outside a
+	// request: the audit installation refusing the catalogue after the start.
+	fatal   chan error
 	api     http.Handler
 	console http.Handler
 	health  http.Handler
@@ -722,9 +725,18 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The audit trail is an installation of its own, connected as a
-	// plugin; without one, every record is a log line and nothing more.
+	// The audit trail is an installation of this service's own, in its
+	// namespace; without one, every record is a log line and nothing more.
+	// A refusal found after the start is fatal the way one at the start is:
+	// the process ends rather than running with records nobody accepts.
+	fatal := make(chan error, 1)
 	cfg.audit.Log = log
+	cfg.audit.OnFatal = func(err error) {
+		select {
+		case fatal <- err:
+		default:
+		}
+	}
 	recorder, err := audit.Open(ctx, cfg.audit)
 	if err != nil {
 		closeSnapshots()
@@ -732,7 +744,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	closeStores := func() {
 		if err := recorder.Close(); err != nil {
-			log.WarnContext(ctx, "the audit outbox could not be closed cleanly; what it holds is sent by the next process",
+			log.WarnContext(ctx, "the audit emitter could not be closed cleanly; what its queue held is dropped",
 				"error", err)
 		}
 		closeSnapshots()
@@ -957,6 +969,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		"version", version.String(), "policy", policySource(cfg.policyPath, cfg.demo))
 
 	return &App{
+		fatal:   fatal,
 		api:     apiHandler,
 		console: consoleServer.Handler(),
 		health:  healthMux,
@@ -983,6 +996,14 @@ func (a *App) Run(ctx context.Context) error {
 	group.Go(func() error { return serve(gctx, a.cfg.consolePort, a.console, "console", a.log) })
 	group.Go(func() error { return serve(gctx, a.cfg.healthPort, a.health, "health", a.log) })
 	group.Go(func() error { return a.RunLoops(gctx) })
+	group.Go(func() error {
+		select {
+		case err := <-a.fatal:
+			return fmt.Errorf("audit: %w", err)
+		case <-gctx.Done():
+			return nil
+		}
+	})
 	return group.Wait()
 }
 

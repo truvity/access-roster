@@ -39,15 +39,18 @@ func TestTheClientAddressIsReadFromTheRightPastTrustedHops(t *testing.T) {
 		hops                  int
 		want                  string
 	}{
+		// The count is the emitter's: the peer is the last entry of the chain
+		// and counts as one of the trusted hops.
 		{"no hops, header ignored", "198.51.100.1, 10.0.0.1", "192.0.2.10:5555", 0, "192.0.2.10"},
-		{"one hop: the client the edge appended", "198.51.100.1, 10.0.0.1", "10.0.0.2:5555", 1, "198.51.100.1"},
-		{"one hop: a caller's own entry is passed over", "203.0.113.66, 198.51.100.1, 10.0.0.1", "10.0.0.2:5555", 1, "198.51.100.1"},
-		{"two hops", "203.0.113.66, 198.51.100.1, 10.0.0.9, 10.0.0.1", "10.0.0.2:5555", 2, "198.51.100.1"},
-		{"shorter than the hops: not through them", "10.0.0.1", "10.0.0.2:5555", 1, "10.0.0.2"},
-		{"IPv6 with a port", "[2001:db8::7]:443, 10.0.0.1", "10.0.0.2:5555", 1, "2001:db8::7"},
+		{"one proxy that appended the client", "198.51.100.1", "10.0.0.2:5555", 1, "198.51.100.1"},
+		{"one proxy: a caller's own entry is passed over", "203.0.113.66, 198.51.100.1", "10.0.0.2:5555", 1, "198.51.100.1"},
+		{"an edge and a gateway: the client the edge appended", "198.51.100.1, 10.0.0.1", "10.0.0.2:5555", 2, "198.51.100.1"},
+		{"an edge and a gateway: a caller's own entry is passed over", "203.0.113.66, 198.51.100.1, 10.0.0.1", "10.0.0.2:5555", 2, "198.51.100.1"},
+		{"no longer than the hops: not through them", "10.0.0.1", "10.0.0.2:5555", 2, "10.0.0.2"},
+		{"IPv6 with a port", "[2001:db8::7]:443, 10.0.0.1", "10.0.0.2:5555", 2, "2001:db8::7"},
 		{"no header", "", "10.0.0.2:5555", 1, "10.0.0.2"},
-		{"not an address", "unknown, 10.0.0.1", "10.0.0.2:5555", 1, "10.0.0.2"},
-		{"a forged line", "198.51.100.1\nevent.outcome=success, 10.0.0.1", "10.0.0.2:5555", 1, "10.0.0.2"},
+		{"not an address", "unknown, 10.0.0.1", "10.0.0.2:5555", 2, "10.0.0.2"},
+		{"a forged line", "198.51.100.1\nevent.outcome=success, 10.0.0.1", "10.0.0.2:5555", 2, "10.0.0.2"},
 		{"IPv6 peer", "", "[2001:db8::9]:5555", 0, "2001:db8::9"},
 	} {
 		header := http.Header{}
@@ -64,8 +67,8 @@ func TestTheClientAddressIsReadFromTheRightPastTrustedHops(t *testing.T) {
 func TestForwardedForHeadersAreOneList(t *testing.T) {
 	t.Parallel()
 	header := http.Header{"X-Forwarded-For": []string{"203.0.113.66, 198.51.100.1", "10.0.0.1"}}
-	if got := emit.Client(read(header, "10.0.0.2:1", 1)); got != "198.51.100.1" {
-		t.Errorf("client address = %q, want the entry just left of the one trusted hop", got)
+	if got := emit.Client(read(header, "10.0.0.2:1", 2)); got != "198.51.100.1" {
+		t.Errorf("client address = %q, want the entry just left of the two trusted hops", got)
 	}
 }
 
@@ -138,7 +141,7 @@ func recoverThroughConsole(handler http.Handler) *httptest.ResponseRecorder {
 func TestARecoverySignInIsRefusedWithoutItsRecord(t *testing.T) {
 	t.Parallel()
 	trail := audittest.New(t)
-	handler := recoveryServer(t, trail, 1)
+	handler := recoveryServer(t, trail, 2)
 
 	trail.Fail = errors.New("the writer refused the record")
 	refused := recoverThroughConsole(handler)

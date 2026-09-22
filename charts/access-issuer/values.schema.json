@@ -692,7 +692,7 @@
     "audit": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The audit installation (github.com/truvity/audit) this service connects to as a plugin. Empty keeps nothing beyond log lines, and shows no Audit page.",
+      "description": "The audit installation (github.com/truvity/audit) of this service's own, rendered beside it in its namespace. Empty keeps nothing beyond log lines, and shows no Audit page.",
       "properties": {
         "writer": {
           "type": "string",
@@ -715,7 +715,7 @@
             "audience": {
               "type": "string",
               "minLength": 1,
-              "description": "The audience of the projected token presented to the writer and registry."
+              "description": "The audience of the projected token presented to the receiver."
             },
             "expirationSeconds": {
               "type": "integer",

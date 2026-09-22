@@ -17,7 +17,7 @@
     "@mui/icons-material": "^9.4.0",
     "@mui/material": "^9.4.0",
     "@truvity/access-roster": "file:../ts",
-    "@truvity/audit": "github:truvity/audit#v0.2.4",
+    "@truvity/audit": "github:truvity/audit#v0.2.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

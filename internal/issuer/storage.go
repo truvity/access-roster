@@ -529,8 +529,8 @@ func (s *Storage) Complete(ctx context.Context, id string, who Authenticated) er
 	// marked done — a request marked done is one a code can be issued for —
 	// and is refused when it cannot be. It is the one event that does not
 	// fail open: the way in that bypasses the directory must never leave
-	// no trace, and the write depends on S3 and the pod's own identity
-	// alone, nothing this service runs.
+	// no trace, and the write depends on the audit installation's writer
+	// and the pod's own token alone, nothing this service runs.
 	recovery := who.How == RecoveryHow
 	if recovery {
 		if err = s.iss.recordDurable(ctx, signInEvent(who, req.Req.ClientID, audit.Succeeded())); err != nil {

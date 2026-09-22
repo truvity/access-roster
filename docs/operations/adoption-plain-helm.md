@@ -67,9 +67,8 @@ your domain, `eu-example-1` for your region.
      client: access-console
 
    audit:                                     # optional; see the prerequisites
-     s3:
-       bucket: example-access-audit
-       region: eu-example-1
+     writer: http://audit.example-ns.svc:8080        # the installation's receiver
+     query: http://audit-query.example-ns.svc:8080   # its query service, for the Audit page
 
    policy:
      groups:

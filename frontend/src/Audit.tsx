@@ -32,7 +32,7 @@ export function AuditPage({ query, connected }: { query?: URLSearchParams; conne
       ) : (
         <Nothing>
           No audit installation is connected to this console, so nothing is kept beyond the service's log. Set audit.writer,
-          audit.registry and audit.query to connect one.
+          audit.query to connect one.
         </Nothing>
       )}
     </Page>

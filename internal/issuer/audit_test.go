@@ -159,7 +159,7 @@ func TestATokenExchangeKeepsItsRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gateway := httptest.NewServer(server.AuditRequests(1, handler))
+	gateway := httptest.NewServer(server.AuditRequests(2, handler))
 	t.Cleanup(gateway.Close)
 
 	form := url.Values{

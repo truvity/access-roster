@@ -10,7 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/truvity/audit/auth"
+	"github.com/truvity/audit/catalogue"
 	"github.com/truvity/audit/emit"
 	"github.com/truvity/audit/record"
 	"github.com/truvity/audit/sink"
@@ -35,6 +37,13 @@ type Config struct {
 	Version  string
 	Instance string
 	Log      *slog.Logger
+	// OnFatal is told of a refusal that no retry will change, found after the
+	// start: an installation that was unreachable at start and, once reached,
+	// refuses the catalogue. A refusal at start stops the start; this is what
+	// stops the process when the same answer comes later, so that a service
+	// whose records nobody accepts does not run for the life of the pod
+	// keeping nothing. Nil leaves it running, saying so once at Error.
+	OnFatal func(error)
 }
 
 // Connected reports whether the configuration names an installation.
@@ -44,9 +53,10 @@ func (c Config) Connected() bool { return c.Writer != "" }
 // installation when one is configured.
 type Trail struct {
 	emitter   *emit.Emitter
+	catalogue *catalogue.Catalogue
 	log       *slog.Logger
 	connected bool
-	closers   []func() error
+	onFatal   func(error)
 	stop      context.CancelFunc
 	done      sync.WaitGroup
 }
@@ -61,7 +71,8 @@ const registerTimeout = 10 * time.Second
 // A catalogue the installation refuses stops the start: the records it
 // describes would be written against a description nobody accepted. An
 // installation that cannot be reached does not: the records wait in the
-// outbox, and registration is tried again until it succeeds.
+// emitter's queue, in memory, and registration is tried again until it
+// succeeds -- or is refused, which is Config.OnFatal's to act on.
 func Open(ctx context.Context, cfg Config) (*Trail, error) {
 	log := cfg.Log
 	if log == nil {
@@ -71,14 +82,29 @@ func Open(ctx context.Context, cfg Config) (*Trail, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := &Trail{log: log, connected: cfg.Connected()}
+	t := &Trail{log: log, catalogue: c, connected: cfg.Connected(), onFatal: cfg.OnFatal}
 
 	hooks, err := emit.Instrument(emit.Hooks{
 		OnRefused: func(r *record.Record, err error) {
 			log.Error("an audit record does not satisfy the catalogue", "action", r.GetAction(), "error", logsafe.Error(err))
 		},
 		OnFailed: func(err error, delivery sink.Delivery, n int) {
+			if notTrusted(err) {
+				// Retrying will not mend a token the writer does not trust.
+				// Say what to look at, rather than "could not be reached"
+				// until the queue gives up.
+				log.Error("the audit installation does not trust this workload's token; records will not be kept until it does",
+					"records", n, "token_file", cfg.TokenFile, "error", logsafe.Error(err))
+				return
+			}
 			log.Warn("audit records could not be delivered yet", "records", n, "delivery", delivery.String(), "error", logsafe.Error(err))
+		},
+		// The queue gave one up. The Info line for this record was written
+		// when it was made and reads as kept; this is the line that says it
+		// was not, by id, so the two can be found from each other.
+		OnDropped: func(r *record.Record, reason string) {
+			log.Error("audit record dropped and is not in the trail",
+				"audit.id", r.GetId(), "audit.action", r.GetAction(), "reason", reason)
 		},
 	}, otel.GetMeterProvider())
 	if err != nil {
@@ -127,16 +153,14 @@ func Open(ctx context.Context, cfg Config) (*Trail, error) {
 	case errors.Is(err, emit.ErrCatalogueRefused):
 		_ = t.Close()
 		return nil, err
+	case notTrusted(err):
+		log.Error("the audit installation does not trust this workload's token; registration is retried, and records will not be kept until it does",
+			"writer", cfg.Writer, "token_file", cfg.TokenFile, "error", logsafe.Error(err))
+		t.retryRegistration(ctx, registration)
 	case err != nil:
 		log.Warn("the audit installation could not be reached; records wait in the emitter's queue, and registration is retried",
 			"writer", cfg.Writer, "error", logsafe.Error(err))
-		retry, stop := context.WithCancel(context.WithoutCancel(ctx))
-		t.stop = stop
-		t.done.Add(1)
-		go func() {
-			defer t.done.Done()
-			t.registerUntilDone(retry, registration)
-		}()
+		t.retryRegistration(ctx, registration)
 	default:
 		log.Info("audit installation connected", "audit", "connected",
 			"writer", cfg.Writer, "catalogue", c.Source+"@"+c.Version)
@@ -150,9 +174,30 @@ func register(ctx context.Context, r emit.Registration) error {
 	return emit.Register(attempt, r)
 }
 
+// notTrusted is the writer answering that it does not accept the token: a
+// configuration to fix, not an outage to wait out.
+func notTrusted(err error) bool {
+	switch connect.CodeOf(err) {
+	case connect.CodeUnauthenticated, connect.CodePermissionDenied:
+		return true
+	}
+	return false
+}
+
+func (t *Trail) retryRegistration(ctx context.Context, r emit.Registration) {
+	retry, stop := context.WithCancel(context.WithoutCancel(ctx))
+	t.stop = stop
+	t.done.Add(1)
+	go func() {
+		defer t.done.Done()
+		t.registerUntilDone(retry, r)
+	}()
+}
+
 // registerUntilDone tries again, backing off to a minute, until the receiver
 // answers — and stops trying if it answers with a refusal, which no retry
-// will change, after saying so as loudly as the log can.
+// will change, after saying so as loudly as the log can and handing it to
+// OnFatal, which is what stops the process.
 func (t *Trail) registerUntilDone(ctx context.Context, r emit.Registration) {
 	wait := time.Second
 	for {
@@ -169,6 +214,9 @@ func (t *Trail) registerUntilDone(ctx context.Context, r emit.Registration) {
 		case errors.Is(err, emit.ErrCatalogueRefused):
 			t.log.Error("the audit installation refused the catalogue; records will not be kept until it is fixed",
 				"error", logsafe.Error(err))
+			if t.onFatal != nil {
+				t.onFatal(err)
+			}
 			return
 		}
 		wait = min(wait*2, time.Minute)
@@ -190,13 +238,21 @@ func (t *Trail) Record(ctx context.Context, r *record.Record) {
 	t.line(ctx, r, nil)
 }
 
-// RecordDurable implements [Recorder]. Without an installation there is
-// nothing to wait for, and it answers nil: refusing a recovery sign-in on a
-// deployment that chose to keep no trail would make recovery impossible by
-// configuration.
+// RecordDurable implements [Recorder]: it returns once the record is kept,
+// or with the reason it could not be. That is the catalogue's `block`
+// delivery, and only an action declared so is accepted here -- for an async
+// action the emitter returns at enqueue, and a caller that waited for
+// durability would have been told a lie.
+//
+// Without an installation there is nothing to wait for, and it answers nil:
+// refusing a recovery sign-in on a deployment that chose to keep no trail
+// would make recovery impossible by configuration.
 func (t *Trail) RecordDurable(ctx context.Context, r *record.Record) error {
 	if t == nil || r == nil {
 		return nil
+	}
+	if a, ok := t.catalogue.Action(r.GetAction()); !ok || a.Delivery != "block" {
+		return fmt.Errorf("audit: %s is not a block action, so nothing durable can be waited for", r.GetAction())
 	}
 	err := t.emitter.Record(ctx, r)
 	t.line(ctx, r, err)
@@ -234,8 +290,9 @@ func (t *Trail) line(ctx context.Context, r *record.Record, err error) {
 	t.log.InfoContext(ctx, "audit", attrs...)
 }
 
-// Close stops retrying registration and closes the outbox. What the outbox
-// holds stays on disk for the next process.
+// Close stops retrying registration and closes the emitter, which delivers
+// what its queue holds within its timeout; what it cannot is dropped, and
+// said to be. The queue is in memory: nothing survives the process.
 func (t *Trail) Close() error {
 	if t == nil {
 		return nil
@@ -244,14 +301,10 @@ func (t *Trail) Close() error {
 		t.stop()
 	}
 	t.done.Wait()
-	var errs []error
 	if t.emitter != nil {
-		errs = append(errs, t.emitter.Close())
+		return t.emitter.Close()
 	}
-	for _, c := range t.closers {
-		errs = append(errs, c())
-	}
-	return errors.Join(errs...)
+	return nil
 }
 
 // schemaID reads a schema's $id, which is how the catalogue names it.

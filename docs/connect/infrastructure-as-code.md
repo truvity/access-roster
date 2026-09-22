@@ -24,7 +24,7 @@ Apps — `iac` in the [default set](github-apps-catalogue.md#a-default-set)
 | The program reads | a path in OpenBAO, Vault or a cloud manager | an installation token from this issuer's `/token` |
 | It depends on | the store being up | the issuer being up, and the job having a proof |
 | The credential is | the App's **private key**, durable | a token, minted per run, an hour at most |
-| Left in the audit trail | nothing here; the store's own log | one `github.token.minted` event per run |
+| Left in the audit trail | nothing here; the store's own log | one `roster.github_token.minted` record per run |
 | Right for | an apply that must not be blocked by this service — a program that manages the estate, including this service's own deployment | every CI job, every script, every person |
 
 **Take the exchange unless you cannot.** A job that can ask for a token
