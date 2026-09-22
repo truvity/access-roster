@@ -323,8 +323,10 @@ are there too for a plain download.
 
 `<config>/config.yaml` (`~/.config/accessctl/config.yaml` on Linux; see
 [above](#keys-and-where-the-files-go) for the directory) holds the issuer
-and the client id, written by `login`. `session.json` beside it holds the refresh token,
-mode `0600`.
+and the client id, written by `login`. `session.json` beside it holds
+the refresh token, and since 1.25.1 the **access token of the last
+refresh with its expiry** (`access_token`, `access_expires`), mode
+`0600`.
 
 **A file rather than the OS keyring**, deliberately: a keyring is a
 platform-specific dependency on every laptop and a prompt in the middle
@@ -335,6 +337,41 @@ it leaks.
 A rotated refresh token is written back. A refused refresh — revoked,
 expired, or the account suspended — reads as *not signed in*, because
 signing in again is the only answer.
+
+**Why the access token is kept too.** A refresh **spends** the refresh
+token: the issuer rotates it and refuses the old one, so two commands
+refreshing at the same instant leave one of them holding a dead token,
+and that reads as *not signed in* — for every audience at once. Keeping
+the access token means a command with one still in hand presents it
+instead of refreshing, and the moment a refresh is needed is taken under
+the lock `session.json.lock` beside the file, so eight callers waking at
+once make one refresh. It is the weaker of the two secrets, short-lived
+and unable to mint its successor, in the file that already held the
+stronger one under the same mode; it is kept only when its lifetime is
+known, and cleared otherwise.
+
+**Two token caches, one file per credential**, for the same race one
+level down — `kubectl` runs its exec plugin once per process, and every
+provider process of a tool like Pulumi runs the credential process:
+
+| Cache | Path | Keyed by | Offered until |
+|---|---|---|---|
+| `kube-token` | `<config>/kube/<hash>.json` | the issuer, the client id and the audience, hashed together — the same audience at another issuer is a different credential | a minute before the token's expiry, which is when client-go re-runs the plugin |
+| `aws` | `<config>/aws/<hash>.json` | the audience and the role ARN, hashed — an account id is not something to scatter across a filesystem | five minutes before the credential's expiry, when the AWS SDK would refresh its own copy |
+
+Each file is `0600` in a directory made `0700`, written to a temporary
+name and renamed so a reader never sees half a token, with a lock file
+`<hash>.json.lock` beside it that turns a cold start by many callers
+into one exchange. **Every cache is advisory in every direction**: a
+file that is absent, truncated, unreadable, expired, from an older
+version of this command, or unwritable means *mint afresh*, and none of
+them is ever an error. `login` does not touch them — it writes
+`config.yaml` and `session.json` and nothing else — so a token cached
+under the previous sign-in is offered until its expiry margin; a revoked
+audience is refused by the relying party until then, and deleting the
+`kube` and `aws` directories is how to force a fresh exchange. In a job
+the same files are written wherever `kube-token` or `aws` runs, keyed the
+same way; only the login cache is absent there.
 
 ## What it writes into files that are not its own
 
@@ -364,7 +401,9 @@ The same files work unchanged in a GitHub Actions job granted
 `github-token`, `credential` and `secrets` ask GitHub for the job's identity token — for the issuer's URL, the one
 audience it accepts — and exchange that, presenting the audience as the
 client, exactly as the GitHub Action does. There is no `login` in a job
-and no cache: every call exchanges afresh. A repository that would rather
+and no login cache: every proof is the job's own token, exchanged afresh,
+though `kube-token` and `aws` keep their per-credential caches
+([above](#where-things-are-kept)) there as anywhere. A repository that would rather
 download nothing of ours uses the action, which is `curl` and `jq`
 ([../connect/github-actions.md](../connect/github-actions.md)).
 

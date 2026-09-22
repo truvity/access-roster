@@ -27,12 +27,13 @@ a login cache and an issuer configuration.
 | `token` | prints a token for one audience on stdout and nothing else, for a caller that is neither kubectl nor an AWS SDK: `accessctl token --audience openbao \| bao write -field=token auth/jwt-roster/login role=roster jwt=-`. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `github-token` | prints a GitHub App installation token of a catalogue App, `--app <id>`, narrowed by `--repository` and `--permission name=level`, under the catalogue's grants; `--json` prints what GitHub granted beside it. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `credential` | mints a short-lived certificate through OpenBAO: `credential ssh\|db\|client --env <env>`, one exchange for `openbao`, one login on the JWT mount, one `sign` call, delivered into the ssh-agent, a psql service entry or a named path. The laptop sign-in, or the job's own token in CI | people, jobs |
+| `secrets` | reads a team's shared values out of OpenBAO's KV engine as a `.env` file: `secrets env --namespace <env> --prefix <path>`, the same exchange and login as `credential` with a listing and a read per leaf where the signing is; one variable per path, `0600`, written by rename, never a value printed. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
 | `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
 **A job runs the same commands.** With `ACTIONS_ID_TOKEN_REQUEST_URL`
 and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` set, `kube-token`, `aws`,
-`token` and `github-token` ask GitHub for the job's own identity token, minted for the
+`token`, `github-token`, `credential` and `secrets` ask GitHub for the job's own identity token, minted for the
 issuer, and exchange that, presenting the audience as the client the way
 the action does. So one committed kubeconfig and one `aws.ini` serve a
 laptop and a job alike, where a repository used to keep a second copy of
@@ -136,7 +137,18 @@ after a policy change.
 
 ## What it never does
 
-No stored secrets, no long-lived tokens on disk beyond the refresh token
-in its own file, no cloud SDK inside, and no cache in a job — there it
+No stored secrets and no cloud SDK inside. **What is on disk is
+short-lived and advisory, except the refresh token.** `session.json`
+holds the refresh token and, beside it, the access token of the last
+refresh with its expiry — kept so that a command with one in hand does
+not spend the refresh token for another exactly like it, because a
+refresh rotates that token and two commands refreshing at once sign the
+operator out of everything. `kube-token` and `aws` each keep one cache
+file per credential under `<config>/kube/` and `<config>/aws/`, `0600`,
+offered until shortly before expiry and dropped on any doubt, with a
+lock file beside each so a cold start by many callers is one exchange
+([reference](../reference/accessctl.md#where-things-are-kept)). None of
+it can mint its own successor; the refresh token is the one thing that
+can, and `login` replaces it. In a job there is no login cache — it
 exchanges the job's own token afresh, prints what the consumer expects
-and stops.
+and stops — and the two credential caches are written there as anywhere.

@@ -31,7 +31,7 @@ repository.
 | `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | every console with no OpenID flow of its own | shipped |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
-| `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, and short-lived certificates a secret manager mints | shipped |
+| `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, short-lived certificates a secret manager mints, and a team's shared values as a `.env` file (`secrets env`) | shipped |
 | GitHub Action | `truvity/access-roster@<commit>` | workflows: one exchange, then a kubeconfig, AWS profiles, or a GitHub App token | shipped |
 | the policy | one file, one schema | the issuer and the controller | shipped |
 | an Entra directory backend | — | a second corporate directory, behind the same workspace record | planned |

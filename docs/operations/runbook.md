@@ -107,7 +107,7 @@ only thing left to trust is the API server.
 | A domain shows *no longer owned* | the served list names a domain the directory no longer lists — it has moved to another tenant | the hand-over already happened: the other workspace serves it as soon as its own discovery returns it. Drop the entry here so the list matches reality |
 | Every domain non-authoritative at once | Valkey unreachable | restore Valkey; the service refills it within one refresh interval |
 | A workspace shows *declared* and no Reconnect/Disconnect | it comes from the chart's overlay | change the deployment's values, not the console |
-| After a restart, a workspace is unhealthy with "no backend: the credential is not loaded" | its entry in `Secret <release>-workspace-credentials` is gone or unreadable — restored namespace without that Secret, hand-edited object, an entry deleted by hand | put the Secret back from a backup, or **Reconnect** (consent) or upload the key again. The record, its served domains and its memberships are intact; only the credential is missing. The service logs the workspace id at start |
+| After a restart, a workspace is unhealthy with "no backend: the credential is not loaded" | its entry in `Secret <release>-workspace-credentials` is gone or unreadable — restored namespace without that Secret, hand-edited object, an entry deleted by hand | put the Secret back from a backup — then **restart**, because the credential is read once ([Rotating](#rotating)) — or **Reconnect** (consent) or upload the key again. The record, its served domains and its synced groups are intact; only the credential is missing. The service logs the workspace id at start |
 
 The rule consumers follow makes every row above safe: **a
 non-authoritative answer holds, it never removes.**
@@ -126,9 +126,16 @@ knows in advance:
 | `<release>-github-runner-apps` | every runner App, its record beside its keys |
 | `<release>-github-catalogue-apps` | every catalogue App, its record beside its keys |
 
-**Back them up** by copying the five objects, for example with an
-External Secrets `PushSecret` each into a secret manager that travels
-with your backups. Nothing in the service depends on the copy.
+**Back them up** by copying the five objects into a secret manager that
+travels with your backups. The chart renders the copy for the two that
+nothing upstream can re-deliver: `directory.push` writes the whole of
+`<release>-workspace-credentials` and `githubApps.push` the whole of
+`<release>-github-apps`, each an External Secrets `PushSecret` of the
+entire Secret under one remote key, off until written
+([values](../reference/configuration.md#values)). The other three are a
+`PushSecret` of your own. Nothing in the service depends on the copy,
+and what lands in the store **is** the credential — name a store the
+installation already trusts with material of that weight.
 
 **Restore** by putting the five Secrets back into the namespace, with
 the labels they carried, before the service starts or before restarting
@@ -137,6 +144,9 @@ record that is missing beside a credential, then reopens the
 workspaces. A restored workspace shows as never probed until its first
 probe; a link token that rotated since the copy means that person links
 again; a declared Secret is re-delivered by whatever declared it.
+**Restoring from a backup is a rotation** and needs the same restart
+([Rotating](#rotating)): writing the good value back is not enough on
+its own.
 
 **Without a copy**, a lost workspace credential is recovered by pressing
 **Connect** again as the same admin role account — the tenant id matches
@@ -150,16 +160,62 @@ and reconnecting or disconnecting that workspace removes it.
 
 ## Rotating
 
+**The Secrets and ConfigMaps are a projection, not a live source.**
+Nothing in the service watches them: writing a new value into one
+rotates nothing on a running pod. Which ones need a restart differs, so
+the rule is per object, as `charts/access-issuer/values.yaml` states it:
+
+> `workspace-credentials` — RESTART. The credential is read once, when
+> a replica first opens that workspace — at start, or at the console's
+> connect ceremony. After that the open reader is held in memory and
+> the Secret is never read again. The only thing that drops a reader is
+> DISCONNECTING the workspace, which also revokes the credential and
+> deletes the snapshot: that is removal, not rotation.
+>
+> `session-key` — RESTART. Read once while the stores are wired.
+> Deleting it is the documented "sign everyone out" lever, and it takes
+> effect on the restart, not on the delete.
+>
+> `github-links` (App) — NO RESTART. The record and its credential are
+> read from the API on every use, so a rotated value is picked up by
+> the next request.
+>
+> The silence is the hazard: a rotation that has not taken effect looks
+> exactly like one that has, until a restart hours or weeks later picks
+> up the new value — or, if the written value was wrong, takes the
+> directory down at a moment nobody connects to the change. Measured on
+> 2026-09-21: a deliberately corrupted credential went unnoticed for 14
+> minutes of normal operation, probes and a successful directory read
+> included, and would have gone unnoticed indefinitely.
+>
+> TO ROTATE a workspace credential or the session key: write the value,
+> then restart the Deployment, then confirm from the logs that the new
+> value was read ("opened a workspace this replica had not seen" for a
+> workspace). RESTORING FROM A BACKUP IS A ROTATION and needs the same
+> restart — writing the good value back is not enough on its own.
+
+Per credential:
+
 - **Consent credential:** Reconnect. The old refresh token is revoked at
-  Google as part of it.
+  Google as part of it, and the replica that served the click opens the
+  new reader; every other replica holds its old one, so restart the
+  Deployment and confirm from the log.
 - **Service-account key, connected through the console:** Upload key
-  again with the new JSON; the old one is replaced.
-- **Service-account key, declared:** replace the named Secret; the service
-  picks up the mounted file within a minute. Delete the old key in
-  Google Cloud afterwards.
-- **OAuth client secret:** Settings → set the new secret (or update the
-  declared Secret). Existing refresh tokens keep working; the secret is
-  used only to exchange and refresh.
+  again with the new JSON; the old one is replaced. Then the same
+  restart, for the same reason.
+- **Service-account key, declared:** replace the named Secret and
+  restart the Deployment — the mounted file is read once, when the
+  workspace is adopted at start, and never re-read. Delete the old key
+  in Google Cloud only after the log shows the new one was read.
+- **OAuth client secret:** update the declared Secret and restart. The
+  console cannot set it — `SettingsService` has `GetSettings` and no
+  `SetOAuthClient`, because a credential a console can change is one
+  somebody can change from a browser — and the sign-in half reads the
+  two mounted files once at start. Existing refresh tokens keep working;
+  the secret is used only to exchange and refresh.
+- **Session key:** delete `Secret <release>-session-key` and restart;
+  the service mints a fresh one, and everyone signs in again. Never copy
+  it anywhere: there is no `session.push`, deliberately.
 
 ## Export
 
