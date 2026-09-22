@@ -287,6 +287,31 @@ func (s *Sessions) replayed(ctx context.Context, oldToken string) (Session, stri
 	return session, successor, true, nil
 }
 
+// ByRefreshToken resolves a refresh token to its session, including one
+// that was rotated within the grace window.
+//
+// The refresh endpoint reads the token TWICE: the library resolves it to
+// a request before it asks for new tokens, so a replay that [Refreshed]
+// would have answered is refused before [Refreshed] ever runs. Both
+// readings have to see the same window or the grace is unreachable --
+// which is exactly the shape the first attempt at this had, visible as
+// the refusal changing from "not live" to `invalid_refresh_token` and
+// the failures carrying on unchanged.
+//
+// Only the refresh path uses this. [ByToken] stays exact, because the
+// other callers -- revocation, listing -- are asking whether this token
+// is the live one, which is a different question.
+func (s *Sessions) ByRefreshToken(ctx context.Context, token string) (Session, bool, error) {
+	session, ok, err := s.ByToken(ctx, token)
+	if err != nil || ok {
+		return session, ok, err
+	}
+
+	session, _, ok, err = s.replayed(ctx, token)
+
+	return session, ok, err
+}
+
 // ByToken resolves a refresh token to its session.
 func (s *Sessions) ByToken(ctx context.Context, token string) (Session, bool, error) {
 	raw, found, err := s.state.Get(ctx, sessionTokenKey(token))

@@ -876,7 +876,11 @@ func (s *Storage) claimsFor(
 
 // TokenRequestByRefreshToken implements [op.AuthStorage].
 func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken string) (op.RefreshTokenRequest, error) {
-	session, ok, err := s.iss.Sessions().ByToken(ctx, refreshToken)
+	// ByRefreshToken, not ByToken: this is the library's FIRST reading of
+	// the token on a refresh, so a replay inside the grace window has to
+	// resolve here or it is refused before CreateAccessAndRefreshTokens
+	// can answer it.
+	session, ok, err := s.iss.Sessions().ByRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, oidc.ErrServerError().WithDescription("%s", err)
 	}
@@ -960,7 +964,11 @@ func (r *refreshRequest) GetScopes() []string {
 
 // GetRefreshTokenInfo implements [op.AuthStorage].
 func (s *Storage) GetRefreshTokenInfo(ctx context.Context, _ string, tok string) (string, string, error) {
-	session, ok, err := s.iss.Sessions().ByToken(ctx, tok)
+	// The same window. Revocation resolves through here too, and a
+	// caller revoking with the token it holds must be obeyed even when a
+	// refresh rotated it a moment earlier -- refusing would leave the
+	// session open, which is the wrong way for a revocation to fail.
+	session, ok, err := s.iss.Sessions().ByRefreshToken(ctx, tok)
 	if err != nil {
 		return "", "", oidc.ErrServerError().WithDescription("%s", err)
 	}
