@@ -27,6 +27,17 @@ type Session struct {
 	Subject      string    `json:"sub,omitempty"`
 	Email        string    `json:"email,omitempty"`
 	Expires      time.Time `json:"expires,omitempty"`
+	// AccessToken is the issuer's own token from the last refresh, and
+	// AccessExpires is when it stops being accepted. Kept so that the next
+	// command can present it instead of SPENDING the refresh token for one
+	// exactly like it -- see refresh() for why spending it needlessly ends
+	// the session rather than merely costing a round trip.
+	//
+	// No new exposure: it lives in the file that already holds the refresh
+	// token, under the same mode, and it is the weaker of the two -- short
+	// lived, and it cannot mint its own successor.
+	AccessToken   string    `json:"access_token,omitempty"`
+	AccessExpires time.Time `json:"access_expires,omitempty"`
 }
 
 // configDir is where both live.
@@ -169,8 +180,34 @@ func saveSession(session Session) error {
 		return fmt.Errorf("render the session: %w", err)
 	}
 	path := filepath.Join(dir, "session.json")
-	if err = os.WriteFile(path, body, 0o600); err != nil {
+
+	// Written to a temporary file and renamed. A session half-written is a
+	// session lost -- the refresh token is the only copy -- and more than
+	// one process reaches this line: every kubectl, every provider of a
+	// Pulumi stack. A truncated file would read as "not signed in", which
+	// names neither the writer nor the moment.
+	tmp, err := os.CreateTemp(dir, ".session-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create a temporary file: %w", err)
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+
+	if err = tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+
+		return fmt.Errorf("restrict %s: %w", tmp.Name(), err)
+	}
+	if _, err = tmp.Write(body); err != nil {
+		_ = tmp.Close()
+
+		return fmt.Errorf("write %s: %w", tmp.Name(), err)
+	}
+	if err = tmp.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", tmp.Name(), err)
+	}
+	if err = os.Rename(tmp.Name(), path); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
+
 	return nil
 }
