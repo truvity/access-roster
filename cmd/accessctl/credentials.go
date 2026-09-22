@@ -69,19 +69,57 @@ func kubeToken(args []string) error {
 	if err != nil {
 		return err
 	}
-	held, err := proofFor(context.Background(), cfg, *audience)
-	if err != nil {
-		return err
-	}
-	token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, held.Type, *audience)
-	if err != nil {
-		return err
+
+	// kubectl says which apiVersion it wants in KUBERNETES_EXEC_INFO, and
+	// a plugin answering a different one is refused with a message about
+	// the version rather than about the token.
+	answer := func(token tokens.Token) error {
+		return tokens.WriteExecCredential(stdout, requestedExecVersion(), token)
 	}
 
-	// kubectl says which apiVersion it wants in KUBERNETES_EXEC_INFO,
-	// and a plugin answering a different one is refused with a message
-	// about the version rather than about the token.
-	return tokens.WriteExecCredential(stdout, requestedExecVersion(), token)
+	// A cached token ends it here, and that is the common case: kubectl
+	// starts this plugin once per kubectl process, and only the first of
+	// them should reach the issuer. See kube_cache.go for what goes wrong
+	// when they all do -- it is the whole session, not this one command.
+	cache, cacheErr := kubeCachePath(cfg.Issuer, cfg.ClientID, *audience)
+	if cacheErr == nil {
+		if token, ok := readKubeCache(cache); ok {
+			return answer(token)
+		}
+	}
+
+	mint := func() error {
+		// Re-read under the lock. A caller that waited here while another
+		// minted finds the answer already written, which is the whole
+		// point: one refresh, not one per caller.
+		if cacheErr == nil {
+			if token, ok := readKubeCache(cache); ok {
+				return answer(token)
+			}
+		}
+
+		held, err := proofFor(context.Background(), cfg, *audience)
+		if err != nil {
+			return err
+		}
+		token, err := exchangeAs(context.Background(), cfg.Issuer, held.Client, held.Subject, held.Type, *audience)
+		if err != nil {
+			return err
+		}
+		// A cache that cannot be written is not a reason to withhold a
+		// token the caller already has.
+		if cacheErr == nil {
+			_ = writeKubeCache(cache, token)
+		}
+
+		return answer(token)
+	}
+
+	if cacheErr != nil {
+		return mint()
+	}
+
+	return withCacheLock(cache, mint)
 }
 
 // requestedExecVersion reads what kubectl asked for, falling back to the
@@ -180,7 +218,7 @@ func awsCredentials(args []string) error {
 		return mint()
 	}
 
-	return withAWSCacheLock(cache, mint)
+	return withCacheLock(cache, mint)
 }
 
 // roleFromAudience turns `aws:<account>:<role>` into an ARN.
