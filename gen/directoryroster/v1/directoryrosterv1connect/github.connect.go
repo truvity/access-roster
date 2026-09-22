@@ -128,11 +128,12 @@ type GitHubServiceClient interface {
 	// controller reports on, each with its bound teams and the members the
 	// controller derived for them. Viewer.
 	//
-	// Its four App-shaped fields — link_app, runner_apps, catalogue_apps
-	// and each organisation's connection — are superseded by
-	// ListGitHubApps, which says the same things about all four kinds of
-	// App at once. They are still filled in, for a console that has not
-	// moved yet; nothing new is added to them.
+	// ListGitHubApps says the same things about all four kinds of App at
+	// once, and it is what the console reads. The four App-shaped fields
+	// here — link_app, runner_apps, catalogue_apps and each
+	// organisation's connection — are still filled in, so a client
+	// generated against an older proto keeps working; nothing new is
+	// added to them.
 	GetGitHubStatus(context.Context, *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error)
 	// BeginGitHubConnect starts connecting an organisation the policy
 	// binds: the App's manifest and where to post it, or — for an App
@@ -503,11 +504,12 @@ type GitHubServiceHandler interface {
 	// controller reports on, each with its bound teams and the members the
 	// controller derived for them. Viewer.
 	//
-	// Its four App-shaped fields — link_app, runner_apps, catalogue_apps
-	// and each organisation's connection — are superseded by
-	// ListGitHubApps, which says the same things about all four kinds of
-	// App at once. They are still filled in, for a console that has not
-	// moved yet; nothing new is added to them.
+	// ListGitHubApps says the same things about all four kinds of App at
+	// once, and it is what the console reads. The four App-shaped fields
+	// here — link_app, runner_apps, catalogue_apps and each
+	// organisation's connection — are still filled in, so a client
+	// generated against an older proto keeps working; nothing new is
+	// added to them.
 	GetGitHubStatus(context.Context, *connect.Request[v1.GetGitHubStatusRequest]) (*connect.Response[v1.GetGitHubStatusResponse], error)
 	// BeginGitHubConnect starts connecting an organisation the policy
 	// binds: the App's manifest and where to post it, or — for an App

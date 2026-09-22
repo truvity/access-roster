@@ -146,12 +146,15 @@ owner created from the console.
 
 ### Many in, many out, one point in the middle
 
+Every row is a guide of its own: follow it and add one more without
+asking anyone.
+
 | Fans in | Fans out |
 |---|---|
-| corporate directories: several Google Workspaces, Entra next — each a workspace with its own credential and its own served domains | Kubernetes clusters: each trusts the one issuer as its identity provider |
-| GitHub Actions: one federated issuer, an owner allow-list | AWS accounts: each trusts the one issuer as an OIDC provider |
-| every cluster's own ServiceAccount tokens: one row per cluster naming its key set | GitHub organisations: one controller App each, bindings in the same policy, and a runner App per tier for self-hosted runners |
-| | consoles and applications: one client row each |
+| [corporate directories](docs/connect/corporate-directory.md): several Google Workspaces, Entra next — each a workspace with its own credential and its own served domains | [Kubernetes clusters, for people](docs/connect/kubernetes-cluster.md): each trusts the one issuer as its identity provider |
+| [CI platforms](docs/connect/github-actions.md) — GitHub Actions today: one federated issuer, an owner allow-list | [AWS accounts](docs/connect/aws-account.md): each trusts the one issuer as an OIDC provider |
+| [every cluster's own ServiceAccount tokens](docs/connect/service-to-service.md), for workloads: one row per cluster naming its key set | [GitHub organisations](docs/connect/github-organisation.md): one controller App each, bindings in the same policy, and a runner App per tier for self-hosted runners |
+| | [consoles and applications](docs/connect/console-app.md): one client row each |
 
 Adding one of anything is one row and one trust registration. The
 issuer URL, the policy file and the console never multiply.
@@ -253,6 +256,8 @@ Every column, and why, is in
 | see every piece and how they connect | [docs/architecture.md](docs/architecture.md) |
 | learn the ten words used precisely | [docs/concepts.md](docs/concepts.md) |
 | write the policy | [docs/reference/policy.md](docs/reference/policy.md) |
+| connect the corporate directory people sign in with | [docs/connect/corporate-directory.md](docs/connect/corporate-directory.md), and [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
+| give a CI job an identity with no stored secret | [docs/connect/github-actions.md](docs/connect/github-actions.md) |
 | deploy it | [docs/operations/adoption-plain-helm.md](docs/operations/adoption-plain-helm.md), [docs/reference/configuration.md](docs/reference/configuration.md), then [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
 | run it: what to check, what to back up, how to restore | [docs/operations/runbook.md](docs/operations/runbook.md), [configuration.md — restoring from the Secrets alone](docs/reference/configuration.md#restoring-from-the-secrets-alone) |
 | use it from a laptop or a CI job | [docs/reference/accessctl.md](docs/reference/accessctl.md) |
@@ -276,8 +281,10 @@ is a value with a neutral example, and the installation supplies it from
 its own repository. Examples use `example.com`, `*.example` and the
 `acme` and `globex` organisations. The rule covers code, docs, the
 CHANGELOG, tests, commit messages and pull request text, because public
-history cannot be unpublished. Review enforces it today; the shared leak
-canary is not vendored in this repository yet.
+history cannot be unpublished. It is enforced mechanically:
+[`hack/leak-canary.sh`](hack/leak-canary.sh), vendored from the shared
+copy in `ci-workflows`, is a `just check` recipe and a CI job, and every
+exception it carries is written down in the script with its reason.
 
 This repository follows the shared
 [component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
@@ -292,7 +299,7 @@ what exists at each version, and releases are on the
 
 ```sh
 devbox shell        # or direnv: Go, buf, golangci-lint, helm, just, lefthook
-just check          # build, test, lint, chart-lint, archive-check, docs-check, ts, console, vuln
+just check          # build, test, lint, chart-lint, archive-check, docs-check, leak-canary, ts, vuln
 just generate       # proto → gen/ after a contract change; the generated code is committed
 ```
 

@@ -11,7 +11,7 @@ write, what you deploy, what you never implement.
 
 |  | `access-proxy` in front | its own flow |
 |---|---|---|
-| **Use when** | the console has no OpenID flow of its own, or is not yours to change — hubble, and most third-party UIs | you are writing it |
+| **Use when** | the console has no OpenID flow of its own, or is not yours to change — most third-party UIs | you are writing it |
 | **Who runs the login** | the proxy, and it forwards a verified bearer | the console: it sends a browser to `/authorize` and reads what comes back |
 | **You deploy** | your chart plus one `access-proxy` release | your chart |
 | **The client is** | confidential: oauth2-proxy refuses to start without a secret | public, with PKCE — no secret to rotate |

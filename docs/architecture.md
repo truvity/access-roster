@@ -210,8 +210,8 @@ Three layers, and none is the fallback for another.
 - **The proxy decides whether a browser is signed in.** Nothing more.
   It runs the code flow, holds the session, forwards the token.
 - **The application decides what the token opens.** From its own
-  tables, or from the `groups` claim. hubble has no roles at all, which
-  is exactly why its check sits at the issuer.
+  tables, or from the `groups` claim. An application with no roles of
+  its own is exactly the one whose check sits at the issuer.
 
 ## Who owns what
 

@@ -55,11 +55,12 @@ service GitHubService {
   // controller reports on, each with its bound teams and the members the
   // controller derived for them. Viewer.
   //
-  // Its four App-shaped fields — link_app, runner_apps, catalogue_apps
-  // and each organisation's connection — are superseded by
-  // ListGitHubApps, which says the same things about all four kinds of
-  // App at once. They are still filled in, for a console that has not
-  // moved yet; nothing new is added to them.
+  // ListGitHubApps says the same things about all four kinds of App at
+  // once, and it is what the console reads. The four App-shaped fields
+  // here — link_app, runner_apps, catalogue_apps and each
+  // organisation's connection — are still filled in, so a client
+  // generated against an older proto keeps working; nothing new is
+  // added to them.
   rpc GetGitHubStatus(GetGitHubStatusRequest) returns (GetGitHubStatusResponse);
 
   // BeginGitHubConnect starts connecting an organisation the policy
@@ -635,7 +636,7 @@ message GetGitHubStatusResponse {
   // false where people cannot link accounts here, for the same reason.
   bool linking_available = 4;
   // the connected link App; absent until an operator creates it.
-  // Superseded by the `link` App in ListGitHubApps.
+  // Also in ListGitHubApps, as the `link` App, which is what the console reads.
   GitHubLinkApp link_app = 5;
   // the page a person opens to link their account. Share it.
   string link_url = 6;
@@ -645,11 +646,11 @@ message GetGitHubStatusResponse {
   // runner Apps.
   repeated string runner_tiers = 8;
   // every runner App created, never with its key.
-  // Superseded by the `runners` Apps in ListGitHubApps.
+  // Also in ListGitHubApps, as the `runners` Apps, which is what the console reads.
   repeated GitHubRunnerApp runner_apps = 9;
   // every App the deployment's catalogue declares, and every one created
   // from an entry it no longer declares, with its state on GitHub.
-  // Superseded by the `tokens` Apps in ListGitHubApps.
+  // Also in ListGitHubApps, as the `tokens` Apps, which is what the console reads.
   repeated GitHubCatalogueApp catalogue_apps = 10;
   // false where this deployment keeps no catalogue Apps.
   bool catalogue_available = 11;
@@ -724,7 +725,7 @@ message GitHubOrganisation {
   // are, so they are listed and never touched.
   repeated GitHubAccount unlinked = 10;
   // how the controller acts in it. Absent until an operator connects it.
-  // Superseded by the organisation's `controller` App in ListGitHubApps.
+  // Also in ListGitHubApps, as the organisation's `controller` App, which is what the console reads.
   GitHubConnection connection = 11;
   // accounts with access to repositories without membership: reported.
   repeated GitHubAccount outside_collaborators = 12;

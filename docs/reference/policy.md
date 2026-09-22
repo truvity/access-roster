@@ -55,9 +55,9 @@ clients:                       # who may be issued a token for what; the id is t
 | `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap`, `sign_in_exchange`, `display_name`, `description`, `backchannel_logout_uri` | declared |
 | `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
 
-Five tables, one writer. There was another, `memberships`, which a
-console could extend; it is gone with the read-only console,
-and the key is now refused like any other unknown one rather than
+Five tables, one writer, and no sixth. There is no `memberships` table
+and no console-written layer: the console writes nothing into the
+policy, and the key is refused like any other unknown one rather than
 ignored. A directory group that should feed an internal group is named
 in that group's `members`, here, in git.
 
@@ -392,10 +392,9 @@ The deployment's ConfigMap(s), rendered from the installation's own
 access model. Several may exist and merge additively; a key present
 twice is refused.
 
-Through 0.11 a second, console-written layer carried `memberships`
-attached in the console, merged under the declared one. It is gone with
-the read-only console: who is in which internal group is this
-file and nothing else, and `git log` is the complete history of access.
+Nothing is merged under the declared one at runtime. Who is in which
+internal group is this file and nothing else, so `git log` is the
+complete history of access.
 
 ## Not in this file
 
@@ -420,8 +419,8 @@ client names its secret. A typo fails the rollout, not a login.
 
 Nothing in this file. The console reads the policy and shows it — every
 group, every rule, every client — and its only writes are removals of
-sessions (revoke, *sign out everywhere*). Through 0.10 it could also
-attach directory groups; that went with the read-only console.
+sessions (revoke, *sign out everywhere*). It cannot attach a directory
+group to an internal one: that is an edit to this file, in git.
 
 ## Testing the file
 

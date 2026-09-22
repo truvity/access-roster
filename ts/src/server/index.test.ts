@@ -95,7 +95,7 @@ describe("Issuer", () => {
   // audience the issuer serves a way in.
   it("refuses a token minted for another audience", async () => {
     const verifier = new Issuer({ url: issuer.url, audience: "url-shortener-devel" });
-    await expect(verifier.verify(await mint(person, { audience: "hubble-devel" }))).rejects.toBeInstanceOf(Unverified);
+    await expect(verifier.verify(await mint(person, { audience: "acme-devel" }))).rejects.toBeInstanceOf(Unverified);
   });
 
   it("refuses a token signed with a key the issuer does not publish", async () => {

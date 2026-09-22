@@ -1488,7 +1488,7 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
 
   /**
    * the connected link App; absent until an operator creates it.
-   * Superseded by the `link` App in ListGitHubApps.
+   * Also in ListGitHubApps, as the `link` App, which is what the console reads.
    *
    * @generated from field: directoryroster.v1.GitHubLinkApp link_app = 5;
    */
@@ -1518,7 +1518,7 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
 
   /**
    * every runner App created, never with its key.
-   * Superseded by the `runners` Apps in ListGitHubApps.
+   * Also in ListGitHubApps, as the `runners` Apps, which is what the console reads.
    *
    * @generated from field: repeated directoryroster.v1.GitHubRunnerApp runner_apps = 9;
    */
@@ -1527,7 +1527,7 @@ export type GetGitHubStatusResponse = Message<"directoryroster.v1.GetGitHubStatu
   /**
    * every App the deployment's catalogue declares, and every one created
    * from an entry it no longer declares, with its state on GitHub.
-   * Superseded by the `tokens` Apps in ListGitHubApps.
+   * Also in ListGitHubApps, as the `tokens` Apps, which is what the console reads.
    *
    * @generated from field: repeated directoryroster.v1.GitHubCatalogueApp catalogue_apps = 10;
    */
@@ -1802,7 +1802,7 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
 
   /**
    * how the controller acts in it. Absent until an operator connects it.
-   * Superseded by the organisation's `controller` App in ListGitHubApps.
+   * Also in ListGitHubApps, as the organisation's `controller` App, which is what the console reads.
    *
    * @generated from field: directoryroster.v1.GitHubConnection connection = 11;
    */
@@ -2456,11 +2456,12 @@ export const GitHubService: GenService<{
    * controller reports on, each with its bound teams and the members the
    * controller derived for them. Viewer.
    *
-   * Its four App-shaped fields — link_app, runner_apps, catalogue_apps
-   * and each organisation's connection — are superseded by
-   * ListGitHubApps, which says the same things about all four kinds of
-   * App at once. They are still filled in, for a console that has not
-   * moved yet; nothing new is added to them.
+   * ListGitHubApps says the same things about all four kinds of App at
+   * once, and it is what the console reads. The four App-shaped fields
+   * here — link_app, runner_apps, catalogue_apps and each
+   * organisation's connection — are still filled in, so a client
+   * generated against an older proto keeps working; nothing new is
+   * added to them.
    *
    * @generated from rpc directoryroster.v1.GitHubService.GetGitHubStatus
    */

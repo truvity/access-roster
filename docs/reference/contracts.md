@@ -14,13 +14,14 @@ without a generated client.
 | `/login/*`, `/connect/*`, `/.access/*` | the origin root: the bootstrap surface, and the endpoints a CLI reads | — |
 | `AuditSinkService` | in process only: the contract between what records and what writes | — |
 
-> **`directory.v1.DirectoryService` is not served.** It had one listener
-> and one consumer — the issuer — and the issuer is now the same process,
-> so the question is a function call. The proto stays, and the
-> endpoint returns on this service when something needs it again,
-> authenticated by token exchange like every other machine. The
-> paragraphs below about its audience, its consumers and their grants
-> describe that shape, which is history until then.
+> **`directory.v1.DirectoryService` has no listener.** Its one consumer
+> was the issuer, and the issuer is the same process, so the question is
+> a function call. No chart value turns it on and nothing outside the
+> process reaches it. The proto stays as the schema of the directory
+> answers — what the console's own services and the login path return,
+> and what a listener would serve if something outside ever needed one,
+> authenticated by token exchange like every other machine. Its RPC
+> table below is a reading guide to those answers, not to an endpoint.
 
 ## Authentication
 
@@ -73,13 +74,14 @@ token file on every call; the kubelet rotates it.
 
 ## Compatibility with google-group-sync
 
-`directory.v1.DirectoryService` is google-group-sync's contract with
-additive fields only. A client generated from the older proto keeps
-working and is served as if `max_age` were omitted; it does not see
-`authoritative`, so it must be upgraded before it may act on removals from
-a multi-workspace hub. The REST routes google-group-sync also served
-(`/users/{email}/groups`, `/groups`, `/groups/{email}`) are **not**
-carried; their one consumer moves to the Connect client.
+`directory.v1.DirectoryService` extends google-group-sync's contract
+with additive fields only, so a client generated from the older proto
+still compiles against it — though there is no listener here to point
+one at. Such a client does not see `authoritative`, which is the field a
+consumer must have before it may act on removals from an installation
+serving more than one workspace. The REST routes google-group-sync also
+served (`/users/{email}/groups`, `/groups`, `/groups/{email}`) are
+**not** carried.
 
 ## Freshness: `max_age` and `snapshot_at`
 
@@ -287,11 +289,12 @@ declared. `state` is `not_created`, `created`, `installed` or `drifted`;
 why GitHub could not be asked — which never fails the call. What GitHub
 said is cached for a minute.
 
-Those four App-shaped answers — `link_app`, `runner_apps`,
-`catalogue_apps` and each organisation's `connection` — are superseded by
-`ListGitHubApps`, which says all of it about all four kinds of App at
-once. They are still filled in for a console mid-rollout; nothing new is
-added to them.
+`ListGitHubApps` says all of it, about all four kinds of App, in one
+answer, and it is the call the console reads and the one to write new
+code against. The four App-shaped fields on `GetGitHubStatus` —
+`link_app`, `runner_apps`, `catalogue_apps` and each organisation's
+`connection` — are still filled in, so a client generated against an
+older proto keeps working; nothing new is added to them.
 
 **One App** is `{id, org, purpose, tier, origin, name, app_slug,
 description, public, installation, repository_selection, state,
