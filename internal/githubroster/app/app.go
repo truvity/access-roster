@@ -89,9 +89,13 @@ type App struct {
 	controller *controller.Controller
 	trail      *audit.Trail
 	log        *slog.Logger
+	// fatal carries the one error that ends the process from outside a
+	// pass: the audit installation refusing the catalogue after the start.
+	fatal chan error
 }
 
-// Close closes the audit outbox; what it holds is sent by the next process.
+// Close closes the audit emitter, which delivers what its queue holds within
+// its timeout and drops the rest, saying so. Nothing survives the process.
 func (a *App) Close() error { return a.trail.Close() }
 
 // The cluster's status store reads back what it wrote, so a restarted
@@ -141,7 +145,16 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	log.InfoContext(ctx, "the GitHub controller is assembled",
 		"organisations", len(declared.GitHub), "enabled", keys(cfg.enabled), "interval", cfg.interval, "console", cfg.console,
 		"policy", set.Digest())
+	// A refusal found after the start is fatal the way one at the start is:
+	// the process ends rather than running with records nobody accepts.
+	fatal := make(chan error, 1)
 	cfg.audit.Log = log
+	cfg.audit.OnFatal = func(err error) {
+		select {
+		case fatal <- err:
+		default:
+		}
+	}
 	trail, err := audit.Open(ctx, cfg.audit)
 	if err != nil {
 		return nil, err
@@ -149,6 +162,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	return &App{
 		log:   log,
 		trail: trail,
+		fatal: fatal,
 		controller: controller.New(controller.Config{Interval: cfg.interval, Enabled: cfg.enabled, AppsDir: cfg.appsDir}, controller.Deps{
 			Log:      log,
 			GitHub:   web,
@@ -163,8 +177,23 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}, nil
 }
 
-// Run passes until the context is done.
-func (a *App) Run(ctx context.Context) error { return a.controller.Run(ctx) }
+// Run passes until the context is done, or the audit installation refuses
+// the catalogue after the start, which ends the process the way a refusal
+// at the start would have.
+func (a *App) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- a.controller.Run(ctx) }()
+	select {
+	case err := <-a.fatal:
+		cancel()
+		<-done
+		return fmt.Errorf("audit: %w", err)
+	case err := <-done:
+		return err
+	}
+}
 
 func keys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))

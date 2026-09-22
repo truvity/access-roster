@@ -1,3 +1,67 @@
+## v1.26.0
+
+- **The audit trail is an installation of this service's own.** Every
+  record goes to an installation of
+  [truvity/audit](https://github.com/truvity/audit) rendered beside this
+  service, in its namespace, at the address `audit.writer` names — which
+  also takes the catalogue this service registers at start — and the
+  console's Audit page reads that installation's query service
+  (`audit.query`) with a token this issuer mints for the person signed in.
+  This service holds no bucket, no keys and no cloud identity for the
+  trail. What it keeps is the vocabulary: `internal/audit/catalogue/roster.yaml`
+  declares thirty-seven actions, one constructor each, and
+  `just audit-catalogue` holds the code to the document.
+- **Breaking: the chart refuses `audit.s3.*` and `audit.maxEvents`**, and
+  the `AuditService` and `AuditSinkService` RPCs are gone with the trail
+  they served. The GitHub controller records as itself, with its own
+  projected token, so the `all:access-roster:reporter` group it used to
+  report through is not read; a policy may drop it. Objects the old trail
+  wrote under `events/` are not migrated and age out under their lock.
+- **Delivery is a bounded queue in memory, not an outbox on disk.** A
+  record goes on the queue before the request completes and is retried
+  with backoff until the writer takes it; past the queue's bound the oldest
+  are dropped, counted (`audit.emit.records.dropped`) and each one logged
+  by id at Error. A restart loses what the queue holds. The one exception
+  stays: a recovery sign-in is `block`, kept before it succeeds and refused
+  when it cannot be.
+- **A refused catalogue ends the process**, whether at start or, after an
+  unreachable start, on the retry that first gets an answer — a service
+  whose records nobody accepts does not run for the life of the pod keeping
+  nothing. A token the installation does not trust is said at Error naming
+  the token file, rather than as "could not be reached" until the queue
+  gives up.
+- **`audit.forwardedForTrustedHops` counts the way the audit emitter
+  counts**: X-Forwarded-For read left to right with the connection's peer as
+  the last entry, so the peer is one hop. A gateway alone is 1; an edge
+  that appends the client and a gateway that appends the edge's connector
+  is 2 — where it used to be 1. A deployment with one proxy that appends
+  the client, which the old count could not express, now records the
+  client.
+- `RecordDurable` refuses an action the catalogue does not declare `block`,
+  because for any other it would return at enqueue and the caller would
+  have been told a durability it did not have.
+- Pinned at the component's v0.2.5, in the Go module and the console's
+  package; the documentation describes the trail as it now is.
+
+## v1.25.2
+
+- `accessctl`'s token-cache lock builds on Windows too.
+
+## v1.25.1
+
+- **`accessctl` no longer signs the operator out of every audience when two
+  of its processes run at once.** A refresh spends the refresh token — the
+  issuer rotates it so a stolen one is good for a single use — and a
+  credential process is not called once: every AWS provider a tool starts,
+  and every kubectl, ran its own refresh, the first to finish rotated the
+  token, and every other was left holding one the issuer refused, reported
+  as "not signed in". `kube-token` and `aws` now keep a per-cluster and
+  per-profile token cache under the config directory, take a lock around a
+  refresh, and every command presents the issuer's own access token,
+  kept in `session.json` beside the refresh token, while it lives.
+- The chart's values say which of the Secrets it writes need a restart to
+  rotate: none of them is watched, and each is read at a different moment.
+
 ## v1.25.0
 
 - **A group's door twin is one row, not drift.** A store holds one alias
@@ -86,9 +150,25 @@
 - **`access-issuer` keeps a recovery copy of the two Secrets nothing can
   re-deliver**, and `accessctl kubeconfig` writes `interactiveMode` on the
   entries it generates, without which kubectl refuses them.
+
+## v1.20.2
+
 - A pushed credential now declares the fields the `PushSecret` CRD
   defaults, so a deployment comparing desired against live stops reporting
   drift on a resource that is working.
+
+## v1.20.1
+
+- Shared CI v3.0.1.
+
+## v1.20.0
+
+- **`serviceAccount.annotations`** on the `access-issuer` chart, which is
+  how a cloud identity reaches this service: an admission webhook — EKS Pod
+  Identity, GKE Workload Identity, or the self-hosted
+  `amazon-eks-pod-identity-webhook` — reads the annotation and injects the
+  credentials into every pod using the account. The chart mounts no
+  credential of its own and takes none as a value.
 
 ## v1.19.0
 

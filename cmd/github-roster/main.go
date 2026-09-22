@@ -57,7 +57,7 @@ func run() error {
 	}
 	defer func() {
 		if err := controller.Close(); err != nil {
-			log.Warn("the audit outbox could not be closed cleanly; what it holds is sent by the next start", "error", err)
+			log.Warn("the audit emitter could not be closed cleanly; what its queue held is dropped", "error", err)
 		}
 	}()
 	return controller.Run(ctx)

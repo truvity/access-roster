@@ -488,5 +488,8 @@ func targetClient(id string) *record.Target    { return &record.Target{Type: "cl
 func targetWorkspace(id string) *record.Target { return &record.Target{Type: "workspace", Id: id} }
 func targetOrg(login string) *record.Target    { return &record.Target{Type: "organisation", Id: login} }
 func targetAccount(login string) *record.Target {
-	return &record.Target{Type: "github_account", Id: strings.ToLower(strings.TrimPrefix(login, "@"))}
+	// Trimmed the way Person is: under externalIdentifiersAreOpaque the writer
+	// refuses an is_person target with whitespace in it, as one that reads as
+	// something typed rather than minted.
+	return &record.Target{Type: "github_account", Id: strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(login), "@")))}
 }

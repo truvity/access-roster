@@ -2,7 +2,8 @@
 //
 // The trail is kept by an installation of github.com/truvity/audit of this
 // service's own, rendered beside it: a receiver that takes the records and
-// answers RegisterCatalogue, a writer that locks, signs and indexes them, and
+// answers RegisterCatalogue, a writer that locks and indexes them and whose
+// digest job signs each hour, and
 // a query service the console's Audit page reads. This package declares what
 // is recorded in a catalogue (catalogue/roster.yaml), registers it at
 // start-up, and sends each record to the receiver. With no installation

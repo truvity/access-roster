@@ -57,8 +57,8 @@ roles; access-roster holds the policy, a snapshot of the directory, the
 sessions it has open, and what an operator connected through the
 console: directory credentials, GitHub Apps and people's GitHub links.
 The audit trail is the one thing it writes that outlives it, and it is
-kept by an audit installation deployed on its own, which access-roster
-connects to as a plugin.
+kept by an audit installation of its own, rendered beside it in the same
+namespace.
 
 ## Containers
 
@@ -79,7 +79,7 @@ flowchart TB
   vk[("Valkey<br/>sessions · single sign-on · auth requests<br/>one snapshot per workspace")]
   cfg[("policy · clients · federated clusters<br/>ConfigMaps from the chart")]
   sec[("signing key · workspace credentials<br/>GitHub Apps · people's links · runner Apps<br/>Secrets")]
-  s3[("audit installation<br/>writer · registry · query service")]
+  aud[("audit installation<br/>receiver · writer · query service · jobs")]
 
   proxy["access-proxy<br/>oauth2-proxy, one per console<br/>Valkey for sessions"]
   idp["Google Workspace"]

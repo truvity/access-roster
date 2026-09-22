@@ -78,26 +78,31 @@ func bounded(value string, limit int) string {
 // clientAddress is the address of whoever reached the deployment's first
 // proxy, and the peer's host when that cannot be known.
 //
-// X-Forwarded-For is read from the right, because only the right end is
-// written by proxies the deployment trusts: each appends the address it
-// was reached from, and everything to the left of what they wrote is text
-// a caller may have sent. With trustedHops proxies of the deployment's own
-// appending — an edge that appends the client, then a gateway that appends
-// the edge's connector is one hop in front of the service — the client is
-// the entry just left of the last trustedHops. The first entry is never
-// trusted: a caller who sends the header owns it.
+// The count is the emitter's: the chain is X-Forwarded-For read left to
+// right with the peer appended as its last, unforgeable entry, and
+// trustedHops is how many entries at that near end belong to the
+// deployment's own proxies -- the peer counts as one. Dropping them leaves
+// the client as the last entry. So a gateway alone in front of the service
+// is 1; an edge that appends the client and a gateway that appends the
+// edge's connector is 2. The first entry is never trusted on its own: a
+// caller who sends the header owns it, and 0 records the peer.
 //
-// A header shorter than that did not come through those proxies, and a
+// A chain no longer than the hops did not come through those proxies, and a
 // value that is not an address is not one a proxy wrote; both fall back to
 // the peer.
 func clientAddress(header http.Header, peer string, trustedHops int) string {
 	if trustedHops > 0 {
-		var hops []string
+		var chain []string
 		for _, value := range header.Values("X-Forwarded-For") {
-			hops = append(hops, strings.Split(value, ",")...)
+			for _, part := range strings.Split(value, ",") {
+				if strings.TrimSpace(part) != "" {
+					chain = append(chain, part)
+				}
+			}
 		}
-		if at := len(hops) - 1 - trustedHops; at >= 0 {
-			if address, ok := addressOf(hops[at]); ok {
+		chain = append(chain, peer)
+		if len(chain) > trustedHops {
+			if address, ok := addressOf(chain[len(chain)-1-trustedHops]); ok {
 				return address
 			}
 		}

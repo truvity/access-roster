@@ -447,8 +447,8 @@ serviceAccount:
   # identity: an admission webhook (EKS Pod Identity, GKE Workload
   # Identity, or the self-hosted amazon-eks-pod-identity-webhook) reads an
   # annotation here and injects the credentials into every pod that uses
-  # the account. Without it a self-hosted installation has no way to give
-  # this service an AWS identity, and audit.s3 cannot be reached.
+  # the account. Nothing in this service needs a cloud identity today: the
+  # audit trail is the installation's to write, not this service's.
   #
   #   annotations:
   #     eks.amazonaws.com/role-arn: <the role's ARN>
@@ -615,10 +615,10 @@ secretManagers: []
 
 # The audit trail: sign-ins, refusals, exchanges, revokes, connects, and
 # what the GitHub controller did. It is kept by an audit installation
-# (github.com/truvity/audit) of this service's own, rendered beside it: the
-# receiver takes the records and registers the catalogue, the writer locks,
-# signs and indexes them, and the query service serves the Audit page as the
-# person signed in. This service holds no bucket and no keys — that is what
+# (github.com/truvity/audit) of this service's own, rendered beside it in
+# the same namespace: the receiver takes the records and registers the
+# catalogue, the writer locks and indexes them and its digest job signs each
+# hour, and the query service serves the Audit page as the person signed in. This service holds no bucket and no keys — that is what
 # having the installation next to it rather than inside it is for.
 #
 # With nothing set, nothing is kept: every record is still validated
@@ -639,17 +639,19 @@ audit:
   # client named `audience`, which the policy must declare with the groups
   # that may read the trail (`<scope>:audit:<role>`), and which the query
   # service's grants trust.
-  query: ""     # e.g. http://audit-query.audit.svc:8080
+  query: ""     # e.g. http://audit-query.access-issuer.svc:8080 -- the same namespace as the writer
   audience: audit
   # The projected token presented to the receiver.
   token:
     audience: audit
     expirationSeconds: 3600
-  # How many of the deployment's own proxies append to X-Forwarded-For in
-  # front of the service. The client is the entry just left of them, read
-  # from the right; the left end is whatever a caller sent. 0 records the
-  # connection's peer. Behind an edge that appends the client and a gateway
-  # that appends the edge's connector, it is 1.
+  # How many of the deployment's own proxies sit in front of the service,
+  # counted the way the audit emitter counts them: X-Forwarded-For read
+  # left to right with the connection's peer as the last entry, so THE PEER
+  # COUNTS AS ONE. A gateway alone in front of the service is 1; an edge
+  # that appends the client and a gateway that appends the edge's connector
+  # is 2. The client is the entry just left of those; the left end is
+  # whatever a caller sent and is never taken on its own. 0 records the peer.
   forwardedForTrustedHops: 0
 
 # Metrics, pushed over OTLP by the service and the GitHub controller.
