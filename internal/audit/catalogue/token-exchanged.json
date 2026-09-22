@@ -1,0 +1,19 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/token-exchanged.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "proof": {
+      "type": "string",
+      "description": "The kind of proof presented: a person's token, a CI job's, or a workload's.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true,
+      "enum": [
+        "person",
+        "ci",
+        "workload"
+      ]
+    }
+  }
+}

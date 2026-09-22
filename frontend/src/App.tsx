@@ -86,8 +86,8 @@ const internalSide: Item[] = [
 // an issuer shares this console's origin, and even then it is
 // operator-only: the rail entry must not render for a viewer.
 const sessionsItem: Item = { value: "sessions", label: "Sessions", to: paths.sessions(), icon: <KeyIcon fontSize="small" /> };
-// What happened lately. Operator-only for the same reason as Sessions: it
-// names every sign-in.
+// The audit trail, when an installation is connected. Who may read what
+// there is the installation's grants' to say, not this console's role.
 const auditItem: Item = { value: "audit", label: "Audit", to: paths.audit(), icon: <HistoryIcon fontSize="small" /> };
 
 export function App() {
@@ -219,7 +219,7 @@ export function App() {
         {operator && issuerIsSameOrigin(identityInfo?.issuerUrl) ? (
           <NavItem item={sessionsItem} current={route.view} onPick={() => setOpen(false)} />
         ) : null}
-        {operator ? <NavItem item={auditItem} current={route.view} onPick={() => setOpen(false)} /> : null}
+        {identityInfo?.audit ? <NavItem item={auditItem} current={route.view} onPick={() => setOpen(false)} /> : null}
         <Divider sx={{ my: 1 }} />
         <NavItem
           item={{ value: "settings", label: "Settings", to: paths.settings(), icon: <SettingsIcon fontSize="small" /> }}
@@ -355,7 +355,7 @@ function PageFor({
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "audit":
-      return <AuditPage query={query} />;
+      return <AuditPage query={query} connected={Boolean(me?.audit)} />;
     case "settings":
       return <SettingsView />;
     default:

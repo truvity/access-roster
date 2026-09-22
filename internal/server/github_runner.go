@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -160,10 +159,8 @@ func (c *Console) disconnectRunnerApp(ctx context.Context, org, tier string) (gi
 	if err = c.deps.GitHubRunnerApps.Delete(ctx, tier, org); err != nil {
 		return githubDisconnect{}, connect.NewError(connect.CodeUnavailable, err)
 	}
-	c.record(ctx, audit.Event{
-		Kind: "github.runner-app.disconnected", Target: org, Reason: out.detail,
-		Attributes: map[string]string{"tier": tier, "uninstalled": strconv.FormatBool(out.uninstalled)},
-	})
+	c.record(ctx, audit.RunnerAppDisconnected(actorOf(ctx), org,
+		audit.App{ID: record.AppID, Slug: record.AppSlug, Tier: tier}, out.uninstalled, out.detail))
 	return out, nil
 }
 
@@ -261,10 +258,8 @@ func (s *ConsoleServer) githubRunnerCallback(w http.ResponseWriter, r *http.Requ
 	}
 	s.log.InfoContext(r.Context(), "runner App created", "org", org, "tier", tier, "app", registration.ID,
 		"slug", registration.Slug, "by", logsafe.Value(actor))
-	s.console.record(r.Context(), audit.Event{
-		Kind: "github.runner-app.created", Actor: actor, Target: org,
-		Attributes: map[string]string{"tier": tier, "app": strconv.FormatInt(registration.ID, 10), "slug": registration.Slug},
-	})
+	s.console.record(r.Context(), audit.RunnerAppCreated(audit.Identified(actor), org,
+		audit.App{ID: registration.ID, Slug: registration.Slug, Tier: tier}))
 
 	state, err := s.state.IssueAs(access.Binding{Bind: githubRunnerBind + tier + ":" + org, Actor: actor})
 	if err != nil {
@@ -312,9 +307,7 @@ func (s *ConsoleServer) githubRunnerSetup(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.log.InfoContext(r.Context(), "runner App installed", "org", org, "tier", tier, "installation", installation, "by", logsafe.Value(actor))
-	s.console.record(r.Context(), audit.Event{
-		Kind: "github.runner-app.installed", Actor: actor, Target: org,
-		Attributes: map[string]string{"tier": tier, "app": strconv.FormatInt(record.AppID, 10), "installation": strconv.FormatInt(installation, 10)},
-	})
+	s.console.record(r.Context(), audit.RunnerAppInstalled(audit.Identified(actor), org,
+		audit.App{ID: record.AppID, Slug: record.AppSlug, Tier: tier}, installation))
 	http.Redirect(w, r, s.at("/#/github/apps"), http.StatusFound)
 }

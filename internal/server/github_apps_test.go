@@ -13,6 +13,7 @@ import (
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/audit/audittest"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
@@ -45,7 +46,7 @@ func newAppsRig(t *testing.T) *appsRig {
 	console.deps.GitHubRunnerApps = kube.NewGitHubRunnerApps(client)
 	console.deps.GitHubRunnerTiers = []string{"preview", "stable"}
 	console.deps.GitHubLinkApp, console.deps.GitHubLinks = &memoryLinkApp{}, &memoryLinks{byID: map[int64]link.Link{}}
-	console.deps.Audit = &kinds{}
+	console.deps.Audit = audittest.New(t)
 	return &appsRig{server: server, console: console, github: github, client: client}
 }
 

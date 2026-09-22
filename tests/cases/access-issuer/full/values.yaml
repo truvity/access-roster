@@ -189,12 +189,11 @@ githubApps:
 
 audit:
   forwardedForTrustedHops: 1
-  s3:
-    bucket: example-audit
-    region: eu-example-1
-    prefix: issuer/
-    flushInterval: 5s
-  maxEvents: 1000
+  # The installation rendered beside this service: one address for the
+  # records and the catalogue, one for the page to read.
+  writer: http://audit.access-issuer.svc:8080
+  query: http://audit-query.access-issuer.svc:8080
+  audience: audit
 
 telemetry:
   otlpEndpoint: http://otel-collector.observability.svc:4318

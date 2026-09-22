@@ -1,0 +1,25 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/workspace-connected.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "backend": {
+      "type": "string",
+      "description": "The directory's kind.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "via": {
+      "type": "string",
+      "description": "How it was connected: a consent flow or a key.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true,
+      "enum": [
+        "consent",
+        "key"
+      ]
+    }
+  }
+}

@@ -5,9 +5,9 @@
 //
 // It has no listener. It reads the console's API with its own
 // ServiceAccount token, writes to GitHub with each organisation's App,
-// replaces one ConfigMap with its report, and reports what it changed into
-// the service's audit stream. It holds nothing of the issuer's: no signing
-// key, no session store, no directory credential.
+// replaces one ConfigMap with its report, and records what it changed to
+// the audit installation as its own workload. It holds nothing of the
+// issuer's: no signing key, no session store, no directory credential.
 package controller
 
 import (
@@ -25,18 +25,17 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/truvity/audit/record"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/reconcile"
 	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/policy"
 )
-
-// Source is what the controller calls itself in the audit stream.
-const Source = "github-roster"
 
 // holdersLimit is how many holders one question asks for: more than any
 // group here has, and the answer says when it was not enough.
@@ -89,7 +88,10 @@ type Deps struct {
 	Log    *slog.Logger
 	GitHub *http.Client
 	Access directoryrosterv1connect.AccessServiceClient
-	Audit  directoryrosterv1connect.AuditServiceClient
+	// Audit is where the controller records what it did: the audit
+	// installation, with this workload's own identity, which the writer
+	// stamps as the records' observer. Nil records nothing.
+	Audit audit.Recorder
 	// Console is where an operator's confirmations are read from. Nil
 	// confirms nothing, so a tripped breaker stays tripped.
 	Console directoryrosterv1connect.GitHubServiceClient
@@ -454,7 +456,7 @@ func (c *Controller) confirm(ctx context.Context, emails []string) (map[string]r
 // act makes the changes. One that GitHub refuses becomes a held row with
 // GitHub's words, and the rest go on.
 func (c *Controller) act(ctx context.Context, client githubapp.Org, token string, report *status.Org, actions []reconcile.Action) {
-	var events []*directoryrosterv1.AuditEvent
+	var events []*record.Record
 	done := 0
 	for k := range actions {
 		action := actions[k]
@@ -471,24 +473,20 @@ func (c *Controller) act(ctx context.Context, client githubapp.Org, token string
 		default:
 			err = client.SetTeamRole(ctx, token, action.Team, action.Login, action.Role == status.RoleMaintainer)
 		}
-		event := &directoryrosterv1.AuditEvent{
-			Source: Source, Kind: "github.member." + string(action.Kind), Actor: "system",
-			Subject: action.Email, Target: target(report.Org, action.Team), Outcome: "ok",
-			Attributes: map[string]string{"login": action.Login, "role": string(action.Role)},
-		}
-		if action.Reason != "" {
-			event.Reason = action.Reason
-		}
+		outcome := audit.Succeeded()
+		outcome.Reason = action.Reason
 		c.metrics.recordChange(ctx, report.Org, action.Kind, err == nil)
 		if err != nil {
-			event.Outcome, event.Reason = "failed", err.Error()
+			outcome = audit.Failed(err.Error())
 			markHeld(report, action, err.Error())
 			c.deps.Log.WarnContext(ctx, "GitHub refused a change", "org", report.Org, "action", action.String(), "error", err)
 		} else {
 			done++
 			markDone(report, action)
 		}
-		events = append(events, event)
+		events = append(events, memberEvent(action.Kind, audit.Member{
+			Person: action.Email, Org: report.Org, Team: action.Team, Login: action.Login, Role: string(action.Role),
+		}, outcome))
 	}
 	report.Tick.Changes = done
 	c.report(ctx, events)
@@ -509,15 +507,15 @@ func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report sta
 		c.mu.Unlock()
 	}
 	now := map[string]bool{}
-	var events []*directoryrosterv1.AuditEvent
+	var events []*record.Record
 	each(report, func(team string, m status.Member) {
-		kind, outcome := "github.action.held", "held"
+		member := audit.Member{Person: m.Email, Org: org, Team: team, Login: m.Login, Role: string(m.Role)}
+		var event *record.Record
 		switch m.State {
 		case status.StateHeld:
+			event = audit.GitHubMemberHeld(member, string(m.Action), m.Reason)
 		case status.StateReported:
-			// The kind says it was reported; the outcome is the audit
-			// stream's, which has no "reported" and refuses the batch.
-			kind, outcome = "github.owner.reported", "ok"
+			event = audit.GitHubOwnerReported(member, string(m.Action), m.Reason)
 		default:
 			return
 		}
@@ -527,11 +525,7 @@ func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report sta
 		was := c.held[org][key]
 		c.mu.Unlock()
 		if !was {
-			events = append(events, &directoryrosterv1.AuditEvent{
-				Source: Source, Kind: kind, Actor: "system", Subject: m.Email,
-				Target: target(org, team), Outcome: outcome, Reason: m.Reason,
-				Attributes: map[string]string{"login": m.Login, "action": string(m.Action)},
-			})
+			events = append(events, event)
 		}
 	})
 	c.mu.Lock()
@@ -558,26 +552,30 @@ func (c *Controller) lastHeld(ctx context.Context, org string) map[string]bool {
 	return out
 }
 
-// report sends events to the audit stream. Losing one is logged, never
-// fatal: the change it describes has happened, and GitHub's own audit log
-// has it too.
-func (c *Controller) report(ctx context.Context, events []*directoryrosterv1.AuditEvent) {
-	if len(events) == 0 || c.deps.Audit == nil {
+// report records what the controller did. Losing a record is logged by
+// the recorder, never fatal: the change it describes has happened, and
+// GitHub's own audit log has it too.
+func (c *Controller) report(ctx context.Context, events []*record.Record) {
+	if c.deps.Audit == nil {
 		return
 	}
-	for start := 0; start < len(events); start += 200 {
-		batch := events[start:min(start+200, len(events))]
-		if _, err := c.deps.Audit.RecordAuditEvents(ctx, connect.NewRequest(&directoryrosterv1.RecordAuditEventsRequest{Events: batch})); err != nil {
-			c.deps.Log.WarnContext(ctx, "audit events could not be reported", "events", len(batch), "error", err)
-		}
+	for _, e := range events {
+		c.deps.Audit.Record(ctx, e)
 	}
 }
 
-func target(org, team string) string {
-	if team == "" {
-		return org
+// memberEvent is one membership change as the trail names it.
+func memberEvent(kind status.Action, m audit.Member, o audit.Outcome) *record.Record {
+	switch kind {
+	case status.ActionInvite:
+		return audit.GitHubMemberInvited(m, o)
+	case status.ActionAdd:
+		return audit.GitHubMemberAdded(m, o)
+	case status.ActionRemove:
+		return audit.GitHubMemberRemoved(m, o)
+	default:
+		return audit.GitHubMemberRoleSet(m, o)
 	}
-	return org + "/" + team
 }
 
 func each(report status.Org, visit func(team string, m status.Member)) {

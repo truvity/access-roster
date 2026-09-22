@@ -221,8 +221,16 @@ type App struct {
 	handler http.Handler
 	health  http.Handler
 	issuer  *issuer.Issuer
+	storage *issuer.Storage
 	cfg     Config
 	log     *slog.Logger
+}
+
+// MintFor signs a short-lived access token for a person signed in to this
+// service, for one declared client: how the console reads another service
+// as that person. See [issuer.Storage.MintFor].
+func (a *App) MintFor(ctx context.Context, email, audience string, lifetime time.Duration) (string, time.Time, error) {
+	return a.storage.MintFor(ctx, email, audience, lifetime)
 }
 
 // Handler is the OpenID surface: discovery, keys, authorize, token,
@@ -275,12 +283,16 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		HoldWindow:      cfg.holdWindow,
 		AllowInsecure:   cfg.allowInsecure,
 	}, set, directory, shared)
-	// The service's one audit stream, opened by the directory half. A
-	// split deployment with none still records every event to the log.
+	// The service's one audit trail, opened by the directory half. A
+	// split deployment with none still validates every record and logs it.
 	if deps.Audit != nil {
 		core.UseAudit(deps.Audit)
 	} else {
-		core.UseAudit(audit.NewLog(log, nil, ""))
+		trail, err := audit.Open(ctx, audit.Config{Log: log})
+		if err != nil {
+			return nil, err
+		}
+		core.UseAudit(trail)
 	}
 
 	if deps.GitHubApps != nil {
@@ -380,7 +392,7 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if deps.Around != nil {
 		handler = deps.Around(handler)
 	}
-	return &App{handler: handler, health: healthMux, issuer: core, cfg: cfg, log: log}, nil
+	return &App{handler: handler, health: healthMux, issuer: core, storage: storage, cfg: cfg, log: log}, nil
 }
 
 // directorySource says where the answer about a person comes from. There

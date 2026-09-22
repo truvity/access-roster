@@ -8,6 +8,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/truvity/audit/record"
+
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/policy"
 )
@@ -73,34 +75,24 @@ type Issuer struct {
 // than built here.
 func (i *Issuer) UseAudit(r audit.Recorder) { i.audit = r }
 
-// record writes one issuer event down, or nothing where no recorder was
-// given — a split deployment with no stream still logs through its own.
-func (i *Issuer) record(ctx context.Context, e audit.Event) {
+// record writes one record down, or nothing where no recorder was given.
+// What it keeps of the request that caused it arrives in the context, put
+// there by the middleware in front (emit.Middleware), because the storage
+// an OpenID library calls is handed nothing else.
+func (i *Issuer) record(ctx context.Context, r *record.Record) {
 	if i == nil || i.audit == nil {
 		return
 	}
-	i.audit.Record(ctx, issuerEvent(ctx, e))
+	i.audit.Record(ctx, r)
 }
 
-// recordDurable writes one issuer event down and answers only once it is
-// persisted: for a recovery sign-in, which does not complete without it.
-func (i *Issuer) recordDurable(ctx context.Context, e audit.Event) error {
+// recordDurable writes one record down and answers only once it is kept:
+// for a recovery sign-in, which does not complete without it.
+func (i *Issuer) recordDurable(ctx context.Context, r *record.Record) error {
 	if i == nil || i.audit == nil {
 		return nil
 	}
-	return i.audit.RecordDurable(ctx, issuerEvent(ctx, e))
-}
-
-// issuerEvent is an event as the issuer records it: as itself, with what
-// the event keeps of the request that caused it. The request arrives in
-// the context, put there by the server in front (server.AuditRequests),
-// because the storage an OpenID library calls is handed nothing else.
-func issuerEvent(ctx context.Context, e audit.Event) audit.Event {
-	e.Source = audit.SourceIssuer
-	if request, ok := audit.RequestFrom(ctx); ok {
-		request.Apply(&e)
-	}
-	return e
+	return i.audit.RecordDurable(ctx, r)
 }
 
 // New returns an issuer over a policy set, a directory and the shared

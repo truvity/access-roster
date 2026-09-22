@@ -1180,7 +1180,7 @@ function RecentTokens({ id }: { id: string }) {
   const recent = useAsync(() => github.listGitHubAppTokens({ id }), [id]);
   const tokens = recent.value?.tokens ?? [];
   const trail = (
-    <Ref to={paths.audit({ kind: "github.token.minted", target: `github-app:${id}` })}>Audit</Ref>
+    <Ref to={paths.audit(`action:roster.github_token.minted target:github_app:${id}`)}>Audit</Ref>
   );
   return (
     <Section title="Recent tokens" hint="the last ten asked for, minted or refused; tokens themselves are never kept">

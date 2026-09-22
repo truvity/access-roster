@@ -142,3 +142,60 @@ Takes a dict: `spec` (the privateKey map) and `path` (where to say it is).
 {{- fail (printf "%s: PKCS1 encodes only RSA keys; an ECDSA key is PKCS8" .path) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Whether an audit installation is connected: the address its receiver serves.
+
+One address is the whole connection. The receiver takes the records and
+answers RegisterCatalogue on the same port, because an installation belongs
+to one application and a registry of its own would be a Deployment for a
+single call.
+*/}}
+{{- define "access-issuer.auditConnected" -}}
+{{- $a := .Values.audit -}}
+{{- if and $a.query (not $a.writer) }}{{ fail "audit.query needs audit.writer: the page would read a trail nothing writes" }}{{ end -}}
+{{- if and $a.query (not $a.audience) }}{{ fail "audit.query needs audit.audience: the client the page's tokens are minted for" }}{{ end -}}
+{{- if $a.writer }}true{{ end -}}
+{{- end -}}
+
+{{/*
+The environment that connects a process to the audit installation: the
+service and the GitHub controller both record, each with its own identity.
+*/}}
+{{- define "access-issuer.auditEnv" -}}
+- name: AUDIT_WRITER_URL
+  value: {{ .Values.audit.writer | quote }}
+{{- if include "access-issuer.auditConnected" . }}
+- name: AUDIT_TOKEN_FILE
+  value: /var/run/audit/token
+{{- else }}
+- name: AUDIT_TOKEN_FILE
+  value: ""
+{{- end }}
+{{- end -}}
+
+{{- define "access-issuer.auditMounts" -}}
+{{- if include "access-issuer.auditConnected" . }}
+- name: audit-token
+  mountPath: /var/run/audit
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{/*
+The projected token the installation knows this workload by, with its
+audience. There is nothing else to mount: a record that cannot be delivered
+waits in the emitter's own queue, in memory, and the pod's disk holds none
+of the trail.
+*/}}
+{{- define "access-issuer.auditVolumes" -}}
+{{- if include "access-issuer.auditConnected" . }}
+- name: audit-token
+  projected:
+    sources:
+      - serviceAccountToken:
+          audience: {{ .Values.audit.token.audience | quote }}
+          expirationSeconds: {{ .Values.audit.token.expirationSeconds }}
+          path: token
+{{- end }}
+{{- end -}}

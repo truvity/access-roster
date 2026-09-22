@@ -8,7 +8,7 @@ logins.
 
 1. **The service first, beside everything.** Deploy access-issuer with
    the existing service-account keys as declared workspaces, an audit
-   bucket, and the policy rendered from the same access matrix the login
+   installation connected, and the policy rendered from the same access matrix the login
    hook reads, so the internal group **names** are the strings the IdP
    mints today — **decode a live token from each and diff the two
    `groups` lists before anything is rewired.** The differences are what
@@ -40,7 +40,7 @@ logins.
    it, and the pairings it approved are imported once.
 9. **Retire.** When the old IdP has no relying party left: the IdP, its
    database and operator, the login hook, the broker, the minted clients,
-   and its audit log, which the trail in your own bucket replaces.
+   and its audit log, which the audit installation's trail replaces.
 
 Every step is reversible by pointing one consumer back at the old issuer,
 which keeps running until step 9.

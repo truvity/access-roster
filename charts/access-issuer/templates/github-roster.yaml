@@ -117,6 +117,14 @@ spec:
               value: {{ join "," .Values.githubRoster.actsIn | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
+            # The controller records what it did to the audit installation
+            # itself, as its own workload, which the writer stamps as the
+            # records' observer.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- include "access-issuer.auditEnv" . | nindent 12 }}
 {{- with .Values.telemetry.otlpEndpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ . | quote }}
@@ -131,6 +139,7 @@ spec:
             - name: apps
               mountPath: /var/run/github-roster/apps
               readOnly: true
+            {{- include "access-issuer.auditMounts" . | nindent 12 }}
           {{- with .Values.githubRoster.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -156,6 +165,7 @@ spec:
           secret:
             secretName: {{ include "access-issuer.fullname" . }}-github-apps
             optional: true
+        {{- include "access-issuer.auditVolumes" . | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

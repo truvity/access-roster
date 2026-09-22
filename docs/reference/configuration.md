@@ -6,8 +6,11 @@ things it expects the deployment to provide.
 
 **One chart, `charts/access-issuer`, for one service.** It renders the
 whole of access-roster — the directory, the policy, the OpenID provider,
-the login page, the console and the audit trail — and, when enabled,
-the GitHub controller beside it.
+the login page and the console — and, when enabled, the GitHub
+controller beside it. It keeps no audit trail of its own: it records
+into an installation of [truvity/audit](https://github.com/truvity/audit)
+that the deployment provides, and reads that installation's query service
+for the console's Audit page.
 
 ## What the chart includes, what it expects
 
@@ -78,12 +81,12 @@ service writes *itself*, where it is the producer and gets to choose.
 | `githubRoster.actsIn[]` | `[]` | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled |
 | `githubRoster.interval` | `15m` | how long between passes |
 | `githubRoster.image.repository` / `.tag` | `ghcr.io/truvity/access-roster/github-roster` / app version | from the same release as the service |
-| `audit.s3.bucket` | `""` | the S3 bucket the audit trail is kept in: the durable record, and what the console's Audit page reads. Never Valkey. Empty keeps it in one replica's memory, which is not a record. The pod's own AWS identity needs `s3:PutObject` and `s3:GetObject` under the prefix and `s3:ListBucket` on the bucket (plus the bucket key's `kms:GenerateDataKey`/`kms:Decrypt` when it is encrypted with one); the bucket should carry Object Lock and deny deletes |
-| `audit.s3.region` | `""` | the bucket's region; empty takes the AWS SDK's own resolution |
-| `audit.s3.prefix` | `events/` | prepended to every key: `<prefix>YYYY/MM/DD/HH/<first event>-<pod>-<batch>.jsonl` |
-| `audit.s3.flushInterval` | `10s` | the longest an event waits in memory before it is written |
-| `audit.maxEvents` | `50000` | the in-memory trail's cap, used only without a bucket |
-| `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. An audit event's `client.address` is the entry just left of them, read from the right; the left end is whatever a caller sent, so the first entry is never taken. `0` records the connection's peer. Behind an edge that appends the client and a gateway that appends the edge's connector, it is `1` |
+| `audit.writer`, `audit.registry` | `""` | the audit installation's writer and registry, both or neither (the chart refuses one alone). Set, the service and the controller register the catalogue and record into it, each with its own projected token; empty, nothing is kept beyond log lines. The installation must map both service accounts to the source `roster` |
+| `audit.query` | `""` | the installation's query service, for the console's Audit page; empty shows no page |
+| `audit.audience` | `audit` | the policy client whose audience the Audit page's tokens carry. The policy must declare it, requiring the groups that may read the trail; the query service's grants must trust this issuer with it |
+| `audit.token.audience` / `.expirationSeconds` | `audit` / `3600` | the projected token presented to the writer and registry |
+| `audit.outbox.sizeLimit` | `256Mi` | the emptyDir records wait in until the writer takes them |
+| `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. A record's client address is the entry just left of them, read from the right; the left end is whatever a caller sent, so the first entry is never taken. `0` records the connection's peer. Behind an edge that appends the client and a gateway that appends the edge's connector, it is `1` |
 | `telemetry.otlpEndpoint` | `""` | the collector's OTLP/HTTP endpoint for metrics, from the service and the controller. Empty exports nothing and opens no listener |
 | `image.pullPolicy`, `serviceAccount.name`, `resources`, `podAnnotations`, `nodeSelector`, `tolerations`, `githubRoster.image.pullPolicy`, `githubRoster.resources` | | passthrough |
 | `logLevel` | `info` | debug, info, warn, error |
@@ -162,8 +165,7 @@ The one machine that reads the directory's answers today, the GitHub
 controller, asks the **console's** API — `Explain`, `ListHolders` — with
 its own ServiceAccount token, verified against its cluster's published
 key set, and the policy's `service_account` matchers put it in
-`all:access-roster:viewer` and `all:access-roster:reporter`. Any other
-workload may do the same.
+`all:access-roster:viewer`. Any other workload may do the same.
 
 A service that needs to know who somebody is does not ask the directory
 at all: it verifies the issuer's token with the `identity` package and
@@ -303,8 +305,9 @@ from the values above.
 | `SESSION_LIFETIME` | `directory.sessionLifetime` |
 | `LOGIN_DIRECTORY` | `directory.login` |
 | `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
-| `AUDIT_S3_BUCKET`, `AUDIT_S3_REGION`, `AUDIT_S3_PREFIX`, `AUDIT_S3_FLUSH_INTERVAL`, `AUDIT_MAX_EVENTS`, `AUDIT_FORWARDED_FOR_TRUSTED_HOPS` | `audit.*` |
-| `POD_NAME` | the pod's name, from the downward API: names the replica in audit object keys |
+| `AUDIT_WRITER_URL`, `AUDIT_REGISTRY_URL`, `AUDIT_QUERY_URL`, `AUDIT_AUDIENCE`, `AUDIT_FORWARDED_FOR_TRUSTED_HOPS` | `audit.*` |
+| `AUDIT_TOKEN_FILE`, `AUDIT_OUTBOX_DIR` | the projected token and the outbox, mounted when an installation is connected. Set on the GitHub controller as well, with its own token |
+| `POD_NAME` | the pod's name, from the downward API: names the instance on every audit record |
 | `CLIENT_SECRETS_DIR` | where the confidential clients' Secrets are mounted, one file per client |
 | `GITHUB_RUNNER_TIERS` | `githubRunnerApps.tiers`, comma-separated, set only when not empty |
 | `GITHUB_APPS_CATALOGUE_FILE` | the mounted `githubApps.catalogue`, set only when not empty. Read once at start; a malformed catalogue stops the service |
@@ -341,9 +344,8 @@ Two roles, held by membership of two declared internal groups.
 
 | Role | Group | May |
 |---|---|---|
-| viewer | `all:access-roster:viewer` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders`, `GetGitHubStatus`, `ListAuditEvents`, and listing one's own sessions — the whole console, read-only |
+| viewer | `all:access-roster:viewer` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders`, `GetGitHubStatus`, and listing one's own sessions — the whole console, read-only |
 | operator | `all:access-roster:operator` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, the GitHub connects and disconnects, `ConfirmGitHubRemovals`, `ImportGitHubLinks`, listing and revoking anyone's sessions |
-| reporter | `all:access-roster:reporter` | `RecordAuditEvents`: what the GitHub controller writes into the trail |
 
 Behind a gateway that forwards a token, the forwarded identity's email is
 resolved through the directory like any other; the groups in the token

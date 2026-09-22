@@ -20,8 +20,10 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubroster/controller"
 	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
 )
 
@@ -36,6 +38,9 @@ type Config struct {
 	interval  time.Duration
 	enabled   map[string]bool
 	logLevel  slog.Level
+	// audit is the audit installation the controller records to, with its
+	// own identity; without one it only logs what it did.
+	audit audit.Config
 }
 
 // LogLevel is the level the process should log at.
@@ -50,6 +55,12 @@ func Load() (Config, error) {
 		tokenFile: envString("TOKEN_FILE", "/var/run/secrets/github-roster/token"),
 		appsDir:   envString("APPS_DIR", "/var/run/github-roster/apps"),
 		enabled:   map[string]bool{},
+		audit: audit.Config{
+			Writer:    envString("AUDIT_WRITER_URL", ""),
+			TokenFile: envString("AUDIT_TOKEN_FILE", ""),
+			Instance:  envString("POD_NAME", ""),
+			Version:   version.String(),
+		},
 	}
 	for _, org := range strings.Split(envString("ENABLED_ORGS", ""), ",") {
 		if org = strings.TrimSpace(org); org != "" {
@@ -76,8 +87,12 @@ func Load() (Config, error) {
 // App is an assembled controller.
 type App struct {
 	controller *controller.Controller
+	trail      *audit.Trail
 	log        *slog.Logger
 }
+
+// Close closes the audit outbox; what it holds is sent by the next process.
+func (a *App) Close() error { return a.trail.Close() }
 
 // The cluster's status store reads back what it wrote, so a restarted
 // controller does not record every held and reported row again.
@@ -126,13 +141,19 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	log.InfoContext(ctx, "the GitHub controller is assembled",
 		"organisations", len(declared.GitHub), "enabled", keys(cfg.enabled), "interval", cfg.interval, "console", cfg.console,
 		"policy", set.Digest())
+	cfg.audit.Log = log
+	trail, err := audit.Open(ctx, cfg.audit)
+	if err != nil {
+		return nil, err
+	}
 	return &App{
-		log: log,
+		log:   log,
+		trail: trail,
 		controller: controller.New(controller.Config{Interval: cfg.interval, Enabled: cfg.enabled, AppsDir: cfg.appsDir}, controller.Deps{
 			Log:      log,
 			GitHub:   web,
 			Access:   directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, bearer),
-			Audit:    directoryrosterv1connect.NewAuditServiceClient(web, cfg.console, bearer),
+			Audit:    trail,
 			Console:  directoryrosterv1connect.NewGitHubServiceClient(web, cfg.console, bearer),
 			Policy:   set.Digest(),
 			Status:   kube.NewGitHubStatus(client),

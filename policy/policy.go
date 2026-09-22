@@ -56,9 +56,11 @@ const (
 	RoleOperator = "operator"
 	RoleViewer   = "viewer"
 
-	// RoleReporter is held by a component in another process that reports
-	// what it did into the audit stream. It is not a console role: it
-	// reads nothing, and only a workload may hold it to any effect.
+	// RoleReporter was held by a component in another process that
+	// reported what it did through this service.
+	//
+	// Deprecated: nothing reads it. A component records into the audit
+	// installation directly, as its own workload.
 	RoleReporter = "reporter"
 
 	// Separator divides a grant's three segments.
@@ -70,8 +72,10 @@ const (
 var (
 	GroupOperators = ScopedGroup(ScopeAll, RoleOperator)
 	GroupViewers   = ScopedGroup(ScopeAll, RoleViewer)
-	// GroupReporters is the workloads that may record audit events about
-	// themselves. Installation-wide only: a report is not about a tenant.
+	// GroupReporters was the workloads that could report audit events
+	// through this service.
+	//
+	// Deprecated: nothing reads it; see [RoleReporter].
 	GroupReporters = ScopedGroup(ScopeAll, RoleReporter)
 )
 
