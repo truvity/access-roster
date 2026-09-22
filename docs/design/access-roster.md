@@ -600,12 +600,12 @@ every session and refresh token.
 ## Audit
 
 access-roster does not keep its own audit trail (decided 2026-09-18). It
-records into an installation of [truvity/audit](https://github.com/truvity/audit),
-deployed as a release of its own, and connects to it as a plugin: with
-`audit.writer`, `audit.registry` and `audit.query` set it registers its
-catalogue, sends its records, and shows the installation's view as the
-console's Audit page; with none set it keeps nothing beyond log lines and
-has no page. Until 1.x it kept Elastic Common Schema objects in an
+records into an installation of [truvity/audit](https://github.com/truvity/audit)
+that belongs to this application and runs in its namespace: with
+`audit.writer` set it registers its catalogue and sends its records to that
+one address, and with `audit.query` set it shows the installation's view as
+the console's Audit page; with neither it keeps nothing beyond the log line
+every record also is, and has no page. Until 1.x it kept Elastic Common Schema objects in an
 Object-Locked bucket of its own, written and listed by this service; that
 was a second audit component, without pseudonymisation, a signed chain,
 an index or retention per purpose, and the installation has all of them.
@@ -668,9 +668,9 @@ profiles the person may read.
 
 Recording never fails what is being recorded. A sign-in that could not be
 written down still happened, and refusing it because the trail was slow
-would turn an audit outage into an access outage: almost every action is
-written to an outbox on the pod's disk before the request completes, and
-reaches the writer when it can
+would turn an audit outage into an access outage: almost every action goes
+on a bounded queue in the process before the request completes, and reaches
+the writer when it can
 ([control](../operations/runbook.md#when-the-installation-cannot-be-reached)).
 
 **The one exception is a recovery sign-in, which fails closed.** Its

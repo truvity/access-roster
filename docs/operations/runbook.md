@@ -275,8 +275,7 @@ with.
 
 access-roster keeps no audit trail of its own. It records into an **audit
 installation** ([truvity/audit](https://github.com/truvity/audit)), deployed
-as its own release, and connects to it as a plugin: `audit.writer`,
-`audit.registry` and `audit.query` in the chart. What it records is its
+in its own namespace: `audit.writer` and `audit.query` in the chart. What it records is its
 catalogue, [`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml):
 sign-ins and their refusals — at the issuer and at the console's own door,
 recovery as its own action — token exchanges and GitHub installation tokens
@@ -335,45 +334,49 @@ installation's `workloadIdentity.workloads`.
    `audit.audience`, default `audit` — requiring the groups that may read
    the trail, and trust this issuer in the query service's grants file
    with that audience.
-4. Set `audit.writer`, `audit.registry` and `audit.query`. At start the
-   service registers its catalogue; `audit installation connected` in the
-   log says it did.
+4. Set `audit.writer` and `audit.query`. At start the service registers
+   its catalogue on the writer's own address; `audit catalogue registered`
+   in the log says it did.
 
 ### When the installation cannot be reached
 
-**Nothing but a recovery sign-in waits for it.** Every other action is
-written to an outbox on the pod's disk before the request completes and
-delivered when the writer answers; an outage is a delay, and the outbox's
-size is the signal. A pod deleted while the writer is down loses what its
-outbox held — the log lines remain. This is fail-open by decision: an audit
-outage must not become an access outage.
+**Nothing but a recovery sign-in waits for it.** Every other record goes on
+a bounded queue inside the process and is retried with backoff until the
+writer takes it; an outage is a delay, and the queue's depth is the signal.
+The queue is in memory, so a pod deleted while the writer is down loses what
+it held, and past the queue's bound the oldest are dropped and counted. The
+log line every record also is remains either way. This is fail-open by
+decision: an audit outage must not become an access outage.
 
 **A recovery sign-in fails closed.** Its catalogue entry says `block`: it is
-written to the installation before the sign-in succeeds, and when it cannot
-be, the sign-in is refused — a page at the issuer, a 503 at the console's
-own door — and the refusal is recorded the ordinary way. The proof was
-good; bring the writer back and recover again. There is no override. With
-no installation connected at all, recovery is not refused: a deployment
-that keeps no trail has nothing to wait for.
+kept by the installation before the sign-in succeeds, and when it cannot be,
+the sign-in is refused — a page at the issuer, a 503 at the console's own
+door — and the refusal is recorded the ordinary way. The proof was good;
+bring the writer back and recover again. There is no override. With no
+installation connected at all, recovery is not refused: a deployment that
+keeps no trail has nothing to wait for.
 
-**A registry that cannot be reached at start** does not stop the start:
-records wait in the outbox, and registration is retried until it answers.
-**A registry that refuses the catalogue** stops the start, with the
-problems it gave; `just audit-catalogue` finds most of them before a
-release does.
+**An installation that cannot be reached at start** does not stop the start:
+records wait in the queue, and the catalogue's registration is retried until
+it answers. **An installation that refuses the catalogue** leaves the service
+running and keeping nothing, saying so; `just audit-catalogue` finds most of
+those before a release does.
 
 **The signals**, in the log:
 
 | Line | Means |
 |---|---|
-| `audit installation connected` (Info) | registered; records are delivered |
-| `the audit registry could not be reached; records wait in the outbox, and registration is retried` (Warn) | started unregistered |
-| `audit records could not be delivered yet` (Warn) | the writer refused or could not be reached; the outbox holds them |
-| `audit record not kept` (Warn) | one record did not reach the outbox, or a `block` record did not reach the writer |
+| `audit installation connected` (Info) | the address answered |
+| `audit catalogue registered` (Info) | it accepted this service's catalogue; records are kept |
+| `the audit installation could not be reached; records wait in the emitter's queue, and registration is retried` (Warn) | started unregistered |
+| `the audit installation refused the catalogue; records will not be kept until it is fixed` (Warn) | the catalogue and the installation disagree |
+| `audit records could not be delivered yet` (Warn) | the writer refused or could not be reached; the queue holds them |
 | `an audit record does not satisfy the catalogue` (Error) | a bug: the code built a record its catalogue refuses |
 | `no audit installation is connected: records are validated and logged, and kept nowhere else` (Warn, at start) | the deployment keeps no trail |
 
 and as metrics, from the emitter, pushed over OTLP when
-`telemetry.otlpEndpoint` is set: `audit.emit.outbox.pending` (a number that
-only grows is a writer gone too long), `audit.emit.batches.failed`,
-`audit.emit.records.refused` (a bug), `audit.emit.records.written`.
+`telemetry.otlpEndpoint` is set: **`audit.emit.records.dropped` is the one to
+alert on** — the queue gave up and those records are gone.
+`audit.emit.queue.pending` climbing and not falling is a writer gone too
+long; `audit.emit.batches.failed`, `audit.emit.records.refused` (a bug) and
+`audit.emit.records.written` are the rest.

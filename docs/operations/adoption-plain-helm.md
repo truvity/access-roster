@@ -18,7 +18,7 @@ your domain, `eu-example-1` for your region.
 | Envoy Gateway | `access-proxy` only | the proxy is Envoy's external authorization backend, through a `SecurityPolicy` (`gateway.envoyproxy.io/v1alpha1`) |
 | a Valkey (or any Redis-protocol store) | the issuer with more than one replica; every `access-proxy` | neither chart installs one. One replica of the issuer may run without it (`replicaCount: 1`, `valkey.address: ""`), keeping sessions in memory |
 | a Google Workspace, and an OAuth client in a Google Cloud project | people signing in, and the directory the groups are read from | the one upstream that is built; a second directory backend (Entra) is designed and not written. [connect-runbook.md](connect-runbook.md) walks through the client |
-| an S3 bucket, and an AWS identity for the pod | the audit trail as a record (optional) | without `audit.s3.bucket` the trail is one replica's memory, and the service says so at start |
+| an audit installation ([truvity/audit](https://github.com/truvity/audit)) | the audit trail (optional) | without `audit.writer` nothing is kept beyond the log line every record also is, and the service says so at start. This service writes no object itself: the installation owns the archive |
 | OpenBAO, or a Vault with the same API | short-lived SSH, database and client certificates (optional) | not installed by these charts; [../connect/openbao.md](../connect/openbao.md) |
 
 ## Install order

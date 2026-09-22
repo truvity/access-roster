@@ -81,11 +81,10 @@ service writes *itself*, where it is the producer and gets to choose.
 | `githubRoster.actsIn[]` | `[]` | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled |
 | `githubRoster.interval` | `15m` | how long between passes |
 | `githubRoster.image.repository` / `.tag` | `ghcr.io/truvity/access-roster/github-roster` / app version | from the same release as the service |
-| `audit.writer`, `audit.registry` | `""` | the audit installation's writer and registry, both or neither (the chart refuses one alone). Set, the service and the controller register the catalogue and record into it, each with its own projected token; empty, nothing is kept beyond log lines. The installation must map both service accounts to the source `roster` |
+| `audit.writer` | `""` | the audit installation's receiver: one address, which takes the records and answers the catalogue's registration on the same port. Set, the service and the controller record into it, each with its own projected token; empty, nothing is kept beyond the log line every record also is. The installation must map both service accounts to the source `roster` |
 | `audit.query` | `""` | the installation's query service, for the console's Audit page; empty shows no page |
 | `audit.audience` | `audit` | the policy client whose audience the Audit page's tokens carry. The policy must declare it, requiring the groups that may read the trail; the query service's grants must trust this issuer with it |
-| `audit.token.audience` / `.expirationSeconds` | `audit` / `3600` | the projected token presented to the writer and registry |
-| `audit.outbox.sizeLimit` | `256Mi` | the emptyDir records wait in until the writer takes them |
+| `audit.token.audience` / `.expirationSeconds` | `audit` / `3600` | the projected token presented to the receiver |
 | `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. A record's client address is the entry just left of them, read from the right; the left end is whatever a caller sent, so the first entry is never taken. `0` records the connection's peer. Behind an edge that appends the client and a gateway that appends the edge's connector, it is `1` |
 | `telemetry.otlpEndpoint` | `""` | the collector's OTLP/HTTP endpoint for metrics, from the service and the controller. Empty exports nothing and opens no listener |
 | `image.pullPolicy`, `serviceAccount.name`, `resources`, `podAnnotations`, `nodeSelector`, `tolerations`, `githubRoster.image.pullPolicy`, `githubRoster.resources` | | passthrough |
@@ -305,8 +304,8 @@ from the values above.
 | `SESSION_LIFETIME` | `directory.sessionLifetime` |
 | `LOGIN_DIRECTORY` | `directory.login` |
 | `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
-| `AUDIT_WRITER_URL`, `AUDIT_REGISTRY_URL`, `AUDIT_QUERY_URL`, `AUDIT_AUDIENCE`, `AUDIT_FORWARDED_FOR_TRUSTED_HOPS` | `audit.*` |
-| `AUDIT_TOKEN_FILE`, `AUDIT_OUTBOX_DIR` | the projected token and the outbox, mounted when an installation is connected. Set on the GitHub controller as well, with its own token |
+| `AUDIT_WRITER_URL`, `AUDIT_QUERY_URL`, `AUDIT_AUDIENCE`, `AUDIT_FORWARDED_FOR_TRUSTED_HOPS` | `audit.*` |
+| `AUDIT_TOKEN_FILE` | the projected token, mounted when an installation is connected. Set on the GitHub controller as well, with its own token |
 | `POD_NAME` | the pod's name, from the downward API: names the instance on every audit record |
 | `CLIENT_SECRETS_DIR` | where the confidential clients' Secrets are mounted, one file per client |
 | `GITHUB_RUNNER_TIERS` | `githubRunnerApps.tiers`, comma-separated, set only when not empty |

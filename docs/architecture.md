@@ -138,7 +138,7 @@ JavaScript.
 | ConfigMaps | the policy, the clients, the federated clusters | git |
 | Secrets the chart delivers | the signing key, the OAuth client | whatever delivered them; the runbook |
 | Secrets the service writes | the directories' credentials, each GitHub organisation's App, the link App, people's link tokens, the runner Apps, the catalogue Apps — each entry carrying a copy of its record | a copy of five Secrets restores every one of them, records included ([configuration](reference/configuration.md#restoring-from-the-secrets-alone)); a link token that rotated since means that person links again |
-| the audit installation | the audit trail: one record per action, kept, locked and signed by the installation | its own backups and archive; while its writer is unreachable records wait in each pod's outbox, and a recovery sign-in is refused rather than left unrecorded |
+| the audit installation | the audit trail: one record per action, kept, locked and signed by the installation | its own archive; while its writer is unreachable records wait in each pod's queue, and a recovery sign-in is refused rather than left unrecorded |
 
 ## Fan-in and fan-out
 
@@ -260,7 +260,7 @@ Three layers, and none is the fallback for another.
 | A signed-in operator's own account turns non-authoritative | last granted role kept for a bounded window; nothing new granted |
 | A policy the issuer refuses to load | the new pod does not start and the previous pods keep serving the previous policy; nothing visible changes except the new clients are absent |
 | access-roster is down | no new sign-ins anywhere; existing sessions and tokens live to expiry; recovery is by cluster proof |
-| the audit installation unreachable | records wait in each pod's outbox and are delivered when its writer answers; the Audit page cannot be read; a recovery sign-in is refused meanwhile |
+| the audit installation unreachable | records wait in each pod's queue and are delivered when its writer answers; the queue is bounded, and past its bound the oldest are dropped and counted; the Audit page cannot be read; a recovery sign-in is refused meanwhile |
 | a GitHub pass fails | the last report with rows stands; the pass is retried next interval; nothing is removed on a failed read |
 | the console answers the controller under another policy | the pass changes nothing and is tried again within seconds, six times at most before the interval resumes: a rollout restarts the two at different moments, and a removal decided across that gap would be wrong |
 | an organisation's seats cannot be read | nobody is invited into it until they can |
