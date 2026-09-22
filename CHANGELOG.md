@@ -1,3 +1,42 @@
+## v1.27.0
+
+- **Breaking: `@truvity/access-roster/server` verifies with the algorithms
+  the issuer advertises.** It pinned RS256, and the chart has signed with
+  ECDSA P-384 by default since 1.19.0, so a Node service built per the
+  documentation against a default installation rejected every token. The
+  verifier now reads `id_token_signing_alg_values_supported` from
+  discovery, falls back to the four the issuer can sign with (RS256,
+  ES256, ES384, ES512) when nothing is advertised, never accepts `none`
+  or an HMAC, and takes an `algorithms` option to narrow. A caller that
+  relied on the RS256 pin against an issuer advertising more now accepts
+  more; narrow it if that matters.
+- **Every relying-party guide says which algorithm it needs.** kube-apiserver's
+  `--oidc-signing-algs` defaults to RS256 and must name ES384 for a default
+  installation; ArgoCD follows discovery; **Kargo is RS256-only** at the
+  source, so an installation Kargo signs into must set
+  `signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`;
+  IAM accepts ES384. The README's worked example says it ships ES384.
+- **A concurrent refresh gets the winner's token, not a refusal.** Rotation
+  spent the refresh token the moment it was presented, so of several
+  refreshes carrying the same token exactly one could succeed and the rest
+  were told the token is not live — the answer meant for a thief — which a
+  relying party reads as a dead session. A gateway that verifies per request
+  presents one spent token several times inside a second. Inside a short
+  grace window a replay is now answered with the successor the winning
+  refresh produced: the loser holds exactly what the winner holds, and the
+  token it offered is never minted, so there is still one live credential.
+- **The reference pages catch up with 1.17 to 1.25.** The configuration
+  reference gains every chart key added since 1.17 — the signing-key
+  certificate, the route's private key, both push blocks, the whole
+  `secretManagers` section, `serviceAccount.annotations`,
+  `networkPolicy.gatewayNamespace` — with the objects and environment it
+  renders; the contracts page gains `SecretManagerService`; the accessctl
+  reference documents the token caches and lock 1.25.1 added; the OpenBAO
+  guide follows 1.24 and 1.25; the proxy reference gains
+  `exposure.parentRefs`; the runbook's rotation section now states the
+  per-Secret restart rule the chart's values state, replacing two
+  instructions that did not work.
+
 ## v1.26.0
 
 - **The audit trail is an installation of this service's own.** Every
