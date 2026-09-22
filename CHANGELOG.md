@@ -1,3 +1,24 @@
+## v1.27.1
+
+- **1.27.0's grace window was never reached, and this is the release that
+  delivers it.** The refresh endpoint reads the token twice — the library
+  resolves it to a request before it asks for new tokens — and the window
+  was only in the second of those readings, so a replay was refused by the
+  first and the window never ran. The one thing 1.27.0 changed in a running
+  installation was the wording of the refusal. A deployment that took
+  1.27.0 for the concurrent-refresh fix does not have it: a gateway that
+  refreshes per request, or a page that opens several calls at once, still
+  loses the session to its own concurrency. Both readings now resolve
+  through the window, so a refresh token replayed within thirty seconds of
+  being spent is answered with the successor the winning refresh produced,
+  as 1.27.0 said it would be. `ByToken` is unchanged and still exact —
+  revocation and listing are asking whether a token is the live one, which
+  is a different question — and revocation resolves through the window too,
+  so a caller revoking with a token a refresh rotated a moment earlier
+  still ends the session rather than being refused and leaving it open.
+  Nothing a caller passes or reads changed: upgrading from 1.27.0 is a fix
+  and nothing else.
+
 ## v1.27.0
 
 - **Breaking: `@truvity/access-roster/server` verifies with the algorithms
