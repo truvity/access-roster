@@ -134,8 +134,8 @@ flowchart LR
   iss -- "trusted by" --> apps
   iss -. "who holds which group" .-> ctl
   ctl -- "invites, teams, removals" --> orgs
-  iss -- "every record" --> s3
-  ctl -- "what it did" --> s3
+  iss -- "every record" --> aud
+  ctl -- "what it did" --> aud
 ```
 
 One chart, one Valkey, one bucket. A login makes no network call except
