@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -65,12 +64,8 @@ func (c *Console) ConfirmGitHubRemovals(
 	}); err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	c.record(ctx, audit.Event{
-		Kind: "github.removals.confirmed", Target: org,
-		Attributes: map[string]string{
-			"fingerprint": fingerprint, "affected": strconv.Itoa(report.Breaker.Affected), "members": strconv.Itoa(report.Breaker.Members),
-		},
-	})
+	c.record(ctx, audit.GitHubRemovalsConfirmed(identityActor(id), org, fingerprint,
+		report.Breaker.Affected, report.Breaker.Members))
 	return connect.NewResponse(&directoryrosterv1.ConfirmGitHubRemovalsResponse{}), nil
 }
 
@@ -159,10 +154,7 @@ func (c *Console) ImportGitHubLinks(
 	for i := range adopted {
 		l := adopted[i].Public()
 		out.Imported = append(out.Imported, linkProto(&l))
-		c.record(ctx, audit.Event{
-			Kind: "github.link.imported", Subject: l.Emails[0], Target: "@" + l.Login, Reason: l.Note,
-			Attributes: map[string]string{"account": githubapp.FormatID(l.ID), "emails": strings.Join(l.Emails, ","), "by": id.Who()},
-		})
+		c.record(ctx, audit.GitHubLinkImported(identityActor(id), l.Emails[0], l.Login, l.Note))
 	}
 	return connect.NewResponse(out), nil
 }

@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/truvity/audit/record"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/githubroster/reconcile"
@@ -120,16 +122,13 @@ func (c *Controller) matchProfiles(ctx context.Context, token string, members []
 		c.deps.Log.ErrorContext(ctx, "profile matches could not be kept", "error", err)
 		return nil
 	}
-	var events []*directoryrosterv1.AuditEvent
+	var events []*record.Record
 	out := make([]reconcile.Link, 0, len(adopted))
 	for i := range adopted {
 		l := &adopted[i]
 		out = append(out, reconcile.Link{ID: l.ID, Login: l.Login, Emails: l.Emails, LinkedAt: l.LinkedAt})
 		c.metrics.recordLinkChange(ctx, "matched")
-		events = append(events, &directoryrosterv1.AuditEvent{
-			Source: Source, Kind: "github.link.matched", Actor: "system", Subject: l.Emails[0], Target: "@" + l.Login,
-			Outcome: "ok", Reason: l.Note, Attributes: map[string]string{"account": githubapp.FormatID(l.ID)},
-		})
+		events = append(events, audit.GitHubLinkMatched(l.Emails[0], l.Login, l.Note))
 	}
 	c.report(ctx, events)
 	return out

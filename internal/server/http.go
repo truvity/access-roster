@@ -14,7 +14,10 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/truvity/audit/record"
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
@@ -80,6 +83,31 @@ type ConsoleServer struct {
 	mount string
 	// forwardedForTrustedHops: see [ConsoleServerDeps.ForwardedForTrustedHops].
 	forwardedForTrustedHops int
+	// auditQuery is the audit installation's query service, when one is
+	// connected; see [ConsoleServer.UseAuditQuery].
+	auditQuery     *AuditQuery
+	auditProxyOnce sync.Once
+	auditHandler   http.Handler
+}
+
+// UseAuditQuery connects the Audit page to an audit installation's query
+// service, for the same reason and with the same timing as
+// [ConsoleServer.UseSignedIn]: its tokens are minted by the issuer, which
+// does not exist yet when this console is built. Without it the console has
+// no Audit page.
+func (s *ConsoleServer) UseAuditQuery(q *AuditQuery) {
+	s.auditQuery = q
+}
+
+// audit serves the Audit page's calls, or answers that there is no trail
+// to read when no installation is connected.
+func (s *ConsoleServer) audit(w http.ResponseWriter, r *http.Request) {
+	if s.auditQuery == nil {
+		http.Error(w, "no audit installation is connected to this console", http.StatusNotFound)
+		return
+	}
+	s.auditProxyOnce.Do(func() { s.auditHandler = s.auditProxy() })
+	s.auditHandler.ServeHTTP(w, r)
 }
 
 // ConsoleServerDeps is what the console listener needs.
@@ -254,7 +282,6 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.Handle(directoryrosterv1connect.NewSettingsServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewAccessServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewGitHubServiceHandler(s.console))
-	mux.Handle(directoryrosterv1connect.NewAuditServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewSecretManagerServiceHandler(s.console))
 
 	if s.consoleUI != nil {
@@ -286,6 +313,7 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.HandleFunc("GET "+githubLinkPath, s.githubLinkPage)
 	mux.HandleFunc("GET "+githubLinkCallbackPath, s.githubLinkCallback)
 	mux.HandleFunc("GET /.access/whoami", s.whoami)
+	mux.HandleFunc(auditQueryPrefix, s.audit)
 
 	return AuditRequests(s.forwardedForTrustedHops, s.withIdentity(mux))
 }
@@ -624,11 +652,8 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 		// The one Authorize refuses outright is an account the directory
 		// authoritatively says is not live.
 		s.log.WarnContext(r.Context(), "sign-in refused", "email", logsafe.Value(email), "error", logsafe.Error(err))
-		s.console.record(r.Context(), audit.Event{
-			Kind: "sign-in.refused", Actor: email, Subject: email, Target: "console",
-			Outcome: audit.OutcomeRefused, Reason: "the directory says this account is not live",
-			Attributes: map[string]string{"how": connector.Kind()},
-		})
+		s.console.record(r.Context(), audit.SignedIn(audit.Person(email), "console", connector.Kind(),
+			audit.Denied("the directory says this account is not live")))
 		http.Error(w, "signed in as "+email+", but that address cannot be served: "+err.Error(),
 			http.StatusForbidden)
 		return
@@ -644,10 +669,7 @@ func (s *ConsoleServer) signInCallback(w http.ResponseWriter, r *http.Request) {
 		"email", logsafe.Value(email), "backend", connector.Kind(), "role", identity.Role)
 	// The console's own door, beside the issuer's: a standalone
 	// installation signs people in here, and a sign-in is a sign-in.
-	s.console.record(r.Context(), audit.Event{
-		Kind: "sign-in", Actor: email, Subject: email, Target: "console",
-		Attributes: map[string]string{"how": connector.Kind()},
-	})
+	s.console.record(r.Context(), audit.SignedIn(audit.Person(email), "console", connector.Kind(), audit.Succeeded()))
 	redirectOrOK(w, r, s.at("/"))
 }
 
@@ -704,20 +726,17 @@ func (s *ConsoleServer) recoveryLogin(w http.ResponseWriter, r *http.Request) {
 	// cannot be: the one event that does not fail open. Recovery is the way
 	// in that bypasses the directory, so a recovery that left no trace is
 	// the thing an auditor most needs to be impossible — and the write
-	// depends on S3 and this pod's own AWS identity alone, nothing this
-	// service runs, so the day recovery is needed is not a day it fails.
-	recovered := audit.Event{
-		Kind: "recovery.sign-in", Actor: subject, Subject: subject, Target: "console",
-		Attributes: map[string]string{"how": s.recovery.Kind()},
+	// depends on the audit installation's writer being up — the one
+	// dependency recovery has, deliberately.
+	recovered := func(o audit.Outcome) *record.Record {
+		return audit.RecoverySignedIn(audit.RecoveryIdentity(subject), "console", s.recovery.Kind(), o)
 	}
-	if err = s.console.recordDurable(r.Context(), recovered); err != nil {
+	if err = s.console.recordDurable(r.Context(), recovered(audit.Succeeded())); err != nil {
 		s.log.ErrorContext(r.Context(), "recovery refused: the audit trail could not be written",
 			"subject", logsafe.Value(subject), "error", logsafe.Error(err))
-		refused := recovered
-		refused.Outcome, refused.Reason = audit.OutcomeRefused, reasonUnaudited
-		s.console.record(r.Context(), refused)
+		s.console.record(r.Context(), recovered(audit.Denied(reasonUnaudited)))
 		http.Error(w, "recovery is refused: the audit trail could not be written, and a recovery sign-in "+
-			"never happens without its record. Check that the audit bucket can be written, then try again.",
+			"never happens without its record. Check that the audit installation's writer is up, then try again.",
 			http.StatusServiceUnavailable)
 		return
 	}
@@ -727,9 +746,7 @@ func (s *ConsoleServer) recoveryLogin(w http.ResponseWriter, r *http.Request) {
 	if err = s.sessions.Issue(w, access.Principal{
 		Email: subject, Subject: subject, Source: access.SourceRecovery,
 	}); err != nil {
-		failed := recovered
-		failed.Outcome, failed.Reason = audit.OutcomeFailed, "the session could not be issued"
-		s.console.record(r.Context(), failed)
+		s.console.record(r.Context(), recovered(audit.Failed("the session could not be issued")))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -910,14 +927,11 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 			"The consent worked, but the workspace could not be saved.", err.Error(), nil)
 		return
 	}
-	kind := "workspace.connected"
+	connected := audit.WorkspaceConnected
 	if bind != "" {
-		kind = "workspace.reconnected"
+		connected = audit.WorkspaceReconnected
 	}
-	s.console.record(r.Context(), audit.Event{
-		Source: audit.SourceDirectory, Kind: kind, Actor: actor, Target: ws.ID,
-		Attributes: map[string]string{"backend": b.Kind(), "via": "consent"},
-	})
+	s.console.record(r.Context(), connected(audit.Identified(actor), ws.ID, b.Kind(), "consent"))
 	s.log.InfoContext(r.Context(), "workspace connected",
 		"workspace", ws.ID, "backend", b.Kind(), "by", logsafe.Value(actor))
 	// Straight to the question the connect leaves behind: which of this
@@ -963,6 +977,10 @@ type whoamiBody struct {
 	// proxy is gone, so relying on it alone hid these sections exactly
 	// where they work best.
 	IssuerURL string `json:"issuerUrl,omitempty"`
+	// Audit says an audit installation is connected, so the console shows
+	// its Audit page. Whether the person may read anything there is the
+	// installation's to say.
+	Audit bool `json:"audit,omitempty"`
 }
 
 func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
@@ -981,6 +999,7 @@ func (s *ConsoleServer) whoami(w http.ResponseWriter, r *http.Request) {
 			Version:    version.String(),
 			SignOutURL: s.signOut(),
 			IssuerURL:  s.issuerOrigin(),
+			Audit:      s.auditQuery != nil,
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

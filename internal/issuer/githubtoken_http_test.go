@@ -7,7 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"log/slog"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -17,10 +17,11 @@ import (
 	"testing"
 	"time"
 
+	auditv1 "github.com/truvity/audit/gen/audit/v1"
+	"github.com/truvity/audit/record"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
-	"github.com/truvity/access-roster/internal/audit"
-	"github.com/truvity/access-roster/internal/audit/sinkrpc"
+	"github.com/truvity/access-roster/internal/audit/audittest"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubapp/githubfake"
@@ -110,7 +111,7 @@ type githubTokenIssuer struct {
 	server *httptest.Server
 	iss    *issuer.Issuer
 	github *githubfake.Org
-	trail  *audit.MemoryWriter
+	trail  *audittest.Recorder
 	// recent is the ring an App's page reads: the same requests the trail
 	// gets, kept where a page load can reach them.
 	recent *mints.Ring
@@ -136,8 +137,8 @@ func serveGitHubTokens(t *testing.T) githubTokenIssuer {
 	github.Uninstalled = map[int64]bool{44: true}
 
 	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, adaDirectory(), issuer.NewMemoryState())
-	trail := audit.NewMemoryWriter(100)
-	iss.UseAudit(audit.NewLog(slog.New(slog.DiscardHandler), sinkrpc.InProcess(trail), "test"))
+	trail := audittest.New(t)
+	iss.UseAudit(trail)
 	recent := mints.New(0, time.Now())
 	iss.UseGitHubApps(issuer.GitHubApps{
 		Catalogue: listed,
@@ -191,26 +192,29 @@ func (g githubTokenIssuer) ask(t *testing.T, client string, form url.Values) (in
 	return response.StatusCode, body, response.Header
 }
 
-// minted is the audit trail's installation token events.
-func (g githubTokenIssuer) minted() []audit.Event {
-	var out []audit.Event
-	events := g.trail.Events()
-	for i := range events {
-		if events[i].Kind == "github.token.minted" {
-			out = append(out, events[i])
+// minted is the audit trail's installation token records.
+func (g githubTokenIssuer) minted() []*record.Record {
+	return g.trail.Find("roster.github_token.minted")
+}
+
+// field is one property of a record's data as text, a list joined by spaces.
+func field(r *record.Record, name string) string {
+	v := r.GetData().GetFields()[name]
+	if list := v.GetListValue(); list != nil {
+		var out []string
+		for _, item := range list.GetValues() {
+			out = append(out, item.GetStringValue())
 		}
+		return strings.Join(out, " ")
 	}
-	return out
+	return v.GetStringValue()
 }
 
 // The token never reaches the trail, whatever else does.
 func (g githubTokenIssuer) assertTokenNotAudited(t *testing.T) {
 	t.Helper()
-	raw, err := json.Marshal(g.trail.Events())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), g.github.Token) {
+	raw := fmt.Sprint(g.trail.Records())
+	if strings.Contains(raw, g.github.Token) {
 		t.Errorf("the installation token is in the audit trail: %s", raw)
 	}
 }
@@ -271,17 +275,17 @@ func TestAPinnedWorkflowIsMintedATokenNarrowedToItsRequest(t *testing.T) {
 	}
 	first := events[0]
 	want := map[string]string{
-		"proof": "ci", "app": "publisher", "org": "example-org", "grant": "all:release:publisher",
+		"proof": "ci", "org": "example-org", "grant": "all:release:publisher",
 		"repositories": "app lib-core", "permissions": "contents:read", "installation": "42",
 	}
 	for name, value := range want {
-		if first.Attributes[name] != value {
-			t.Errorf("attribute %s = %q, want %q", name, first.Attributes[name], value)
+		if got := field(first, name); got != value {
+			t.Errorf("data.%s = %q, want %q", name, got, value)
 		}
 	}
-	if first.Outcome != audit.OutcomeOK || first.Target != "github-app:publisher" ||
-		first.Subject != "github:example-org/app" || first.Attributes["expires_at"] == "" {
-		t.Errorf("event = %+v", first)
+	if first.GetOutcome().GetResult() != auditv1.Outcome_RESULT_SUCCESS || first.GetTargets()[0].GetId() != "publisher" ||
+		first.GetActor().GetId() != "github:example-org/app" || first.GetActor().GetKind() != "ci" || field(first, "expires_at") == "" {
+		t.Errorf("record = %v", first)
 	}
 	g.assertTokenNotAudited(t)
 }
@@ -301,8 +305,8 @@ func TestAnotherWorkflowInTheSameRepositoryIsRefused(t *testing.T) {
 		t.Errorf("GitHub was asked for a token nobody was granted: %+v", g.github.TokenRequests)
 	}
 	events := g.minted()
-	if len(events) != 1 || events[0].Outcome != audit.OutcomeRefused || events[0].Reason == "" ||
-		events[0].Attributes["repositories"] != "app" {
+	if len(events) != 1 || events[0].GetOutcome().GetResult() != auditv1.Outcome_RESULT_DENIED ||
+		events[0].GetOutcome().GetReason() == "" || field(events[0], "repositories") != "app" {
 		t.Errorf("events = %+v, want one refusal naming the request", events)
 	}
 }
@@ -332,7 +336,9 @@ func TestARequestWiderThanTheGrantIsInvalidScope(t *testing.T) {
 	if len(g.github.TokenRequests) != 0 {
 		t.Errorf("GitHub was asked: %+v", g.github.TokenRequests)
 	}
-	if events := g.minted(); len(events) != 6 || slices.ContainsFunc(events, func(e audit.Event) bool { return e.Outcome != audit.OutcomeRefused }) {
+	if events := g.minted(); len(events) != 6 || slices.ContainsFunc(events, func(r *record.Record) bool {
+		return r.GetOutcome().GetResult() != auditv1.Outcome_RESULT_DENIED
+	}) {
 		t.Errorf("events = %+v, want six refusals", events)
 	}
 }
@@ -376,7 +382,7 @@ func TestASignInIsMintedAnUnnarrowedTokenUnderItsOwnRules(t *testing.T) {
 	if asked == nil || len(asked.Repositories) != 0 || !maps.Equal(asked.Permissions, map[string]string{"metadata": "read", "contents": "read"}) {
 		t.Errorf("GitHub was asked for %+v, want the grant's permissions and no repositories", asked)
 	}
-	if events := g.minted(); len(events) != 1 || events[0].Subject != "ada@north.example" || events[0].Attributes["proof"] != "person" {
+	if events := g.minted(); len(events) != 1 || events[0].GetActor().GetId() != "ada@north.example" || field(events[0], "proof") != "person" {
 		t.Errorf("events = %+v", events)
 	}
 
@@ -510,10 +516,10 @@ func TestEveryRequestIsKeptForTheAppsPageAndForTheTrail(t *testing.T) {
 	if len(recent) != 2 {
 		t.Fatalf("the App's page would show %d requests, want 2", len(recent))
 	}
-	if recent[0].Outcome != audit.OutcomeRefused || !strings.Contains(recent[0].Reason, "payments") {
+	if recent[0].Outcome != "refused" || !strings.Contains(recent[0].Reason, "payments") {
 		t.Errorf("the refusal reads %+v", recent[0])
 	}
-	if recent[1].Outcome != audit.OutcomeOK || recent[1].Grant != "all:release:publisher" {
+	if recent[1].Outcome != mints.OutcomeOK || recent[1].Grant != "all:release:publisher" {
 		t.Errorf("the mint reads %+v", recent[1])
 	}
 	if !slices.Equal(recent[1].Repositories, []string{"app"}) || recent[1].Permissions != "contents:write" {

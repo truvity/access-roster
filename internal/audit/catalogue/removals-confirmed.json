@@ -1,0 +1,25 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/removals-confirmed.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "fingerprint": {
+      "type": "string",
+      "description": "The fingerprint of the removals the operator confirmed.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "affected": {
+      "type": "integer",
+      "description": "How many members the removals affect.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "members": {
+      "type": "integer",
+      "description": "How many members the organisation has.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

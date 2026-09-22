@@ -101,8 +101,12 @@ func serveGitHubToken(
 	request := GitHubTokenRequest{App: strings.TrimPrefix(audience, tokens.GitHubAppAudiencePrefix)}
 	var proof Proof
 
-	refuse := func(outcome string, err *oidc.Error, minted GitHubToken) {
-		iss.recordGitHubToken(ctx, githubTokenEvent(proof, request, minted, outcome, err.Description))
+	refuse := func(failed bool, err *oidc.Error, minted GitHubToken) {
+		outcome := audit.Denied(err.Description)
+		if failed {
+			outcome = audit.Failed(err.Description)
+		}
+		iss.recordGitHubToken(ctx, proof, request, minted, outcome)
 		op.RequestError(w, r, err, nil)
 	}
 
@@ -110,26 +114,26 @@ func serveGitHubToken(
 	case form.Get("actor_token") != "" || form.Get("actor_token_type") != "":
 		// Delegation is a second principal in a request, and this design
 		// has exactly one: the subject.
-		refuse(audit.OutcomeRefused, oidc.ErrInvalidRequest().WithDescription(
+		refuse(false, oidc.ErrInvalidRequest().WithDescription(
 			"actor_token: acting for another party is not served by this issuer"), GitHubToken{})
 		return
 	case len(form["audience"]) != 1:
-		refuse(audit.OutcomeRefused, oidc.ErrInvalidTarget().WithDescription(
+		refuse(false, oidc.ErrInvalidTarget().WithDescription(
 			"name exactly one audience: github-app:<id>"), GitHubToken{})
 		return
 	case form.Get("subject_token") == "" || form.Get("subject_token_type") == "":
-		refuse(audit.OutcomeRefused, oidc.ErrInvalidRequest().WithDescription(
+		refuse(false, oidc.ErrInvalidRequest().WithDescription(
 			"subject_token and subject_token_type are required"), GitHubToken{})
 		return
 	case !oidc.TokenType(form.Get("subject_token_type")).IsSupported():
-		refuse(audit.OutcomeRefused, oidc.ErrInvalidRequest().WithDescription(
+		refuse(false, oidc.ErrInvalidRequest().WithDescription(
 			"subject_token_type is not supported"), GitHubToken{})
 		return
 	}
 
 	parsed, err := ParseGitHubTokenRequest(request.App, form.Get("repositories"), form.Get("scope"))
 	if err != nil {
-		refuse(audit.OutcomeRefused, oidc.ErrInvalidRequest().WithDescription("%s", err), GitHubToken{})
+		refuse(false, oidc.ErrInvalidRequest().WithDescription("%s", err), GitHubToken{})
 		return
 	}
 	request = parsed
@@ -144,12 +148,12 @@ func serveGitHubToken(
 		secret, err = url.QueryUnescape(secret)
 	}
 	if err != nil {
-		refuse(audit.OutcomeRefused, oidc.ErrInvalidClient().WithDescription("invalid basic auth header"), GitHubToken{})
+		refuse(false, oidc.ErrInvalidClient().WithDescription("invalid basic auth header"), GitHubToken{})
 		return
 	}
 	if clientID != "" && clientID != audience {
 		if err = storage.AuthorizeClientIDSecret(ctx, clientID, secret); err != nil {
-			refuse(audit.OutcomeRefused, oidc.ErrInvalidClient().WithDescription("invalid client_id / client_secret"), GitHubToken{})
+			refuse(false, oidc.ErrInvalidClient().WithDescription("invalid client_id / client_secret"), GitHubToken{})
 			return
 		}
 	}
@@ -157,31 +161,27 @@ func serveGitHubToken(
 	subjectType := oidc.TokenType(form.Get("subject_token_type"))
 	id, _, claims, ok := op.GetTokenIDAndSubjectFromToken(ctx, provider, form.Get("subject_token"), subjectType, false)
 	if !ok {
-		refuse(audit.OutcomeRefused, oidc.ErrInvalidGrant().WithDescription("subject_token is invalid"), GitHubToken{})
+		refuse(false, oidc.ErrInvalidGrant().WithDescription("subject_token is invalid"), GitHubToken{})
 		return
 	}
 	proof, err = storage.proofOf(ctx, verifiedSubject{id: id, kind: subjectType, claims: claims, client: clientID})
 	if err != nil {
-		refuse(audit.OutcomeRefused, asOIDCError(err, oidc.ErrInvalidGrant), GitHubToken{})
+		refuse(false, asOIDCError(err, oidc.ErrInvalidGrant), GitHubToken{})
 		return
 	}
 
 	result, _, err := iss.evaluate(ctx, proof)
 	if err != nil {
-		refuse(audit.OutcomeFailed, oidc.ErrInvalidGrant().WithDescription("%s", err), GitHubToken{})
+		refuse(true, oidc.ErrInvalidGrant().WithDescription("%s", err), GitHubToken{})
 		return
 	}
 
 	minted, err := iss.MintGitHubToken(ctx, result.Groups, request)
 	if err != nil {
-		outcome := audit.OutcomeRefused
-		if errors.Is(err, ErrGitHubUpstream) {
-			outcome = audit.OutcomeFailed
-		}
-		refuse(outcome, githubTokenError(err), minted)
+		refuse(errors.Is(err, ErrGitHubUpstream), githubTokenError(err), minted)
 		return
 	}
-	iss.recordGitHubToken(ctx, githubTokenEvent(proof, request, minted, audit.OutcomeOK, ""))
+	iss.recordGitHubToken(ctx, proof, request, minted, audit.Succeeded())
 
 	response := githubTokenResponse{
 		AccessToken:     minted.Token,

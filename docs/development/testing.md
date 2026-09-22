@@ -41,10 +41,12 @@ special case in the service, only a backend with no network behind it.
   invitations and seats, which the controller's reconcile and pass tests
   drive through joiners, movers, leavers, the breaker and every held
   state.
-- **Audit:** the S3 writer is tested for its ECS objects, its metrics and
-  what it drops when full; the issuer's tests hold the one fail-closed
-  path — an ordinary sign-in never waits on the trail, a recovery sign-in
-  is refused when its record cannot be written.
+- **Audit:** every record a test makes goes through `audittest`, which
+  holds it to the catalogue exactly as the installation would, so a test
+  that records something the catalogue refuses fails; the issuer's and the
+  console's tests hold the one fail-closed path — an ordinary sign-in
+  never waits on the trail, a recovery sign-in is refused when its record
+  cannot be kept.
 
 Handler tests are at the join level, not the unit level: they call the
 Connect handler and assert the response, so a rule that exists but is

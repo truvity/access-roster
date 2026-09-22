@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -157,10 +156,7 @@ func (c *Console) disconnectLinkApp(ctx context.Context) (githubDisconnect, erro
 		settingsURL: appSettingsURL(record.Owner, record.AppSlug),
 		detail:      "The link App is installed nowhere, so there was nothing to uninstall.",
 	}
-	c.record(ctx, audit.Event{
-		Kind: "github.link-app.disconnected", Target: record.AppSlug,
-		Attributes: map[string]string{"invalidated": strconv.Itoa(invalidated)},
-	})
+	c.record(ctx, audit.LinkAppDisconnected(actorOf(ctx), audit.App{ID: record.AppID, Slug: record.AppSlug}, invalidated))
 	return out, nil
 }
 
@@ -211,10 +207,8 @@ func (s *ConsoleServer) githubLinkAppCallback(w http.ResponseWriter, r *http.Req
 	}
 	s.log.InfoContext(r.Context(), "link App created", "owner", owner, "app", registration.ID,
 		"slug", registration.Slug, "by", logsafe.Value(actor))
-	s.console.record(r.Context(), audit.Event{
-		Kind: "github.link-app.connected", Actor: actor, Target: registration.Slug,
-		Attributes: map[string]string{"app": strconv.FormatInt(registration.ID, 10), "owner": owner},
-	})
+	s.console.record(r.Context(), audit.LinkAppConnected(audit.Identified(actor),
+		audit.App{ID: registration.ID, Slug: registration.Slug}, owner))
 	http.Redirect(w, r, s.at("/#/github"), http.StatusFound)
 }
 
@@ -319,14 +313,11 @@ func (s *ConsoleServer) githubLinkCallback(w http.ResponseWriter, r *http.Reques
 	}
 	for k := range written {
 		l := &written[k]
-		event := audit.Event{
-			Kind: "github.link.created", Actor: accepted[0], Subject: accepted[0], Target: "@" + l.Login,
-			Attributes: map[string]string{"account": githubapp.FormatID(l.ID), "emails": strings.Join(l.Emails, ",")},
-		}
 		if l.ID != user.ID {
-			event.Kind, event.Subject, event.Reason = "github.link.moved", firstOf(l.Emails), l.Reason
+			s.console.record(ctx, audit.GitHubLinkMoved(firstOf(l.Emails), l.Login, l.Reason))
+			continue
 		}
-		s.console.record(ctx, event)
+		s.console.record(ctx, audit.GitHubLinkCreated(accepted[0], l.Login))
 	}
 	s.log.InfoContext(ctx, "a GitHub account was linked", "account", user.ID, "login", logsafe.Value(user.Login),
 		"emails", logsafe.Value(strings.Join(accepted, ",")))

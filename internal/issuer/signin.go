@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -703,10 +702,7 @@ func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
 					"ended", ended)
 			}
 			if err == nil {
-				deps.Issuer.record(r.Context(), audit.Event{
-					Kind: "session.ended", Actor: record.Identity, Subject: record.Identity,
-					Attributes: map[string]string{"ended": strconv.Itoa(ended)},
-				})
+				deps.Issuer.record(r.Context(), audit.SessionEnded(audit.Identified(record.Identity), ended))
 			}
 		}
 
@@ -907,8 +903,8 @@ func (s *signIn) refuseUnentitled(w http.ResponseWriter, r *http.Request, err er
 //
 // Said plainly, with a 503, because it is the one refusal that is about
 // the service rather than the person: the proof was good, and the operator
-// holding it needs to know to look at the audit bucket, not at their
-// token.
+// holding it needs to know to look at the audit installation, not at
+// their token.
 func (s *signIn) refuseUnaudited(w http.ResponseWriter, r *http.Request, err error) bool {
 	if !errors.Is(err, ErrUnaudited) {
 		return false
@@ -917,7 +913,7 @@ func (s *signIn) refuseUnaudited(w http.ResponseWriter, r *http.Request, err err
 		"error", logsafe.Error(err))
 	_ = writePage(w, http.StatusServiceUnavailable, "Recovery is refused: the audit trail could not be written",
 		`<p>Your proof was accepted, but a recovery sign-in never happens without its audit record, and that record could not be written.</p>
-	<p class="note">Check that this service can write to its audit bucket, then try again.</p>`)
+	<p class="note">Check that the audit installation's writer is up and reachable from this service, then try again.</p>`)
 	return true
 }
 

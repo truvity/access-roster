@@ -1,0 +1,13 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/link-app-disconnected.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "invalidated": {
+      "type": "integer",
+      "description": "How many links it invalidated.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

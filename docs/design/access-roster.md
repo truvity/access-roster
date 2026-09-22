@@ -591,104 +591,97 @@ with rows, so the page does not blank while passes fail; a restarted
 controller takes what it had already recorded from that report, so a
 restart is not news in the audit trail.
 
-It writes GitHub, its report, and audit events through the service, and
-pushes metrics over OTLP when a collector is named. Nothing else: no
+It writes GitHub and its report through the service, records what it did
+to the audit installation as itself, and pushes metrics over OTLP when a
+collector is named. Nothing else: no
 store of its own, and no Valkey credential, because that store holds
 every session and refresh token.
 
 ## Audit
 
-One stream for the whole service, because a sign-in and the connect that
-made it possible belong to one history. The issuer records sign-ins,
-refusals, exchanges and revokes; the directory and the console record
-connects and disconnects; and a component in another process reports
-what it did, recorded with the identity it proved. The GitHub controller
-is the first such component: its status says what is true now, and its
-audit events say what it changed.
+access-roster does not keep its own audit trail (decided 2026-09-18). It
+records into an installation of [truvity/audit](https://github.com/truvity/audit),
+deployed as a release of its own, and connects to it as a plugin: with
+`audit.writer`, `audit.registry` and `audit.query` set it registers its
+catalogue, sends its records, and shows the installation's view as the
+console's Audit page; with none set it keeps nothing beyond log lines and
+has no page. Until 1.x it kept Elastic Common Schema objects in an
+Object-Locked bucket of its own, written and listed by this service; that
+was a second audit component, without pseudonymisation, a signed chain,
+an index or retention per purpose, and the installation has all of them.
+Objects written that way age out under their own lock; nothing migrates
+them.
 
-The trail lives in S3, and never in Valkey (decided 2026-09-13). It is
-the durable record and what the console reads: the service appends
-JSON-lines objects by the hour, under a bucket meant to carry Object Lock
-and deny deletes, and only ever puts, lists and gets. It was a capped
-stream in the shared Valkey, with log shipping named as the durable copy;
-on an installation that ships no logs that left no durable copy at all,
-and a Valkey restart took the history with it. Every event is still a log
-line. It is not a SIEM and does not try to be: what a token was then used
-for is the cluster's audit log's and CloudTrail's, and what changed in an
-organisation is GitHub's audit log; this trail holds what only this
-service knows — who signed in or was refused, who was issued what and
-why, recovery, and every change to the access system itself.
+**The catalogue is the model.** [`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml)
+declares every action — `roster.person.signed_in`, `roster.token.exchanged`,
+`roster.github_member.invited`, … thirty-seven of them — with what kind of
+operation it is, the framework categories it answers, which profiles keep
+it (`security`, and `history` for every change to the access system), the
+types of its targets (a client, a workspace, an organisation, a team, a
+GitHub account, a GitHub App), the kinds of actor (a person, recovery, a CI
+job, a workload, the service itself), a schema for its data, and how it
+reads as a sentence. Every action has one constructor in
+[`internal/audit/events.go`](../../internal/audit/events.go), and nothing
+else builds a record, so the vocabulary is fixed by the compiler;
+`just audit-catalogue` holds the two together with the audit component's
+own validator and emitter check. The model this replaced had a free-text
+kind, an untyped target that meant a client, a workspace or `@login`
+depending on the kind, the actor repeated as the subject, and addresses in
+free attributes; the catalogue's validator refuses each of those.
 
-**A component reports through this service, never into the store.** The
-store holds every session and refresh token, so a Valkey credential in a
-controller would be a read of all of them. Reporting is an RPC that only a
-workload in `all:access-roster:reporter` may call; the service stamps who
-reported from the caller it verified, sets the time on arrival, and
-refuses the sources only it records, so a reporter cannot forge a sign-in.
-This is ingestion by a component, not a person writing configuration: the
-console stays read-only for people.
+**Who is who.** The actor is who acted, by kind; the subject is who it
+concerns, and differs from the actor as often as not — an operator revokes
+a person's sessions, the controller invites a person. A person is named by
+the address the directory knows them by, and the installation's profiles
+decide how that is kept: in clear in `security`, pseudonymised in
+`history`. A GitHub account is a person's, so its login is treated the
+same way. No address is ever data.
 
-**Records speak the Elastic Common Schema** (decided 2026-09-13). Each
-event in the bucket is one ECS document — `event.action`,
-`event.category`, `event.outcome`, `user.name`, `client.address` and the
-rest — and each log line carries the same fields under the same dotted
-names, from one mapping in `internal/audit`, so whoever reads the bucket
-and whoever queries the logs share one vocabulary and neither needs a
-translation of ours. ECS rather than OCSF because OCSF's classes fit a
-sign-in and little else here: a token exchange or a workspace connect has
-no activity of its own there. If a SIEM ever wants OCSF, a shipper maps
-ECS to it and nothing in this service changes. What ECS has no field for
-stays under `access_roster.*`: the native outcome (`held`, and refused
-against failed, which `event.outcome` cannot say), the target, the
-attributes. Objects written by 1.6.2 hold that release's own event lines
-and stay readable beside them, because the bucket keeps objects longer
-than any release lives.
+**Every record belongs to the installation**, the audit tenant
+`@platform`: an installation of access-roster serves one organisation, and
+its trail is the organisation's own.
 
-An event caused by a request keeps three things of it: the client's
-address, its User-Agent, and the gateway's `X-Request-Id`, which is the
-key into the gateway's own access log. The server reads them once, at the
-outermost handler, and they travel in the request's context to wherever
-the event is recorded — including the token endpoint's storage, which an
-OpenID library calls with a context and nothing else. The address is the
-peer's unless the deployment says how many of its own proxies append to
-`X-Forwarded-For` (`audit.forwardedForTrustedHops`); the header is then
-read from the right, because only the right end is written by those
-proxies and the left end is whatever a caller sent. A reporter
-supplies these fields itself, bounded like the rest of a report, and never
-gets its own connection's.
+**Each process records as itself.** The service and the GitHub controller
+each present their own projected service-account token; the installation
+stamps the verified workload as every record's observer. The controller no
+longer reports through this service, and the reporter group and RPC that
+made that possible are gone: a component that can write to the trail
+directly, as itself, needs no one to vouch for it.
 
-**Where events are kept is a contract, not a type.** `AuditSinkService`
-(`WriteAuditEvents`, with `durable`, and `ListStoredAuditEvents`) is the
-line between what records and what writes: everything that records holds
-its generated client, and a writer implements its handler — the S3 writer,
-and the in-memory one used without a bucket and by every test that checks
-what was recorded. In one process they are joined by a client that calls
-the handler directly, with no network. The point is the next step, which
-is not taken here: a dedicated writer in a process of its own, or a bridge
-onto a queue, implements the same service and is
-reached through the generated client over HTTP, and nothing that records
-changes. No chart value or setting names a remote writer in this release,
-because none exists to name.
+An event caused by a request keeps where it came from: the client's
+address, its User-Agent, the gateway's `X-Request-Id` and the trace. The
+server reads them once, at the outermost handler, and they travel in the
+request's context to wherever the record is made — including the token
+endpoint's storage, which an OpenID library calls with a context and
+nothing else. The address is the peer's unless the deployment says how many
+of its own proxies append to `X-Forwarded-For`
+(`audit.forwardedForTrustedHops`); the header is then read from the right,
+because only the right end is written by those proxies.
+
+**The Audit page reads as the person.** The console forwards the page's
+calls to the query service with a token it mints for the person signed in,
+through the same decision a token exchange makes, for the installation's
+audience, lasting five minutes. No token reaches the browser and there is no
+cross-origin call; what anyone may read is the installation's grants', and
+every read is recorded there. The page asks the query service which
+profiles the person may read.
 
 Recording never fails what is being recorded. A sign-in that could not be
-written down still happened, and refusing it because the store was slow
-would turn an audit outage into an access outage. The writer queues,
-retries, and past 50 000 unwritten events drops the oldest with a warning;
-each of those is visible as a metric, and the runbook's
-[control](../operations/runbook.md#when-the-audit-trail-cannot-be-written)
-says what to watch.
+written down still happened, and refusing it because the trail was slow
+would turn an audit outage into an access outage: almost every action is
+written to an outbox on the pod's disk before the request completes, and
+reaches the writer when it can
+([control](../operations/runbook.md#when-the-installation-cannot-be-reached)).
 
 **The one exception is a recovery sign-in, which fails closed.** Its
-record is written durably — put in an object of its own, not queued —
-before the sign-in succeeds, at the issuer and at the console's own door
-alike, and when that write fails the sign-in is refused with a page saying
-the audit trail could not be written, and the refusal is recorded the
-ordinary way. Recovery is the way in that bypasses the directory, so a
-recovery that left no trace is the one gap an auditor most needs to be
-impossible. Refusing it costs little on the day it is needed: the write
-depends on S3 and the pod's own AWS identity, and on nothing this service
-runs, so the outage that makes recovery necessary is not one that stops
-its record.
+catalogue entry is `block`: the record is in the installation before the
+sign-in succeeds, at the issuer and at the console's own door alike, and
+when it cannot be, the sign-in is refused and the refusal recorded.
+Recovery is the way in that bypasses the directory, so a recovery that left
+no trace is the one gap an auditor most needs to be impossible. It does
+make recovery depend on the installation's writer, which is the price; a
+deployment with no installation connected does not refuse recovery, because
+it has no trail to keep it in.
 
 ## The issuer's own HTML
 

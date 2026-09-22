@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -17,35 +16,12 @@ import (
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
-	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/audit/audittest"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
 	"github.com/truvity/access-roster/internal/kube"
 )
-
-// kinds records the kind of every audit event.
-type kinds struct {
-	mu   sync.Mutex
-	seen []string
-}
-
-func (k *kinds) Record(_ context.Context, e audit.Event) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.seen = append(k.seen, e.Kind)
-}
-
-func (k *kinds) RecordDurable(ctx context.Context, e audit.Event) error {
-	k.Record(ctx, e)
-	return nil
-}
-
-func (k *kinds) list() []string {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	return slices.Clone(k.seen)
-}
 
 const testCatalogue = `
 apps:
@@ -68,7 +44,7 @@ apps:
 
 // catalogueServer is connectServer with catalogue Apps kept in a Secret,
 // as a deployment keeps them.
-func catalogueServer(t *testing.T) (*ConsoleServer, *Console, *kube.Client, *kinds) {
+func catalogueServer(t *testing.T) (*ConsoleServer, *Console, *kube.Client, *audittest.Recorder) {
 	t.Helper()
 	server, console := connectServer(t, newMemoryConnections())
 	client := kube.NewClient(fake.NewClientset(), "access-issuer", "access-issuer")
@@ -76,7 +52,7 @@ func catalogueServer(t *testing.T) (*ConsoleServer, *Console, *kube.Client, *kin
 	if err != nil {
 		t.Fatalf("catalogue: %v", err)
 	}
-	recorded := &kinds{}
+	recorded := audittest.New(t)
 	console.deps.GitHubCatalogue = declared
 	console.deps.GitHubCatalogueApps = kube.NewGitHubCatalogueApps(client)
 	console.deps.Audit = recorded
@@ -259,8 +235,8 @@ func TestACatalogueAppIsCreatedInstalledCheckedForDriftAndDisconnected(t *testin
 		t.Errorf("disconnecting what is gone = %v, want not found", err)
 	}
 
-	want := []string{"github.catalogue-app.created", "github.catalogue-app.installed", "github.catalogue-app.disconnected"}
-	if got := recorded.list(); !slices.Equal(got, want) {
+	want := []string{"roster.catalogue_app.created", "roster.catalogue_app.installed", "roster.catalogue_app.disconnected"}
+	if got := recorded.Actions(); !slices.Equal(got, want) {
 		t.Errorf("audit = %v, want %v", got, want)
 	}
 }

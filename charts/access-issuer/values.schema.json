@@ -3,7 +3,7 @@
   "title": "access-issuer",
   "type": "object",
   "additionalProperties": false,
-  "_comment": "Nothing is required here that the template already refuses to render without. The schema catches typos and wrong types; `required` in the template catches an unset value, with a sentence saying why it matters. Duplicating it would only mean the shipped values.yaml \u2014 which is deliberately empty \u2014 fails its own lint.",
+  "_comment": "Nothing is required here that the template already refuses to render without. The schema catches typos and wrong types; `required` in the template catches an unset value, with a sentence saying why it matters. Duplicating it would only mean the shipped values.yaml — which is deliberately empty — fails its own lint.",
   "properties": {
     "replicaCount": {
       "type": "integer",
@@ -692,34 +692,36 @@
     "audit": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The audit trail, kept in S3 and never in Valkey. Every event is also a log line.",
+      "description": "The audit installation (github.com/truvity/audit) this service connects to as a plugin. Empty keeps nothing beyond log lines, and shows no Audit page.",
       "properties": {
-        "s3": {
+        "writer": {
+          "type": "string",
+          "pattern": "^(https?://.+)?$",
+          "description": "The audit installation's receiver: one address, which takes the records and answers RegisterCatalogue on the same port. Empty keeps no trail beyond the log."
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^(https?://.+)?$",
+          "description": "The installation's query service, for the console's Audit page. Empty shows no page."
+        },
+        "audience": {
+          "type": "string",
+          "description": "The policy client whose audience the Audit page's tokens carry, and which the query service trusts."
+        },
+        "token": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "bucket": {
+            "audience": {
               "type": "string",
-              "description": "The bucket. Empty keeps the trail in one replica's memory, which is not a record."
+              "minLength": 1,
+              "description": "The audience of the projected token presented to the writer and registry."
             },
-            "region": {
-              "type": "string",
-              "description": "The bucket's region; empty takes the AWS SDK's own resolution."
-            },
-            "prefix": {
-              "type": "string",
-              "description": "Prepended to every key."
-            },
-            "flushInterval": {
-              "$ref": "#/definitions/duration",
-              "description": "The longest an event waits in memory before it is written."
+            "expirationSeconds": {
+              "type": "integer",
+              "minimum": 600
             }
           }
-        },
-        "maxEvents": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "The in-memory trail's cap, used only without a bucket."
         },
         "forwardedForTrustedHops": {
           "type": "integer",
@@ -953,7 +955,7 @@
     },
     "duration": {
       "type": "string",
-      "pattern": "^[0-9]+(ns|us|\u00b5s|ms|s|m|h)([0-9]+(ns|us|\u00b5s|ms|s|m|h))*$"
+      "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$"
     }
   }
 }

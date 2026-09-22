@@ -457,8 +457,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            # Names this replica in the audit trail's object keys, so two
-            # replicas never write the same key.
+            # Names this replica on every audit record, as the instance
+            # that emitted it.
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -476,16 +476,14 @@ spec:
               value: "20m"
             - name: PROBE_INTERVAL
               value: "2m"
-            - name: AUDIT_MAX_EVENTS
-              value: "1000"
-            - name: AUDIT_S3_BUCKET
-              value: "example-audit"
-            - name: AUDIT_S3_REGION
-              value: "eu-example-1"
-            - name: AUDIT_S3_PREFIX
-              value: "issuer/"
-            - name: AUDIT_S3_FLUSH_INTERVAL
-              value: "5s"
+            - name: AUDIT_WRITER_URL
+              value: "http://audit.access-issuer.svc:8080"
+            - name: AUDIT_TOKEN_FILE
+              value: /var/run/audit/token
+            - name: AUDIT_QUERY_URL
+              value: "http://audit-query.access-issuer.svc:8080"
+            - name: AUDIT_AUDIENCE
+              value: "audit"
             - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
               value: "1"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -602,6 +600,10 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            
+            - name: audit-token
+              mountPath: /var/run/audit
+              readOnly: true
             - name: github-apps-catalogue
               mountPath: /var/run/access-issuer/github-apps-catalogue.yaml
               subPath: catalogue.yaml
@@ -656,6 +658,14 @@ spec:
         # want somewhere to write.
         - name: tmp
           emptyDir: {}
+        
+        - name: audit-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: "audit"
+                  expirationSeconds: 3600
+                  path: token
         - name: clusters
           configMap:
             name: access-issuer-clusters
@@ -765,6 +775,17 @@ spec:
               value: "acme,globex"
             - name: LOG_LEVEL
               value: "debug"
+            # The controller records what it did to the audit installation
+            # itself, as its own workload, which the writer stamps as the
+            # records' observer.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: AUDIT_WRITER_URL
+              value: "http://audit.access-issuer.svc:8080"
+            - name: AUDIT_TOKEN_FILE
+              value: /var/run/audit/token
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-collector.observability.svc:4318"
           volumeMounts:
@@ -776,6 +797,10 @@ spec:
               readOnly: true
             - name: apps
               mountPath: /var/run/github-roster/apps
+              readOnly: true
+            
+            - name: audit-token
+              mountPath: /var/run/audit
               readOnly: true
           resources:
             requests:
@@ -802,6 +827,14 @@ spec:
           secret:
             secretName: access-issuer-github-apps
             optional: true
+        
+        - name: audit-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: "audit"
+                  expirationSeconds: 3600
+                  path: token
       nodeSelector:
         kubernetes.io/os: linux
       tolerations:

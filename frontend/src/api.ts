@@ -4,12 +4,12 @@
 import { fetchIdentity, type Identity } from "@truvity/access-roster";
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
+import { createQueryClient } from "@truvity/audit";
 
 import { WorkspaceService, Backend } from "./gen/directoryroster/v1/workspace_pb";
 import { SettingsService } from "./gen/directoryroster/v1/settings_pb";
 import { AccessService, Role } from "./gen/directoryroster/v1/access_pb";
 import { GitHubService } from "./gen/directoryroster/v1/github_pb";
-import { AuditService } from "./gen/directoryroster/v1/audit_pb";
 import { SecretManagerService } from "./gen/directoryroster/v1/openbao_pb";
 import { SessionService, How } from "./gen/accessissuer/v1/session_pb";
 
@@ -41,9 +41,16 @@ export const workspaces = createClient(WorkspaceService, transport);
 export const settings = createClient(SettingsService, transport);
 export const access = createClient(AccessService, transport);
 export const github = createClient(GitHubService, transport);
-export const audit = createClient(AuditService, transport);
 // The secret stores, read-only: this client has no write call to make.
 export const secretStores = createClient(SecretManagerService, transport);
+
+// The audit installation's query service, through this console: the console
+// forwards /audit/ with a token it mints for the person signed in, so the page
+// holds no credential and makes no cross-origin call. The wire is the
+// installation's own JSON, field names as the proto spells them.
+export const audit = createQueryClient(
+  createConnectTransport({ baseUrl: mounted("audit"), jsonOptions: { useProtoFieldName: true } }),
+);
 
 // The issuer's SessionService, same-origin at the domain root — never
 // under this console's own path, however it is
@@ -78,6 +85,9 @@ export type Me = Identity & {
    *  render only when this is set, because there is nothing to read or
    *  end otherwise. */
   issuerUrl?: string;
+  /** an audit installation is connected, so the console has an Audit
+   *  page; what the person may read there is the installation's to say. */
+  audit?: boolean;
 };
 
 /** Whether the issuer shares this page's origin.

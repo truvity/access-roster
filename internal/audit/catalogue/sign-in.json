@@ -1,0 +1,14 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/sign-in.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "how": {
+      "type": "string",
+      "description": "How the person proved who they are: the sign-in connector, or recovery.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    }
+  }
+}

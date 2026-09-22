@@ -463,7 +463,8 @@ serviceAccount:
 # ServiceAccount token, which the service verifies against this cluster's
 # key set: `exchange.clusters` must name this cluster, and the policy must
 # put the controller's account in `all:access-roster:viewer` (to read who
-# holds a group) and `all:access-roster:reporter` (to record what it did).
+# holds a group). It records what it did to the audit installation itself,
+# with a token of its own (see `audit`).
 githubRoster:
   enabled: false
   image:
@@ -613,31 +614,43 @@ secretManagers: []
 # answer is this paragraph rather than a knob.
 
 # The audit trail: sign-ins, refusals, exchanges, revokes, connects, and
-# what a reporting component (the GitHub controller) did. Kept in S3 — the
-# durable record, and what the console's Audit page reads — and never in
-# Valkey, one Elastic Common Schema document per event. The bucket should
-# carry Object Lock and deny deletes; the service only puts, lists and
-# gets, as the pod's own AWS identity. Every event is also one log line
-# (`audit=true`) with the same ECS fields.
+# what the GitHub controller did. It is kept by an audit installation
+# (github.com/truvity/audit) of this service's own, rendered beside it: the
+# receiver takes the records and registers the catalogue, the writer locks,
+# signs and indexes them, and the query service serves the Audit page as the
+# person signed in. This service holds no bucket and no keys — that is what
+# having the installation next to it rather than inside it is for.
+#
+# With nothing set, nothing is kept: every record is still validated
+# against the catalogue and written as a log line (`audit=true`), and the
+# console has no Audit page. Every record is a log line either way.
 audit:
+  # The installation's receiver: one address, which takes the records and
+  # answers RegisterCatalogue on the same port. Empty keeps no trail beyond
+  # the log line every record also is.
+  #
+  # The service account's projected token (below) is how the installation
+  # knows this workload: its `workloadIdentity.workloads` must map
+  # system:serviceaccount:<namespace>:<this release's service account> — and
+  # the controller's, when it runs — to the source `roster`.
+  writer: ""    # e.g. http://audit.access-issuer.svc:8080
+  # The installation's query service, for the console's Audit page. Empty
+  # shows no page. The page's tokens are minted by this issuer for the
+  # client named `audience`, which the policy must declare with the groups
+  # that may read the trail (`<scope>:audit:<role>`), and which the query
+  # service's grants trust.
+  query: ""     # e.g. http://audit-query.audit.svc:8080
+  audience: audit
+  # The projected token presented to the receiver.
+  token:
+    audience: audit
+    expirationSeconds: 3600
   # How many of the deployment's own proxies append to X-Forwarded-For in
   # front of the service. The client is the entry just left of them, read
   # from the right; the left end is whatever a caller sent. 0 records the
   # connection's peer. Behind an edge that appends the client and a gateway
   # that appends the edge's connector, it is 1.
   forwardedForTrustedHops: 0
-  s3:
-    # The bucket. Empty keeps the trail in one replica's memory, which is
-    # not a record: right for a laptop, and warned about anywhere else.
-    bucket: ""
-    # The bucket's region; empty takes the AWS SDK's own resolution.
-    region: ""
-    # Prepended to every key: <prefix>YYYY/MM/DD/HH/<batch>.jsonl
-    prefix: events/
-    # The longest an event waits in memory before it is written.
-    flushInterval: 10s
-  # The in-memory trail's cap, used only without a bucket.
-  maxEvents: 50000
 
 # Metrics, pushed over OTLP by the service and the GitHub controller.
 # Empty publishes nothing: no listener is opened for them either way.

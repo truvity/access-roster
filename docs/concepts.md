@@ -83,7 +83,7 @@ and a repository to disagree about.
 
 | Term | Means |
 |---|---|
-| **event** | one thing an identity did or was refused: a sign-in, a refusal, an exchange, a revoke, a connect, a console action, what the controller did. Every event is one record and one log line, sharing an `event.id` |
-| **record** | the durable copy: one Elastic Common Schema document appended to an S3 object keyed by the hour. What the console's Audit page reads back |
-| **reporter** | a component that records what it did through `RecordAuditEvents` rather than causing events itself: the GitHub controller, admitted by the `all:access-roster:reporter` group |
-| **durable** | written to the bucket before the caller is answered. Only a recovery sign-in asks for it, and is refused when the record cannot be written; every other event is queued in the replica and written when the bucket answers |
+| **audit installation** | an installation of [truvity/audit](https://github.com/truvity/audit), deployed on its own, that keeps the trail: access-roster connects to it as a plugin, registering its catalogue and sending its records |
+| **action** | one thing that can happen, declared in the catalogue (`internal/audit/catalogue/roster.yaml`): `roster.person.signed_in`, `roster.github_member.invited`, … Each has one constructor in `internal/audit/events.go` |
+| **record** | one action that happened, or was refused: who acted, who it concerns, what it was about, how it ended. Every record is also one log line, sharing its id |
+| **block** | the one delivery that waits: a recovery sign-in is kept by the installation before it succeeds, and refused when it cannot be. Every other record goes through an outbox on the pod's disk and is delivered when the writer answers |

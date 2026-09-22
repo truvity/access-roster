@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
-	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
+	"github.com/truvity/audit/record"
+
+	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/githubroster/reconcile"
@@ -55,7 +57,7 @@ func (c *Controller) checkLinks(ctx context.Context) ([]reconcile.Link, error) {
 		c.deps.Log.WarnContext(ctx, "the link App's credential cannot be read, so no link is checked", "error", err)
 	default:
 		var changed []link.Link
-		var events []*directoryrosterv1.AuditEvent
+		var events []*record.Record
 		for i := range links {
 			// Only a self-link holds tokens to check with; a matched or
 			// imported link stands as it was made.
@@ -104,7 +106,7 @@ func (c *Controller) linkCredential() (link.AppCredential, error) {
 // checkLink is one link's check. It returns the link as it now stands —
 // written already where a refresh had to be — and the audit event its
 // change deserves, if any.
-func (c *Controller) checkLink(ctx context.Context, credential link.AppCredential, l link.Link) (link.Link, *directoryrosterv1.AuditEvent) {
+func (c *Controller) checkLink(ctx context.Context, credential link.AppCredential, l link.Link) (link.Link, *record.Record) {
 	now := c.deps.Now().UTC()
 	web := c.deps.GitHub
 	stillValid := func() (bool, error) {
@@ -137,7 +139,7 @@ func (c *Controller) checkLink(ctx context.Context, credential link.AppCredentia
 		l = refreshed
 	}
 
-	gone := func(err error) (link.Link, *directoryrosterv1.AuditEvent) {
+	gone := func(err error) (link.Link, *record.Record) {
 		if !errors.Is(err, githubapp.ErrTokenRefused) {
 			c.deps.Log.WarnContext(ctx, "a link could not be checked", "account", l.ID, "error", err)
 			return l, nil
@@ -167,7 +169,7 @@ func (c *Controller) checkLink(ctx context.Context, credential link.AppCredentia
 		dropped := slices.DeleteFunc(slices.Clone(l.Emails), func(email string) bool { return slices.Contains(kept, email) })
 		l.Emails, l.ChangedAt = kept, now
 		c.metrics.recordLinkChange(ctx, "narrowed")
-		return l, c.linkEvent("github.link.narrowed", l, "no longer verified on the account: "+strings.Join(dropped, ", "))
+		return l, audit.GitHubLinkNarrowed(firstEmail(l), l.Login, "no longer verified on the account: "+strings.Join(dropped, ", "))
 	}
 	return l, nil
 }
@@ -177,7 +179,7 @@ func (c *Controller) checkLink(ctx context.Context, credential link.AppCredentia
 // new one, and a pair issued and not kept is a link nobody can check.
 func (c *Controller) refresh(
 	ctx context.Context, credential link.AppCredential, l link.Link, now time.Time,
-) (link.Link, *directoryrosterv1.AuditEvent, bool) {
+) (link.Link, *record.Record, bool) {
 	l.RefreshingSince = now
 	written, err := c.deps.Links.Update(ctx, []link.Link{l})
 	if err != nil || len(written) != 1 {
@@ -223,28 +225,25 @@ func (c *Controller) refresh(
 	return l, nil, true
 }
 
-func (c *Controller) lose(l link.Link, now time.Time, reason string) (link.Link, *directoryrosterv1.AuditEvent) {
+func (c *Controller) lose(l link.Link, now time.Time, reason string) (link.Link, *record.Record) {
 	l.State, l.Reason, l.ChangedAt, l.CheckedAt = link.StateLost, reason, now, now
 	l.Forget()
 	c.metrics.recordLinkChange(context.Background(), "lost")
-	return l, c.linkEvent("github.link.lost", l, reason)
+	return l, audit.GitHubLinkLost(firstEmail(l), l.Login, reason)
 }
 
-func (c *Controller) unverifiable(l link.Link, now time.Time, reason string) (link.Link, *directoryrosterv1.AuditEvent) {
+func (c *Controller) unverifiable(l link.Link, now time.Time, reason string) (link.Link, *record.Record) {
 	l.State, l.Reason, l.ChangedAt, l.CheckedAt = link.StateUnverifiable, reason, now, now
 	l.Forget()
 	c.metrics.recordLinkChange(context.Background(), "unverifiable")
-	return l, c.linkEvent("github.link.unverifiable", l, reason)
+	return l, audit.GitHubLinkUnverifiable(firstEmail(l), l.Login, reason)
 }
 
-func (c *Controller) linkEvent(kind string, l link.Link, reason string) *directoryrosterv1.AuditEvent {
-	subject := ""
+// firstEmail is the address a link's records name its person by: the
+// first it was verified for, or none once it has been forgotten.
+func firstEmail(l link.Link) string {
 	if len(l.Emails) > 0 {
-		subject = l.Emails[0]
+		return l.Emails[0]
 	}
-	return &directoryrosterv1.AuditEvent{
-		Source: Source, Kind: kind, Actor: "system", Subject: subject, Target: "@" + l.Login,
-		Outcome: "ok", Reason: reason,
-		Attributes: map[string]string{"account": githubapp.FormatID(l.ID), "emails": strings.Join(l.Emails, ",")},
-	}
+	return ""
 }

@@ -1,0 +1,13 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/sessions-ended.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ended": {
+      "type": "integer",
+      "description": "How many client sessions ended with it.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

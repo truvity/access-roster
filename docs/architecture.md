@@ -37,7 +37,7 @@ flowchart TB
   idp["Corporate directories<br/>Google Workspace tenants, Entra later<br/>sign-in and MFA live here"]
   rp["Relying parties<br/>Kubernetes API servers · AWS accounts<br/>ArgoCD · Kargo · consoles"]
   gho["GitHub organisations<br/>teams, invitations, removals"]
-  s3[("S3<br/>the audit trail, one record per event")]
+  s3[("audit installation<br/>its own release; the trail, one record per action")]
 
   person -- "sign in once" --> ar
   ci -- "token exchange" --> ar
@@ -46,7 +46,7 @@ flowchart TB
   ar -- "sign-in [OIDC]<br/>directory reads [Admin SDK]" --> idp
   ar -. "trusted issuer [key set]" .-> rp
   ar -- "acts as each organisation's App" --> gho
-  ar -- "appends" --> s3
+  ar -- "records, as itself" --> s3
   person --> rp
   ci --> rp
 ```
@@ -56,8 +56,9 @@ The directories hold the people; the relying parties hold their own
 roles; access-roster holds the policy, a snapshot of the directory, the
 sessions it has open, and what an operator connected through the
 console: directory credentials, GitHub Apps and people's GitHub links.
-The audit trail is the one thing it writes that outlives it, and it
-lives in a bucket the operator owns.
+The audit trail is the one thing it writes that outlives it, and it is
+kept by an audit installation deployed on its own, which access-roster
+connects to as a plugin.
 
 ## Containers
 
@@ -69,7 +70,7 @@ flowchart TB
   gw["Envoy Gateway<br/>one data plane, ext_authz to a proxy per console"]
 
   subgraph ar["access-roster — one chart, two Deployments"]
-    issuer["the issuer<br/>OpenID provider · six grants<br/>login page · session service · audit"]
+    issuer["the issuer<br/>OpenID provider · six grants<br/>login page · session service"]
     dir["the directory<br/>snapshots · routing by domain<br/>authoritative per domain"]
     con["the console<br/>React, mounted at /console/"]
     ctl["the GitHub controller<br/>one pass per interval per organisation<br/>born disabled, dry run until listed"]
@@ -78,7 +79,7 @@ flowchart TB
   vk[("Valkey<br/>sessions · single sign-on · auth requests<br/>one snapshot per workspace")]
   cfg[("policy · clients · federated clusters<br/>ConfigMaps from the chart")]
   sec[("signing key · workspace credentials<br/>GitHub Apps · people's links · runner Apps<br/>Secrets")]
-  s3[("S3<br/>the audit trail")]
+  s3[("audit installation<br/>writer · registry · query service")]
 
   proxy["access-proxy<br/>oauth2-proxy, one per console<br/>Valkey for sessions"]
   idp["Google Workspace"]
@@ -97,7 +98,8 @@ flowchart TB
   issuer --> cfg
   issuer --> sec
   issuer -- "sign-in" --> idp
-  issuer -- "appends, by the hour" --> s3
+  issuer -- "records; the Audit page reads as the person" --> s3
+  ctl -- "records, as itself" --> s3
   dir --> vk
   dir --> sec
   dir -- "reads" --> idp
@@ -136,7 +138,7 @@ JavaScript.
 | ConfigMaps | the policy, the clients, the federated clusters | git |
 | Secrets the chart delivers | the signing key, the OAuth client | whatever delivered them; the runbook |
 | Secrets the service writes | the directories' credentials, each GitHub organisation's App, the link App, people's link tokens, the runner Apps, the catalogue Apps — each entry carrying a copy of its record | a copy of five Secrets restores every one of them, records included ([configuration](reference/configuration.md#restoring-from-the-secrets-alone)); a link token that rotated since means that person links again |
-| S3 | the audit trail: one Elastic Common Schema record per event, in JSON-lines objects keyed by the hour | the trail before the loss; while the bucket is unreachable events queue in the replica and are written when it answers, and a recovery sign-in is refused rather than left unrecorded |
+| the audit installation | the audit trail: one record per action, kept, locked and signed by the installation | its own backups and archive; while its writer is unreachable records wait in each pod's outbox, and a recovery sign-in is refused rather than left unrecorded |
 
 ## Fan-in and fan-out
 
@@ -258,7 +260,7 @@ Three layers, and none is the fallback for another.
 | A signed-in operator's own account turns non-authoritative | last granted role kept for a bounded window; nothing new granted |
 | A policy the issuer refuses to load | the new pod does not start and the previous pods keep serving the previous policy; nothing visible changes except the new clients are absent |
 | access-roster is down | no new sign-ins anywhere; existing sessions and tokens live to expiry; recovery is by cluster proof |
-| S3 unreachable | events queue in the replica and are written when it answers; the Audit page lists what is queued; a recovery sign-in is refused meanwhile |
+| the audit installation unreachable | records wait in each pod's outbox and are delivered when its writer answers; the Audit page cannot be read; a recovery sign-in is refused meanwhile |
 | a GitHub pass fails | the last report with rows stands; the pass is retried next interval; nothing is removed on a failed read |
 | the console answers the controller under another policy | the pass changes nothing and is tried again within seconds, six times at most before the interval resumes: a rollout restarts the two at different moments, and a removal decided across that gap would be wrong |
 | an organisation's seats cannot be read | nobody is invited into it until they can |

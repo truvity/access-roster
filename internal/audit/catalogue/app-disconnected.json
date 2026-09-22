@@ -1,0 +1,21 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/app-disconnected.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "uninstalled": {
+      "type": "boolean",
+      "description": "Whether the App was also uninstalled on GitHub.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "tier": {
+      "type": "string",
+      "description": "The runner tier the App serves; runner Apps only.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    }
+  }
+}

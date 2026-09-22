@@ -1,6 +1,0 @@
-# A key under audit.s3 does not know must fail the render, not be ignored.
-# error: at '/audit/s3': additional properties
-issuerURL: https://issuer.example
-audit:
-  s3:
-    endpoint: https://s3.example

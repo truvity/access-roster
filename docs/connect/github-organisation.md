@@ -101,8 +101,7 @@ exchange:
       jwksUri: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE/keys
 ```
 
-and the policy puts its account in two groups — reading who holds a group,
-and recording what it did:
+and the policy puts its account in the group that reads who holds a group:
 
 ```yaml
 groups:
@@ -113,6 +112,10 @@ groups:
     matchers:
       - service_account: { cluster: prod, namespace: access-issuer, name: access-issuer-github-roster }
 ```
+
+What it does is recorded in the audit trail by the controller itself, with
+its own token, when an audit installation is connected (`audit.*`); the
+installation must map its account to the source `roster`.
 
 The account's name is `<release>-github-roster`. The chart refuses to
 render the controller without an `exchange.clusters` row or a console
