@@ -16,7 +16,7 @@ for the console's Audit page.
 
 | Included (standard Kubernetes APIs) | Expected to exist |
 |---|---|
-| Deployment, Service, ServiceAccount + namespaced Role/RoleBinding (with the Kubernetes store) + a cluster-scoped TokenReview role (with recovery), NetworkPolicy, the policy / overlay / federated-cluster ConfigMaps, a Gateway and two `HTTPRoute`s — one for the issuer's own endpoints and one for the console's path | a **Valkey** to point at; the Secrets a declared workspace, a declared OAuth client or an externally delivered signing key name |
+| Deployment, Service, ServiceAccount + namespaced Role/RoleBinding (with the Kubernetes store) + a cluster-scoped TokenReview role (with recovery), NetworkPolicy, the policy / overlay / federated-cluster / GitHub App catalogue / secret-manager ConfigMaps, a Gateway and two `HTTPRoute`s — one for the issuer's own endpoints and one for the console's path — and, only where a `push` block is written, External Secrets `PushSecret`s | a **Valkey** to point at; the Secrets a declared workspace, a declared OAuth client or an externally delivered signing key name; External Secrets and the store each `push` block names; a reachable store for every `secretManagers` entry |
 
 The service itself reads and writes plain Kubernetes Secrets and
 ConfigMaps in its own namespace. It has no dependency on an external-secrets operator, a
@@ -46,6 +46,9 @@ service writes *itself*, where it is the producer and gets to choose.
 | `valkey.tls` | `false` | |
 | `valkey.cluster` | `false` | speak the cluster protocol. **Off by default since 2026-09-10**: with one shard it makes the client learn node addresses from `CLUSTER SLOTS` and talk to those, bypassing the Service — the one mechanism whose job is to survive a pod moving. Turn it on when the store has three shards |
 | `signingKey.existingSecret` / `.key` | `""` / `tls.key` | a Secret holding a PEM private key -- RSA, or ECDSA on P-256, P-384 or P-521. Empty renders a cert-manager `Certificate` instead. **Never minted by the service**: two replicas with two keys hand out tokens half the fleet cannot verify |
+| `signingKey.certificate.issuerName` / `.issuerKind` | `selfsigned` / `ClusterIssuer` | the cert-manager issuer that produces the key, when no `existingSecret` is named. The certificate is a by-product; only the key is used |
+| `signingKey.certificate.algorithm` / `.size` / `.encoding` | `ECDSA` / `384` / `PKCS8` | the key, and so what the issuer signs with: RSA signs RS256, and P-256, P-384 and P-521 sign ES256, ES384 and ES512. It is what discovery advertises, so every relying party has to accept it. ECDSA takes 256, 384 or 521; RSA takes 2048, 3072 or 4096; PKCS1 encodes only RSA. A combination cert-manager would not issue is refused at render. Changing it rotates the key |
+| `signingKey.certificate.renewBefore` / `.duration` | `720h` / `8760h` | how long before expiry cert-manager replaces the key, and the certificate's life. A renewal is a **new key** (`rotationPolicy: Always`), so keep `renewBefore` comfortably longer than `lifetimes.token` |
 | `directory.store` | `kubernetes` | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
 | `directory.freshness.refreshInterval` | `15m` | how often the refresher takes a new snapshot per workspace |
 | `directory.freshness.freshnessWindow` | `30m` | how old a snapshot may be before its domains stop being authoritative |
@@ -53,8 +56,16 @@ service writes *itself*, where it is the producer and gets to choose.
 | `directory.sessionLifetime` | `12h` | how long the console's own session lasts |
 | `directory.login` | `true` | whether the console offers a sign-in of its own, under `<mount>/login`. With `console.client` set it is a second door: the issuer's page is the one people use |
 | `directory.workspaces[]` | `[]` | declared workspaces, see below |
+| `directory.push` | absent | a **recovery copy** of `Secret <release>-workspace-credentials`: `{secretStore: {name, kind}, remoteKey, refreshInterval}` renders `PushSecret <release>-workspace-copy`, which writes the whole Secret as one JSON object at `remoteKey` — bundled, because the keys inside are `<workspace-id>.json` and a reconnect mints a new id, so a per-key mapping would go stale while reporting healthy. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`, because the case this exists for is the Secret going away. Refused at render without `directory.store: kubernetes`, without a store or a key, or for two pushes sharing one path. It is a push and not an `ExternalSecret` because the service is the writer: a pull would let a stale copy overwrite a freshly connected workspace. What lands there **is** the credential |
 | `githubApps.catalogue[]` | `[]` | GitHub Apps declared as data — `{id, org, name, description, public, permissions, events, installation, grants, push}` each — created and installed by an operator on the GitHub page (Apps, then Catalogue). Rendered to `ConfigMap <release>-github-apps-catalogue`; the service refuses to start on a malformed entry or a grant naming a group the policy does not declare. A default set to copy ships as the chart's `examples/github-apps.yaml`. See [connect/github-apps-catalogue.md](../connect/github-apps-catalogue.md) |
+| `githubApps.catalogue[].grants[]` | `[]` | who may ask for that App's installation tokens, and for how much: `{group, repositories[], permissions{}}` each. `group` is an internal group the policy declares; `repositories` are names in the App's organisation, `["*"]` for all; `permissions` is `{name: level}`. A request is served by the first grant, in catalogue order, that covers all of it ([contract](contracts.md#installation-tokens-at-token)) |
 | `githubApps.catalogue[].push` | absent | copy one App's credential to a secret store: `{secretStore: {name, kind}, remoteKey, refreshInterval, deletionPolicy}` renders `PushSecret <release>-github-app-<id>`, which writes `app_id`, `installation_id` and `private_key` at `remoteKey` — that App's three property keys and nothing else. Off unless written, and refused at render for two entries sharing one path in one store, or without `directory.store: kubernetes`. The copy is a real credential, rotated as one. See [connect/infrastructure-as-code.md](../connect/infrastructure-as-code.md) |
+| `githubApps.push` | absent | a **recovery copy** of `Secret <release>-github-apps` — the link App and one App per bound organisation, the identities this service acts as — with the same shape and rules as `directory.push`, rendering `PushSecret <release>-github-apps-copy`. Distinct from `catalogue[].push`, which copies one catalogue App's three keys for a consumer that must act as it; this copies the service's own Apps, and only so they can be restored. An App cannot be re-created with its old id, so losing them means every grant rebinds and every installation is re-authorised by hand |
+| `secretManagers[]` | `[]` | the secret stores the console **shows**, on its Secret stores page: `{name, address, mount, role, audience, caCertSecret, caCertConfigMap, namespaces[]}` each. Read-only, and not by omission: the reader is this service's own ServiceAccount token, exchanged at this issuer for the store's audience, and it may read the declared state (policies, identity groups, aliases, auth mounts) and never a value. Empty declares none, and the console then has no such page rather than an empty one. See [connect/openbao.md](../connect/openbao.md#console-side) |
+| `secretManagers[].name` / `.address` | — | **required.** What the console calls the store (`[a-z0-9-]`, unique; it names the page's route), and the API's base URL with no path |
+| `secretManagers[].mount` / `.role` / `.audience` | `jwt-roster` / `roster` / `openbao` | the JWT auth mount the reader logs in on, the role on it, and the exchange audience it asks this issuer for first — the same door and audience `accessctl` uses. The store's client `requires` must admit the group this service's workload identity holds; a refusal is drawn on the page, naming the audience |
+| `secretManagers[].caCertSecret` / `.caCertConfigMap` | absent | a private root the store's certificate chains to, `{name, key}` with `key` defaulting to `ca.crt`, from a Secret or from the ConfigMap trust-manager writes. Trusted in addition to the system's roots, for that store alone. **Name one or the other, never both**: the render refuses two bundles at one path |
+| `secretManagers[].namespaces[]` | — | **required, at least one.** `{name, environment}` each: the namespace as the store knows it, and the roster environment it mirrors. `environment` defaults to the name — a namespace **is** an environment — and exists only for a store that names its namespaces differently |
 | `githubRunnerApps.tiers` | `[]` | the runner tiers an operator may create a runner App for on the GitHub page (Apps), one App per bound organisation per tier — e.g. `[preview, stable]`. Empty creates none. The Apps are kept in `Secret <release>-github-runner-apps` for the deployment to hand to its runners |
 | `oauthClient.secret.name` | `""` | a Secret holding the client for sign-in and admin consent. Empty means nobody can sign in and this installation issues tokens to machines only, which is a real posture and is said at start |
 | `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the service does not produce this object: whatever delivers it already had an opinion, and a chart that insisted on two names could not read a Secret already in the namespace |
@@ -65,18 +76,21 @@ service writes *itself*, where it is the producer and gets to choose.
 | `exchange.clusters[]` | `[]` | the clusters whose workloads may exchange: `{name, issuer, jwksUri}` per cluster, verified against the key set that cluster publishes. **No secret in any row**, and this service holds access to no cluster — including its own, which is a row like any other |
 | `github.owners[]` | `[]` | the GitHub organisations whose workflows may exchange. **Empty verifies no CI token at all**, deliberately: anybody may run a workflow in their own repository and get a valid GitHub token, so a list invented by the chart would admit every repository there is |
 | `cluster` | `""` | what this cluster is called, which becomes part of a ServiceAccount's subject. Empty keeps the older unqualified form |
-| `lifetimes.token` / `.refresh` / `.hold` | | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch |
+| `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch. Caps: the policy may ask for shorter |
 | `recovery.enabled` | `true` | the way in for the day the ordinary one is broken. It stores nothing: a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. **The only thing left that asks the cluster anything** |
 | `recovery.serviceAccountName` | `<release>-recovery` | the account recovery proves access as; the chart creates it, bound to nobody. Granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
 | `recovery.audience` | `<release>-recovery` | the audience the token must be minted for. Without one, every mounted ServiceAccount token in the cluster would be a recovery token |
 | `route.host` | `""` | the hostname on the gateway. Empty renders no Gateway, HTTPRoute or Certificate, which is right for an installation reached by port-forward |
 | `route.rootRedirect` | `""` | where a bare GET of the host goes. The issuer serves nothing at `/` — every endpoint it answers is a named one — so point this at `/console/` and somebody who types the domain lands somewhere useful |
-| `route.gatewayClassName`, `route.certificate.*` | `internal`, `internal-ca` | which class the Gateway joins, and who issues its certificate |
+| `route.gatewayClassName`, `route.certificate.issuerName` / `.issuerKind` | `internal`, `internal-ca` / `ClusterIssuer` | which class the Gateway joins, and who issues its TLS certificate |
+| `route.certificate.privateKey` | `{}` | the key that TLS certificate is issued for: `{algorithm, size, encoding, rotationPolicy}`, cert-manager's own fields. Empty leaves every one to cert-manager's defaults, an RSA 2048 key. Set it when the issuer will only sign one kind of key — a PKI role pinned to an algorithm refuses at issuance, long after the render succeeded, and the listener stays dark with the reason on the `CertificateRequest`. The same combinations as the signing key are refused at render |
 | `route.sharedWith[]` | `[]` | namespaces besides this one allowed to attach an HTTPRoute to this Gateway. A **gateway-level** admission, not a ReferenceGrant: whether a Gateway accepts a route from another namespace is entirely its own `allowedRoutes` |
 | `route.parentRefs[]` | `[]` | parents for the issuer's routes, written out in full (e.g. a platform `ListenerSet` carrying `route.host`). When set the chart renders **no Gateway and no TLS Certificate**: the parent owns the listener and its certificate, and `gatewayClassName`, `certificate` and `sharedWith` have no effect. Write `group` and `kind` out |
 | `policy` | `{}` | the declared policy, see [policy.md](policy.md) |
 | `networkPolicy.enabled` | `false` | |
 | `networkPolicy.clients[]` | `[]` | namespaces allowed to reach the service in-cluster: the proxies verifying tokens and the workloads exchanging them |
+| `networkPolicy.gatewayNamespace` | `""` | the gateway's namespace, admitted to the service's port besides `clients`. Empty admits no gateway, so with the policy enabled nothing with a browser reaches it |
+| `serviceAccount.annotations` | `{}` | annotations on the ServiceAccount, which is how a cloud identity reaches this service: an admission webhook (EKS Pod Identity, GKE Workload Identity, the self-hosted `amazon-eks-pod-identity-webhook`) reads one and injects credentials into every pod using the account. Without it a self-hosted installation cannot give the service an AWS identity, and `audit.s3` has nothing to authenticate with; the chart mounts no credential of its own and takes none as a value. On AWS: `eks.amazonaws.com/role-arn: <the role's ARN>` |
 | `githubRoster.enabled` | `false` | render the GitHub controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, because either is a controller that can read nothing |
 | `githubRoster.actsIn[]` | `[]` | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled |
 | `githubRoster.interval` | `15m` | how long between passes |
@@ -205,7 +219,10 @@ so the hash carries the uniqueness the readable part may have lost.
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
 | `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** | the chart |
 | `ConfigMap <release>-github-apps-catalogue` | the declared GitHub App catalogue, `catalogue.yaml`. **No secret in it** | the chart, when `githubApps.catalogue` is not empty |
+| `ConfigMap <release>-secret-managers` | the declared secret stores, `managers.yaml`: names, addresses, doors and which namespaces to draw, with each `caCertSecret`/`caCertConfigMap` replaced by the path the bundle is mounted at. **No secret in it**: the reader's credential is minted per read from the service's own ServiceAccount token and never stored | the chart, when `secretManagers` is not empty |
 | `PushSecret <release>-github-app-<id>` | the instruction to copy one catalogue App's `app_id`, `installation_id` and `private_key` to the store and path its entry names — that App's three property keys and nothing else. **What lands there is the App's key**, a second durable copy, rotated as one | the chart, for each `githubApps.catalogue` entry carrying `push`; External Secrets does the copying |
+| `PushSecret <release>-workspace-copy` | the instruction to copy the whole of `Secret <release>-workspace-credentials`, every key as one JSON object, to the store and path `directory.push` names. A recovery copy: restoring is an operator writing it back, deliberately. `deletionPolicy: None`, so the copy outlives the Secret it is for | the chart, when `directory.push` is written; External Secrets does the copying |
+| `PushSecret <release>-github-apps-copy` | the same for `Secret <release>-github-apps` — the link App and one App per bound organisation — to where `githubApps.push` names | the chart, when `githubApps.push` is written; External Secrets does the copying |
 | `ConfigMap <release>-github-status` | the GitHub controller's last report, one document per organisation | created empty by the service at start; its data replaced by the controller, which is granted this one name |
 | `ConfigMap <release>-github-orgs` | one record per connected GitHub organisation: App id and slug, installation, connected by and at | the service (Connect a GitHub organisation), created empty at start |
 | `Secret <release>-github-apps` | one credential per connected organisation: the App's id, installation and private key, and a copy of the organisation's record; the link App's likewise | the service (Connect), created empty at start so the controller's volume always has a Secret behind it; read by the service only to uninstall on Disconnect |
@@ -249,9 +266,13 @@ each under a name a deployment knows in advance:
 - `<release>-github-runner-apps` and `<release>-github-catalogue-apps`,
   whose records are already beside their keys.
 
-A deployment backs them up by copying those five objects, for example
-with an External Secrets `PushSecret` each. Nothing in the service depends
-on the copy.
+A deployment backs them up by copying those five objects. The chart
+renders the copy for two of them — `<release>-workspace-credentials`
+through [`directory.push`](#values) and `<release>-github-apps` through
+[`githubApps.push`](#values), each an External Secrets `PushSecret` of
+the whole Secret under one remote key — because those two are the ones
+nothing upstream can re-deliver; the other three are a `PushSecret` of
+the deployment's own. Nothing in the service depends on the copy.
 
 Each credential carries a copy of its record. So after the five Secrets
 are put back into an empty namespace, the next start does the rest before
@@ -308,8 +329,10 @@ from the values above.
 | `AUDIT_TOKEN_FILE` | the projected token, mounted when an installation is connected. Set on the GitHub controller as well, with its own token |
 | `POD_NAME` | the pod's name, from the downward API: names the instance on every audit record |
 | `CLIENT_SECRETS_DIR` | where the confidential clients' Secrets are mounted, one file per client |
-| `GITHUB_RUNNER_TIERS` | `githubRunnerApps.tiers`, comma-separated, set only when not empty |
 | `GITHUB_APPS_CATALOGUE_FILE` | the mounted `githubApps.catalogue`, set only when not empty. Read once at start; a malformed catalogue stops the service |
+| `SECRET_MANAGERS_FILE` | the mounted `secretManagers`, `managers.yaml` from `ConfigMap <release>-secret-managers`, set only when not empty. Read once at start; an unknown key or a malformed entry stops the service |
+| `SECRET_MANAGERS_TOKEN_FILE` | the reader's proof: the service's **own** ServiceAccount token, projected for `exchange.audience` (not the API server's audience) for an hour and rotated under the pod by the kubelet, which is why it is read per call. Set with the file above |
+| `SECRET_MANAGERS_ISSUER` | `issuerURL`: where that token is exchanged for a store's audience — this issuer, the same exchange a CI job makes |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty. Metrics are pushed over OTLP/HTTP; with nothing set, nothing is exported and no listener is opened. Every other `OTEL_*` variable OpenTelemetry defines is honoured too. Set on the GitHub controller as well |
 | `LOG_LEVEL` | `logLevel` |
 
@@ -343,8 +366,8 @@ Two roles, held by membership of two declared internal groups.
 
 | Role | Group | May |
 |---|---|---|
-| viewer | `all:access-roster:viewer` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders`, `GetGitHubStatus`, and listing one's own sessions — the whole console, read-only |
-| operator | `all:access-roster:operator` | everything: Connect, Reconnect, UploadKey, Probe, Refresh, Disconnect, the GitHub connects and disconnects, `ConfirmGitHubRemovals`, `ImportGitHubLinks`, listing and revoking anyone's sessions |
+| viewer | `all:access-roster:viewer` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders`, `GetGitHubStatus`, `ListGitHubApps`, `GetGitHubApp`, `ListSecretManagers`, `GetSecretManagerNamespace`, `ListSecretManagerReach` for anybody else (one's own reach, like `Explain` of oneself, needs no role), and listing one's own sessions — the whole console, read-only |
+| operator | `all:access-roster:operator` | everything: Connect, Reconnect, UploadKey, `SetServedDomains`, `SetSyncedGroups`, Probe, Refresh, Disconnect, the GitHub connects and disconnects, `ListGitHubAppTokens` (a request names who asked), `ConfirmGitHubRemovals`, `ImportGitHubLinks`, listing and revoking anyone's sessions |
 
 Behind a gateway that forwards a token, the forwarded identity's email is
 resolved through the directory like any other; the groups in the token

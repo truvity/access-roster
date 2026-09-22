@@ -274,10 +274,15 @@ secretManagers:
 ```
 
 `mount`, `role` and `audience` default to `jwt-roster`, `roster` and
-`openbao`; a store behind a private root names a `caCertSecret`. A
-namespace **is** an environment: the model is one level deep, and
-`environment` exists only for a store that names its namespaces
-differently.
+`openbao`. A store behind a private root names the bundle as a
+`caCertSecret: {name, key}` or, since 1.24.0, a `caCertConfigMap:
+{name, key}` — the ConfigMap cert-manager's trust-manager already writes
+into every namespace, so nothing has to be copied into a Secret. One or
+the other, never both; the render refuses it with `name caCertSecret or
+caCertConfigMap, not both: two bundles at one path is one of them
+silently unused`. A namespace **is** an environment: the model is one
+level deep, and `environment` exists only for a store that names its
+namespaces differently.
 
 ### What it reads, and as whom
 
@@ -304,11 +309,26 @@ prefix and can never show a value, however the page is later changed.
 
 ### The four states
 
+What the page **expects** a namespace to hold is not every group of
+that environment. A cluster's tier, a CI job's group, the console's own:
+all are groups of the environment, and no secret store holds a policy
+for any of them. So since 1.25.0 the expected list is the store's own
+exchange audience — the groups the `openbao` client's `requires` admits,
+which is exactly the set the store holds a policy for — narrowed to the
+namespace's environment by the naming rule: a group whose first segment
+is the environment belongs there; an `all:`-scoped group spans
+environments and is legitimate wherever it appears, so it is drawn where
+the store has it and never reported absent; a group of another
+environment is neither. And a group admitted at two doors is two
+identity groups in the store — the bare name and `<name>@<door>`,
+carrying the same policy — which the page folds into **one row** with
+both doors in its column, not a second group and not drift.
+
 | state | what it means |
 |---|---|
-| `bound` | declared here, in the store, carrying a policy of its own name |
-| `not applied yet` | declared here and not in the store — **not drift**: this side is already right and the store has yet to hear it |
-| `not declared` | in the store and declared by nothing here. The row worth opening the page for |
+| `bound` | expected here, in the store, carrying a policy of its own name |
+| `not applied yet` | expected here and not in the store — **not drift**: this side is already right and the store has yet to hear it |
+| `not declared` | in the store and expected by nothing here, `all:` groups excepted. The row worth opening the page for |
 | `cannot read` | the reader was refused. **Never** inferred from an empty answer |
 
 That last one is why the page is worth building. An empty namespace and a

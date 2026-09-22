@@ -94,7 +94,11 @@ the hostname, the HTTPRoute and the gateway's SecurityPolicy are rendered
 from the same values, the proxy image, node placement and issuer URL come
 from a values file the deployment shares across every exposure, and the
 session store is either a Valkey the chart is pointed at or one shared per
-cluster by every proxy.
+cluster by every proxy. Where the platform hands out listeners as a
+`ListenerSet` rather than a Gateway, `exposure.parentRefs` names the
+parents in full and replaces `gateway` — one entry for the ListenerSet,
+or one for each of a Gateway and a ListenerSet while a hostname moves
+between them.
 
 ## One anchor, two gates
 

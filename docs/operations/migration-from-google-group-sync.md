@@ -10,7 +10,7 @@ console's API. The move is four steps, each reversible until the last.
    service-account key as a declared workspace (`directory.workspaces[]`,
    the key Secrets delivered the way they were delivered to
    google-group-sync). No Connect step. Confirm: the console's
-   Directories page lists every domain the old instances served, all
+   Providers page lists every domain the old instances served, all
    authoritative; spot-check a sample of addresses with `Explain`
    against the old instances' answers.
 2. **Consumers move.** What read google-group-sync's answers moves onto

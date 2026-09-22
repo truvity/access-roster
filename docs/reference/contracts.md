@@ -10,7 +10,7 @@ without a generated client.
 
 | Services | Reached by | Path prefix |
 |---|---|---|
-| `directoryroster.v1.WorkspaceService`, `SettingsService`, `AccessService`, `GitHubService`, and the SPA; the audit installation's `QueryService`, forwarded under `/audit/` | the console, same-origin under `console.mount`; a workload with its own ServiceAccount token | `/directoryroster.v1.*/` |
+| `directoryroster.v1.WorkspaceService`, `SettingsService`, `AccessService`, `GitHubService`, `SecretManagerService`, and the SPA; the audit installation's `QueryService`, forwarded under `/audit/` | the console, same-origin under `console.mount`; a workload with its own ServiceAccount token | `/directoryroster.v1.*/` |
 | `/login/*`, `/connect/*`, `/.access/*` | the origin root: the bootstrap surface, and the endpoints a CLI reads | — |
 
 > **`directory.v1.DirectoryService` has no listener.** Its one consumer
@@ -226,7 +226,7 @@ somebody can change from a browser, so the client is declared.
 | `ListHolders` | viewer | `group?` or `client?`, `limit?` | `holders[]{email, given_name, family_name, live, authoritative, via[], lifetime}`, `examined`, `truncated`, `policy_digest` | who holds a group, or reaches a client, right now. The policy says which directory groups count; only the directory knows who is in them. `truncated` is set when the limit cut the list **or** there were more accounts than one answer examines. **Absence is not evidence:** a workspace whose snapshot cannot be read contributes no accounts at all, so a consumer that removes access on absence confirms each account with `Explain` first. Nor is a group the answering policy does not define: it has no holders there, so `policy_digest` must match the consumer's own |
 | `SearchPeople` | viewer | `query?`, `workspace_id?`, `domain?`, `account?` (live, suspended), `github?` (linked, not linked), `limit?` | `people[]{email, given_name, family_name, workspace_id, live, github_login}`, `total`, `truncated`, `github_known` | accounts by address or name across every snapshot, or one tenant's accounts, so a console can start from a name and a tenant's page can list who it holds. Every filter is applied here, before the limit, so an answer is the first N that match rather than the matches among the first N. `github_login` is the GitHub account linked to the address, and `github_known` is false where links cannot be read at all — a deployment that keeps none, or a read that failed — which is not the same answer as nobody having linked; narrowing by `github` then fails rather than reporting everyone as unlinked |
 | `ListDirectoryGroups` | viewer | `domain?` | `groups[]{email, domain, workspace_id, members}` | the picker's source: the service's own snapshots |
-| `GetDirectoryGroup` | viewer | `email` | `email, domain, workspace_id, found, authoritative, snapshot_at`, `members[]{email, given_name, family_name, known, live}`, `feeds[]{group, layer}` | one directory group: its members as the directory reports them, and the memberships table read backwards. The direction an admin who just changed a group in the directory thinks in, and not derivable from the policy alone |
+| `GetDirectoryGroup` | viewer | `email` | `email, domain, workspace_id, found, authoritative, snapshot_at`, `members[]{email, given_name, family_name, known, live}`, `feeds[]{group}` | one directory group: its members as the directory reports them, and the internal groups whose `members` name it — the policy's `groups` table read backwards. The direction an admin who just changed a group in the directory thinks in, and not derivable from the policy alone. A feed's field 2, `layer`, is reserved: there is one layer now |
 
 Errors: `unauthenticated` with no session; `permission_denied` without the
 role; `not_found` for an undeclared group; `failed_precondition` for
@@ -346,6 +346,30 @@ document. The service creates it; the controller only replaces its data,
 which is what lets the controller's Role name that one object.
 `reports_available` is false only for a deployment keeping no state in
 Kubernetes.
+
+## `directoryroster.v1.SecretManagerService`
+
+The console's view of the secret stores `secretManagers` declares: which
+namespaces each holds, which groups a namespace admits, what those
+groups open, and what one person can reach. **Read-only, and not by
+omission**: a store's desired state is written in the estate's own
+repository and applied by something that is not this service, so a row
+that shows drift links to where the fix is made and is never a button.
+The reader is this service's own workload identity, admitted through the
+same door a person uses with a grant that opens the declared state and
+nothing else; it cannot read a value, so no page built on this can show
+one. See [connect/openbao.md](../connect/openbao.md#console-side).
+
+| RPC | Role | Request | Response | Notes |
+|---|---|---|---|---|
+| `ListSecretManagers` | viewer | — | `managers[]{name, address, mount, role, namespaces[]{name, environment, counts{bound, absent, unexpected, unreadable}, unreadable, reason}}` | every declared store with its namespaces, each carrying the counts that summarise it. The counts come from the same comparison `GetSecretManagerNamespace` makes, so a summary can never disagree with the page it summarises. `unreadable` on a namespace means the reader could not look at all — a login refused, a store that did not answer — and `reason` is the status and the path, never a token or a value |
+| `GetSecretManagerNamespace` | viewer | `manager`, `namespace` | `namespace` (as above), `groups[]{name, state, declared, policies[], has_policy, members, doors[], rules[]{path, capabilities[], writes}}`, `policies[]`, `doors[]{path, type}` | one namespace: its groups with what the store holds for each, every ACL policy it carries (including the ones no group holds), and its auth mounts. `state` is `bound`, `absent`, `unexpected` or `unreadable` — four, not three, because a reader that could not look must not be drawn as a store that holds nothing. A group is expected only when the store's exchange audience admits it; an `all:`-scoped group is never reported absent; a group's `<name>@<door>` twin is folded into its row as a second door. `rules` are the group's policy's paths **as the document spells them** (`kv/data/...`), with `writes` set where the capabilities can change what is there |
+| `ListSecretManagerReach` | self: any signed-in identity; anybody else: viewer | `email?` | `reach[]{manager, namespace, environment, group, rules[], writes, unreadable}` | what one person can reach: for every group they hold that a store admits, the namespace and the paths that group's policy opens, and whether they may write them. Assembled from the policy the **store** holds rather than the one the estate declares, because the gap between the two is what somebody opening this page is trying to find. An empty `email`, or the caller's own, needs no role, exactly as `Explain` of oneself |
+
+Errors: `unauthenticated` with no session; `permission_denied` without
+the role; `not_found` for a store or a namespace the deployment does not
+declare. A store that refuses or does not answer is **not** an error: it
+is drawn on the page as `unreadable`, with the reason.
 
 ## The audit trail
 

@@ -93,6 +93,11 @@ exposure:
   allow: [all:myconsole:operator, all:myconsole:viewer]
 ```
 
+A platform that publishes its listeners as a `ListenerSet` is attached
+to with `exposure.parentRefs` written out in full — `group`, `kind`,
+`name`, `namespace` — in place of `exposure.gateway`
+([values](../reference/access-proxy.md)).
+
 Your console keeps **its own hostname**. The one exception in the family
 is the directory console, which shares its issuer's hostname under
 `/console/` so that its session pages are same-origin with the issuer —
