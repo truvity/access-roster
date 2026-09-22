@@ -177,6 +177,9 @@ helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \
 
 ```yaml
 issuerURL: https://access.example.com      # stable for the life of the installation
+# signingKey.certificate is left at its default: a P-384 key, so every token is ES384.
+# A relying party that accepts only RS256 (Kargo; kube-apiserver flags left at their
+# default) needs {algorithm: RSA, size: 2048, encoding: PKCS1} there instead.
 route:
   host: access.example.com
   rootRedirect: /console/

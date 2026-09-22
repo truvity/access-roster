@@ -39,6 +39,14 @@ nothing about that policy changes when the issuer does.
 The `argocd` CLI logs in through the same client with the browser flow;
 no separate client is needed.
 
+`oidc.config` has no signing-algorithm setting and needs none: ArgoCD
+verifies with go-oidc's provider verifier, which takes the algorithms the
+issuer's discovery document advertises (its `util/oidc/provider.go`), so
+the chart's default ES384 key verifies as an RSA one would. An
+installation with a relying party that accepts RS256 only sets
+`signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`
+([reference](../reference/access-issuer.md)).
+
 `display_name` and `description` are shown to anyone who starts a
 sign-in, so they carry nothing a stranger should not read. ArgoCD runs
 its own session, so a revoke at the issuer reaches it at its next token

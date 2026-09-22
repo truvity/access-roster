@@ -120,6 +120,14 @@ app.get("/me", (req, res) => res.json(identityOf(req)));
   valid token, and accepting it would make every audience the issuer
   serves a way in. Discovery is lazy, so the service starts whether or not
   the issuer is up.
+- **The signing algorithm is the issuer's to say.** The verifier accepts
+  what the discovery document advertises as
+  `id_token_signing_alg_values_supported`, which follows from the
+  installation's key — ES384 for the chart's default P-384 key, RS256 for
+  an RSA one — so a service needs no setting to follow a key change. An
+  issuer that advertises nothing gets the four the issuer can sign with
+  (RS256, ES256, ES384, ES512); `none` and HMAC are never accepted. A
+  caller that wants to pin narrows with `algorithms: ["ES384"]`.
 - **Two errors, not one.** `Unverified` is a token that did not verify,
   and says nothing about why. `IssuerUnreachable` is an outage; never
   answer it with a 401, which would send a signed-in person back to sign in
