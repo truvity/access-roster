@@ -27,7 +27,7 @@ import (
 	"slices"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // NameLimit is GitHub's length limit on an App's name.

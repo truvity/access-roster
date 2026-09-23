@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // Declared is one workspace the deployment owns, as the overlay file
