@@ -39,7 +39,7 @@ const sessionTokenMargin = time.Minute
 // entirely, and the lock below makes the moment it IS spent a moment only
 // one caller is in.
 func refresh(ctx context.Context, cfg Config) (tokens.Token, error) {
-	session, err := loadSession()
+	session, err := loadSession(cfg.Issuer)
 	if err != nil {
 		return tokens.Token{}, err
 	}
@@ -47,7 +47,7 @@ func refresh(ctx context.Context, cfg Config) (tokens.Token, error) {
 		return token, nil
 	}
 
-	path, err := sessionPath()
+	path, err := sessionPath(cfg.Issuer)
 	if err != nil {
 		return tokens.Token{}, err
 	}
@@ -57,7 +57,7 @@ func refresh(ctx context.Context, cfg Config) (tokens.Token, error) {
 		// Re-read under the lock: a caller that waited here while another
 		// minted finds the answer already written, which is the whole
 		// point -- one refresh, not one per command.
-		if current, loadErr := loadSession(); loadErr == nil {
+		if current, loadErr := loadSession(cfg.Issuer); loadErr == nil {
 			if token, ok := liveSessionToken(current); ok {
 				minted = token
 
@@ -156,7 +156,7 @@ func mintSessionToken(ctx context.Context, cfg Config, session Session) (tokens.
 		session.AccessToken, session.AccessExpires = granted.AccessToken, token.Expires
 	}
 	if rotated || session.AccessToken != held || !session.AccessExpires.Equal(heldUntil) {
-		if err = saveSession(session); err != nil {
+		if err = saveSession(cfg.Issuer, session); err != nil {
 			return tokens.Token{}, err
 		}
 	}
@@ -208,7 +208,7 @@ func whoami(args []string) error {
 		return err
 	}
 
-	session, _ := loadSession()
+	session, _ := loadSession(cfg.Issuer)
 	who := session.Email
 	if who == "" {
 		who = session.Subject

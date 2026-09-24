@@ -81,7 +81,7 @@ func login(args []string) error {
 	if err = saveConfig(cfg); err != nil {
 		return err
 	}
-	if err = saveSession(session); err != nil {
+	if err = saveSession(cfg.Issuer, session); err != nil {
 		return err
 	}
 

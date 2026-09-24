@@ -214,7 +214,7 @@ func TestSecretsEnvWalksThePrefixAndWritesTheFile(t *testing.T) {
 		"wallet/local-dev/app/NOR_THIS":   {"value": "another project's"},
 	}
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t)
+	home := signedInHome(t, issuer)
 	out := filepath.Join(home, "stack", ".env")
 	if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
 		t.Fatal(err)
@@ -311,7 +311,7 @@ func TestSecretsEnvWalksThePrefixAndWritesTheFile(t *testing.T) {
 func TestAPrefixThatReadsNothingWritesNothing(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t)
+	home := signedInHome(t, issuer)
 	out := filepath.Join(home, ".env")
 	if err := os.WriteFile(out, []byte("API_TOKEN='what was there before'\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -347,7 +347,7 @@ func TestARefusedPrefixNamesTheGroupsThatHoldIt(t *testing.T) {
 		bao.kv = map[string]map[string]any{thePrefix + "/API_TOKEN": {"value": "t0ken"}}
 		bao.refuse = map[string]int{refused: http.StatusForbidden}
 		issuer := newFakeIssuer(t)
-		home := signedInHome(t)
+		home := signedInHome(t, issuer)
 		out := filepath.Join(home, ".env")
 
 		_, err := captureStderr(t, func() error {
@@ -411,7 +411,7 @@ func TestALeafThatIsNotOneVariableIsRefused(t *testing.T) {
 			bao.deleted[path] = true
 		}
 		issuer := newFakeIssuer(t)
-		home := signedInHome(t)
+		home := signedInHome(t, issuer)
 		out := filepath.Join(home, ".env")
 
 		_, err := captureStderr(t, func() error {
@@ -466,7 +466,7 @@ func TestATreeDeeperThanTheLimitStops(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	bao.kv = map[string]map[string]any{deep + "/API_TOKEN": {"value": "t0ken"}}
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t)
+	home := signedInHome(t, issuer)
 
 	_, err := captureStderr(t, func() error {
 		return secrets([]string{"env", "--namespace", "staging", "--prefix", thePrefix,

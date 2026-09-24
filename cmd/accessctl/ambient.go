@@ -64,7 +64,7 @@ func proofFor(ctx context.Context, cfg Config, audience string) (proof, error) {
 	if err != nil {
 		return proof{}, err
 	}
-	session, _ := loadSession()
+	session, _ := loadSession(cfg.Issuer)
 	name := session.Email
 	if name == "" {
 		name = session.Subject
