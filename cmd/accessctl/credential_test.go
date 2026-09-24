@@ -243,7 +243,7 @@ func TestSSHHelpSaysWhatEachRoleIsFor(t *testing.T) {
 func TestSSHCertificateIsSignedAndAddedToTheAgent(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t)
+	home := signedInHome(t, issuer)
 	socket := runAgent(t)
 
 	written := captureStdout(t, func() error {
@@ -317,7 +317,7 @@ func TestSSHCertificateCanBeWrittenBesideTheKey(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	bao.revokeStatus = http.StatusBadRequest
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t)
+	home := signedInHome(t, issuer)
 
 	written := captureStdout(t, func() error {
 		return credential([]string{"ssh", "--env", "staging", "--identity", "id_example",
@@ -393,7 +393,7 @@ func TestSSHCertificateCanBeWrittenBesideTheKey(t *testing.T) {
 func TestDatabaseCredentialBecomesAPsqlService(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t)
+	home := signedInHome(t, issuer)
 
 	_ = captureStdout(t, func() error {
 		return credential([]string{"db", "--env", "staging",
@@ -463,7 +463,7 @@ func TestDatabaseCredentialBecomesAPsqlService(t *testing.T) {
 func TestClientCertificateIsWrittenWhereTheCallerAsked(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t)
+	home := signedInHome(t, issuer)
 	out := filepath.Join(home, "certs", "gateway.crt")
 
 	written := captureStdout(t, func() error {
@@ -581,7 +581,7 @@ func TestACertificateForAnotherKeyIsNotWritten(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	bao.swapKey = true
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t)
+	home := signedInHome(t, issuer)
 	out := filepath.Join(home, "certs", "gateway.crt")
 
 	err := credential([]string{"client", "--env", "staging", "--out", out,
@@ -601,7 +601,7 @@ func TestACertificateForAnotherKeyIsNotWritten(t *testing.T) {
 func TestARefusalIsFinalAndAMissingRoleSaysSo(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
-	signedInHome(t)
+	signedInHome(t, issuer)
 
 	bao.refuse = map[string]int{"ssh/sign/admin": http.StatusForbidden}
 	err := credential([]string{"ssh", "--env", "staging", "--role", "admin",
@@ -637,7 +637,13 @@ func TestACredentialNeedsASignInFirst(t *testing.T) {
 
 // signedInHome is a laptop with a cached sign-in and nothing else, and
 // the home directory it keeps everything under.
-func signedInHome(t *testing.T) string {
+// signedInHome is a temporary HOME with a session already cached FOR
+// THIS ISSUER. The issuer is an argument rather than a constant because
+// a session now belongs to the installation it was minted at: one saved
+// under a different issuer reads as "not signed in", which is the whole
+// point of the split and would otherwise make every test here pass by
+// accident on a shared file.
+func signedInHome(t *testing.T, issuer string) string {
 	t.Helper()
 
 	home := t.TempDir()
@@ -652,7 +658,7 @@ func signedInHome(t *testing.T) string {
 	t.Setenv(envVaultCACert, "")
 	t.Setenv("SSH_AUTH_SOCK", "")
 
-	if err := saveSession(Session{RefreshToken: "a-refresh", Email: theSubject}); err != nil {
+	if err := saveSession(issuer, Session{RefreshToken: "a-refresh", Email: theSubject}); err != nil {
 		t.Fatalf("save the session: %v", err)
 	}
 	return home

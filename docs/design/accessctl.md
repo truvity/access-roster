@@ -138,8 +138,9 @@ after a policy change.
 ## What it never does
 
 No stored secrets and no cloud SDK inside. **What is on disk is
-short-lived and advisory, except the refresh token.** `session.json`
-holds the refresh token and, beside it, the access token of the last
+short-lived and advisory, except the refresh token.**
+`sessions/<issuer>-<hash>.json` -- one file per installation, so a laptop
+signed in at two estates keeps both -- holds the refresh token and, beside it, the access token of the last
 refresh with its expiry — kept so that a command with one in hand does
 not spend the refresh token for another exactly like it, because a
 refresh rotates that token and two commands refreshing at once sign the

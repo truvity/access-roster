@@ -43,10 +43,10 @@ func refreshServer(t *testing.T, expiresIn int64) (*httptest.Server, *atomic.Int
 	return server, &spent
 }
 
-func signedInWith(t *testing.T, session Session) {
+func signedInWith(t *testing.T, issuer string, session Session) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	if err := saveSession(session); err != nil {
+	if err := saveSession(issuer, session); err != nil {
 		t.Fatalf("save the session: %v", err)
 	}
 }
@@ -56,7 +56,7 @@ func signedInWith(t *testing.T, session Session) {
 // else is holding it.
 func TestRefreshReusesTheSessionToken(t *testing.T) {
 	server, spent := refreshServer(t, 600)
-	signedInWith(t, Session{
+	signedInWith(t, server.URL, Session{
 		RefreshToken:  "a-refresh",
 		AccessToken:   "still-good",
 		AccessExpires: time.Now().Add(time.Hour),
@@ -89,7 +89,7 @@ func TestRefreshMintsWhenTheSessionTokenIsSpent(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server, spent := refreshServer(t, 600)
-			signedInWith(t, tc.session)
+			signedInWith(t, server.URL, tc.session)
 
 			token, err := refresh(context.Background(), Config{Issuer: server.URL, ClientID: "accessctl"})
 			if err != nil {
@@ -102,7 +102,7 @@ func TestRefreshMintsWhenTheSessionTokenIsSpent(t *testing.T) {
 				t.Errorf("spent the refresh token %d times, want 1", n)
 			}
 
-			stored, err := loadSession()
+			stored, err := loadSession(server.URL)
 			if err != nil {
 				t.Fatalf("load the session: %v", err)
 			}
@@ -122,7 +122,7 @@ func TestRefreshMintsWhenTheSessionTokenIsSpent(t *testing.T) {
 // at once, not only for the caller that lost.
 func TestRefreshSpendsTheRefreshTokenOnceAcrossConcurrentCallers(t *testing.T) {
 	server, spent := refreshServer(t, 600)
-	signedInWith(t, Session{RefreshToken: "a-refresh"})
+	signedInWith(t, server.URL, Session{RefreshToken: "a-refresh"})
 
 	cfg := Config{Issuer: server.URL, ClientID: "accessctl"}
 
@@ -157,13 +157,13 @@ func TestRefreshSpendsTheRefreshTokenOnceAcrossConcurrentCallers(t *testing.T) {
 // refusal names neither this file nor the exchange.
 func TestRefreshWillNotCacheATokenWithNoDeclaredLifetime(t *testing.T) {
 	server, spent := refreshServer(t, 0)
-	signedInWith(t, Session{RefreshToken: "a-refresh"})
+	signedInWith(t, server.URL, Session{RefreshToken: "a-refresh"})
 
 	cfg := Config{Issuer: server.URL, ClientID: "accessctl"}
 	if _, err := refresh(context.Background(), cfg); err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
-	stored, err := loadSession()
+	stored, err := loadSession(server.URL)
 	if err != nil {
 		t.Fatalf("load the session: %v", err)
 	}
@@ -188,10 +188,12 @@ func TestRefreshWillNotCacheATokenWithNoDeclaredLifetime(t *testing.T) {
 // nobody meant to keep.
 func TestSaveSessionLeavesNoDebris(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	if err := saveSession(Session{RefreshToken: "a-refresh"}); err != nil {
+	const issuer = "https://issuer.invalid"
+
+	if err := saveSession(issuer, Session{RefreshToken: "a-refresh"}); err != nil {
 		t.Fatalf("saveSession: %v", err)
 	}
-	path, err := sessionPath()
+	path, err := sessionPath(issuer)
 	if err != nil {
 		t.Fatalf("sessionPath: %v", err)
 	}

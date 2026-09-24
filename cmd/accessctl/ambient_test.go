@@ -152,7 +152,7 @@ func TestTokenOnALaptopExchangesTheSignInAsAnAccessToken(t *testing.T) {
 	t.Setenv(envGitHubTokenURL, "")
 	t.Setenv(envGitHubTokenGrant, "")
 
-	if err := saveSession(Session{RefreshToken: "a-refresh", Email: "ada@north.example"}); err != nil {
+	if err := saveSession(issuer.URL, Session{RefreshToken: "a-refresh", Email: "ada@north.example"}); err != nil {
 		t.Fatalf("save the session: %v", err)
 	}
 

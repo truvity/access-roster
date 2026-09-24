@@ -322,11 +322,31 @@ are there too for a plain download.
 ## Where things are kept
 
 `<config>/config.yaml` (`~/.config/accessctl/config.yaml` on Linux; see
-[above](#keys-and-where-the-files-go) for the directory) holds the issuer
-and the client id, written by `login`. `session.json` beside it holds
-the refresh token, and since 1.25.1 the **access token of the last
-refresh with its expiry** (`access_token`, `access_expires`), mode
-`0600`.
+[above](#keys-and-where-the-files-go) for the directory) holds the
+**default** issuer and the client id, written by `login`.
+
+The sign-in itself lives in `<config>/sessions/<issuer>-<hash>.json`,
+mode `0600`: the refresh token, and since 1.25.1 the **access token of
+the last refresh with its expiry** (`access_token`, `access_expires`).
+
+**One file per issuer**, because a laptop belongs to more than one
+estate. Until this split there was a single `session.json`, so signing in
+at the second issuer replaced the first one's refresh token; `--issuer`
+then selected the right endpoint and handed it the **wrong** token, which
+the issuer refuses as `subject_token is invalid` — a message that reads
+as expiry and is not. Separate files also mean two exec plugins for
+different estates never rewrite the same file, which one file could not
+promise however carefully it was written.
+
+The name is derived from the issuer so the directory is readable; the
+issuer is also stored **inside** the file and that is what a read checks,
+so a name that collides fails closed as *not signed in* rather than
+opening a session at the wrong estate. A `session.json` from before the
+split is adopted by whoever asks first and replaced by the next `login`.
+
+Nothing else changes: `config.yaml` still names the default issuer, so a
+bare `accessctl whoami` behaves as it always did, and every context
+`kubeconfig` writes already passes its own `--issuer`.
 
 **A file rather than the OS keyring**, deliberately: a keyring is a
 platform-specific dependency on every laptop and a prompt in the middle
@@ -344,8 +364,9 @@ refreshing at the same instant leave one of them holding a dead token,
 and that reads as *not signed in* — for every audience at once. Keeping
 the access token means a command with one still in hand presents it
 instead of refreshing, and the moment a refresh is needed is taken under
-the lock `session.json.lock` beside the file, so eight callers waking at
-once make one refresh. It is the weaker of the two secrets, short-lived
+the lock `<issuer>-<hash>.json.lock` beside that issuer's file, so eight callers waking at
+once make one refresh -- per issuer, so a busy estate never makes the
+other one wait. It is the weaker of the two secrets, short-lived
 and unable to mint its successor, in the file that already held the
 stronger one under the same mode; it is kept only when its lifetime is
 known, and cleared otherwise.
@@ -366,7 +387,7 @@ into one exchange. **Every cache is advisory in every direction**: a
 file that is absent, truncated, unreadable, expired, from an older
 version of this command, or unwritable means *mint afresh*, and none of
 them is ever an error. `login` does not touch them — it writes
-`config.yaml` and `session.json` and nothing else — so a token cached
+`config.yaml` and that issuer's session file and nothing else — so a token cached
 under the previous sign-in is offered until its expiry margin; a revoked
 audience is refused by the relying party until then, and deleting the
 `kube` and `aws` directories is how to force a fresh exchange. In a job

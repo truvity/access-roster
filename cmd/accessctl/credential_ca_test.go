@@ -30,7 +30,7 @@ import (
 func TestAPrivateRootIsTrustedOnlyWhenNamed(t *testing.T) {
 	bao, bundle := newFakeOpenBAOUnderPrivateRoot(t)
 	issuer := newFakeIssuer(t)
-	signedInHome(t)
+	signedInHome(t, issuer)
 
 	err := credential([]string{"ssh", "--env", "staging", "--identity", "id_example",
 		"--issuer", issuer, "--address", bao.URL})
@@ -77,7 +77,7 @@ func TestTheBundleDoesNotVouchForTheIssuer(t *testing.T) {
 	issuer := root.serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
-	signedInHome(t)
+	signedInHome(t, issuer)
 
 	err := credential([]string{"ssh", "--env", "staging", "--identity", "id_example",
 		"--issuer", issuer, "--address", bao.URL, "--ca-cert", root.bundle})
