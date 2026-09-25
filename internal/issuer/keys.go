@@ -42,8 +42,13 @@ import (
 // an id beside it, two services reading the same Secret compute the same
 // one, and a key and its id cannot be separated because the id is a
 // function of the key. Rotation follows from the same property — a new
-// key is a new id, so the previous public key can stay in the JWKS for one
-// token lifetime without either being mistaken for the other.
+// key is a new id, so the previous public key can stay in the JWKS
+// without either being mistaken for the other.
+//
+// A single SigningKey does not decide HOW LONG the previous one stays
+// published, or WHEN this one starts signing rather than merely being
+// published — that is [KeyRing], which watches for a new one to appear
+// and keeps the schedule every replica agrees on.
 type SigningKey struct {
 	id   string
 	key  crypto.Signer
@@ -191,10 +196,52 @@ func (k *SigningKey) Derive(label string) []byte {
 	return mac.Sum(nil)
 }
 
-// publicKey is the published half.
-type publicKey struct{ *SigningKey }
+// publishedKey is one entry in the JWKS: enough to verify a signature,
+// never enough to make one.
+//
+// It is its own type rather than a view over [SigningKey] because a
+// [KeyRing] publishes keys it never held the private half of — one
+// another replica reported having seen, kept here only so this replica
+// forgets neither the key nor its schedule across a restart. Building a
+// SigningKey for those would need a private key that does not exist here.
+type publishedKey struct {
+	id  string
+	alg jose.SignatureAlgorithm
+	pub any
+}
 
-func (k publicKey) ID() string                         { return k.id }
-func (k publicKey) Algorithm() jose.SignatureAlgorithm { return k.alg }
-func (k publicKey) Use() string                        { return "sig" }
-func (k publicKey) Key() any                           { return k.key.Public() }
+func (k publishedKey) ID() string                         { return k.id }
+func (k publishedKey) Algorithm() jose.SignatureAlgorithm { return k.alg }
+func (k publishedKey) Use() string                        { return "sig" }
+func (k publishedKey) Key() any                           { return k.pub }
+
+// signingAlgorithms are every algorithm a [SigningKey] can ever produce:
+// RS256 for RSA, ES256/ES384/ES512 for the three curves this issuer
+// accepts (see [signatureAlgorithm]).
+//
+// The library's own verifiers -- checking an `id_token_hint` at
+// `/end_session`, checking a bearer access token at the session service
+// and the grants endpoint -- are told to accept all four, always, rather
+// than whichever this installation happens to sign with today. Their real
+// defence is the key SET: [localKeys.VerifySignature] only ever accepts a
+// signature one of THIS issuer's own published keys produces, so widening
+// the algorithm allow-list costs nothing an attacker could use. What it
+// buys is a verifier that does not go stale the moment an operator
+// changes `signingKey.certificate.algorithm` -- rotating from RSA to
+// ECDSA is then just a rotation, not a second thing to keep in step.
+//
+// Discovery is different and stays dynamic: `id_token_signing_alg_values_supported`
+// is a promise to EVERY OTHER relying party about what they will be
+// handed, so it has to say only what is actually published right now —
+// see [Storage.SignatureAlgorithms].
+var signingAlgorithms = []jose.SignatureAlgorithm{jose.RS256, jose.ES256, jose.ES384, jose.ES512}
+
+// signingAlgorithmStrings is [signingAlgorithms] as the library's options
+// want them.
+func signingAlgorithmStrings() []string {
+	out := make([]string, len(signingAlgorithms))
+	for i, alg := range signingAlgorithms {
+		out[i] = string(alg)
+	}
+	return out
+}

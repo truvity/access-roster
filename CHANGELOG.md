@@ -44,6 +44,33 @@
   is zero, negative, or shorter than `lifetimes.token`: a session cannot be
   limited to less time than its own first access token needs to live.
 
+- **Fixed: the signing key rotates without a restart or a verification
+  gap, and changing its algorithm is now just a rotation.**
+
+  cert-manager's `rotationPolicy: Always` makes every renewal a new key,
+  but the issuer only ever read `SIGNING_KEY_FILE` once at start. A
+  renewal took effect only at the next restart; a rolling restart between
+  it and then left replicas signing with different keys, so roughly half
+  of every verification failed depending on which replica's JWKS was
+  fetched; and once every replica had restarted, every token the previous
+  key had signed failed at once, because the JWKS never kept it published
+  after.
+
+  The issuer now polls the mounted file and keeps a key ring: a newly
+  seen key is published in the JWKS immediately, but this replica signs
+  with it only once every other replica has had time to notice and
+  publish it too (`signingKey.rotation.activationDelay`), and the key it
+  replaces stays published for at least as long as a token it signed can
+  still be presented (`signingKey.rotation.overlap`, at least
+  `lifetimes.token`) before it retires. The schedule is decided once and
+  shared through Valkey when one is configured, so a replica that
+  restarts mid-rotation does not forget a key still inside its overlap;
+  with none, it is kept in memory, which is right for one replica and a
+  local run. **Changing `signingKey.certificate.algorithm` — RSA to
+  ECDSA, or back — is now safe as just a rotation**: the JWKS and
+  discovery's advertised algorithms carry both kinds for the overlap,
+  then only the new one.
+
 ## v1.29.0
 
 - **A token can be minted for a resource, not only for the client asking

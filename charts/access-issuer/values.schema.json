@@ -104,6 +104,21 @@
               "$ref": "#/definitions/duration"
             }
           }
+        },
+        "rotation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pollInterval": {
+              "$ref": "#/definitions/duration"
+            },
+            "activationDelay": {
+              "$ref": "#/definitions/duration"
+            },
+            "overlap": {
+              "$ref": "#/definitions/optionalDuration"
+            }
+          }
         }
       }
     },
@@ -959,6 +974,10 @@
     "duration": {
       "type": "string",
       "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$"
+    },
+    "optionalDuration": {
+      "type": "string",
+      "pattern": "^$|^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$"
     }
   }
 }

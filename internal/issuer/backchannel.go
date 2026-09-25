@@ -128,7 +128,8 @@ func (s *Storage) postLogoutToken(ctx context.Context, where string, session *Se
 
 // mintLogoutToken signs one logout token for one session.
 func (s *Storage) mintLogoutToken(session *Session) (string, error) {
-	if s.key == nil {
+	active := s.keys.Active()
+	if active == nil {
 		return "", fmt.Errorf("no signing key")
 	}
 
@@ -156,12 +157,12 @@ func (s *Storage) mintLogoutToken(session *Session) (string, error) {
 	}
 
 	signer, err := jose.NewSigner(
-		jose.SigningKey{Algorithm: s.key.SignatureAlgorithm(), Key: s.key.Key()},
+		jose.SigningKey{Algorithm: active.SignatureAlgorithm(), Key: active.Key()},
 		// `typ: logout+jwt` is required, and it is the one thing that
 		// stops a relying party mistaking this for an ID token.
 		(&jose.SignerOptions{}).
 			WithType("logout+jwt").
-			WithHeader("kid", s.key.ID()),
+			WithHeader("kid", active.ID()),
 	)
 	if err != nil {
 		return "", err

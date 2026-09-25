@@ -70,9 +70,13 @@ func (s *Storage) MintFor(ctx context.Context, email, audience string, lifetime 
 	if err != nil {
 		return "", time.Time{}, err
 	}
+	active := s.keys.Active()
+	if active == nil {
+		return "", time.Time{}, errors.New("no signing key")
+	}
 	signer, err := jose.NewSigner(
-		jose.SigningKey{Algorithm: s.key.SignatureAlgorithm(), Key: s.key.Key()},
-		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", s.key.ID()),
+		jose.SigningKey{Algorithm: active.SignatureAlgorithm(), Key: active.Key()},
+		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", active.ID()),
 	)
 	if err != nil {
 		return "", time.Time{}, err

@@ -70,6 +70,13 @@ type Config struct {
 	absoluteLifetime time.Duration
 	holdWindow       time.Duration
 
+	// keyActivationDelay, keyOverlap and keyPollInterval govern live
+	// signing-key rotation; see [issuer.KeyRingConfig] and
+	// [watchSigningKey].
+	keyActivationDelay time.Duration
+	keyOverlap         time.Duration
+	keyPollInterval    time.Duration
+
 	logLevel slog.Level
 }
 
@@ -155,6 +162,22 @@ func Load() (Config, error) {
 			"ABSOLUTE_LIFETIME (%s) must be at least TOKEN_LIFETIME (%s): "+
 				"an access token cannot outlive the session that grants it",
 			c.absoluteLifetime, c.tokenLifetime)
+	}
+	if c.keyActivationDelay, err = envDuration("SIGNING_KEY_ACTIVATION_DELAY", issuer.DefaultKeyActivationDelay); err != nil {
+		return Config{}, err
+	}
+	// Overlap defaults to this deployment's OWN token lifetime rather than
+	// the package's constant: the whole point of the setting is that it
+	// must cover whatever this installation actually mints, and a fixed
+	// default cannot know TOKEN_LIFETIME was raised.
+	if c.keyOverlap, err = envDuration("SIGNING_KEY_OVERLAP", 0); err != nil {
+		return Config{}, err
+	}
+	if c.keyOverlap <= 0 {
+		c.keyOverlap = c.tokenLifetime
+	}
+	if c.keyPollInterval, err = envDuration("SIGNING_KEY_POLL_INTERVAL", issuer.DefaultKeyPollInterval); err != nil {
+		return Config{}, err
 	}
 	if err = c.logLevel.UnmarshalText([]byte(envString("LOG_LEVEL", "info"))); err != nil {
 		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
@@ -340,6 +363,13 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if err != nil {
 		return nil, err
 	}
+	// The delays a deployment named, or their defaults: NewStorage seeded
+	// the ring before either was known, so this is applied before the
+	// poller in Run starts feeding it anything more.
+	storage.ConfigureKeyRotation(issuer.KeyRingConfig{
+		ActivationDelay: cfg.keyActivationDelay,
+		Overlap:         cfg.keyOverlap,
+	})
 	signIn, err := openSignIn(ctx, cfg, log)
 	if err != nil {
 		return nil, err
@@ -482,11 +512,16 @@ func mount(issuerHandler, console http.Handler) http.Handler {
 	return mux
 }
 
-// Run serves the two listeners until the context is done.
+// Run serves the two listeners until the context is done, alongside the
+// background poll that lets the signing key rotate without a restart.
 func (a *App) Run(ctx context.Context) error {
 	group, gctx := errgroup.WithContext(ctx)
 	group.Go(func() error { return serve(gctx, a.cfg.port, a.handler, "issuer", a.log) })
 	group.Go(func() error { return serve(gctx, a.cfg.healthPort, a.health, "health", a.log) })
+	group.Go(func() error {
+		watchSigningKey(gctx, a.cfg.signingKeyFile, a.cfg.keyPollInterval, a.storage, a.log)
+		return nil
+	})
 	return group.Wait()
 }
 
@@ -629,6 +664,55 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 	log.InfoContext(ctx, "signing with the key this installation was given",
 		"file", cfg.signingKeyFile, "kid", key.ID())
 	return key, nil
+}
+
+// watchSigningKey re-reads the mounted key file on an interval and feeds
+// every version this replica reads to the storage's key ring — see
+// [issuer.KeyRing] for the schedule that turns that into rotation with no
+// restart. It runs until ctx is done, which happens together with the two
+// listeners in [App.Run].
+//
+// A local run with no file configured has nothing to poll: the one key
+// [signingKey] generated for it is the only key there will ever be.
+//
+// A read or parse failure after the first is logged and the previous key
+// kept, never returned: a Secret Kubernetes is mid-projecting can be
+// observed for an instant while `..data` is being swapped, and a poller
+// that failed loudly over a read that would have succeeded thirty seconds
+// later would turn a non-event into an incident.
+func watchSigningKey(ctx context.Context, path string, interval time.Duration, storage *issuer.Storage, log *slog.Logger) {
+	if path == "" {
+		return
+	}
+	if interval <= 0 {
+		interval = issuer.DefaultKeyPollInterval
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			encoded, err := os.ReadFile(path) //nolint:gosec // the path is deployment configuration
+			if err != nil {
+				log.WarnContext(ctx, "could not re-read the signing key; keeping the previous one",
+					"file", path, "error", err)
+				continue
+			}
+			key, err := issuer.ParseSigningKey(encoded)
+			if err != nil {
+				log.WarnContext(ctx, "the re-read signing key could not be parsed; keeping the previous one",
+					"file", path, "error", err)
+				continue
+			}
+			if err := storage.Rotate(ctx, key); err != nil {
+				log.WarnContext(ctx, "the re-read signing key could not be adopted", "file", path, "error", err)
+			}
+		}
+	}
 }
 
 // readClient takes the OAuth client from the files a Secret is mounted

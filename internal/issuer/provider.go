@@ -99,16 +99,15 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 	// from the cause: a token exchange answers "subject_token is invalid"
 	// rather than naming the rule that turned it down.
 	//
-	// The list comes from the storage's own key, so it can never disagree
-	// with what is signed or with what discovery advertises.
-	algs, err := storage.SignatureAlgorithms(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("read the signing algorithms: %w", err)
-	}
-	supported := make([]string, 0, len(algs))
-	for _, alg := range algs {
-		supported = append(supported, string(alg))
-	}
+	// The list is [signingAlgorithms], every algorithm a [SigningKey] can
+	// produce, rather than only whatever this installation signs with
+	// today: these verifiers' real defence is the key SET -- they only
+	// ever accept a signature one of THIS issuer's own published keys
+	// produces -- so widening the algorithm allow-list costs nothing an
+	// attacker could use, and it means an algorithm rotation (RSA to
+	// ECDSA, say) needs no corresponding change here. Discovery is the
+	// one place that DOES stay dynamic; see [Storage.SignatureAlgorithms].
+	supported := signingAlgorithmStrings()
 	options = append(options,
 		op.WithAccessTokenVerifierOpts(op.WithSupportedAccessTokenSigningAlgorithms(supported...)),
 		op.WithIDTokenHintVerifierOpts(op.WithSupportedIDTokenHintSigningAlgorithms(supported...)),
@@ -195,19 +194,14 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// library's default when it is not told is RS256, ES256 and PS256 --
 	// so a P-384 or P-521 signing key produces tokens this service would
 	// refuse to verify itself, and the refusal arrives as a generic
-	// "invalid" a long way from the cause.
-	algs, err := storage.SignatureAlgorithms(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("issuer: read the signing algorithms: %w", err)
-	}
-	supported := make([]string, 0, len(algs))
-	for _, alg := range algs {
-		supported = append(supported, string(alg))
-	}
+	// "invalid" a long way from the cause. [signingAlgorithms] rather than
+	// only today's algorithm, for the same reason [Provider] uses it: this
+	// verifier's real defence is [keySetOf], which only ever accepts a
+	// signature one of this issuer's own published keys produces.
 	verifier := op.NewAccessTokenVerifier(
 		iss.Config().URL,
 		keySetOf(storage),
-		op.WithSupportedAccessTokenSigningAlgorithms(supported...),
+		op.WithSupportedAccessTokenSigningAlgorithms(signingAlgorithmStrings()...),
 	)
 	path, sessions := accessissuerv1connect.NewSessionServiceHandler(NewSessionsService(iss, verifier))
 	if signIn.ConsoleOrigin != "" {

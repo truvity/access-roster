@@ -125,6 +125,17 @@ spec:
             # Provisioned, never minted here — see values.yaml.
             - name: SIGNING_KEY_FILE
               value: /var/run/access-issuer/signing-key/{{ .Values.signingKey.key }}
+            # Live rotation: how often this replica re-reads the file
+            # above, and the schedule it keeps once it sees a new key —
+            # see `signingKey.rotation` in values.yaml.
+            - name: SIGNING_KEY_POLL_INTERVAL
+              value: {{ .Values.signingKey.rotation.pollInterval | quote }}
+            - name: SIGNING_KEY_ACTIVATION_DELAY
+              value: {{ .Values.signingKey.rotation.activationDelay | quote }}
+            {{- if .Values.signingKey.rotation.overlap }}
+            - name: SIGNING_KEY_OVERLAP
+              value: {{ .Values.signingKey.rotation.overlap | quote }}
+            {{- end }}
             {{- if .Values.valkey.address }}
             - name: VALKEY_ADDRESS
               value: {{ .Values.valkey.address | quote }}
