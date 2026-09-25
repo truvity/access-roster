@@ -33,7 +33,7 @@ repository.
 |---|---|---|---|
 | `access-issuer` chart and image | `oci://ghcr.io/truvity/charts/access-issuer`, `ghcr.io/truvity/access-roster/access-issuer` | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail | shipped |
 | `github-roster` image, in the same chart | `ghcr.io/truvity/access-roster/github-roster` | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console | shipped |
-| `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | a gateway that is **not** Envoy Gateway, fronting a console with no OpenID flow of its own; gateway-native OIDC replaces it everywhere else — see [why](docs/design/access-proxy.md) | deprecated, removal planned |
+| `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | Envoy Gateway, the only gateway it works on — a console with no OpenID flow of its own; gateway-native OIDC replaces it there now. For any other gateway, run upstream oauth2-proxy yourself — see [why](docs/design/access-proxy.md), [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md) | deprecated, removal planned |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
 | `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, short-lived certificates a secret manager mints, and a team's shared values as a `.env` file (`secrets env`) | shipped |
@@ -49,8 +49,7 @@ its clusters, cloud accounts, consoles and CI instead of an identity
 product. Envoy Gateway also gets you gateway-native OIDC, the default
 now for a console with no authorization model of its own; `access-proxy`
 (deprecated — see "What ships") is wired through Envoy Gateway's own
-`SecurityPolicy` today, though its remaining niche is a gateway that is
-not Envoy Gateway. A Valkey (for more than one
+`SecurityPolicy` too, and works nowhere else. A Valkey (for more than one
 replica and for every proxy), an audit installation (for a trail that is a
 record) and OpenBAO (for certificates) are optional. **None of those is
 installed here**: the charts point at them. Nor is the signing key minted
@@ -177,14 +176,19 @@ of the issuer directly: **native OIDC**. A console with no authorization
 model of its own, that only needs *may this person reach it at all*,
 defaults instead to **gateway-native OIDC**: an Envoy Gateway
 `SecurityPolicy` with `oidc:` against a declared client, gated by that
-client's `requires`, with no OIDC code in the console. `access-proxy` —
-upstream oauth2-proxy in a chart — is deprecated, with removal planned:
-its one remaining honest use is a gateway that is **not** Envoy Gateway,
-fronting a console with no flow of its own. Its server-side session
-store was never a reason to prefer it — oauth2-proxy encrypts each
-session with a key only the browser's cookie holds, so nothing
-server-side, Back-Channel Logout included, can end one
-([why](docs/design/access-proxy.md)). The GitHub
+client's `requires`, with no OIDC code in the console
+([which door](docs/decisions/0001-sessions-and-an-absolute-limit.md)).
+`access-proxy` — upstream oauth2-proxy in a chart, and Envoy Gateway's
+external authorization backend, so it works nowhere else — is
+deprecated, with removal planned: gateway-native OIDC replaces it on
+Envoy Gateway now. On any other gateway, run upstream oauth2-proxy
+yourself, with a declared confidential client row of this issuer — a
+documentation page for that is planned; it is not a chart of ours. Its
+server-side session store was never a reason to prefer it either way —
+oauth2-proxy encrypts each session with a key only the browser's cookie
+holds, so nothing server-side, Back-Channel Logout included, can end one
+([why](docs/design/access-proxy.md),
+[ADR 0003](docs/decisions/0003-deprecate-access-proxy.md)). The GitHub
 controller is a second process from the same chart, asking the issuer
 who holds which group and acting on GitHub with an App the organisation's
 owner created from the console.

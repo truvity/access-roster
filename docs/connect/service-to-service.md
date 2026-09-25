@@ -152,7 +152,7 @@ proof it takes:
 
 | Listener | Behind | Verifier | Accepts |
 |---|---|---|---|
-| console | gateway-native OIDC, `access-proxy` (deprecated, for a gateway that is not Envoy Gateway), or your own code flow | `Issuer` (issuer URL + this console's client id) | people |
+| console | gateway-native OIDC on Envoy Gateway (the default), `access-proxy` (deprecated, Envoy Gateway only), upstream oauth2-proxy run by hand on any other gateway, or your own code flow | `Issuer` (issuer URL + this console's client id) | people |
 | API | Service DNS | `Cluster` (a token check, audience, the names it admits), and `Issuer` too when remote callers exist | workloads here; anything further away through the issuer |
 
 `Cluster` takes the check as a function: a TokenReview against your own

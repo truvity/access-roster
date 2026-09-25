@@ -1,27 +1,35 @@
 # access-proxy — the console exposure
 
 **Status:** deprecated, with removal planned once no known consumer of
-the chart remains. **Gateway-native OIDC is the default for a new
-console**: an Envoy Gateway `SecurityPolicy` with `oidc:` against a
-declared client, gated by that client's `requires`, is what a console
-with no authorization model of its own should reach for now — nothing of
-ours runs in front, and revocation reaches it the same way this chart's
-always has, at the next refresh, bounded by `ttl_cap`. This chart's one
-remaining honest use is a gateway that is **not** Envoy Gateway, fronting
-a console with no OpenID flow of its own, wired exactly as it always has
-been. Its **server-side session store** is not a reason to choose it
-either way: `oauth2-proxy` encrypts each session with a key that lives
-only in the browser's cookie, so nothing server-side — a Back-Channel
-Logout receiver included — can ever open one ([why,
+the chart remains
+([ADR 0003](../decisions/0003-deprecate-access-proxy.md)). This chart is,
+and has only ever been, Envoy Gateway's external authorization backend —
+its `SecurityPolicy` is how it attaches, so it runs nowhere else.
+**Gateway-native OIDC is the default replacement, on that same Envoy
+Gateway**: a `SecurityPolicy` with `oidc:` against a declared client,
+gated by that client's `requires`, is what a console with no
+authorization model of its own should reach for now — nothing of ours
+runs in front, and revocation reaches it the same way this chart's
+always has, at the next refresh, bounded by `ttl_cap`. **For a gateway
+that is not Envoy Gateway, this chart was never an option, and still is
+not**: the path there is to run upstream `oauth2-proxy` yourself, with a
+declared confidential client row of this issuer, the way this chart
+already wires it — a documentation page for that is planned, and it will
+not be a chart of ours. Its **server-side session store** is not a
+reason to choose either shape: `oauth2-proxy` encrypts each session with
+a key that lives only in the browser's cookie, so nothing server-side —
+a Back-Channel Logout receiver included — can ever open one ([why,
 below](#why-not-something-else)). Nothing in this repository needs the
 chart today, and no console this repository knows of runs behind it: a
 console that can run an authorization-code flow signs in as a client of
-the issuer directly — **native OIDC** — when it needs identity *inside*
-itself (per-user authorization from `groups`, per-user audit, tokens of
-its own to call something else, the way ArgoCD and Kargo do), and since
-0.12 the directory console is one of those too. Read this page as the
-description of a chart you may still deploy for the one case above, not
-of a component every installation needs.
+the issuer directly — **native OIDC**
+([ADR 0001](../decisions/0001-sessions-and-an-absolute-limit.md)) — when
+it needs identity *inside* itself (per-user authorization from `groups`,
+per-user audit, tokens of its own to call something else, the way ArgoCD
+and Kargo do), and since 0.12 the directory console is one of those too.
+Read this page as the description of a chart you may still deploy on
+Envoy Gateway for as long as it lasts, not of a component every
+installation needs.
 
 **Decided 2026-09-10 (supersedes 2026-09-08):** the client is **declared**,
 and that is permanent. Self-registration was designed and then dropped:
