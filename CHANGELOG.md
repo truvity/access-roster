@@ -1,4 +1,31 @@
-## Unreleased
+## v1.28.0
+
+- **`accessctl` holds a session per issuer, so one laptop can be signed in
+  at two estates at once.** There was a single `session.json`, so signing
+  in at the second installation replaced the first one's refresh token.
+  `--issuer` then selected the right endpoint and handed it the **wrong**
+  token, which the issuer refuses as `subject_token is invalid` — a
+  message that reads as expiry, and which sent people to re-run a login
+  that had already worked. The sign-in now lives in
+  `<config>/sessions/<issuer>-<hash>.json`, one file per installation.
+  Nothing else moves: `config.yaml` still names the default issuer, a bare
+  `accessctl whoami` behaves as before, and every context `kubeconfig`
+  writes has always carried its own `--issuer` — the plumbing was already
+  multi-issuer and only the login cache was not.
+
+  Separate files rather than one file holding them all, for a second
+  reason: more than one process writes here — every `kubectl`, every
+  provider of a Pulumi stack — and with the sessions together, two exec
+  plugins for **different** estates would rewrite the same file and one
+  would lose its token. The refresh lock moves with the file, so a busy
+  estate no longer makes the other one wait.
+
+  The name is derived from the issuer so the directory is readable, and
+  the issuer is stored **inside** the file: that is what a read checks, so
+  a name that collides fails closed as *not signed in* rather than opening
+  a session at the wrong estate. **No one signs in again** — an existing
+  `session.json` is adopted by the first issuer that asks and replaced by
+  the next `login`.
 
 - **A token can be minted for a resource, not only for the client asking
   — and a `resource` a client sends is now refused rather than ignored.**
@@ -99,35 +126,6 @@
   the Model Context Protocol deprecated it in its 2026-07-28 revision in
   favour of these documents, and its own failure mode is registrations
   that accumulate with nothing to review them against.
-
-## v1.28.0
-
-- **`accessctl` holds a session per issuer, so one laptop can be signed in
-  at two estates at once.** There was a single `session.json`, so signing
-  in at the second installation replaced the first one's refresh token.
-  `--issuer` then selected the right endpoint and handed it the **wrong**
-  token, which the issuer refuses as `subject_token is invalid` — a
-  message that reads as expiry, and which sent people to re-run a login
-  that had already worked. The sign-in now lives in
-  `<config>/sessions/<issuer>-<hash>.json`, one file per installation.
-  Nothing else moves: `config.yaml` still names the default issuer, a bare
-  `accessctl whoami` behaves as before, and every context `kubeconfig`
-  writes has always carried its own `--issuer` — the plumbing was already
-  multi-issuer and only the login cache was not.
-
-  Separate files rather than one file holding them all, for a second
-  reason: more than one process writes here — every `kubectl`, every
-  provider of a Pulumi stack — and with the sessions together, two exec
-  plugins for **different** estates would rewrite the same file and one
-  would lose its token. The refresh lock moves with the file, so a busy
-  estate no longer makes the other one wait.
-
-  The name is derived from the issuer so the directory is readable, and
-  the issuer is stored **inside** the file: that is what a read checks, so
-  a name that collides fails closed as *not signed in* rather than opening
-  a session at the wrong estate. **No one signs in again** — an existing
-  `session.json` is adopted by the first issuer that asks and replaced by
-  the next `login`.
 
 ## v1.27.1
 
