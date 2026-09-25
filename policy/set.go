@@ -107,6 +107,14 @@ func (s *Set) Client(id string) (Client, bool) {
 	return c, ok
 }
 
+// Resource returns a declared resource.
+func (s *Set) Resource(id string) (Resource, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r, ok := s.declared.Resources[id]
+	return r, ok
+}
+
 // ClientDocuments returns the document-client policy in force.
 func (s *Set) ClientDocuments() ClientDocuments {
 	s.mu.RLock()

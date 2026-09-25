@@ -1,5 +1,51 @@
 ## Unreleased
 
+- **A token can be minted for a resource, not only for the client asking
+  — and a `resource` a client sends is now refused rather than ignored.**
+
+  A client's id was always the audience, which held while the client and
+  the thing a person reached were one object: sign in to Argo CD, get a
+  token for Argo CD. It stops holding as soon as they are not. A Model
+  Context Protocol client is somebody's editor; what it wants a token for
+  is a service elsewhere, and `aud` naming the editor is both untrue and
+  useless — a service pinning `aud` would have to pin the name of every
+  editor that might call.
+
+  The new `resources` table declares what a token may be for. A client
+  names one with the `resource` parameter (RFC 8707) and `aud` becomes the
+  resource:
+
+  ```yaml
+  resources:
+    https://mcp.example/:
+      requires: [prod:k8s:admin]
+      ttl_cap: 5m
+  ```
+
+  **The two gates compose**: a client's `requires` says who may use that
+  client, a resource's says who may reach that service, and a caller must
+  satisfy both. Both `ttl_cap`s apply and the shorter wins.
+
+  **`resource` was previously ignored, which was the worse half of this.**
+  The library models no such field on an authorization request and its
+  decoder drops unknown parameters, so a client asking for a token scoped
+  to one service was handed one scoped to itself and told nothing — and
+  the failure surfaced later, somewhere else, for a reason nobody connects
+  to the request. It is now validated before the library sees it and
+  refused with `invalid_target` as RFC 8707 says: for a resource this
+  installation does not declare, for a relative URI or one carrying a
+  fragment, and for more than one resource at a time.
+
+  **Nothing changes for a client that names no resource** — its own id is
+  still the audience, so no relying party needs to re-pin anything.
+
+  **The session remembers which resource it was opened for.** A refresh
+  carries a token and nothing else, so without that the renewed token
+  would be minted for the *client* while the original named a resource —
+  silently changing what the token is for halfway through a session, with
+  the resource's gate unchecked for the rest of its life. It is re-checked
+  on every refresh, which is where a withdrawn grant actually bites.
+
 - **A client may register itself by serving a document, instead of needing
   a row in the policy.** Software this installation does not deploy and
   cannot enumerate — an editor, a hosted assistant, the clients of the

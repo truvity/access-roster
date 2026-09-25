@@ -210,6 +210,10 @@ Three layers, and none is the fallback for another.
 - **The issuer decides who may hold a token.** Every client names the
   internal groups an identity must hold before a token is minted for it.
   An empty list means nobody, and the issuer refuses to start on one.
+  Where a token is minted for a **resource** rather than for the client
+  asking, that resource names its own groups too, and both must be
+  satisfied: the client says who may ask, the resource says what may be
+  asked for.
 - **The proxy decides whether a browser is signed in.** Nothing more.
   It runs the code flow, holds the session, forwards the token.
 - **The application decides what the token opens.** From its own

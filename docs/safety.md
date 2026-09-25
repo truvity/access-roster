@@ -14,6 +14,10 @@ substance.
   — what a client that registers itself by serving a document may and may
   not do, why an allow-list of origins is the guard rather than a refusal
   of unknown clients, and why there is no stale fallback
+- [reference/policy.md](reference/policy.md#resources--what-a-token-is-for)
+  — what a client asking for a resource gets and what it is refused, why
+  the parameter is refused rather than ignored, and why the session has to
+  remember which resource it was opened for
 - [reference/configuration.md](reference/configuration.md) and
   [reference/access-issuer.md](reference/access-issuer.md) — the strict
   values schema, the values that refuse to render unset, and the two

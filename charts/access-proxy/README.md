@@ -60,7 +60,8 @@ one on every render that cannot read cluster state — which is what ArgoCD
 does — and every sync would sign everyone out. Name an existing Secret;
 what produced it is your business.
 
-**Mint the client.** Every client of the issuer is **declared**, so that
+**Mint the client.** A confidential client like this one is always
+**declared**, so that
 the set of them is answerable by reading a repository rather than by
 querying the running service. Name the Secret holding this one in
 `client.secret.name`. Self-registration was designed and dropped:

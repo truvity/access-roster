@@ -48,6 +48,17 @@ type Session struct {
 	// of those is answered with the scopes it asks for or with none —
 	// which is what the code did for every session until now.
 	Scopes []string `json:"scopes,omitempty"`
+	// Resource is what this session's tokens are FOR, when the sign-in
+	// named one (RFC 8707). Empty means the client itself, which is every
+	// session recorded before resources existed and every client that
+	// names none.
+	//
+	// It lives here because a refresh an hour from now carries a token and
+	// nothing else: without it the renewed token would be minted for the
+	// CLIENT while the original was minted for the resource, silently
+	// changing its audience mid-session -- and the resource's own gate
+	// would go unchecked for the rest of the session's life.
+	Resource string `json:"resource,omitempty"`
 	// SSO is the browser session this one was opened from, empty for a
 	// flow with no browser (an exchange, a device code redeemed by a
 	// CLI). It is what makes *sign out everywhere* one operation on the
@@ -148,6 +159,8 @@ const sessionAllKey = "issuer:sessions"
 type Opened struct {
 	Identity string
 	ClientID string
+	// Resource is what the tokens are for, when the request named one.
+	Resource string
 	How      How
 	// Token is the refresh token; it is hashed into its key, never stored.
 	Token string
@@ -173,6 +186,7 @@ func (s *Sessions) Record(ctx context.Context, o Opened) (Session, error) {
 		ID:        s.newID(),
 		Identity:  strings.ToLower(o.Identity),
 		ClientID:  o.ClientID,
+		Resource:  o.Resource,
 		How:       o.How,
 		Scopes:    o.Scopes,
 		SSO:       o.SSO,

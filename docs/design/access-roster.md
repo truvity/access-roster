@@ -848,7 +848,7 @@ adds one back without a reason.
 | client credentials | a machine with a stored secret, which is the thing this design exists not to have |
 | JWT bearer (RFC 7523) | token exchange with a different spelling, and two ways to say one thing is two things to keep truthful |
 | introspection (RFC 7662) | never applied: these are JWTs, verified offline against the key set |
-| dynamic client registration (RFC 7591) | every client is declared, so the set of them is answerable by reading the repository; an endpoint that mints trust is not carried |
+| dynamic client registration (RFC 7591) | an endpoint that mints trust is not carried, and the Model Context Protocol deprecated DCR in its 2026-07-28 revision anyway. A client that this installation does not deploy identifies itself with a **Client ID Metadata Document** instead: no endpoint, no stored registration, nothing that accumulates, and an allow-list of origins keeps the answer readable in the repository — the set of origins rather than the set of clients |
 | the implicit and hybrid flows | superseded by code with PKCE, which is what PKCE exists for |
 | TokenReview for workload exchange | it works on one cluster and would need a kubeconfig per cluster for the rest. A published key set needs none. It stays for recovery alone |
 

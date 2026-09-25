@@ -38,13 +38,22 @@ lifetimes:                     # how long — default plus the rungs
   rung:sre: 8h
   ci:platform:deployer: 1h
 
-clients:                       # who may be issued a token for what; the id is the audience
+clients:                       # who may be issued a token for what; the id is the audience,
+                               # unless the request names a resource below
   k8s:prod:        { kind: public,       requires: [prod:k8s:admin, prod:k8s:auditor] }
   aws:1111:power:    { kind: exchange,     requires: [prod:k8s:admin] }
   aws:1111:deployer: { kind: exchange,     requires: [ci:platform:deployer] }
   argocd:            { kind: confidential, secret: argocd-oidc-client, redirects: [https://argocd.example/auth/callback], signed_out: [https://argocd.example/], requires: [prod:k8s:admin, prod:k8s:auditor], ttl_cap: 12h, display_name: Argo CD, description: Continuous delivery for the mgmt cluster. }
   local-dev:         { kind: public,       redirects: [http://localhost:8000/callback], requires: [prod:shop:deployer] }
   accessctl:         { kind: public,       redirects: [http://127.0.0.1/callback], requires: [prod:k8s:admin, prod:k8s:auditor], sign_in_exchange: true, display_name: accessctl }
+
+resources:                     # what a token may be minted FOR, when that is not the client asking
+  https://mcp.example/:        { requires: [prod:k8s:admin], ttl_cap: 5m, display_name: Telemetry }
+
+client_documents:              # clients that describe themselves; empty means the mechanism is off
+  origins:  [clients.example]
+  requires: [prod:shop:deployer]
+  ttl_cap:  5m
 ```
 
 | Table | Key | Holds | Who writes it |
@@ -54,12 +63,20 @@ clients:                       # who may be issued a token for what; the id is t
 | `lifetimes` | internal group name, or `default` | a duration | declared |
 | `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap`, `sign_in_exchange`, `display_name`, `description`, `backchannel_logout_uri` | declared |
 | `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
+| `resources` | resource indicator (an absolute URI) | `requires`, `ttl_cap`, `display_name`, `description` — the gate on a service a token may be minted *for* | declared |
+| `client_documents` | — | `origins`, `requires`, `ttl_cap`: which hosts may serve a client's own description, and who may use such a client | declared |
 
-Five tables, one writer, and no sixth. There is no `memberships` table
-and no console-written layer: the console writes nothing into the
-policy, and the key is refused like any other unknown one rather than
-ignored. A directory group that should feed an internal group is named
-in that group's `members`, here, in git.
+Seven tables, one writer. There is no `memberships` table and no
+console-written layer: the console writes nothing into the policy, and
+the key is refused like any other unknown one rather than ignored. A
+directory group that should feed an internal group is named in that
+group's `members`, here, in git.
+
+The last two arrived together and for one reason: a client and the thing
+it wants a token for stopped being the same object. `resources` is what a
+token may be *for*; `client_documents` is how a client this installation
+does not deploy may still ask. Both are off unless written — an
+installation that names neither behaves exactly as it did.
 
 ## Naming
 
@@ -231,8 +248,10 @@ needed, the answer is a new internal group, one reviewed line.
 
 ## Clients → audience and gate
 
-A client's id is the `aud`. `requires` lists the internal groups any one of
-which admits a caller; a caller in none is refused before a token exists.
+A client's id is the `aud`, unless the request named a resource — see
+[Resources](#resources--what-a-token-is-for). `requires` lists the internal
+groups any one of which admits a caller; a caller in none is refused
+before a token exists.
 
 | Kind | Used by | Has a secret |
 |---|---|---|
@@ -301,12 +320,79 @@ in. It is for a client running its own session — a console behind
 under a key only the browser's cookie holds, and so lives with the
 proxy's refresh interval instead.
 
-Clients are **declared**, and only declared: one row each in the
-deployment's values, with `requires` mandatory — an empty list means
-nobody, not everyone, and the issuer refuses to start on one. Never
-created in a console, never registered by a workload, so the set of
-them is answerable by reading the repository. Local development uses the
-one declared `local-dev` client.
+Clients are **declared**: one row each in the deployment's values, with
+`requires` mandatory — an empty list means nobody, not everyone, and the
+issuer refuses to start on one. Never created in a console and never
+registered by a workload, so the set of them is answerable by reading the
+repository. Local development uses the one declared `local-dev` client.
+
+There is one exception, off unless an installation asks for it, and it
+keeps that property in a weaker form: a client that this installation does
+not deploy may identify itself by a URL serving a document about itself,
+admitted only from an allow-listed origin. What is then answerable by
+reading the repository is the set of **origins**. See
+[Clients that describe themselves](#clients-that-describe-themselves).
+
+## Resources — what a token is for
+
+A client's id was always the audience, because until recently the client
+and the thing a person reached were one object: somebody signs in to Argo
+CD, and the token is for Argo CD.
+
+That stops holding as soon as they are not one object. A Model Context
+Protocol client is somebody's editor; what it wants a token for is a
+service elsewhere. Minting `aud` as the client's id there states something
+untrue and useless — a service pinning `aud` to decide whether a token was
+meant for it would have to pin the name of every editor that might call.
+
+So a resource is declared, a client names it with the `resource` parameter
+(RFC 8707), and `aud` is the resource:
+
+```yaml
+resources:
+  https://mcp.example/:
+    requires: [prod:k8s:admin]
+    ttl_cap: 5m
+    display_name: Telemetry
+```
+
+**The two gates compose.** A client's `requires` says who may use that
+client; a resource's says who may reach that service; a caller must
+satisfy both. Checking only the client would let anybody who may use an
+editor reach every service that editor can name.
+
+**Both caps apply, and the shorter wins.** Each was written by somebody
+saying *not longer than this*, and honouring the longer would answer
+neither.
+
+### What a client asking for a resource gets, and what it does not
+
+| It asks | It gets |
+|---|---|
+| nothing | a token for the client itself — unchanged, and what every client did before this table existed |
+| a declared resource it is entitled to | a token whose `aud` is the resource, capped by both, and the same `aud` on every refresh of that session |
+| a resource this installation does not declare | `invalid_target`, at the moment of the mistake |
+| a resource it is not entitled to | refused at sign-in, naming the resource and the group it would need |
+| more than one resource | refused: a token for several audiences means nothing anybody should rely on, so it is refused rather than quietly narrowed to the first |
+| a relative URI, or one with a fragment | refused: RFC 8707 says a resource indicator is an absolute URI with no fragment, and a fragment is a way for two parties to spell the same resource differently while believing they agree |
+
+**A resource indicator is matched exactly.** A trailing slash or a
+different scheme is a different resource, which the refusal says, because
+the alternative is somebody comparing two URLs by eye.
+
+**The refusal is the point.** The parameter was previously *ignored* — the
+library's decoder drops what it does not model — so a client asking for a
+token scoped to one service was handed one scoped to itself, and told
+nothing. A token that fails somewhere else later, for a reason nobody
+connects to this request, is the expensive version of this mistake.
+
+**The session remembers.** A refresh an hour later carries a token and
+nothing else, so the resource is recorded with the session: without it the
+renewed token would be minted for the *client* while the original named a
+resource, silently changing what the token is for halfway through a
+session — and the resource's own gate would go unchecked for the rest of
+that session's life. It is re-checked on every refresh, which is where a
+withdrawn grant actually bites.
 
 ## Clients that describe themselves
 
@@ -484,7 +570,12 @@ names `namespace` and `name`, with `cluster` optional; a `github`
 matcher's `visibility` is `public`, `private` or `internal`. A client's
 `display_name` and `description` are one bounded line each;
 `sign_in_exchange` is allowed on a `public` client only; a confidential
-client names its secret. A typo fails the rollout, not a login.
+client names its secret. A resource's id is an absolute URI with no
+fragment and its `requires` names a declared group; `client_documents`
+refuses an origin carrying a scheme, a path or a wildcard, and refuses
+`origins` without `requires` — as well as `requires` or `ttl_cap` with no
+`origins`, which is a block somebody expected to apply. A typo fails the
+rollout, not a login.
 
 ## What the console may change
 
