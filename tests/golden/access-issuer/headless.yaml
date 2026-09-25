@@ -142,6 +142,13 @@ spec:
             # Provisioned, never minted here — see values.yaml.
             - name: SIGNING_KEY_FILE
               value: /var/run/access-issuer/signing-key/tls.key
+            # Live rotation: how often this replica re-reads the file
+            # above, and the schedule it keeps once it sees a new key —
+            # see `signingKey.rotation` in values.yaml.
+            - name: SIGNING_KEY_POLL_INTERVAL
+              value: "30s"
+            - name: SIGNING_KEY_ACTIVATION_DELAY
+              value: "3m"
             - name: RELEASE_NAME
               value: access-issuer
             - name: POLICY_DIR

@@ -288,6 +288,13 @@ spec:
             # Provisioned, never minted here — see values.yaml.
             - name: SIGNING_KEY_FILE
               value: /var/run/access-issuer/signing-key/tls.key
+            # Live rotation: how often this replica re-reads the file
+            # above, and the schedule it keeps once it sees a new key —
+            # see `signingKey.rotation` in values.yaml.
+            - name: SIGNING_KEY_POLL_INTERVAL
+              value: "30s"
+            - name: SIGNING_KEY_ACTIVATION_DELAY
+              value: "3m"
             - name: RELEASE_NAME
               value: access-issuer
             - name: GITHUB_APPS_CATALOGUE_FILE
@@ -381,7 +388,10 @@ spec:
 # P-256, P-384 and P-521 sign ES256, ES384 and ES512 -- and that is what
 # the discovery document advertises, so every relying party has to accept
 # it. Changing it here rotates the key, so tokens signed with the previous
-# one stop verifying once the old public key leaves the JWKS.
+# one stop verifying once the old public key leaves the JWKS -- which the
+# issuer itself now schedules, with no restart of this Deployment needed
+# either to notice the new key or to retire the old one; see
+# `signingKey.rotation` for the delays that govern it.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

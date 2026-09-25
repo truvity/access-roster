@@ -22,7 +22,10 @@ thing that authenticates, and a proxy would have nowhere to send anyone.
 | `issuerURL` | — | **required.** Baked into every token and every relying party's trust, so it must be stable for the life of the installation |
 | `signingKey.existingSecret` | `""` | a Secret external-secrets delivered; empty renders a cert-manager `Certificate` instead |
 | `signingKey.certificate.issuerName` / `.issuerKind` | `selfsigned` / `ClusterIssuer` | the certificate is a by-product; only the key is used |
-| `signingKey.certificate.algorithm` / `.size` / `.encoding` | `ECDSA` / `384` / `PKCS8` | what the issuer signs with follows from the key: RSA signs RS256, and P-256, P-384 and P-521 sign ES256, ES384 and ES512. It is what discovery advertises, and **every relying party must accept it** — the default P-384 key means ES384 on every token, which a verifier pinned at RS256 (Kargo; kube-apiserver's `--oidc-signing-algs` left at its default) refuses outright. An installation with such a relying party sets `{algorithm: RSA, size: 2048, encoding: PKCS1}`; the chart's own Go and TypeScript verifiers accept whatever is advertised. ECDSA takes 256, 384 or 521; RSA takes 2048, 3072 or 4096; a combination cert-manager would decline is refused at render |
+| `signingKey.certificate.algorithm` / `.size` / `.encoding` | `ECDSA` / `384` / `PKCS8` | what the issuer signs with follows from the key: RSA signs RS256, and P-256, P-384 and P-521 sign ES256, ES384 and ES512. It is what discovery advertises, and **every relying party must accept it** — the default P-384 key means ES384 on every token, which a verifier pinned at RS256 (Kargo; kube-apiserver's `--oidc-signing-algs` left at its default) refuses outright. An installation with such a relying party sets `{algorithm: RSA, size: 2048, encoding: PKCS1}`; the chart's own Go and TypeScript verifiers accept whatever is advertised. ECDSA takes 256, 384 or 521; RSA takes 2048, 3072 or 4096; a combination cert-manager would decline is refused at render. **Changing it is just a rotation**: the JWKS holds keys of both kinds for the overlap below, and discovery lists both algorithms until the old one retires |
+| `signingKey.rotation.pollInterval` | `30s` | how often a replica re-reads the mounted key file. It is polled rather than watched: a projected Secret is updated with an atomic symlink rename, so a poll always sees the whole old key or the whole new one, never a half-written file |
+| `signingKey.rotation.activationDelay` | `3m` | how long a newly seen key is published, but not yet signed with, before this replica uses it — long enough that every replica's own kubelet has had time to project the same update and publish the key too, so a verifier can never fetch a JWKS missing a `kid` some replica already signs with |
+| `signingKey.rotation.overlap` | `lifetimes.token` | how long a superseded key stays in the JWKS after signing stops. Must cover the longest a token it signed can still be presented, which is `lifetimes.token` — a client's `ttl_cap` only ever shortens that, never lengthens it. Empty uses `lifetimes.token` itself |
 | `oauthClient.secret.name` | `""` | a Secret holding the client. Empty means nobody can sign in and this issuer serves token exchange only, which it says at start |
 | `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | what those keys are called. **Both halves come from the one Secret** — the same shape the proxy uses — so they travel together; a client whose id and secret are configured in two places is one that can be half rotated. Both are mounted as files, never environment variables |
 | `cluster` | `""` | what this cluster is called, which becomes part of a ServiceAccount's subject: `<cluster>:k8s:<namespace>:<name>`. A pod cannot discover it, and the same namespace and name exist on every cluster — so without it two different machines are one `sub`. Use the word the estate already uses (`mgmt`, `prod`), the same one that is a group's scope. Empty keeps the older unqualified `k8s:<namespace>:<name>` |
@@ -49,8 +52,24 @@ thing that authenticates, and a proxy would have nowhere to send anyone.
 
 `rotationPolicy: Always` on the Certificate is deliberate: a renewal must
 be a *new key*, because a renewed certificate over the same key rotates
-nothing. A new key is a new key id, so keep `renewBefore` comfortably
-longer than `lifetimes.token`.
+nothing. `renewBefore` only decides how often that happens; it is
+`signingKey.rotation.overlap` that has to be kept at least as long as
+`lifetimes.token`, because that is the setting that actually keeps a
+retired key verifying for as long as a token it signed can still be
+presented.
+
+**Rotation needs no restart.** Every replica polls its own mounted file
+(`signingKey.rotation.pollInterval`) and, on seeing a new key, publishes
+it in the JWKS immediately but keeps signing with the old one until
+`activationDelay` has passed — long enough that every OTHER replica has
+had time to notice the same file change and publish the key too. The
+previous key then stays published for `overlap` before it drops out. A
+replica that restarts mid-rotation does not forget a key still inside its
+overlap: with a Valkey configured, the schedule is shared through it, the
+same store sessions already use; with none — one replica, or a local run
+— it is kept in memory alone, which is fine for that shape and loses the
+outgoing key's public half on a restart, same as everything else that
+lives only in that process.
 
 ## Endpoints
 

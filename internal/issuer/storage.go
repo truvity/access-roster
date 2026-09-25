@@ -180,7 +180,7 @@ func (a *authRequest) Done() bool                         { return a.IsDone }
 type Storage struct {
 	iss     *Issuer
 	verify  Verifier
-	key     *SigningKey
+	keys    *KeyRing
 	secrets func(clientID string) (string, bool)
 	// log is for the few things here worth saying out loud. Nothing in
 	// this file logged until a reused authorization code needed to be —
@@ -289,11 +289,15 @@ var (
 // NewStorage returns the storage over an issuer.
 //
 // secrets resolves a confidential client's secret, which lives in a
-// Kubernetes Secret and never in the policy file. key is the signing key;
-// a nil one is generated, which is right for a local run and wrong for a
-// deployment — see [SigningKey]. state is where a login in progress
-// lives; a nil one is kept in this process, which is right for one
-// replica and wrong for more — see [State].
+// Kubernetes Secret and never in the policy file. key is the first
+// signing key; a nil one is generated, which is right for a local run and
+// wrong for a deployment — see [SigningKey]. It seeds a [KeyRing] that
+// this storage keeps for the life of the process: a later key, read after
+// a rotation, is fed to it with [Storage.Rotate] rather than by building a
+// new Storage. state is where a login in progress lives, and where the
+// key ring's schedule is shared with every other replica; a nil one is
+// kept in this process, which is right for one replica and wrong for more
+// — see [State].
 func NewStorage(
 	iss *Issuer, verify Verifier, secrets func(string) (string, bool),
 	key *SigningKey, state State,
@@ -311,6 +315,10 @@ func NewStorage(
 	if state == nil {
 		state = NewMemoryState()
 	}
+	keys := NewKeyRing(state, KeyRingConfig{}, nil)
+	if err := keys.Observe(context.Background(), key); err != nil {
+		return nil, fmt.Errorf("issuer: adopt the signing key: %w", err)
+	}
 	// Nothing here implements op.DeviceAuthorizationStorage, and that is
 	// the mechanism by which the device flow is not served. The
 	// library type-asserts for it and refuses the grant when the
@@ -319,7 +327,7 @@ func NewStorage(
 	return &Storage{
 		iss:       iss,
 		verify:    verify,
-		key:       key,
+		keys:      keys,
 		secrets:   secrets,
 		state:     state,
 		documents: newDocumentClients(iss.Policy().ClientDocuments()),
@@ -328,21 +336,52 @@ func NewStorage(
 
 // ---------------------------------------------------------------- keys
 
-// SigningKey implements [op.AuthStorage].
-func (s *Storage) SigningKey(context.Context) (op.SigningKey, error) { return s.key, nil }
-
-// SignatureAlgorithms implements [op.AuthStorage]. It is what the
-// discovery document advertises as `id_token_signing_alg_values_supported`,
-// so it has to name what the key actually signs with rather than a
-// constant: a client that read RS256 here and met an ES384 token would
-// reject it.
-func (s *Storage) SignatureAlgorithms(context.Context) ([]jose.SignatureAlgorithm, error) {
-	return []jose.SignatureAlgorithm{s.key.SignatureAlgorithm()}, nil
+// Rotate feeds a freshly re-read signing key to this storage's key ring —
+// the whole of live rotation. A caller polling the mounted key file calls
+// this on every read, whether or not the content changed; see
+// [KeyRing.Observe] for the schedule that decides what happens next: a
+// key never seen before is published immediately and starts signing only
+// after its activation delay, and the key it supersedes stays published
+// for its overlap before dropping out.
+func (s *Storage) Rotate(ctx context.Context, key *SigningKey) error {
+	return s.keys.Observe(ctx, key)
 }
 
-// KeySet implements [op.AuthStorage].
+// ConfigureKeyRotation overrides the ring's activation delay and overlap
+// once a deployment's own settings are known — its token lifetime,
+// chiefly, which [KeyRingConfig.Overlap] must be at least as long as.
+// Call it before serving; [KeyRing.Configure] is not meant to be changed
+// while replicas are actively rotating.
+func (s *Storage) ConfigureKeyRotation(cfg KeyRingConfig) {
+	s.keys.Configure(cfg)
+}
+
+// SigningKey implements [op.AuthStorage]: the key this replica currently
+// signs with.
+func (s *Storage) SigningKey(context.Context) (op.SigningKey, error) {
+	active := s.keys.Active()
+	if active == nil {
+		return nil, errors.New("issuer: no signing key is available yet")
+	}
+	return active, nil
+}
+
+// SignatureAlgorithms implements [op.AuthStorage]. It is what the
+// discovery document advertises as
+// `id_token_signing_alg_values_supported`, so it names what is actually
+// PUBLISHED right now — every key in the JWKS, not only the one currently
+// signing — because a relying party that fetched discovery mid-rotation
+// still has to accept a token a moment away from expiring under the
+// previous algorithm. Once that key retires, only the active algorithm is
+// left to advertise.
+func (s *Storage) SignatureAlgorithms(context.Context) ([]jose.SignatureAlgorithm, error) {
+	return s.keys.Algorithms(), nil
+}
+
+// KeySet implements [op.AuthStorage]: every key currently published,
+// signing or retiring — see [KeyRing.Published].
 func (s *Storage) KeySet(context.Context) ([]op.Key, error) {
-	return []op.Key{publicKey{s.key}}, nil
+	return s.keys.Published(), nil
 }
 
 // Health implements [op.Storage].

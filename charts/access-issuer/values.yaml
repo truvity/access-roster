@@ -197,12 +197,44 @@ signingKey:
     size: 384
     # PKCS8 encodes either kind; PKCS1 encodes only RSA.
     encoding: PKCS8
-    # How long before expiry cert-manager replaces it. A new key is a new
-    # key id, so tokens signed with the old one keep verifying only while
-    # the old public key is still published — keep this comfortably longer
-    # than `tokenLifetime`.
+    # How long before expiry cert-manager replaces it, which is a new key
+    # every time (`rotationPolicy: Always` above). This only decides HOW
+    # OFTEN a rotation happens; it does not by itself keep the old key
+    # verifying afterwards — that is `rotation.overlap` below, which is
+    # the setting that actually has to be kept longer than `lifetimes.token`.
     renewBefore: 720h
     duration: 8760h
+  # Live rotation: how a REPLICA notices the key file changed underneath
+  # it and moves to the new key with no restart.
+  #
+  # The mounted file is POLLED rather than watched for filesystem events.
+  # Kubernetes updates a projected Secret by renaming a `..data` symlink
+  # to a freshly written directory, which is atomic on the node's
+  # filesystem — a reader following the stable path always sees either
+  # the whole old key or the whole new one, never a half-written file.
+  # That is what makes polling the content on an interval sufficient, and
+  # an inotify watch unneeded complexity for a file that changes a
+  # handful of times a year.
+  rotation:
+    # How often the mounted file is re-read.
+    pollInterval: 30s
+    # How long a newly seen key is published in the JWKS before this
+    # replica will SIGN with it. It has to be longer than the slowest a
+    # kubelet anywhere in the cluster takes to project the same Secret
+    # update to every other replica — Kubernetes documents that as
+    # roughly a minute — or a verifier could fetch the JWKS from a
+    # replica that has not published the key yet and reject a perfectly
+    # good token.
+    activationDelay: 3m
+    # How long a key that stopped signing stays in the JWKS after being
+    # superseded. It has to cover the longest a token minted with it can
+    # still be presented, which is `lifetimes.token` — a client's own
+    # `ttl_cap` only ever shortens a token's life, never lengthens it, so
+    # the deployment-wide lifetime is the true ceiling. Empty uses
+    # `lifetimes.token` itself, which is the right answer unless this
+    # installation mints longer-lived tokens some other way `lifetimes.token`
+    # does not capture.
+    overlap: ""
 
 # The OAuth client people sign in with. The same client the hub uses,
 # with this service's own redirect URI added to it — one project, one

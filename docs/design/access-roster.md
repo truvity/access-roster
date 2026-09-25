@@ -840,6 +840,18 @@ this process cannot become a read of every credential in its namespace.
 Confidential clients' secrets are files for the same reason, one per
 client id.
 
+The file is polled, not read once at start: cert-manager's
+`rotationPolicy: Always` means a renewal is a new key, and a process that
+only reads it at boot would keep signing with the old one until it next
+restarts, which for a certificate renewed every year could be a long
+time. A key ring keeps every key this replica has published, live or
+retiring — the new one is in the JWKS the moment it is seen, signing
+starts only once every other replica has had time to notice and publish
+it too, and the previous key stays published for as long as a token it
+signed can still be presented. The schedule for a key is decided once and
+shared through the same store sessions already use, so a replica that
+restarts mid-rotation does not forget a key still inside its overlap.
+
 ## Recovery
 
 The way in on the day no directory can vouch for anybody. It exists
