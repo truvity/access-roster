@@ -11,22 +11,30 @@ write, what you deploy, what you never implement.
 
 |  | gateway-native OIDC | `access-proxy` in front (deprecated) | its own flow |
 |---|---|---|---|
-| **Use when** | the console has no authorization model of its own, or is not yours to change, and it sits behind Envoy Gateway | the same, but the gateway is **not** Envoy Gateway | you are writing it, and it needs identity *inside* itself |
+| **Use when** | the console has no authorization model of its own, or is not yours to change, and it sits behind Envoy Gateway | the same, on Envoy Gateway, until the chart is removed | you are writing it, and it needs identity *inside* itself |
 | **Who runs the login** | the gateway's `SecurityPolicy`, which forwards a verified bearer | the proxy, and it forwards a verified bearer | the console: it sends a browser to `/authorize` and reads what comes back |
-| **You deploy** | your chart plus a `SecurityPolicy` — no chart of ours | your chart plus one `access-proxy` release | your chart |
+| **You deploy** | your chart plus a `SecurityPolicy` — no chart of ours | your chart plus one `access-proxy` release — Envoy Gateway only, it runs nowhere else | your chart |
 | **The client is** | confidential: the gateway holds the secret, same as a proxy would | confidential: oauth2-proxy refuses to start without a secret | public, with PKCE — no secret to rotate |
 
 **Gateway-native OIDC is the default for a console with no authorization
-model of its own** — an Envoy Gateway `SecurityPolicy` with `oidc:`
+model of its own, on Envoy Gateway** — a `SecurityPolicy` with `oidc:`
 against a declared client, gated by that client's `requires`, nothing of
-ours in front. Write your own flow (the right column above) when the
-console needs identity *inside* itself: per-user authorization from
-`groups`, per-user audit, or tokens of its own to call something else.
-`access-proxy` is deprecated, with removal planned: its one remaining
-honest use is a gateway that is **not** Envoy Gateway, fronting a console
-with no flow of its own. Its server-side session store is not a reason
-to choose it — oauth2-proxy's encrypted cookie means nothing
-server-side, Back-Channel Logout included, can end a session it holds
+ours in front
+([ADR 0001](../decisions/0001-sessions-and-an-absolute-limit.md)).
+`access-proxy` is deprecated, with removal planned
+([ADR 0003](../decisions/0003-deprecate-access-proxy.md)): it is, and has
+only ever been, Envoy Gateway's own external authorization backend, so
+gateway-native OIDC replaces it there directly. **For a gateway that is
+not Envoy Gateway**, this chart was never an option: the path is to run
+upstream `oauth2-proxy` yourself, with a declared confidential client row
+of this issuer, the way this chart already wires it — a documentation
+page for that is planned, and it will not be a chart of ours. Write your
+own flow (the right column above) when the console needs identity
+*inside* itself: per-user authorization from `groups`, per-user audit, or
+tokens of its own to call something else. `access-proxy`'s server-side
+session store is not a reason to choose either gateway-fronted shape —
+oauth2-proxy's encrypted cookie means nothing server-side, Back-Channel
+Logout included, can end a session it holds
 ([design/access-proxy.md](../design/access-proxy.md)).
 
 **A third shape exists and is not yours**: a console the issuer itself
@@ -95,10 +103,12 @@ in the check.
 
 ## What you deploy
 
-The block below is `access-proxy`'s own shape, for the non-Envoy-Gateway
-case. On Envoy Gateway, the equivalent is a `SecurityPolicy` of the
-gateway's own — not an access-roster chart, and not shown here. For your
-own flow, your chart alone and no block like this at all:
+The block below is `access-proxy`'s own shape — Envoy Gateway only, and
+deprecated there in favour of a `SecurityPolicy` of the gateway's own
+(not an access-roster chart, and not shown here). For a gateway that is
+not Envoy Gateway, there is no chart at all: run `oauth2-proxy` yourself,
+the way this one wires it. For your own flow, your chart alone and no
+block like this at all:
 
 ```yaml
 exposure:

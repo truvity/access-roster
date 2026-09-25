@@ -19,9 +19,10 @@ import (
 
 ## A console behind a proxy that forwards a bearer — the issuer anchor
 
-The proxy in front — gateway-native OIDC, or `access-proxy` where the
-gateway is not Envoy Gateway — makes no difference here: either way the
-module reads whatever forwards a verified bearer.
+The proxy in front — gateway-native OIDC, `access-proxy` (deprecated,
+Envoy Gateway only), or a hand-run `oauth2-proxy` on any other gateway —
+makes no difference here: whichever one it is, the module reads whatever
+forwards a verified bearer.
 
 ```go
 issuer := &identity.Issuer{
