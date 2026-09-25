@@ -22,7 +22,7 @@ identity/ tokens/ policy/ backend/
                           the Go module's public packages: the two
                           verifiers and the net/http middleware, the
                           exchange and credential encoders, the
-                          five-table policy, the directory backend
+                          seven-table policy, the directory backend
                           interface and its fake
 internal/                 hub (snapshots, routing, authority), issuer
                           (the OpenID surface, sessions, exchange),
@@ -130,20 +130,22 @@ rather than the pixels for anything animated.
 
 ## Start here, for the next phase
 
-The documents are the authority and the Linear issues carry the
-decisions and their dates; when the two disagree, the document wins and
-the issue gets a comment. Read in this order: `docs/design/trust.md`
+The documents are the authority, and decisions and their dates are
+recorded in the repository — in the design documents themselves, and in
+the pull request that made the change; when a document and a pull
+request disagree, the document wins and the pull request gets a comment.
+Read in this order: `docs/design/trust.md`
 (the rule under everything — two trust anchors chosen by scope, `groups`
 as the one vocabulary), `docs/connect/service-to-service.md` (the how-to
 that rule produces), `docs/integrations.md` (every case with its
 anchor), then the design of whatever you touch. `docs/reference/*` says
 exactly what each battery exposes; `CHANGELOG.md` says what exists today.
 
-The service is one process, at 1.8: several directories connected, the
+The service is one process. By now: several directories connected, the
 policy rendered from the installation's access matrix, clusters, AWS
-accounts and CI on the issuer, the GitHub controller acting in real
-organisations, runner Apps from the console, the audit trail kept by an audit
-installation, and
+accounts and CI on the issuer, resources and client-described clients in
+the policy, the GitHub controller acting in real organisations, runner
+Apps from the console, the audit trail kept by an audit installation, and
 the console's state restorable from four Secrets. The conformance run at
 1.0 is in [docs/conformance.md](docs/conformance.md).
 [CHANGELOG.md](CHANGELOG.md) is the record of what exists at each

@@ -3,21 +3,26 @@
 [![CI](https://github.com/truvity/access-roster/actions/workflows/ci.yaml/badge.svg)](https://github.com/truvity/access-roster/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**One small OpenID provider for your infrastructure, configured from a
-Helm chart, with no database and no users of its own.**
+**The policy is the product.** One file in git turns the groups your
+people already have in the corporate directory, and the identities your
+machines already hold — a GitHub Actions job, a Kubernetes ServiceAccount
+— into one vocabulary of **internal groups**, gated per audience at one
+small OpenID provider.
 
-It reads the groups your people already have in the corporate directory
-and puts them in a token. Kubernetes, AWS, ArgoCD, Kargo and every
-console behind your gateway trust that one token. CI jobs and workloads
-get the same treatment from the identity token they already hold. The
-whole policy is one file in git; the same file says who belongs in which
-GitHub team, and a controller keeps the teams that way. A console shows
-you who holds what and why, and an audit installation of its own, rendered
-beside it, keeps who did what.
+Everything that can read a claim gets that vocabulary **minted into a
+token**: Kubernetes, AWS, ArgoCD, Kargo and every console behind your
+gateway trust that one token, and so do CI jobs and workloads, from the
+identity they already hold. Everything that cannot read a claim — GitHub
+teams today — gets it **reconciled into a membership** instead, by a
+controller reading the same file. A console shows you who holds what and
+why, and an audit installation of its own, rendered beside it, keeps who
+did what. A leaver disappears from the directory and, within a freshness
+window, from everything downstream: authoritative or held, never guessed.
 
 Nothing here authenticates anyone. Sign-in, passwords, MFA and device
-policy stay with Google Workspace or Entra. This verifies the result,
-knows the directory, and applies the policy.
+policy stay with Google Workspace, and later Entra. This verifies the
+result, knows the directory, and applies the policy — configured from a
+Helm chart, with no database of record and no users of its own.
 
 ## What ships
 
@@ -28,7 +33,7 @@ repository.
 |---|---|---|---|
 | `access-issuer` chart and image | `oci://ghcr.io/truvity/charts/access-issuer`, `ghcr.io/truvity/access-roster/access-issuer` | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail | shipped |
 | `github-roster` image, in the same chart | `ghcr.io/truvity/access-roster/github-roster` | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console | shipped |
-| `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | every console with no OpenID flow of its own | shipped |
+| `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | a console with no OpenID flow of its own; not the default for a new one — see [why](docs/design/access-proxy.md) | shipped |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
 | `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, short-lived certificates a secret manager mints, and a team's shared values as a `.env` file (`secrets env`) | shipped |
@@ -54,23 +59,31 @@ corporate directory.
 Every mature identity provider can do this. None of them is built for
 it, and the difference is what you run to get it.
 
-| | dex | Keycloak, Zitadel, Authentik | Okta, Auth0, Entra ID | **access-roster** |
-|---|---|---|---|---|
-| runs on | a ConfigMap | a database, an operator, a login UI you theme | someone else's cloud | a ConfigMap |
-| users | none, federates | its own user store, plus federation | its own user store | none, federates |
-| groups in the token | only if the upstream IdP sends them — Google does not | after you write a mapper or a login hook per IdP | after you configure a sync | read from the directory, always |
-| several corporate IdPs, one issuer | yes | yes | yes | yes |
-| one policy file for people **and** machines | no policy at all | no; roles per client, in the UI or the database | no; per-app assignments | yes, in git — and GitHub teams in the same file |
-| CI and workloads without a stored secret | connectors only for people | machine users, with secrets | machine users, with secrets | token exchange from GitHub's or the cluster's own token |
-| audience gating for cloud roles | no | via custom mappers | via app assignments | a `requires` list per client |
-| who is in this group and why, at a glance | no | the admin UI, eventually | the admin UI | the directory console |
-| operational footprint | tiny | large, and you own it | none, and you rent it | tiny |
+| | dex | Keycloak, Zitadel, Authentik | Okta, Auth0, Entra ID | Teleport | **access-roster** |
+|---|---|---|---|---|---|
+| runs on | a ConfigMap | a database, an operator, a login UI you theme | someone else's cloud | its own Auth and Proxy services, plus an agent per resource | a ConfigMap |
+| users | none, federates | its own user store, plus federation | its own user store | its own local users, plus SSO connectors | none, federates |
+| groups in the token | yes for Google Workspace, given a service account with domain-wide delegation; other IdPs only if they send them | after you write a mapper or a login hook per IdP | after you configure a sync | not a token: short-lived certificates carry roles an SSO connector mapped once, at login | read from the directory, always |
+| several corporate IdPs, one issuer | yes | yes | yes | not verified | yes |
+| one policy file for people **and** machines | no policy at all | no; roles per client, in the UI or the database | no; per-app assignments | no; roles are Teleport's own resources, separate from the SSO mapping | yes, in git — and GitHub teams in the same file |
+| CI and workloads without a stored secret | token exchange (RFC 8693), but the client still needs a stored secret | machine users, with secrets | machine users, with secrets | yes — Machine ID's own join methods (cloud IAM, Kubernetes, CI OIDC) | token exchange from GitHub's or the cluster's own token |
+| audience gating for cloud roles | no | via custom mappers | via app assignments | not verified | a `requires` list per client |
+| who is in this group and why, at a glance | no | the admin UI, eventually | the admin UI | its own web UI | the directory console |
+| operational footprint | tiny | large, and you own it | none, and you rent it | large: an Auth Service, a Proxy Service and an agent per resource | tiny |
 
-dex is the right shape and stops one step short: it has no idea what
-groups anyone is in unless the upstream provider says, and Google never
-says. The heavy providers can be made to do all of it, at the cost of
-running an identity product to use about a fifth of one. access-roster
-is dex with a directory reader and a policy file.
+dex comes closest to this shape: its Google connector reads Workspace
+groups given a service account with domain-wide delegation, and it can
+exchange a machine's own token for one of its own (RFC 8693). What it
+does not have is a policy — no file mapping those groups to audiences, no
+per-client gate, and no GitHub-teams reconciliation, so each of those is
+a mapper, a hook or a sync written and run per relying party. The heavy
+providers can be made to do all of it, at the cost of running an identity
+product to use about a fifth of one. Teleport issues its own SSH,
+database and Kubernetes certificates and runs its own access proxy in
+front of your infrastructure; access-roster does not try to be that.
+access-roster is dex's shape, with the directory read built in and one
+policy file doing the rest: minted into tokens where a relying party can
+read a claim, reconciled into memberships where it cannot.
 
 ### What you get
 
@@ -79,8 +92,11 @@ Every console behind the gateway opens without another login. One
 `accessctl login` on your laptop, and `kubectl` works on every cluster
 you are granted, AWS credentials come with no long-lived key, and a token
 for any other audience is one command away. Link your GitHub account
-once and the teams the policy puts you in follow. Sign out once and it
-ends everywhere.
+once and the teams the policy puts you in follow. Sign out once: it ends
+immediately at every client wired for Back-Channel Logout, and within
+that client's own refresh window everywhere else — a proxied console by
+default within a minute, never beyond the token's own lifetime
+([how sign-out reaches each kind](docs/design/access-proxy.md#sign-out)).
 
 **As a machine.** A GitHub Actions job presents the identity token it
 already has and receives one for AWS or a cluster, under a rule that
@@ -101,19 +117,23 @@ adds at runtime lives in a handful of Secrets that a copy of restores.
 
 ## The model
 
-Four nouns. The **directory** says who a person is and which directory
-groups they are in. The **policy** maps directory groups, CI jobs and
-workloads into **internal groups**, named `<scope>:<thing>:<role>`. A
-**client** is everything that trusts the issuer — a cluster, a cloud
-role, a console — and names the internal groups it `requires`. A token
-is minted for one client, carries the internal groups, and is refused
-before it exists when none of them is required.
+The **directory** says who a person is and which directory groups they
+are in. The **policy** maps directory groups, CI jobs and workloads into
+**internal groups**, named `<scope>:<thing>:<role>`. A **client** is
+everything that trusts the issuer — a cluster, a cloud role, a console —
+and names the internal groups it `requires`; it is usually a row in the
+policy, but a client the installation does not deploy may instead
+describe itself by an allow-listed URL. A **resource** is what a token is
+*for*, when that is not the client asking — a client names one (RFC
+8707) and it becomes the token's audience, with its own `requires`. A
+token is minted for a client or a resource, carries the internal groups,
+and is refused before it exists when neither gate is satisfied.
 
 ### The shape
 
 ```mermaid
 flowchart LR
-  idp["Corporate directory<br/>Google Workspace, Entra"]
+  idp["Corporate directory<br/>Google Workspace, Entra later"]
   gh["GitHub Actions"]
   k8s["Any cluster's<br/>ServiceAccount tokens"]
 
@@ -139,9 +159,16 @@ flowchart LR
 ```
 
 One chart, one Valkey, one bucket. A login makes no network call except
-to the corporate directory. The proxy is upstream oauth2-proxy in a chart,
-for applications that cannot run an OpenID flow themselves; anything that
-can, such as ArgoCD or Kargo, talks to the issuer directly. The GitHub
+to the corporate directory — and, for a client that identifies itself by
+a URL instead of a policy row, one bounded, cached HTTPS fetch of that
+client's own document, from an allow-listed host only
+([reference/policy.md](docs/reference/policy.md#clients-that-describe-themselves)).
+`access-proxy` is upstream oauth2-proxy in a chart, for applications that
+cannot run an OpenID flow themselves; anything that can, such as ArgoCD
+or Kargo, talks to the issuer directly, and that is the preferred shape
+for a new console too — reach for `access-proxy` when a console cannot
+run its own flow and needs a server-side session store or global logout,
+not as the default ([why](docs/design/access-proxy.md)). The GitHub
 controller is a second process from the same chart, asking the issuer
 who holds which group and acting on GitHub with an App the organisation's
 owner created from the console.
@@ -259,7 +286,7 @@ Every column, and why, is in
 |---|---|
 | understand the ideas behind it | [docs/why.md](docs/why.md), then [docs/design/trust.md](docs/design/trust.md) |
 | see every piece and how they connect | [docs/architecture.md](docs/architecture.md) |
-| learn the ten words used precisely | [docs/concepts.md](docs/concepts.md) |
+| learn the words this repository uses precisely | [docs/concepts.md](docs/concepts.md) |
 | write the policy | [docs/reference/policy.md](docs/reference/policy.md) |
 | connect the corporate directory people sign in with | [docs/connect/corporate-directory.md](docs/connect/corporate-directory.md), and [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
 | give a CI job an identity with no stored secret | [docs/connect/github-actions.md](docs/connect/github-actions.md) |

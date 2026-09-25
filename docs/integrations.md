@@ -82,7 +82,7 @@ flowchart TB
 | **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `token`, `whoami`, `exchange` | people, on laptops, and a CI job with the same files | built; a Nix flake on every release, for devbox |
 | **GitHub Action** | `truvity/access-roster` (root `action.yml`), pinned to a release | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | built |
 | **Store** | the audit trail | not this service's: an installation of [truvity/audit](https://github.com/truvity/audit) in this service's namespace keeps it, locks it and signs it. This service declares what it can record in a catalogue, sends a record per action, and reads that installation's query service for the console's Audit page | the platform, one installation per application | connected since 1.26; kept in a bucket of its own until then, which ages out under its lock. A recovery sign-in is the one action refused when its record cannot be kept |
-| **File format** | the policy | groups, claims, lifetimes, clients — one schema for both services | the platform, in its own repository, rendered from its access matrix | in force |
+| **File format** | the policy | groups, claims, lifetimes, clients, resources, client documents and GitHub bindings — one schema for both services | the platform, in its own repository, rendered from its access matrix | in force |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the console's own services | consumers of access-roster | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
 
@@ -90,7 +90,16 @@ flowchart TB
 
 | Ours (this repository) | Third-party, used as is |
 |---|---|
-| access-issuer and its GitHub controller, the access-proxy **chart** (wiring and conventions around a third-party proxy), the Go module, the TypeScript package, accessctl, the exchange action, the policy schema | Google Workspace and Entra (sign-in, MFA, directory), GitHub Actions OIDC, Envoy Gateway, **oauth2-proxy** (the process inside access-proxy), Valkey, kubelogin, kubectl, the AWS CLI, `curl` and `jq` in the action, the OpenID Provider library the issuer is built on |
+| access-issuer and its GitHub controller, the access-proxy **chart** (wiring and conventions around a third-party proxy), the Go module, the TypeScript package, accessctl, the exchange action, the policy schema | Google Workspace (sign-in, MFA, directory) — Entra the same way once its backend is built, GitHub Actions OIDC, Envoy Gateway, **oauth2-proxy** (the process inside access-proxy), Valkey, kubelogin, kubectl, the AWS CLI, `curl` and `jq` in the action, the OpenID Provider library the issuer is built on |
+
+Cases ⑥, ⑦ and ⑧ read `aud` as the client asking. Since v1.29.0 a client
+may instead name a **resource** it wants a token *for* (RFC 8707) — a
+service the client is not itself, gated by that resource's own
+`requires` alongside the client's — and a client this installation does
+not deploy may present a URL as its own `client_id` instead of a policy
+row, admitted only from an allow-listed origin. Both are declared and off
+unless written; [reference/policy.md](reference/policy.md#resources--what-a-token-is-for)
+is where each is defined.
 
 ## Case by case
 

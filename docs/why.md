@@ -106,6 +106,22 @@ earlier one wins.
    and a cluster each get a client id and an issuer URL and nothing else
    to configure. A console with no OpenID of its own gets a chart.
 
+## What a token is for, now that it can be two things
+
+Through v1.28 a token was minted for the client asking, because the
+client and the thing a person reached were the same object. That stopped
+holding once a client — an editor, a hosted assistant, anything speaking
+the Model Context Protocol — is not itself what a token is *for*: a
+**resource** may be declared instead, named by the client with the
+`resource` parameter (RFC 8707), and it becomes the token's audience,
+gated by its own `requires` alongside the client's. And a client this
+installation does not deploy and cannot enumerate may identify itself
+with a URL that serves a document about itself (a Client ID Metadata
+Document) instead of a row in the policy, admitted only from an
+allow-listed origin. Both are declared, gated the same way as everything
+else, and off unless an installation writes them — see
+[reference/policy.md](reference/policy.md#resources--what-a-token-is-for).
+
 ## What it is not
 
 Not a customer-facing identity provider: a product whose customers sign

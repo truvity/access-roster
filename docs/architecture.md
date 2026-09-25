@@ -51,11 +51,14 @@ flowchart TB
   ci --> rp
 ```
 
-Nothing in access-roster has a database. Nothing authenticates anyone.
-The directories hold the people; the relying parties hold their own
-roles; access-roster holds the policy, a snapshot of the directory, the
-sessions it has open, and what an operator connected through the
+Nothing in access-roster has a database of record. Nothing authenticates
+anyone. The directories hold the people; the relying parties hold their
+own roles; access-roster holds the policy, a snapshot of the directory,
+the sessions it has open, and what an operator connected through the
 console: directory credentials, GitHub Apps and people's GitHub links.
+The snapshot and the sessions live in Valkey — disposable state, rebuilt
+from the directory and re-opened at the next sign-in, not a record of
+anything (see "What each store holds" below).
 The audit trail is the one thing it writes that outlives it, and it is
 kept by an audit installation of its own, rendered beside it in the same
 namespace.
@@ -117,10 +120,16 @@ workload would, and reports into a ConfigMap the console shows. Every
 organisation is a dry run until the chart lists it in
 `githubRoster.actsIn`; removing one from the list is the emergency stop.
 
-**A login makes no network call except to the corporate directory.** The
-answer about a person is a function call, so the ConnectRPC hop, the
+**A login makes no network call except to the corporate directory** — and,
+for a client that identifies itself by a URL instead of a policy row, one
+bounded, cached HTTPS fetch of that client's own document, from an
+allow-listed host only ([policy.md](reference/policy.md#clients-that-describe-themselves)).
+The answer about a person is a function call, so the ConnectRPC hop, the
 TokenReview, the NetworkPolicy hop and the class of failure where two
-halves disagreed about one person are all gone.
+halves disagreed about one person are all gone. That fetch is the one
+exception: a document client cannot sign in while its host is
+unreachable and the ten-minute cache is cold or expired, because there is
+deliberately no stale fallback.
 
 **One hostname.** The issuer holds the root of it: the issuer URL is the
 `iss` claim in every token, and discovery must sit at

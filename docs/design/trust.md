@@ -288,5 +288,7 @@ a local run. See [libraries.md](libraries.md).
 - [libraries.md](libraries.md) — the two verifiers.
 - [../connect/service-to-service.md](../connect/service-to-service.md) —
   the how-to for a service calling another.
-- [../reference/policy.md](../reference/policy.md) — internal groups and
-  the claim tables.
+- [../reference/policy.md](../reference/policy.md) — internal groups, the
+  claim tables, and what a token is minted *for*: a client, a declared
+  **resource** (RFC 8707), or a client that describes itself by an
+  allow-listed URL (a Client ID Metadata Document).

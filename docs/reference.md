@@ -13,7 +13,8 @@ tables.
 - [reference/access-proxy.md](reference/access-proxy.md) — every value of
   the `access-proxy` chart
 - [reference/policy.md](reference/policy.md) — the policy file: groups,
-  matchers, clients, lifetimes and GitHub bindings
+  matchers, clients, resources, client documents, lifetimes and GitHub
+  bindings
 - [reference/accessctl.md](reference/accessctl.md) — every command and
   flag of `accessctl`, and its exit codes;
   [`credential`](reference/accessctl.md#credential-certificates-openbao-mints)

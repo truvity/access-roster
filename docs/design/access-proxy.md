@@ -1,14 +1,19 @@
 # access-proxy — the console exposure
 
-**Status:** built and published. **Nothing in this repository needs it,
-and no console this repository knows of runs behind it**: a console that
-can run an OpenID flow signs in as a client of the issuer directly, and
-since 0.12 the directory console is one of those. The chart stays, and
-is released with every tag, for the two cases that remain — a console
-with no OpenID flow of its own, and one that wants a **server-side
-session store** in front of it rather than a token in a cookie. Read
-this page as the description of a chart you may deploy, not of a
-component the installation already has.
+**Status:** built and published, and not the default choice for a new
+console. **Nothing in this repository needs it, and no console this
+repository knows of runs behind it**: a console that can run an OpenID
+flow signs in as a client of the issuer directly, and since 0.12 the
+directory console is one of those. The chart stays, and is released with
+every tag, for the two cases that remain — a console with no OpenID flow
+of its own, and one that wants a **server-side session store** in front
+of it rather than a token in a cookie ([why, below](#why-not-something-else)).
+For a console that has neither need, the gateway's own OpenID Connect
+support (Envoy Gateway's `SecurityPolicy` `oidc` field, against this
+issuer directly) reaches the issuer with one fewer moving part; this
+chart earns its place only where the trade-offs below matter. Read this
+page as the description of a chart you may deploy, not of a component
+the installation already has.
 
 **Decided 2026-09-10 (supersedes 2026-09-08):** the client is **declared**,
 and that is permanent. Self-registration was designed and then dropped:
