@@ -229,7 +229,8 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
-	protocol := challenges(refusedAuthorize(endSession(signIn, truthfulDiscovery(provider))))
+	protocol := challenges(refusedAuthorize(endSession(signIn, truthfulDiscovery(
+		func() bool { return iss.Policy().ClientDocuments().Enabled() }, provider))))
 	// An installation token for a catalogue App is claimed in front of the
 	// library, which can only mint tokens this issuer signs. The storage
 	// is the concrete one wherever a deployment runs; a test's stand-in
@@ -510,7 +511,10 @@ var servedGrantTypes = []string{
 // happen; worse, a reader auditing the issuer sees a flow we deliberately
 // do not serve. Metadata that lies is a defect in a service whose whole
 // job is to be trusted, so it is rewritten on the way out.
-func truthfulDiscovery(next http.Handler) http.Handler {
+// documentClientsEnabled is read per request rather than captured once:
+// the policy can be reloaded, and a document advertising support that has
+// since been switched off is the same defect this function exists to fix.
+func truthfulDiscovery(documentClientsEnabled func() bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != discoveryPath {
 			next.ServeHTTP(w, r)
@@ -539,6 +543,14 @@ func truthfulDiscovery(next http.Handler) http.Handler {
 		// whatever the configuration says. The grant is gone,
 		// so the address of it is a promise to nobody.
 		delete(doc, "device_authorization_endpoint")
+		// Client ID Metadata Documents, and only when an origin has been
+		// named. A client reads this field to decide whether to present a
+		// URL as its id or to look for another way to register, so
+		// advertising it on an installation that admits no origin would
+		// send every such client down a path that ends in a refusal.
+		if documentClientsEnabled != nil && documentClientsEnabled() {
+			doc["client_id_metadata_document_supported"] = true
+		}
 
 		corrected, err := json.Marshal(doc)
 		if err != nil {

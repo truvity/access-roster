@@ -224,6 +224,16 @@ func TestRejectsBadPolicies(t *testing.T) {
 		"empty github":       "version: 1\ngroups: { a: { matchers: [{ github: {} }] } }\n",
 		"unknown visibility": "version: 1\ngroups: { a: { matchers: [{ github: { owner: org, visibility: Private } }] } }\n",
 		"bad duration":       "version: 1\ngroups: { a: { members: [g@h.example] } }\nlifetimes: { default: soon }\n",
+		// client_documents admits clients nobody declared, so every way
+		// of turning it on without saying who may use it is refused.
+		"documents no require":    "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { origins: [clients.example] }\n",
+		"documents group unknown": "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { origins: [clients.example], requires: [b] }\n",
+		"documents inert require": "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { requires: [a] }\n",
+		"documents origin scheme": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"client_documents: { origins: ['https://clients.example'], requires: [a] }\n",
+		"documents origin path":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { origins: [clients.example/x], requires: [a] }\n",
+		"documents origin star":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { origins: ['*.clients.example'], requires: [a] }\n",
+		"documents origin empty": "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { origins: [' '], requires: [a] }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {

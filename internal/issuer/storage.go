@@ -176,6 +176,13 @@ type Storage struct {
 	// another, and the client redeems the code at a third.
 	state State
 
+	// documents resolves a client that identifies itself with a URL
+	// rather than a declared id. Per-process, because its cache is a
+	// cache: another replica fetching the same document again is correct,
+	// and a shared one would be a way for one replica's stale answer to
+	// become every replica's.
+	documents *documentClients
+
 	// grants is per-process on purpose. It carries an exchange decision
 	// between two calls the library makes about the *same* request, in
 	// the same handler, microseconds apart — writing that down would be
@@ -293,11 +300,12 @@ func NewStorage(
 	// assertion fails, so there is no device state to keep and no way for
 	// a device code to be stored by something that changed its mind.
 	return &Storage{
-		iss:     iss,
-		verify:  verify,
-		key:     key,
-		secrets: secrets,
-		state:   state,
+		iss:       iss,
+		verify:    verify,
+		key:       key,
+		secrets:   secrets,
+		state:     state,
+		documents: newDocumentClients(iss.Policy().ClientDocuments()),
 	}, nil
 }
 
@@ -326,12 +334,33 @@ func (s *Storage) Health(context.Context) error { return nil }
 // ------------------------------------------------------------- clients
 
 // GetClientByClientID implements [op.OPStorage].
-func (s *Storage) GetClientByClientID(_ context.Context, clientID string) (op.Client, error) {
+//
+// A declared client is looked up first and always wins. That ordering is
+// the guarantee that turning on client documents changes nothing about
+// the clients this installation already has: a document served at a URL
+// that happens to match a declared id can never displace it, because the
+// declared one is found before anything is fetched.
+func (s *Storage) GetClientByClientID(ctx context.Context, clientID string) (op.Client, error) {
 	declared, ok := s.iss.Policy().Client(clientID)
-	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownTarget, clientID)
+	if ok {
+		return &client{id: clientID, declared: declared, lifetime: s.tokenLifetime(declared)}, nil
 	}
-	return &client{id: clientID, declared: declared, lifetime: s.tokenLifetime(declared)}, nil
+
+	// Not declared. It may still be a client that describes itself.
+	resolved, err := s.documents.Resolve(ctx, clientID)
+	switch {
+	case err == nil:
+		// Worth saying out loud: it is the one client this installation
+		// did not declare, so the log is where a reader sees that one was
+		// admitted at all, and which URL it was.
+		s.logger().InfoContext(ctx, "admitted a client that describes itself",
+			slog.String("client", clientID), slog.String("name", resolved.DisplayName))
+		return &client{id: clientID, declared: resolved, lifetime: s.tokenLifetime(resolved)}, nil
+	case errors.Is(err, errNotADocumentClient):
+		return nil, fmt.Errorf("%w: %q", ErrUnknownTarget, clientID)
+	default:
+		return nil, err
+	}
 }
 
 // tokenLifetime is how long this client's tokens live: the deployment's
@@ -351,6 +380,14 @@ func (s *Storage) tokenLifetime(declared policy.Client) time.Duration {
 func (s *Storage) AuthorizeClientIDSecret(_ context.Context, clientID, secret string) error {
 	declared, ok := s.iss.Policy().Client(clientID)
 	if !ok {
+		// A client that describes itself is public and reaches the token
+		// endpoint with PKCE and no credentials, which the library handles
+		// without ever asking here. So arriving here means it sent a
+		// secret -- and saying "unknown client" would send somebody
+		// looking for a typo in an id that is correct.
+		if target, err := documentURL(clientID); err == nil && s.documents.allow.Permits(target) {
+			return errors.New("a client that registers itself by document is public and presents no secret")
+		}
 		return fmt.Errorf("%w: %q", ErrUnknownTarget, clientID)
 	}
 	// A public client holds no secret, and the library asks all the same,

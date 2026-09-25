@@ -1,3 +1,59 @@
+## Unreleased
+
+- **A client may register itself by serving a document, instead of needing
+  a row in the policy.** Software this installation does not deploy and
+  cannot enumerate — an editor, a hosted assistant, the clients of the
+  Model Context Protocol — presents an HTTPS URL as its `client_id`, and
+  that URL serves a JSON document describing it (an OAuth Client ID
+  Metadata Document). The issuer fetches it, validates it, and treats the
+  client as `public`. Nothing is registered and nothing accumulates.
+
+  **Off unless an origin is named**, and the new `client_documents` block
+  is where that happens:
+
+  ```yaml
+  client_documents:
+    origins: [clients.example]
+    requires: [rung:engineering]
+    ttl_cap: 5m
+  ```
+
+  `requires` is **mandatory** alongside `origins`: turning the mechanism
+  on without saying who may use it would admit every person who can sign
+  in at all, which is not a decision anybody makes on purpose.
+
+  Why an allow-list of origins rather than a refusal of unknown clients:
+  registration is not the authorization decision here. Reach is decided by
+  the groups a caller holds, so a client this issuer has never seen cannot
+  widen anything — it can only ask a person to consent to the reach that
+  person already has. A document may ask for a different `kind`, a longer
+  cap or a wider `requires`; none of those fields is read. The threat is
+  therefore phishing rather than escalation, and the allow-list is what
+  bounds it.
+
+  **A declared client always wins.** The policy is consulted first, so
+  nothing is fetched for a client already in the file and a document
+  cannot displace one. Existing clients are unaffected.
+
+  The refusals, each with the failure it prevents, are in
+  [reference/policy.md](docs/reference/policy.md#clients-that-describe-themselves).
+  Two worth naming here: a document whose `client_id` is not the URL it
+  was served from is refused, because otherwise a document at any
+  allow-listed host could claim to be any client; and a document that
+  cannot be fetched fails the flow rather than falling back to a cached
+  copy, because a cached copy is redirect URIs the client may have
+  retired.
+
+  `client_id_metadata_document_supported` is advertised in discovery only
+  while an origin is named — a client reads it to decide whether to
+  present a URL at all, so advertising it on an installation that admits
+  none would send every such client into a refusal.
+
+  Dynamic Client Registration is **not** implemented and is not planned:
+  the Model Context Protocol deprecated it in its 2026-07-28 revision in
+  favour of these documents, and its own failure mode is registrations
+  that accumulate with nothing to review them against.
+
 ## v1.28.0
 
 - **`accessctl` holds a session per issuer, so one laptop can be signed in

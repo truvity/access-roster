@@ -203,6 +203,10 @@ type Policy struct {
 	// Lifetimes is how long a token lives, keyed by group, plus the
 	// "default" key. The shortest across a caller's groups wins.
 	Lifetimes map[string]Duration `yaml:"lifetimes,omitempty"`
+	// ClientDocuments admits clients that are not declared here at all,
+	// by fetching a document they serve about themselves. Off unless it
+	// names an origin; see [ClientDocuments] for why that is safe here.
+	ClientDocuments ClientDocuments `yaml:"client_documents,omitempty"`
 	// Clients is who may be issued a token for what. A client's id is the
 	// audience.
 	Clients map[string]Client `yaml:"clients,omitempty"`
@@ -605,6 +609,9 @@ func (p Policy) Validate() error {
 		if err := p.Clients[id].validate(id, p.Groups); err != nil {
 			return err
 		}
+	}
+	if err := p.ClientDocuments.validate(p.Groups); err != nil {
+		return err
 	}
 	return p.checkFragments()
 }

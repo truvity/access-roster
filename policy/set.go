@@ -107,6 +107,13 @@ func (s *Set) Client(id string) (Client, bool) {
 	return c, ok
 }
 
+// ClientDocuments returns the document-client policy in force.
+func (s *Set) ClientDocuments() ClientDocuments {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.declared.ClientDocuments
+}
+
 // Groups returns every internal group as the console shows it.
 func (s *Set) Groups() []GroupView {
 	s.mu.RLock()
