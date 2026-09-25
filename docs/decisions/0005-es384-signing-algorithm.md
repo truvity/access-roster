@@ -49,22 +49,35 @@ is never on this repository's own side of a connection.
 ## Consequences
 
 An installation adopting the default inherits a short, known list of
-relying parties that need the RSA override instead: a `kube-apiserver`
-left at its default `--oidc-signing-algs` (which is `RS256`, so the
-cluster's own `AuthenticationConfiguration` or that flag must list
-`ES384` explicitly to accept the default key —
-[connect/kubernetes-cluster.md](../connect/kubernetes-cluster.md)), and
-any relying party whose OIDC library hard-codes RS256 rather than reading
-discovery (Kargo's is one such — [connect/kargo.md](../connect/kargo.md)).
-Some ecosystems accept fewer algorithms still: opkssh verifies only
-RS256, PS256, ES256 and EdDSA today, which is the blocker recorded in
-[0004](0004-ssh-opkssh-and-the-secret-stores-ca.md) and is not solved by
-anything in this record — it waits on that ecosystem, not on a key
-rotation here.
+relying parties that need either the RSA override or their own
+configuration to accept ES384 — worth naming rather than discovering one
+integration at a time:
+
+| Relying party | Default without configuration | What accepting ES384 needs |
+|---|---|---|
+| Kargo | its verifier is built from go-oidc's `oidc.NewVerifier` with no `SupportedSigningAlgs` set, which defaults to RS256 only | the RSA override on this issuer's key, since Kargo's own verifier does not read discovery to widen itself |
+| `kube-apiserver` | the legacy `--oidc-signing-algs` flag defaults to `RS256` | that flag, or the cluster's `AuthenticationConfiguration`, must list `ES384` explicitly ([connect/kubernetes-cluster.md](../connect/kubernetes-cluster.md)) |
+| OpenBAO or Vault, JWT auth on an **OIDC-type** role | `jwt_supported_algs` defaults to `[RS256]` for that role type (a **JWT-type** role has no such default and accepts every algorithm) | an OIDC-login recipe against this issuer must set `jwt_supported_algs` explicitly to admit ES384 |
+| opkssh (OpenPubkey) | verifies RS256, PS256, ES256 and EdDSA only — ES384 is not in that list at all | nothing configures around this; it is the blocker recorded in [0004](0004-ssh-opkssh-and-the-secret-stores-ca.md), and it waits on that project, not on a key rotation here |
 
 Choosing RSA for one such relying party is a whole-installation decision,
 not a per-consumer one: there is one signing key and one `iss`, so every
 relying party sees whichever algorithm is chosen.
+
+**A follow-up this decision exposes and does not itself solve: rotation
+has no overlap window today.** The issuer publishes a single key in its
+JWKS and reads its key file once, at start. Changing the key — a renewal,
+and doubly an algorithm change such as moving from the ES384 default to
+the RSA override or back — has no period where both the old and the new
+key verify, and with more than one replica, each one picks up the new key
+only at its own restart: until every replica has restarted, which replica
+answers a token or a JWKS request is undefined, and a relying party can
+see either key. A graceful-rotation mechanism — publishing both keys in
+`jwks_uri` for an overlap window, or coordinating the read across
+replicas — is required, and tracked as follow-up work, before any
+installation is safe to move between signing algorithms; this record
+does not resolve it, only names it as the sharp edge behind "moving an
+existing installation... rotates the signing key" above.
 
 ## Alternatives considered
 
