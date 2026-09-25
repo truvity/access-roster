@@ -101,16 +101,25 @@ type Sessions struct {
 	now      func() time.Time
 	newID    func() string
 	lifetime time.Duration
+	// absolute is the global timeout: no per-client session outlives
+	// auth_time by more than this, no matter how often it is refreshed.
+	// Zero or negative means no such limit -- the deployment's own choice,
+	// distinct from "not configured", which [Config.withDefaults] never
+	// produces (see [DefaultAbsoluteLifetime]) but a caller that builds a
+	// [Sessions] directly, as every existing test does, still can.
+	absolute time.Duration
 }
 
 // NewSessions returns the index over a shared store. lifetime is how long
-// a refresh token lives when nothing shorter applies.
-func NewSessions(state State, lifetime time.Duration) *Sessions {
+// a refresh token lives when nothing shorter applies; absolute is the
+// global timeout measured from auth_time, or zero for none.
+func NewSessions(state State, lifetime, absolute time.Duration) *Sessions {
 	return &Sessions{
 		state:    state,
 		now:      time.Now,
 		newID:    uuid.NewString,
 		lifetime: lifetime,
+		absolute: absolute,
 	}
 }
 
@@ -138,6 +147,27 @@ func sessionTokenKey(token string) string {
 func sessionRotatedKey(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return "issuer:session-rotated:" + hex.EncodeToString(sum[:])
+}
+
+// capEnd is a session's end: the sliding refresh window from now, or the
+// absolute session limit from auth_time, whichever comes first.
+//
+// A session with no auth_time is a workload or a machine exchange, which
+// authenticated nobody -- there is no "since sign-in" to measure the limit
+// from, so only the refresh window applies, exactly as before this limit
+// existed. That is the whole of how [Sessions.Record] and
+// [Sessions.Refreshed] leave a machine's session alone: this is the one
+// place either of them decides an end, and here it simply has nothing to
+// cap against.
+func capEnd(now, authTime time.Time, refresh, absolute time.Duration) time.Time {
+	end := now.Add(refresh)
+	if authTime.IsZero() || absolute <= 0 {
+		return end
+	}
+	if limit := authTime.Add(absolute); limit.Before(end) {
+		return limit
+	}
+	return end
 }
 
 // refreshGrace is how long a refresh token that has just been rotated
@@ -183,16 +213,20 @@ type Opened struct {
 func (s *Sessions) Record(ctx context.Context, o Opened) (Session, error) {
 	now := s.now()
 	session := Session{
-		ID:        s.newID(),
-		Identity:  strings.ToLower(o.Identity),
-		ClientID:  o.ClientID,
-		Resource:  o.Resource,
-		How:       o.How,
-		Scopes:    o.Scopes,
-		SSO:       o.SSO,
-		AuthTime:  o.AuthTime,
-		IssuedAt:  now,
-		ExpiresAt: now.Add(s.lifetime),
+		ID:       s.newID(),
+		Identity: strings.ToLower(o.Identity),
+		ClientID: o.ClientID,
+		Resource: o.Resource,
+		How:      o.How,
+		Scopes:   o.Scopes,
+		SSO:      o.SSO,
+		AuthTime: o.AuthTime,
+		IssuedAt: now,
+		// The absolute limit applies from the moment the session is
+		// OPENED, not only from its first refresh: a browser session
+		// carried down from hours-old SSO (a new client added to an
+		// existing sign-in) must not get a fresh 24 hours of its own.
+		ExpiresAt: capEnd(now, o.AuthTime, s.lifetime, s.absolute),
 	}
 
 	if err := s.put(ctx, session); err != nil {
@@ -243,7 +277,10 @@ func (s *Sessions) Refreshed(ctx context.Context, oldToken, newToken string) (Se
 
 	now := s.now()
 	session.LastRefreshed = now
-	session.ExpiresAt = now.Add(s.lifetime)
+	// Capped exactly as at open: a sliding refresher plateaus at
+	// auth_time+absolute rather than sliding forever, because every
+	// rotation recomputes the SAME limit from the SAME auth_time.
+	session.ExpiresAt = capEnd(now, session.AuthTime, s.lifetime, s.absolute)
 
 	if err = s.put(ctx, session); err != nil {
 		return Session{}, "", false, err
@@ -436,21 +473,36 @@ func (s *Sessions) Revoke(ctx context.Context, q Query) (int, error) {
 // is gone — so it grants nothing in the meantime.
 func (s *Sessions) RevokeID(ctx context.Context, id string) (bool, error) {
 	session, found, err := s.byID(ctx, id)
-	if err != nil {
+	if err != nil || !found {
 		return false, err
 	}
 
-	if err = s.state.Delete(ctx, sessionKey(id)); err != nil {
-		return false, err
+	return true, s.deleteSession(ctx, session)
+}
+
+// deleteSession removes a session's record and its membership in every
+// index set, given the record already in hand.
+//
+// It exists separately from RevokeID because RevokeID resolves its target
+// through byID, and byID's whole job is to treat a session whose
+// [Session.Live] has passed as though it were never there -- which is
+// right for every ordinary caller, and wrong for the one case where a
+// session is deliberately being cleaned up BECAUSE it is no longer live:
+// [Sessions.endedByAbsoluteLimit] already has the record in hand
+// precisely because it is not live, and asking RevokeID to end it would
+// find "not found" and delete nothing.
+func (s *Sessions) deleteSession(ctx context.Context, session Session) error {
+	if err := s.state.Delete(ctx, sessionKey(session.ID)); err != nil {
+		return err
 	}
 
 	for _, key := range []string{sessionAllKey, sessionOfKey(session.Identity), sessionForKey(session.ClientID)} {
-		if err = s.state.Remove(ctx, key, id); err != nil {
-			return false, err
+		if err := s.state.Remove(ctx, key, session.ID); err != nil {
+			return err
 		}
 	}
 
-	return found, nil
+	return nil
 }
 
 // RevokeToken ends whichever session holds this refresh token. It is what
@@ -569,17 +621,50 @@ func (s *Sessions) byID(ctx context.Context, id string) (Session, bool, error) {
 	return *session, true, nil
 }
 
-// put writes a record with the lifetime left on it, so that the store's
-// own expiry and the record's agree.
+// put writes a record, refusing one that is already expired.
+//
+// It is kept in the store for s.lifetime from now -- the SAME horizon as
+// the token pointer ([sessionTokenKey]) and the index sets, not derived
+// from ExpiresAt. The two used to be the same duration always, because
+// ExpiresAt was always exactly now+s.lifetime; now that the absolute
+// session limit can cap ExpiresAt short of that, [Session.Live] is what
+// decides whether the record still answers, and this is a different
+// question. Keeping the record around a little past its own logical life
+// is what lets [Sessions.endedByAbsoluteLimit] tell a refresh refused BY
+// THE LIMIT apart from one refused because the session is simply gone --
+// otherwise both look identical the moment the record disappears.
 func (s *Sessions) put(ctx context.Context, session Session) error {
-	ttl := time.Until(session.ExpiresAt)
-	if now := s.now(); !now.IsZero() {
-		ttl = session.ExpiresAt.Sub(now)
-	}
-
-	if ttl <= 0 {
+	if !session.ExpiresAt.After(s.now()) {
 		return fmt.Errorf("issuer: session %s has already expired", session.ID)
 	}
 
-	return setJSON(ctx, s.state, sessionKey(session.ID), session, ttl)
+	return setJSON(ctx, s.state, sessionKey(session.ID), session, s.lifetime)
+}
+
+// endedByAbsoluteLimit resolves a refresh token to the session it named
+// even past that session's own end, so a refresh refused BECAUSE of the
+// absolute session limit can be told apart from one refused because the
+// session is simply gone (an ordinary sliding-window timeout, or an
+// explicit revoke, which deletes the record outright and is never found
+// here) -- and given its own reason in the log and the audit record
+// instead of the generic "not live" both would otherwise share.
+//
+// It answers true only when the record is still IN THE STORE (see [put])
+// and no longer live. Given how [put] keeps it -- for s.lifetime from the
+// write that set ExpiresAt, regardless of what ExpiresAt itself is -- a
+// record found here with ExpiresAt already passed can only be one whose
+// ExpiresAt was capped short of that horizon, which is exactly what the
+// absolute limit does and nothing else does.
+func (s *Sessions) endedByAbsoluteLimit(ctx context.Context, token string) (Session, bool, error) {
+	raw, found, err := s.state.Get(ctx, sessionTokenKey(token))
+	if err != nil || !found {
+		return Session{}, false, err
+	}
+
+	session, err := getJSON[Session](ctx, s.state, sessionKey(string(raw)))
+	if err != nil || session == nil || session.Live(s.now()) {
+		return Session{}, false, err
+	}
+
+	return *session, true, nil
 }

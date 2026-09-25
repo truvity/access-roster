@@ -534,6 +534,8 @@ spec:
               value: "30m"
             - name: REFRESH_LIFETIME
               value: "6h"
+            - name: ABSOLUTE_LIFETIME
+              value: "24h"
             - name: HOLD_WINDOW
               value: "2h"
             - name: CLUSTER

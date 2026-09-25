@@ -907,6 +907,24 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 		}
 	}
 
+	now := time.Now()
+	expires := now.Add(lifetime)
+
+	// The absolute session limit caps the TOKEN too, not only the session
+	// it was minted under: a session capped at auth_time+absolute that
+	// still had, say, an hour of TokenLifetime left at the moment it hit
+	// the limit would otherwise go on answering `userinfo` and every
+	// resource that trusts this token's `exp` for that last hour. A
+	// request with no auth_time -- a workload or a machine exchange,
+	// which opens no session (see [Sessions.Record]) -- has nothing to
+	// cap against, and none applies: the token lives out its ordinary
+	// lifetime, exactly as it did before this limit existed.
+	if authTime := authTimeOf(request); !authTime.IsZero() && s.iss.Config().AbsoluteLifetime > 0 {
+		if limit := authTime.Add(s.iss.Config().AbsoluteLifetime); limit.Before(expires) {
+			expires = limit
+		}
+	}
+
 	issued := &token{
 		ID:       uuid.NewString(),
 		Subject:  request.GetSubject(),
@@ -914,7 +932,7 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 		Audience: request.GetAudience(),
 		Scopes:   request.GetScopes(),
 		Claims:   claims,
-		Expires:  time.Now().Add(lifetime),
+		Expires:  expires,
 	}
 	issued.GivenName, issued.FamilyName = given, family
 	// Kept only until it expires: an access token past its lifetime
@@ -970,6 +988,28 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken s
 	}
 
 	if !ok {
+		// Distinguish a refresh refused BY THE ABSOLUTE LIMIT from one
+		// refused because the session is simply gone (revoked, or an
+		// ordinary sliding-window timeout): the first is a moment worth
+		// its own reason in the log and the audit record, exactly as a
+		// refresh refused for a client the identity no longer belongs to
+		// is, below. See [Sessions.endedByAbsoluteLimit] for why the two
+		// are tellable apart at all.
+		if ended, hit, endErr := s.iss.Sessions().endedByAbsoluteLimit(ctx, refreshToken); endErr == nil && hit {
+			if revokeErr := s.iss.Sessions().deleteSession(ctx, ended); revokeErr != nil {
+				s.logger().WarnContext(ctx, "a session past the absolute limit could not be revoked",
+					"error", revokeErr)
+			}
+
+			s.logger().InfoContext(ctx, "refused a refresh past the absolute session limit",
+				"client_id", logsafe.Value(ended.ClientID))
+			s.iss.record(ctx, audit.SessionRefreshRefused(ended.Identity, ended.ClientID,
+				"the absolute session limit was reached"))
+
+			return nil, oidc.ErrInvalidGrant().WithDescription(
+				"this session has reached its absolute limit and must sign in again")
+		}
+
 		return nil, op.ErrInvalidRefreshToken
 	}
 

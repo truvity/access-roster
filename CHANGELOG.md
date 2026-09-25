@@ -1,3 +1,49 @@
+## v1.30.0
+
+- **An absolute session limit: every session now ends 24 hours after
+  sign-in, no matter how often it is refreshed. This is a behaviour
+  change.**
+
+  A per-client session slid forward on every refresh — `ExpiresAt =
+  now + lifetimes.refresh` — with nothing measuring how long ago the
+  person actually signed in. A client that refreshed often enough (a
+  proxy, a CLI left running) stayed signed in indefinitely, and
+  `auth_time` was carried into every token without ever being checked.
+
+  `lifetimes.absolute` (default `24h`) is the new cap, and a session's
+  end is now `min(now + lifetimes.refresh, auth_time + lifetimes.absolute)`
+  — decided when it opens and recomputed on every rotation, so a sliding
+  refresher plateaus at the limit instead of climbing past it:
+
+  ```yaml
+  lifetimes:
+    refresh: 12h
+    absolute: 24h # may be shorter OR longer than refresh; the earlier wins
+  ```
+
+  **Three things enforce it.** A refresh presented at or after the limit
+  is refused (`invalid_grant`) and the session is revoked, with its own
+  audit reason distinct from an ordinary inactivity timeout. An access or
+  ID token's `exp` is capped the same way, even when the ordinary token
+  lifetime would reach further — a session that has just hit the limit
+  must not go on answering `userinfo` for whatever was left of its last
+  token. And a **single sign-on** session whose `auth_time` is past the
+  limit is ended outright — the same cascade `/logout` runs, Back-Channel
+  Logout included — rather than answering a silent `/authorize`, which is
+  what would otherwise let a browser left open renew its sign-in one
+  client at a time forever.
+
+  **Unaffected:** a workload or a machine trading a proof through token
+  exchange authenticates nobody, carries no `auth_time`, and has nothing
+  to measure the limit against — it keeps its ordinary refresh window,
+  exactly as before. The console's own session is capped the same way,
+  bounded by whichever of its own `directory.sessionLifetime` and the
+  absolute limit is shorter.
+
+  **Refused at render and at start**, not defaulted, if `lifetimes.absolute`
+  is zero, negative, or shorter than `lifetimes.token`: a session cannot be
+  limited to less time than its own first access token needs to live.
+
 ## v1.29.0
 
 - **A token can be minted for a resource, not only for the client asking

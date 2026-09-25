@@ -159,6 +159,56 @@ single call.
 {{- end -}}
 
 {{/*
+access-issuer.simpleDurationNanos converts a SINGLE-UNIT duration string
+("24h", "90m", "500ms") to nanoseconds, as an integer, for comparing two
+durations written in different units. It is not a general parser: a
+compound duration ("1h30m") is not this shape, and a caller must check
+that with the pattern below before calling it.
+*/}}
+{{- define "access-issuer.simpleDurationNanos" -}}
+{{- $num := regexFind "^[0-9]+" . | int64 -}}
+{{- $unit := regexFind "[a-zµ]+$" . -}}
+{{- if eq $unit "h" -}}{{ mul $num 3600000000000 }}
+{{- else if eq $unit "m" -}}{{ mul $num 60000000000 }}
+{{- else if eq $unit "s" -}}{{ mul $num 1000000000 }}
+{{- else if eq $unit "ms" -}}{{ mul $num 1000000 }}
+{{- else if or (eq $unit "us") (eq $unit "µs") -}}{{ mul $num 1000 }}
+{{- else -}}{{ $num }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+access-issuer.validateLifetimes refuses lifetimes.absolute: zero (a
+session that ends before or the instant it begins is not a limit, it is a
+login that can never complete) or, for the common case of a single-unit
+duration, shorter than lifetimes.token (an access token cannot outlive
+the session that grants it).
+
+A compound duration ("1h30m") is not compared against lifetimes.token:
+parsing one fully needs a real duration parser, which Helm's template
+language has none of, and a comparison that WRONGLY refuses a valid value
+is worse than one silently skipped. The running service checks this
+exactly, with Go's time.ParseDuration, and refuses to start if it is
+wrong -- see issuerapp.Load. The zero check does not have this problem:
+"contains no digit but 0" is true or false regardless of how many units
+a duration mixes.
+*/}}
+{{- define "access-issuer.validateLifetimes" -}}
+{{- $l := .Values.lifetimes -}}
+{{- $simple := "^[0-9]+(ns|us|µs|ms|s|m|h)$" -}}
+{{- if not (regexMatch "[1-9]" $l.absolute) -}}
+{{- fail (printf "lifetimes.absolute: %q is zero -- a session has to end SOMETIME after sign-in, not before it" $l.absolute) -}}
+{{- end -}}
+{{- if and (regexMatch $simple $l.absolute) (regexMatch $simple $l.token) -}}
+{{- $absoluteNanos := include "access-issuer.simpleDurationNanos" $l.absolute | int64 -}}
+{{- $tokenNanos := include "access-issuer.simpleDurationNanos" $l.token | int64 -}}
+{{- if lt $absoluteNanos $tokenNanos -}}
+{{- fail (printf "lifetimes.absolute (%s) must be at least lifetimes.token (%s): an access token cannot outlive the session that grants it" $l.absolute $l.token) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 The environment that connects a process to the audit installation: the
 service and the GitHub controller both record, each with its own identity.
 */}}

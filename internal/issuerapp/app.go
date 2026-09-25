@@ -65,9 +65,10 @@ type Config struct {
 	consoleOrigin     string
 	signingKeyFile    string
 
-	tokenLifetime   time.Duration
-	refreshLifetime time.Duration
-	holdWindow      time.Duration
+	tokenLifetime    time.Duration
+	refreshLifetime  time.Duration
+	absoluteLifetime time.Duration
+	holdWindow       time.Duration
 
 	logLevel slog.Level
 }
@@ -128,8 +129,32 @@ func Load() (Config, error) {
 	if c.refreshLifetime, err = envDuration("REFRESH_LIFETIME", issuer.DefaultRefreshLifetime); err != nil {
 		return Config{}, err
 	}
+	if c.absoluteLifetime, err = envDuration("ABSOLUTE_LIFETIME", issuer.DefaultAbsoluteLifetime); err != nil {
+		return Config{}, err
+	}
 	if c.holdWindow, err = envDuration("HOLD_WINDOW", issuer.DefaultHoldWindow); err != nil {
 		return Config{}, err
+	}
+	// Refused here rather than defaulted, unlike an unset TOKEN_LIFETIME or
+	// REFRESH_LIFETIME: those treat zero as "not configured, use the
+	// default", but a deployment that sets ABSOLUTE_LIFETIME to zero or a
+	// negative value has said something specific and wrong -- a session
+	// that ends before or the instant it begins is not a limit, it is a
+	// login that can never complete -- and defaulting past that would hide
+	// the mistake instead of refusing it.
+	if c.absoluteLifetime <= 0 {
+		return Config{}, errors.New(
+			"ABSOLUTE_LIFETIME must be positive: a session has to end SOMETIME after sign-in, not before it")
+	}
+	// And it must be able to outlive at least one access token, or a token
+	// minted at the very start of a session would already be past the
+	// limit that is meant to end the SESSION, not pre-empt its first
+	// token.
+	if c.absoluteLifetime < c.tokenLifetime {
+		return Config{}, fmt.Errorf(
+			"ABSOLUTE_LIFETIME (%s) must be at least TOKEN_LIFETIME (%s): "+
+				"an access token cannot outlive the session that grants it",
+			c.absoluteLifetime, c.tokenLifetime)
 	}
 	if err = c.logLevel.UnmarshalText([]byte(envString("LOG_LEVEL", "info"))); err != nil {
 		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
@@ -277,11 +302,12 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	}
 
 	core := issuer.New(issuer.Config{
-		URL:             cfg.issuerURL,
-		TokenLifetime:   cfg.tokenLifetime,
-		RefreshLifetime: cfg.refreshLifetime,
-		HoldWindow:      cfg.holdWindow,
-		AllowInsecure:   cfg.allowInsecure,
+		URL:              cfg.issuerURL,
+		TokenLifetime:    cfg.tokenLifetime,
+		RefreshLifetime:  cfg.refreshLifetime,
+		AbsoluteLifetime: cfg.absoluteLifetime,
+		HoldWindow:       cfg.holdWindow,
+		AllowInsecure:    cfg.allowInsecure,
 	}, set, directory, shared)
 	// The service's one audit trail, opened by the directory half. A
 	// split deployment with none still validates every record and logs it.

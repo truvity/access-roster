@@ -1,3 +1,4 @@
+{{- include "access-issuer.validateLifetimes" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -155,6 +156,8 @@ spec:
               value: {{ .Values.lifetimes.token | quote }}
             - name: REFRESH_LIFETIME
               value: {{ .Values.lifetimes.refresh | quote }}
+            - name: ABSOLUTE_LIFETIME
+              value: {{ .Values.lifetimes.absolute | quote }}
             - name: HOLD_WINDOW
               value: {{ .Values.lifetimes.hold | quote }}
             {{- with .Values.cluster }}

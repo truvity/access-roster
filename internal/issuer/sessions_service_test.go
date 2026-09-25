@@ -19,7 +19,7 @@ import (
 func service(t *testing.T, state issuer.State) *issuer.SessionsService {
 	t.Helper()
 
-	return issuer.NewSessionsServiceForTest(issuer.NewSessions(state, time.Hour), verifier())
+	return issuer.NewSessionsServiceForTest(issuer.NewSessions(state, time.Hour, 0), verifier())
 }
 
 // verifier is the stub the fixtures share: it reads "identity|group,group"
@@ -76,7 +76,7 @@ func TestYourOwnSessionsAreYours(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	svc := service(t, state)
 
 	if _, err := sessions.Record(ctx, issuer.Opened{Identity: "ada@north.example", ClientID: "argocd", How: issuer.HowCode, Token: "t-ada"}); err != nil {
@@ -139,7 +139,7 @@ func TestRevokeNarrowsToOneClient(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	svc := service(t, state)
 
 	for _, client := range []string{"argocd", "k8s:mgmt"} {
@@ -177,7 +177,7 @@ func TestGlobalListingIsOperatorOnly(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	svc := service(t, state)
 
 	for _, who := range []string{"ada@north.example", "eli@south.example"} {
@@ -208,7 +208,7 @@ func TestGlobalListingPages(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	svc := service(t, state)
 
 	for i := 0; i < 5; i++ {
@@ -259,7 +259,7 @@ func TestASessionIdIsNotEnoughOnItsOwn(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	svc := service(t, state)
 
 	ada, err := sessions.Record(ctx, issuer.Opened{Identity: "ada@north.example", ClientID: "argocd", How: issuer.HowCode, Token: "t-ada"})
@@ -300,7 +300,7 @@ func TestSigningABrowserOutEndsTheSignInToo(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	sso := issuer.NewSSO(state, time.Hour)
 	svc := issuer.NewSessionsServiceWithSSOForTest(sessions, sso, verifier())
 
@@ -364,7 +364,7 @@ func TestASignInIdIsNotEnoughOnItsOwn(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	sso := issuer.NewSSO(state, time.Hour)
 	svc := issuer.NewSessionsServiceWithSSOForTest(sessions, sso, verifier())
 
@@ -401,7 +401,7 @@ func TestTheListingIncludesTheSignInsBehindTheSessions(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	sso := issuer.NewSSO(state, time.Hour)
 	svc := issuer.NewSessionsServiceWithSSOForTest(sessions, sso, verifier())
 
@@ -454,7 +454,7 @@ func TestSessionsMatchBySubstring(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	svc := service(t, state)
 
 	for _, one := range []issuer.Opened{
@@ -509,7 +509,7 @@ func TestMatchingBySubstringIsAnOperators(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 	svc := service(t, state)
 
 	if _, err := sessions.Record(ctx, issuer.Opened{
@@ -542,7 +542,7 @@ func TestRevokingBySubstringIsRefused(t *testing.T) {
 
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 
 	if _, err := sessions.Record(ctx, issuer.Opened{
 		Identity: "ada@north.example", ClientID: "argocd", How: issuer.HowCode, Token: "t-ada",
