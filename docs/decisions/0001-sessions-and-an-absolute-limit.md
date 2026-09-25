@@ -43,10 +43,14 @@ Every relying party falls into one of two classes:
 **Which door a new application should use** follows from the same split.
 Native OIDC — the application signs in as its own client — when it needs
 identity *inside* itself: per-user authorization from `groups`, per-user
-audit, tokens of its own to call something else. Gateway OIDC —
-`access-proxy` or an equivalent — when the application has no
-authorization model of its own, or only needs "may this person reach it
-at all". Never both on one application: a second door doubles the sign-out
+audit, tokens of its own to call something else. Gateway-native OIDC —
+the gateway's own OIDC filter (an Envoy Gateway `SecurityPolicy`'s `oidc`
+block is the shape this repository ships against), running a declared
+confidential client of the issuer in front of the application — when the
+application has no authorization model of its own, or only needs "may
+this person reach it at all"; [0003](0003-deprecate-access-proxy.md) is
+why this, and not `access-proxy`, is the answer here. Never both on one
+application: a second door doubles the sign-out
 surface that has to be reasoned about, which is exactly where this
 repository has found real bugs before — a revoke path that ended one
 session and left its parent SSO session standing looked, from the

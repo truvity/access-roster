@@ -70,11 +70,15 @@ from this boundary:
   this issuer's client minting a token an operator pastes somewhere, an
   operator runs the store's own OIDC login (for example `bao login
   -method=oidc`) against a confidential client row declared for that
-  store, listing its loopback callback among its `redirects`. This is
-  ordinary for a **confidential** client under RFC 8252: the library
-  behind this issuer permits an `http://` redirect for a confidential,
-  code-flow client matched by exact URI, which a loopback login needs and
-  a public client would not get.
+  store, listing its loopback callback among its `redirects`. This works
+  because the OIDC library behind this issuer accepts an `http://`
+  redirect for a **confidential** client using the code flow, when the
+  URI matches exactly — which a loopback login needs, and which is
+  granted here because the client is confidential, not because a
+  loopback address is special. A store's OIDC-type role also needs its
+  own `jwt_supported_algs` set explicitly to admit this issuer's default
+  ES384 token, the way any ES384-refusing verifier does
+  ([0005](0005-es384-signing-algorithm.md)).
 
 ## Consequences
 
