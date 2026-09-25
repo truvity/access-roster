@@ -8,6 +8,15 @@ signs in for the first time, and says how to take new releases without
 ArgoCD or Kargo. Every name below is a placeholder: `example.com` for
 your domain, `eu-example-1` for your region.
 
+`access-proxy` is deprecated, with removal planned: it stays for a
+gateway that is **not** Envoy Gateway, fronting a console with no OpenID
+flow of its own. On Envoy Gateway, gateway-native OIDC — a
+`SecurityPolicy` with `oidc:` against a declared client — is the default
+for that case now, and needs no chart of ours; see
+[design/access-proxy.md](../design/access-proxy.md) for why. Step 4 below
+is the `access-proxy` walk-through, kept for the case that still needs
+it.
+
 ## Prerequisites
 
 | Needed | For | Notes |
@@ -102,8 +111,11 @@ your domain, `eu-example-1` for your region.
    malformed policy fails the rollout, not a sign-in: the previous pods
    keep serving.
 
-4. **One `access-proxy` per console** that has no OpenID flow of its own,
-   in the console's namespace. Its Secret holds the same client secret as
+4. **One `access-proxy` per console** that has no OpenID flow of its own
+   and sits behind a gateway that is not Envoy Gateway — on Envoy
+   Gateway, prefer that gateway's own OIDC support instead (deprecation
+   note above). Where this chart is still the right choice, deploy it in
+   the console's namespace. Its Secret holds the same client secret as
    the issuer's, under `client-id` and `client-secret`, and a cookie
    secret this chart will not mint:
 

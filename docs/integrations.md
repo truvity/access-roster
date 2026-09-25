@@ -76,7 +76,7 @@ flowchart TB
 | **Service** | access-issuer | the whole of access-roster | the platform, once per installation | **running** since 0.6; the directory folded in at 0.12 ([design](design/access-roster.md)); all four OpenID profiles run with no failure ([conformance](conformance.md)) |
 | **Service** | github-roster | the GitHub controller: one loop beside the service that keeps every connected organisation's teams as the policy says | the platform, from the same chart | **acting** since 1.5; each organisation a dry run until listed in `githubRoster.actsIn` |
 | **Helm chart** | `access-issuer` | the whole service, both processes; expects a Valkey, and an audit installation to record into | the platform | published per tag |
-| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console with no OpenID flow of its own; expects a Valkey; its client is one declared row | every team that ships a console, one release per console | published per tag; **no console in this repository runs behind it** — the directory console left it at 0.12, because it signs in as a client of the issuer it shares an origin with, and anything that can run an OpenID flow does the same. It stays for a console that cannot, or that wants a server-side session store |
+| **Helm chart** | `access-proxy` | oauth2-proxy and its wiring in front of one console with no OpenID flow of its own; expects a Valkey; its client is one declared row | a console on a gateway that is **not** Envoy Gateway | **deprecated, removal planned**; **no console in this repository runs behind it** — the directory console left it at 0.12, because it signs in as a client of the issuer it shares an origin with. Gateway-native OIDC (an Envoy Gateway `SecurityPolicy` with `oidc:`) is the default for a console with no flow of its own now; this chart's server-side session store was never the reason to prefer it, since oauth2-proxy's encrypted cookie means no server side, Back-Channel Logout included, can end a session it holds |
 | **Go module** | `github.com/truvity/access-roster` | `identity` (the two verifiers and a net/http middleware), `policy`, `backend`, `tokens` | every Go service and console | published per tag |
 | **TypeScript package** | `@truvity/access-roster`, on GitHub Packages | `useIdentity()`, `<UserBadge/>` over `/.access/whoami`; `/server` verifies a bearer in Node | every console UI, and Node services | published per tag |
 | **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `token`, `whoami`, `exchange` | people, on laptops, and a CI job with the same files | built; a Nix flake on every release, for devbox |
@@ -241,7 +241,14 @@ configure and where, what you get.
   signed in.
 - Guides: [connect/argocd.md](connect/argocd.md), [connect/kargo.md](connect/kargo.md).
 
-### ⑨ + ⑩ A console behind access-proxy
+### ⑨ + ⑩ A console behind a proxy
+
+**`access-proxy` is deprecated, with removal planned.** Gateway-native
+OIDC — an Envoy Gateway `SecurityPolicy` with `oidc:` against a declared
+client — is the default now for a console with no authorization model of
+its own; this case is what remains for a gateway that is **not** Envoy
+Gateway. Both shapes share everything below except which process runs
+the OIDC dance.
 
 - **Anchor:** the issuer, only. A console is for people; nothing in a
   cluster opens a web page, so the proxy never accepts a ServiceAccount
@@ -257,10 +264,12 @@ configure and where, what you get.
 - **You configure:** an eight-line `access-proxy` release per console;
   DNS; an internal group whose fragment mints the console's values; the namespace label the
   fleet egress policy selects.
-- **You get:** login, session, refresh in the background, global sign-out
-  (one issuer SSO session behind every console — sign in once, and a
-  second console opens with no prompt) and a posture (`groups` or
-  `authenticated`) without a line of console code. Session management —
+- **You get:** login, session, refresh in the background, one issuer SSO
+  session behind every console — sign in once, and a second console
+  opens with no prompt — and a posture (`groups` or `authenticated`)
+  without a line of console code. Sign-out ends the sign-in at the issuer
+  immediately; a proxied console itself only learns at its next refresh,
+  bounded by `ttl_cap`. Session management —
   your own, a person's, a client's, the whole installation — lives in the
   directory console, same-origin with the issuer on one domain; the
   issuer's plain `/account` page is the fallback when no console is

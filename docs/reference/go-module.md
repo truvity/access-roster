@@ -17,7 +17,11 @@ import (
 )
 ```
 
-## A console behind access-proxy — the issuer anchor
+## A console behind a proxy that forwards a bearer — the issuer anchor
+
+The proxy in front — gateway-native OIDC, or `access-proxy` where the
+gateway is not Envoy Gateway — makes no difference here: either way the
+module reads whatever forwards a verified bearer.
 
 ```go
 issuer := &identity.Issuer{

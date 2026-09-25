@@ -194,7 +194,7 @@ whole*. Keep both; know which is which.
 The plain shape, and the one to copy when nothing argues otherwise:
 
 ```
-console listener   → behind access-proxy, or its own code flow → issuer anchor
+console listener   → behind gateway-native OIDC, access-proxy, or its own code flow → issuer anchor
 API listener       → reached by Service DNS                    → cluster anchor (+ issuer, for remote callers)
 ```
 
