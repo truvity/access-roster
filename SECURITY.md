@@ -58,6 +58,14 @@ Only the latest release is supported with security updates.
   its own tokens, only the access token of a CLI sign-in at a public
   client declaring `sign_in_exchange` is a proof for exchange; an ID
   token is not (1.5.5).
+- **A client may describe itself over HTTPS** (a Client ID Metadata
+  Document, off unless `client_documents.origins` names a host): the
+  fetch is an outbound request whose target — a URL — is steered by the
+  `client_id` a caller presents, so it is an SSRF surface bounded by that
+  allow-list. Every fetch is capped at 64 KiB and 5 seconds, follows no
+  redirect, is cached for 10 minutes with no stale fallback on a failure,
+  and a declared client in the policy always wins over a document one.
+  See [docs/reference/policy.md](docs/reference/policy.md#clients-that-describe-themselves).
 - The **audit trail** is kept by an audit installation connected as a
   plugin, which access-roster reaches as its own workload (a projected
   service-account token) and holds no bucket or key for. Ordinary records

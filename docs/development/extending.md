@@ -45,7 +45,7 @@ test.
 ## 3. A matcher kind, or a table
 
 `policy/`: a matcher is a `Matcher` over a verified proof's claims; a
-new proof kind brings its own. The five tables are the whole schema: a
+new proof kind brings its own. The seven tables are the whole schema: a
 need that cannot be met by a new group, a new client or a new matcher
 kind is a need for a new dimension, and the answer to that is no — see
 [reference/policy.md](../reference/policy.md) for why.

@@ -16,6 +16,14 @@ write, what you deploy, what you never implement.
 | **You deploy** | your chart plus one `access-proxy` release | your chart |
 | **The client is** | confidential: oauth2-proxy refuses to start without a secret | public, with PKCE — no secret to rotate |
 
+**`access-proxy` is not the default for a new console.** Prefer writing
+your own flow. Where the console genuinely cannot, and you do not need a
+server-side session store or global sign-out either, the gateway's own
+OpenID Connect support (an Envoy Gateway `SecurityPolicy` with `oidc:`
+against this issuer) reaches the issuer with nothing of ours in front;
+reach for `access-proxy` when you do need those two things
+([design/access-proxy.md](../design/access-proxy.md)).
+
 **A third shape exists and is not yours**: a console the issuer itself
 serves, mounted on the issuer's own origin. It signs in as a client of
 the issuer and then reads the SSO session directly rather than redeeming

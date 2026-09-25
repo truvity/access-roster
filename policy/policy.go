@@ -1,4 +1,4 @@
-// Package policy is the schema both services load: five tables that
+// Package policy is the schema both services load: seven tables that
 // answer four questions and no others — who is in which internal group,
 // what a group adds to a token, how long a token lives, and which client
 // may be issued one.
