@@ -7,21 +7,26 @@ other anchor: [service-to-service.md](service-to-service.md).
 A web UI with a service API, behind the gateway, with two roles. What you
 write, what you deploy, what you never implement.
 
-## Two shapes, and which one is yours
+## Three shapes, and which one is yours
 
-|  | `access-proxy` in front | its own flow |
-|---|---|---|
-| **Use when** | the console has no OpenID flow of its own, or is not yours to change — most third-party UIs | you are writing it |
-| **Who runs the login** | the proxy, and it forwards a verified bearer | the console: it sends a browser to `/authorize` and reads what comes back |
-| **You deploy** | your chart plus one `access-proxy` release | your chart |
-| **The client is** | confidential: oauth2-proxy refuses to start without a secret | public, with PKCE — no secret to rotate |
+|  | gateway-native OIDC | `access-proxy` in front (deprecated) | its own flow |
+|---|---|---|---|
+| **Use when** | the console has no authorization model of its own, or is not yours to change, and it sits behind Envoy Gateway | the same, but the gateway is **not** Envoy Gateway | you are writing it, and it needs identity *inside* itself |
+| **Who runs the login** | the gateway's `SecurityPolicy`, which forwards a verified bearer | the proxy, and it forwards a verified bearer | the console: it sends a browser to `/authorize` and reads what comes back |
+| **You deploy** | your chart plus a `SecurityPolicy` — no chart of ours | your chart plus one `access-proxy` release | your chart |
+| **The client is** | confidential: the gateway holds the secret, same as a proxy would | confidential: oauth2-proxy refuses to start without a secret | public, with PKCE — no secret to rotate |
 
-**`access-proxy` is not the default for a new console.** Prefer writing
-your own flow. Where the console genuinely cannot, and you do not need a
-server-side session store or global sign-out either, the gateway's own
-OpenID Connect support (an Envoy Gateway `SecurityPolicy` with `oidc:`
-against this issuer) reaches the issuer with nothing of ours in front;
-reach for `access-proxy` when you do need those two things
+**Gateway-native OIDC is the default for a console with no authorization
+model of its own** — an Envoy Gateway `SecurityPolicy` with `oidc:`
+against a declared client, gated by that client's `requires`, nothing of
+ours in front. Write your own flow (the right column above) when the
+console needs identity *inside* itself: per-user authorization from
+`groups`, per-user audit, or tokens of its own to call something else.
+`access-proxy` is deprecated, with removal planned: its one remaining
+honest use is a gateway that is **not** Envoy Gateway, fronting a console
+with no flow of its own. Its server-side session store is not a reason
+to choose it — oauth2-proxy's encrypted cookie means nothing
+server-side, Back-Channel Logout included, can end a session it holds
 ([design/access-proxy.md](../design/access-proxy.md)).
 
 **A third shape exists and is not yours**: a console the issuer itself
@@ -90,8 +95,10 @@ in the check.
 
 ## What you deploy
 
-For the proxied shape, your chart plus one `access-proxy` release. For
-your own flow, your chart alone and no block like this at all:
+The block below is `access-proxy`'s own shape, for the non-Envoy-Gateway
+case. On Envoy Gateway, the equivalent is a `SecurityPolicy` of the
+gateway's own — not an access-roster chart, and not shown here. For your
+own flow, your chart alone and no block like this at all:
 
 ```yaml
 exposure:

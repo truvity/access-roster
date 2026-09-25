@@ -33,7 +33,7 @@ repository.
 |---|---|---|---|
 | `access-issuer` chart and image | `oci://ghcr.io/truvity/charts/access-issuer`, `ghcr.io/truvity/access-roster/access-issuer` | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail | shipped |
 | `github-roster` image, in the same chart | `ghcr.io/truvity/access-roster/github-roster` | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console | shipped |
-| `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | a console with no OpenID flow of its own; not the default for a new one — see [why](docs/design/access-proxy.md) | shipped |
+| `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | a gateway that is **not** Envoy Gateway, fronting a console with no OpenID flow of its own; gateway-native OIDC replaces it everywhere else — see [why](docs/design/access-proxy.md) | deprecated, removal planned |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
 | `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, short-lived certificates a secret manager mints, and a team's shared values as a `.env` file (`secrets env`) | shipped |
@@ -46,7 +46,11 @@ repository.
 A platform team running Kubernetes, with the Gateway API, cert-manager,
 and a corporate directory in Google Workspace, that wants one issuer for
 its clusters, cloud accounts, consoles and CI instead of an identity
-product. `access-proxy` needs Envoy Gateway. A Valkey (for more than one
+product. Envoy Gateway also gets you gateway-native OIDC, the default
+now for a console with no authorization model of its own; `access-proxy`
+(deprecated — see "What ships") is wired through Envoy Gateway's own
+`SecurityPolicy` today, though its remaining niche is a gateway that is
+not Envoy Gateway. A Valkey (for more than one
 replica and for every proxy), an audit installation (for a trail that is a
 record) and OpenBAO (for certificates) are optional. **None of those is
 installed here**: the charts point at them. Nor is the signing key minted
@@ -64,7 +68,7 @@ it, and the difference is what you run to get it.
 | runs on | a ConfigMap | a database, an operator, a login UI you theme | someone else's cloud | its own Auth and Proxy services, plus an agent per resource | a ConfigMap |
 | users | none, federates | its own user store, plus federation | its own user store | its own local users, plus SSO connectors | none, federates |
 | groups in the token | yes for Google Workspace, given a service account with domain-wide delegation; other IdPs only if they send them | after you write a mapper or a login hook per IdP | after you configure a sync | not a token: short-lived certificates carry roles an SSO connector mapped once, at login | read from the directory, always |
-| several corporate IdPs, one issuer | yes | yes | yes | not verified | yes |
+| several corporate IdPs, one issuer | yes | yes | yes | yes, several SSO connectors (OIDC, SAML, GitHub) | yes |
 | one policy file for people **and** machines | no policy at all | no; roles per client, in the UI or the database | no; per-app assignments | no; roles are Teleport's own resources, separate from the SSO mapping | yes, in git — and GitHub teams in the same file |
 | CI and workloads without a stored secret | token exchange (RFC 8693), but the client still needs a stored secret | machine users, with secrets | machine users, with secrets | yes — Machine ID's own join methods (cloud IAM, Kubernetes, CI OIDC) | token exchange from GitHub's or the cluster's own token |
 | audience gating for cloud roles | no | via custom mappers | via app assignments | not verified | a `requires` list per client |
@@ -93,10 +97,13 @@ Every console behind the gateway opens without another login. One
 you are granted, AWS credentials come with no long-lived key, and a token
 for any other audience is one command away. Link your GitHub account
 once and the teams the policy puts you in follow. Sign out once: it ends
-immediately at every client wired for Back-Channel Logout, and within
-that client's own refresh window everywhere else — a proxied console by
-default within a minute, never beyond the token's own lifetime
-([how sign-out reaches each kind](docs/design/access-proxy.md#sign-out)).
+immediately at every client wired for Back-Channel Logout; for a
+gateway-fronted console it ends within that token's own lifetime or
+`ttl_cap`, since the gateway learns only at its next refresh; and an
+application that minted its own session after signing in is reached only
+through Back-Channel Logout, or whatever limit it put on that session
+itself
+([how each kind finds out](docs/design/access-roster.md#telling-the-relying-party-back-channel-logout)).
 
 **As a machine.** A GitHub Actions job presents the identity token it
 already has and receives one for AWS or a cluster, under a rule that
@@ -163,12 +170,21 @@ to the corporate directory — and, for a client that identifies itself by
 a URL instead of a policy row, one bounded, cached HTTPS fetch of that
 client's own document, from an allow-listed host only
 ([reference/policy.md](docs/reference/policy.md#clients-that-describe-themselves)).
-`access-proxy` is upstream oauth2-proxy in a chart, for applications that
-cannot run an OpenID flow themselves; anything that can, such as ArgoCD
-or Kargo, talks to the issuer directly, and that is the preferred shape
-for a new console too — reach for `access-proxy` when a console cannot
-run its own flow and needs a server-side session store or global logout,
-not as the default ([why](docs/design/access-proxy.md)). The GitHub
+An application that needs identity *inside* itself — per-user
+authorization from `groups`, per-user audit, tokens of its own to call
+something else, the way ArgoCD and Kargo do — signs in as its own client
+of the issuer directly: **native OIDC**. A console with no authorization
+model of its own, that only needs *may this person reach it at all*,
+defaults instead to **gateway-native OIDC**: an Envoy Gateway
+`SecurityPolicy` with `oidc:` against a declared client, gated by that
+client's `requires`, with no OIDC code in the console. `access-proxy` —
+upstream oauth2-proxy in a chart — is deprecated, with removal planned:
+its one remaining honest use is a gateway that is **not** Envoy Gateway,
+fronting a console with no flow of its own. Its server-side session
+store was never a reason to prefer it — oauth2-proxy encrypts each
+session with a key only the browser's cookie holds, so nothing
+server-side, Back-Channel Logout included, can end one
+([why](docs/design/access-proxy.md)). The GitHub
 controller is a second process from the same chart, asking the issuer
 who holds which group and acting on GitHub with an App the organisation's
 owner created from the console.

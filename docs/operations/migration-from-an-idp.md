@@ -18,11 +18,14 @@ logins.
 2. **The directory reads move.** Whatever the login hook read per tenant
    is answered by the console's `Explain` and `ListHolders` now,
    honouring `authoritative`; the per-tenant readers retire.
-3. **One console as the pilot.** Put it behind access-proxy pointed at the
-   new issuer. Its role checks do not change, because the `groups` values
+3. **One console as the pilot.** Point it at the new issuer: gateway-native
+   OIDC (a `SecurityPolicy` with `oidc:` against a declared client) on
+   Envoy Gateway, or `access-proxy` where the gateway is not Envoy
+   Gateway. Its role checks do not change, because the `groups` values
    did not. Make sure sign-out ends the issuer session, not only the
-   proxy's, before the second console — or the first report from every
-   pilot is "it signed me straight back in". Watch a day of logins.
+   gateway's or the proxy's, before the second console — or the first
+   report from every pilot is "it signed me straight back in". Watch a
+   day of logins.
 4. **Clusters.** Add the new issuer as the API server's OIDC provider; on
    platforms that allow one provider per cluster, this is a flip per
    cluster, non-production first. Put `accessctl` on every laptop through
