@@ -26,3 +26,5 @@ fit.* This page is an index; the pages below hold the argument.
 - [integrations.md](integrations.md) — every integration, case by case
 - [development/extending.md](development/extending.md) — where something
   new plugs in, and what it must ship with
+- [decisions/](decisions/README.md) — the accepted decisions this doctrine
+  follows from, one record per decision, with what was weighed against it
