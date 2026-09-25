@@ -29,8 +29,12 @@ issuer: a public client row declaring opkssh's loopback redirects
 (`http://localhost:{3000,10001,11110}/login-callback`), and server-side
 policy written as `oidc:groups:<internal group>` — the same `groups`
 claim every other relying party reads, bound directly rather than through
-a certificate. A server needs network reach to the issuer's JWKS
-endpoint; nothing else. Session lifetime follows
+a certificate. A server needs the `opkssh` binary installed and wired
+into `sshd` via `AuthorizedKeysCommand` (with the matching
+`AuthorizedKeysCommandUser`), network reach to the issuer's JWKS
+endpoint, and its own expiration policy set to `24h` to match this
+issuer's session bound rather than opkssh's own default; nothing else.
+Session lifetime otherwise follows
 [0001](0001-sessions-and-an-absolute-limit.md)'s 24-hour absolute limit,
 the same as anywhere else a person's sign-in is the credential.
 
