@@ -104,6 +104,12 @@ type authRequest struct {
 	// the token's `acr`.
 	How string `json:"how,omitempty"`
 
+	// Resource is what this request asked a token FOR, when it named one
+	// with `resource` (RFC 8707). Empty is the ordinary case and means
+	// the client itself, which is what every client did before resources
+	// existed.
+	Resource string `json:"resource,omitempty"`
+
 	// SSO is the browser session this request was completed against,
 	// whether it was established just now or already existed. It travels
 	// down into the per-client session so that ending the browser session
@@ -137,8 +143,19 @@ func (a *authRequest) GetACR() string { return acrFor(a.How) }
 // sign-in presents a ServiceAccount token, and a directory sign-in
 // presents whatever the provider asked for — which we are not told, so
 // claiming a password is an invention.
-func (a *authRequest) GetAMR() []string       { return amrFor(a.How) }
-func (a *authRequest) GetAudience() []string  { return []string{a.Req.ClientID} }
+func (a *authRequest) GetAMR() []string { return amrFor(a.How) }
+
+// GetAudience is the resource this request named, or the client itself.
+//
+// The fallback is what keeps every existing client untouched: a client
+// that names no resource is still its own audience, which is what a
+// relying party pinning `aud` to a client id already expects.
+func (a *authRequest) GetAudience() []string {
+	if a.Resource != "" {
+		return []string{a.Resource}
+	}
+	return []string{a.Req.ClientID}
+}
 func (a *authRequest) GetAuthTime() time.Time { return a.AuthTime }
 func (a *authRequest) GetClientID() string    { return a.Req.ClientID }
 func (a *authRequest) GetCodeChallenge() *oidc.CodeChallenge {
@@ -426,7 +443,12 @@ func (s *Storage) AuthorizeClientIDSecret(_ context.Context, clientID, secret st
 func (s *Storage) CreateAuthRequest(
 	ctx context.Context, req *oidc.AuthRequest, subject string,
 ) (op.AuthRequest, error) {
-	out := &authRequest{ID: uuid.NewString(), Req: req, Subject: subject, AuthTime: time.Now()}
+	out := &authRequest{
+		ID: uuid.NewString(), Req: req, Subject: subject, AuthTime: time.Now(),
+		// Validated against the declared resources before the library was
+		// reached; this is the first place there is anywhere to put it.
+		Resource: resourceFromContext(ctx),
+	}
 	if err := setJSON(ctx, s.state, requestKey(out.ID), out, authRequestTTL); err != nil {
 		return nil, err
 	}
@@ -547,7 +569,7 @@ func (s *Storage) Complete(ctx context.Context, id string, who Authenticated) er
 
 	// Before the request is marked done, because a request marked done is
 	// one a code can be issued for.
-	if err = s.entitled(ctx, req.Req.ClientID, who.Subject); err != nil {
+	if err = s.entitled(ctx, req.Req.ClientID, req.Resource, who.Subject); err != nil {
 		if errors.Is(err, ErrNotEntitled) {
 			s.iss.record(ctx, signInEvent(who, req.Req.ClientID,
 				audit.Denied("signed in, and admitted to no group this client requires")))
@@ -707,6 +729,7 @@ func (s *Storage) CreateAccessAndRefreshTokens(
 	session, err := s.iss.Sessions().Record(ctx, Opened{
 		Identity: issued.Subject,
 		ClientID: clientOf(request),
+		Resource: resourceOf(request),
 		How:      how,
 		Token:    refresh,
 		Scopes:   request.GetScopes(),
@@ -828,6 +851,20 @@ func ssoOf(request op.TokenRequest) string {
 	}
 }
 
+// resourceOf is what a token request asked a token FOR, and nothing when
+// it named no resource -- in which case the client is its own audience,
+// as it was before resources existed.
+func resourceOf(request op.TokenRequest) string {
+	switch req := request.(type) {
+	case *authRequest:
+		return req.Resource
+	case *refreshRequest:
+		return req.session.Resource
+	default:
+		return ""
+	}
+}
+
 // sessionOf is the session a token request belongs to: the one just
 // opened for a redeemed code, or the one being renewed.
 func sessionOf(request op.IDTokenRequest) string {
@@ -850,6 +887,16 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 	lifetime := s.iss.Config().TokenLifetime
 	if declared, ok := s.iss.Policy().Client(clientOf(request)); ok {
 		lifetime = declared.Cap(lifetime)
+	}
+	// And the resource's own cap, when the request named one. The SHORTER
+	// of the two wins, because each was written by somebody saying "not
+	// longer than this" and honouring the longer would answer neither.
+	if resource := resourceOf(request); resource != "" {
+		if wanted, ok := s.iss.Policy().Resource(resource); ok {
+			if capped := wanted.TTLCap.Duration(); capped > 0 && (lifetime == 0 || capped < lifetime) {
+				lifetime = capped
+			}
+		}
 	}
 
 	if exchange, ok := request.(op.TokenExchangeRequest); ok {
@@ -937,7 +984,7 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken s
 	// authorization, which meets the same gate and says why on a page.
 	// The description is deliberately plain -- the detail is in the log,
 	// and the client is not who needs telling.
-	if err = s.entitled(ctx, session.ClientID, session.Identity); err != nil {
+	if err = s.entitled(ctx, session.ClientID, session.Resource, session.Identity); err != nil {
 		if errors.Is(err, ErrNotEntitled) {
 			s.logger().InfoContext(ctx, "refused a refresh for a client the identity is no longer entitled to",
 				"client_id", logsafe.Value(session.ClientID), "error", logsafe.Error(err))
@@ -963,8 +1010,18 @@ type refreshRequest struct {
 
 var _ op.RefreshTokenRequest = (*refreshRequest)(nil)
 
-func (r *refreshRequest) GetAMR() []string            { return []string{"pwd"} }
-func (r *refreshRequest) GetAudience() []string       { return []string{r.session.ClientID} }
+func (r *refreshRequest) GetAMR() []string { return []string{"pwd"} }
+
+// GetAudience is the resource this session was opened for, or the client
+// itself. Without the first case a refresh would quietly re-mint the
+// token for the CLIENT while the original named a resource, changing what
+// the token is for halfway through a session.
+func (r *refreshRequest) GetAudience() []string {
+	if r.session.Resource != "" {
+		return []string{r.session.Resource}
+	}
+	return []string{r.session.ClientID}
+}
 func (r *refreshRequest) GetClientID() string         { return r.session.ClientID }
 func (r *refreshRequest) GetSubject() string          { return r.session.Identity }
 func (r *refreshRequest) SetCurrentScopes(s []string) { r.scopes = s }
@@ -1262,12 +1319,19 @@ var ErrNotEntitled = errors.New("no group this client requires")
 // Here rather than at /authorize because there is nobody to judge until
 // the sign-in finishes: the request arrives before anyone has proved who
 // they are.
-func (s *Storage) entitled(ctx context.Context, clientID, subject string) error {
+func (s *Storage) entitled(ctx context.Context, clientID, resource, subject string) error {
 	declared, ok := s.iss.Policy().Client(clientID)
 	if !ok {
-		// Not this function's refusal to make: an undeclared client is
-		// refused before a person is ever asked to sign in.
-		return nil
+		// A client that describes itself carries the document policy's
+		// groups, which the resolver already put on it -- but it is not in
+		// the policy, so it is looked up the same way the lookup does.
+		if resolved, err := s.documents.Resolve(ctx, clientID); err == nil {
+			declared = resolved
+		} else {
+			// Not this function's refusal to make: an undeclared client is
+			// refused before a person is ever asked to sign in.
+			return nil
+		}
 	}
 
 	result, _, _, err := s.resolveSubject(ctx, subject)
@@ -1275,11 +1339,29 @@ func (s *Storage) entitled(ctx context.Context, clientID, subject string) error 
 		return err
 	}
 
-	if declared.Admits(result) {
-		return nil
+	if !declared.Admits(result) {
+		return fmt.Errorf("%w: %s holds none of %v", ErrNotEntitled, subject, declared.Requires)
 	}
 
-	return fmt.Errorf("%w: %s holds none of %v", ErrNotEntitled, subject, declared.Requires)
+	// THE TWO GATES COMPOSE. The client's says who may ask; a resource's
+	// says what may be asked for, and a caller has to satisfy both. Only
+	// the client's applied while a client was always its own audience --
+	// with a resource, checking only the client would let anybody who may
+	// use an editor reach every service that editor can name.
+	if resource == "" {
+		return nil
+	}
+	wanted, ok := s.iss.Policy().Resource(resource)
+	if !ok {
+		// Validated before the library was reached, so this is a resource
+		// that was withdrawn between the request and the sign-in.
+		return fmt.Errorf("%w: %q is no longer a declared resource", ErrNotEntitled, resource)
+	}
+	if !wanted.Admits(result) {
+		return fmt.Errorf("%w: %s holds none of %v, which %q requires",
+			ErrNotEntitled, subject, wanted.Requires, resource)
+	}
+	return nil
 }
 
 // serviceAccountSubject reads a ServiceAccount out of a subject, in

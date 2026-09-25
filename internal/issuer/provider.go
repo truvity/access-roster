@@ -229,8 +229,9 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	// Everything not ours is the protocol's. A catch-all rather than a
 	// list, so that a library endpoint added by an upgrade keeps working
 	// instead of turning into a 404 nobody expected.
-	protocol := challenges(refusedAuthorize(endSession(signIn, truthfulDiscovery(
-		func() bool { return iss.Policy().ClientDocuments().Enabled() }, provider))))
+	protocol := challenges(refusedAuthorize(resourceIndicators(iss.Policy().Resource,
+		endSession(signIn, truthfulDiscovery(
+			func() bool { return iss.Policy().ClientDocuments().Enabled() }, provider)))))
 	// An installation token for a catalogue App is claimed in front of the
 	// library, which can only mint tokens this issuer signs. The storage
 	// is the concrete one wherever a deployment runs; a test's stand-in
@@ -287,6 +288,11 @@ const (
 	endSessionPath = "/end_session"
 	signedOutPath  = "/signed-out"
 )
+
+// tokenPaths are where a code is redeemed. Two, because the library
+// serves both spellings and a middleware that watched only one would let
+// a `resource` through unvalidated on the other.
+var tokenPaths = map[string]bool{"/token": true, "/oauth/token": true}
 
 // endSession is everything RP-initiated logout needs that the library
 // does not do, in the order the doing has to happen.

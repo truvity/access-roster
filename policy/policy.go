@@ -203,6 +203,10 @@ type Policy struct {
 	// Lifetimes is how long a token lives, keyed by group, plus the
 	// "default" key. The shortest across a caller's groups wins.
 	Lifetimes map[string]Duration `yaml:"lifetimes,omitempty"`
+	// Resources are what a token may be minted FOR, when that is not the
+	// client asking. Keyed by the resource indicator a client sends as
+	// `resource`; see [Resource] for when the two differ.
+	Resources map[string]Resource `yaml:"resources,omitempty"`
 	// ClientDocuments admits clients that are not declared here at all,
 	// by fetching a document they serve about themselves. Off unless it
 	// names an origin; see [ClientDocuments] for why that is safe here.
@@ -607,6 +611,11 @@ func (p Policy) Validate() error {
 	}
 	for _, id := range slices.Sorted(maps.Keys(p.Clients)) {
 		if err := p.Clients[id].validate(id, p.Groups); err != nil {
+			return err
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(p.Resources)) {
+		if err := p.Resources[id].validate(id, p.Groups); err != nil {
 			return err
 		}
 	}

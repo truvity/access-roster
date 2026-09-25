@@ -234,6 +234,14 @@ func TestRejectsBadPolicies(t *testing.T) {
 		"documents origin path":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { origins: [clients.example/x], requires: [a] }\n",
 		"documents origin star":  "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { origins: ['*.clients.example'], requires: [a] }\n",
 		"documents origin empty": "version: 1\ngroups: { a: { members: [g@h.example] } }\nclient_documents: { origins: [' '], requires: [a] }\n",
+		// A resource is an audience, so nobody may reach one that names no
+		// group, and its id has to be the shape RFC 8707 allows.
+		"resource no require": "version: 1\ngroups: { a: { members: [g@h.example] } }\nresources: { 'https://a.example/': {} }\n",
+		"resource group unknown": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"resources: { 'https://a.example/': { requires: [b] } }\n",
+		"resource relative": "version: 1\ngroups: { a: { members: [g@h.example] } }\nresources: { /mcp: { requires: [a] } }\n",
+		"resource fragment": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"resources: { 'https://a.example/#x': { requires: [a] } }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
