@@ -82,15 +82,21 @@ type Config struct {
 	// one -- stays at the domain root on its own HTTPRoute. Empty falls
 	// back to publicURL in the console, which is exactly right wherever
 	// no prefix is configured.
-	publicRootURL     string
-	recoveryEnabled   bool
-	recoveryAccount   string
-	recoveryAudience  string
-	apiAudience       string
-	consumersPath     string
-	loginDirectory    bool
-	adminPassword     string
-	sessionLifetime   time.Duration
+	publicRootURL    string
+	recoveryEnabled  bool
+	recoveryAccount  string
+	recoveryAudience string
+	apiAudience      string
+	consumersPath    string
+	loginDirectory   bool
+	adminPassword    string
+	sessionLifetime  time.Duration
+	// absoluteLifetime caps the console's own session the same way it caps
+	// a per-client one in the issuer: read from the SAME environment
+	// variable the issuer's config reads (ABSOLUTE_LIFETIME), because the
+	// two run in one process and one pod sets it once. See
+	// issuer.DefaultAbsoluteLifetime for why 24h.
+	absoluteLifetime  time.Duration
 	secureCookies     bool
 	forwardedHeader   string
 	forwardedIssuer   string
@@ -205,6 +211,15 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if c.sessionLifetime, err = envDuration("SESSION_LIFETIME", 12*time.Hour); err != nil {
+		return Config{}, err
+	}
+	// Defaulted and never refused here: ABSOLUTE_LIFETIME's own validation
+	// (positive, at least TOKEN_LIFETIME) runs once, in issuerapp.Load,
+	// which the same pod always loads beside this. A value that failed it
+	// never reaches here in a real deployment; a test building [Config]
+	// directly gets the ordinary 24h default rather than a second copy of
+	// a check it may not care about.
+	if c.absoluteLifetime, err = envDuration("ABSOLUTE_LIFETIME", 24*time.Hour); err != nil {
 		return Config{}, err
 	}
 	if c.holdWindow, err = envDuration("HOLD_WINDOW", 4*time.Hour); err != nil {
@@ -787,7 +802,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	authorizer := access.NewAuthorizer(set, directory, cfg.holdWindow)
 
 	sessionKey := kept.sessionKey
-	sessions, err := access.NewSessions(sessionKey, cfg.sessionLifetime, cfg.secureCookies)
+	sessions, err := access.NewSessions(sessionKey, cappedSessionLifetime(cfg.sessionLifetime, cfg.absoluteLifetime), cfg.secureCookies)
 	if err != nil {
 		return nil, err
 	}
@@ -1307,6 +1322,25 @@ func envDuration(name string, fallback time.Duration) (time.Duration, error) {
 		return 0, fmt.Errorf("%s: %w", name, err)
 	}
 	return d, nil
+}
+
+// cappedSessionLifetime is how long the console's OWN session cookie is
+// issued for: SESSION_LIFETIME, or the absolute session limit, whichever
+// is shorter.
+//
+// This cookie is issued once, at sign-in, with a fixed expiry -- unlike a
+// per-client refresh token it never slides -- so its issue time already
+// IS its auth_time, and capping it at the limit is exactly capping the
+// lifetime it is issued for. Zero or negative means no limit, which a
+// deployment can only reach by way of a bug: issuerapp.Load refuses that
+// value outright, but this package has no such check of its own (see
+// [Config.absoluteLifetime]), so a caller with a broken value is still
+// answered sanely rather than capping every session to nothing.
+func cappedSessionLifetime(session, absolute time.Duration) time.Duration {
+	if absolute > 0 && absolute < session {
+		return absolute
+	}
+	return session
 }
 
 // cacheName is what the console shows for where snapshots live.

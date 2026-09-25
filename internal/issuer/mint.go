@@ -25,6 +25,15 @@ var ErrNoPerson = errors.New("a token is minted here only for a person")
 // (Exchange: the client's requirements against the person's groups, and
 // recorded as an exchange), and the token is the one an exchange issues:
 // the same issuer, key, claims and lifetime cap.
+//
+// It opens no session and carries no auth_time, so the absolute session
+// limit does not cap it directly -- there is nothing here to measure it
+// from, the same reason a workload's exchange is unaffected (see
+// [Sessions.Record]). It is bounded all the same, twice over: `lifetime`
+// is a few minutes in every caller today, and the console session that
+// authorizes the call in the first place is itself capped at the limit
+// (see internal/app's use of ABSOLUTE_LIFETIME) -- so a person who could
+// no longer reach the console at all cannot reach this either.
 func (s *Storage) MintFor(ctx context.Context, email, audience string, lifetime time.Duration) (string, time.Time, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {

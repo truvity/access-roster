@@ -196,6 +196,9 @@
         "refresh": {
           "$ref": "#/definitions/duration"
         },
+        "absolute": {
+          "$ref": "#/definitions/duration"
+        },
         "hold": {
           "$ref": "#/definitions/duration"
         }

@@ -310,6 +310,27 @@ recovery:
 lifetimes:
   token: 1h
   refresh: 12h
+  # The global timeout: no per-client session, and no access or ID token,
+  # outlives auth_time (when the person actually authenticated) by more
+  # than this -- no matter how often it is refreshed. Without it a client
+  # that refreshes forever stays signed in forever, because `refresh`
+  # above only bounds the gap BETWEEN refreshes, not the sign-in itself.
+  #
+  # It may be shorter OR longer than `refresh`; a session's actual end is
+  # always the EARLIER of the two. Set it shorter than `refresh` for a
+  # hard daily sign-in regardless of activity; leave it generously longer
+  # to make `refresh` the only limit that matters in practice.
+  #
+  # Refused at render and at start if it is zero, negative, or shorter
+  # than `token`: a session cannot be limited to less time than its own
+  # first access token needs to live.
+  #
+  # BEHAVIOUR CHANGE: before this existed, a session refreshed often
+  # enough never ended on its own. Now every session ends 24 hours after
+  # its person signed in, at the latest -- including one already open at
+  # the time this rolls out, since it is measured from auth_time rather
+  # than from when this setting took effect.
+  absolute: 24h
   # How long an identity keeps its last-known groups while the hub cannot
   # be reached. Zero means no hold, and an unreachable hub then refuses
   # every login.

@@ -818,7 +818,26 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 	}
 
 	session, live, err := s.deps.SSO.Get(r.Context(), SSOFromRequest(r))
-	if err != nil || !live || !session.Fresh(time.Now(), pending.MaxAge) {
+	if err != nil || !live {
+		return false
+	}
+
+	// The absolute session limit measures from auth_time and ends the
+	// SIGN-IN itself, not only the silence: a browser session past its
+	// limit must not go on answering /authorize at all, or a person who
+	// leaves a tab open would renew their sign-in indefinitely, one
+	// client at a time, without ever meeting the limit that exists to
+	// stop exactly that. Ending it here runs the SAME cascade an explicit
+	// sign-out does -- the per-client sessions this browser opened, and
+	// Back-Channel Logout to the clients that held them -- so a relying
+	// party finds out the way it would if the person had clicked sign
+	// out, and the browser falls through to an interactive sign-in below.
+	if absolute := s.deps.Issuer.Config().AbsoluteLifetime; absolute > 0 && !time.Now().Before(session.AuthTime.Add(absolute)) {
+		SignOut(s.deps, w, r)
+		return false
+	}
+
+	if !session.Fresh(time.Now(), pending.MaxAge) {
 		return false
 	}
 

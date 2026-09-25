@@ -24,6 +24,23 @@ type Config struct {
 	TokenLifetime time.Duration
 	// RefreshLifetime is how long a session lives without being refreshed.
 	RefreshLifetime time.Duration
+	// AbsoluteLifetime is the global timeout: no per-client session, and
+	// no access or ID token, outlives auth_time by more than this, no
+	// matter how often it is refreshed. It is what turns "signs in once
+	// and never has to again" from a possibility into a bound.
+	//
+	// It may be shorter OR longer than RefreshLifetime; either way the
+	// session's actual end is the EARLIER of the two, measured from
+	// auth_time rather than from the last refresh -- see
+	// [Sessions.Record] and [Sessions.Refreshed]. A deployment that wants
+	// the refresh window to be the only limit in practice sets this
+	// generously longer than it; one that wants a hard daily sign-in sets
+	// it shorter. Neither is refused: only a value that could never bound
+	// anything (zero, negative, or shorter than TokenLifetime, which
+	// would mint tokens already past the one limit meant to outlive them)
+	// is, and that refusal happens where this is loaded from the
+	// environment, not here -- see issuerapp.Load.
+	AbsoluteLifetime time.Duration
 	// HoldWindow is how long an identity keeps its last-known groups while
 	// the hub cannot be vouched for.
 	HoldWindow time.Duration
@@ -37,9 +54,10 @@ type Config struct {
 
 // Defaults for the durations a deployment does not set.
 const (
-	DefaultTokenLifetime   = time.Hour
-	DefaultRefreshLifetime = 12 * time.Hour
-	DefaultHoldWindow      = 4 * time.Hour
+	DefaultTokenLifetime    = time.Hour
+	DefaultRefreshLifetime  = 12 * time.Hour
+	DefaultAbsoluteLifetime = 24 * time.Hour
+	DefaultHoldWindow       = 4 * time.Hour
 )
 
 func (c Config) withDefaults() Config {
@@ -48,6 +66,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.RefreshLifetime <= 0 {
 		c.RefreshLifetime = DefaultRefreshLifetime
+	}
+	if c.AbsoluteLifetime <= 0 {
+		c.AbsoluteLifetime = DefaultAbsoluteLifetime
 	}
 	if c.HoldWindow <= 0 {
 		c.HoldWindow = DefaultHoldWindow
@@ -107,7 +128,7 @@ func New(cfg Config, set *policy.Set, dir Directory, state State) *Issuer {
 		cfg:      cfg,
 		set:      set,
 		resolver: NewResolver(dir, cfg.HoldWindow),
-		sessions: NewSessions(state, cfg.RefreshLifetime),
+		sessions: NewSessions(state, cfg.RefreshLifetime, cfg.AbsoluteLifetime),
 		sso:      NewSSO(state, cfg.RefreshLifetime),
 	}
 }

@@ -274,7 +274,7 @@ func TestSessions(t *testing.T) {
 	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 	state := issuer.NewMemoryState()
 	state.SetClock(func() time.Time { return now })
-	sessions := issuer.NewSessions(state, 12*time.Hour)
+	sessions := issuer.NewSessions(state, 12*time.Hour, 0)
 	sessions.SetClock(func() time.Time { return now })
 
 	record := func(identity, client string, how issuer.How, token string) issuer.Session {
@@ -368,8 +368,8 @@ func TestSessionsAreSharedBetweenReplicas(t *testing.T) {
 
 	ctx := context.Background()
 	shared := issuer.NewMemoryState()
-	replicaA := issuer.NewSessions(shared, time.Hour)
-	replicaB := issuer.NewSessions(shared, time.Hour)
+	replicaA := issuer.NewSessions(shared, time.Hour, 0)
+	replicaB := issuer.NewSessions(shared, time.Hour, 0)
 
 	recorded, err := replicaA.Record(ctx, issuer.Opened{Identity: "ada@north.example", ClientID: "console", How: issuer.HowCode, Token: "t-1"})
 	if err != nil {
@@ -541,8 +541,8 @@ func TestAConcurrentRefreshGetsTheWinnersToken(t *testing.T) {
 
 	ctx := context.Background()
 	shared := issuer.NewMemoryState()
-	replicaA := issuer.NewSessions(shared, time.Hour)
-	replicaB := issuer.NewSessions(shared, time.Hour)
+	replicaA := issuer.NewSessions(shared, time.Hour, 0)
+	replicaB := issuer.NewSessions(shared, time.Hour, 0)
 
 	opened, err := replicaA.Record(ctx, issuer.Opened{
 		Identity: "ada@north.example", ClientID: "console", How: issuer.HowCode, Token: "t-1",
@@ -591,7 +591,7 @@ func TestAReplayAfterRevocationIsRefused(t *testing.T) {
 
 	ctx := context.Background()
 	shared := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(shared, time.Hour)
+	sessions := issuer.NewSessions(shared, time.Hour, 0)
 
 	if _, err := sessions.Record(ctx, issuer.Opened{
 		Identity: "ada@north.example", ClientID: "console", How: issuer.HowCode, Token: "t-1",

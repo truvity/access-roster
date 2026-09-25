@@ -1153,7 +1153,7 @@ func TestRefreshIsRefusedWhenTheClientNoLongerAdmits(t *testing.T) {
 
 	ctx := t.Context()
 	state := issuer.NewMemoryState()
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 
 	declared, err := policy.Parse([]byte(twoClientPolicy()))
 	if err != nil {

@@ -187,7 +187,7 @@ func TestSignOutEndsWhatTheBrowserOpened(t *testing.T) {
 	ctx := context.Background()
 	state := issuer.NewMemoryState()
 	sso := issuer.NewSSO(state, time.Hour)
-	sessions := issuer.NewSessions(state, time.Hour)
+	sessions := issuer.NewSessions(state, time.Hour, 0)
 
 	session, err := sso.Begin(ctx, "ada@north.example", "google")
 	if err != nil {

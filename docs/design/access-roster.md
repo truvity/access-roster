@@ -317,6 +317,55 @@ so it chooses the signed-out page and nothing else. A request that proves
 nothing ends nothing: before v0.14.4 it ended every session in the
 installation, which is [the security note](../../CHANGELOG.md).
 
+### The absolute session limit
+
+Everything above bounds *inactivity* — a session dies once nothing
+refreshes it for `lifetimes.refresh`. Nothing bounded the sign-in
+ITSELF: a client that refreshed often enough stayed signed in
+indefinitely, because a rotation only ever asked "was this used
+recently", never "how long ago did this person actually authenticate".
+`lifetimes.absolute` (default 24h) is that second question, and a
+per-client session's end has been `min(now+refresh, auth_time+absolute)`
+since v1.30.0 — decided when it opens and recomputed on every rotation,
+so a sliding refresher plateaus at the limit rather than climbing past
+it. `auth_time` is carried down from the SSO session (or the sign-in
+itself, for one opened directly), never from the refresh — a session
+opened against an hour-old SSO session inherits that hour, not a fresh
+24.
+
+Three things enforce it, because a session end recorded in an index is
+worth nothing if the things that use it do not check:
+
+- **A refresh at or after the limit** is refused (`invalid_grant`) and
+  the session is revoked, with its own audit reason — distinct from an
+  ordinary inactivity timeout or a lost entitlement, both of which the
+  session index also produces, but silently.
+- **An access or ID token's `exp`** is capped at `auth_time+absolute`
+  too, even when the ordinary token lifetime would reach further: a
+  session that has just hit the limit must not go on answering
+  `userinfo`, or any resource trusting the token's own `exp`, for
+  whatever was left of its last token.
+- **Silent `/authorize`** refuses an SSO session whose `auth_time` is
+  past the limit, ending it first — the same cascade `/logout` runs,
+  Back-Channel Logout included — rather than completing against it. A
+  browser left open must not go on renewing its sign-in one client at a
+  time forever, which is exactly what a live SSO session with no other
+  check would let it do.
+
+A session with no `auth_time` has nothing to measure the limit against,
+and none applies: it lives out its ordinary refresh window, exactly as
+before. That is true of a workload or a machine trading a proof through
+token exchange, which authenticates nobody — and, until its next fresh
+sign-in, of a per-client session recorded before this field existed,
+which reads as the same zero value. Both are unaffected on purpose, not
+by omission: there is nothing to cap either against, the same reasoning
+either way.
+
+The console's own session (`directory.sessionLifetime`, a fixed-duration
+cookie rather than a sliding one) is capped too — by the shorter of the
+two — because it is issued once at sign-in and its issue time already IS
+its `auth_time`.
+
 ### Who may open which console
 
 A client's `requires` names the internal groups any one of which admits
