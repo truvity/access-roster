@@ -10,6 +10,10 @@ substance.
 - [reference/policy.md](reference/policy.md#validation-at-load) — what the
   policy loader refuses, so that a typo fails a rollout rather than a
   sign-in
+- [reference/policy.md](reference/policy.md#clients-that-describe-themselves)
+  — what a client that registers itself by serving a document may and may
+  not do, why an allow-list of origins is the guard rather than a refusal
+  of unknown clients, and why there is no stale fallback
 - [reference/configuration.md](reference/configuration.md) and
   [reference/access-issuer.md](reference/access-issuer.md) — the strict
   values schema, the values that refuse to render unset, and the two

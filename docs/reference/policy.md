@@ -308,6 +308,77 @@ created in a console, never registered by a workload, so the set of
 them is answerable by reading the repository. Local development uses the
 one declared `local-dev` client.
 
+## Clients that describe themselves
+
+Every client above is minted as code, and that is the right default: a row
+is reviewable, and its `requires` is where *who may obtain a token* is
+decided. It does not fit software this installation does not deploy and
+cannot enumerate — somebody's editor, a hosted assistant — which is how
+clients of the Model Context Protocol arrive.
+
+Such a client presents an **HTTPS URL** as its `client_id`, and that URL
+serves a JSON document describing it (an OAuth Client ID Metadata
+Document). The issuer fetches it, validates it, and treats the client as
+`public`. Nothing is registered and nothing accumulates.
+
+```yaml
+client_documents:
+  # The hosts that may serve a document. Empty -- the default -- turns the
+  # whole mechanism off.
+  origins: [clients.example]
+  # Who may use ANY such client. Mandatory: origins without requires would
+  # admit every person who can sign in at all.
+  requires: [rung:engineering]
+  # Optional, and worth setting: these tokens go to software this
+  # installation did not deploy.
+  ttl_cap: 5m
+```
+
+### Why this is proportionate, and what it does not weaken
+
+Registration is not the authorization decision here. Reach is decided by
+the groups a caller holds, so **a client this issuer has never seen cannot
+widen anything** — it can only ask a person to consent to the reach that
+person already has. A document may ask for a different `kind`, a longer
+`ttl_cap` or a wider `requires`; none of those fields is read.
+
+So the threat is not escalation. It is **phishing**: a hostile client
+persuading somebody to sign in to it and taking the token away. That is
+why the guard is an allow-list of origins rather than a refusal of unknown
+clients, and why `requires` is mandatory here rather than optional.
+
+A **declared client always wins**: the policy is consulted first, so
+nothing is fetched for a client that is already in this file, and a
+document cannot displace one.
+
+### What it refuses
+
+| Shape | Refused because |
+|---|---|
+| a document whose `client_id` is not the URL it was served from | otherwise a document at any allow-listed host could claim to be any client, and the id a person sees, the id the audit records and the id the token is minted for would all be a name its holder chose |
+| an origin that is not allow-listed | decided before anything is dialled, so the allow-list is also what stops the issuer being used to fetch arbitrary URLs |
+| a response larger than 64 KiB, or slower than 5 seconds | the URL is caller-chosen, so the response is an untrusted stream and a sign-in is waiting on it |
+| a redirect to anywhere else | the document is served *at* its own id; a redirect chain is how an allow-list on the first hop stops meaning anything |
+| a document with no `redirect_uris` | there would be nowhere to deliver a code |
+| an `origins` entry with a scheme, a path or a `*` | an origin is a host; a wildcard also admits every subdomain somebody forgot about |
+| `requires` or `ttl_cap` with no `origins` | written by somebody who expected it to apply |
+
+A fetched document is honoured for ten minutes and then fetched again.
+**There is no stale fallback**: a document that cannot be fetched is a
+client whose redirect URIs are not known right now, and honouring
+yesterday's copy is honouring URIs it may have retired.
+
+The display name comes from the document, so it is text chosen by whoever
+served it, shown on a page **before anybody has authenticated**. It is
+bounded and stripped of anything that moves the cursor; with no name, the
+host is shown, because the host is the part a person can recognise and the
+part that was allow-listed. The audit trail records the **URL**, which is
+the identity — the name is decoration its holder chose.
+
+`client_id_metadata_document_supported` appears in the discovery document
+only while an origin is named, because a client reads that field to decide
+whether to present a URL at all.
+
 ## GitHub teams
 
 ```yaml
