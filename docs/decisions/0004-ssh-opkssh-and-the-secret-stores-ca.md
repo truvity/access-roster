@@ -58,7 +58,7 @@ whichever alternative arrives first; `accessctl credential ssh` is not
 removed, and stays the supported path for people, until one of those
 lands. An installation could work around the gap today by setting
 `signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`
-([reference/access-issuer.md](../reference/access-issuer.md)), but that
+([reference/configuration.md](../reference/configuration.md)), but that
 is a key-rotation decision made for one relying party's benefit, not a
 default this repository asks for.
 

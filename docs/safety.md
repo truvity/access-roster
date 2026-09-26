@@ -5,7 +5,8 @@ render or at load, every default chosen because the other one failed,
 and the traps that were met in use, each with the failure that earned
 it. The test for whether something belongs here: *what goes wrong if I
 do the obvious thing.* This page is an index; the pages below hold the
-substance.
+substance. For a map of every page in the repository, not just these, see
+[index.md](index.md).
 
 - [reference/policy.md](reference/policy.md#validation-at-load) — what the
   policy loader refuses, so that a typo fails a rollout rather than a
@@ -18,8 +19,7 @@ substance.
   — what a client asking for a resource gets and what it is refused, why
   the parameter is refused rather than ignored, and why the session has to
   remember which resource it was opened for
-- [reference/configuration.md](reference/configuration.md) and
-  [reference/access-issuer.md](reference/access-issuer.md) — the strict
+- [reference/configuration.md](reference/configuration.md) — the strict
   values schema, the values that refuse to render unset, and the two
   things the chart will not do for you (mint its signing key, sit behind
   a proxy)
@@ -41,7 +41,7 @@ substance.
   — the way back in when nobody can sign in
 - [operations/runbook.md](operations/runbook.md#what-unhealthy-means-and-what-to-do)
   — what each unhealthy state means and what to do, and
-  [when the audit trail cannot be written](operations/runbook.md#when-the-audit-trail-cannot-be-written)
+  [when the installation cannot be reached](operations/runbook.md#when-the-installation-cannot-be-reached)
 - [connect/console-app.md](connect/console-app.md#traps-that-were-real) —
   the traps of putting a console behind the gateway
 - [reference/accessctl.md](reference/accessctl.md#what-each-failure-exits-with)
