@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -76,6 +77,12 @@ func (g GroupsOverride) MarshalYAML() (any, error) {
 	return g.Things, nil
 }
 
+// empty reports whether the override asks for nothing beyond
+// requires-pair matching -- the zero value, and the only shape that
+// makes writing `groups` on a disabled [ClientDocuments] block pointless
+// rather than merely unused.
+func (g GroupsOverride) empty() bool { return !g.All && len(g.Things) == 0 }
+
 // validate checks one override on its own: "all" or a list of distinct,
 // non-blank thing names, each a declared thing when a [Vocabulary] is in
 // force. where names the client or resource it came from, for the
@@ -126,9 +133,11 @@ func requiresPairs(requires []string) map[scopePair]bool {
 
 // audienceScope is what governs a token for audience: the `requires`
 // pairs it gates on, and its `groups` override, whichever declared row --
-// a client or a resource -- names it. An audience neither declares has
-// no requires this function can read; see [Policy.ScopeGroups] for what
-// that means for the caller's held groups.
+// a client, a resource, or [ClientDocuments] for a self-described client
+// this installation admits by URL rather than by row -- names it. An
+// audience none of the three governs has no requires this function can
+// read; see [Policy.ScopeGroups] for what that means for the caller's
+// held groups.
 func (p Policy) audienceScope(audience string) (map[scopePair]bool, GroupsOverride) {
 	if c, ok := p.Clients[audience]; ok {
 		return requiresPairs(c.Requires), c.Groups
@@ -136,7 +145,38 @@ func (p Policy) audienceScope(audience string) (map[scopePair]bool, GroupsOverri
 	if r, ok := p.Resources[audience]; ok {
 		return requiresPairs(r.Requires), r.Groups
 	}
+	// A self-described client is never a [Policy.Clients] row -- its id is
+	// whatever URL it serves its own document at -- but it IS gated, by
+	// [ClientDocuments.Requires], which every such client shares: see
+	// [ClientDocuments] and internal/issuer's document-client resolver,
+	// which hands every one of them exactly that `requires` as its own.
+	// An audience that merely LOOKS like a URL but is not permitted, or
+	// this installation admits no document client at all, falls through
+	// to no gate, same as any other undeclared audience.
+	if p.ClientDocuments.Enabled() {
+		if u, ok := asDocumentAudience(audience); ok && p.ClientDocuments.Permits(u) {
+			return requiresPairs(p.ClientDocuments.Requires), p.ClientDocuments.Groups
+		}
+	}
 	return nil, GroupsOverride{}
+}
+
+// asDocumentAudience parses audience as a client document's own id, the
+// same shape internal/issuer's resolver requires before it ever fetches
+// one: an HTTPS URL naming a host, carrying no userinfo and no fragment.
+// false for anything else -- including a malformed URL -- which
+// [Policy.audienceScope] treats as "not a document client" rather than
+// refusing it: this is a lookup for an already-minted token's audience,
+// not the admission check that ran before the token existed.
+func asDocumentAudience(audience string) (*url.URL, bool) {
+	if !strings.HasPrefix(audience, "https://") {
+		return nil, false
+	}
+	u, err := url.Parse(audience)
+	if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return nil, false
+	}
+	return u, true
 }
 
 // ScopeGroups computes which of a caller's held internal groups a token
@@ -182,20 +222,24 @@ func (p Policy) audienceScope(audience string) (map[scopePair]bool, GroupsOverri
 // life exactly as it does today. Scoping narrows what a token SAYS, never
 // what the issuer computes from what a caller holds.
 //
-// An audience that is neither a declared client nor a declared resource
-// -- chiefly a self-described client admitted through
-// [Policy.ClientDocuments], which gates on ITS OWN shared `requires`
-// rather than a per-client row of its own -- has no requires pairs this
+// A self-described client -- one admitted by URL through
+// [Policy.ClientDocuments] rather than a row of its own -- IS gated, by
+// `client_documents.requires`, which every such client shares; see
+// [Policy.audienceScope]. Its pairs and its `groups` override, if it
+// declares one, are read from there.
+//
+// An audience [Policy.audienceScope] cannot place at all -- not a
+// declared client, not a declared resource, and not a URL
+// [Policy.ClientDocuments] permits (including every audience when this
+// installation admits no document client) -- has no requires pairs this
 // function can read and no override it could have written, so every held
 // grant is dropped. That is the plain reading of the decided rule: "the
 // groups its client's or its resource's requires names" presupposes a
-// row, and a caller of this function that cannot find one has nothing to
+// gate, and a caller of this function that cannot find one has nothing to
 // keep by. It is also the useful reading for report mode, whose whole
 // purpose is to surface exactly this: an audience minting tokens today
-// with no declared row of its own is the signal that it needs one --
-// or, for a self-described client, the day client_documents grows a
-// `groups` declaration of its own -- before enforce mode could narrow
-// anything for it correctly.
+// that this function cannot place under any gate is the signal that it
+// needs one, before enforce mode could narrow anything for it correctly.
 //
 // kept and dropped partition held: every name in held is in exactly one
 // of the two, both sorted, and both nil when held is empty.
