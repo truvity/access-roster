@@ -9,7 +9,7 @@ What the issuer signs with follows from the key it is given:
 `signingKey.certificate.algorithm`/`.size`/`.encoding` selects RSA or
 ECDSA on P-256, P-384 or P-521, and the choice determines whether every
 token is RS256, ES256, ES384 or ES512
-([reference/access-issuer.md#what-the-chart-renders-and-what-it-expects](../reference/access-issuer.md#what-the-chart-renders-and-what-it-expects)). The
+([reference/configuration.md#what-the-chart-includes-what-it-expects](../reference/configuration.md#what-the-chart-includes-what-it-expects)). The
 signing key is never minted by the service itself — cert-manager issues
 it, or a deployment delivers it — so this decision is about the
 **default** a fresh installation gets when it sets nothing.
@@ -56,7 +56,7 @@ assuming RS256.
 **The RSA override exists as a last resort, for an installation that
 cannot wait on either of those**: `signingKey.certificate: {algorithm:
 RSA, size: 2048, encoding: PKCS1}` is a one-line, reviewable value
-([reference/access-issuer.md](../reference/access-issuer.md),
+([reference/configuration.md](../reference/configuration.md),
 [connect/kargo.md](../connect/kargo.md),
 [connect/kubernetes-cluster.md](../connect/kubernetes-cluster.md)), but
 it is not the recommended answer: it moves the *whole* installation to a

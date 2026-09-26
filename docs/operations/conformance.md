@@ -410,4 +410,4 @@ The reverse also has to hold, and since 0.11 it is the half worth
 running: nothing this family's design names as *out* may be found
 served. A grant withdrawn from discovery that goes on ANSWERING is the
 failure that hides, because the metadata looks right. See
-[../reference/access-issuer.md](../reference/access-issuer.md#endpoints).
+[../reference/configuration.md](../reference/configuration.md#endpoints).

@@ -27,7 +27,7 @@ is the other anchor and does not come here:
   confirm with the cluster's documentation that it verifies ES384 tokens,
   or give the installation an RSA key: `signingKey.certificate:
   {algorithm: RSA, size: 2048, encoding: PKCS1}`
-  ([reference](../reference/access-issuer.md)).
+  ([reference](../reference/configuration.md)).
 - RBAC bindings by group name — the internal group's name, as it stands
   in the policy. Name the groups after what the bindings already say and
   the cutover changes no binding.

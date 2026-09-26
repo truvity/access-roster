@@ -201,7 +201,7 @@ That is what makes one issuer serve many clusters cheaply: a new cluster
 is one row naming its key set, not a credential held anywhere. Device
 flow, client credentials and JWT bearer were served through 0.11 and are
 gone; introspection never applied, because these are JWTs verified
-offline ([why](reference/access-issuer.md#endpoints)).
+offline ([why](reference/configuration.md#endpoints)).
 
 Three of the six are grants and three are endpoints, so
 `grant_types_supported` prints three: `authorization_code`,

@@ -67,7 +67,7 @@ rather than a pattern to copy.
   installation's key (ES384 with the chart's default, RS256 with an RSA
   key set at `signingKey.certificate`, e.g. `{algorithm: RSA, size: 2048,
   encoding: PKCS1}` for an installation whose other relying parties need
-  RS256 — [reference](../reference/access-issuer.md)).
+  RS256 — [reference](../reference/configuration.md)).
 
 ```go
 issuer := &identity.Issuer{URL: "https://access.example", Audience: "myconsole.example.internal"}

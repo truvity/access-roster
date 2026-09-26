@@ -45,7 +45,7 @@ issuer's discovery document advertises (its `util/oidc/provider.go`), so
 the chart's default ES384 key verifies as an RSA one would. An
 installation with a relying party that accepts RS256 only sets
 `signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`
-([reference](../reference/access-issuer.md)).
+([reference](../reference/configuration.md)).
 
 `display_name` and `description` are shown to anyone who starts a
 sign-in, so they carry nothing a stranger should not read. ArgoCD runs

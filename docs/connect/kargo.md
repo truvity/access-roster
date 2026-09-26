@@ -47,7 +47,7 @@ without one (`pkg/server/auth_middleware.go`, `oidc.NewVerifier` with a
 RS256 — it does not read what discovery advertises. The chart's default
 key signs ES384, so an installation Kargo signs into must set
 `signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`
-([reference](../reference/access-issuer.md)).
+([reference](../reference/configuration.md)).
 
 Per-project roles bind on the `groups` claim through Kargo's own RBAC —
 `<env>:<project>:approver` is the promotion gate, the same name the

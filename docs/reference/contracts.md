@@ -1,6 +1,6 @@
 # The console's contracts
 
-The issuer's endpoints are in [access-issuer.md](access-issuer.md). This
+The issuer's endpoints are in [configuration.md](configuration.md#endpoints). This
 page is what the **console** calls: the services behind its pages.
 
 The proto files under [`proto/`](../../proto) are the source of truth;

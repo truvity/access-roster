@@ -24,7 +24,15 @@ cloud parameter store or a backup mechanism. Delivering a *declared* Secret
 into the namespace is the deployment's business; an example with
 external-secrets is at the end of this page.
 
-**The convention that follows from that** (decided 2026-09-08): every value
+Two things it will not do. **It does not create the signing key** —
+cert-manager issues one, or `signingKey.existingSecret` names one (RSA, or
+ECDSA on P-256, P-384 or P-521) external-secrets delivered — because a
+service that mints its own credential is an exception to how every other
+credential in this estate is provisioned. And **it puts no authenticating
+proxy in front**: this is the thing that authenticates, and a proxy would
+have nowhere to send anyone.
+
+**The convention that follows from that:** every value
 that consumes a Secret this chart did not create lets you name both **the
 Secret and the keys inside it**. The producer is free — external-secrets, a
 1Password operator, sealed-secrets, a hand `kubectl create secret`, a Job —
@@ -73,6 +81,7 @@ service writes *itself*, where it is the producer and gets to choose.
 | `github.owners[]` | `[]` | the GitHub organisations whose workflows may exchange. **Empty verifies no CI token at all**, deliberately: anybody may run a workflow in their own repository and get a valid GitHub token, so a list invented by the chart would admit every repository there is |
 | `cluster` | `""` | what this cluster is called, which becomes part of a ServiceAccount's subject. Empty keeps the older unqualified form |
 | `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch. Caps: the policy may ask for shorter |
+| `lifetimes.absolute` | `24h` | the global timeout: no per-client session, and no access or ID token, outlives `auth_time` by more than this, no matter how often it is refreshed — without it a client that refreshes forever stays signed in forever, because `.refresh` above only bounds the gap *between* refreshes. A session's actual end is always the EARLIER of `.absolute` (from `auth_time`) and `.refresh` (from the last refresh); it may be set shorter than `.refresh` for a hard daily sign-in, or generously longer to make `.refresh` the only limit in practice. Refused at render and at start if it is zero, negative, or shorter than `.token` — a session cannot be limited to less time than its own first access token needs to live. A refresh presented at or after the limit is refused (`invalid_grant`) and the session is revoked, with its own reason in the log and the audit trail; an SSO session past the limit is ended the same way `/logout` ends one — Back-Channel Logout included — rather than answering a silent `/authorize`. A **behaviour change**: before this existed, a session refreshed often enough never ended on its own |
 | `recovery.enabled` | `true` | the way in for the day the ordinary one is broken. It stores nothing: a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. **The only thing left that asks the cluster anything** |
 | `recovery.serviceAccountName` | `<release>-recovery` | the account recovery proves access as; the chart creates it, bound to nobody. Granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
 | `recovery.audience` | `<release>-recovery` | the audience the token must be minted for. Without one, every mounted ServiceAccount token in the cluster would be a recovery token |
@@ -110,6 +119,32 @@ whether or not anything attaches to it.
 **The mount is not rewritten away** by the gateway, unlike the older
 split chart. The service strips it itself, so a gateway that stripped it
 too would hand the console a path it never serves.
+
+## Endpoints
+
+**Three grants, and the six things they add up to.** `grant_types_supported`
+names exactly `authorization_code`, `refresh_token` and token exchange,
+because those are the three grants. The other three of the six — userinfo,
+`end_session` and revocation — are ENDPOINTS, and discovery advertises them
+in their own fields. They are counted together because they answer the same
+question, *what does this issuer serve*, but listing an endpoint under
+`grant_types_supported` would be the metadata lying in a new way.
+
+| Path | Standard | Purpose |
+|---|---|---|
+| `/.well-known/openid-configuration`, `/keys` | OIDC discovery, JWKS | what relying parties read |
+| `/authorize`, `/token`, `/userinfo`, `/end_session` | OIDC | login, tokens, RP-initiated logout |
+| `/logout` | ours | the same sign-out for a person rather than a relying party, on GET and on POST. It needs no `id_token_hint`, which the console could not supply anyway — it never redeems the code it gets back, so it holds no ID token. The console's sign-out button points here |
+| `/token` with `grant_type=urn:ietf:params:oauth:grant-type:token-exchange` | RFC 8693 | CI and workload exchange; the requested `audience` is a client, gated by its `requires` |
+| `/token`, the same exchange with `requested_token_type=urn:access-roster:params:oauth:token-type:github-installation-token` and `audience=github-app:<id>` | RFC 8693 | a GitHub App installation token of a catalogue App, under its grants ([contract](contracts.md#installation-tokens-at-token)) |
+| `/revoke` | RFC 7009 | revokes a refresh token; what Revoke and "sign out everywhere" call underneath |
+| `/login`, `/logout`, `/signed-out` | ours | **the whole of the issuer's HTML**: the sign-in chooser — which names the application being signed in to from the client's declared `display_name` and `description`, and the host its redirect returns to, or says a program on this computer is asking when that redirect is loopback ([policy](policy.md#what-the-sign-in-page-calls-a-client)) — the sign-out a person follows, and where a sign-out lands when the client declares no page of its own. Each runs before there is anyone to authorize, which is why none can be a console page. Minimal HTML, same theme |
+| `/account` | ours | a redirect into the console's page for the signed-in person. The page itself lived here through 0.11 because it had to be same-origin with `SessionService`; the console is same-origin and now the same process, and its page for a person already lists the sessions and offers *sign out everywhere*. The address stays because it was linked to and bookmarked; the two POSTs behind it are gone |
+| `/.access/grants` | ours | the clients the caller's groups admit it to, and which group admits each — read by `accessctl kubeconfig` and `aws-config` so a laptop writes a context per cluster and a profile per role without keeping a list that drifts from the policy. A bearer, and it discloses nothing the caller could not work out from its own token |
+| `/.access/simulate` | ours | **not built**: what would this identity get, for somebody other than the caller. The console's Rules page has a simulator that answers it, and `/.access/grants` answers it for the caller's own identity |
+| `SessionService` (ConnectRPC): `ListSessions{identity? \| client? \| contains?}` → `{sessions, sign_ins}`, `RevokeSessions{identity, client?, session_id?, sso?}` | ours | sessions per identity and per client, with client, how obtained, issued, expires, last refreshed; revoke per identity, per client, or one. Listing and revoking others is operator; listing and revoking your own is any signed-in identity; listing **every** session (neither identity nor client named) is operator-only, paged by `page_size`/`page_token`, and audited. `contains` reads `identity` and `client_id` as SUBSTRINGS rather than exact values — prefix, suffix and middle — and is **operator-only**, because a substring names an unknown set where an exact identity names the caller's own or nobody's. `RevokeSessions` has no such field: a revoke scoped to *anything containing this* is the control that ends more than its caller meant, with no undo. Authorized by the browser's SSO cookie on a same-origin call — which is what the console is — or by a bearer. The `console.origin` CORS gate is unused on one origin, which is the shipped shape, and stays empty there; it remains for a console served from somewhere else, and is the one other origin admitted |
+| back-channel logout | OIDC Back-Channel Logout 1.0 | opt-in per client with `backchannel_logout_uri`: a signed `logout+jwt` POSTed to every such client that signed the person in, by the `sid` it saw, when the sign-in ends |
+| not served | RFC 8628 device flow, client credentials, RFC 7523 JWT bearer, RFC 7662 introspection, implicit and hybrid flows, session-management iframe, RFC 7591 dynamic client registration | The first three were served through 0.11 and are gone: the device flow is for a machine with no browser, and both headless cases here — a CI job and a workload — are token exchange; client credentials is a machine with a stored secret, which is the thing this design exists not to have; JWT bearer is token exchange with a different spelling, and two ways to say one thing is two things to keep truthful. Introspection never applied — these are JWTs, verified offline against the key set. RFC 7591 is deliberate and stays refused — the Model Context Protocol deprecated it in favour of Client ID Metadata Documents, which this issuer serves instead when `client_documents` names an origin: no endpoint, nothing stored, and an allow-list that keeps the set of origins answerable by reading the repository |
 
 ## Declared workspaces (the overlay)
 
@@ -317,7 +352,7 @@ from the values above.
 | `CLUSTER` | `cluster` |
 | `IN_CLUSTER` | `true` when `recovery.enabled` — the one thing left that asks the API server anything |
 | `RECOVERY_ENABLED`, `RECOVERY_SERVICE_ACCOUNT`, `RECOVERY_AUDIENCE` | `recovery.*` |
-| `TOKEN_LIFETIME`, `REFRESH_LIFETIME`, `HOLD_WINDOW` | `lifetimes.*` |
+| `TOKEN_LIFETIME`, `REFRESH_LIFETIME`, `HOLD_WINDOW`, `ABSOLUTE_LIFETIME` | `lifetimes.*` |
 | `SESSION_LIFETIME` | `directory.sessionLifetime` |
 | `LOGIN_DIRECTORY` | `directory.login` |
 | `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
