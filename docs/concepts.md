@@ -60,7 +60,7 @@ and a repository to disagree about.
 
 | Term | Means |
 |---|---|
-| **exposure** | a console placed behind `access-proxy`: a hostname, a backend, a posture. The proxy runs the login against the issuer, keeps the session, forwards the bearer |
+| **exposure** | a console placed behind a gateway (gateway-native OIDC on Envoy Gateway, upstream oauth2-proxy on other gateways, or your own flow): a hostname, a backend, and (for proxied shapes) a posture. The gateway or proxy runs the login against the issuer, keeps the session, forwards the bearer |
 | **posture** | what an exposure enforces: `authenticated` — any identity the issuer would mint for this client passes, and the client's `requires` at the issuer is the gate; `groups` — the gateway itself checks the claim, which suits a caller that already carries a token and cannot serve a browser that does not yet have one |
 | **session** | what the issuer holds for one identity and one client: a refresh token and how it was obtained. Listed on a person's page and a client's page, revocable by an operator, and by the person for their own — "sign out everywhere". A proxy's browser session is one of them, seen from the proxy's side |
 | **bootstrap surface** | the paths a console publishes on a route the proxy does *not* cover: its sign-in page, recovery, and the consent callback — so that a redirect from a directory is never swallowed by a login prompt. A request there carries **no gateway identity, by design**; the consent callback takes its operator from the state the service signed when an operator started the flow |
