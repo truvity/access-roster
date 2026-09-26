@@ -141,67 +141,6 @@ func (b *openbao) write(ctx context.Context, path string, body map[string]any) (
 	return answer.Data, nil
 }
 
-// read is one value out of a KV version 2 engine: the fields of the
-// latest version at `<mount>/data/<path>`, and no metadata.
-//
-// `data/` is the API path, not the path `bao kv get` prints. `bao kv get
-// -mount=kv orders/checkout/API_TOKEN` reads `kv/data/orders/checkout/API_TOKEN`,
-// and a policy written on the path off the command line grants nothing at
-// all — which shows up as a 403 for somebody who is plainly in the group,
-// and sends people looking at the issuer.
-//
-// The answer's envelope nests the value one level down (`data.data`),
-// beside the version metadata this never reads: what is wanted is the
-// fields, and the version a value came from is not something to write
-// into a file that is regenerated on every run.
-func (b *openbao) read(ctx context.Context, mount, path string) (map[string]any, error) {
-	// A deleted latest version is a 404 carrying the version's metadata,
-	// and `call`'s 404 sentence is about a mount or a role — which is
-	// true of the paths `credential` calls and nonsense on this one. The
-	// difference matters because a deleted version still LISTS: the name
-	// is there, the value is not, and the message has to say which.
-	gone := func() error {
-		return notFound{fmt.Errorf("%s/data/%s holds no current value: either it was removed "+
-			"between the listing and this read, or its latest version was deleted", mount, path)}
-	}
-	answer, err := b.call(ctx, http.MethodGet, mount+"/data/"+path, nil, nil)
-	if nothingThere(err) {
-		return nil, gone()
-	}
-	if err != nil {
-		return nil, err
-	}
-	fields, ok := answer.Data["data"].(map[string]any)
-	if !ok || fields == nil {
-		return nil, gone()
-	}
-	return fields, nil
-}
-
-// list is the names directly under a KV version 2 prefix, a name ending
-// in `/` being a prefix of its own rather than a value.
-//
-// GET with `?list=true` rather than the `LIST` method, although OpenBAO
-// routes both to the same handler: LIST is not a method anything between
-// a laptop and the API is obliged to forward, and the one that refuses it
-// answers 405 — which arrives here as a failure about the path rather
-// than about the proxy. Vault's own client sends GET for the same reason,
-// so this is the spelling installations are known to serve.
-func (b *openbao) list(ctx context.Context, mount, prefix string) ([]string, error) {
-	answer, err := b.call(ctx, http.MethodGet, mount+"/metadata/"+prefix, url.Values{"list": {"true"}}, nil)
-	if err != nil {
-		return nil, err
-	}
-	raw, _ := answer.Data["keys"].([]any)
-	names := make([]string, 0, len(raw))
-	for _, one := range raw {
-		if name, ok := one.(string); ok && strings.TrimSpace(name) != "" {
-			names = append(names, name)
-		}
-	}
-	return names, nil
-}
-
 // revokeSelf ends the login, and is deliberately best-effort.
 //
 // A batch token — which is what a mount that issues no storage writes per
@@ -216,18 +155,6 @@ func (b *openbao) revokeSelf(ctx context.Context) {
 	}
 	_, _ = b.call(ctx, http.MethodPost, "auth/token/revoke-self", nil, nil)
 	b.token = ""
-}
-
-// notFound is a path OpenBAO has nothing at, typed because the two
-// callers read it differently: a missing role is the end of the command,
-// while a KV prefix with nothing under it is an empty listing — OpenBAO
-// answers 404 rather than an empty one — and the caller decides what an
-// empty answer means.
-type notFound struct{ error }
-
-func nothingThere(err error) bool {
-	var missing notFound
-	return errors.As(err, &missing)
 }
 
 // answer is as much of OpenBAO's envelope as anything here reads.
@@ -309,8 +236,8 @@ func (b *openbao) call(ctx context.Context, method, path string, query url.Value
 	case response.StatusCode == http.StatusForbidden:
 		return answer{}, fmt.Errorf("%w: %s: %s", errNotGranted, path, or(said, "refused"))
 	case response.StatusCode == http.StatusNotFound:
-		return answer{}, notFound{fmt.Errorf("%s does not exist: %s",
-			path, or(said, "the mount or the role has not been created in this namespace"))}
+		return answer{}, fmt.Errorf("%s does not exist: %s",
+			path, or(said, "the mount or the role has not been created in this namespace"))
 	case response.StatusCode >= http.StatusInternalServerError:
 		return answer{}, fmt.Errorf("%w: %s answered %s: %s", errUnreachable, path, response.Status, said)
 	default:
