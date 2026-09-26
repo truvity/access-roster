@@ -419,7 +419,7 @@ in the chart does — this is the one row that asks for it, and every
 other audience keeps the installation default (ES384 in the chart).
 [ADR 0009](../decisions/0009-a-default-signing-algorithm-and-per-audience-exceptions.md)
 is the decision in full, including why it partly supersedes
-[ADR 0005](../decisions/0005-signing-key-rotation-with-no-restart.md).
+[ADR 0005](../decisions/0005-es384-signing-algorithm.md).
 
 **Rows without it get the installation default** — today's one key's own
 algorithm, ES384 in the chart — unchanged from before this existed.
