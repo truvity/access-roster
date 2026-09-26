@@ -1,0 +1,407 @@
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The account a recovery token is minted for. Deliberately bound to
+# NOTHING: it needs no permissions, because the token is a proof of
+# identity and not a way to act. Granting `create` on
+# `serviceaccounts/token` for this account is how an installation says who
+# may recover, and that grant is the whole of the access control.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer-recovery
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: access-issuer/templates/policy-configmap.yaml
+# The declared layer of the policy — the same file the hub reads, and the
+# same schema. See docs/reference/policy.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-policy
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  policy.yaml: |
+    # The version belongs to the chart, not to the values: the loader
+    # refuses a document whose version it does not know, so a policy
+    # written without one is a service that will not start.
+    version: 1
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The one cluster-scoped permission this service ever needs, and the one
+# thing left that asks the API server anything: creating TokenReviews, so
+# that recovery can check a token proving cluster access. It reads
+# nothing.
+#
+# Workloads used to need it too. They do not any more: a
+# ServiceAccount token is verified against the key set its own cluster
+# publishes, so this service holds no access to any cluster including its
+# own. Recovery keeps it because on the day everything else is broken it
+# should depend on nothing but the cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: access-issuer-default-tokenreview
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: access-issuer-default-tokenreview
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: access-issuer-default-tokenreview
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer
+    namespace: default
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+# The directory store is plain Kubernetes objects in THIS namespace:
+# workspace records (ConfigMaps) and their credentials (Secrets), written
+# by this service itself. A namespaced Role and never a ClusterRole —
+# which is why this service gets a namespace of its own.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+# Source: access-issuer/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: access-issuer
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer
+    namespace: default
+
+---
+# Source: access-issuer/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+  ports:
+    - name: issuer
+      port: 8080
+      targetPort: issuer
+
+---
+# Source: access-issuer/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: access-issuer
+      app.kubernetes.io/instance: access-issuer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: access-issuer
+        app.kubernetes.io/instance: access-issuer
+      annotations:
+        # A policy change is a rollout: the file is read at start.
+        checksum/policy: f5c82283eed74b86b5e454b26352ac8643e60badea3b25b6ec910431fa4c1a0c
+    spec:
+      serviceAccountName: access-issuer
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: access-issuer
+          image: "ghcr.io/truvity/access-roster/access-issuer:0.0.0"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: issuer
+              containerPort: 8080
+            - name: health
+              containerPort: 7070
+          env:
+            - name: ISSUER_URL
+              value: "https://issuer.example"
+            - name: PORT
+              value: "8080"
+            - name: HEALTH_PORT
+              value: "7070"
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Names this replica on every audit record, as the instance
+            # that emitted it.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # What an operator connected — the workspaces and their
+            # credentials, the memberships, the OAuth client it was
+            # given, the session key — kept as ConfigMaps and Secrets in
+            # this namespace. Anything else and a restart is a fresh
+            # installation.
+            - name: STORE
+              value: "kubernetes"
+            - name: REFRESH_INTERVAL
+              value: "15m"
+            - name: FRESHNESS_WINDOW
+              value: "30m"
+            - name: PROBE_INTERVAL
+              value: "5m"
+            - name: AUDIT_WRITER_URL
+              value: ""
+            - name: AUDIT_TOKEN_FILE
+              value: ""
+            - name: AUDIT_QUERY_URL
+              value: ""
+            - name: AUDIT_AUDIENCE
+              value: "audit"
+            - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
+              value: "0"
+            - name: SESSION_LIFETIME
+              value: "12h"
+            - name: LOGIN_DIRECTORY
+              value: "true"
+            # Provisioned, never minted here — see values.yaml.
+            - name: SIGNING_KEY_FILE
+              value: /var/run/access-issuer/signing-key/tls.key
+            # Every OTHER algorithm this installation signs with at once —
+            # see `signingKey.additional` in values.yaml. One file per
+            # algorithm, each on its own rotation track in the issuer.
+            - name: SIGNING_KEY_FILES
+              value: "/var/run/access-issuer/signing-key-rs256/tls.key"
+            # Live rotation: how often this replica re-reads the file
+            # above, and the schedule it keeps once it sees a new key —
+            # see `signingKey.rotation` in values.yaml.
+            - name: SIGNING_KEY_POLL_INTERVAL
+              value: "30s"
+            - name: SIGNING_KEY_ACTIVATION_DELAY
+              value: "15m"
+            - name: RELEASE_NAME
+              value: access-issuer
+            - name: POLICY_DIR
+              value: /var/run/access-issuer/policy
+            - name: TOKEN_LIFETIME
+              value: "1h"
+            - name: REFRESH_LIFETIME
+              value: "12h"
+            - name: ABSOLUTE_LIFETIME
+              value: "24h"
+            - name: HOLD_WINDOW
+              value: "4h"
+            - name: EXCHANGE_AUDIENCE
+              value: "access-issuer"
+            # Recovery is the one thing left that asks the API server, and
+            # deliberately so: on the day everything else is broken it
+            # should depend on nothing but the cluster.
+            - name: IN_CLUSTER
+              value: "true"
+            - name: RECOVERY_ENABLED
+              value: "true"
+            - name: RECOVERY_SERVICE_ACCOUNT
+              value: "access-issuer-recovery"
+            - name: RECOVERY_AUDIENCE
+              value: "access-issuer-recovery"
+            - name: LOG_LEVEL
+              value: "info"
+          volumeMounts:
+            - name: signing-key
+              mountPath: /var/run/access-issuer/signing-key
+              readOnly: true
+            - name: signing-key-rs256
+              mountPath: /var/run/access-issuer/signing-key-rs256
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/access-issuer/policy
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            
+          livenessProbe:
+            httpGet: { path: /healthz, port: health }
+          readinessProbe:
+            # Readiness follows the shared store; liveness deliberately
+            # does not. A replica that cannot reach it leaves the
+            # rotation, and the gateway answers fast instead of hanging;
+            # nothing is restarted, so one blip cannot restart the fleet.
+            #
+            # timeoutSeconds exceeds the service's own 2s check so the
+            # answer is the reason ("the session store does not answer:
+            # i/o timeout") rather than the kubelet's timeout. Three
+            # failures at ten seconds is thirty seconds of trouble before
+            # a replica leaves, which a reconnect comfortably beats.
+            httpGet: { path: /readyz, port: health }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: signing-key
+          secret:
+            secretName: access-issuer-signing-key
+        - name: signing-key-rs256
+          secret:
+            secretName: access-issuer-signing-key-rs256
+        - name: policy
+          configMap:
+            name: access-issuer-policy
+        # The root filesystem is read-only, and the directory backends
+        # want somewhere to write.
+        - name: tmp
+          emptyDir: {}
+        
+
+---
+# Source: access-issuer/templates/signing-key.yaml
+# The signing key, issued by cert-manager.
+#
+# The certificate is a by-product: only the key is used. cert-manager is
+# here because it generates the key in the cluster, keeps it out of every
+# other system, and rotates it on a schedule the platform already
+# understands — none of which is true of a key this service minted for
+# itself, and the last of which is the reason it does not.
+#
+# `rotationPolicy: Always` makes a renewal a *new key*, which is the
+# point: a renewed certificate over the same key would rotate nothing.
+#
+# The algorithm decides what the issuer signs with -- RSA signs RS256, and
+# P-256, P-384 and P-521 sign ES256, ES384 and ES512 -- and that is what
+# the discovery document advertises, so every relying party has to accept
+# it. Changing it here rotates the key, so tokens signed with the previous
+# one stop verifying once the old public key leaves the JWKS -- which the
+# issuer itself now schedules, with no restart of this Deployment needed
+# either to notice the new key or to retire the old one; see
+# `signingKey.rotation` for the delays that govern it.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: access-issuer-signing-key
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: access-issuer-signing-key
+  commonName: access-issuer
+  duration: "8760h"
+  renewBefore: "720h"
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+    encoding: PKCS8
+    rotationPolicy: Always
+  issuerRef:
+    name: "selfsigned"
+    kind: "ClusterIssuer"
+    group: cert-manager.io
+
+---
+# Source: access-issuer/templates/signing-key.yaml
+# An ADDITIONAL signing key, on its own rotation track in the issuer (one
+# [issuer.KeyRing] per algorithm) so that renewing it never disturbs the
+# default key's schedule above. Otherwise exactly the default key's own
+# story: cert-manager issues it, only the key is used, and
+# `rotationPolicy: Always` is what makes a renewal a NEW key.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: access-issuer-signing-key-rs256
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: access-issuer-signing-key-rs256
+  commonName: access-issuer
+  duration: "8760h"
+  renewBefore: "720h"
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS1
+    rotationPolicy: Always
+  issuerRef:
+    name: "selfsigned"
+    kind: "ClusterIssuer"
+    group: cert-manager.io

@@ -162,6 +162,34 @@ const (
 // LifetimeDefault is the key under which the fallback lifetime lives.
 const LifetimeDefault = "default"
 
+// The signing algorithms a client or a resource may pin with `signing_alg`.
+// Exactly three, not the four [algorithms this issuer can ever produce]:
+// ES512 is a curve this issuer accepts for a KEY, but no relying party has
+// asked to be pinned to it, and a fourth choice here is a fourth thing an
+// operator has to reason about for no relying party's benefit. See
+// docs/decisions/0009-a-default-signing-algorithm-and-per-audience-exceptions.md
+// for why a pin exists here at all.
+const (
+	SigningAlgRS256 = "RS256"
+	SigningAlgES256 = "ES256"
+	SigningAlgES384 = "ES384"
+)
+
+// SigningAlgs is every value `signing_alg` accepts, in the order the docs
+// list them. It is exported so the issuer -- which is where a pin is
+// actually checked against the keys this installation was given -- can
+// report the same list back in a refusal, rather than a second one that
+// might drift from this one.
+var SigningAlgs = []string{SigningAlgRS256, SigningAlgES256, SigningAlgES384}
+
+// validSigningAlg reports whether a `signing_alg` value is one this schema
+// accepts. It says nothing about whether a KEY exists for it -- that
+// question needs the issuer's key ring, which this package does not have,
+// and is refused where the two meet: see [issuer.NewStorage].
+func validSigningAlg(alg string) bool {
+	return slices.Contains(SigningAlgs, alg)
+}
+
 // Duration is a time.Duration that reads Go duration strings from YAML,
 // because a policy file is read by people.
 type Duration time.Duration
@@ -439,6 +467,20 @@ type Client struct {
 	// that can reach a proxy, which is what actually holds the session
 	// for a console that runs no OpenID flow of its own.
 	BackChannelLogout string `yaml:"backchannel_logout_uri,omitempty"`
+	// SigningAlg pins which algorithm a token FOR THIS CLIENT is signed
+	// with: an ID token always, an access token whenever this client is
+	// its own audience (no `resource` named). Empty uses the installation
+	// default -- today's one key's algorithm, ES384 in the chart. One of
+	// [SigningAlgs]; refused at PARSE time if it is not, and refused at
+	// ISSUER START if this installation configures no key for it -- see
+	// [Client.validate] and [issuer.NewStorage].
+	//
+	// It exists because relying parties do not all keep up: OIDC Core
+	// 15.1 expects a provider to be ABLE to sign with RS256, and EKS's
+	// associated OIDC provider and Kargo's verifier accept nothing else.
+	// Rather than pin the whole installation to the slowest relying
+	// party forever, this is the one row that asks for it.
+	SigningAlg string `yaml:"signing_alg,omitempty"`
 }
 
 // Parse reads one layer and checks its shape. Unknown keys are an error:
@@ -751,6 +793,9 @@ func (c Client) validate(id string, groups map[string]Group) error {
 		if _, ok := groups[name]; !ok {
 			return fmt.Errorf("client %q requires %q, which is not a declared group", id, name)
 		}
+	}
+	if c.SigningAlg != "" && !validSigningAlg(c.SigningAlg) {
+		return fmt.Errorf("client %q: signing_alg %q is not one of %v", id, c.SigningAlg, SigningAlgs)
 	}
 	return nil
 }

@@ -40,6 +40,13 @@ type Resource struct {
 	// TTLCap caps the lifetime of tokens minted for this resource, as
 	// `ttl_cap` does on a client. The shorter of the two applies.
 	TTLCap Duration `yaml:"ttl_cap,omitempty"`
+	// SigningAlg pins which algorithm an ACCESS token minted for this
+	// resource is signed with -- an ID token never names a resource as
+	// its audience, so this has no say over one. Empty uses the
+	// installation default. See [Client.SigningAlg], which is the same
+	// idea one row over: a resource's audience is a service just as a
+	// client's is, and the two share one vocabulary of algorithms.
+	SigningAlg string `yaml:"signing_alg,omitempty"`
 }
 
 // Admits reports whether a caller holds a group this resource requires.
@@ -73,6 +80,9 @@ func (r Resource) validate(id string, groups map[string]Group) error {
 		if _, ok := groups[name]; !ok {
 			return fmt.Errorf("resource %q requires %q, which is not a declared group", id, name)
 		}
+	}
+	if r.SigningAlg != "" && !validSigningAlg(r.SigningAlg) {
+		return fmt.Errorf("resource %q: signing_alg %q is not one of %v", id, r.SigningAlg, SigningAlgs)
 	}
 	return nil
 }

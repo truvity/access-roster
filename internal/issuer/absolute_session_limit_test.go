@@ -228,7 +228,7 @@ func TestARefreshAtTheAbsoluteLimitIsRefusedAndAudited(t *testing.T) {
 	trail := audittest.New(t)
 	iss.UseAudit(trail)
 
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestAccessTokenExpiryIsCappedByTheAbsoluteLimit(t *testing.T) {
 		URL: "http://issuer.example", AllowInsecure: true,
 		TokenLifetime: 30 * time.Minute, AbsoluteLifetime: time.Hour,
 	}, set, dir, issuer.NewMemoryState())
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +431,7 @@ func TestSilentAuthEndsAnSSOSessionPastTheAbsoluteLimit(t *testing.T) {
 		URL: "http://issuer.example", AllowInsecure: true, AbsoluteLifetime: time.Hour,
 	}, set, dir, issuer.NewMemoryState())
 
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

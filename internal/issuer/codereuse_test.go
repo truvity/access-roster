@@ -42,7 +42,7 @@ func TestReusingACodeEndsTheSessionItOpened(t *testing.T) {
 		},
 	}, shared)
 
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, shared)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, shared)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}

@@ -24,6 +24,7 @@ timeline and nothing is silently rewritten under an old date.
 | [0006](0006-groups-claim-scoped-per-audience.md) | The groups claim is scoped per audience, by default |
 | [0007](0007-breaking-changes-inside-1x.md) | Breaking changes inside 1.x |
 | [0008](0008-credentials-only-where-we-govern-membership.md) | Credentials only where we govern membership |
+| [0009](0009-a-default-signing-algorithm-and-per-audience-exceptions.md) | A default signing algorithm, and per-audience exceptions |
 
 ## Template
 

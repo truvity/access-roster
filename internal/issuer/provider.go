@@ -235,7 +235,20 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 	}
 	mux.Handle("/", neverCached(protocol))
 
-	return mux, nil
+	return withSigningAudience(mux), nil
+}
+
+// withSigningAudience installs a fresh [signingAudience] carrier on every
+// request's context before anything -- the OpenID library, this issuer's
+// own storage hooks, the sign-in pages -- sees it, so that whichever hook
+// first learns which audience a token about to be minted is FOR always
+// has somewhere to mark it, and [Storage.SigningKey] always has the same
+// carrier to read back a moment later. See [signingAudience] for why a
+// context value has to be mutable here rather than replaced.
+func withSigningAudience(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(withSigningAudienceContext(r.Context())))
+	})
 }
 
 // neverCached puts `Cache-Control: no-store` on the responses that carry

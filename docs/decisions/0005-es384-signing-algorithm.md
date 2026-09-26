@@ -1,6 +1,6 @@
 # 0005 — ES384 is the signing algorithm
 
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0009](0009-a-default-signing-algorithm-and-per-audience-exceptions.md)
 **Date:** 2026-09-25
 
 ## Context

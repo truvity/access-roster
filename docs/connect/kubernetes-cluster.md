@@ -23,11 +23,18 @@ is the other anchor and does not come here:
   file has no such setting: kube-apiserver's source allows every known
   algorithm when the file is used. A managed cluster's identity-provider
   configuration exposes no algorithm setting either (EKS takes the issuer
-  URL, client id, claims and prefixes and documents no algorithm), so
-  confirm with the cluster's documentation that it verifies ES384 tokens,
-  or give the installation an RSA key: `signingKey.certificate:
-  {algorithm: RSA, size: 2048, encoding: PKCS1}`
-  ([reference](../reference/configuration.md)).
+  URL, client id, claims and prefixes and documents no algorithm) **and
+  its associated OIDC identity provider accepts RS256 only** — confirm
+  with a self-managed cluster's own documentation whether it verifies
+  ES384, and where it does not (or for EKS, always), name `k8s:<cluster>`'s
+  own client `signing_alg: RS256` in the policy
+  ([reference/policy.md#signing-algorithm-per-audience](../reference/policy.md#signing-algorithm-per-audience))
+  and add an RS256 key to `signingKey.additional`
+  ([reference/configuration.md](../reference/configuration.md)) — every
+  OTHER audience keeps signing ES384. Moving the whole installation's
+  default to RSA (`signingKey.certificate: {algorithm: RSA, size: 2048,
+  encoding: PKCS1}`) still works but moves every relying party's tokens,
+  not only this cluster's.
 - RBAC bindings by group name — the internal group's name, as it stands
   in the policy. Name the groups after what the bindings already say and
   the cutover changes no binding.

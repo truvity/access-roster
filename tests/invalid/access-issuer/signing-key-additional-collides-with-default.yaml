@@ -1,0 +1,7 @@
+# An additional key naming the default certificate's own algorithm is the same conflict one row over.
+# error: another key already signs with ES384
+issuerURL: https://issuer.example
+signingKey:
+  additional:
+    - algorithm: ECDSA
+      size: 384

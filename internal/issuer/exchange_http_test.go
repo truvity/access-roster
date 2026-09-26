@@ -83,7 +83,7 @@ func serveIssuerFor(t *testing.T, dir issuer.Directory) (*httptest.Server, *issu
 	}
 	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, dir, issuer.NewMemoryState())
 
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestAnIssuerThatSignsNobodyInStillServesItsSessions(t *testing.T) {
 	}
 	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true},
 		set, &fakeDirectory{}, issuer.NewMemoryState())
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}

@@ -45,9 +45,14 @@ signing-algorithm setting, and its API server builds go-oidc's verifier
 without one (`pkg/server/auth_middleware.go`, `oidc.NewVerifier` with a
 `Config` naming only the client id), which leaves go-oidc's default of
 RS256 — it does not read what discovery advertises. The chart's default
-key signs ES384, so an installation Kargo signs into must set
-`signingKey.certificate: {algorithm: RSA, size: 2048, encoding: PKCS1}`
-([reference](../reference/configuration.md)).
+key signs ES384, so name `kargo`'s own client `signing_alg: RS256` in the
+policy ([reference/policy.md#signing-algorithm-per-audience](../reference/policy.md#signing-algorithm-per-audience))
+and add an RS256 key to `signingKey.additional`
+([reference/configuration.md](../reference/configuration.md)) — every
+OTHER audience keeps signing ES384. Moving the whole installation's
+default to RSA (`signingKey.certificate: {algorithm: RSA, size: 2048,
+encoding: PKCS1}`) still works but is no longer the recommended fix: it
+would move every relying party's tokens off ES384 to satisfy one.
 
 Per-project roles bind on the `groups` claim through Kargo's own RBAC —
 `<env>:<project>:approver` is the promotion gate, the same name the

@@ -202,7 +202,7 @@ func chooserServer(t *testing.T, policyYAML string) *httptest.Server {
 		set, &fakeDirectory{}, issuer.NewMemoryState(),
 	)
 
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}

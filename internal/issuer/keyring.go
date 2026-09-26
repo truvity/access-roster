@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sort"
 	"sync"
@@ -93,8 +94,19 @@ func (c KeyRingConfig) withDefaults() KeyRingConfig {
 // keyRingIndexKey lists every key id a KeyRing has ever recorded, so that
 // a replica can learn of one it never read from its own file — see
 // [KeyRing.absorb]. keyRingEntryKey holds one key's own record.
-func keyRingIndexKey() string          { return "issuer:keyring:index" }
-func keyRingEntryKey(id string) string { return "issuer:keyring:entry:" + id }
+//
+// Both are namespaced by ALGORITHM. Every configured algorithm keeps its
+// own schedule (requirement: rotating one never touches another's), and a
+// shared index or entry key would mean an RS256 ring's [KeyRing.absorb]
+// picking up an ES384 entry another replica recorded — corrupting its
+// idea of "the newest key" with one it can never sign with and was never
+// meant to schedule against.
+func keyRingIndexKey(alg jose.SignatureAlgorithm) string {
+	return "issuer:keyring:index:" + string(alg)
+}
+func keyRingEntryKey(alg jose.SignatureAlgorithm, id string) string {
+	return "issuer:keyring:entry:" + string(alg) + ":" + id
+}
 
 // keyRingEntryTTL bounds how long a record outlives every replica that
 // knew of it. It is refreshed on every poll — [KeyRing.refresh] re-writes
@@ -148,6 +160,7 @@ type ringEntry struct {
 // testable with an injected clock instead of real sleeps.
 type KeyRing struct {
 	mu    sync.Mutex
+	alg   jose.SignatureAlgorithm
 	state State
 	log   *slog.Logger
 	now   func() time.Time
@@ -165,11 +178,14 @@ type KeyRing struct {
 	metrics keyRingInstruments
 }
 
-// NewKeyRing returns a ring with nothing published yet. state is where
-// the schedule is shared with every other replica; nil keeps it in this
-// process alone, which is right for a single replica and a local run and
-// wrong for more — the same trade [State] itself documents.
-func NewKeyRing(state State, cfg KeyRingConfig, log *slog.Logger) *KeyRing {
+// NewKeyRing returns a ring with nothing published yet, for ONE algorithm:
+// every key ever [KeyRing.Observe]d on it must sign with alg, so that this
+// ring's schedule -- and the shared-store keys it schedules through, see
+// [keyRingIndexKey] -- never mixes two algorithms' keys together. state is
+// where the schedule is shared with every other replica; nil keeps it in
+// this process alone, which is right for a single replica and a local run
+// and wrong for more — the same trade [State] itself documents.
+func NewKeyRing(alg jose.SignatureAlgorithm, state State, cfg KeyRingConfig, log *slog.Logger) *KeyRing {
 	if state == nil {
 		state = NewMemoryState()
 	}
@@ -177,6 +193,7 @@ func NewKeyRing(state State, cfg KeyRingConfig, log *slog.Logger) *KeyRing {
 		log = slog.Default()
 	}
 	return &KeyRing{
+		alg:       alg,
 		state:     state,
 		log:       log,
 		now:       time.Now,
@@ -186,6 +203,10 @@ func NewKeyRing(state State, cfg KeyRingConfig, log *slog.Logger) *KeyRing {
 		metrics:   newKeyRingInstruments(),
 	}
 }
+
+// Algorithm is the one algorithm every key this ring ever accepts signs
+// with.
+func (r *KeyRing) Algorithm() jose.SignatureAlgorithm { return r.alg }
 
 // SetClock replaces the clock. For tests, matching [MemoryState.SetClock].
 func (r *KeyRing) SetClock(now func() time.Time) {
@@ -217,6 +238,16 @@ func (r *KeyRing) Configure(cfg KeyRingConfig) {
 func (r *KeyRing) Observe(ctx context.Context, key *SigningKey) error {
 	if key == nil {
 		return errors.New("issuer: no signing key to observe")
+	}
+	if key.alg != r.alg {
+		// A wiring defect, not a rotation: the poller that feeds this ring
+		// is supposed to route each file to the ring for ITS OWN
+		// algorithm (requirement 6), and a key of the wrong algorithm
+		// arriving here means that routing is broken -- silently
+		// accepting it would schedule an RS256 key on the ES384 track, or
+		// worse, make it briefly [KeyRing.Active] for tokens meant to
+		// carry `ES384`.
+		return fmt.Errorf("issuer: this key ring signs with %s; a %s key cannot be observed on it", r.alg, key.alg)
 	}
 
 	r.mu.Lock()
@@ -253,7 +284,7 @@ func (r *KeyRing) record(ctx context.Context, now time.Time, key *SigningKey) *r
 	// against, and no other replica to give time to catch up. Every key
 	// after it does.
 	var immediate bool
-	if members, err := r.state.Members(ctx, keyRingIndexKey()); err != nil {
+	if members, err := r.state.Members(ctx, keyRingIndexKey(r.alg)); err != nil {
 		r.log.WarnContext(ctx, "could not tell whether this is the installation's first signing key; "+
 			"assuming it is only if this replica knows of none itself",
 			"error", err)
@@ -281,13 +312,13 @@ func (r *KeyRing) record(ctx context.Context, now time.Time, key *SigningKey) *r
 		// no cycles; kept as a log rather than a panic because a signing
 		// key is not worth crashing the process over a defect elsewhere.
 		r.log.ErrorContext(ctx, "could not encode a signing key for the shared store", "kid", key.id, "error", err)
-	} else if won, err := r.state.SetIfAbsent(ctx, keyRingEntryKey(key.id), encoded, keyRingEntryTTL); err != nil {
+	} else if won, err := r.state.SetIfAbsent(ctx, keyRingEntryKey(r.alg, key.id), encoded, keyRingEntryTTL); err != nil {
 		r.log.WarnContext(ctx, "could not record the signing key in the shared store; "+
 			"this replica keeps its own schedule for it and will retry", "kid", key.id, "error", err)
 	} else if !won {
 		// Another replica — or an earlier run of this one — already
 		// recorded this id. ITS schedule is canonical.
-		if stored, err := getJSON[ringEntry](ctx, r.state, keyRingEntryKey(key.id)); err != nil {
+		if stored, err := getJSON[ringEntry](ctx, r.state, keyRingEntryKey(r.alg, key.id)); err != nil {
 			r.log.WarnContext(ctx, "could not read the recorded schedule for a signing key another "+
 				"replica already published; keeping this replica's own guess", "kid", key.id, "error", err)
 		} else if stored != nil {
@@ -295,7 +326,7 @@ func (r *KeyRing) record(ctx context.Context, now time.Time, key *SigningKey) *r
 		}
 	}
 
-	if err := r.state.Add(ctx, keyRingIndexKey(), key.id, keyRingEntryTTL); err != nil {
+	if err := r.state.Add(ctx, keyRingIndexKey(r.alg), key.id, keyRingEntryTTL); err != nil {
 		r.log.WarnContext(ctx, "could not index a signing key in the shared store", "kid", key.id, "error", err)
 	}
 
@@ -320,7 +351,7 @@ func (r *KeyRing) record(ctx context.Context, now time.Time, key *SigningKey) *r
 // in its own JWKS, but [KeyRing.Active] will never choose it to sign
 // with, because this replica cannot.
 func (r *KeyRing) absorb(ctx context.Context) {
-	ids, err := r.state.Members(ctx, keyRingIndexKey())
+	ids, err := r.state.Members(ctx, keyRingIndexKey(r.alg))
 	if err != nil {
 		r.log.WarnContext(ctx, "could not read what other replicas have published; "+
 			"this replica's own view of the key ring is unaffected", "error", err)
@@ -332,7 +363,7 @@ func (r *KeyRing) absorb(ctx context.Context) {
 			continue
 		}
 
-		stored, err := getJSON[ringEntry](ctx, r.state, keyRingEntryKey(id))
+		stored, err := getJSON[ringEntry](ctx, r.state, keyRingEntryKey(r.alg, id))
 		if err != nil {
 			r.log.WarnContext(ctx, "could not read a signing key another replica indexed", "kid", id, "error", err)
 			continue
@@ -364,10 +395,10 @@ func (r *KeyRing) refresh(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		if err := r.state.Set(ctx, keyRingEntryKey(id), encoded, keyRingEntryTTL); err != nil {
+		if err := r.state.Set(ctx, keyRingEntryKey(r.alg, id), encoded, keyRingEntryTTL); err != nil {
 			r.log.WarnContext(ctx, "could not refresh a published signing key's record", "kid", id, "error", err)
 		}
-		if err := r.state.Add(ctx, keyRingIndexKey(), id, keyRingEntryTTL); err != nil {
+		if err := r.state.Add(ctx, keyRingIndexKey(r.alg), id, keyRingEntryTTL); err != nil {
 			r.log.WarnContext(ctx, "could not refresh the signing key index", "kid", id, "error", err)
 		}
 	}
@@ -435,8 +466,8 @@ func (r *KeyRing) recompute(ctx context.Context, now time.Time) {
 		// Best-effort: leaving the record would only cost a little space
 		// in the shared store until keyRingEntryTTL, and a failure here
 		// must not stop this replica computing its own schedule.
-		_ = r.state.Delete(ctx, keyRingEntryKey(id))
-		_ = r.state.Remove(ctx, keyRingIndexKey(), id)
+		_ = r.state.Delete(ctx, keyRingEntryKey(r.alg, id))
+		_ = r.state.Remove(ctx, keyRingIndexKey(r.alg), id)
 	}
 
 	r.activeID = activeID

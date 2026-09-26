@@ -23,6 +23,31 @@
   because an installation may legitimately prepare a group before its consumer
   arrives.
 
+- **Added:** the issuer signs with several algorithms at once — RS256,
+  ES256 and ES384 — chosen per token by the audience it is minted for,
+  rather than one algorithm for the whole installation.
+
+  A client row or a resource row may pin `signing_alg: RS256 | ES256 |
+  ES384` in the policy; a row naming none keeps signing the installation
+  default (ES384 in the chart, unchanged). This is for the relying
+  parties that lag: EKS's associated OIDC identity provider and Kargo's
+  verifier both accept RS256 only, and OIDC Core §15.1 expects a provider
+  to be *able* to sign with it — previously the only fix was moving the
+  *whole* installation's default key to RSA, off every other audience's
+  ES384 too.
+
+  `signingKey.additional[]` in the `access-issuer` chart adds a key per
+  extra algorithm, each its own cert-manager `Certificate` and `Secret`,
+  each on its own rotation track: renewing one never disturbs another's
+  schedule, including the default key's. A policy row naming an algorithm
+  with no configured key is refused loudly at issuer start, never a
+  silent fall-back to the default. The existing single-key
+  `signingKey.certificate` shape is unchanged and renders byte-identical
+  output.
+
+  See [reference/policy.md#signing-algorithm-per-audience](docs/reference/policy.md#signing-algorithm-per-audience)
+  and [ADR 0009](docs/decisions/0009-a-default-signing-algorithm-and-per-audience-exceptions.md).
+
 ## v1.30.0
 
 - **An absolute session limit: every session now ends 24 hours after

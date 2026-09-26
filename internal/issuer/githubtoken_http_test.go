@@ -150,7 +150,7 @@ func serveGitHubTokens(t *testing.T) githubTokenIssuer {
 		},
 		HTTP: github.Client(),
 	})
-	storage, err := issuer.NewStorage(iss, workflowVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, workflowVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}

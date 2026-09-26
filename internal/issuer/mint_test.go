@@ -28,7 +28,7 @@ func TestMintForSignsWhatAnExchangeWouldDecide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, key, issuer.NewMemoryState())
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, key, nil, issuer.NewMemoryState())
 	if err != nil {
 		t.Fatal(err)
 	}

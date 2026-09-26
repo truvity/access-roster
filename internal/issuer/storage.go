@@ -180,7 +180,7 @@ func (a *authRequest) Done() bool                         { return a.IsDone }
 type Storage struct {
 	iss     *Issuer
 	verify  Verifier
-	keys    *KeyRing
+	keys    *KeyRings
 	secrets func(clientID string) (string, bool)
 	// log is for the few things here worth saying out loud. Nothing in
 	// this file logged until a reused authorization code needed to be —
@@ -289,18 +289,28 @@ var (
 // NewStorage returns the storage over an issuer.
 //
 // secrets resolves a confidential client's secret, which lives in a
-// Kubernetes Secret and never in the policy file. key is the first
+// Kubernetes Secret and never in the policy file. key is the primary
 // signing key; a nil one is generated, which is right for a local run and
-// wrong for a deployment — see [SigningKey]. It seeds a [KeyRing] that
-// this storage keeps for the life of the process: a later key, read after
-// a rotation, is fed to it with [Storage.Rotate] rather than by building a
-// new Storage. state is where a login in progress lives, and where the
-// key ring's schedule is shared with every other replica; a nil one is
-// kept in this process, which is right for one replica and wrong for more
-// — see [State].
+// wrong for a deployment — see [SigningKey]. additional is every OTHER
+// algorithm this installation signs with at once, at most one key per
+// algorithm — see [KeyRings]. Together they seed the [KeyRings] this
+// storage keeps for the life of the process: a later key, read after a
+// rotation, is fed to it with [Storage.Rotate] rather than by building a
+// new Storage. state is where a login in progress lives, and where each
+// ring's schedule is shared with every other replica; a nil one is kept
+// in this process, which is right for one replica and wrong for more —
+// see [State].
+//
+// This is also THE PLACE policy and keys meet, and so the one place a
+// policy naming a `signing_alg` this installation has no key for can be
+// refused loudly, before it ever reaches a token: see
+// [checkSigningAlgorithms]. Falling back to the default here instead
+// would mean an operator's `signing_alg: RS256` quietly minting ES384
+// tokens because the RS256 Secret was never mounted — the opposite of
+// what naming an algorithm at all is for.
 func NewStorage(
 	iss *Issuer, verify Verifier, secrets func(string) (string, bool),
-	key *SigningKey, state State,
+	key *SigningKey, additional []*SigningKey, state State,
 ) (*Storage, error) {
 	if key == nil {
 		generated, err := NewSigningKey()
@@ -315,9 +325,12 @@ func NewStorage(
 	if state == nil {
 		state = NewMemoryState()
 	}
-	keys := NewKeyRing(state, KeyRingConfig{}, nil)
-	if err := keys.Observe(context.Background(), key); err != nil {
-		return nil, fmt.Errorf("issuer: adopt the signing key: %w", err)
+	keys, err := NewKeyRings(key, additional, state, KeyRingConfig{}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("issuer: adopt the signing keys: %w", err)
+	}
+	if err := checkSigningAlgorithms(iss.Policy(), keys); err != nil {
+		return nil, err
 	}
 	// Nothing here implements op.DeviceAuthorizationStorage, and that is
 	// the mechanism by which the device flow is not served. The
@@ -334,6 +347,38 @@ func NewStorage(
 	}, nil
 }
 
+// checkSigningAlgorithms refuses a client or a resource naming a
+// `signing_alg` this installation has no key configured for. [policy.Client]
+// and [policy.Resource] can only check that the VALUE is one of
+// [policy.SigningAlgs] — they know nothing of what keys exist — so this is
+// the one place, at issuer start, that both are in hand together.
+func checkSigningAlgorithms(set *policy.Set, keys *KeyRings) error {
+	// By index rather than by value: [policy.ClientView] and
+	// [policy.ResourceView] are wide structs, and copying one per
+	// iteration is what the linter objects to -- see [policy.Set.Clients].
+	clients := set.Clients()
+	for i := range clients {
+		if clients[i].SigningAlg == "" {
+			continue
+		}
+		if alg := jose.SignatureAlgorithm(clients[i].SigningAlg); !keys.Has(alg) {
+			return fmt.Errorf("client %q: signing_alg %q names an algorithm this installation "+
+				"has no key for (configured: %v)", clients[i].ID, clients[i].SigningAlg, keys.Configured())
+		}
+	}
+	resources := set.Resources()
+	for i := range resources {
+		if resources[i].SigningAlg == "" {
+			continue
+		}
+		if alg := jose.SignatureAlgorithm(resources[i].SigningAlg); !keys.Has(alg) {
+			return fmt.Errorf("resource %q: signing_alg %q names an algorithm this installation "+
+				"has no key for (configured: %v)", resources[i].ID, resources[i].SigningAlg, keys.Configured())
+		}
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------- keys
 
 // Rotate feeds a freshly re-read signing key to this storage's key ring —
@@ -344,42 +389,104 @@ func NewStorage(
 // after its activation delay, and the key it supersedes stays published
 // for its overlap before dropping out.
 func (s *Storage) Rotate(ctx context.Context, key *SigningKey) error {
-	return s.keys.Observe(ctx, key)
+	return s.keys.Rotate(ctx, key)
 }
 
-// ConfigureKeyRotation overrides the ring's activation delay and overlap
-// once a deployment's own settings are known — its token lifetime,
-// chiefly, which [KeyRingConfig.Overlap] must be at least as long as.
-// Call it before serving; [KeyRing.Configure] is not meant to be changed
-// while replicas are actively rotating.
+// ConfigureKeyRotation overrides every ring's activation delay and
+// overlap once a deployment's own settings are known — its token
+// lifetime, chiefly, which [KeyRingConfig.Overlap] must be at least as
+// long as. Call it before serving; [KeyRing.Configure] is not meant to be
+// changed while replicas are actively rotating.
 func (s *Storage) ConfigureKeyRotation(cfg KeyRingConfig) {
 	s.keys.Configure(cfg)
 }
 
 // SigningKey implements [op.AuthStorage]: the key this replica currently
 // signs with.
-func (s *Storage) SigningKey(context.Context) (op.SigningKey, error) {
-	active := s.keys.Active()
+//
+// WHICH key is the whole of per-audience signing. The library hands this
+// nothing but ctx, so the audience travels in it — written by whichever
+// storage hook learns it first for this token: [Storage.CreateAccessToken]
+// and [Storage.CreateAccessAndRefreshTokens] for an access token, and
+// [client.RestrictAdditionalIdTokenScopes] for an ID token, which the
+// library always asks for a signing key AFTER an access token's, on the
+// SAME context — see [signingAudience] for why a mutable carrier is what
+// makes that possible with an interface this narrow, and every mint path
+// that is NOT reached through the library (MintFor, a Back-Channel Logout
+// token) resolves its algorithm directly instead, with no ctx trick
+// needed, because it already holds its own target audience.
+//
+// A path that forgets to mark the carrier is not a crash: it reads back
+// unset, exactly like a request naming no special audience, and this
+// signs with the installation DEFAULT. That is deliberate — a forgotten
+// mark must never become a hard failure a relying party sees — but it is
+// also the risk every negative test here exists to catch: an audience
+// configured for RS256 that quietly got ES384 because some path never
+// marked the carrier would look, from here, identical to one that was
+// never asked to be anything but the default.
+func (s *Storage) SigningKey(ctx context.Context) (op.SigningKey, error) {
+	alg := s.keys.Default()
+	if id, ok := signingAudienceFrom(ctx).get(); ok {
+		alg = s.signingAlgorithmFor(id)
+	}
+
+	active := s.keys.Active(alg)
+	if active == nil {
+		// checkSigningAlgorithms refuses this at start for anything a
+		// policy row names, so reaching here means the ring for the
+		// DEFAULT itself is not ready yet (a fresh KeyRings whose first
+		// Observe has not returned) rather than a missing configuration
+		// -- and the default's own ring is seeded before [NewStorage]
+		// ever returns, so this is the anomaly to fall back from, not a
+		// token to fail over.
+		active = s.keys.Active(s.keys.Default())
+	}
 	if active == nil {
 		return nil, errors.New("issuer: no signing key is available yet")
 	}
 	return active, nil
 }
 
+// signingAlgorithmFor is the algorithm a token FOR audience id is signed
+// with: that audience's own `signing_alg` — a resource's, when id names
+// one declared, else a client's — or the installation default when it
+// named none or names something not declared at all (validated before the
+// library was reached; reaching here with an undeclared id is a request
+// this issuer is about to refuse for an unrelated reason, and the
+// algorithm it never gets a chance to matter for is not worth refusing a
+// second way).
+//
+// Resource ids and client ids share no space — [policy.validateResourceID]
+// requires an absolute URI RFC 8707 style, checked against the RESOURCE
+// table specifically — so trying the resource table first and falling
+// through to the client table is unambiguous, not a guess.
+func (s *Storage) signingAlgorithmFor(id string) jose.SignatureAlgorithm {
+	if id != "" {
+		if resource, ok := s.iss.Policy().Resource(id); ok && resource.SigningAlg != "" {
+			return jose.SignatureAlgorithm(resource.SigningAlg)
+		}
+		if client, ok := s.iss.Policy().Client(id); ok && client.SigningAlg != "" {
+			return jose.SignatureAlgorithm(client.SigningAlg)
+		}
+	}
+	return s.keys.Default()
+}
+
 // SignatureAlgorithms implements [op.AuthStorage]. It is what the
 // discovery document advertises as
 // `id_token_signing_alg_values_supported`, so it names what is actually
-// PUBLISHED right now — every key in the JWKS, not only the one currently
-// signing — because a relying party that fetched discovery mid-rotation
-// still has to accept a token a moment away from expiring under the
-// previous algorithm. Once that key retires, only the active algorithm is
-// left to advertise.
+// PUBLISHED right now — every key in the JWKS, across EVERY configured
+// algorithm, not only the one currently signing a particular audience —
+// because a relying party that fetched discovery mid-rotation still has
+// to accept a token a moment away from expiring under a previous key, and
+// one that reads `aud` for a client with no `signing_alg` still has to
+// accept whatever the installation default is.
 func (s *Storage) SignatureAlgorithms(context.Context) ([]jose.SignatureAlgorithm, error) {
 	return s.keys.Algorithms(), nil
 }
 
-// KeySet implements [op.AuthStorage]: every key currently published,
-// signing or retiring — see [KeyRing.Published].
+// KeySet implements [op.AuthStorage]: every key currently published, by
+// every configured algorithm, signing or retiring — see [KeyRings.Published].
 func (s *Storage) KeySet(context.Context) ([]op.Key, error) {
 	return s.keys.Published(), nil
 }
@@ -397,9 +504,15 @@ func (s *Storage) Health(context.Context) error { return nil }
 // that happens to match a declared id can never displace it, because the
 // declared one is found before anything is fetched.
 func (s *Storage) GetClientByClientID(ctx context.Context, clientID string) (op.Client, error) {
+	// The audience carrier this request's context holds, if any -- handed
+	// to the returned client so that [client.RestrictAdditionalIdTokenScopes]
+	// can mark it later with no context of its own to read it from. Both
+	// branches below need it, so it is read once here rather than twice.
+	signing := signingAudienceFrom(ctx)
+
 	declared, ok := s.iss.Policy().Client(clientID)
 	if ok {
-		return &client{id: clientID, declared: declared, lifetime: s.tokenLifetime(declared)}, nil
+		return &client{id: clientID, declared: declared, lifetime: s.tokenLifetime(declared), signing: signing}, nil
 	}
 
 	// Not declared. It may still be a client that describes itself.
@@ -411,7 +524,7 @@ func (s *Storage) GetClientByClientID(ctx context.Context, clientID string) (op.
 		// admitted at all, and which URL it was.
 		s.logger().InfoContext(ctx, "admitted a client that describes itself",
 			slog.String("client", clientID), slog.String("name", resolved.DisplayName))
-		return &client{id: clientID, declared: resolved, lifetime: s.tokenLifetime(resolved)}, nil
+		return &client{id: clientID, declared: resolved, lifetime: s.tokenLifetime(resolved), signing: signing}, nil
 	case errors.Is(err, errNotADocumentClient):
 		return nil, fmt.Errorf("%w: %q", ErrUnknownTarget, clientID)
 	default:
@@ -919,6 +1032,13 @@ func sessionOf(request op.IDTokenRequest) string {
 
 // issue records one access token and returns it.
 func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, error) {
+	// Marked before anything else: this is the FIRST storage call the
+	// library makes for either a fresh access token or one paired with a
+	// refresh (see [op.CreateAccessToken] -> createTokens), and it runs
+	// before the library calls [Storage.SigningKey] to actually sign this
+	// same access token a moment later — see [signingAudience].
+	signingAudienceFrom(ctx).mark(accessAudienceOf(request))
+
 	claims, given, family, err := s.claimsFor(ctx, request)
 	if err != nil {
 		return nil, err

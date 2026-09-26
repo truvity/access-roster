@@ -34,7 +34,7 @@ func TestRevocationReachesTheSharedStateEitherWay(t *testing.T) {
 			"ada@north.example": {Found: true, Authoritative: true, Groups: []string{"directory-admins@north.example"}},
 		},
 	}, shared)
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, shared)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, shared)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}

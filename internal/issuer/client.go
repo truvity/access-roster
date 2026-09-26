@@ -17,6 +17,15 @@ type client struct {
 	id       string
 	declared policy.Client
 	lifetime time.Duration
+	// signing is this request's audience carrier — see [signingAudience]
+	// — or nil for a caller that built a client with none, which is what
+	// every construction before per-audience signing existed did and
+	// what every test that has no ctx to carry one still does.
+	// [RestrictAdditionalIdTokenScopes] is the one place a client marks
+	// it, because it is the one hook the library calls with no ctx of
+	// its own, at exactly the moment an ID token's signing key is about
+	// to be asked for.
+	signing *signingAudience
 }
 
 var _ op.Client = (*client)(nil)
@@ -105,8 +114,18 @@ func (c *client) DevMode() bool { return false }
 // RestrictAdditionalIdTokenScopes implements [op.Client]. The spelling is
 // the library's interface and cannot be corrected here.
 //
+// It changes no scope — that part is unchanged — but it is also the ONE
+// hook [op.CreateIDToken] calls with no context, right before it asks
+// [Storage.SigningKey] for THIS token's key (see op/token.go). An ID
+// token's audience is always the client (requirement, never a named
+// resource: a resource is something an ACCESS token is minted FOR), and
+// this client already knows its own id, so marking the carrier here is
+// the whole of how an ID token's signing key follows the client rather
+// than whatever the access token minted a moment earlier was for.
+//
 //nolint:revive // the method name is fixed by the op.Client interface
 func (c *client) RestrictAdditionalIdTokenScopes() func([]string) []string {
+	c.signing.mark(c.id)
 	return func(scopes []string) []string { return scopes }
 }
 

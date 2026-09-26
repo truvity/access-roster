@@ -70,7 +70,10 @@ func (s *Storage) MintFor(ctx context.Context, email, audience string, lifetime 
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	active := s.keys.Active()
+	// MintFor's own target is its audience directly -- no ctx trick
+	// needed the way the library's own mint paths need one, because this
+	// signs the token itself rather than asking the library to.
+	active := s.keys.Active(s.signingAlgorithmFor(audience))
 	if active == nil {
 		return "", time.Time{}, errors.New("no signing key")
 	}

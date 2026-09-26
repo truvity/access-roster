@@ -1,0 +1,6 @@
+# Every additional key names its own algorithm; there is no "the" one.
+# error: missing property 'algorithm'
+issuerURL: https://issuer.example
+signingKey:
+  additional:
+    - size: 2048

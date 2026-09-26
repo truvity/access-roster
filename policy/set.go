@@ -223,6 +223,28 @@ func (s *Set) Clients() []ClientView {
 	return out
 }
 
+// ResourceView is one declared resource as an operator, or a startup
+// check, sees it.
+type ResourceView struct {
+	ID string
+	Resource
+}
+
+// Resources returns every declared resource, sorted by id. It exists
+// beside [Set.Resource] for the same reason [Set.Clients] exists beside
+// [Set.Client]: a caller that has to check EVERY row -- the issuer's own
+// signing_alg-against-configured-keys refusal at start, chiefly -- needs
+// the list, not a lookup.
+func (s *Set) Resources() []ResourceView {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]ResourceView, 0, len(s.declared.Resources))
+	for _, id := range slices.Sorted(maps.Keys(s.declared.Resources)) {
+		out = append(out, ResourceView{ID: id, Resource: s.declared.Resources[id]})
+	}
+	return out
+}
+
 // HasGroup reports whether an internal group is declared.
 func (s *Set) HasGroup(name string) bool {
 	s.mu.RLock()

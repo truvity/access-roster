@@ -226,7 +226,7 @@ func TestTheResourceIsCarriedOntoTheAuthRequest(t *testing.T) {
 		t.Fatalf("set: %v", err)
 	}
 	iss := New(Config{URL: "http://issuer.example", AllowInsecure: true}, set, nil, NewMemoryState())
-	storage, err := NewStorage(iss, nil, nil, nil, nil)
+	storage, err := NewStorage(iss, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestBothGatesApply(t *testing.T) {
 		},
 	}
 	iss := New(Config{URL: "http://issuer.example", AllowInsecure: true}, set, dir, NewMemoryState())
-	storage, err := NewStorage(iss, nil, nil, nil, nil)
+	storage, err := NewStorage(iss, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}

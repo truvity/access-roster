@@ -1,0 +1,10 @@
+# An installation signing with two algorithms at once: the default
+# ES384 certificate, unchanged, plus one additional RS256 key for
+# relying parties that lag it -- EKS, Kargo -- see
+# reference/policy.md's "Signing algorithm per audience".
+issuerURL: https://issuer.example
+signingKey:
+  additional:
+    - algorithm: RSA
+      size: 2048
+      encoding: PKCS1
