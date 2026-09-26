@@ -813,3 +813,154 @@ func TestSplitGroupReadsAnyGrant(t *testing.T) {
 		}
 	}
 }
+
+func TestUnconsumedGroups(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name         string
+		policy       string
+		unconsumed   []string
+	}{
+		{
+			"a group referenced by a client",
+			`version: 1
+groups:
+  team:a:admin: {}
+clients:
+  app: { kind: public, requires: [team:a:admin] }
+`,
+			[]string{},
+		},
+		{
+			"a group referenced by a resource",
+			`version: 1
+groups:
+  team:a:admin: {}
+resources:
+  https://api.example/service: { requires: [team:a:admin] }
+`,
+			[]string{},
+		},
+		{
+			"a group referenced by client documents",
+			`version: 1
+groups:
+  team:a:admin: {}
+client_documents:
+  origins: [example.com]
+  requires: [team:a:admin]
+`,
+			[]string{},
+		},
+		{
+			"a group referenced by github org members",
+			`version: 1
+groups:
+  team:a:admin: {}
+github:
+  example:
+    members: [team:a:admin]
+`,
+			[]string{},
+		},
+		{
+			"a group referenced by github team members",
+			`version: 1
+groups:
+  team:a:admin: {}
+github:
+  example:
+    teams:
+      platform:
+        members: [team:a:admin]
+`,
+			[]string{},
+		},
+		{
+			"a group referenced by github team maintainers",
+			`version: 1
+groups:
+  team:a:admin: {}
+github:
+  example:
+    teams:
+      platform:
+        maintainers: [team:a:admin]
+`,
+			[]string{},
+		},
+		{
+			"a group referenced by lifetimes",
+			`version: 1
+groups:
+  team:a:admin: {}
+lifetimes:
+  team:a:admin: 4h
+`,
+			[]string{},
+		},
+		{
+			"a group referenced only by claims",
+			`version: 1
+groups:
+  team:a:admin: {}
+claims:
+  team:a:admin: { scope: team }
+`,
+			[]string{"team:a:admin"},
+		},
+		{
+			"a group referenced by nothing",
+			`version: 1
+groups:
+  team:a:admin: {}
+  team:b:viewer: {}
+clients:
+  app: { kind: public, requires: [team:a:admin] }
+`,
+			[]string{"team:b:viewer"},
+		},
+		{
+			"a rung group is never reported",
+			`version: 1
+groups:
+  rung:sre: {}
+clients:
+  app: { kind: public, requires: [all:access-roster:operator] }
+`,
+			[]string{},
+		},
+		{
+			"an emp group is never reported",
+			`version: 1
+groups:
+  emp:alice: {}
+clients:
+  app: { kind: public, requires: [all:access-roster:operator] }
+`,
+			[]string{},
+		},
+		{
+			"multiple unconsumed groups are sorted",
+			`version: 1
+groups:
+  team:z:admin: {}
+  team:a:admin: {}
+  team:m:admin: {}
+clients:
+  app: { kind: public, requires: [all:access-roster:operator] }
+`,
+			[]string{"team:a:admin", "team:m:admin", "team:z:admin"},
+		},
+	} {
+		p, err := policy.Parse([]byte(tc.policy))
+		if err != nil {
+			t.Fatalf("%s: Parse: %v", tc.name, err)
+		}
+		got := p.Unconsumed()
+		if !slices.Equal(got, tc.unconsumed) {
+			t.Errorf("%s: Unconsumed = %v, want %v", tc.name, got, tc.unconsumed)
+		}
+	}
+}

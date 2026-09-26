@@ -1,3 +1,19 @@
+## v1.31.0
+
+- **Added: the issuer and github-roster warn at load if an internal group is
+  declared but nothing consumes it.**
+
+  A group referenced by a client, resource, GitHub binding or lifetime
+  is working; one referenced only by `claims` (which decorate a group) is
+  still unused. A group with the `rung:` or `emp:` prefix is never reported,
+  because these are identities and sessions, not grants.
+
+  The warning reaches an operator at the moment they see their logs, where
+  they can check whether the group is a leftover, a typo, or intentionally
+  ahead of the client that will use it. It is a warning rather than an error,
+  because an installation may legitimately prepare a group before its consumer
+  arrives.
+
 ## v1.30.0
 
 - **An absolute session limit: every session now ends 24 hours after

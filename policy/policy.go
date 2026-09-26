@@ -866,3 +866,87 @@ func conventional(name string) bool {
 
 	return true
 }
+
+// Unconsumed returns the sorted names of internal groups that are declared
+// in [Policy.Groups] but referenced by none of:
+//   - any client's [Client.Requires]
+//   - any resource's [Resource.Requires]
+//   - [ClientDocuments.Requires]
+//   - any GitHub binding (organisation [GitHubOrg.Members] or team
+//     [GitHubTeam.Members]/[GitHubTeam.Maintainers])
+//   - [Policy.Lifetimes] keys
+//
+// A group referenced only by [Policy.Claims] keys is still unconsumed:
+// claims decorate a group and do not consume it; they add to a token only
+// when a caller already holds the group for some other reason. Groups with
+// the [rung] or [emp] prefix are never reported, because they are not grants
+// and exist for other purposes.
+//
+// This is a warning rather than an error because an installation may
+// legitimately declare a group ahead of a client or resource that will use
+// it, and a deployment's rollout should not wait for every reference to
+// exist.
+func (p Policy) Unconsumed() []string {
+	// Build a set of consumed groups. The initial capacity guesses at how
+	// many will be needed across all uses.
+	consumed := make(map[string]bool, len(p.Groups))
+
+	// Clients.
+	for _, client := range p.Clients {
+		for _, name := range client.Requires {
+			consumed[name] = true
+		}
+	}
+
+	// Resources.
+	for _, resource := range p.Resources {
+		for _, name := range resource.Requires {
+			consumed[name] = true
+		}
+	}
+
+	// Client documents.
+	for _, name := range p.ClientDocuments.Requires {
+		consumed[name] = true
+	}
+
+	// GitHub bindings.
+	for _, org := range p.GitHub {
+		for _, name := range org.Members {
+			consumed[name] = true
+		}
+		for _, team := range org.Teams {
+			for _, name := range team.Members {
+				consumed[name] = true
+			}
+			for _, name := range team.Maintainers {
+				consumed[name] = true
+			}
+		}
+	}
+
+	// Lifetimes. The "default" key does not name a group.
+	for name := range p.Lifetimes {
+		if name != LifetimeDefault {
+			consumed[name] = true
+		}
+	}
+
+	// Collect unconsumed groups, excluding non-grants.
+	var out []string
+	for name := range p.Groups {
+		if consumed[name] {
+			continue
+		}
+
+		// Skip non-grants: rung:* and emp:* families.
+		if strings.HasPrefix(name, "rung:") || strings.HasPrefix(name, "emp:") {
+			continue
+		}
+
+		out = append(out, name)
+	}
+
+	slices.Sort(out)
+	return out
+}
