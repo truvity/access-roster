@@ -1,10 +1,9 @@
 # Trust — two anchors, one vocabulary
 
-**Status:** decided 2026-09-09, after the first live token comparison. It
-is the rule under every other design document: which credential a caller
-presents, which credential a service accepts, and what a token says once
-it is issued. When a design and this page disagree, this page wins and
-the design gets a dated correction.
+**Status:** in force. This is the rule under every other design document:
+which credential a caller presents, which credential a service accepts,
+and what a token says once it is issued. When a design and this page
+disagree, this page wins and the design gets a dated correction.
 
 ## The rule
 
@@ -82,9 +81,9 @@ whole design.
   check. **No relying party re-maps them**, and no library translates
   them.
 
-**The claim shape is `groups` only.** Decided 2026-09-09 after decoding a
-live token from the identity provider being replaced beside one from
-this issuer. That provider carried the same facts three times — a flat
+**The claim shape is `groups` only.** A live token from the identity
+provider being replaced, decoded beside one from this issuer, is what
+settled it: that provider carried the same facts three times — a flat
 `groups` list, and two nested maps of role → organisation → domain — and
 **nothing in the estate read the nested ones**: Kubernetes can only
 consume a flat string array, ArgoCD reads `groups`, AWS trust policies
@@ -102,10 +101,8 @@ name is the whole of what it adds.
 
 ### Naming
 
-Decided 2026-09-09 (evening); in force since v0.9.3.
-
-Every grant is **`<scope>:<thing>:<role>`** — three segments, `:`
-between, lowercase. *Role, on thing, in scope.*
+In force since v0.9.3. Every grant is **`<scope>:<thing>:<role>`** —
+three segments, `:` between, lowercase. *Role, on thing, in scope.*
 
 | Segment | Is | Examples |
 |---|---|---|
