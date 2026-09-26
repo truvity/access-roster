@@ -41,19 +41,21 @@ short-lived, prefix-scoped object-storage credentials for an S3-compatible
 store without OIDC federation. The issuer knows the broker exists and what
 audience it has; it does not know or hold the store's secret.
 
+Keeping the upstream secret in the broker is also a containment line: a
+compromised issuer must not yield every downstream secret, and a compromised
+broker must not yield identity. Each holds only its own.
+
 ## Consequences
 
 This supersedes ADR 0002 in part: its "Out of scope" paragraph now reads
 through this record. A minter for any other system inside the issuer needs a
-membership reconciler for that same system first — the GitHub case must be
-copied, never abstracted. Everything else in ADR 0002 stands.
+membership reconciler for that same system first. Everything else in ADR 0002 stands.
 
 An installation that wants to mint object-storage credentials for a
 cache on a provider without OIDC federation gets a broker and a policy
 example: CI job identity (with `ci:cache:reader` and `ci:cache:writer`
 groups decided by workflow event, branch, or pull-request permission),
-a client row for the broker's audience, and a single resource shared
-across all cache instances.
+a client or resource row for the broker's audience, gated by `requires`.
 
 **For CI in particular**: write access is only granted for `event_name ==
 push` on the default branch, never for `pull_request_target` or
@@ -68,7 +70,7 @@ broker. Rejected: it grows the issuer into a secret store for every upstream
 system, with every store's policies, every store's key rotation, every
 store's breach. That is exactly the thing ADR 0002 exists to prevent. A
 minter specific to GitHub is defensible because the issuer already reconciles
-GitHub membership; a generic minter with a thousand providers is not.
+GitHub membership; a generic minter for every provider is not.
 
 **Forbid the GitHub minter too**, for consistency and purity. Rejected: it
 removes a working, policy-scoped capability that already ships. GitHub is
