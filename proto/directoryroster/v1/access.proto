@@ -136,6 +136,22 @@ message WhoAmIResponse {
 message HeldGroup {
   string group = 1;
   repeated string via = 2;
+  // granted_by_key is the Groups-table key that granted this entry: equal
+  // to group for an ordinary key, and different for a mapping wildcard —
+  // matching `*:k8s:admin` for `devel:k8s:admin` reports
+  // granted_by_key="*:k8s:admin". Empty when group was reached only
+  // through inheritance (implied_by is set instead).
+  string granted_by_key = 3;
+  // wildcard is whether granted_by_key is a mapping wildcard rather than
+  // the group's own name.
+  bool wildcard = 4;
+  // implied_by is the concrete group whose role implied this one, one hop
+  // at a time: holding `devel:k8s:admin` where admin implies operator
+  // implies viewer produces a `devel:k8s:viewer` HeldGroup with
+  // implied_by="devel:k8s:operator", not "…admin" — the direct parent, so
+  // a reader walks the chain one link at a time. Empty when group was
+  // held directly.
+  string implied_by = 5;
 }
 
 // GitHubProof is a CI identity token's claims, as the simulator supplies

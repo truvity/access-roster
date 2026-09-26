@@ -164,7 +164,13 @@ func identityProto(id access.Identity) *directoryrosterv1.Identity {
 func heldProto(held []policy.Held) []*directoryrosterv1.HeldGroup {
 	out := make([]*directoryrosterv1.HeldGroup, 0, len(held))
 	for _, h := range held {
-		out = append(out, &directoryrosterv1.HeldGroup{Group: h.Group, Via: h.Via})
+		out = append(out, &directoryrosterv1.HeldGroup{
+			Group:        h.Group,
+			Via:          h.Via,
+			GrantedByKey: h.Key,
+			Wildcard:     h.Key != "" && h.Key != h.Group,
+			ImpliedBy:    h.Implies,
+		})
 	}
 	return out
 }

@@ -15,6 +15,7 @@ import Typography from "@mui/material/Typography";
 import { access, forHowLong, github, issuerIsSameOrigin, personName, reason, roleName, sessions, sourceName, type Me } from "./api";
 import type { ExplainRequest, ExplainResponse } from "./gen/directoryroster/v1/access_pb";
 import type { Session } from "./gen/accessissuer/v1/session_pb";
+import { formatChain } from "./heldChain";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { labelOf, linkPage, rowsOf, sentence, tooltipOf } from "./githubModel";
@@ -182,7 +183,7 @@ export function Explanation({
         </Alert>
       ) : null}
 
-      <Section title="The chain" hint="one row per internal group held: what put them in it, and what it opens">
+      <Section title="The chain" hint="one row per internal group held: the whole reason it is held, one hop at a time, and what it opens">
         {value.held.length === 0 ? (
           <Nothing>
             In no internal group, so nothing opens.{" "}
@@ -193,18 +194,20 @@ export function Explanation({
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ width: "36%" }}>{isPerson ? "Provider group" : "Matcher"}</TableCell>
+                  <TableCell sx={{ width: "46%" }}>Why</TableCell>
                   <TableCell sx={{ width: "22%" }}>Internal group</TableCell>
                   <TableCell>Opens</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {value.held.map((held) => {
+                {value.held.map((held, index) => {
                   const opens = admitted.filter((client) => client.requires.includes(held.group));
                   return (
-                    <TableRow key={held.group}>
+                    <TableRow key={`${held.group}:${held.grantedByKey}:${held.impliedBy}:${index}`}>
                       <TableCell>
-                        <Names items={held.via.map((why) => (why.includes("@") ? { label: why, to: paths.directoryGroup(why), mono: true } : { label: why, mono: true }))} />
+                        <Typography component="span" variant="body2" sx={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+                          {formatChain(held, value.held)}
+                        </Typography>
                       </TableCell>
                       <TableCell>
                         <Ref to={paths.group(held.group)} mono>

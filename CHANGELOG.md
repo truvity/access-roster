@@ -40,6 +40,22 @@
   [docs/taxonomy.md](docs/taxonomy.md) and
   [docs/decisions/0010-a-declared-vocabulary.md](docs/decisions/0010-a-declared-vocabulary.md).
 
+- **Added: a person's page states the whole "why do I hold this group"
+  chain, not just the group's own name.**
+
+  `Explain`'s `HeldGroup` now carries `granted_by_key` (the `groups`
+  table key that matched — a mapping wildcard's own spelling when that is
+  what matched, the group's own name otherwise), `wildcard` (whether that
+  key is a wildcard), and `implied_by` (the direct parent group, when the
+  entry came from inheritance rather than a direct hold). Every existing
+  field is unchanged; these are additive, on new field numbers.
+
+  The console renders one line per held group by walking `implied_by`
+  hop by hop, client-side, from the already-fetched `Explain` answer:
+  `stage:k8s:viewer ← implied by stage:k8s:operator ← implied by
+  stage:k8s:admin ← wildcard *:k8s:admin ← directory group
+  sre@example.com`.
+
 ## v1.31.0
 
 - **Added: the issuer and github-roster warn at load if an internal group is

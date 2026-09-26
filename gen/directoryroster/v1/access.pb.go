@@ -499,9 +499,25 @@ func (x *WhoAmIResponse) GetVersion() string {
 // HeldGroup is one internal group an identity is in, and why: the
 // directory groups matched, or the matcher, rendered to be read.
 type HeldGroup struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Group         string                 `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
-	Via           []string               `protobuf:"bytes,2,rep,name=via,proto3" json:"via,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Group string                 `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
+	Via   []string               `protobuf:"bytes,2,rep,name=via,proto3" json:"via,omitempty"`
+	// granted_by_key is the Groups-table key that granted this entry: equal
+	// to group for an ordinary key, and different for a mapping wildcard —
+	// matching `*:k8s:admin` for `devel:k8s:admin` reports
+	// granted_by_key="*:k8s:admin". Empty when group was reached only
+	// through inheritance (implied_by is set instead).
+	GrantedByKey string `protobuf:"bytes,3,opt,name=granted_by_key,json=grantedByKey,proto3" json:"granted_by_key,omitempty"`
+	// wildcard is whether granted_by_key is a mapping wildcard rather than
+	// the group's own name.
+	Wildcard bool `protobuf:"varint,4,opt,name=wildcard,proto3" json:"wildcard,omitempty"`
+	// implied_by is the concrete group whose role implied this one, one hop
+	// at a time: holding `devel:k8s:admin` where admin implies operator
+	// implies viewer produces a `devel:k8s:viewer` HeldGroup with
+	// implied_by="devel:k8s:operator", not "…admin" — the direct parent, so
+	// a reader walks the chain one link at a time. Empty when group was
+	// held directly.
+	ImpliedBy     string `protobuf:"bytes,5,opt,name=implied_by,json=impliedBy,proto3" json:"implied_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -548,6 +564,27 @@ func (x *HeldGroup) GetVia() []string {
 		return x.Via
 	}
 	return nil
+}
+
+func (x *HeldGroup) GetGrantedByKey() string {
+	if x != nil {
+		return x.GrantedByKey
+	}
+	return ""
+}
+
+func (x *HeldGroup) GetWildcard() bool {
+	if x != nil {
+		return x.Wildcard
+	}
+	return false
+}
+
+func (x *HeldGroup) GetImpliedBy() string {
+	if x != nil {
+		return x.ImpliedBy
+	}
+	return ""
 }
 
 // GitHubProof is a CI identity token's claims, as the simulator supplies
@@ -2507,10 +2544,14 @@ const file_directoryroster_v1_access_proto_rawDesc = "" +
 	"\rWhoAmIRequest\"d\n" +
 	"\x0eWhoAmIResponse\x128\n" +
 	"\bidentity\x18\x01 \x01(\v2\x1c.directoryroster.v1.IdentityR\bidentity\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\"3\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\"\x94\x01\n" +
 	"\tHeldGroup\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12\x10\n" +
-	"\x03via\x18\x02 \x03(\tR\x03via\"\xb3\x01\n" +
+	"\x03via\x18\x02 \x03(\tR\x03via\x12$\n" +
+	"\x0egranted_by_key\x18\x03 \x01(\tR\fgrantedByKey\x12\x1a\n" +
+	"\bwildcard\x18\x04 \x01(\bR\bwildcard\x12\x1d\n" +
+	"\n" +
+	"implied_by\x18\x05 \x01(\tR\timpliedBy\"\xb3\x01\n" +
 	"\vGitHubProof\x12\x1e\n" +
 	"\n" +
 	"repository\x18\x01 \x01(\tR\n" +
