@@ -3,10 +3,9 @@
 One schema, loaded by both services. It answers four questions and no
 others: who is in which internal group, what a group adds to a token, how
 long a token lives, and which client may be issued one. Everything that
-shapes a token is derivable from this file by reading it.
-
-Decided 2026-09-07; supersedes the earlier flat rules list, which
-survives only as the matchers inside machine groups.
+shapes a token is derivable from this file by reading it. It supersedes
+an earlier flat rules list, which survives only as the matchers inside
+machine groups.
 
 ## The tables
 
@@ -87,9 +86,7 @@ is on (a subsystem such as `k8s`, a project such as `shop`, an application
 such as `access-roster`); `role` is from that thing's own ladder. The two
 exceptions are not grants and are two segments on purpose: `rung:<name>`
 carries a session lifetime, `emp:<slug>` is a person. The loader warns on
-a name in neither shape.
-
-Decided 2026-09-09 (evening); in force since v0.9.3.
+a name in neither shape. In force since v0.9.3.
 
 ## The service's own two groups, and scoping them
 
@@ -193,8 +190,8 @@ The ID token carries all of them, because a relying party that reads the
 ID token (ArgoCD and Kargo both do) must not have to make a second call
 to learn who signed in. The userinfo endpoint answers the same set.
 
-**`groups` is the whole of the authorization a token carries** (decided
-2026-09-09, [../design/trust.md](../design/trust.md)): flat, one string
+**`groups` is the whole of the authorization a token carries**, as
+[../design/trust.md](../design/trust.md) sets out: flat, one string
 per internal group, never a structured roles claim beside it. Every
 relying party binds those strings as they are — a `ClusterRoleBinding`
 subject, an ArgoCD `g,` line, a `requires` here — and nothing re-maps
@@ -205,7 +202,7 @@ directory vouched for this — it goes into the string
 (`<workspace id>:access-roster:viewer`), where every consumer keeps
 working.
 
-> **`sub`, decided 2026-09-09.** A person is their **email**
+> **`sub`.** A person is their **email**
 > address — readable in every audit log, no second lookup, and what the
 > service already keys by; a rename becomes a new `sub` whose old sessions
 > end, which for a controlled directory is acceptable, arguably correct.
@@ -216,7 +213,7 @@ working.
 > a `cluster` to narrow to one; naming none matches any, so every rule
 > written before clusters were named still means what it meant.
 
-> **Which clusters, decided 2026-09-10.** The clusters whose
+> **Which clusters.** The clusters whose
 > ServiceAccount tokens count are **not** in this file. They are chart
 > values — `exchange.clusters`, one row of `{name, issuer, jwksUri}` per
 > cluster — because they are not a statement about who may do what, which

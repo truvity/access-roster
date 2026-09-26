@@ -31,14 +31,13 @@ Read this page as the description of a chart you may still deploy on
 Envoy Gateway for as long as it lasts, not of a component every
 installation needs.
 
-**Decided 2026-09-10 (supersedes 2026-09-08):** the client is **declared**,
-and that is permanent. Self-registration was designed and then dropped:
-only this proxy could ever have called such an endpoint, an
-endpoint that mints clients is the one surface an issuer least wants, and
-declaring them keeps *who can obtain tokens for which audience* answerable
-by reading a repository. So an installation names a Secret holding the
-client, and `registration.enabled` is gone rather than waiting for a
-default to flip.
+**The client is declared, and that is permanent.** Self-registration was
+designed and then dropped: only this proxy could ever have called such an
+endpoint, an endpoint that mints clients is the one surface an issuer
+least wants, and declaring them keeps *who can obtain tokens for which
+audience* answerable by reading a repository. So an installation names a
+Secret holding the client, and `registration.enabled` is gone rather than
+waiting for a default to flip.
 
 What self-registration would have given for free is that the redirect URI
 a proxy uses and the one the issuer has on file cannot drift. That is a
@@ -47,14 +46,14 @@ one-domain cutover — and it is recovered by generating a console's
 hostname, proxy configuration and client entry from a single row of the
 access matrix, rather than by an endpoint.
 
-**Decided 2026-09-08:** the chart never mints the **cookie secret** either,
-and that one is not interim. A chart that generated it would generate a new
-one on every render that cannot read cluster state — which is what ArgoCD
-does — and every sync would sign everyone out.
+**The chart never mints the cookie secret either, and that one is not
+interim.** A chart that generated it would generate a new one on every
+render that cannot read cluster state — which is what ArgoCD does — and
+every sync would sign everyone out.
 
-**Decided 2026-09-08:** a console behind this proxy must publish a
-**bootstrap surface** the proxy does not cover — its sign-in page, recovery,
-and the consent callback. Found the hard way on the first real install: the
+**A console behind this proxy must publish a bootstrap surface** the
+proxy does not cover — its sign-in page, recovery, and the consent
+callback. Found the hard way on the first real install: the
 operator connecting the first directory is one no directory can vouch for, so
 the gateway sent them to sign in against a directory that did not exist, and
 Google's consent redirect came back to a callback the proxy swallowed. It
@@ -62,18 +61,18 @@ presents as a second account picker, not as a refusal. The issuer serves
 those paths at its origin root on a route of its own, and a proxy
 attaches only to the console's.
 
-The corollary, learned 2026-09-09 on the second real install step: a
-request on the bootstrap surface carries **no identity from the gateway**,
-so the consent callback cannot demand one — it takes its operator from
-the state the service signed when an operator started the flow. A callback
-that checked the request instead refused the one flow the surface exists
-to finish.
+The corollary, learned on the second real install step: a request on the
+bootstrap surface carries **no identity from the gateway**, so the
+consent callback cannot demand one — it takes its operator from the state
+the service signed when an operator started the flow. A callback that
+checked the request instead refused the one flow the surface exists to
+finish.
 
-**Decided 2026-09-08:** a console that already resolves viewer and
-operator from a directory it owns belongs in the `authenticated`
-posture — the gateway gates on "signed in" and the application decides
-the rest, because a `groups` rule at the gateway would be the stale copy
-of a decision the application makes anyway. That posture is still the
+**A console that already resolves viewer and operator from a directory it
+owns belongs in the `authenticated` posture** — the gateway gates on
+"signed in" and the application decides the rest, because a `groups` rule
+at the gateway would be the stale copy of a decision the application
+makes anyway. That posture is still the
 right one for such a console; the directory console itself no longer
 needs a proxy at all, because it signs in as a client of the issuer it
 shares an origin with.
@@ -214,14 +213,15 @@ client bounds the same window from the issuer's side.
 
 - **Not Envoy's native OIDC filter alone, is what this chart originally
   argued** — no session store, so no global sign-out and no background
-  refresh. **Superseded 2026-09-25:** the session store bought less than
-  it appeared to. `oauth2-proxy` encrypts each session with a key that
+  refresh. That argument does not hold: the session store buys less than
+  it appears to. `oauth2-proxy` encrypts each session with a key that
   lives only in the browser's cookie, so nothing server-side — including
   a Back-Channel Logout receiver — can ever open one; the one advantage a
   server-side store would normally give, a sign-out that closes every
   window at once, is exactly the one this store cannot provide. Gateway
   OIDC gives the same revocation-at-refresh this chart always has, so it
-  is now the default; see the Status above.
+  is now the default ([ADR 0003](../decisions/0003-deprecate-access-proxy.md);
+  see the Status above).
 - **Not a proxy of ours:** identity-critical code on every request path
   to every console, for no capability oauth2-proxy lacks.
 - **Not the issuer as the authorization backend:** that would make the

@@ -120,11 +120,10 @@ console's.
 
 ### Nothing slow on the request path
 
-Decided 2026-09-09, after the first live connect, when three things had
-crept onto the request path and all three met a gateway's fifteen-second
-timeout. Each was cancelled mid-read, each restarted from zero on the
-next request, and a consent callback reported failure on a connect that
-had succeeded.
+After the first live connect, three things had crept onto the request
+path and all three met a gateway's fifteen-second timeout. Each was
+cancelled mid-read, each restarted from zero on the next request, and a
+consent callback reported failure on a connect that had succeeded.
 
 The rule: **a request never waits on the directory.** Adopting a
 workspace stores it and returns; the first snapshot runs detached, under
@@ -648,7 +647,7 @@ every session and refresh token.
 
 ## Audit
 
-access-roster does not keep its own audit trail (decided 2026-09-18). It
+access-roster does not keep its own audit trail. It
 records into an installation of [truvity/audit](https://github.com/truvity/audit)
 that belongs to this application and runs in its namespace: with
 `audit.writer` set it registers its catalogue and sends its records to that
