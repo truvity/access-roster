@@ -922,22 +922,24 @@ clients:
 			[]string{"team:b:viewer"},
 		},
 		{
-			"the hub's operator role is not reported",
+			"the hub's operator role is not reported (consumed by hub itself)",
 			`version: 1
 groups:
   all:access-roster:operator: {}
+  team-a:app:user: {}
 clients:
-  app: { kind: public, requires: [all:access-roster:operator] }
+  app: { kind: public, requires: [team-a:app:user] }
 `,
 			[]string{},
 		},
 		{
-			"the hub's viewer role (scoped) is not reported",
+			"the hub's viewer role (scoped) is not reported (consumed by hub itself)",
 			`version: 1
 groups:
   team-a:access-roster:viewer: {}
+  team-b:app:user: {}
 clients:
-  app: { kind: public, requires: [team-a:access-roster:viewer] }
+  app: { kind: public, requires: [team-b:app:user] }
 `,
 			[]string{},
 		},
