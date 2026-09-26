@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // GroupsOverride is a client's or a resource's declaration that its token
