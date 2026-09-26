@@ -818,9 +818,9 @@ func TestUnconsumedGroups(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name         string
-		policy       string
-		unconsumed   []string
+		name       string
+		policy     string
+		unconsumed []string
 	}{
 		{
 			"a group referenced by a client",
@@ -891,17 +891,17 @@ github:
 			[]string{},
 		},
 		{
-			"a group referenced by lifetimes",
+			"a group referenced by lifetimes (decoration, not consumption)",
 			`version: 1
 groups:
   team:a:admin: {}
 lifetimes:
   team:a:admin: 4h
 `,
-			[]string{},
+			[]string{"team:a:admin"},
 		},
 		{
-			"a group referenced only by claims",
+			"a group referenced only by claims (decoration, not consumption)",
 			`version: 1
 groups:
   team:a:admin: {}
@@ -920,6 +920,36 @@ clients:
   app: { kind: public, requires: [team:a:admin] }
 `,
 			[]string{"team:b:viewer"},
+		},
+		{
+			"the hub's operator role is not reported",
+			`version: 1
+groups:
+  all:access-roster:operator: {}
+clients:
+  app: { kind: public, requires: [all:access-roster:operator] }
+`,
+			[]string{},
+		},
+		{
+			"the hub's viewer role (scoped) is not reported",
+			`version: 1
+groups:
+  team-a:access-roster:viewer: {}
+clients:
+  app: { kind: public, requires: [team-a:access-roster:viewer] }
+`,
+			[]string{},
+		},
+		{
+			"an unrelated role on access-roster is reported",
+			`version: 1
+groups:
+  all:access-roster:unknownrole: {}
+clients:
+  app: { kind: public, requires: [all:access-roster:operator] }
+`,
+			[]string{"all:access-roster:unknownrole"},
 		},
 		{
 			"a rung group is never reported",

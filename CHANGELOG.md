@@ -3,10 +3,19 @@
 - **Added: the issuer and github-roster warn at load if an internal group is
   declared but nothing consumes it.**
 
-  A group referenced by a client, resource, GitHub binding or lifetime
-  is working; one referenced only by `claims` (which decorate a group) is
-  still unused. A group with the `rung:` or `emp:` prefix is never reported,
-  because these are identities and sessions, not grants.
+  A group referenced by a client, resource, or GitHub binding is working. A
+  group referenced only by `claims` or `lifetimes` is still unused, because
+  claims and lifetimes decorate a group and do not consume it. The hub's own
+  roles (`operator` and `viewer` on `access-roster`) are not reported, because
+  the hub reads them directly from the token. A group with the `rung:` or
+  `emp:` prefix is never reported, because these are identities and sessions,
+  not grants.
+
+  **Known limitation:** a relying party may read groups beyond what its
+  `requires` names, for its own role mapping (a console's viewer vs editor
+  role, for example). Such groups are consumed outside the policy's view, so
+  this warning may name them. The gap closes when a client can declare what
+  it maps — per `docs/decisions/0006-groups-claim-scoped-per-audience.md`.
 
   The warning reaches an operator at the moment they see their logs, where
   they can check whether the group is a leftover, a typo, or intentionally

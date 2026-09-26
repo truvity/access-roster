@@ -585,14 +585,24 @@ the issuer and github-roster warn if an internal group is declared in the
 - `client_documents` `requires`
 - any GitHub organisation `members` binding
 - any GitHub team `members` or `maintainers` binding
-- any `lifetimes` key (except the built-in `default`)
+- this hub's own roles — groups whose third segment is `operator` or
+  `viewer` and whose second segment is `access-roster`, which the hub reads
+  directly from the token
 
-A group referenced only by a `claims` key does not count; claims decorate a
-group and do not consume it — they add to a token only when the caller holds
-the group for some other reason.
+A group referenced only by a `claims` or `lifetimes` key does not count;
+claims and lifetimes decorate a group and do not consume it — they add to a
+token or its lifetime only when the caller holds the group for some other
+reason.
 
 The groups with the `rung:` or `emp:` prefix are not grants and never
 reported: they are identities and sessions, not roles on things.
+
+KNOWN LIMITATION: a relying party may read groups from the token beyond what
+its `requires` names, for its own role mapping (for example, a console's
+viewer vs editor role). Such groups are consumed outside the policy's view,
+so this warning may name them. The gap closes when a client can declare the
+groups it maps — per `docs/decisions/0006-groups-claim-scoped-per-audience.md`
+— and the lint will then count those declarations.
 
 The warning is always a warning, not an error. An installation may
 legitimately declare a group ahead of the client or resource that will use
