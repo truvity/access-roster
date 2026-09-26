@@ -3,13 +3,12 @@
 Every value, flag, input and output: its default, its type, what it does
 and when it is required. The test for whether something belongs here:
 *what does this knob do.* This page is an index; the pages below hold the
-tables.
+tables. For a map of every page in the repository, not just these, see
+[index.md](index.md).
 
 - [reference/configuration.md](reference/configuration.md) — every value
-  of the `access-issuer` chart, the overlay format, and the objects the
-  service writes
-- [reference/access-issuer.md](reference/access-issuer.md) — the values
-  that carry a reason, and every endpoint the issuer serves
+  of the `access-issuer` chart, the overlay format, every endpoint the
+  issuer serves, and the objects the service writes
 - [reference/access-proxy.md](reference/access-proxy.md) — every value of
   the `access-proxy` chart
 - [reference/policy.md](reference/policy.md) — the policy file: groups,

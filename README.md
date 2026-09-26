@@ -290,39 +290,12 @@ Every column, and why, is in
 
 ## Documentation
 
-- [docs/adoption.md](docs/adoption.md) — prerequisites, install order,
-  connecting things, migrating, and the zero-diff gate
-- [docs/safety.md](docs/safety.md) — what is refused and why, the
-  failure semantics, and the traps
-- [docs/reference.md](docs/reference.md) — every value, flag, input and
-  output
-- [docs/doctrine.md](docs/doctrine.md) — the design rules, and who owns
-  what
-- [CHANGELOG.md](CHANGELOG.md) — what changed for a consumer, per version
-
-### Read next
-
-| You want to | Read |
-|---|---|
-| understand the ideas behind it | [docs/why.md](docs/why.md), then [docs/design/trust.md](docs/design/trust.md) |
-| see every piece and how they connect | [docs/architecture.md](docs/architecture.md) |
-| learn the words this repository uses precisely | [docs/concepts.md](docs/concepts.md) |
-| write the policy | [docs/reference/policy.md](docs/reference/policy.md) |
-| connect the corporate directory people sign in with | [docs/connect/corporate-directory.md](docs/connect/corporate-directory.md), and [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
-| give a CI job an identity with no stored secret | [docs/connect/github-actions.md](docs/connect/github-actions.md) |
-| deploy it | [docs/operations/adoption-plain-helm.md](docs/operations/adoption-plain-helm.md), [docs/reference/configuration.md](docs/reference/configuration.md), then [docs/operations/connect-runbook.md](docs/operations/connect-runbook.md) |
-| run it: what to check, what to back up, how to restore | [docs/operations/runbook.md](docs/operations/runbook.md), [configuration.md — restoring from the Secrets alone](docs/reference/configuration.md#restoring-from-the-secrets-alone) |
-| use it from a laptop or a CI job | [docs/reference/accessctl.md](docs/reference/accessctl.md) |
-| put a console behind the gateway | [docs/connect/console-app.md](docs/connect/console-app.md) |
-| keep a GitHub organisation's teams in step with the policy | [docs/connect/github-organisation.md](docs/connect/github-organisation.md) |
-| declare GitHub Apps as data and create them from the console | [docs/connect/github-apps-catalogue.md](docs/connect/github-apps-catalogue.md) |
-| give a Pulumi or Terraform program that manages the organisation an identity of its own | [docs/connect/infrastructure-as-code.md](docs/connect/infrastructure-as-code.md) |
-| connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
-| mint a short-lived SSH, database or client certificate | [docs/connect/openbao.md](docs/connect/openbao.md) |
-| see a secret store's namespaces, groups and who reaches what — read-only | [docs/connect/openbao.md](docs/connect/openbao.md#console-side) |
-| see what the conformance suite said, and why | [docs/conformance.md](docs/conformance.md) |
-| run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |
-| build a service that accepts both people and workloads | [docs/connect/service-to-service.md](docs/connect/service-to-service.md) |
+[docs/index.md](docs/index.md) is the one entry point: a map to every
+page, organised by what you are trying to do. Three starting points from
+there are worth naming here — [docs/adoption.md](docs/adoption.md) for
+what taking this into use requires, [docs/safety.md](docs/safety.md) for
+what is refused and why, and [CHANGELOG.md](CHANGELOG.md) for what
+changed for a consumer, per version.
 
 ## The rule that makes this repository public
 
