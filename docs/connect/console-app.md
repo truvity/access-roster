@@ -35,7 +35,10 @@ tokens of its own to call something else. `access-proxy`'s server-side
 session store is not a reason to choose either gateway-fronted shape —
 oauth2-proxy's encrypted cookie means nothing server-side, Back-Channel
 Logout included, can end a session it holds
-([design/access-proxy.md](../design/access-proxy.md)).
+([design/access-proxy.md](../design/access-proxy.md)). See
+[choosing-native-or-gateway-oidc.md](choosing-native-or-gateway-oidc.md)
+for the fuller decision and [envoy-gateway-oidc.md](envoy-gateway-oidc.md)
+for the `SecurityPolicy` itself, with its traps.
 
 **A third shape exists and is not yours**: a console the issuer itself
 serves, mounted on the issuer's own origin. It signs in as a client of

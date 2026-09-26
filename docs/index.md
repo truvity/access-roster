@@ -32,6 +32,7 @@ yet know which of those you want.
 | run it: what to check, what to back up, how to restore | [operations/runbook.md](operations/runbook.md), [configuration.md — restoring from the Secrets alone](reference/configuration.md#restoring-from-the-secrets-alone) |
 | use it from a laptop or a CI job | [reference/accessctl.md](reference/accessctl.md) |
 | put a console behind the gateway | [connect/console-app.md](connect/console-app.md) |
+| decide whether a console signs itself in or lets the gateway do it, then build the gateway shape | [connect/choosing-native-or-gateway-oidc.md](connect/choosing-native-or-gateway-oidc.md) |
 | keep a GitHub organisation's teams in step with the policy | [connect/github-organisation.md](connect/github-organisation.md) |
 | declare GitHub Apps as data and create them from the console | [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md) |
 | give a Pulumi or Terraform program that manages the organisation an identity of its own | [connect/infrastructure-as-code.md](connect/infrastructure-as-code.md) |
