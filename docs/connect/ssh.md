@@ -147,9 +147,10 @@ groups:
   devel:edge-device:user:      { members: [team-fleet@example.com] }
 ```
 
-**The ladder is a convention you build, not something the issuer
-computes.** `groups` is a flat set — the whole of the authorization a
-token carries, with no built-in widening
+**Without a declared vocabulary, the ladder is a convention you build,
+not something the issuer computes.** `groups` is a flat set — the whole
+of the authorization a token carries, with no built-in widening absent
+one
 ([reference/policy.md#groups--token-by-deep-merge](../reference/policy.md#groups--token-by-deep-merge)) —
 so *"operator can do what user can, admin can do what operator can"*
 is expressed by repeating a group across `auth_id` lines for the
@@ -166,6 +167,18 @@ root  oidc:groups:devel:build-worker:admin     https://access.example
 Here anyone in `user`, `operator` or `admin` reaches the `ops` account,
 and only `admin` also reaches `root` — the ladder lives in which lines
 were written on this host, in `git`, same as every other rule.
+
+**With a [declared vocabulary](../reference/policy.md#vocabulary)
+(v1.32.0), the ladder is computed instead**, so one `auth_id` line per
+login is enough. Declaring `build-worker`'s roles as explicit implies —
+`roles: { user: [], operator: [user], admin: [operator] }` — means a
+person in `devel:build-worker:admin` also holds `operator` and `user`,
+so the same two accounts read:
+
+```
+ops   oidc:groups:devel:build-worker:user   https://access.example
+root  oidc:groups:devel:build-worker:admin  https://access.example
+```
 
 ## Machines: OpenBAO-signed short-lived SSH user certificates (recommended)
 
