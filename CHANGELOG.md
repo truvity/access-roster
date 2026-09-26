@@ -59,17 +59,17 @@
   The issuer now polls the mounted file and keeps a key ring: a newly
   seen key is published in the JWKS immediately, but this replica signs
   with it only once every other replica has had time to notice and
-  publish it too (`signingKey.rotation.activationDelay`), and the key it
-  replaces stays published for at least as long as a token it signed can
-  still be presented (`signingKey.rotation.overlap`, at least
-  `lifetimes.token`) before it retires. The schedule is decided once and
-  shared through Valkey when one is configured, so a replica that
-  restarts mid-rotation does not forget a key still inside its overlap;
-  with none, it is kept in memory, which is right for one replica and a
-  local run. **Changing `signingKey.certificate.algorithm` — RSA to
-  ECDSA, or back — is now safe as just a rotation**: the JWKS and
-  discovery's advertised algorithms carry both kinds for the overlap,
-  then only the new one.
+  publish it too — by default 15 minutes, long enough that verifiers'
+  JWKS caches (Envoy's default is 10 minutes) and Secret projection delay
+  have all passed — and the key it replaces stays published for at least
+  as long as a token it signed can still be presented plus 5 minutes for
+  clock skew before it retires. The schedule is decided once and shared
+  through Valkey when one is configured, so a replica that restarts
+  mid-rotation does not forget a key still inside its overlap; with none,
+  it is kept in memory, which is right for one replica and a local run.
+  **Changing `signingKey.certificate.algorithm` — RSA to ECDSA, or back —
+  is now safe as just a rotation**: the JWKS and discovery's advertised
+  algorithms carry both kinds for the overlap, then only the new one.
 
 ## v1.29.0
 

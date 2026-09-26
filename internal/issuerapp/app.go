@@ -166,18 +166,26 @@ func Load() (Config, error) {
 	if c.keyActivationDelay, err = envDuration("SIGNING_KEY_ACTIVATION_DELAY", issuer.DefaultKeyActivationDelay); err != nil {
 		return Config{}, err
 	}
-	// Overlap defaults to this deployment's OWN token lifetime rather than
-	// the package's constant: the whole point of the setting is that it
-	// must cover whatever this installation actually mints, and a fixed
-	// default cannot know TOKEN_LIFETIME was raised.
+	// Overlap defaults to this deployment's OWN token lifetime plus a margin
+	// for clock skew, rather than the package's constant: the whole point of
+	// the setting is that it must cover whatever this installation actually
+	// mints, and a fixed default cannot know TOKEN_LIFETIME was raised. The
+	// clock-skew margin accounts for differences between the issuer and
+	// verifiers' clocks.
 	if c.keyOverlap, err = envDuration("SIGNING_KEY_OVERLAP", 0); err != nil {
 		return Config{}, err
 	}
 	if c.keyOverlap <= 0 {
-		c.keyOverlap = c.tokenLifetime
+		c.keyOverlap = c.tokenLifetime + issuer.KeyOverlapSkew
 	}
 	if c.keyPollInterval, err = envDuration("SIGNING_KEY_POLL_INTERVAL", issuer.DefaultKeyPollInterval); err != nil {
 		return Config{}, err
+	}
+	// The activation delay must be longer than the poll interval so that a
+	// newly published key has at least one complete poll cycle to be seen
+	// and re-read before any replica signs with it.
+	if c.keyActivationDelay < c.keyPollInterval {
+		return Config{}, fmt.Errorf("SIGNING_KEY_ACTIVATION_DELAY (%v) must be at least SIGNING_KEY_POLL_INTERVAL (%v)", c.keyActivationDelay, c.keyPollInterval)
 	}
 	if err = c.logLevel.UnmarshalText([]byte(envString("LOG_LEVEL", "info"))); err != nil {
 		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)

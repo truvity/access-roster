@@ -219,21 +219,23 @@ signingKey:
     # How often the mounted file is re-read.
     pollInterval: 30s
     # How long a newly seen key is published in the JWKS before this
-    # replica will SIGN with it. It has to be longer than the slowest a
-    # kubelet anywhere in the cluster takes to project the same Secret
-    # update to every other replica — Kubernetes documents that as
-    # roughly a minute — or a verifier could fetch the JWKS from a
-    # replica that has not published the key yet and reject a perfectly
-    # good token.
-    activationDelay: 3m
+    # replica will SIGN with it. It must be longer than the longest
+    # JWKS cache among your verifiers — Envoy's default is 10 minutes —
+    # plus the slowest a kubelet anywhere in the cluster takes to project
+    # the same Secret update to every other replica — Kubernetes documents
+    # that as roughly a minute — so a verifier can never fetch a JWKS
+    # missing a `kid` some replica already signs with.
+    activationDelay: 15m
     # How long a key that stopped signing stays in the JWKS after being
     # superseded. It has to cover the longest a token minted with it can
     # still be presented, which is `lifetimes.token` — a client's own
     # `ttl_cap` only ever shortens a token's life, never lengthens it, so
-    # the deployment-wide lifetime is the true ceiling. Empty uses
-    # `lifetimes.token` itself, which is the right answer unless this
-    # installation mints longer-lived tokens some other way `lifetimes.token`
-    # does not capture.
+    # the deployment-wide lifetime is the true ceiling. It also includes
+    # 5 minutes for clock skew between the issuer and verifiers, since
+    # verifiers accept tokens with some leeway and clocks differ. Empty
+    # uses `lifetimes.token` plus that 5-minute margin, which is the right
+    # answer unless this installation mints longer-lived tokens some other
+    # way `lifetimes.token` does not capture.
     overlap: ""
 
 # The OAuth client people sign in with. The same client the hub uses,

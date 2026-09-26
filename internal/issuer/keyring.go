@@ -45,16 +45,29 @@ type KeyRingConfig struct {
 const (
 	// DefaultKeyActivationDelay is used where a deployment names none.
 	// Set with margin above the kubelet propagation window this type's
-	// docs describe: a rotation happens rarely — a certificate's
-	// `renewBefore` is measured in weeks — so erring toward a slower
-	// cutover costs nothing an operator would notice.
-	DefaultKeyActivationDelay = 3 * time.Minute
+	// docs describe, plus the longest verifier cache that might reject
+	// tokens signed with a newly activated key. Envoy's jwt_authn
+	// RemoteJwks.cache_duration defaults to 10 minutes and does not
+	// refetch on an unknown `kid`, so a key must be published for longer
+	// than that cache plus Secret projection delay (~1–2 minutes) before
+	// anything signs with it. Rotation happens rarely — a certificate's
+	// `renewBefore` is measured in weeks — so the longer delay costs
+	// nothing an operator would notice.
+	DefaultKeyActivationDelay = 15 * time.Minute
+
+	// KeyOverlapSkew is additional time a key stays published past a
+	// token's lifetime to account for clock differences between the issuer
+	// and verifiers. A verifier accepts tokens with an expiry leeway, and
+	// clocks differ, so a key must stay published a bit longer than the
+	// longest token it signed.
+	KeyOverlapSkew = 5 * time.Minute
 
 	// DefaultKeyOverlap is used where neither a deployment nor its own
 	// token lifetime is known to the ring. A deployment should pass its
 	// OWN lifetime instead (see [KeyRingConfig]) — a hardcoded default
-	// cannot know a longer one was configured.
-	DefaultKeyOverlap = DefaultTokenLifetime
+	// cannot know a longer one was configured. It includes KeyOverlapSkew
+	// to account for clock skew between the issuer and verifiers.
+	DefaultKeyOverlap = DefaultTokenLifetime + KeyOverlapSkew
 
 	// DefaultKeyPollInterval is how often a replica re-reads the mounted
 	// key file. Kubernetes swaps a projected Secret's contents with an
