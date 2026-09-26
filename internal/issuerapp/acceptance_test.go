@@ -201,11 +201,15 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 		{"no issuer URL", "ISSUER_URL", ""},
 		{"a lifetime that is not a duration", "TOKEN_LIFETIME", "a while"},
 		{"a log level that is not one", "LOG_LEVEL", "chatty"},
+		{"activation delay less than poll interval", "SIGNING_KEY_ACTIVATION_DELAY", "10s"},
 	} {
 		t.Setenv("ISSUER_URL", "https://issuer.example")
-		t.Setenv("HUB_ADDRESS", "http://hub.invalid:8080")
 		t.Setenv("TOKEN_LIFETIME", "")
 		t.Setenv("LOG_LEVEL", "")
+		// Only set poll interval for the activation delay test case.
+		if tc.name == "activation delay less than poll interval" {
+			t.Setenv("SIGNING_KEY_POLL_INTERVAL", "30s")
+		}
 		t.Setenv(tc.key, tc.value)
 		if _, err := issuerapp.Load(); err == nil {
 			t.Errorf("%s was accepted", tc.name)
@@ -219,6 +223,8 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 	t.Setenv("ISSUER_URL", "https://issuer.example")
 	t.Setenv("TOKEN_LIFETIME", "")
 	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("SIGNING_KEY_ACTIVATION_DELAY", "")
+	t.Setenv("SIGNING_KEY_POLL_INTERVAL", "")
 	cfg, err := issuerapp.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)

@@ -265,7 +265,7 @@ spec:
             - name: SIGNING_KEY_POLL_INTERVAL
               value: "30s"
             - name: SIGNING_KEY_ACTIVATION_DELAY
-              value: "3m"
+              value: "15m"
             - name: RELEASE_NAME
               value: access-issuer
             - name: POLICY_DIR
