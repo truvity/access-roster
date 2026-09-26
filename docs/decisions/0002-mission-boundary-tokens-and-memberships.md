@@ -1,6 +1,6 @@
 # 0002 — Mission boundary: tokens and memberships
 
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0008](0008-credentials-only-where-we-govern-membership.md)
 **Date:** 2026-09-25
 
 ## Context
