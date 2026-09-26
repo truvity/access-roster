@@ -892,15 +892,15 @@ func (p Policy) Unconsumed() []string {
 	consumed := make(map[string]bool, len(p.Groups))
 
 	// Clients.
-	for _, client := range p.Clients {
-		for _, name := range client.Requires {
+	for id := range p.Clients {
+		for _, name := range p.Clients[id].Requires {
 			consumed[name] = true
 		}
 	}
 
 	// Resources.
-	for _, resource := range p.Resources {
-		for _, name := range resource.Requires {
+	for id := range p.Resources {
+		for _, name := range p.Resources[id].Requires {
 			consumed[name] = true
 		}
 	}
@@ -911,15 +911,15 @@ func (p Policy) Unconsumed() []string {
 	}
 
 	// GitHub bindings.
-	for _, org := range p.GitHub {
-		for _, name := range org.Members {
+	for org := range p.GitHub {
+		for _, name := range p.GitHub[org].Members {
 			consumed[name] = true
 		}
-		for _, team := range org.Teams {
-			for _, name := range team.Members {
+		for team := range p.GitHub[org].Teams {
+			for _, name := range p.GitHub[org].Teams[team].Members {
 				consumed[name] = true
 			}
-			for _, name := range team.Maintainers {
+			for _, name := range p.GitHub[org].Teams[team].Maintainers {
 				consumed[name] = true
 			}
 		}
