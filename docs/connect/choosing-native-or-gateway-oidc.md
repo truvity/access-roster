@@ -133,16 +133,16 @@ application itself documents it:
 
 ## oauth2-proxy, and when it is still the answer
 
-Not never — just narrower than it used to be. `access-proxy`, this
-repository's own chart, has only ever been Envoy Gateway's external
-authorization backend, and gateway-native OIDC on that same Envoy
-Gateway is now the default replacement for it
-([ADR 0003](../decisions/0003-deprecate-access-proxy.md),
-[design/access-proxy.md](../design/access-proxy.md)). **For a gateway
-that is not Envoy Gateway, this chart was never an option, and still is
-not**: the path there is to run upstream `oauth2-proxy` yourself, with a
-declared confidential client of this issuer, the way `access-proxy`
-already wires it — see [design/access-proxy.md](../design/access-proxy.md)
+The use case for `oauth2-proxy` narrowed when gateway-native OIDC matured.
+This repository's `access-proxy` chart (removed in v1.32.0;
+[ADR 0003](../decisions/0003-deprecate-access-proxy.md),
+[design/access-proxy.md](../design/access-proxy.md)) was only ever
+Envoy Gateway's external authorization backend, and gateway-native OIDC
+on that same Envoy Gateway is now the default replacement.
+
+**For a gateway that is not Envoy Gateway**, run upstream `oauth2-proxy`
+yourself, with a declared confidential client of this issuer, the way the
+removed chart wired it — see [design/access-proxy.md](../design/access-proxy.md)
 for the shape to copy. Its server-side session store is not a reason to
 prefer it over gateway-native OIDC: `oauth2-proxy` encrypts each session
 with a key that lives only in the browser's own cookie, so nothing

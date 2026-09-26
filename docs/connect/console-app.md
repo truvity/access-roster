@@ -7,37 +7,32 @@ other anchor: [service-to-service.md](service-to-service.md).
 A web UI with a service API, behind the gateway, with two roles. What you
 write, what you deploy, what you never implement.
 
-## Three shapes, and which one is yours
+## Two shapes, and which one is yours
 
-|  | gateway-native OIDC | `access-proxy` in front (deprecated) | its own flow |
-|---|---|---|---|
-| **Use when** | the console has no authorization model of its own, or is not yours to change, and it sits behind Envoy Gateway | the same, on Envoy Gateway, until the chart is removed | you are writing it, and it needs identity *inside* itself |
-| **Who runs the login** | the gateway's `SecurityPolicy`, which forwards a verified bearer | the proxy, and it forwards a verified bearer | the console: it sends a browser to `/authorize` and reads what comes back |
-| **You deploy** | your chart plus a `SecurityPolicy` — no chart of ours | your chart plus one `access-proxy` release — Envoy Gateway only, it runs nowhere else | your chart |
-| **The client is** | confidential: the gateway holds the secret, same as a proxy would | confidential: oauth2-proxy refuses to start without a secret | public, with PKCE — no secret to rotate |
+|  | gateway-native OIDC | its own flow |
+|---|---|---|
+| **Use when** | the console has no authorization model of its own, or is not yours to change, and it sits behind Envoy Gateway | you are writing it, and it needs identity *inside* itself |
+| **Who runs the login** | the gateway's `SecurityPolicy`, which forwards a verified bearer | the console: it sends a browser to `/authorize` and reads what comes back |
+| **You deploy** | your chart plus a `SecurityPolicy` — no chart of ours | your chart |
+| **The client is** | confidential: the gateway holds the secret | public, with PKCE — no secret to rotate |
 
 **Gateway-native OIDC is the default for a console with no authorization
 model of its own, on Envoy Gateway** — a `SecurityPolicy` with `oidc:`
 against a declared client, gated by that client's `requires`, nothing of
 ours in front
 ([ADR 0001](../decisions/0001-sessions-and-an-absolute-limit.md)).
-`access-proxy` is deprecated, with removal planned
-([ADR 0003](../decisions/0003-deprecate-access-proxy.md)): it is, and has
-only ever been, Envoy Gateway's own external authorization backend, so
-gateway-native OIDC replaces it there directly. **For a gateway that is
-not Envoy Gateway**, this chart was never an option: the path is to run
-upstream `oauth2-proxy` yourself, with a declared confidential client row
-of this issuer, the way this chart already wires it — a documentation
-page for that is planned, and it will not be a chart of ours. Write your
-own flow (the right column above) when the console needs identity
-*inside* itself: per-user authorization from `groups`, per-user audit, or
-tokens of its own to call something else. `access-proxy`'s server-side
-session store is not a reason to choose either gateway-fronted shape —
-oauth2-proxy's encrypted cookie means nothing server-side, Back-Channel
-Logout included, can end a session it holds
-([design/access-proxy.md](../design/access-proxy.md)). See
-[choosing-native-or-gateway-oidc.md](choosing-native-or-gateway-oidc.md)
-for the fuller decision and [envoy-gateway-oidc.md](envoy-gateway-oidc.md)
+
+Write your own flow (the right column above) when the console needs
+identity *inside* itself: per-user authorization from `groups`, per-user
+audit, or tokens of its own to call something else.
+
+**For a gateway that is not Envoy Gateway**, use upstream `oauth2-proxy`
+yourself — see [docs/design/access-proxy.md](../design/access-proxy.md)
+for the recipe. The `access-proxy` chart was removed in v1.32.0
+([ADR 0003](../decisions/0003-deprecate-access-proxy.md)).
+
+See [choosing-native-or-gateway-oidc.md](choosing-native-or-gateway-oidc.md)
+for the decision between the two paths and [envoy-gateway-oidc.md](envoy-gateway-oidc.md)
 for the `SecurityPolicy` itself, with its traps.
 
 **A third shape exists and is not yours**: a console the issuer itself
@@ -106,25 +101,16 @@ in the check.
 
 ## What you deploy
 
-The block below is `access-proxy`'s own shape — Envoy Gateway only, and
-deprecated there in favour of a `SecurityPolicy` of the gateway's own
-(not an access-roster chart, and not shown here). For a gateway that is
-not Envoy Gateway, there is no chart at all: run `oauth2-proxy` yourself,
-the way this one wires it. For your own flow, your chart alone and no
-block like this at all:
-
-```yaml
-exposure:
-  hostname: myconsole.example.internal
-  backend: { name: myconsole, port: 8080 }
-  posture: groups
-  allow: [all:myconsole:operator, all:myconsole:viewer]
-```
+For gateway-native OIDC on Envoy Gateway, use a `SecurityPolicy` of the
+gateway's own (see [envoy-gateway-oidc.md](envoy-gateway-oidc.md)).
+For a gateway that is not Envoy Gateway, run `oauth2-proxy` yourself
+(see [docs/design/access-proxy.md](../design/access-proxy.md) for the
+recipe; the `access-proxy` chart was removed in v1.32.0).
+For your own flow in the console, your chart alone and no proxy at all:
 
 A platform that publishes its listeners as a `ListenerSet` is attached
-to with `exposure.parentRefs` written out in full — `group`, `kind`,
-`name`, `namespace` — in place of `exposure.gateway`
-([values](../reference/access-proxy.md)).
+to with `parentRefs` written out in full — `group`, `kind`,
+`name`, `namespace` — in your gateway's configuration.
 
 Your console keeps **its own hostname**. The one exception in the family
 is the directory console, which shares its issuer's hostname under
@@ -142,10 +128,10 @@ groups:
   all:myconsole:viewer:   { members: [everyone@example.com] }
 clients:
   myconsole.example.internal:
-    # Proxied: confidential, because oauth2-proxy refuses to start with
-    # no secret. Running your own flow in a browser: `kind: public`, no
-    # secret, and the redirect is your own callback rather than the
-    # proxy's.
+    # For gateway-native OIDC or upstream oauth2-proxy: `kind:
+    # confidential`, the gateway/proxy holds the secret. Running your own
+    # flow in the browser: `kind: public`, no secret, redirect is your
+    # own callback.
     kind: confidential
     secret: myconsole-client
     display_name: My Console            # what the sign-in page says: "Sign in to continue to My Console"
@@ -159,11 +145,10 @@ clients:
 `display_name` and `description` are what the sign-in page shows in
 place of "the application that sent you here", which is what every
 phishing page also says; keep them free of anything a stranger should
-not read. A console behind `access-proxy` cannot receive a back-channel
-logout — oauth2-proxy keeps each session under a key only the browser's
-cookie holds — so its window after a revoke is the proxy's refresh
-interval; a console running its own flow may opt in with
-`backchannel_logout_uri`.
+not read. A console running its own flow may opt in to back-channel logout with
+`backchannel_logout_uri`; gateway-native OIDC and upstream oauth2-proxy
+cannot receive back-channel logout because the session is held by a key
+only the browser's cookie has.
 
 `all:<app>:<role>` is an application role under the
 [naming rule](../design/trust.md#naming): scoped to the tenant the app
