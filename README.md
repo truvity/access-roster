@@ -148,7 +148,7 @@ flowchart LR
     ctl["the GitHub controller<br/>keeps each organisation's teams as the policy says"]
   end
 
-  proxy["access-proxy<br/>one per console with no OIDC of its own"]
+  gg["Envoy Gateway OIDC<br/>gateway-native, per console with no OIDC of its own"]
   apps["Kubernetes · AWS · ArgoCD · Kargo · consoles"]
   orgs["GitHub organisations"]
   aud[("audit installation<br/>the audit trail, in this service's namespace")]
@@ -156,7 +156,7 @@ flowchart LR
   idp -- "sign-in, and directory reads" --> iss
   gh -- "token exchange" --> iss
   k8s -- "token exchange" --> iss
-  iss --> proxy --> apps
+  iss --> gg --> apps
   iss -- "trusted by" --> apps
   iss -. "who holds which group" .-> ctl
   ctl -- "invites, teams, removals" --> orgs
@@ -258,8 +258,8 @@ Then sign in once with a recovery token
 and the console's Overview walks the rest: connecting the directory, and
 the first operator who signs in as themselves.
 [docs/operations/adoption-plain-helm.md](docs/operations/adoption-plain-helm.md)
-is the whole walk-through, with the prerequisites and an `access-proxy`
-beside it.
+is the whole walk-through, with the prerequisites and a gateway-native OIDC
+setup for consoles with no authorization model of their own.
 
 ## Conformance
 
