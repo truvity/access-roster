@@ -7,35 +7,29 @@ other anchor: [service-to-service.md](service-to-service.md).
 A web UI with a service API, behind the gateway, with two roles. What you
 write, what you deploy, what you never implement.
 
-## Three shapes, and which one is yours
+## Two shapes, and which one is yours
 
-|  | gateway-native OIDC | `access-proxy` in front (deprecated) | its own flow |
-|---|---|---|---|
-| **Use when** | the console has no authorization model of its own, or is not yours to change, and it sits behind Envoy Gateway | the same, on Envoy Gateway, until the chart is removed | you are writing it, and it needs identity *inside* itself |
-| **Who runs the login** | the gateway's `SecurityPolicy`, which forwards a verified bearer | the proxy, and it forwards a verified bearer | the console: it sends a browser to `/authorize` and reads what comes back |
-| **You deploy** | your chart plus a `SecurityPolicy` — no chart of ours | your chart plus one `access-proxy` release — Envoy Gateway only, it runs nowhere else | your chart |
-| **The client is** | confidential: the gateway holds the secret, same as a proxy would | confidential: oauth2-proxy refuses to start without a secret | public, with PKCE — no secret to rotate |
+|  | gateway-native OIDC | its own flow |
+|---|---|---|
+| **Use when** | the console has no authorization model of its own, or is not yours to change, and it sits behind Envoy Gateway | you are writing it, and it needs identity *inside* itself |
+| **Who runs the login** | the gateway's `SecurityPolicy`, which forwards a verified bearer | the console: it sends a browser to `/authorize` and reads what comes back |
+| **You deploy** | your chart plus a `SecurityPolicy` — no chart of ours | your chart |
+| **The client is** | confidential: the gateway holds the secret | public, with PKCE — no secret to rotate |
 
 **Gateway-native OIDC is the default for a console with no authorization
 model of its own, on Envoy Gateway** — a `SecurityPolicy` with `oidc:`
 against a declared client, gated by that client's `requires`, nothing of
 ours in front
 ([ADR 0001](../decisions/0001-sessions-and-an-absolute-limit.md)).
-`access-proxy` is deprecated, with removal planned
-([ADR 0003](../decisions/0003-deprecate-access-proxy.md)): it is, and has
-only ever been, Envoy Gateway's own external authorization backend, so
-gateway-native OIDC replaces it there directly. **For a gateway that is
-not Envoy Gateway**, this chart was never an option: the path is to run
-upstream `oauth2-proxy` yourself, with a declared confidential client row
-of this issuer, the way this chart already wires it — a documentation
-page for that is planned, and it will not be a chart of ours. Write your
-own flow (the right column above) when the console needs identity
-*inside* itself: per-user authorization from `groups`, per-user audit, or
-tokens of its own to call something else. `access-proxy`'s server-side
-session store is not a reason to choose either gateway-fronted shape —
-oauth2-proxy's encrypted cookie means nothing server-side, Back-Channel
-Logout included, can end a session it holds
-([design/access-proxy.md](../design/access-proxy.md)).
+
+Write your own flow (the right column above) when the console needs
+identity *inside* itself: per-user authorization from `groups`, per-user
+audit, or tokens of its own to call something else.
+
+**For a gateway that is not Envoy Gateway**, use upstream `oauth2-proxy`
+yourself — see [docs/design/access-proxy.md](../design/access-proxy.md)
+for the recipe. The `access-proxy` chart was removed in v1.32.0
+([ADR 0003](../decisions/0003-deprecate-access-proxy.md)).
 
 **A third shape exists and is not yours**: a console the issuer itself
 serves, mounted on the issuer's own origin. It signs in as a client of
@@ -119,9 +113,8 @@ exposure:
 ```
 
 A platform that publishes its listeners as a `ListenerSet` is attached
-to with `exposure.parentRefs` written out in full — `group`, `kind`,
-`name`, `namespace` — in place of `exposure.gateway`
-([values](../reference/access-proxy.md)).
+to with `parentRefs` written out in full — `group`, `kind`,
+`name`, `namespace` — in your gateway's configuration.
 
 Your console keeps **its own hostname**. The one exception in the family
 is the directory console, which shares its issuer's hostname under

@@ -15,7 +15,6 @@ cmd/github-roster         the GitHub controller, a second process from
 cmd/accessctl             the CLI, for laptops and CI jobs
 cmd/acceptance            the acceptance runner against a kind cluster
 charts/access-issuer      the chart: both processes
-charts/access-proxy       the console exposure chart
 action.yml                the GitHub Action, at the root so
                           `uses: truvity/access-roster@<tag>` works
 identity/ tokens/ policy/ backend/
@@ -167,9 +166,9 @@ grants).
 
 Push a `v*` tag. The release workflow builds the binaries, the images
 (`ghcr.io/truvity/access-roster/access-issuer` and `/github-roster`),
-the two charts (`ghcr.io/truvity/charts/access-issuer` and
-`/access-proxy`), `accessctl`'s archives and its Nix flake, and publishes
-the TypeScript package to GitHub Packages, all stamped with the tag.
+the chart (`oci://ghcr.io/truvity/charts/access-issuer`), `accessctl`'s
+archives and its Nix flake, and publishes the TypeScript package to GitHub
+Packages, all stamped with the tag.
 The Go module and the GitHub Action are the same tag. One tag, every
 artifact: a consumer pins one version of this repository.
 

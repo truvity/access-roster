@@ -9,8 +9,6 @@ tables. For a map of every page in the repository, not just these, see
 - [reference/configuration.md](reference/configuration.md) — every value
   of the `access-issuer` chart, the overlay format, every endpoint the
   issuer serves, and the objects the service writes
-- [reference/access-proxy.md](reference/access-proxy.md) — every value of
-  the `access-proxy` chart
 - [reference/policy.md](reference/policy.md) — the policy file: groups,
   matchers, clients, resources, client documents, lifetimes and GitHub
   bindings

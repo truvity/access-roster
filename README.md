@@ -33,7 +33,7 @@ repository.
 |---|---|---|---|
 | `access-issuer` chart and image | `oci://ghcr.io/truvity/charts/access-issuer`, `ghcr.io/truvity/access-roster/access-issuer` | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail | shipped |
 | `github-roster` image, in the same chart | `ghcr.io/truvity/access-roster/github-roster` | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console | shipped |
-| `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | Envoy Gateway, the only gateway it works on — a console with no OpenID flow of its own; gateway-native OIDC replaces it there now. For any other gateway, run upstream oauth2-proxy yourself — see [why](docs/design/access-proxy.md), [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md) | deprecated, removal planned |
+| `access-proxy` chart | removed in v1.32.0 | the chart was Envoy Gateway's external authorization backend; gateway-native OIDC replaces it there. For a gateway that is not Envoy Gateway, run upstream oauth2-proxy yourself — see [docs/design/access-proxy.md](docs/design/access-proxy.md), [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md). Versions already published stay available. | removed |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
 | `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, and short-lived certificates a secret manager mints | shipped |
@@ -46,11 +46,11 @@ repository.
 A platform team running Kubernetes, with the Gateway API, cert-manager,
 and a corporate directory in Google Workspace, that wants one issuer for
 its clusters, cloud accounts, consoles and CI instead of an identity
-product. Envoy Gateway also gets you gateway-native OIDC, the default
-now for a console with no authorization model of its own; `access-proxy`
-(deprecated — see "What ships") is wired through Envoy Gateway's own
-`SecurityPolicy` too, and works nowhere else. A Valkey (for more than one
-replica and for every proxy), an audit installation (for a trail that is a
+product. Envoy Gateway gets you gateway-native OIDC, the default now for a
+console with no authorization model of its own. For a gateway that is not
+Envoy Gateway, run upstream oauth2-proxy yourself (removed from this
+repository in v1.32.0; see docs/design/access-proxy.md). A Valkey (for
+more than one replica), an audit installation (for a trail that is a
 record) and OpenBAO (for certificates) are optional. **None of those is
 installed here**: the charts point at them. Nor is the signing key minted
 here — cert-manager issues it, or the installation delivers it — and no

@@ -1,3 +1,15 @@
+## v1.32.0
+
+- **Breaking: the `access-proxy` chart is no longer published.** Gateway-native
+  OIDC (a `SecurityPolicy` with `oidc:` on Envoy Gateway) is the replacement
+  for a console with no OpenID flow of its own. For a gateway that is not Envoy
+  Gateway, run upstream `oauth2-proxy` yourself following the recipe in
+  [docs/design/access-proxy.md](docs/design/access-proxy.md).
+
+  Versions of the chart already published remain available in the OCI registry,
+  so existing pins keep working. See
+  [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md) for the rationale.
+
 ## v1.31.0
 
 - **Added: the issuer and github-roster warn at load if an internal group is
