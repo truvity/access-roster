@@ -34,7 +34,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-    uses: truvity/ci-workflows/.github/workflows/release-public.yaml@a8309f9a4de4cb58306ec4384d31ec6985007f7b # v3.1.2
+    uses: truvity/ci-workflows/.github/workflows/release-public.yaml@36be6b238bfb119de3ffeed9604bae5e7a3d7c8d # v3.4.0
     with:
       # Charts are published by this workflow, NOT by goreleaser, so this
       # list is a second place the set of shipped artifacts is written

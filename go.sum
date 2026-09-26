@@ -145,6 +145,8 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/truvity/audit v0.2.5 h1:VuwNujbgDsQNAL+JMVeeXn56zeUcoJ918jsYIwI4Q4I=
 github.com/truvity/audit v0.2.5/go.mod h1:cw1p7wHKZaEwDmNRtgKN4ElmbG2tku0le0uqZG6iApI=
+github.com/truvity/audit v0.3.1 h1:Hbl+eg6vNvl+XBGuMHkcnIRu7XdArGVgKOX0X/B+/UA=
+github.com/truvity/audit v0.3.1/go.mod h1:xd1fyQzwqAPXCGbYm8RkuSVRccpWFRd5TRSPNUFOMug=
 github.com/truvity/gateway-auth v0.7.1 h1:jSoeB+u9aergNMeNHW3c7g291RxdCED6TaOflwJNSak=
 github.com/truvity/gateway-auth v0.7.1/go.mod h1:5ZrYGw0qmVo+Xgpa/Au5BiDVkxSKcz+ZUil4JlQo+eU=
 github.com/valyala/fastjson v1.6.10 h1:/yjJg8jaVQdYR3arGxPE2X5z89xrlhS0eGXdv+ADTh4=
