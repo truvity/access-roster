@@ -69,7 +69,7 @@ func (r Resource) Title(id string) string {
 
 // validate refuses a resource whose id is not something RFC 8707 allows,
 // or whose gate is missing.
-func (r Resource) validate(id string, groups map[string]Group) error {
+func (r Resource) validate(id string, p Policy) error {
 	if err := validateResourceID(id); err != nil {
 		return err
 	}
@@ -77,8 +77,11 @@ func (r Resource) validate(id string, groups map[string]Group) error {
 		return fmt.Errorf("resource %q requires no group, so nobody may reach it", id)
 	}
 	for _, name := range r.Requires {
-		if _, ok := groups[name]; !ok {
+		if _, ok := p.Groups[name]; !ok {
 			return fmt.Errorf("resource %q requires %q, which is not a declared group", id, name)
+		}
+		if err := p.checkGrantName(fmt.Sprintf("resource %q requires", id), name); err != nil {
+			return err
 		}
 	}
 	if r.SigningAlg != "" && !validSigningAlg(r.SigningAlg) {

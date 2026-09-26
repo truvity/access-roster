@@ -1,6 +1,6 @@
 # 0006 — The groups claim is scoped per audience, by default
 
-**Status:** Accepted
+**Status:** Accepted; the scoping rule is refined by [0010](0010-a-declared-vocabulary.md)
 **Date:** 2026-09-25
 
 ## Context

@@ -159,9 +159,9 @@ it will never see; clearing the console's own cookie to sign somebody out of
 a session the proxy holds; putting an exchange in front of a same-cluster
 call; verifying another cluster's key set directly; minting a structured
 roles claim beside `groups`; re-mapping group names in a library; a
-ConfigMap watch instead of a `checksum/policy` rollout; a group name that
-is not `<scope>:<thing>:<role>` (or `rung:`/`emp:`, which are not
-grants).
+ConfigMap watch instead of a `checksum/policy` rollout. Naming a group is
+its own set of anti-patterns, out of this file's scope — see
+[docs/taxonomy.md](docs/taxonomy.md).
 
 ## Releasing
 

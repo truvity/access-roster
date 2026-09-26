@@ -1,7 +1,9 @@
 // Package policy is the schema both services load: seven tables that
 // answer four questions and no others — who is in which internal group,
 // what a group adds to a token, how long a token lives, and which client
-// may be issued one.
+// may be issued one — plus one OPTIONAL eighth, [Vocabulary], that answers
+// none of the four itself and instead constrains what a name used to
+// answer them is allowed to mean.
 //
 // Everything that shapes a token is derivable from these tables by
 // reading them. That is the whole design goal, and it is why there is no
@@ -222,8 +224,19 @@ type Policy struct {
 	// Version is the schema's version. 1 is the only one; an unknown
 	// version is refused rather than guessed at.
 	Version int `yaml:"version"`
-	// Groups is the vocabulary: every internal group name an installation
-	// uses, and how a caller comes to be in it.
+	// Vocabulary declares which scopes, things and roles a grant name may
+	// use, and each thing's role ladder. OPTIONAL: nil means what it
+	// always meant — any `<scope>:<thing>:<role>` spelling is accepted,
+	// unchecked. Declared, it makes every concrete grant anywhere in this
+	// file (see [Policy.checkGrantName]) and every mapping wildcard in
+	// [Policy.Groups] (see [Policy.checkGroupKey]) a claim the loader can
+	// check instead of trust. See docs/reference/policy.md#vocabulary and
+	// docs/taxonomy.md.
+	Vocabulary *Vocabulary `yaml:"vocabulary,omitempty"`
+	// Groups is every internal group name an installation uses, and how a
+	// caller comes to be in it. A key may be a mapping wildcard — `*` in
+	// the scope and/or thing position — when [Policy.Vocabulary] is
+	// declared; see [Policy.checkGroupKey].
 	Groups map[string]Group `yaml:"groups,omitempty"`
 	// Claims is what a group adds to a token. Sparse: a group that adds
 	// only its own name is absent here.
@@ -628,14 +641,27 @@ func (p Policy) Validate() error {
 	if p.Version != 1 {
 		return fmt.Errorf("version %d is not supported (this build reads version 1)", p.Version)
 	}
+	if err := p.Vocabulary.validate(); err != nil {
+		return err
+	}
 	for _, name := range slices.Sorted(maps.Keys(p.Groups)) {
 		if err := p.Groups[name].validate(name); err != nil {
+			return err
+		}
+		// checkGroupKey is what refuses a role wildcard, `*:*:*`, a
+		// mapping wildcard with no declared vocabulary, and — with a
+		// vocabulary — a concrete key naming an undeclared scope, thing or
+		// role, or a wildcard whose concrete segment does not fit.
+		if _, err := p.checkGroupKey(name); err != nil {
 			return err
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(p.Claims)) {
 		if _, ok := p.Groups[name]; !ok {
 			return fmt.Errorf("claims: %q is not a declared group", name)
+		}
+		if err := p.checkGrantName("claims", name); err != nil {
+			return err
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(p.Lifetimes)) {
@@ -645,6 +671,9 @@ func (p Policy) Validate() error {
 		if _, ok := p.Groups[name]; !ok {
 			return fmt.Errorf("lifetimes: %q is not a declared group", name)
 		}
+		if err := p.checkGrantName("lifetimes", name); err != nil {
+			return err
+		}
 	}
 	for _, org := range slices.Sorted(maps.Keys(p.GitHub)) {
 		if err := p.validateGitHubOrg(org); err != nil {
@@ -652,16 +681,16 @@ func (p Policy) Validate() error {
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(p.Clients)) {
-		if err := p.Clients[id].validate(id, p.Groups); err != nil {
+		if err := p.Clients[id].validate(id, p); err != nil {
 			return err
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(p.Resources)) {
-		if err := p.Resources[id].validate(id, p.Groups); err != nil {
+		if err := p.Resources[id].validate(id, p); err != nil {
 			return err
 		}
 	}
-	if err := p.ClientDocuments.validate(p.Groups); err != nil {
+	if err := p.ClientDocuments.validate(p); err != nil {
 		return err
 	}
 	return p.checkFragments()
@@ -685,6 +714,9 @@ func (p Policy) validateGitHubOrg(org string) error {
 	for _, group := range binding.Members {
 		if _, ok := p.Groups[group]; !ok {
 			return fmt.Errorf("github: %s members: %q is not a declared group", org, group)
+		}
+		if err := p.checkGrantName(fmt.Sprintf("github: %s members", org), group); err != nil {
+			return err
 		}
 	}
 	for _, entry := range binding.Ignore {
@@ -715,6 +747,9 @@ func (p Policy) validateGitHubOrg(org string) error {
 			if _, ok := p.Groups[group]; !ok {
 				return fmt.Errorf(
 					"github: %s/%s: %q is not a declared group", org, team, group)
+			}
+			if err := p.checkGrantName(fmt.Sprintf("github: %s/%s", org, team), group); err != nil {
+				return err
 			}
 		}
 	}
@@ -750,7 +785,7 @@ func (g Group) validate(name string) error {
 	return nil
 }
 
-func (c Client) validate(id string, groups map[string]Group) error {
+func (c Client) validate(id string, p Policy) error {
 	if err := displayText("display_name", c.DisplayName, MaxDisplayName); err != nil {
 		return fmt.Errorf("client %q: %w", id, err)
 	}
@@ -790,8 +825,11 @@ func (c Client) validate(id string, groups map[string]Group) error {
 		return fmt.Errorf("client %q requires no group, so nobody may use it", id)
 	}
 	for _, name := range c.Requires {
-		if _, ok := groups[name]; !ok {
+		if _, ok := p.Groups[name]; !ok {
 			return fmt.Errorf("client %q requires %q, which is not a declared group", id, name)
+		}
+		if err := p.checkGrantName(fmt.Sprintf("client %q requires", id), name); err != nil {
+			return err
 		}
 	}
 	if c.SigningAlg != "" && !validSigningAlg(c.SigningAlg) {
@@ -941,6 +979,12 @@ func conventional(name string) bool {
 // legitimately declare a group ahead of a client or resource that will use
 // it, and a deployment's rollout should not wait for every reference to
 // exist.
+//
+// A mapping wildcard key ([Policy.Vocabulary]) is judged by its EXPANSION:
+// `*:k8s:admin` counts as consumed the moment any one of the concrete
+// grants it maps to — `devel:k8s:admin`, `stage:k8s:admin`, and so on — is
+// itself consumed by something, because that is the same grant reaching a
+// caller through a shorter key.
 func (p Policy) Unconsumed() []string {
 	// Build a set of consumed groups. The initial capacity guesses at how
 	// many will be needed across all uses.
@@ -981,29 +1025,37 @@ func (p Policy) Unconsumed() []string {
 	}
 
 	// This hub's own roles. The hub reads these directly from the token.
+	// Read through groupKeyTargets rather than the key itself, so a
+	// mapping wildcard that reaches access-roster is caught too.
 	hubRoles := map[string]bool{
 		RoleOperator: true,
 		RoleViewer:   true,
 	}
 	for name := range p.Groups {
-		_, thing, role, ok := SplitGroup(name)
-		if !ok {
-			continue
-		}
-		if thing == ThingSelf && hubRoles[role] {
-			consumed[name] = true
+		for _, target := range p.groupKeyTargets(name) {
+			_, thing, role, ok := SplitGroup(target)
+			if ok && thing == ThingSelf && hubRoles[role] {
+				consumed[target] = true
+			}
 		}
 	}
 
 	// Collect unconsumed groups, excluding non-grants.
 	var out []string
 	for name := range p.Groups {
-		if consumed[name] {
+		// Skip non-grants: rung:* and emp:* families.
+		if strings.HasPrefix(name, "rung:") || strings.HasPrefix(name, "emp:") {
 			continue
 		}
 
-		// Skip non-grants: rung:* and emp:* families.
-		if strings.HasPrefix(name, "rung:") || strings.HasPrefix(name, "emp:") {
+		consumedByAny := false
+		for _, target := range p.groupKeyTargets(name) {
+			if consumed[target] {
+				consumedByAny = true
+				break
+			}
+		}
+		if consumedByAny {
 			continue
 		}
 

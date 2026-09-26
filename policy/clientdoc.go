@@ -67,7 +67,7 @@ func (d ClientDocuments) Permits(u *url.URL) bool {
 }
 
 // validate refuses a block that would admit more than its author meant.
-func (d ClientDocuments) validate(groups map[string]Group) error {
+func (d ClientDocuments) validate(p Policy) error {
 	for _, origin := range d.Origins {
 		if err := validateOrigin(origin); err != nil {
 			return fmt.Errorf("client_documents: %w", err)
@@ -85,8 +85,11 @@ func (d ClientDocuments) validate(groups map[string]Group) error {
 		return fmt.Errorf("client_documents lists origins and requires no group, which would admit every person who can sign in")
 	}
 	for _, name := range d.Requires {
-		if _, ok := groups[name]; !ok {
+		if _, ok := p.Groups[name]; !ok {
 			return fmt.Errorf("client_documents requires %q, which is not a declared group", name)
+		}
+		if err := p.checkGrantName("client_documents requires", name); err != nil {
+			return err
 		}
 	}
 	return nil

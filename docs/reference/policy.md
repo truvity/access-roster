@@ -88,6 +88,86 @@ exceptions are not grants and are two segments on purpose: `rung:<name>`
 carries a session lifetime, `emp:<slug>` is a person. The loader warns on
 a name in neither shape. In force since v0.9.3.
 
+The grammar, `all`, sensitive scopes and the naming anti-patterns are
+[docs/taxonomy.md](../taxonomy.md); what a *name* is checked against, once
+an installation opts in, is the next section.
+
+## Vocabulary
+
+An OPTIONAL top-level table, in force since v1.32.0, that declares which
+scopes and things exist, each thing's role ladder, and which role implies
+which other one:
+
+```yaml
+vocabulary:
+  scopes:
+    kernel: { sensitive: true }
+    prod:   { sensitive: true }
+    devel: {}
+    stage: {}
+    all:   {}          # only for a thing that exists once per installation
+  things:
+    k8s:
+      scopes: [kernel, devel, stage, prod]
+      roles: { viewer: [], operator: [viewer], admin: [operator] }
+    argocd:
+      scopes: [kernel, devel, stage, prod]
+      roles: { viewer: [], deployer: [viewer], operator: [viewer], admin: [deployer, operator] }
+    grafana:
+      scopes: [all]
+      roles: { viewer: [], editor: [viewer], admin: [editor] }
+```
+
+| Table | Key | Holds |
+|---|---|---|
+| `vocabulary.scopes` | scope name | `sensitive` (optional, default false) |
+| `vocabulary.things` | thing name | `scopes` (the declared scopes this thing exists in) and `roles` (role name to the roles it directly implies) |
+
+**Opt-in, and strict once opted into.** No `vocabulary` table means
+nothing here applies — today's behaviour, unchanged, and every existing
+policy keeps loading and evaluating exactly as it did. Declare one, and
+the policy **refuses to load** when any concrete grant name anywhere in
+the file fails to fit it, naming the offending name and the reason:
+
+- the scope isn't declared under `vocabulary.scopes`;
+- the thing isn't declared under `vocabulary.things`;
+- the scope isn't one of the thing's declared `scopes`;
+- the role isn't one of the thing's declared `roles`.
+
+"Anywhere" means every `groups` key, every `claims` key, every
+`lifetimes` key except `default`, every client's, resource's and
+`client_documents`'s `requires`, and every GitHub binding. `rung:` and
+`emp:` names are exempt everywhere, as they always were: the vocabulary
+governs grants, and those are not grants.
+
+**Roles imply explicitly, and the graph may not cycle.** `admin: [operator]`
+means holding admin also holds operator directly; what operator itself
+implies is operator's own entry — `admin: [deployer, operator]` above
+means admin implies BOTH, branching rather than chaining. `implies` may
+only name another declared role of the **same** thing, and validation
+refuses a graph with a cycle, naming the role it closes at. See
+[taxonomy.md#inheritance](../taxonomy.md#inheritance) for how the implied
+roles are actually granted — that happens once, in evaluation, not here:
+this table is only the declaration.
+
+**Mapping wildcards** — `*` in the scope and/or thing position of a
+`groups` key, such as `*:k8s:admin` or `devel:*:viewer` — need a declared
+vocabulary and are refused without one. A role wildcard (`S:T:*`) is
+always refused, and so is `*:*:*`. See
+[taxonomy.md#mapping-wildcards](../taxonomy.md#mapping-wildcards) for the
+grammar and [Groups → token, by deep merge](#groups--token-by-deep-merge)
+for how a wildcard key is expanded and unioned with a caller's concrete
+groups.
+
+**Explainability.** `policy.Result`'s `Held` carries, per held group:
+`Key` — the `groups` key that matched directly, equal to the group's own
+name for an ordinary key and different for a wildcard's — and `Implies` —
+the concrete group whose role, one hop at a time, implied this one, empty
+when the group was held directly. A caller may hold one group for more
+than one reason, so `Held` carries one entry per reason rather than
+picking a winner. This is data for a console page a later change will
+build; nothing here renders it.
+
 ## The service's own two groups, and scoping them
 
 `all:access-roster:operator` and `all:access-roster:viewer` are the only

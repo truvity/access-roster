@@ -108,12 +108,33 @@ func ParseServiceAccountSubject(subject string) (ServiceAccountRef, bool) {
 }
 
 // Held is one internal group a caller is in, and why.
+//
+// A caller may hold one [Held.Group] for more than one reason at once — a
+// concrete Groups-table key AND a mapping wildcard that also reaches it,
+// or a direct hold AND an implied one — and every reason is its own
+// [Held] entry rather than one entry picking a winner: explainability
+// means showing all of them, not the first one found.
 type Held struct {
-	// Group is the internal group's name.
+	// Group is the internal group's name — always concrete, even when it
+	// was reached through a mapping wildcard or through inheritance.
 	Group string
 	// Via names what put the caller in it: the directory groups matched,
-	// or the matcher, rendered for a person to read.
+	// or the matcher, rendered for a person to read. Empty when Group was
+	// reached only through inheritance (Implies is set instead).
 	Via []string
+	// Key is the Groups-table key that matched directly — equal to Group
+	// for an ordinary key, and different for a mapping wildcard: matching
+	// `*:k8s:admin` for `devel:k8s:admin` records Key="*:k8s:admin". Empty
+	// when Group was reached only through inheritance.
+	Key string
+	// Implies is the concrete group whose role implied this one, one hop
+	// at a time, per [Vocabulary]'s declared implies graph: holding
+	// `devel:k8s:admin` where admin implies operator implies viewer
+	// produces a `devel:k8s:viewer` [Held] with Implies="devel:k8s:operator",
+	// not "…admin" — the direct parent, so a reader (the console,
+	// eventually) walks the chain one link at a time rather than being
+	// handed a root it has to trust. Empty when Group was held directly.
+	Implies string
 }
 
 // Result is what the policy grants a proof.
@@ -138,14 +159,33 @@ func (r Result) Has(group string) bool { return slices.Contains(r.Groups, group)
 // membership the hub cannot vouch for must not grant anything new.
 // Matchers do not, because a CI token or a signed-in address is verified
 // on its own.
+//
+// Two things happen here, and only here, so that every reader downstream —
+// a client's or resource's `requires`, a token's `groups` claim, GitHub
+// team reconciliation reading who holds a bound group — sees the result
+// without knowing either exists:
+//
+//  1. A Groups-table key that is a mapping wildcard ([Policy.Vocabulary])
+//     stands for every concrete grant its expansion names; a caller
+//     matched by the key holds all of them, unioned with whatever
+//     concrete keys separately match.
+//  2. A concrete grant `S:T:R` held by either route also holds every role
+//     `R` implies, transitively, on the SAME `S:T` — never across scopes.
 func (p Policy) Evaluate(in Input) Result {
 	confirmed := make(map[string]struct{}, len(in.DirectoryGroups))
 	for _, g := range in.DirectoryGroups {
 		confirmed[strings.ToLower(g)] = struct{}{}
 	}
 
-	var out Result
-	claims := map[string]any{}
+	// held accumulates every reason a concrete grant is held, by name.
+	// Seeded from the Groups table below (direct membership or a matcher,
+	// through a key's own name or a wildcard's expansion), then grown by
+	// the inheritance walk that follows.
+	held := map[string][]Held{}
+	// frontier is every concrete grant reached DIRECTLY — the seed for the
+	// inheritance walk, which starts from held roles and adds implied
+	// ones, never the reverse.
+	var frontier []string
 
 	for _, name := range slices.Sorted(maps.Keys(p.Groups)) {
 		group := p.Groups[name]
@@ -167,8 +207,55 @@ func (p Policy) Evaluate(in Input) Result {
 			continue
 		}
 
+		for _, concrete := range p.groupKeyTargets(name) {
+			if _, seen := held[concrete]; !seen {
+				frontier = append(frontier, concrete)
+			}
+			held[concrete] = append(held[concrete], Held{Group: concrete, Key: name, Via: via})
+		}
+	}
+
+	// Inheritance: breadth-first over the implies graph, one hop at a
+	// time, so a branching ladder (admin implying both deployer and
+	// operator) and a chained one (admin -> operator -> viewer) both
+	// close correctly. reached stops a role from being re-queued once its
+	// own implied roles have been added, but a later, DIFFERENT source
+	// reaching an already-reached role still records its own [Held] entry
+	// — two paths to the same grant are two reasons, not one.
+	if p.Vocabulary != nil {
+		queue := slices.Clone(frontier)
+		reached := make(map[string]bool, len(frontier))
+		for _, g := range frontier {
+			reached[g] = true
+		}
+		for len(queue) > 0 {
+			g := queue[0]
+			queue = queue[1:]
+
+			scope, thing, role, ok := SplitGroup(g)
+			if !ok {
+				continue
+			}
+			spec, ok := p.Vocabulary.Things[thing]
+			if !ok {
+				continue
+			}
+			for _, impliedRole := range spec.Roles[role] {
+				implied := scope + Separator + thing + Separator + impliedRole
+				held[implied] = append(held[implied], Held{Group: implied, Implies: g})
+				if !reached[implied] {
+					reached[implied] = true
+					queue = append(queue, implied)
+				}
+			}
+		}
+	}
+
+	var out Result
+	claims := map[string]any{}
+	for _, name := range slices.Sorted(maps.Keys(held)) {
 		out.Groups = append(out.Groups, name)
-		out.Held = append(out.Held, Held{Group: name, Via: via})
+		out.Held = append(out.Held, held[name]...)
 		if fragment, ok := p.Claims[name]; ok {
 			// A conflict is refused at load; ignoring one here would hide
 			// a bug, so the fragment that cannot merge is simply skipped
