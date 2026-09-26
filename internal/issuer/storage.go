@@ -205,6 +205,10 @@ type Storage struct {
 	// the same handler, microseconds apart — writing that down would be
 	// storing something that never outlives the function that made it.
 	grants sync.Map // op.TokenExchangeRequest → Grant
+
+	// scopingReport rate-limits the groups-scoping report line; see
+	// [Storage.reportGroupsScoping].
+	scopingReport *groupsScopingReporter
 }
 
 // The authentication context classes this issuer can report. Custom
@@ -275,6 +279,15 @@ func (s *Storage) logger() *slog.Logger {
 	return slog.Default()
 }
 
+// UseLog gives the storage a logger of its own, in place of
+// [slog.Default] -- the deployment's own, so this package's few log
+// lines (a reused authorization code, the groups-scoping report) carry
+// whatever attributes and level it configured, rather than depending on
+// [slog.SetDefault] having been called first. A test that wants to
+// capture what this package logs calls it with a logger of its own too,
+// rather than mutating the process-wide default.
+func (s *Storage) UseLog(log *slog.Logger) { s.log = log }
+
 // codeSessionKey remembers which session one authorization code opened,
 // so that a reuse of that code can end it.
 func codeSessionKey(request string) string { return "issuer:code-session:" + request }
@@ -338,12 +351,13 @@ func NewStorage(
 	// assertion fails, so there is no device state to keep and no way for
 	// a device code to be stored by something that changed its mind.
 	return &Storage{
-		iss:       iss,
-		verify:    verify,
-		keys:      keys,
-		secrets:   secrets,
-		state:     state,
-		documents: newDocumentClients(iss.Policy().ClientDocuments()),
+		iss:           iss,
+		verify:        verify,
+		keys:          keys,
+		secrets:       secrets,
+		state:         state,
+		documents:     newDocumentClients(iss.Policy().ClientDocuments()),
+		scopingReport: newGroupsScopingReporter(),
 	}, nil
 }
 
@@ -952,12 +966,17 @@ func (s *Storage) SetUserinfoFromRequest(
 ) error {
 	subject := request.GetSubject()
 
-	claims, given, family, err := s.identityOf(ctx, subject)
+	result, given, family, err := s.resolveSubject(ctx, subject)
 	if err != nil {
 		return err
 	}
+	// An ID token's audience is always the client itself, never a
+	// resource — see docs/reference/policy.md#signing-algorithm-per-audience
+	// and [signingAudience]'s own doc comment.
+	clientID := request.GetClientID()
+	s.reportGroupsScoping(ctx, clientID, clientID, subject, result.Groups)
 
-	if err = s.fill(ctx, info, subject, claims, given, family); err != nil {
+	if err = s.fill(ctx, info, subject, Claims(result), given, family); err != nil {
 		return err
 	}
 
@@ -1039,10 +1058,19 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 	// same access token a moment later — see [signingAudience].
 	signingAudienceFrom(ctx).mark(accessAudienceOf(request))
 
-	claims, given, family, err := s.claimsFor(ctx, request)
+	claims, held, given, family, err := s.claimsFor(ctx, request)
 	if err != nil {
 		return nil, err
 	}
+	// Covers the ordinary access token, a refresh (this same function,
+	// called again with a fresh policy answer — see
+	// [Storage.CreateAccessAndRefreshTokens]) and a token exchange's
+	// access token alike, because all three reach claims through here.
+	// audience is the resource a caller named or the client itself, per
+	// [accessAudienceOf]; client is who is ASKING, which differs from
+	// audience exactly when a resource was named or an exchange is
+	// presenting on somebody else's behalf.
+	s.reportGroupsScoping(ctx, accessAudienceOf(request), clientOf(request), request.GetSubject(), held)
 	lifetime := s.iss.Config().TokenLifetime
 	if declared, ok := s.iss.Policy().Client(clientOf(request)); ok {
 		lifetime = declared.Cap(lifetime)
@@ -1112,11 +1140,15 @@ func clientOf(request op.TokenRequest) string {
 	return ""
 }
 
-// claimsFor is what a token carries beyond its identity fields, and what
-// the account is called — from ONE answer, because they come from one.
+// claimsFor is what a token carries beyond its identity fields, what the
+// account is called, and which internal groups it holds — from ONE
+// answer, because they come from one. held is the FULL held list, not
+// what claims["groups"] actually carries: [Storage.issue] reports it to
+// [Storage.reportGroupsScoping], which is the one place that narrows it
+// for the LOG line, never for the token.
 func (s *Storage) claimsFor(
 	ctx context.Context, request op.TokenRequest,
-) (claims map[string]any, given, family string, err error) {
+) (claims map[string]any, held []string, given, family string, err error) {
 	if exchange, ok := request.(op.TokenExchangeRequest); ok {
 		// An exchange is usually a job or a workload, which has no name.
 		// A person trading one of their own tokens does, and the grant
@@ -1124,12 +1156,15 @@ func (s *Storage) claimsFor(
 		// they are called — so that stays a separate question here.
 		claims, err = s.GetPrivateClaimsFromTokenExchangeRequest(ctx, exchange)
 		if err != nil {
-			return nil, "", "", err
+			return nil, nil, "", "", err
+		}
+		if grant, ok := s.grantFor(exchange); ok {
+			held = grant.Result.Groups
 		}
 
 		given, family = s.namesOf(ctx, request.GetSubject())
 
-		return claims, given, family, nil
+		return claims, held, given, family, nil
 	}
 
 	return s.identityOf(ctx, request.GetSubject())
@@ -1405,7 +1440,11 @@ func (s *Storage) SetIntrospectionFromToken(context.Context, *oidc.Introspection
 // carried them all along; this is the same answer, from the same one
 // directory call.
 func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, subject, _ string, _ []string) (map[string]any, error) {
-	claims, given, family, err := s.identityOf(ctx, subject)
+	// held is not reported here: this hook computes the SAME answer
+	// [Storage.issue] already reported a moment earlier on the same
+	// request context — see [signingAudience] — so a second line would
+	// only repeat the first, not add a finding.
+	claims, _, given, family, err := s.identityOf(ctx, subject)
 	if err != nil {
 		return nil, err
 	}
@@ -1470,13 +1509,13 @@ func displayName(given, family string) string {
 // name, which is the truthful answer rather than a missing one.
 func (s *Storage) identityOf(
 	ctx context.Context, subject string,
-) (claims map[string]any, given, family string, err error) {
+) (claims map[string]any, held []string, given, family string, err error) {
 	result, given, family, err := s.resolveSubject(ctx, subject)
 	if err != nil {
-		return nil, "", "", err
+		return nil, nil, "", "", err
 	}
 
-	return Claims(result), given, family, nil
+	return Claims(result), result.Groups, given, family, nil
 }
 
 // resolveSubject evaluates the policy for one subject and returns the

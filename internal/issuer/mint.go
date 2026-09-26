@@ -43,6 +43,10 @@ func (s *Storage) MintFor(ctx context.Context, email, audience string, lifetime 
 	if err != nil {
 		return "", time.Time{}, err
 	}
+	// No presenting client to name here -- this is the console reading
+	// another service AS the person using it, not a registered OAuth
+	// client asking on their behalf, so client is left empty.
+	s.reportGroupsScoping(ctx, grant.Audience, "", grant.Subject, grant.Result.Groups)
 	if capped := time.Duration(s.iss.Lifetime(grant)); capped > 0 && capped < lifetime {
 		lifetime = capped
 	}

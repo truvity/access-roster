@@ -494,6 +494,15 @@ type Client struct {
 	// Rather than pin the whole installation to the slowest relying
 	// party forever, this is the one row that asks for it.
 	SigningAlg string `yaml:"signing_alg,omitempty"`
+	// Groups overrides which of a caller's held groups a token for this
+	// client carries, beyond whatever [Client.Requires]'s own
+	// <scope>:<thing> pairs already keep -- see [Policy.ScopeGroups] and
+	// docs/decisions/0006-groups-claim-scoped-per-audience.md. Empty asks
+	// for nothing beyond that pair matching. NOT YET APPLIED to a minted
+	// token: `groupsScoping` governs whether this is only computed and
+	// logged (`report`, the only mode this release ships) or actually
+	// narrows a token (`enforce`, refused at load for now).
+	Groups GroupsOverride `yaml:"groups,omitempty"`
 }
 
 // Parse reads one layer and checks its shape. Unknown keys are an error:
@@ -834,6 +843,9 @@ func (c Client) validate(id string, p Policy) error {
 	}
 	if c.SigningAlg != "" && !validSigningAlg(c.SigningAlg) {
 		return fmt.Errorf("client %q: signing_alg %q is not one of %v", id, c.SigningAlg, SigningAlgs)
+	}
+	if err := p.checkGroupsOverride(fmt.Sprintf("client %q", id), c.Groups); err != nil {
+		return err
 	}
 	return nil
 }

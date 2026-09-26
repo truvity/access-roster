@@ -487,6 +487,94 @@ session — and the resource's own gate would go unchecked for the rest of
 that session's life. It is re-checked on every refresh, which is where a
 withdrawn grant actually bites.
 
+## Groups in a token (scoping)
+
+**Today every token's `groups` claim carries every internal group the
+caller holds**, whatever the audience. `groups` is still the whole of the
+authorization, and this does not change what `requires` admits — see
+[0006](../decisions/0006-groups-claim-scoped-per-audience.md) for why a
+token that carries an installation's whole naming structure into one
+narrow client's cookie is a cost worth ending, and
+[0010](../decisions/0010-a-declared-vocabulary.md) for how the rule below
+was sharpened once a declared [vocabulary](#vocabulary) existed to name a
+thing precisely.
+
+**The decided rule.** A token carries every group the caller holds
+(after [inheritance](#vocabulary)'s expansion, which [Proof → groups](#proof--groups)
+already closes before this runs) whose `<scope>:<thing>` pair appears
+among the `<scope>:<thing>` pairs of its audience's `requires` — in ANY
+role. The audience is the client, or the [resource](#resources--what-a-token-is-for)
+a request named; for a token exchange, the target the exchange was
+GRANTED, never the client presenting it.
+
+```yaml
+clients:
+  grafana: { kind: confidential, secret: grafana-oidc, requires: [devel:grafana:viewer] }
+```
+
+Grafana requires `devel:grafana:viewer`. A caller holding
+`devel:grafana:editor`, `devel:grafana:viewer`, `devel:k8s:admin` and
+`prod:shop:deployer` gets a Grafana token carrying
+`[devel:grafana:editor, devel:grafana:viewer]`: both share Grafana's own
+pair, `devel:grafana`, so BOTH survive even though only `viewer` is
+named — the pair is what is checked, never the role. The other two are
+dropped: `devel:k8s:admin` is a different thing entirely, and
+`prod:shop:deployer` is a different scope of a thing this audience never
+named.
+
+**The override.** A client or resource row may set `groups: all` (carry
+everything, exactly as every token does today) or `groups: [thing, thing, …]`
+(additionally carry every held group of one of those things, in ANY
+scope, on top of whatever pair matching already keeps):
+
+```yaml
+clients:
+  console:
+    kind: confidential
+    secret: console-oidc
+    requires: [devel:grafana:viewer]
+    groups: [shop]   # console also reads a shop group to pick an app-level role
+```
+
+`all` or a list of names is all validation checks without a declared
+vocabulary; with one, each name in the list must be a thing
+[vocabulary.things](#vocabulary) declares — a typo in an override is
+exactly the mistake a declared vocabulary exists to catch everywhere
+else, and this is one more place it names a grant.
+
+**An audience with no `requires` this can read** — chiefly a client
+admitted through [client_documents](#clients-that-describe-themselves),
+which gates on ITS OWN shared `requires` rather than a row of its own —
+keeps nothing by pair matching, because "the audience's requires" names a
+row that does not exist for it. That is the plain reading of the rule,
+and it is also the useful one for report mode: every such audience's
+tokens log "would drop everything" until it is given a declared row, or
+an override, to read.
+
+**`rung:` and `emp:` names** are not grants ([taxonomy.md](../taxonomy.md))
+and have no `<scope>:<thing>` pair, so pair matching never keeps them —
+they are carried only when an override's thing list names the FULL
+two-segment name outright (`groups: [rung:sre]`), because there is no
+thing to name instead. Nothing about how they are USED changes: a
+`rung:` group's lifetime is read off the full held list at the issuer,
+before scoping ever runs (see [Groups → token, by deep merge](#groups--token-by-deep-merge)),
+so a `rung:` group missing from a token's `groups` claim under a future
+enforce mode still shortens that token's life exactly as it does today —
+scoping narrows what a token SAYS, never what the issuer computes from
+what a caller holds.
+
+**Report, then enforce.** `groupsScoping` (a chart value, `GROUPS_SCOPING`
+in the environment — see [configuration.md](configuration.md)) is `off`,
+`report` or `enforce`. `report`, the default since 1.32.0, computes the
+rule above for every minted token and logs one line when it would have
+dropped something — audience, client, subject and the dropped names —
+without changing the token: `groups` mints exactly as it always has
+either way. `enforce`, which would actually narrow the claim, is REFUSED
+at issuer start in this release, by name, so the switch is visible before
+an installation can reach for it; see
+[docs/operations/runbook.md#reading-the-groups-scoping-report](../operations/runbook.md#reading-the-groups-scoping-report)
+for turning report's findings into overrides.
+
 ## Signing algorithm per audience
 
 The issuer signs with several algorithms at once — RS256, ES256 and

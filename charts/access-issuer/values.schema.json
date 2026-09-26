@@ -306,6 +306,14 @@
     "policy": {
       "type": "object"
     },
+    "groupsScoping": {
+      "enum": [
+        "off",
+        "report",
+        "enforce"
+      ],
+      "description": "How far this installation has moved toward per-audience `groups` scoping. \"enforce\" is refused at issuer start in this release; see policy.md#groups--token-by-deep-merge."
+    },
     "route": {
       "type": "object",
       "additionalProperties": false,
