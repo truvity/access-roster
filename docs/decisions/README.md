@@ -25,6 +25,7 @@ timeline and nothing is silently rewritten under an old date.
 | [0007](0007-breaking-changes-inside-1x.md) | Breaking changes inside 1.x |
 | [0008](0008-credentials-only-where-we-govern-membership.md) | Credentials only where we govern membership |
 | [0009](0009-a-default-signing-algorithm-and-per-audience-exceptions.md) | A default signing algorithm, and per-audience exceptions |
+| [0011](0011-ssh-people-opkssh-machines-and-hosts-openbao.md) | SSH: people on opkssh, machines and hosts on the secret store's OpenBAO |
 
 ## Template
 

@@ -1,6 +1,6 @@
 # 0004 — SSH: opkssh for people, the secret store's SSH CA for hosts
 
-**Status:** Accepted
+**Status:** Accepted; partly superseded by [0011](0011-ssh-people-opkssh-machines-and-hosts-openbao.md)
 **Date:** 2026-09-25
 
 ## Context
