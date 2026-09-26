@@ -1,3 +1,29 @@
+## v1.32.1
+
+- **Fixed: per-audience `groups` scoping now reads a self-described
+  client's own gate, `client_documents.requires`.**
+
+  `policy.Policy.ScopeGroups` fell through to "no gate" for any audience
+  that was not a declared client or resource row, which included every
+  self-described client (an MCP client or similar, admitted by URL
+  through `client_documents`) — even though such a client IS gated, by
+  `client_documents.requires`, which every one of them shares. Report
+  mode was logging every held group as dropped for these audiences, and a
+  future enforce mode would have handed them no groups at all.
+
+  `client_documents` also gains its own optional `groups` override,
+  validated the same way a client's or a resource's is, so an
+  installation can widen it for every document client at once. An
+  audience that matches no gate at all — not a client, not a resource,
+  and not a URL `client_documents.origins` permits — still keeps nothing,
+  which remains the useful report-mode signal that it needs one of the
+  three before enforce mode could narrow anything for it correctly.
+
+  Also notes, for whichever release ships `enforce`, that `userinfo` has
+  to be scoped by the token's own audience too: narrowing only the token
+  and leaving `userinfo` unscoped would let a relying party read the
+  fuller list by calling `userinfo` instead.
+
 ## v1.32.0
 
 - **Added: per-audience `groups` scoping, in REPORT-ONLY mode — no token
