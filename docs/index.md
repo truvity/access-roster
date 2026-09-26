@@ -30,6 +30,7 @@ yet know which of those you want.
 | give a CI job an identity with no stored secret | [connect/github-actions.md](connect/github-actions.md) |
 | deploy it | [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md), [reference/configuration.md](reference/configuration.md), then [operations/connect-runbook.md](operations/connect-runbook.md) |
 | run it: what to check, what to back up, how to restore | [operations/runbook.md](operations/runbook.md), [configuration.md — restoring from the Secrets alone](reference/configuration.md#restoring-from-the-secrets-alone) |
+| run more than one replica of the issuer | [operations/high-availability.md](operations/high-availability.md) |
 | use it from a laptop or a CI job | [reference/accessctl.md](reference/accessctl.md) |
 | put a console behind the gateway | [connect/console-app.md](connect/console-app.md) |
 | keep a GitHub organisation's teams in step with the policy | [connect/github-organisation.md](connect/github-organisation.md) |
@@ -39,6 +40,7 @@ yet know which of those you want.
 | mint a short-lived SSH, database or client certificate | [connect/openbao.md](connect/openbao.md) |
 | SSH in for a person, a machine or a host | [connect/ssh.md](connect/ssh.md) |
 | connect a Model Context Protocol server or client | [connect/mcp.md](connect/mcp.md) |
+| reach PostgreSQL with a short-lived client certificate | [connect/postgresql.md](connect/postgresql.md) |
 | see what the conformance suite said, and why | [conformance.md](conformance.md) |
 | run the conformance suite | [operations/conformance.md](operations/conformance.md) |
 | build a service that accepts both people and workloads | [connect/service-to-service.md](connect/service-to-service.md) |
