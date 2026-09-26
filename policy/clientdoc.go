@@ -48,6 +48,12 @@ type ClientDocuments struct {
 	// `ttl_cap` does on a declared client. Optional, and worth setting:
 	// these tokens go to software this installation did not deploy.
 	TTLCap Duration `yaml:"ttl_cap,omitempty"`
+	// Groups overrides which of a caller's held groups a token for EVERY
+	// document client carries, beyond whatever [ClientDocuments.Requires]'s
+	// own <scope>:<thing> pairs already keep -- the same key, the same
+	// shape and the same validation as [Client.Groups] and
+	// [Resource.Groups], one row over: see [Policy.ScopeGroups].
+	Groups GroupsOverride `yaml:"groups,omitempty"`
 }
 
 // Enabled reports whether any document client may be admitted.
@@ -76,8 +82,8 @@ func (d ClientDocuments) validate(p Policy) error {
 	if !d.Enabled() {
 		// Off, and the rest is then inert rather than wrong -- except
 		// that writing it means somebody expected it to apply.
-		if len(d.Requires) > 0 || d.TTLCap.Duration() != 0 {
-			return fmt.Errorf("client_documents declares requires or ttl_cap and no origins, so none of it applies")
+		if len(d.Requires) > 0 || d.TTLCap.Duration() != 0 || !d.Groups.empty() {
+			return fmt.Errorf("client_documents declares requires, ttl_cap or groups and no origins, so none of it applies")
 		}
 		return nil
 	}
@@ -91,6 +97,9 @@ func (d ClientDocuments) validate(p Policy) error {
 		if err := p.checkGrantName("client_documents requires", name); err != nil {
 			return err
 		}
+	}
+	if err := p.checkGroupsOverride("client_documents", d.Groups); err != nil {
+		return err
 	}
 	return nil
 }

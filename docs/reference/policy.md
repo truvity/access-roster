@@ -522,10 +522,12 @@ dropped: `devel:k8s:admin` is a different thing entirely, and
 `prod:shop:deployer` is a different scope of a thing this audience never
 named.
 
-**The override.** A client or resource row may set `groups: all` (carry
-everything, exactly as every token does today) or `groups: [thing, thing, …]`
-(additionally carry every held group of one of those things, in ANY
-scope, on top of whatever pair matching already keeps):
+**The override.** A client row, a resource row, or the
+[client_documents](#clients-that-describe-themselves) block itself may
+set `groups: all` (carry everything, exactly as every token does today)
+or `groups: [thing, thing, …]` (additionally carry every held group of
+one of those things, in ANY scope, on top of whatever pair matching
+already keeps):
 
 ```yaml
 clients:
@@ -542,14 +544,22 @@ vocabulary; with one, each name in the list must be a thing
 exactly the mistake a declared vocabulary exists to catch everywhere
 else, and this is one more place it names a grant.
 
-**An audience with no `requires` this can read** — chiefly a client
-admitted through [client_documents](#clients-that-describe-themselves),
-which gates on ITS OWN shared `requires` rather than a row of its own —
-keeps nothing by pair matching, because "the audience's requires" names a
-row that does not exist for it. That is the plain reading of the rule,
-and it is also the useful one for report mode: every such audience's
-tokens log "would drop everything" until it is given a declared row, or
-an override, to read.
+**A self-described client IS gated, and scoped.** A client admitted
+through [client_documents](#clients-that-describe-themselves) has no row
+of its own in `clients` — its id is whatever URL it serves its own
+document at — but every one this installation admits shares ONE gate,
+`client_documents.requires`, and its pairs are read from there; a
+`client_documents.groups` override widens it for every document client at
+once, the same way a client's own `groups` widens one row.
+
+**An audience that matches no gate at all** — not a declared client, not
+a declared resource, and not a URL `client_documents.origins` permits
+(including every audience, when this installation admits no document
+client) — keeps nothing by pair matching, because "the audience's
+requires" names a gate that does not exist for it. That is the plain
+reading of the rule, and it is also the useful one for report mode: every
+such audience's tokens log "would drop everything" until it is given a
+row, an allow-listed origin, or an override, to read.
 
 **`rung:` and `emp:` names** are not grants ([taxonomy.md](../taxonomy.md))
 and have no `<scope>:<thing>` pair, so pair matching never keeps them —
@@ -574,6 +584,16 @@ at issuer start in this release, by name, so the switch is visible before
 an installation can reach for it; see
 [docs/operations/runbook.md#reading-the-groups-scoping-report](../operations/runbook.md#reading-the-groups-scoping-report)
 for turning report's findings into overrides.
+
+**A note for whichever release ships `enforce`.** The `userinfo` endpoint
+(`SetUserinfoFromToken`) answers with the SAME `groups` a token's owner
+already holds, keyed by the presented access token rather than by a fresh
+policy evaluation. Narrowing only the token's own claim and leaving
+`userinfo` unscoped would not enforce anything: a relying party that
+wanted the fuller list could still just call `userinfo` and read it
+there, which is exactly the leak this whole design exists to close.
+Enforcing has to narrow both, by the SAME audience — the one the token
+was minted for — or scoping is bypassed by one call.
 
 ## Signing algorithm per audience
 

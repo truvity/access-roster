@@ -153,16 +153,19 @@ func TestScopeGroupsResourceAudience(t *testing.T) {
 }
 
 // TestScopeGroupsEmptyRequires documents the choice for an audience this
-// function cannot find a `requires` for at all: a self-described client
-// (docs/reference/policy.md#clients-that-describe-themselves) has no
-// per-client row of its own in [Policy.Clients], and gates instead on
-// [Policy.ClientDocuments]'s own shared `requires` -- which is a
-// different table [Policy.ScopeGroups] does not consult, because it names
-// no ONE audience. Every held group is dropped: "the audience's requires"
-// presupposes a declared row, and an audience with none has nothing this
-// function can keep by. That is also the useful signal for report mode:
-// every mint for such an audience logs "would drop everything" until the
-// installation gives it a declared row.
+// function cannot place under ANY gate: not a declared [Policy.Clients]
+// row, not a declared [Policy.Resources] row, and not a URL
+// [Policy.ClientDocuments] would permit -- here because the installation
+// admits no document client at all, which is what an unset
+// [Policy.ClientDocuments] means ([ClientDocuments.Enabled] is false).
+// See [TestScopeGroupsClientDocumentAudience] for the case where a
+// self-described client IS gated, by `client_documents.requires`.
+//
+// Every held group is dropped: "the audience's requires" presupposes a
+// gate, and an audience with none has nothing this function can keep by.
+// That is also the useful signal for report mode: every mint for such an
+// audience logs "would drop everything" until the installation gives it
+// one.
 func TestScopeGroupsEmptyRequires(t *testing.T) {
 	t.Parallel()
 	p := policy.Policy{Version: 1}
@@ -175,6 +178,84 @@ func TestScopeGroupsEmptyRequires(t *testing.T) {
 	}
 	if !slices.Equal(dropped, []string{"devel:grafana:viewer", "rung:sre"}) {
 		t.Errorf("dropped = %v, want every held group", dropped)
+	}
+}
+
+// A self-described client IS gated, by `client_documents.requires`, which
+// every document client this installation admits shares -- see
+// internal/issuer's document-client resolver, which hands every one of
+// them exactly that `requires`. Pair matching applies to it exactly as it
+// would to a declared client's.
+func TestScopeGroupsClientDocumentAudience(t *testing.T) {
+	t.Parallel()
+	p := policy.Policy{
+		Version: 1,
+		ClientDocuments: policy.ClientDocuments{
+			Origins:  []string{"mcp.example"},
+			Requires: []string{"devel:grafana:viewer"},
+		},
+	}
+	held := []string{"devel:grafana:editor", "devel:grafana:viewer", "devel:k8s:admin"}
+
+	kept, dropped := p.ScopeGroups("https://mcp.example/client", held)
+
+	wantKept := []string{"devel:grafana:editor", "devel:grafana:viewer"}
+	if !slices.Equal(kept, wantKept) {
+		t.Errorf("kept = %v, want %v", kept, wantKept)
+	}
+	if !slices.Equal(dropped, []string{"devel:k8s:admin"}) {
+		t.Errorf("dropped = %v, want [devel:k8s:admin]", dropped)
+	}
+}
+
+// A URL this installation's [ClientDocuments.Origins] does not permit is
+// not a document client this function recognises, whatever it otherwise
+// looks like -- the same refusal the resolver itself would give before a
+// token ever existed, read back here as "no gate", not as an error.
+func TestScopeGroupsClientDocumentAudienceNotPermitted(t *testing.T) {
+	t.Parallel()
+	p := policy.Policy{
+		Version: 1,
+		ClientDocuments: policy.ClientDocuments{
+			Origins:  []string{"mcp.example"},
+			Requires: []string{"devel:grafana:viewer"},
+		},
+	}
+	held := []string{"devel:grafana:viewer"}
+
+	kept, dropped := p.ScopeGroups("https://not-allowed.example/client", held)
+
+	if len(kept) != 0 {
+		t.Errorf("kept = %v, want nothing: not-allowed.example is not an origin this installation admits", kept)
+	}
+	if !slices.Equal(dropped, held) {
+		t.Errorf("dropped = %v, want every held group", dropped)
+	}
+}
+
+// `client_documents.groups` is the same override, on the same table, one
+// row over from [Client.Groups] and [Resource.Groups]: every document
+// client shares it, exactly as they share `requires`.
+func TestScopeGroupsClientDocumentOverride(t *testing.T) {
+	t.Parallel()
+	p := policy.Policy{
+		Version: 1,
+		ClientDocuments: policy.ClientDocuments{
+			Origins:  []string{"mcp.example"},
+			Requires: []string{"devel:grafana:viewer"},
+			Groups:   policy.GroupsOverride{Things: []string{"shop"}},
+		},
+	}
+	held := []string{"devel:grafana:viewer", "prod:shop:deployer", "devel:k8s:admin"}
+
+	kept, dropped := p.ScopeGroups("https://mcp.example/client", held)
+
+	wantKept := []string{"devel:grafana:viewer", "prod:shop:deployer"}
+	if !slices.Equal(kept, wantKept) {
+		t.Errorf("kept = %v, want the pair match plus every shop group", kept)
+	}
+	if !slices.Equal(dropped, []string{"devel:k8s:admin"}) {
+		t.Errorf("dropped = %v, want [devel:k8s:admin]", dropped)
 	}
 }
 
@@ -254,6 +335,28 @@ clients:
   c: { kind: public, requires: ["devel:grafana:viewer"], groups: everything }
 `,
 			wantErr: `"everything" is neither "all" nor a list`,
+		},
+		{
+			name: "client_documents groups is validated the same way",
+			policy: scopeVocabulary + `
+groups: { "devel:grafana:viewer": {} }
+client_documents:
+  origins: [mcp.example]
+  requires: [devel:grafana:viewer]
+  groups: [nonesuch]
+`,
+			wantErr: `client_documents: groups names "nonesuch", which is not declared under vocabulary.things`,
+		},
+		{
+			name: "client_documents groups with no origins is inert, and refused for saying otherwise",
+			policy: `
+version: 1
+groups: { "devel:grafana:viewer": {} }
+client_documents:
+  requires: [devel:grafana:viewer]
+  groups: [shop]
+`,
+			wantErr: "client_documents declares requires, ttl_cap or groups and no origins",
 		},
 	}
 	for _, tc := range tests {
