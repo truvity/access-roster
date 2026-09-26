@@ -534,6 +534,21 @@ The console **reads**. It shows every person, every provider group, every
 internal group, every rule that grants one, and every open session — the
 whole chain from a directory to a client, and why each link exists.
 
+A person's page states that chain as one line per internal group held,
+not just the group's own name: the directory group or matcher at the
+root, a [mapping wildcard](taxonomy.md#mapping-wildcards) named when one
+is the reason (`*:k8s:admin`, not just `devel:k8s:admin`), and — once a
+[declared vocabulary](reference/policy.md#vocabulary) puts groups in an
+[implies ladder](taxonomy.md#inheritance) — every hop back to the group
+that was actually granted, one direct parent at a time rather than a
+root the reader has to trust:
+`stage:k8s:viewer ← implied by stage:k8s:operator ← implied by
+stage:k8s:admin ← wildcard *:k8s:admin ← directory group sre@example.com`.
+The whole chain is already in the one `Explain` answer the page reads —
+policy.Held carries the granting key and the direct parent for every
+group it names — so the console walks it client-side rather than asking
+the server a second time.
+
 What it changes is bootstrap, removals and confirmations — never policy:
 
 - **Connect** a provider by admin consent, a GitHub organisation by its
