@@ -1,5 +1,33 @@
 ## v1.32.0
 
+- **Added: per-audience `groups` scoping, in REPORT-ONLY mode — no token
+  changes shape yet.**
+
+  `docs/decisions/0006-groups-claim-scoped-per-audience.md`, refined by
+  0010's vocabulary: a token would keep only the held groups whose
+  `<scope>:<thing>` pair appears among its audience's `requires` pairs, in
+  any role, plus a declared `groups: all` or `groups: [thing, ...]`
+  override on that client or resource row. `policy.Policy.ScopeGroups`
+  computes this at every place a token's `groups` claim is built — the ID
+  token, the access token (authorization code, refresh and a token
+  exchange's own claims all converge on one hook), and the console's
+  internal mint — and logs ONE line at INFO (audience, client, subject,
+  dropped groups) when it would have dropped something, rate-limited per
+  (audience, subject, dropped-set) to once every ten minutes. **It is
+  never applied**: every token this release mints carries exactly the
+  `groups` it always has, byte for byte, proven by tests for the ID token,
+  the access token and an exchange alike.
+
+  The chart's new `groupsScoping` value (`GROUPS_SCOPING` in the
+  environment) is `off`, `report` (the default) or `enforce`; `enforce`,
+  which would actually narrow a token, is **refused at issuer start** in
+  this release, by name, so the switch is visible and wired before an
+  installation can reach for it. See
+  [docs/reference/policy.md#groups-in-a-token-scoping](docs/reference/policy.md#groups-in-a-token-scoping),
+  [docs/reference/configuration.md](docs/reference/configuration.md) and
+  [docs/operations/runbook.md#reading-the-groups-scoping-report](docs/operations/runbook.md#reading-the-groups-scoping-report)
+  for reading what report mode finds.
+
 - **Added: an optional `vocabulary` table declares which scopes and things
   exist, each thing's role ladder, and which role implies which other
   one — things, scopes, roles, inheritance and mapping wildcards.**

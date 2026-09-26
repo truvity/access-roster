@@ -6,6 +6,7 @@ package issuer
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/truvity/audit/record"
@@ -50,6 +51,57 @@ type Config struct {
 	// impersonated by anyone on the path. It exists for a local run and a
 	// test, and a deployment that sets it has misconfigured itself.
 	AllowInsecure bool
+	// GroupsScoping is how far this installation has moved toward
+	// per-audience `groups` scoping. Empty defaults to
+	// [GroupsScopingReport] in [Config.withDefaults] -- see
+	// [GroupsScopingMode] and [CheckGroupsScopingMode], which
+	// [issuerapp.Load] calls before this is ever set, so [Storage] never
+	// sees [GroupsScopingEnforce].
+	GroupsScoping GroupsScopingMode
+}
+
+// GroupsScopingMode is how far an installation has moved toward
+// per-audience `groups` scoping
+// (docs/decisions/0006-groups-claim-scoped-per-audience.md, refined by
+// docs/decisions/0010-a-declared-vocabulary.md): the chart's
+// `groupsScoping` value, read into [Config.GroupsScoping].
+type GroupsScopingMode string
+
+const (
+	// GroupsScopingOff computes nothing and logs nothing: this feature
+	// costs the installation exactly what it cost before it existed.
+	GroupsScopingOff GroupsScopingMode = "off"
+	// GroupsScopingReport computes [policy.Policy.ScopeGroups] for every
+	// minted token and logs what it would drop, WITHOUT changing the
+	// token — see [Storage]'s groups-scoping report. The default, and the
+	// only mode besides [GroupsScopingOff] this release can run.
+	GroupsScopingReport GroupsScopingMode = "report"
+	// GroupsScopingEnforce would narrow a token's `groups` claim to what
+	// [policy.Policy.ScopeGroups] keeps. REFUSED at load by
+	// [CheckGroupsScopingMode] in THIS release: the switch is named and
+	// wired so an installation can see it coming, but turning it on ships
+	// in a later release, once report mode has had a chance to surface
+	// which rows need a `groups` override first.
+	GroupsScopingEnforce GroupsScopingMode = "enforce"
+)
+
+// CheckGroupsScopingMode refuses a value this release cannot run.
+// [issuerapp.Load] calls it on whatever `GROUPS_SCOPING` names, before a
+// [Config] is ever built, so an installation that asks for enforce is
+// refused at start with a reason rather than silently downgraded to
+// report — silence here would be the one thing this switch exists to
+// avoid: an operator believing enforcement is live when it never loaded.
+func CheckGroupsScopingMode(mode GroupsScopingMode) error {
+	switch mode {
+	case GroupsScopingOff, GroupsScopingReport:
+		return nil
+	case GroupsScopingEnforce:
+		return fmt.Errorf(
+			"groupsScoping: %q ships in a later release; run %q first", mode, GroupsScopingReport)
+	default:
+		return fmt.Errorf(
+			"groupsScoping: %q is not one of \"off\", \"report\" or \"enforce\"", mode)
+	}
 }
 
 // Defaults for the durations a deployment does not set.
@@ -72,6 +124,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.HoldWindow <= 0 {
 		c.HoldWindow = DefaultHoldWindow
+	}
+	if c.GroupsScoping == "" {
+		c.GroupsScoping = GroupsScopingReport
 	}
 	return c
 }

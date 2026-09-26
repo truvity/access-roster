@@ -242,6 +242,43 @@ Structured JSON on stdout. The service never logs a credential, a token or a
 key file, and never logs the members of a group; it logs workspace ids,
 domains, counts, durations and errors.
 
+### Reading the groups-scoping report
+
+With `groupsScoping: report` (the default since 1.32.0), every minted
+token that would have dropped a group under
+[per-audience scoping](../reference/policy.md#groups-in-a-token-scoping)
+logs one INFO line naming the audience, the client, the subject and the
+dropped group names — and mints the token exactly as it does today either
+way. Nothing is enforced yet; the line exists so an installation can find
+out what enforcing WOULD change before it ships.
+
+Filter for the line's message (`"groups scoping"`) and group by
+`audience`. Each distinct audience that appears is a client or a resource
+whose consumers read a group beyond what its own `requires` names — the
+same gap [the `Unconsumed` lint's known limitation](../reference/policy.md#groups-nothing-consumes)
+has always named, now with the exact groups instead of a guess. For each
+one:
+
+- if the dropped groups are read by that audience's own relying party
+  (a console mapping a role, a workload reading a claim beyond
+  membership), add a `groups:` override to its policy row — `groups: [thing, ...]`
+  for the specific things it needs, or `groups: all` to keep today's
+  shape while you work out which;
+- if an audience logs a large, stable dropped set for every subject and
+  nobody can say why, that is usually an unused permission a caller was
+  never meant to see — the report finding it is the feature working, not
+  a bug to route around with an override;
+- an audience that appears in NO finding at all is one whose tokens
+  already carry exactly what scoping would keep, and needs nothing before
+  a future release can turn `enforce` on for it.
+
+`enforce`, which would actually narrow a token to what the report
+describes, is refused at issuer start in this release; see
+[configuration.md](../reference/configuration.md) for `groupsScoping`. Run
+report for long enough to see every audience an installation actually
+serves — including anything on a slow cycle, like a monthly job's token
+exchange — before treating its silence as complete.
+
 ## Enabling a GitHub organisation
 
 1. The organisation is bound in the policy, **connected** on the GitHub

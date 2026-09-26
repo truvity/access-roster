@@ -451,6 +451,24 @@ valkey:
 # authenticate, and says so in the log rather than at the token endpoint.
 policy: {}
 
+# How far this installation has moved toward per-audience `groups`
+# scoping (docs/decisions/0006-groups-claim-scoped-per-audience.md in the
+# policy package, refined by 0010): "off" computes and logs nothing;
+# "report" computes what a client's or a resource's own `requires` (plus
+# any `groups` override) would keep, and logs one line per minted token
+# when it would have dropped something -- WITHOUT changing the token,
+# which mints exactly as it does today either way. "enforce", which would
+# actually narrow a token's `groups` claim, is REFUSED at start in this
+# release: run report first, read what it logs, add a `groups` override
+# to any client or resource the log names, and only then can a later
+# release let this be set to enforce.
+#
+# Quote "off" if you set it: unquoted, YAML reads a bare `off` as the
+# boolean false rather than the string this schema wants, and the render
+# refuses it -- loudly, never silently, but a stranger to the trap will
+# spend a minute on the error either way.
+groupsScoping: report
+
 # The issuer's hostname on the gateway. Empty renders no route, which is
 # right for a hub reached by port-forward while it is being tried.
 route:

@@ -99,6 +99,16 @@ func (s *Set) Evaluate(in Input) Result {
 	return s.declared.Evaluate(in)
 }
 
+// ScopeGroups reports which of held a token for audience would carry
+// under per-audience scoping -- see [Policy.ScopeGroups]. Report mode
+// calls this to log what enforce mode would later drop; nothing here
+// changes a minted token.
+func (s *Set) ScopeGroups(audience string, held []string) (kept, dropped []string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.declared.ScopeGroups(audience, held)
+}
+
 // Client returns a declared client.
 func (s *Set) Client(id string) (Client, bool) {
 	s.mu.RLock()

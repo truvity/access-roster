@@ -47,6 +47,11 @@ type Resource struct {
 	// idea one row over: a resource's audience is a service just as a
 	// client's is, and the two share one vocabulary of algorithms.
 	SigningAlg string `yaml:"signing_alg,omitempty"`
+	// Groups overrides which of a caller's held groups a token for this
+	// resource carries, beyond whatever [Resource.Requires]'s own
+	// <scope>:<thing> pairs already keep. See [Client.Groups], the same
+	// idea one row over, and [Policy.ScopeGroups].
+	Groups GroupsOverride `yaml:"groups,omitempty"`
 }
 
 // Admits reports whether a caller holds a group this resource requires.
@@ -86,6 +91,9 @@ func (r Resource) validate(id string, p Policy) error {
 	}
 	if r.SigningAlg != "" && !validSigningAlg(r.SigningAlg) {
 		return fmt.Errorf("resource %q: signing_alg %q is not one of %v", id, r.SigningAlg, SigningAlgs)
+	}
+	if err := p.checkGroupsOverride(fmt.Sprintf("resource %q", id), r.Groups); err != nil {
+		return err
 	}
 	return nil
 }

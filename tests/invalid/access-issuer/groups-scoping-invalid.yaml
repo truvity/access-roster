@@ -1,0 +1,4 @@
+# groupsScoping is off, report or enforce.
+# error: at '/groupsScoping': value must be one of
+issuerURL: https://issuer.example
+groupsScoping: sometimes

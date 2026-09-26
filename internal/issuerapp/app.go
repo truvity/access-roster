@@ -83,6 +83,12 @@ type Config struct {
 	keyPollInterval    time.Duration
 
 	logLevel slog.Level
+
+	// groupsScoping is how far this installation has moved toward
+	// per-audience `groups` scoping -- see [issuer.GroupsScopingMode].
+	// Validated by [issuer.CheckGroupsScopingMode] below, so a [Config]
+	// past [Load] never carries [issuer.GroupsScopingEnforce].
+	groupsScoping issuer.GroupsScopingMode
 }
 
 // LogLevel is the level the process should log at.
@@ -202,6 +208,14 @@ func Load() (Config, error) {
 	}
 	if err = c.logLevel.UnmarshalText([]byte(envString("LOG_LEVEL", "info"))); err != nil {
 		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
+	}
+	// Checked here, at load, rather than left to [issuer.Config.withDefaults]
+	// to default quietly: an installation that asks for enforce must be
+	// told it cannot have it yet, not silently downgraded to report. See
+	// [issuer.CheckGroupsScopingMode].
+	c.groupsScoping = issuer.GroupsScopingMode(envString("GROUPS_SCOPING", string(issuer.GroupsScopingReport)))
+	if err = issuer.CheckGroupsScopingMode(c.groupsScoping); err != nil {
+		return Config{}, fmt.Errorf("GROUPS_SCOPING: %w", err)
 	}
 
 	// Every relying party's trust is anchored on this string, and it goes
@@ -356,6 +370,7 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		AbsoluteLifetime: cfg.absoluteLifetime,
 		HoldWindow:       cfg.holdWindow,
 		AllowInsecure:    cfg.allowInsecure,
+		GroupsScoping:    cfg.groupsScoping,
 	}, set, directory, shared)
 	// The service's one audit trail, opened by the directory half. A
 	// split deployment with none still validates every record and logs it.
@@ -392,6 +407,10 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if err != nil {
 		return nil, err
 	}
+	// So the storage's own log lines -- a reused authorization code, the
+	// groups-scoping report -- carry this deployment's level and
+	// attributes rather than depending on [slog.SetDefault] alone.
+	storage.UseLog(log)
 	// The delays a deployment named, or their defaults: NewStorage seeded
 	// the ring before either was known, so this is applied before the
 	// poller in Run starts feeding it anything more.

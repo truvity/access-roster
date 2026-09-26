@@ -173,6 +173,8 @@ spec:
               value: "true"
             - name: LOG_LEVEL
               value: "info"
+            - name: GROUPS_SCOPING
+              value: "report"
           volumeMounts:
             - name: signing-key
               mountPath: /var/run/access-issuer/signing-key
