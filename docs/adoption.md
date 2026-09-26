@@ -5,7 +5,8 @@ the order to install in, the first sign-in, connecting a directory and
 then each cluster, account and console, adopting objects or an identity
 provider that already exist, and moving between releases. The test for
 whether something belongs here: *I am about to change what runs.* This
-page is an index; the pages below hold the substance.
+page is an index; the pages below hold the substance. For a map of every
+page in the repository, not just these, see [index.md](index.md).
 
 ## The zero-diff gate
 

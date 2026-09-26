@@ -3,7 +3,9 @@
 The design rules: what this repository owns and what the installation
 that consumes it owns, and the reasons for the shape. The test for
 whether something belongs here: *why is it like this, and would a change
-fit.* This page is an index; the pages below hold the argument.
+fit.* This page is an index; the pages below hold the argument. For a map
+of every page in the repository, not just these, see
+[index.md](index.md).
 
 - [why.md](why.md) — the situation it starts from, the problems it
   solves, and the principles every design question is decided by
