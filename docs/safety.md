@@ -20,14 +20,8 @@ substance. For a map of every page in the repository, not just these, see
   the parameter is refused rather than ignored, and why the session has to
   remember which resource it was opened for
 - [reference/configuration.md](reference/configuration.md) — the strict
-  values schema, the values that refuse to render unset, and the two
-  things the chart will not do for you (mint its signing key, sit behind
-  a proxy)
-- [reference/access-proxy.md](reference/access-proxy.md) and
-  [design/access-proxy.md](design/access-proxy.md#failure-semantics) —
-  the cookie secret the chart will not mint, the refresh that is the
-  revocation window, and what the proxy does when the issuer or Valkey
-  is down
+  values schema, the values that refuse to render unset, and the things
+  the chart will not do for you (mint its signing key, serve a proxy)
 - [connect/github-organisation.md](connect/github-organisation.md#what-the-render-refuses-and-why-each-is-silent-otherwise)
   — what the render refuses about GitHub bindings, and why each would
   otherwise be silent

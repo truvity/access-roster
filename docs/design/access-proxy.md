@@ -1,237 +1,129 @@
-# access-proxy — the console exposure
+# oauth2-proxy — a gateway that is not Envoy Gateway
 
-**Status:** deprecated, with removal planned once no known consumer of
-the chart remains
-([ADR 0003](../decisions/0003-deprecate-access-proxy.md)). This chart is,
-and has only ever been, Envoy Gateway's external authorization backend —
-its `SecurityPolicy` is how it attaches, so it runs nowhere else.
-**Gateway-native OIDC is the default replacement, on that same Envoy
-Gateway**: a `SecurityPolicy` with `oidc:` against a declared client,
-gated by that client's `requires`, is what a console with no
-authorization model of its own should reach for now — nothing of ours
-runs in front, and revocation reaches it the same way this chart's
-always has, at the next refresh, bounded by `ttl_cap`. **For a gateway
-that is not Envoy Gateway, this chart was never an option, and still is
-not**: the path there is to run upstream `oauth2-proxy` yourself, with a
-declared confidential client row of this issuer, the way this chart
-already wires it — a documentation page for that is planned, and it will
-not be a chart of ours. Its **server-side session store** is not a
-reason to choose either shape: `oauth2-proxy` encrypts each session with
-a key that lives only in the browser's cookie, so nothing server-side —
-a Back-Channel Logout receiver included — can ever open one ([why,
-below](#why-not-something-else)). Nothing in this repository needs the
-chart today, and no console this repository knows of runs behind it: a
-console that can run an authorization-code flow signs in as a client of
-the issuer directly — **native OIDC**
-([ADR 0001](../decisions/0001-sessions-and-an-absolute-limit.md)) — when
-it needs identity *inside* itself (per-user authorization from `groups`,
-per-user audit, tokens of its own to call something else, the way ArgoCD
-and Kargo do), and since 0.12 the directory console is one of those too.
-Read this page as the description of a chart you may still deploy on
-Envoy Gateway for as long as it lasts, not of a component every
-installation needs.
+**Status:** removed from the published charts in v1.32.0 (ADR 0003).
+This page is the recipe for running oauth2-proxy on a gateway that is not
+Envoy Gateway, the one case neither gateway-native OIDC nor the
+application's own OpenID flow covers. The chart is no longer published.
+Existing pins keep working; new deployments should not start here.
 
-**The client is declared, and that is permanent.** Self-registration was
-designed and then dropped: only this proxy could ever have called such an
-endpoint, an endpoint that mints clients is the one surface an issuer
-least wants, and declaring them keeps *who can obtain tokens for which
-audience* answerable by reading a repository. So an installation names a
-Secret holding the client, and `registration.enabled` is gone rather than
-waiting for a default to flip.
+**Two different doors:**
 
-What self-registration would have given for free is that the redirect URI
-a proxy uses and the one the issuer has on file cannot drift. That is a
-real property — drift broke sign-in twice and sign-out once during the
-one-domain cutover — and it is recovered by generating a console's
-hostname, proxy configuration and client entry from a single row of the
-access matrix, rather than by an endpoint.
+- **Gateway-native OIDC** — the gateway's own filter (an Envoy Gateway
+  `SecurityPolicy`'s `oidc` block) runs the authorization-code flow in
+  front of a console that has **no authorization model of its own**. This
+  is the default replacement for the old `access-proxy` chart, for the
+  exact case it existed to serve: a console that cannot run OpenID itself.
+  Read `docs/connect/console-app.md`.
+- **Native OIDC in the application** — the console signs in as its own
+  client, when it needs identity *inside* itself: per-user authorization,
+  per-user audit, tokens of its own to call something else. This is the
+  right answer wherever it applies, and does not depend on the chart.
 
-**The chart never mints the cookie secret either, and that one is not
-interim.** A chart that generated it would generate a new one on every
-render that cannot read cluster state — which is what ArgoCD does — and
-every sync would sign everyone out.
-
-**A console behind this proxy must publish a bootstrap surface** the
-proxy does not cover — its sign-in page, recovery, and the consent
-callback. Found the hard way on the first real install: the
-operator connecting the first directory is one no directory can vouch for, so
-the gateway sent them to sign in against a directory that did not exist, and
-Google's consent redirect came back to a callback the proxy swallowed. It
-presents as a second account picker, not as a refusal. The issuer serves
-those paths at its origin root on a route of its own, and a proxy
-attaches only to the console's.
-
-The corollary, learned on the second real install step: a request on the
-bootstrap surface carries **no identity from the gateway**, so the
-consent callback cannot demand one — it takes its operator from the state
-the service signed when an operator started the flow. A callback that
-checked the request instead refused the one flow the surface exists to
-finish.
-
-**A console that already resolves viewer and operator from a directory it
-owns belongs in the `authenticated` posture** — the gateway gates on
-"signed in" and the application decides the rest, because a `groups` rule
-at the gateway would be the stale copy of a decision the application
-makes anyway. That posture is still the
-right one for such a console; the directory console itself no longer
-needs a proxy at all, because it signs in as a client of the issuer it
-shares an origin with.
+**If you need oauth2-proxy on a gateway that is not Envoy Gateway:**
+follow the recipe below. You are running upstream `oauth2-proxy` yourself,
+with a declared confidential client row of this issuer, the way the old
+chart already wired it.
 
 ## Purpose
 
-Every web console behind the gateway needs the same five things: a login
+Every web console behind a gateway needs the same basic things: a login
 against the issuer, a session that outlives a token, a bearer forwarded
-to the backend, a place to sign out from everywhere, and a decision about
-who may pass. `access-proxy` is one chart that gives a console all five
-from a hostname and a backend name, and nothing the console has to
-implement.
+to the backend, and a place to sign out from everywhere. If your gateway
+is not Envoy Gateway and cannot run native OIDC, you can front your
+console with upstream `oauth2-proxy` and declare a confidential client
+row of this issuer to run the code flow.
 
-**It is a chart, not a service of ours.** The process inside it is the
-upstream oauth2-proxy image, deployed as Envoy Gateway's external
-authorization backend with sessions in Valkey — the shape that earned its
-place. The chart contributes the wiring around it (routes, policies,
-labels) and the conventions (client from hostname, fleet values,
-postures). No request ever passes through code written here. That shape
-was chosen over the gateway's native OIDC filter for four properties a
-token in a cookie cannot give — real session management, room for large
-tokens, global logout, and token refresh in the background — and the
-issuer changes none of them. What changes is only the issuer it talks
-to; the client it presents is declared alongside it.
+This is the narrower use case: a gateway that is not Envoy, fronting a
+console with no OpenID flow of its own. If you are on Envoy Gateway, use
+gateway-native OIDC instead (no proxy of ours needed). If your console
+can run its own OpenID flow, use native OIDC in the application instead.
 
-## One exposure, eight lines
+## The client row
+
+Declare a confidential client in the issuer's `identity.clients` list:
 
 ```yaml
-exposure:
-  hostname: myconsole.example.internal
-  backend: { name: myconsole, port: 8080 }
-  posture: groups
-  allow: [all:myconsole:operator, all:myconsole:viewer]
+- name: my-console-proxy
+  type: confidential
+  public: false
+  redirect_uris:
+    - "https://myconsole.example.com/oauth2/callback"
+  requires: ["all:my-console:viewer"]
 ```
 
-Everything else is derived or fleet-wide: the client id is the hostname,
-the redirect is `https://<hostname>/oauth2/callback`, the cookie domain is
-the hostname, the HTTPRoute and the gateway's SecurityPolicy are rendered
-from the same values, the proxy image, node placement and issuer URL come
-from a values file the deployment shares across every exposure, and the
-session store is either a Valkey the chart is pointed at or one shared per
-cluster by every proxy. Where the platform hands out listeners as a
-`ListenerSet` rather than a Gateway, `exposure.parentRefs` names the
-parents in full and replaces `gateway` — one entry for the ListenerSet,
-or one for each of a Gateway and a ListenerSet while a hostname moves
-between them.
+The client is declared, not self-registered. Self-registration was designed
+and dropped: only a proxy like this could call such an endpoint, an endpoint
+that mints clients is the one surface an issuer least wants, and declaring
+them keeps *who can obtain tokens for which audience* answerable by reading
+a repository.
 
-## One anchor, two gates
+## Running upstream oauth2-proxy
 
-A console is for people, so the proxy lives on the **issuer anchor only**
-([trust.md](trust.md)): it never accepts a ServiceAccount token, and
-there is no reason it should — nothing in a cluster opens a web page.
+Use the upstream `oauth2-proxy` image with these flags:
 
-Two gates decide who gets in, and they are not duplicates. The
-**issuer's `requires`** on the console's client is primary: a caller in
-none of its groups is refused before a token exists, so the proxy never
-sees a session at all. The **proxy's posture** is defence in depth and
-route-level narrowing — *this path needs a stricter group than the client
-as a whole*. Keep both; know which is which, so nobody maintains two
-allow-lists believing one of them is dead.
+```bash
+oauth2-proxy \
+  --provider=oidc \
+  --oidc-issuer-url=https://issuer.example.com \
+  --client-id=my-console-proxy \
+  --client-secret=<secret-from-the-client-row> \
+  --cookie-secret=<a-random-32-character-string> \
+  --email-domain=* \
+  --pass-access-token \
+  --set-authorization-header \
+  --skip-provider-button \
+  --http-address=:4180 \
+  --upstream=http://backend-service:8080/
+```
 
-## Two postures
+Key points:
 
-| Posture | Passes | For |
-|---|---|---|
-| `groups` | only callers whose token carries one of the listed `groups` values; the bearer is forwarded | platform consoles that gate on roles |
-| `authenticated` | any signed-in identity; the bearer is forwarded and the application authorizes itself | business surfaces opened to employees for testing, where the application's own rules apply; and a console that already resolves roles from a directory it owns, where a `groups` rule here would be the stale copy |
+- `--oidc-issuer-url`: the issuer's root URL
+- `--client-id` and `--client-secret`: from the client row above
+- `--cookie-secret`: a random string kept in a Secret; a new one on every
+  render signs everyone out, so this is not generated by a chart
+- `--email-domain=*`: accept any email domain (the issuer gates access, not
+  this proxy)
+- `--pass-access-token` and `--set-authorization-header`: forward the token
+  to your backend
+- `--skip-provider-button`: hide the provider picker
+- `--upstream`: your backend service
 
-Both forward the bearer in the `Authorization` header and the proxy's
-own identity headers; the Go module's `identity` package reads the
-bearer and verifies it — the headers are for a local run.
-
-## What the chart renders and expects
-
-| Renders | Expects |
-|---|---|
-| the proxy Deployment and Service, the HTTPRoute for the hostname, the gateway SecurityPolicy pointing the route's external authorization at the proxy, a NetworkPolicy admitting the gateway to the proxy and the proxy to the backend, and the namespace label a fleet-wide egress policy can select | a Gateway to attach to, the issuer, a Valkey, DNS for the hostname |
-
-The namespace label is the convention that removes one hand edit per
-console: a fleet egress policy that selects namespaces labelled
-`access-roster.io/exposed=true` needs no per-console entry.
-
-## The session store
-
-Valkey, external to the chart, exactly as for the service and the issuer: the
-chart takes an address and optional credentials and ships no Valkey of its
-own, because upstream's chart and the valkey.io operator already do that
-job. Two topologies, both a one-line value:
-
-| Topology | When |
-|---|---|
-| **one Valkey per cluster, shared by every proxy** | the default recommendation: fewer pods, one thing to watch. Sessions are keyed by random tickets, so proxies cannot collide; give each proxy its own ACL user if you want isolation inside the instance |
-| **one Valkey per exposure** | when an exposure must not share a failure domain or an operator with the others |
-
-The configuration reference carries an example `ValkeyCluster` for the
-operator. Nothing else is needed to make them work together.
+The gateway (whatever it is) should route requests to `https://myconsole.example.com`
+to this proxy at `:4180`.
 
 ## Sign-out
 
-Two halves, and both are needed. `/oauth2/sign_out` ends **this
-proxy's** session — one application's cookie. The issuer still holds the
-sign-in, so on its own that half leaves the next click, here or at any
-other console, admitted again with no password; the screen says signed
-out either way, which is why the near half alone is worse than none. So
-its `rd` continues to the issuer's `end_session`, which ends the sign-in
-AND every session that browser opened, and lands the person back on the
-console's front page.
+Two halves, both needed. `/oauth2/sign_out` ends **this proxy's** session
+— one application's cookie. The issuer still holds the sign-in, so on its
+own that leaves the next click admitted again with no password. So the
+proxy must redirect to the issuer's `end_session`, which ends the sign-in
+AND every session that browser opened:
 
-That second half was missing until v0.14.4, and this was the chain where
-it mattered: `end_session` ended the sign-in and left the sessions
-running, so the proxy at another console went on refreshing successfully
-and serving pages after a sign-out that reported success.
+```
+GET /oauth2/sign_out?rd=https://issuer.example.com/protocol/openid-connect/logout?client_id=my-console-proxy&id_token_hint=<token>
+```
 
-Built 0.9.x, and three things were learned building it. The proxy's
-`whitelist_domains` must name the issuer's host or oauth2-proxy refuses
-the redirect — and for a console that shares its issuer's hostname on one
-domain (the directory console at `/console/`), that host is its own, so
-the list collapses to one entry. The chain must carry **`client_id`**: a plain `rd` has no
-`id_token_hint`, so without a client the issuer has no `signed_out` list
-to match the landing page against and puts the person on its own page
-instead. And the landing page is the policy client's `signed_out`, a
-list kept **separate from `redirects`**, because a redirect URI starts a
-sign-in and landing there after a sign-out begins the login just ended.
-This chart builds the whole chain from what it already knows and
-refuses to render half of it.
+The issuer's logout then lands back on your console's front page, or
+wherever you configure as the logout redirect.
 
-A revoked person is stopped by the issuer refusing to refresh, with the
-directory's liveness signal behind it; the proxy's session then dies at
-its next refresh. That delay is why a SIGN-OUT revokes rather than waits:
-a person who signs out means now. And it is why `session.refresh` ships
-at **one minute**: a proxied console cannot receive a back-channel
-logout — oauth2-proxy keeps each session under a key only the browser's
-cookie holds, so no server can open it — and the refresh interval is the
-whole dial for how long a revoked person keeps a page. `ttl_cap` on the
-client bounds the same window from the issuer's side.
+**Caveat:** oauth2-proxy cannot receive Back-Channel Logout, because it
+encrypts each session with a key that lives only in the browser's cookie,
+so nothing server-side can ever open one. A revoked person is stopped by
+the issuer refusing to refresh. The proxy's session then dies at its next
+refresh. This is class A behaviour: revocation reaches it at the next
+refresh, bounded by `ttl_cap` on the client from the issuer's side (and
+by `--cookie-lifetime` on the proxy itself, defaulting to 168 hours).
 
 ## Why not something else
 
-- **Not Envoy's native OIDC filter alone, is what this chart originally
-  argued** — no session store, so no global sign-out and no background
-  refresh. That argument does not hold: the session store buys less than
-  it appears to. `oauth2-proxy` encrypts each session with a key that
-  lives only in the browser's cookie, so nothing server-side — including
-  a Back-Channel Logout receiver — can ever open one; the one advantage a
-  server-side store would normally give, a sign-out that closes every
-  window at once, is exactly the one this store cannot provide. Gateway
-  OIDC gives the same revocation-at-refresh this chart always has, so it
-  is now the default ([ADR 0003](../decisions/0003-deprecate-access-proxy.md);
-  see the Status above).
-- **Not a proxy of ours:** identity-critical code on every request path
-  to every console, for no capability oauth2-proxy lacks.
+- **Not Envoy Gateway's native OIDC filter,** if you are on Envoy: the
+  filter runs the code flow itself, keeps a session in its own cookie,
+  forwards the bearer to the backend, and refreshes in the background —
+  all from configuration, with no proxy and no session store of ours.
+  Use that instead.
+- **Not a proxy of ours:** identity-critical code on every request path,
+  for no capability oauth2-proxy lacks.
 - **Not the issuer as the authorization backend:** that would make the
   issuer hold per-user sessions and sit on every console's request path,
-  which is oauth2-proxy rebuilt inside it — the identity-provider creep
-  the guardrail forbids.
-
-## Failure semantics
-
-| Situation | Effect |
-|---|---|
-| the issuer is down | existing sessions keep working until their token refresh is due; no new logins |
-| Valkey is down | every caller is logged out; sessions rebuild on login |
+  which is oauth2-proxy rebuilt inside it.

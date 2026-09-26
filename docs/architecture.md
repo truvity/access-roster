@@ -2,10 +2,9 @@
 
 Every container, what it holds, and why the pieces are arranged this way.
 Decisions and their reasons are in the design documents
-([trust](design/trust.md), [the service](design/access-roster.md),
-[proxy](design/access-proxy.md)); contracts are
-under [reference/](reference/). Diagrams follow the C4 model as Mermaid,
-which GitHub renders inline.
+([trust](design/trust.md), [the service](design/access-roster.md));
+contracts are under [reference/](reference/). Diagrams follow the C4 model
+as Mermaid, which GitHub renders inline.
 
 ## The rule under everything
 
@@ -84,15 +83,12 @@ flowchart TB
   sec[("signing key · workspace credentials<br/>GitHub Apps · people's links · runner Apps · catalogue Apps<br/>Secrets")]
   aud[("audit installation<br/>receiver · writer · query service · jobs")]
 
-  proxy["access-proxy<br/>oauth2-proxy, one per console<br/>Valkey for sessions"]
   idp["Google Workspace"]
   rp["Kubernetes · AWS · ArgoCD · Kargo"]
   gho["GitHub organisations"]
 
   browser --> gw
   gw -- "one host: / and /console/" --> issuer
-  gw -. "ext_authz" .-> proxy
-  proxy -- "code flow" --> issuer
   cli -- "code + PKCE on loopback,<br/>then exchange" --> issuer
   ci -- "exchange" --> issuer
 
@@ -143,7 +139,6 @@ JavaScript.
 | Store | Holds | Lost means |
 |---|---|---|
 | Valkey | auth requests, tokens, per-client sessions, the single sign-on record, one snapshot per workspace | everyone signs in again, and one refresh per directory |
-| the proxies' Valkey | browser sessions of every proxied console | one silent redirect per console; the issuer still knows the person |
 | ConfigMaps | the policy, the clients, the federated clusters | git |
 | Secrets the chart delivers | the signing key, the OAuth client | whatever delivered them; the runbook |
 | Secrets the service writes | the directories' credentials, each GitHub organisation's App, the link App, people's link tokens, the runner Apps, the catalogue Apps — each entry carrying a copy of its record | a copy of five Secrets restores every one of them, records included ([configuration](reference/configuration.md#restoring-from-the-secrets-alone)); a link token that rotated since means that person links again |
@@ -163,7 +158,7 @@ expressed in configuration and whether it is built.
 | AWS accounts | the issuer registered once per account as an IAM OIDC provider; a `requires` list per role client; `accessctl aws` as the credential process, one `aws.ini` for a laptop and a job | **built** |
 | GitHub organisations | one controller App per organisation, created and installed by its owner from the console; `github` bindings in the policy naming internal groups, with an `ignore` list per organisation; an account becomes a person's by their own link, a public-profile match or an import, and a link is checked every pass; one runner App per organisation per tier for self-hosted runners | **built and acting**: joiners, movers and leavers with nobody in the loop, and the controller stops itself where somebody is needed — seats, removals over half an organisation, owners |
 | CI platforms | one federated issuer row; `ci` rules on repository, ref and visibility | **built**: the verifier, `accessctl` inside a job, and the GitHub Action at the repository root — `curl` and `jq`, so nothing of ours is downloaded into a job |
-| consoles and applications | one client row each, with a display name and description the sign-in page shows; a proxy only for those with no OpenID flow of their own; back-channel logout for those that opt in | **built**: the directory console (no proxy since 0.12 — it signs in as a client of the issuer it shares an origin with), proxied consoles, Kargo and its CLI, `accessctl` as a public client |
+| consoles and applications | one client row each, with a display name and description the sign-in page shows; for consoles with no OpenID flow of their own, use gateway-native OIDC (Envoy Gateway) or run upstream oauth2-proxy yourself (other gateways); back-channel logout for applications that opt in | **built**: the directory console (it signs in as a client of the issuer it shares an origin with), Kargo and its CLI, `accessctl` as a public client |
 
 What never multiplies: the issuer URL, the signing key, the policy file,
 the console, the login page.
@@ -222,8 +217,10 @@ Three layers, and none is the fallback for another.
   asking, that resource names its own groups too, and both must be
   satisfied: the client says who may ask, the resource says what may be
   asked for.
-- **The proxy decides whether a browser is signed in.** Nothing more.
-  It runs the code flow, holds the session, forwards the token.
+- **The gateway or proxy decides whether a browser is signed in.** Nothing more.
+  It runs the code flow, holds the session, forwards the token. For Envoy
+  Gateway, use the native OIDC filter. For other gateways, run upstream
+  oauth2-proxy yourself.
 - **The application decides what the token opens.** From its own
   tables, or from the `groups` claim. An application with no roles of
   its own is exactly the one whose check sits at the issuer.
@@ -241,13 +238,13 @@ Three layers, and none is the fallback for another.
 
 | A person… | What happens |
 |---|---|
-| opens a console for the first time | the proxy sends the browser to the issuer, the issuer to Google, Google back; the issuer asks the directory who this is, checks the client's `requires`, mints; the proxy sets its cookie |
-| opens a second console | the proxy sends the browser to the issuer; the issuer recognises its own session and completes silently |
+| opens a console for the first time | the gateway sends the browser to the issuer, the issuer to Google, Google back; the issuer asks the directory who this is, checks the client's `requires`, mints; the gateway sets its cookie |
+| opens a second console | the gateway sends the browser to the issuer; the issuer recognises its own session and completes silently |
 | runs `kubectl` | `accessctl kube-token`, the kubeconfig's exec plugin, exchanges the laptop sign-in for a token audienced at that cluster; the cluster trusts the issuer and reads `groups` |
 | needs AWS credentials | `accessctl aws`, the profile's credential process, exchanges the same sign-in for one audienced at AWS; STS trusts the issuer |
 | needs an SSH, database or client certificate | `accessctl credential <kind> --env <env>` exchanges the same sign-in for `openbao`, logs in on the JWT mount and makes ONE `sign` call; the certificate names the roster subject, and nothing that could mint another outlives the command |
 | links their GitHub account | authorizes the link App once; every pass the controller checks the link and puts them in the teams the policy binds their groups to |
-| signs out | the proxy clears its cookie and calls `end_session`; the issuer ends the sign-in AND every session that browser opened, so every other console asks again rather than refreshing on |
+| signs out | the gateway clears its cookie and calls `end_session`; the issuer ends the sign-in AND every session that browser opened, so every other console asks again rather than refreshing on |
 | leaves the company | the next snapshot no longer lists them; within the freshness window, the next refresh anywhere is refused |
 
 | A machine… | What happens |

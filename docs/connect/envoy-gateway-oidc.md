@@ -126,9 +126,7 @@ A few fields worth explaining rather than copying blind:
   `group` and `kind` optional and defaulted (`""` for the core API group,
   `Secret`). Write them anyway: a GitOps controller that diffs rendered
   manifests against live state reads an omitted field as drift the
-  moment the API server fills it in, the same trap this repository
-  already names for a `ListenerSet` parent reference
-  ([reference/access-proxy.md](../reference/access-proxy.md)).
+  moment the API server fills it in.
 - **`refreshToken: true`** is also the library default — stating it is
   for the reader, not the render — and it is what makes
   [Trap 1](#trap-1-per-request-refresh-races-rotating-refresh-tokens)
