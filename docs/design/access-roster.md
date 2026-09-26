@@ -942,8 +942,9 @@ bounded by a setting we choose.
 
 ## Build
 
-`devbox shell`, then `just check`. The chart is `charts/access-issuer`;
-`charts/access-proxy` (deprecated, Envoy Gateway only — see
-[ADR 0003](../decisions/0003-deprecate-access-proxy.md)) is for a console
-with no OpenID flow of its own, and has [its own
-document](access-proxy.md).
+`devbox shell`, then `just check`. The chart is `charts/access-issuer`.
+For a console with no OpenID flow of its own, use gateway-native OIDC
+on Envoy Gateway, or run upstream oauth2-proxy on other gateways
+(removed from publication in v1.32.0;
+[ADR 0003](../decisions/0003-deprecate-access-proxy.md); see
+[design/access-proxy.md](access-proxy.md) for the recipe).
