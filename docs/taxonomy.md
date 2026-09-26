@@ -100,6 +100,16 @@ groups, unioned with whatever concrete keys separately match, and then
 sees the wildcard itself — a token, a `requires` gate and a GitHub
 binding all see only concrete names.
 
+**A wildcard that expands to nothing is refused, not silently accepted.**
+A `groups` key nobody is ever in is the one failure this vocabulary
+exists to catch, so an empty expansion fails the load rather than sitting
+in the file looking like it does something: `prod:*:viewer` where `prod`
+is sensitive is refused by naming the sensitive scope directly and
+pointing at a real concrete group to write instead; `devel:*:admins`
+where no declared thing has an `admins` role, or `*:k8s:viewer` where
+every scope `k8s` declares happens to be sensitive, are refused with the
+generic *expands to no group* message and the specific reason.
+
 ## Examples
 
 | Name | Reads as |

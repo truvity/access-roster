@@ -160,6 +160,41 @@ clients:
 groups:
   "*:k8s:admin": { members: [a@b.example] }
 `, "needs a declared vocabulary")
+
+	// A wildcard whose own concrete scope is sensitive reaches nothing —
+	// [ScopeSpec.Sensitive] excludes it unconditionally — so it is refused
+	// by name rather than silently accepted as a key nobody is ever in.
+	refusedWith(t, "a wildcard whose concrete scope is sensitive", `version: 1
+`+vocab+`
+groups:
+  "prod:*:viewer": { members: [a@b.example] }
+`, "scope \"prod\" is sensitive and is never reached by a wildcard")
+
+	// The role doesn't exist on any declared thing, so the expansion is
+	// empty for a reason that has nothing to do with sensitivity.
+	refusedWith(t, "a wildcard whose expansion is empty for any other reason", `version: 1
+`+vocab+`
+groups:
+  "devel:*:admins": { members: [a@b.example] }
+`, "expands to no group")
+
+	// A thing wildcard's own segment is concrete (`k8s`), the role exists
+	// on it, but every scope the thing declares is sensitive: still an
+	// empty expansion, and still refused, by the generic message rather
+	// than the scope-specific one above (no single scope segment names
+	// the sensitive scope here — the wildcard is in the SCOPE position).
+	refusedWith(t, "a wildcard where every one of a thing's scopes is sensitive", `version: 1
+vocabulary:
+  scopes:
+    kernel: { sensitive: true }
+    prod:   { sensitive: true }
+  things:
+    k8s:
+      scopes: [kernel, prod]
+      roles: { viewer: [] }
+groups:
+  "*:k8s:viewer": { members: [a@b.example] }
+`, "expands to no group")
 }
 
 // TestInheritanceChain proves rule 3: holding a role also holds every role
