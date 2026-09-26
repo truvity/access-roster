@@ -428,7 +428,7 @@
   pod. Give that identity `list` on `sys/policies/acl`,
   `identity/group/name` and `identity/group-alias/id`, `read` on each of
   their children and on `sys/auth`, and nothing else
-  ([docs/connect/openbao.md](docs/connect/openbao.md#console-side)). An
+  ([docs/connect/openbao.md](docs/connect/openbao.md)). An
   exchange it is not granted is drawn on the page, naming the audience,
   rather than raised as an error.
 - **`secretManagers[].caCertSecret`** mounts a PEM bundle trusted in
@@ -447,8 +447,8 @@
   denied". A run that reads **zero** keys fails rather than writing an
   empty `.env`, which is the failure nobody notices. Only the key names
   are printed, never a value.
-  [docs/connect/openbao.md](docs/connect/openbao.md#and-holds-a-teams-secrets),
-  [docs/reference/accessctl.md](docs/reference/accessctl.md#secrets-a-teams-shared-values-as-a-file).
+  [docs/connect/openbao.md](docs/connect/openbao.md),
+  [docs/reference/accessctl.md](docs/reference/accessctl.md).
 
 ## v1.21.0
 
@@ -3036,9 +3036,6 @@ git history.
   `/account` page stays as the fallback for an installation with no
   console. `docs/design/access-issuer.md` *One origin*, `docs/design/hub.md`,
   `docs/architecture.md`, the references.
-
-## Unreleased
-
 - **The console can be mounted under a path of its host, so it can share
   its issuer's origin.** `route.pathPrefix` on the hub's chart: the
   console's own route matches the prefix and the gateway rewrites it
