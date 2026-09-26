@@ -115,49 +115,14 @@ chart lasts on Envoy Gateway.
    malformed policy fails the rollout, not a sign-in: the previous pods
    keep serving.
 
-4. **One `access-proxy` per console** that has no OpenID flow of its own,
-   on this same Envoy Gateway — prefer the gateway's own OIDC support
-   instead where you can (deprecation note above). Where this chart is
-   still the right choice, deploy it in the console's namespace. Its
-   Secret holds the same client secret as
-   the issuer's, under `client-id` and `client-secret`, and a cookie
-   secret this chart will not mint:
-
-   ```sh
-   kubectl -n dashboard create secret generic dashboard-oidc-client \
-     --from-literal=client-id=dashboard.example.com \
-     --from-literal=client-secret=<the same string as above>
-   kubectl -n dashboard create secret generic dashboard-cookie \
-     --from-literal=cookie-secret="$(openssl rand -base64 32 | head -c 32)"
-   helm install dashboard-access oci://ghcr.io/truvity/charts/access-proxy \
-     --version X.Y.Z --namespace dashboard --values proxy-values.yaml
-   ```
-
-   ```yaml
-   exposure:
-     hostname: dashboard.example.com
-     backend: { name: dashboard, port: 8080 }
-     posture: groups
-     allow: [all:dashboard:viewer]
-     gateway: { name: example-gateway, namespace: gateway-system }
-
-   issuer:
-     url: https://access.example.com
-
-   client:
-     secret:
-       name: dashboard-oidc-client            # keys client-id and client-secret
-
-   session:
-     valkey:
-       address: valkey.dashboard.svc:6379
-     cookieSecret:
-       name: dashboard-cookie                 # key cookie-secret
-   ```
-
-   Every value is in [../reference/access-proxy.md](../reference/access-proxy.md);
-   a console you are writing yourself needs no proxy
-   ([../connect/console-app.md](../connect/console-app.md)).
+4. **For a console that has no OpenID flow of its own**, use the gateway's
+   native OIDC support — declare a `SecurityPolicy` with an `oidc:` block
+   ([../connect/console-app.md](../connect/console-app.md)). The
+   `access-proxy` chart was removed in v1.32.0
+   ([../decisions/0003-deprecate-access-proxy.md](../decisions/0003-deprecate-access-proxy.md)).
+   If your gateway is not Envoy Gateway, run upstream `oauth2-proxy`
+   yourself following the recipe in
+   [../design/access-proxy.md](../design/access-proxy.md).
 
 Both values files above render with the charts in this repository
 (`helm template` with `--namespace` as shown), and the policy loads.

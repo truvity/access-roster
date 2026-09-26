@@ -4,7 +4,7 @@
 # Disable go.work (a parent workspace interferes with standalone module builds)
 export GOWORK := "off"
 
-charts := "access-issuer access-proxy"
+charts := "access-issuer"
 
 # Format all Go files
 fmt:
@@ -183,13 +183,6 @@ chart-lint:
     # render the same, and never a route to "/console//".
     diff tests/golden/access-issuer/route.yaml tests/golden/access-issuer/route-trailing-slash.yaml
     if grep -l 'console//' tests/golden/access-issuer/*.yaml; then exit 1; fi
-    # EVERY SecurityPolicy must ask Envoy for the session cookie. An HTTP
-    # ext_authz service is sent only Host, Method, Path, Content-Length
-    # and Authorization by default, and a policy missing `cookie` loops
-    # forever through a login that succeeds and is never seen again.
-    for golden in tests/golden/access-proxy/*.yaml; do
-      test "$(grep -c '^kind: SecurityPolicy$' "$golden")" = "$(grep -c '^      - cookie$' "$golden")"
-    done
     # Every backendRefs entry writes `weight` out. A desired/live
     # comparison normalises core-API defaults but not CRDs, so a field the
     # API server fills in is a permanent diff. Routes and policies alike.
