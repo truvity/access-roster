@@ -26,6 +26,7 @@ yet know which of those you want.
 | learn the words this repository uses precisely | [concepts.md](concepts.md) |
 | see every integration point at a glance | [integrations.md](integrations.md) |
 | write the policy | [reference/policy.md](reference/policy.md) |
+| name a grant, or declare a vocabulary that checks it | [taxonomy.md](taxonomy.md) |
 | connect the corporate directory people sign in with | [connect/corporate-directory.md](connect/corporate-directory.md), and [operations/connect-runbook.md](operations/connect-runbook.md) |
 | give a CI job an identity with no stored secret | [connect/github-actions.md](connect/github-actions.md) |
 | deploy it | [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md), [reference/configuration.md](reference/configuration.md), then [operations/connect-runbook.md](operations/connect-runbook.md) |

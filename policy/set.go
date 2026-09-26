@@ -319,6 +319,16 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 	if other.Version != 1 {
 		return fmt.Errorf("%s: version %d is not supported", from, other.Version)
 	}
+	// Vocabulary is a single, installation-wide table, so it lives in one
+	// file: a second file naming it would either silently win or silently
+	// lose depending on read order, and "one file per source" is supposed
+	// to make that impossible to get wrong by accident.
+	if other.Vocabulary != nil {
+		if p.Vocabulary != nil {
+			return fmt.Errorf("%s: vocabulary is declared twice across merged files", from)
+		}
+		p.Vocabulary = other.Vocabulary
+	}
 	if p.Groups == nil {
 		p.Groups = map[string]Group{}
 	}

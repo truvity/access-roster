@@ -1,3 +1,45 @@
+## v1.32.0
+
+- **Added: an optional `vocabulary` table declares which scopes and things
+  exist, each thing's role ladder, and which role implies which other
+  one — things, scopes, roles, inheritance and mapping wildcards.**
+
+  Opt-in and strict: a policy with no `vocabulary` table changes nothing,
+  proven by a test. Declare one, and the policy refuses to load when a
+  concrete grant anywhere in the file — a `groups` key, a `claims` key, a
+  `lifetimes` key, any `requires`, any GitHub binding — names an
+  undeclared scope or thing, a scope the thing does not have, or a role
+  the thing does not declare. `rung:`/`emp:` names stay exempt, as they
+  always were.
+
+  Roles imply explicitly (`admin: [operator]`, branching where a ladder
+  branches) and the graph may not cycle; holding a role also holds every
+  role it implies, transitively, on the SAME scope and thing — never
+  across scopes, so `all:x:admin` never implies `devel:x:admin`. This is
+  applied once, in evaluation, so a client's `requires`, a token's
+  `groups` claim and GitHub team reconciliation all see the expanded set
+  without knowing inheritance exists: a GitHub team bound to `S:T:viewer`
+  is now fed by anyone in `S:T:admin` too.
+
+  A `groups` key may use `*` in the scope and/or thing position —
+  `*:k8s:admin`, `devel:*:viewer` — expanding, against the vocabulary,
+  into every concrete grant a declared thing has for that scope and role,
+  excluding every scope marked `sensitive`. A role wildcard and `*:*:*`
+  are always refused, wildcards need a declared vocabulary, and a
+  wildcard may only appear as a `groups` key — never in `requires`, a
+  GitHub binding, `claims` or `lifetimes`. Nothing past evaluation ever
+  sees anything but a concrete name.
+
+  `policy.Result`'s `Held` now carries, per held group, which `groups`
+  key matched directly and which concrete group's role implied it, so a
+  later console change can explain the chain; the `Unconsumed` lint
+  counts a wildcard key as consumed the moment any group its expansion
+  names is.
+
+  See [docs/reference/policy.md#vocabulary](docs/reference/policy.md#vocabulary),
+  [docs/taxonomy.md](docs/taxonomy.md) and
+  [docs/decisions/0010-a-declared-vocabulary.md](docs/decisions/0010-a-declared-vocabulary.md).
+
 ## v1.31.0
 
 - **Added: the issuer and github-roster warn at load if an internal group is
