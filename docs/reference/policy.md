@@ -574,6 +574,33 @@ refuses an origin carrying a scheme, a path or a wildcard, and refuses
 `origins`, which is a block somebody expected to apply. A typo fails the
 rollout, not a login.
 
+### Groups nothing consumes
+
+At every load — issuer start, issuer policy reload, github-roster start —
+the issuer and github-roster warn if an internal group is declared in the
+`groups` table but referenced by none of:
+
+- any client's `requires`
+- any resource's `requires`
+- `client_documents` `requires`
+- any GitHub organisation `members` binding
+- any GitHub team `members` or `maintainers` binding
+- any `lifetimes` key (except the built-in `default`)
+
+A group referenced only by a `claims` key does not count; claims decorate a
+group and do not consume it — they add to a token only when the caller holds
+the group for some other reason.
+
+The groups with the `rung:` or `emp:` prefix are not grants and never
+reported: they are identities and sessions, not roles on things.
+
+The warning is always a warning, not an error. An installation may
+legitimately declare a group ahead of the client or resource that will use
+it — fresh infrastructure, or a group prepared before its consumer arrives —
+and a rollout should not wait. But a group that will never be used is usually
+a typo or a leftover, and the warning reaches an operator at the moment they
+would see it: at load, where they read their logs.
+
 ## What the console may change
 
 Nothing in this file. The console reads the policy and shows it — every

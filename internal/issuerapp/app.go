@@ -316,6 +316,10 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		if set, err = policy.NewSet(declared); err != nil {
 			return nil, err
 		}
+		if unconsumed := declared.Unconsumed(); len(unconsumed) > 0 {
+			log.WarnContext(ctx, "internal groups are declared but nothing consumes them",
+				"groups", unconsumed)
+		}
 	}
 
 	directory := deps.Directory

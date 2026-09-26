@@ -114,6 +114,10 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the policy: %w", err)
 	}
+	if unconsumed := declared.Unconsumed(); len(unconsumed) > 0 {
+		log.WarnContext(ctx, "internal groups are declared but nothing consumes them",
+			"groups", unconsumed)
+	}
 	if len(declared.GitHub) == 0 {
 		log.WarnContext(ctx, "the policy binds no GitHub organisation: every pass will do nothing")
 	}
