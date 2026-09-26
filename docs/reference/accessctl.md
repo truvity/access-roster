@@ -19,9 +19,6 @@ accessctl credential ssh --env staging --principal deploy      # into the ssh-ag
 accessctl credential db  --env staging --project example \
     --host db.example --dbname orders                          # a psql service entry
 accessctl credential client --env staging --out ./gateway.crt  # a certificate and its key
-
-accessctl secrets env --namespace staging \
-    --prefix orders/local-dev/checkout --out .env   # a team's shared values, as a .env file
 ```
 
 It exists for one reason: **the cloud CLI has no interactive login.**
@@ -198,119 +195,6 @@ mean:
 | `5` | the issuer or OpenBAO could not be reached, answered `5xx`, presented a certificate the roots do not verify, or answered a login with no token or a signing with no data |
 | `1` | anything else: OpenBAO answered `404` (the mount or the role does not exist in that namespace — the message says so) or another status; the certificate was for another key; `--identity` names a key this tool did not write; no ssh-agent to add to |
 
-## `secrets`: a team's shared values, as a file
-
-`accessctl secrets env --namespace <env> --prefix <path> [--out .env]`
-
-The values a team shares while it develops — the sandbox token every
-engineer's local stack needs, the test account's password — read out of a
-KV version 2 engine and written as a `.env` file. It is `credential`'s
-sentence with a read where the signing is:
-
-1. exchange the sign-in (or the job's own token) for `aud=openbao`;
-2. log in on the JWT mount, in the namespace that is the environment;
-3. list `<engine>/metadata/<prefix>`, walk into every name ending in `/`,
-   and read each leaf at `<engine>/data/<...>`;
-4. write the file, and revoke the OpenBAO token on the way out.
-
-The listing is a `GET` with `?list=true` and not the `LIST` method.
-OpenBAO routes both to the same handler, but `LIST` is not a method
-everything between a laptop and an API is obliged to forward, and the
-proxy that refuses it answers `405` — which would arrive as a failure
-about the path rather than about the proxy.
-
-**Nothing here decides who may read.** The exchange refuses before OpenBAO
-is reached, and the groups in the token decide what the login opens after
-it: reading a project's prefix is `{env}:{project}:viewer`, and
-`{env}:{project}:deployer` and `{env}:{project}:approver` write it. A
-`403` is reported as that, with the group named, because "permission
-denied" on a path reads as a mistake in the path and almost never is
-([the model](../connect/openbao.md#and-holds-a-teams-secrets)).
-
-**A run that reads nothing fails**, and leaves whatever file was there
-alone. An empty `.env` is the failure nobody notices: the stack starts,
-every variable is unset, and it reads as a service that is merely
-misconfigured, days later and never at the fetch.
-
-**Only the names are printed**, to stderr, with the file and the count —
-never a value, there or in any failure. Values go in the file and nowhere
-else.
-
-### Flags
-
-| Flag | Default | |
-|---|---|---|
-| `--namespace` | `$BAO_NAMESPACE`, then `$VAULT_NAMESPACE` | **required.** The namespace, which is the environment. There is no default from anywhere else: a namespace guessed would read another environment's values into a file that does not say which |
-| `--prefix` | — | **required.** The path under the engine whose leaves are read, e.g. `orders/local-dev/checkout`. Slashes on either end are trimmed; a `*` (how a policy spells *everything below*) and a `..` segment are refused |
-| `--out` | `.env` | the file to write. Ignore it in git |
-| `--engine` | `kv` | the KV version 2 mount the prefix lives on |
-| `--address` | `$BAO_ADDR`, then `$VAULT_ADDR` | the OpenBAO API |
-| `--ca-cert` | `$BAO_CACERT`, then `$VAULT_CACERT` | a PEM bundle trusted **in addition to** the system's roots, for this connection alone |
-| `--mount` | `jwt-roster` | the JWT auth mount to log in on |
-| `--login-role` | `roster` | the role on that mount |
-| `--audience` | `openbao` | the exchange client OpenBAO accepts; empty is refused |
-| `--issuer`, `--client` | what `login` wrote | as for every other command |
-
-`env` is a subverb rather than `--format env` so that a second rendering
-can have flags of its own, and so that there is no default rendering to
-overwrite somebody's file in the wrong shape.
-
-### The file
-
-One line per leaf, sorted by name, under two comment lines naming the
-prefix it came from. The KEY is the **leaf path's last segment**, so
-`kv/data/orders/local-dev/checkout/API_TOKEN` is `API_TOKEN=…`; a segment
-that is not the name of an environment variable (`[A-Za-z_][A-Za-z0-9_]*`)
-is refused rather than mangled into one.
-
-```
-# Written by `accessctl secrets env` from kv/orders/local-dev/checkout in staging.
-# Regenerate it rather than editing it, and do not commit it.
-API_TOKEN='t0ken'
-DATABASE_PASSWORD="it's a \$ecret # really"
-```
-
-**One path holds one variable**, in a field called `value`; a secret with
-exactly one field of another name is read as that field, and one with
-several fields and no `value` is refused with the field names, because
-picking between them writes a value that is silently the wrong one. A
-field that is not text is refused for the same reason. Two leaves of the
-same name under one prefix are refused: a `.env` file has one line per
-name and neither of them can be the one that wins.
-
-**Nothing is written unquoted.** Four of the five characters worth
-worrying about change the value when it is: a trailing space is trimmed,
-a ` #` starts a comment, a `$` interpolates, and a leading quote makes
-the rest of the line a quoted string. Quoted, all five survive — a space,
-a `#`, a `$`, a quote and a newline each reach the container.
-
-| Value holds | Written as | Why |
-|---|---|---|
-| anything but `'` or a line break | `'…'` | the single-quoted form is literal: no escapes, no interpolation, nothing to get wrong |
-| a `'` or a line break | `"…"` with `\\`, `\"`, `\$`, `\n`, `\r` | single quotes have no escape for a `'` and cannot span a line break; the double-quoted form has both, at the cost of escapes |
-
-The file is for a reader of the `env_file` syntax — Docker Compose,
-`docker run --env-file`, the dotenv parsers. It is **not** for `source`: a
-shell hands on a literal `\n` where Compose expands a line break, so a
-value with one in it survives the first reader and is mangled by the
-second.
-
-It is written to a temporary file in the same directory, `0600` from the
-moment it exists, and renamed over the old one, so a stack starting
-during a fetch reads the whole old file or the whole new one and never
-half of either. A second run rewrites it byte for byte unless a value
-changed; a failed run leaves the previous file exactly as it was.
-
-### What each failure exits with
-
-| Code | When |
-|---|---|
-| `2` | no rendering, one that does not exist, a flag of another one; no `--namespace`; no `--prefix`, or one holding `*` or a `..` segment; no address; an empty `--audience`; a CA bundle that cannot be read or holds no certificate |
-| `3` | not signed in (on a laptop): run `accessctl login` |
-| `4` | the issuer refused the exchange for `openbao`, or OpenBAO answered `403` on the listing or a read — no group you hold opens that prefix |
-| `5` | the issuer or OpenBAO could not be reached, answered `5xx`, presented a certificate the roots do not verify, or answered a login with no token |
-| `1` | anything else: the prefix read **zero** keys; a leaf that is not one named value (several fields, a value that is not text, a name that is not a variable name, the same name twice, a latest version that was deleted); the engine does not exist in that namespace; the file could not be written |
-
 ## Installing it
 
 Each release carries `accessctl_<version>_nix-flake.tar.gz`,
@@ -419,7 +303,7 @@ holds no secret.
 The same files work unchanged in a GitHub Actions job granted
 `id-token: write`. When `ACTIONS_ID_TOKEN_REQUEST_URL` and
 `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are set, `kube-token`, `aws`, `token`,
-`github-token`, `credential` and `secrets` ask GitHub for the job's identity token — for the issuer's URL, the one
+`github-token`, and `credential` ask GitHub for the job's identity token — for the issuer's URL, the one
 audience it accepts — and exchange that, presenting the audience as the
 client, exactly as the GitHub Action does. There is no `login` in a job
 and no login cache: every proof is the job's own token, exchanged afresh,
@@ -440,5 +324,5 @@ retry a refusal.
 | `1` | anything the codes below do not name: read the message |
 | `2` | usage: something in the command line is wrong |
 | `3` | not signed in — run `accessctl login` |
-| `4` | that audience, or that App's token, is not granted to you (for `credential` and `secrets`, also OpenBAO's `403`); retrying will not help |
-| `5` | the issuer could not be reached (for `credential` and `secrets`, also OpenBAO); retrying might |
+| `4` | that audience, or that App's token, is not granted to you (for `credential`, also OpenBAO's `403`); retrying will not help |
+| `5` | the issuer could not be reached (for `credential`, also OpenBAO); retrying might |

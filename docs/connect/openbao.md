@@ -7,11 +7,6 @@ cloud's own protocol: an SSH server, a database, a service that wants
 mutual TLS. `accessctl credential` is the courier
 ([reference](../reference/accessctl.md#credential-certificates-openbao-mints)).
 
-The same trust carries a second thing, in the [second half](#and-holds-a-teams-secrets)
-of this page: the values a team **shares while it develops**, read out of
-a KV engine by `accessctl secrets env`. One mount, one exchange, one set
-of groups; a different kind of answer.
-
 The contract between the two sides — the doors, the claims, the two
 clients, the credential paths and every failure mode — is
 [truvity/openbao's docs/integrations/access-roster.md](https://github.com/truvity/openbao/blob/master/docs/integrations/access-roster.md),
@@ -139,106 +134,6 @@ role's `allowed_users`, not a flag.
 Each command prints the certificate's `key_id` or common name and its
 serial — the handle for finding it in the audit trail — and never the
 key.
-
-## …and holds a team's secrets
-
-The other thing the same door opens: the credentials a team shares while
-it develops — the sandbox token every engineer's local stack needs, the
-test account's password, the key for a third party's staging tenant. Not
-minted, just held, and read by the people the policy already says are on
-the project.
-
-> A namespace is an environment. A project's engineers read its prefix;
-> its deployers and approvers write it. A repository is a path under its
-> project. Membership is the issuer's.
-
-The manager side of this — the grants as code, the paths, how an owner
-writes and rotates, how revocation works and what must never go in — is
-[truvity/openbao's docs/team-secrets.md](https://github.com/truvity/openbao/blob/master/docs/team-secrets.md),
-tested there against a real server, exactly as the contract page is. What
-follows is only what this side does with it.
-
-### Policy
-
-No new group. The three a project already has are the three that read and
-write its prefix, so there is one membership list rather than two:
-
-| Group | `kv/data/{project}/*` | `kv/metadata/{project}/*` |
-|---|---|---|
-| `{env}:{project}:viewer` | `read` | `list`, `read` |
-| `{env}:{project}:deployer` | `create`, `read`, `update` | `list`, `read` |
-| `{env}:{project}:approver` | `create`, `read`, `update` | `list`, `read` |
-
-The viewer's `list` on the metadata path is not decoration: `read` on the
-data path alone tells nobody what there is to read, and a person would
-have to know every variable's name already.
-
-`data/` and `metadata/` are KV version 2's **API** paths and not the ones
-`bao kv` prints. A policy written on `kv/{project}/*` — the path off the
-command line — grants nothing at all, and its symptom is a `403` for
-somebody who is plainly in the group, which sends people looking at the
-issuer.
-
-A workload that needs one of these values is none of the three: it gets
-an identity of its own and one `read` on one path.
-
-### The paths
-
-```
-kv/data/{project}/{purpose}/{repository}/{VARIABLE}
-         orders    local-dev  checkout    API_TOKEN
-```
-
-**A repository is a path segment, not a grant.** The project's second
-repository is a new segment under a prefix that is already granted: no
-new group, no new policy, nothing to change at the issuer. That is the
-property the layout is chosen for, and the thing to check first when
-somebody proposes a group per repository.
-
-**One variable per path**, holding one field, `value`. A rotation then
-touches exactly the path that rotated, two people rotating two variables
-do not race through a read-modify-write of one blob, and the list of
-names is the metadata listing rather than something written down beside
-it.
-
-### Person side
-
-```sh
-accessctl secrets env --namespace staging \
-    --prefix orders/local-dev/checkout --out .env
-docker compose up            # env_file: .env
-```
-
-One exchange, one login, a listing and a read per leaf, and the token is
-revoked on the way out. The file is `0600`, written by rename so a stack
-starting during a fetch never reads half of it, and holds one
-`KEY='value'` per leaf — the KEY being the leaf's last path segment.
-**Ignore it in git.** Only the names are printed, never a value
-([reference](../reference/accessctl.md#secrets-a-teams-shared-values-as-a-file)
-has the flags, the quoting and the exit codes).
-
-Two refusals are worth knowing before the first run:
-
-- **`403` means membership, not the path.** The login succeeded; the
-  groups in the token hold no policy on that prefix. The fix is at the
-  issuer — someone puts you on the project — and not in OpenBAO.
-- **A run that reads nothing fails.** An empty `.env` is the failure
-  nobody notices: the stack starts, every variable is unset, and it reads
-  as a service that is merely misconfigured. So nothing is written, and
-  whatever file was there is left alone.
-
-Rotation needs no fetch of its own: a deployer or an approver writes the
-new value, and the next run of the same command picks it up.
-
-### What never goes in
-
-**Production values.** Every engineer on the project reads every value
-under the prefix, there is no second person and no per-path approval, the
-reading end is a laptop, and a value written by mistake stays readable in
-its old version until an operator destroys it. Production credentials go
-to a workload — one identity, one path, read by the thing that needs it —
-and the reasons are written out in
-[team-secrets.md §8](https://github.com/truvity/openbao/blob/master/docs/team-secrets.md#8-what-never-goes-in).
 
 ## Job side
 

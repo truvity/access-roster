@@ -71,6 +71,22 @@
   is now safe as just a rotation**: the JWKS and discovery's advertised
   algorithms carry both kinds for the overlap, then only the new one.
 
+- **Breaking: `accessctl secrets` is removed.**
+
+  Reading a team's shared values back out of a secret store's KV engine is
+  the store's own job, once it can authenticate a person by the issuer's
+  token. A courier command here duplicated a client the store itself should
+  ship.
+
+  **The replacement:** The store's own client. With OpenBAO: `bao login
+  -method=oidc` then `bao kv get <path>`. With External Secrets in a
+  cluster: write a SecretStore with the issuer as an auth provider. See
+  [docs/decisions/0002-mission-boundary-tokens-and-memberships.md](docs/decisions/0002-mission-boundary-tokens-and-memberships.md)
+  for the reasoning.
+
+  Running `accessctl secrets` now fails immediately with a message naming
+  the version and the replacement.
+
 ## v1.29.0
 
 - **A token can be minted for a resource, not only for the client asking

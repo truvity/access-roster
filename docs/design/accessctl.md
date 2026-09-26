@@ -27,13 +27,12 @@ a login cache and an issuer configuration.
 | `token` | prints a token for one audience on stdout and nothing else, for a caller that is neither kubectl nor an AWS SDK: `accessctl token --audience openbao \| bao write -field=token auth/jwt-roster/login role=roster jwt=-`. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `github-token` | prints a GitHub App installation token of a catalogue App, `--app <id>`, narrowed by `--repository` and `--permission name=level`, under the catalogue's grants; `--json` prints what GitHub granted beside it. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `credential` | mints a short-lived certificate through OpenBAO: `credential ssh\|db\|client --env <env>`, one exchange for `openbao`, one login on the JWT mount, one `sign` call, delivered into the ssh-agent, a psql service entry or a named path. The laptop sign-in, or the job's own token in CI | people, jobs |
-| `secrets` | reads a team's shared values out of OpenBAO's KV engine as a `.env` file: `secrets env --namespace <env> --prefix <path>`, the same exchange and login as `credential` with a listing and a read per leaf where the signing is; one variable per path, `0600`, written by rename, never a value printed. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
 | `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
 **A job runs the same commands.** With `ACTIONS_ID_TOKEN_REQUEST_URL`
 and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` set, `kube-token`, `aws`,
-`token`, `github-token`, `credential` and `secrets` ask GitHub for the job's own identity token, minted for the
+`token`, `github-token`, and `credential` ask GitHub for the job's own identity token, minted for the
 issuer, and exchange that, presenting the audience as the client the way
 the action does. So one committed kubeconfig and one `aws.ini` serve a
 laptop and a job alike, where a repository used to keep a second copy of

@@ -98,7 +98,7 @@ func run(args []string) error {
 	case "credential":
 		return credential(args[1:])
 	case "secrets":
-		return secrets(args[1:])
+		return secretsRemoved()
 	case "kubeconfig":
 		return kubeconfig(args[1:])
 	case "aws-config":
@@ -129,10 +129,16 @@ func usage(to *os.File) {
   kube-token    a Kubernetes exec credential      (run by kubectl)
   aws           an AWS credential process answer  (run by the AWS SDKs)
   credential    a short-lived ssh, db or client certificate, minted by OpenBAO
-  secrets       a team's shared values, out of OpenBAO and into a .env file
   exchange      the raw exchange: a token in, a token for an audience out
 
 Exit codes: 0 ok, 2 usage, 3 not signed in, 4 audience or App not granted,
 5 issuer unreachable.
 `)
+}
+
+// secretsRemoved returns the error message for the removed secrets command.
+func secretsRemoved() error {
+	return fmt.Errorf("accessctl secrets was removed in v1.30.0: read the values with " +
+		"the secret store's own client instead — e.g. `bao login -method=oidc` then `bao kv get <path>`, " +
+		"or with External Secrets in a cluster — see docs/decisions/0002-mission-boundary-tokens-and-memberships.md")
 }

@@ -29,6 +29,35 @@ func TestTheExitCodesSayWhatToDoNext(t *testing.T) {
 	}
 }
 
+// The secrets command was removed in v1.30.0. Running it must fail with
+// a message saying that and what replaces it.
+func TestSecretsCommandRefusesWithMessage(t *testing.T) {
+	t.Parallel()
+
+	err := run([]string{"secrets", "env", "--namespace", "staging", "--prefix", "test"})
+	if err == nil {
+		t.Fatal("expected an error, got none")
+	}
+	if codeFor(err) != exitOK {
+		// It's not a usage error, not a sign-in error, not a refusal, not unreachable.
+		// It's a regular failure.
+		code := codeFor(err)
+		if code == 0 {
+			t.Errorf("exit code = %d, not the default 1", code)
+		}
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "removed") || !strings.Contains(errMsg, "v1.30.0") {
+		t.Errorf("error message = %q, want it to say removed and version", errMsg)
+	}
+	if !strings.Contains(errMsg, "bao login") || !strings.Contains(errMsg, "bao kv get") {
+		t.Errorf("error message = %q, want it to suggest the replacement", errMsg)
+	}
+	if !strings.Contains(errMsg, "0002-mission-boundary") {
+		t.Errorf("error message = %q, want it to link the ADR", errMsg)
+	}
+}
+
 // The audience already names the account and the role, so a profile
 // needs nothing a person has to look up. An audience in another shape is
 // a usage error rather than a guess: an ARN assembled from the wrong

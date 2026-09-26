@@ -808,10 +808,6 @@ func (f *fakeOpenBAO) serve(w http.ResponseWriter, r *http.Request) {
 		f.sign(w, body)
 	case strings.HasPrefix(path, "pki/sign/"):
 		f.signRequest(w, body)
-	case strings.Contains(path, "/metadata/"):
-		f.listKV(w, r, after(path, "/metadata/"))
-	case strings.Contains(path, "/data/"):
-		f.readKV(w, after(path, "/data/"))
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}

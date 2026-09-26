@@ -36,7 +36,7 @@ repository.
 | `access-proxy` chart | `oci://ghcr.io/truvity/charts/access-proxy` | Envoy Gateway, the only gateway it works on — a console with no OpenID flow of its own; gateway-native OIDC replaces it there now. For any other gateway, run upstream oauth2-proxy yourself — see [why](docs/design/access-proxy.md), [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md) | deprecated, removal planned |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
-| `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, short-lived certificates a secret manager mints, and a team's shared values as a `.env` file (`secrets env`) | shipped |
+| `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, and short-lived certificates a secret manager mints | shipped |
 | GitHub Action | `truvity/access-roster@<commit>` | workflows: one exchange, then a kubeconfig, AWS profiles, or a GitHub App token | shipped |
 | the policy | one file, one schema | the issuer and the controller | shipped |
 | an Entra directory backend | — | a second corporate directory, behind the same workspace record | planned |
@@ -319,7 +319,6 @@ Every column, and why, is in
 | give a Pulumi or Terraform program that manages the organisation an identity of its own | [docs/connect/infrastructure-as-code.md](docs/connect/infrastructure-as-code.md) |
 | connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [docs/connect/](docs/connect/) |
 | mint a short-lived SSH, database or client certificate | [docs/connect/openbao.md](docs/connect/openbao.md) |
-| fetch the values a team shares while it develops into a `.env` file | [docs/connect/openbao.md](docs/connect/openbao.md#and-holds-a-teams-secrets) |
 | see a secret store's namespaces, groups and who reaches what — read-only | [docs/connect/openbao.md](docs/connect/openbao.md#console-side) |
 | see what the conformance suite said, and why | [docs/conformance.md](docs/conformance.md) |
 | run the conformance suite | [docs/operations/conformance.md](docs/operations/conformance.md) |
