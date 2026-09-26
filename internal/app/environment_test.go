@@ -38,6 +38,11 @@ var localOnly = []string{
 	//                            the issuer's own session
 	//   SIGN_OUT_URL             where the console's sign-out pointed;
 	//                            the issuer serves /logout itself now
+	//   SECRET_MANAGERS_FILE     the console's secret-store view was removed
+	//                            in v1.30.0; deployments should not set this.
+	//                            It defaults to empty on a laptop, but if set
+	//                            to a non-empty value, the binary refuses to
+	//                            start with a message pointing to the migration.
 	//
 	// This list is the merge's remaining debt written down. SIGN_OUT_URL
 	// is why it is worth writing down: the merged service had no source
@@ -46,7 +51,7 @@ var localOnly = []string{
 	// because an empty string is valid everywhere it lands.
 	"API_PORT", "CONSOLE_PORT", "API_AUDIENCE", "CONSUMERS_FILE",
 	"FORWARDED_AUDIENCE", "FORWARDED_EMAIL_HEADER", "FORWARDED_ISSUER",
-	"SIGN_OUT_URL",
+	"SIGN_OUT_URL", "SECRET_MANAGERS_FILE",
 }
 
 // The chart and the binary agree on the environment between them, and

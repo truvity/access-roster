@@ -148,7 +148,6 @@ JavaScript.
 | Secrets the chart delivers | the signing key, the OAuth client | whatever delivered them; the runbook |
 | Secrets the service writes | the directories' credentials, each GitHub organisation's App, the link App, people's link tokens, the runner Apps, the catalogue Apps — each entry carrying a copy of its record | a copy of five Secrets restores every one of them, records included ([configuration](reference/configuration.md#restoring-from-the-secrets-alone)); a link token that rotated since means that person links again |
 | the audit installation | the audit trail: one record per action, kept, locked and signed by the installation | its own archive; while its writer is unreachable records wait in each pod's queue, and a recovery sign-in is refused rather than left unrecorded |
-| the secret stores `secretManagers` declares | nothing of ours: the console's Secret stores page (`/secret-stores`) reads each store's policies, identity groups, aliases and auth mounts per request, as the service's own workload identity exchanged for the store's audience, and never a value | the page says *cannot read* for that store, never an empty environment; nothing else in the service depends on it |
 
 ## Fan-in and fan-out
 

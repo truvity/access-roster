@@ -249,3 +249,12 @@ of the trail.
           path: token
 {{- end }}
 {{- end -}}
+
+{{/*
+The console's secret-store view was removed in v1.30.0. Refuse render if an
+old configuration tries to activate it, with a message pointing to the
+migration.
+*/}}
+{{- define "access-issuer.validateSecretManagers" -}}
+{{- if .Values.secretManagers }}{{ fail "secretManagers was removed in v1.30.0: delete this key from your values. To sign in to OpenBAO, use its own OIDC login (see docs/connect/openbao.md)." }}{{ end -}}
+{{- end -}}

@@ -52,13 +52,11 @@ import (
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
-	"github.com/truvity/access-roster/internal/secretmanager"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
 	"github.com/truvity/access-roster/internal/valkey"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
-	"github.com/truvity/access-roster/tokens"
 )
 
 // Config is the whole of the hub's configuration. The chart sets it from
@@ -127,21 +125,6 @@ type Config struct {
 	// githubCatalogue is every GitHub App the deployment declares, from
 	// the file GITHUB_APPS_CATALOGUE_FILE names. Empty declares none.
 	githubCatalogue *catalogue.Catalogue
-	// secretManagers are the secret stores the console SHOWS, from the
-	// file SECRET_MANAGERS_FILE names. Empty declares none, and the
-	// console then has no such page rather than an empty one.
-	secretManagers *secretmanager.Catalogue
-	// secretManagerTokenFile is the projected ServiceAccount token this
-	// service reads those stores as -- its own workload identity,
-	// exchanged at the issuer exactly as a job's is. It must be
-	// projected for the exchange audience, because a ServiceAccount
-	// token minted for another audience is a perfectly valid token and
-	// no proof at all.
-	secretManagerTokenFile string
-	// secretManagerIssuer is where that exchange is made. Empty is this
-	// service's own public root: the reader goes through the same door
-	// as everything else rather than around it.
-	secretManagerIssuer string
 }
 
 // Load reads the configuration from the environment.
@@ -252,15 +235,16 @@ func Load() (Config, error) {
 	if c.githubCatalogue, err = catalogue.Load(envString("GITHUB_APPS_CATALOGUE_FILE", "")); err != nil {
 		return Config{}, fmt.Errorf("GITHUB_APPS_CATALOGUE_FILE: %w", err)
 	}
-	// A malformed store declaration stops the service for the same
-	// reason: a store declared wrongly is read in the wrong namespace or
-	// with the wrong identity, and the answer looks like an empty
-	// environment rather than like a mistake.
-	if c.secretManagers, err = secretmanager.Load(envString("SECRET_MANAGERS_FILE", "")); err != nil {
-		return Config{}, fmt.Errorf("SECRET_MANAGERS_FILE: %w", err)
+	// The console's secret-store view was removed in v1.30.0. Refuse start-up
+	// if an old configuration tries to activate it, with a message pointing
+	// to the decision and the migration.
+	if smf := envString("SECRET_MANAGERS_FILE", ""); smf != "" {
+		return Config{}, errors.New(
+			"SECRET_MANAGERS_FILE is no longer read: the console's secret-store " +
+				"view was removed in v1.30.0 — see " +
+				"docs/decisions/0002-mission-boundary-tokens-and-memberships.md",
+		)
 	}
-	c.secretManagerTokenFile = envString("SECRET_MANAGERS_TOKEN_FILE", defaultWorkloadTokenFile)
-	c.secretManagerIssuer = envString("SECRET_MANAGERS_ISSUER", "")
 	// A demonstration run declares its own tiers and catalogue, unless the
 	// run declares some: the Apps page is otherwise the two Apps this
 	// service makes for itself, and half the page cannot be walked through.
@@ -887,16 +871,6 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		}
 	}
 
-	// The stores the console shows, with the identity it reads them as.
-	// A declaration that names a store nothing can be built for stops
-	// the service: a page that reports every namespace unreadable
-	// because of a CA bundle nobody can read is worse than a start-up
-	// failure naming the file.
-	secretManagers, err := secretManagersOf(cfg)
-	if err != nil {
-		return nil, err
-	}
-
 	console, err := server.NewConsole(ctx, server.ConsoleDeps{
 		Hub:          directory,
 		Authorizer:   authorizer,
@@ -924,7 +898,6 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHubMints:         githubMints,
 		GitHubHTTP:          demoGitHub(cfg.demo && kept.githubCatalogueApps == nil),
 		Audit:               recorder,
-		SecretManagers:      secretManagers,
 	})
 	if err != nil {
 		return nil, err
@@ -1577,61 +1550,3 @@ func (demoConnections) Put(context.Context, connection.Record, connection.Creden
 }
 
 func (demoConnections) Delete(context.Context, string) error { return errDemoConnect }
-
-// defaultWorkloadTokenFile is where Kubernetes projects this service's
-// own ServiceAccount token when the deployment asks for one. It is a
-// PROJECTED token with the exchange audience, not the default one the
-// kubelet mounts: the default is audienced at the API server, and the
-// verifier refuses it for exactly that reason.
-const defaultWorkloadTokenFile = "/var/run/access-issuer/secret-managers-token/token"
-
-// secretManagersOf builds the console's view of the declared stores: one
-// reader each, and the one call that gets this service a token to read
-// them with.
-//
-// Nil when the deployment declares none, which is every installation
-// running no store.
-func secretManagersOf(cfg Config) (*server.SecretManagers, error) {
-	if cfg.secretManagers == nil || len(cfg.secretManagers.Managers) == 0 {
-		return nil, nil //nolint:nilnil // no stores declared is not a failure, and there is nothing to return
-	}
-	readers := map[string]*secretmanager.Reader{}
-	for i := range cfg.secretManagers.Managers {
-		declared := cfg.secretManagers.Managers[i]
-		reader, err := secretmanager.NewReader(declared)
-		if err != nil {
-			return nil, fmt.Errorf("SECRET_MANAGERS_FILE: %w", err)
-		}
-		readers[declared.Name] = reader
-	}
-
-	issuer := cfg.secretManagerIssuer
-	if issuer == "" {
-		issuer = cfg.publicRootURL
-	}
-	tokenFile := cfg.secretManagerTokenFile
-
-	return &server.SecretManagers{
-		Catalogue: cfg.secretManagers,
-		Readers:   readers,
-		// The reader's identity, minted per read and never kept: this
-		// service's own ServiceAccount token, exchanged for the store's
-		// audience at the issuer. The file is read every time rather
-		// than once at start, because a projected token is rotated
-		// under the pod and the one read at start stops verifying an
-		// hour later -- as a 403 from the store, which reads as a
-		// missing grant.
-		Token: func(ctx context.Context, audience string) (string, error) {
-			proof, err := os.ReadFile(tokenFile) //nolint:gosec // the path is the deployment's own configuration
-			if err != nil {
-				return "", fmt.Errorf("read this service's own workload token: %w", err)
-			}
-			exchanger := &tokens.Exchanger{Issuer: issuer, ClientID: audience}
-			token, err := exchanger.Exchange(ctx, strings.TrimSpace(string(proof)), tokens.TypeJWT, audience)
-			if err != nil {
-				return "", err
-			}
-			return token.AccessToken, nil
-		},
-	}, nil
-}

@@ -155,11 +155,6 @@ type ConsoleDeps struct {
 	// Audit records what an identity did through the console. Nil records
 	// nothing.
 	Audit audit.Recorder
-	// SecretManagers are the secret stores this console SHOWS -- never
-	// writes. Nil is a deployment that declares none, which is every
-	// installation running no store: the console then has no such page
-	// rather than an empty one.
-	SecretManagers *SecretManagers
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on
@@ -172,11 +167,10 @@ type Console struct {
 }
 
 var (
-	_ directoryrosterv1connect.WorkspaceServiceHandler     = (*Console)(nil)
-	_ directoryrosterv1connect.SettingsServiceHandler      = (*Console)(nil)
-	_ directoryrosterv1connect.AccessServiceHandler        = (*Console)(nil)
-	_ directoryrosterv1connect.GitHubServiceHandler        = (*Console)(nil)
-	_ directoryrosterv1connect.SecretManagerServiceHandler = (*Console)(nil)
+	_ directoryrosterv1connect.WorkspaceServiceHandler = (*Console)(nil)
+	_ directoryrosterv1connect.SettingsServiceHandler  = (*Console)(nil)
+	_ directoryrosterv1connect.AccessServiceHandler    = (*Console)(nil)
+	_ directoryrosterv1connect.GitHubServiceHandler    = (*Console)(nil)
 )
 
 // NewConsole returns the operator services.

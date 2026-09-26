@@ -25,10 +25,6 @@ tables.
   pattern for a reusable workflow
 - [reference/contracts.md](reference/contracts.md) — the ConnectRPC
   services, installation tokens at `/token`, and the whoami endpoint
-- [connect/openbao.md#console-side](connect/openbao.md#console-side) —
-  the secret stores the console shows on its Secret stores page
-  (`/secret-stores`): the `secretManagers` values, the grant the reader
-  needs, and the four states a group is drawn in
 - [reference/go-module.md](reference/go-module.md) — the Go module
   `github.com/truvity/access-roster`
 - [reference/typescript.md](reference/typescript.md) — the TypeScript
