@@ -37,6 +37,8 @@ yet know which of those you want.
 | give a Pulumi or Terraform program that manages the organisation an identity of its own | [connect/infrastructure-as-code.md](connect/infrastructure-as-code.md) |
 | connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [connect/](connect/) |
 | mint a short-lived SSH, database or client certificate | [connect/openbao.md](connect/openbao.md) |
+| SSH in for a person, a machine or a host | [connect/ssh.md](connect/ssh.md) |
+| connect a Model Context Protocol server or client | [connect/mcp.md](connect/mcp.md) |
 | see what the conformance suite said, and why | [conformance.md](conformance.md) |
 | run the conformance suite | [operations/conformance.md](operations/conformance.md) |
 | build a service that accepts both people and workloads | [connect/service-to-service.md](connect/service-to-service.md) |
