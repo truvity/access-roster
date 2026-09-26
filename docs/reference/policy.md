@@ -159,6 +159,22 @@ grammar and [Groups → token, by deep merge](#groups--token-by-deep-merge)
 for how a wildcard key is expanded and unioned with a caller's concrete
 groups.
 
+**A wildcard that expands to no group is refused, not silently accepted.**
+A key nobody is ever in is exactly the "grant that never took effect"
+this table exists to catch, whether the key is a plain typo or a wildcard
+whose sensitive exclusion happens to empty it:
+
+- if the wildcard's own scope segment is concrete and marked `sensitive`
+  — `prod:*:viewer` with `prod` sensitive — the refusal says so by name:
+  *`"prod:*:viewer": scope "prod" is sensitive and is never reached by a
+  wildcard; name the concrete groups (e.g. "prod:k8s:viewer") instead`*;
+- for any other reason the expansion is empty — no declared thing has
+  the role at all (`devel:*:admins` when nothing declares `admins`), no
+  thing with that role declares the named scope, or every scope a
+  swept-in thing declares turns out sensitive (`*:k8s:viewer` when every
+  scope `k8s` has is `sensitive`) — the refusal says *`"<key>" expands to
+  no group: <why>`*.
+
 **Explainability.** `policy.Result`'s `Held` carries, per held group:
 `Key` — the `groups` key that matched directly, equal to the group's own
 name for an ordinary key and different for a wildcard's — and `Implies` —

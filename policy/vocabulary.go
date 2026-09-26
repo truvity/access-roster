@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 )
 
 // Vocabulary is an installation's OPTIONAL declaration of what a grant
@@ -221,6 +222,88 @@ func (v *Vocabulary) expand(scope, thing, role string) []string {
 	return slices.Compact(out)
 }
 
+// expandIgnoringSensitivity is [Vocabulary.expand] without the sensitive
+// exclusion. It exists only to compose a refusal: it says what a wildcard
+// WOULD have reached, so the message naming a sensitive scope can offer a
+// real concrete example rather than an abstract one.
+func (v *Vocabulary) expandIgnoringSensitivity(scope, thing, role string) []string {
+	things := []string{thing}
+	if thing == "*" {
+		things = slices.Sorted(maps.Keys(v.Things))
+	}
+	var out []string
+	for _, t := range things {
+		spec, ok := v.Things[t]
+		if !ok {
+			continue
+		}
+		if _, ok := spec.Roles[role]; !ok {
+			continue
+		}
+		scopes := spec.Scopes
+		if scope != "*" {
+			if !slices.Contains(spec.Scopes, scope) {
+				continue
+			}
+			scopes = []string{scope}
+		}
+		for _, s := range scopes {
+			out = append(out, s+Separator+t+Separator+role)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// emptyWhy explains why [Vocabulary.expand] came back with nothing, for a
+// wildcard key whose only refusal reason is not simply "its own scope is
+// sensitive" (that case gets its own, more specific message — see
+// [Policy.checkGroupKey]). Called only once [Vocabulary.checkWildcard] has
+// already passed, so a CONCRETE thing is guaranteed to have the role;
+// what remains to explain is a thing wildcard sweeping in nothing, or
+// every candidate scope turning out sensitive.
+func (v *Vocabulary) emptyWhy(scope, thing, role string) string {
+	things := []string{thing}
+	if thing == "*" {
+		things = slices.Sorted(maps.Keys(v.Things))
+	}
+	roleFound, scopeFound := false, false
+	var sensitiveScopes []string
+	for _, t := range things {
+		spec, ok := v.Things[t]
+		if !ok {
+			continue
+		}
+		if _, ok := spec.Roles[role]; !ok {
+			continue
+		}
+		roleFound = true
+		candidates := spec.Scopes
+		if scope != "*" {
+			if !slices.Contains(spec.Scopes, scope) {
+				continue
+			}
+			candidates = []string{scope}
+		}
+		for _, s := range candidates {
+			scopeFound = true
+			if v.Scopes[s].Sensitive {
+				sensitiveScopes = append(sensitiveScopes, s)
+			}
+		}
+	}
+	switch {
+	case !roleFound:
+		return fmt.Sprintf("no declared thing has role %q", role)
+	case !scopeFound:
+		return fmt.Sprintf("no thing with role %q declares scope %q", role, scope)
+	default:
+		slices.Sort(sensitiveScopes)
+		sensitiveScopes = slices.Compact(sensitiveScopes)
+		return fmt.Sprintf("every matching scope (%s) is sensitive", strings.Join(sensitiveScopes, ", "))
+	}
+}
+
 // checkGrantName validates one name wherever a grant is named in the
 // policy, other than as a Groups-table key. `where` says which table and
 // entry it came from, for the refusal. rung:/emp: names and anything else
@@ -275,7 +358,21 @@ func (p Policy) checkGroupKey(name string) ([]string, error) {
 	if err := p.Vocabulary.checkWildcard(scope, thing, role); err != nil {
 		return nil, fmt.Errorf("groups: %q: %w", name, err)
 	}
-	return p.Vocabulary.expand(scope, thing, role), nil
+	targets := p.Vocabulary.expand(scope, thing, role)
+	if len(targets) == 0 {
+		// An empty expansion is a grant that never takes effect — exactly
+		// the failure this vocabulary exists to catch, so it is refused
+		// here rather than silently accepted as a key nobody is ever in.
+		if scope != "*" && p.Vocabulary.Scopes[scope].Sensitive {
+			if example := p.Vocabulary.expandIgnoringSensitivity(scope, thing, role); len(example) > 0 {
+				return nil, fmt.Errorf(
+					"groups: %q: scope %q is sensitive and is never reached by a wildcard; "+
+						"name the concrete groups (e.g. %q) instead", name, scope, example[0])
+			}
+		}
+		return nil, fmt.Errorf("groups: %q expands to no group: %s", name, p.Vocabulary.emptyWhy(scope, thing, role))
+	}
+	return targets, nil
 }
 
 // groupKeyTargets is [Policy.checkGroupKey] without the error: every
