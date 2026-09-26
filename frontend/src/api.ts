@@ -10,7 +10,6 @@ import { WorkspaceService, Backend } from "./gen/directoryroster/v1/workspace_pb
 import { SettingsService } from "./gen/directoryroster/v1/settings_pb";
 import { AccessService, Role } from "./gen/directoryroster/v1/access_pb";
 import { GitHubService } from "./gen/directoryroster/v1/github_pb";
-import { SecretManagerService } from "./gen/directoryroster/v1/openbao_pb";
 import { SessionService, How } from "./gen/accessissuer/v1/session_pb";
 
 // The hub's own services, reached under wherever this console is
@@ -41,8 +40,6 @@ export const workspaces = createClient(WorkspaceService, transport);
 export const settings = createClient(SettingsService, transport);
 export const access = createClient(AccessService, transport);
 export const github = createClient(GitHubService, transport);
-// The secret stores, read-only: this client has no write call to make.
-export const secretStores = createClient(SecretManagerService, transport);
 
 // The audit installation's query service, through this console: the console
 // forwards /audit/ with a token it mints for the person signed in, so the page

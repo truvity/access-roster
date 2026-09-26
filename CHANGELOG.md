@@ -87,6 +87,31 @@
   Running `accessctl secrets` now fails immediately with a message naming
   the version and the replacement.
 
+- **Breaking: the console's secret-store view and the `SecretManagerService` API
+  are removed.**
+
+  The console's Secret stores page displayed OpenBAO's policies, groups and
+  aliases with a reader grant the issuer held. This is out of scope for
+  access-roster, which delivers tokens and memberships, not authorization for
+  other systems. See [docs/decisions/0002-mission-boundary-tokens-and-memberships.md](docs/decisions/0002-mission-boundary-tokens-and-memberships.md).
+
+  **Migration:**
+
+  1. Delete the `secretManagers` block from your deployment values.
+  2. Revoke the reader grant you gave the issuer in OpenBAO: the policy
+     `sys/policies/acl/*`, `identity/group/name*` and `sys/auth` — see
+     [docs/connect/openbao.md](docs/connect/openbao.md) for the full path list.
+  3. Delete the secret stores page from your console bookmarks.
+
+  **Sign in to OpenBAO stays unaffected:** the issuer still hands OpenBAO a
+  bearer from its own token, and people still sign in with OpenBAO's own OIDC
+  login or the issuer as a broker.
+
+  **Values validation:** if `secretManagers` is still set, the chart render fails
+  with a message that repeats this guidance. `SECRET_MANAGERS_FILE` at the issuer
+  raises an error on start-up, with the same message. A deployment trying to activate
+  the feature is clearly intentional, not silent drift.
+
 ## v1.29.0
 
 - **A token can be minted for a resource, not only for the client asking

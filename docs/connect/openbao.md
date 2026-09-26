@@ -148,86 +148,10 @@ groups. It gets an identity of its own with `read` on the one path it
 needs, so that what a pipeline can read is a line in the declaration
 rather than the whole prefix.
 
-## Console side
+## Sign in to OpenBAO
 
-The console can also *show* a store: its namespaces, the groups each one
-admits, what those groups open, and what one person can reach. It is
-**read-only**, and not by omission — the store's desired state is written
-wherever you write it and applied by whatever applies it, so a console
-that also wrote would make two custodians of one thing. A drift row links
-to where the fix is made; it is never a button.
-
-Declare the store in the deployment's values:
-
-```yaml
-secretManagers:
-  - name: kernel
-    address: https://openbao.internal
-    namespaces:
-      - name: devel
-      - name: stage
-```
-
-`mount`, `role` and `audience` default to `jwt-roster`, `roster` and
-`openbao`. A store behind a private root names the bundle as a
-`caCertSecret: {name, key}` or, since 1.24.0, a `caCertConfigMap:
-{name, key}` — the ConfigMap cert-manager's trust-manager already writes
-into every namespace, so nothing has to be copied into a Secret. One or
-the other, never both; the render refuses it with `name caCertSecret or
-caCertConfigMap, not both: two bundles at one path is one of them
-silently unused`. A namespace **is** an environment: the model is one
-level deep, and `environment` exists only for a store that names its
-namespaces differently.
-
-### What it reads, and as whom
-
-The reader is this service's own ServiceAccount: a projected token,
-audienced at the exchange, traded at this issuer for the store's audience
-exactly as a CI job's is. There is no second credential and nothing is
-stored.
-
-Grant it like any other job — one identity, one policy, one prefix — and
-give it these paths and nothing else:
-
-```hcl
-path "sys/policies/acl"          { capabilities = ["list"] }
-path "sys/policies/acl/*"        { capabilities = ["read"] }
-path "identity/group/name"       { capabilities = ["list"] }
-path "identity/group/name/*"     { capabilities = ["read"] }
-path "identity/group-alias/id"   { capabilities = ["list"] }
-path "identity/group-alias/id/*" { capabilities = ["read"] }
-path "sys/auth"                  { capabilities = ["read"] }
-```
-
-**No KV path**, which is the point: the console shows who may reach which
-prefix and can never show a value, however the page is later changed.
-
-### The four states
-
-What the page **expects** a namespace to hold is not every group of
-that environment. A cluster's tier, a CI job's group, the console's own:
-all are groups of the environment, and no secret store holds a policy
-for any of them. So since 1.25.0 the expected list is the store's own
-exchange audience — the groups the `openbao` client's `requires` admits,
-which is exactly the set the store holds a policy for — narrowed to the
-namespace's environment by the naming rule: a group whose first segment
-is the environment belongs there; an `all:`-scoped group spans
-environments and is legitimate wherever it appears, so it is drawn where
-the store has it and never reported absent; a group of another
-environment is neither. And a group admitted at two doors is two
-identity groups in the store — the bare name and `<name>@<door>`,
-carrying the same policy — which the page folds into **one row** with
-both doors in its column, not a second group and not drift.
-
-| state | what it means |
-|---|---|
-| `bound` | expected here, in the store, carrying a policy of its own name |
-| `not applied yet` | expected here and not in the store — **not drift**: this side is already right and the store has yet to hear it |
-| `not declared` | in the store and expected by nothing here, `all:` groups excepted. The row worth opening the page for |
-| `cannot read` | the reader was refused. **Never** inferred from an empty answer |
-
-That last one is why the page is worth building. An empty namespace and a
-namespace nobody may read are identical in every way except the status of
-the call, and reporting the second as the first sends somebody to look at
-an apply that is fine. Prove it the same way: take the reader's policy
-away and the page must say `cannot read`, not draw an empty environment.
+The console is not where a person reads the manager. To reach one, use the
+manager's own OIDC login or the issuer as a broker: the manager trusts the
+issuer, a person signs in to the issuer, and the issuer vouches for them.
+The console no longer reads a store's policies or groups (removed in v1.30.0,
+see [decisions/0002-mission-boundary-tokens-and-memberships.md](../decisions/0002-mission-boundary-tokens-and-memberships.md)).
