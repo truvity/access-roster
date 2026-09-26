@@ -33,6 +33,7 @@ yet know which of those you want.
 | run more than one replica of the issuer | [operations/high-availability.md](operations/high-availability.md) |
 | use it from a laptop or a CI job | [reference/accessctl.md](reference/accessctl.md) |
 | put a console behind the gateway | [connect/console-app.md](connect/console-app.md) |
+| decide whether a console signs itself in or lets the gateway do it, then build the gateway shape | [connect/choosing-native-or-gateway-oidc.md](connect/choosing-native-or-gateway-oidc.md) |
 | keep a GitHub organisation's teams in step with the policy | [connect/github-organisation.md](connect/github-organisation.md) |
 | declare GitHub Apps as data and create them from the console | [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md) |
 | give a Pulumi or Terraform program that manages the organisation an identity of its own | [connect/infrastructure-as-code.md](connect/infrastructure-as-code.md) |
