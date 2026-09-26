@@ -874,13 +874,23 @@ func conventional(name string) bool {
 //   - [ClientDocuments.Requires]
 //   - any GitHub binding (organisation [GitHubOrg.Members] or team
 //     [GitHubTeam.Members]/[GitHubTeam.Maintainers])
-//   - [Policy.Lifetimes] keys
+//   - this hub's own roles (groups whose [thing] segment is [ThingSelf] and
+//     whose role is [RoleOperator] or [RoleViewer], which the hub reads
+//     directly from the token)
 //
-// A group referenced only by [Policy.Claims] keys is still unconsumed:
-// claims decorate a group and do not consume it; they add to a token only
-// when a caller already holds the group for some other reason. Groups with
-// the [rung] or [emp] prefix are never reported, because they are not grants
-// and exist for other purposes.
+// A group referenced only by [Policy.Claims] or [Policy.Lifetimes] keys is
+// still unconsumed: claims and lifetimes decorate a group and do not consume
+// it; they add to a token only when a caller already holds the group for
+// some other reason. Groups with the [rung] or [emp] prefix are never
+// reported, because they are not grants and exist for other purposes.
+//
+// KNOWN LIMITATION: a relying party may read groups from the token beyond
+// what its [Client.Requires] names, for its own role mapping (for example, a
+// console's viewer vs editor role). Such groups are consumed outside the
+// policy's view, so this warning may name them. The gap closes when a client
+// can declare the groups it maps — per
+// docs/decisions/0006-groups-claim-scoped-per-audience.md — and the lint will
+// then count those declarations.
 //
 // This is a warning rather than an error because an installation may
 // legitimately declare a group ahead of a client or resource that will use
@@ -925,9 +935,17 @@ func (p Policy) Unconsumed() []string {
 		}
 	}
 
-	// Lifetimes. The "default" key does not name a group.
-	for name := range p.Lifetimes {
-		if name != LifetimeDefault {
+	// This hub's own roles. The hub reads these directly from the token.
+	hubRoles := map[string]bool{
+		RoleOperator: true,
+		RoleViewer:   true,
+	}
+	for name := range p.Groups {
+		_, thing, role, ok := SplitGroup(name)
+		if !ok {
+			continue
+		}
+		if thing == ThingSelf && hubRoles[role] {
 			consumed[name] = true
 		}
 	}
