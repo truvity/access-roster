@@ -144,6 +144,66 @@ Takes a dict: `spec` (the privateKey map) and `path` (where to say it is).
 {{- end -}}
 
 {{/*
+access-issuer.signingAlgorithmOf is the JOSE algorithm one private key
+spec signs with: RSA is always RS256, and ECDSA's SIZE decides ES256,
+ES384 or ES512 -- the pairing RFC 7518 fixes, not a preference, and the
+same rule internal/issuer.signatureAlgorithm applies in Go. It is what
+tells two `signingKey.additional` entries apart for the "one key per
+algorithm" refusal below: `algorithm: ECDSA` alone is not unique enough,
+since a 256 and a 384 size both say ECDSA but sign two different
+algorithms, and two 384s say it twice.
+
+Takes the privateKey spec directly (the certificate or one
+`signingKey.additional` entry), not the {spec,path} wrapper
+access-issuer.privateKey takes. Empty for a spec naming neither, which
+access-issuer.privateKey has already refused by the time this is asked to
+name one.
+*/}}
+{{- define "access-issuer.signingAlgorithmOf" -}}
+{{- $spec := . | default dict -}}
+{{- $alg := $spec.algorithm | default "" -}}
+{{- $size := int ($spec.size | default 0) -}}
+{{- if eq $alg "RSA" -}}
+RS256
+{{- else if eq $alg "ECDSA" -}}
+{{- if eq $size 256 -}}ES256
+{{- else if eq $size 384 -}}ES384
+{{- else if eq $size 521 -}}ES512
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+access-issuer.additionalSigningKeyName is the Secret, volume and mount
+name for one `signingKey.additional` entry: the algorithm it signs with,
+lowercased -- `signing-key-rs256`, `signing-key-es256` -- which is what
+[access-issuer.signingAlgorithmOf] already guarantees is unique across
+every entry (see the refusal in templates/signing-key.yaml). Named by
+what it SIGNS rather than by position, so adding or reordering entries in
+`values.yaml` renames nothing already running.
+
+Takes one `signingKey.additional` entry.
+*/}}
+{{- define "access-issuer.additionalSigningKeyName" -}}
+signing-key-{{ include "access-issuer.signingAlgorithmOf" . | lower }}
+{{- end -}}
+
+{{/*
+access-issuer.additionalSigningKeyFiles is SIGNING_KEY_FILES: every
+`signingKey.additional` entry's mounted key file, comma-joined, in the
+order they are declared. Empty when there are none, which is every
+deployment before per-audience signing existed.
+*/}}
+{{- define "access-issuer.additionalSigningKeyFiles" -}}
+{{- $paths := list -}}
+{{- range .Values.signingKey.additional -}}
+{{- $name := include "access-issuer.additionalSigningKeyName" . -}}
+{{- $paths = append $paths (printf "/var/run/access-issuer/%s/%s" $name (.key | default "tls.key")) -}}
+{{- end -}}
+{{- join "," $paths -}}
+{{- end -}}
+
+{{/*
 Whether an audit installation is connected: the address its receiver serves.
 
 One address is the whole connection. The receiver takes the records and

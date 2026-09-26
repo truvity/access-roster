@@ -64,6 +64,11 @@ type Config struct {
 	githubOwners      []string
 	consoleOrigin     string
 	signingKeyFile    string
+	// additionalSigningKeyFiles are every OTHER algorithm this
+	// installation signs with at once, one file per algorithm, beside the
+	// primary [Config.signingKeyFile] -- see [issuer.KeyRings] and the
+	// chart's `signingKey.additional`.
+	additionalSigningKeyFiles []string
 
 	tokenLifetime    time.Duration
 	refreshLifetime  time.Duration
@@ -117,8 +122,16 @@ func Load() (Config, error) {
 			Prefix:   envString("RELEASE_NAME", "access-issuer"),
 		},
 		signingKeyFile: envString("SIGNING_KEY_FILE", ""),
-		release:        envString("RELEASE_NAME", "access-issuer"),
-		audience:       envString("EXCHANGE_AUDIENCE", ""),
+		// A comma list, matching every other multi-value setting this
+		// package reads (see envList) rather than a directory: the chart
+		// mounts one Secret per additional algorithm, at a path of its
+		// own, and a deployment naming the exact files it expects is a
+		// deployment a missing mount fails LOUDLY for, at start, rather
+		// than one that silently signs with fewer algorithms than its
+		// policy assumes.
+		additionalSigningKeyFiles: envList("SIGNING_KEY_FILES"),
+		release:                   envString("RELEASE_NAME", "access-issuer"),
+		audience:                  envString("EXCHANGE_AUDIENCE", ""),
 	}
 	// Secure follows the scheme the BROWSER will use, which the service
 	// knows because it is told its own public URL. Defaulting to false
@@ -364,6 +377,10 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if err != nil {
 		return nil, err
 	}
+	additionalKeys, err := additionalSigningKeys(ctx, cfg, log)
+	if err != nil {
+		return nil, err
+	}
 	if err = readClient(&cfg); err != nil {
 		return nil, err
 	}
@@ -371,7 +388,7 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if err != nil {
 		return nil, err
 	}
-	storage, err := issuer.NewStorage(core, verifiers, clientSecrets(cfg, log), key, shared)
+	storage, err := issuer.NewStorage(core, verifiers, clientSecrets(cfg, log), key, additionalKeys, shared)
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +548,8 @@ func (a *App) Run(ctx context.Context) error {
 	group.Go(func() error { return serve(gctx, a.cfg.port, a.handler, "issuer", a.log) })
 	group.Go(func() error { return serve(gctx, a.cfg.healthPort, a.health, "health", a.log) })
 	group.Go(func() error {
-		watchSigningKey(gctx, a.cfg.signingKeyFile, a.cfg.keyPollInterval, a.storage, a.log)
+		paths := append([]string{a.cfg.signingKeyFile}, a.cfg.additionalSigningKeyFiles...)
+		watchSigningKey(gctx, paths, a.cfg.keyPollInterval, a.storage, a.log)
 		return nil
 	})
 	return group.Wait()
@@ -678,11 +696,42 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 	return key, nil
 }
 
-// watchSigningKey re-reads the mounted key file on an interval and feeds
-// every version this replica reads to the storage's key ring — see
-// [issuer.KeyRing] for the schedule that turns that into rotation with no
-// restart. It runs until ctx is done, which happens together with the two
-// listeners in [App.Run].
+// additionalSigningKeys reads every OTHER algorithm this installation
+// signs with at once, beside the primary [signingKey] — one file per
+// algorithm, named in SIGNING_KEY_FILES, matching the chart's
+// `signingKey.additional`.
+//
+// Read eagerly, at start, and not lazily on first use: [issuer.NewStorage]
+// needs every configured algorithm in hand before it can refuse a policy
+// naming one that has no key (requirement 2), and a deployment whose
+// mount is broken should fail before it serves a single request rather
+// than the first time somebody reaches a client that names it.
+func additionalSigningKeys(ctx context.Context, cfg Config, log *slog.Logger) ([]*issuer.SigningKey, error) {
+	out := make([]*issuer.SigningKey, 0, len(cfg.additionalSigningKeyFiles))
+	for _, path := range cfg.additionalSigningKeyFiles {
+		encoded, err := os.ReadFile(path) //nolint:gosec // the path is deployment configuration
+		if err != nil {
+			return nil, fmt.Errorf("read an additional signing key: %w — a deployment provides it as a "+
+				"Secret, issued by cert-manager or delivered by external-secrets, mounted at that path", err)
+		}
+		key, err := issuer.ParseSigningKey(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		log.InfoContext(ctx, "signing with an additional key this installation was given",
+			"file", path, "algorithm", key.SignatureAlgorithm(), "kid", key.ID())
+		out = append(out, key)
+	}
+	return out, nil
+}
+
+// watchSigningKey re-reads every mounted key file on an interval and
+// feeds every version this replica reads to the storage's key rings — see
+// [issuer.KeyRings] for the schedule that turns that into rotation with no
+// restart, one file routed to its OWN algorithm's track (requirement six
+// of live rotation: rotating one never disturbs another's). It runs
+// until ctx is done, which happens together with the two listeners in
+// [App.Run].
 //
 // A local run with no file configured has nothing to poll: the one key
 // [signingKey] generated for it is the only key there will ever be.
@@ -691,9 +740,13 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 // kept, never returned: a Secret Kubernetes is mid-projecting can be
 // observed for an instant while `..data` is being swapped, and a poller
 // that failed loudly over a read that would have succeeded thirty seconds
-// later would turn a non-event into an incident.
-func watchSigningKey(ctx context.Context, path string, interval time.Duration, storage *issuer.Storage, log *slog.Logger) {
-	if path == "" {
+// later would turn a non-event into an incident. The same is true of a
+// path that names an algorithm nothing was configured for at start
+// ([issuer.KeyRings.Rotate] refuses it) — logged and skipped, not fatal,
+// because the deployment is already running with what it started with.
+func watchSigningKey(ctx context.Context, paths []string, interval time.Duration, storage *issuer.Storage, log *slog.Logger) {
+	paths = nonEmpty(paths)
+	if len(paths) == 0 {
 		return
 	}
 	if interval <= 0 {
@@ -708,23 +761,46 @@ func watchSigningKey(ctx context.Context, path string, interval time.Duration, s
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			encoded, err := os.ReadFile(path) //nolint:gosec // the path is deployment configuration
-			if err != nil {
-				log.WarnContext(ctx, "could not re-read the signing key; keeping the previous one",
-					"file", path, "error", err)
-				continue
-			}
-			key, err := issuer.ParseSigningKey(encoded)
-			if err != nil {
-				log.WarnContext(ctx, "the re-read signing key could not be parsed; keeping the previous one",
-					"file", path, "error", err)
-				continue
-			}
-			if err := storage.Rotate(ctx, key); err != nil {
-				log.WarnContext(ctx, "the re-read signing key could not be adopted", "file", path, "error", err)
+			for _, path := range paths {
+				pollSigningKeyFile(ctx, path, storage, log)
 			}
 		}
 	}
+}
+
+// pollSigningKeyFile is one file, one poll tick: read, parse and hand to
+// the storage's key rings, which route it to the track for its own
+// algorithm. Split out of [watchSigningKey] so that one bad file's
+// `continue` cannot accidentally skip the others sharing its tick.
+func pollSigningKeyFile(ctx context.Context, path string, storage *issuer.Storage, log *slog.Logger) {
+	encoded, err := os.ReadFile(path) //nolint:gosec // the path is deployment configuration
+	if err != nil {
+		log.WarnContext(ctx, "could not re-read a signing key; keeping the previous one",
+			"file", path, "error", err)
+		return
+	}
+	key, err := issuer.ParseSigningKey(encoded)
+	if err != nil {
+		log.WarnContext(ctx, "a re-read signing key could not be parsed; keeping the previous one",
+			"file", path, "error", err)
+		return
+	}
+	if err := storage.Rotate(ctx, key); err != nil {
+		log.WarnContext(ctx, "a re-read signing key could not be adopted", "file", path, "error", err)
+	}
+}
+
+// nonEmpty drops blank paths, which is what a primary [Config.signingKeyFile]
+// left unset by a local run looks like once joined with the additional
+// ones.
+func nonEmpty(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if path != "" {
+			out = append(out, path)
+		}
+	}
+	return out
 }
 
 // readClient takes the OAuth client from the files a Secret is mounted

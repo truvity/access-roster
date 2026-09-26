@@ -91,7 +91,7 @@ func TestKeyRingFirstKeyIsActiveImmediately(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	clock := newSettableClock(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
-	ring := issuer.NewKeyRing(issuer.NewMemoryState(), issuer.KeyRingConfig{}, nil)
+	ring := issuer.NewKeyRing(jose.ES384, issuer.NewMemoryState(), issuer.KeyRingConfig{}, nil)
 	ring.SetClock(clock.now)
 
 	key, err := issuer.NewSigningKey()
@@ -121,7 +121,7 @@ func TestKeyRingRotationSchedule(t *testing.T) {
 
 	const delay = 2 * time.Minute
 	const overlap = time.Hour
-	ring := issuer.NewKeyRing(issuer.NewMemoryState(), issuer.KeyRingConfig{ActivationDelay: delay, Overlap: overlap}, nil)
+	ring := issuer.NewKeyRing(jose.ES384, issuer.NewMemoryState(), issuer.KeyRingConfig{ActivationDelay: delay, Overlap: overlap}, nil)
 	ring.SetClock(clock.now)
 
 	key1, err := issuer.NewSigningKey()
@@ -196,7 +196,7 @@ func TestKeyRingTokenSignedBeforeRotationVerifiesDuringOverlap(t *testing.T) {
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	clock := newSettableClock(t0)
 
-	ring := issuer.NewKeyRing(issuer.NewMemoryState(),
+	ring := issuer.NewKeyRing(jose.ES384, issuer.NewMemoryState(),
 		issuer.KeyRingConfig{ActivationDelay: time.Minute, Overlap: time.Hour}, nil)
 	ring.SetClock(clock.now)
 
@@ -266,55 +266,40 @@ func verifyAgainst(t *testing.T, ring *issuer.KeyRing, token, kid string) bool {
 	return false
 }
 
-// Changing algorithm — RSA to this issuer's P-384 default — is handled as
-// just a rotation: both algorithms are advertised while the RSA key is
-// still published, and only P-384 once it retires.
-func TestKeyRingAlgorithmChangeIsARotation(t *testing.T) {
+// A [KeyRing] is now locked to ONE algorithm for its life — each
+// algorithm gets its own track, namespaced in the shared store by that
+// algorithm (see [issuer.KeyRing.Algorithm]) — so a key of a DIFFERENT
+// algorithm is refused rather than silently adopted as a rotation. Before
+// per-audience signing this was "just a rotation"; now it would mean an
+// RS256 key landing on the ES384 track, which every OTHER replica reads
+// by that track's own namespaced keys and would never learn to publish.
+// Changing which algorithm a ring signs is a restart — a fresh
+// [issuer.KeyRings] — not a poll tick.
+func TestKeyRingRefusesAKeyOfTheWrongAlgorithm(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	clock := newSettableClock(t0)
 
-	ring := issuer.NewKeyRing(issuer.NewMemoryState(),
-		issuer.KeyRingConfig{ActivationDelay: time.Minute, Overlap: time.Hour}, nil)
-	ring.SetClock(clock.now)
+	ring := issuer.NewKeyRing(jose.ES384, issuer.NewMemoryState(), issuer.KeyRingConfig{}, nil)
 
-	rsaKey := rsaSigningKey(t)
-	if err := ring.Observe(ctx, rsaKey); err != nil {
-		t.Fatal(err)
-	}
-	if algs := ring.Algorithms(); len(algs) != 1 || algs[0] != jose.RS256 {
-		t.Fatalf("algorithms = %v, want only RS256", algs)
-	}
-
-	ecKey, err := issuer.NewSigningKey() // P-384
+	ecKey, err := issuer.NewSigningKey() // P-384 / ES384
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := ring.Observe(ctx, ecKey); err != nil {
 		t.Fatal(err)
 	}
-	clock.set(t0.Add(2 * time.Minute))
-	if err := ring.Observe(ctx, ecKey); err != nil {
-		t.Fatal(err)
+
+	rsaKey := rsaSigningKey(t) // RS256
+	if err := ring.Observe(ctx, rsaKey); err == nil {
+		t.Fatal("an ES384 ring accepted an RS256 key; it must refuse a key of any other algorithm")
 	}
 
+	// Refused, and nothing about the ring's own state moved: it still
+	// signs with, and publishes only, the key it already held.
 	if got := ring.Active(); got.ID() != ecKey.ID() {
-		t.Fatalf("active = %s, want the P-384 key once its delay elapsed", got.ID())
+		t.Fatalf("active = %s, want the refusal to have left the original key active", got.ID())
 	}
-	algs := ring.Algorithms()
-	if !slices.Contains(algs, jose.RS256) || !slices.Contains(algs, jose.ES384) {
-		t.Fatalf("algorithms = %v, want RS256 and ES384 during the overlap", algs)
-	}
-
-	// Past the overlap, RSA retires and only ES384 is left.
-	clock.set(t0.Add(63 * time.Minute))
-	if err := ring.Observe(ctx, ecKey); err != nil {
-		t.Fatal(err)
-	}
-	if algs := ring.Algorithms(); len(algs) != 1 || algs[0] != jose.ES384 {
-		t.Fatalf("algorithms = %v, want only ES384 once RSA retires", algs)
-	}
+	assertPublished(t, ring, ecKey.ID())
 }
 
 // A restarted replica, or one that simply starts later, must publish the
@@ -330,7 +315,7 @@ func TestKeyRingASecondReplicaSharingTheStorePublishesTheSameSet(t *testing.T) {
 	shared.SetClock(clock.now)
 
 	cfg := issuer.KeyRingConfig{ActivationDelay: time.Minute, Overlap: time.Hour}
-	replicaA := issuer.NewKeyRing(shared, cfg, nil)
+	replicaA := issuer.NewKeyRing(jose.ES384, shared, cfg, nil)
 	replicaA.SetClock(clock.now)
 
 	key1, err := issuer.NewSigningKey()
@@ -359,7 +344,7 @@ func TestKeyRingASecondReplicaSharingTheStorePublishesTheSameSet(t *testing.T) {
 	// Replica B starts only now, and its own mounted file already holds
 	// key2 alone — key1 has already been superseded by the time it comes
 	// up, exactly like a pod that restarts after a rotation.
-	replicaB := issuer.NewKeyRing(shared, cfg, nil)
+	replicaB := issuer.NewKeyRing(jose.ES384, shared, cfg, nil)
 	replicaB.SetClock(clock.now)
 	if err := replicaB.Observe(ctx, key2); err != nil {
 		t.Fatal(err)
@@ -387,7 +372,7 @@ func TestKeyRingNeverSignsWithAKeyItHasNotReadItself(t *testing.T) {
 	shared.SetClock(clock.now)
 
 	cfg := issuer.KeyRingConfig{ActivationDelay: time.Minute, Overlap: time.Hour}
-	fast := issuer.NewKeyRing(shared, cfg, nil)
+	fast := issuer.NewKeyRing(jose.ES384, shared, cfg, nil)
 	fast.SetClock(clock.now)
 
 	key1, err := issuer.NewSigningKey()
@@ -409,7 +394,7 @@ func TestKeyRingNeverSignsWithAKeyItHasNotReadItself(t *testing.T) {
 	// slow is a replica whose own file read is stuck on key1 — its node's
 	// kubelet, say, has not projected the update yet — but it still learns
 	// OF key2's existence from the shared store.
-	slow := issuer.NewKeyRing(shared, cfg, nil)
+	slow := issuer.NewKeyRing(jose.ES384, shared, cfg, nil)
 	slow.SetClock(clock.now)
 	if err := slow.Observe(ctx, key1); err != nil {
 		t.Fatal(err)
@@ -443,7 +428,7 @@ func TestKeyRingNeverSignsWithAKeyItHasNotReadItself(t *testing.T) {
 func TestKeyRingPublishedKeyMaterialVerifies(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	ring := issuer.NewKeyRing(issuer.NewMemoryState(), issuer.KeyRingConfig{}, nil)
+	ring := issuer.NewKeyRing(jose.ES384, issuer.NewMemoryState(), issuer.KeyRingConfig{}, nil)
 
 	key, err := issuer.NewSigningKey()
 	if err != nil {
@@ -482,7 +467,7 @@ func TestStorageRotateAdoptsANewSigningKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, key1, issuer.NewMemoryState())
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, key1, nil, issuer.NewMemoryState())
 	if err != nil {
 		t.Fatal(err)
 	}

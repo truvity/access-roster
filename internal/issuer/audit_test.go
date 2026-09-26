@@ -32,7 +32,7 @@ func recordingStorage(t *testing.T) (*issuer.Storage, *audittest.Recorder) {
 	iss := newIssuer(t, &fakeDirectory{})
 	trail := audittest.New(t)
 	iss.UseAudit(trail)
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, issuer.NewMemoryState())
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, issuer.NewMemoryState())
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestATokenExchangeKeepsItsRequest(t *testing.T) {
 	iss := issuer.New(issuer.Config{URL: "http://issuer.example", AllowInsecure: true}, set, &fakeDirectory{}, issuer.NewMemoryState())
 	trail := audittest.New(t)
 	iss.UseAudit(trail)
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

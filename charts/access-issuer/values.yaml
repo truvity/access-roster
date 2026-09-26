@@ -204,6 +204,31 @@ signingKey:
     # the setting that actually has to be kept longer than `lifetimes.token`.
     renewBefore: 720h
     duration: 8760h
+  # Every OTHER algorithm this installation signs with AT THE SAME TIME as
+  # the default key above -- see reference/policy.md's "Signing algorithm
+  # per audience". The issuer picks which key signs a given token by the
+  # AUDIENCE (a client's or a resource's `signing_alg`, in the policy),
+  # never by rotating the installation's one key; a client naming an
+  # algorithm not listed here (or above) is refused at start.
+  #
+  # Each entry renders its own cert-manager Certificate and Secret,
+  # mounted at its own path, on its own rotation track in the issuer:
+  # renewing one never disturbs another's schedule, including the default
+  # key's. Two entries signing the SAME algorithm (an RSA and another RSA,
+  # or two P-384 ECDSA keys) are refused -- a key ring can publish only
+  # one key per algorithm.
+  #
+  # Empty is every deployment before this existed: one key, the default
+  # above, signing everything.
+  additional: []
+  # - algorithm: RSA
+  #   size: 2048
+  #   # PKCS1 or PKCS8; RS256 verifies either way.
+  #   encoding: PKCS1
+  #   issuerName: selfsigned
+  #   issuerKind: ClusterIssuer
+  #   renewBefore: 720h
+  #   duration: 8760h
   # Live rotation: how a REPLICA notices the key file changed underneath
   # it and moves to the new key with no restart.
   #

@@ -52,6 +52,31 @@ func (s *Storage) CreateAuthRequestForTest(ctx context.Context, subject, clientI
 	return request.ID, nil
 }
 
+// CreateAuthRequestForResourceTest is [CreateAuthRequestForTest] naming an
+// RFC 8707 resource and asking for `offline_access`, so a test can drive
+// a REAL code exchange through the actual library path — [op.CreateTokenResponse]
+// and friends — and then a refresh from the token it mints, rather than
+// only exercising this storage's own methods directly. See
+// signing_audience_test.go.
+func (s *Storage) CreateAuthRequestForResourceTest(ctx context.Context, subject, clientID, resource string) (string, error) {
+	request := &authRequest{
+		ID: "req-" + subject + "-" + clientID + "-" + resource,
+		Req: &oidc.AuthRequest{
+			ClientID: clientID, RedirectURI: "https://rp.example/cb",
+			ResponseType: oidc.ResponseTypeCode,
+			Scopes:       []string{oidc.ScopeOpenID, oidc.ScopeOfflineAccess},
+		},
+		Resource: resource,
+	}
+	if err := setJSON(ctx, s.state, requestKey(request.ID), request, authRequestTTL); err != nil {
+		return "", err
+	}
+	if err := s.Complete(ctx, request.ID, Authenticated{Subject: subject}); err != nil {
+		return "", err
+	}
+	return request.ID, nil
+}
+
 // CreatePendingAuthRequestForTest makes an authorization request nobody has
 // completed yet, for a test to complete. It returns the request's id.
 func (s *Storage) CreatePendingAuthRequestForTest(ctx context.Context, id, clientID string) (string, error) {

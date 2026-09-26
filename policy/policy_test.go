@@ -242,6 +242,14 @@ func TestRejectsBadPolicies(t *testing.T) {
 		"resource relative": "version: 1\ngroups: { a: { members: [g@h.example] } }\nresources: { /mcp: { requires: [a] } }\n",
 		"resource fragment": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
 			"resources: { 'https://a.example/#x': { requires: [a] } }\n",
+		// signing_alg is a value this schema can check on its own --
+		// whether a KEY exists for it is the issuer's question, checked
+		// where policy and keys meet (see internal/issuer.NewStorage) --
+		// so an unknown value is refused right here, at parse.
+		"client unknown signing_alg": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"clients: { c: { kind: public, requires: [a], signing_alg: PS256 } }\n",
+		"resource unknown signing_alg": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"resources: { 'https://a.example/': { requires: [a], signing_alg: HS256 } }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -257,6 +265,53 @@ func TestRejectsBadPolicies(t *testing.T) {
 				t.Fatal("error message is empty")
 			}
 		})
+	}
+}
+
+// A client or a resource may pin one of the three algorithms this schema
+// knows about, and a row that names none reads back empty -- the
+// installation default, decided where policy and keys meet (see
+// internal/issuer.NewStorage), never something this package guesses at.
+func TestSigningAlgIsOneOfThreeAndOptional(t *testing.T) {
+	t.Parallel()
+
+	declared, err := policy.Parse([]byte(
+		"version: 1\n" +
+			"groups: { a: { members: [g@h.example] } }\n" +
+			"clients:\n" +
+			"  pinned: { kind: public, requires: [a], redirects: [https://a.example/cb], signing_alg: RS256 }\n" +
+			"  unpinned: { kind: public, requires: [a], redirects: [https://a.example/cb] }\n" +
+			"resources:\n" +
+			"  'https://a.example/': { requires: [a], signing_alg: ES256 }\n" +
+			"  'https://b.example/': { requires: [a] }\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	pinned, _ := set.Client("pinned")
+	if pinned.SigningAlg != policy.SigningAlgRS256 {
+		t.Errorf("pinned client signing_alg = %q, want RS256", pinned.SigningAlg)
+	}
+	unpinned, _ := set.Client("unpinned")
+	if unpinned.SigningAlg != "" {
+		t.Errorf("unpinned client signing_alg = %q, want empty", unpinned.SigningAlg)
+	}
+
+	withAlg, _ := set.Resource("https://a.example/")
+	if withAlg.SigningAlg != policy.SigningAlgES256 {
+		t.Errorf("resource signing_alg = %q, want ES256", withAlg.SigningAlg)
+	}
+	without, _ := set.Resource("https://b.example/")
+	if without.SigningAlg != "" {
+		t.Errorf("resource signing_alg = %q, want empty", without.SigningAlg)
+	}
+
+	if got := set.Resources(); len(got) != 2 {
+		t.Fatalf("Resources() = %d rows, want 2", len(got))
 	}
 }
 

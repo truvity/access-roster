@@ -128,7 +128,11 @@ func (s *Storage) postLogoutToken(ctx context.Context, where string, session *Se
 
 // mintLogoutToken signs one logout token for one session.
 func (s *Storage) mintLogoutToken(session *Session) (string, error) {
-	active := s.keys.Active()
+	// The receiving client is this token's whole audience -- a logout
+	// token is never minted for a resource -- so, like [Storage.MintFor],
+	// this resolves its algorithm directly rather than through the
+	// context carrier the library's own mint paths need.
+	active := s.keys.Active(s.signingAlgorithmFor(session.ClientID))
 	if active == nil {
 		return "", fmt.Errorf("no signing key")
 	}

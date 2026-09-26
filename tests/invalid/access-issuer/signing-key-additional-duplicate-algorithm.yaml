@@ -1,0 +1,9 @@
+# A key ring can publish only one key per algorithm.
+# error: another key already signs with RS256
+issuerURL: https://issuer.example
+signingKey:
+  additional:
+    - algorithm: RSA
+      size: 2048
+    - algorithm: RSA
+      size: 3072

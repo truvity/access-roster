@@ -62,7 +62,7 @@ func signInServerWith(t *testing.T, email, policyYAML string) (*httptest.Server,
 		set, dir, issuer.NewMemoryState(),
 	)
 
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}
@@ -1174,7 +1174,7 @@ func TestRefreshIsRefusedWhenTheClientNoLongerAdmits(t *testing.T) {
 		state,
 	)
 
-	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil)
+	storage, err := issuer.NewStorage(iss, fakeVerifier{}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("storage: %v", err)
 	}

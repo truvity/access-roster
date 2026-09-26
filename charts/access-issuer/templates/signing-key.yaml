@@ -40,3 +40,42 @@ spec:
     kind: {{ .Values.signingKey.certificate.issuerKind | quote }}
     group: cert-manager.io
 {{- end }}
+{{- $seen := dict }}
+{{- if not .Values.signingKey.existingSecret }}
+{{- $_ := set $seen (include "access-issuer.signingAlgorithmOf" .Values.signingKey.certificate) true }}
+{{- end }}
+{{- range $i, $extra := .Values.signingKey.additional }}
+{{- include "access-issuer.privateKey" (dict "spec" $extra "path" (printf "signingKey.additional[%d]" $i)) }}
+{{- $alg := include "access-issuer.signingAlgorithmOf" $extra }}
+{{- if hasKey $seen $alg }}
+{{- fail (printf "signingKey.additional[%d]: another key already signs with %s; each algorithm this installation configures needs exactly one key" $i $alg) }}
+{{- end }}
+{{- $_ := set $seen $alg true }}
+{{- $name := include "access-issuer.additionalSigningKeyName" $extra }}
+---
+# An ADDITIONAL signing key, on its own rotation track in the issuer (one
+# [issuer.KeyRing] per algorithm) so that renewing it never disturbs the
+# default key's schedule above. Otherwise exactly the default key's own
+# story: cert-manager issues it, only the key is used, and
+# `rotationPolicy: Always` is what makes a renewal a NEW key.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "access-issuer.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "access-issuer.labels" $ | nindent 4 }}
+spec:
+  secretName: {{ include "access-issuer.fullname" $ }}-{{ $name }}
+  commonName: {{ include "access-issuer.fullname" $ }}
+  duration: {{ $extra.duration | default "8760h" | quote }}
+  renewBefore: {{ $extra.renewBefore | default "720h" | quote }}
+  privateKey:
+    algorithm: {{ $extra.algorithm }}
+    size: {{ $extra.size }}
+    encoding: {{ $extra.encoding | default "PKCS8" }}
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ $extra.issuerName | default "selfsigned" | quote }}
+    kind: {{ $extra.issuerKind | default "ClusterIssuer" | quote }}
+    group: cert-manager.io
+{{- end }}

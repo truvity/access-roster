@@ -126,6 +126,13 @@ spec:
             # Provisioned, never minted here — see values.yaml.
             - name: SIGNING_KEY_FILE
               value: /var/run/access-issuer/signing-key/{{ .Values.signingKey.key }}
+            {{- if .Values.signingKey.additional }}
+            # Every OTHER algorithm this installation signs with at once —
+            # see `signingKey.additional` in values.yaml. One file per
+            # algorithm, each on its own rotation track in the issuer.
+            - name: SIGNING_KEY_FILES
+              value: {{ include "access-issuer.additionalSigningKeyFiles" . | quote }}
+            {{- end }}
             # Live rotation: how often this replica re-reads the file
             # above, and the schedule it keeps once it sees a new key —
             # see `signingKey.rotation` in values.yaml.
@@ -249,6 +256,12 @@ spec:
             - name: signing-key
               mountPath: /var/run/access-issuer/signing-key
               readOnly: true
+            {{- range .Values.signingKey.additional }}
+            {{- $name := include "access-issuer.additionalSigningKeyName" . }}
+            - name: {{ $name }}
+              mountPath: /var/run/access-issuer/{{ $name }}
+              readOnly: true
+            {{- end }}
             - name: policy
               mountPath: /var/run/access-issuer/policy
               readOnly: true
@@ -313,6 +326,12 @@ spec:
         - name: signing-key
           secret:
             secretName: {{ include "access-issuer.signingKeySecret" . }}
+        {{- range .Values.signingKey.additional }}
+        {{- $name := include "access-issuer.additionalSigningKeyName" . }}
+        - name: {{ $name }}
+          secret:
+            secretName: {{ include "access-issuer.fullname" $ }}-{{ $name }}
+        {{- end }}
         - name: policy
           configMap:
             name: {{ include "access-issuer.fullname" . }}-policy

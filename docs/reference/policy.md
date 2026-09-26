@@ -391,6 +391,61 @@ session — and the resource's own gate would go unchecked for the rest of
 that session's life. It is re-checked on every refresh, which is where a
 withdrawn grant actually bites.
 
+## Signing algorithm per audience
+
+The issuer signs with several algorithms at once — RS256, ES256 and
+ES384, whichever ones the deployment configured a key for — and picks the
+one to use, per token, from the audience it is minting for. A client row
+and a resource row may each pin one with `signing_alg`:
+
+```yaml
+clients:
+  eks-cluster:
+    kind: exchange
+    requires: [prod:k8s:admin]
+    signing_alg: RS256
+resources:
+  https://legacy.example/:
+    requires: [prod:k8s:admin]
+    signing_alg: RS256
+```
+
+**Why a pin exists at all.** OIDC Core §15.1 expects a provider to be
+*able* to sign with RS256, and not every relying party keeps up: EKS's
+associated OIDC identity provider and Kargo's verifier accept RS256 and
+nothing else. Rather than pin the whole installation to the slowest
+relying party forever — which is what changing `signingKey.certificate`
+in the chart does — this is the one row that asks for it, and every
+other audience keeps the installation default (ES384 in the chart).
+[ADR 0009](../decisions/0009-a-default-signing-algorithm-and-per-audience-exceptions.md)
+is the decision in full, including why it partly supersedes
+[ADR 0005](../decisions/0005-signing-key-rotation-with-no-restart.md).
+
+**Rows without it get the installation default** — today's one key's own
+algorithm, ES384 in the chart — unchanged from before this existed.
+
+**The audience decides, not the client asking.** For an ID token it is
+always the client, because an ID token never names a resource as its
+audience. For an access token it is the resource a caller named
+(`resource`, above) or the client itself. For a token exchange
+(`accessctl kube-token`, a CI job's exchange) it is the audience the
+exchange was *granted* — the target — never the client presenting the
+exchange: a caller authenticating as `local-dev` to exchange for
+`eks-cluster` gets `eks-cluster`'s algorithm, not `local-dev`'s. For a
+Back-Channel Logout token it is the client receiving it. For the
+console's own short-lived mint (`MintFor`) it is that call's own target.
+
+**A pin naming an algorithm this installation has no key for is refused
+at issuer start**, not on the first token that would have needed it — see
+`signingKey.additional` in [access-issuer.md](access-issuer.md). Fail
+loudly, at start, or an operator's `signing_alg: RS256` on a row nobody
+minted an RS256 key for would silently keep signing ES384 forever.
+
+**An unknown value is refused at load**: `signing_alg` accepts exactly
+`RS256`, `ES256` or `ES384` — the three this schema knows a real relying
+party has asked for, not every algorithm a key in this estate could ever
+produce.
+
 ## Clients that describe themselves
 
 Every client above is minted as code, and that is the right default: a row
