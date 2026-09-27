@@ -1,5 +1,13 @@
 # Connect PostgreSQL: short-lived client certificates
 
+> **`accessctl credential db`, this page's courier, is removed within
+> 1.x** in favour of `accessctl psql` / `accessctl pg --`
+> ([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)):
+> the certificate handed to `psql` or an arbitrary command through
+> libpq's own environment variables, rather than a `pg_service` entry
+> this tool writes. This page describes the courier shipping today; the
+> replacement lands in the release note beside it.
+
 **Anchor:** OpenBAO's PKI engine. People and machines reach PostgreSQL —
 including a CloudNativePG cluster — with a client certificate that lives
 minutes, not a password that lives until somebody remembers to rotate it.

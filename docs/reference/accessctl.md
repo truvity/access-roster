@@ -19,6 +19,9 @@ accessctl credential ssh --env staging --principal deploy      # into the ssh-ag
 accessctl credential db  --env staging --project example \
     --host db.example --dbname orders                          # a psql service entry
 accessctl credential client --env staging --out ./gateway.crt  # a certificate and its key
+
+accessctl bao --address https://openbao.example:8200 kv get -format=env secret/app > .env
+accessctl bao --address https://openbao.example:8200 ssh -mode=ca -role=user ci@build-worker.example
 ```
 
 It exists for one reason: **the cloud CLI has no interactive login.**
@@ -194,6 +197,86 @@ mean:
 | `4` | the issuer refused the exchange for `openbao`, or OpenBAO answered `403` — the login or the signing is not granted |
 | `5` | the issuer or OpenBAO could not be reached, answered `5xx`, presented a certificate the roots do not verify, or answered a login with no token or a signing with no data |
 | `1` | anything else: OpenBAO answered `404` (the mount or the role does not exist in that namespace — the message says so) or another status; the certificate was for another key; `--identity` names a key this tool did not write; no ssh-agent to add to |
+
+## `bao`: authenticate, then run `bao` unchanged
+
+`accessctl bao <args…>` exists only to put a valid OpenBAO token in front
+of the real `bao` binary — it does not parse OpenBAO's own syntax, and
+everything after accessctl's own flags is `bao`'s, unchanged
+([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)).
+
+**The separation rule:** accessctl's own flags go BEFORE the bao
+subcommand; `bao`'s own flags — including its `-namespace` — go AFTER
+it, exactly where `bao` has always accepted them
+(`bao kv get -namespace=dev secret/foo`). Parsing stops at the first
+argument that is not one of accessctl's declared flags, which for this
+command is the subcommand itself (`kv`, `ssh`, `write`, `login`, ...) —
+an ordinary word, never a flag.
+
+Accessctl's own flags: `--address`, `--ca-cert`, `--mount`
+(`jwt-roster`), `--login-role` (`roster`), `--audience` (`openbao`),
+`--issuer`, `--client` — the same defaults and the same resolution order
+(flag, then `BAO_*`, then `VAULT_*`) as `credential`'s, above. `--forget`
+revokes the cached token and removes it, needing no bao command at all.
+
+**The login happens in the SAME namespace `bao` is about to operate
+in** — read out of `bao`'s own `-namespace`/`--namespace` (wherever it
+appears among the arguments), then `BAO_NAMESPACE`, then
+`VAULT_NAMESPACE`, then root — because a token minted by logging in to
+one OpenBAO namespace is only valid there and in its children, never in
+a sibling.
+
+**The token is cached**, one file per OpenBAO address, namespace and
+subject, under `<config>/bao/<hash>.json`, `0600` — never
+`~/.vault-token` and never bao's own token helper file. Offered until a
+margin before its own expiry (the same margin the session's own access
+token uses, `commands.go`'s `sessionTokenMargin`); a login whose answer
+carries no lease at all is used for that one command and never cached,
+the same rule the kubectl and AWS caches already keep for a credential
+with no visible expiry.
+
+**`bao` is run with `BAO_ADDR`, `BAO_TOKEN` and (when named) `BAO_CACERT`
+set in the child's environment alone** — everything else the caller's
+shell already has, `BAO_NAMESPACE` included, flows through untouched.
+Wherever the platform allows it (every platform but Windows), the
+process image is replaced (`syscall.Exec`) rather than run as a child, so
+an interactive `bao ssh -mode=ca` or `bao login` gets the terminal
+exactly as if it had been run directly; on Windows a child process
+propagates the exit code the same way.
+
+### `-format=env` on `kv get`
+
+The one exception to "unchanged": `bao kv get ... -format=env` (also
+`--format=env`, `-format env`, or `BAO_FORMAT=env`) does not exist
+upstream yet. Until it does, accessctl runs `bao` once in JSON and
+renders the dotenv itself:
+
+- a string with none of `'`, CR or LF is `KEY='value'`;
+- any other string is `KEY="value"`, with backslash, `"`, `$`, CR and LF
+  escaped;
+- a number or boolean is written as its own JSON text;
+- `null` is `KEY=''` — an explicit empty value, not a dropped line;
+- a nested object or array is refused, naming the field: there is no
+  dotenv syntax for either, and flattening one would invent a shape the
+  secret does not have;
+- a key outside `[A-Za-z_][A-Za-z0-9_]*` is refused, naming the key: it
+  is never renamed to make it fit;
+- `-field` combined with `-format=env` is a usage error;
+- bao's own errors and exit code pass through unchanged.
+
+Detected once, cheaply, against the installed `bao`'s own `-format`
+help: the day it lists `env` on its own, this stops intercepting and the
+call is bao's own answer, unchanged.
+
+### What each failure exits with
+
+| Code | When |
+|---|---|
+| `2` | a flag accessctl does not recognise before the subcommand; no OpenBAO address; a CA bundle that cannot be read or holds no certificate; an empty `--audience`; no bao command and no `--forget`; `-field` combined with `-format=env` |
+| `3` | not signed in (on a laptop): run `accessctl login` |
+| `4` | the issuer refused the exchange for `openbao`, or OpenBAO refused the login |
+| `5` | no `bao` on `PATH`; the issuer or OpenBAO could not be reached |
+| bao's own | whatever `bao` itself exits with, once it is run — accessctl adds nothing on top and prints nothing of its own |
 
 ## Installing it
 

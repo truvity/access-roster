@@ -5,7 +5,13 @@ speaks the same API — trusts it on a JWT auth mount and mints
 **short-lived certificates** for things that speak neither OpenID nor a
 cloud's own protocol: an SSH server, a database, a service that wants
 mutual TLS. `accessctl credential` is the courier
-([reference](../reference/accessctl.md#credential-certificates-openbao-mints)).
+([reference](../reference/accessctl.md#credential-certificates-openbao-mints)),
+and for everything else OpenBAO can do — reading a KV path, `bao ssh
+-mode=ca`'s interactive session, an engine this page does not mention —
+`accessctl bao <args…>` authenticates and runs the real `bao` binary
+unchanged
+([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md),
+[reference](../reference/accessctl.md#bao-authenticate-then-run-bao-unchanged)).
 
 The contract between the two sides — the doors, the claims, the two
 clients, the credential paths and every failure mode — is
@@ -151,7 +157,34 @@ rather than the whole prefix.
 ## Sign in to OpenBAO
 
 The console is not where a person reads the manager. To reach one, use the
-manager's own OIDC login or the issuer as a broker: the manager trusts the
-issuer, a person signs in to the issuer, and the issuer vouches for them.
-The console no longer reads a store's policies or groups (removed in v1.30.0,
-see [decisions/0002-mission-boundary-tokens-and-memberships.md](../decisions/0002-mission-boundary-tokens-and-memberships.md)).
+manager's own OIDC login, `accessctl bao` (below), or the issuer as a broker
+directly: the manager trusts the issuer, a person signs in to the issuer,
+and the issuer vouches for them. The console no longer reads a store's
+policies or groups (removed in v1.30.0, see
+[decisions/0002-mission-boundary-tokens-and-memberships.md](../decisions/0002-mission-boundary-tokens-and-memberships.md)).
+
+## `accessctl bao`: the same login, then `bao` itself
+
+`accessctl credential`, above, is a courier for the three kinds OpenBAO
+signs. Everything else OpenBAO can do — `bao kv get`, `bao ssh -mode=ca`
+for an interactive session, an engine this repository has never heard
+of — runs through `accessctl bao <args…>` instead: the same exchange and
+JWT-mount login as `credential`'s, then the real `bao` binary, unchanged,
+with the login handed to it as `BAO_TOKEN`
+([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)).
+
+```sh
+accessctl bao --address https://openbao.example:8200 kv get -namespace=staging secret/app
+accessctl bao --address https://openbao.example:8200 kv get -namespace=staging -format=env secret/app > .env
+accessctl bao --address https://openbao.example:8200 ssh -mode=ca -role=user ci@build-worker.example
+accessctl bao --address https://openbao.example:8200 write ssh/sign/user public_key=@key.pub -field=signed_key > key-cert.pub
+```
+
+accessctl's own flags (`--address`, `--ca-cert`, `--mount`,
+`--login-role`, `--audience`, `--issuer`, `--client`, `--forget`) go
+BEFORE the bao subcommand; `bao`'s own — including `-namespace`, which
+decides which namespace the login itself happens in — go AFTER it,
+exactly where `bao` has always accepted them. The token is cached under
+accessctl's own config directory, never `~/.vault-token` and never bao's
+own token helper file; `accessctl bao --forget` revokes and clears it.
+Full reference: [reference/accessctl.md#bao-authenticate-then-run-bao-unchanged](../reference/accessctl.md#bao-authenticate-then-run-bao-unchanged).

@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // The OpenBAO API this speaks, which is a handful of calls: log in,
@@ -128,6 +129,33 @@ func (b *openbao) login(ctx context.Context, mount, role, jwt string) error {
 	return nil
 }
 
+// loginExpiry is `login`, plus how long the token is good for -- the one
+// thing `accessctl credential` never needed (it revokes the login before
+// the command exits) and `accessctl bao`'s own cache does, to decide when
+// to log in again rather than reuse what is on disk.
+//
+// ok is false when the answer carries no lease at all: a role with no
+// token_ttl configured, or an installation that leaves it at OpenBAO's
+// own default of "not renewable, no expiry accessctl can see". The token
+// is still handed back and good for this one command either way; ok only
+// says whether accessctl's OWN cache may keep it, the same rule
+// kube_cache.go and aws_cache.go already apply to a credential with no
+// expiry.
+func (b *openbao) loginExpiry(ctx context.Context, mount, role, jwt string) (expires time.Time, ok bool, err error) {
+	data, err := b.call(ctx, http.MethodPost, "auth/"+mount+"/login", nil, map[string]any{"role": role, "jwt": jwt})
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("log in on %s: %w", mount, err)
+	}
+	if data.Auth == nil || strings.TrimSpace(data.Auth.ClientToken) == "" {
+		return time.Time{}, false, fmt.Errorf("%w: the login on %s returned no token", errUnreachable, mount)
+	}
+	b.token = data.Auth.ClientToken
+	if data.Auth.LeaseDuration <= 0 {
+		return time.Time{}, false, nil
+	}
+	return time.Now().Add(time.Duration(data.Auth.LeaseDuration) * time.Second), true, nil
+}
+
 // write is the one call that mints: `ssh/sign/<role>` or
 // `pki/sign/<role>`, and nothing else in the whole command.
 func (b *openbao) write(ctx context.Context, path string, body map[string]any) (map[string]any, error) {
@@ -161,7 +189,8 @@ func (b *openbao) revokeSelf(ctx context.Context) {
 type answer struct {
 	Data map[string]any `json:"data"`
 	Auth *struct {
-		ClientToken string `json:"client_token"`
+		ClientToken   string `json:"client_token"`
+		LeaseDuration int64  `json:"lease_duration"`
 	} `json:"auth"`
 	Errors []string `json:"errors"`
 }

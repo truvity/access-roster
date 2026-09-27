@@ -29,6 +29,44 @@
   what it reads this way, rather than through `requires`, was invisible
   to this warning until now.
 
+- **Added: `accessctl bao <args…>` authenticates to OpenBAO and runs the
+  real `bao` binary, unchanged.** `docs/decisions/0013-openbao-access-through-the-bao-cli.md`:
+  accessctl stops reimplementing OpenBAO's own features one
+  `accessctl credential` kind at a time — the sign-in (or a job's own
+  identity) is exchanged for `--audience openbao` and logged in on the
+  JWT mount, in the SAME namespace the caller's own `bao` command is
+  about to operate in (read from its `-namespace`/`--namespace` flag,
+  then `BAO_NAMESPACE`, then `VAULT_NAMESPACE`), and the resulting token
+  is handed to `bao` as `BAO_TOKEN` in the child process's environment
+  alone — never `~/.vault-token`, never bao's own token helper file. The
+  login is cached, one file per OpenBAO address, namespace and subject,
+  under accessctl's own config directory; `accessctl bao --forget`
+  revokes it and removes the cache entry. accessctl's own flags
+  (`--address`, `--ca-cert`, `--issuer`, `--client`, `--audience`,
+  `--mount`, `--login-role`, `--forget`) go BEFORE the bao subcommand;
+  bao's own flags, including `-namespace`, go after it, exactly where
+  bao has always accepted them. See
+  [docs/reference/accessctl.md#bao-authenticate-then-run-bao-unchanged](docs/reference/accessctl.md#bao-authenticate-then-run-bao-unchanged)
+  and [docs/connect/openbao.md](docs/connect/openbao.md).
+
+- **Added: `accessctl bao kv get ... -format=env` renders a KV secret as
+  dotenv lines**, a stop-gap for the one thing `bao kv get` cannot do yet
+  upstream (proposed there under the same rule). A string with none of
+  `'`, CR or LF is written `KEY='value'`; any other string is
+  `KEY="value"`, with backslash, `"`, `$`, CR and LF escaped; a number or
+  boolean is written as its own JSON text; `null` is `KEY=''`; a nested
+  object or array, or a key outside `[A-Za-z_][A-Za-z0-9_]*`, is refused
+  by name rather than silently mangled or renamed. `-field` combined with
+  `-format=env` is a usage error. Detected once, cheaply, against the
+  installed `bao`'s own `-format` help: the day it lists `env` on its
+  own, accessctl gets out of the way and the call is bao's own answer,
+  unchanged.
+
+- **Changed: the `accessctl secrets` refusal now points at `accessctl bao
+  kv get`** instead of a bare `bao login` / `bao kv get` recipe, since
+  accessctl now authenticates that path itself.
+  `docs/decisions/0002-mission-boundary-tokens-and-memberships.md`.
+
 ## v1.33.0
 
 - **Added: a declared role may restrict itself to some of its thing's

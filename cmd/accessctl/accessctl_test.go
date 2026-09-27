@@ -50,7 +50,7 @@ func TestSecretsCommandRefusesWithMessage(t *testing.T) {
 	if !strings.Contains(errMsg, "removed") || !strings.Contains(errMsg, "v1.30.0") {
 		t.Errorf("error message = %q, want it to say removed and version", errMsg)
 	}
-	if !strings.Contains(errMsg, "bao login") || !strings.Contains(errMsg, "bao kv get") {
+	if !strings.Contains(errMsg, "accessctl bao kv get") || !strings.Contains(errMsg, "-format=env") {
 		t.Errorf("error message = %q, want it to suggest the replacement", errMsg)
 	}
 	if !strings.Contains(errMsg, "0002-mission-boundary") {

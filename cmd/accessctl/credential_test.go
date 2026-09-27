@@ -709,6 +709,11 @@ type fakeOpenBAO struct {
 	revokeStatus int
 	// swapKey signs a key of the fake's own instead of the CSR's.
 	swapKey bool
+	// leaseSeconds, when set, is returned as the login's lease_duration
+	// -- omitted by default, exactly as before this field existed, so
+	// every test that does not set it keeps seeing a login with no
+	// lease at all.
+	leaseSeconds int
 
 	ca     ssh.Signer
 	pkiKey ed25519.PrivateKey
@@ -796,7 +801,11 @@ func (f *fakeOpenBAO) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch {
 	case strings.HasSuffix(path, "/login"):
-		_ = json.NewEncoder(w).Encode(map[string]any{"auth": map[string]any{"client_token": "the-bao-token"}})
+		auth := map[string]any{"client_token": "the-bao-token"}
+		if f.leaseSeconds > 0 {
+			auth["lease_duration"] = f.leaseSeconds
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"auth": auth})
 	case path == "auth/token/revoke-self":
 		if f.revokeStatus != 0 {
 			w.WriteHeader(f.revokeStatus)
