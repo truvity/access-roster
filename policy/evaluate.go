@@ -240,7 +240,7 @@ func (p Policy) Evaluate(in Input) Result {
 			if !ok {
 				continue
 			}
-			for _, impliedRole := range spec.Roles[role] {
+			for _, impliedRole := range spec.Roles[role].Implies {
 				implied := scope + Separator + thing + Separator + impliedRole
 				held[implied] = append(held[implied], Held{Group: implied, Implies: g})
 				if !reached[implied] {
