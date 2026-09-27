@@ -1,6 +1,7 @@
 # accessctl
 
 ```sh
+accessctl version                            # accessctl 1.35.0 (also --version, -version)
 accessctl login   --issuer https://access.example
 accessctl whoami                             # who you are, and what it opens
 accessctl setup                              # both of the next two
@@ -35,6 +36,14 @@ browser flow served. The client must be declared in the policy as
 that key is what lets the exchange take a sign-in's access token as a
 proof, and without it every command after `login` is refused (exit 4).
 The default id is `accessctl`.
+
+`version` (also `--version` and `-version`, as the first argument) prints
+this build's own version — `accessctl <version>`, e.g. `accessctl
+1.35.0`, or `accessctl dev` for one built without the release workflow's
+ldflags — plus the commit and build date when the release stamps those
+too. `--json` prints `{"version", "commit", "date"}`, including only
+whichever of those this build actually carries. It makes no network call
+and needs no config, session or `HOME`.
 
 Every command that names an audience takes `--audience`, `--issuer` and
 `--client`, defaulting to what `login` wrote; `aws` also takes `--role`
