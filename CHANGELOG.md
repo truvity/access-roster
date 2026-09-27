@@ -1,4 +1,4 @@
-## Unreleased
+## v1.34.0
 
 - **Fixed: the "internal groups are declared but nothing consumes them"
   warning no longer names a group a GitHub App catalogue's grant
@@ -87,7 +87,7 @@
   [docs/reference/accessctl.md#pg--psql-a-postgres-client-certificate-then-a-command](docs/reference/accessctl.md#pg--psql-a-postgres-client-certificate-then-a-command)
   and [docs/connect/postgresql.md](docs/connect/postgresql.md).
 
-- **Removed (breaking, within 1.x): `accessctl credential ssh|db|client`.**
+- **Breaking: `accessctl credential ssh|db|client` is removed.**
   `docs/decisions/0013-openbao-access-through-the-bao-cli.md`. Each now
   refuses, naming its replacement: `ssh` → `accessctl bao ssh -mode=ca`
   for an interactive session, or `accessctl bao write -field=signed_key
