@@ -1,3 +1,26 @@
+## Unreleased
+
+- **Added: `accessctl bao`, `pg` and `psql` gain `--login-ns` (and
+  `$ACCESSCTL_BAO_LOGIN_NAMESPACE`), so an installation that keeps its
+  logins at one parent namespace while data lives in per-project
+  children can log in at the parent while still operating on the child.**
+
+  A token minted by logging in to an OpenBAO namespace is valid there
+  and in its children, never in a sibling — so `-ns=<env>/<project>`
+  today has no way to log in anywhere but `<env>/<project>` itself, which
+  fails wherever the login mount only exists at `<env>`. `--login-ns`
+  (default: the target namespace, unchanged when neither it nor the
+  environment variable is set) names where the login happens instead;
+  the target must be `--login-ns` itself or a descendant of it (a
+  path-segment prefix, not a string prefix: `dev` is not a parent of
+  `devel`), refused as a usage error before any exchange otherwise. `bao`
+  itself, and the PKI `sign` call `pg`/`psql` make, still run against
+  their own target namespace unchanged. The login token cache is keyed
+  by the login namespace rather than the target, so two targets sharing
+  a parent login (`bao -ns=<env>/a`, `bao -ns=<env>/b`) reuse the same
+  login; `--forget` clears the entry at that login namespace. See
+  [docs/connect/openbao.md#logins-at-a-parent-namespace](docs/connect/openbao.md#logins-at-a-parent-namespace).
+
 ## v1.34.0
 
 - **Fixed: the "internal groups are declared but nothing consumes them"

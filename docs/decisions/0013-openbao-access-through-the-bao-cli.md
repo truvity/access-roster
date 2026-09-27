@@ -43,8 +43,18 @@ Everything after `accessctl bao` is OpenBAO's own syntax: its
 subcommands, its flags, its bugs and its fixes stay upstream, and a
 release of this tool never has to catch up with a release of that one.
 
+**Amended:** the login targets the namespace the caller is about to
+operate in only by *default*. `--login-ns` (or
+`$ACCESSCTL_BAO_LOGIN_NAMESPACE`) lets it happen at a PARENT of that
+namespace instead, for an installation that keeps its logins at one
+namespace while data lives in per-project children — see
+[docs/connect/openbao.md#logins-at-a-parent-namespace](../connect/openbao.md#logins-at-a-parent-namespace).
+The target namespace must still be the login namespace or a descendant
+of it, checked before any exchange, for the same reason the paragraph
+below gives; only where the login itself may happen has moved.
+
 The login targets the **namespace the caller is about to operate in**,
-never a fixed one. OpenBAO's own contract
+by default. OpenBAO's own contract
 ([truvity/openbao's `docs/integrations/access-roster.md`](https://github.com/truvity/openbao/blob/master/docs/integrations/access-roster.md),
 "Root and every environment namespace get the same two auth mounts... the
 namespace a person logs in to is the environment's name") gives every
@@ -59,18 +69,20 @@ two it was, the same as `bao` itself applies. **`bao`'s own flags,
 including `-namespace`/`-ns`, go *after* the subcommand**
 (`bao kv get -ns=dev secret/foo`, which `bao` accepts as readily as
 before it) — `accessctl`'s own flags (`--address`, `--ca-cert`,
-`--issuer`, `--client`, `--audience`, `--mount`, `--login-role`) go
-*before* the subcommand, and the first argument that is not one of
+`--issuer`, `--client`, `--audience`, `--mount`, `--login-role`,
+`--login-ns`) go *before* the subcommand, and the first argument that is not one of
 those ends accessctl's own parsing. That is the whole separation rule:
 nothing here parses `bao`'s syntax beyond finding that one flag under
 its two spellings.
 
 **The token is cached**, under this tool's own config directory, `0600`,
-one file per OpenBAO address, namespace and subject — never
+one file per OpenBAO address, LOGIN namespace and subject — the login
+namespace rather than the target, so two targets under the same parent
+login (`--login-ns`) share the one cache entry — never
 `~/.vault-token` and never `bao`'s own token-helper file, so a login
 minted for one exchanged identity is never picked up by `bao`'s own
 tooling running as somebody else. `accessctl bao --forget` revokes it and
-removes the cache entry.
+removes the cache entry, at that same login namespace.
 
 **`-format=env` on `kv get` is the one exception**, and it is a stop-gap:
 `accessctl bao kv get ... -format=env` runs the real `bao` in JSON, and

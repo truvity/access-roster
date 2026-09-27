@@ -120,6 +120,7 @@ func signedInHome(t *testing.T, issuer string) string {
 	t.Setenv(envGitHubTokenGrant, "")
 	t.Setenv(envOpenBAONamespace, "")
 	t.Setenv(envVaultNamespace, "")
+	t.Setenv(envBaoLoginNamespace, "")
 	t.Setenv(envOpenBAOCACert, "")
 	t.Setenv(envVaultCACert, "")
 	t.Setenv("SSH_AUTH_SOCK", "")

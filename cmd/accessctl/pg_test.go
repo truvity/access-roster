@@ -93,6 +93,80 @@ func TestPsqlMintsACertificateAndRunsPsql(t *testing.T) {
 	noSecretsOnDisk(t, home, "for-openbao", "the-bao-token")
 }
 
+// --login-ns lets `pg`/`psql` log in at a PARENT namespace while the
+// certificate is still SIGNED in the target namespace (-ns) -- the token
+// minted at the parent is valid there and in its children, and the sign
+// call is what actually reaches the PKI mount.
+func TestPsqlSignsInTargetNamespaceWithAParentLoginToken(t *testing.T) {
+	newFakeClient(t, "psql")
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	if _, err := captureStdoutErr(t, func() error {
+		return run([]string{"psql", "--issuer", issuer, "--address", bao.URL, "-ns", "devel/team",
+			"--login-ns", "devel", "--", "-c", "select 1"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if bao.namespaces["auth/jwt-roster/login"] != "devel" {
+		t.Errorf("logged in to %q, want the parent devel", bao.namespaces["auth/jwt-roster/login"])
+	}
+	if bao.namespaces["pki/sign/db-client"] != "devel/team" {
+		t.Errorf("signed in %q, want the TARGET namespace devel/team, unaffected by --login-ns", bao.namespaces["pki/sign/db-client"])
+	}
+	if bao.tokens["pki/sign/db-client"] != "the-bao-token" {
+		t.Errorf("the sign call presented token %q, want the one minted at the parent login", bao.tokens["pki/sign/db-client"])
+	}
+}
+
+// The login is cached by the LOGIN namespace and shared with a sibling
+// target under the same parent; the certificate itself is still cached
+// by -ns (the TARGET), so two children mint two certificates from one
+// shared login.
+func TestPgLoginNsSharesTheLoginCacheButSignsPerTarget(t *testing.T) {
+	newFakeClient(t, "backup-tool")
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	bao.leaseSeconds = 900
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	for _, target := range []string{"devel/a", "devel/b"} {
+		target := target
+		if _, err := captureStdoutErr(t, func() error {
+			return run([]string{"pg", "--issuer", issuer, "--address", bao.URL, "-ns", target,
+				"--login-ns", "devel", "--", "backup-tool"})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := count(bao.calls, "auth/jwt-roster/login"); got != 1 {
+		t.Errorf("logged in %d times for two children of the same parent login, want exactly one", got)
+	}
+	if got := count(bao.calls, "pki/sign/db-client"); got != 2 {
+		t.Errorf("signed %d times, want one PER TARGET namespace: the certificate cache is keyed by -ns, not by the login", got)
+	}
+}
+
+// A target namespace that --login-ns does not cover is refused before
+// any exchange -- the same refusal `accessctl bao` gives, shared through
+// checkNamespaceLogin.
+func TestPgLoginNsRefusesANonDescendantTarget(t *testing.T) {
+	t.Setenv(envOpenBAOAddress, "https://openbao.example")
+
+	err := pg([]string{"-ns", "devel", "--login-ns", "dev", "--", "psql"})
+	if codeFor(err) != exitUsage {
+		t.Fatalf("err = %v, want a usage error before any exchange (dev is not a path-parent of devel)", err)
+	}
+	if !strings.Contains(err.Error(), "dev") || !strings.Contains(err.Error(), "devel") {
+		t.Errorf("err = %v, want it to name both namespaces", err)
+	}
+}
+
 // `pg -- <command>` runs anything, not only psql, with the same
 // environment.
 func TestPgRunsAnArbitraryCommand(t *testing.T) {

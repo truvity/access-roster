@@ -84,8 +84,19 @@ type baoRequest struct {
 	loginRole string
 
 	// namespace is read out of `rest` (bao's own -namespace flag) or the
-	// environment, and is where the LOGIN happens -- see intendedNamespace.
+	// environment -- see intendedNamespace. It is where the real `bao`
+	// command is about to OPERATE, which is not necessarily where the
+	// login happens any more -- see loginNamespace.
 	namespace string
+
+	// loginNamespace is where the LOGIN happens: --login-ns, else
+	// $ACCESSCTL_BAO_LOGIN_NAMESPACE, else namespace itself (today's
+	// behaviour, unchanged when neither is set) -- see
+	// resolveLoginNamespace. It is always namespace itself or an ancestor
+	// of it (checkNamespaceLogin refuses anything else before any
+	// exchange is made), because a token minted at loginNamespace is only
+	// valid there and in its children.
+	loginNamespace string
 
 	forget bool
 }
@@ -116,6 +127,10 @@ func parseBaoFlags(args []string) (baoRequest, []string, error) {
 			"(default: $"+envOpenBAOCACert+", then $"+envVaultCACert+")")
 	flags.StringVar(&request.mount, "mount", rosterMount, "the JWT auth mount to log in on")
 	flags.StringVar(&request.loginRole, "login-role", rosterLoginRole, "the role on that mount")
+	var loginNS string
+	flags.StringVar(&loginNS, "login-ns", "",
+		"the OpenBAO namespace to log in at, when it differs from the namespace bao is about to operate "+
+			"in -- must be that namespace or a parent of it (default: bao's own namespace; then $"+envBaoLoginNamespace+")")
 	flags.BoolVar(&request.forget, "forget", false,
 		"revoke the cached OpenBAO token and forget it, then exit (no bao command needed)")
 
@@ -150,6 +165,19 @@ func parseBaoFlags(args []string) (baoRequest, []string, error) {
 	}
 
 	request.namespace = intendedNamespace(rest)
+	request.loginNamespace = resolveLoginNamespace(loginNS, request.namespace)
+	// --forget runs no bao command at all, so `rest` (and therefore
+	// request.namespace, which is read out of it) names no real target --
+	// intendedNamespace's default of root is not "about to operate at
+	// root", just "nothing to read a target from". Validating it against
+	// --login-ns here would refuse a perfectly good
+	// `--login-ns=devel --forget`, which only ever clears devel's own
+	// cache entry and touches no target namespace at all.
+	if !request.forget {
+		if err := checkNamespaceLogin(request.loginNamespace, request.namespace); err != nil {
+			return baoRequest{}, nil, err
+		}
+	}
 	return request, rest, nil
 }
 
@@ -164,13 +192,16 @@ func parseBaoFlags(args []string) (baoRequest, []string, error) {
 // regardless of which of the two it was (readFlagValue's own rule).
 //
 // This is the ONE piece of bao's own syntax this file reads, and it
-// reads it rather than guessing because the login has to happen in the
-// SAME namespace: a token minted by logging in to one OpenBAO namespace
-// is only valid there and in its children, never in a sibling
-// (docs/decisions/0013-openbao-access-through-the-bao-cli.md). Missing
-// the `-ns` shortcut here would log in to the wrong namespace silently
-// -- bao then refuses every call with a permission-denied that reads as
-// an outage, not as a namespace mismatch.
+// reads it rather than guessing because the login has to happen HERE, or
+// somewhere that covers it: a token minted by logging in to one OpenBAO
+// namespace is only valid there and in its children, never in a sibling
+// (docs/decisions/0013-openbao-access-through-the-bao-cli.md) -- by
+// default the login happens in exactly this namespace (--login-ns and
+// $ACCESSCTL_BAO_LOGIN_NAMESPACE let it happen at a parent instead, see
+// login_namespace.go). Missing the `-ns` shortcut here would log in to
+// the wrong namespace silently -- bao then refuses every call with a
+// permission-denied that reads as an outage, not as a namespace
+// mismatch.
 func intendedNamespace(args []string) string {
 	if value, ok := readFlagValue(args, "namespace", "ns"); ok {
 		return value
@@ -179,9 +210,13 @@ func intendedNamespace(args []string) string {
 }
 
 // baoToken returns a usable OpenBAO token for `accessctl bao` itself --
-// openBAOLogin, below, applied to this request's own fields.
+// openBAOLogin, below, applied to this request's own fields. The LOGIN
+// happens at request.loginNamespace, which defaults to request.namespace
+// (the namespace bao is about to operate in) and is never anything the
+// caller did not ask for: checkNamespaceLogin already refused, during
+// parsing, any request.namespace loginNamespace would not cover.
 func baoToken(ctx context.Context, cfg Config, request baoRequest) (cachedBaoToken, error) {
-	return openBAOLogin(ctx, cfg, request.address, request.namespace, request.mount, request.loginRole, request.audience, request.roots)
+	return openBAOLogin(ctx, cfg, request.address, request.loginNamespace, request.mount, request.loginRole, request.audience, request.roots)
 }
 
 // openBAOLogin is the authentication `accessctl bao` and `accessctl
@@ -278,13 +313,13 @@ func forgetBaoToken(request baoRequest) error {
 	if err != nil {
 		return err
 	}
-	path, err := baoCachePath(request.address, request.namespace, request.mount, request.loginRole, baoIdentity(cfg))
+	path, err := baoCachePath(request.address, request.loginNamespace, request.mount, request.loginRole, baoIdentity(cfg))
 	if err != nil {
 		return err
 	}
 
 	if cached, ok := readBaoCacheFile(path); ok {
-		client := &openbao{Address: request.address, Namespace: request.namespace, Client: retryingClientTrusting(request.roots)}
+		client := &openbao{Address: request.address, Namespace: request.loginNamespace, Client: retryingClientTrusting(request.roots)}
 		client.token = cached.Token
 		client.revokeSelf(context.Background())
 	}

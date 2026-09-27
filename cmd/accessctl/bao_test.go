@@ -338,6 +338,175 @@ func TestBaoWithNoBaoOnPathSaysSo(t *testing.T) {
 // behaviour testable without a subprocess.
 func bao2(args []string) error { return bao(args) }
 
+// With neither --login-ns nor $ACCESSCTL_BAO_LOGIN_NAMESPACE set, the
+// login still happens in the target namespace itself -- the behaviour
+// this feature must not change for a caller who never heard of it.
+func TestBaoLoginNamespaceDefaultsToTheTargetNamespace(t *testing.T) {
+	newFakeBao(t)
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	_ = captureStdout(t, func() error {
+		return run([]string{"bao", "--issuer", issuer, "--address", bao.URL, "status", "-ns=devel/team"})
+	})
+
+	if bao.namespaces["auth/jwt-roster/login"] != "devel/team" {
+		t.Errorf("logged in to %q, want the target namespace itself: neither --login-ns nor $%s was set",
+			bao.namespaces["auth/jwt-roster/login"], envBaoLoginNamespace)
+	}
+}
+
+// --login-ns logs in at a PARENT namespace while the real `bao` command
+// still runs, unchanged, against the namespace it named itself: an
+// installation that keeps its logins at one parent while data lives in a
+// child (docs/connect/openbao.md#logins-at-a-parent-namespace).
+func TestBaoLoginNsLogsInAtTheParentAndRunsBaoAtTheTarget(t *testing.T) {
+	newFakeBao(t)
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	written := captureStdout(t, func() error {
+		return run([]string{"bao", "--issuer", issuer, "--address", bao.URL, "--login-ns", "devel",
+			"status", "-ns=devel/team"})
+	})
+
+	if bao.namespaces["auth/jwt-roster/login"] != "devel" {
+		t.Errorf("logged in to %q, want the parent namespace devel", bao.namespaces["auth/jwt-roster/login"])
+	}
+	if !strings.Contains(written, "ARGS status -ns=devel/team") {
+		t.Errorf("stdout = %q, want bao run against its OWN target namespace, unchanged", written)
+	}
+}
+
+// $ACCESSCTL_BAO_LOGIN_NAMESPACE is read the same way --login-ns is,
+// when the flag is absent.
+func TestBaoLoginNamespaceEnvVarIsReadWhenNoFlag(t *testing.T) {
+	newFakeBao(t)
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+	t.Setenv(envBaoLoginNamespace, "devel")
+
+	_ = captureStdout(t, func() error {
+		return run([]string{"bao", "--issuer", issuer, "--address", bao.URL, "status", "-ns=devel/team"})
+	})
+
+	if bao.namespaces["auth/jwt-roster/login"] != "devel" {
+		t.Errorf("logged in to %q, want $%s honoured (devel)", bao.namespaces["auth/jwt-roster/login"], envBaoLoginNamespace)
+	}
+}
+
+// --login-ns wins over $ACCESSCTL_BAO_LOGIN_NAMESPACE when both are set
+// -- a flag beating the environment, the same precedence every other
+// setting in this tool keeps. Proven by making the env var's OWN value
+// one that would be REFUSED for this target (staging does not cover
+// devel/team): if the env var had won, this run would fail.
+func TestBaoLoginNsFlagBeatsEnvVar(t *testing.T) {
+	newFakeBao(t)
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+	t.Setenv(envBaoLoginNamespace, "staging")
+
+	err := run([]string{"bao", "--issuer", issuer, "--address", bao.URL, "--login-ns", "devel",
+		"status", "-ns=devel/team"})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if bao.namespaces["auth/jwt-roster/login"] != "devel" {
+		t.Errorf("logged in to %q, want the FLAG's devel, not the env var's staging", bao.namespaces["auth/jwt-roster/login"])
+	}
+}
+
+// A target namespace that is neither the login namespace nor a
+// descendant of it is refused before any exchange is made -- including
+// the trap where "dev" reads as a plain string prefix of "devel" but is
+// not its parent, because OpenBAO namespaces nest on path segments, not
+// on shared characters.
+func TestBaoLoginNsRefusesANonDescendantTarget(t *testing.T) {
+	for name, tc := range map[string]struct{ loginNS, target string }{
+		"sibling":                          {"team-a", "team-b"},
+		"string prefix, not a path parent": {"dev", "devel"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(envOpenBAOAddress, "https://openbao.example")
+
+			err := bao2([]string{"--login-ns", tc.loginNS, "status", "-ns=" + tc.target})
+			if codeFor(err) != exitUsage {
+				t.Fatalf("err = %v, want a usage error before any exchange", err)
+			}
+			if !strings.Contains(err.Error(), tc.loginNS) || !strings.Contains(err.Error(), tc.target) {
+				t.Errorf("err = %v, want it to name both the login namespace and the target", err)
+			}
+		})
+	}
+}
+
+// Two children of the same parent login share one login: `bao -ns=a`'s
+// and `bao -ns=b`'s tokens are, quite literally, the same token, when
+// both resolve their login to the shared parent.
+func TestBaoLoginNsSharesTheLoginCacheAcrossTargetNamespaces(t *testing.T) {
+	newFakeBao(t)
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	bao.leaseSeconds = 900
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	for _, target := range []string{"devel/a", "devel/b"} {
+		_ = captureStdout(t, func() error {
+			return run([]string{"bao", "--issuer", issuer, "--address", bao.URL, "--login-ns", "devel",
+				"status", "-ns=" + target})
+		})
+	}
+
+	if got := count(bao.calls, "auth/jwt-roster/login"); got != 1 {
+		t.Errorf("logged in %d times for two children of the same parent login, want exactly one", got)
+	}
+}
+
+// --forget, given the same --login-ns, revokes and clears the cache
+// entry AT THE LOGIN NAMESPACE -- the same key the login itself was
+// cached under, not the target's.
+func TestBaoForgetUsesTheLoginNamespace(t *testing.T) {
+	newFakeBao(t)
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	bao.leaseSeconds = 900
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	_ = captureStdout(t, func() error {
+		return run([]string{"bao", "--issuer", issuer, "--address", bao.URL, "--login-ns", "devel",
+			"status", "-ns=devel/team"})
+	})
+
+	cfg, err := loadConfig(issuer, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := baoCachePath(bao.URL, "devel", rosterMount, rosterLoginRole, baoIdentity(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := readBaoCache(path); !ok {
+		t.Fatal("nothing cached at the login namespace to begin with")
+	}
+
+	_ = captureStdout(t, func() error {
+		return run([]string{"bao", "--issuer", issuer, "--address", bao.URL, "--login-ns", "devel", "--forget"})
+	})
+	if _, ok := readBaoCache(path); ok {
+		t.Error("the cache entry at the login namespace still reads back after --forget")
+	}
+}
+
 // --ca-cert (or BAO_CACERT) is trusted for the OpenBAO connection AND
 // handed to the child as BAO_CACERT, so bao's own connection trusts the
 // same private root this command's login just did.
