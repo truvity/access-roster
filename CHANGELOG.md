@@ -1,3 +1,23 @@
+## v1.33.0
+
+- **Added: a declared role may restrict itself to some of its thing's
+  scopes.** `docs/decisions/0012-per-role-scopes-in-the-vocabulary.md`,
+  extending 0010's vocabulary: a role's value in `things.<t>.roles` may
+  now be an object (`user: { implies: [...], scopes: [...] }`) alongside
+  the plain implies-list form it has always accepted, restricting that
+  role to a non-empty subset of its thing's own declared scopes — `ssh`'s
+  `user` role valid on `devel` alone even though `ssh` itself also
+  declares `kernel`, `stage` and `prod`. `kernel:ssh:user` is refused,
+  distinctly from a scope the thing itself does not have; a mapping
+  wildcard skips a combination the role disallows the same way it already
+  skips a thing without the role at all (`*:ssh:user` reaches
+  `devel:ssh:user` alone); and an `implies` edge whose target role does
+  not cover every scope its source does is refused at load rather than
+  silently narrowed. No policy that declares no per-role `scopes` changes
+  shape or behaviour. See
+  [docs/reference/policy.md#per-role-scopes](docs/reference/policy.md#per-role-scopes)
+  and [docs/taxonomy.md#per-role-scopes](docs/taxonomy.md#per-role-scopes).
+
 ## v1.32.1
 
 - **Fixed: per-audience `groups` scoping now reads a self-described

@@ -116,12 +116,17 @@ vocabulary:
     grafana:
       scopes: [all]
       roles: { viewer: [], editor: [viewer], admin: [editor] }
+    ssh:
+      scopes: [kernel, devel, stage, prod]
+      roles:
+        admin: []                    # list form: valid on every scope ssh declares
+        user: { scopes: [devel] }    # object form: valid on devel alone
 ```
 
 | Table | Key | Holds |
 |---|---|---|
 | `vocabulary.scopes` | scope name | `sensitive` (optional, default false) |
-| `vocabulary.things` | thing name | `scopes` (the declared scopes this thing exists in) and `roles` (role name to the roles it directly implies) |
+| `vocabulary.things` | thing name | `scopes` (the declared scopes this thing exists in) and `roles` (role name to `policy.RoleSpec` — see [Per-role scopes](#per-role-scopes)) |
 
 **Opt-in, and strict once opted into.** No `vocabulary` table means
 nothing here applies — today's behaviour, unchanged, and every existing
@@ -150,6 +155,47 @@ refuses a graph with a cycle, naming the role it closes at. See
 roles are actually granted — that happens once, in evaluation, not here:
 this table is only the declaration.
 
+### Per-role scopes
+
+A role's own value in `things.<t>.roles` is EITHER the plain list of
+implied roles shown above, OR an object naming `implies` and/or `scopes`
+explicitly — `ssh.user` above, restricted to `devel` alone even though
+`ssh` itself declares `kernel`, `devel`, `stage` and `prod`. Both keys are
+optional; `policy.RoleSpec` accepts either shape and every policy written
+before this existed used the list form, which still parses exactly as it
+always did (no role restricted to anything). This is for a role that
+only ever makes sense on some of its thing's scopes — `ssh.user` for a
+break-glass login meant only for `devel`, never `kernel` — where the
+plain thing-wide `scopes` was too coarse to say so.
+
+A role's own `scopes`, when declared, must be a non-empty subset of its
+thing's own — refused at load otherwise, naming which of the three it is:
+a scope the role names that is not declared under `vocabulary.scopes` at
+all, a scope the role names that its thing does not itself have, or an
+explicit empty list (pointless to declare — a role valid nowhere is
+almost certainly a stray empty list, not an intentional one).
+
+**A concrete grant is refused when the role does not cover its scope**,
+distinctly from a scope the *thing* does not have: `kernel:ssh:user` is
+refused — `ssh` does declare `kernel`, but `user` restricts itself to
+`devel` — with a message naming the role's own scopes, `role "user" of
+thing "ssh" is valid only on scopes [devel]`. A [mapping
+wildcard](#mapping-wildcards) skips rather than refuses: `*:ssh:user`
+expands to `devel:ssh:user` alone, silently leaving out `kernel`, `stage`
+and `prod` the same way it already skips a thing that lacks the role
+entirely — see the next section for when that empties a wildcard
+completely.
+
+**Inheritance must not lose scope coverage.** An `implies` edge is
+refused at load when its target role does not cover every scope its
+source does: `admin: [user]` where `admin` is valid everywhere (the
+default) and `user` restricts itself to `devel` alone would let holding
+`kernel:ssh:admin` imply a `user` role that was never meant to reach
+`kernel` — refused rather than silently dropping `kernel` from what
+`admin` implies, because a mismatch here is a policy mistake, not a shape
+evaluation should quietly work around. See
+[docs/decisions/0012-per-role-scopes-in-the-vocabulary.md](../decisions/0012-per-role-scopes-in-the-vocabulary.md).
+
 **Mapping wildcards** — `*` in the scope and/or thing position of a
 `groups` key, such as `*:k8s:admin` or `devel:*:viewer` — need a declared
 vocabulary and are refused without one. A role wildcard (`S:T:*`) is
@@ -170,7 +216,10 @@ whose sensitive exclusion happens to empty it:
   wildcard; name the concrete groups (e.g. "prod:k8s:viewer") instead`*;
 - for any other reason the expansion is empty — no declared thing has
   the role at all (`devel:*:admins` when nothing declares `admins`), no
-  thing with that role declares the named scope, or every scope a
+  thing with that role declares the named scope, no thing with that role
+  and that scope allows the role itself on it (`kernel:*:user` when every
+  thing's `user` role restricts itself to scopes that do not include
+  `kernel` — see [Per-role scopes](#per-role-scopes)), or every scope a
   swept-in thing declares turns out sensitive (`*:k8s:viewer` when every
   scope `k8s` has is `sensitive`) — the refusal says *`"<key>" expands to
   no group: <why>`*.

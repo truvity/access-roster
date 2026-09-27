@@ -27,6 +27,7 @@ timeline and nothing is silently rewritten under an old date.
 | [0009](0009-a-default-signing-algorithm-and-per-audience-exceptions.md) | A default signing algorithm, and per-audience exceptions |
 | [0010](0010-a-declared-vocabulary.md) | A declared vocabulary: things, scopes, roles, inheritance and mapping wildcards |
 | [0011](0011-ssh-people-opkssh-machines-and-hosts-openbao.md) | SSH: people on opkssh, machines and hosts on the secret store's OpenBAO |
+| [0012](0012-per-role-scopes-in-the-vocabulary.md) | Per-role scopes in the vocabulary |
 
 ## Template
 

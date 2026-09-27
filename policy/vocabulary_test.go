@@ -495,3 +495,245 @@ clients:
 		t.Errorf("Unconsumed = %v, want the wildcard key counted consumed via its expansion", got)
 	}
 }
+
+// sshVocab is the running example from
+// docs/decisions/0012-per-role-scopes-in-the-vocabulary.md: `ssh` exists on
+// four scopes, `admin` is valid on all of them, and `user` restricts
+// itself to `devel` alone via the object form of a role. Neither role
+// implies the other, so a per-role-scopes test can use it without also
+// exercising the inheritance rule.
+const sshVocab = `
+vocabulary:
+  scopes:
+    kernel: {}
+    devel: {}
+    stage: {}
+    prod: {}
+  things:
+    ssh:
+      scopes: [kernel, devel, stage, prod]
+      roles:
+        admin: []
+        user: { scopes: [devel] }
+`
+
+// TestRoleListSyntaxUnchanged proves the plain list form (`admin:
+// [operator]`) still parses into a [policy.RoleSpec] that restricts no
+// scope — the shape every role had before per-role scoping existed. If
+// [policy.RoleSpec.UnmarshalYAML] regressed the sequence branch, either
+// the parse itself would fail or Scopes would come back non-empty.
+func TestRoleListSyntaxUnchanged(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`version: 1
+` + vocab + `
+groups:
+  devel:k8s:admin: { members: [a@b.example] }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	rspec := p.Vocabulary.Things["k8s"].Roles["operator"]
+	if len(rspec.Scopes) != 0 {
+		t.Errorf("operator.Scopes = %v, want none: the plain list form restricts nothing", rspec.Scopes)
+	}
+	if len(rspec.Implies) != 1 || rspec.Implies[0] != "viewer" {
+		t.Errorf("operator.Implies = %v, want [viewer]", rspec.Implies)
+	}
+	if _, err := policy.NewSet(p); err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+}
+
+// TestRoleObjectSyntax proves the new object form (`user: {scopes:
+// [devel]}`) is read into the same [policy.RoleSpec], with Scopes
+// populated. If [policy.RoleSpec.UnmarshalYAML] regressed the mapping
+// branch, this would fail to parse, or Scopes would come back empty.
+func TestRoleObjectSyntax(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`version: 1
+` + sshVocab + `
+groups:
+  devel:ssh:user: { members: [a@b.example] }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	rspec := p.Vocabulary.Things["ssh"].Roles["user"]
+	if len(rspec.Scopes) != 1 || rspec.Scopes[0] != "devel" {
+		t.Errorf("user.Scopes = %v, want [devel]", rspec.Scopes)
+	}
+	if _, err := policy.NewSet(p); err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+}
+
+// TestRoleScopeRefusals proves rule 2: a role's own `scopes`, when
+// declared, must be a non-empty subset of its thing's — an undeclared
+// scope, a scope the thing itself does not have, and an explicit empty
+// list are each refused at load, distinctly from one another.
+func TestRoleScopeRefusals(t *testing.T) {
+	t.Parallel()
+
+	refusedWith(t, "role scope not declared under vocabulary.scopes", `version: 1
+vocabulary:
+  scopes:
+    devel: {}
+  things:
+    ssh:
+      scopes: [devel]
+      roles:
+        user: { scopes: [ghost] }
+groups:
+  devel:ssh:user: { members: [a@b.example] }
+`, `role "user" names scope "ghost", which is not declared under vocabulary.scopes`)
+
+	refusedWith(t, "role scope not among the thing's own scopes", `version: 1
+vocabulary:
+  scopes:
+    devel: {}
+    kernel: {}
+  things:
+    ssh:
+      scopes: [devel]
+      roles:
+        user: { scopes: [kernel] }
+groups:
+  devel:ssh:user: { members: [a@b.example] }
+`, `role "user" names scope "kernel", which is not among its own scopes`)
+
+	refusedWith(t, "role scopes declared empty", `version: 1
+vocabulary:
+  scopes:
+    devel: {}
+  things:
+    ssh:
+      scopes: [devel]
+      roles:
+        user: { scopes: [] }
+groups:
+  devel:ssh:user: { members: [a@b.example] }
+`, `role "user" declares an empty scopes list`)
+}
+
+// TestConcreteGrantOutsideRoleScope proves rule 3: `kernel:ssh:user` is
+// refused when `user` names `scopes: [devel]`, even though `ssh` itself
+// declares `kernel` — the thing has the scope, but this role does not.
+func TestConcreteGrantOutsideRoleScope(t *testing.T) {
+	t.Parallel()
+	refusedWith(t, "concrete grant outside the role's own scopes", `version: 1
+`+sshVocab+`
+groups:
+  kernel:ssh:user: { members: [a@b.example] }
+`, `role "user" of thing "ssh" is valid only on scopes [devel]`)
+}
+
+// TestWildcardRespectsRoleScopes proves rule 4: `*:ssh:user` expands to
+// `devel:ssh:user` alone — never `kernel`, `stage` or `prod`, which `ssh`
+// declares but `user` does not.
+func TestWildcardRespectsRoleScopes(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+` + sshVocab + `
+groups:
+  "*:ssh:user": { matchers: [{ email_domain: b.example }] }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	s, err := policy.NewSet(p)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+	got := s.Evaluate(policy.Input{Email: "alice@b.example"})
+
+	if !got.Has("devel:ssh:user") {
+		t.Errorf("groups = %v, missing devel:ssh:user", got.Groups)
+	}
+	for _, excluded := range []string{"kernel:ssh:user", "stage:ssh:user", "prod:ssh:user"} {
+		if got.Has(excluded) {
+			t.Errorf("groups = %v, %q should not appear: user is scoped to devel only", got.Groups, excluded)
+		}
+	}
+}
+
+// TestRoleScopeInheritanceMismatchRefused proves rule 5's chosen half: an
+// `implies` edge whose target does not cover every scope its source does
+// is refused AT LOAD, not silently skipped at evaluation. `admin` (valid
+// on both kernel and devel, the default) implying `user` (valid on devel
+// alone) leaves kernel uncovered, which is exactly the mistake this
+// refusal exists to catch — see
+// docs/decisions/0012-per-role-scopes-in-the-vocabulary.md.
+func TestRoleScopeInheritanceMismatchRefused(t *testing.T) {
+	t.Parallel()
+	refusedWith(t, "an implies edge that loses scope coverage", `version: 1
+vocabulary:
+  scopes:
+    kernel: {}
+    devel: {}
+  things:
+    ssh:
+      scopes: [kernel, devel]
+      roles:
+        admin: [user]
+        user: { scopes: [devel] }
+groups:
+  devel:ssh:admin: { members: [a@b.example] }
+`, `role "admin" implies "user", but "user" is not valid on scope "kernel", which "admin" is`)
+}
+
+// TestExplainReportsTheChainWithRoleScopes proves rule 6's why-chain
+// still works once a role restricts its own scopes: `*:ssh:user`
+// matching alice records Key="*:ssh:user" on the ONE concrete group it is
+// allowed to reach (devel), and reaches no held entry at all for a scope
+// the role does not cover (kernel) — the wildcard skips it rather than
+// exploding.
+func TestExplainReportsTheChainWithRoleScopes(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+` + sshVocab + `
+groups:
+  "*:ssh:user": { matchers: [{ email_domain: b.example }] }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	s, err := policy.NewSet(p)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+	got := s.Evaluate(policy.Input{Email: "alice@b.example"})
+
+	byGroup := map[string][]policy.Held{}
+	for _, h := range got.Held {
+		byGroup[h.Group] = append(byGroup[h.Group], h)
+	}
+
+	user := byGroup["devel:ssh:user"]
+	if len(user) != 1 || user[0].Key != "*:ssh:user" {
+		t.Fatalf("devel:ssh:user held = %+v, want one direct hold via the wildcard key", user)
+	}
+	if _, ok := byGroup["kernel:ssh:user"]; ok {
+		t.Errorf("held = %v, kernel:ssh:user should never appear: user is scoped to devel only", got.Groups)
+	}
+}
+
+// TestWildcardEmptiedByRoleScopeRefused proves the "wildcard that expands
+// to no group is refused" rule (docs/taxonomy.md#mapping-wildcards) still
+// holds, and explains itself, when the reason is rule 3 rather than a
+// role that does not exist at all: `kernel:*:user` has a concrete scope
+// and a role every declared thing recognizes, but `ssh` is the only thing
+// with a `user` role and its `user` never covers `kernel` — so the
+// generic "expands to no group" refusal must fire, and name that reason
+// specifically rather than folding it into "no thing with role user
+// declares scope kernel" (a different, already-existing message for a
+// different cause).
+func TestWildcardEmptiedByRoleScopeRefused(t *testing.T) {
+	t.Parallel()
+	refusedWith(t, "a wildcard emptied entirely by a role's own scope restriction", `version: 1
+`+sshVocab+`
+groups:
+  "kernel:*:user": { members: [a@b.example] }
+`, `role "user" is not valid on scope "kernel" for any thing that declares it`)
+}

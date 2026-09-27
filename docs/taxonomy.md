@@ -79,6 +79,30 @@ the same backwards move as [naming a per-environment thing `all` in the
 first place](#what-all-means): if an environment is meant to be reached,
 name it.
 
+## Per-role scopes
+
+A role's own value may restrict it to some of its thing's declared
+scopes — `ssh`'s `user` role valid on `devel` alone, even though `ssh`
+itself also declares `kernel`, `stage` and `prod` — using an object form
+(`user: { scopes: [devel] }`) in place of the plain implies-list one
+(`admin: []`). See
+[reference/policy.md#per-role-scopes](reference/policy.md#per-role-scopes)
+for the full syntax and the load-time checks.
+
+This is a second, finer axis than [what `all`
+means](#what-all-means) and [sensitive
+scopes](#sensitive-scopes): the *thing*'s `scopes` says which
+environments it exists in at all, and a *role*'s own `scopes`, when
+declared, narrows that further to the ones the role itself makes sense
+on. `kernel:ssh:user` is refused even though `ssh` names `kernel`,
+because `user` does not.
+
+**Inheritance may not lose scope coverage.** A role that implies another
+must cover no more scopes than the one it implies — `admin` (valid
+everywhere) implying `user` (valid on `devel` alone) is refused at load,
+because holding `kernel:ssh:admin` would otherwise imply a `user` role
+that was never meant to reach `kernel`.
+
 ## Mapping wildcards
 
 `*` is allowed in the **scope** and/or **thing** position of a
@@ -90,10 +114,14 @@ without one, `*` is an ordinary character with no special meaning refused
 at load, because nothing could say what it should expand to.
 
 A wildcard key stands for every concrete `(scope, thing)` where the thing
-declares both that scope and that role, excluding [every scope marked
-sensitive](#sensitive-scopes): `*:k8s:admin` reaches every non-sensitive
-environment's Kubernetes admin group at once; `devel:*:viewer` reaches
-every thing that has both a `devel` scope and a `viewer` role. Whoever
+declares both that scope and that role AND the role itself allows that
+scope (see [per-role scopes](#per-role-scopes)), excluding [every scope
+marked sensitive](#sensitive-scopes): `*:k8s:admin` reaches every
+non-sensitive environment's Kubernetes admin group at once; `devel:*:viewer`
+reaches every thing that has both a `devel` scope and a `viewer` role;
+`*:ssh:user` reaches `devel:ssh:user` alone when `ssh`'s `user` role
+restricts itself to `devel`, silently skipping `kernel`, `stage` and
+`prod` the same way it skips a thing that lacks the role entirely. Whoever
 matches the key's members or matchers is in **all** of those concrete
 groups, unioned with whatever concrete keys separately match, and then
 [inheritance](#inheritance) applies on top. Nothing past evaluation ever
@@ -106,9 +134,11 @@ exists to catch, so an empty expansion fails the load rather than sitting
 in the file looking like it does something: `prod:*:viewer` where `prod`
 is sensitive is refused by naming the sensitive scope directly and
 pointing at a real concrete group to write instead; `devel:*:admins`
-where no declared thing has an `admins` role, or `*:k8s:viewer` where
-every scope `k8s` declares happens to be sensitive, are refused with the
-generic *expands to no group* message and the specific reason.
+where no declared thing has an `admins` role, `*:k8s:viewer` where every
+scope `k8s` declares happens to be sensitive, or `kernel:*:user` where
+every thing's `user` role restricts itself to scopes that never include
+`kernel`, are refused with the generic *expands to no group* message and
+the specific reason.
 
 ## Examples
 
@@ -119,6 +149,7 @@ generic *expands to no group* message and the specific reason.
 | `C0north:access-roster:viewer` | viewer of one directory only |
 | `*:k8s:admin` (Groups key only) | admin of every non-sensitive environment's Kubernetes |
 | `devel:*:viewer` (Groups key only) | viewer of everything devel has that declares a viewer role |
+| `devel:ssh:user` | user of devel's ssh, a role scoped to devel alone |
 | `rung:sre` | a session lifetime, not a grant |
 | `emp:alice` | a person, not a grant |
 
