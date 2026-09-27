@@ -24,10 +24,17 @@ Four steps, read from `cmd/accessctl/pg.go` and `cmd/accessctl/bao.go`:
    `accessctl bao` and `accessctl token` make (`openBAOLogin`, shared
    with `bao`, cached the same way).
 2. **It logs in to OpenBAO's JWT mount** — `jwt-roster` in `-ns` (or
-   `BAO_NAMESPACE`) unless overridden — presenting the exchanged token.
-   The OpenBAO token this returns is cached, not revoked: `psql`/`pg` are
-   meant to be run often, and a `bao` call at the same address, namespace,
-   mount and login role reuses the same login.
+   `BAO_NAMESPACE`) unless overridden, or at `--login-ns` (or
+   `$ACCESSCTL_BAO_LOGIN_NAMESPACE`) instead, when an installation keeps
+   its logins at a parent namespace while `-ns` names a child (see
+   [connect/openbao.md#logins-at-a-parent-namespace](openbao.md#logins-at-a-parent-namespace))
+   — presenting the exchanged token. The OpenBAO token this returns is
+   cached by the LOGIN namespace, not revoked: `psql`/`pg` are meant to be
+   run often, and a `bao` call (or another `pg`/`psql` call, naming a
+   different `-ns` under the same login) at the same address, login
+   namespace, mount and login role reuses the same login. The certificate
+   itself, step 3 below, is always signed — and cached — in `-ns`, the
+   target, regardless of where the login happened.
 3. **OpenBAO's PKI role issues a client certificate**, if nothing cached
    still has enough life left (five minutes' margin — wider than the
    login token's own, because a certificate may be used for a whole

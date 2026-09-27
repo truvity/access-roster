@@ -20,11 +20,13 @@ import (
 //
 // It shares its whole authentication step with `accessctl bao`
 // (bao.go's openBAOLogin): the sign-in (or a job's own identity)
-// exchanged for the OpenBAO audience, then logged in on the JWT mount,
-// in the SAME namespace the certificate is signed in. What is different
-// from `bao` is what happens after the login -- a `pki/sign/<role>`
-// call rather than a passthrough, and the certificate is handed to the
-// command as environment variables rather than the login token itself.
+// exchanged for the OpenBAO audience, then logged in on the JWT mount --
+// in the SAME namespace the certificate is signed in by default, or at a
+// parent of it when `--login-ns`/`$ACCESSCTL_BAO_LOGIN_NAMESPACE` says so
+// (login_namespace.go). What is different from `bao` is what happens
+// after the login -- a `pki/sign/<role>` call rather than a passthrough,
+// and the certificate is handed to the command as environment variables
+// rather than the login token itself.
 func pg(args []string) error {
 	request, command, err := parsePgFlags("pg", args)
 	if err != nil {
@@ -62,9 +64,18 @@ type pgRequest struct {
 	caCert  string
 	roots   *x509.CertPool
 
-	// ns is the OpenBAO namespace the PKI mount (and the JWT login) live
-	// in -- the flag is spelled short, mirroring bao's own `-namespace`.
-	ns         string
+	// ns is the OpenBAO namespace the PKI mount lives in, and where the
+	// certificate is SIGNED -- the flag is spelled short, mirroring bao's
+	// own `-namespace`.
+	ns string
+	// loginNS is where the JWT LOGIN happens: --login-ns, else
+	// $ACCESSCTL_BAO_LOGIN_NAMESPACE, else ns itself (today's behaviour,
+	// unchanged when neither is set) -- see resolveLoginNamespace. It is
+	// always ns itself or an ancestor of it (checkNamespaceLogin refuses
+	// anything else before any exchange is made), because a token minted
+	// at loginNS is only valid there and in its children, and the sign
+	// call is still made in ns.
+	loginNS    string
 	role       string
 	mount      string
 	commonName string
@@ -91,6 +102,10 @@ func parsePgFlags(name string, args []string) (pgRequest, []string, error) {
 			"(default: $"+envOpenBAOCACert+", then $"+envVaultCACert+")")
 	flags.StringVar(&request.ns, "ns", "",
 		"the OpenBAO namespace the PKI mount lives in (default: $"+envOpenBAONamespace+", then $"+envVaultNamespace+")")
+	var loginNS string
+	flags.StringVar(&loginNS, "login-ns", "",
+		"the OpenBAO namespace to log in at, when it differs from -ns -- must be -ns or a parent of it "+
+			"(default: -ns; then $"+envBaoLoginNamespace+")")
 	flags.StringVar(&request.role, "role", defaultDBRole, "the OpenBAO PKI role to sign with")
 	flags.StringVar(&request.mount, "mount", pkiMount, "the OpenBAO PKI mount")
 	flags.StringVar(&request.commonName, "common-name", "", "the common name to ask for (default: the signed-in identity)")
@@ -126,6 +141,11 @@ func parsePgFlags(name string, args []string) (pgRequest, []string, error) {
 	if strings.TrimSpace(request.audience) == "" {
 		return pgRequest{}, nil,
 			badUsage("--audience cannot be empty: a token for nothing in particular is what an audience prevents")
+	}
+
+	request.loginNS = resolveLoginNamespace(loginNS, request.ns)
+	if err := checkNamespaceLogin(request.loginNS, request.ns); err != nil {
+		return pgRequest{}, nil, err
 	}
 
 	return request, rest, nil
@@ -218,7 +238,13 @@ func postgresCertificate(ctx context.Context, cfg Config, request pgRequest, bas
 			}
 		}
 
-		token, err := openBAOLogin(ctx, cfg, request.address, request.ns, rosterMount, rosterLoginRole, request.audience, request.roots)
+		// The LOGIN happens at request.loginNS (request.ns itself unless
+		// --login-ns/$ACCESSCTL_BAO_LOGIN_NAMESPACE says otherwise); the
+		// certificate is still SIGNED in request.ns, below -- a token
+		// minted at a parent namespace is valid in its children, so the
+		// same login can sign in more than one child without logging in
+		// again (see bao.go's openBAOLogin, shared with `accessctl bao`).
+		token, err := openBAOLogin(ctx, cfg, request.address, request.loginNS, rosterMount, rosterLoginRole, request.audience, request.roots)
 		if err != nil {
 			return err
 		}

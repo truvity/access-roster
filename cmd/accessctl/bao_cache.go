@@ -52,23 +52,30 @@ type cachedBaoToken struct {
 // re-check loop this command does not have.
 const baoTokenMargin = sessionTokenMargin
 
-// baoCachePath names the cache file for one OpenBAO address, namespace,
-// mount, login role and subject.
+// baoCachePath names the cache file for one OpenBAO address, LOGIN
+// namespace, mount, login role and subject.
 //
-// The namespace is part of the key and not an afterthought: a token
-// minted by logging in to one OpenBAO namespace is only valid in that
-// namespace and its children, never a sibling (see
+// The namespace here is the one the LOGIN happens in (bao.go's
+// request.loginNamespace, pg.go's request.loginNS -- the namespace
+// bao/pg/psql operate in by default, or a parent of it when
+// `--login-ns`/`$ACCESSCTL_BAO_LOGIN_NAMESPACE` says so), and it is part
+// of the key and not an afterthought: a token minted by logging in to
+// one OpenBAO namespace is only valid in that namespace and its
+// children, never a sibling (see
 // docs/decisions/0013-openbao-access-through-the-bao-cli.md) -- so a
 // cache keyed on the address and the subject alone would hand a
 // `dev`-namespace token to a caller about to run `bao -namespace=stage
 // ...`, and OpenBAO would then refuse it, which reads as an outage
-// rather than as a cache bug. The mount and the login role are in the
-// key for the same reason, one level down: an installation that logs in
-// through more than one JWT mount (or role) at the same address and
-// namespace mints a DIFFERENT token from each, and `accessctl bao` and
-// `accessctl pg`/`psql` sharing this cache (bao.go's openBAOLogin) must
-// not hand one caller's mount's token to the other's. Hashed, like the
-// kubectl and AWS caches, because none of these pieces is a filename.
+// rather than as a cache bug. Keying on the LOGIN namespace rather than
+// the target is what lets `bao -ns=devel/a` and `bao -ns=devel/b` share
+// one login when both resolve their login to `devel`: it is the same
+// login either way. The mount and the login role are in the key for the
+// same reason, one level down: an installation that logs in through more
+// than one JWT mount (or role) at the same address and namespace mints a
+// DIFFERENT token from each, and `accessctl bao` and `accessctl
+// pg`/`psql` sharing this cache (bao.go's openBAOLogin) must not hand one
+// caller's mount's token to the other's. Hashed, like the kubectl and
+// AWS caches, because none of these pieces is a filename.
 func baoCachePath(address, namespace, mount, loginRole, subject string) (string, error) {
 	dir, err := configDir()
 	if err != nil {

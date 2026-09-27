@@ -125,6 +125,40 @@ has a subcommand to attach it to. A database role kept in a project's
 own namespace is reached the way the project's own OpenBAO layout
 requires — see that project's own documentation for its namespace path.
 
+### Logins at a parent namespace
+
+An installation can keep its logins at one namespace — an environment's
+own, say — while the data a caller actually asks for lives in a child
+namespace below it, one per project. A token minted by logging in to a
+namespace is valid there **and in its children**, so this works without
+asking OpenBAO for anything new: `accessctl` just has to log in
+somewhere that covers the namespace it is about to operate in, rather
+than always at that namespace itself.
+
+`--login-ns` (or `$ACCESSCTL_BAO_LOGIN_NAMESPACE`, read when the flag is
+not given) says where the login happens, when that differs from the
+namespace the command targets. It defaults to the target namespace
+itself — today's behaviour, unchanged, for a caller who never sets
+either. The target must be `--login-ns` itself or a descendant of it (a
+path-segment prefix, not a string prefix: `dev` does not cover `devel`),
+checked before any exchange is made — a target the login namespace does
+not reach is refused as a usage error, naming both namespaces, rather
+than left to fail later at OpenBAO as a permission-denied that reads as
+an outage.
+
+```sh
+ACCESSCTL_BAO_LOGIN_NAMESPACE=<env> accessctl bao kv get -ns=<env>/<project> -mount=kv -format=env <path>
+```
+
+`bao` itself still runs against `-ns=<env>/<project>` unchanged — the
+login alone happens at `<env>`. The same variable works for `pg`/`psql`,
+where it is read whenever `--login-ns` is not passed explicitly. Because
+the login token this mints is cached by the LOGIN namespace, not the
+target, two commands naming different projects under the same `<env>`
+share one login — `accessctl bao kv get -ns=<env>/a ...` and
+`accessctl bao kv get -ns=<env>/b ...` reuse it, rather than logging in
+twice for what is, underneath, the same identity asking the same door.
+
 A manager whose API certificate chains to a private root is reached by
 naming that root: `--ca-cert <file>` (a PEM bundle), or `BAO_CACERT`
 (then `VAULT_CACERT`), the flag first — the same variables the `bao` CLI
@@ -180,11 +214,12 @@ accessctl bao --address https://openbao.example:8200 write ssh/sign/user public_
 ```
 
 accessctl's own flags (`--address`, `--ca-cert`, `--mount`,
-`--login-role`, `--audience`, `--issuer`, `--client`, `--forget`) go
-BEFORE the bao subcommand; `bao`'s own — including `-namespace` (or its
-shortcut `-ns`), which decides which namespace the login itself happens
-in — go AFTER it, exactly where `bao` has always accepted them. The
-token is cached under
+`--login-role`, `--login-ns`, `--audience`, `--issuer`, `--client`,
+`--forget`) go BEFORE the bao subcommand; `bao`'s own — including
+`-namespace` (or its shortcut `-ns`), which decides which namespace
+`bao` operates in (and, without `--login-ns`, where the login itself
+happens too) — go AFTER it, exactly where `bao` has always accepted
+them. The token is cached under
 accessctl's own config directory, never `~/.vault-token` and never bao's
 own token helper file; `accessctl bao --forget` revokes and clears it.
 Full reference: [reference/accessctl.md#bao-authenticate-then-run-bao-unchanged](../reference/accessctl.md#bao-authenticate-then-run-bao-unchanged).

@@ -70,23 +70,40 @@ for this command is the subcommand itself (`kv`, `ssh`, `write`,
 `login`, ...) — an ordinary word, never a flag.
 
 Accessctl's own flags: `--address`, `--ca-cert`, `--mount`
-(`jwt-roster`), `--login-role` (`roster`), `--audience` (`openbao`),
-`--issuer`, `--client` — the same resolution order (flag, then `BAO_*`,
-then `VAULT_*`) `pg`/`psql`, below, use for the ones they share.
-`--forget` revokes the cached token and removes it, needing no bao
-command at all.
+(`jwt-roster`), `--login-role` (`roster`), `--login-ns` (default: the
+target namespace; then `$ACCESSCTL_BAO_LOGIN_NAMESPACE`), `--audience`
+(`openbao`), `--issuer`, `--client` — the same resolution order (flag,
+then `BAO_*`, then `VAULT_*`) `pg`/`psql`, below, use for the ones they
+share. `--forget` revokes the cached token and removes it, needing no bao
+command at all — with `--login-ns`, it clears the entry cached at that
+login namespace.
 
 **The login happens in the SAME namespace `bao` is about to operate
-in** — read out of `bao`'s own `-namespace`/`--namespace`, or its
-shortcut `-ns`/`--ns` (wherever either appears among the arguments, last
-one wins regardless of spelling), then `BAO_NAMESPACE`, then
+in, by default** — read out of `bao`'s own `-namespace`/`--namespace`, or
+its shortcut `-ns`/`--ns` (wherever either appears among the arguments,
+last one wins regardless of spelling), then `BAO_NAMESPACE`, then
 `VAULT_NAMESPACE`, then root — because a token minted by logging in to
 one OpenBAO namespace is only valid there and in its children, never in
 a sibling.
 
-**The token is cached**, one file per OpenBAO address, namespace and
+**`--login-ns` (or `$ACCESSCTL_BAO_LOGIN_NAMESPACE`) logs in at a PARENT
+namespace instead**, for an installation that keeps its logins at one
+namespace while data lives in per-project children — see
+[connect/openbao.md#logins-at-a-parent-namespace](../connect/openbao.md#logins-at-a-parent-namespace).
+The target namespace must be `--login-ns` itself or a descendant of it
+(a path-segment prefix, not a string prefix: `dev` is not a parent of
+`devel`), checked before any exchange is made — a target the login
+namespace does not cover is refused as a usage error rather than left to
+fail later at OpenBAO as a permission-denied that reads as an outage.
+`bao` itself still runs against its own target namespace unchanged;
+`BAO_NAMESPACE` is never rewritten.
+
+**The token is cached**, one file per OpenBAO address, LOGIN namespace and
 subject, under `<config>/bao/<hash>.json`, `0600` — never
-`~/.vault-token` and never bao's own token helper file. Offered until a
+`~/.vault-token` and never bao's own token helper file. Keying by the
+login namespace rather than the target is what lets `bao -ns=devel/a` and
+`bao -ns=devel/b` share one login when `--login-ns=devel` covers both: it
+is the same login either way. Offered until a
 margin before its own expiry (the same margin the session's own access
 token uses, `commands.go`'s `sessionTokenMargin`); a login whose answer
 carries no lease at all is used for that one command and never cached,
@@ -130,7 +147,7 @@ call is bao's own answer, unchanged.
 
 | Code | When |
 |---|---|
-| `2` | a flag accessctl does not recognise before the subcommand; no OpenBAO address; a CA bundle that cannot be read or holds no certificate; an empty `--audience`; no bao command and no `--forget`; `-field` combined with `-format=env` |
+| `2` | a flag accessctl does not recognise before the subcommand; no OpenBAO address; a CA bundle that cannot be read or holds no certificate; an empty `--audience`; no bao command and no `--forget`; `-field` combined with `-format=env`; `--login-ns` (or `$ACCESSCTL_BAO_LOGIN_NAMESPACE`) that does not cover the target namespace |
 | `3` | not signed in (on a laptop): run `accessctl login` |
 | `4` | the issuer refused the exchange for `openbao`, or OpenBAO refused the login |
 | `5` | no `bao` on `PATH`; the issuer or OpenBAO could not be reached |
@@ -163,7 +180,8 @@ accessctl pg   --address https://openbao.example:8200 -ns staging -- pg_dump ord
 |---|---|---|
 | `--address` | `$BAO_ADDR`, then `$VAULT_ADDR` | the OpenBAO API |
 | `--ca-cert` | `$BAO_CACERT`, then `$VAULT_CACERT` | a PEM bundle to trust, added to the system's roots |
-| `-ns` | `$BAO_NAMESPACE`, then `$VAULT_NAMESPACE` | the OpenBAO namespace the PKI mount (and the login) live in |
+| `-ns` | `$BAO_NAMESPACE`, then `$VAULT_NAMESPACE` | the OpenBAO namespace the PKI mount lives in, and where the certificate is signed |
+| `--login-ns` | `-ns` itself; then `$ACCESSCTL_BAO_LOGIN_NAMESPACE` | the namespace to log in at, when it differs from `-ns` — must be `-ns` or a parent of it |
 | `-role` | `db-client` | the OpenBAO PKI role to sign with |
 | `-mount` | `pki` | the OpenBAO PKI mount |
 | `--common-name` | the signed-in identity | the common name to ask for |
@@ -173,10 +191,15 @@ accessctl pg   --address https://openbao.example:8200 -ns staging -- pg_dump ord
 `-ns` and `-mount` are spelled short, mirroring `bao`'s own
 `-namespace`. **The authentication step is `bao`'s own**
 (`openBAOLogin` in the source): the sign-in (or a job's own identity)
-exchanged for `--audience`, then logged in to the JWT mount, in `-ns` --
-and it shares `bao`'s cache, so a `bao` call and a `pg`/`psql` call that
-agree on the address, namespace, mount and login role reuse the same
-login.
+exchanged for `--audience`, then logged in to the JWT mount, in
+`--login-ns` (`-ns` itself by default) — and it shares `bao`'s cache,
+keyed by the LOGIN namespace, so a `bao` call and a `pg`/`psql` call that
+agree on the address, login namespace, mount and login role reuse the
+same login, even when their own target `-ns` differ (one a descendant of
+the other, both descendants of the shared login namespace). The
+certificate itself is always signed, and cached, in `-ns` — the target —
+regardless of where the login happened; see
+[connect/openbao.md#logins-at-a-parent-namespace](../connect/openbao.md#logins-at-a-parent-namespace).
 
 ### The certificate
 
@@ -230,7 +253,7 @@ the recommended repo pattern.
 
 | Code | When |
 |---|---|
-| `2` | a flag accessctl does not recognise before `--`; no OpenBAO address; a CA bundle that cannot be read or holds no certificate; an empty `--audience`; `pg` with no command |
+| `2` | a flag accessctl does not recognise before `--`; no OpenBAO address; a CA bundle that cannot be read or holds no certificate; an empty `--audience`; `pg` with no command; `--login-ns` (or `$ACCESSCTL_BAO_LOGIN_NAMESPACE`) that does not cover `-ns` |
 | `3` | not signed in (on a laptop): run `accessctl login` |
 | `4` | the issuer refused the exchange for `openbao`, or OpenBAO refused the login or the sign |
 | `5` | no `<command>` (or no `psql`) on `PATH`; the issuer or OpenBAO could not be reached |
