@@ -1,4 +1,4 @@
-## Unreleased
+## v1.36.0
 
 - **Added: `accessctl version` (and `--version`).**
 
