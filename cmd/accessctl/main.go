@@ -30,10 +30,18 @@ const (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "accessctl: "+err.Error())
-		os.Exit(codeFor(err))
+	err := run(os.Args[1:])
+	if err == nil {
+		return
 	}
+	// An exitCodeError is somebody else's exit code, passed through --
+	// bao's, from `accessctl bao` -- and whatever ran already wrote its
+	// own error to stderr. Adding "accessctl: " in front of nothing would
+	// be a blank line of accessctl's own that nobody asked for.
+	if _, ok := codeForExit(err); !ok {
+		_, _ = fmt.Fprintln(os.Stderr, "accessctl: "+err.Error())
+	}
+	os.Exit(codeFor(err))
 }
 
 // usageError is a mistake in what was typed, rather than a failure of
@@ -45,6 +53,9 @@ func badUsage(format string, args ...any) error {
 }
 
 func codeFor(err error) int {
+	if code, ok := codeForExit(err); ok {
+		return code
+	}
 	var usage usageError
 	switch {
 	case errors.As(err, &usage):
@@ -97,6 +108,8 @@ func run(args []string) error {
 		return awsCredentials(args[1:])
 	case "credential":
 		return credential(args[1:])
+	case "bao":
+		return bao(args[1:])
 	case "secrets":
 		return secretsRemoved()
 	case "kubeconfig":
@@ -129,7 +142,12 @@ func usage(to *os.File) {
   kube-token    a Kubernetes exec credential      (run by kubectl)
   aws           an AWS credential process answer  (run by the AWS SDKs)
   credential    a short-lived ssh, db or client certificate, minted by OpenBAO
+  bao           authenticate, then run the real bao CLI unchanged (OpenBAO)
   exchange      the raw exchange: a token in, a token for an audience out
+
+accessctl's own flags on bao go BEFORE the bao subcommand; bao's own
+(including -namespace) go after it, exactly where bao has always
+accepted them.
 
 Exit codes: 0 ok, 2 usage, 3 not signed in, 4 audience or App not granted,
 5 issuer unreachable.
@@ -139,6 +157,7 @@ Exit codes: 0 ok, 2 usage, 3 not signed in, 4 audience or App not granted,
 // secretsRemoved returns the error message for the removed secrets command.
 func secretsRemoved() error {
 	return fmt.Errorf("accessctl secrets was removed in v1.30.0: read the values with " +
-		"the secret store's own client instead — e.g. `bao login -method=oidc` then `bao kv get <path>`, " +
+		"accessctl bao instead — e.g. `accessctl bao kv get -namespace=<ns> -mount=<mount> -format=env <path> > .env` " +
+		"(accessctl authenticates; bao's own client does everything else), " +
 		"or with External Secrets in a cluster — see docs/decisions/0002-mission-boundary-tokens-and-memberships.md")
 }

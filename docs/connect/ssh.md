@@ -182,6 +182,16 @@ root  oidc:groups:devel:build-worker:admin  https://access.example
 
 ## Machines: OpenBAO-signed short-lived SSH user certificates (recommended)
 
+> **`accessctl credential ssh`, below, is removed within 1.x**
+> ([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)).
+> The replacement is `accessctl bao ssh -mode=ca …` for the interactive
+> session, or `accessctl bao write -field=signed_key <mount>/sign/<role>
+> public_key=@key.pub > key-cert.pub` for scp, git, CI and Ansible — the
+> same login, then the real `bao` binary rather than a dedicated
+> subcommand. This page's shape (opkssh for people, OpenBAO for machines
+> and hosts) is unchanged; only which accessctl command a machine runs
+> is.
+
 A CI job or a controller doing remote work over SSH is not a person at a
 browser, so opkssh's interactive login does not fit it — except the one
 case below. The recommended shape is the same broker
