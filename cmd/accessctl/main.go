@@ -157,7 +157,7 @@ Exit codes: 0 ok, 2 usage, 3 not signed in, 4 audience or App not granted,
 // secretsRemoved returns the error message for the removed secrets command.
 func secretsRemoved() error {
 	return fmt.Errorf("accessctl secrets was removed in v1.30.0: read the values with " +
-		"accessctl bao instead — e.g. `accessctl bao kv get -namespace=<ns> -mount=<mount> -format=env <path> > .env` " +
+		"accessctl bao instead — e.g. `accessctl bao kv get -ns=<ns> -mount=<mount> -format=env <path> > .env` " +
 		"(accessctl authenticates; bao's own client does everything else), " +
 		"or with External Secrets in a cluster — see docs/decisions/0002-mission-boundary-tokens-and-memberships.md")
 }

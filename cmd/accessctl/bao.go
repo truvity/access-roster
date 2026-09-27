@@ -152,18 +152,24 @@ func parseBaoFlags(args []string) (baoRequest, []string, error) {
 
 // intendedNamespace is the namespace the REAL bao command is about to
 // operate in, read the same way bao itself would resolve it: its own
-// `-namespace`/`--namespace` flag (space- or `=`-separated) wherever it
-// appears among the arguments handed to it, then BAO_NAMESPACE, then
-// VAULT_NAMESPACE, then root -- a flag beating the environment, exactly
-// as it does for bao's every other setting.
+// `-namespace`/`--namespace` flag, or bao's own documented shortcut
+// `-ns`/`--ns` (bao's own `-h` names it: "-ns can be used as shortcut"),
+// wherever either appears among the arguments handed to it, then
+// BAO_NAMESPACE, then VAULT_NAMESPACE, then root -- a flag beating the
+// environment, exactly as it does for bao's every other setting. The
+// two spellings are ONE setting, so whichever was typed LAST wins,
+// regardless of which of the two it was (readFlagValue's own rule).
 //
 // This is the ONE piece of bao's own syntax this file reads, and it
 // reads it rather than guessing because the login has to happen in the
 // SAME namespace: a token minted by logging in to one OpenBAO namespace
 // is only valid there and in its children, never in a sibling
-// (docs/decisions/0013-openbao-access-through-the-bao-cli.md).
+// (docs/decisions/0013-openbao-access-through-the-bao-cli.md). Missing
+// the `-ns` shortcut here would log in to the wrong namespace silently
+// -- bao then refuses every call with a permission-denied that reads as
+// an outage, not as a namespace mismatch.
 func intendedNamespace(args []string) string {
-	if value, ok := readFlagValue(args, "namespace"); ok {
+	if value, ok := readFlagValue(args, "namespace", "ns"); ok {
 		return value
 	}
 	return firstEnv(envOpenBAONamespace, envVaultNamespace)
@@ -302,22 +308,28 @@ func setEnv(env []string, key, value string) []string {
 	return append(kept, prefix+value)
 }
 
-// readFlagValue scans args for name given as `-name value`, `-name=value`,
-// or the same with two leading dashes, and returns the value from
-// whichever spelling appears LAST -- the same as a flag repeated on a
-// real command line, where the last occurrence wins.
-func readFlagValue(args []string, name string) (string, bool) {
+// readFlagValue scans args for any of names, each given as `-name value`,
+// `-name=value`, or the same with two leading dashes, and returns the
+// value from whichever occurrence appears LAST -- the same as a flag
+// repeated on a real command line, where the last one wins regardless
+// of which alias it was spelled with. names lets a caller read a flag
+// bao itself accepts under more than one name (`-namespace`'s own
+// shortcut `-ns`) as a single setting, exactly as bao's own flag parser
+// does: whichever of the two was typed last decides the value.
+func readFlagValue(args []string, names ...string) (string, bool) {
 	value, found := "", false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		for _, dash := range [2]string{"-" + name, "--" + name} {
-			switch {
-			case arg == dash:
-				if i+1 < len(args) {
-					value, found = args[i+1], true
+		for _, name := range names {
+			for _, dash := range [2]string{"-" + name, "--" + name} {
+				switch {
+				case arg == dash:
+					if i+1 < len(args) {
+						value, found = args[i+1], true
+					}
+				case strings.HasPrefix(arg, dash+"="):
+					value, found = strings.TrimPrefix(arg, dash+"="), true
 				}
-			case strings.HasPrefix(arg, dash+"="):
-				value, found = strings.TrimPrefix(arg, dash+"="), true
 			}
 		}
 	}

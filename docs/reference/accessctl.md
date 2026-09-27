@@ -206,12 +206,12 @@ everything after accessctl's own flags is `bao`'s, unchanged
 ([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)).
 
 **The separation rule:** accessctl's own flags go BEFORE the bao
-subcommand; `bao`'s own flags — including its `-namespace` — go AFTER
-it, exactly where `bao` has always accepted them
-(`bao kv get -namespace=dev secret/foo`). Parsing stops at the first
-argument that is not one of accessctl's declared flags, which for this
-command is the subcommand itself (`kv`, `ssh`, `write`, `login`, ...) —
-an ordinary word, never a flag.
+subcommand; `bao`'s own flags — including its `-namespace` (or bao's own
+documented shortcut, `-ns`) — go AFTER it, exactly where `bao` has
+always accepted them (`bao kv get -ns=dev secret/foo`). Parsing stops at
+the first argument that is not one of accessctl's declared flags, which
+for this command is the subcommand itself (`kv`, `ssh`, `write`,
+`login`, ...) — an ordinary word, never a flag.
 
 Accessctl's own flags: `--address`, `--ca-cert`, `--mount`
 (`jwt-roster`), `--login-role` (`roster`), `--audience` (`openbao`),
@@ -220,8 +220,9 @@ Accessctl's own flags: `--address`, `--ca-cert`, `--mount`
 revokes the cached token and removes it, needing no bao command at all.
 
 **The login happens in the SAME namespace `bao` is about to operate
-in** — read out of `bao`'s own `-namespace`/`--namespace` (wherever it
-appears among the arguments), then `BAO_NAMESPACE`, then
+in** — read out of `bao`'s own `-namespace`/`--namespace`, or its
+shortcut `-ns`/`--ns` (wherever either appears among the arguments, last
+one wins regardless of spelling), then `BAO_NAMESPACE`, then
 `VAULT_NAMESPACE`, then root — because a token minted by logging in to
 one OpenBAO namespace is only valid there and in its children, never in
 a sibling.

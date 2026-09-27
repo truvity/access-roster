@@ -174,17 +174,18 @@ with the login handed to it as `BAO_TOKEN`
 ([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)).
 
 ```sh
-accessctl bao --address https://openbao.example:8200 kv get -namespace=staging secret/app
-accessctl bao --address https://openbao.example:8200 kv get -namespace=staging -format=env secret/app > .env
+accessctl bao --address https://openbao.example:8200 kv get -ns=staging secret/app
+accessctl bao --address https://openbao.example:8200 kv get -ns=staging -format=env secret/app > .env
 accessctl bao --address https://openbao.example:8200 ssh -mode=ca -role=user ci@build-worker.example
 accessctl bao --address https://openbao.example:8200 write ssh/sign/user public_key=@key.pub -field=signed_key > key-cert.pub
 ```
 
 accessctl's own flags (`--address`, `--ca-cert`, `--mount`,
 `--login-role`, `--audience`, `--issuer`, `--client`, `--forget`) go
-BEFORE the bao subcommand; `bao`'s own — including `-namespace`, which
-decides which namespace the login itself happens in — go AFTER it,
-exactly where `bao` has always accepted them. The token is cached under
+BEFORE the bao subcommand; `bao`'s own — including `-namespace` (or its
+shortcut `-ns`), which decides which namespace the login itself happens
+in — go AFTER it, exactly where `bao` has always accepted them. The
+token is cached under
 accessctl's own config directory, never `~/.vault-token` and never bao's
 own token helper file; `accessctl bao --forget` revokes and clears it.
 Full reference: [reference/accessctl.md#bao-authenticate-then-run-bao-unchanged](../reference/accessctl.md#bao-authenticate-then-run-bao-unchanged).
