@@ -54,6 +54,24 @@ func (h *recordingHandler) findings() []map[string]any {
 	return out
 }
 
+// findingLevels is every "groups scoping" line's own level, in the order
+// recorded -- what [TestGroupsScopingEnforceLogsAtDebugNotInfo] reads to
+// tell enforce's line apart from report's, since [findings] only reads
+// what a line SAYS, never how loud it said it.
+func (h *recordingHandler) findingLevels() []slog.Level {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []slog.Level
+	for i := range h.records {
+		r := &h.records[i]
+		if !strings.Contains(r.Message, "groups scoping") {
+			continue
+		}
+		out = append(out, r.Level)
+	}
+	return out
+}
+
 // serveScoping is [serveIssuerFor] plus a mode this test can set and a
 // logger this test can read back afterwards — the two knobs
 // [serveIssuerFor] itself has no reason to expose. raw is the policy
@@ -264,9 +282,9 @@ func groupsOf(t *testing.T, claims map[string]any) []string {
 }
 
 // CheckGroupsScopingMode is what [issuerapp.Load] calls before a
-// [issuer.Config] is ever built, and it is the whole of why an
-// installation cannot silently end up enforcing: off and report pass,
-// enforce is refused BY NAME, and anything else is refused as unknown.
+// [issuer.Config] is ever built: off, report and enforce all pass, and
+// anything else is refused as unknown, by name, rather than silently
+// falling back to a mode the deployment never asked for.
 func TestCheckGroupsScopingMode(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -275,7 +293,7 @@ func TestCheckGroupsScopingMode(t *testing.T) {
 	}{
 		{issuer.GroupsScopingOff, ""},
 		{issuer.GroupsScopingReport, ""},
-		{issuer.GroupsScopingEnforce, "later release"},
+		{issuer.GroupsScopingEnforce, ""},
 		{"sometimes", `is not one of "off", "report" or "enforce"`},
 	} {
 		err := issuer.CheckGroupsScopingMode(tc.mode)

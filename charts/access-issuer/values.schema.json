@@ -312,7 +312,7 @@
         "report",
         "enforce"
       ],
-      "description": "How far this installation has moved toward per-audience `groups` scoping. \"enforce\" is refused at issuer start in this release; see policy.md#groups--token-by-deep-merge."
+      "description": "How far this installation has moved toward per-audience `groups` scoping. \"report\" (the default) only computes and logs; \"enforce\" actually narrows a token's `groups` claim and `/userinfo`'s answer -- see policy.md#groups-in-a-token-scoping."
     },
     "route": {
       "type": "object",

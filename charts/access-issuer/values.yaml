@@ -457,11 +457,16 @@ policy: {}
 # "report" computes what a client's or a resource's own `requires` (plus
 # any `groups` override) would keep, and logs one line per minted token
 # when it would have dropped something -- WITHOUT changing the token,
-# which mints exactly as it does today either way. "enforce", which would
-# actually narrow a token's `groups` claim, is REFUSED at start in this
-# release: run report first, read what it logs, add a `groups` override
-# to any client or resource the log names, and only then can a later
-# release let this be set to enforce.
+# which mints exactly as it does today either way. "enforce" actually
+# narrows a token's `groups` claim, and `/userinfo`'s answer, to that same
+# computation, and logs the same finding at DEBUG instead of INFO.
+#
+# Opt-in: this default stays "report". Run it first, read what it logs
+# (docs/operations/runbook.md#reading-the-groups-scoping-report), add a
+# `groups` override to any client or resource the log names, and only
+# then set this to "enforce" -- see
+# docs/reference/policy.md#groups-in-a-token-scoping for what changes and
+# how to find a role a token stopped carrying once it does.
 #
 # Quote "off" if you set it: unquoted, YAML reads a bare `off` as the
 # boolean false rather than the string this schema wants, and the render

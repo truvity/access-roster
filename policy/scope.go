@@ -22,12 +22,23 @@ type GroupsOverride struct {
 	// All carries every held group, exactly as every token does today.
 	// Written as `groups: all`.
 	All bool
-	// Things additionally carries every held group whose THING (in ANY
-	// scope) is named here, on top of whatever requires-pair matching
-	// already keeps. Written as `groups: [thing, thing, ...]`. A held
-	// group with no thing -- a `rung:` or `emp:` name, which is not a
-	// grant at all -- is kept only when this list names it OUTRIGHT, by
-	// its full two-segment name; see [Policy.ScopeGroups].
+	// Things additionally carries every held group beyond whatever
+	// requires-pair matching already keeps, one entry at a time, written
+	// as `groups: [entry, entry, ...]`. Each entry is one of three
+	// shapes, tried in this order against a held name:
+	//
+	//   - the held name's THING (in ANY scope) -- `grafana` keeps
+	//     `devel:grafana:viewer` and `prod:grafana:admin` alike;
+	//   - for a two-segment name (`rung:<name>`, `emp:<slug>`, neither of
+	//     which is a grant and so has no thing to name), its FAMILY --
+	//     `emp` keeps every `emp:<slug>` held, `rung` every `rung:<name>`
+	//     held, the same way a thing keeps every role of it;
+	//   - the held name OUTRIGHT, in full (`rung:sre`), for one specific
+	//     two-segment name rather than every one of its family.
+	//
+	// See [Policy.ScopeGroups] for exactly how a held name is matched
+	// against these, and [Policy.checkGroupsOverride] for what an entry
+	// must look like to validate.
 	Things []string
 }
 
@@ -83,27 +94,42 @@ func (g GroupsOverride) MarshalYAML() (any, error) {
 // rather than merely unused.
 func (g GroupsOverride) empty() bool { return !g.All && len(g.Things) == 0 }
 
-// validate checks one override on its own: "all" or a list of distinct,
-// non-blank thing names, each a declared thing when a [Vocabulary] is in
-// force. where names the client or resource it came from, for the
-// refusal.
+// validate checks one override on its own: "all", or a list of distinct,
+// non-blank entries, each a THING name, a known FAMILY name
+// ([FamilyRung], [FamilyEmp]), or an exact two-segment name (`rung:sre`).
+// A [Vocabulary] in force narrows which bare word (no separator) passes:
+// a declared thing or a known family, never an undeclared thing -- but
+// names nothing about a FAMILY itself (there is no `vocabulary.families`
+// table) and nothing about an exact two-segment name, which is a
+// caller's own identity or rung rather than anything a vocabulary
+// declares things for. where names the client or resource it came from,
+// for the refusal.
 func (p Policy) checkGroupsOverride(where string, g GroupsOverride) error {
 	if g.All {
 		return nil
 	}
 	seen := make(map[string]bool, len(g.Things))
-	for _, thing := range g.Things {
-		if strings.TrimSpace(thing) == "" {
+	for _, entry := range g.Things {
+		if strings.TrimSpace(entry) == "" {
 			return fmt.Errorf("%s: groups names a blank thing", where)
 		}
-		if seen[thing] {
-			return fmt.Errorf("%s: groups names %q twice", where, thing)
+		if seen[entry] {
+			return fmt.Errorf("%s: groups names %q twice", where, entry)
 		}
-		seen[thing] = true
-		if p.Vocabulary != nil {
-			if _, ok := p.Vocabulary.Things[thing]; !ok {
-				return fmt.Errorf("%s: groups names %q, which is not declared under vocabulary.things", where, thing)
-			}
+		seen[entry] = true
+
+		if strings.Contains(entry, Separator) {
+			// An exact two-segment name, never a thing or a family: a
+			// vocabulary's `things` table has nothing to say about it,
+			// the same way it has nothing to say about a `rung:` or an
+			// `emp:` GRANT, because neither is one.
+			continue
+		}
+		if p.Vocabulary == nil || entry == FamilyRung || entry == FamilyEmp {
+			continue
+		}
+		if _, ok := p.Vocabulary.Things[entry]; !ok {
+			return fmt.Errorf("%s: groups names %q, which is not declared under vocabulary.things", where, entry)
 		}
 	}
 	return nil
@@ -267,11 +293,32 @@ func (p Policy) groupsOverrideKeeps(name string, pairs map[scopePair]bool, overr
 	scope, thing, _, ok := SplitGroup(name)
 	if !ok {
 		// rung:/emp:, or anything else that is not a concrete grant: no
-		// pair to match, so only an exact-name override entry keeps it.
+		// pair to match. A GENUINE two-segment name may still be kept by
+		// its FAMILY -- the part before its separator, `rung` or `emp` --
+		// on top of the exact-name match every held name already gets;
+		// anything else (garbage, an unconventional name) is kept only
+		// outright, by its own full name.
+		if family, twoSeg := splitFamily(name); twoSeg && slices.Contains(override.Things, family) {
+			return true
+		}
 		return slices.Contains(override.Things, name)
 	}
 	if pairs[scopePair{scope, thing}] {
 		return true
 	}
 	return slices.Contains(override.Things, thing)
+}
+
+// splitFamily reads a two-segment name (`rung:<name>`, `emp:<slug>`) back
+// into the family before its separator, and reports false for anything
+// else: a three-segment grant, a bare word with no separator at all, or a
+// name with more than one separator -- so a garbage string that happens
+// to contain a colon is never mistaken for a family member it was never
+// meant to be.
+func splitFamily(name string) (family string, ok bool) {
+	before, after, found := strings.Cut(name, Separator)
+	if !found || before == "" || after == "" || strings.Contains(after, Separator) {
+		return "", false
+	}
+	return before, true
 }

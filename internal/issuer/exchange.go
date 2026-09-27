@@ -97,11 +97,23 @@ func (i *Issuer) Exchange(ctx context.Context, proof Proof, audience string) (Gr
 	}
 	i.record(ctx, exchangeEvent(proof, audience, audit.Succeeded()))
 
+	// Claims is what every reader of this [Grant] hands to a relying
+	// party -- the exchanged access token itself
+	// ([Storage.GetPrivateClaimsFromTokenExchangeRequest]), its userinfo
+	// answer during id_token creation
+	// ([Storage.SetUserinfoFromTokenExchangeRequest]), the SAME grant's
+	// persisted copy that `/userinfo` answers from later
+	// ([Storage.issue] by way of [Storage.claimsFor]), and
+	// [Storage.MintFor]'s own signed token -- so narrowing it ONCE here,
+	// before any of the four ever reads it, is what makes all of them
+	// agree under [GroupsScopingEnforce]. result.Groups, never Claims'
+	// own "groups" entry, is what scopeClaims narrows FROM: the full
+	// evaluated set, exactly as [policy.Policy.ScopeGroups] requires.
 	return Grant{
 		Subject:  proof.Subject(),
 		Audience: audience,
 		Result:   result,
-		Claims:   Claims(result),
+		Claims:   scopeClaims(i.cfg.GroupsScoping, i.set, Claims(result), audience, result.Groups),
 		Held:     held,
 	}, nil
 }

@@ -611,38 +611,91 @@ such audience's tokens log "would drop everything" until it is given a
 row, an allow-listed origin, or an override, to read.
 
 **`rung:` and `emp:` names** are not grants ([taxonomy.md](../taxonomy.md))
-and have no `<scope>:<thing>` pair, so pair matching never keeps them —
-they are carried only when an override's thing list names the FULL
-two-segment name outright (`groups: [rung:sre]`), because there is no
-thing to name instead. Nothing about how they are USED changes: a
-`rung:` group's lifetime is read off the full held list at the issuer,
-before scoping ever runs (see [Groups → token, by deep merge](#groups--token-by-deep-merge)),
-so a `rung:` group missing from a token's `groups` claim under a future
-enforce mode still shortens that token's life exactly as it does today —
-scoping narrows what a token SAYS, never what the issuer computes from
-what a caller holds.
+and have no `<scope>:<thing>` pair, so pair matching never keeps them.
+An override keeps one of them either of two ways: naming the FULL
+two-segment name outright (`groups: [rung:sre]`), for one specific name;
+or naming its FAMILY — `rung` or `emp`, the part before the separator —
+to keep every held name of it at once, the same way a thing entry keeps
+every role of it. This is the one an installation with more than a
+handful of people actually reaches for: a Kubernetes cluster's audience
+binds each person's own namespace to their `emp:<slug>`, and no single
+outright entry could name every person's slug in advance.
 
-**Report, then enforce.** `groupsScoping` (a chart value, `GROUPS_SCOPING`
-in the environment — see [configuration.md](configuration.md)) is `off`,
-`report` or `enforce`. `report`, the default since 1.32.0, computes the
-rule above for every minted token and logs one line when it would have
-dropped something — audience, client, subject and the dropped names —
+```yaml
+clients:
+  k8s:devel:
+    kind: public
+    requires: [devel:k8s:viewer]
+    groups: [emp]   # every emp:<slug> held, for the cluster's own binding
+```
+
+A declared vocabulary constrains a bare-word entry to a declared thing OR
+one of the two known families (there is no `vocabulary.families` table —
+`rung` and `emp` are the only two, and validation knows them by name); an
+entry containing a separator (an exact two-segment name) is neither a
+thing nor a family, so a vocabulary has nothing to say about it and it
+validates either way. Nothing about how `rung:` and `emp:` names are
+USED changes: a `rung:` group's lifetime is read off the full held list
+at the issuer, before scoping ever runs (see [Groups → token, by deep merge](#groups--token-by-deep-merge)),
+so a `rung:` group missing from a token's `groups` claim under `enforce`
+still shortens that token's life exactly as it does today — scoping
+narrows what a token SAYS, never what the issuer computes from what a
+caller holds.
+
+**`off`, `report`, `enforce`.** `groupsScoping` (a chart value,
+`GROUPS_SCOPING` in the environment — see
+[configuration.md](configuration.md)) is one of the three. `off` computes
+and logs nothing. `report`, the default since 1.32.0, computes the rule
+above for every minted token and logs one line when it would have dropped
+something — audience, client, subject and the dropped names, at INFO —
 without changing the token: `groups` mints exactly as it always has
-either way. `enforce`, which would actually narrow the claim, is REFUSED
-at issuer start in this release, by name, so the switch is visible before
-an installation can reach for it; see
-[docs/operations/runbook.md#reading-the-groups-scoping-report](../operations/runbook.md#reading-the-groups-scoping-report)
-for turning report's findings into overrides.
+either way. `enforce` actually narrows the claim to what the rule above
+keeps, and logs the SAME finding at DEBUG instead of INFO, because a
+dropped group is the steady state once enforce is on rather than news on
+every token.
 
-**A note for whichever release ships `enforce`.** The `userinfo` endpoint
+Turning enforce on is opt-in and per installation: the chart's default
+stays `report`, and an installation is expected to run report first, read
+what it logs, and add a `groups:` override to any client or resource the
+log names, before ever setting `groupsScoping: enforce` — see
+[docs/operations/runbook.md#reading-the-groups-scoping-report](../operations/runbook.md#reading-the-groups-scoping-report)
+and
+[docs/operations/runbook.md#turning-enforce-on](../operations/runbook.md#turning-enforce-on).
+
+**What enforce narrows, and what it does not.** Every place a token or
+`/userinfo` writes `groups` narrows to `kept`: the ID token, the access
+token (an authorization code, a refresh, a token exchange alike), a token
+this installation's own console mints for itself
+(`Storage.MintFor`), and `/userinfo`'s answer — see the next paragraph.
+Nothing else changes. `requires` still gates entry against the FULL
+evaluated set, never the narrowed one; a `rung:` group's lifetime is still
+read off that same full set, before scoping ever runs — see
+"`rung:` and `emp:` names", above, on the same point. Scoping narrows
+what a token SAYS, never what the issuer computes from what a caller
+holds.
+
+**`/userinfo` is scoped too.** The `userinfo` endpoint
 (`SetUserinfoFromToken`) answers with the SAME `groups` a token's owner
 already holds, keyed by the presented access token rather than by a fresh
 policy evaluation. Narrowing only the token's own claim and leaving
 `userinfo` unscoped would not enforce anything: a relying party that
 wanted the fuller list could still just call `userinfo` and read it
-there, which is exactly the leak this whole design exists to close.
-Enforcing has to narrow both, by the SAME audience — the one the token
-was minted for — or scoping is bypassed by one call.
+there, which is exactly the leak this whole design exists to close. So
+enforce narrows both, by the SAME audience — the presented access token's
+own audience or resource, read off its stored record — or scoping would
+be bypassed by one call.
+
+**Finding a role that went missing.** A relying party that used to read a
+group beyond what its own `requires` names, and stops seeing it once
+enforce is on, needs a `groups:` override — the fix is never in code.
+Turn the issuer's log level to DEBUG, reproduce the failure, and read the
+line naming that audience and subject: `dropped` names exactly the groups
+the token stopped carrying. Add whichever of them the relying party
+actually reads to a `groups:` override on that audience's row (a client's,
+a resource's, or `client_documents.groups` for a self-described one) and
+reload the policy — see
+[docs/operations/runbook.md#turning-enforce-on](../operations/runbook.md#turning-enforce-on)
+for the full walk-through.
 
 ## Signing algorithm per audience
 

@@ -67,6 +67,16 @@ const (
 
 	// Separator divides a grant's three segments.
 	Separator = ":"
+
+	// FamilyRung and FamilyEmp are the two families of two-segment name
+	// that are deliberately not grants -- `rung:<name>` and `emp:<slug>`,
+	// above. Neither has a <thing> a `requires` pair or a [GroupsOverride]
+	// thing entry could match, so a [GroupsOverride] entry may name the
+	// FAMILY instead, to keep every held name of it at once
+	// ([Policy.ScopeGroups] reads this the same way it reads a thing
+	// name); see policy.md#groups-in-a-token-scoping.
+	FamilyRung = "rung"
+	FamilyEmp  = "emp"
 )
 
 // The names the hub reads out of the policy for itself, installation
