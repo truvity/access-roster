@@ -977,11 +977,15 @@ func conventional(name string) bool {
 //   - any client's [Client.Requires]
 //   - any resource's [Resource.Requires]
 //   - [ClientDocuments.Requires]
+//   - any client's, resource's or [ClientDocuments]'s [GroupsOverride]
+//     (the `groups:` key: [Client.Groups], [Resource.Groups],
+//     [ClientDocuments.Groups]) — see below
 //   - any GitHub binding (organisation [GitHubOrg.Members] or team
 //     [GitHubTeam.Members]/[GitHubTeam.Maintainers])
 //   - this hub's own roles (groups whose [thing] segment is [ThingSelf] and
 //     whose role is [RoleOperator] or [RoleViewer], which the hub reads
 //     directly from the token)
+//   - catalogueGroups — see below
 //
 // A group referenced only by [Policy.Claims] or [Policy.Lifetimes] keys is
 // still unconsumed: claims and lifetimes decorate a group and do not consume
@@ -989,13 +993,36 @@ func conventional(name string) bool {
 // some other reason. Groups with the [rung] or [emp] prefix are never
 // reported, because they are not grants and exist for other purposes.
 //
-// KNOWN LIMITATION: a relying party may read groups from the token beyond
-// what its [Client.Requires] names, for its own role mapping (for example, a
-// console's viewer vs editor role). Such groups are consumed outside the
-// policy's view, so this warning may name them. The gap closes when a client
-// can declare the groups it maps — per
-// docs/decisions/0006-groups-claim-scoped-per-audience.md — and the lint will
-// then count those declarations.
+// A GroupsOverride is judged by the SAME rule [Policy.ScopeGroups] applies
+// to a live token, via [Policy.groupsOverrideKeeps]: `groups: all` keeps —
+// and so consumes — every declared group, and `groups: [thing, ...]` keeps
+// every declared group whose own thing or family one of those names,
+// REGARDLESS OF SCOPE, because that is exactly how widely the override
+// reaches at request time. This used to be this function's own KNOWN
+// LIMITATION: docs/decisions/0006-groups-claim-scoped-per-audience.md gave a
+// client a way to read groups beyond its Requires pairs without this lint
+// ever learning of it, so a policy using that schema legitimately saw a
+// warning for every group it reached only that way. Deciding it with the
+// same function ScopeGroups itself calls means the two can never quietly
+// disagree about what one override reaches.
+//
+// catalogueGroups are the groups a GitHub App catalogue's grants name —
+// see internal/githubapp/catalogue.Grant.Group and
+// internal/issuer/githubtoken.go's [DecideGitHubGrant], which is the thing
+// that actually spends one: a caller presents a proof, the groups it
+// resolves to are matched against each App's grants by this SAME string,
+// and a match is what lets that caller ask GitHub for an installation
+// token. A group declared for no other reason than to appear in one such
+// grant is consumed exactly as one named in a client's Requires is — the
+// catalogue is simply a file this package cannot read for itself: it is a
+// deployment's own configuration, loaded by whichever process keeps a
+// [GitHubApps] catalogue, and passing its grants' groups here is how that
+// caller tells this lint about a consumer this package cannot see on its
+// own. Nothing is assumed about the catalogue's shape here: a caller with
+// no catalogue, or one that has not wired this yet, passes nothing, and
+// every group a catalogue would otherwise explain keeps being reported —
+// which is the false positive this parameter exists to close, not a new
+// failure mode it introduces.
 //
 // This is a warning rather than an error because an installation may
 // legitimately declare a group ahead of a client or resource that will use
@@ -1006,8 +1033,14 @@ func conventional(name string) bool {
 // `*:k8s:admin` counts as consumed the moment any one of the concrete
 // grants it maps to — `devel:k8s:admin`, `stage:k8s:admin`, and so on — is
 // itself consumed by something, because that is the same grant reaching a
-// caller through a shorter key.
-func (p Policy) Unconsumed() []string {
+// caller through a shorter key. catalogueGroups is checked by the same
+// rule as every other consumer: a grant naming the wildcard key's own
+// concrete expansion counts, exactly as a client's Requires naming it
+// would, because [DecideGitHubGrant] only ever compares a grant's Group
+// against a caller's already-resolved, always concrete groups — a
+// catalogue can no more grant a bare mapping wildcard to anyone than a
+// caller can hold one.
+func (p Policy) Unconsumed(catalogueGroups ...string) []string {
 	// Build a set of consumed groups. The initial capacity guesses at how
 	// many will be needed across all uses.
 	consumed := make(map[string]bool, len(p.Groups))
@@ -1029,6 +1062,43 @@ func (p Policy) Unconsumed() []string {
 	// Client documents.
 	for _, name := range p.ClientDocuments.Requires {
 		consumed[name] = true
+	}
+
+	// Every client's, resource's and ClientDocuments' GroupsOverride
+	// (`groups:`). Read through groupKeyTargets, exactly as the hub's own
+	// roles are below, so a mapping wildcard reached only through an
+	// override — a wildcard-scoped key whose expansion some override
+	// keeps by thing — is caught too, and not just an ordinary key.
+	// groupsOverrideKeeps is handed a nil requires-pairs map: it is the
+	// same decision [Policy.ScopeGroups] makes for a live token, asked
+	// here with no Requires pairs of its own so it answers purely from
+	// the override, which is exactly the one thing this loop is checking
+	// for -- a Requires pair is already counted above.
+	for name := range p.Groups {
+		for _, target := range p.groupKeyTargets(name) {
+			if consumed[target] {
+				continue
+			}
+			if p.groupsOverrideKeeps(target, nil, p.ClientDocuments.Groups) {
+				consumed[target] = true
+				continue
+			}
+			for id := range p.Clients {
+				if p.groupsOverrideKeeps(target, nil, p.Clients[id].Groups) {
+					consumed[target] = true
+					break
+				}
+			}
+			if consumed[target] {
+				continue
+			}
+			for id := range p.Resources {
+				if p.groupsOverrideKeeps(target, nil, p.Resources[id].Groups) {
+					consumed[target] = true
+					break
+				}
+			}
+		}
 	}
 
 	// GitHub bindings.
@@ -1060,6 +1130,17 @@ func (p Policy) Unconsumed() []string {
 				consumed[target] = true
 			}
 		}
+	}
+
+	// A GitHub App catalogue's grants, named by the caller: see the
+	// catalogueGroups parameter's doc above. Each is already the exact,
+	// concrete string [DecideGitHubGrant] compares a caller's resolved
+	// groups against, so it is added exactly as a Requires name is —
+	// no expansion of its own is needed here, because the loop above and
+	// the wildcard rule this doc comment describes already expand every
+	// DECLARED key when deciding whether it is consumed.
+	for _, name := range catalogueGroups {
+		consumed[name] = true
 	}
 
 	// Collect unconsumed groups, excluding non-grants.

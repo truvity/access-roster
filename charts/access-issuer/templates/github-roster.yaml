@@ -81,6 +81,15 @@ spec:
       annotations:
         # The bindings are read at start, like the service's policy.
         checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
+        {{- if .Values.githubApps.catalogue }}
+        # The catalogue is read once at start, like the service's own copy
+        # (see deployment.yaml): this controller keeps no App keys and mints
+        # no installation tokens, so it reads the catalogue for one reason
+        # only — the groups its grants name are not reported as unconsumed
+        # — and a changed catalogue should still restart it, the same way a
+        # changed policy does.
+        checksum/github-apps-catalogue: {{ include (print $.Template.BasePath "/github-apps-catalogue-configmap.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       serviceAccountName: {{ $name }}
       securityContext:
@@ -111,6 +120,16 @@ spec:
               value: /var/run/secrets/github-roster/token
             - name: APPS_DIR
               value: /var/run/github-roster/apps
+            {{- if .Values.githubApps.catalogue }}
+            # Read-only, and for one reason only: so the "internal groups
+            # are declared but nothing consumes them" warning does not name
+            # a GitHub-derived group a catalogue grant actually consumes.
+            # This controller mints no installation tokens itself and keeps
+            # no App key, so an absent or malformed catalogue here is never
+            # fatal — see app.go.
+            - name: GITHUB_APPS_CATALOGUE_FILE
+              value: /var/run/github-roster/github-apps-catalogue.yaml
+            {{- end }}
             - name: INTERVAL
               value: {{ .Values.githubRoster.interval | quote }}
             - name: ENABLED_ORGS
@@ -139,6 +158,12 @@ spec:
             - name: apps
               mountPath: /var/run/github-roster/apps
               readOnly: true
+            {{- if .Values.githubApps.catalogue }}
+            - name: github-apps-catalogue
+              mountPath: /var/run/github-roster/github-apps-catalogue.yaml
+              subPath: catalogue.yaml
+              readOnly: true
+            {{- end }}
             {{- include "access-issuer.auditMounts" . | nindent 12 }}
           {{- with .Values.githubRoster.resources }}
           resources:
@@ -165,6 +190,11 @@ spec:
           secret:
             secretName: {{ include "access-issuer.fullname" . }}-github-apps
             optional: true
+        {{- if .Values.githubApps.catalogue }}
+        - name: github-apps-catalogue
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-github-apps-catalogue
+        {{- end }}
         {{- include "access-issuer.auditVolumes" . | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

@@ -312,3 +312,24 @@ func (c *Catalogue) UndeclaredGroups(declared func(group string) bool) []string 
 	}
 	return out
 }
+
+// GrantGroups are every group named by some App's grant, deduplicated, in
+// no particular order. It is [UndeclaredGroups]'s mirror image: that one
+// reads the policy to find a grant naming a group the policy never
+// declared; this one hands the policy the groups its own grants name, so
+// the root policy package's Unconsumed lint (its catalogueGroups
+// parameter — see policy.Policy.Unconsumed's doc comment) can stop
+// reporting a group that exists ONLY to let some identity mint an App's
+// installation token — the catalogue is the one place that actually
+// consumes it, and the policy package cannot read this file for itself.
+func (c *Catalogue) GrantGroups() []string {
+	var out []string
+	for i := range c.Apps {
+		for _, grant := range c.Apps[i].Grants {
+			if !slices.Contains(out, grant.Group) {
+				out = append(out, grant.Group)
+			}
+		}
+	}
+	return out
+}

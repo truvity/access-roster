@@ -3,6 +3,7 @@ package catalogue_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -171,6 +172,61 @@ func TestUndeclaredGrantGroupsAreNamed(t *testing.T) {
 	got := c.UndeclaredGroups(func(group string) bool { return group == "all:platform:engineer" })
 	if len(got) != 1 || got[0] != "renovate: all:docs:writer" {
 		t.Errorf("undeclared = %v", got)
+	}
+}
+
+// GrantGroups is UndeclaredGroups's mirror: every group SOME grant names,
+// deduplicated, for the policy's own Unconsumed lint to be told about --
+// see policy.Policy.Unconsumed's catalogueGroups parameter. valid's one
+// App names two groups across its two grants, and each should be named
+// exactly once, however many grants repeat it.
+func TestGrantGroupsNamesEveryGrant(t *testing.T) {
+	t.Parallel()
+	c, err := catalogue.Parse([]byte(valid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.GrantGroups()
+	want := []string{"all:platform:engineer", "all:docs:writer"}
+	if len(got) != len(want) {
+		t.Fatalf("GrantGroups = %v, want %v", got, want)
+	}
+	for _, group := range want {
+		if !slices.Contains(got, group) {
+			t.Errorf("GrantGroups = %v, missing %q", got, group)
+		}
+	}
+}
+
+// A grant repeated on more than one App, or twice on the same one, is
+// still named once: a caller passing this to Unconsumed wants the SET of
+// groups a catalogue's grants reach, not a count of how many grants reach
+// each one.
+func TestGrantGroupsDeduplicatesAcrossApps(t *testing.T) {
+	t.Parallel()
+	c, err := catalogue.Parse([]byte(`
+apps:
+  - id: renovate
+    org: example-org
+    permissions: {contents: write}
+    grants:
+      - group: all:platform:engineer
+        repositories: ["*"]
+        permissions: {contents: write}
+  - id: releases
+    org: example-org
+    permissions: {contents: write}
+    grants:
+      - group: all:platform:engineer
+        repositories: [docs]
+        permissions: {contents: write}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := c.GrantGroups()
+	if len(got) != 1 || got[0] != "all:platform:engineer" {
+		t.Errorf("GrantGroups = %v, want exactly one entry", got)
 	}
 }
 
