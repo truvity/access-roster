@@ -150,7 +150,7 @@ func runPg(request pgRequest, command []string) error {
 		return err
 	}
 
-	dir, err := credentialDir(request.ns, request.role)
+	dir, err := credentialDir(request.address, request.ns, request.role)
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func runPg(request pgRequest, command []string) error {
 		return err
 	}
 
-	return runChild(binary, command[1:], pgChildEnv(base, issued.Parsed.Subject.CommonName))
+	return runChild(binary, command[1:], pgChildEnv(base, issued.Parsed.Subject.CommonName, issued.Authority != ""))
 }
 
 // certReuseMargin is how much life a cached Postgres client certificate
@@ -180,19 +180,42 @@ const certReuseMargin = awsCacheMargin
 
 // postgresCertificate returns a client certificate for request.role in
 // request.ns, at base, reusing one already on disk while it has enough
-// life left, minting a fresh one under a lock otherwise.
+// life left AND was minted for the SAME common name, minting a fresh
+// one under a lock otherwise.
+//
+// The name is resolved BEFORE the cache is ever read, and a cached leaf
+// is only reused when its own `Parsed.Subject.CommonName` still equals
+// it: the cache is keyed by path (namespace and role), not by identity,
+// so without this check `--common-name other`, or simply signing in as
+// someone else against the same `-ns`/`-role`, would silently reuse the
+// previous identity's certificate.
 func postgresCertificate(ctx context.Context, cfg Config, request pgRequest, base string) (leaf, error) {
-	if cached, ok := readCachedLeaf(base); ok {
-		return cached, nil
+	// Resolved BEFORE the cache is read, but a name this cheap to find
+	// locally (no network) not existing yet is not, on its own, reason
+	// to refuse before login is even attempted: a laptop that is not
+	// signed in should hear "sign in" (from the login below), not "no
+	// common name", when both are true at once -- the same ordering
+	// this had before the cache learned to check identity at all.
+	name := strings.TrimSpace(request.commonName)
+	if name == "" {
+		name = baoIdentity(cfg)
+	}
+
+	if name != "" {
+		if cached, ok := readCachedLeaf(base, name); ok {
+			return cached, nil
+		}
 	}
 
 	var result leaf
 	err := withCacheLock(base+".lock", func() error {
 		// Re-read under the lock: a caller that waited here while another
 		// minted finds the answer already written.
-		if cached, ok := readCachedLeaf(base); ok {
-			result = cached
-			return nil
+		if name != "" {
+			if cached, ok := readCachedLeaf(base, name); ok {
+				result = cached
+				return nil
+			}
 		}
 
 		token, err := openBAOLogin(ctx, cfg, request.address, request.ns, rosterMount, rosterLoginRole, request.audience, request.roots)
@@ -202,10 +225,10 @@ func postgresCertificate(ctx context.Context, cfg Config, request pgRequest, bas
 		bao := &openbao{Address: request.address, Namespace: request.ns, Client: retryingClientTrusting(request.roots)}
 		bao.token = token.Token
 
-		name := strings.TrimSpace(request.commonName)
 		if name == "" {
-			name = baoIdentity(cfg)
+			return badUsage("no common name to ask for: sign in again, or pass --common-name")
 		}
+
 		issued, err := issue(ctx, bao, request.mount+"/sign/"+request.role, name, nil)
 		if err != nil {
 			return err
@@ -221,17 +244,18 @@ func postgresCertificate(ctx context.Context, cfg Config, request pgRequest, bas
 }
 
 // readCachedLeaf reads back a certificate this command wrote before, and
-// says whether it is still worth presenting: parsed, matched against its
+// says whether it is still worth presenting: parsed, minted for the
+// SAME common name this call is about to ask for, matched against its
 // own key (a defensive re-check of what `issue` already verified once,
 // in case the pair on disk was ever touched by anything else), and with
 // enough life left (certReuseMargin).
 //
 // Every failure is a miss rather than an error, the same rule every
 // cache in this tool keeps: a half-written pair, one from an older
-// version of this command, or one whose key and certificate no longer
-// match is not a reason to fail outright when minting a fresh one is
-// always available.
-func readCachedLeaf(base string) (leaf, bool) {
+// version of this command, one minted for a different identity, or one
+// whose key and certificate no longer match is not a reason to fail
+// outright when minting a fresh one is always available.
+func readCachedLeaf(base, wantCommonName string) (leaf, bool) {
 	certPEM, err := os.ReadFile(base + ".crt")
 	if err != nil {
 		return leaf{}, false
@@ -247,6 +271,9 @@ func readCachedLeaf(base string) (leaf, bool) {
 
 	parsed, err := parseLeaf(string(certPEM))
 	if err != nil {
+		return leaf{}, false
+	}
+	if parsed.Subject.CommonName != wantCommonName {
 		return leaf{}, false
 	}
 	if time.Until(parsed.NotAfter) <= certReuseMargin {
@@ -300,17 +327,35 @@ func mintedInfo(issued leaf) {
 // `user=` on the command line. Nothing here can win over any of those;
 // it only supplies what nothing else already decided.
 //
-// PGUSER is set ONLY when it is not already in the environment: unlike
-// the SSL variables, which this command is the one source of truth for,
-// a caller's own PGUSER (or a service file's `user=`, which already
-// outranks it) names who they mean to connect as, and this must never
-// second-guess that.
-func pgChildEnv(base, commonName string) []string {
+// PGSSLCERT and PGSSLKEY are always set to the certificate this command
+// just minted or reused: there is no other reasonable value for them,
+// since minting exactly this pair is the whole point of running it.
+//
+// PGSSLROOTCERT, PGSSLMODE and PGUSER are set ONLY when not already in
+// the environment. PGUSER: a caller's own PGUSER (or a service file's
+// `user=`, which already outranks it) names who they mean to connect
+// as, and this must never second-guess that. PGSSLROOTCERT: the PKI's
+// CA -- what this command's certificate chains to -- is not necessarily
+// the CA that signed the DATABASE SERVER's own certificate; a server
+// behind a different CA needs its root named some other way (a
+// repository's own service file `sslrootcert=`, or the caller's own
+// PGSSLROOTCERT), and this must not shadow that. It is also skipped
+// entirely when no CA file was written at all (hasCA false: the role
+// returned no chain and no issuing certificate to write), rather than
+// pointed at a file that does not exist. PGSSLMODE follows the same
+// rule as PGSSLROOTCERT, for the same reason: `verify-full` against the
+// wrong root is not what a caller who already chose their own mode or
+// root asked for.
+func pgChildEnv(base, commonName string, hasCA bool) []string {
 	env := os.Environ()
 	env = setEnv(env, "PGSSLCERT", base+".crt")
 	env = setEnv(env, "PGSSLKEY", base+".key")
-	env = setEnv(env, "PGSSLROOTCERT", base+"-ca.crt")
-	env = setEnv(env, "PGSSLMODE", "verify-full")
+	if hasCA && envValue(env, "PGSSLROOTCERT") == "" {
+		env = setEnv(env, "PGSSLROOTCERT", base+"-ca.crt")
+	}
+	if envValue(env, "PGSSLMODE") == "" {
+		env = setEnv(env, "PGSSLMODE", "verify-full")
+	}
 	if envValue(env, "PGUSER") == "" {
 		env = setEnv(env, "PGUSER", commonName)
 	}

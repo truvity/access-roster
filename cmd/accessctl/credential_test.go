@@ -185,6 +185,10 @@ type fakeOpenBAO struct {
 	// to force a re-mint by leaving too little of it for pg.go's own
 	// certReuseMargin.
 	pkiLifetime time.Duration
+	// noIssuingCA, when set, has the PKI role answer with no ca_chain
+	// and no issuing_ca at all -- the shape writeLeaf then leaves
+	// unwritten, and pgChildEnv must then skip PGSSLROOTCERT entirely.
+	noIssuingCA bool
 
 	ca     ssh.Signer
 	pkiKey ed25519.PrivateKey
@@ -385,11 +389,16 @@ func (f *fakeOpenBAO) signRequest(w http.ResponseWriter, body map[string]any) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+	data := map[string]any{
 		"certificate":   string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: raw})),
-		"issuing_ca":    string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.pki.Raw})),
 		"serial_number": template.SerialNumber.String(),
-	}})
+	}
+	// A role that returns no chain and no issuing certificate at all --
+	// pg_test.go's own concern, when it needs a fixture with no CA.
+	if !f.noIssuingCA {
+		data["issuing_ca"] = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.pki.Raw}))
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
 }
 
 // noSecretsOnDisk is the rule this command exists to keep: whatever it

@@ -41,18 +41,27 @@ Four steps, read from `cmd/accessctl/pg.go` and `cmd/accessctl/bao.go`:
    TTL is sent — see [what decides access](#what-decides-access), below.
 4. **`accessctl` writes the key, the certificate and the CA file, and
    runs the command with libpq's own environment variables set.** Three
-   files land under `<config>/credentials/<ns>/<role>/`: `client.crt`,
-   `client.key`, `client-ca.crt`, all `0600` in a `0700` directory.
-   `PGSSLCERT`, `PGSSLKEY`, `PGSSLROOTCERT` point at them, `PGSSLMODE` is
-   `verify-full`, and `PGUSER` is the certificate's own common name — set
-   only when the caller has not already chosen one (an explicit `-U`,
-   `user=`, or a service file's own `user=`, always wins; see
+   files land under `<config>/credentials/<address-hash>/<ns>/<role>/`:
+   `client.crt`, `client.key`, `client-ca.crt`, all `0600` in a `0700`
+   directory — the address is hashed into the path so two OpenBAO
+   installations sharing a namespace and role name never share a leaf.
+   `PGSSLCERT` and `PGSSLKEY` always point at the certificate; `PGUSER`
+   is set to its own common name and `PGSSLMODE` to `verify-full`, but
+   **only when the caller has not already chosen one** (an explicit
+   `-U`/`user=`, or a service file's own `user=`, always wins; see
    [reference/accessctl.md#the-environment](../reference/accessctl.md#the-environment)
-   for what was verified about libpq's precedence here).
+   for what was verified about libpq's precedence here). **`PGSSLROOTCERT`
+   follows the same rule, and is skipped entirely when the role returned
+   no CA at all.** The PKI's own CA — what the client certificate chains
+   to — is not necessarily the CA that signed the database SERVER's own
+   certificate, so accessctl never assumes it is: a server behind a
+   different CA needs its root named some other way, either a
+   repository's own service file (`sslrootcert=...`, below) or the
+   caller's own `PGSSLROOTCERT`.
 
 `-h`/`-d` above, or a `service=<name>` from a libpq service file, both
 work: `accessctl` never touches connection parameters other than the
-four it sets, and psql's own arguments pass through unchanged.
+ones above, and psql's own arguments pass through unchanged.
 
 **The recommended repo pattern is a committed, secret-free service
 file.** A repository that connects to the same database from more than
@@ -68,6 +77,8 @@ host=db.example
 port=5432
 dbname=orders
 sslmode=verify-full
+# sslrootcert=/path/to/server-ca.crt   # only if the SERVER's CA differs
+#                                      # from the PKI's own -- see below
 ```
 
 ```sh
@@ -78,8 +89,18 @@ accessctl psql --address https://openbao.example:8200 -ns staging -- service=ord
 `accessctl` never writes to this file — unlike the `pg_service` entry
 `accessctl credential db` used to write, this one is the repository's
 own, checked in, and reused by everyone who clones it; `accessctl` only
-ever adds the certificate the service's `sslcert`/`sslkey`/`sslrootcert`
-would otherwise have to name, through the environment instead.
+ever adds the certificate itself (`sslcert`/`sslkey`), through the
+environment. `sslmode` and `sslrootcert` are committed here so the
+repository is the one source of truth for them — accessctl sets its own
+`PGSSLMODE`/`PGSSLROOTCERT` too, but only as a fallback for a caller with
+no service file at all, and never over a service file's own setting or
+an already-exported variable. **The PKI's own CA is not necessarily the
+CA that signed the database SERVER's certificate** — a role can (and
+usually does) sign client certificates from a different CA than the one
+the server's own certificate chains to — so a server whose CA differs
+from the PKI's names its own root explicitly, either in the service file
+(`sslrootcert=`, commented out above) or by exporting `PGSSLROOTCERT`
+before running `accessctl psql`/`pg`.
 
 ## What decides access
 

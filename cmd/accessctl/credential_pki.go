@@ -5,8 +5,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"net/url"
@@ -198,19 +200,29 @@ func writeLeaf(base string, issued leaf) error {
 
 // credentialDir is where a certificate this tool minted is kept: beside
 // the configuration, in a directory only this account may enter, one
-// level per namespace and one below that per role -- so a certificate
-// for `db-client` in `staging` never collides with one for `db-client`
-// in `example/staging`, or with a second role in the same namespace.
+// level per OpenBAO address, one below that per namespace, and one
+// below that per role -- so a certificate for `db-client` in `staging`
+// never collides with one for `db-client` in `example/staging`, with a
+// second role in the same namespace, or (the address) with the same
+// namespace and role at a SECOND installation: two OpenBAO installations
+// are free to use the same namespace and role names for entirely
+// different databases, and without the address in the path the second
+// one to run would silently reuse the first's leaf.
+//
+// The address is hashed rather than spelled out, the same reason
+// bao_cache.go hashes one: a URL has characters a path segment cannot
+// portably hold.
 //
 // The OpenBAO token is NOT here, and is nowhere: what is on disk is a
 // certificate and a key that expire on their own, and a path that says
-// which namespace and role they are for.
-func credentialDir(namespace, role string) (string, error) {
+// which installation, namespace and role they are for.
+func credentialDir(address, namespace, role string) (string, error) {
 	base, err := configDir()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(base, "credentials", namespace, role)
+	sum := sha256.Sum256([]byte(address))
+	dir := filepath.Join(base, "credentials", hex.EncodeToString(sum[:8]), namespace, role)
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create %s: %w", dir, err)
 	}
