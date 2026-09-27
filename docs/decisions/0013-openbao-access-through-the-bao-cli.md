@@ -50,16 +50,20 @@ never a fixed one. OpenBAO's own contract
 namespace a person logs in to is the environment's name") gives every
 namespace its own `jwt-roster` door, and a token minted in one namespace
 is only good in that namespace and its children — never a sibling. So
-`accessctl bao` reads `bao`'s own `-namespace` flag (or `BAO_NAMESPACE`,
-then `VAULT_NAMESPACE`) out of what it is about to run, in that order,
-and logs in there. **`bao`'s own flags, including `-namespace`, go
-*after* the subcommand** (`bao kv get -namespace=dev secret/foo`, which
-`bao` accepts as readily as before it) — `accessctl`'s own flags
-(`--address`, `--ca-cert`, `--issuer`, `--client`, `--audience`,
-`--mount`, `--login-role`) go *before* the subcommand, and the first
-argument that is not one of those ends accessctl's own parsing. That is
-the whole separation rule: nothing here parses `bao`'s syntax beyond
-finding that one flag.
+`accessctl bao` reads `bao`'s own `-namespace` flag — or its documented
+shortcut `-ns` (`bao kv get -h`: "`-ns` can be used as shortcut"), or
+`BAO_NAMESPACE`, then `VAULT_NAMESPACE` — out of what it is about to
+run, in that order, and logs in there. Both spellings of the flag are
+ONE setting: whichever was typed last wins, regardless of which of the
+two it was, the same as `bao` itself applies. **`bao`'s own flags,
+including `-namespace`/`-ns`, go *after* the subcommand**
+(`bao kv get -ns=dev secret/foo`, which `bao` accepts as readily as
+before it) — `accessctl`'s own flags (`--address`, `--ca-cert`,
+`--issuer`, `--client`, `--audience`, `--mount`, `--login-role`) go
+*before* the subcommand, and the first argument that is not one of
+those ends accessctl's own parsing. That is the whole separation rule:
+nothing here parses `bao`'s syntax beyond finding that one flag under
+its two spellings.
 
 **The token is cached**, under this tool's own config directory, `0600`,
 one file per OpenBAO address, namespace and subject — never
@@ -141,9 +145,9 @@ client for somebody else's data plane.
 own `--help` could describe the whole surface. Rejected: that is
 reimplementing `bao`'s CLI grammar one flag at a time, which is
 precisely the maintenance burden this decision exists to end. Finding
-one flag (`-namespace`) to route the login correctly is a narrow,
-justified exception; parsing all of them is the feature this ADR
-refuses to grow back.
+one flag (`-namespace`, under either of its two spellings) to route the
+login correctly is a narrow, justified exception; parsing all of them
+is the feature this ADR refuses to grow back.
 
 **Ship the dotenv conversion as a permanent feature**, since some
 installations will run an old `bao` for a long time. Rejected: permanent

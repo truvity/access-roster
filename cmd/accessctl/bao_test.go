@@ -20,11 +20,15 @@ if [ "$1" = "kv" ] && [ "$2" = "get" ]; then
 	shift 2
 	for a in "$@"; do
 		if [ "$a" = "-h" ]; then
+			echo "Usage: bao kv get [options] PATH"
+			echo
+			echo "  -format=<string>"
 			if [ "$FAKE_BAO_SUPPORTS_ENV" = "1" ]; then
-				printf 'Usage: bao kv get [options] PATH\n  -format=<format>  table, json, yaml or env\n'
+				echo "      Valid formats are \"table\", \"json\", \"yaml\", \"env\", or \"pretty\"."
 			else
-				printf 'Usage: bao kv get [options] PATH\n  -format=<format>  table, json or yaml\n'
+				echo "      Valid formats are \"table\", \"json\", \"yaml\", or \"pretty\"."
 			fi
+			echo "      This can also be specified via the BAO_FORMAT environment variable."
 			exit 0
 		fi
 	done
@@ -120,6 +124,29 @@ func TestBaoAuthenticatesThenRunsBaoUnchanged(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(home, ".vault-token")); !os.IsNotExist(err) {
 		t.Errorf("~/.vault-token exists: %v -- accessctl must never write bao's own token file", err)
+	}
+}
+
+// bao's own documented shortcut, `-ns`, must route the login exactly as
+// `-namespace` does: a caller who types `-ns=devel` (the form bao's own
+// `-h` recommends) must not be logged in to root and then handed a
+// token `devel`'s own policies refuse -- a permission-denied that reads
+// as an outage rather than as a namespace mismatch.
+func TestBaoNsShortcutRoutesTheLoginTheSameAsNamespace(t *testing.T) {
+	newFakeBao(t)
+	testRunBao(t)
+	bao := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	_ = captureStdout(t, func() error {
+		return run([]string{"bao", "--issuer", issuer, "--address", bao.URL,
+			"kv", "get", "-ns=devel", "secret/app"})
+	})
+
+	if bao.namespaces["auth/jwt-roster/login"] != "devel" {
+		t.Errorf("logged in to namespace %q, want devel: -ns must route the login the same as -namespace",
+			bao.namespaces["auth/jwt-roster/login"])
 	}
 }
 

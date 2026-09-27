@@ -6,6 +6,77 @@ import (
 	"testing"
 )
 
+// realBaoKVGetHelpNoEnv is `bao kv get -h`'s real -format paragraph
+// (and its neighbours), captured verbatim from OpenBAO 2.6.2
+// (/nix/store/b2c1isy1cnpzrpqy2pqzhw1lg38fz54k-openbao-2.6.2/bin/bao):
+// today's negative fixture. It says "environment variable" two lines
+// below the quoted format list, which is exactly the false positive
+// formatHelpMentionsEnv must not have.
+const realBaoKVGetHelpNoEnv = `Output Options:
+
+  -field=<string>
+      Print only the field with the given name. Specifying this option will
+      take precedence over other formatting directives. The result will not
+      have a trailing newline making it ideal for piping to other processes.
+
+  -format=<string>
+      Print the output in the given format. Valid formats are "table", "json",
+      "yaml", or "pretty". "raw" is allowed for 'bao read' operations only.
+      The default is table. This can also be specified via the BAO_FORMAT
+      environment variable.
+
+Common Options:
+
+  -mount=<string>
+      Specifies the path where the KV backend is mounted.
+`
+
+// realBaoKVGetHelpWithEnv is the same real text with "env" added to
+// -format's own quoted list of valid formats -- the positive fixture,
+// standing in for the day upstream ships support.
+const realBaoKVGetHelpWithEnv = `Output Options:
+
+  -field=<string>
+      Print only the field with the given name. Specifying this option will
+      take precedence over other formatting directives. The result will not
+      have a trailing newline making it ideal for piping to other processes.
+
+  -format=<string>
+      Print the output in the given format. Valid formats are "table", "json",
+      "yaml", "env", or "pretty". "raw" is allowed for 'bao read' operations
+      only. The default is table. This can also be specified via the
+      BAO_FORMAT environment variable.
+
+Common Options:
+
+  -mount=<string>
+      Specifies the path where the KV backend is mounted.
+`
+
+// formatHelpMentionsEnv reads -format's own paragraph, never a
+// neighbour's, and never the word "environment" two sentences later in
+// that same paragraph -- checked against OpenBAO 2.6.2's real help text
+// verbatim (realBaoKVGetHelpNoEnv), not a shape this file invented.
+func TestFormatHelpMentionsEnvReadsTheRightParagraph(t *testing.T) {
+	t.Parallel()
+
+	if formatHelpMentionsEnv(realBaoKVGetHelpNoEnv) {
+		t.Error("today's real bao 2.6.2 help was read as supporting -format=env")
+	}
+	if !formatHelpMentionsEnv(realBaoKVGetHelpWithEnv) {
+		t.Error("help text listing \"env\" among -format's valid formats was not recognised")
+	}
+
+	// A neighbouring flag's help mentioning "env" must not leak in: only
+	// -format's own paragraph counts.
+	confusable := strings.Replace(realBaoKVGetHelpNoEnv, "-mount=<string>",
+		`-mount=<string>
+      An "env" var, unrelated to -format, that a sloppy search would still catch.`, 1)
+	if formatHelpMentionsEnv(confusable) {
+		t.Error("a mention of \"env\" outside -format's own paragraph was read as support for it")
+	}
+}
+
 // The quoting rule, one field at a time: a plain string is single-quoted,
 // anything with a quote mark, a CR or an LF in it is double-quoted with
 // backslash, double quote, $, CR and LF escaped, a number or boolean is
@@ -167,32 +238,45 @@ func stringsEqual(a, b []string) bool {
 // readFlagValue reads bao's own -namespace (or --namespace) out of
 // whatever spelling it was given, from wherever in the argument list it
 // appears -- bao accepts it interspersed with positional arguments, not
-// only right after the subcommand.
+// only right after the subcommand. Called with both "namespace" and
+// "ns" (intendedNamespace's own call), -ns -- bao's own documented
+// shortcut ("-ns can be used as shortcut", `bao kv get -h`) -- is read
+// exactly as readily, and whichever of the two spellings was typed LAST
+// wins, the same as a flag repeated under one name.
 func TestReadFlagValue(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
-		args []string
-		want string
-		ok   bool
+		names []string
+		args  []string
+		want  string
+		ok    bool
 	}{
-		"= form":                  {[]string{"kv", "get", "-namespace=dev", "p"}, "dev", true},
-		"double-dash = form":      {[]string{"kv", "get", "--namespace=dev", "p"}, "dev", true},
-		"space form":              {[]string{"kv", "get", "-namespace", "dev", "p"}, "dev", true},
-		"after the path":          {[]string{"kv", "get", "p", "-namespace=dev"}, "dev", true},
-		"absent":                  {[]string{"kv", "get", "p"}, "", false},
-		"last one wins, repeated": {[]string{"-namespace=a", "-namespace=b"}, "b", true},
+		"= form":                    {[]string{"namespace"}, []string{"kv", "get", "-namespace=dev", "p"}, "dev", true},
+		"double-dash = form":        {[]string{"namespace"}, []string{"kv", "get", "--namespace=dev", "p"}, "dev", true},
+		"space form":                {[]string{"namespace"}, []string{"kv", "get", "-namespace", "dev", "p"}, "dev", true},
+		"after the path":            {[]string{"namespace"}, []string{"kv", "get", "p", "-namespace=dev"}, "dev", true},
+		"absent":                    {[]string{"namespace"}, []string{"kv", "get", "p"}, "", false},
+		"last one wins, repeated":   {[]string{"namespace"}, []string{"-namespace=a", "-namespace=b"}, "b", true},
+		"-ns, = form":               {[]string{"namespace", "ns"}, []string{"kv", "get", "-ns=devel", "p"}, "devel", true},
+		"-ns, space form":           {[]string{"namespace", "ns"}, []string{"kv", "get", "-ns", "devel", "p"}, "devel", true},
+		"--ns, = form":              {[]string{"namespace", "ns"}, []string{"kv", "get", "--ns=devel", "p"}, "devel", true},
+		"-ns after -namespace wins": {[]string{"namespace", "ns"}, []string{"-namespace=root", "-ns=devel"}, "devel", true},
+		"-namespace after -ns wins": {[]string{"namespace", "ns"}, []string{"-ns=devel", "-namespace=root"}, "root", true},
 	} {
-		got, ok := readFlagValue(tc.args, "namespace")
+		got, ok := readFlagValue(tc.args, tc.names...)
 		if got != tc.want || ok != tc.ok {
 			t.Errorf("%s: got (%q, %v), want (%q, %v)", name, got, ok, tc.want, tc.ok)
 		}
 	}
 }
 
-// intendedNamespace: the flag on bao's own command line beats
-// BAO_NAMESPACE, which beats VAULT_NAMESPACE, which beats root -- the
-// same precedence bao gives its own settings.
+// intendedNamespace: the flag on bao's own command line -- either
+// -namespace or its shortcut -ns -- beats BAO_NAMESPACE, which beats
+// VAULT_NAMESPACE, which beats root -- the same precedence bao gives
+// its own settings. Missing -ns here would log a caller in to the WRONG
+// namespace (root) silently, since -ns is the spelling bao's own
+// documentation recommends as the shortcut.
 func TestIntendedNamespacePrecedence(t *testing.T) {
 	for name, tc := range []struct {
 		bao, vault string
@@ -203,6 +287,9 @@ func TestIntendedNamespacePrecedence(t *testing.T) {
 		{vault: "from-vault", args: []string{"kv", "get", "p"}, want: "from-vault"},
 		{bao: "from-bao", vault: "from-vault", args: []string{"kv", "get", "p"}, want: "from-bao"},
 		{bao: "from-bao", args: []string{"kv", "get", "-namespace=from-flag", "p"}, want: "from-flag"},
+		{bao: "from-bao", args: []string{"kv", "get", "-ns=devel", "p"}, want: "devel"},
+		{bao: "from-bao", args: []string{"kv", "get", "-ns", "devel", "p"}, want: "devel"},
+		{bao: "from-bao", args: []string{"kv", "get", "--ns=devel", "p"}, want: "devel"},
 	} {
 		t.Setenv(envOpenBAONamespace, tc.bao)
 		t.Setenv(envVaultNamespace, tc.vault)

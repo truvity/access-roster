@@ -118,14 +118,31 @@ func baoSupportsFormatEnv(binary string, env []string) bool {
 	return formatEnvSupportYes
 }
 
-// formatEnvWord looks for `env` as one of -format's own accepted values
-// in bao's help text -- as its own word, near the flag, rather than a
-// plain substring search that would also match "environment" in a
-// sentence describing the flag.
-var formatEnvWord = regexp.MustCompile(`(?i)-format[^\n]*\benv\b`)
+// formatFlagParagraph is `-format`'s own paragraph in `bao kv get -h`'s
+// output, and nothing past it: the flag's declaration line
+// (`  -format=<string>`) followed by its indented description lines, up
+// to the first blank line -- which is where bao's own help ends one
+// flag's paragraph and starts the next. Real bao 2.6.2 text:
+//
+//	-format=<string>
+//	    Print the output in the given format. Valid formats are "table", "json",
+//	    "yaml", or "pretty". "raw" is allowed for 'bao read' operations only.
+//	    The default is table. This can also be specified via the BAO_FORMAT
+//	    environment variable.
+//
+// The valid formats are listed on the DESCRIPTION lines, never on the
+// flag's own declaration line, so a search confined to that one line (as
+// an earlier version of this file did) can never see them.
+var formatFlagParagraph = regexp.MustCompile(`(?m)^[ \t]*--?format=[^\n]*\n(?:[ \t]+\S[^\n]*\n)*`)
 
+// formatHelpMentionsEnv is true only when `"env"` -- quoted, exactly as
+// bao quotes every format name it lists -- appears inside -format's own
+// paragraph. Confining the search to that paragraph is what keeps this
+// from matching a DIFFERENT flag's help; requiring the quotes is what
+// keeps it from matching "environment" in "the BAO_FORMAT environment
+// variable", two sentences later in the same paragraph.
 func formatHelpMentionsEnv(help string) bool {
-	return formatEnvWord.MatchString(help)
+	return strings.Contains(formatFlagParagraph.FindString(help), `"env"`)
 }
 
 // replaceFormat returns args with the -format value forced to `to`,
