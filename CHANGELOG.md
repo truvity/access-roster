@@ -18,6 +18,39 @@
   [docs/reference/policy.md#per-role-scopes](docs/reference/policy.md#per-role-scopes)
   and [docs/taxonomy.md#per-role-scopes](docs/taxonomy.md#per-role-scopes).
 
+- **Added: `groupsScoping: enforce` actually narrows a token's `groups`
+  claim, and `/userinfo`'s answer, to what report mode has been
+  computing since 1.32.0.** Every path that writes `groups` is covered:
+  the ID token, the access token (an authorization code, a refresh, a
+  token exchange alike), `Storage.MintFor` (the console's own internal
+  mint), and — closing the one gap report mode could not, on its own —
+  `/userinfo`, scoped by the presented access token's own audience or
+  resource, or a caller could recover the unscoped list with one extra
+  call. `requires` still gates entry, and a `rung:` group's lifetime is
+  still computed, off the FULL held set either way: scoping narrows what
+  a token SAYS, never what the issuer computes from what a caller holds.
+  Report's INFO line becomes a DEBUG line under enforce, at the same rate
+  limit, for turning on when a role goes missing.
+
+  Opt-in: the chart's default stays `report`. `docs/reference/policy.md#groups-in-a-token-scoping`
+  and `docs/operations/runbook.md#turning-enforce-on` for how to move
+  from report's findings to `enforce`, and how to find a role that went
+  missing once it is on.
+
+- **Added: a `groups` override entry may name a two-segment FAMILY
+  (`rung`, `emp`), not only a thing.** `rung:<name>` and `emp:<slug>` have
+  no thing a pair could match or an outright thing entry could widen, so
+  the only way to keep one under scoping used to be naming it outright,
+  one exact name at a time (`groups: [rung:sre]`) — unworkable for a
+  Kubernetes audience binding every person's own `emp:<slug>` to their
+  namespace, where no single entry could name every person's slug up
+  front. `groups: [emp]` now keeps every held `emp:` name at once, the
+  same way a thing entry keeps every role of it; `groups: [rung]` does
+  the same for `rung:`. A declared vocabulary constrains a bare-word entry
+  to a declared thing or one of the two known families; an exact
+  two-segment name validates either way, unchanged. See
+  `docs/reference/policy.md#groups-in-a-token-scoping`.
+
 ## v1.32.1
 
 - **Fixed: per-audience `groups` scoping now reads a self-described
