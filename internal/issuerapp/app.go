@@ -87,7 +87,7 @@ type Config struct {
 	// groupsScoping is how far this installation has moved toward
 	// per-audience `groups` scoping -- see [issuer.GroupsScopingMode].
 	// Validated by [issuer.CheckGroupsScopingMode] below, so a [Config]
-	// past [Load] never carries [issuer.GroupsScopingEnforce].
+	// past [Load] never carries a value that check refuses.
 	groupsScoping issuer.GroupsScopingMode
 }
 
@@ -210,9 +210,9 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
 	}
 	// Checked here, at load, rather than left to [issuer.Config.withDefaults]
-	// to default quietly: an installation that asks for enforce must be
-	// told it cannot have it yet, not silently downgraded to report. See
-	// [issuer.CheckGroupsScopingMode].
+	// to default quietly: an installation that asks for something this
+	// build does not recognise must be told so, not silently downgraded
+	// to report. See [issuer.CheckGroupsScopingMode].
 	c.groupsScoping = issuer.GroupsScopingMode(envString("GROUPS_SCOPING", string(issuer.GroupsScopingReport)))
 	if err = issuer.CheckGroupsScopingMode(c.groupsScoping); err != nil {
 		return Config{}, fmt.Errorf("GROUPS_SCOPING: %w", err)
