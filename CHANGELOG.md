@@ -1,4 +1,4 @@
-## Unreleased
+## v1.35.0
 
 - **Added: `accessctl bao`, `pg` and `psql` gain `--login-ns` (and
   `$ACCESSCTL_BAO_LOGIN_NAMESPACE`), so an installation that keeps its
