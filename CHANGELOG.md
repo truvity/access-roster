@@ -1,3 +1,16 @@
+## Unreleased
+
+- **Added: `accessctl version` (and `--version`).**
+
+  Prints this build's own version — `accessctl <version>`, `accessctl
+  dev` for one built without the release workflow's ldflags — plus the
+  commit and build date when the release stamps those too, from the same
+  `internal/version` the services already report. `--version` and
+  `-version`, as the first argument, do the same; `--json` prints
+  `{"version", "commit", "date"}`, including only whichever of those
+  this build carries. No network call, no config, no session, no `HOME`
+  needed.
+
 ## v1.35.0
 
 - **Added: `accessctl bao`, `pg` and `psql` gain `--login-ns` (and

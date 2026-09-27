@@ -92,6 +92,8 @@ func run(args []string) error {
 	}
 
 	switch args[0] {
+	case "version", "--version", "-version":
+		return versionCommand(args[1:])
 	case "login":
 		return login(args[1:])
 	case "whoami":
@@ -134,6 +136,7 @@ func run(args []string) error {
 func usage(to *os.File) {
 	_, _ = fmt.Fprint(to, `accessctl — access for a person on a laptop
 
+  version       this build's own version (also --version, -version)
   login         sign in at the issuer, once, in a browser
   whoami        who you are, and what your groups open
   setup         kubeconfig and aws-config together
