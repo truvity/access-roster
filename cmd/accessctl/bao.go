@@ -56,14 +56,17 @@ func bao(args []string) error {
 		return err
 	}
 
-	return runBao(binary, rest, baoChildEnv(request, token))
+	return runChild(binary, rest, baoChildEnv(request, token))
 }
 
-// runBao is execBaoProcess (bao_exec_unix.go, bao_exec_windows.go) --
+// runChild is execChildProcess (bao_exec_unix.go, bao_exec_windows.go) --
 // a variable only so a test can substitute something that does not
 // replace the test binary's own process image, the same seam io.go's
-// `stdout` is for capturing what a command printed.
-var runBao = execBaoProcess
+// `stdout` is for capturing what a command printed. `accessctl bao` and
+// `accessctl pg`/`psql` (pg.go) both take over the process this way: an
+// arbitrary command handed a certificate is no different, at the exec
+// layer, from `bao` handed a token.
+var runChild = execChildProcess
 
 // baoRequest is accessctl's OWN half of the command line -- everything
 // before the bao subcommand. `rest`, the bao subcommand and every
@@ -175,13 +178,26 @@ func intendedNamespace(args []string) string {
 	return firstEnv(envOpenBAONamespace, envVaultNamespace)
 }
 
-// baoToken returns a usable OpenBAO token, minting one only when nothing
-// cached is good enough -- the same "mint, cache, lock" shape kube_cache.go
-// and aws_cache.go already use, applied to a login instead of an
-// exchange.
+// baoToken returns a usable OpenBAO token for `accessctl bao` itself --
+// openBAOLogin, below, applied to this request's own fields.
 func baoToken(ctx context.Context, cfg Config, request baoRequest) (cachedBaoToken, error) {
+	return openBAOLogin(ctx, cfg, request.address, request.namespace, request.mount, request.loginRole, request.audience, request.roots)
+}
+
+// openBAOLogin is the authentication `accessctl bao` and `accessctl
+// pg`/`psql` (pg.go) both need: the sign-in (or a job's own identity)
+// exchanged for audience, then logged in to the JWT mount, in namespace.
+// Minting one only when nothing cached is good enough -- the same
+// "mint, cache, lock" shape kube_cache.go and aws_cache.go already use,
+// applied to a login instead of an exchange -- and the cache is shared:
+// a `bao` invocation and a `psql` one that agree on the address,
+// namespace, mount and login role reuse the same login, because it IS
+// the same login.
+func openBAOLogin(
+	ctx context.Context, cfg Config, address, namespace, mount, loginRole, audience string, roots *x509.CertPool,
+) (cachedBaoToken, error) {
 	identity := baoIdentity(cfg)
-	path, cacheErr := baoCachePath(request.address, request.namespace, identity)
+	path, cacheErr := baoCachePath(address, namespace, mount, loginRole, identity)
 	if cacheErr == nil {
 		if cached, ok := readBaoCache(path); ok {
 			return cached, nil
@@ -198,17 +214,17 @@ func baoToken(ctx context.Context, cfg Config, request baoRequest) (cachedBaoTok
 			}
 		}
 
-		held, err := proofFor(ctx, cfg, request.audience)
+		held, err := proofFor(ctx, cfg, audience)
 		if err != nil {
 			return cachedBaoToken{}, err
 		}
-		issued, err := exchangeAs(ctx, cfg.Issuer, held.Client, held.Subject, held.Type, request.audience)
+		issued, err := exchangeAs(ctx, cfg.Issuer, held.Client, held.Subject, held.Type, audience)
 		if err != nil {
 			return cachedBaoToken{}, err
 		}
 
-		client := &openbao{Address: request.address, Namespace: request.namespace, Client: retryingClientTrusting(request.roots)}
-		expires, ok, err := client.loginExpiry(ctx, request.mount, request.loginRole, issued.AccessToken)
+		client := &openbao{Address: address, Namespace: namespace, Client: retryingClientTrusting(roots)}
+		expires, ok, err := client.loginExpiry(ctx, mount, loginRole, issued.AccessToken)
 		if err != nil {
 			return cachedBaoToken{}, err
 		}
@@ -262,7 +278,7 @@ func forgetBaoToken(request baoRequest) error {
 	if err != nil {
 		return err
 	}
-	path, err := baoCachePath(request.address, request.namespace, baoIdentity(cfg))
+	path, err := baoCachePath(request.address, request.namespace, request.mount, request.loginRole, baoIdentity(cfg))
 	if err != nil {
 		return err
 	}

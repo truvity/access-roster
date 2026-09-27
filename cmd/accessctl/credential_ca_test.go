@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"errors"
 	"io"
 	"log"
 	"math/big"
@@ -17,120 +16,17 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
-// An installation whose API is served under a private root is reached
-// only when that root is named: with no bundle the connection is refused
-// as untrusted — and the refusal says how to fix it — and with one, from
-// the flag or from either variable, the whole credential is minted.
-func TestAPrivateRootIsTrustedOnlyWhenNamed(t *testing.T) {
-	bao, bundle := newFakeOpenBAOUnderPrivateRoot(t)
-	issuer := newFakeIssuer(t)
-	signedInHome(t, issuer)
-
-	err := credential([]string{"ssh", "--env", "staging", "--identity", "id_example",
-		"--issuer", issuer, "--address", bao.URL})
-	if err == nil {
-		t.Fatal("a server under a private root was trusted with no bundle named")
-	}
-	if !errors.Is(err, errUnreachable) || !strings.Contains(err.Error(), "--ca-cert") ||
-		!strings.Contains(err.Error(), envOpenBAOCACert) {
-		t.Errorf("an untrusted server = %v, want it unreachable and the way to trust it named", err)
-	}
-	if len(bao.calls) != 0 {
-		t.Errorf("OpenBAO answered an untrusted connection: %v", bao.calls)
-	}
-
-	for name, tc := range map[string]struct {
-		bao, vault string
-		args       []string
-	}{
-		"the flag":       {args: []string{"--ca-cert", bundle}},
-		envOpenBAOCACert: {bao: bundle},
-		envVaultCACert:   {vault: bundle},
-	} {
-		t.Setenv(envOpenBAOCACert, tc.bao)
-		t.Setenv(envVaultCACert, tc.vault)
-		bao.calls = nil
-
-		args := append([]string{"ssh", "--env", "staging", "--identity", "id_example",
-			"--issuer", issuer, "--address", bao.URL}, tc.args...)
-		_ = captureStdout(t, func() error { return credential(args) })
-
-		if !slices.Equal(bao.calls, []string{"auth/jwt-roster/login", "ssh/sign/user", "auth/token/revoke-self"}) {
-			t.Errorf("%s: called %v, want a login, one signing and a revoke", name, bao.calls)
-		}
-	}
-}
-
-// The bundle is for OpenBAO and nothing else: an issuer under the same
-// private root is still verified against the system's roots, so the
-// exchange is refused and OpenBAO is never reached.
-func TestTheBundleDoesNotVouchForTheIssuer(t *testing.T) {
-	root := newPrivateRoot(t)
-	bao := unstartedFakeOpenBAO(t)
-	bao.URL = root.serve(t, http.HandlerFunc(bao.serve))
-	issuer := root.serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusTeapot)
-	}))
-	signedInHome(t, issuer)
-
-	err := credential([]string{"ssh", "--env", "staging", "--identity", "id_example",
-		"--issuer", issuer, "--address", bao.URL, "--ca-cert", root.bundle})
-	if err == nil || !strings.Contains(err.Error(), "certificate") {
-		t.Fatalf("an issuer under the private root = %v, want its certificate refused", err)
-	}
-	if len(bao.calls) != 0 {
-		t.Errorf("OpenBAO was called after an exchange that should have failed: %v", bao.calls)
-	}
-}
-
-// The bundle is the first of: the flag, BAO_CACERT, VAULT_CACERT. A
-// variable the flag outranks is not read at all, so one pointing at
-// something unreadable does not stop a command that named its own.
-func TestCACertPrecedence(t *testing.T) {
-	t.Setenv(envOpenBAOAddress, "https://openbao.example")
-	t.Setenv(envVaultAddress, "")
-	t.Setenv(envOpenBAONamespace, "")
-	t.Setenv(envVaultNamespace, "")
-
-	fromFlag, fromBAO, fromVault := newPrivateRoot(t).bundle, newPrivateRoot(t).bundle, newPrivateRoot(t).bundle
-	missing := filepath.Join(t.TempDir(), "absent.pem")
-
-	for name, tc := range map[string]struct {
-		bao, vault string
-		args       []string
-		want       string
-	}{
-		"nothing":                 {want: ""},
-		"VAULT_CACERT alone":      {vault: fromVault, want: fromVault},
-		"BAO_CACERT over VAULT":   {bao: fromBAO, vault: fromVault, want: fromBAO},
-		"the flag over both":      {bao: fromBAO, vault: fromVault, args: []string{"--ca-cert", fromFlag}, want: fromFlag},
-		"the flag over a missing": {bao: missing, vault: missing, args: []string{"--ca-cert", fromFlag}, want: fromFlag},
-	} {
-		t.Setenv(envOpenBAOCACert, tc.bao)
-		t.Setenv(envVaultCACert, tc.vault)
-		got, err := parseCredentialFlags(append([]string{"ssh", "--env", "staging"}, tc.args...))
-		if err != nil {
-			t.Errorf("%s: %v", name, err)
-			continue
-		}
-		if got.caCert != tc.want {
-			t.Errorf("%s: bundle %q, want %q", name, got.caCert, tc.want)
-		}
-		if (got.roots == nil) != (tc.want == "") {
-			t.Errorf("%s: roots %v, want them read exactly when a bundle is named", name, got.roots)
-		}
-	}
-}
-
-// The bundle is added to the system's roots, never put in their place:
-// an installation whose certificate a public CA signs keeps verifying
-// with a bundle named for another.
+// openbaoRoots is shared by every command that reaches OpenBAO (`bao`,
+// `pg`, `psql`; `credential`'s own callers used it too, before ADR 0013
+// removed them), so it is tested directly here rather than once per
+// command: the bundle is ADDED to the system's roots, never put in their
+// place, so an installation whose certificate a public CA signs keeps
+// verifying with a bundle named for another.
 func TestTheBundleIsAddedToTheSystemRoots(t *testing.T) {
 	root := newPrivateRoot(t)
 
@@ -150,14 +46,11 @@ func TestTheBundleIsAddedToTheSystemRoots(t *testing.T) {
 	}
 }
 
-// A bundle that cannot be read, or holds no certificate, is a mistake in
-// what was typed — refused before anything is exchanged, and named, so
-// the flag never silently trusts nothing extra.
-func TestABundleThatTrustsNothingIsAUsageError(t *testing.T) {
-	t.Setenv(envOpenBAOAddress, "https://openbao.example")
-	t.Setenv(envOpenBAOCACert, "")
-	t.Setenv(envVaultCACert, "")
-
+// A bundle that cannot be read, or holds no certificate, is refused
+// rather than silently trusting nothing extra -- named clearly enough
+// that `bao`'s and `pg`'s own usage errors (each calling this directly
+// from their flag resolution) say the same thing.
+func TestABundleThatTrustsNothingIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	empty := filepath.Join(dir, "empty.pem")
 	keyOnly := filepath.Join(dir, "key.pem")
@@ -168,30 +61,23 @@ func TestABundleThatTrustsNothingIsAUsageError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for name, tc := range map[string]struct {
-		path, says string
-	}{
+	for name, tc := range map[string]struct{ path, says string }{
 		"a file that is not there": {path: filepath.Join(dir, "absent.pem"), says: "read the OpenBAO CA bundle"},
 		"a directory":              {path: dir, says: "read the OpenBAO CA bundle"},
 		"an empty file":            {path: empty, says: "holds no PEM certificate"},
 		"a key, not a certificate": {path: keyOnly, says: "holds no PEM certificate"},
 	} {
-		_, err := parseCredentialFlags([]string{"ssh", "--env", "staging", "--ca-cert", tc.path})
+		_, err := openbaoRoots(tc.path)
 		if codeFor(err) != exitUsage || !strings.Contains(err.Error(), tc.says) {
 			t.Errorf("%s: %v, want a usage error saying %q", name, err, tc.says)
 		}
 	}
-
-	// And from the variable the same way, since that is where a stale
-	// path most often lives.
-	t.Setenv(envOpenBAOCACert, empty)
-	if _, err := parseCredentialFlags([]string{"ssh", "--env", "staging"}); codeFor(err) != exitUsage {
-		t.Errorf("an empty bundle from %s: %v, want a usage error", envOpenBAOCACert, err)
-	}
 }
 
 // privateRoot is a CA no system trusts, with its certificate written as
-// a bundle a caller can name.
+// a bundle a caller can name. Shared by bao_test.go (`--ca-cert` reaching
+// the child as BAO_CACERT) and pg_test.go (the same bundle trusting the
+// PKI's own login and sign calls).
 type privateRoot struct {
 	certificate *x509.Certificate
 	key         *ecdsa.PrivateKey

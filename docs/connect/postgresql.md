@@ -1,85 +1,85 @@
 # Connect PostgreSQL: short-lived client certificates
 
-> **`accessctl credential db`, this page's courier, is removed within
-> 1.x** in favour of `accessctl psql` / `accessctl pg --`
-> ([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)):
-> the certificate handed to `psql` or an arbitrary command through
-> libpq's own environment variables, rather than a `pg_service` entry
-> this tool writes. This page describes the courier shipping today; the
-> replacement lands in the release note beside it.
-
 **Anchor:** OpenBAO's PKI engine. People and machines reach PostgreSQL —
 including a CloudNativePG cluster — with a client certificate that lives
 minutes, not a password that lives until somebody remembers to rotate it.
-`accessctl credential db` is the courier
-([reference](../reference/accessctl.md#credential-certificates-openbao-mints)).
+`accessctl psql` / `accessctl pg --` are the couriers
+([reference](../reference/accessctl.md#pg--psql-a-postgres-client-certificate-then-a-command),
+replacing `accessctl credential db`, removed in v1.34.0 —
+[ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)).
 This page is the database-specific half of
 [connect/openbao.md](openbao.md), which covers the shared contract — the
-exchange, the JWT mount, the three credential kinds — in full.
+exchange, the JWT mount, the manager-side PKI role shape — in full.
 
 ## The flow
 
 ```sh
-accessctl credential db --env staging \
-    --host db.example --dbname orders --service orders
-psql "service=orders"
+accessctl psql --address https://openbao.example:8200 -ns staging -- -h db.example -d orders
 ```
 
-Four steps, read from `cmd/accessctl/credential.go` and
-`cmd/accessctl/credential_pki.go`:
+Four steps, read from `cmd/accessctl/pg.go` and `cmd/accessctl/bao.go`:
 
 1. **`accessctl` exchanges the sign-in for OpenBAO's own audience**
-   (`--audience openbao` by default) — the same token exchange every other
-   `accessctl credential` and `accessctl token` call makes.
-2. **It logs in to OpenBAO's JWT mount** — `jwt-roster` in the
-   environment's namespace unless `--mount`/`--login-role` say otherwise —
-   presenting the exchanged token. The OpenBAO token this returns lives in
-   memory for the rest of the command and is revoked on the way out
-   (`defer bao.revokeSelf(ctx)`); nothing from this step ever reaches disk.
-3. **OpenBAO's PKI role issues a client certificate.** `accessctl`
-   generates an ECDSA P-384 key on this machine, builds a certificate
-   request for it, and calls `pki/sign/<role>` (`db-client` by default) —
-   never `pki/issue/...`, so the private key never crosses the wire and
-   the role only ever needs to offer `sign`. The common name asked for is
-   the signed-in identity unless `--common-name` overrides it, carried
-   both in the CSR and in the request body, for a role that reads either.
-   No TTL is sent — see [what decides access](#what-decides-access), below.
-4. **`accessctl` writes the key, the certificate and the CA file, plus a
-   libpq `pg_service` entry.** Three files land under
-   `<config>/credentials/<env>/`, named for `--service` (the environment,
-   by default): `<service>.crt`, `<service>.key`, `<service>-ca.crt`, all
-   `0600` in a `0700` directory. The service entry
-   (`writeServiceEntry`) is written to `$PGSERVICEFILE`, or
-   `~/.pg_service.conf` — libpq's own file, in libpq's own lookup order —
-   as a marked block so re-running the command replaces only this one
-   service's entry and leaves every other service in the file alone:
+   (`--audience openbao` by default) — the same token exchange
+   `accessctl bao` and `accessctl token` make (`openBAOLogin`, shared
+   with `bao`, cached the same way).
+2. **It logs in to OpenBAO's JWT mount** — `jwt-roster` in `-ns` (or
+   `BAO_NAMESPACE`) unless overridden — presenting the exchanged token.
+   The OpenBAO token this returns is cached, not revoked: `psql`/`pg` are
+   meant to be run often, and a `bao` call at the same address, namespace,
+   mount and login role reuses the same login.
+3. **OpenBAO's PKI role issues a client certificate**, if nothing cached
+   still has enough life left (five minutes' margin — wider than the
+   login token's own, because a certificate may be used for a whole
+   session rather than one round trip). `accessctl` generates an ECDSA
+   P-384 key on this machine, builds a certificate request for it, and
+   calls `pki/sign/<role>` (`-role`, `db-client` by default) — never
+   `pki/issue/...`, so the private key never crosses the wire and the
+   role only ever needs to offer `sign`. The common name asked for is the
+   signed-in identity unless `--common-name` overrides it, carried both
+   in the CSR and in the request body, for a role that reads either. No
+   TTL is sent — see [what decides access](#what-decides-access), below.
+4. **`accessctl` writes the key, the certificate and the CA file, and
+   runs the command with libpq's own environment variables set.** Three
+   files land under `<config>/credentials/<ns>/<role>/`: `client.crt`,
+   `client.key`, `client-ca.crt`, all `0600` in a `0700` directory.
+   `PGSSLCERT`, `PGSSLKEY`, `PGSSLROOTCERT` point at them, `PGSSLMODE` is
+   `verify-full`, and `PGUSER` is the certificate's own common name — set
+   only when the caller has not already chosen one (an explicit `-U`,
+   `user=`, or a service file's own `user=`, always wins; see
+   [reference/accessctl.md#the-environment](../reference/accessctl.md#the-environment)
+   for what was verified about libpq's precedence here).
 
-   ```ini
-   # >>> accessctl orders >>>
-   [orders]
-   host=db.example
-   port=5432
-   dbname=orders
-   user=<the certificate's common name>
-   sslmode=verify-full
-   sslcert=/…/orders.crt
-   sslkey=/…/orders.key
-   sslrootcert=/…/orders-ca.crt
-   # <<< accessctl orders <<<
-   ```
+`-h`/`-d` above, or a `service=<name>` from a libpq service file, both
+work: `accessctl` never touches connection parameters other than the
+four it sets, and psql's own arguments pass through unchanged.
 
-   `user` is always the certificate's own common name, read back from the
-   *issued* certificate rather than from what was asked for — the entry
-   cannot invent a role the server did not actually sign for.
+**The recommended repo pattern is a committed, secret-free service
+file.** A repository that connects to the same database from more than
+one script keeps its own `pg_service.conf` in git — host, port, dbname,
+`sslmode=verify-full`; never a credential — and points `PGSERVICEFILE`
+at it from its dev environment (`devbox.json`'s own `env`, or a
+`direnv` `.envrc`):
 
-5. **You connect with `psql "service=orders"`.** One word, everywhere
-   libpq is read from — no connection string with a certificate path
-   embedded in it to keep in step by hand.
+```ini
+# pg_service.conf, committed
+[orders]
+host=db.example
+port=5432
+dbname=orders
+sslmode=verify-full
+```
 
-`--host` and `--dbname` are required (`resolve()` in `credential.go`);
-`--port` defaults to `5432`, `--service` to the environment, and
-`--project` reaches a database role kept in a project's own OpenBAO
-namespace (`<project>/<env>`) rather than the environment's.
+```sh
+export PGSERVICEFILE=$PWD/pg_service.conf   # from devbox.json or .envrc
+accessctl psql --address https://openbao.example:8200 -ns staging -- service=orders
+```
+
+`accessctl` never writes to this file — unlike the `pg_service` entry
+`accessctl credential db` used to write, this one is the repository's
+own, checked in, and reused by everyone who clones it; `accessctl` only
+ever adds the certificate the service's `sslcert`/`sslkey`/`sslrootcert`
+would otherwise have to name, through the environment instead.
 
 ## What decides access
 
@@ -113,7 +113,7 @@ its policy are declared.
 
 **Trust the PKI's CA for client certificates.** The server's client-CA
 trust store is the same `issuing_ca` (or `ca_chain`) OpenBAO's PKI role
-answers with — the file `accessctl` writes as `<service>-ca.crt`.
+answers with — the file `accessctl` writes as `client-ca.crt`.
 
 **`pg_hba.conf`: `hostssl … cert`, with a `pg_ident.conf` map from the
 certificate's common name to the database role.** PostgreSQL's `cert`

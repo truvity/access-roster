@@ -39,8 +39,8 @@ substance. For a map of every page in the repository, not just these, see
 - [connect/console-app.md](connect/console-app.md#traps-that-were-real) —
   the traps of putting a console behind the gateway
 - [reference/accessctl.md](reference/accessctl.md#what-each-failure-exits-with)
-  — every failure of `accessctl credential` and its exit code, and a key
-  it will never overwrite
+  — every failure of `accessctl bao`/`pg`/`psql` and its exit code, and a
+  key it will never overwrite
 - [conformance.md](conformance.md) — what the OpenID conformance suite
   found, and what was fixed
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — the fixes that must not be
