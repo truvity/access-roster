@@ -134,7 +134,7 @@ func TestBaoAuthenticatesThenRunsBaoUnchanged(t *testing.T) {
 // as an outage rather than as a namespace mismatch.
 func TestBaoNsShortcutRoutesTheLoginTheSameAsNamespace(t *testing.T) {
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
 	signedInHome(t, issuer)

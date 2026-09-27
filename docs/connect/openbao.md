@@ -105,12 +105,12 @@ which is a decision to write down rather than to discover.
 ## Person side
 
 ```sh
-accessctl bao --address https://openbao.example:8200 ssh -mode=ca -role=user -namespace=staging deploy@host.example
+accessctl bao --address https://openbao.example:8200 ssh -mode=ca -role=user -ns=staging deploy@host.example
                                          # an interactive session; ssh's own agent handling applies
 
 accessctl psql --address https://openbao.example:8200 -ns staging -- -h db.example -d orders
 
-accessctl bao --address https://openbao.example:8200 write -namespace=staging -field=signed_key \
+accessctl bao --address https://openbao.example:8200 write -ns=staging -field=signed_key \
     ssh/sign/user public_key=@key.pub > key-cert.pub    # for scp, git, CI and Ansible instead
 ```
 
