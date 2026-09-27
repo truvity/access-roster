@@ -180,33 +180,48 @@ login.
 
 ### The certificate
 
-**Reused while it has enough life left, minted under a lock otherwise.**
-Cached at `<config>/credentials/<ns>/<role>/client.{crt,key}` (and
+**Reused while it has enough life left AND was minted for the same
+common name, minted under a lock otherwise.** Cached at
+`<config>/credentials/<address-hash>/<ns>/<role>/client.{crt,key}` (and
 `client-ca.crt` when the role returns a chain), `0600` in a `0700`
 directory — the private key never leaves this process except into that
 file, and no TTL is ever sent, exactly like `bao`'s own login: the PKI
-role's `max_ttl` is the only answer. The margin before reuse stops is
-five minutes (the same one `aws_cache.go`'s `awsCacheMargin` uses),
-wider than the login token's own minute-scale margin because a
-certificate is handed to a connection that may keep using it for a
-while, not spent in one round trip.
+role's `max_ttl` is the only answer. The address is hashed into the
+path so two OpenBAO installations sharing a namespace and role name
+never share a leaf. The margin before reuse stops is five minutes (the
+same one `aws_cache.go`'s `awsCacheMargin` uses), wider than the login
+token's own minute-scale margin because a certificate is handed to a
+connection that may keep using it for a while, not spent in one round
+trip. The common name is resolved (`--common-name`, else the signed-in
+identity) BEFORE the cache is read, and a cached leaf whose own
+`CommonName` no longer matches is never reused — `--common-name other`,
+or simply signing in as someone else, mints fresh rather than silently
+handing over the previous identity's certificate.
 
 The certificate returned is checked against the key before anything is
-written, exactly as `accessctl credential` used to. `--common-name`
-overrides the signed-in identity that is asked for by default; a role
-that will not sign the name asked for refuses, which is the right place
-for that decision.
+written, exactly as `accessctl credential` used to. A role that will
+not sign the name asked for refuses, which is the right place for that
+decision.
 
 ### The environment
 
-**`PGSSLCERT`, `PGSSLKEY`, `PGSSLROOTCERT` and `PGSSLMODE=verify-full`**
-are always set, pointing at the certificate above. **`PGUSER` is set to
-the certificate's own common name ONLY when it is not already in the
-environment** — libpq treats every one of these strictly as a default:
-an explicit connection-string keyword (`-U`, `user=`) or a libpq service
-file's own setting (`PGSERVICEFILE`, or `~/.pg_service.conf`,
-`service=<name>`) both outrank it, so a repository's own committed
-service file, or a plain `-U`, still wins.
+**`PGSSLCERT` and `PGSSLKEY` are always set**, pointing at the
+certificate above — there is no caller value for them that would make
+sense to keep instead. **`PGSSLROOTCERT`, `PGSSLMODE=verify-full` and
+`PGUSER` (the certificate's own common name) are set ONLY when not
+already in the environment** — libpq treats every one of these strictly
+as a default: an explicit connection-string keyword (`-U`, `user=`) or a
+libpq service file's own setting (`PGSERVICEFILE`, or
+`~/.pg_service.conf`, `service=<name>`) both outrank it, so a
+repository's own committed service file, or a plain `-U`, still wins.
+`PGSSLROOTCERT` is also skipped entirely when the role returned no
+chain and no issuing certificate (no `client-ca.crt` was written), and
+in general is a deliberate default rather than an authority: the PKI's
+CA is not necessarily the CA that signed the database SERVER's own
+certificate, so a server behind a different CA needs its root named a
+different way (a repository's service file `sslrootcert=`, or the
+caller's own `PGSSLROOTCERT`) — this only supplies what nothing else
+already decided.
 [connect/postgresql.md](../connect/postgresql.md) is the how-to,
 including the server side and a committed, secret-free service file as
 the recommended repo pattern.

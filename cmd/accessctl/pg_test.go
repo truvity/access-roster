@@ -71,7 +71,7 @@ func TestPsqlMintsACertificateAndRunsPsql(t *testing.T) {
 		t.Error("the request carries a ttl, which is the role's to decide")
 	}
 
-	base := filepath.Join(home, ".config", "accessctl", "credentials", "staging", "db-client", "client")
+	base := credentialBase(t, bao.URL, "staging", "db-client")
 	signedLocally(t, bao, "pki/sign/db-client", base)
 
 	if !strings.Contains(written, "ARGS -h db.example -d orders") {
@@ -147,10 +147,10 @@ func TestPsqlReMintsANearExpiryCertificate(t *testing.T) {
 	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t, issuer)
+	signedInHome(t, issuer)
 
-	base := filepath.Join(home, ".config", "accessctl", "credentials", "staging", "db-client", "client")
-	seedNearExpiryLeaf(t, base)
+	base := credentialBase(t, bao.URL, "staging", "db-client")
+	seedNearExpiryLeaf(t, base, theSubject)
 
 	if _, err := captureStdoutErr(t, func() error {
 		return run([]string{"psql", "--issuer", issuer, "--address", bao.URL, "-ns", "staging"})
@@ -166,7 +166,7 @@ func TestPsqlReMintsANearExpiryCertificate(t *testing.T) {
 // and key pair at base whose remaining life is under certReuseMargin --
 // what a certificate this command minted a while ago looks like on disk
 // once it is close to needing a re-mint.
-func seedNearExpiryLeaf(t *testing.T, base string) {
+func seedNearExpiryLeaf(t *testing.T, base, commonName string) {
 	t.Helper()
 
 	if err := os.MkdirAll(filepath.Dir(base), 0o700); err != nil {
@@ -178,7 +178,7 @@ func seedNearExpiryLeaf(t *testing.T, base string) {
 	}
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "stale"},
+		Subject:      pkix.Name{CommonName: commonName},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(certReuseMargin / 2),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
@@ -216,6 +216,123 @@ func TestPsqlDoesNotOverrideAnExistingPGUser(t *testing.T) {
 	}
 }
 
+// PGSSLROOTCERT and PGSSLMODE are set only when the caller has not
+// already chosen one: the PKI's own CA is not necessarily the CA that
+// signed the database SERVER's certificate, so this must not shadow a
+// root or a mode the caller already named.
+func TestPsqlDoesNotOverrideAnExistingRootCertOrMode(t *testing.T) {
+	newFakeClient(t, "psql")
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+	t.Setenv("PGSSLROOTCERT", "/etc/ssl/server-ca.pem")
+	t.Setenv("PGSSLMODE", "require")
+
+	written := captureStdout(t, func() error {
+		return run([]string{"psql", "--issuer", issuer, "--address", bao.URL, "-ns", "staging"})
+	})
+	if !strings.Contains(written, "PGSSLROOTCERT=/etc/ssl/server-ca.pem") {
+		t.Errorf("stdout = %q, want the caller's own PGSSLROOTCERT kept", written)
+	}
+	if !strings.Contains(written, "PGSSLMODE=require") {
+		t.Errorf("stdout = %q, want the caller's own PGSSLMODE kept", written)
+	}
+	// PGSSLCERT and PGSSLKEY are always accessctl's own: there is no
+	// caller value for them that would make sense to keep instead.
+	if !strings.Contains(written, "PGSSLCERT="+credentialBase(t, bao.URL, "staging", "db-client")+".crt") {
+		t.Errorf("stdout = %q, want PGSSLCERT set regardless", written)
+	}
+}
+
+// A role that returns no chain and no issuing certificate leaves no
+// `-ca.crt` file behind, and PGSSLROOTCERT must then be left unset
+// entirely rather than pointed at a file that does not exist.
+func TestPsqlSkipsRootCertWhenNoCAWasReturned(t *testing.T) {
+	newFakeClient(t, "psql")
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	bao.noIssuingCA = true
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	written := captureStdout(t, func() error {
+		return run([]string{"psql", "--issuer", issuer, "--address", bao.URL, "-ns", "staging"})
+	})
+	if !strings.Contains(written, "PGSSLROOTCERT=\n") {
+		t.Errorf("stdout = %q, want PGSSLROOTCERT left unset (no CA was returned)", written)
+	}
+
+	base := credentialBase(t, bao.URL, "staging", "db-client")
+	if _, err := os.Stat(base + "-ca.crt"); !os.IsNotExist(err) {
+		t.Errorf("a CA file was written even though the role returned none: %v", err)
+	}
+}
+
+// A cached certificate is reused only for the SAME common name it was
+// minted for. Without this, `--common-name other` -- or simply signing
+// in as someone else against the same -ns/-role -- would silently reuse
+// the previous identity's certificate, since the cache is keyed by path
+// (namespace and role) and not by who it was minted for.
+func TestPsqlDoesNotReuseAnotherIdentitysCertificate(t *testing.T) {
+	newFakeClient(t, "psql")
+	testRunChild(t)
+	bao := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	run1 := func() error {
+		return run([]string{"psql", "--issuer", issuer, "--address", bao.URL, "-ns", "staging"})
+	}
+	if _, err := captureStdoutErr(t, run1); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(bao.calls, "pki/sign/db-client"); got != 1 {
+		t.Fatalf("signs = %d after the first mint, want 1", got)
+	}
+
+	run2 := func() error {
+		return run([]string{"psql", "--issuer", issuer, "--address", bao.URL, "-ns", "staging",
+			"--common-name", "someone-else"})
+	}
+	if _, err := captureStdoutErr(t, run2); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(bao.calls, "pki/sign/db-client"); got != 2 {
+		t.Errorf("signs = %d after a different --common-name, want a fresh mint (2): "+
+			"the previous identity's certificate must not be reused", got)
+	}
+	if bao.bodies["pki/sign/db-client"]["common_name"] != "someone-else" {
+		t.Errorf("common_name = %v, want the new identity", bao.bodies["pki/sign/db-client"]["common_name"])
+	}
+}
+
+// Two OpenBAO installations never share a cached certificate, even at
+// the same namespace and role: the address is part of the cache path.
+func TestPsqlDoesNotShareTheCacheAcrossAddresses(t *testing.T) {
+	newFakeClient(t, "psql")
+	testRunChild(t)
+	baoA := newFakeOpenBAO(t)
+	baoB := newFakeOpenBAO(t)
+	issuer := newFakeIssuer(t)
+	signedInHome(t, issuer)
+
+	for _, address := range []string{baoA.URL, baoB.URL} {
+		address := address
+		if _, err := captureStdoutErr(t, func() error {
+			return run([]string{"psql", "--issuer", issuer, "--address", address, "-ns", "staging"})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := count(baoA.calls, "pki/sign/db-client"); got != 1 {
+		t.Errorf("installation A signed %d times, want 1", got)
+	}
+	if got := count(baoB.calls, "pki/sign/db-client"); got != 1 {
+		t.Errorf("installation B signed %d times, want 1", got)
+	}
+}
+
 // `--common-name` overrides the signed-in identity, and the role can
 // still refuse a name it does not sign for -- read the same way
 // `accessctl credential` used to.
@@ -243,13 +360,13 @@ func TestPsqlRefusesAMismatchedCertificate(t *testing.T) {
 	bao := newFakeOpenBAO(t)
 	bao.swapKey = true
 	issuer := newFakeIssuer(t)
-	home := signedInHome(t, issuer)
+	signedInHome(t, issuer)
 
 	err := run([]string{"psql", "--issuer", issuer, "--address", bao.URL, "-ns", "staging"})
 	if err == nil || !strings.Contains(err.Error(), "other than the one it was asked to sign") {
 		t.Fatalf("a mismatched certificate = %v, want it refused", err)
 	}
-	base := filepath.Join(home, ".config", "accessctl", "credentials", "staging", "db-client", "client")
+	base := credentialBase(t, bao.URL, "staging", "db-client")
 	if _, statErr := os.Stat(base + ".key"); !os.IsNotExist(statErr) {
 		t.Errorf("a key was written for a certificate that does not match it: %v", statErr)
 	}
@@ -365,4 +482,17 @@ func captureStdoutErr(t *testing.T, run func() error) (string, error) {
 	runErr := run()
 	written, _ := os.ReadFile(out.Name())
 	return string(written), runErr
+}
+
+// credentialBase is the base path pg.go's own credentialDir(address, ns,
+// role) gives a certificate at "client" -- what a test needs to find a
+// certificate on disk without re-deriving the address hash by hand.
+func credentialBase(t *testing.T, address, ns, role string) string {
+	t.Helper()
+
+	dir, err := credentialDir(address, ns, role)
+	if err != nil {
+		t.Fatalf("credentialDir: %v", err)
+	}
+	return filepath.Join(dir, "client")
 }
