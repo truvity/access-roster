@@ -52,8 +52,8 @@ type cachedBaoToken struct {
 // re-check loop this command does not have.
 const baoTokenMargin = sessionTokenMargin
 
-// baoCachePath names the cache file for one OpenBAO address, namespace
-// and subject.
+// baoCachePath names the cache file for one OpenBAO address, namespace,
+// mount, login role and subject.
 //
 // The namespace is part of the key and not an afterthought: a token
 // minted by logging in to one OpenBAO namespace is only valid in that
@@ -62,14 +62,19 @@ const baoTokenMargin = sessionTokenMargin
 // cache keyed on the address and the subject alone would hand a
 // `dev`-namespace token to a caller about to run `bao -namespace=stage
 // ...`, and OpenBAO would then refuse it, which reads as an outage
-// rather than as a cache bug. Hashed, like the kubectl and AWS caches,
-// because none of the three pieces is a filename.
-func baoCachePath(address, namespace, subject string) (string, error) {
+// rather than as a cache bug. The mount and the login role are in the
+// key for the same reason, one level down: an installation that logs in
+// through more than one JWT mount (or role) at the same address and
+// namespace mints a DIFFERENT token from each, and `accessctl bao` and
+// `accessctl pg`/`psql` sharing this cache (bao.go's openBAOLogin) must
+// not hand one caller's mount's token to the other's. Hashed, like the
+// kubectl and AWS caches, because none of these pieces is a filename.
+func baoCachePath(address, namespace, mount, loginRole, subject string) (string, error) {
 	dir, err := configDir()
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte(address + "\x00" + namespace + "\x00" + subject))
+	sum := sha256.Sum256([]byte(address + "\x00" + namespace + "\x00" + mount + "\x00" + loginRole + "\x00" + subject))
 
 	return filepath.Join(dir, "bao", hex.EncodeToString(sum[:16])+".json"), nil
 }

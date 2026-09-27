@@ -308,7 +308,7 @@ func TestIntendedNamespacePrecedence(t *testing.T) {
 func TestFormatEnvInterception(t *testing.T) {
 	resetFormatEnvSupportCache()
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
 	signedInHome(t, issuer)
@@ -337,7 +337,7 @@ func TestFormatEnvInterception(t *testing.T) {
 func TestFormatEnvNoLongerInterceptedOnceBaoSupportsIt(t *testing.T) {
 	resetFormatEnvSupportCache()
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
 	signedInHome(t, issuer)
@@ -361,7 +361,7 @@ func TestFormatEnvNoLongerInterceptedOnceBaoSupportsIt(t *testing.T) {
 func TestFormatEnvPropagatesABaoFailure(t *testing.T) {
 	resetFormatEnvSupportCache()
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
 	signedInHome(t, issuer)

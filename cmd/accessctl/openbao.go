@@ -110,29 +110,14 @@ func firstEnv(names ...string) string {
 	return ""
 }
 
-// login trades the exchanged token for an OpenBAO one on the JWT mount.
+// loginExpiry trades the exchanged token for an OpenBAO one on the JWT
+// mount, plus how long it is good for.
 //
 // This is the second half of the same sentence the exchange began: the
 // issuer decided the identity may ask OpenBAO for something, and the
 // mount's role decides what its groups open once it is inside. Neither
 // half can be skipped, which is why a session revoked in the console
 // stops issuance within the exchange's token cap.
-func (b *openbao) login(ctx context.Context, mount, role, jwt string) error {
-	data, err := b.call(ctx, http.MethodPost, "auth/"+mount+"/login", nil, map[string]any{"role": role, "jwt": jwt})
-	if err != nil {
-		return fmt.Errorf("log in on %s: %w", mount, err)
-	}
-	if data.Auth == nil || strings.TrimSpace(data.Auth.ClientToken) == "" {
-		return fmt.Errorf("%w: the login on %s returned no token", errUnreachable, mount)
-	}
-	b.token = data.Auth.ClientToken
-	return nil
-}
-
-// loginExpiry is `login`, plus how long the token is good for -- the one
-// thing `accessctl credential` never needed (it revokes the login before
-// the command exits) and `accessctl bao`'s own cache does, to decide when
-// to log in again rather than reuse what is on disk.
 //
 // ok is false when the answer carries no lease at all: a role with no
 // token_ttl configured, or an installation that leaves it at OpenBAO's

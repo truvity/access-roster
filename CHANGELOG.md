@@ -67,6 +67,39 @@
   accessctl now authenticates that path itself.
   `docs/decisions/0002-mission-boundary-tokens-and-memberships.md`.
 
+- **Added: `accessctl psql` and `accessctl pg --` mint a Postgres client
+  certificate and run a command with libpq's own environment variables
+  pointed at it**, replacing `accessctl credential db`.
+  `accessctl pg [flags] -- <command> [args…]` authenticates — sharing
+  `accessctl bao`'s own login and its cache — mints (or reuses, five
+  minutes' margin) a client certificate via `pki/sign/<role>` (`-role`,
+  `db-client` by default; `-ns`, `-mount` mirroring `bao`'s own flag
+  spelling), and runs `<command>` with `PGSSLCERT`, `PGSSLKEY`,
+  `PGSSLROOTCERT` and `PGSSLMODE=verify-full` set, plus `PGUSER` (the
+  certificate's own common name) **only when the caller has not already
+  chosen one** — an explicit `-U`/`user=`, or a libpq service file's own
+  `user=`, still wins. `accessctl psql [flags] [psql args…]` is the
+  shorthand for `accessctl pg -- psql [psql args…]`; psql's own
+  arguments, including a service file's `service=<name>`, pass through
+  unchanged. accessctl no longer writes a `pg_service` entry: a
+  repository keeps its own, committed and secret-free, and points
+  `PGSERVICEFILE` at it. See
+  [docs/reference/accessctl.md#pg--psql-a-postgres-client-certificate-then-a-command](docs/reference/accessctl.md#pg--psql-a-postgres-client-certificate-then-a-command)
+  and [docs/connect/postgresql.md](docs/connect/postgresql.md).
+
+- **Removed (breaking, within 1.x): `accessctl credential ssh|db|client`.**
+  `docs/decisions/0013-openbao-access-through-the-bao-cli.md`. Each now
+  refuses, naming its replacement: `ssh` → `accessctl bao ssh -mode=ca`
+  for an interactive session, or `accessctl bao write -field=signed_key
+  <mount>/sign/<role> public_key=@key.pub > key-cert.pub` for scp, git,
+  CI and Ansible; `db` → `accessctl psql` / `accessctl pg --`; `client`
+  → `accessctl bao write <pki mount>/sign/<role> csr=@your.csr` (an
+  `openssl req -new` recipe for the CSR is in
+  [docs/connect/openbao.md](docs/connect/openbao.md)). See
+  [docs/connect/ssh.md](docs/connect/ssh.md) and
+  [docs/connect/postgresql.md](docs/connect/postgresql.md) for the
+  full replacements.
+
 ## v1.33.0
 
 - **Added: a declared role may restrict itself to some of its thing's

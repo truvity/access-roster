@@ -8,14 +8,14 @@ import (
 	"os/exec"
 )
 
-// execBaoProcess is the fallback for the one platform with no process
+// execChildProcess is the fallback for the one platform with no process
 // image to exec into: a child process, stdio inherited, and the exit
 // code propagated by calling os.Exit directly -- the same end state
 // bao_exec_unix.go's syscall.Exec reaches by never returning, reached
 // here by leaving nothing else for accessctl's own exit-code handling in
-// main() to add on top of bao's own.
-func execBaoProcess(binary string, args []string, env []string) error {
-	cmd := exec.Command(binary, args...) //nolint:gosec // the caller's own bao arguments, unchanged
+// main() to add on top of the replaced process's own.
+func execChildProcess(binary string, args []string, env []string) error {
+	cmd := exec.Command(binary, args...) //nolint:gosec // the caller's own arguments, unchanged
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Env = env
 

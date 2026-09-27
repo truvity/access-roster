@@ -4,14 +4,14 @@
 speaks the same API — trusts it on a JWT auth mount and mints
 **short-lived certificates** for things that speak neither OpenID nor a
 cloud's own protocol: an SSH server, a database, a service that wants
-mutual TLS. `accessctl credential` is the courier
-([reference](../reference/accessctl.md#credential-certificates-openbao-mints)),
-and for everything else OpenBAO can do — reading a KV path, `bao ssh
--mode=ca`'s interactive session, an engine this page does not mention —
-`accessctl bao <args…>` authenticates and runs the real `bao` binary
-unchanged
+mutual TLS. `accessctl bao <args…>` authenticates and runs the real
+`bao` binary unchanged for SSH and machine certificates (and everything
+else OpenBAO can do); `accessctl pg`/`psql` do the same and additionally
+mint a Postgres client certificate
 ([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md),
-[reference](../reference/accessctl.md#bao-authenticate-then-run-bao-unchanged)).
+[reference](../reference/accessctl.md#bao-authenticate-then-run-bao-unchanged),
+[reference](../reference/accessctl.md#pg--psql-a-postgres-client-certificate-then-a-command)).
+This replaces `accessctl credential`, removed in v1.34.0.
 
 The contract between the two sides — the doors, the claims, the two
 clients, the credential paths and every failure mode — is
@@ -105,23 +105,25 @@ which is a decision to write down rather than to discover.
 ## Person side
 
 ```sh
-accessctl credential ssh --env staging --principal deploy
-ssh deploy@host.example                 # the agent offers the certificate
+accessctl bao --address https://openbao.example:8200 ssh -mode=ca -role=user -namespace=staging deploy@host.example
+                                         # an interactive session; ssh's own agent handling applies
 
-accessctl credential db --env staging \
-    --host db.example --dbname orders --service orders
-psql "service=orders"
+accessctl psql --address https://openbao.example:8200 -ns staging -- -h db.example -d orders
 
-accessctl credential client --env staging --out ./gateway.crt
+accessctl bao --address https://openbao.example:8200 write -namespace=staging -field=signed_key \
+    ssh/sign/user public_key=@key.pub > key-cert.pub    # for scp, git, CI and Ansible instead
 ```
 
 `--address` names the manager, or `BAO_ADDR` in the environment
 (`VAULT_ADDR` is read too); with neither, the command stops and says
-which to set. The namespace is the environment's own, named for it —
-`--env staging` works in `staging` — for every kind. `--namespace`, or
-`BAO_NAMESPACE` (then `VAULT_NAMESPACE`), overrides it, the flag first;
-a database role kept in a project's own namespace is reached with
-`--project <project>`, which means `<project>/<env>`.
+which to set. For `bao`, the namespace is read out of `bao`'s own
+`-namespace` (or `BAO_NAMESPACE`, then `VAULT_NAMESPACE`) — the flag
+goes AFTER the subcommand, where `bao` has always accepted it; for
+`pg`/`psql`, the same variable is read through `-ns` (or the same two
+environment variables), a flag of accessctl's own since neither command
+has a subcommand to attach it to. A database role kept in a project's
+own namespace is reached the way the project's own OpenBAO layout
+requires — see that project's own documentation for its namespace path.
 
 A manager whose API certificate chains to a private root is reached by
 naming that root: `--ca-cert <file>` (a PEM bundle), or `BAO_CACERT`
@@ -131,23 +133,21 @@ the manager and nothing else, so there is no need to point
 `SSL_CERT_FILE` at it, which would replace the roots of every connection
 the command makes.
 
-The SSH role is `user` unless `--role admin` asks for the other one:
+The SSH role is `user` unless `-role=admin` asks for the other one:
 `user` for everyday logins as the account a host admits its ordinary
 users as, `admin` for the account that administers it. The two are two
 groups, granted separately, and which OS accounts each signs for is the
-role's `allowed_users`, not a flag.
-
-Each command prints the certificate's `key_id` or common name and its
-serial — the handle for finding it in the audit trail — and never the
-key.
+role's `allowed_users`, not a flag — this is `bao`'s own `-role` flag,
+unchanged from OpenBAO's own CLI.
 
 ## Job side
 
 The same commands run in a GitHub Actions job granted `id-token: write`:
 the job's own identity token is exchanged instead of a sign-in, and the
 `ci` rules decide which repository and ref may hold those groups
-([github-actions.md](github-actions.md)). A job has no ssh-agent, so
-`--identity` is how it gets a usable certificate on disk.
+([github-actions.md](github-actions.md)). A job has no ssh-agent, so the
+`accessctl bao write ... > key-cert.pub` recipe (or `accessctl psql`,
+which needs no agent at all) is what it uses.
 
 A job that needs one shared value is not one of the project's three
 groups. It gets an identity of its own with `read` on the one path it
@@ -163,14 +163,13 @@ and the issuer vouches for them. The console no longer reads a store's
 policies or groups (removed in v1.30.0, see
 [decisions/0002-mission-boundary-tokens-and-memberships.md](../decisions/0002-mission-boundary-tokens-and-memberships.md)).
 
-## `accessctl bao`: the same login, then `bao` itself
+## `accessctl bao`, in full: any other OpenBAO command
 
-`accessctl credential`, above, is a courier for the three kinds OpenBAO
-signs. Everything else OpenBAO can do — `bao kv get`, `bao ssh -mode=ca`
-for an interactive session, an engine this repository has never heard
-of — runs through `accessctl bao <args…>` instead: the same exchange and
-JWT-mount login as `credential`'s, then the real `bao` binary, unchanged,
-with the login handed to it as `BAO_TOKEN`
+The examples above cover SSH and machine certificates. `accessctl bao
+<args…>` runs anything else OpenBAO can do the same way — `bao kv get`,
+an engine this page does not mention — with the same exchange and
+JWT-mount login, then the real `bao` binary, unchanged, with the login
+handed to it as `BAO_TOKEN`
 ([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)).
 
 ```sh

@@ -107,9 +107,13 @@ func run(args []string) error {
 	case "aws":
 		return awsCredentials(args[1:])
 	case "credential":
-		return credential(args[1:])
+		return credentialRemoved(args[1:])
 	case "bao":
 		return bao(args[1:])
+	case "psql":
+		return psql(args[1:])
+	case "pg":
+		return pg(args[1:])
 	case "secrets":
 		return secretsRemoved()
 	case "kubeconfig":
@@ -141,8 +145,9 @@ func usage(to *os.File) {
   github-token  a GitHub App installation token, under the catalogue's grants
   kube-token    a Kubernetes exec credential      (run by kubectl)
   aws           an AWS credential process answer  (run by the AWS SDKs)
-  credential    a short-lived ssh, db or client certificate, minted by OpenBAO
   bao           authenticate, then run the real bao CLI unchanged (OpenBAO)
+  psql          authenticate, mint a Postgres client certificate, run psql
+  pg            the same, running any command instead of psql
   exchange      the raw exchange: a token in, a token for an audience out
 
 accessctl's own flags on bao go BEFORE the bao subcommand; bao's own
@@ -160,4 +165,33 @@ func secretsRemoved() error {
 		"accessctl bao instead — e.g. `accessctl bao kv get -ns=<ns> -mount=<mount> -format=env <path> > .env` " +
 		"(accessctl authenticates; bao's own client does everything else), " +
 		"or with External Secrets in a cluster — see docs/decisions/0002-mission-boundary-tokens-and-memberships.md")
+}
+
+// credentialRemoved returns the error message for the removed
+// `accessctl credential` command, naming the one kind asked for when
+// there was one -- ssh, db or client -- and every replacement otherwise.
+// docs/decisions/0013-openbao-access-through-the-bao-cli.md.
+func credentialRemoved(args []string) error {
+	kind := ""
+	if len(args) > 0 {
+		kind = args[0]
+	}
+	switch kind {
+	case "ssh":
+		return fmt.Errorf("accessctl credential ssh was removed in v1.34.0: use " +
+			"`accessctl bao ssh -mode=ca ...` for an interactive session, or " +
+			"`accessctl bao write -field=signed_key <mount>/sign/<role> public_key=@key.pub > key-cert.pub` " +
+			"for scp, git, CI and Ansible — see docs/connect/ssh.md")
+	case "db":
+		return fmt.Errorf("accessctl credential db was removed in v1.34.0: use " +
+			"`accessctl psql` or `accessctl pg -- <command>` instead — see docs/connect/postgresql.md")
+	case "client":
+		return fmt.Errorf("accessctl credential client was removed in v1.34.0: use " +
+			"`accessctl bao write <pki mount>/sign/<role> csr=@your.csr` instead " +
+			"(openssl req -new -key key.pem -out your.csr for the CSR) — see docs/connect/openbao.md")
+	default:
+		return fmt.Errorf("accessctl credential was removed in v1.34.0: ssh → `accessctl bao ssh -mode=ca ...`; " +
+			"db → `accessctl psql` / `accessctl pg --`; client → `accessctl bao write <pki mount>/sign/<role> csr=@...` " +
+			"— see docs/decisions/0013-openbao-access-through-the-bao-cli.md")
+	}
 }

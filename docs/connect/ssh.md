@@ -11,7 +11,7 @@ question and "who runs the CA" is another
 | Who | Authenticates with | Owner of that piece |
 |---|---|---|
 | a person | **opkssh** — an OpenID Connect ID token, verified straight into `sshd` | — |
-| a machine (a CI job, a controller) | **accessctl credential ssh** — a short-lived OpenBAO-signed user certificate | — |
+| a machine (a CI job, a controller) | **accessctl bao ssh -mode=ca** (or `accessctl bao write ... sign/<role>`) — a short-lived OpenBAO-signed user certificate | — |
 | a host | **a host certificate** from OpenBAO's SSH CA | — |
 
 The [Who owns what](#who-owns-what) table at the end places every piece
@@ -182,15 +182,13 @@ root  oidc:groups:devel:build-worker:admin  https://access.example
 
 ## Machines: OpenBAO-signed short-lived SSH user certificates (recommended)
 
-> **`accessctl credential ssh`, below, is removed within 1.x**
-> ([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)).
-> The replacement is `accessctl bao ssh -mode=ca …` for the interactive
-> session, or `accessctl bao write -field=signed_key <mount>/sign/<role>
-> public_key=@key.pub > key-cert.pub` for scp, git, CI and Ansible — the
-> same login, then the real `bao` binary rather than a dedicated
-> subcommand. This page's shape (opkssh for people, OpenBAO for machines
-> and hosts) is unchanged; only which accessctl command a machine runs
-> is.
+**`accessctl credential ssh` was removed in v1.34.0**
+([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)):
+the commands below, `accessctl bao ssh -mode=ca …` and `accessctl bao
+write ... sign/<role>`, are the same login, then the real `bao` binary,
+rather than a dedicated subcommand. This page's shape (opkssh for
+people, OpenBAO for machines and hosts) is unchanged; only which
+accessctl command a machine runs is.
 
 A CI job or a controller doing remote work over SSH is not a person at a
 browser, so opkssh's interactive login does not fit it — except the one
@@ -212,55 +210,59 @@ access-roster's documented contract routes every kind through the
 issuer's exchange, never straight from the job's token to OpenBAO's JWT
 mount — OpenBAO's JWT auth method could, in principle, trust a job's
 issuer directly, but going through this issuer's exchange first is what
-gives the certificate a subject `accessctl credential ssh` and the
-issuer's own audit trail agree on, and what makes the same policy
-`requires` gate SSH, the database role and the client-certificate role
-alike.
+gives the certificate a subject the issuer's own audit trail agrees on,
+and what makes the same policy `requires` gate SSH, the database role
+and the client-certificate role alike.
 
-### `accessctl credential ssh`
+### `accessctl bao ssh -mode=ca`, and `accessctl bao write` for files
 
-The exact commands this document is verified against, from
-[cmd/accessctl/credential_ssh.go](../../cmd/accessctl/credential_ssh.go)
-and [cmd/accessctl/credential.go](../../cmd/accessctl/credential.go):
-
-```sh
-accessctl credential ssh --env staging --principal deploy
-ssh deploy@build-worker.example                 # the ssh-agent offers the certificate
-```
-
-- **The key pair is generated locally, in the process, for this one
-  certificate** — an Ed25519 key that never existed before this command
-  ran and never leaves the process except when `--identity` asks for
-  files. Nothing long-lived is signed twice: the certificate's own
-  lifetime is the whole story.
-- **The certificate is delivered into the running ssh-agent by default**,
-  with `LifetimeSecs` set from the certificate's own expiry — the agent
-  forgets it exactly when it expires, never offers an expired key to a
-  host it meets. `--identity <name>` writes files instead (a bare name
-  under `~/.ssh`, a path taken as given): the private key `0600`, a
-  `<name>.pub` and a `<name>-cert.pub` beside it, which is what a job
-  with no ssh-agent needs.
-- **The lifetime is the role's, never a flag's.** `accessctl` sends no
-  TTL to OpenBAO; the signing role's `ttl` and `max_ttl` are the entire
-  answer, so shortening them shortens every certificate already in
-  flight, including ones already handed to an agent.
-- `--principal` (repeatable) asks for OS accounts to certify; `--role`
-  chooses which OpenBAO role signs (`user` by default, `admin` only when
-  named — two classes of login, not two strengths of one, per
-  [connect/openbao.md](openbao.md#manager-side)).
-
-In a job:
+Two shapes, from [cmd/accessctl/bao.go](../../cmd/accessctl/bao.go): an
+interactive session, or a certificate written to a file for something
+else to use.
 
 ```sh
-accessctl credential ssh --env staging --principal ci --identity ./id_ci
-ssh -i ./id_ci ci@build-worker.example
+accessctl bao --address https://openbao.example:8200 ssh -mode=ca -namespace=staging -role=user deploy@build-worker.example
 ```
 
-with the job's own GitHub Actions OIDC token or Kubernetes ServiceAccount
-token exchanged the same way any other `accessctl` command exchanges one
+`bao ssh -mode=ca` is OpenBAO's own client-side SSH helper: it asks the
+signing role named by `-role` for a certificate over a key it generates,
+then runs `ssh` itself with it — agent handling, host key checking and
+every other `ssh` behaviour exactly as when pointed at any other
+CA-issued certificate. accessctl's own part ends at the login; `bao`'s
+own flags (`-mode`, `-role`, `-namespace`, and anything else `bao ssh`
+accepts) go after the subcommand, the same separation rule as any other
+`accessctl bao` call.
+
+```sh
+accessctl bao --address https://openbao.example:8200 write -namespace=staging -field=signed_key \
+    ssh/sign/user public_key=@id_ci.pub > id_ci-cert.pub
+scp -i id_ci ci@build-worker.example:backup.tar.gz .    # ssh reads id_ci-cert.pub beside id_ci automatically
+```
+
+`bao write ... -field=signed_key` is the shape for scp, git, CI and
+Ansible: a public key already on disk (`ssh-keygen -t ed25519 -f id_ci
+-N ''` makes one), signed into a certificate file named the way OpenSSH
+looks for it (`<key>-cert.pub` beside `<key>`), with no ssh-agent and no
+interactive session needed. `-field=signed_key` prints only that one
+field's value, which is the CA-issued certificate and nothing else —
+without it, `bao write` prints OpenBAO's whole response.
+
+**The lifetime is the role's, never a flag's**: neither recipe sends a
+TTL to OpenBAO; the signing role's `ttl` and `max_ttl` are the entire
+answer, so shortening them shortens every certificate already in flight.
+Which OS accounts a role signs for is `allowed_users`, not a flag —
+`-role=admin` asks for the account that administers a host, granted
+separately from the everyday `-role=user`
+([connect/openbao.md](openbao.md#manager-side)).
+
+In a job, the same two recipes run with the job's own GitHub Actions
+OIDC token or Kubernetes ServiceAccount token exchanged the same way any
+other `accessctl` command exchanges one
 ([connect/github-actions.md](github-actions.md),
 [connect/kubernetes-cluster.md](kubernetes-cluster.md)) — no separate SSH
-credential to provision.
+credential to provision. A job has no ssh-agent, so the `bao write`
+recipe (a file it can pass to `ssh -i` or `scp -i`) is the one it uses;
+`bao ssh -mode=ca` is for an interactive session at a terminal.
 
 ### The alternative for GitHub-only CI: opkssh
 
@@ -273,8 +275,8 @@ job's `sub` — `repo:<owner>/<repo>:ref:<ref>`) — verified against opkssh
 **Prefer it** when the caller is *only* ever a GitHub Actions job and
 never anything else: one fewer hop (no exchange, no OpenBAO login), and
 one file (`auth_id`) rather than two systems (policy plus an OpenBAO
-role) to keep in sync. **Prefer `accessctl credential ssh`** the moment
-an in-cluster runner, a controller carrying a Kubernetes ServiceAccount
+role) to keep in sync. **Prefer `accessctl bao`'s recipes above** the
+moment an in-cluster runner, a controller carrying a Kubernetes ServiceAccount
 token, or any other workload identity this issuer already accepts as a
 matcher needs the same access: opkssh's provider list has no equivalent
 of this issuer's `service_account` matchers, so a second, parallel

@@ -57,7 +57,7 @@ func newFakeBao(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// testRunBao is runBao's real job (bao_exec_unix.go's execBaoProcess),
+// testRunChild is runChild's real job (bao_exec_unix.go's execChildProcess),
 // done as an ordinary child process instead of replacing the test
 // binary's own image -- syscall.Exec would end the whole `go test` run,
 // not just fail one case. It keeps the same contract otherwise: stdio
@@ -65,11 +65,11 @@ func newFakeBao(t *testing.T) {
 // test can read what the fake bao wrote), and the exit code turned into
 // an exitCodeError the same way bao_env.go's interception path already
 // does for the JSON leg.
-func testRunBao(t *testing.T) func(string, []string, []string) error {
+func testRunChild(t *testing.T) func(string, []string, []string) error {
 	t.Helper()
 
-	saved := runBao
-	t.Cleanup(func() { runBao = saved })
+	saved := runChild
+	t.Cleanup(func() { runChild = saved })
 
 	fn := func(binary string, args []string, env []string) error {
 		cmd := exec.Command(binary, args...) //nolint:gosec // the test's own fake bao
@@ -84,7 +84,7 @@ func testRunBao(t *testing.T) func(string, []string, []string) error {
 		}
 		return err
 	}
-	runBao = fn
+	runChild = fn
 	return fn
 }
 
@@ -95,7 +95,7 @@ func testRunBao(t *testing.T) func(string, []string, []string) error {
 // passed through byte for byte.
 func TestBaoAuthenticatesThenRunsBaoUnchanged(t *testing.T) {
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
 	home := signedInHome(t, issuer)
@@ -154,7 +154,7 @@ func TestBaoNsShortcutRoutesTheLoginTheSameAsNamespace(t *testing.T) {
 // accessctl's own cache and never reaches the issuer or OpenBAO again.
 func TestBaoReusesTheCachedToken(t *testing.T) {
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	bao.leaseSeconds = 900
 	issuer := newFakeIssuer(t)
@@ -182,7 +182,7 @@ func TestBaoReusesTheCachedToken(t *testing.T) {
 // with no expiry -- so every run logs in again.
 func TestBaoWithNoLeaseIsNeverCached(t *testing.T) {
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
 	signedInHome(t, issuer)
@@ -208,7 +208,7 @@ func TestBaoWithNoLeaseIsNeverCached(t *testing.T) {
 // margin, and the same reasoning, as the session's own access token.
 func TestBaoLogsInAgainOnceTheCachedTokenIsNearExpiry(t *testing.T) {
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	bao.leaseSeconds = 900
 	issuer := newFakeIssuer(t)
@@ -225,7 +225,7 @@ func TestBaoLogsInAgainOnceTheCachedTokenIsNearExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity := baoIdentity(cfg)
-	path, err := baoCachePath(bao.URL, "", identity)
+	path, err := baoCachePath(bao.URL, "", rosterMount, rosterLoginRole, identity)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestBaoLogsInAgainOnceTheCachedTokenIsNearExpiry(t *testing.T) {
 // is not an error.
 func TestBaoForgetRevokesAndRemovesTheCache(t *testing.T) {
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	bao.leaseSeconds = 900
 	issuer := newFakeIssuer(t)
@@ -267,7 +267,7 @@ func TestBaoForgetRevokesAndRemovesTheCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := baoCachePath(bao.URL, "", baoIdentity(cfg))
+	path, err := baoCachePath(bao.URL, "", rosterMount, rosterLoginRole, baoIdentity(cfg))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestBaoForgetRevokesAndRemovesTheCache(t *testing.T) {
 // of accessctl's own is printed on top of what bao already wrote.
 func TestBaoPropagatesTheExitCode(t *testing.T) {
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	bao := newFakeOpenBAO(t)
 	issuer := newFakeIssuer(t)
 	signedInHome(t, issuer)
@@ -343,7 +343,7 @@ func bao2(args []string) error { return bao(args) }
 // same private root this command's login just did.
 func TestBaoPassesTheCABundleToTheChild(t *testing.T) {
 	newFakeBao(t)
-	testRunBao(t)
+	testRunChild(t)
 	openbaoServer, bundle := newFakeOpenBAOUnderPrivateRoot(t)
 	issuer := newFakeIssuer(t)
 	signedInHome(t, issuer)
