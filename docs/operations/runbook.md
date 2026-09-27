@@ -272,12 +272,51 @@ one:
   already carry exactly what scoping would keep, and needs nothing before
   a future release can turn `enforce` on for it.
 
-`enforce`, which would actually narrow a token to what the report
-describes, is refused at issuer start in this release; see
-[configuration.md](../reference/configuration.md) for `groupsScoping`. Run
-report for long enough to see every audience an installation actually
+Run report for long enough to see every audience an installation actually
 serves — including anything on a slow cycle, like a monthly job's token
 exchange — before treating its silence as complete.
+
+### Turning enforce on
+
+`groupsScoping: enforce` narrows a token's `groups` claim, and
+`/userinfo`'s answer, to exactly what the report above described —
+nothing about how `requires` gates entry, or how a `rung:` group shortens
+a token's life, changes: both still read the FULL set a caller holds,
+before scoping ever narrows what the token SAYS. See
+[per-audience scoping](../reference/policy.md#groups-in-a-token-scoping)
+for the rule itself.
+
+It is opt-in: the chart's default stays `report`, and turning enforce on
+for one installation never turns it on for another. Set it only once
+report's findings for every audience this installation serves have each
+been read and either accepted (an audience whose dropped groups are truly
+unused) or given a `groups:` override.
+
+**Finding a role that went missing.** A relying party that used to read a
+group from a token and stops seeing it once enforce is on is the one
+regression this mode can cause, and it has one fix: add a `groups:`
+override to the audience's policy row (`groups: [thing, ...]` for the
+specific things it reads, or `groups: all` to restore today's shape while
+you work out which). To find out WHICH group went missing without
+guessing:
+
+1. Set the issuer's log level to DEBUG. Enforce logs the identical line
+   report used to log at INFO — same message shape, same `audience`,
+   `client`, `subject` and `dropped` fields, same rate limit — just one
+   level down, because a dropped group is the steady state under enforce
+   rather than news on every token.
+2. Reproduce the failure, and read the line naming that audience and
+   subject: `dropped` is exactly the groups the token stopped carrying.
+3. Add whichever of them the relying party actually reads to a `groups:`
+   override on that audience's row, and reload the policy.
+
+### `/userinfo` is scoped too
+
+Enforce narrows `/userinfo`'s answer by the presented ACCESS token's own
+audience, the same computation as the token itself — a caller cannot
+recover the unscoped list by calling `/userinfo` instead of reading the
+token, which would otherwise be exactly the bypass scoping exists to
+close.
 
 ## Enabling a GitHub organisation
 

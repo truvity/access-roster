@@ -290,6 +290,104 @@ func TestScopeGroupsRungAndEmpNames(t *testing.T) {
 	}
 }
 
+// A Kubernetes audience's own binding is the case a bare two-segment
+// override entry exists for: `k8s:<cluster>` binds each person's own
+// namespace to their `emp:<slug>`, and today that name has no thing a
+// `groups: [rung:sre]`-style outright entry could ever be written once
+// and for all for -- every person's own slug differs. Naming the FAMILY
+// instead, `groups: [emp]`, keeps every `emp:<slug>` at once, the same
+// way a thing entry keeps every role of it.
+func TestScopeGroupsOverrideFamilyKeepsEveryMemberOfIt(t *testing.T) {
+	t.Parallel()
+	withFamily := policy.Policy{
+		Version: 1,
+		Clients: map[string]policy.Client{
+			"k8s": {Kind: policy.KindPublic, Requires: []string{"devel:k8s:viewer"},
+				Groups: policy.GroupsOverride{Things: []string{"emp"}}},
+			"plain": {Kind: policy.KindPublic, Requires: []string{"devel:k8s:viewer"}},
+		},
+	}
+	held := []string{"devel:k8s:viewer", "emp:alice", "emp:bob", "rung:sre"}
+
+	kept, dropped := withFamily.ScopeGroups("k8s", held)
+	if !slices.Equal(kept, []string{"devel:k8s:viewer", "emp:alice", "emp:bob"}) {
+		t.Errorf("kept = %v, want every emp: name kept alongside the pair match", kept)
+	}
+	if !slices.Equal(dropped, []string{"rung:sre"}) {
+		t.Errorf("dropped = %v, want rung:sre still dropped: only its family was named, not it", dropped)
+	}
+
+	// Without the override, both families are dropped -- the control this
+	// test would fail without, proving the override is what did it.
+	kept, dropped = withFamily.ScopeGroups("plain", held)
+	if !slices.Equal(kept, []string{"devel:k8s:viewer"}) {
+		t.Errorf("kept = %v, want neither family kept with no override", kept)
+	}
+	if !slices.Equal(dropped, []string{"emp:alice", "emp:bob", "rung:sre"}) {
+		t.Errorf("dropped = %v, want every emp: and rung: name dropped", dropped)
+	}
+}
+
+// `groups: [rung]` is the same mechanism for the OTHER family: a session
+// lifetime's own name, kept outright rather than through a pair, because
+// `rung:` names have no thing either.
+func TestScopeGroupsOverrideFamilyRung(t *testing.T) {
+	t.Parallel()
+	p := policy.Policy{
+		Version: 1,
+		Clients: map[string]policy.Client{
+			"c": {Kind: policy.KindPublic, Requires: []string{"devel:k8s:viewer"},
+				Groups: policy.GroupsOverride{Things: []string{"rung"}}},
+		},
+	}
+	held := []string{"devel:k8s:viewer", "rung:sre", "emp:alice"}
+
+	kept, dropped := p.ScopeGroups("c", held)
+	if !slices.Equal(kept, []string{"devel:k8s:viewer", "rung:sre"}) {
+		t.Errorf("kept = %v, want rung:sre kept by its family", kept)
+	}
+	if !slices.Equal(dropped, []string{"emp:alice"}) {
+		t.Errorf("dropped = %v, want emp:alice dropped: only rung's family was named", dropped)
+	}
+}
+
+// A family entry is read ONLY off a genuine two-segment name. A
+// three-segment grant whose THING happens to spell a family's name --
+// `devel:emp:admin`, an installation that (unwisely, but not invalidly)
+// declared a thing called "emp" -- is still matched exactly as any other
+// thing is: through requires-pair matching or an override naming that
+// THING, never through the family branch, which a held name with three
+// segments never even reaches.
+func TestScopeGroupsOverrideFamilyDoesNotMatchAThingOfTheSameName(t *testing.T) {
+	t.Parallel()
+	p := policy.Policy{
+		Version: 1,
+		Clients: map[string]policy.Client{
+			// Names "emp" as an override entry the same way the family
+			// tests above do -- but this held name is a full three-segment
+			// grant, not a two-segment one, so [SplitGroup] succeeds and
+			// the family branch never runs at all.
+			"c": {Kind: policy.KindPublic, Requires: []string{"devel:k8s:viewer"},
+				Groups: policy.GroupsOverride{Things: []string{"emp"}}},
+		},
+	}
+	held := []string{"devel:k8s:viewer", "devel:emp:admin", "emp:alice"}
+
+	kept, dropped := p.ScopeGroups("c", held)
+	// devel:emp:admin IS kept here -- but by the existing THING-matching
+	// rule ("emp" names a thing too), which this test does not disturb;
+	// what it proves is that emp:alice, the GENUINE two-segment name, is
+	// kept by the family branch, and that the thing branch a
+	// three-segment grant takes is a completely different code path from
+	// it.
+	if !slices.Equal(kept, []string{"devel:emp:admin", "devel:k8s:viewer", "emp:alice"}) {
+		t.Errorf("kept = %v, want both devel:emp:admin (a thing match) and emp:alice (a family match)", kept)
+	}
+	if len(dropped) != 0 {
+		t.Errorf("dropped = %v, want nothing dropped", dropped)
+	}
+}
+
 func TestScopeGroupsOverrideValidation(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -391,5 +489,45 @@ clients:
 	}
 	if err = p.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)
+	}
+}
+
+// A known family -- [policy.FamilyRung], [policy.FamilyEmp] -- validates
+// under a declared vocabulary exactly as "all" does: there is no
+// `vocabulary.families` table for it to be undeclared against, because a
+// family is not a thing.
+func TestScopeGroupsOverrideFamilyValidatesOnAVocabulary(t *testing.T) {
+	t.Parallel()
+	raw := scopeVocabulary + `
+groups: { "devel:grafana:viewer": {} }
+clients:
+  c: { kind: public, requires: ["devel:grafana:viewer"], groups: [grafana, emp, rung] }
+`
+	p, err := policy.Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if err = p.Validate(); err != nil {
+		t.Fatalf("Validate: %v, want a thing plus both known families accepted together", err)
+	}
+}
+
+// An exact two-segment name (`rung:sre`) is neither a thing nor a family,
+// so a vocabulary's `things` table has nothing to say about it either --
+// it names a caller's own rung or identity outright, and validates
+// whether or not a vocabulary is in force.
+func TestScopeGroupsOverrideExactTwoSegmentNameValidatesOnAVocabulary(t *testing.T) {
+	t.Parallel()
+	raw := scopeVocabulary + `
+groups: { "devel:grafana:viewer": {} }
+clients:
+  c: { kind: public, requires: ["devel:grafana:viewer"], groups: [rung:sre] }
+`
+	p, err := policy.Parse([]byte(raw))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if err = p.Validate(); err != nil {
+		t.Fatalf("Validate: %v, want an exact two-segment name accepted without being a declared thing", err)
 	}
 }

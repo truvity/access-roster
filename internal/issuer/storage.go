@@ -976,7 +976,8 @@ func (s *Storage) SetUserinfoFromRequest(
 	clientID := request.GetClientID()
 	s.reportGroupsScoping(ctx, clientID, clientID, subject, result.Groups)
 
-	if err = s.fill(ctx, info, subject, Claims(result), given, family); err != nil {
+	claims := scopeClaims(s.iss.Config().GroupsScoping, s.iss.Policy(), Claims(result), clientID, result.Groups)
+	if err = s.fill(ctx, info, subject, claims, given, family); err != nil {
 		return err
 	}
 
@@ -1070,7 +1071,18 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 	// [accessAudienceOf]; client is who is ASKING, which differs from
 	// audience exactly when a resource was named or an exchange is
 	// presenting on somebody else's behalf.
-	s.reportGroupsScoping(ctx, accessAudienceOf(request), clientOf(request), request.GetSubject(), held)
+	audience := accessAudienceOf(request)
+	s.reportGroupsScoping(ctx, audience, clientOf(request), request.GetSubject(), held)
+	// Narrowed BEFORE it is persisted below: this is the claims map
+	// [Storage.SetUserinfoFromToken] answers `/userinfo` from later, keyed
+	// by this very token's id, so leaving it unscoped here would leave
+	// `/userinfo` answering with everything regardless of what the token
+	// itself carries — exactly the bypass
+	// docs/reference/policy.md#groups-in-a-token-scoping warns enforce
+	// must close. For an exchange, claims is [Grant.Claims], already
+	// narrowed once in [Issuer.Exchange]; re-narrowing it here from the
+	// SAME held and the SAME audience is a no-op, not a second opinion.
+	claims = scopeClaims(s.iss.Config().GroupsScoping, s.iss.Policy(), claims, audience, held)
 	lifetime := s.iss.Config().TokenLifetime
 	if declared, ok := s.iss.Policy().Client(clientOf(request)); ok {
 		lifetime = declared.Cap(lifetime)
@@ -1443,10 +1455,26 @@ func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, subject, _ str
 	// held is not reported here: this hook computes the SAME answer
 	// [Storage.issue] already reported a moment earlier on the same
 	// request context — see [signingAudience] — so a second line would
-	// only repeat the first, not add a finding.
-	claims, _, given, family, err := s.identityOf(ctx, subject)
+	// only repeat the first, not add a finding. It IS narrowed here,
+	// though, unreported or not: this is the map the library actually
+	// signs into the access token's own JWT (see op/token.go's
+	// CreateJWT), a SEPARATE evaluation from the one [Storage.issue]
+	// persisted for `/userinfo` a moment before — so leaving this one
+	// unscoped would hand the bearer itself the full, unscoped set even
+	// though every other reading of the same token was narrowed.
+	//
+	// signingAudienceFrom reads back the SAME audience [Storage.issue]
+	// marked moments ago on this request's context, for the same reason
+	// [Storage.SigningKey] does a moment after this returns: this hook is
+	// handed the subject and the scopes, never the audience, so the
+	// carrier is the only way to learn it here.
+	claims, held, given, family, err := s.identityOf(ctx, subject)
 	if err != nil {
 		return nil, err
+	}
+
+	if audience, ok := signingAudienceFrom(ctx).get(); ok {
+		claims = scopeClaims(s.iss.Config().GroupsScoping, s.iss.Policy(), claims, audience, held)
 	}
 
 	return withNames(claims, given, family), nil

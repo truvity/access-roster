@@ -56,7 +56,7 @@ type Config struct {
 	// [GroupsScopingReport] in [Config.withDefaults] -- see
 	// [GroupsScopingMode] and [CheckGroupsScopingMode], which
 	// [issuerapp.Load] calls before this is ever set, so [Storage] never
-	// sees [GroupsScopingEnforce].
+	// sees a value [CheckGroupsScopingMode] would refuse.
 	GroupsScoping GroupsScopingMode
 }
 
@@ -74,30 +74,31 @@ const (
 	// GroupsScopingReport computes [policy.Policy.ScopeGroups] for every
 	// minted token and logs what it would drop, WITHOUT changing the
 	// token — see [Storage]'s groups-scoping report. The default, and the
-	// only mode besides [GroupsScopingOff] this release can run.
+	// mode an installation is expected to run before it ever turns to
+	// [GroupsScopingEnforce] — see
+	// docs/operations/runbook.md#reading-the-groups-scoping-report for
+	// turning report's findings into overrides first.
 	GroupsScopingReport GroupsScopingMode = "report"
-	// GroupsScopingEnforce would narrow a token's `groups` claim to what
-	// [policy.Policy.ScopeGroups] keeps. REFUSED at load by
-	// [CheckGroupsScopingMode] in THIS release: the switch is named and
-	// wired so an installation can see it coming, but turning it on ships
-	// in a later release, once report mode has had a chance to surface
-	// which rows need a `groups` override first.
+	// GroupsScopingEnforce narrows a token's `groups` claim, and
+	// `/userinfo`'s answer, to what [policy.Policy.ScopeGroups] keeps for
+	// the audience each was minted or asked for -- see
+	// docs/reference/policy.md#groups-in-a-token-scoping. Opt-in: the
+	// chart's default, and what an installation that sets nothing keeps
+	// running, is [GroupsScopingReport].
 	GroupsScopingEnforce GroupsScopingMode = "enforce"
 )
 
-// CheckGroupsScopingMode refuses a value this release cannot run.
+// CheckGroupsScopingMode refuses a value no release has ever run.
 // [issuerapp.Load] calls it on whatever `GROUPS_SCOPING` names, before a
-// [Config] is ever built, so an installation that asks for enforce is
-// refused at start with a reason rather than silently downgraded to
-// report — silence here would be the one thing this switch exists to
-// avoid: an operator believing enforcement is live when it never loaded.
+// [Config] is ever built, so an installation that asks for something
+// unrecognised is refused at start with a reason rather than silently
+// falling back to a mode it did not ask for — silence here would be the
+// one thing this switch exists to avoid: an operator believing a mode is
+// live when it never loaded.
 func CheckGroupsScopingMode(mode GroupsScopingMode) error {
 	switch mode {
-	case GroupsScopingOff, GroupsScopingReport:
+	case GroupsScopingOff, GroupsScopingReport, GroupsScopingEnforce:
 		return nil
-	case GroupsScopingEnforce:
-		return fmt.Errorf(
-			"groupsScoping: %q ships in a later release; run %q first", mode, GroupsScopingReport)
 	default:
 		return fmt.Errorf(
 			"groupsScoping: %q is not one of \"off\", \"report\" or \"enforce\"", mode)

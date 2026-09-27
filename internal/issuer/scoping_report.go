@@ -2,6 +2,7 @@ package issuer
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -64,15 +65,30 @@ func (r *groupsScopingReporter) allow(key string) bool {
 }
 
 // reportGroupsScoping computes [policy.Policy.ScopeGroups] for one minted
-// token and logs ONE structured line at INFO when it would have dropped
-// something, rate-limited by [groupsScopingReporter.allow]. It changes
-// nothing about the token: `groups` — held, in full — is what every
-// caller of this method has already put on the token by the time this
-// runs, and stays there whatever this logs.
+// token and logs ONE structured line when it would have dropped
+// something, rate-limited by [groupsScopingReporter.allow]. It never
+// itself changes the token: under [GroupsScopingReport] nothing else does
+// either, so `groups` — held, in full — stays exactly what every caller
+// of this method already put on the token; under [GroupsScopingEnforce]
+// the caller has ALREADY narrowed it elsewhere (see [scopeClaims] and its
+// call sites), so this only decides what to log about that, never what
+// to keep.
 //
-// A no-op under [GroupsScopingOff], and under [GroupsScopingReport] when
-// audience is empty (nothing to scope by) or nothing would be dropped
-// (nothing worth a line).
+// The level is the one difference between the two modes this runs under.
+// [GroupsScopingReport] logs at INFO: the whole point of report mode is
+// to be read before enforce is ever reached for, so the finding an
+// operator needs to turn into a `groups` override belongs at a level
+// nobody has to go looking for. [GroupsScopingEnforce] logs the SAME
+// finding at DEBUG instead — enforcing is the steady state an
+// installation runs in indefinitely, and a dropped group is no longer
+// news on every one of however many tokens a busy client mints; the line
+// still exists, at the level an operator turns on when a role goes
+// missing and they need to see which groups a token stopped carrying,
+// without paying an INFO line per finding for as long as enforce runs.
+//
+// A no-op under [GroupsScopingOff], and under either of the other two
+// modes when audience is empty (nothing to scope by) or nothing would be
+// dropped (nothing worth a line).
 //
 // client is the OAuth client this token is FOR, when that differs from
 // audience -- an access token scoped to an RFC 8707 resource, or an
@@ -81,7 +97,8 @@ func (r *groupsScopingReporter) allow(key string) bool {
 // there is no separate presenting client to name (the console's own
 // internal mint, [Storage.MintFor]).
 func (s *Storage) reportGroupsScoping(ctx context.Context, audience, client, subject string, held []string) {
-	if s.iss.Config().GroupsScoping != GroupsScopingReport {
+	mode := s.iss.Config().GroupsScoping
+	if mode != GroupsScopingReport && mode != GroupsScopingEnforce {
 		return
 	}
 	if audience == "" || len(held) == 0 {
@@ -98,8 +115,12 @@ func (s *Storage) reportGroupsScoping(ctx context.Context, audience, client, sub
 		return
 	}
 
-	s.logger().InfoContext(ctx,
-		"groups scoping (report mode): this token would drop groups under enforce",
+	level, message := slog.LevelInfo, "groups scoping (report mode): this token would drop groups under enforce"
+	if mode == GroupsScopingEnforce {
+		level, message = slog.LevelDebug, "groups scoping (enforce mode): this token dropped groups"
+	}
+
+	s.logger().Log(ctx, level, message,
 		"audience", logsafe.Value(audience),
 		"client", logsafe.Value(client),
 		"subject", logsafe.Value(subject),
