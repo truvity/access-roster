@@ -1051,3 +1051,129 @@ clients:
 		}
 	}
 }
+
+// A group referenced only by a GitHub App catalogue's grant is not
+// reported: the grant is what actually consumes it -- see Unconsumed's
+// catalogueGroups parameter, which is exactly how a caller that DOES
+// hold a catalogue (internal/githubroster/app, internal/issuerapp) tells
+// this package about a consumer it otherwise has no way to see, because
+// the catalogue is a file this package never reads for itself.
+func TestUnconsumedCountsCatalogueGrants(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+groups:
+  all:example-org:contributor: {}
+  team:b:viewer: {}
+clients:
+  app: { kind: public, requires: [team:b:viewer] }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got := p.Unconsumed("all:example-org:contributor"); len(got) != 0 {
+		t.Errorf("Unconsumed = %v, want the catalogue-granted group counted consumed", got)
+	}
+}
+
+// catalogueGroups narrows the false positive; it does not turn the lint
+// off. A group named by neither the policy's own consumers nor the
+// catalogue groups passed in is still reported.
+func TestUnconsumedStillReportsWhatNoCatalogueGrantNames(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+groups:
+  all:example-org:contributor: {}
+  team:b:admin: {}
+clients:
+  app: { kind: public, requires: [all:example-org:contributor] }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := p.Unconsumed("some:other:group")
+	want := []string{"team:b:admin"}
+	if !slices.Equal(got, want) {
+		t.Errorf("Unconsumed = %v, want %v", got, want)
+	}
+}
+
+// Rule 6 (see TestUnconsumedCountsWildcardExpansion in vocabulary_test.go)
+// applies to a catalogue grant exactly as it does to a client's Requires:
+// a mapping wildcard key declared in groups: is counted consumed the
+// moment ANY concrete group its expansion names is itself consumed by
+// something -- here, a GitHub App catalogue grant on one of the two
+// non-sensitive scopes *:k8s:admin reaches. A catalogue grant can only
+// ever name a CONCRETE group: DecideGitHubGrant compares a grant's Group
+// against a caller's already-resolved groups, which are never the
+// wildcard string itself, so this is the same shape a Requires entry
+// takes and is judged the same way.
+func TestUnconsumedCountsCatalogueGrantWildcardExpansion(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+` + vocab + `
+groups:
+  "*:k8s:admin": { matchers: [{ email_domain: b.example }] }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got := p.Unconsumed("devel:k8s:admin"); len(got) != 0 {
+		t.Errorf("Unconsumed = %v, want the wildcard key counted consumed via its catalogue-granted expansion", got)
+	}
+}
+
+// A client's `groups: all` override -- which lets its token carry every
+// held group, not just what its Requires pairs name -- consumes every
+// declared group: [Policy.ScopeGroups] would keep every single one of
+// them for that audience, so none is reported as though nothing reached
+// it. This closes the KNOWN LIMITATION Unconsumed's own doc comment used
+// to carry: docs/decisions/0006-groups-claim-scoped-per-audience.md gave
+// a client this exact way to widen what it reads without a matching
+// Requires entry.
+func TestUnconsumedCountsGroupsOverrideAll(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+groups:
+  team:a:admin: {}
+  team:b:viewer: {}
+clients:
+  app: { kind: public, requires: [team:a:admin], groups: all }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got := p.Unconsumed(); len(got) != 0 {
+		t.Errorf("Unconsumed = %v, want groups: all to consume every declared group", got)
+	}
+}
+
+// A client's `groups: [thing, ...]` override consumes every declared
+// group of that thing, in ANY scope -- exactly the reach
+// [Policy.groupsOverrideKeeps] gives it at request time, deciding this
+// lint's question with the SAME rule ScopeGroups applies to a live
+// token, so the two can never quietly disagree about what one override
+// reaches. A group of an unrelated thing is still reported.
+func TestUnconsumedCountsGroupsOverrideThing(t *testing.T) {
+	t.Parallel()
+	p, err := policy.Parse([]byte(`
+version: 1
+groups:
+  devel:grafana:viewer: {}
+  prod:grafana:admin: {}
+  team:b:viewer: {}
+clients:
+  app: { kind: public, requires: [devel:grafana:viewer], groups: [grafana] }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := p.Unconsumed()
+	want := []string{"team:b:viewer"}
+	if !slices.Equal(got, want) {
+		t.Errorf("Unconsumed = %v, want %v -- prod:grafana:admin should be consumed by groups: [grafana]", got, want)
+	}
+}

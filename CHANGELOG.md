@@ -1,3 +1,34 @@
+## Unreleased
+
+- **Fixed: the "internal groups are declared but nothing consumes them"
+  warning no longer names a group a GitHub App catalogue's grant
+  consumes, or one only a `groups` override reaches.**
+
+  `policy.Policy.Unconsumed` read `requires` on every client, resource
+  and `client_documents`, GitHub org/team bindings, and the hub's own
+  roles — but not a GitHub App catalogue's grants, which this package
+  cannot read for itself: the catalogue is a deployment's own file,
+  loaded by whichever process keeps one (`internal/app`, wired through
+  to `internal/issuerapp`; the standalone `internal/githubroster/app`
+  controller, which now reads it too, read-only, for this reason alone).
+  `Unconsumed` gains a variadic `catalogueGroups` parameter — existing
+  callers that pass nothing keep today's behaviour exactly — and
+  `internal/githubapp/catalogue.Catalogue` gains `GrantGroups`, its
+  `UndeclaredGroups` mirror, for a caller to read its own catalogue's
+  grants with. On a real installation this closed about twenty false
+  positives: every GitHub-derived group (`<org>:<repo-or-team>…`) that
+  existed only to appear in a catalogue grant.
+
+  While in there: a client's, resource's or `client_documents`' `groups`
+  override (`docs/decisions/0006-groups-claim-scoped-per-audience.md`)
+  is now counted too, by the same rule `Policy.ScopeGroups` applies to a
+  live token — `groups: all` consumes every declared group, and
+  `groups: [thing, ...]` consumes every declared group of that thing, in
+  any scope. This closed a KNOWN LIMITATION `Unconsumed`'s own doc
+  comment had carried since that override shipped: a client widening
+  what it reads this way, rather than through `requires`, was invisible
+  to this warning until now.
+
 ## v1.33.0
 
 - **Added: a declared role may restrict itself to some of its thing's

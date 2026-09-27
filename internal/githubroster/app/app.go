@@ -21,6 +21,7 @@ import (
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubroster/controller"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/version"
@@ -41,6 +42,17 @@ type Config struct {
 	// audit is the audit installation the controller records to, with its
 	// own identity; without one it only logs what it did.
 	audit audit.Config
+	// catalogueFile is the GitHub App catalogue's grants, read ONLY so
+	// this controller can tell its own "internal groups are declared but
+	// nothing consumes them" warning about a group a grant names: this
+	// process reconciles GitHub team membership from the policy's GitHub
+	// table and mints no installation tokens itself, so the catalogue is
+	// otherwise none of its business. Empty is an empty catalogue (see
+	// [catalogue.Load]), which is also what a deployment that has not
+	// wired this file to this controller yet gets: the warning then
+	// names every GitHub-derived group a grant elsewhere actually
+	// consumes, exactly as it did before this field existed.
+	catalogueFile string
 }
 
 // LogLevel is the level the process should log at.
@@ -61,6 +73,10 @@ func Load() (Config, error) {
 			Instance:  envString("POD_NAME", ""),
 			Version:   version.String(),
 		},
+		// Named exactly as the merged deployment's own is (internal/app),
+		// so the two never disagree about where the same catalogue file
+		// is mounted from.
+		catalogueFile: envString("GITHUB_APPS_CATALOGUE_FILE", ""),
 	}
 	for _, org := range strings.Split(envString("ENABLED_ORGS", ""), ",") {
 		if org = strings.TrimSpace(org); org != "" {
@@ -114,7 +130,21 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the policy: %w", err)
 	}
-	if unconsumed := declared.Unconsumed(); len(unconsumed) > 0 {
+	// A malformed catalogue does NOT stop this controller: unlike the
+	// service that mints installation tokens from it, this one only
+	// reads the catalogue's grants to keep the warning below honest, and
+	// a bad file there is not a reason to stop reconciling GitHub team
+	// membership. An empty path is an empty catalogue either way (see
+	// [catalogue.Load]), so a deployment that has not wired this file to
+	// this controller gets exactly the warning it always got.
+	apps, catalogueErr := catalogue.Load(cfg.catalogueFile)
+	if catalogueErr != nil {
+		log.WarnContext(ctx, "the GitHub App catalogue could not be read: "+
+			"internal groups it grants may be reported as unconsumed",
+			"file", cfg.catalogueFile, "error", catalogueErr)
+		apps = &catalogue.Catalogue{}
+	}
+	if unconsumed := declared.Unconsumed(apps.GrantGroups()...); len(unconsumed) > 0 {
 		log.WarnContext(ctx, "internal groups are declared but nothing consumes them",
 			"groups", unconsumed)
 	}

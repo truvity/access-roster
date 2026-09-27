@@ -326,6 +326,18 @@ func (a *App) HealthHandler() http.Handler { return a.health }
 // Issuer is the decision core, for a caller that drives it directly.
 func (a *App) Issuer() *issuer.Issuer { return a.issuer }
 
+// catalogueGrantGroups is the groups a GitHub App catalogue's grants name,
+// for policy.Policy.Unconsumed's catalogueGroups parameter -- nil when
+// this issuer mints no catalogue Apps' tokens at all (apps nil) or its
+// catalogue is empty (a nil Catalogue field), which is the ordinary shape
+// for a deployment that declares no GitHub Apps.
+func catalogueGrantGroups(apps *issuer.GitHubApps) []string {
+	if apps == nil || apps.Catalogue == nil {
+		return nil
+	}
+	return apps.Catalogue.GrantGroups()
+}
+
 // New assembles the issuer.
 func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, error) {
 	if log == nil {
@@ -343,7 +355,14 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		if set, err = policy.NewSet(declared); err != nil {
 			return nil, err
 		}
-		if unconsumed := declared.Unconsumed(); len(unconsumed) > 0 {
+		// deps.GitHubApps' catalogue, when this issuer mints installation
+		// tokens under one, names groups this package cannot otherwise
+		// see any reference to: a grant is what actually consumes such a
+		// group, exactly as a client's Requires would. Without a
+		// catalogue (deps.GitHubApps nil, or a nil Catalogue within it —
+		// see [issuer.GitHubApps]) nothing is added here, and this
+		// behaves exactly as it always did.
+		if unconsumed := declared.Unconsumed(catalogueGrantGroups(deps.GitHubApps)...); len(unconsumed) > 0 {
 			log.WarnContext(ctx, "internal groups are declared but nothing consumes them",
 				"groups", unconsumed)
 		}

@@ -750,6 +750,13 @@ spec:
       annotations:
         # The bindings are read at start, like the service's policy.
         checksum/policy: 965badeda797e9dffee9caa0f389683d5697ef863a8500eb793c358efdecb3df
+        # The catalogue is read once at start, like the service's own copy
+        # (see deployment.yaml): this controller keeps no App keys and mints
+        # no installation tokens, so it reads the catalogue for one reason
+        # only — the groups its grants name are not reported as unconsumed
+        # — and a changed catalogue should still restart it, the same way a
+        # changed policy does.
+        checksum/github-apps-catalogue: 851f0fb3efd9deb4d3cbc1deb7ad162cf8131e1c98fc3ea0eddc3d60927c4acf
     spec:
       serviceAccountName: access-issuer-github-roster
       securityContext:
@@ -780,6 +787,14 @@ spec:
               value: /var/run/secrets/github-roster/token
             - name: APPS_DIR
               value: /var/run/github-roster/apps
+            # Read-only, and for one reason only: so the "internal groups
+            # are declared but nothing consumes them" warning does not name
+            # a GitHub-derived group a catalogue grant actually consumes.
+            # This controller mints no installation tokens itself and keeps
+            # no App key, so an absent or malformed catalogue here is never
+            # fatal — see app.go.
+            - name: GITHUB_APPS_CATALOGUE_FILE
+              value: /var/run/github-roster/github-apps-catalogue.yaml
             - name: INTERVAL
               value: "5m"
             - name: ENABLED_ORGS
@@ -808,6 +823,10 @@ spec:
               readOnly: true
             - name: apps
               mountPath: /var/run/github-roster/apps
+              readOnly: true
+            - name: github-apps-catalogue
+              mountPath: /var/run/github-roster/github-apps-catalogue.yaml
+              subPath: catalogue.yaml
               readOnly: true
             
             - name: audit-token
@@ -838,6 +857,9 @@ spec:
           secret:
             secretName: access-issuer-github-apps
             optional: true
+        - name: github-apps-catalogue
+          configMap:
+            name: access-issuer-github-apps-catalogue
         
         - name: audit-token
           projected:
