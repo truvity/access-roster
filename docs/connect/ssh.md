@@ -221,7 +221,7 @@ interactive session, or a certificate written to a file for something
 else to use.
 
 ```sh
-accessctl bao --address https://openbao.example:8200 ssh -mode=ca -namespace=staging -role=user deploy@build-worker.example
+accessctl bao --address https://openbao.example:8200 ssh -mode=ca -ns=staging -role=user deploy@build-worker.example
 ```
 
 `bao ssh -mode=ca` is OpenBAO's own client-side SSH helper: it asks the
@@ -234,7 +234,7 @@ accepts) go after the subcommand, the same separation rule as any other
 `accessctl bao` call.
 
 ```sh
-accessctl bao --address https://openbao.example:8200 write -namespace=staging -field=signed_key \
+accessctl bao --address https://openbao.example:8200 write -ns=staging -field=signed_key \
     ssh/sign/user public_key=@id_ci.pub > id_ci-cert.pub
 scp -i id_ci ci@build-worker.example:backup.tar.gz .    # ssh reads id_ci-cert.pub beside id_ci automatically
 ```
