@@ -1,4 +1,4 @@
-## Unreleased
+## v1.39.0
 
 - **Added: `accessctl r2`, authenticating for an R2 credential broker's
   audience and then running the real `r2broker` CLI unchanged.**
