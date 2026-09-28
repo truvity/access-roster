@@ -109,11 +109,14 @@ func (i *Issuer) Exchange(ctx context.Context, proof Proof, audience string) (Gr
 	// agree under [GroupsScopingEnforce]. result.Groups, never Claims'
 	// own "groups" entry, is what scopeClaims narrows FROM: the full
 	// evaluated set, exactly as [policy.Policy.ScopeGroups] requires.
+	claims := scopeClaims(i.cfg.GroupsScoping, i.set, Claims(result), audience, result.Groups)
+	claims = applyGroupsDelimiter(i.set, claims, audience)
+
 	return Grant{
 		Subject:  proof.Subject(),
 		Audience: audience,
 		Result:   result,
-		Claims:   scopeClaims(i.cfg.GroupsScoping, i.set, Claims(result), audience, result.Groups),
+		Claims:   claims,
 		Held:     held,
 	}, nil
 }

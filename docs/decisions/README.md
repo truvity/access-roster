@@ -30,6 +30,7 @@ timeline and nothing is silently rewritten under an old date.
 | [0012](0012-per-role-scopes-in-the-vocabulary.md) | Per-role scopes in the vocabulary |
 | [0013](0013-openbao-access-through-the-bao-cli.md) | OpenBAO access through the `bao` CLI |
 | [0014](0014-minting-third-party-credentials-only-where-membership-is-governed.md) | Minting third-party credentials: only where membership is governed, brokers elsewhere |
+| [0015](0015-a-per-audience-groups-delimiter-for-opkssh.md) | A per-audience groups delimiter, for opkssh's colon-splitting bug |
 
 ## Template
 

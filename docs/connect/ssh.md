@@ -37,9 +37,10 @@ clients:
       - http://localhost:3000/login-callback
       - http://localhost:10001/login-callback
       - http://localhost:11110/login-callback
-    requires:     [devel:build-worker:operator, devel:router:operator]
-    signing_alg:  ES256           # or RS256 — never this installation's ES384 default
-    display_name: opkssh
+    requires:         [devel:build-worker:operator, devel:router:operator]
+    signing_alg:      ES256       # or RS256 — never this installation's ES384 default
+    groups_delimiter: "."         # opkssh's own policy parser splits on ':' -- see below
+    display_name:     opkssh
 ```
 
 The three loopback ports are opkssh's own defaults (its browser flow
@@ -108,14 +109,32 @@ one line to add per installation, not a value to tune.
 
 ```
 # /etc/opk/auth_id — principal   identity                                        issuer
-ops  oidc:groups:devel:build-worker:operator  https://access.example
+ops  oidc:groups:devel.build-worker.operator  https://access.example
 ```
 
 `oidc:groups:<name>` reads the token's `groups` claim, and `<name>` is
-one of this policy's internal group names — the same string `requires`
-already names, nothing remapped
-(opkssh README, "`/etc/opk/auth_id`"). Add lines by hand or with
-`sudo opkssh add ops oidc:groups:devel:build-worker:operator access-roster`.
+meant to be one of this policy's internal group names — the same string
+`requires` already names (opkssh README, "`/etc/opk/auth_id`"). It is
+NOT, quite: **opkssh's own parser splits its whole argument on every
+`:` and compares only the LAST segment**, so `oidc:groups:devel:build-worker:operator`
+never matches a group named `devel:build-worker:operator` — it matches a
+group named, literally, `operator`, and no group this schema's own naming
+([reference/policy.md#naming](../reference/policy.md#naming)) would ever
+produce is spelled that way. Quoting the value in `auth_id` does not
+help; opkssh does not strip quotes from what it compares against either.
+
+This is why the client row above pins `groups_delimiter: "."`
+([ADR 0015](../decisions/0015-a-per-audience-groups-delimiter-for-opkssh.md),
+[reference/policy.md#groups-delimiter-per-audience-opkssh-interop](../reference/policy.md#groups-delimiter-per-audience-opkssh-interop)):
+opkssh's own client mints `devel.build-worker.operator` instead of
+`devel:build-worker:operator`, one field to opkssh's splitting rather than
+three, which is what `auth_id`, above, actually matches. Every `auth_id`
+line on every opkssh-facing server has to use the DOT-separated spelling,
+never the policy file's own `:`-separated one — add lines by hand or with
+`sudo opkssh add ops oidc:groups:devel.build-worker.operator access-roster`.
+It is a temporary interop shim: once opkssh's own parser stops splitting
+on every `:`, `groups_delimiter` can be removed from the client row and
+every `auth_id` line reverts to the policy's own spelling.
 
 Every server needs outbound network reach to the issuer's discovery
 document and JWKS endpoint: opkssh's verifier fetches the provider's
@@ -158,10 +177,10 @@ principals each role should reach, not by one group implying another:
 
 ```
 # principal   identity                                        issuer
-ops   oidc:groups:devel:build-worker:user      https://access.example
-ops   oidc:groups:devel:build-worker:operator  https://access.example
-ops   oidc:groups:devel:build-worker:admin     https://access.example
-root  oidc:groups:devel:build-worker:admin     https://access.example
+ops   oidc:groups:devel.build-worker.user      https://access.example
+ops   oidc:groups:devel.build-worker.operator  https://access.example
+ops   oidc:groups:devel.build-worker.admin     https://access.example
+root  oidc:groups:devel.build-worker.admin     https://access.example
 ```
 
 Here anyone in `user`, `operator` or `admin` reaches the `ops` account,
@@ -176,8 +195,8 @@ person in `devel:build-worker:admin` also holds `operator` and `user`,
 so the same two accounts read:
 
 ```
-ops   oidc:groups:devel:build-worker:user   https://access.example
-root  oidc:groups:devel:build-worker:admin  https://access.example
+ops   oidc:groups:devel.build-worker.user   https://access.example
+root  oidc:groups:devel.build-worker.admin  https://access.example
 ```
 
 ## Machines: OpenBAO-signed short-lived SSH user certificates (recommended)

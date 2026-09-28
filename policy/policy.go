@@ -513,6 +513,28 @@ type Client struct {
 	// logged (`report`, the only mode this release ships) or actually
 	// narrows a token (`enforce`, refused at load for now).
 	Groups GroupsOverride `yaml:"groups,omitempty"`
+	// GroupsDelimiter rewrites every `:` in each group name a token FOR
+	// THIS CLIENT carries under `groups` to this string instead -- after
+	// [Policy.ScopeGroups] has already decided which groups survive, never
+	// changing which ones do. Empty (the default) leaves `groups` exactly
+	// as every other audience sees it, the grant's own `:`. One of
+	// [Client.SigningAlg]'s shape one row over: a per-audience exception
+	// for a relying party this installation does not control, refused at
+	// PARSE time if it could ever make two of this policy's own group
+	// names collide -- see [validGroupsDelimiter] and
+	// [Policy.checkGroupsDelimiterCollision].
+	//
+	// It exists for exactly one relying party today: opkssh's server-side
+	// policy, `oidc:groups:<value>`, splits its own argument on EVERY `:`
+	// and compares only the last segment -- so it can never match a group
+	// named `<scope>:<thing>:<role>`, this schema's own separator, however
+	// it is quoted. Until that is fixed upstream, an opkssh-facing client
+	// may pin `groups_delimiter: "."` (or another delimiter this schema
+	// accepts) so its tokens carry `env.ssh.admin` instead of
+	// `env:ssh:admin` -- a name opkssh's own splitting can actually read.
+	// See docs/decisions/0015-a-per-audience-groups-delimiter-for-opkssh.md
+	// and docs/reference/policy.md#groups-delimiter-per-audience-opkssh-interop.
+	GroupsDelimiter string `yaml:"groups_delimiter,omitempty"`
 }
 
 // Parse reads one layer and checks its shape. Unknown keys are an error:
@@ -853,6 +875,14 @@ func (c Client) validate(id string, p Policy) error {
 	}
 	if c.SigningAlg != "" && !validSigningAlg(c.SigningAlg) {
 		return fmt.Errorf("client %q: signing_alg %q is not one of %v", id, c.SigningAlg, SigningAlgs)
+	}
+	if c.GroupsDelimiter != "" {
+		if err := validGroupsDelimiter(c.GroupsDelimiter); err != nil {
+			return fmt.Errorf("client %q: %w", id, err)
+		}
+		if err := p.checkGroupsDelimiterCollision(c.GroupsDelimiter); err != nil {
+			return fmt.Errorf("client %q: %w", id, err)
+		}
 	}
 	if err := p.checkGroupsOverride(fmt.Sprintf("client %q", id), c.Groups); err != nil {
 		return err

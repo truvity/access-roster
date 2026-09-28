@@ -977,6 +977,7 @@ func (s *Storage) SetUserinfoFromRequest(
 	s.reportGroupsScoping(ctx, clientID, clientID, subject, result.Groups)
 
 	claims := scopeClaims(s.iss.Config().GroupsScoping, s.iss.Policy(), Claims(result), clientID, result.Groups)
+	claims = applyGroupsDelimiter(s.iss.Policy(), claims, clientID)
 	if err = s.fill(ctx, info, subject, claims, given, family); err != nil {
 		return err
 	}
@@ -1083,6 +1084,7 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 	// narrowed once in [Issuer.Exchange]; re-narrowing it here from the
 	// SAME held and the SAME audience is a no-op, not a second opinion.
 	claims = scopeClaims(s.iss.Config().GroupsScoping, s.iss.Policy(), claims, audience, held)
+	claims = applyGroupsDelimiter(s.iss.Policy(), claims, audience)
 	lifetime := s.iss.Config().TokenLifetime
 	if declared, ok := s.iss.Policy().Client(clientOf(request)); ok {
 		lifetime = declared.Cap(lifetime)
@@ -1475,6 +1477,7 @@ func (s *Storage) GetPrivateClaimsFromScopes(ctx context.Context, subject, _ str
 
 	if audience, ok := signingAudienceFrom(ctx).get(); ok {
 		claims = scopeClaims(s.iss.Config().GroupsScoping, s.iss.Policy(), claims, audience, held)
+		claims = applyGroupsDelimiter(s.iss.Policy(), claims, audience)
 	}
 
 	return withNames(claims, given, family), nil

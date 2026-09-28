@@ -697,6 +697,95 @@ reload the policy — see
 [docs/operations/runbook.md#turning-enforce-on](../operations/runbook.md#turning-enforce-on)
 for the full walk-through.
 
+## Groups delimiter (per audience, opkssh interop)
+
+A client row or a resource row may pin `groups_delimiter`, which rewrites
+every `:` in each name under that audience's `groups` claim to a different
+string, AFTER the rule above has already decided which groups survive:
+
+```yaml
+clients:
+  ssh-fleet:
+    kind: public
+    requires: [devel:ssh:user]
+    signing_alg: RS256      # opkssh cannot verify this installation's default
+    groups_delimiter: "."   # devel:ssh:user -> devel.ssh.user
+```
+
+**Why this exists at all.** It is a temporary interop shim for exactly one
+relying party: opkssh's own server-side policy line,
+`oidc:groups:<value>`, splits its ARGUMENT on every `:` and compares only
+the LAST segment against a held group — so it can never match a name
+shaped `<scope>:<thing>:<role>`, this schema's own separator, however the
+value is quoted (the quotes are not stripped from what opkssh compares
+against). `groups_delimiter: "."` mints `devel.ssh.user` instead of
+`devel:ssh:user` for that one audience, which opkssh's own splitting
+reads as a single, whole segment — a name its policy line can actually
+match. See
+[ADR 0015](../decisions/0015-a-per-audience-groups-delimiter-for-opkssh.md)
+and [0004](../decisions/0004-ssh-opkssh-and-the-secret-stores-ca.md) /
+[0011](../decisions/0011-ssh-people-opkssh-machines-and-hosts-openbao.md)
+for opkssh's adoption in full. Upstream fixing its own parser removes the
+need for this on any audience that no longer has the bug to work around.
+
+**Rows without it are unaffected.** Empty (the default) leaves `groups`
+exactly as every other audience already sees it — the grant's own `:` —
+on the ID token, the access token, `/userinfo`, a token exchange and the
+console's own internal mint (`MintFor`) alike: everywhere [Groups in a
+token (scoping)](#groups-in-a-token-scoping) already narrows.
+
+**Which row wins follows [signing_alg](#signing-algorithm-per-audience)
+exactly**: an ID token reads the CLIENT's own `groups_delimiter`, because
+an ID token never names a resource as its audience; an access token
+reads the RESOURCE's, when a request named one, else the client's own.
+
+**It changes how a group's name is spelled, never which groups a caller
+carries.** `requires` still gates on the full, un-rewritten names; a
+`groups:` override still names the un-rewritten group; the [Groups in a
+token (scoping)](#groups-in-a-token-scoping) rule above still runs FIRST,
+against the real names, and this only rewrites what survives it.
+
+**Refused at load, unconditionally:**
+
+- **Empty, or the separator itself, `:`.** Nothing to rewrite to, or a
+  rewrite that changes nothing.
+- **Whitespace, a quote (`"`) or a comma.** A value this schema
+  round-trips through YAML and, eventually, a comma-joined display list
+  must never need escaping to carry.
+- **An ASCII letter, digit or `-`** — exactly `[A-Za-z0-9-]`, what every
+  scope, thing and role this codebase's own vocabulary examples are built
+  from ([taxonomy.md](../taxonomy.md)). A delimiter drawn from the same
+  alphabet a name is written in is exactly the separator-collision mistake
+  this restricts against.
+
+`.` is the documented example precisely because it sits outside that
+alphabet — no scope, thing or role this schema's own tests, fixtures or
+reference docs declare uses one, and taxonomy.md's own grammar never
+does either. **This is not a proof that `.` (or any other character) can
+never appear in a group name** — a Groups-table key is not required to
+fit `<scope>:<thing>:<role>` at all, so nothing in this schema can rule
+every character out for every installation's every group, forever. That
+is why the load-time check does not stop at the delimiter's own alphabet:
+
+**Also refused at load: a delimiter that would collide two of THIS
+policy's own declared groups.** Every concrete group this policy could
+ever put in a token — every ordinary and non-grant Groups-table key,
+and every mapping wildcard's expansion — is rewritten with the candidate
+delimiter and checked against every other; two names that would become
+the same string refuse the load, naming both. This is the actual
+guarantee behind `groups_delimiter`: not that a character can never
+collide in principle, but that IT DOES NOT, for the groups this
+installation has actually declared, checked the moment a row asks for
+it.
+
+**Never point this at an audience whose own tokens this installation
+reads back.** The hub's own two roles
+([The service's own two groups, and scoping them](#the-services-own-two-groups-and-scoping-them))
+are parsed by splitting on `:` — a `groups_delimiter` on this hub's own
+client would make its own operator and viewer groups unreadable to
+itself. This option is for an external relying party's parser bug, never
+for a client this installation's own code consumes.
+
 ## Signing algorithm per audience
 
 The issuer signs with several algorithms at once — RS256, ES256 and

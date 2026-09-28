@@ -1,5 +1,37 @@
 ## Unreleased
 
+- **Added: `groups_delimiter`, a per-audience policy option that rewrites
+  a token's `groups` claim to work around opkssh's own colon-splitting
+  bug.**
+
+  A client row or a resource row may pin `groups_delimiter: "."` (or
+  another delimiter this schema accepts), modelled on `signing_alg`
+  ([docs/decisions/0009](docs/decisions/0009-a-default-signing-algorithm-and-per-audience-exceptions.md)):
+  after
+  [per-audience groups scoping](docs/reference/policy.md#groups-in-a-token-scoping)
+  has decided which groups a token for that audience carries, every `:`
+  in each one is rewritten to the configured string — `devel:ssh:user`
+  becomes `devel.ssh.user`. This is for opkssh specifically: its
+  server-side policy, `oidc:groups:<value>`, splits its argument on
+  EVERY `:` and reads only the last segment, so it can never match a name
+  shaped `<scope>:<thing>:<role>`, this schema's own separator, however
+  it is quoted. Rows that name no `groups_delimiter` — every default
+  installation, and every other audience of one that sets it — are
+  unaffected.
+
+  A delimiter is refused at load if it is empty, the separator itself, a
+  quote, a comma, whitespace, or built from the alphabet a scope, thing
+  or role is itself conventionally written in
+  ([taxonomy.md](docs/taxonomy.md)) — and, because no single character
+  can be proven absent from every group name this schema could ever
+  declare, also if it would collide two of the policy's own declared
+  groups once rewritten. See
+  [docs/decisions/0015](docs/decisions/0015-a-per-audience-groups-delimiter-for-opkssh.md)
+  and
+  [docs/reference/policy.md#groups-delimiter-per-audience-opkssh-interop](docs/reference/policy.md#groups-delimiter-per-audience-opkssh-interop)
+  for the full mechanism. It is a temporary interop shim, meant to be
+  removed once opkssh's own parser stops splitting on every `:`.
+
 - **Added: a test pins that `/keys` and the discovery document carry no
   caching header a fronting proxy or CDN could turn into a stale-JWKS
   window.**

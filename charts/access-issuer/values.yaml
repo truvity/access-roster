@@ -443,6 +443,16 @@ valkey:
 #         # who starts a sign-in for this client reads both lines.
 #         display_name: My console
 #         description: Where operators look after the widgets.
+#       my-ssh-fleet:
+#         kind: public
+#         requires: [operators]
+#         signing_alg: RS256      # opkssh cannot verify this installation's default
+#         # A temporary interop shim for opkssh's own policy parser, which
+#         # splits `oidc:groups:<value>` on EVERY `:` -- see
+#         # docs/decisions/0015-a-per-audience-groups-delimiter-for-opkssh.md.
+#         # Rewrites this client's own `groups` claim from `env:ssh:admin`
+#         # to `env.ssh.admin`; every other client is unaffected.
+#         groups_delimiter: "."
 #
 # Each one is projected to a file named after the client id, and the
 # service resolves a secret by reading that path -- never by holding RBAC
