@@ -1,3 +1,14 @@
+## v1.39.1
+
+- **Every value the GitHub App, consent and workspace flows log now
+  passes through `internal/logsafe`.** The organisation, tier, owner,
+  workspace, backend, App slug and the errors built from them were
+  written as they arrived. The JSON handler escaped them already, so
+  none of it was forgeable in practice. Now it is true by construction,
+  as it already was for addresses and paths.
+- `github.com/truvity/audit` v0.3.1, the same version the console's
+  `@truvity/audit` already pinned.
+
 ## v1.39.0
 
 - **Added: `accessctl r2`, authenticating for an R2 credential broker's

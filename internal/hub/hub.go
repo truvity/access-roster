@@ -223,7 +223,7 @@ func (h *Hub) refreshSoon(ctx context.Context, workspaceID, why string) {
 		defer cancel()
 		defer h.refreshing.Delete(workspaceID)
 		if _, err := h.Refresh(detached, workspaceID); err != nil {
-			h.log.WarnContext(detached, why, "workspace", workspaceID, "error", err)
+			h.log.WarnContext(detached, why, "workspace", logsafe.Value(workspaceID), "error", logsafe.Error(err))
 		}
 	}()
 }
@@ -433,13 +433,13 @@ func (h *Hub) reopen(ctx context.Context, id string) (backend.Backend, bool) {
 		h.backends[id] = reader
 		h.mu.Unlock()
 		h.log.InfoContext(ctx, "opened a workspace this replica had not seen",
-			"workspace", id, "backend", ws.Backend, "credential", cred.Type)
+			"workspace", logsafe.Value(id), "backend", logsafe.Value(ws.Backend), "credential", logsafe.Value(cred.Type))
 		return reader, nil
 	})
 	if err != nil {
 		if !errors.Is(err, ErrNotFound) {
 			h.log.WarnContext(ctx, "a workspace could not be opened",
-				"workspace", id, "error", err)
+				"workspace", logsafe.Value(id), "error", logsafe.Error(err))
 		}
 		return nil, false
 	}
@@ -863,7 +863,7 @@ func (h *Hub) Refresh(ctx context.Context, workspaceID string) (time.Time, error
 		// The duration is the number an operator needs when a tenant feels
 		// slow, and it is measured on the wall clock rather than the hub's
 		// so that a test with a frozen clock still reports the truth.
-		h.log.InfoContext(ctx, "snapshot taken", "workspace", workspaceID,
+		h.log.InfoContext(ctx, "snapshot taken", "workspace", logsafe.Value(workspaceID),
 			"accounts", len(accounts), "groups", len(groups), "discovered", len(discovered),
 			"took", time.Since(started).Round(time.Millisecond).String())
 		return snap.TakenAt, nil
