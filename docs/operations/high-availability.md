@@ -180,6 +180,20 @@ touches another's schedule. Two keys for the same algorithm at once is
 refused, both by the chart's values validation and again in
 `NewKeyRings` — a key ring can publish only one key per algorithm.
 
+**`/keys` must reach verifiers with no caching header added in front of
+it.** The issuer itself sets none on `/keys` or on discovery, which is
+deliberate: a go-oidc-based verifier — a Kubernetes API server's OIDC
+authenticator (e.g. a managed EKS cluster), or Kargo — keeps its own JWKS
+cache and only refetches on an unknown `kid` once that cache has expired,
+and it derives the expiry from these responses' own `Cache-Control` /
+`Expires` headers. With neither present it refetches on the very next
+request, which is what makes a rotated (or newly re-algorithm'd) `kid`
+verify immediately instead of only after some window closes. A reverse
+proxy or CDN placed in front of this issuer must not add its own
+`Cache-Control`/`Expires`/caching hint to `/keys` — doing so reintroduces
+exactly the stale-JWKS window `ActivationDelay`/`Overlap` above are
+built to avoid, for every verifier that trusts it.
+
 ## The client-metadata-document cache is per replica
 
 For clients that identify themselves by an HTTPS URL rather than a row in

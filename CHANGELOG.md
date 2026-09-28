@@ -1,3 +1,22 @@
+## Unreleased
+
+- **Added: a test pins that `/keys` and the discovery document carry no
+  caching header a fronting proxy or CDN could turn into a stale-JWKS
+  window.**
+
+  A go-oidc-based verifier — a Kubernetes API server's OIDC authenticator
+  (e.g. a managed EKS cluster), or Kargo — keeps its own JWKS cache and
+  only refetches on an unknown `kid` once that cache has expired, deriving
+  the expiry from `/keys`'s own `Cache-Control`/`Expires` headers. This
+  issuer sets neither, so a rotated (or newly re-algorithm'd) `kid`
+  verifies on the very next request — confirmed live.
+  `TestJWKSAndDiscoveryAreNotCacheableByAProxy`
+  (`internal/issuer/jwks_cache_test.go`) now fails the build the day that
+  stops being true. See
+  [docs/operations/high-availability.md#signing-keys-across-replicas](docs/operations/high-availability.md#signing-keys-across-replicas)
+  for the same rule restated as a deployment concern: nothing in front of
+  this issuer may cache `/keys` either.
+
 ## v1.36.0
 
 - **Added: `accessctl version` (and `--version`).**
