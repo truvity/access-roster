@@ -1,4 +1,4 @@
-## Unreleased
+## v1.37.0
 
 - **Added: `groups_delimiter`, a per-audience policy option that rewrites
   a token's `groups` claim to work around opkssh's own colon-splitting
