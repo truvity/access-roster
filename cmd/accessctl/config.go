@@ -20,6 +20,13 @@ type Config struct {
 	Issuer string `yaml:"issuer"`
 	// ClientID is the public client the flow runs as.
 	ClientID string `yaml:"clientId"`
+	// SSHKnownHosts is this laptop's own list of SSH host certificate
+	// authorities to trust -- see ssh_known_hosts.go and
+	// docs/reference/accessctl.md#ssh-known-hosts. Nobody's estate names
+	// ship in this binary; this list (or $ACCESSCTL_SSH_KNOWN_HOSTS, read
+	// the same way when this is empty) is the only thing that decides
+	// what `accessctl ssh known-hosts` ever writes.
+	SSHKnownHosts []sshKnownHostsEntry `yaml:"sshKnownHosts,omitempty"`
 }
 
 // Session is the cached login: the refresh token, and enough about the
@@ -137,12 +144,12 @@ func sessionFileName(issuer string) string {
 	return readable + "-" + hex.EncodeToString(sum[:4])
 }
 
-// loadConfig reads what login wrote, with the flags overriding it.
-//
-// A flag wins so that one laptop can talk to a second installation
-// without losing the first: `--issuer` is enough for a one-off, and
-// nothing is written unless login is what was asked for.
-func loadConfig(issuer, clientID string) (Config, error) {
+// readConfigFile reads config.yaml as it is, with no issuer required and
+// no flag applied -- the raw half of loadConfig, split out for a caller
+// that wants a section of this file (sshKnownHosts.go's own list) without
+// needing a signed-in issuer at all. A file that does not exist yet reads
+// as an empty Config, exactly as a fresh `login` would leave it.
+func readConfigFile() (Config, error) {
 	cfg := Config{}
 	path, err := configPath()
 	if err != nil {
@@ -157,6 +164,19 @@ func loadConfig(issuer, clientID string) (Config, error) {
 		if err = yaml.Unmarshal(raw, &cfg); err != nil {
 			return cfg, fmt.Errorf("parse %s: %w", path, err)
 		}
+	}
+	return cfg, nil
+}
+
+// loadConfig reads what login wrote, with the flags overriding it.
+//
+// A flag wins so that one laptop can talk to a second installation
+// without losing the first: `--issuer` is enough for a one-off, and
+// nothing is written unless login is what was asked for.
+func loadConfig(issuer, clientID string) (Config, error) {
+	cfg, err := readConfigFile()
+	if err != nil {
+		return cfg, err
 	}
 
 	if issuer = strings.TrimSpace(issuer); issuer != "" {

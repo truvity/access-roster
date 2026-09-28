@@ -85,6 +85,11 @@ func login(args []string) error {
 		return err
 	}
 
+	// Best-effort, and silent unless there is something configured: see
+	// ssh_known_hosts.go. A sign-in must never fail, or print anything,
+	// over a feature it never opted into.
+	refreshKnownHostsAfterLogin(cfg)
+
 	who := session.Email
 	if who == "" {
 		who = session.Subject

@@ -1,3 +1,34 @@
+## Unreleased
+
+- **Added: `accessctl ssh known-hosts`, which writes one managed file
+  trusting an installation's own configured SSH host certificate
+  authorities, so a laptop stops being prompted on the first connection
+  to a fleet host.**
+
+  `~/.ssh/known_hosts.d/accessctl` (or `--file`) is fully rewritten each
+  run with one `@cert-authority <patterns> <key>` line per configured
+  entry — never `~/.ssh/known_hosts` or `~/.ssh/config` themselves. The
+  list of CAs to trust is entirely config, never code: `config.yaml`'s
+  own `sshKnownHosts:` section (or `$ACCESSCTL_SSH_KNOWN_HOSTS`, the
+  same YAML, when the file names none), each entry pairing one or more
+  SSH host patterns with a CA source — a full `url:`, or
+  `openbao: {namespace, mount}` joined with the address `accessctl bao`
+  already resolves (`--address`, then `$BAO_ADDR`/`$VAULT_ADDR`). Only
+  `ssh-ed25519` CA keys are ever written, and a fetch failure keeps the
+  previous run's line for that entry (with a warning) rather than
+  dropping trust silently or failing the whole run over one
+  environment's CA being briefly down.
+
+  It never edits `~/.ssh/config`; it only checks whether a
+  `UserKnownHostsFile` line already names the managed file and prints
+  the one line to add when it does not. `accessctl login` refreshes the
+  file automatically once something is configured — a fresh sign-in
+  never fails, or prints anything, over a feature it was never opted
+  into. See
+  [docs/reference/accessctl.md#ssh-known-hosts-trust-configured-ssh-host-cas-before-the-first-connect](docs/reference/accessctl.md#ssh-known-hosts-trust-configured-ssh-host-cas-before-the-first-connect),
+  [docs/connect/ssh.md](docs/connect/ssh.md) and
+  [docs/decisions/0016](docs/decisions/0016-a-managed-known-hosts-file-for-ssh-host-cas.md).
+
 ## v1.37.0
 
 - **Added: `groups_delimiter`, a per-audience policy option that rewrites
