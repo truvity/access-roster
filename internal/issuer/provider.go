@@ -85,6 +85,18 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		op.WithCustomTokenEndpoint(op.NewEndpoint("/token")),
 		op.WithCustomEndSessionEndpoint(op.NewEndpoint("/end_session")),
 		op.WithCustomRevocationEndpoint(op.NewEndpoint("/revoke")),
+		// INVARIANT: this response must never carry a `Cache-Control`
+		// with a positive max-age, nor an `Expires` in the future. A
+		// go-oidc-based verifier -- the Kubernetes API server's OIDC
+		// authenticator (e.g. managed EKS), Kargo -- keeps its OWN JWKS
+		// cache and derives that cache's lifetime from these headers; it
+		// only refetches on an unknown `kid` once its cache has expired.
+		// With neither header present it treats the key set as already
+		// expired, so a rotated or newly-algorithm'd kid verifies on the
+		// very next request -- confirmed live. A long max-age here would
+		// turn every rotation into an outage: verifiers keep rejecting
+		// freshly-signed tokens until their stale cache finally expires.
+		// See [TestJWKSAndDiscoveryAreNotCacheableByAProxy].
 		op.WithCustomKeysEndpoint(op.NewEndpoint("/keys")),
 	}
 	if iss.Config().AllowInsecure {
@@ -269,6 +281,13 @@ func withSigningAudience(next http.Handler) http.Handler {
 // are public documents that SHOULD be cached, and telling the world not
 // to cache a key set would put a fetch of it in front of every
 // verification anybody does.
+//
+// The library sets no caching headers of its own on either, so this
+// stays out of their way rather than adding `no-cache` explicitly. That
+// silence is deliberate, not an oversight: see the comment on
+// `op.WithCustomKeysEndpoint` for why the ABSENCE of `Cache-Control` on
+// `/keys` is exactly what key rotation needs from a go-oidc-based
+// verifier.
 func neverCached(next http.Handler) http.Handler {
 	secret := map[string]bool{
 		"/token":       true,
