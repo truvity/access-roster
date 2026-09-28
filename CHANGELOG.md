@@ -1,3 +1,31 @@
+## v1.39.0
+
+- **Added: `accessctl r2`, authenticating for an R2 credential broker's
+  audience and then running the real `r2broker` CLI unchanged.**
+
+  Follows the same shape `accessctl bao` already ships
+  ([ADR 0013](docs/decisions/0013-openbao-access-through-the-bao-cli.md)):
+  it signs in (or takes a job's own identity), exchanges for
+  `--audience` (default `r2-broker`, or `$ACCESSCTL_R2_AUDIENCE`), and
+  execs `r2broker` with the token in `R2BROKER_TOKEN` — never on argv,
+  never in a temp file, since `runChild` replaces this process's image on
+  every platform but Windows and a temp file written before an exec that
+  never returns could not be cleaned up. The subcommand defaults to
+  `credentials` when none is named, and `--service-url` (or
+  `$ACCESSCTL_R2_SERVICE_URL`) is injected as `r2broker`'s own flag when
+  configured, so a `credential_process` line can be as short as
+  `accessctl r2 -- credentials --bucket <bucket> --prefix <prefix>/`. The
+  token is cached one file per issuer, client and audience, the same
+  shape and margin `kube-token`'s own cache uses.
+
+  access-roster still holds no R2 logic: no bucket, no prefix, no
+  permission is ever named here — everything after the sign-in is
+  `r2broker`'s own syntax, per
+  [ADR 0014](docs/decisions/0014-minting-third-party-credentials-only-where-membership-is-governed.md).
+  See
+  [docs/reference/accessctl.md#r2-authenticate-then-run-the-real-r2broker-cli-unchanged](docs/reference/accessctl.md#r2-authenticate-then-run-the-real-r2broker-cli-unchanged)
+  and [docs/connect/r2-storage.md](docs/connect/r2-storage.md).
+
 ## v1.38.0
 
 - **Added: `accessctl ssh known-hosts`, which writes one managed file
