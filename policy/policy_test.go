@@ -250,6 +250,29 @@ func TestRejectsBadPolicies(t *testing.T) {
 			"clients: { c: { kind: public, requires: [a], signing_alg: PS256 } }\n",
 		"resource unknown signing_alg": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
 			"resources: { 'https://a.example/': { requires: [a], signing_alg: HS256 } }\n",
+		// groups_delimiter is validated the same way signing_alg is: a
+		// value this schema can check on its own, refused at parse -- see
+		// docs/decisions/0015-a-per-audience-groups-delimiter-for-opkssh.md.
+		"client groups_delimiter is the separator": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"clients: { c: { kind: public, requires: [a], groups_delimiter: ':' } }\n",
+		"client groups_delimiter is whitespace": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"clients: { c: { kind: public, requires: [a], groups_delimiter: ' ' } }\n",
+		"client groups_delimiter is a quote": `version: 1` + "\ngroups: { a: { members: [g@h.example] } }\n" +
+			`clients: { c: { kind: public, requires: [a], groups_delimiter: '"' } }` + "\n",
+		"client groups_delimiter is a comma": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"clients: { c: { kind: public, requires: [a], groups_delimiter: ',' } }\n",
+		"client groups_delimiter is a letter": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"clients: { c: { kind: public, requires: [a], groups_delimiter: x } }\n",
+		"client groups_delimiter is a hyphen": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"clients: { c: { kind: public, requires: [a], groups_delimiter: '-' } }\n",
+		"resource groups_delimiter is a digit": "version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+			"resources: { 'https://a.example/': { requires: [a], groups_delimiter: '0' } }\n",
+		// Two declared groups that would become indistinguishable once
+		// rewritten: the non-grant "a.b.c" already spells, literally, what
+		// the grant "a:b:c" would become under a "." delimiter.
+		"client groups_delimiter collides two declared groups": "version: 1\n" +
+			"groups: { 'a.b.c': { members: [g@h.example] }, 'a:b:c': { members: [g@h.example] } }\n" +
+			"clients: { c: { kind: public, requires: ['a.b.c'], groups_delimiter: '.' } }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -312,6 +335,72 @@ func TestSigningAlgIsOneOfThreeAndOptional(t *testing.T) {
 
 	if got := set.Resources(); len(got) != 2 {
 		t.Fatalf("Resources() = %d rows, want 2", len(got))
+	}
+}
+
+// A client or a resource may pin a `groups_delimiter`, exactly the same
+// per-audience shape TestSigningAlgIsOneOfThreeAndOptional tests one row
+// over -- see docs/decisions/0015-a-per-audience-groups-delimiter-for-opkssh.md.
+// A row naming none reads back empty, the default, unchanged behaviour.
+func TestGroupsDelimiterIsInjectiveAndOptional(t *testing.T) {
+	t.Parallel()
+
+	declared, err := policy.Parse([]byte(
+		"version: 1\n" +
+			"groups: { a: { members: [g@h.example] } }\n" +
+			"clients:\n" +
+			"  pinned: { kind: public, requires: [a], redirects: [https://a.example/cb], groups_delimiter: '.' }\n" +
+			"  unpinned: { kind: public, requires: [a], redirects: [https://a.example/cb] }\n" +
+			"resources:\n" +
+			"  'https://a.example/': { requires: [a], groups_delimiter: '_' }\n" +
+			"  'https://b.example/': { requires: [a] }\n"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	pinned, _ := set.Client("pinned")
+	if pinned.GroupsDelimiter != "." {
+		t.Errorf("pinned client groups_delimiter = %q, want %q", pinned.GroupsDelimiter, ".")
+	}
+	unpinned, _ := set.Client("unpinned")
+	if unpinned.GroupsDelimiter != "" {
+		t.Errorf("unpinned client groups_delimiter = %q, want empty", unpinned.GroupsDelimiter)
+	}
+
+	withDelim, _ := set.Resource("https://a.example/")
+	if withDelim.GroupsDelimiter != "_" {
+		t.Errorf("resource groups_delimiter = %q, want %q", withDelim.GroupsDelimiter, "_")
+	}
+	without, _ := set.Resource("https://b.example/")
+	if without.GroupsDelimiter != "" {
+		t.Errorf("resource groups_delimiter = %q, want empty", without.GroupsDelimiter)
+	}
+}
+
+// policy.RewriteGroupsDelimiter is the one function that actually applies
+// a configured delimiter to a minted name -- see
+// docs/reference/policy.md#groups-delimiter-per-audience-opkssh-interop.
+// An empty delimiter (unset) is the identity, and a set one replaces every
+// separator, never merely the first.
+func TestRewriteGroupsDelimiter(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name, delimiter, want string
+	}{
+		{"devel:ssh:user", "", "devel:ssh:user"},
+		{"devel:ssh:user", ".", "devel.ssh.user"},
+		{"rung:platform", ".", "rung.platform"},
+		{"no-colons-here", ".", "no-colons-here"},
+	}
+	for _, c := range cases {
+		if got := policy.RewriteGroupsDelimiter(c.name, c.delimiter); got != c.want {
+			t.Errorf("RewriteGroupsDelimiter(%q, %q) = %q, want %q", c.name, c.delimiter, got, c.want)
+		}
 	}
 }
 

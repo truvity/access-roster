@@ -52,6 +52,12 @@ type Resource struct {
 	// <scope>:<thing> pairs already keep. See [Client.Groups], the same
 	// idea one row over, and [Policy.ScopeGroups].
 	Groups GroupsOverride `yaml:"groups,omitempty"`
+	// GroupsDelimiter rewrites every `:` in each group name an ACCESS
+	// token minted for this resource carries under `groups` -- an ID token
+	// never names a resource as its audience, so this has no say over one.
+	// See [Client.GroupsDelimiter], the same idea one row over, and
+	// [validGroupsDelimiter] for what is refused and why.
+	GroupsDelimiter string `yaml:"groups_delimiter,omitempty"`
 }
 
 // Admits reports whether a caller holds a group this resource requires.
@@ -91,6 +97,14 @@ func (r Resource) validate(id string, p Policy) error {
 	}
 	if r.SigningAlg != "" && !validSigningAlg(r.SigningAlg) {
 		return fmt.Errorf("resource %q: signing_alg %q is not one of %v", id, r.SigningAlg, SigningAlgs)
+	}
+	if r.GroupsDelimiter != "" {
+		if err := validGroupsDelimiter(r.GroupsDelimiter); err != nil {
+			return fmt.Errorf("resource %q: %w", id, err)
+		}
+		if err := p.checkGroupsDelimiterCollision(r.GroupsDelimiter); err != nil {
+			return fmt.Errorf("resource %q: %w", id, err)
+		}
 	}
 	if err := p.checkGroupsOverride(fmt.Sprintf("resource %q", id), r.Groups); err != nil {
 		return err
