@@ -116,6 +116,8 @@ func run(args []string) error {
 		return psql(args[1:])
 	case "pg":
 		return pg(args[1:])
+	case "ssh":
+		return sshCommand(args[1:])
 	case "secrets":
 		return secretsRemoved()
 	case "kubeconfig":
@@ -151,6 +153,7 @@ func usage(to *os.File) {
   bao           authenticate, then run the real bao CLI unchanged (OpenBAO)
   psql          authenticate, mint a Postgres client certificate, run psql
   pg            the same, running any command instead of psql
+  ssh           known-hosts: trust SSH host CAs before the first connect
   exchange      the raw exchange: a token in, a token for an audience out
 
 accessctl's own flags on bao go BEFORE the bao subcommand; bao's own

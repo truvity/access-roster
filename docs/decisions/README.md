@@ -31,6 +31,7 @@ timeline and nothing is silently rewritten under an old date.
 | [0013](0013-openbao-access-through-the-bao-cli.md) | OpenBAO access through the `bao` CLI |
 | [0014](0014-minting-third-party-credentials-only-where-membership-is-governed.md) | Minting third-party credentials: only where membership is governed, brokers elsewhere |
 | [0015](0015-a-per-audience-groups-delimiter-for-opkssh.md) | A per-audience groups delimiter, for opkssh's colon-splitting bug |
+| [0016](0016-a-managed-known-hosts-file-for-ssh-host-cas.md) | A managed known_hosts file for SSH host CAs, distinct from `accessctl bao` |
 
 ## Template
 

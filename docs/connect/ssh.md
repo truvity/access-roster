@@ -361,6 +361,16 @@ domain rather than a `known_hosts` entry per host:
 the public key `bao read ssh/config/ca` (or `ssh-keygen -L -f
 <cert>`) prints.
 
+**`accessctl ssh known-hosts` automates exactly this line**, for every
+CA an installation configures, refreshed automatically by `accessctl
+login` — see
+[reference/accessctl.md#ssh-known-hosts-trust-configured-ssh-host-cas-before-the-first-connect](../reference/accessctl.md#ssh-known-hosts-trust-configured-ssh-host-cas-before-the-first-connect)
+and
+[decisions/0016](../decisions/0016-a-managed-known-hosts-file-for-ssh-host-cas.md).
+It complements opkssh above: opkssh authenticates the *person*; this
+line (by hand or by that command) is what makes `ssh` trust the *host*
+it is connecting to without a first-connect prompt.
+
 ## Who owns what
 
 | Piece | Owner |

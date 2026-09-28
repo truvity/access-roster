@@ -268,6 +268,92 @@ the recommended repo pattern.
 | `5` | no `<command>` (or no `psql`) on `PATH`; the issuer or OpenBAO could not be reached |
 | the command's own | whatever `psql` or the command itself exits with, once it is run |
 
+## `ssh known-hosts`: trust configured SSH host CAs before the first connect
+
+`accessctl ssh known-hosts` writes ONE file it owns,
+`~/.ssh/known_hosts.d/accessctl` by default, so a laptop trusts a
+fleet's SSH host certificate authorities before the first connection
+instead of being prompted for one — see
+[connect/ssh.md#hosts-host-certificates-from-openbaos-ssh-ca](../connect/ssh.md#hosts-host-certificates-from-openbaos-ssh-ca)
+for the shape of what it replaces, and
+[docs/decisions/0016](../decisions/0016-a-managed-known-hosts-file-for-ssh-host-cas.md)
+for why this is a laptop-configuration command rather than an OpenBAO
+one, despite one of its two sources being OpenBAO. `accessctl login`
+runs it automatically, but only when something is configured — most
+installations name nothing here at all, and a fresh sign-in never fails
+or prints anything over a feature it never opted into.
+
+**Nothing here ships in this binary.** The whole list of CAs to trust
+lives in `config.yaml`'s own `sshKnownHosts:` section, or
+`$ACCESSCTL_SSH_KNOWN_HOSTS` (the same YAML, as text) when the file
+names none — the file's own list wins whenever it names anything at
+all. Each entry pairs one or more `ssh_config`-style host patterns with
+exactly one CA source:
+
+```yaml
+# config.yaml
+issuer: https://access.example
+clientId: accessctl
+sshKnownHosts:
+  - patterns: ["*.devel.example"]
+    openbao:
+      namespace: env
+      mount: ssh-host
+  - patterns: ["ip-10-0-*.example.ts.net"]
+    url: https://ca.example/ssh-host-ca.pub
+```
+
+`openbao: {namespace, mount}` reads
+`<address>/v1/<mount>/public_key`, unauthenticated, with the namespace
+sent as `X-Vault-Namespace` — the same call `bao read ssh/config/ca`
+makes — joined with the address `accessctl bao` already resolves:
+`--address`, then `$BAO_ADDR`, then `$VAULT_ADDR` (`--ca-cert`, then
+`$BAO_CACERT`/`$VAULT_CACERT`, the same way). `url:` is a full URL
+answering with the CA's OpenSSH public key as its whole body, plain
+text, for an installation that fronts its CA some other way.
+
+**Only `ssh-ed25519` CA keys are ever written**, refused by name
+otherwise — OpenBAO's SSH secrets engine defaults new CAs to it, and
+every host certificate this design targets is signed by one. A pattern
+with whitespace, a comma, or `#` is refused at load, naming the entry:
+patterns are joined with `,` on the rendered line, and any of those
+characters could inject a second field or a second line into
+`known_hosts`.
+
+**A fetch failure never drops trust silently, and never fails the whole
+run for one environment's CA being briefly down.** The previous run's
+line for that exact set of patterns is kept (with a warning) when there
+is one; the entry is skipped (with a warning) when there is not. The
+file is otherwise fully rewritten on every run — never appended to —
+written atomically (a temporary file, then a rename), `0644` in a
+`0700` directory.
+
+**It never edits `~/.ssh/config`.** That file is the person's own, the
+same reason `kubeconfig` writes through `kubectl config` rather than
+rewriting a kubeconfig wholesale. It only checks whether a
+`UserKnownHostsFile` line already names the managed file (a plain
+substring check, the tilde form or the absolute path, whichever was
+written) and, when none does, prints the one line to add:
+
+```
+UserKnownHostsFile ~/.ssh/known_hosts ~/.ssh/known_hosts.d/accessctl
+```
+
+### Flags
+
+| Flag | Default | |
+|---|---|---|
+| `--file` | `~/.ssh/known_hosts.d/accessctl` | the managed file to write |
+| `--address` | `$BAO_ADDR`, then `$VAULT_ADDR` | the OpenBAO API for `openbao:` entries |
+| `--ca-cert` | `$BAO_CACERT`, then `$VAULT_CACERT` | a PEM bundle to trust, added to the system's roots |
+
+### What each failure exits with
+
+| Code | When |
+|---|---|
+| `2` | an entry names both or neither of `url`/`openbao`; an entry names no patterns, or a pattern with whitespace, a comma or `#`; `openbao.mount` missing; a CA bundle that cannot be read or holds no certificate |
+| `0` | everything else, including a source that could not be fetched — that is a warning on stderr, not a failed run: see above |
+
 ## Installing it
 
 Each release carries `accessctl_<version>_nix-flake.tar.gz`,
