@@ -1,4 +1,4 @@
-## Unreleased
+## v1.38.0
 
 - **Added: `accessctl ssh known-hosts`, which writes one managed file
   trusting an installation's own configured SSH host certificate
