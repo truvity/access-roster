@@ -366,7 +366,7 @@ func (s *ConsoleServer) withIdentity(next http.Handler) http.Handler {
 			// write by construction rather than by the handler's choice.
 			s.log.InfoContext(r.Context(), "authorization refused",
 				"email", logsafe.Value(principal.Email),
-				"source", principal.Source, "error", logsafe.Error(err))
+				"source", logsafe.Value(string(principal.Source)), "error", logsafe.Error(err))
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -904,7 +904,8 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 
 	ws, b, err := conn.Exchange(r.Context(), r.URL.Query().Get("code"), bind)
 	if err != nil {
-		s.log.WarnContext(r.Context(), "consent exchange failed", "backend", conn.Kind(), "error", err)
+		s.log.WarnContext(r.Context(), "consent exchange failed",
+			"backend", logsafe.Value(conn.Kind()), "error", logsafe.Error(err))
 		s.consentProblem(w, r, http.StatusConflict,
 			providerName(conn.Kind())+" granted the consent, and then refused the first read with it.",
 			err.Error(), consentCauses)
@@ -921,7 +922,7 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 	ws.ConnectedBy = actor
 	if _, err = s.hub.Adopt(r.Context(), ws, b); err != nil {
 		s.log.ErrorContext(r.Context(), "the workspace could not be adopted",
-			"workspace", ws.ID, "error", err)
+			"workspace", logsafe.Value(ws.ID), "error", logsafe.Error(err))
 		s.consentProblem(w, r, http.StatusConflict,
 			"The consent worked, but the workspace could not be saved.", err.Error(), nil)
 		return
@@ -932,7 +933,7 @@ func (s *ConsoleServer) connectCallback(w http.ResponseWriter, r *http.Request) 
 	}
 	s.console.record(r.Context(), connected(audit.Identified(actor), ws.ID, b.Kind(), "consent"))
 	s.log.InfoContext(r.Context(), "workspace connected",
-		"workspace", ws.ID, "backend", b.Kind(), "by", logsafe.Value(actor))
+		"workspace", logsafe.Value(ws.ID), "backend", logsafe.Value(b.Kind()), "by", logsafe.Value(actor))
 	// Straight to the question the connect leaves behind: which of this
 	// tenant's domains this hub should answer for. Asking here, once, is
 	// the difference between an operator choosing and an operator
