@@ -27,6 +27,23 @@
   ],
   "packageRules": [
     {
+      "description": [
+        "go.sum is written by `go mod tidy`, not by `go get`. Without gomodTidy renovate",
+        "adds the new version's hashes and leaves the old ones, and every recipe here",
+        "runs `just deps` -> `tidy` first, so every one of them rewrote go.sum and the",
+        "shared CI failed it as 'modified the working tree': #127 (github.com/truvity/audit",
+        "v0.2.5 -> v0.3.1) sat red on build, test, lint, ts, console and vuln for that",
+        "reason alone, holding back the ci-workflows pins that deliver this repository's",
+        "own security gate."
+      ],
+      "matchManagers": [
+        "gomod"
+      ],
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
+    },
+    {
       "description": "The go directive is OWNED by devbox-update (ci-workflows v2.10.0): it aligns go.mod to the toolchain triple in the same PR as devbox.lock — language minor capped by golangci-lint's build Go, patch = the newest release of that line, never downward. Renovate leaves `go` alone so the three can never disagree (2026-08-23; replaces the bump rule and the minor/strict gates that papered over split ownership).",
       "matchManagers": [
         "gomod"
