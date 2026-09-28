@@ -23,6 +23,8 @@ accessctl bao --address https://openbao.example:8200 write -field=signed_key \
 
 accessctl psql --address https://openbao.example:8200 -ns staging -- -h db.example -d orders
 accessctl pg   --address https://openbao.example:8200 -ns staging -- pg_dump orders > orders.sql
+
+accessctl r2 --service-url https://r2-broker.example.com -- credentials --bucket example-bucket --prefix nix/
 ```
 
 It exists for one reason: **the cloud CLI has no interactive login.**
@@ -161,6 +163,76 @@ call is bao's own answer, unchanged.
 | `4` | the issuer refused the exchange for `openbao`, or OpenBAO refused the login |
 | `5` | no `bao` on `PATH`; the issuer or OpenBAO could not be reached |
 | bao's own | whatever `bao` itself exits with, once it is run — accessctl adds nothing on top and prints nothing of its own |
+
+## `r2`: authenticate, then run the real `r2broker` CLI unchanged
+
+`accessctl r2 [flags] [-- <r2broker args…>]` exists only to put a valid
+bearer token in front of the real `r2broker` binary — the CLI for an R2
+credential broker (temporary, prefix-scoped object-storage credentials).
+It parses none of `r2broker`'s own syntax; everything after accessctl's
+own flags is `r2broker`'s, unchanged
+([ADR 0014](../decisions/0014-minting-third-party-credentials-only-where-membership-is-governed.md),
+the same shape [ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)
+already ships for `bao`, above). access-roster holds no R2 logic at all —
+no bucket, no prefix, no permission is ever named by this tool.
+
+```sh
+accessctl r2 --service-url https://r2-broker.example.com -- credentials \
+    --bucket example-bucket --prefix nix/ --permission object-read-only
+```
+
+**Flags:** `--audience` (default: `$ACCESSCTL_R2_AUDIENCE`, then
+`r2-broker`), `--service-url` (default: `$ACCESSCTL_R2_SERVICE_URL`),
+`--issuer`, `--client` — the same resolution order every other command
+uses.
+
+**The subcommand defaults to `credentials`** when the command names none
+— the shape a `credential_process` line wants, since `credentials` is the
+one subcommand a caller of this wrapper ever needs (`serve` runs the
+broker service itself, holding its own parent key, which a sign-in
+exchange is never for). Naming a subcommand explicitly needs nothing
+special; omitting it needs a `--` first, exactly as any other use of
+Go's flag package requires, so that `--bucket` is not parsed as one of
+accessctl's own flags. **`--service-url`, when configured, is injected
+as `r2broker`'s own `--service-url`** right after the subcommand, unless
+the command already names one — an explicit `--service-url` on the
+command always wins.
+
+**The token is cached**, one file per issuer, client and audience, under
+`<config>/r2/<hash>.json`, `0600` — the same shape and margin
+`kube-token`'s own cache uses ([above](#where-things-are-kept)), because
+an R2-broker token is the same kind of thing a `kube-token` credential
+is: a bearer token for one audience. There is no `--forget`: unlike
+`bao`'s OpenBAO login, nothing here is a login this tool minted and must
+explicitly revoke — it is an ordinary exchanged access token that simply
+expires.
+
+**`r2broker` is run with `R2BROKER_TOKEN` set in the child's environment
+alone** — never on argv, never in a temp file. `r2broker`'s own
+documented token precedence (`--token-file`, then
+`$R2BROKER_TOKEN_FILE`, then `$R2BROKER_TOKEN`) names this exact
+fallback for a caller with no file to hand it, and it is the one shape
+that survives `runChild` replacing this process's image
+(`syscall.Exec`, wherever the platform allows it): a temp file written
+before an exec that never returns is a temp file this tool could never
+clean up. The process image is replaced exactly as `bao`'s own is, so an
+interactive `r2broker` invocation gets the terminal exactly as if it had
+been run directly; on Windows a child process propagates the exit code
+the same way.
+
+Used as an AWS `credential_process` — the primary use, one CI cache tool
+at a time — see
+[docs/connect/r2-storage.md](../connect/r2-storage.md).
+
+### What each failure exits with
+
+| Code | When |
+|---|---|
+| `2` | a flag accessctl does not recognise before the subcommand (commonly: `--` was left out before `r2broker`'s own flags); an empty `--audience` |
+| `3` | not signed in (on a laptop): run `accessctl login` |
+| `4` | the issuer refused the exchange for the R2 broker's audience |
+| `5` | no `r2broker` on `PATH`; the issuer could not be reached |
+| `r2broker`'s own | whatever `r2broker` itself exits with, once it is run — accessctl adds nothing on top and prints nothing of its own (`r2broker`'s own contract: `0` ok, `2` usage, `3` refused, `4` upstream) |
 
 ## `pg` / `psql`: a Postgres client certificate, then a command
 
@@ -422,6 +494,7 @@ provider process of a tool like Pulumi runs the credential process:
 |---|---|---|---|
 | `kube-token` | `<config>/kube/<hash>.json` | the issuer, the client id and the audience, hashed together — the same audience at another issuer is a different credential | a minute before the token's expiry, which is when client-go re-runs the plugin |
 | `aws` | `<config>/aws/<hash>.json` | the audience and the role ARN, hashed — an account id is not something to scatter across a filesystem | five minutes before the credential's expiry, when the AWS SDK would refresh its own copy |
+| `r2` | `<config>/r2/<hash>.json` | the issuer, the client id and the audience, hashed together — the same key `kube-token` uses, because an R2-broker token is the same kind of credential | a minute before the token's expiry, the same margin `kube-token` uses |
 
 Each file is `0600` in a directory made `0700`, written to a temporary
 name and renamed so a reader never sees half a token, with a lock file
@@ -433,9 +506,9 @@ them is ever an error. `login` does not touch them — it writes
 `config.yaml` and that issuer's session file and nothing else — so a token cached
 under the previous sign-in is offered until its expiry margin; a revoked
 audience is refused by the relying party until then, and deleting the
-`kube` and `aws` directories is how to force a fresh exchange. In a job
-the same files are written wherever `kube-token` or `aws` runs, keyed the
-same way; only the login cache is absent there.
+`kube`, `aws` and `r2` directories is how to force a fresh exchange. In a
+job the same files are written wherever `kube-token`, `aws` or `r2`
+runs, keyed the same way; only the login cache is absent there.
 
 ## What it writes into files that are not its own
 
@@ -462,12 +535,12 @@ holds no secret.
 The same files work unchanged in a GitHub Actions job granted
 `id-token: write`. When `ACTIONS_ID_TOKEN_REQUEST_URL` and
 `ACTIONS_ID_TOKEN_REQUEST_TOKEN` are set, `kube-token`, `aws`, `token`,
-`github-token`, `bao`, `pg` and `psql` ask GitHub for the job's identity
+`github-token`, `bao`, `r2`, `pg` and `psql` ask GitHub for the job's identity
 token — for the issuer's URL, the one
 audience it accepts — and exchange that, presenting the audience as the
 client, exactly as the GitHub Action does. There is no `login` in a job
 and no login cache: every proof is the job's own token, exchanged afresh,
-though `kube-token` and `aws` keep their per-credential caches
+though `kube-token`, `aws` and `r2` keep their per-credential caches
 ([above](#where-things-are-kept)) there as anywhere. A repository that would rather
 download nothing of ours uses the action, which is `curl` and `jq`
 ([../connect/github-actions.md](../connect/github-actions.md)).

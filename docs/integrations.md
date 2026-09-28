@@ -124,10 +124,11 @@ with the full mechanism — the flow, what to configure, what you get.
 | ⑮ | Registries, artifacts and every other AWS service | none of ours — an AWS credential from ⑦ | `--profile <role>@<account>`, then the service's own login: ECR's credential helper, `aws codeartifact login`, and so on | [connect/registries-and-artifacts.md](connect/registries-and-artifacts.md) |
 | ⑯ | Break-glass | the cluster, used deliberately as the floor | a person mints a ServiceAccount token and signs in with it, for the day the directory is broken and the issuer's own anchor is unavailable by construction | [operations/runbook.md#lost-operator-access](operations/runbook.md#lost-operator-access) |
 | ⑰ | The issuer → a secret manager that mints certificates | the issuer; the manager's JWT mount reads `aud` and `groups` | exchange for `openbao`, log in on the mount, one `sign` call, the manager's token is revoked | [connect/openbao.md](connect/openbao.md) |
+| ⑱ | The issuer → an R2 credential broker | the issuer; the broker verifies a standard OIDC token, reading `aud` and `groups` | `accessctl r2` exchanges for the broker's audience and execs the broker's own CLI with the token in its environment; the broker maps **group only** to a bucket, prefixes and a permission — none of that decision lives here | [connect/r2-storage.md](connect/r2-storage.md) |
 
 ## Reading the two models together
 
-Cases ⑥ ⑦ ⑧ ⑩ ⑮ ⑰ are the **claims model**: the decision rides in a token,
+Cases ⑥ ⑦ ⑧ ⑩ ⑮ ⑰ ⑱ are the **claims model**: the decision rides in a token,
 because a cluster, a cloud account or a session cannot call a directory.
 Case ⑭ is the **sync model**: the decision is materialized where it is
 enforced, because GitHub can be written to. Both draw from the same directory

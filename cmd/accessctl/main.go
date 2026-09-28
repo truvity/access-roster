@@ -112,6 +112,8 @@ func run(args []string) error {
 		return credentialRemoved(args[1:])
 	case "bao":
 		return bao(args[1:])
+	case "r2":
+		return r2(args[1:])
 	case "psql":
 		return psql(args[1:])
 	case "pg":
@@ -151,6 +153,7 @@ func usage(to *os.File) {
   kube-token    a Kubernetes exec credential      (run by kubectl)
   aws           an AWS credential process answer  (run by the AWS SDKs)
   bao           authenticate, then run the real bao CLI unchanged (OpenBAO)
+  r2            authenticate, then run the real r2broker CLI unchanged (R2)
   psql          authenticate, mint a Postgres client certificate, run psql
   pg            the same, running any command instead of psql
   ssh           known-hosts: trust SSH host CAs before the first connect
