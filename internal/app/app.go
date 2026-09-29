@@ -821,7 +821,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = reopenStored(ctx, directory, kept, adopted, oauthClient, log); err != nil {
+	if err = reopenStored(ctx, directory, kept, adopted, connectors, log); err != nil {
 		return nil, err
 	}
 	// And from here the hub can open a workspace on its own. Reopening at
@@ -829,7 +829,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	// replica connected a minute ago, which start-up cannot know about.
 	if kept.credentials != nil {
 		directory.UseReopener(func(ctx context.Context, ws hub.Workspace, cred backend.Credential) (backend.Backend, error) {
-			return openStored(ctx, ws.Backend, cred, oauthClient)
+			return openStored(ctx, connectors, ws.Backend, cred)
 		})
 	}
 	// Two forwarded paths, reported apart: an operator reading the start-up
@@ -1116,7 +1116,7 @@ func adoptDeclared(
 // start would take every other directory down with it.
 func reopenStored(
 	ctx context.Context, directory *hub.Hub, kept stores, adopted map[string]bool,
-	client func() (google.OAuthClient, error), log *slog.Logger,
+	connectors []server.Connector, log *slog.Logger,
 ) error {
 	if kept.credentials == nil {
 		return nil
@@ -1146,7 +1146,7 @@ func reopenStored(
 				"workspace", ws.ID, "backend", ws.Backend, "error", err)
 			continue
 		}
-		reader, err := openStored(ctx, ws.Backend, cred, client)
+		reader, err := openStored(ctx, connectors, ws.Backend, cred)
 		if err != nil {
 			log.WarnContext(ctx, "a connected workspace could not be reopened; "+
 				"it will answer for nothing until it is reconnected",
@@ -1163,25 +1163,36 @@ func reopenStored(
 	return nil
 }
 
-// openStored turns a stored credential back into a reader.
+// openStored turns a stored credential back into a reader, by asking
+// whichever connector this build registered for that kind: the same list
+// the console offers an operator to connect a workspace the first time.
+//
+// Dispatching through that list rather than a hardcoded kind is what lets
+// a second backend (Entra, say) come back after a restart the moment it
+// is registered next to Google above, with nothing here to touch. A kind
+// with no connector, or a connector wired in without a stored-credential
+// side, is refused by name: widening what a restart accepts beyond what a
+// fresh connection accepts would mean a directory could be read here that
+// could never have been connected through the console at all.
 func openStored(
-	ctx context.Context, kind string, cred backend.Credential, client func() (google.OAuthClient, error),
+	ctx context.Context, connectors []server.Connector, kind string, cred backend.Credential,
 ) (backend.Backend, error) {
-	if kind != "google" {
-		return nil, fmt.Errorf("this build cannot reopen a %q workspace", kind)
-	}
-	switch cred.Type {
-	case backend.CredentialOAuth:
-		oauth, err := client()
-		if err != nil {
-			return nil, err
+	for _, conn := range connectors {
+		if conn.Kind() != kind {
+			continue
 		}
-		return google.OpenWithToken(ctx, oauth, string(cred.Data), cred.Admin)
-	case backend.CredentialServiceAccountKey:
-		return google.Open(ctx, cred.Data, cred.Admin)
-	default:
-		return nil, fmt.Errorf("unknown credential kind %q", cred.Type)
+		reopener, ok := conn.(server.CredentialReopener)
+		if !ok {
+			return nil, fmt.Errorf("this build cannot reopen a %q workspace from a stored credential", kind)
+		}
+		return reopener.OpenStored(ctx, cred)
 	}
+	known := make([]string, 0, len(connectors))
+	for _, conn := range connectors {
+		known = append(known, conn.Kind())
+	}
+	slices.Sort(known)
+	return nil, fmt.Errorf("unknown backend %q; this build connects %v", kind, known)
 }
 
 // backendOpeners is how a build declares which directories it can read.
