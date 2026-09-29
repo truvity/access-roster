@@ -1,3 +1,29 @@
+## v1.39.2
+
+- **Fixed: since v1.29.0, `resources` and `client_documents` declared in
+  a multi-file policy directory — the chart's layout — were silently
+  ignored.** Loading a directory merges its files one by one, and the
+  merge had no case for either block, so both were read and then
+  dropped. A single-file policy was unaffected. In a deployment this
+  meant the discovery document never advertised
+  `client_id_metadata_document_supported`, no document client was
+  admitted, and no declared resource could be asked for. The failure
+  granted less rather than more, but a declared block that does nothing
+  is a defect all the same. Both now merge like the rest:
+  - `resources` merge by id, and one id declared in two files is
+    refused, exactly as a client is.
+  - `client_documents` is installation-wide, like `vocabulary`: a second
+    file declaring it is refused. An empty `client_documents: {}` counts
+    as not declared, since it turns nothing on.
+
+  After upgrading, a directory that declares one resource id in two
+  files, or `client_documents` in two files, refuses to load. Before,
+  it loaded and the block did nothing.
+
+  A test now lists every field of the policy, and of a GitHub
+  organisation binding, with the rule for merging it. A field added
+  without one fails the build.
+
 ## v1.39.1
 
 - **Every value the GitHub App, consent and workspace flows log now

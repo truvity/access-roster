@@ -71,6 +71,15 @@ the key is refused like any other unknown one rather than ignored. A
 directory group that should feed an internal group is named in that
 group's `members`, here, in git.
 
+The policy may be one file or a directory of them, which is how the chart
+mounts it. In a directory, every `*.yaml` file says `version: 1`. The
+keyed tables (`groups`, `claims`, `lifetimes`, `clients`, `resources`,
+and each organisation's `teams` under `github`) merge by key, and a key
+declared in two files is refused. `vocabulary` and `client_documents` are
+installation-wide: one file declares each, and a second is refused.
+Under `github`, one organisation's own `members` come from one file, and
+its `ignore` entries add up across files.
+
 The last two arrived together and for one reason: a client and the thing
 it wants a token for stopped being the same object. `resources` is what a
 token may be *for*; `client_documents` is how a client this installation

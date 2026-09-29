@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync"
 	"time"
@@ -325,6 +326,15 @@ func readOne(name string) (Policy, error) {
 // mergeLayer folds one declared file into another. Every table merges by
 // key and a repeated key is an error — which is what makes "one file per
 // source" work: two files cannot silently disagree about one group.
+//
+// EVERY field of [Policy] must be handled here, and so must every field
+// of [GitHubOrg], the one value merged field by field rather than whole.
+// A field this function does not name is not merged: it is read from
+// each file and then silently dropped, and nothing fails — which is how
+// `resources` and `client_documents` went unenforced in every directory
+// load from v1.29.0 until this was written down. TestMergeCoversEveryField
+// holds the list: adding a field to either struct fails it until the
+// field has a rule there and here.
 func (p *Policy) mergeLayer(other Policy, from string) error {
 	if other.Version != 1 {
 		return fmt.Errorf("%s: version %d is not supported", from, other.Version)
@@ -339,55 +349,65 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 		}
 		p.Vocabulary = other.Vocabulary
 	}
-	if p.Groups == nil {
-		p.Groups = map[string]Group{}
-	}
-	if p.Claims == nil {
-		p.Claims = map[string]Fragment{}
-	}
-	if p.Lifetimes == nil {
-		p.Lifetimes = map[string]Duration{}
-	}
-	if p.Clients == nil {
-		p.Clients = map[string]Client{}
-	}
-	for name, group := range other.Groups {
-		if _, clash := p.Groups[name]; clash {
-			return fmt.Errorf("%s: group %q is declared twice", from, name)
+	// ClientDocuments is installation-wide for the same reason: one
+	// allow-list of origins, one gate. Unlike Vocabulary it is a value,
+	// not a pointer, so "declared" has to be decided rather than read off
+	// a nil. It is "not the zero value", by reflection:
+	//
+	//   - An absent key and an explicit `client_documents: {}` both decode
+	//     to the zero value, and both mean the same thing — the mechanism
+	//     is off and nothing in the block applies. A file writing the empty
+	//     block cannot disagree with one that fills it in, so letting the
+	//     filled one stand loses nothing.
+	//   - Anything non-zero, even a block with no origins, is something its
+	//     author expected to apply; a second one is a clash, not a merge.
+	//   - Reflection rather than a hand-written `len(Origins) > 0 || ...`
+	//     because that list is this very bug one level down: a field added
+	//     to ClientDocuments and not to the list would be silently dropped
+	//     from the second file.
+	//
+	// A pointer would give presence for free, but it would change the
+	// type of an exported field, and `{}` would then clash for no reason.
+	if !reflect.ValueOf(other.ClientDocuments).IsZero() {
+		if !reflect.ValueOf(p.ClientDocuments).IsZero() {
+			return fmt.Errorf("%s: client_documents is declared twice across merged files", from)
 		}
-		p.Groups[name] = group
+		p.ClientDocuments = other.ClientDocuments
 	}
-	for name, fragment := range other.Claims {
-		if _, clash := p.Claims[name]; clash {
-			return fmt.Errorf("%s: claims for %q are declared twice", from, name)
-		}
-		p.Claims[name] = fragment
+	if err := mergeTable(&p.Groups, other.Groups, func(name string) error {
+		return fmt.Errorf("%s: group %q is declared twice", from, name)
+	}); err != nil {
+		return err
 	}
-	for name, d := range other.Lifetimes {
-		if _, clash := p.Lifetimes[name]; clash {
-			return fmt.Errorf("%s: lifetime for %q is declared twice", from, name)
-		}
-		p.Lifetimes[name] = d
+	if err := mergeTable(&p.Claims, other.Claims, func(name string) error {
+		return fmt.Errorf("%s: claims for %q are declared twice", from, name)
+	}); err != nil {
+		return err
 	}
-	// By key rather than by value: Client is a wide struct and copying
-	// one per iteration is what the linter objects to. Reading it out of
-	// the map at the point of use costs nothing and says the same thing.
-	for id := range other.Clients {
-		if _, clash := p.Clients[id]; clash {
-			return fmt.Errorf("%s: client %q is declared twice", from, id)
-		}
-
-		p.Clients[id] = other.Clients[id]
+	if err := mergeTable(&p.Lifetimes, other.Lifetimes, func(name string) error {
+		return fmt.Errorf("%s: lifetime for %q is declared twice", from, name)
+	}); err != nil {
+		return err
 	}
-	if p.GitHub == nil {
-		p.GitHub = map[string]GitHubOrg{}
+	// A resource is keyed exactly as a client is and clashes the same
+	// way: two files declaring one resource would otherwise have the read
+	// order decide who may reach it.
+	if err := mergeTable(&p.Resources, other.Resources, func(id string) error {
+		return fmt.Errorf("%s: resource %q is declared twice", from, id)
+	}); err != nil {
+		return err
+	}
+	if err := mergeTable(&p.Clients, other.Clients, func(id string) error {
+		return fmt.Errorf("%s: client %q is declared twice", from, id)
+	}); err != nil {
+		return err
 	}
 	// Per TEAM, not per organisation: one file may bind the platform team
 	// and another the security team in the same org, which is what "one
 	// file per source" is for. Two files binding one team is still a
 	// clash, because the second would silently replace the first — and so
 	// are two files declaring one organisation's own members.
-	for org := range other.GitHub {
+	for _, org := range slices.Sorted(maps.Keys(other.GitHub)) {
 		incoming, into := other.GitHub[org], p.GitHub[org]
 		if len(incoming.Members) > 0 {
 			if len(into.Members) > 0 {
@@ -402,16 +422,37 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 				into.Ignore = append(into.Ignore, entry)
 			}
 		}
-		if into.Teams == nil && len(incoming.Teams) > 0 {
-			into.Teams = make(map[string]GitHubTeam, len(incoming.Teams))
+		if err := mergeTable(&into.Teams, incoming.Teams, func(team string) error {
+			return fmt.Errorf("%s: github team %s/%s is declared twice", from, org, team)
+		}); err != nil {
+			return err
 		}
-		for team := range incoming.Teams {
-			if _, clash := into.Teams[team]; clash {
-				return fmt.Errorf("%s: github team %s/%s is declared twice", from, org, team)
-			}
-			into.Teams[team] = incoming.Teams[team]
+		if p.GitHub == nil {
+			p.GitHub = map[string]GitHubOrg{}
 		}
 		p.GitHub[org] = into
+	}
+	return nil
+}
+
+// mergeTable adds every entry of from to *into and refuses a key already
+// there. The table is made only when there is something to put in it, so
+// a directory that declares no clients loads the same nil a single file
+// would, and the two load paths produce equal policies.
+//
+// By key rather than by value: [Client] is a wide struct and copying one
+// per iteration is what the linter objects to. Reading it out of the map
+// at the point of use costs nothing and says the same thing. Sorted, so
+// that when two keys clash the one named is the same on every run.
+func mergeTable[V any](into *map[string]V, from map[string]V, clash func(key string) error) error {
+	for _, key := range slices.Sorted(maps.Keys(from)) {
+		if _, dup := (*into)[key]; dup {
+			return clash(key)
+		}
+		if *into == nil {
+			*into = make(map[string]V, len(from))
+		}
+		(*into)[key] = from[key]
 	}
 	return nil
 }
