@@ -169,9 +169,13 @@ update it by copying the canonical file again, not by editing this copy.
 ## What CI runs
 
 `just check` runs every recipe CI runs — `build`, `test`, `lint`,
-`chart-lint`, `archive-check`, `docs-check`, `ts`, `console` — plus
-`vuln`, which CI runs in its own security workflow rather than on every
-push. `ts` typechecks and tests the published TypeScript package;
-`docs-check` refuses a documented Go symbol that does not exist;
-`console` builds the bundle the binary embeds, which is why every recipe
-that compiles Go runs it first.
+`chart-lint`, `archive-check`, `docs-check`, `ts`, `console`. `ts`
+typechecks and tests the published TypeScript package; `docs-check`
+refuses a documented Go symbol that does not exist; `console` builds the
+bundle the binary embeds, which is why every recipe that compiles Go runs
+it first.
+
+`vuln` is deliberately not part of `check`: a newly published CVE in a
+dependency must not turn the gate red on a push that never touched it.
+`.github/workflows/security.yaml` runs it in its own workflow; `just
+vuln` runs the same check on its own.

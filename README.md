@@ -336,7 +336,7 @@ copy in `ci-workflows`, is a `just check` recipe and a CI job, and every
 exception it carries is written down in the script with its reason.
 
 This repository follows the shared
-[component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
+[component contract](https://github.com/truvity/policy/blob/master/docs/contracts/component.md).
 
 ## Status
 
@@ -348,7 +348,8 @@ what exists at each version, and releases are on the
 
 ```sh
 devbox shell        # or direnv: Go, buf, golangci-lint, helm, just, lefthook
-just check          # build, test, lint, chart-lint, archive-check, docs-check, leak-canary, ts, vuln
+just check          # build, test, lint, chart-lint, archive-check, docs-check, leak-canary, ts
+just vuln           # govulncheck; separate from check — a new CVE must not turn it red
 just generate       # proto → gen/ after a contract change; the generated code is committed
 ```
 

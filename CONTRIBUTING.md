@@ -56,9 +56,11 @@ helm, just and lefthook at the pinned versions. Never install the tools by
 hand next to it.
 
 `just check` runs what CI runs — build, test, lint, chart-lint,
-archive-check, docs-check, ts, console — plus vuln, which CI runs in its
-own security workflow. The pre-push hook (installed by devbox's init
-hook) runs the same.
+archive-check, docs-check, ts, console. The pre-push hook (installed by
+devbox's init hook) runs the same. `vuln` is deliberately not part of
+`check`: a newly published CVE must not turn a PR red that never touched
+the dependency; run it on its own with `just vuln`, the same way
+`.github/workflows/security.yaml` does.
 
 ## Conventions
 
@@ -180,4 +182,4 @@ change merges, after its CHANGELOG heading has landed, because an armed
 weekly run would otherwise ship an untagged feature as a patch.
 
 This repository follows the shared
-[component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
+[component contract](https://github.com/truvity/policy/blob/master/docs/contracts/component.md).
