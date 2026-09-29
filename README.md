@@ -263,7 +263,7 @@ setup for consoles with no authorization model of their own.
 
 ## Consumers
 
-The access-issuer chart installs in `truvity/gitops` and `opwerm/nexus`.
+The access-issuer chart installs in `truvity/gitops` and a second, non-AWS estate.
 The Go module is imported by `truvity/gemaal` (for `identity`), and
 used by CI workflows via the `accessctl` command. The `access-issuer` chart
 serves as a token audience for `truvity/cloudflare` (r2broker) and
