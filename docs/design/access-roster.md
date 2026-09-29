@@ -660,6 +660,24 @@ collector is named. Nothing else: no
 store of its own, and no Valkey credential, because that store holds
 every session and refresh token.
 
+### Reconciler rails
+
+Four pieces of the loop above turned out to have nothing to do with
+GitHub, and live in `internal/rails` instead of `internal/githubroster`:
+the confirm-before-remove gate that asks about one candidate at a time and
+keeps only what a console could answer and vouch for; the policy-digest
+guard that refuses an answer computed under another policy; the removal
+circuit breaker and its fingerprint; and the dry-run switch an organisation
+is born behind. `internal/githubroster` calls each of these; it still owns
+everything GitHub-shaped — teams, logins, invitations, and deriving and
+deciding what an organisation should look like.
+
+This is deliberately not a reconciler framework. `internal/githubroster`
+is the only implementation these four pieces were extracted from, and a
+framework designed from one data point is a guess. It becomes worth the
+name once a second reconciler (Slack membership sync is the candidate)
+exists to validate the shape against — not before.
+
 ## Audit
 
 access-roster does not keep its own audit trail. It

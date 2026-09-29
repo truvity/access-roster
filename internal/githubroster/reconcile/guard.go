@@ -1,8 +1,6 @@
 package reconcile
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
@@ -10,6 +8,7 @@ import (
 
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/status"
+	"github.com/truvity/access-roster/internal/rails"
 )
 
 // Guards are what a decided organisation is checked against before
@@ -101,6 +100,11 @@ func fitSeats(report *status.Org, actions []Action, g Guards) []Action {
 	})
 }
 
+// breakMassRemoval is this organisation's use of the generic removal
+// circuit breaker (internal/rails): what is "affected" and "Members" here
+// is GitHub-shaped, but tripping on more than half, naming the set by a
+// fingerprint, and clearing only on that exact fingerprint being confirmed
+// is not.
 func breakMassRemoval(report *status.Org, actions []Action, g Guards) []Action {
 	affected := map[string]bool{}
 	var lines []string
@@ -110,18 +114,17 @@ func breakMassRemoval(report *status.Org, actions []Action, g Guards) []Action {
 			lines = append(lines, strings.ToLower(a.Login)+"|"+a.Team)
 		}
 	}
-	if g.Members == 0 || len(affected)*2 <= g.Members {
+	breaker := rails.CheckBreaker(len(affected), lines, g.Members, g.Confirmed)
+	if breaker == nil {
 		return actions
 	}
-	slices.Sort(lines)
-	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
-	breaker := &status.Breaker{Affected: len(affected), Members: g.Members, Fingerprint: hex.EncodeToString(sum[:8])}
-	report.Breaker = breaker
-	if g.Confirmed != "" && g.Confirmed == breaker.Fingerprint {
-		breaker.Confirmed = true
+	report.Breaker = &status.Breaker{
+		Affected: breaker.Affected, Members: breaker.Total, Fingerprint: breaker.Fingerprint, Confirmed: breaker.Confirmed,
+	}
+	if breaker.Confirmed {
 		return actions
 	}
-	reason := fmt.Sprintf("over the removal limit — %d of %d members at once: an operator confirms this set in the console", len(affected), g.Members)
+	reason := fmt.Sprintf("over the removal limit — %d of %d members at once: an operator confirms this set in the console", breaker.Affected, breaker.Total)
 	return slices.DeleteFunc(actions, func(a Action) bool {
 		if a.Kind != status.ActionRemove {
 			return false
