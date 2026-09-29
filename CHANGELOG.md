@@ -1,3 +1,17 @@
+## Unreleased
+
+- **Fixed: reopening a stored, console-connected workspace at start no
+  longer refuses every backend kind but `"google"`.** `openStored`
+  hardcoded that check, so a second backend (Entra, say) would be
+  adopted from a fresh consent but rejected the moment the process
+  restarted -- even though `backend.Backend` is documented as
+  multi-implementation and the wire contract already carries
+  `BACKEND_ENTRA`. It now resolves the kind through the same connector
+  list the console offers for connecting a workspace the first time, via
+  the new `server.CredentialReopener` an implementation opts into next to
+  `Exchange` and `FromKey`. A kind with no such connector is still
+  refused, by name.
+
 ## v1.39.2
 
 - **Fixed: since v1.29.0, `resources` and `client_documents` declared in

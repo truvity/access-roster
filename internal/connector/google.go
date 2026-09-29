@@ -121,3 +121,21 @@ func (g *Google) FromKey(ctx context.Context, key []byte, admin string) (hub.Wor
 		Credential: hub.CredentialServiceAccountKey,
 	}, reader, nil
 }
+
+// OpenStored implements the console's credential-reopener contract: it
+// turns a credential this hub wrote down before the last restart back
+// into a reader, the same two ways Exchange and FromKey open one fresh.
+func (g *Google) OpenStored(ctx context.Context, cred backend.Credential) (backend.Backend, error) {
+	switch cred.Type {
+	case backend.CredentialOAuth:
+		client, err := g.client()
+		if err != nil {
+			return nil, err
+		}
+		return google.OpenWithToken(ctx, client, string(cred.Data), cred.Admin)
+	case backend.CredentialServiceAccountKey:
+		return google.Open(ctx, cred.Data, cred.Admin)
+	default:
+		return nil, fmt.Errorf("google: unknown credential kind %q", cred.Type)
+	}
+}

@@ -58,6 +58,16 @@ type KeyConnector interface {
 	FromKey(ctx context.Context, key []byte, admin string) (hub.Workspace, backend.Backend, error)
 }
 
+// CredentialReopener is a connector that can turn a stored credential back
+// into a reader -- the counterpart of Exchange and FromKey for a process
+// that starts already holding the secret, rather than mid-flow with a
+// browser. A connector that cannot simply does not implement it, and a
+// kind with no such connector is refused by name after a restart, the
+// same as it would be refused at the console.
+type CredentialReopener interface {
+	OpenStored(ctx context.Context, cred backend.Credential) (backend.Backend, error)
+}
+
 // SignInConnector is a connector that can also say who somebody is.
 //
 // It is a different flow from [Connector], not a parameter of it: consent
