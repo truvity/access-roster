@@ -264,8 +264,9 @@ setup for consoles with no authorization model of their own.
 ## Consumers
 
 The access-issuer chart installs in `truvity/gitops` and a second, non-AWS estate.
-The Go module is imported by `truvity/gemaal` (for `identity`), and
-used by CI workflows via the `accessctl` command. The `access-issuer` chart
+The Go module is imported by `truvity/gitops` (for `policy`, in its render
+tests) and by `truvity/gemaal` (for `identity`), and used by CI workflows
+via the `accessctl` command. The `access-issuer` chart
 serves as a token audience for `truvity/cloudflare` (r2broker) and
 `truvity/observability` (vmauth). Developers use `accessctl` to mint
 credentials locally; it is also used in CI jobs. The GitHub Action
@@ -348,7 +349,7 @@ what exists at each version, and releases are on the
 
 ```sh
 devbox shell        # or direnv: Go, buf, golangci-lint, helm, just, lefthook
-just check          # build, test, lint, chart-lint, archive-check, docs-check, leak-canary, ts
+just check          # build, test, lint, chart-lint, archive-check, docs-check, leak-canary, audit-catalogue, ts
 just vuln           # govulncheck; separate from check — a new CVE must not turn it red
 just generate       # proto → gen/ after a contract change; the generated code is committed
 ```
