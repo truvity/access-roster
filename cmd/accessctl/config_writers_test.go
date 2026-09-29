@@ -20,7 +20,7 @@ import (
 // It refuses before running the plugin, so no amount of looking at tokens
 // or issuers finds it.
 func TestCredentialArgsCarriesInteractiveMode(t *testing.T) {
-	args := credentialArgs("/usr/local/bin/accessctl", "k8s:hive", "https://access.example.com")
+	args := credentialArgs("/usr/local/bin/accessctl", "k8s:example", "https://access.example.com")
 
 	if !slices.Contains(args, "--exec-interactive-mode=Never") {
 		t.Fatalf("interactiveMode is mandatory for %s and is missing; kubectl will refuse the entry.\ngot: %v",
