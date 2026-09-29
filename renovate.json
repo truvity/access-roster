@@ -21,10 +21,6 @@
       "before 6am"
     ]
   },
-  "ignorePaths": [
-    "devbox.json",
-    "devbox.lock"
-  ],
   "packageRules": [
     {
       "description": [
