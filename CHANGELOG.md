@@ -23,6 +23,7 @@
   A test now lists every field of the policy, and of a GitHub
   organisation binding, with the rule for merging it. A field added
   without one fails the build.
+- README gains `Consumers` and `Neighbours` (openbao as relying party, audit, `accessctl` versus workstation's `awsctl`); a test fixture's audience is neutral; ci-workflows pins moved to v3.13.1.
 
 ## v1.39.1
 
