@@ -11,6 +11,14 @@
   the new `server.CredentialReopener` an implementation opts into next to
   `Exchange` and `FromKey`. A kind with no such connector is still
   refused, by name.
+- **Internal: the GitHub controller's confirm-before-remove gate, policy-digest
+  guard, removal circuit breaker and dry-run switch moved to a new
+  `internal/rails` package**, generic over what a reconciler is confirming or
+  breaking on instead of GitHub-shaped. `internal/githubroster` now calls
+  `internal/rails` for these four pieces and keeps everything GitHub-shaped —
+  teams, logins, invitations, deriving and deciding — to itself. No
+  user-visible change: same decisions, same audit records, same metrics. See
+  [docs/design/access-roster.md](docs/design/access-roster.md#reconciler-rails).
 
 ## v1.39.2
 

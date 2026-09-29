@@ -34,6 +34,7 @@ import (
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/reconcile"
 	"github.com/truvity/access-roster/internal/githubroster/status"
+	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/policy"
 )
 
@@ -257,10 +258,12 @@ func (c *Controller) organisation(
 	report.Enabled = enabled
 	report.Tick = status.Tick{At: started, Changes: len(actions)}
 
-	if enabled {
+	// enabled is this organisation's dry-run switch (internal/rails):
+	// disabled derives and reports what would change, and changes nothing.
+	rails.Switch(enabled).Act(func() {
 		c.act(ctx, client, token, &report, actions)
 		c.recordNewlyHeld(ctx, org, report)
-	}
+	})
 	report.Tick.Held = countState(report, status.StateHeld)
 	report.Tick.Retrying = countState(report, status.StateRetrying)
 	report.Tick.Waiting = countState(report, status.StateNotLinked)
@@ -410,47 +413,45 @@ func (c *Controller) holders(ctx context.Context, binding policy.GitHubOrg) (rec
 }
 
 // errPolicyDiffers is an answer computed under a policy other than the one
-// this pass decides with.
-var errPolicyDiffers = errors.New("the console answers under a different policy; nothing is changed until both run the same one")
+// this pass decides with. It is the GitHub controller's own name for
+// internal/rails' generic [rails.ErrPolicyDiffers].
+var errPolicyDiffers = rails.ErrPolicyDiffers
 
 // samePolicy refuses an answer from a console running another policy. An
 // unset digest on either side is a mismatch too: a console too old to say
-// which policy it runs cannot be shown to run this one.
+// which policy it runs cannot be shown to run this one. It is the generic
+// [rails.PolicyGuard], with this pass's own digest.
 func (c *Controller) samePolicy(digest string) error {
-	if c.deps.Policy == "" || digest != c.deps.Policy {
-		return fmt.Errorf("%w (console %q, controller %q)", errPolicyDiffers, digest, c.deps.Policy)
-	}
-	return nil
+	return rails.PolicyGuard{Digest: c.deps.Policy}.Check(digest)
 }
 
-// confirm asks about each address a removal would rest on. One that could
-// not be asked is simply not confirmed, which holds its removal. It also
-// says whether any answer came under another policy.
+// confirm asks about each address a removal would rest on, one at a time,
+// using the generic [rails.Confirm]. One that could not be asked, or whose
+// answer came from a console under another policy, is simply not
+// confirmed, which holds its removal; the second result says whether any
+// answer came under another policy.
 func (c *Controller) confirm(ctx context.Context, emails []string) (map[string]reconcile.Confirmation, bool) {
-	out := make(map[string]reconcile.Confirmation, len(emails))
-	otherPolicy := false
-	for _, email := range emails {
-		response, err := c.deps.Access.Explain(ctx, connect.NewRequest(&directoryrosterv1.ExplainRequest{Email: email}))
-		if err == nil {
-			err = c.samePolicy(response.Msg.GetPolicyDigest())
-			otherPolicy = otherPolicy || errors.Is(err, errPolicyDiffers)
-		}
-		if err != nil {
+	return rails.Confirm(emails, rails.PolicyGuard{Digest: c.deps.Policy},
+		func(email string) (reconcile.Confirmation, string, error) {
+			response, err := c.deps.Access.Explain(ctx, connect.NewRequest(&directoryrosterv1.ExplainRequest{Email: email}))
+			if err != nil {
+				return reconcile.Confirmation{}, "", err
+			}
+			msg := response.Msg
+			confirmation := reconcile.Confirmation{
+				Authoritative: msg.GetAuthoritative(),
+				Found:         msg.GetFound(),
+				Suspended:     msg.GetSuspended(),
+			}
+			for _, held := range msg.GetHeld() {
+				confirmation.Groups = append(confirmation.Groups, held.GetGroup())
+			}
+			return confirmation, msg.GetPolicyDigest(), nil
+		},
+		func(email string, err error) {
 			c.deps.Log.WarnContext(ctx, "a removal could not be confirmed and is held", "email", email, "error", err)
-			continue
-		}
-		msg := response.Msg
-		confirmation := reconcile.Confirmation{
-			Authoritative: msg.GetAuthoritative(),
-			Found:         msg.GetFound(),
-			Suspended:     msg.GetSuspended(),
-		}
-		for _, held := range msg.GetHeld() {
-			confirmation.Groups = append(confirmation.Groups, held.GetGroup())
-		}
-		out[email] = confirmation
-	}
-	return out, otherPolicy
+		},
+	)
 }
 
 // act makes the changes. One that GitHub refuses becomes a held row with
@@ -649,17 +650,19 @@ func countState(report status.Org, state status.State) int {
 	return count
 }
 
+// outcome maps the generic dry-run outcome (internal/rails) onto this
+// contract's own words.
 func outcome(enabled bool, tick status.Tick) status.Outcome {
-	switch {
-	case !enabled && (tick.Changes > 0 || tick.Held > 0 || tick.Retrying > 0):
+	switch rails.Switch(enabled).Decide(rails.Tick{Changes: tick.Changes, Held: tick.Held, Retrying: tick.Retrying, Waiting: tick.Waiting}) {
+	case rails.OutcomeDryRun:
 		return status.OutcomeDryRun
-	case tick.Changes > 0:
+	case rails.OutcomeApplied:
 		return status.OutcomeApplied
-	case tick.Held > 0:
+	case rails.OutcomeHeld:
 		return status.OutcomeHeld
-	case tick.Retrying > 0:
+	case rails.OutcomeRetrying:
 		return status.OutcomeRetrying
-	case tick.Waiting > 0:
+	case rails.OutcomeWaiting:
 		return status.OutcomeWaiting
 	default:
 		return status.OutcomeInSync
