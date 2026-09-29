@@ -54,7 +54,9 @@ lint: console
     # somebody looking at the documentation.
     ! grep -rn --include=*.md -E '^[[:space:]]*[A-Za-z][A-Za-z0-9_]*[[:space:]]*-?->>?.*;' docs/
 
-# Run Go vulnerability check
+# Run Go vulnerability check. Deliberately not part of `check`: a newly
+# published CVE in a dependency must not turn a PR that never touched it
+# red. `.github/workflows/security.yaml` runs this as its own job.
 vuln: console
     govulncheck ./...
 
@@ -284,10 +286,12 @@ audit-sentences:
         go run "github.com/truvity/audit/cmd/audit@${version}" messages internal/audit/catalogue/roster.yaml
     } > frontend/src/auditSentences.ts
 
-# Run all checks (build + test + lint + chart-lint + leak-canary + vuln)
+# Run all checks (build + test + lint + chart-lint + leak-canary)
 # Everything CI runs, so that the pre-push hook catches what CI would.
+# `vuln` is deliberately not here: run it on its own with `just vuln`,
+# the same way `.github/workflows/security.yaml` does.
 #
 # `ts` is in here despite being slow: it typechecks and tests the
 # published package, which nothing else does. `console` arrives through
 # `build`, which needs it.
-check: build test lint chart-lint archive-check docs-check leak-canary audit-catalogue ts vuln
+check: build test lint chart-lint archive-check docs-check leak-canary audit-catalogue ts
