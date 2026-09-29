@@ -1,9 +1,9 @@
 {
   "lockfile_version": "1",
   "packages": {
-    "buf@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#buf",
+    "buf@1.73.0": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#buf",
       "source": "devbox-search",
       "version": "1.73.0",
       "systems": {
@@ -39,9 +39,9 @@
         }
       }
     },
-    "git-filter-repo@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#git-filter-repo",
+    "git-filter-repo@2.47.0": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#git-filter-repo",
       "source": "devbox-search",
       "version": "2.47.0",
       "systems": {
@@ -183,9 +183,9 @@
         }
       }
     },
-    "gopls@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#gopls",
+    "gopls@0.23.0": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#gopls",
       "source": "devbox-search",
       "version": "0.23.0",
       "systems": {
@@ -221,9 +221,9 @@
         }
       }
     },
-    "goreleaser@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#goreleaser",
+    "goreleaser@2.17.1": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#goreleaser",
       "source": "devbox-search",
       "version": "2.17.1",
       "systems": {
@@ -297,9 +297,9 @@
         }
       }
     },
-    "just-lsp@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#just-lsp",
+    "just-lsp@0.9.0": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#just-lsp",
       "source": "devbox-search",
       "version": "0.9.0",
       "systems": {
@@ -335,9 +335,9 @@
         }
       }
     },
-    "just@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#just",
+    "just@1.58.0": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#just",
       "source": "devbox-search",
       "version": "1.58.0",
       "systems": {
@@ -400,9 +400,9 @@
         }
       }
     },
-    "kind@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#kind",
+    "kind@0.32.0": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#kind",
       "source": "devbox-search",
       "version": "0.32.0",
       "systems": {
@@ -438,9 +438,9 @@
         }
       }
     },
-    "ko@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#ko",
+    "ko@0.19.1": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#ko",
       "source": "devbox-search",
       "version": "0.19.1",
       "systems": {
@@ -486,9 +486,9 @@
         }
       }
     },
-    "kubectl@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#kubectl",
+    "kubectl@1.37.0": {
+      "last_modified": "2026-09-27T11:55:07Z",
+      "resolved": "github:NixOS/nixpkgs/3181085bfd08663b6b9e60bc7a8395c2aaa741bd#kubectl",
       "source": "devbox-search",
       "version": "1.37.0",
       "systems": {
@@ -551,9 +551,9 @@
         }
       }
     },
-    "kubernetes-helm@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#kubernetes-helm",
+    "kubernetes-helm@4.3.0": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#kubernetes-helm",
       "source": "devbox-search",
       "version": "4.3.0",
       "systems": {
@@ -589,9 +589,9 @@
         }
       }
     },
-    "lefthook@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#lefthook",
+    "lefthook@2.1.14": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#lefthook",
       "source": "devbox-search",
       "version": "2.1.14",
       "systems": {
@@ -627,9 +627,9 @@
         }
       }
     },
-    "protoc-gen-connect-go@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#protoc-gen-connect-go",
+    "protoc-gen-connect-go@1.21.0": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#protoc-gen-connect-go",
       "source": "devbox-search",
       "version": "1.21.0",
       "systems": {
@@ -665,9 +665,9 @@
         }
       }
     },
-    "protoc-gen-go@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#protoc-gen-go",
+    "protoc-gen-go@1.36.12": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#protoc-gen-go",
       "source": "devbox-search",
       "version": "1.36.12",
       "systems": {
@@ -703,9 +703,9 @@
         }
       }
     },
-    "yq-go@latest": {
-      "last_modified": "2026-09-27T03:42:02Z",
-      "resolved": "github:NixOS/nixpkgs/8d5d270900d3fc75655ea2d9d248b234f6631439#yq-go",
+    "yq-go@4.53.3": {
+      "last_modified": "2026-09-28T04:45:22Z",
+      "resolved": "github:NixOS/nixpkgs/419fe0f449b3fbe3bdd53d9840288db4509ec32e#yq-go",
       "source": "devbox-search",
       "version": "4.53.3",
       "systems": {
