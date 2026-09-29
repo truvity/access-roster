@@ -261,6 +261,31 @@ the first operator who signs in as themselves.
 is the whole walk-through, with the prerequisites and a gateway-native OIDC
 setup for consoles with no authorization model of their own.
 
+## Consumers
+
+The access-issuer chart installs in `truvity/gitops` and `opwerm/nexus`.
+The Go module is imported by `truvity/gemaal` (for `identity`), and
+used by CI workflows via the `accessctl` command. The `access-issuer` chart
+serves as a token audience for `truvity/cloudflare` (r2broker) and
+`truvity/observability` (vmauth). Developers use `accessctl` to mint
+credentials locally; it is also used in CI jobs. The GitHub Action
+`truvity/access-roster` is used in workflows for token exchange.
+
+## Neighbours
+
+`access-roster` is the issuer in a three-part system with two other
+repositories:
+
+- **openbao**: access-roster mints tokens; openbao is a relying party that
+  trusts them and issues certificates. See
+  [openbao's docs/integrations/access-roster.md](https://github.com/truvity/openbao/blob/master/docs/integrations/access-roster.md).
+- **audit**: every decision, sign-in, refusal, exchange and console action
+  is one record in the audit trail, read by both the issuer and the
+  controller.
+- **workstation**: `accessctl` (from this repository) and `awsctl` both mint
+  AWS credentials on a developer machine; `accessctl` is the estate path,
+  `awsctl` the SSO fallback (when access-roster is unreachable).
+
 ## Conformance
 
 access-roster targets four OpenID Foundation profiles. A profile is
