@@ -1,0 +1,22 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/slack-action-held.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "change": {
+      "type": "string",
+      "description": "The change that is held or was reported.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true,
+      "enum": [
+        "create",
+        "adopt",
+        "invite",
+        "remove",
+        "share",
+        "accept"
+      ]
+    }
+  }
+}

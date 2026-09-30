@@ -1,0 +1,26 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/slack-shared.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "invite": {
+      "type": "string",
+      "description": "The Slack Connect invite id.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "guest": {
+      "type": "string",
+      "description": "The guest workspace, by policy key.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "channel": {
+      "type": "string",
+      "description": "The Slack channel id on the host side.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

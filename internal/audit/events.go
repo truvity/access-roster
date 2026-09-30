@@ -493,3 +493,163 @@ func targetAccount(login string) *record.Target {
 	// something typed rather than minted.
 	return &record.Target{Type: "github_account", Id: strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(login), "@")))}
 }
+
+// ----------------------------------------------------------------- Slack
+//
+// Everything below is recorded by the Slack controller and the console's
+// Slack connect flow.
+
+// SlackWorkspace is a Slack workspace as the records name it: by the key the
+// policy gives it, with the Slack team id and App id where known.
+type SlackWorkspace struct {
+	Key  string
+	Team string
+	App  string
+}
+
+func targetSlackWorkspace(key string) *record.Target {
+	return &record.Target{Type: "slack_workspace", Id: key}
+}
+
+func targetSlackChannel(key, name string) *record.Target {
+	return &record.Target{Type: "slack_channel", Id: key + "/" + strings.TrimPrefix(strings.TrimSpace(name), "#")}
+}
+
+func targetSlackUser(id string) *record.Target {
+	return &record.Target{Type: "slack_user", Id: strings.TrimSpace(id)}
+}
+
+// SlackWorkspaceConnected is a workspace connected from the console.
+func SlackWorkspaceConnected(actor Actor, w SlackWorkspace) *record.Record {
+	return build("roster.slack_workspace.connected", actor, Succeeded(), nil,
+		[]*record.Target{targetSlackWorkspace(w.Key), {Type: "slack_app", Id: w.App}}, data{"team": w.Team, "app": w.App})
+}
+
+// SlackWorkspaceDisconnected is a workspace disconnected from the console;
+// revoked says whether the bot token was revoked at Slack.
+func SlackWorkspaceDisconnected(actor Actor, w SlackWorkspace, revoked bool, reason string) *record.Record {
+	return build("roster.slack_workspace.disconnected", actor, withReason(reason), nil,
+		[]*record.Target{targetSlackWorkspace(w.Key), {Type: "slack_app", Id: w.App}}, data{"revoked": revoked})
+}
+
+// SlackChannel is a channel as the controller sees it: the workspace key, the
+// channel's name and its Slack id.
+type SlackChannel struct {
+	Workspace string
+	Name      string
+	ID        string
+	Private   bool
+}
+
+func (c SlackChannel) targets() []*record.Target {
+	return []*record.Target{targetSlackWorkspace(c.Workspace), targetSlackChannel(c.Workspace, c.Name)}
+}
+
+func (c SlackChannel) data() data { return data{"id": c.ID, "private": c.Private} }
+
+// SlackChannelCreated is a channel the Slack controller created.
+func SlackChannelCreated(c SlackChannel, o Outcome) *record.Record {
+	return build("roster.slack_channel.created", System(), o, nil, c.targets(), c.data())
+}
+
+// SlackChannelAdopted is an existing channel the Slack controller took over
+// by id.
+func SlackChannelAdopted(c SlackChannel, o Outcome) *record.Record {
+	return build("roster.slack_channel.adopted", System(), o, nil, c.targets(), c.data())
+}
+
+// SlackMember is one person in one Slack channel: the address the directory
+// knows, the Slack user id (which may be missing), the groups bound to the
+// channel that admit them and the reason for the change.
+type SlackMember struct {
+	Person  string
+	Channel SlackChannel
+	User    string
+	Groups  []string
+	Reason  string
+}
+
+func (m SlackMember) targets() []*record.Target {
+	out := m.Channel.targets()
+	if m.User != "" {
+		out = append(out, targetSlackUser(m.User))
+	}
+	return out
+}
+
+func (m SlackMember) data() data { return data{"reason": m.Reason, "groups": m.Groups} }
+
+// SlackMemberInvited is a person invited to a channel.
+func SlackMemberInvited(m SlackMember, o Outcome) *record.Record {
+	return build("roster.slack_member.invited", System(), o, personParty(m.Person), m.targets(), m.data())
+}
+
+// SlackMemberRemoved is a person removed from a private channel.
+func SlackMemberRemoved(m SlackMember, o Outcome) *record.Record {
+	return build("roster.slack_member.removed", System(), o, personParty(m.Person), m.targets(), m.data())
+}
+
+// SlackShared is a Slack Connect shared channel between two of the
+// installation's own workspaces: the host, the guest, the channel on the host
+// side and the invite.
+type SlackShared struct {
+	Host    string
+	Guest   string
+	Channel string
+	ID      string
+	Invite  string
+}
+
+func (s SlackShared) targets() []*record.Target {
+	return []*record.Target{targetSlackWorkspace(s.Host), targetSlackWorkspace(s.Guest), targetSlackChannel(s.Host, s.Channel)}
+}
+
+func (s SlackShared) data() data {
+	return data{"invite": s.Invite, "guest": s.Guest, "channel": s.ID}
+}
+
+// SlackSharedInvited is the host inviting another workspace's bot to a shared
+// channel.
+func SlackSharedInvited(s SlackShared, o Outcome) *record.Record {
+	return build("roster.slack_shared.invited", System(), o, nil, s.targets(), s.data())
+}
+
+// SlackSharedAccepted is the guest side accepting a shared-channel invite.
+func SlackSharedAccepted(s SlackShared, o Outcome) *record.Record {
+	return build("roster.slack_shared.accepted", System(), o, nil, s.targets(), s.data())
+}
+
+// SlackActionHeld is a Slack change held for an operator, recorded once when
+// it becomes held. It is a failure with the reason: what was asked for has not
+// happened. The person and channel are optional.
+func SlackActionHeld(workspace string, channel *SlackChannel, m *SlackMember, change, reason string) *record.Record {
+	var subject *record.Party
+	targets := []*record.Target{targetSlackWorkspace(workspace)}
+	switch {
+	case m != nil:
+		subject, targets = personParty(m.Person), m.targets()
+	case channel != nil:
+		targets = channel.targets()
+	}
+	return build("roster.slack_action.held", System(), Failed(reason), subject, targets, data{"change": change})
+}
+
+// SlackRemovalsConfirmed is an operator confirming held removals; channel is
+// empty when the confirmation covers the whole workspace.
+func SlackRemovalsConfirmed(actor Actor, workspace, channel, fingerprint string, affected int) *record.Record {
+	targets := []*record.Target{targetSlackWorkspace(workspace)}
+	scope := "workspace"
+	if channel != "" {
+		targets = append(targets, targetSlackChannel(workspace, channel))
+		scope = "channel"
+	}
+	return build("roster.slack_removals.confirmed", actor, Succeeded(), nil, targets,
+		data{"fingerprint": fingerprint, "scope": scope, "affected": affected})
+}
+
+// SlackLeaverReported is a person gone from the directory who is still an
+// active Slack member, reported rather than acted on.
+func SlackLeaverReported(workspace, person, user, reason string) *record.Record {
+	return build("roster.slack_leaver.reported", System(), withReason(reason), personParty(person),
+		[]*record.Target{targetSlackWorkspace(workspace), targetSlackUser(user)}, data{"change": "remove"})
+}

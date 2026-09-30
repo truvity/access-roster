@@ -1,0 +1,24 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/slack-member-changed.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "reason": {
+      "type": "string",
+      "description": "Why the change was made, or what the directory could not vouch for.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "groups": {
+      "type": "array",
+      "description": "The groups bound to the channel that admit the person.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "items": {
+        "type": "string",
+        "x-audit-class": "shared",
+        "x-audit-pii": "none"
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/slack-workspace-connected.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "team": {
+      "type": "string",
+      "description": "The Slack team id the workspace was connected as.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "app": {
+      "type": "string",
+      "description": "The Slack App's id.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}
