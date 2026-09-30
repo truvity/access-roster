@@ -112,9 +112,10 @@ func (r *reports) workspace(t *testing.T, key string) status.Workspace {
 
 func (r *reports) channel(t *testing.T, ws, name string) status.Channel {
 	t.Helper()
-	for _, c := range r.workspace(t, ws).Channels {
-		if c.Name == name {
-			return c
+	channels := r.workspace(t, ws).Channels
+	for i := range channels {
+		if channels[i].Name == name {
+			return channels[i]
 		}
 	}
 	t.Fatalf("no channel %s in %s's report", name, ws)

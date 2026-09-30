@@ -182,10 +182,10 @@ func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
 	p.shared, p.refused = p.store.sharedChannels(c.deps.Policy)
 	invalid := 0
 	for host, list := range p.refused {
-		for _, r := range list {
+		for i := range list {
 			invalid++
 			c.deps.Log.WarnContext(ctx, "a shared channel's definition is refused and not acted on",
-				"channel", r.name, "host", host, "error", r.err)
+				"channel", list[i].name, "host", host, "error", list[i].err)
 		}
 	}
 	c.metrics.recordInvalid(ctx, invalid)
@@ -297,7 +297,8 @@ func (s store) token(workspace string) (string, error) {
 // report, as a held channel with the reason, so the page says what is wrong
 // instead of the channel being silently absent.
 func (c *Controller) reportRefused(report *status.Workspace, key string, refused []refusal) {
-	for _, r := range refused {
+	for i := range refused {
+		r := &refused[i]
 		report.Channels = append(report.Channels, status.Channel{
 			Name: r.name, Shared: true, Host: key, Mode: "extend", Private: r.channel.Private.IsPrivate(key),
 			State: status.ChannelHeld, Reason: "the shared channel's definition is refused and not acted on: " + r.err.Error(),
