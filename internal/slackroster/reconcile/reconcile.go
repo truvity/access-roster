@@ -227,11 +227,34 @@ type Observed struct {
 }
 
 // Confirmed are the fingerprints an operator confirmed.
+//
+// A fingerprint names one set of removals, and confirming it confirms it
+// everywhere: it satisfies every breaker gate, the channel's and the
+// workspace's, whose set it is exactly. Where the fields are kept makes no
+// difference to that; they say where the operator confirmed it.
 type Confirmed struct {
-	// Workspace confirms the workspace-wide breaker's set.
+	// Workspace is the fingerprint confirmed at the workspace-wide breaker.
 	Workspace string
-	// Channels confirm a channel's own breaker set, by channel name.
+	// Channels are the fingerprints confirmed at a channel's own breaker, by
+	// channel name.
 	Channels map[string]string
+}
+
+// covers returns fingerprint when an operator confirmed exactly it anywhere,
+// else nothing: the form [rails.CheckBreaker] takes.
+func (c Confirmed) covers(fingerprint string) string {
+	if fingerprint == "" {
+		return ""
+	}
+	if c.Workspace == fingerprint {
+		return fingerprint
+	}
+	for _, fp := range c.Channels {
+		if fp == fingerprint {
+			return fingerprint
+		}
+	}
+	return ""
 }
 
 // Input is everything a workspace's decision rests on.

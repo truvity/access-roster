@@ -115,7 +115,7 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 			people[removals[i].key] = true
 			lines = append(lines, removals[i].line())
 		}
-		b := rails.CheckBreaker(len(people), lines, d.managedMembers(p), confirmed.Channels[p.lc.name])
+		b := rails.CheckBreaker(len(people), lines, d.managedMembers(p), confirmed.covers(rails.Fingerprint(lines)))
 		chBreaker[p.lc.name] = b
 		if b != nil && !b.Confirmed {
 			chBlocked[p.lc.name] = true
@@ -142,7 +142,7 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 				}
 			}
 		}
-		wsBreaker = rails.CheckBreaker(distinct, lines, len(managed), confirmed.Workspace)
+		wsBreaker = rails.CheckBreaker(distinct, lines, len(managed), confirmed.covers(rails.Fingerprint(lines)))
 		if wsBreaker != nil && !wsBreaker.Confirmed {
 			wsBlocked = true
 			held = append(held, Held{Change: "remove", Reason: fmt.Sprintf(
