@@ -20,7 +20,25 @@ func every() []*record.Record {
 	person := audit.Person("A.Person@Example.com")
 	app := audit.App{ID: 42, Slug: "roster-example"}
 	member := audit.Member{Person: "a.person@example.com", Org: "example", Team: "platform", Login: "@APerson", Role: "member"}
+	ch := audit.SlackChannel{Workspace: "acme", Name: "#platform", ID: "C0123", Private: true}
+	sm := audit.SlackMember{Person: "a.person@example.com", Channel: ch, User: "U0123", Groups: []string{"platform"}, Reason: "bound to platform"}
+	shared := audit.SlackShared{Host: "acme", Guest: "globex", Channel: "partners", ID: "C0456", Invite: "I0789"}
+	sw := audit.SlackWorkspace{Key: "acme", Team: "T0123", App: "A0123"}
 	return []*record.Record{
+		audit.SlackWorkspaceConnected(person, sw),
+		audit.SlackWorkspaceDisconnected(person, sw, true, ""),
+		audit.SlackChannelCreated(ch, audit.Succeeded()),
+		audit.SlackChannelAdopted(ch, audit.Failed("Slack refused")),
+		audit.SlackMemberInvited(sm, audit.Succeeded()),
+		audit.SlackMemberRemoved(audit.SlackMember{Channel: ch, User: "U0999"}, audit.Succeeded()),
+		audit.SlackSharedInvited(shared, audit.Succeeded()),
+		audit.SlackSharedAccepted(shared, audit.Succeeded()),
+		audit.SlackActionHeld("acme", nil, &sm, "invite", "the person has no Slack account yet"),
+		audit.SlackActionHeld("acme", &ch, nil, "adopt", "the bot is not in the private channel"),
+		audit.SlackActionHeld("acme", nil, nil, "remove", "the breaker tripped"),
+		audit.SlackRemovalsConfirmed(person, "acme", "", "f00d", 3),
+		audit.SlackRemovalsConfirmed(person, "acme", "platform", "f00d", 1),
+		audit.SlackLeaverReported("acme", "gone@example.com", "U0999", "no longer in the directory"),
 		audit.SignedIn(person, "console", "google", audit.Succeeded()),
 		audit.RecoverySignedIn(audit.RecoveryIdentity("system:serviceaccount:access:recovery"), "console", "recovery", audit.Succeeded()),
 		audit.TokenExchanged(audit.CI("github:example/app"), "aws", "ci", audit.Denied("no group admits it")),
@@ -187,5 +205,28 @@ func TestTheTestRecorderCanRefuse(t *testing.T) {
 		audit.RecoverySignedIn(audit.RecoveryIdentity("recovery"), "console", "recovery", audit.Succeeded()))
 	if err == nil || len(rec.Records()) != 0 || slices.Contains(rec.Actions(), "") {
 		t.Fatalf("err %v, records %d", err, len(rec.Records()))
+	}
+}
+
+// The Slack records name the place and the person the way the GitHub ones do.
+func TestSlackRecordsAreNamedByPlaceAndPerson(t *testing.T) {
+	ch := audit.SlackChannel{Workspace: "acme", Name: "#platform", ID: "C0123", Private: true}
+	r := audit.SlackMemberInvited(audit.SlackMember{Person: "A.Person@Example.com", Channel: ch, User: "U0123"}, audit.Succeeded())
+	if r.GetSubject().GetId() != "a.person@example.com" {
+		t.Fatalf("subject %q", r.GetSubject().GetId())
+	}
+	var got []string
+	for _, tg := range r.GetTargets() {
+		got = append(got, tg.GetType()+":"+tg.GetId())
+	}
+	if want := []string{"slack_workspace:acme", "slack_channel:acme/platform", "slack_user:U0123"}; !slices.Equal(got, want) {
+		t.Fatalf("targets %v", got)
+	}
+	if r.GetActor().GetKind() != "system" {
+		t.Fatalf("actor %v", r.GetActor())
+	}
+	held := audit.SlackActionHeld("acme", nil, nil, "remove", "breaker")
+	if held.GetOutcome().GetResult() != auditv1.Outcome_RESULT_FAILURE {
+		t.Fatalf("held outcome %v", held.GetOutcome())
 	}
 }

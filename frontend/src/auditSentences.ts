@@ -194,6 +194,72 @@ export const roster: Sentences = {
         "en": "{actor} revoked {subject}'s sessions, ending {data_ended, plural, one {#} other {#}}"
       }
     },
+    "roster.slack_action.held": {
+      "summary": "A change to a Slack workspace or channel is held, and needs an operator.",
+      "message": {
+        "en": "a change to {targets_0_id} is held: {outcome_reason}"
+      }
+    },
+    "roster.slack_channel.adopted": {
+      "summary": "An existing Slack channel was taken over by id.",
+      "message": {
+        "en": "{outcome, select, success {{targets_1_id} was adopted} other {Slack refused to let {targets_1_id} be adopted}}"
+      }
+    },
+    "roster.slack_channel.created": {
+      "summary": "A Slack channel was created.",
+      "message": {
+        "en": "{outcome, select, success {{targets_1_id} was created} other {Slack refused to create {targets_1_id}}}"
+      }
+    },
+    "roster.slack_leaver.reported": {
+      "summary": "A person gone from the directory is still an active Slack member; reported rather than acted on.",
+      "message": {
+        "en": "a leaver in {targets_0_id} was reported: {outcome_reason}"
+      }
+    },
+    "roster.slack_member.invited": {
+      "summary": "A person was invited to a Slack channel.",
+      "message": {
+        "en": "{outcome, select, success {{subject} was invited to {targets_1_id}} other {Slack refused to invite {subject} to {targets_1_id}}}"
+      }
+    },
+    "roster.slack_member.removed": {
+      "summary": "A person was removed from a private Slack channel.",
+      "message": {
+        "en": "{outcome, select, success {{subject} was removed from {targets_1_id}} other {Slack refused to remove {subject} from {targets_1_id}}}"
+      }
+    },
+    "roster.slack_removals.confirmed": {
+      "summary": "An operator confirmed a set of Slack removals that were held.",
+      "message": {
+        "en": "{actor} confirmed the removal of {data_affected} members from {targets_0_id}"
+      }
+    },
+    "roster.slack_shared.accepted": {
+      "summary": "A workspace accepted an invitation to a shared channel.",
+      "message": {
+        "en": "{outcome, select, success {{targets_1_id} accepted the shared channel {targets_2_id} from {targets_0_id}} other {{targets_1_id} could not accept the shared channel {targets_2_id} from {targets_0_id}}}"
+      }
+    },
+    "roster.slack_shared.invited": {
+      "summary": "A workspace's bot was invited to a shared channel.",
+      "message": {
+        "en": "a shared-channel invitation to {targets_1_id} for {targets_2_id} was sent by {targets_0_id}"
+      }
+    },
+    "roster.slack_workspace.connected": {
+      "summary": "A Slack workspace was connected by installing the App.",
+      "message": {
+        "en": "{actor} connected Slack workspace {targets_0_id}"
+      }
+    },
+    "roster.slack_workspace.disconnected": {
+      "summary": "A Slack workspace was disconnected.",
+      "message": {
+        "en": "{actor} disconnected Slack workspace {targets_0_id}"
+      }
+    },
     "roster.token.exchanged": {
       "summary": "A token was exchanged for one another client accepts, or the exchange was refused.",
       "message": {
