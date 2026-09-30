@@ -74,6 +74,11 @@ type Workspace struct {
 	// the workspace's managed members, and so removed nobody unless an
 	// operator confirmed exactly that set.
 	Breaker *Breaker `json:"breaker,omitempty"`
+	// Recorded are the keys of the holds and leavers the controller has
+	// already put in the audit trail, written only by a pass that acts. A
+	// restarted controller reads them back and records none of them again.
+	// Nothing renders them.
+	Recorded []string `json:"recorded,omitempty"`
 }
 
 // Channel is one channel's report.
@@ -289,6 +294,7 @@ func Encode(w Workspace) (string, error) {
 	for i := range w.Leavers {
 		w.Leavers[i].Channels = slices.Sorted(slices.Values(w.Leavers[i].Channels))
 	}
+	w.Recorded = slices.Sorted(slices.Values(w.Recorded))
 	raw, err := json.Marshal(w)
 	if err != nil {
 		return "", fmt.Errorf("status: encode %s: %w", w.Workspace, err)

@@ -180,10 +180,23 @@ func HeldRecord(workspace string, h reconcile.Held) *record.Record {
 			m.Person = h.Person
 		}
 	}
-	return audit.SlackActionHeld(workspace, channel, m, h.Change, h.Reason)
+	return audit.SlackActionHeld(workspace, channel, m, heldChange(h.Change), h.Reason)
 }
 
 // LeaverRecord is the audit record for a leaver report, to be emitted once.
 func LeaverRecord(workspace string, l status.Leaver) *record.Record {
 	return audit.SlackLeaverReported(workspace, l.Email, l.UserID, l.Reason)
+}
+
+// heldChange is the catalogue's word for the kind of change a hold is on:
+// the decision says "share-invite" and "share-accept" where the catalogue
+// says "share" and "accept".
+func heldChange(change string) string {
+	switch change {
+	case "share-invite":
+		return "share"
+	case "share-accept":
+		return "accept"
+	}
+	return change
 }
