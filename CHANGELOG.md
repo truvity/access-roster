@@ -1,5 +1,31 @@
 ## Unreleased
 
+- **New: a catalogue of Slack Apps, created and installed from the
+  console.** `slackApps` declares each App (`id`, the policy's `workspace`
+  key, `botScopes`, optional `name`, `description` and `push`). An operator
+  creates it on the new Slack Apps page by pasting a throwaway app
+  configuration token (api.slack.com/apps, *Your App Configuration Tokens*;
+  it expires in 12 hours): the service builds the manifest, creates the App,
+  and keeps its client id and secret as "created, not installed". Install
+  sends an owner of the workspace to Slack and, on the way back, keeps the
+  bot token as `<id>.slack_bot_token` in `<release>-slack-catalogue-apps`
+  only if Slack says it belongs to the policy's `team_id` for that workspace;
+  any other team is refused and recorded. An entry that later declares more
+  scopes than Slack granted shows **scopes missing** and is reinstalled (with
+  a configuration token, which updates the manifest). The configuration token
+  is used for one call and never stored or logged. `push` copies only the bot
+  token, through a PushSecret per entry. New RPCs `SlackAppService`
+  (`ListSlackApps`, `CreateSlackApp`, `InstallSlackApp`), new audit actions
+  `roster.slack_app.created`, `.installed` and `.install_refused`. See
+  [docs/connect/slack-apps-catalogue.md](docs/connect/slack-apps-catalogue.md).
+- **New: per-organisation operators for Slack workspaces.**
+  `slack.workspaces.<key>.owner` names the directory workspace that owns a
+  Slack workspace, with the same meaning and checks as
+  `github.<org>.owner`: its scoped operator creates, installs and reinstalls
+  its Apps, the Slack Apps page lists only what the caller may view, and each
+  row says whether the caller may operate it (`can_operate`). See
+  [docs/reference/policy.md](docs/reference/policy.md#scoping-a-slack-workspace-slackworkspaceskeyowner).
+
 - **New: per-organisation operators for GitHub.** `github.<org>.owner`
   names the directory workspace that owns an organisation; its scoped
   operator (`<id>:access-roster:operator`) may then connect, reconnect and

@@ -1,0 +1,7 @@
+# An id names the App's keys, so it is a slug.
+# error: at '/slackApps/0/id': 'Sync_Bot' does not match pattern
+issuerURL: https://issuer.example
+slackApps:
+  - id: Sync_Bot
+    workspace: acme
+    botScopes: [channels:read]

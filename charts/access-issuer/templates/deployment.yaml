@@ -35,6 +35,10 @@ spec:
         # rollout is one the console does not offer.
         checksum/github-apps-catalogue: {{ include (print $.Template.BasePath "/github-apps-catalogue-configmap.yaml") . | sha256sum }}
         {{- end }}
+        {{- if .Values.slackApps }}
+        # Likewise the Slack catalogue: read once at start.
+        checksum/slack-apps-catalogue: {{ include (print $.Template.BasePath "/slack-apps-catalogue-configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -169,6 +173,10 @@ spec:
             - name: GITHUB_APPS_CATALOGUE_FILE
               value: /var/run/access-issuer/github-apps-catalogue.yaml
             {{- end }}
+            {{- if .Values.slackApps }}
+            - name: SLACK_APPS_CATALOGUE_FILE
+              value: /var/run/access-issuer/slack-apps-catalogue.yaml
+            {{- end }}
             - name: POLICY_DIR
               value: /var/run/access-issuer/policy
             - name: TOKEN_LIFETIME
@@ -282,6 +290,12 @@ spec:
               subPath: catalogue.yaml
               readOnly: true
             {{- end }}
+            {{- if .Values.slackApps }}
+            - name: slack-apps-catalogue
+              mountPath: /var/run/access-issuer/slack-apps-catalogue.yaml
+              subPath: catalogue.yaml
+              readOnly: true
+            {{- end }}
             {{- if .Values.directory.workspaces }}
             - name: overlay
               mountPath: /var/run/access-issuer/directory/overlay.yaml
@@ -351,6 +365,11 @@ spec:
         - name: github-apps-catalogue
           configMap:
             name: {{ include "access-issuer.fullname" . }}-github-apps-catalogue
+        {{- end }}
+        {{- if .Values.slackApps }}
+        - name: slack-apps-catalogue
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-slack-apps-catalogue
         {{- end }}
         {{- if .Values.directory.workspaces }}
         - name: overlay

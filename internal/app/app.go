@@ -54,6 +54,7 @@ import (
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
+	slackcatalogue "github.com/truvity/access-roster/internal/slackapp/catalogue"
 	"github.com/truvity/access-roster/internal/valkey"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
@@ -125,6 +126,9 @@ type Config struct {
 	// githubCatalogue is every GitHub App the deployment declares, from
 	// the file GITHUB_APPS_CATALOGUE_FILE names. Empty declares none.
 	githubCatalogue *catalogue.Catalogue
+	// slackCatalogue is every Slack App the deployment declares, from the
+	// file SLACK_APPS_CATALOGUE_FILE names. Empty declares none.
+	slackCatalogue *slackcatalogue.Catalogue
 }
 
 // Load reads the configuration from the environment.
@@ -234,6 +238,11 @@ func Load() (Config, error) {
 	// them afterwards.
 	if c.githubCatalogue, err = catalogue.Load(envString("GITHUB_APPS_CATALOGUE_FILE", "")); err != nil {
 		return Config{}, fmt.Errorf("GITHUB_APPS_CATALOGUE_FILE: %w", err)
+	}
+	// The same for the Slack catalogue: a wrong scope list creates an App
+	// only a reinstall by the workspace's owner can change.
+	if c.slackCatalogue, err = slackcatalogue.Load(envString("SLACK_APPS_CATALOGUE_FILE", "")); err != nil {
+		return Config{}, fmt.Errorf("SLACK_APPS_CATALOGUE_FILE: %w", err)
 	}
 	// The console's secret-store view was removed in v1.30.0. Refuse start-up
 	// if an old configuration tries to activate it, with a message pointing
@@ -417,6 +426,9 @@ type stores struct {
 	// githubCatalogueApps is where catalogue Apps are kept. Nil with the
 	// memory store, for the same reason.
 	githubCatalogueApps *kube.GitHubCatalogueApps
+	// slackCatalogueApps is where catalogue Slack Apps are kept. Nil with
+	// the memory store, for the same reason.
+	slackCatalogueApps *kube.SlackCatalogueApps
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -492,6 +504,12 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.WarnContext(ctx, "the Secret catalogue Apps are kept in could not be created",
 			"secret", githubCatalogueApps.SecretName(), "error", err)
 	}
+	// And the Secret catalogue Slack Apps are kept in, for the same reason.
+	slackCatalogueApps := kube.NewSlackCatalogueApps(client)
+	if err = slackCatalogueApps.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the Secret catalogue Slack Apps are kept in could not be created",
+			"secret", slackCatalogueApps.SecretName(), "error", err)
+	}
 	// Each connection's credential carries its record, so the GitHub Apps
 	// Secret alone restores every organisation: put back a record a
 	// restore left missing, and copy records into credentials written
@@ -537,6 +555,7 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		githubRunnerApps: githubRunnerApps,
 		// Likewise an App whose entry the catalogue no longer declares.
 		githubCatalogueApps: githubCatalogueApps,
+		slackCatalogueApps:  slackCatalogueApps,
 		workspaces:          workspaces,
 		credentials:         credentials,
 		settings: kube.NewSettings(client, kube.DeclaredClient{
@@ -736,6 +755,15 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			strings.Join(undeclared, "; "))
 	}
 
+	// An App declared for a workspace the policy does not name could never
+	// be installed: there is no team id to hold the install to.
+	if err := cfg.slackCatalogue.CheckWorkspaces(func(key string) bool {
+		_, declared := set.SlackWorkspaceTeam(key)
+		return declared
+	}); err != nil {
+		return nil, fmt.Errorf("SLACK_APPS_CATALOGUE_FILE: %w", err)
+	}
+
 	authorizer := access.NewAuthorizer(set, directory, cfg.holdWindow)
 
 	sessionKey := kept.sessionKey
@@ -849,6 +877,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHubCatalogue:     cfg.githubCatalogue,
 		GitHubCatalogueApps: githubCatalogueApps(kept.githubCatalogueApps, cfg.demo, demoAppKey),
 		GitHubMints:         githubMints,
+		SlackCatalogue:      cfg.slackCatalogue,
+		SlackCatalogueApps:  slackCatalogueApps(kept.slackCatalogueApps),
 		GitHubHTTP:          demoGitHub(cfg.demo && kept.githubCatalogueApps == nil),
 		Audit:               recorder,
 	})
@@ -1342,6 +1372,15 @@ func githubRunnerApps(store *kube.GitHubRunnerApps, demonstration bool, key stri
 	default:
 		return nil
 	}
+}
+
+// slackCatalogueApps is the store as the console's interface, or nil: a
+// typed nil pointer in an interface is not nil.
+func slackCatalogueApps(store *kube.SlackCatalogueApps) server.SlackCatalogueApps {
+	if store == nil {
+		return nil
+	}
+	return store
 }
 
 // githubCatalogueApps is the store as the console's interface, or nil. A

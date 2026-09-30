@@ -494,6 +494,39 @@ actions:
     message:
       en: "{actor} disconnected Slack workspace {targets_0_id}"
 
+  roster.slack_app.created:
+    summary: A catalogued Slack App was created.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security]
+    target_types: [slack_app, slack_workspace]
+    delivery: async
+    data_schema: https://schemas.example/access-roster/v1/slack-app-created.json
+    message:
+      en: "{actor} created Slack App {targets_0_id} for workspace {targets_1_id}"
+
+  roster.slack_app.installed:
+    summary: A catalogued Slack App was installed into its workspace.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security]
+    target_types: [slack_app, slack_workspace]
+    delivery: async
+    data_schema: https://schemas.example/access-roster/v1/slack-app-installed.json
+    message:
+      en: "{actor} installed Slack App {targets_0_id} into workspace {targets_1_id}"
+
+  roster.slack_app.install_refused:
+    summary: An install of a catalogued Slack App was refused because it was made into another workspace.
+    operation: create
+    categories: [configuration_change]
+    profiles: [security]
+    target_types: [slack_app, slack_workspace]
+    delivery: async
+    data_schema: https://schemas.example/access-roster/v1/slack-app-installed.json
+    message:
+      en: "{actor}'s install of Slack App {targets_0_id} for workspace {targets_1_id} was refused: {outcome_reason}"
+
   roster.slack_channel.created:
     summary: A Slack channel was created.
     operation: create

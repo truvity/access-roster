@@ -1,0 +1,10 @@
+# A push store is a SecretStore or a ClusterSecretStore.
+# error: at '/slackApps/0/push/secretStore/kind': value must be one of
+issuerURL: https://issuer.example
+slackApps:
+  - id: sync
+    workspace: acme
+    botScopes: [channels:read]
+    push:
+      secretStore: {name: example-store, kind: Other}
+      remoteKey: platform/slack-apps/sync

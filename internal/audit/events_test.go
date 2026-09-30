@@ -27,6 +27,9 @@ func every() []*record.Record {
 	return []*record.Record{
 		audit.SlackWorkspaceConnected(person, sw),
 		audit.SlackWorkspaceDisconnected(person, sw, true, ""),
+		audit.SlackCatalogueAppCreated(person, audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme"}),
+		audit.SlackCatalogueAppInstalled(person, audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme", Team: "T0123", Scopes: []string{"channels:read", "users:read"}}),
+		audit.SlackCatalogueAppInstallRefused(person, audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme", Team: "T0999"}, "installed into another workspace"),
 		audit.SlackChannelCreated(ch, audit.Succeeded()),
 		audit.SlackChannelAdopted(ch, audit.Failed("Slack refused")),
 		audit.SlackMemberInvited(sm, audit.Succeeded()),

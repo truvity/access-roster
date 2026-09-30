@@ -701,6 +701,33 @@ githubApps:
   # adds a key, and a per-key mapping written today would not carry it.
   # (absent by default — the block above is the shape)
 
+# A catalogue of Slack Apps, declared as data and created by an operator on
+# the console's Slack Apps page: create (with a throwaway app configuration
+# token, used once and never stored), then install (an owner of the
+# workspace approves in Slack). The service keeps every App in the Secret
+# `<release>-slack-catalogue-apps`: `<id>.client_id`, `<id>.client_secret`,
+# and, once installed, `<id>.slack_bot_token` beside `<id>.record.json`.
+# Read once at start; a malformed entry, or one for a workspace the policy's
+# `slack.workspaces` does not name, stops the service. Needs
+# `directory.store: kubernetes`. See docs/connect/slack-apps-catalogue.md.
+#
+# Each entry:
+#   - id: sync                  # [a-z0-9-], at most 32, unique; never changes
+#     workspace: acme           # a key of the policy's slack.workspaces
+#     name: acme-sync           # optional; default <workspace>-<id>, at most 35
+#     description: Channel sync # optional; at most 140
+#     botScopes: [channels:read, users:read, users:read.email]
+#     push:                     # optional; off unless written out
+#       secretStore: {name: example-store, kind: SecretStore}
+#       remoteKey: platform/slack-apps/sync
+#
+# `push` copies exactly the App's bot token -- one key, never the client
+# secret, never the record -- to the store and path the entry names, for a
+# program that acts in the workspace as the bot and cannot ask the service
+# at the moment it runs. What it writes is a REAL credential: a second
+# durable copy of the token, to be rotated as one.
+slackApps: []
+
 # THE SESSION KEY IS DELIBERATELY NOT PUSHABLE, and this note is the
 # feature.
 #

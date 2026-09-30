@@ -1,0 +1,16 @@
+# Two Apps pushed to one path would overwrite each other, and nothing downstream could tell which App's token it read.
+# error: both push to remoteKey platform/slack-apps/shared
+issuerURL: https://issuer.example
+slackApps:
+  - id: sync
+    workspace: acme
+    botScopes: [channels:read]
+    push:
+      secretStore: {name: example-store}
+      remoteKey: platform/slack-apps/shared
+  - id: notify
+    workspace: acme
+    botScopes: [chat:write]
+    push:
+      secretStore: {name: example-store}
+      remoteKey: platform/slack-apps/shared

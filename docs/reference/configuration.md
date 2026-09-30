@@ -369,6 +369,7 @@ from the values above.
 | `POD_NAME` | the pod's name, from the downward API: names the instance on every audit record |
 | `CLIENT_SECRETS_DIR` | where the confidential clients' Secrets are mounted, one file per client |
 | `GITHUB_APPS_CATALOGUE_FILE` | the mounted `githubApps.catalogue`, set only when not empty. Read once at start; a malformed catalogue stops the service |
+| `SLACK_APPS_CATALOGUE_FILE` | the mounted `slackApps`, set only when not empty. Read once at start; a malformed catalogue, or an entry for a workspace the policy does not name, stops the service. See [connect/slack-apps-catalogue.md](../connect/slack-apps-catalogue.md) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty. Metrics are pushed over OTLP/HTTP; with nothing set, nothing is exported and no listener is opened. Every other `OTEL_*` variable OpenTelemetry defines is honoured too. Set on the GitHub controller as well |
 | `LOG_LEVEL` | `logLevel` |
 

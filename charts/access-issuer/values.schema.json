@@ -946,6 +946,92 @@
           "description": "The collector's OTLP/HTTP endpoint; empty publishes nothing."
         }
       }
+    },
+    "slackApps": {
+      "type": "array",
+      "description": "Slack Apps declared as data, created and installed from the console. The service validates the whole catalogue again at start, and refuses an entry for a workspace the policy's slack.workspaces does not name.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "workspace",
+          "botScopes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$"
+          },
+          "workspace": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$",
+            "description": "A key of the policy's slack.workspaces."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 35
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 140
+          },
+          "botScopes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_.:-]*$"
+            }
+          },
+          "push": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Copy this App's bot token to a secret store with an External Secrets PushSecret: that one key only, to the store and path named here. Absent pushes nothing.",
+            "required": [
+              "secretStore",
+              "remoteKey"
+            ],
+            "properties": {
+              "secretStore": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "SecretStore",
+                      "ClusterSecretStore"
+                    ]
+                  }
+                }
+              },
+              "remoteKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "refreshInterval": {
+                "$ref": "#/definitions/duration"
+              },
+              "deletionPolicy": {
+                "type": "string",
+                "enum": [
+                  "None",
+                  "Delete"
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {

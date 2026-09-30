@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// SlackAppService is the console's view of the Slack Apps a deployment
+// declares (values `slackApps`), and the three things an operator does to
+// one: create it, install it, reinstall it.
+//
+// It mirrors the GitHub App catalogue. Creating an App takes a throwaway
+// app configuration token the operator pastes: it is used for the one call
+// that creates the App and is neither stored nor logged. Installing is a
+// redirect to Slack that an owner of the workspace finishes; the bot token
+// that comes back is kept in a Secret and nowhere else.
+service SlackAppService {
+  // ListSlackApps returns every declared Slack App, and every App created
+  // from an entry no longer declared, each with where it stands. Viewer,
+  // of the installation or of the directory workspace that owns the Slack
+  // workspace: a scoped viewer sees only the Apps of workspaces its
+  // directory owns.
+  // Never a client secret or a bot token.
+  rpc ListSlackApps(ListSlackAppsRequest) returns (ListSlackAppsResponse);
+
+  // CreateSlackApp creates the App in Slack from the entry's manifest with
+  // the configuration token, and keeps the App's client id and secret as
+  // "created, not installed". Operator of the workspace's owner, or the
+  // installation-wide operator.
+  //
+  // The configuration token lives in this request and in one call to Slack.
+  rpc CreateSlackApp(CreateSlackAppRequest) returns (CreateSlackAppResponse);
+
+  // InstallSlackApp starts installing a created App, or reinstalling an
+  // installed one whose granted scopes lack declared ones. Operator. The
+  // response header pins the flow to this browser with a cookie, as GitHub's
+  // connect does.
+  rpc InstallSlackApp(InstallSlackAppRequest) returns (InstallSlackAppResponse);
+}
+
+message ListSlackAppsRequest {}
+
+message ListSlackAppsResponse {
+  // whether this deployment keeps catalogue Apps at all. False with a
+  // deployment that keeps no state in Kubernetes: a bot token would not
+  // survive a restart.
+  bool available = 1;
+  repeated SlackApp apps = 2;
+}
+
+message CreateSlackAppRequest {
+  // the App's id in the catalogue.
+  string id = 1;
+  // an app configuration token, from api.slack.com/apps, "Your App
+  // Configuration Tokens". It expires in twelve hours and is used once.
+  string configuration_token = 2;
+}
+
+message CreateSlackAppResponse {
+  SlackApp app = 1;
+}
+
+message InstallSlackAppRequest {
+  string id = 1;
+  // optional. Needed only when the entry declares scopes the created App
+  // was not created with: Slack changes an App's scopes only with a
+  // configuration token, and only then does a reinstall grant them. Used
+  // once, never stored.
+  string configuration_token = 2;
+}
+
+message InstallSlackAppResponse {
+  // where the browser goes next: Slack's authorize page, carrying signed
+  // state.
+  string url = 1;
+}
+
+// SlackApp is one App the catalogue declares, or one created from an entry
+// it no longer declares. Never a credential.
+message SlackApp {
+  // the App's id in the catalogue, which is also where it is kept.
+  string id = 1;
+  // the policy's key of the workspace it belongs to.
+  string workspace = 2;
+  // the Slack team id the policy declares for that workspace: the only one
+  // an install is accepted from.
+  string team_id = 3;
+  // the name it is created with.
+  string name = 4;
+  string description = 5;
+  // the bot scopes declared.
+  repeated string bot_scopes = 6;
+  // declared, created, installed or scopes_missing.
+  string state = 7;
+  // false for an App created from an entry that is no longer declared.
+  bool declared = 8;
+  // Slack's id for the App, once created.
+  string app_id = 9;
+  // where the App is managed and deleted, which this service cannot do.
+  string app_settings_url = 10;
+  // the workspace it was installed into, once installed.
+  string installed_team_id = 11;
+  string installed_team_name = 12;
+  string bot_user_id = 13;
+  // the scopes Slack granted at the last install.
+  repeated string granted_scopes = 14;
+  // declared scopes the granted ones lack.
+  repeated string missing_scopes = 15;
+  google.protobuf.Timestamp created_at = 16;
+  string created_by = 17;
+  google.protobuf.Timestamp installed_at = 18;
+  string installed_by = 19;
+  // true when the entry declares scopes the App was created with not: a
+  // reinstall grants nothing new until a configuration token updates the
+  // App, so the page asks for one.
+  bool needs_configuration_token = 20;
+  // whether the caller may create, install and reinstall this App: the
+  // installation-wide operator, or the operator of the directory workspace
+  // that owns the Slack workspace (`slack.workspaces.<key>.owner`).
+  bool can_operate = 21;
+}

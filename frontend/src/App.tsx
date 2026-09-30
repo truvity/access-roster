@@ -17,6 +17,7 @@ import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import AppsIcon from "@mui/icons-material/Apps";
+import ForumIcon from "@mui/icons-material/Forum";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import DomainIcon from "@mui/icons-material/Domain";
@@ -44,6 +45,7 @@ import { Groups, Group } from "./Groups";
 import { Clients, Client } from "./Clients";
 import { GitHubPage } from "./GitHub";
 import { SessionsPage } from "./Sessions";
+import { SlackAppsPage } from "./SlackApps";
 import { AuditPage } from "./Audit";
 import { SettingsView } from "./Settings";
 
@@ -74,6 +76,8 @@ const internalSide: Item[] = [
   // A GitHub team is fed by internal groups the way a client is opened by
   // them, so it belongs on this side.
   { value: "github", label: "GitHub", to: paths.github(), icon: <GitHubIcon fontSize="small" /> },
+  // The Slack Apps the deployment declares, created and installed here.
+  { value: "slack-apps", label: "Slack Apps", to: paths.slackApps(), icon: <ForumIcon fontSize="small" /> },
 ];
 // Every open session in the installation. It only exists once
 // an issuer shares this console's origin, and even then it is
@@ -343,6 +347,8 @@ function PageFor({
       return id ? <Client id={id} issuerUrl={issuerIsSameOrigin(me?.issuerUrl) ? me?.issuerUrl : undefined} operator={operator} onDone={onDone} /> : <Clients />;
     case "github":
       return <GitHubPage section={id} rest={rest} onDone={onDone} />;
+    case "slack-apps":
+      return <SlackAppsPage onDone={onDone} />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "audit":

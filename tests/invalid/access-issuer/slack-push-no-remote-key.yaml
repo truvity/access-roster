@@ -1,0 +1,9 @@
+# A push block with no destination path must fail the render: the chart never invents one.
+# error: at '/slackApps/0/push': missing property 'remoteKey'
+issuerURL: https://issuer.example
+slackApps:
+  - id: sync
+    workspace: acme
+    botScopes: [channels:read]
+    push:
+      secretStore: {name: example-store}

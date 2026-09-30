@@ -200,6 +200,24 @@ export const roster: Sentences = {
         "en": "a change to {targets_0_id} is held: {outcome_reason}"
       }
     },
+    "roster.slack_app.created": {
+      "summary": "A catalogued Slack App was created.",
+      "message": {
+        "en": "{actor} created Slack App {targets_0_id} for workspace {targets_1_id}"
+      }
+    },
+    "roster.slack_app.install_refused": {
+      "summary": "An install of a catalogued Slack App was refused because it was made into another workspace.",
+      "message": {
+        "en": "{actor}'s install of Slack App {targets_0_id} for workspace {targets_1_id} was refused: {outcome_reason}"
+      }
+    },
+    "roster.slack_app.installed": {
+      "summary": "A catalogued Slack App was installed into its workspace.",
+      "message": {
+        "en": "{actor} installed Slack App {targets_0_id} into workspace {targets_1_id}"
+      }
+    },
     "roster.slack_channel.adopted": {
       "summary": "An existing Slack channel was taken over by id.",
       "message": {

@@ -36,6 +36,13 @@ default: creating an App is an owner of the organisation confirming a
 manifest
 ([guide](../../docs/connect/github-apps-catalogue.md#a-default-set)).
 
+`slackApps` declares Slack Apps the same way: an operator creates each from
+the console with a throwaway app configuration token (used once, never
+stored), an owner of the workspace installs it, and the bot token is kept in
+`<release>-slack-catalogue-apps`. An entry may `push` that one key to a
+secret store
+([guide](../../docs/connect/slack-apps-catalogue.md)).
+
 ```sh
 helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \
   --namespace access-issuer --create-namespace \
