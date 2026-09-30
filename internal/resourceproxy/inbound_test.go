@@ -350,3 +350,36 @@ func TestSSEIsStreamedNotBuffered(t *testing.T) {
 	}
 	close(release)
 }
+
+func TestAuditLineBoundsWhatAnUnauthenticatedCallerChose(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), "")
+
+	// An encoded line break and a path far over the cap, from a caller
+	// with no token: the audit line must stay one line, bounded.
+	long := strings.Repeat("a", 4*maxPathLen)
+	resp := post(t, r.proxy.URL+"/metrics/x%0Aforged%0D"+long, "", `{}`)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 401 {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	got, _ := r.logs.lines(t, 1)[0]["path"].(string)
+	if strings.ContainsAny(got, "\n\r") {
+		t.Errorf("path keeps a line break: %q", got)
+	}
+	if len(got) > maxPathLen {
+		t.Errorf("path is %d bytes, cap is %d", len(got), maxPathLen)
+	}
+	if !strings.HasPrefix(got, "/metrics/xforged") {
+		t.Errorf("path = %q", got[:min(len(got), 40)])
+	}
+}
+
+func TestBoundedNeverSplitsACharacter(t *testing.T) {
+	t.Parallel()
+	got := bounded(strings.Repeat("é", 10), 5) // 2 bytes each: a cut at 5 lands mid-character
+	if got != "éé" {
+		t.Errorf("bounded = %q", got)
+	}
+}

@@ -18,6 +18,10 @@ type rpcCall struct {
 
 const maxNameLen = 128
 
+// maxPathLen caps the request path in an audit line: it is logged for a
+// refused, unauthenticated request too, so its length is the caller's.
+const maxPathLen = 512
+
 // parseRPC reads the method and tool name out of a JSON-RPC body, a
 // single message or a batch. ok is false for anything that is not JSON-RPC
 // shaped, which is then audited with no method rather than refused: this
@@ -69,15 +73,22 @@ func parseOne(raw []byte) (rpcCall, bool) {
 // clean bounds what a caller chose to name: a control character has no
 // place in a log line and a megabyte-long tool name none in an audit
 // trail.
-func clean(s string) string {
+func clean(s string) string { return bounded(s, maxNameLen) }
+
+// bounded is clean with a caller-chosen cap. Line breaks go first and by
+// name, then every other control character; a cut that lands inside a
+// multi-byte character drops the broken tail rather than logging it.
+func bounded(s string, limit int) string {
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
 	s = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
 			return -1
 		}
 		return r
 	}, s)
-	if len(s) > maxNameLen {
-		s = s[:maxNameLen]
+	if len(s) > limit {
+		s = strings.ToValidUTF8(s[:limit], "")
 	}
 	return s
 }
