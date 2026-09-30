@@ -577,3 +577,28 @@ func TestMissingScopes(t *testing.T) {
 		}
 	}
 }
+
+func TestRevokeEndsTheTokenAndIsIdempotent(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	if err := w.acme.Revoke(ctx); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if !w.fake.Revoked("TACME") || w.fake.Revoked("TGLOBEX") {
+		t.Fatalf("revoked = acme %v globex %v", w.fake.Revoked("TACME"), w.fake.Revoked("TGLOBEX"))
+	}
+	if _, err := w.acme.AuthTest(ctx); !errors.Is(err, slackapp.ErrInvalidAuth) {
+		t.Fatalf("a revoked token still works: %v", err)
+	}
+	// Already gone is success.
+	if err := w.acme.Revoke(ctx); err != nil {
+		t.Fatalf("second revoke: %v", err)
+	}
+	if _, err := w.globex.AuthTest(ctx); err != nil {
+		t.Fatalf("another workspace's token was revoked too: %v", err)
+	}
+	w.fake.Fail("auth.revoke", "fatal_error", 1)
+	if err := w.globex.Revoke(ctx); err == nil {
+		t.Fatal("a refusal other than an already-dead token must surface")
+	}
+}
