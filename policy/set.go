@@ -328,7 +328,8 @@ func readOne(name string) (Policy, error) {
 // source" work: two files cannot silently disagree about one group.
 //
 // EVERY field of [Policy] must be handled here, and so must every field
-// of [GitHubOrg], the one value merged field by field rather than whole.
+// of [GitHubOrg] and [SlackWorkspace], the values merged field by field
+// rather than whole.
 // A field this function does not name is not merged: it is read from
 // each file and then silently dropped, and nothing fails — which is how
 // `resources` and `client_documents` went unenforced in every directory
@@ -432,7 +433,12 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 		}
 		p.GitHub[org] = into
 	}
-	return nil
+	if err := mergeTable(&p.People, other.People, func(person string) error {
+		return fmt.Errorf("%s: person %q is declared twice", from, person)
+	}); err != nil {
+		return err
+	}
+	return p.mergeSlack(other.Slack, from)
 }
 
 // mergeTable adds every entry of from to *into and refuses a key already

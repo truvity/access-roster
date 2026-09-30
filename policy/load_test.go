@@ -104,6 +104,50 @@ var policyFields = map[string]mergeRule{
 		declare: "version: 1\ngithub: { globex: { teams: { platform: { members: [g] } } } }\n",
 		twice:   clash,
 	},
+	"People": {
+		rule:    "per person; a person in two files is a clash",
+		declare: "version: 1\npeople: { jdoe: [j@a.example] }\n",
+		twice:   clash,
+	},
+	"Slack": {
+		rule:    "field by field: see slackFields",
+		declare: "version: 1\nslack: { shared_channels: { platform: { host: acme, with: [globex], from: [g] } } }\n",
+		twice:   clash,
+	},
+}
+
+// slackFields is the `slack` block one level down: its two tables.
+var slackFields = map[string]mergeRule{
+	"Workspaces": {
+		rule:    "per workspace, field by field: see slackWorkspaceFields",
+		declare: "version: 1\nslack: { workspaces: { acme: { team_id: T0123ABCD } } }\n",
+		twice:   clash,
+	},
+	"SharedChannels": {
+		rule:    "per shared channel; one in two files is a clash",
+		declare: "version: 1\nslack: { shared_channels: { platform: { host: acme, with: [globex], from: [g] } } }\n",
+		twice:   clash,
+	},
+}
+
+// slackWorkspaceFields is a workspace's rule per field: a workspace is
+// merged field by field, as a GitHub organisation is.
+var slackWorkspaceFields = map[string]mergeRule{
+	"TeamID": {
+		rule:    "one file per workspace; a second is a clash",
+		declare: "version: 1\nslack: { workspaces: { acme: { team_id: T0123ABCD } } }\n",
+		twice:   clash,
+	},
+	"Domains": {
+		rule:    "one file per workspace; a second is a clash",
+		declare: "version: 1\nslack: { workspaces: { acme: { domains: [acme.example] } } }\n",
+		twice:   clash,
+	},
+	"Channels": {
+		rule:    "per channel; a channel in two files is a clash",
+		declare: "version: 1\nslack: { workspaces: { acme: { channels: { ops: { from: [g] } } } } }\n",
+		twice:   clash,
+	},
 }
 
 // githubOrgFields is the same table one level down: an organisation is
@@ -145,6 +189,18 @@ func TestMergeCoversEveryField(t *testing.T) {
 			name: "GitHubOrg", typ: reflect.TypeFor[policy.GitHubOrg](), rules: githubOrgFields,
 			field: func(p policy.Policy, name string) reflect.Value {
 				return reflect.ValueOf(p.GitHub["globex"]).FieldByName(name)
+			},
+		},
+		{
+			name: "Slack", typ: reflect.TypeFor[policy.Slack](), rules: slackFields,
+			field: func(p policy.Policy, name string) reflect.Value {
+				return reflect.ValueOf(p.Slack).FieldByName(name)
+			},
+		},
+		{
+			name: "SlackWorkspace", typ: reflect.TypeFor[policy.SlackWorkspace](), rules: slackWorkspaceFields,
+			field: func(p policy.Policy, name string) reflect.Value {
+				return reflect.ValueOf(p.Slack.Workspaces["acme"]).FieldByName(name)
 			},
 		},
 	} {
@@ -335,6 +391,19 @@ client_documents:
     teams:
       platform: { members: [devel:k8s:viewer], maintainers: [devel:k8s:admin] }
     ignore: [someone@a.example]
+`,
+		`people:
+  jdoe: [j.doe@a.example, john@b.example]
+slack:
+  workspaces:
+    acme:
+      team_id: T0123ABCD
+      domains: [a.example]
+      channels:
+        ops: { from: [devel:k8s:admin], adopt: C0123ABCD }
+    globex: { team_id: T0456EFGH, domains: [b.example] }
+  shared_channels:
+    platform: { host: acme, with: [globex], from: [devel:k8s:viewer], private: { acme: true, globex: false } }
 `,
 	}
 

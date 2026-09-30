@@ -999,6 +999,108 @@ on* is whatever the group depends on — the provider for a membership, the
 proof alone for a matcher. It feeds a team rather than an internal group,
 so it opens no client.
 
+## People
+
+```yaml
+people:
+  jdoe: [j.doe@acme.example, john@globex.example]   # one person, two companies' addresses
+```
+
+`people` says which addresses are **the same person** — someone with an
+address in two companies' domains. The key is a name you choose. It is
+generic, not Slack's: any reconciler that looks a person up by their
+address in one domain needs it.
+
+It **only links addresses.** It never says who holds a group; the
+directory alone answers that. A person listed here gains nothing until the
+directory puts one of their addresses in a group, and is not removed from
+anything by being left out.
+
+Refused: a person with no address, an address that is not one, the same
+address under two people (or twice under one), a key that is not a plain
+name (lowercase letters, digits, `.`, `_`, `-`). Addresses are compared
+lowercased. The same person declared in two merged files is a clash.
+
+## Slack channels
+
+> **A controller that reads this is being built. Until it ships, nothing
+> reads these keys**: they are validated at load, merged, digested and
+> shown, and nothing more.
+
+```yaml
+slack:
+  workspaces:
+    acme:                                   # a key WE choose
+      team_id: T0123ABCD                    # Slack's own id; the connect flow must match it
+      domains: [acme.example]               # how a person is found in this workspace
+      channels:                             # by channel NAME, as Slack spells it
+        eng-private: {private: true, from: [acme:eng:member]}
+        ops: {from: [acme:sre:member], adopt: C0123ABCD}   # take over an existing channel
+    globex:
+      team_id: T0456EFGH
+      domains: [globex.example]
+  shared_channels:                          # Slack Connect: one channel, several workspaces
+    platform:
+      host: acme                            # creates and owns it
+      with: [globex]                        # the other sides
+      from: [acme:platform:member]
+      private: true                         # or {acme: true, globex: false}
+```
+
+Each workspace is connected by **its own app** and bot token; the token is
+never in this file. The workspace key is ours, and `team_id` is what ties
+it to a real workspace: the connect flow refuses a token whose workspace
+is not the one declared. A person is found in a workspace by their address
+in one of its `domains` (and `people` links their other addresses). A
+domain belongs to one workspace only.
+
+Channels are bound to **internal groups directly**, exactly as a GitHub
+team is: the holders of `from` are who the channel should contain. (Slack
+user groups are out of scope.) A channel is created if absent, or taken
+over by **ID** with `adopt` — by ID, because a name can be changed or
+reused and an ID cannot.
+
+**What the controller will do:**
+
+- a **public** channel is **add-only**: anyone may join it themselves, so
+  the controller adds the people the bindings name and removes nobody;
+- a **private** channel is **exact**: membership is granted, so the
+  controller makes it match the bindings;
+- people are **removed only after the directory vouches** for the answer,
+  so a directory outage never empties a channel;
+- a **breaker** stops a run that would remove an implausible share of a
+  channel at once.
+
+**Shared channels** span workspaces. `host` creates and owns the channel
+(Slack requires exactly one); `with` lists the other workspaces; `from`
+the internal groups, each person placed on the side whose domain their
+address is in. `private` is one bool for every side, or a map naming the
+host and every `with` workspace, because Slack lets each organisation
+choose its own side's visibility. Absent is public.
+
+What is refused, and why each would otherwise be silent:
+
+| Refused | Because |
+|---|---|
+| a workspace key that is not a plain slug | it appears in messages, audit records and credential names |
+| `team_id` missing or not `^T[A-Z0-9]{6,}$` | nothing would tie the entry to a real workspace |
+| no `domains`, an invalid domain, or one domain in two workspaces | nobody could be found, or read order would decide which workspace an address is in |
+| a channel name that is not lowercase letters, digits, `-`, `_` (at most 80) | Slack would refuse it at create time, not at load |
+| a channel with no `from` | *empty this channel* is not something to express by leaving a list out |
+| a group nothing declares | the binding would name something with no meaning |
+| `adopt` not `^[CG][A-Z0-9]{8,}$`, or one ID adopted twice in a workspace | two bindings would fight over one channel |
+| a shared channel whose `host` is undeclared, or is also in `with`; empty or repeated `with` | ownership must be one declared workspace, and sharing with nobody is an ordinary channel |
+| a shared channel named like a channel of its host | one name would be two channels |
+| a `private` map that does not name exactly the host and `with` | a side's visibility would be a default nobody wrote |
+
+Across merged files a workspace merges field by field, as a GitHub
+organisation does: one file may declare it (`team_id`, `domains`) and
+another bind channels in it. `team_id` and `domains` come from one file, a
+channel or shared channel from one file, and a repeat is a clash. Bound
+groups count as consumed, so they are not reported by the unused-group
+lint. Validation runs on the merged policy, so a reference across files
+is checked once, after the merge.
+
 ## One source
 
 The deployment's ConfigMap(s), rendered from the installation's own
