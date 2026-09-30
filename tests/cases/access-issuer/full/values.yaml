@@ -162,6 +162,21 @@ githubRoster:
       cpu: 10m
       memory: 32Mi
 
+slackRoster:
+  enabled: true
+  image:
+    repository: registry.example/access-roster/slack-roster
+    tag: v1.2.3
+    pullPolicy: Always
+  interval: 5m
+  actsIn:
+    - acme
+    - globex-eu
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
 githubRunnerApps:
   tiers:
     - preview

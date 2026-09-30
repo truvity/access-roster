@@ -6,7 +6,10 @@
 # No egress rules: this service has to reach the API server, the hub and
 # whichever directory a person signs in with, and a chart that guessed at
 # that list would be a chart that breaks a login the day a provider adds
-# a hostname. The fleet's own egress policy is where that belongs.
+# a hostname. The fleet's own egress policy is where that belongs: a
+# Kubernetes NetworkPolicy cannot name a host, and the Slack controller
+# (slackRoster) needs slack.com:443 to be allowed there, as the GitHub
+# controller needs api.github.com:443.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -39,6 +42,18 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "access-issuer.githubRosterSelectorLabels" . | nindent 14 }}
+      ports:
+        - port: {{ .Values.listeners.port }}
+    {{- end }}
+    {{- if .Values.slackRoster.enabled }}
+    # The Slack controller beside it, reading the console's API with its
+    # own ServiceAccount token. Its own traffic to Slack (slack.com:443,
+    # over TLS) leaves the pod, which this policy does not govern: see the
+    # note on egress at the top.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "access-issuer.slackRosterSelectorLabels" . | nindent 14 }}
       ports:
         - port: {{ .Values.listeners.port }}
     {{- end }}

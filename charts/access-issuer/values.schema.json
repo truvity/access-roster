@@ -465,6 +465,52 @@
         }
       }
     },
+    "slackRoster": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The Slack controller: a second process beside the service that makes each workspace's channels match the policy's slack table.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the controller. Needs exchange.clusters to name this cluster and console.mount to be set."
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "interval": {
+          "$ref": "#/definitions/duration",
+          "description": "How long between passes."
+        },
+        "actsIn": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$"
+          },
+          "description": "The workspaces the controller changes, by the policy's key. Every other declared workspace is derived and reported, and left alone."
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    },
     "githubRunnerApps": {
       "type": "object",
       "additionalProperties": false,

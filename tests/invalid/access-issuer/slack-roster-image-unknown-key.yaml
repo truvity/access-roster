@@ -1,0 +1,6 @@
+# A key under slackRoster.image the chart does not know must fail the render, not be ignored.
+# error: at '/slackRoster/image': additional properties
+issuerURL: https://issuer.example
+slackRoster:
+  image:
+    registry: registry.example

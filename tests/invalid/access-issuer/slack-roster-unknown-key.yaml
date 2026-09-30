@@ -1,0 +1,5 @@
+# A key under slackRoster the chart does not know must fail the render, not be ignored.
+# error: at '/slackRoster': additional properties
+issuerURL: https://issuer.example
+slackRoster:
+  acts_in: [acme]
