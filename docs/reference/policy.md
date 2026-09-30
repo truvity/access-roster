@@ -322,7 +322,7 @@ empty one.
 
 `owner` is one value per organisation, so two policy files naming it is a
 clash, as for any other scalar. It must be a single workspace id (no `:`, no
-whitespace, not `all`). Slack workspaces will take the same mechanism.
+whitespace, not `all`). [Slack workspaces take the same mechanism](#scoping-a-slack-workspace-slackworkspaceskeyowner).
 
 **Recovery is not scoped**, by construction. It exists for the day the
 directory or the policy is what is broken, and a recovery scoped to one
@@ -1061,6 +1061,39 @@ Refused: a person with no address, an address that is not one, the same
 address under two people (or twice under one), a key that is not a plain
 name (lowercase letters, digits, `.`, `_`, `-`). Addresses are compared
 lowercased. The same person declared in two merged files is a clash.
+
+### Scoping a Slack workspace: `slack.workspaces.<key>.owner`
+
+A Slack workspace names the directory workspace that owns it, exactly as a
+GitHub organisation does:
+
+```yaml
+slack:
+  workspaces:
+    acme:
+      team_id: T0123ABCD
+      owner: C0northern      # the workspace id, exactly as in the group name
+      domains: [acme.example]
+    globex:                  # no owner
+      team_id: T0456EFGH
+      domains: [globex.example]
+```
+
+| A Slack workspace… | may be operated by |
+|---|---|
+| with an `owner` | the `<owner>:access-roster:operator` of that directory workspace, **or** the `all:access-roster:operator` |
+| with no `owner` | the `all:access-roster:operator` alone |
+
+"Operated" is every action on the workspace's [catalogue Apps](../connect/slack-apps-catalogue.md):
+creating, installing and reinstalling, and finishing an install when Slack
+sends the browser back (the role is checked again there, for whoever is signed
+in then). What is *seen* follows the same owner: a viewer scoped to a
+directory workspace sees the Slack Apps of the workspaces it owns and nothing of
+another company's; a scoped role over a directory that owns no Slack workspace
+is refused the page rather than shown an empty one.
+
+`owner` is one value per workspace, so two policy files naming it is a clash.
+It must be a single workspace id (no `:`, no whitespace, not `all`).
 
 ## Slack channels
 
