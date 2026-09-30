@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"go.yaml.in/yaml/v3"
-
 	"github.com/truvity/access-roster/internal/emailaddr"
 )
 
@@ -34,12 +32,13 @@ type Slack struct {
 	// here depends on it. Each is connected by its own app, and so by its
 	// own bot token, which is never written in this file.
 	Workspaces map[string]SlackWorkspace `yaml:"workspaces,omitempty"`
-	// SharedChannels are Slack Connect channels: one channel that spans
-	// several workspaces. They are declared beside the workspaces rather
-	// than inside one because no single workspace owns the question of who
-	// is in them — each side's members come from its own groups.
-	SharedChannels map[string]SlackSharedChannel `yaml:"shared_channels,omitempty"`
 }
+
+// Shared Slack Connect channels are not declared here. They are created and
+// edited on the console, which keeps them as records of its own, so the
+// policy file describes only what is fixed at deploy time: which
+// workspaces exist, whose domain is whose, and the channels bound inside
+// each.
 
 // SlackWorkspace is one workspace and the channels bound inside it.
 type SlackWorkspace struct {
@@ -112,82 +111,6 @@ func (c SlackChannel) Strict() bool { return c.Mode == SlackModeStrict }
 
 // slackUserID is the shape of a Slack user id.
 var slackUserID = regexp.MustCompile(`^[UW][A-Z0-9]{6,}$`)
-
-// SlackSharedChannel is a Slack Connect channel. One workspace, the
-// host, creates and owns it — Slack requires exactly one — and invites the
-// others.
-type SlackSharedChannel struct {
-	// Host is the workspace that creates and owns the channel. Explicit
-	// rather than "the first one listed" because ownership decides whose
-	// app can archive or rename it, and that is not a thing to infer.
-	Host string `yaml:"host"`
-	// With are the other workspaces the channel is shared with. At least
-	// one — with none it would be an ordinary channel and belongs under
-	// the host's own `channels` — and never the host itself.
-	With []string `yaml:"with,omitempty"`
-	// From are the internal groups whose holders belong in the channel,
-	// whichever side they are on; each person is placed on the side whose
-	// domain their address is in.
-	From []string `yaml:"from,omitempty"`
-	// Private is the channel's visibility: `true` or `false` for every
-	// side, or a map from workspace key to bool, because Slack lets each
-	// organisation choose its own side's visibility. Absent is public.
-	Private SlackPrivacy `yaml:"private,omitempty"`
-}
-
-// SlackPrivacy is [SlackSharedChannel.Private]: one visibility for every
-// side, or one per side. It is a type of its own because YAML spells both
-// as the same key.
-type SlackPrivacy struct {
-	// All is the one visibility every side shares, when PerSide is nil.
-	All bool
-	// PerSide maps a workspace key to whether that side is private. When
-	// set it must name the host and every `with` workspace, exactly:
-	// leaving a side out would make its visibility a default nobody wrote.
-	PerSide map[string]bool
-}
-
-// IsZero reports the absent, public-everywhere value, so an unset key
-// is left out of the canonical YAML the digest is taken over.
-func (s SlackPrivacy) IsZero() bool { return !s.All && s.PerSide == nil }
-
-// IsPrivate reports whether the side of workspace is private.
-func (s SlackPrivacy) IsPrivate(workspace string) bool {
-	if s.PerSide != nil {
-		return s.PerSide[workspace]
-	}
-	return s.All
-}
-
-// UnmarshalYAML implements yaml.Unmarshaler: a bool, or a map of bools.
-func (s *SlackPrivacy) UnmarshalYAML(node *yaml.Node) error {
-	if node.Kind == yaml.MappingNode {
-		var per map[string]bool
-		if err := node.Decode(&per); err != nil {
-			return fmt.Errorf("private must be true, false or a map of workspace to true/false: %w", err)
-		}
-		if per == nil {
-			per = map[string]bool{}
-		}
-		*s = SlackPrivacy{PerSide: per}
-		return nil
-	}
-	var all bool
-	if err := node.Decode(&all); err != nil {
-		return fmt.Errorf("private must be true, false or a map of workspace to true/false: %w", err)
-	}
-	*s = SlackPrivacy{All: all}
-	return nil
-}
-
-// MarshalYAML implements yaml.Marshaler, so a policy round-trips and its
-// digest sees the value in the form it was written.
-func (s SlackPrivacy) MarshalYAML() (any, error) {
-	if s.PerSide != nil {
-		return s.PerSide, nil
-	}
-	return s.All, nil
-}
 
 var (
 	// slackSlug is what a workspace key may be: it appears in messages,
@@ -306,11 +229,6 @@ func (p Policy) validateSlack() error {
 		}
 		teamOwner[team] = key
 	}
-	for _, name := range slices.Sorted(maps.Keys(p.Slack.SharedChannels)) {
-		if err := p.validateSharedChannel(name); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -397,61 +315,11 @@ func validateSlackMode(where string, channel SlackChannel) error {
 	return nil
 }
 
-func (p Policy) validateSharedChannel(name string) error {
-	where := "slack: shared " + name
-	if !slackChannelName.MatchString(name) {
-		return fmt.Errorf("%s: not a Slack channel name (lowercase letters, digits, '-' and '_', at most 80)", where)
-	}
-	shared := p.Slack.SharedChannels[name]
-	if _, ok := p.Slack.Workspaces[shared.Host]; !ok {
-		return fmt.Errorf("%s: host %q is not a declared workspace", where, shared.Host)
-	}
-	if _, collides := p.Slack.Workspaces[shared.Host].Channels[name]; collides {
-		return fmt.Errorf("%s: the host workspace %s already has a channel of that name", where, shared.Host)
-	}
-	if len(shared.With) == 0 {
-		return fmt.Errorf("%s shares with no workspace; bind it under %s's own channels instead", where, shared.Host)
-	}
-	seen := map[string]bool{}
-	for _, other := range shared.With {
-		if _, ok := p.Slack.Workspaces[other]; !ok {
-			return fmt.Errorf("%s: with %q is not a declared workspace", where, other)
-		}
-		if other == shared.Host {
-			return fmt.Errorf("%s: the host %s is also listed in with", where, other)
-		}
-		if seen[other] {
-			return fmt.Errorf("%s: with lists %s twice", where, other)
-		}
-		seen[other] = true
-	}
-	if len(shared.From) == 0 {
-		return fmt.Errorf("%s is fed by no group, which would empty the channel", where)
-	}
-	if err := p.checkBoundGroups(where+" from", shared.From); err != nil {
-		return err
-	}
-	if per := shared.Private.PerSide; per != nil {
-		sides := append([]string{shared.Host}, shared.With...)
-		for _, side := range sides {
-			if _, ok := per[side]; !ok {
-				return fmt.Errorf("%s: private names no value for %s; a map must name the host and every workspace in with", where, side)
-			}
-		}
-		for _, side := range slices.Sorted(maps.Keys(per)) {
-			if !slices.Contains(sides, side) {
-				return fmt.Errorf("%s: private names %s, which is neither the host nor in with", where, side)
-			}
-		}
-	}
-	return nil
-}
-
 // mergeSlack folds another file's `slack` block into p's. Per workspace
 // and field by field, exactly as GitHub's organisations are: one file may
 // declare a workspace and another bind channels in it. A workspace's
 // identity (team_id, domains) is declared by one file only, each channel
-// and each shared channel by one file, and a repeat is a clash, because
+// by one file, and a repeat is a clash, because
 // the second would silently replace the first.
 func (p *Policy) mergeSlack(other Slack, from string) error {
 	for _, key := range slices.Sorted(maps.Keys(other.Workspaces)) {
@@ -478,7 +346,5 @@ func (p *Policy) mergeSlack(other Slack, from string) error {
 		}
 		p.Slack.Workspaces[key] = into
 	}
-	return mergeTable(&p.Slack.SharedChannels, other.SharedChannels, func(name string) error {
-		return fmt.Errorf("%s: slack shared channel %s is declared twice", from, name)
-	})
+	return nil
 }

@@ -15,7 +15,6 @@ version: 1
 groups:
   acme:eng:member: { members: [eng@acme.example] }
   acme:sre:member: { members: [sre@acme.example] }
-  acme:platform:member: { members: [platform@acme.example] }
 people:
   jdoe: [j.doe@acme.example, john@globex.example]
 slack:
@@ -29,12 +28,6 @@ slack:
     globex:
       team_id: T0456EFGH
       domains: [globex.example]
-  shared_channels:
-    platform:
-      host: acme
-      with: [globex]
-      from: [acme:platform:member]
-      private: true
 `
 
 func TestSlackRoundTrips(t *testing.T) {
@@ -50,10 +43,6 @@ func TestSlackRoundTrips(t *testing.T) {
 	if acme.TeamID != "T0123ABCD" || !acme.Channels["eng-private"].Private ||
 		acme.Channels["ops"].Adopt != "C0123ABCD" || acme.Channels["ops"].Private {
 		t.Errorf("acme read as %+v", acme)
-	}
-	shared := declared.Slack.SharedChannels["platform"]
-	if shared.Host != "acme" || !shared.Private.All || !shared.Private.IsPrivate("globex") {
-		t.Errorf("shared read as %+v", shared)
 	}
 	if got := declared.PeopleByAddress()["john@globex.example"]; got != "jdoe" {
 		t.Errorf("PeopleByAddress = %q, want jdoe", got)
@@ -101,57 +90,26 @@ func TestSlackModeAndIgnore(t *testing.T) {
 	}
 }
 
-func TestSlackPerSidePrivacy(t *testing.T) {
-	t.Parallel()
-	text := strings.Replace(slackBase, "private: true\n", "private: { acme: true, globex: false }\n", 1)
-	declared, err := policy.Parse([]byte(text))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	if _, err := policy.NewSet(declared); err != nil {
-		t.Fatalf("NewSet: %v", err)
-	}
-	private := declared.Slack.SharedChannels["platform"].Private
-	if !private.IsPrivate("acme") || private.IsPrivate("globex") {
-		t.Errorf("per-side privacy read as %+v", private)
-	}
-	if _, err := policy.Parse([]byte(strings.Replace(slackBase, "private: true\n", "private: maybe\n", 1))); err == nil {
-		t.Error("a private that is neither a bool nor a map was parsed")
-	}
-}
-
 func TestSlackRefusals(t *testing.T) {
 	t.Parallel()
 	for name, c := range map[string]struct{ from, to, want string }{
-		"workspace key not a slug":     {"    acme:\n      team_id", "    Acme_Corp:\n      team_id", "workspace key"},
-		"team id missing":              {"      team_id: T0123ABCD\n", "", "team_id"},
-		"team id misshapen":            {"T0456EFGH", "t456", "team_id"},
-		"team id in two workspaces":    {"T0456EFGH", "T0123ABCD", "belongs to both"},
-		"no domains":                   {"      domains: [globex.example]\n", "", "no domains"},
-		"domain not a domain":          {"domains: [globex.example]", "domains: [globex]", "not a domain"},
-		"domain in two workspaces":     {"domains: [globex.example]", "domains: [ACME.example]", "belongs to both"},
-		"domain twice in one":          {"domains: [acme.example]", "domains: [acme.example, Acme.Example]", "twice"},
-		"channel name uppercase":       {"ops: {", "Ops: {", "channel name"},
-		"channel name too long":        {"ops: {", strings.Repeat("a", 81) + ": {", "channel name"},
-		"channel fed by nothing":       {"ops: { from: [acme:sre:member], ", "ops: { from: [], ", "fed by no group"},
-		"channel group undeclared":     {"from: [acme:sre:member]", "from: [acme:nobody:member]", "not a declared group"},
-		"adopt misshapen":              {"adopt: C0123ABCD", "adopt: c123", "channel id"},
-		"adopt twice":                  {"eng-private: { private: true,", "eng-private: { adopt: C0123ABCD, private: true,", "adopts C0123ABCD for both"},
-		"shared host undeclared":       {"host: acme", "host: initech", "host"},
-		"shared name collides":         {"    platform:\n      host", "    ops:\n      host", "already has a channel"},
-		"shared name invalid":          {"    platform:\n      host", "    Plat form:\n      host", "channel name"},
-		"shared with undeclared":       {"with: [globex]", "with: [initech]", "not a declared workspace"},
-		"shared host in with":          {"with: [globex]", "with: [acme]", "also listed in with"},
-		"shared with empty":            {"with: [globex]", "with: []", "shares with no workspace"},
-		"shared with duplicate":        {"with: [globex]", "with: [globex, globex]", "twice"},
-		"shared fed by nothing":        {"from: [acme:platform:member]", "from: []", "fed by no group"},
-		"shared group undeclared":      {"from: [acme:platform:member]", "from: [acme:nobody:member]", "not a declared group"},
-		"privacy map misses a side":    {"private: true\n", "private: { acme: true }\n", "names no value for globex"},
-		"privacy map names a stranger": {"private: true\n", "private: { acme: true, globex: true, initech: true }\n", "neither the host"},
-		"privacy map empty":            {"private: true\n", "private: {}\n", "names no value"},
-		"person no address":            {"jdoe: [j.doe@acme.example, john@globex.example]", "jdoe: []", "no address"},
-		"person address invalid":       {"john@globex.example", "john", "not an address"},
-		"person key not a slug":        {"jdoe:", "J Doe:", "not a usable name"},
+		"workspace key not a slug":  {"    acme:\n      team_id", "    Acme_Corp:\n      team_id", "workspace key"},
+		"team id missing":           {"      team_id: T0123ABCD\n", "", "team_id"},
+		"team id misshapen":         {"T0456EFGH", "t456", "team_id"},
+		"team id in two workspaces": {"T0456EFGH", "T0123ABCD", "belongs to both"},
+		"no domains":                {"      domains: [globex.example]\n", "", "no domains"},
+		"domain not a domain":       {"domains: [globex.example]", "domains: [globex]", "not a domain"},
+		"domain in two workspaces":  {"domains: [globex.example]", "domains: [ACME.example]", "belongs to both"},
+		"domain twice in one":       {"domains: [acme.example]", "domains: [acme.example, Acme.Example]", "twice"},
+		"channel name uppercase":    {"ops: {", "Ops: {", "channel name"},
+		"channel name too long":     {"ops: {", strings.Repeat("a", 81) + ": {", "channel name"},
+		"channel fed by nothing":    {"ops: { from: [acme:sre:member], ", "ops: { from: [], ", "fed by no group"},
+		"channel group undeclared":  {"from: [acme:sre:member]", "from: [acme:nobody:member]", "not a declared group"},
+		"adopt misshapen":           {"adopt: C0123ABCD", "adopt: c123", "channel id"},
+		"adopt twice":               {"eng-private: { private: true,", "eng-private: { adopt: C0123ABCD, private: true,", "adopts C0123ABCD for both"},
+		"person no address":         {"jdoe: [j.doe@acme.example, john@globex.example]", "jdoe: []", "no address"},
+		"person address invalid":    {"john@globex.example", "john", "not an address"},
+		"person key not a slug":     {"jdoe:", "J Doe:", "not a usable name"},
 		"address in two people": {
 			"people:\n  jdoe: [j.doe@acme.example, john@globex.example]",
 			"people:\n  jdoe: [j.doe@acme.example, john@globex.example]\n  other: [JOHN@globex.example]",
@@ -235,16 +193,6 @@ func TestChangingASlackFieldChangesTheDigest(t *testing.T) {
 			c := p.Slack.Workspaces["acme"].Channels["ops"]
 			c.Adopt = "C0999ZZZZ"
 			p.Slack.Workspaces["acme"].Channels["ops"] = c
-		},
-		"shared from": func(p *policy.Policy) {
-			c := p.Slack.SharedChannels["platform"]
-			c.From = append(c.From, "acme:eng:member")
-			p.Slack.SharedChannels["platform"] = c
-		},
-		"shared privacy": func(p *policy.Policy) {
-			c := p.Slack.SharedChannels["platform"]
-			c.Private = policy.SlackPrivacy{PerSide: map[string]bool{"acme": true, "globex": true}}
-			p.Slack.SharedChannels["platform"] = c
 		},
 		"people": func(p *policy.Policy) { p.People["jdoe"] = []string{"j.doe@acme.example"} },
 	} {
