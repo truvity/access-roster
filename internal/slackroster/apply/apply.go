@@ -49,15 +49,21 @@ type Result struct {
 }
 
 // Done counts the actions Slack accepted.
-func (r Result) Done() int { return r.count(func(o Outcome) bool { return o.Done }) }
+func (r Result) Done() int {
+	n := 0
+	for i := range r.Outcomes {
+		if r.Outcomes[i].Done {
+			n++
+		}
+	}
+	return n
+}
 
 // Failed counts the actions Slack refused or that could not be tried.
-func (r Result) Failed() int { return r.count(func(o Outcome) bool { return o.Err != nil }) }
-
-func (r Result) count(f func(Outcome) bool) int {
+func (r Result) Failed() int {
 	n := 0
-	for _, o := range r.Outcomes {
-		if f(o) {
+	for i := range r.Outcomes {
+		if r.Outcomes[i].Err != nil {
 			n++
 		}
 	}
@@ -71,7 +77,8 @@ func (r Result) count(f func(Outcome) bool) int {
 func Apply(ctx context.Context, client *slackapp.Client, dec reconcile.Decision, opt Options) Result {
 	res := Result{ChannelIDs: map[string]string{}}
 	ids := map[string]string{}
-	for _, a := range dec.Actions {
+	for i := range dec.Actions {
+		a := dec.Actions[i]
 		out := Outcome{Action: a}
 		if opt.DryRun {
 			out.Skipped = "dry run"
@@ -107,7 +114,8 @@ func Apply(ctx context.Context, client *slackapp.Client, dec reconcile.Decision,
 				ids[a.Channel], res.ChannelIDs[a.Channel] = accepted, accepted
 			}
 			out.Done = out.Err == nil
-			emit(ctx, opt, audit.SlackSharedAccepted(audit.SlackShared{Host: a.Host, Guest: a.Guest, Channel: a.Channel, ID: accepted, Invite: a.InviteID}, outcomeOf(out.Err)))
+			shared := audit.SlackShared{Host: a.Host, Guest: a.Guest, Channel: a.Channel, ID: accepted, Invite: a.InviteID}
+			emit(ctx, opt, audit.SlackSharedAccepted(shared, outcomeOf(out.Err)))
 		case status.ActionShareInvite:
 			if id == "" {
 				out.Skipped, out.Err = "the channel was not made", errNoChannel

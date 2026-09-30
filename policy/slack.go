@@ -294,7 +294,8 @@ func validateSlackMode(where string, channel SlackChannel) error {
 		}
 	case SlackModeStrict:
 		if !channel.Private {
-			return fmt.Errorf("%s: mode: strict needs private: true; Slack lets only administrators remove people from a public channel, so the bot would be refused", where)
+			return fmt.Errorf("%s: mode: strict needs private: true; Slack lets only administrators remove people from a public channel, "+
+				"so the bot would be refused", where)
 		}
 	default:
 		return fmt.Errorf("%s: mode %q is neither extend nor strict", where, channel.Mode)

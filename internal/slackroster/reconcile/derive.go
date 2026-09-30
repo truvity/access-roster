@@ -102,7 +102,8 @@ func ready(ch *Channel, private bool, joinable bool) resolved {
 	switch {
 	case ch.Private != private:
 		return resolved{kind: resHeld, ch: ch, change: "adopt",
-			reason: fmt.Sprintf("the channel is %s in Slack but the policy says %s; change one of them, the roster never changes visibility", visibility(ch.Private), visibility(private))}
+			reason: fmt.Sprintf("the channel is %s in Slack but the policy says %s; change one of them, the roster never changes visibility",
+				visibility(ch.Private), visibility(private))}
 	case !ch.BotIn && ch.Private:
 		return resolved{kind: resHeld, ch: ch, change: "adopt", reason: "the bot is not in this private channel: invite the bot first"}
 	case !ch.BotIn && joinable:
@@ -121,7 +122,8 @@ func (d *Draft) resolveBound(lc layoutChannel) resolved {
 			return resolved{kind: resHeld, change: "adopt",
 				reason: "adopt " + id + ": the bot cannot see that channel; if it is private, invite the bot first, otherwise check the id"}
 		case ch.Shared:
-			return resolved{kind: resHeld, ch: ch, change: "adopt", reason: "adopt " + id + " is a Slack Connect channel; it is managed as a shared channel, not bound here"}
+			return resolved{kind: resHeld, ch: ch, change: "adopt",
+				reason: "adopt " + id + " is a Slack Connect channel; it is managed as a shared channel, not bound here"}
 		}
 		return ready(ch, lc.private, true)
 	}
@@ -174,8 +176,9 @@ func Derive(in Input) (*Draft, error) {
 		return nil, fmt.Errorf("reconcile: workspace %q is not declared", in.Workspace)
 	}
 	d := &Draft{in: in, r: newResolver(in)}
-	for _, lc := range d.r.layout() {
-		p, err := d.derive(lc)
+	layout := d.r.layout()
+	for i := range layout {
+		p, err := d.derive(layout[i])
 		if err != nil {
 			return nil, err
 		}

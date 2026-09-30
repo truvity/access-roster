@@ -66,11 +66,11 @@ import (
 	"github.com/truvity/access-roster/policy"
 )
 
-// Holder and Holders are the directory's answer, as [rails.Holders].
-type (
-	Holder  = rails.Holder
-	Holders = rails.Holders
-)
+// Holder is one account holding a group, as [rails.Holder].
+type Holder = rails.Holder
+
+// Holders are each bound group's holders, as [rails.Holders].
+type Holders = rails.Holders
 
 // SharedChannel is one Slack Connect channel's definition, from wherever
 // the definitions live: the console keeps them as records, and this is the
@@ -259,7 +259,7 @@ func incomplete(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrIncomplete, fmt.Sprintf(format, args...))
 }
 
-// Action kinds.
+// Kind is what an [Action] does: one of the [status] actions.
 type Kind = status.Action
 
 // Action is one change, in the order it is to be made.
@@ -507,8 +507,9 @@ func (r resolver) owner(s SharedChannel, p person) (workspace, address string) {
 func Lookups(in Input) []string {
 	r := newResolver(in)
 	set := map[string]bool{}
-	for _, lc := range r.layout() {
-		for _, s := range lc.slots {
+	layout := r.layout()
+	for i := range layout {
+		for _, s := range layout[i].slots {
 			if s.addr != "" {
 				set[s.addr] = true
 			}

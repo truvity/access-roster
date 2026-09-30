@@ -16,7 +16,6 @@ type removal struct {
 	key     string
 	member  Member
 	email   string
-	groups  []string
 	row     int
 }
 
@@ -100,8 +99,8 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 	// Breakers: each channel's removal set, then the workspace's, both over
 	// the same candidates so neither fingerprint depends on the other.
 	byChannel := map[string][]int{}
-	for i, r := range removals {
-		byChannel[r.channel] = append(byChannel[r.channel], i)
+	for i := range removals {
+		byChannel[removals[i].channel] = append(byChannel[removals[i].channel], i)
 	}
 	held := []Held{}
 	chBreaker := map[string]*rails.Breaker{}
@@ -128,9 +127,9 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 	wsBlocked := false
 	if len(removals) > 0 {
 		people, lines := map[string]bool{}, []string{}
-		for _, r := range removals {
-			people[r.key] = true
-			lines = append(lines, r.line())
+		for i := range removals {
+			people[removals[i].key] = true
+			lines = append(lines, removals[i].line())
 		}
 		distinct := len(people)
 		managed := map[string]bool{}
@@ -153,7 +152,8 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 
 	// Rows of blocked removals become held; the rest are actions.
 	var removeActs []Action
-	for _, r := range removals {
+	for i := range removals {
+		r := &removals[i]
 		p := d.planNamed(r.channel)
 		rows := rowsOf[p]
 		switch {

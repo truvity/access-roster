@@ -112,7 +112,8 @@ func Observe(ctx context.Context, client *slackapp.Client, in reconcile.Input) (
 		if err != nil {
 			return reconcile.Observed{}, fmt.Errorf("apply: list Slack Connect invitations: %w", err)
 		}
-		for _, inv := range invites {
+		for i := range invites {
+			inv := &invites[i]
 			obs.Invites = append(obs.Invites, reconcile.Invite{
 				ID: inv.Invite.ID, Incoming: inv.Direction == "incoming", HostTeamID: inv.Invite.InvitingTeam.ID,
 				ChannelID: inv.Channel.ID, ChannelName: inv.Channel.Name, RecipientUserID: inv.Invite.RecipientUserID,
