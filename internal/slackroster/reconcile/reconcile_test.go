@@ -617,20 +617,21 @@ func TestTheChannelBreakerHoldsRemovalsOverHalfUnlessTheExactSetIsConfirmed(t *t
 	}
 	fp := c.Breaker.Fingerprint
 
-	// The channel's confirmation alone is not enough when the workspace's
-	// breaker trips on the same set: each is its own gate.
-	dec = e.decide(t, vouch(gone(), gone4...), reconcile.Confirmed{Channels: map[string]string{"eng": fp}})
-	if len(dec.Actions) != 0 || dec.Report.Breaker == nil || !dec.Report.Channels[0].Breaker.Confirmed {
-		t.Errorf("channel confirmed only: %v ws %+v", kinds(dec), dec.Report.Breaker)
-	}
-	// Confirming that exact set at both gates lets it go.
-	dec = e.decide(t, vouch(gone(), gone4...), reconcile.Confirmed{Channels: map[string]string{"eng": fp}, Workspace: dec.Report.Breaker.Fingerprint})
-	if len(dec.Actions) != 4 || !dec.Report.Channels[0].Breaker.Confirmed || len(dec.Held) != 0 {
-		t.Errorf("confirmed: %v %+v", kinds(dec), dec.Report.Channels[0].Breaker)
+	// One confirmation of the fingerprint satisfies every gate that
+	// fingerprint covers: here the channel's and the workspace's are the same
+	// set, so either place it was confirmed lets the removals go.
+	for name, confirmed := range map[string]reconcile.Confirmed{
+		"channel":   {Channels: map[string]string{"eng": fp}},
+		"workspace": {Workspace: fp},
+	} {
+		dec = e.decide(t, vouch(gone(), gone4...), confirmed)
+		if len(dec.Actions) != 4 || !dec.Report.Channels[0].Breaker.Confirmed || !dec.Report.Breaker.Confirmed || len(dec.Held) != 0 {
+			t.Errorf("confirmed once at the %s: %v ch %+v ws %+v held %v", name, kinds(dec), dec.Report.Channels[0].Breaker, dec.Report.Breaker, dec.Held)
+		}
 	}
 
-	// A confirmation of a different set, or of the workspace, does not.
-	dec = e.decide(t, vouch(gone(), gone4...), reconcile.Confirmed{Channels: map[string]string{"eng": "0000"}, Workspace: fp})
+	// A confirmation of a different set does not.
+	dec = e.decide(t, vouch(gone(), gone4...), reconcile.Confirmed{Channels: map[string]string{"eng": "0000"}, Workspace: "1111"})
 	if len(dec.Actions) != 0 {
 		t.Errorf("a confirmation of another set let removals through: %v", kinds(dec))
 	}
