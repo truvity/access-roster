@@ -102,6 +102,8 @@ var (
 	ErrMissingScope = &APIError{Code: "missing_scope"}
 	// ErrInvalidAuth: the token is revoked or never was one.
 	ErrInvalidAuth = &APIError{Code: "invalid_auth"}
+	// ErrTokenRevoked: the token was revoked.
+	ErrTokenRevoked = &APIError{Code: "token_revoked"}
 	// ErrUserNotFound: no such user in this workspace.
 	ErrUserNotFound = &APIError{Code: "user_not_found"}
 	// ErrRateLimited is what a [RateLimitError] matches.

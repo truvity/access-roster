@@ -48,6 +48,7 @@ type Slack struct {
 	Invites  map[string]*Invite
 	Apps     map[string]*App
 
+	revoked  map[string]bool // team id -> its bot token was revoked
 	calls    []Call
 	failures map[string][]failure
 	nextID   int
@@ -121,7 +122,7 @@ func New(t testing.TB) *Slack {
 	s := &Slack{
 		Teams: map[string]*Team{}, Users: map[string]*User{}, Channels: map[string]*Channel{},
 		Invites: map[string]*Invite{}, Apps: map[string]*App{},
-		failures: map[string][]failure{}, codes: map[string]string{},
+		failures: map[string][]failure{}, codes: map[string]string{}, revoked: map[string]bool{},
 	}
 	s.server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.server.Close)
@@ -242,6 +243,14 @@ func (s *Slack) Count(method string) int {
 	return n
 }
 
+// Revoked reports whether a workspace's bot token has been revoked since it
+// was last installed.
+func (s *Slack) Revoked(team string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.revoked[team]
+}
+
 // Install is an owner installing an App into a workspace: it returns the
 // code Slack would send to the redirect URI.
 func (s *Slack) Install(appID, team string) string {
@@ -263,7 +272,7 @@ func (s *Slack) serve(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	team := ""
 	for id := range s.Teams {
-		if token == Token(id) {
+		if token == Token(id) && !s.revoked[id] {
 			team = id
 		}
 	}
@@ -315,6 +324,9 @@ func (s *Slack) dispatch(method, team, token string, r *http.Request, p url.Valu
 		return fail("invalid_auth")
 	}
 	switch method {
+	case "auth.revoke":
+		s.revoked[team] = true
+		return reply{"ok": true, "revoked": true}
 	case "auth.test":
 		return reply{"ok": true, "team_id": team, "team": s.Teams[team].Name, "user_id": BotID(team), "bot_id": "BOT" + team}
 	case "users.lookupByEmail":
@@ -649,6 +661,8 @@ func (s *Slack) oauth(r *http.Request, p url.Values) reply {
 	if tm == nil {
 		return fail("invalid_team_id")
 	}
+	// A fresh install mints a working token again.
+	delete(s.revoked, team)
 	return reply{"ok": true, "access_token": Token(team), "scope": strings.Join(app.Scopes, ","),
 		"bot_user_id": BotID(team), "app_id": appID, "team": reply{"id": tm.ID, "name": tm.Name}}
 }

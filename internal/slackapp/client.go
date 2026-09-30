@@ -47,6 +47,18 @@ func (c *Client) AuthTest(ctx context.Context) (Identity, error) {
 	return out, err
 }
 
+// Revoke revokes the bot token this client holds (auth.revoke). The console
+// uses it to take back a token minted for the wrong workspace and to end a
+// connection it disconnects. A token already revoked, or never valid, is
+// success: the goal is that it no longer works, and it does not.
+func (c *Client) Revoke(ctx context.Context) error {
+	err := c.call(ctx, "auth.revoke", nil, nil)
+	if errors.Is(err, ErrInvalidAuth) || errors.Is(err, ErrTokenRevoked) {
+		return nil
+	}
+	return err
+}
+
 // User is a workspace member as the reconciler needs to see them.
 type User struct {
 	ID      string `json:"id"`
