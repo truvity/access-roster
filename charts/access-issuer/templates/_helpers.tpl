@@ -95,6 +95,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+The Slack controller's pods, told apart from the service's, for the same
+reason as the GitHub controller's.
+*/}}
+{{- define "access-issuer.slackRosterSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "access-issuer.name" . }}-slack-roster
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
 Where the issuer's routes attach. route.parentRefs, when given, is used as
 written -- the platform's ListenerSet carrying route.host -- and the chart
 then renders no Gateway or Certificate of its own: the listener and its

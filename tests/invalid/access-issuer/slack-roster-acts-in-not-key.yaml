@@ -1,0 +1,5 @@
+# slackRoster.actsIn names the policy's workspace keys.
+# error: at '/slackRoster/actsIn/0': 'Acme_Corp' does not match pattern
+issuerURL: https://issuer.example
+slackRoster:
+  actsIn: [Acme_Corp]

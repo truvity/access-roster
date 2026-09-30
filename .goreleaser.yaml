@@ -50,6 +50,15 @@ builds:
     ldflags:
       - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
 
+  - id: slack-roster
+    main: ./cmd/slack-roster
+    binary: slack-roster
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
+
   # The resource-server sidecar: verifies an access-roster token in front
   # of a service that knows nothing about access-roster, and gives that
   # service an identity of its own for what it calls. Its own image,
@@ -109,7 +118,7 @@ archives:
   # The service and the acceptance runner: what an operator pulls to run
   # a build outside a container.
   - id: binaries
-    ids: [access-issuer, github-roster, resource-proxy, acceptance]
+    ids: [access-issuer, github-roster, slack-roster, resource-proxy, acceptance]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
@@ -158,6 +167,22 @@ kos:
     sbom: none
     labels:
       org.opencontainers.image.title: github-roster
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/truvity/access-roster
+
+  - id: slack-roster
+    build: slack-roster
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: true
+    base_image: gcr.io/distroless/static:nonroot
+    sbom: none
+    labels:
+      org.opencontainers.image.title: slack-roster
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: https://github.com/truvity/access-roster
 
