@@ -57,7 +57,20 @@ type User struct {
 	// single-channel guest.
 	IsRestricted      bool `json:"is_restricted"`
 	IsUltraRestricted bool `json:"is_ultra_restricted"`
+	// IsAppUser is an app's bot user, which is a bot for our purposes too.
+	IsAppUser bool `json:"is_app_user"`
+	Profile   struct {
+		// Email is present only when the token has users:read.email.
+		Email string `json:"email"`
+	} `json:"profile"`
 }
+
+// Email is the address on the account's profile, empty when Slack did not
+// return one (a bot, or a token without users:read.email).
+func (u User) Email() string { return u.Profile.Email }
+
+// IsAutomated reports a bot or an app's user.
+func (u User) IsAutomated() bool { return u.IsBot || u.IsAppUser }
 
 // IsGuest reports a guest of either kind.
 func (u User) IsGuest() bool { return u.IsRestricted || u.IsUltraRestricted }
@@ -80,6 +93,18 @@ func (c *Client) LookupByEmail(ctx context.Context, email string) (user User, fo
 	return out.User, true, nil
 }
 
+// UserInfo reads one account by id. The reconciler uses it to learn the
+// address of a member of a channel it may remove from, because
+// conversations.members answers with ids only. An id Slack does not know is
+// [ErrUserNotFound].
+func (c *Client) UserInfo(ctx context.Context, id string) (User, error) {
+	var out struct {
+		User User `json:"user"`
+	}
+	err := c.call(ctx, "users.info", url.Values{"user": {id}}, &out)
+	return out.User, err
+}
+
 // Channel is a conversation.
 type Channel struct {
 	ID         string `json:"id"`
@@ -90,8 +115,11 @@ type Channel struct {
 	// IsMember is whether the bot is in it.
 	IsMember bool `json:"is_member"`
 	// IsExtShared is a Slack Connect channel.
-	IsExtShared bool   `json:"is_ext_shared"`
-	Creator     string `json:"creator"`
+	IsExtShared bool `json:"is_ext_shared"`
+	// SharedTeamIDs are the workspaces a Slack Connect channel is shared
+	// with, the channel's own among them. Empty for an ordinary channel.
+	SharedTeamIDs []string `json:"shared_team_ids"`
+	Creator       string   `json:"creator"`
 }
 
 type listed struct {
