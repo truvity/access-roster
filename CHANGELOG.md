@@ -12,7 +12,6 @@
   whether the caller may operate it (`can_operate`), and the connect
   callbacks ask the role question again. See
   [docs/reference/policy.md](docs/reference/policy.md#scoping-a-github-organisation-githuborgowner).
-
 - **New: the Slack controller, `slack-roster`, and its chart values
   `slackRoster.*`.** A second process from the `access-issuer` chart (and its
   own image and archive) that makes each Slack workspace's channels match the
