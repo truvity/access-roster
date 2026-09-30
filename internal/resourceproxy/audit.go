@@ -37,21 +37,21 @@ func audited(log *slog.Logger, next http.Handler) http.Handler {
 		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), recordKey{}, rec)))
 
 		attrs := []slog.Attr{
-			slog.String("http_method", r.Method),
-			slog.String("path", r.URL.Path),
+			slog.String("http_method", clean(r.Method)),
+			slog.String("path", bounded(r.URL.Path, maxPathLen)),
 			slog.Int("status", sw.status),
 			slog.Float64("duration_ms", since(start)),
 		}
 		if rec.have {
-			attrs = append(attrs, slog.String("sub", rec.who.Subject))
+			attrs = append(attrs, slog.String("sub", clean(rec.who.Subject)))
 			if rec.who.Email != "" {
-				attrs = append(attrs, slog.String("email", rec.who.Email))
+				attrs = append(attrs, slog.String("email", clean(rec.who.Email)))
 			}
 			if rec.who.Name != "" {
-				attrs = append(attrs, slog.String("name", rec.who.Name))
+				attrs = append(attrs, slog.String("name", clean(rec.who.Name)))
 			}
 			if rec.who.ClientID != "" {
-				attrs = append(attrs, slog.String("client", rec.who.ClientID))
+				attrs = append(attrs, slog.String("client", bounded(rec.who.ClientID, maxPathLen)))
 			}
 		}
 		if rec.method != "" {
