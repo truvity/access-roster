@@ -164,7 +164,7 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 			rows[r.row] = status.Member{Person: r.key, Email: r.email, UserID: r.member.ID, State: status.StateHeld,
 				Reason: "the workspace's removals are over the limit and wait for an operator's confirmation"}
 		default:
-			removeActs = append(removeActs, Action{Kind: status.ActionRemove, Channel: r.channel, ChannelID: p.res.ch.ID, User: r.member.ID,
+			removeActs = append(removeActs, Action{Kind: status.ActionRemove, Channel: r.channel, ChannelID: p.res.ch.ID, Private: p.lc.private, User: r.member.ID,
 				Person: r.key, Email: r.email, Groups: slices.Clone(p.lc.groups),
 				Reason: "the directory vouches that they no longer hold " + joinGroups(p.lc.groups)})
 		}
