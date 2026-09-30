@@ -97,15 +97,16 @@ func (c *Console) ListSlackApps(
 		if err != nil {
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
-		for _, r := range records {
-			kept[r.ID] = r
+		for i := range records {
+			kept[records[i].ID] = records[i]
 		}
 	}
 	if c.deps.SlackCatalogue != nil {
-		for _, entry := range c.deps.SlackCatalogue.Apps {
+		for i := range c.deps.SlackCatalogue.Apps {
+			entry := &c.deps.SlackCatalogue.Apps[i]
 			record, has := kept[entry.ID]
 			delete(kept, entry.ID)
-			out.Apps = c.appendVisible(out.Apps, id, c.slackAppView(&entry, recordPtr(record, has)))
+			out.Apps = c.appendVisible(out.Apps, id, c.slackAppView(entry, recordPtr(record, has)))
 		}
 	}
 	for _, orphan := range slices.Sorted(maps.Keys(kept)) {
@@ -254,7 +255,7 @@ func (c *Console) CreateSlackApp(
 	defer cancel()
 	app, err := c.slackSetup().CreateApp(callCtx, configToken, manifest)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("Slack refused to create the App: %w", err))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("slack refused to create the App: %w", err))
 	}
 	record := catalogueapp.Record{
 		ID: id, Workspace: entry.Workspace, AppID: app.AppID, ClientID: app.Credentials.ClientID,
@@ -263,7 +264,7 @@ func (c *Console) CreateSlackApp(
 	}
 	if err = store.Put(ctx, record, catalogueapp.Credentials{ClientSecret: app.Credentials.ClientSecret}); err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf(
-			"Slack created the App and it could not be saved here: delete it at %s and create it again: %w", slackAppSettingsURL(app.AppID), err))
+			"slack created the App and it could not be saved here: delete it at %s and create it again: %w", slackAppSettingsURL(app.AppID), err))
 	}
 	c.record(ctx, audit.SlackCatalogueAppCreated(actorOf(ctx), audit.SlackCatalogueApp{ID: id, App: app.AppID, Workspace: entry.Workspace}))
 	return connect.NewResponse(&directoryrosterv1.CreateSlackAppResponse{App: c.slackAppView(&entry, &record)}), nil
@@ -321,11 +322,11 @@ func (c *Console) InstallSlackApp(
 		callCtx, cancel := context.WithTimeout(ctx, slackTimeout)
 		defer cancel()
 		if _, err = c.slackSetup().UpdateApp(callCtx, configToken, record.AppID, manifest); err != nil {
-			return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("Slack refused to update the App: %w", err))
+			return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("slack refused to update the App: %w", err))
 		}
 		record.ManifestScopes = slices.Clone(entry.BotScopes)
-		creds := catalogueapp.Credentials{}
-		if _, creds, _, err = store.Get(ctx, id); err != nil {
+		_, creds, _, err := store.Get(ctx, id)
+		if err != nil {
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
 		if err = store.Put(ctx, record, creds); err != nil {
@@ -333,7 +334,8 @@ func (c *Console) InstallSlackApp(
 		}
 	case stale:
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-			"%s declares scopes the App was created without: paste an app configuration token so the App can be updated first, or a reinstall would grant nothing new", id))
+			"%s declares scopes the App was created without: paste an app configuration token so the App can be updated first, "+
+				"or a reinstall would grant nothing new", id))
 	}
 
 	state, err := c.deps.State.IssueAs(access.Binding{Bind: slackCatalogueBind + id, Actor: who.Who()})
@@ -489,7 +491,8 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 		console.record(r.Context(), audit.SlackCatalogueAppInstallRefused(audit.Identified(actor), app,
 			fmt.Sprintf("installed into team %s, and the policy names %s", installed.TeamID, team)))
 		s.slackProblem(w, r, http.StatusConflict, fmt.Sprintf(
-			"The App was installed into workspace %s (%s), and the policy names %s for %q. Nothing was kept. Remove the App from that workspace in its Slack settings, and install again from the right one.",
+			"The App was installed into workspace %s (%s), and the policy names %s for %q. Nothing was kept. "+
+				"Remove the App from that workspace in its Slack settings, and install again from the right one.",
 			installed.TeamID, installed.TeamName, team, entry.Workspace), "", nil)
 		return
 	}

@@ -24,12 +24,13 @@ func every() []*record.Record {
 	sm := audit.SlackMember{Person: "a.person@example.com", Channel: ch, User: "U0123", Groups: []string{"platform"}, Reason: "bound to platform"}
 	shared := audit.SlackShared{Host: "acme", Guest: "globex", Channel: "partners", ID: "C0456", Invite: "I0789"}
 	sw := audit.SlackWorkspace{Key: "acme", Team: "T0123", App: "A0123"}
+	sa := audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme", Team: "T0123", Scopes: []string{"channels:read", "users:read"}}
 	return []*record.Record{
 		audit.SlackWorkspaceConnected(person, sw),
 		audit.SlackWorkspaceDisconnected(person, sw, true, ""),
 		audit.SlackCatalogueAppCreated(person, audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme"}),
-		audit.SlackCatalogueAppInstalled(person, audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme", Team: "T0123", Scopes: []string{"channels:read", "users:read"}}),
-		audit.SlackCatalogueAppInstallRefused(person, audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme", Team: "T0999"}, "installed into another workspace"),
+		audit.SlackCatalogueAppInstalled(person, sa),
+		audit.SlackCatalogueAppInstallRefused(person, sa, "installed into another workspace"),
 		audit.SlackChannelCreated(ch, audit.Succeeded()),
 		audit.SlackChannelAdopted(ch, audit.Failed("Slack refused")),
 		audit.SlackMemberInvited(sm, audit.Succeeded()),

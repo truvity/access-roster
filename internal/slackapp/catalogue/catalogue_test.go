@@ -58,7 +58,11 @@ func TestAMalformedCatalogueIsRefusedWithEverythingWrongAtOnce(t *testing.T) {
 }
 
 func TestAWorkspaceThePolicyDoesNotNameIsRefusedAtStart(t *testing.T) {
-	c, err := catalogue.Parse([]byte("apps: [{id: a, workspace: acme, botScopes: [a:b]}, {id: b, workspace: lost, botScopes: [a:b]}, {id: c, workspace: gone, botScopes: [a:b]}]"))
+	c, err := catalogue.Parse([]byte(`apps:
+  - {id: a, workspace: acme, botScopes: [a:b]}
+  - {id: b, workspace: lost, botScopes: [a:b]}
+  - {id: c, workspace: gone, botScopes: [a:b]}
+`))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
