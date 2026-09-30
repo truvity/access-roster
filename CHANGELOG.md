@@ -13,6 +13,23 @@
   callbacks ask the role question again. See
   [docs/reference/policy.md](docs/reference/policy.md#scoping-a-github-organisation-githuborgowner).
 
+- **New: the Slack controller, `slack-roster`, and its chart values
+  `slackRoster.*`.** A second process from the `access-issuer` chart (and its
+  own image and archive) that makes each Slack workspace's channels match the
+  policy's `slack` table: per pass it reads Slack whole, asks the directory who
+  holds each bound group and to vouch (one question per address per pass) for
+  each removal and leaver, decides, and acts only in the workspaces listed in
+  `slackRoster.actsIn`; every other workspace is a dry run that publishes its
+  report and changes and records nothing. A removal set over half of a channel
+  or of a workspace is held until an operator confirms that exact fingerprint;
+  **one confirmation now satisfies every breaker gate that fingerprint covers**
+  (before, a single-channel trip needed the same set confirmed twice). Leavers
+  and new holds are reported and recorded once. A workspace that is not
+  connected, not installed or whose read failed is reported `failed` alone. It
+  never creates accounts, touches user groups or removes anybody from a public
+  channel. It needs egress to `slack.com:443`, which the chart leaves to the
+  fleet's egress policy. Off by default; see
+  [docs/connect/slack-workspace.md](docs/connect/slack-workspace.md).
 - **New: `people` and `slack` in the policy schema (schema only; no
   controller yet).** `people` links the addresses of one person across
   domains; `slack` declares workspaces (own key, Slack `team_id`, email

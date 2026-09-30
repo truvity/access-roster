@@ -102,6 +102,11 @@ service writes *itself*, where it is the producer and gets to choose.
 | `githubRoster.actsIn[]` | `[]` | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled |
 | `githubRoster.interval` | `15m` | how long between passes |
 | `githubRoster.image.repository` / `.tag` | `ghcr.io/truvity/access-roster/github-roster` / app version | from the same release as the service |
+| `slackRoster.enabled` | `false` | render the Slack controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, for the same reason |
+| `slackRoster.actsIn[]` | `[]` | the workspaces (the policy's keys) the controller **changes**. Every other declared workspace is derived and reported, and left alone: a workspace is born disabled |
+| `slackRoster.interval` | `15m` | how long between passes |
+| `slackRoster.image.repository` / `.tag` | `ghcr.io/truvity/access-roster/slack-roster` / app version | from the same release as the service |
+| `slackRoster.resources` | `{}` | the controller pod's resources |
 | `audit.writer` | `""` | the audit installation's receiver: one address, which takes the records and answers the catalogue's registration on the same port. Set, the service and the controller record into it, each with its own projected token; empty, nothing is kept beyond the log line every record also is. The installation must map both service accounts to the source `roster` |
 | `audit.query` | `""` | the installation's query service, for the console's Audit page; empty shows no page |
 | `audit.audience` | `audit` | the policy client whose audience the Audit page's tokens carry. The policy must declare it, requiring the groups that may read the trail; the query service's grants must trust this issuer with it |
@@ -390,6 +395,31 @@ name: `get`, `update` and `patch` on the ConfigMap
 `<release>-github-status` it reports into, and `get` and `update` on the
 Secret `<release>-github-links` it rewrites as it checks links. The App
 keys are a volume, so it holds no permission to read any other Secret.
+
+## The Slack controller's environment
+
+The controller reads its own few, all set by
+`templates/slack-roster.yaml`:
+
+| Variable | From |
+|---|---|
+| `RELEASE_NAME` | the chart's full name, so it finds `<release>-slack-status` |
+| `NAMESPACE` | the pod's namespace |
+| `POLICY_DIR` | the same policy ConfigMap the service mounts; its `slack` and `people` tables are the bindings |
+| `CONSOLE_URL` | the service's in-cluster address plus `console.mount` |
+| `TOKEN_FILE` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
+| `CREDENTIALS_DIR` | the mounted `<release>-slack-credentials` Secret, one file per connected workspace; optional |
+| `RECORDS_DIR` | the mounted `<release>-slack-workspaces` ConfigMap: workspace records, shared channels and confirmations; optional |
+| `INTERVAL` | `slackRoster.interval` |
+| `ENABLED_WORKSPACES` | `slackRoster.actsIn` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty |
+| `LOG_LEVEL` | `logLevel` |
+
+Its account, `<release>-slack-roster`, has one permission, by name: `get`,
+`update` and `patch` on the ConfigMap `<release>-slack-status` it reports into.
+The credentials and records are volumes, so it holds no permission to read any
+Secret or other ConfigMap. See [Connect a Slack
+workspace](../connect/slack-workspace.md).
 
 ## Roles
 

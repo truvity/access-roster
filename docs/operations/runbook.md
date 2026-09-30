@@ -318,6 +318,31 @@ recover the unscoped list by calling `/userinfo` instead of reading the
 token, which would otherwise be exactly the bypass scoping exists to
 close.
 
+## Enabling a Slack workspace
+
+The controller is described in [Connect a Slack
+workspace](../connect/slack-workspace.md).
+
+1. Connect and install the workspace, list nothing in `slackRoster.actsIn`,
+   and let a pass run. The report's `tick.outcome` is `dry-run` and its rows are
+   what enabling would do; read the held and retrying rows and the leavers.
+2. Add the workspace's key to `slackRoster.actsIn` and roll out. Its changes
+   appear in the audit trail as `roster.slack_*`.
+3. To stop, remove the key. Nothing is undone. That is also the emergency stop.
+
+A workspace reported `failed` says why: not connected, created and not yet
+installed, a bot token that belongs to another workspace than the policy's
+`team_id`, a Slack read that was not whole, or a console answering under another
+policy (tried again within seconds; it clears when the rollout ends). The rows of
+the last good report are kept under it.
+
+A removal over half of a channel or of the workspace is held with a fingerprint;
+confirm exactly that set to let it go, once, within 24 hours. A person gone from
+the directory who is still in a channel shows under *leavers* and is removed by
+nobody on that account alone.
+
+The controller needs egress to `slack.com:443`, which the chart does not open.
+
 ## Enabling a GitHub organisation
 
 1. The organisation is bound in the policy, **connected** on the GitHub
