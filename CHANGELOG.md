@@ -1,4 +1,4 @@
-## v1.40.0
+## Unreleased
 
 - **New: `resource-proxy`, a sidecar that gives a stock MCP server (or any
   HTTP service) an access-roster resource server's front door, and
