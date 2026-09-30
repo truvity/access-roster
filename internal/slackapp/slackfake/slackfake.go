@@ -324,6 +324,11 @@ func (s *Slack) dispatch(method, team, token string, r *http.Request, p url.Valu
 			}
 		}
 		return fail("users_not_found")
+	case "users.info":
+		if u := s.Users[p.Get("user")]; u != nil {
+			return reply{"ok": true, "user": userJSON(u)}
+		}
+		return fail("user_not_found")
 	case "conversations.list":
 		var rows []any
 		for _, c := range s.sortedChannels() {
@@ -650,11 +655,15 @@ func (s *Slack) oauth(r *http.Request, p url.Values) reply {
 
 func userJSON(u *User) reply {
 	return reply{"id": u.ID, "team_id": u.TeamID, "deleted": u.Deleted, "is_bot": u.Bot,
-		"is_restricted": u.Guest, "is_ultra_restricted": false}
+		"is_restricted": u.Guest, "is_ultra_restricted": false, "profile": reply{"email": u.Email}}
 }
 
 func (s *Slack) channelJSON(c *Channel, team string) reply {
-	return reply{"id": c.ID, "name": c.nameIn(team), "is_private": c.Private, "is_archived": c.Archived,
+	var shared []string
+	if len(c.Teams) > 1 {
+		shared = slices.Clone(c.Teams)
+	}
+	return reply{"id": c.ID, "name": c.nameIn(team), "shared_team_ids": shared, "is_private": c.Private, "is_archived": c.Archived,
 		"is_general": c.General, "is_member": slices.Contains(c.Members, BotID(team)),
 		"is_ext_shared": len(c.Teams) > 1, "creator": c.Creator}
 }

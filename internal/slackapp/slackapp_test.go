@@ -75,6 +75,26 @@ func TestLookupByEmail(t *testing.T) {
 	}
 }
 
+func TestUserInfoReadsTheAddress(t *testing.T) {
+	w := newWorld(t)
+	ann := w.fake.AddUser("TACME", "ann@acme.example")
+	got, err := w.acme.UserInfo(context.Background(), ann.ID)
+	if err != nil || got.Email() != "ann@acme.example" || got.IsAutomated() {
+		t.Fatalf("got %+v err=%v", got, err)
+	}
+	bot, err := w.acme.UserInfo(context.Background(), slackfake.BotID("TACME"))
+	if err != nil || !bot.IsAutomated() || bot.Email() != "" {
+		t.Fatalf("bot %+v err=%v", bot, err)
+	}
+	if _, err := w.acme.UserInfo(context.Background(), "UNOBODY"); !errors.Is(err, slackapp.ErrUserNotFound) {
+		t.Fatalf("unknown id: err = %v", err)
+	}
+	w.fake.Fail("users.info", "missing_scope", 1)
+	if _, err := w.acme.UserInfo(context.Background(), ann.ID); !errors.Is(err, slackapp.ErrMissingScope) {
+		t.Fatalf("missing scope: err = %v", err)
+	}
+}
+
 func TestChannelsPaginateAndSkipArchivedAndForeignPrivate(t *testing.T) {
 	w := newWorld(t)
 	for i := range 5 {
@@ -394,7 +414,7 @@ func TestSlackConnectHandshake(t *testing.T) {
 		found := false
 		for _, ch := range list {
 			if ch.Name == name && ch.IsExtShared {
-				found = true
+				found = slices.Equal(ch.SharedTeamIDs, []string{"TACME", "TGLOBEX"})
 			}
 		}
 		if !found {
