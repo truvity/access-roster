@@ -272,10 +272,19 @@ func (p Policy) checkBoundGroups(where string, groups []string) error {
 func (p Policy) validateSlack() error {
 	workspaces := p.Slack.Workspaces
 	domainOwner := map[string]string{}
+	teamOwner := map[string]string{}
 	for _, key := range slices.Sorted(maps.Keys(workspaces)) {
 		if err := p.validateSlackWorkspace(key, domainOwner); err != nil {
 			return err
 		}
+		// One Slack team under two keys would make an install ambiguous:
+		// the connect flow finds the workspace a callback belongs to by
+		// the team id Slack returns, and two answers is no answer.
+		team := workspaces[key].TeamID
+		if prev, dup := teamOwner[team]; dup {
+			return fmt.Errorf("slack: the team_id %s belongs to both %s and %s", team, prev, key)
+		}
+		teamOwner[team] = key
 	}
 	for _, name := range slices.Sorted(maps.Keys(p.Slack.SharedChannels)) {
 		if err := p.validateSharedChannel(name); err != nil {

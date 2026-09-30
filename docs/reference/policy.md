@@ -1084,6 +1084,7 @@ What is refused, and why each would otherwise be silent:
 |---|---|
 | a workspace key that is not a plain slug | it appears in messages, audit records and credential names |
 | `team_id` missing or not `^T[A-Z0-9]{6,}$` | nothing would tie the entry to a real workspace |
+| one `team_id` under two workspace keys | the connect flow finds a workspace by the team id Slack returns, and two answers is no answer |
 | no `domains`, an invalid domain, or one domain in two workspaces | nobody could be found, or read order would decide which workspace an address is in |
 | a channel name that is not lowercase letters, digits, `-`, `_` (at most 80) | Slack would refuse it at create time, not at load |
 | a channel with no `from` | *empty this channel* is not something to express by leaving a list out |
