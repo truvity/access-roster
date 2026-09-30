@@ -95,6 +95,7 @@ func TestSlackRefusals(t *testing.T) {
 		"workspace key not a slug":     {"    acme:\n      team_id", "    Acme_Corp:\n      team_id", "workspace key"},
 		"team id missing":              {"      team_id: T0123ABCD\n", "", "team_id"},
 		"team id misshapen":            {"T0456EFGH", "t456", "team_id"},
+		"team id in two workspaces":    {"T0456EFGH", "T0123ABCD", "belongs to both"},
 		"no domains":                   {"      domains: [globex.example]\n", "", "no domains"},
 		"domain not a domain":          {"domains: [globex.example]", "domains: [globex]", "not a domain"},
 		"domain in two workspaces":     {"domains: [globex.example]", "domains: [ACME.example]", "belongs to both"},
