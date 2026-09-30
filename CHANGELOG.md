@@ -1,5 +1,12 @@
 ## Unreleased
 
+- **Removed: the one-time label move.** The start-up relabel of objects an
+  earlier release wrote under the old label keys, and the once-a-minute
+  sweep that repeated it, are gone: every installation has run a release
+  that contained them. An installation still holding objects under the
+  old keys must run a release that has the move (see the entry that added
+  it) first; the credential-store migration is unaffected.
+
 - **Fixed: reopening a stored, console-connected workspace at start no
   longer refuses every backend kind but `"google"`.** `openStored`
   hardcoded that check, so a second backend (Entra, say) would be
