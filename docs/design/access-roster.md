@@ -697,6 +697,81 @@ identical to what one system already publishes, and a shared shape for
 them would be a guess fitted to one system and bent to the other. A piece
 moves here when a second reconciler needs it unchanged, not before.
 
+### The Slack reconciler
+
+The second reconciler makes each Slack workspace's channels contain the
+people who hold the groups bound to them. Its core is in
+`internal/slackroster`; the controller loop that runs it comes separately.
+It is four small packages: `reconcile` (the decision, no network),
+`status` (the report document the console reads), `connection` (the
+per-workspace record and credential) and `apply` (reading a workspace and
+carrying out a decision through the Slack client).
+
+**Who is who.** Workspaces are independent. A person is looked up in a
+workspace by their address in one of that workspace's domains: the address
+the directory knows them by, if it is in-domain, otherwise another address of
+the same person from `people`. With none, they have no account path in that
+workspace and are **held** ("no account path in this workspace"). A person
+with no Slack account yet (`users.lookupByEmail` finds nobody) is held ("no
+Slack account yet"), never an error and never created. Guests are never
+invited and never removed; they are reported.
+
+**Channels.** A channel is bound to groups, and its wanted members are those
+groups' holders. It is created when absent, public or private as the policy
+says. When `adopt` names an id it is never created: a public channel is
+joined; a private one the bot is not in is held ("invite the bot first"). A
+name already taken by a channel the bot did not create is held ("adopt it by
+id"), and a channel the bot created on an earlier pass is recognised by its
+creator. A visibility that disagrees with the policy is held, never changed.
+
+**Two modes.** An `extend` channel (the default) only adds. A `strict`
+channel, private only, also removes: it makes membership match the bindings.
+It never removes bots or apps, its own bot, deactivated users, guests, people
+of another workspace, anybody with no address on the account, or anybody on
+the channel's `ignore` list. And a removal happens only when
+`rails.Removal` says the directory vouches for it, exactly as on GitHub: an
+address not asked about, or not vouched for, settles nothing this pass, so an
+unreadable directory removes nobody.
+
+**Two breakers.** Removals over half of a channel's members, or over half of
+the workspace's managed members (distinct people, across every channel the
+workspace binds), remove nobody unless an operator confirmed the fingerprint
+of exactly that set. They are separate gates over the same candidates, so one
+confirmation never stands in for the other.
+
+**Leavers.** A person the directory no longer has, still an active member of a
+managed channel, is a report row and a `roster.slack_leaver.reported` record,
+never an action (a strict channel removes them as any extra).
+
+**Slack Connect channels** are an input list of definitions (name, host, the
+workspaces it is shared `with`, groups, visibility as one bool or per side),
+not something the policy declares: the console manages them as records. The
+host creates the channel and invites each guest workspace's bot; a guest
+accepts the pending invitation for that channel from the host's team and
+only that. Then each side invites only its own people: a person joins from the
+host when they have a host-domain address, otherwise from the first `with`
+workspace, in order, where they have one, otherwise the host holds them.
+Shared channels are `extend` for now. A side waiting for the other is a
+`waiting` state, not a hold.
+
+**A read is whole or it is nothing.** A missing `users:read.email` scope, a
+rate limit that outlasts every retry, a failed page: any of them fails the
+whole workspace's read, and nothing is decided or changed on it. An address
+never looked up, or a channel member nobody identified, is an error in the
+decision too, so a partial read can never look like a workspace in which
+nobody has an account.
+
+**What is written.** `status.Workspace` is one versioned JSON document per
+workspace: per channel, per person, `ok`, `will-invite`, `will-remove`,
+`held` (with the reason), `retrying`, `reported` or `ignored`; the two
+breakers; the leavers; and the last pass's time and outcome. A workspace's
+connection is two objects for the reason GitHub's is: a record the console
+shows, and a credential (client id and secret, bot token) that only the
+controller mounts. The token is empty between creating the app and installing
+it, which is its own state, and the client secret is kept because a
+scope-upgrade reinstall needs it. Every document is a `<workspace>.json` key;
+keys starting with an underscore belong to other documents the console keeps.
+
 ## Audit
 
 access-roster does not keep its own audit trail. It

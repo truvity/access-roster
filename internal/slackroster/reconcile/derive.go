@@ -261,7 +261,7 @@ func (d *Draft) shareActions(p *plan) {
 	}
 	for _, g := range lc.shared.With {
 		team, bot := d.in.Workspaces[g].TeamID, d.in.Bots[g]
-		invite := Action{Kind: status.ActionShareInvite, Channel: lc.name, Host: d.in.Workspace, Guest: g, GuestBot: bot, Shared: true,
+		invite := Action{Kind: status.ActionShareInvite, Channel: lc.name, Private: lc.private, Host: d.in.Workspace, Guest: g, GuestBot: bot, Shared: true,
 			Reason: "the channel is shared with " + g}
 		ch := p.res.ch
 		if ch != nil {
@@ -327,7 +327,7 @@ func (d *Draft) people(p *plan, exists bool) error {
 			row.State = status.StateOK
 		default:
 			row.State, row.Action = status.StateWillInvite, status.ActionInvite
-			act := Action{Kind: status.ActionInvite, Channel: p.lc.name, User: acct.ID, Person: s.person.key, Email: s.addr,
+			act := Action{Kind: status.ActionInvite, Channel: p.lc.name, Private: p.lc.private, User: acct.ID, Person: s.person.key, Email: s.addr,
 				Groups: slices.Clone(s.person.groups), Shared: p.lc.shared != nil,
 				Reason: "holds " + joinGroups(s.person.groups)}
 			if p.res.ch != nil {
