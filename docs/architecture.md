@@ -116,6 +116,13 @@ workload would, and reports into a ConfigMap the console shows. Every
 organisation is a dry run until the chart lists it in
 `githubRoster.actsIn`; removing one from the list is the emergency stop.
 
+**The Slack controller is the same shape.** `slack-roster` holds each
+workspace's bot token, writes to Slack, and runs in its own Deployment beside
+the service with no listener, reading the console's API with its own
+ServiceAccount token and reporting into the ConfigMap `<release>-slack-status`.
+Every workspace is a dry run until the chart lists it in `slackRoster.actsIn`.
+See [Connect a Slack workspace](connect/slack-workspace.md).
+
 **A login makes no network call except to the corporate directory** — and,
 for a client that identifies itself by a URL instead of a policy row, one
 bounded, cached HTTPS fetch of that client's own document, from an

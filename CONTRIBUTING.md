@@ -12,6 +12,8 @@ cmd/access-issuer         the whole service: the directory, the policy,
                           trail
 cmd/github-roster         the GitHub controller, a second process from
                           the same chart
+cmd/slack-roster          the Slack controller, a second process from
+                          the same chart
 cmd/resource-proxy        the sidecar that fronts a stock MCP server
                           with a resource server's front door
 cmd/accessctl             the CLI, for laptops and CI jobs
