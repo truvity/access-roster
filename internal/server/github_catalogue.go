@@ -123,16 +123,36 @@ func (c *Console) catalogueStore() (GitHubCatalogueApps, error) {
 	return c.deps.GitHubCatalogueApps, nil
 }
 
+// requireCatalogueApp is [Console.requireOrg] for a catalogue App, by the
+// organisation its entry declares — or, for one created from an entry since
+// dropped, the organisation it was created under. An id nothing names is
+// the installation-wide operator's to be told so: nobody owns it.
+func (c *Console) requireCatalogueApp(ctx context.Context, want access.Role, id string) (access.Identity, error) {
+	org := ""
+	if c.deps.GitHubCatalogue != nil {
+		if entry, declared := c.deps.GitHubCatalogue.Get(id); declared {
+			org = entry.Org
+		}
+	}
+	if org == "" && c.deps.GitHubCatalogueApps != nil {
+		if record, _, created, err := c.deps.GitHubCatalogueApps.Get(ctx, id); err == nil && created {
+			org = record.Org
+		}
+	}
+	return c.requireOrg(ctx, want, org)
+}
+
 // BeginGitHubCatalogueAppConnect starts creating a catalogue App, or
 // finishing installing one created before.
 func (c *Console) BeginGitHubCatalogueAppConnect(
 	ctx context.Context, req *connect.Request[directoryrosterv1.BeginGitHubCatalogueAppConnectRequest],
 ) (*connect.Response[directoryrosterv1.BeginGitHubCatalogueAppConnectResponse], error) {
-	who, err := requireRole(ctx, access.RoleOperator)
+	id := strings.TrimSpace(req.Msg.GetId())
+	who, err := c.requireCatalogueApp(ctx, access.RoleOperator, id)
 	if err != nil {
 		return nil, err
 	}
-	begun, err := c.beginCatalogueAppConnect(ctx, who.Who(), strings.TrimSpace(req.Msg.GetId()))
+	begun, err := c.beginCatalogueAppConnect(ctx, who.Who(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -185,10 +205,11 @@ func (c *Console) beginCatalogueAppConnect(ctx context.Context, actor, id string
 func (c *Console) DisconnectGitHubCatalogueApp(
 	ctx context.Context, req *connect.Request[directoryrosterv1.DisconnectGitHubCatalogueAppRequest],
 ) (*connect.Response[directoryrosterv1.DisconnectGitHubCatalogueAppResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	id := strings.TrimSpace(req.Msg.GetId())
+	if _, err := c.requireCatalogueApp(ctx, access.RoleOperator, id); err != nil {
 		return nil, err
 	}
-	gone, err := c.disconnectCatalogueApp(ctx, strings.TrimSpace(req.Msg.GetId()))
+	gone, err := c.disconnectCatalogueApp(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -230,13 +251,13 @@ func (c *Console) disconnectCatalogueApp(ctx context.Context, id string) (github
 func (c *Console) CheckGitHubCatalogueApp(
 	ctx context.Context, req *connect.Request[directoryrosterv1.CheckGitHubCatalogueAppRequest],
 ) (*connect.Response[directoryrosterv1.CheckGitHubCatalogueAppResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	id := strings.TrimSpace(req.Msg.GetId())
+	if _, err := c.requireCatalogueApp(ctx, access.RoleOperator, id); err != nil {
 		return nil, err
 	}
 	if _, err := c.catalogueStore(); err != nil {
 		return nil, err
 	}
-	id := strings.TrimSpace(req.Msg.GetId())
 	specs, err := c.catalogueAppSpecs(ctx, map[string]bool{})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)

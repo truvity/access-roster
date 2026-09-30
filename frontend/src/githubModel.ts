@@ -183,6 +183,10 @@ export type GitHubAppView = {
   org: string;
   purpose: AppPurpose;
   tier?: string;
+  /** Whether the caller may operate it: the server's answer for this App's
+   *  organisation (its owning directory's operator, or installation-wide),
+   *  so the console does not carry the rule a second time. */
+  canOperate: boolean;
   origin: "preset" | "catalogue";
   /** The App's name on GitHub once created; the declared name before. */
   name: string;
@@ -315,6 +319,7 @@ export function appView(app: GitHubApp): GitHubAppView {
     org: app.org,
     purpose: purposeOf(app.purpose),
     tier: app.tier || undefined,
+    canOperate: app.canOperate,
     origin: app.origin === WireOrigin.CATALOGUE ? "catalogue" : "preset",
     name: app.name,
     slug: app.appSlug,

@@ -283,6 +283,47 @@ What a scope means, exactly:
 A scope never widens the installation-wide role and never narrows it: an
 identity holding one may act everywhere and carries no scopes at all.
 
+### Scoping a GitHub organisation: `github.<org>.owner`
+
+The same two groups can operate one company's GitHub organisations and not
+another's. An organisation names the directory workspace that owns it:
+
+```yaml
+github:
+  acme:
+    owner: C0northern      # the workspace id, exactly as in the group name
+    teams: { platform: { members: [platform-engineers] } }
+  globex:
+    owner: C0southern
+    teams: { platform: { members: [platform-engineers] } }
+  initech:                 # no owner
+    teams: { platform: { members: [platform-engineers] } }
+```
+
+| An organisation… | may be operated by |
+|---|---|
+| with an `owner` | the `<owner>:access-roster:operator` of that workspace, **or** the `all:access-roster:operator` |
+| with no `owner` | the `all:access-roster:operator` alone (how it always was) |
+
+"Operated" is every action on it: connect, reconnect, disconnect, confirm its
+removals, its runner Apps, the Apps the catalogue declares for it and their
+recent tokens, and finishing a connect when GitHub sends the browser back (the
+role is checked again there, for whoever is signed in then). Adopting links
+(`ImportGitHubLinks`) is people's rather than an organisation's, so it is open
+to an operator of any directory but adopts an account only on the evidence of
+an organisation that caller may operate.
+
+What is *seen* follows the same owner: a viewer scoped to a workspace sees the
+organisations that workspace owns, their Apps and reports, and nothing of
+another company's. The link App and the links are every organisation's, so
+they are the installation-wide viewer's alone. A scoped role over a workspace
+that owns no organisation is refused the GitHub pages rather than shown an
+empty one.
+
+`owner` is one value per organisation, so two policy files naming it is a
+clash, as for any other scalar. It must be a single workspace id (no `:`, no
+whitespace, not `all`). Slack workspaces will take the same mechanism.
+
 **Recovery is not scoped**, by construction. It exists for the day the
 directory or the policy is what is broken, and a recovery scoped to one
 workspace could not repair the workspace whose absence caused it.

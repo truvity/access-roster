@@ -76,11 +76,12 @@ func (c *Console) githubRoot() string {
 func (c *Console) BeginGitHubConnect(
 	ctx context.Context, req *connect.Request[directoryrosterv1.BeginGitHubConnectRequest],
 ) (*connect.Response[directoryrosterv1.BeginGitHubConnectResponse], error) {
-	id, err := requireRole(ctx, access.RoleOperator)
+	org := strings.TrimSpace(req.Msg.GetOrg())
+	id, err := c.requireOrg(ctx, access.RoleOperator, org)
 	if err != nil {
 		return nil, err
 	}
-	begun, err := c.beginOrganisationConnect(ctx, id.Who(), strings.TrimSpace(req.Msg.GetOrg()))
+	begun, err := c.beginOrganisationConnect(ctx, id.Who(), org)
 	if err != nil {
 		return nil, err
 	}
@@ -146,10 +147,11 @@ func (c *Console) beginOrganisationConnect(ctx context.Context, actor, org strin
 func (c *Console) DisconnectGitHubOrganisation(
 	ctx context.Context, req *connect.Request[directoryrosterv1.DisconnectGitHubOrganisationRequest],
 ) (*connect.Response[directoryrosterv1.DisconnectGitHubOrganisationResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	org := strings.TrimSpace(req.Msg.GetOrg())
+	if _, err := c.requireOrg(ctx, access.RoleOperator, org); err != nil {
 		return nil, err
 	}
-	gone, err := c.disconnectOrganisation(ctx, strings.TrimSpace(req.Msg.GetOrg()))
+	gone, err := c.disconnectOrganisation(ctx, org)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +364,17 @@ func (s *ConsoleServer) githubBound(w http.ResponseWriter, r *http.Request) (bin
 		return "", "", false
 	}
 	actor = binding.Actor
-	if id, signedIn := IdentityFrom(r.Context()); signedIn && id.Can(access.RoleOperator) {
+	// The state binds who began the flow, and that was checked then. It is
+	// asked again here, about whoever is signed in NOW, by the same rule as
+	// the call that began it: a flow begun by an operator of one company's
+	// directory must not finish in another's organisation, nor after the
+	// role was taken away.
+	if id, signedIn := IdentityFrom(r.Context()); signedIn {
+		owner, subject := s.console.ownerOfBind(binding.Bind)
+		if _, err = requireOwner(r.Context(), access.RoleOperator, owner, subject); err != nil {
+			s.githubProblem(w, r, http.StatusForbidden, err.Error()+".", "", nil)
+			return "", "", false
+		}
 		actor = id.Who()
 	}
 	if actor == "" {

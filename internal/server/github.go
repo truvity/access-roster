@@ -34,13 +34,17 @@ type GitHubReports interface {
 // controller has not reported, a report for a team the policy no longer
 // binds — rather than hiding either side.
 //
-// Installation-wide viewer, not a viewer anywhere. A report names the
-// members of every bound team across every company the installation
-// serves, which is more than a tenant-scoped viewer may see of anybody.
+// A viewer of some directory sees the organisations that directory owns
+// (policy `github.<org>.owner`) and no others; the installation-wide
+// viewer sees all. A report names the members of every bound team, which
+// is more than a scoped viewer may see of another company. The link App
+// and every link are people's across all organisations, so they are the
+// installation-wide viewer's alone.
 func (c *Console) GetGitHubStatus(
 	ctx context.Context, _ *connect.Request[directoryrosterv1.GetGitHubStatusRequest],
 ) (*connect.Response[directoryrosterv1.GetGitHubStatusResponse], error) {
-	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+	id, err := c.requireAnyOrg(ctx, access.RoleViewer)
+	if err != nil {
 		return nil, err
 	}
 	out := &directoryrosterv1.GetGitHubStatusResponse{
@@ -106,15 +110,24 @@ func (c *Console) GetGitHubStatus(
 		}
 		out.Organisations = append(out.Organisations, row)
 	}
-	if err := c.linkStatus(ctx, out); err != nil {
+	out.Organisations = c.visibleOrganisations(id, out.Organisations)
+	if id.Can(access.RoleViewer) {
+		if err = c.linkStatus(ctx, out); err != nil {
+			return nil, connect.NewError(connect.CodeUnavailable, err)
+		}
+	}
+	if err = c.runnerStatus(ctx, out); err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	if err := c.runnerStatus(ctx, out); err != nil {
+	if err = c.catalogueStatus(ctx, out); err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	if err := c.catalogueStatus(ctx, out); err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
-	}
+	out.RunnerApps = slices.DeleteFunc(out.RunnerApps, func(app *directoryrosterv1.GitHubRunnerApp) bool {
+		return !c.mayOrg(id, access.RoleViewer, app.GetOrg())
+	})
+	out.CatalogueApps = slices.DeleteFunc(out.CatalogueApps, func(app *directoryrosterv1.GitHubCatalogueApp) bool {
+		return !c.mayOrg(id, access.RoleViewer, app.GetOrg())
+	})
 	return connect.NewResponse(out), nil
 }
 
