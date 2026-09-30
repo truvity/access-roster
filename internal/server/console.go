@@ -162,6 +162,12 @@ type ConsoleDeps struct {
 	// SlackCatalogueApps is where catalogue Slack Apps are kept. Nil is a
 	// deployment keeping no state in Kubernetes, which can create none.
 	SlackCatalogueApps SlackCatalogueApps
+	// SlackShared is where Slack Connect channel definitions are kept. Nil is
+	// a deployment keeping no state in Kubernetes, which can define none.
+	SlackShared SlackSharedRecords
+	// SlackStatus is what the Slack controller last reported. Nil shows every
+	// channel as not reported.
+	SlackStatus SlackStatusReports
 	// SlackAPI configures the calls to Slack that creating and installing
 	// an App make: a test points them at a fake. Nil is Slack.
 	SlackAPI []slackapp.Option
@@ -188,11 +194,12 @@ type Console struct {
 }
 
 var (
-	_ directoryrosterv1connect.WorkspaceServiceHandler = (*Console)(nil)
-	_ directoryrosterv1connect.SettingsServiceHandler  = (*Console)(nil)
-	_ directoryrosterv1connect.AccessServiceHandler    = (*Console)(nil)
-	_ directoryrosterv1connect.GitHubServiceHandler    = (*Console)(nil)
-	_ directoryrosterv1connect.SlackAppServiceHandler  = (*Console)(nil)
+	_ directoryrosterv1connect.WorkspaceServiceHandler          = (*Console)(nil)
+	_ directoryrosterv1connect.SettingsServiceHandler           = (*Console)(nil)
+	_ directoryrosterv1connect.AccessServiceHandler             = (*Console)(nil)
+	_ directoryrosterv1connect.GitHubServiceHandler             = (*Console)(nil)
+	_ directoryrosterv1connect.SlackAppServiceHandler           = (*Console)(nil)
+	_ directoryrosterv1connect.SlackSharedChannelServiceHandler = (*Console)(nil)
 )
 
 // NewConsole returns the operator services.

@@ -38,6 +38,7 @@ yet know which of those you want.
 | keep a GitHub organisation's teams in step with the policy | [connect/github-organisation.md](connect/github-organisation.md) |
 | declare GitHub Apps as data and create them from the console | [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md) |
 | declare Slack Apps as data and create and install them from the console | [connect/slack-apps-catalogue.md](connect/slack-apps-catalogue.md) |
+| share Slack Connect channels between your own workspaces, edited on the console | [connect/slack-connect-channels.md](connect/slack-connect-channels.md) |
 | give a Pulumi or Terraform program that manages the organisation an identity of its own | [connect/infrastructure-as-code.md](connect/infrastructure-as-code.md) |
 | connect a cluster, an AWS account, ArgoCD, Kargo, a workflow | [connect/](connect/) |
 | mint a short-lived SSH, database or client certificate | [connect/openbao.md](connect/openbao.md) |

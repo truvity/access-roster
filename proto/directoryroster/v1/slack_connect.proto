@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+// SlackSharedChannelService is where Slack Connect channels between the
+// installation's own Slack workspaces are created, edited and deleted.
+//
+// They live on the console, not in the policy: a record says which
+// workspace hosts the channel, which others share it, which policy groups
+// feed it and how private each side is. The Slack controller reads the
+// records and does the rest: the host creates the channel, invites each
+// guest workspace's bot, the guest accepts, and each side manages its own
+// people. Members come only from groups, never from individuals.
+//
+// Every create, edit and delete is audited.
+service SlackSharedChannelService {
+  // ListSlackSharedChannels returns every record the caller may see (a
+  // viewer of the host workspace, or of any `with` workspace), with what
+  // the controller last reported for it, and the choices a form offers.
+  rpc ListSlackSharedChannels(ListSlackSharedChannelsRequest) returns (ListSlackSharedChannelsResponse);
+
+  // CreateSlackSharedChannel validates the record against the policy and
+  // keeps it. Operator of the HOST workspace's owner, or the
+  // installation-wide operator. Refuses a name that is already a record.
+  rpc CreateSlackSharedChannel(CreateSlackSharedChannelRequest) returns (CreateSlackSharedChannelResponse);
+
+  // UpdateSlackSharedChannel changes `with`, `from` and `private`. The host
+  // and the name are immutable: a request naming a different host is
+  // refused, and the answer says to create a new channel instead.
+  rpc UpdateSlackSharedChannel(UpdateSlackSharedChannelRequest) returns (UpdateSlackSharedChannelResponse);
+
+  // DeleteSlackSharedChannel forgets the record, and nothing else: the
+  // channel stays in Slack, and the reconciler stops managing it.
+  rpc DeleteSlackSharedChannel(DeleteSlackSharedChannelRequest) returns (DeleteSlackSharedChannelResponse);
+}
+
+message ListSlackSharedChannelsRequest {}
+
+message ListSlackSharedChannelsResponse {
+  // whether this deployment keeps records at all. False with a deployment
+  // that keeps no state in Kubernetes.
+  bool available = 1;
+  repeated SlackSharedChannel channels = 2;
+  // every workspace the policy declares that the caller may see, for the
+  // form's host and with choices. can_operate says whether the caller may
+  // host a channel from it.
+  repeated SlackConnectWorkspace workspaces = 3;
+  // every group the policy declares, for the form's from choice.
+  repeated string groups = 4;
+}
+
+message SlackConnectWorkspace {
+  // the policy's workspace key.
+  string key = 1;
+  // whether the caller may create channels this workspace hosts.
+  bool can_operate = 2;
+}
+
+// SlackSharedChannelDefinition is what an operator writes: the record.
+message SlackSharedChannelDefinition {
+  // the channel's Slack name, unique among the records.
+  string name = 1;
+  // the workspace that creates and owns the channel. Immutable.
+  string host = 2;
+  // the other workspaces, in order.
+  repeated string with = 3;
+  // the policy groups whose holders belong, whichever side.
+  repeated string from = 4;
+  // one visibility for every side, unless private_per_side is set.
+  bool private = 5;
+  // one visibility per side: names the host and every `with` workspace,
+  // exactly. When non-empty, private is ignored.
+  map<string, bool> private_per_side = 6;
+}
+
+message CreateSlackSharedChannelRequest {
+  SlackSharedChannelDefinition channel = 1;
+}
+
+message CreateSlackSharedChannelResponse {
+  SlackSharedChannel channel = 1;
+}
+
+message UpdateSlackSharedChannelRequest {
+  // the record as it should become. name and host must be the stored
+  // ones.
+  SlackSharedChannelDefinition channel = 1;
+}
+
+message UpdateSlackSharedChannelResponse {
+  SlackSharedChannel channel = 1;
+}
+
+message DeleteSlackSharedChannelRequest {
+  string name = 1;
+}
+
+message DeleteSlackSharedChannelResponse {
+  // says plainly what was and was not done.
+  string note = 1;
+}
+
+// SlackSharedChannel is one record and where the controller has it.
+message SlackSharedChannel {
+  SlackSharedChannelDefinition channel = 1;
+  // not_reported (no report from the host's controller yet), pending (the
+  // controller will create, adopt or accept it), waiting (for a guest
+  // workspace to accept), active, held (waiting on a person) or invalid.
+  string state = 2;
+  // why, for invalid and held.
+  string reason = 3;
+  // whether the caller may edit and delete this record: operator of the
+  // host workspace's owner, or the installation-wide operator.
+  bool can_operate = 4;
+}

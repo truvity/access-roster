@@ -527,6 +527,39 @@ actions:
     message:
       en: "{actor}'s install of Slack App {targets_0_id} for workspace {targets_1_id} was refused: {outcome_reason}"
 
+  roster.slack_shared_channel.created:
+    summary: A Slack Connect channel was defined from the console.
+    operation: create
+    categories: [configuration_change, privileged_access]
+    profiles: [security]
+    target_types: [slack_workspace, slack_channel]
+    delivery: async
+    data_schema: https://schemas.example/access-roster/v1/slack-shared-channel.json
+    message:
+      en: "{actor} defined the Slack Connect channel {targets_1_id}, hosted by {targets_0_id}, shared with {data_with}"
+
+  roster.slack_shared_channel.updated:
+    summary: A Slack Connect channel's definition was changed from the console.
+    operation: modify
+    categories: [configuration_change, privileged_access]
+    profiles: [security]
+    target_types: [slack_workspace, slack_channel]
+    delivery: async
+    data_schema: https://schemas.example/access-roster/v1/slack-shared-channel.json
+    message:
+      en: "{actor} changed the Slack Connect channel {targets_1_id}, hosted by {targets_0_id} ({data_changes})"
+
+  roster.slack_shared_channel.deleted:
+    summary: A Slack Connect channel's definition was deleted from the console; the channel stays in Slack.
+    operation: remove
+    categories: [configuration_change, privileged_access]
+    profiles: [security]
+    target_types: [slack_workspace, slack_channel]
+    delivery: async
+    data_schema: https://schemas.example/access-roster/v1/slack-shared-channel.json
+    message:
+      en: "{actor} deleted the definition of the Slack Connect channel {targets_1_id}, hosted by {targets_0_id}; the channel stays in Slack"
+
   roster.slack_channel.created:
     summary: A Slack channel was created.
     operation: create

@@ -429,6 +429,10 @@ type stores struct {
 	// slackCatalogueApps is where catalogue Slack Apps are kept. Nil with
 	// the memory store, for the same reason.
 	slackCatalogueApps *kube.SlackCatalogueApps
+	// slackShared keeps Slack Connect channel definitions, and slackStatus is
+	// what the Slack controller reported. Nil with the memory store.
+	slackShared *kube.SlackShared
+	slackStatus *kube.SlackStatus
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
@@ -510,6 +514,13 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.WarnContext(ctx, "the Secret catalogue Slack Apps are kept in could not be created",
 			"secret", slackCatalogueApps.SecretName(), "error", err)
 	}
+	// And the ConfigMap Slack Connect channel definitions are kept in,
+	// beside the workspaces' records the controller mounts.
+	slackShared := kube.NewSlackShared(client)
+	if err = slackShared.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the ConfigMap Slack Connect channels are kept in could not be created",
+			"configMap", slackShared.ConfigMapName(), "error", err)
+	}
 	// Each connection's credential carries its record, so the GitHub Apps
 	// Secret alone restores every organisation: put back a record a
 	// restore left missing, and copy records into credentials written
@@ -556,6 +567,8 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		// Likewise an App whose entry the catalogue no longer declares.
 		githubCatalogueApps: githubCatalogueApps,
 		slackCatalogueApps:  slackCatalogueApps,
+		slackShared:         slackShared,
+		slackStatus:         slackStatus,
 		workspaces:          workspaces,
 		credentials:         credentials,
 		settings: kube.NewSettings(client, kube.DeclaredClient{
@@ -879,6 +892,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		GitHubMints:         githubMints,
 		SlackCatalogue:      cfg.slackCatalogue,
 		SlackCatalogueApps:  slackCatalogueApps(kept.slackCatalogueApps),
+		SlackShared:         slackSharedRecords(kept.slackShared),
+		SlackStatus:         slackStatusReports(kept.slackStatus),
 		GitHubHTTP:          demoGitHub(cfg.demo && kept.githubCatalogueApps == nil),
 		Audit:               recorder,
 	})
@@ -1372,6 +1387,22 @@ func githubRunnerApps(store *kube.GitHubRunnerApps, demonstration bool, key stri
 	default:
 		return nil
 	}
+}
+
+// slackSharedRecords and slackStatusReports are the stores as the console's
+// interfaces, or nil: a typed nil pointer in an interface is not nil.
+func slackSharedRecords(store *kube.SlackShared) server.SlackSharedRecords {
+	if store == nil {
+		return nil
+	}
+	return store
+}
+
+func slackStatusReports(store *kube.SlackStatus) server.SlackStatusReports {
+	if store == nil {
+		return nil
+	}
+	return store
 }
 
 // slackCatalogueApps is the store as the console's interface, or nil: a

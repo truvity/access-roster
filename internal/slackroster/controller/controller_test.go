@@ -14,10 +14,15 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
+	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit/audittest"
+	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/slackapp"
 	"github.com/truvity/access-roster/internal/slackapp/slackfake"
 	"github.com/truvity/access-roster/internal/slackroster/connection"
@@ -714,5 +719,65 @@ func TestSharedChannelRecordsAreValidatedAndReported(t *testing.T) {
 	refused := r.reports.channel(t, "acme", "broken")
 	if refused.State != status.ChannelHeld || !refused.Shared || !strings.Contains(refused.Reason, "nowhere") {
 		t.Errorf("the refused definition = %+v, want held, naming why", refused)
+	}
+}
+
+// The console's shared channel service and the controller agree on the
+// record: what the service writes into the ConfigMap, mounted as files, is
+// read back by the controller, validated and acted on, for a channel with a
+// single visibility and for one with a visibility per side.
+func TestTheControllerReadsWhatTheConsoleWrites(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-all"}, "acme")
+	// The service validates against the same policy in the shape the real
+	// one has: only the team ids differ, which the rig's fake Slack spells
+	// its own way.
+	declared := r.policy
+	declared.Version = 1
+	declared.Slack.Workspaces = maps.Clone(r.policy.Slack.Workspaces)
+	for key, ws := range declared.Slack.Workspaces {
+		ws.TeamID = "T0" + strings.ToUpper(key) + "ABCD"
+		declared.Slack.Workspaces[key] = ws
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := kube.NewClient(k8sfake.NewClientset(), "ns", "release")
+	shared := kube.NewSlackShared(client)
+	console, err := server.NewConsole(context.Background(), server.ConsoleDeps{Authorizer: access.NewAuthorizer(set, nil, 0), SlackShared: shared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := server.WithIdentity(context.Background(), access.Identity{Email: "ada@acme.example", Role: access.RoleOperator})
+	for _, def := range []*directoryrosterv1.SlackSharedChannelDefinition{
+		{Name: "joint", Host: "acme", With: []string{"globex"}, From: []string{"g-all"}, Private: true},
+		{Name: "sided", Host: "acme", With: []string{"globex"}, From: []string{"g-all"}, PrivatePerSide: map[string]bool{"acme": true, "globex": false}},
+	} {
+		if _, err = console.CreateSlackSharedChannel(ctx, connect.NewRequest(&directoryrosterv1.CreateSlackSharedChannelRequest{Channel: def})); err != nil {
+			t.Fatalf("create %s: %v", def.Name, err)
+		}
+	}
+	cm, err := client.API().CoreV1().ConfigMaps("ns").Get(context.Background(), shared.ConfigMapName(), metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, raw := range cm.Data {
+		r.writeRecord(key, raw)
+	}
+
+	r.pass("acme")
+
+	for name, private := range map[string]bool{"joint": true, "sided": true} {
+		ch, made := r.fake.ChannelNamed("TACME", name)
+		if !made {
+			t.Fatalf("the controller did not act on the record the console wrote for %s", name)
+		}
+		if ch.Private != private {
+			t.Errorf("%s private = %v, want %v", name, ch.Private, private)
+		}
+		if rep := r.reports.channel(t, "acme", name); rep.State == status.ChannelHeld {
+			t.Errorf("%s is held: %s", name, rep.Reason)
+		}
 	}
 }
