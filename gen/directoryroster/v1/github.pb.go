@@ -320,8 +320,13 @@ type GitHubApp struct {
 	SecretKeys []string `protobuf:"bytes,29,rep,name=secret_keys,json=secretKeys,proto3" json:"secret_keys,omitempty"`
 	// how many accounts people linked through it. The link App only.
 	LinkedAccounts int32 `protobuf:"varint,30,opt,name=linked_accounts,json=linkedAccounts,proto3" json:"linked_accounts,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// whether the caller may operate it: hold the operator role over the
+	// directory that owns its organisation (policy `github.<org>.owner`), or
+	// installation-wide. The link App has no organisation of its own and is
+	// operated installation-wide alone.
+	CanOperate    bool `protobuf:"varint,31,opt,name=can_operate,json=canOperate,proto3" json:"can_operate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GitHubApp) Reset() {
@@ -562,6 +567,13 @@ func (x *GitHubApp) GetLinkedAccounts() int32 {
 		return x.LinkedAccounts
 	}
 	return 0
+}
+
+func (x *GitHubApp) GetCanOperate() bool {
+	if x != nil {
+		return x.CanOperate
+	}
+	return false
 }
 
 type ListGitHubAppsRequest struct {
@@ -3502,7 +3514,11 @@ type GitHubOrganisation struct {
 	// the removal set an operator confirmed, while it holds.
 	RemovalConfirmation *GitHubRemovalConfirmation `protobuf:"bytes,15,opt,name=removal_confirmation,json=removalConfirmation,proto3" json:"removal_confirmation,omitempty"`
 	// addresses and GitHub logins the policy says to leave alone here.
-	Ignored       []string `protobuf:"bytes,16,rep,name=ignored,proto3" json:"ignored,omitempty"`
+	Ignored []string `protobuf:"bytes,16,rep,name=ignored,proto3" json:"ignored,omitempty"`
+	// whether the caller may operate it: hold the operator role over the
+	// directory that owns it (policy `github.<org>.owner`), or
+	// installation-wide.
+	CanOperate    bool `protobuf:"varint,17,opt,name=can_operate,json=canOperate,proto3" json:"can_operate,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3647,6 +3663,13 @@ func (x *GitHubOrganisation) GetIgnored() []string {
 		return x.Ignored
 	}
 	return nil
+}
+
+func (x *GitHubOrganisation) GetCanOperate() bool {
+	if x != nil {
+		return x.CanOperate
+	}
+	return false
 }
 
 // GitHubSeats is what the organisation pays for.
@@ -4282,7 +4305,7 @@ var File_directoryroster_v1_github_proto protoreflect.FileDescriptor
 
 const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\n" +
-	"\x1fdirectoryroster/v1/github.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xef\b\n" +
+	"\x1fdirectoryroster/v1/github.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x90\t\n" +
 	"\tGitHubApp\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
 	"\x03org\x18\x02 \x01(\tR\x03org\x128\n" +
@@ -4316,7 +4339,9 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\x06secret\x18\x1c \x01(\tR\x06secret\x12\x1f\n" +
 	"\vsecret_keys\x18\x1d \x03(\tR\n" +
 	"secretKeys\x12'\n" +
-	"\x0flinked_accounts\x18\x1e \x01(\x05R\x0elinkedAccounts\"\x17\n" +
+	"\x0flinked_accounts\x18\x1e \x01(\x05R\x0elinkedAccounts\x12\x1f\n" +
+	"\vcan_operate\x18\x1f \x01(\bR\n" +
+	"canOperate\"\x17\n" +
 	"\x15ListGitHubAppsRequest\"\xcb\x02\n" +
 	"\x16ListGitHubAppsResponse\x121\n" +
 	"\x04apps\x18\x01 \x03(\v2\x1d.directoryroster.v1.GitHubAppR\x04apps\x121\n" +
@@ -4522,7 +4547,7 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"changed_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tchangedAt\x12\x16\n" +
 	"\x06source\x18\t \x01(\tR\x06source\x12\x12\n" +
 	"\x04note\x18\n" +
-	" \x01(\tR\x04note\"\xb3\x06\n" +
+	" \x01(\tR\x04note\"\xd4\x06\n" +
 	"\x12GitHubOrganisation\x12\x10\n" +
 	"\x03org\x18\x01 \x01(\tR\x03org\x12\x14\n" +
 	"\x05bound\x18\x02 \x01(\bR\x05bound\x12\x1a\n" +
@@ -4542,7 +4567,9 @@ const file_directoryroster_v1_github_proto_rawDesc = "" +
 	"\x05seats\x18\r \x01(\v2\x1f.directoryroster.v1.GitHubSeatsR\x05seats\x12;\n" +
 	"\abreaker\x18\x0e \x01(\v2!.directoryroster.v1.GitHubBreakerR\abreaker\x12`\n" +
 	"\x14removal_confirmation\x18\x0f \x01(\v2-.directoryroster.v1.GitHubRemovalConfirmationR\x13removalConfirmation\x12\x18\n" +
-	"\aignored\x18\x10 \x03(\tR\aignored\"\x95\x01\n" +
+	"\aignored\x18\x10 \x03(\tR\aignored\x12\x1f\n" +
+	"\vcan_operate\x18\x11 \x01(\bR\n" +
+	"canOperate\"\x95\x01\n" +
 	"\vGitHubSeats\x12\x14\n" +
 	"\x05known\x18\x01 \x01(\bR\x05known\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x16\n" +

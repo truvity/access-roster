@@ -281,6 +281,11 @@ message GitHubApp {
   repeated string secret_keys = 29;
   // how many accounts people linked through it. The link App only.
   int32 linked_accounts = 30;
+  // whether the caller may operate it: hold the operator role over the
+  // directory that owns its organisation (policy `github.<org>.owner`), or
+  // installation-wide. The link App has no organisation of its own and is
+  // operated installation-wide alone.
+  bool can_operate = 31;
 }
 
 message ListGitHubAppsRequest {}
@@ -738,6 +743,10 @@ message GitHubOrganisation {
   GitHubRemovalConfirmation removal_confirmation = 15;
   // addresses and GitHub logins the policy says to leave alone here.
   repeated string ignored = 16;
+  // whether the caller may operate it: hold the operator role over the
+  // directory that owns it (policy `github.<org>.owner`), or
+  // installation-wide.
+  bool can_operate = 17;
 }
 
 // GitHubSeats is what the organisation pays for.

@@ -273,6 +273,11 @@ func TestRejectsBadPolicies(t *testing.T) {
 		"client groups_delimiter collides two declared groups": "version: 1\n" +
 			"groups: { 'a.b.c': { members: [g@h.example] }, 'a:b:c': { members: [g@h.example] } }\n" +
 			"clients: { c: { kind: public, requires: ['a.b.c'], groups_delimiter: '.' } }\n",
+		// An organisation's owner is a workspace id, one segment of a
+		// scoped group name, and never the installation-wide scope.
+		"github owner has a separator": "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { globex: { members: [a], owner: 'C0:north' } }\n",
+		"github owner has a space":     "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { globex: { members: [a], owner: 'C0 north' } }\n",
+		"github owner is all":          "version: 1\ngroups: { a: { members: [g@h.example] } }\ngithub: { globex: { members: [a], owner: all } }\n",
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -1264,5 +1269,25 @@ clients:
 	want := []string{"team:b:viewer"}
 	if !slices.Equal(got, want) {
 		t.Errorf("Unconsumed = %v, want %v -- prod:grafana:admin should be consumed by groups: [grafana]", got, want)
+	}
+}
+
+// An organisation's owner is read back exactly as declared, and an
+// organisation that names none has none.
+func TestAGitHubOrganisationsOwner(t *testing.T) {
+	t.Parallel()
+	declared, err := policy.Parse([]byte("version: 1\ngroups: { a: { members: [g@h.example] } }\n" +
+		"github: { globex: { members: [a], owner: C0north }, acme: { members: [a] } }\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+	for org, want := range map[string]string{"globex": "C0north", "acme": "", "unbound": ""} {
+		if got := set.GitHubOwner(org); got != want {
+			t.Errorf("GitHubOwner(%s) = %q, want %q", org, got, want)
+		}
 	}
 }
