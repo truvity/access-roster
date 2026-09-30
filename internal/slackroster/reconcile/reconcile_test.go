@@ -128,7 +128,8 @@ func merge(maps ...map[string]rails.Vouch) map[string]rails.Vouch {
 
 func kinds(d reconcile.Decision) []string {
 	var out []string
-	for _, a := range d.Actions {
+	for i := range d.Actions {
+		a := &d.Actions[i]
 		s := string(a.Kind) + ":" + a.Channel
 		if a.User != "" {
 			s += ":" + a.User
@@ -140,9 +141,9 @@ func kinds(d reconcile.Decision) []string {
 
 func channelOf(t *testing.T, d reconcile.Decision, name string) status.Channel {
 	t.Helper()
-	for _, c := range d.Report.Channels {
-		if c.Name == name {
-			return c
+	for i := range d.Report.Channels {
+		if d.Report.Channels[i].Name == name {
+			return d.Report.Channels[i]
 		}
 	}
 	t.Fatalf("no channel %q in %+v", name, d.Report.Channels)
@@ -177,6 +178,10 @@ func wantKinds(t *testing.T, d reconcile.Decision, want ...string) {
 	if !slices.Equal(got, want) {
 		t.Errorf("actions = %v, want %v", got, want)
 	}
+}
+
+func inv(id string, incoming bool, host, channel, recipient string) reconcile.Invite {
+	return reconcile.Invite{ID: id, Incoming: incoming, HostTeamID: host, ChannelName: channel, RecipientUserID: recipient}
 }
 
 func extendCh(groups ...string) policy.SlackChannel { return policy.SlackChannel{From: groups} }
@@ -513,8 +518,9 @@ func TestStrictNeverTouchesBotsSelfDeletedGuestsForeignOrIgnored(t *testing.T) {
 		memberOf(reconcile.Member{ID: "USPARE0001", Email: "spare@acme.example", TeamID: "TACME"}).
 		memberOf(reconcile.Member{ID: "UREAL", Email: "real@acme.example", TeamID: "TACME"})
 	d := e.draft(t)
-	if got := d.Confirm(); !slices.Equal(got, []string{"boss@acme.example", "real@acme.example", "spare@acme.example"}) && !slices.Equal(got, []string{"real@acme.example"}) {
-		// ignored people are asked about only to report them gone
+	// Ignored people are asked about only to report them gone; guests, other
+	// workspaces' accounts and accounts with no address are never asked.
+	if got := d.Confirm(); !slices.Equal(got, []string{"boss@acme.example", "real@acme.example", "spare@acme.example"}) {
 		t.Fatalf("Confirm = %v", got)
 	}
 	dec := d.Decide(merge(vouch(gone(), "real@acme.example")), reconcile.Confirmed{})
@@ -799,7 +805,7 @@ func TestSharedHostCreatesWithItsOwnSidesPrivacy(t *testing.T) {
 		t.Errorf("host side must be private: %+v", a)
 	}
 	e = newEnv("globex").shared(s).holders("g", "bob@globex.example").account("bob@globex.example", "U2")
-	e.in.Observed.Invites = []reconcile.Invite{{ID: "I1", Incoming: true, HostTeamID: "TACME", ChannelID: "C1", ChannelName: "platform", RecipientUserID: "BGLOBEX"}}
+	e.in.Observed.Invites = []reconcile.Invite{inv("I1", true, "TACME", "platform", "BGLOBEX")}
 	dec := e.decide(t, nil, reconcile.Confirmed{})
 	if a := dec.Actions[0]; a.Kind != status.ActionShareAccept || a.Private {
 		t.Errorf("guest side is public: %+v", a)
@@ -883,17 +889,17 @@ func TestSharedHostStateMachine(t *testing.T) {
 
 func TestSharedGuestAcceptsOnlyTheHostsInvitationForThatChannel(t *testing.T) {
 	t.Parallel()
-	good := reconcile.Invite{ID: "I1", Incoming: true, HostTeamID: "TACME", ChannelID: "C1", ChannelName: "platform", RecipientUserID: "BGLOBEX"}
+	good := inv("I1", true, "TACME", "platform", "BGLOBEX")
 	tests := map[string]struct {
 		invites []reconcile.Invite
 		accept  bool
 	}{
 		"the host's invitation":             {[]reconcile.Invite{good}, true},
-		"another channel's invitation":      {[]reconcile.Invite{{ID: "I2", Incoming: true, HostTeamID: "TACME", ChannelName: "other", RecipientUserID: "BGLOBEX"}}, false},
-		"another team's invitation":         {[]reconcile.Invite{{ID: "I3", Incoming: true, HostTeamID: "TSTRANGER", ChannelName: "platform", RecipientUserID: "BGLOBEX"}}, false},
-		"an invitation to somebody else":    {[]reconcile.Invite{{ID: "I4", Incoming: true, HostTeamID: "TACME", ChannelName: "platform", RecipientUserID: "USOMEONE"}}, false},
-		"an outgoing invitation of our own": {[]reconcile.Invite{{ID: "I5", Incoming: false, HostTeamID: "TACME", ChannelName: "platform", RecipientUserID: "BGLOBEX"}}, false},
-		"the right one among others":        {[]reconcile.Invite{{ID: "I6", Incoming: true, HostTeamID: "TSTRANGER", ChannelName: "platform", RecipientUserID: "BGLOBEX"}, good}, true},
+		"another channel's invitation":      {[]reconcile.Invite{inv("I2", true, "TACME", "other", "BGLOBEX")}, false},
+		"another team's invitation":         {[]reconcile.Invite{inv("I3", true, "TSTRANGER", "platform", "BGLOBEX")}, false},
+		"an invitation to somebody else":    {[]reconcile.Invite{inv("I4", true, "TACME", "platform", "USOMEONE")}, false},
+		"an outgoing invitation of our own": {[]reconcile.Invite{inv("I5", false, "TACME", "platform", "BGLOBEX")}, false},
+		"the right one among others":        {[]reconcile.Invite{inv("I6", true, "TSTRANGER", "platform", "BGLOBEX"), good}, true},
 		"no invitation yet":                 {nil, false},
 	}
 	for name, tc := range tests {
@@ -982,7 +988,7 @@ func TestSharedPeopleJoinFromTheHostElseTheFirstGuestElseAreHeld(t *testing.T) {
 	workspaces(e)
 	holdersFor(e)
 	e.account("m@globex.example", "U2")
-	e.in.Observed.Invites = []reconcile.Invite{{ID: "I1", Incoming: true, HostTeamID: "TACME", ChannelName: "platform", RecipientUserID: "BGLOBEX"}}
+	e.in.Observed.Invites = []reconcile.Invite{inv("I1", true, "TACME", "platform", "BGLOBEX")}
 	dec = e.decide(t, nil, reconcile.Confirmed{})
 	for _, r := range channelOf(t, dec, "platform").Members {
 		if r.Person == "x@nowhere.example" {
