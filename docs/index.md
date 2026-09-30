@@ -37,6 +37,7 @@ yet know which of those you want.
 | decide whether a console signs itself in or lets the gateway do it, then build the gateway shape | [connect/choosing-native-or-gateway-oidc.md](connect/choosing-native-or-gateway-oidc.md) |
 | keep a GitHub organisation's teams in step with the policy | [connect/github-organisation.md](connect/github-organisation.md) |
 | declare GitHub Apps as data and create them from the console | [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md) |
+| connect a Slack workspace from the console, read what the controller did and confirm held removals | [connect/slack-workspace.md](connect/slack-workspace.md#connect-a-workspace-from-the-console) |
 | declare Slack Apps as data and create and install them from the console | [connect/slack-apps-catalogue.md](connect/slack-apps-catalogue.md) |
 | share Slack Connect channels between your own workspaces, edited on the console | [connect/slack-connect-channels.md](connect/slack-connect-channels.md) |
 | give a Pulumi or Terraform program that manages the organisation an identity of its own | [connect/infrastructure-as-code.md](connect/infrastructure-as-code.md) |

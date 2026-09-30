@@ -28,6 +28,12 @@ describe("parse", () => {
     expect(parse(`#${paths.slackConnect()}`)).toMatchObject({ view: "slack-connect", id: undefined, rest: [] });
   });
 
+  it("reads the Slack workspaces page", () => {
+    expect(parse(`#${paths.slack()}`)).toMatchObject({ view: "slack", id: undefined, rest: [] });
+    // Not the Slack Apps page, and not a prefix of it.
+    expect(parse(`#${paths.slackApps()}`).view).toBe("slack-apps");
+  });
+
   it("opens People narrowed to linked accounts", () => {
     const route = parse(`#${paths.peopleGitHub(true)}`);
     expect(route.view).toBe("people");

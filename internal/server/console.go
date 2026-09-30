@@ -168,6 +168,10 @@ type ConsoleDeps struct {
 	// SlackStatus is what the Slack controller last reported. Nil shows every
 	// channel as not reported.
 	SlackStatus SlackStatusReports
+	// SlackWorkspaces is where connected Slack workspaces and operators'
+	// confirmations are kept. Nil connects and confirms nothing. The
+	// controller's report is SlackStatus.
+	SlackWorkspaces SlackWorkspaces
 	// SlackAPI configures the calls to Slack that creating and installing
 	// an App make: a test points them at a fake. Nil is Slack.
 	SlackAPI []slackapp.Option
@@ -200,6 +204,7 @@ var (
 	_ directoryrosterv1connect.GitHubServiceHandler             = (*Console)(nil)
 	_ directoryrosterv1connect.SlackAppServiceHandler           = (*Console)(nil)
 	_ directoryrosterv1connect.SlackSharedChannelServiceHandler = (*Console)(nil)
+	_ directoryrosterv1connect.SlackServiceHandler              = (*Console)(nil)
 )
 
 // NewConsole returns the operator services.
