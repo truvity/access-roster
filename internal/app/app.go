@@ -459,6 +459,12 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.WarnContext(ctx, "the GitHub status report could not be created; the GitHub page will show bindings only",
 			"configMap", github.Name(), "error", err)
 	}
+	// The Slack controller's report, created here for the same reason.
+	slackStatus := kube.NewSlackStatus(client)
+	if err = slackStatus.Ensure(ctx); err != nil {
+		log.WarnContext(ctx, "the Slack status report could not be created; the Slack controller cannot report until it exists",
+			"configMap", slackStatus.Name(), "error", err)
+	}
 	// And the two objects connecting an organisation writes into, empty,
 	// so the controller's Secret volume always has a Secret behind it.
 	githubOrgs := kube.NewGitHubOrgs(client)
