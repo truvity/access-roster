@@ -24,6 +24,8 @@ import (
 	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/settings"
+	"github.com/truvity/access-roster/internal/slackapp"
+	slackcatalogue "github.com/truvity/access-roster/internal/slackapp/catalogue"
 	"github.com/truvity/access-roster/internal/version"
 )
 
@@ -154,6 +156,15 @@ type ConsoleDeps struct {
 	// GitHubCatalogueApps is where catalogue Apps are kept. Nil is a
 	// deployment keeping no state in Kubernetes, which can create none.
 	GitHubCatalogueApps GitHubCatalogueApps
+	// SlackCatalogue is every Slack App the deployment declares. Nil
+	// declares none.
+	SlackCatalogue *slackcatalogue.Catalogue
+	// SlackCatalogueApps is where catalogue Slack Apps are kept. Nil is a
+	// deployment keeping no state in Kubernetes, which can create none.
+	SlackCatalogueApps SlackCatalogueApps
+	// SlackAPI configures the calls to Slack that creating and installing
+	// an App make: a test points them at a fake. Nil is Slack.
+	SlackAPI []slackapp.Option
 	// GitHubMints is the last installation tokens asked of each App, kept
 	// by the half of this service that mints them. Nil is a deployment
 	// that mints none, or one whose issuer is another process; an App's
@@ -181,6 +192,7 @@ var (
 	_ directoryrosterv1connect.SettingsServiceHandler  = (*Console)(nil)
 	_ directoryrosterv1connect.AccessServiceHandler    = (*Console)(nil)
 	_ directoryrosterv1connect.GitHubServiceHandler    = (*Console)(nil)
+	_ directoryrosterv1connect.SlackAppServiceHandler  = (*Console)(nil)
 )
 
 // NewConsole returns the operator services.

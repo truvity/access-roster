@@ -93,6 +93,8 @@ export const paths = {
   // literally "catalogue" keeps the old prefix, which the parser strips,
   // so it is not read as the old list's address.
   githubApp: (id: string) => (id === "catalogue" ? "/github/apps/catalogue/catalogue" : `/github/apps/${encodeURIComponent(id)}`),
+  // The Slack Apps the deployment declares: create, install, reinstall.
+  slackApps: () => "/slack-apps",
   // Every open session in the installation. Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",

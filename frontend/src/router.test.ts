@@ -20,6 +20,10 @@ describe("parse", () => {
     expect(parse(`#${paths.githubApp("release-bot")}`).rest).toEqual(["release-bot"]);
   });
 
+  it("reads the Slack Apps page", () => {
+    expect(parse(`#${paths.slackApps()}`)).toMatchObject({ view: "slack-apps", id: undefined, rest: [] });
+  });
+
   it("opens People narrowed to linked accounts", () => {
     const route = parse(`#${paths.peopleGitHub(true)}`);
     expect(route.view).toBe("people");

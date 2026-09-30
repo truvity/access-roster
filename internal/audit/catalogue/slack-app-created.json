@@ -1,0 +1,20 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/slack-app-created.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "The id the deployment catalogues the App under.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "app": {
+      "type": "string",
+      "description": "The Slack App's id.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

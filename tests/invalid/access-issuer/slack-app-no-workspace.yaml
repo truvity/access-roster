@@ -1,0 +1,6 @@
+# A Slack App needs the workspace it belongs to.
+# error: at '/slackApps/0': missing property 'workspace'
+issuerURL: https://issuer.example
+slackApps:
+  - id: sync
+    botScopes: [channels:read]
