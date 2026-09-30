@@ -108,6 +108,15 @@ func ScopedGroup(workspace, role string) string {
 	return workspace + Separator + ThingSelf + Separator + role
 }
 
+// ValidWorkspaceID reports whether s can stand in the scope position of
+// [ScopedGroup]: a single segment — no separator, no whitespace — that
+// is not the installation-wide [ScopeAll]. It is how an organisation's
+// `owner` is checked, so the name an organisation is owned by is one a
+// scoped role could actually be held over.
+func ValidWorkspaceID(s string) bool {
+	return s != "" && s != ScopeAll && !strings.ContainsAny(s, Separator+" \t\r\n") && s == strings.TrimSpace(s)
+}
+
 // SplitScopedGroup reads one of this hub's group names back into the
 // workspace it is scoped to and the role it grants. The bool is false
 // for any other name — another relying party's grant, a rung, an
@@ -315,6 +324,13 @@ type GitHubOrg struct {
 	// never added, removed or changed, linked or not. Removing the line
 	// brings them back under the bindings.
 	Ignore []string `yaml:"ignore,omitempty"`
+	// Owner is the directory workspace id that owns this organisation:
+	// the workspace whose SCOPED operator (`<id>:access-roster:operator`)
+	// may connect, reconnect and disconnect it, confirm its removals and
+	// manage its Apps, beside the installation-wide operator. Empty, the
+	// organisation is operated by the installation-wide roles alone.
+	// See policy.md#the-services-own-two-groups-and-scoping-them.
+	Owner string `yaml:"owner,omitempty"`
 }
 
 // ignoredLogin is what GitHub allows in a login.
@@ -768,6 +784,9 @@ func (p Policy) validateGitHubOrg(org string) error {
 		return fmt.Errorf("github: an organisation with no name")
 	}
 	binding := p.GitHub[org]
+	if binding.Owner != "" && !ValidWorkspaceID(binding.Owner) {
+		return fmt.Errorf("github: %s owner: %q is not a workspace id", org, binding.Owner)
+	}
 	// An organisation that binds nothing is one the controller would
 	// connect and then have no opinion about — and, read the other way,
 	// one whose every member is accounted for by no binding. Refused, so

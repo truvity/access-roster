@@ -164,6 +164,11 @@ var githubOrgFields = map[string]mergeRule{
 		declare: "version: 1\ngithub: { globex: { ignore: [someone@a.example] } }\n",
 		twice:   same,
 	},
+	"Owner": {
+		rule:    "one file per organisation; a second is a clash",
+		declare: "version: 1\ngithub: { globex: { owner: C0northern } }\n",
+		twice:   clash,
+	},
 }
 
 func TestMergeCoversEveryField(t *testing.T) {
