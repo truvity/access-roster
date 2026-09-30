@@ -1,0 +1,38 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/slack-shared-channel.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The shared channel's name.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "with": {
+      "type": "string",
+      "description": "The other workspaces, by policy key, comma-separated.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "from": {
+      "type": "string",
+      "description": "The groups whose holders belong, comma-separated.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "privacy": {
+      "type": "string",
+      "description": "The visibility: public, private, or one workspace=public|private pair per side.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "changes": {
+      "type": "string",
+      "description": "For an edit, what changed, as 'field: before -> after' parts; empty otherwise.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

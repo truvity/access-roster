@@ -34,3 +34,12 @@ func (s *Set) SlackWorkspaceKeys() []string {
 	defer s.mu.RUnlock()
 	return slices.Sorted(maps.Keys(s.declared.Slack.Workspaces))
 }
+
+// Declared is the declared policy in force, for a caller that validates a
+// definition of its own against it (a Slack Connect channel's). Read only:
+// its maps are the set's.
+func (s *Set) Declared() Policy {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.declared
+}

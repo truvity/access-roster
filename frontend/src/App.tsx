@@ -18,6 +18,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import AppsIcon from "@mui/icons-material/Apps";
 import ForumIcon from "@mui/icons-material/Forum";
+import HubIcon from "@mui/icons-material/Hub";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import DomainIcon from "@mui/icons-material/Domain";
@@ -46,6 +47,7 @@ import { Clients, Client } from "./Clients";
 import { GitHubPage } from "./GitHub";
 import { SessionsPage } from "./Sessions";
 import { SlackAppsPage } from "./SlackApps";
+import { SlackConnectPage } from "./SlackConnect";
 import { AuditPage } from "./Audit";
 import { SettingsView } from "./Settings";
 
@@ -78,6 +80,8 @@ const internalSide: Item[] = [
   { value: "github", label: "GitHub", to: paths.github(), icon: <GitHubIcon fontSize="small" /> },
   // The Slack Apps the deployment declares, created and installed here.
   { value: "slack-apps", label: "Slack Apps", to: paths.slackApps(), icon: <ForumIcon fontSize="small" /> },
+  // Shared channels between the installation's own Slack workspaces.
+  { value: "slack-connect", label: "Slack Connect", to: paths.slackConnect(), icon: <HubIcon fontSize="small" /> },
 ];
 // Every open session in the installation. It only exists once
 // an issuer shares this console's origin, and even then it is
@@ -349,6 +353,8 @@ function PageFor({
       return <GitHubPage section={id} rest={rest} onDone={onDone} />;
     case "slack-apps":
       return <SlackAppsPage onDone={onDone} />;
+    case "slack-connect":
+      return <SlackConnectPage onDone={onDone} />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "audit":

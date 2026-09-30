@@ -24,6 +24,10 @@ describe("parse", () => {
     expect(parse(`#${paths.slackApps()}`)).toMatchObject({ view: "slack-apps", id: undefined, rest: [] });
   });
 
+  it("reads the Slack Connect page", () => {
+    expect(parse(`#${paths.slackConnect()}`)).toMatchObject({ view: "slack-connect", id: undefined, rest: [] });
+  });
+
   it("opens People narrowed to linked accounts", () => {
     const route = parse(`#${paths.peopleGitHub(true)}`);
     expect(route.view).toBe("people");

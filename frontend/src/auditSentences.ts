@@ -266,6 +266,24 @@ export const roster: Sentences = {
         "en": "a shared-channel invitation to {targets_1_id} for {targets_2_id} was sent by {targets_0_id}"
       }
     },
+    "roster.slack_shared_channel.created": {
+      "summary": "A Slack Connect channel was defined from the console.",
+      "message": {
+        "en": "{actor} defined the Slack Connect channel {targets_1_id}, hosted by {targets_0_id}, shared with {data_with}"
+      }
+    },
+    "roster.slack_shared_channel.deleted": {
+      "summary": "A Slack Connect channel's definition was deleted from the console; the channel stays in Slack.",
+      "message": {
+        "en": "{actor} deleted the definition of the Slack Connect channel {targets_1_id}, hosted by {targets_0_id}; the channel stays in Slack"
+      }
+    },
+    "roster.slack_shared_channel.updated": {
+      "summary": "A Slack Connect channel's definition was changed from the console.",
+      "message": {
+        "en": "{actor} changed the Slack Connect channel {targets_1_id}, hosted by {targets_0_id} ({data_changes})"
+      }
+    },
     "roster.slack_workspace.connected": {
       "summary": "A Slack workspace was connected by installing the App.",
       "message": {

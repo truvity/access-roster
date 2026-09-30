@@ -95,6 +95,8 @@ export const paths = {
   githubApp: (id: string) => (id === "catalogue" ? "/github/apps/catalogue/catalogue" : `/github/apps/${encodeURIComponent(id)}`),
   // The Slack Apps the deployment declares: create, install, reinstall.
   slackApps: () => "/slack-apps",
+  // Slack Connect channels between the installation's own workspaces.
+  slackConnect: () => "/slack-connect",
   // Every open session in the installation. Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",

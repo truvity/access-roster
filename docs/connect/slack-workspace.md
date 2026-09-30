@@ -84,7 +84,8 @@ Slack Connect channels are not in the policy: the console keeps each as a
 record beside the workspaces' records, `_shared.<name>.json`. The controller
 validates every one against the policy it runs under. A valid one is acted on,
 a refused one is reported on its host workspace as a held channel with the
-reason, and acted on by nobody.
+reason, and acted on by nobody. They are created and edited on the console's
+Slack Connect page: see [slack-connect-channels.md](slack-connect-channels.md).
 
 ### Dry run until `actsIn`
 

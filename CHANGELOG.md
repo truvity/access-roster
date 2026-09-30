@@ -1,5 +1,23 @@
 ## Unreleased
 
+- **New: Slack Connect channels, created and edited on the console.** A
+  shared channel between the installation's own Slack workspaces is a record,
+  not policy: `name`, `host` (the workspace that creates and owns it,
+  **immutable**), `with`, `from` (policy groups: members come only from
+  groups) and `private` (one bool, or one per side). The new Slack Connect page
+  lists the records with what the host's controller reported (not reported,
+  pending, waiting for acceptance, active, held, invalid), creates, edits (`with`,
+  `from`, `private`; a change of host or name is refused with "create a new
+  channel") and deletes (the record only: the channel stays in Slack and the
+  reconciler stops managing it). Records are validated against the policy and
+  written as `_shared.<name>.json` in `<release>-slack-workspaces` under the
+  ConfigMap's version, retried on a conflict. The operator of the host
+  workspace's owner, or the installation-wide operator, may change a record;
+  viewers of any workspace it touches see it. New RPCs `SlackSharedChannelService`
+  (`ListSlackSharedChannels`, `CreateSlackSharedChannel`,
+  `UpdateSlackSharedChannel`, `DeleteSlackSharedChannel`), new audit actions
+  `roster.slack_shared_channel.created`, `.updated` and `.deleted`. See
+  [docs/connect/slack-connect-channels.md](docs/connect/slack-connect-channels.md).
 - **New: a catalogue of Slack Apps, created and installed from the
   console.** `slackApps` declares each App (`id`, the policy's `workspace`
   key, `botScopes`, optional `name`, `description` and `push`). An operator
