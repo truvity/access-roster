@@ -35,19 +35,16 @@ import (
 
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/status"
+	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/policy"
 )
 
-// Holder is one account holding a group, as the directory reports it.
-type Holder struct {
-	Email string
-	// Live is false for a suspended account, which is not somebody a team
-	// should contain.
-	Live bool
-}
+// Holder is one account holding a group, as the directory reports it. It
+// is the generic [rails.Holder].
+type Holder = rails.Holder
 
 // Holders are each bound group's holders.
-type Holders map[string][]Holder
+type Holders = rails.Holders
 
 // State is what GitHub holds for one organisation.
 type State struct {
@@ -78,20 +75,8 @@ type Link struct {
 }
 
 // Confirmation is the directory's answer about one address, asked before
-// anybody is removed on its account.
-type Confirmation struct {
-	// Authoritative is whether the directory can vouch for the answer. A
-	// removal never rests on anything else.
-	Authoritative bool
-	Found         bool
-	Suspended     bool
-	// Groups are the internal groups the address holds.
-	Groups []string
-}
-
-// Gone reports an address the directory authoritatively no longer has, or
-// has suspended.
-func (c Confirmation) Gone() bool { return c.Authoritative && (!c.Found || c.Suspended) }
+// anybody is removed on its account: the generic [rails.Vouch].
+type Confirmation = rails.Vouch
 
 // Action is one change to GitHub.
 type Action struct {
@@ -536,21 +521,10 @@ func (d *Draft) Decide(confirmations map[string]Confirmation) (status.Org, []Act
 	return out, dropTeamWorkForLeavers(actions)
 }
 
-// confirmTeamRemoval says whether a member leaves a team, or why not.
+// confirmTeamRemoval says whether a member leaves a team, or why not: the
+// generic [rails.Removal], against the groups the team wants.
 func (d *Draft) confirmTeamRemoval(slug string, emails []string, confirmations map[string]Confirmation) (reason string, remove bool) {
-	groups := d.binding.Teams[slug].Groups()
-	for _, email := range emails {
-		c, asked := confirmations[email]
-		switch {
-		case !asked:
-			return "the directory was not asked about " + email, false
-		case !c.Authoritative:
-			return "the directory cannot vouch for " + email + " right now", false
-		case c.Found && !c.Suspended && holdsAny(c.Groups, groups):
-			return "", false
-		}
-	}
-	return "", true
+	return rails.Removal(emails, confirmations, d.binding.Teams[slug].Groups())
 }
 
 // allGone reports whether every address of a member is one the directory
@@ -589,15 +563,6 @@ func roleOf(maintainer bool) status.Role {
 		return status.RoleMaintainer
 	}
 	return status.RoleMember
-}
-
-func holdsAny(held, wanted []string) bool {
-	for _, group := range wanted {
-		if slices.Contains(held, group) {
-			return true
-		}
-	}
-	return false
 }
 
 func appendUnique(list []string, value string) []string {

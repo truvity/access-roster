@@ -42,19 +42,6 @@ import (
 // group here has, and the answer says when it was not enough.
 const holdersLimit = 10000
 
-// A console answering under another policy is, almost always, a rollout
-// still under way: the Service goes on routing some questions to a replica
-// on the previous policy until that replica has gone. A pass that met one
-// is tried again soon, not after a whole interval — policyRetries times,
-// each wait twice the last and no longer than policyRetryCap, then the
-// interval again. A difference that outlasts every retry is not a rollout,
-// and asking every few seconds would not end it.
-const (
-	defaultPolicyRetry = 5 * time.Second
-	policyRetryCap     = time.Minute
-	policyRetries      = 6
-)
-
 // StatusWriter replaces the report.
 type StatusWriter interface {
 	Replace(ctx context.Context, documents map[string]string) error
@@ -148,9 +135,6 @@ func New(cfg Config, deps Deps) *Controller {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 15 * time.Minute
 	}
-	if cfg.PolicyRetry <= 0 {
-		cfg.PolicyRetry = defaultPolicyRetry
-	}
 	return &Controller{
 		cfg: cfg, deps: deps, tokens: map[string]installationToken{}, held: map[string]map[string]bool{},
 		last:          map[string]status.Org{},
@@ -160,29 +144,9 @@ func New(cfg Config, deps Deps) *Controller {
 
 // Run passes now and then every interval, until the context ends. A pass
 // that met a console answering under another policy is tried again soon
-// (see policyRetries).
+// (see [rails.Run]).
 func (c *Controller) Run(ctx context.Context) error {
-	retries := 0
-	for {
-		started := time.Now()
-		otherPolicy := c.Pass(ctx)
-		wait := c.cfg.Interval - time.Since(started)
-		if otherPolicy && retries < policyRetries {
-			wait = min(c.cfg.PolicyRetry<<retries, policyRetryCap, c.cfg.Interval)
-			retries++
-			c.deps.Log.InfoContext(ctx, "the console answered under another policy, as it does while a rollout replaces it; passing again soon",
-				"in", wait, "retry", retries, "of", policyRetries)
-		} else {
-			retries = 0
-		}
-		timer := time.NewTimer(max(wait, 0))
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
-	}
+	return rails.Run(ctx, c.deps.Log, rails.Pacing{Interval: c.cfg.Interval, PolicyRetry: c.cfg.PolicyRetry}, c.Pass)
 }
 
 // Pass goes over every bound organisation once and replaces the report.
@@ -382,34 +346,51 @@ func (c *Controller) read(ctx context.Context, client githubapp.Org, token strin
 	return state, nil
 }
 
+// directory is the console as a reconciler asks it: the generic
+// [rails.Directory], with this controller's client and policy digest.
+func (c *Controller) directory() rails.Directory {
+	return rails.Directory{
+		Guard: rails.PolicyGuard{Digest: c.deps.Policy},
+		Log:   c.deps.Log,
+		ListHolders: func(ctx context.Context, group string) ([]rails.Holder, string, bool, error) {
+			response, err := c.deps.Access.ListHolders(ctx, connect.NewRequest(&directoryrosterv1.ListHoldersRequest{
+				Group: group, Limit: holdersLimit,
+			}))
+			if err != nil {
+				return nil, "", false, err
+			}
+			var holders []rails.Holder
+			for _, holder := range response.Msg.GetHolders() {
+				holders = append(holders, rails.Holder{Email: holder.GetEmail(), Live: holder.GetLive()})
+			}
+			return holders, response.Msg.GetPolicyDigest(), response.Msg.GetTruncated(), nil
+		},
+		Explain: func(ctx context.Context, email string) (rails.Vouch, string, error) {
+			response, err := c.deps.Access.Explain(ctx, connect.NewRequest(&directoryrosterv1.ExplainRequest{Email: email}))
+			if err != nil {
+				return rails.Vouch{}, "", err
+			}
+			msg := response.Msg
+			vouch := rails.Vouch{
+				Authoritative: msg.GetAuthoritative(),
+				Found:         msg.GetFound(),
+				Suspended:     msg.GetSuspended(),
+			}
+			for _, held := range msg.GetHeld() {
+				vouch.Groups = append(vouch.Groups, held.GetGroup())
+			}
+			return vouch, msg.GetPolicyDigest(), nil
+		},
+	}
+}
+
 // holders asks the console who holds each group the organisation binds.
 func (c *Controller) holders(ctx context.Context, binding policy.GitHubOrg) (reconcile.Holders, error) {
 	groups := slices.Clone(binding.Members)
 	for _, team := range binding.Teams {
 		groups = append(groups, team.Groups()...)
 	}
-	slices.Sort(groups)
-	out := reconcile.Holders{}
-	for _, group := range slices.Compact(groups) {
-		response, err := c.deps.Access.ListHolders(ctx, connect.NewRequest(&directoryrosterv1.ListHoldersRequest{
-			Group: group, Limit: holdersLimit,
-		}))
-		if err != nil {
-			return nil, fmt.Errorf("ask who holds %s: %w", group, err)
-		}
-		if err = c.samePolicy(response.Msg.GetPolicyDigest()); err != nil {
-			return nil, fmt.Errorf("ask who holds %s: %w", group, err)
-		}
-		for _, holder := range response.Msg.GetHolders() {
-			out[group] = append(out[group], reconcile.Holder{Email: holder.GetEmail(), Live: holder.GetLive()})
-		}
-		if response.Msg.GetTruncated() {
-			// Additions from a partial list are still right; removals never
-			// rest on it anyway, because each is confirmed.
-			c.deps.Log.WarnContext(ctx, "a holders list was incomplete; removals are confirmed one by one regardless", "group", group)
-		}
-	}
-	return out, nil
+	return c.directory().Holders(ctx, groups)
 }
 
 // errPolicyDiffers is an answer computed under a policy other than the one
@@ -417,41 +398,13 @@ func (c *Controller) holders(ctx context.Context, binding policy.GitHubOrg) (rec
 // internal/rails' generic [rails.ErrPolicyDiffers].
 var errPolicyDiffers = rails.ErrPolicyDiffers
 
-// samePolicy refuses an answer from a console running another policy. An
-// unset digest on either side is a mismatch too: a console too old to say
-// which policy it runs cannot be shown to run this one. It is the generic
-// [rails.PolicyGuard], with this pass's own digest.
-func (c *Controller) samePolicy(digest string) error {
-	return rails.PolicyGuard{Digest: c.deps.Policy}.Check(digest)
-}
-
-// confirm asks about each address a removal would rest on, one at a time,
-// using the generic [rails.Confirm]. One that could not be asked, or whose
-// answer came from a console under another policy, is simply not
-// confirmed, which holds its removal; the second result says whether any
-// answer came under another policy.
+// confirm asks about each address a removal would rest on, one at a time
+// ([rails.Directory.Vouch]). One that could not be asked, or whose answer
+// came from a console under another policy, is simply not confirmed, which
+// holds its removal; the second result says whether any answer came under
+// another policy.
 func (c *Controller) confirm(ctx context.Context, emails []string) (map[string]reconcile.Confirmation, bool) {
-	return rails.Confirm(emails, rails.PolicyGuard{Digest: c.deps.Policy},
-		func(email string) (reconcile.Confirmation, string, error) {
-			response, err := c.deps.Access.Explain(ctx, connect.NewRequest(&directoryrosterv1.ExplainRequest{Email: email}))
-			if err != nil {
-				return reconcile.Confirmation{}, "", err
-			}
-			msg := response.Msg
-			confirmation := reconcile.Confirmation{
-				Authoritative: msg.GetAuthoritative(),
-				Found:         msg.GetFound(),
-				Suspended:     msg.GetSuspended(),
-			}
-			for _, held := range msg.GetHeld() {
-				confirmation.Groups = append(confirmation.Groups, held.GetGroup())
-			}
-			return confirmation, msg.GetPolicyDigest(), nil
-		},
-		func(email string, err error) {
-			c.deps.Log.WarnContext(ctx, "a removal could not be confirmed and is held", "email", email, "error", err)
-		},
-	)
+	return c.directory().Vouch(ctx, emails)
 }
 
 // act makes the changes. One that GitHub refuses becomes a held row with
