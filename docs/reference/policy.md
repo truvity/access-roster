@@ -1040,12 +1040,6 @@ slack:
     globex:
       team_id: T0456EFGH
       domains: [globex.example]
-  shared_channels:                          # Slack Connect: one channel, several workspaces
-    platform:
-      host: acme                            # creates and owns it
-      with: [globex]                        # the other sides
-      from: [acme:platform:member]
-      private: true                         # or {acme: true, globex: false}
 ```
 
 Each workspace is connected by **its own app** and bot token; the token is
@@ -1086,12 +1080,11 @@ deactivated users, guests (reported, never touched) or anybody on
 - a person with no Slack account yet, or with no address in the
   workspace's domains, is **held** with that reason, never an error.
 
-**Shared channels** span workspaces. `host` creates and owns the channel
-(Slack requires exactly one); `with` lists the other workspaces; `from`
-the internal groups, each person placed on the side whose domain their
-address is in. `private` is one bool for every side, or a map naming the
-host and every `with` workspace, because Slack lets each organisation
-choose its own side's visibility. Absent is public.
+**Shared (Slack Connect) channels are not in the policy.** They span
+workspaces, and they are created and edited interactively on the console,
+which keeps them as records of its own. The policy declares only what is
+fixed at deploy time: the workspaces, whose domain is whose, and the
+channels bound inside each.
 
 What is refused, and why each would otherwise be silent:
 
@@ -1107,14 +1100,11 @@ What is refused, and why each would otherwise be silent:
 | a channel with no `from` | *empty this channel* is not something to express by leaving a list out |
 | a group nothing declares | the binding would name something with no meaning |
 | `adopt` not `^[CG][A-Z0-9]{8,}$`, or one ID adopted twice in a workspace | two bindings would fight over one channel |
-| a shared channel whose `host` is undeclared, or is also in `with`; empty or repeated `with` | ownership must be one declared workspace, and sharing with nobody is an ordinary channel |
-| a shared channel named like a channel of its host | one name would be two channels |
-| a `private` map that does not name exactly the host and `with` | a side's visibility would be a default nobody wrote |
 
 Across merged files a workspace merges field by field, as a GitHub
 organisation does: one file may declare it (`team_id`, `domains`) and
 another bind channels in it. `team_id` and `domains` come from one file, a
-channel or shared channel from one file, and a repeat is a clash. Bound
+channel from one file, and a repeat is a clash. Bound
 groups count as consumed, so they are not reported by the unused-group
 lint. Validation runs on the merged policy, so a reference across files
 is checked once, after the merge.

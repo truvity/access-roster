@@ -3,14 +3,25 @@
 - **New: `people` and `slack` in the policy schema (schema only; no
   controller yet).** `people` links the addresses of one person across
   domains; `slack` declares workspaces (own key, Slack `team_id`, email
-  `domains`), channels bound to internal groups (created, or adopted by
-  ID), and Slack Connect `shared_channels` with a `host`, the workspaces
-  it is shared `with`, and `private` as one bool or per side. Both are
-  validated at load, merged across files as `github` is (workspaces field
-  by field, everything else per key, a repeat is a clash), covered by the
-  policy digest, and their groups count as consumed. A controller that
-  reads them is being built; until it ships, nothing reads these keys.
+  `domains`) and the channels bound in them to internal groups, created or
+  adopted by ID. A channel is `mode: extend` (the default: only add) or
+  `mode: strict` (add and remove; private channels only, so `strict` on a
+  public channel is refused at load because Slack lets only administrators
+  remove people from one), and a strict channel may `ignore` addresses or
+  Slack user ids it never removes. Both keys are validated at load, merged
+  across files as `github` is, covered by the policy digest, and their groups
+  count as consumed. Slack Connect shared channels are not in the policy:
+  they are managed on the console. A controller that reads these keys is
+  being built; until it ships, nothing does.
   See [docs/reference/policy.md](docs/reference/policy.md#slack-channels).
+- **Internal: the Slack reconciler's core (`internal/slackroster`): the pure
+  decision (who to invite, remove, hold and report in each workspace's
+  channels, and in Slack Connect channels given as input), its status
+  document, the per-workspace connection record and credential, and the step
+  that applies a decision through the Slack client.** No controller runs it
+  yet. `internal/slackapp` gains `UserInfo` (a member's address) and
+  `SharedTeamIDs` on a channel. See
+  [docs/design/access-roster.md](docs/design/access-roster.md#the-slack-reconciler).
 - **Internal: `internal/rails` now holds what the GitHub controller and the
   reconcilers after it share: the pass loop with its policy-retry backoff
   (`Run`), the console's two questions gated by the policy digest

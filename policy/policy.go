@@ -1035,7 +1035,7 @@ func conventional(name string) bool {
 //     [ClientDocuments.Groups]) — see below
 //   - any GitHub binding (organisation [GitHubOrg.Members] or team
 //     [GitHubTeam.Members]/[GitHubTeam.Maintainers])
-//   - any Slack binding (a channel's or shared channel's [SlackChannel.From])
+//   - any Slack binding (a channel's [SlackChannel.From])
 //   - this hub's own roles (groups whose [thing] segment is [ThingSelf] and
 //     whose role is [RoleOperator] or [RoleViewer], which the hub reads
 //     directly from the token)
@@ -1176,11 +1176,6 @@ func (p Policy) Unconsumed(catalogueGroups ...string) []string {
 			for _, group := range ws.Channels[name].From {
 				consumed[group] = true
 			}
-		}
-	}
-	for name := range p.Slack.SharedChannels {
-		for _, group := range p.Slack.SharedChannels[name].From {
-			consumed[group] = true
 		}
 	}
 

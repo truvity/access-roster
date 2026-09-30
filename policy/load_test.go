@@ -111,21 +111,16 @@ var policyFields = map[string]mergeRule{
 	},
 	"Slack": {
 		rule:    "field by field: see slackFields",
-		declare: "version: 1\nslack: { shared_channels: { platform: { host: acme, with: [globex], from: [g] } } }\n",
+		declare: "version: 1\nslack: { workspaces: { acme: { team_id: T0123ABCD } } }\n",
 		twice:   clash,
 	},
 }
 
-// slackFields is the `slack` block one level down: its two tables.
+// slackFields is the `slack` block one level down: its one table.
 var slackFields = map[string]mergeRule{
 	"Workspaces": {
 		rule:    "per workspace, field by field: see slackWorkspaceFields",
 		declare: "version: 1\nslack: { workspaces: { acme: { team_id: T0123ABCD } } }\n",
-		twice:   clash,
-	},
-	"SharedChannels": {
-		rule:    "per shared channel; one in two files is a clash",
-		declare: "version: 1\nslack: { shared_channels: { platform: { host: acme, with: [globex], from: [g] } } }\n",
 		twice:   clash,
 	},
 }
@@ -402,8 +397,6 @@ slack:
       channels:
         ops: { from: [devel:k8s:admin], adopt: C0123ABCD }
     globex: { team_id: T0456EFGH, domains: [b.example] }
-  shared_channels:
-    platform: { host: acme, with: [globex], from: [devel:k8s:viewer], private: { acme: true, globex: false } }
 `,
 	}
 
