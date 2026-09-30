@@ -277,6 +277,23 @@ type Policy struct {
 	// contain. Which accounts hold a group is a question only the
 	// directory answers, so nothing about a provider appears here.
 	GitHub map[string]GitHubOrg `yaml:"github,omitempty"`
+	// People says which addresses are the same person — someone with an
+	// address in two companies' domains — keyed by a name we choose:
+	// `jdoe: [j.doe@acme.example, john@globex.example]`.
+	//
+	// It is generic, not Slack's: any reconciler that looks a person up by
+	// their address in one domain and might hold them under another
+	// benefits. And it only LINKS addresses. It never says who holds a
+	// group — the directory alone answers that — so a person listed here
+	// gains nothing until the directory puts one of their addresses in a
+	// group, and is not removed from anything by being left out. See
+	// [Policy.PeopleByAddress].
+	People map[string][]string `yaml:"people,omitempty"`
+	// Slack binds internal groups to Slack channels across one or more
+	// workspaces. It grants nothing and appears in no token; a controller
+	// that reads it is being built, and until it ships nothing does.
+	// See [Slack].
+	Slack Slack `yaml:"slack,omitempty"`
 }
 
 // GitHubOrg is one organisation's bindings.
@@ -721,6 +738,12 @@ func (p Policy) Validate() error {
 			return err
 		}
 	}
+	if err := p.validatePeople(); err != nil {
+		return err
+	}
+	if err := p.validateSlack(); err != nil {
+		return err
+	}
 	for _, id := range slices.Sorted(maps.Keys(p.Clients)) {
 		if err := p.Clients[id].validate(id, p); err != nil {
 			return err
@@ -1012,6 +1035,7 @@ func conventional(name string) bool {
 //     [ClientDocuments.Groups]) — see below
 //   - any GitHub binding (organisation [GitHubOrg.Members] or team
 //     [GitHubTeam.Members]/[GitHubTeam.Maintainers])
+//   - any Slack binding (a channel's or shared channel's [SlackChannel.From])
 //   - this hub's own roles (groups whose [thing] segment is [ThingSelf] and
 //     whose role is [RoleOperator] or [RoleViewer], which the hub reads
 //     directly from the token)
@@ -1143,6 +1167,20 @@ func (p Policy) Unconsumed(catalogueGroups ...string) []string {
 			for _, name := range p.GitHub[org].Teams[team].Maintainers {
 				consumed[name] = true
 			}
+		}
+	}
+
+	// Slack bindings: a channel consumes its groups as a team does.
+	for _, ws := range p.Slack.Workspaces {
+		for name := range ws.Channels {
+			for _, group := range ws.Channels[name].From {
+				consumed[group] = true
+			}
+		}
+	}
+	for name := range p.Slack.SharedChannels {
+		for _, group := range p.Slack.SharedChannels[name].From {
+			consumed[group] = true
 		}
 	}
 

@@ -1,3 +1,17 @@
+## Unreleased
+
+- **New: `people` and `slack` in the policy schema (schema only; no
+  controller yet).** `people` links the addresses of one person across
+  domains; `slack` declares workspaces (own key, Slack `team_id`, email
+  `domains`), channels bound to internal groups (created, or adopted by
+  ID), and Slack Connect `shared_channels` with a `host`, the workspaces
+  it is shared `with`, and `private` as one bool or per side. Both are
+  validated at load, merged across files as `github` is (workspaces field
+  by field, everything else per key, a repeat is a clash), covered by the
+  policy digest, and their groups count as consumed. A controller that
+  reads them is being built; until it ships, nothing reads these keys.
+  See [docs/reference/policy.md](docs/reference/policy.md#slack-channels).
+
 ## v1.40.0
 
 - **New: `resource-proxy`, a sidecar that gives a stock MCP server (or any
