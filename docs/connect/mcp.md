@@ -169,3 +169,174 @@ may reach the MCP server at all; what a tool may then do through it is
 whatever the caller's groups already let it do on the backend directly —
 an MCP server is a new way to call something, never a new grant. There is
 no separate "tool permission" vocabulary to maintain in the policy.
+
+## A Go server: `identity/resource`
+
+`identity.Middleware` plus a hand-written 401 and a hand-written PRM
+document is the same 120 lines in every MCP server. They live in one
+package now:
+
+```go
+res, err := resource.New(resource.Config{
+    IssuerURL:   "https://access.example",
+    ResourceURL: "https://mcp.example.com/metrics",
+    Scope:       "openid",
+})
+mux.Handle(res.Path(), res.Metadata())      // RFC 9728, unauthenticated
+mux.Handle("/", res.Protect(mcpHandler))    // 401 + challenge, else the caller is in the context
+who, _ := identity.FromContext(r.Context()) // inside mcpHandler
+```
+
+`Protect` reads the `Authorization` bearer only (never the gateway's
+forwarded-token header: a public resource server does not get to promise
+that nothing but a gateway reaches it). No token answers `401` with
+`WWW-Authenticate: Bearer resource_metadata="<PRM URL>", scope="<scope>"`;
+a token that was presented and did not verify adds `error="invalid_token"`
+(RFC 6750 §3); an issuer that cannot be reached answers `503`, because
+telling a legitimate caller to sign in again during an outage makes the
+outage worse. `res.Ready(ctx)` is the readiness probe: nil once the
+issuer's discovery document has been fetched. `resource.WellKnownPath`
+is the RFC 9728 §3.1 location: the well-known prefix, then the resource's
+own path (`/.well-known/oauth-protected-resource/metrics` for
+`https://mcp.example.com/metrics`; a lone trailing slash is dropped, so a
+root resource is the bare prefix).
+
+`identity.Verified.ClientID` carries the token's `azp` (or `client_id`),
+for a record of which client called. Never authorize on it.
+
+## Fronting a stock MCP server with `resource-proxy`
+
+Most MCP servers are somebody else's software and know nothing about
+access-roster. `resource-proxy` is the sidecar that gives one its front
+door without changing it: one container beside the stock server, from the
+image `ghcr.io/truvity/access-roster/resource-proxy:<version>` (pin it by
+digest; it is published with every release, multi-arch, distroless,
+non-root, and needs no shell and no writable filesystem).
+
+```
+client ──▶ gateway ──▶ :8080 resource-proxy ──▶ 127.0.0.1:8081 stock MCP server
+                        verifies the token                     │
+                        serves the PRM                         ▼
+                        writes the audit line       127.0.0.1:8429 resource-proxy (outbound)
+                                                    adds the workload's OWN token ──▶ backend
+```
+
+### Inbound: who may call
+
+Every request except the metadata document and the health endpoints needs
+a token that verifies against `ISSUER_URL` with `aud` equal to
+`RESOURCE_URL`. Who may *obtain* such a token is decided by
+`resources.<RESOURCE_URL>.requires` in the policy, and nowhere else; the
+proxy reads no group. The caller's `Authorization` header (and the
+gateway's forwarded-token header) is removed before the request reaches
+the stock server.
+
+### Configuration
+
+Every flag has an environment variable of the same name, upper case with
+underscores; a flag given wins.
+
+| Flag / environment | Default | Meaning |
+|---|---|---|
+| `--listen` / `LISTEN` | `:8080` | inbound listener |
+| `--upstream` / `UPSTREAM` | required | the stock server, e.g. `http://127.0.0.1:8081/mcp`. Its path is where the resource's path maps to (below) |
+| `--issuer-url` / `ISSUER_URL` | required | the issuer, exactly as in a token's `iss` |
+| `--resource-url` / `RESOURCE_URL` | required | this resource's public URL: the token audience and the policy's `resources` key, byte for byte |
+| `--scope` / `SCOPE` | `openid` | advertised in the PRM and the challenge, never checked; empty omits it |
+| `--max-request-bytes` / `MAX_REQUEST_BYTES` | `4194304` | largest request body; more is `413` |
+| `--body-read-timeout` / `BODY_READ_TIMEOUT` | `30s` | time to read one body |
+| `--upstream-timeout` / `UPSTREAM_TIMEOUT` | `2m` | wait for the stock server's response headers (a stream is not bounded by it) |
+| `--outbound-listen` / `OUTBOUND_LISTEN` | empty = off | loopback address of the outbound forwarder, e.g. `127.0.0.1:8429` |
+| `--outbound-target` / `OUTBOUND_TARGET` | | where the outbound forwarder sends what it gets |
+| `--outbound-token-endpoint` / `OUTBOUND_TOKEN_ENDPOINT` | | the issuer's token endpoint, ending in `/token` |
+| `--outbound-client-id` / `OUTBOUND_CLIENT_ID` | | the exchange client this workload presents |
+| `--outbound-audience` / `OUTBOUND_AUDIENCE` | | the audience to exchange for |
+| `--outbound-sa-token-file` / `OUTBOUND_SA_TOKEN_FILE` | | the projected ServiceAccount token (audience: the issuer), re-read for every exchange |
+| `--outbound-allow-non-loopback` / `OUTBOUND_ALLOW_NON_LOOPBACK` | `false` | see below |
+| `--refresh-before` / `REFRESH_BEFORE` | `1m` | exchange again this long before expiry (never more than half a token's life) |
+
+Setting any `OUTBOUND_*` value without `OUTBOUND_LISTEN`, or
+`OUTBOUND_LISTEN` without the five it needs, is refused at start.
+
+### The routing contract with the gateway
+
+The proxy handles the path itself, so the gateway does **not** rewrite
+anything. For `RESOURCE_URL=https://mcp.example.com/metrics` the gateway
+routes to this pod:
+
+| Request path | Handled as |
+|---|---|
+| `/metrics` and everything under `/metrics/` | authenticated, proxied. The prefix `/metrics` is replaced by the path of `UPSTREAM`: with `UPSTREAM=http://127.0.0.1:8081/mcp`, `/metrics` reaches the stock server as `/mcp` and `/metrics/x` as `/mcp/x`; with no path on `UPSTREAM`, `/metrics/x` is `/x`. The query string is kept |
+| `/.well-known/oauth-protected-resource/metrics` | the PRM, unauthenticated |
+| `/.well-known/oauth-protected-resource` | the same PRM, for a gateway that rewrites a path-suffixed request to the bare form. **Route this to one pod only**; with several resources on one host it names whichever pod got it |
+| anything else under the authenticated catch-all | `404` after authentication |
+| `/healthz`, `/readyz` | probes for the kubelet; do not route them through the gateway |
+
+A client that speaks RFC 9728 asks for the path-suffixed document first,
+so a host that serves several resources needs one route per resource for
+its well-known path, to that resource's pod, beside the route for the
+resource's own prefix. A resource at the root of its host
+(`https://mcp.example.com/`) has no prefix to strip and its PRM is the
+bare well-known path.
+
+Streaming works through the proxy: responses are flushed as they are
+written, nothing is buffered, so both Streamable HTTP and the older SSE
+transport pass. Timeouts bound the request side only; a stream lives as
+long as its client does.
+
+### Outbound: the workload's own identity
+
+The stock server points its backend URL at `OUTBOUND_LISTEN` and holds no
+credential. The proxy adds `Authorization: Bearer <token>` to whatever
+arrives there and forwards it to `OUTBOUND_TARGET`; the token is this
+workload's **own**. The caller's token is never forwarded: the MCP
+authorization spec forbids passing it through, and the two identities
+answer different questions (who asked, and what this service may read).
+
+The token is obtained the way any workload does
+([service-to-service](service-to-service.md)): the pod's projected
+ServiceAccount token, minted for the issuer as audience, is read from
+`OUTBOUND_SA_TOKEN_FILE` **afresh for every exchange** (the kubelet
+rotates it under the pod) and traded at `OUTBOUND_TOKEN_ENDPOINT` (RFC
+8693, `tokens.Exchanger`) as `OUTBOUND_CLIENT_ID` for `OUTBOUND_AUDIENCE`. The result is cached and
+exchanged again `REFRESH_BEFORE` ahead of expiry. If a refresh fails while
+the previous token is still in date, that token is served and the next call
+tries again; if none is, the call is `502`, never an unauthenticated
+request. `/readyz` reports not ready until the first token was obtained.
+
+The listener accepts any caller that can reach it and lends them this
+workload's identity, so it must be loopback: anything else (`:8429`,
+`0.0.0.0`, a pod IP) is refused at start unless
+`OUTBOUND_ALLOW_NON_LOOPBACK=true` is set by name. Inside one pod
+that is the stock server and nothing else.
+
+### The audit line
+
+One JSON line per request to the authenticated routes, on standard
+output, written when the request finishes (a refused request is logged
+too, with no caller):
+
+```json
+{"time":"…","level":"INFO","msg":"mcp_request","http_method":"POST","path":"/metrics",
+ "status":200,"duration_ms":41.3,"sub":"ada@example.com","email":"ada@example.com",
+ "name":"Ada L","client":"https://client.example/cimd.json",
+ "method":"tools/call","tool":"query"}
+```
+
+`sub` (and `email` and `name` when the token has them), `client` (the
+`azp` or `client_id` claim), the JSON-RPC `method` and, for `tools/call`,
+the tool's `name`. A batch is `"method":"batch"` with a `calls` array of
+`{method, tool}`. `duration_ms` of a stream is how long it stayed open.
+Never in it: a token, a header, a query string, tool arguments, or any
+response body. A body that is not JSON-RPC is logged with no method.
+
+### Migrating a server that embedded its own copy
+
+A server that carries its own 120-line copy of this (a `NewAuth` /
+`Protect` / `Metadata` trio) has two ways out. As a Go server, replace
+the copy with `resource.New` and `Protect`/`Metadata` above: the
+behaviour is the same except that a root resource's metadata now lives at
+the bare well-known path (RFC 9728 §3.1 drops the lone slash) and an
+unreachable issuer is `503` rather than `401`. Or run it as the stock
+server behind `resource-proxy` and delete the auth code. Either way the
+policy's `resources` row and the clients do not change.

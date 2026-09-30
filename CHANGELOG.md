@@ -1,4 +1,21 @@
-## Unreleased
+## v1.40.0
+
+- **New: `resource-proxy`, a sidecar that gives a stock MCP server (or any
+  HTTP service) an access-roster resource server's front door, and
+  `identity/resource`, the library it is built on.** Inbound it verifies
+  the caller's token (signature, issuer, `aud` = the resource's own URL),
+  serves the RFC 9728 Protected Resource Metadata at its path-suffixed
+  location, answers `401` with `WWW-Authenticate: Bearer
+  resource_metadata="...", scope="..."`, writes one audit line per request
+  (caller, client, JSON-RPC method and tool, status, duration; never a
+  token or a body) and reverse-proxies with the caller's `Authorization`
+  removed and SSE streaming intact. Optionally, on a loopback listener, it
+  injects a bearer token the workload's own projected ServiceAccount token
+  earned by an RFC 8693 exchange, so the stock server holds no credential.
+  The image is `ghcr.io/truvity/access-roster/resource-proxy:<version>`,
+  multi-arch. See [docs/connect/mcp.md](docs/connect/mcp.md#fronting-a-stock-mcp-server-with-resource-proxy).
+  `identity.Verified` gains `ClientID` (the token's `azp`, or
+  `client_id`). No existing package changes behaviour.
 
 - **Removed: the one-time label move.** The start-up relabel of objects an
   earlier release wrote under the old label keys, and the once-a-minute
