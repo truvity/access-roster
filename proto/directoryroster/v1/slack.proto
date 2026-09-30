@@ -1,0 +1,223 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// SlackService is the console's view of the Slack workspaces the policy
+// declares (`slack.workspaces`): whether each is connected to the roster's
+// bot, what the Slack controller last reported for its channels and people,
+// and the three things an operator does about it — connect it, disconnect
+// it, and confirm a removal set the controller held back.
+//
+// The controller acts and the console shows. Connecting hands the
+// controller a credential (the roster's own Slack App, created from a
+// manifest with a throwaway app configuration token, and installed by an
+// owner of the workspace) rather than telling it what to do.
+service SlackService {
+  // GetSlackStatus returns every Slack workspace the caller may view, each
+  // with its connection, the controller's last report and whether the
+  // caller may operate it. Viewer, installation-wide or over the directory
+  // workspace that owns the Slack workspace (`slack.workspaces.<key>.owner`):
+  // a scoped viewer sees only the workspaces its directory owns.
+  // Never a client secret or a bot token.
+  rpc GetSlackStatus(GetSlackStatusRequest) returns (GetSlackStatusResponse);
+
+  // BeginSlackWorkspaceConnect creates the roster's Slack App for a
+  // workspace from its manifest with the configuration token, or — for a
+  // workspace whose App is already created — prepares a reinstall, and
+  // returns Slack's authorize URL carrying signed state. The response
+  // header pins the flow to this browser with a cookie. Operator of the
+  // workspace's owner, or the installation-wide operator.
+  //
+  // The configuration token lives in this request and in one call to
+  // Slack: it is neither stored nor logged.
+  rpc BeginSlackWorkspaceConnect(BeginSlackWorkspaceConnectRequest) returns (BeginSlackWorkspaceConnectResponse);
+
+  // DisconnectSlackWorkspace revokes the workspace's bot token at Slack and
+  // forgets the connection, so the controller stops acting there. Operator
+  // of the workspace's owner, or the installation-wide operator. The App
+  // itself is deleted in Slack, which this service cannot do.
+  rpc DisconnectSlackWorkspace(DisconnectSlackWorkspaceRequest) returns (DisconnectSlackWorkspaceResponse);
+
+  // ConfirmSlackRemovals lets a pass that would remove more than half of a
+  // channel, or of a workspace, go ahead — for exactly the set of removals
+  // the operator saw, named by its fingerprint in the latest report. A
+  // different set needs confirming again; a confirmation lapses after a
+  // day. Operator.
+  rpc ConfirmSlackRemovals(ConfirmSlackRemovalsRequest) returns (ConfirmSlackRemovalsResponse);
+}
+
+message GetSlackStatusRequest {}
+
+message GetSlackStatusResponse {
+  // whether this deployment keeps the Slack controller's report.
+  bool reports_available = 1;
+  // whether this deployment can connect a workspace at all. False with a
+  // deployment that keeps no state in Kubernetes: a bot token would not
+  // survive a restart.
+  bool connecting_available = 2;
+  // the bot scopes the roster's App asks for.
+  repeated string bot_scopes = 3;
+  // where Slack sends the owner back to after installing: to be listed in
+  // the App's redirect URLs.
+  string redirect_url = 4;
+  repeated SlackWorkspaceStatus workspaces = 5;
+}
+
+message BeginSlackWorkspaceConnectRequest {
+  // the policy's key of the workspace.
+  string workspace = 1;
+  // an app configuration token, from api.slack.com/apps, "Your App
+  // Configuration Tokens". It expires in twelve hours and is used once.
+  // Required to create the App; optional afterwards, needed only when the
+  // scopes the roster asks for have grown since the App was created.
+  string configuration_token = 2;
+}
+
+message BeginSlackWorkspaceConnectResponse {
+  // where the browser goes next: Slack's authorize page.
+  string url = 1;
+}
+
+message DisconnectSlackWorkspaceRequest {
+  string workspace = 1;
+  // forget the connection even when Slack would not revoke the token (for
+  // instance because it cannot be reached). The token then stays valid in
+  // Slack until the App is removed there, and the audit record says so.
+  bool forget_anyway = 2;
+}
+
+message DisconnectSlackWorkspaceResponse {
+  // whether the bot token was revoked at Slack. False when there was none
+  // (the App was never installed) or forget_anyway overrode a refusal.
+  bool revoked = 1;
+}
+
+message ConfirmSlackRemovalsRequest {
+  string workspace = 1;
+  // empty for the workspace-wide breaker, a channel's name for that
+  // channel's own.
+  string channel = 2;
+  // the breaker's fingerprint, as the latest report shows it.
+  string fingerprint = 3;
+}
+
+message ConfirmSlackRemovalsResponse {}
+
+// SlackWorkspaceStatus is one Slack workspace: what the policy declares,
+// what is connected, and what the controller last did.
+message SlackWorkspaceStatus {
+  // the policy's key.
+  string workspace = 1;
+  // the Slack team id the policy declares: the only one an install is
+  // accepted from. Empty for a workspace the policy no longer declares.
+  string team_id = 2;
+  // the directory workspace that owns it, empty when the policy names none
+  // (then only the installation-wide role operates it).
+  string owner = 3;
+  // not_connected, created (the App exists and nobody has installed it),
+  // installed, or scopes_missing (installed, and the grant lacks scopes the
+  // roster now asks for).
+  string connection_state = 4;
+  SlackConnection connection = 5;
+  // whether the caller may connect, disconnect and confirm: the
+  // installation-wide operator, or the operator of the owning directory.
+  bool can_operate = 6;
+  // true when the controller has reported on this workspace.
+  bool reported = 7;
+  // whether the controller acts on it; false is a dry run, and every row
+  // says what WOULD change.
+  bool acting = 8;
+  SlackTick tick = 9;
+  repeated SlackChannelStatus channels = 10;
+  // people the directory no longer has who are still active in a managed
+  // channel. Reported, never acted on.
+  repeated SlackLeaver leavers = 11;
+  // set when the last pass would have removed more than half of the
+  // workspace's managed members.
+  SlackBreaker breaker = 12;
+  SlackRemovalConfirmation removal_confirmation = 13;
+  // true when reconnecting needs a configuration token: the scopes the
+  // roster asks for have grown since the App was created.
+  bool needs_configuration_token = 14;
+  // the roster's bot scopes the grant lacks.
+  repeated string missing_scopes = 15;
+}
+
+// SlackConnection is what connecting left behind. Never a credential.
+message SlackConnection {
+  string app_id = 1;
+  // where the App is managed and deleted, which this service cannot do.
+  string app_settings_url = 2;
+  string bot_user_id = 3;
+  // the scopes Slack granted at the last install.
+  repeated string granted_scopes = 4;
+  google.protobuf.Timestamp connected_at = 5;
+  string connected_by = 6;
+}
+
+// SlackTick is how the controller's last pass over the workspace went.
+message SlackTick {
+  google.protobuf.Timestamp at = 1;
+  // in-sync, applied, dry-run, held, retrying, waiting or failed.
+  string outcome = 2;
+  string error = 3;
+  // actions taken, or, when not acting, that would have been.
+  int32 changes = 4;
+  // rows not acted on until a person acts.
+  int32 held = 5;
+  int32 retrying = 6;
+  int32 waiting = 7;
+}
+
+message SlackChannelStatus {
+  string name = 1;
+  string id = 2;
+  bool private = 3;
+  // extend or strict.
+  string mode = 4;
+  // a Slack Connect channel, and the workspace that owns it.
+  bool shared = 5;
+  string host = 6;
+  // ok, will-create, will-adopt, will-accept, waiting or held.
+  string state = 7;
+  string reason = 8;
+  repeated SlackMemberStatus members = 9;
+  SlackBreaker breaker = 10;
+  SlackRemovalConfirmation removal_confirmation = 11;
+}
+
+message SlackMemberStatus {
+  string person = 1;
+  string email = 2;
+  string user_id = 3;
+  // ok, will-invite, will-remove, held, retrying, reported or ignored.
+  string state = 4;
+  // create, adopt, invite, remove, share-invite or share-accept.
+  string action = 5;
+  string reason = 6;
+}
+
+message SlackLeaver {
+  string email = 1;
+  string user_id = 2;
+  repeated string channels = 3;
+  string reason = 4;
+}
+
+message SlackBreaker {
+  int32 affected = 1;
+  int32 total = 2;
+  string fingerprint = 3;
+  // whether the set was confirmed, so the removals went ahead.
+  bool confirmed = 4;
+}
+
+// SlackRemovalConfirmation is an operator's confirmation of one set that
+// has not lapsed.
+message SlackRemovalConfirmation {
+  string fingerprint = 1;
+  string confirmed_by = 2;
+  google.protobuf.Timestamp confirmed_at = 3;
+}

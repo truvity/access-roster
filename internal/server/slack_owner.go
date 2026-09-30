@@ -53,9 +53,13 @@ func (c *Console) requireAnySlack(ctx context.Context, want access.Role) (access
 		fmt.Errorf("this needs the %s role, installation-wide or over a directory that owns a Slack workspace", want))
 }
 
-// slackWorkspaceOfBind is the Slack workspace a signed catalogue state
-// binds, so the callback can ask the role question again, now.
+// slackWorkspaceOfBind is the Slack workspace a signed state binds, so the
+// callback can ask the role question again, now: the workspace itself for a
+// workspace connect, the catalogue entry's for a catalogue App.
 func (c *Console) slackWorkspaceOfBind(bind string) string {
+	if workspace, ok := strings.CutPrefix(bind, slackWorkspaceBind); ok {
+		return workspace
+	}
 	id, ok := strings.CutPrefix(bind, slackCatalogueBind)
 	if !ok || c.deps.SlackCatalogue == nil {
 		return ""

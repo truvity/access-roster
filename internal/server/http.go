@@ -284,6 +284,7 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.Handle(directoryrosterv1connect.NewGitHubServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewSlackAppServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewSlackSharedChannelServiceHandler(s.console))
+	mux.Handle(directoryrosterv1connect.NewSlackServiceHandler(s.console))
 
 	if s.consoleUI != nil {
 		mux.Handle("GET /assets/", http.FileServerFS(s.consoleUI))
@@ -311,6 +312,8 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.HandleFunc("GET "+githubCatalogueSetupPath, s.githubCatalogueSetup)
 	// A catalogue Slack App's: after an owner installs it.
 	mux.HandleFunc("GET "+slackCatalogueCallbackPath, s.slackCatalogueCallback)
+	// A Slack workspace's own App: after an owner installs it.
+	mux.HandleFunc("GET "+slackWorkspaceCallbackPath, s.slackWorkspaceCallback)
 	// Creating the link App, and a person linking an account with it.
 	mux.HandleFunc("GET "+githubLinkAppCallbackPath, s.githubLinkAppCallback)
 	mux.HandleFunc("GET "+githubLinkPath, s.githubLinkPage)

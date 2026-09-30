@@ -167,7 +167,18 @@ export type StateKind =
   | "bound"
   | "absent"
   | "unexpected"
-  | "unreadable";
+  | "unreadable"
+  // A Slack workspace's connection, a channel's state, and a person's
+  // place in a channel.
+  | "not-connected"
+  | "will-create"
+  | "will-adopt"
+  | "will-accept"
+  | "in-channel"
+  | "will-invite"
+  | "will-remove"
+  | "slack-reported"
+  | "slack-ignored";
 
 const states: Record<StateKind, { label: string; color: "success" | "warning" | "secondary" | "default"; filled?: boolean; title: string }> = {
   live: { label: "live", color: "success", title: "The provider reports this account as active." },
@@ -256,6 +267,15 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
     filled: true,
     title: "In the store and declared by nothing here. Somebody has access no reviewed file asks for; it is removed where the store's desired state is written, never from this console.",
   },
+  "not-connected": { label: "not connected", color: "default", title: "No Slack App is connected for this workspace: the controller cannot act in it." },
+  "will-create": { label: "will create", color: "secondary", title: "The policy names this channel and Slack has none: the controller creates it." },
+  "will-adopt": { label: "will adopt", color: "secondary", title: "A channel of this name exists: the controller joins it and manages who is in it." },
+  "will-accept": { label: "will accept", color: "secondary", title: "A Slack Connect invitation from the host is waiting and the controller accepts it." },
+  "in-channel": { label: "OK", color: "success", title: "In the channel, as the policy says." },
+  "will-invite": { label: "will invite", color: "secondary", title: "Belongs in the channel and is not in it: the controller invites them." },
+  "will-remove": { label: "will remove", color: "warning", filled: true, title: "In a strict channel and no group the policy binds holds them: the controller removes them." },
+  "slack-reported": { label: "reported", color: "secondary", title: "Said and never acted on: a guest, a leaver, or an account nobody can vouch for." },
+  "slack-ignored": { label: "ignored", color: "default", title: "On the channel's ignore list: never removed." },
   unreadable: {
     label: "cannot read",
     color: "default",

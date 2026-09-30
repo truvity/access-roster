@@ -525,6 +525,14 @@ func SlackWorkspaceConnected(actor Actor, w SlackWorkspace) *record.Record {
 		[]*record.Target{targetSlackWorkspace(w.Key), {Type: "slack_app", Id: w.App}}, data{"team": w.Team, "app": w.App})
 }
 
+// SlackWorkspaceConnectRefused is an install that Slack completed for a
+// workspace other than the one the policy names. The token it handed over
+// was revoked and dropped, never kept.
+func SlackWorkspaceConnectRefused(actor Actor, w SlackWorkspace, reason string) *record.Record {
+	return build("roster.slack_workspace.connect_refused", actor, Denied(reason), nil,
+		[]*record.Target{targetSlackWorkspace(w.Key), {Type: "slack_app", Id: w.App}}, data{"team": w.Team, "app": w.App})
+}
+
 // SlackWorkspaceDisconnected is a workspace disconnected from the console;
 // revoked says whether the bot token was revoked at Slack.
 func SlackWorkspaceDisconnected(actor Actor, w SlackWorkspace, revoked bool, reason string) *record.Record {

@@ -284,6 +284,12 @@ export const roster: Sentences = {
         "en": "{actor} changed the Slack Connect channel {targets_1_id}, hosted by {targets_0_id} ({data_changes})"
       }
     },
+    "roster.slack_workspace.connect_refused": {
+      "summary": "An install of the roster's Slack App was refused because it was made into another workspace.",
+      "message": {
+        "en": "{actor}'s install of the roster's Slack App for workspace {targets_0_id} was refused: {outcome_reason}"
+      }
+    },
     "roster.slack_workspace.connected": {
       "summary": "A Slack workspace was connected by installing the App.",
       "message": {

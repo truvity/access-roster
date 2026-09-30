@@ -112,6 +112,96 @@ token), or whose read of Slack failed is reported `failed` with the reason over
 the last report that had rows, so the page does not blank. It does not stop the
 other workspaces' passes.
 
+## Connect a workspace from the console
+
+The **Slack** page lists every workspace the policy declares
+(`slack.workspaces`) that you may view, with where it stands and what the
+controller last did there. Connecting one is three steps, and the only thing
+you type is a throwaway token:
+
+1. **Generate an app configuration token.** Open
+   [api.slack.com/apps](https://api.slack.com/apps), scroll to **Your App
+   Configuration Tokens** and press **Generate Token** for the workspace that
+   will own the App. It is one word starting `xoxe.`, it expires in **12
+   hours**, and the console uses it **once**: it creates (or updates) the App
+   and is dropped. It is not written to the Secret or a record, not put in the
+   signed state, and not in any log line, audit record or error.
+2. **Press Connect** on the workspace's card and paste the token into the
+   password field (the field is cleared before the call). The console builds the
+   App's manifest (the bot user, the scopes below, and its own callback as the
+   only redirect URL: nothing that receives a request from Slack), creates the
+   App, and keeps its client id and secret as **created, not installed**. You
+   are then sent to Slack.
+3. **An owner of the workspace approves the App** on Slack's page. Slack sends
+   the browser back to `/connect/slack/workspace/callback`; the console
+   exchanges the code for the bot token and keeps it, in the Secret
+   `<release>-slack-credentials`, **only if Slack says it belongs to the
+   workspace the policy names** (`team_id`). Any other workspace is refused: the
+   token is **revoked** (`auth.revoke`) and dropped, nothing is kept, and
+   `roster.slack_workspace.connect_refused` is recorded. A successful install
+   records `roster.slack_workspace.connected`.
+
+The bot scopes are one list, `connection.BotScopes`, each for a method the
+controller calls:
+
+| Scope | For |
+|---|---|
+| `users:read` | `users.info` |
+| `users:read.email` | `users.lookupByEmail`, and the address in `users.info` |
+| `channels:read` | `conversations.list`, `.info` and `.members` of public channels |
+| `groups:read` | the same, for private channels the bot is in |
+| `channels:manage` | `conversations.create`, `.invite` and `.kick` in public channels |
+| `groups:write` | `conversations.create`, `.invite` and `.kick` in private channels |
+| `channels:join` | `conversations.join`, which adopts a public channel |
+| `conversations.connect:write` | `conversations.inviteShared`, `.acceptSharedInvite` |
+| `conversations.connect:read` | `conversations.listConnectInvites` |
+
+**Reconnect** approves the App again (to rotate the token, or to grant scopes a
+later release asks for). When the roster now asks for a scope the App was
+created without, the card shows **scopes missing** and Reconnect asks for a
+fresh configuration token first, because Slack changes an App's scopes only for
+one; it updates the manifest with it, then sends an owner to Slack.
+
+**Disconnect** (with a confirm dialog) revokes the bot token, deletes the
+credential, the record and any confirmation, and records
+`roster.slack_workspace.disconnected`. The controller then reports the
+workspace as not connected. If Slack will not revoke the token the connection is
+kept and the dialog offers **Forget anyway**, which forgets it and says in the
+audit record that the token was not revoked; remove the App in its Slack
+settings then. The App itself stays in Slack until it is deleted there.
+
+A workspace's connection is an **owner's** to operate: the installation-wide
+operator, or the operator of the directory workspace that owns it
+(`slack.workspaces.<key>.owner`). A viewer sees the page and no buttons; every
+row carries `can_operate`, the server's answer. A deployment that keeps no state
+in Kubernetes cannot connect a workspace: a bot token would not survive a
+restart.
+
+### What the page shows
+
+Per workspace: the connection (**not connected**, **created, not installed**,
+**installed**, **scopes missing**), whether the controller **acts** or is in a
+**dry run**, and when its last pass was. Per channel: its mode, privacy, whether
+it will be created or adopted or is held, and each person as in step, **will
+invite**, **will remove**, **held** (with the reason), **retrying** or
+**reported**. Leavers are listed apart. Nothing on the page is a credential.
+
+### Confirming a breaker from the console
+
+A workspace or channel whose pass would remove more than half of its members
+shows a red banner with the set's fingerprint behind a **Confirm** button
+(operators only). Confirming writes `_confirm.<workspace>.json`, or
+`_confirm.<workspace>.<channel>.json` for a channel's own breaker, into the
+records ConfigMap, records `roster.slack_removals.confirmed`, and lapses after
+24 hours. The console refuses a fingerprint that is not the latest report's for
+that gate: a set that changed since the page was loaded needs looking at again.
+
+The API behind the page is `SlackService` (`GetSlackStatus`,
+`BeginSlackWorkspaceConnect`, `DisconnectSlackWorkspace`,
+`ConfirmSlackRemovals`). The catalogue's [Slack Apps](slack-apps-catalogue.md)
+are separate: they create Apps for other purposes; this page's App is the
+roster's own.
+
 ## Running the controller
 
 ```yaml

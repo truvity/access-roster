@@ -18,6 +18,31 @@
   `UpdateSlackSharedChannel`, `DeleteSlackSharedChannel`), new audit actions
   `roster.slack_shared_channel.created`, `.updated` and `.deleted`. See
   [docs/connect/slack-connect-channels.md](docs/connect/slack-connect-channels.md).
+- **New: the Slack page.** Connect, read and operate a Slack workspace from
+  the console. **Connect** pastes a throwaway app configuration token
+  (api.slack.com/apps, *Your App Configuration Tokens*; 12 hours, used once,
+  never stored or logged): the service creates the roster's own Slack App from
+  a manifest carrying `connection.BotScopes` (nine bot scopes, each for a
+  method the controller calls), keeps its client id and secret as "created, not
+  installed", and sends an owner of the workspace to Slack. On the way back the
+  bot token is written into `<release>-slack-credentials` and the record into
+  `<release>-slack-workspaces` only if Slack says it belongs to the policy's
+  `team_id`; any other workspace is **revoked** (`auth.revoke`) and refused,
+  recorded as `roster.slack_workspace.connect_refused`. **Reconnect** grants
+  new scopes (with a configuration token that updates the manifest),
+  **Disconnect** revokes the token and forgets the connection, and the page
+  shows per workspace the connection, acting or dry run, the last pass, each
+  channel's people (in step, will invite, will remove, held with the reason),
+  leavers and any breaker, with **Confirm** for an operator
+  (`ConfirmSlackRemovals`: the fingerprint must be the latest report's for that
+  gate; lapses in 24 hours; audited). Gated by the workspace's owner
+  (`slack.workspaces.<key>.owner`), each row carrying `can_operate`. New
+  service `SlackService` (`GetSlackStatus`, `BeginSlackWorkspaceConnect`,
+  `DisconnectSlackWorkspace`, `ConfirmSlackRemovals`), new audit action
+  `roster.slack_workspace.connect_refused`, new `slackapp.Client.Revoke`. The
+  catalogue's install into the wrong workspace now revokes the token too. See
+  [docs/connect/slack-workspace.md](docs/connect/slack-workspace.md#connect-a-workspace-from-the-console).
+
 - **New: a catalogue of Slack Apps, created and installed from the
   console.** `slackApps` declares each App (`id`, the policy's `workspace`
   key, `botScopes`, optional `name`, `description` and `push`). An operator

@@ -195,8 +195,44 @@ func (c *Console) declaredSlackApp(id string) (slackcatalogue.App, error) {
 	return entry, nil
 }
 
-// slackRedirect is where Slack sends the owner after installing.
+// slackRedirect is where Slack sends the owner after installing a
+// catalogue App.
 func (c *Console) slackRedirect() string { return c.githubRoot() + slackCatalogueCallbackPath }
+
+// slackRevoke takes back a bot token this service will not keep: one minted
+// for the wrong workspace, or one it is disconnecting. A token already dead
+// is success (see [slackapp.Client.Revoke]).
+func (c *Console) slackRevoke(ctx context.Context, token string) error {
+	callCtx, cancel := context.WithTimeout(ctx, slackTimeout)
+	defer cancel()
+	return slackapp.New(token, c.deps.SlackAPI...).Revoke(callCtx)
+}
+
+// slackFlow is which install a redirect belongs to, for the page a failure
+// lands on.
+type slackFlow struct{ back, heading string }
+
+var (
+	slackCatalogueFlow = slackFlow{back: "/#/slack-apps", heading: "The Slack App could not be installed"}
+	slackWorkspaceFlow = slackFlow{back: "/#/slack", heading: "The Slack workspace could not be connected"}
+)
+
+// revokedWords is what became of a refused token, for the audit record.
+func revokedWords(revokeErr error) string {
+	if revokeErr != nil {
+		return "the token was dropped but Slack would not revoke it"
+	}
+	return "the token was revoked and dropped"
+}
+
+// refusedToken is the sentence that ends a refusal of a token minted for
+// the wrong workspace: what became of the token.
+func refusedToken(revokeErr error) string {
+	if revokeErr != nil {
+		return "Nothing was kept, but Slack would not revoke the token: remove the App from that workspace in its Slack settings."
+	}
+	return "Nothing was kept, and the token was revoked."
+}
 
 // A configuration token is one word ("xoxe.xoxp-1-..."): anything with
 // whitespace in it is a pasted sentence, refused before it travels.
@@ -372,11 +408,11 @@ func slackAuthorizeURL(authorize, state, redirect, team string, scopes []string)
 // checked: the cookie the flow was pinned with must equal the state, the
 // state must be one this service signed, and whoever it names must be an
 // operator. It returns the state's bind and the actor.
-func (s *ConsoleServer) slackBound(w http.ResponseWriter, r *http.Request) (bind, actor string, ok bool) {
+func (s *ConsoleServer) slackBound(flow slackFlow, w http.ResponseWriter, r *http.Request) (bind, actor string, ok bool) {
 	state := r.URL.Query().Get("state")
 	cookie, err := r.Cookie(access.ConnectCookieName)
 	if err != nil || cookie.Value == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
-		s.slackProblem(w, r, http.StatusBadRequest, "This install did not start in this browser.", "", []string{
+		s.slackProblem(flow, w, r, http.StatusBadRequest, "This install did not start in this browser.", "", []string{
 			"It was started in another browser, profile or private window.",
 			"More than ten minutes passed on Slack's page before returning.",
 			"The browser is refusing the cookie this flow is pinned to.",
@@ -385,7 +421,7 @@ func (s *ConsoleServer) slackBound(w http.ResponseWriter, r *http.Request) (bind
 	}
 	binding, err := s.state.VerifyBinding(state)
 	if err != nil {
-		s.slackProblem(w, r, http.StatusBadRequest, "This install cannot be finished.", err.Error(), nil)
+		s.slackProblem(flow, w, r, http.StatusBadRequest, "This install cannot be finished.", err.Error(), nil)
 		return "", "", false
 	}
 	actor = binding.Actor
@@ -397,13 +433,13 @@ func (s *ConsoleServer) slackBound(w http.ResponseWriter, r *http.Request) (bind
 	if id, signedIn := IdentityFrom(r.Context()); signedIn {
 		workspace := s.console.slackWorkspaceOfBind(binding.Bind)
 		if _, err = s.console.requireSlack(r.Context(), access.RoleOperator, workspace); err != nil {
-			s.slackProblem(w, r, http.StatusForbidden, err.Error()+".", "", nil)
+			s.slackProblem(flow, w, r, http.StatusForbidden, err.Error()+".", "", nil)
 			return "", "", false
 		}
 		actor = id.Who()
 	}
 	if actor == "" {
-		s.slackProblem(w, r, http.StatusForbidden, "Installing a Slack App needs the operator role.", "", nil)
+		s.slackProblem(flow, w, r, http.StatusForbidden, "Installing a Slack App needs the operator role.", "", nil)
 		return "", "", false
 	}
 	return binding.Bind, actor, true
@@ -412,9 +448,9 @@ func (s *ConsoleServer) slackBound(w http.ResponseWriter, r *http.Request) (bind
 // slackProblem is the page a Slack redirect lands on when it cannot finish:
 // a 4xx, never a 5xx, which a CDN in front would replace with a page of its
 // own and lose Slack's words.
-func (s *ConsoleServer) slackProblem(w http.ResponseWriter, r *http.Request, code int, summary, detail string, causes []string) {
+func (s *ConsoleServer) slackProblem(flow slackFlow, w http.ResponseWriter, r *http.Request, code int, summary, detail string, causes []string) {
 	var body strings.Builder
-	body.WriteString(`<h1>The Slack App could not be installed</h1>`)
+	fmt.Fprintf(&body, `<h1>%s</h1>`, html.EscapeString(flow.heading))
 	fmt.Fprintf(&body, `<p>%s</p>`, html.EscapeString(summary))
 	if detail != "" {
 		fmt.Fprintf(&body, `<p class="note">What Slack said:</p><pre>%s</pre>`, html.EscapeString(detail))
@@ -426,7 +462,7 @@ func (s *ConsoleServer) slackProblem(w http.ResponseWriter, r *http.Request, cod
 		}
 		body.WriteString(`</ul>`)
 	}
-	body.WriteString(`<p><a class="btn" href="` + s.at("/#/slack-apps") + `">Back to the console</a></p>`)
+	body.WriteString(`<p><a class="btn" href="` + s.at(flow.back) + `">Back to the console</a></p>`)
 	s.writePage(w, r, code, "Slack", body.String())
 }
 
@@ -437,7 +473,8 @@ func (s *ConsoleServer) slackProblem(w http.ResponseWriter, r *http.Request, cod
 // for the App. Any other workspace is refused: the token is dropped
 // without being stored, and the refusal is recorded.
 func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Request) {
-	bind, actor, ok := s.slackBound(w, r)
+	flow := slackCatalogueFlow
+	bind, actor, ok := s.slackBound(flow, w, r)
 	if !ok {
 		return
 	}
@@ -446,27 +483,27 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 	console := s.console
 	id, isCatalogue := strings.CutPrefix(bind, slackCatalogueBind)
 	if !isCatalogue || !slackcatalogue.ValidID(id) {
-		s.slackProblem(w, r, http.StatusBadRequest, "This is not a catalogue Slack App's install.", "", nil)
+		s.slackProblem(flow, w, r, http.StatusBadRequest, "This is not a catalogue Slack App's install.", "", nil)
 		return
 	}
 	entry, declared := console.deps.SlackCatalogue.Get(id)
 	if console.deps.SlackCatalogueApps == nil || !declared {
-		s.slackProblem(w, r, http.StatusConflict, fmt.Sprintf("This deployment's catalogue declares no Slack App %s.", id), "", nil)
+		s.slackProblem(flow, w, r, http.StatusConflict, fmt.Sprintf("This deployment's catalogue declares no Slack App %s.", id), "", nil)
 		return
 	}
 	if denied := r.URL.Query().Get("error"); denied != "" {
-		s.slackProblem(w, r, http.StatusBadRequest, "The installation was not approved in Slack.", denied, nil)
+		s.slackProblem(flow, w, r, http.StatusBadRequest, "The installation was not approved in Slack.", denied, nil)
 		return
 	}
 	team, err := console.slackTeam(entry.Workspace)
 	if err != nil {
-		s.slackProblem(w, r, http.StatusConflict, "The policy no longer names this App's workspace.", err.Error(), nil)
+		s.slackProblem(flow, w, r, http.StatusConflict, "The policy no longer names this App's workspace.", err.Error(), nil)
 		return
 	}
 	store := console.deps.SlackCatalogueApps
 	record, creds, created, err := store.Get(r.Context(), id)
 	if err != nil || !created {
-		s.slackProblem(w, r, http.StatusConflict,
+		s.slackProblem(flow, w, r, http.StatusConflict,
 			fmt.Sprintf("There is no Slack App %s to finish installing. Create it first.", id), errString(err), nil)
 		return
 	}
@@ -477,7 +514,7 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		s.log.WarnContext(r.Context(), "a Slack App was installed and its token could not be collected",
 			"id", id, "workspace", entry.Workspace, "error", logsafe.Error(err))
-		s.slackProblem(w, r, http.StatusConflict, "Slack accepted the install, and then would not hand over the bot token.", err.Error(), []string{
+		s.slackProblem(flow, w, r, http.StatusConflict, "Slack accepted the install, and then would not hand over the bot token.", err.Error(), []string{
 			"The page was reloaded: the code Slack returns can be exchanged once.",
 			"More than ten minutes passed between approving and returning here.",
 			"This service cannot reach slack.com: the cluster's egress policy has to allow it.",
@@ -486,14 +523,19 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 	}
 	app := audit.SlackCatalogueApp{ID: id, App: record.AppID, Workspace: entry.Workspace, Team: installed.TeamID}
 	if installed.TeamID != team {
+		// The token was minted for somebody else's workspace: take it back
+		// before refusing, so a token this service will not keep is not
+		// left working in Slack.
+		revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
 		s.log.WarnContext(r.Context(), "a Slack App was installed into the wrong workspace and refused",
-			"id", id, "workspace", entry.Workspace, "expected", team, "got", logsafe.Value(installed.TeamID), "by", logsafe.Value(actor))
+			"id", id, "workspace", entry.Workspace, "expected", team, "got", logsafe.Value(installed.TeamID),
+			"by", logsafe.Value(actor), "revoked", revokeErr == nil)
 		console.record(r.Context(), audit.SlackCatalogueAppInstallRefused(audit.Identified(actor), app,
-			fmt.Sprintf("installed into team %s, and the policy names %s", installed.TeamID, team)))
-		s.slackProblem(w, r, http.StatusConflict, fmt.Sprintf(
-			"The App was installed into workspace %s (%s), and the policy names %s for %q. Nothing was kept. "+
-				"Remove the App from that workspace in its Slack settings, and install again from the right one.",
-			installed.TeamID, installed.TeamName, team, entry.Workspace), "", nil)
+			fmt.Sprintf("installed into team %s, and the policy names %s; %s", installed.TeamID, team, revokedWords(revokeErr))))
+		s.slackProblem(flow, w, r, http.StatusConflict, fmt.Sprintf(
+			"The App was installed into workspace %s (%s), and the policy names %s for %q. %s "+
+				"Install again from the right workspace.",
+			installed.TeamID, installed.TeamName, team, entry.Workspace, refusedToken(revokeErr)), "", nil)
 		return
 	}
 
@@ -503,7 +545,7 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 	creds.BotToken = installed.BotToken
 	if err = store.Put(r.Context(), record, creds); err != nil {
 		s.log.ErrorContext(r.Context(), "a Slack App was installed and its token could not be kept", "id", id, "error", err)
-		s.slackProblem(w, r, http.StatusConflict, "The App is installed and its token could not be saved here. Install it again.", err.Error(), nil)
+		s.slackProblem(flow, w, r, http.StatusConflict, "The App is installed and its token could not be saved here. Install it again.", err.Error(), nil)
 		return
 	}
 	app.Scopes = record.Scopes

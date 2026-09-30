@@ -93,6 +93,8 @@ export const paths = {
   // literally "catalogue" keeps the old prefix, which the parser strips,
   // so it is not read as the old list's address.
   githubApp: (id: string) => (id === "catalogue" ? "/github/apps/catalogue/catalogue" : `/github/apps/${encodeURIComponent(id)}`),
+  // The Slack workspaces the policy declares: connect, status, removals.
+  slack: () => "/slack",
   // The Slack Apps the deployment declares: create, install, reinstall.
   slackApps: () => "/slack-apps",
   // Slack Connect channels between the installation's own workspaces.

@@ -54,6 +54,33 @@ func WorkspaceOfKey(key string) (string, bool) { return status.WorkspaceOfKey(ke
 // workspaces': a leading underscore.
 func Reserved(key string) bool { return strings.HasPrefix(key, "_") }
 
+// BotScopes are the bot token scopes the roster's App asks for, each one
+// for a method the reconciler calls (see package slackapp):
+//
+//	users:read                        users.info
+//	users:read.email                  users.lookupByEmail, and the address in users.info
+//	channels:read                     conversations.list, .info, .members of public channels
+//	groups:read                       the same, for private channels the bot is in
+//	channels:manage                   conversations.create, .invite, .kick in public channels
+//	groups:write                      conversations.create, .invite, .kick in private channels
+//	channels:join                     conversations.join, which adopts a public channel
+//	conversations.connect:write       conversations.inviteShared, .acceptSharedInvite
+//	conversations.connect:read        conversations.listConnectInvites
+//
+// It is the one list the console writes into the App's manifest, compares
+// an install's grant with, and the documentation quotes.
+var BotScopes = []string{
+	"users:read",
+	"users:read.email",
+	"channels:read",
+	"groups:read",
+	"channels:manage",
+	"groups:write",
+	"channels:join",
+	"conversations.connect:write",
+	"conversations.connect:read",
+}
+
 // Record is one connected workspace, as the console shows it.
 type Record struct {
 	Version int `json:"version"`
@@ -63,6 +90,13 @@ type Record struct {
 	// against auth.test.
 	TeamID string `json:"team_id"`
 	AppID  string `json:"app_id"`
+	// AuthorizeURL is where an owner installs the App, as Slack returned it
+	// at creation: a public URL carrying no secret.
+	AuthorizeURL string `json:"authorize_url,omitempty"`
+	// ManifestScopes are the bot scopes the App's manifest carried when it
+	// was last written, which is not what Slack granted: an owner grants
+	// them by installing.
+	ManifestScopes []string `json:"manifest_scopes,omitempty"`
 	// BotUserID is empty between creating the app and installing it.
 	BotUserID string `json:"bot_user_id,omitempty"`
 	// Scopes are the bot scopes the install granted, so a console can say
