@@ -42,17 +42,14 @@ import (
 // group here has, and the answer says when it was not enough.
 const holdersLimit = 10000
 
-// StatusWriter replaces the report.
-type StatusWriter interface {
-	Replace(ctx context.Context, documents map[string]string) error
-}
+// StatusWriter replaces the report. It is the generic [rails.Store].
+type StatusWriter = rails.Store
 
 // StatusReader is a status store that can give back what the last pass
 // wrote. With one, a restarted controller knows which held and reported
-// rows it recorded already, and does not record them all again.
-type StatusReader interface {
-	Reports(ctx context.Context) (map[string]string, error)
-}
+// rows it recorded already, and does not record them all again. It is the
+// generic [rails.Reader].
+type StatusReader = rails.Reader
 
 // Config is what a deployment decides.
 type Config struct {
@@ -106,10 +103,11 @@ type Controller struct {
 	tokens map[string]installationToken
 	// held is last pass's held actions per organisation, so that a held
 	// action is recorded once, when it becomes held, and not every pass.
-	held map[string]map[string]bool
-	// last is each organisation's last report that was not a failure, so
-	// a failed pass can keep what was last known instead of blanking it.
-	last map[string]status.Org
+	held rails.Ledger
+	// journal is each organisation's last report that was not a failure,
+	// so a failed pass can keep what was last known instead of blanking it,
+	// and the place the reports are written.
+	journal *rails.Journal[status.Org]
 	// profileMisses is when each login's public profile was last found to
 	// show no work address: asked again after a day, not every pass.
 	profileMisses map[string]time.Time
@@ -136,8 +134,10 @@ func New(cfg Config, deps Deps) *Controller {
 		cfg.Interval = 15 * time.Minute
 	}
 	return &Controller{
-		cfg: cfg, deps: deps, tokens: map[string]installationToken{}, held: map[string]map[string]bool{},
-		last:          map[string]status.Org{},
+		cfg: cfg, deps: deps, tokens: map[string]installationToken{},
+		journal: &rails.Journal[status.Org]{
+			Store: deps.Status, Key: status.Key, Encode: status.Encode, Decode: status.Decode, Log: deps.Log, Label: "org",
+		},
 		profileMisses: map[string]time.Time{}, metrics: newInstruments(),
 	}
 }
@@ -154,23 +154,16 @@ func (c *Controller) Run(ctx context.Context) error {
 // another policy — a pass worth trying again soon, because the difference
 // is usually a rollout that has not finished.
 func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
-	documents := map[string]string{}
+	reports := map[string]status.Org{}
 	links, linksErr := c.checkLinks(ctx)
 	confirmed := c.confirmations(ctx)
 	for _, org := range slices.Sorted(maps.Keys(c.deps.Bindings)) {
 		report, differs := c.organisation(ctx, org, c.deps.Bindings[org], links, linksErr, confirmed[org])
 		otherPolicy = otherPolicy || differs
 		c.metrics.recordPass(ctx, &report)
-		document, err := status.Encode(report)
-		if err != nil {
-			c.deps.Log.ErrorContext(ctx, "a report could not be written", "org", org, "error", err)
-			continue
-		}
-		documents[status.Key(org)] = document
+		reports[org] = report
 	}
-	if err := c.deps.Status.Replace(ctx, documents); err != nil {
-		c.deps.Log.ErrorContext(ctx, "the report could not be replaced", "error", err)
-	}
+	c.journal.Publish(ctx, reports)
 	return otherPolicy
 }
 
@@ -187,7 +180,7 @@ func (c *Controller) organisation(
 	// report that would have it record them all again.
 	fail := func(err error) (status.Org, bool) {
 		c.deps.Log.WarnContext(ctx, "a pass over an organisation failed", "org", org, "error", err)
-		report := c.previous(ctx, org)
+		report := c.journal.Previous(ctx, org)
 		report.Org, report.Enabled = org, enabled
 		report.Tick = status.Tick{At: started, Outcome: status.OutcomeFailed, Error: err.Error()}
 		return report, errors.Is(err, errPolicyDiffers)
@@ -234,42 +227,8 @@ func (c *Controller) organisation(
 	report.Tick.Outcome = outcome(enabled, report.Tick)
 	c.deps.Log.InfoContext(ctx, "passed over an organisation", "org", org, "enabled", enabled,
 		"outcome", report.Tick.Outcome, "changes", report.Tick.Changes, "held", report.Tick.Held, "waiting", report.Tick.Waiting)
-	c.mu.Lock()
-	c.last[org] = report
-	c.mu.Unlock()
+	c.journal.Remember(org, report)
 	return report, otherPolicy
-}
-
-// previous is an organisation's last report with its rows: this process's
-// own last successful one, or else the one the previous process wrote,
-// which may itself be a failure that kept its rows. Nothing to read is an
-// empty report.
-func (c *Controller) previous(ctx context.Context, org string) status.Org {
-	c.mu.Lock()
-	kept, ok := c.last[org]
-	c.mu.Unlock()
-	if ok {
-		return kept
-	}
-	reader, ok := c.deps.Status.(StatusReader)
-	if !ok {
-		return status.Org{}
-	}
-	documents, err := reader.Reports(ctx)
-	if err != nil {
-		c.deps.Log.WarnContext(ctx, "the last report could not be read", "org", org, "error", err)
-		return status.Org{}
-	}
-	raw, ok := documents[status.Key(org)]
-	if !ok {
-		return status.Org{}
-	}
-	last, err := status.Decode(raw)
-	if err != nil {
-		c.deps.Log.WarnContext(ctx, "the last report could not be decoded", "org", org, "error", err)
-		return status.Org{}
-	}
-	return last
 }
 
 // token is the organisation's installation token, minted when the one
@@ -451,16 +410,7 @@ func (c *Controller) act(ctx context.Context, client githubapp.Org, token string
 // not again after a restart: the first pass takes "last pass" from the
 // report the previous process wrote.
 func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report status.Org) {
-	c.mu.Lock()
-	_, known := c.held[org]
-	c.mu.Unlock()
-	if !known {
-		last := c.lastHeld(ctx, org)
-		c.mu.Lock()
-		c.held[org] = last
-		c.mu.Unlock()
-	}
-	now := map[string]bool{}
+	var keys []string
 	var events []*record.Record
 	each(report, func(team string, m status.Member) {
 		member := audit.Member{Person: m.Email, Org: org, Team: team, Login: m.Login, Role: string(m.Role)}
@@ -473,19 +423,17 @@ func (c *Controller) recordNewlyHeld(ctx context.Context, org string, report sta
 		default:
 			return
 		}
-		key := heldKey(team, m)
-		now[key] = true
-		c.mu.Lock()
-		was := c.held[org][key]
-		c.mu.Unlock()
-		if !was {
-			events = append(events, event)
-		}
+		keys = append(keys, heldKey(team, m))
+		events = append(events, event)
 	})
-	c.mu.Lock()
-	c.held[org] = now
-	c.mu.Unlock()
-	c.report(ctx, events)
+	fresh := c.held.Fresh(org, keys, func() []string { return c.lastHeld(ctx, org) })
+	var newly []*record.Record
+	for i, event := range events {
+		if fresh[i] {
+			newly = append(newly, event)
+		}
+	}
+	c.report(ctx, newly)
 }
 
 // heldKey names one held or reported row across passes.
@@ -496,11 +444,11 @@ func heldKey(team string, m status.Member) string {
 // lastHeld is the held and reported rows of the report the previous pass
 // wrote, or nothing when there is none to read — which records them again,
 // the safe way to be wrong.
-func (c *Controller) lastHeld(ctx context.Context, org string) map[string]bool {
-	out := map[string]bool{}
-	each(c.previous(ctx, org), func(team string, m status.Member) {
+func (c *Controller) lastHeld(ctx context.Context, org string) []string {
+	var out []string
+	each(c.journal.Previous(ctx, org), func(team string, m status.Member) {
 		if m.State == status.StateHeld || m.State == status.StateReported {
-			out[heldKey(team, m)] = true
+			out = append(out, heldKey(team, m))
 		}
 	})
 	return out

@@ -662,21 +662,40 @@ every session and refresh token.
 
 ### Reconciler rails
 
-Four pieces of the loop above turned out to have nothing to do with
-GitHub, and live in `internal/rails` instead of `internal/githubroster`:
-the confirm-before-remove gate that asks about one candidate at a time and
-keeps only what a console could answer and vouch for; the policy-digest
-guard that refuses an answer computed under another policy; the removal
-circuit breaker and its fingerprint; and the dry-run switch an organisation
-is born behind. `internal/githubroster` calls each of these; it still owns
-everything GitHub-shaped — teams, logins, invitations, and deriving and
-deciding what an organisation should look like.
+A reconciler is a loop that, every pass and for every target the policy
+binds, reads what a system holds, asks the console who should hold it,
+decides, acts where the target is enabled, and reports. GitHub
+organisations are the first; Slack workspaces are the second. What both
+call with the same meaning lives in `internal/rails` instead of
+`internal/githubroster`:
 
-This is deliberately not a reconciler framework. `internal/githubroster`
-is the only implementation these four pieces were extracted from, and a
-framework designed from one data point is a guess. It becomes worth the
-name once a second reconciler (Slack membership sync is the candidate)
-exists to validate the shape against — not before.
+- the pass loop and its backoff: a pass that met a console on another
+  policy is tried again within seconds a bounded number of times, then left
+  to the interval;
+- the directory half: who holds each group and what is true of one address,
+  every answer gated by the policy digest, and the removal rule that
+  somebody is removed only on an answer the directory vouched for (an
+  address not asked, or not vouched for, settles nothing this pass);
+- the held-once ledger, so a held row is audited when it becomes held and
+  not every pass or after a restart;
+- the journal of each target's last good report, so a failed pass reports
+  its failure over what was known;
+- the removal circuit breaker and its fingerprint, and the dry-run switch a
+  target is born behind.
+
+`internal/githubroster` still owns everything GitHub-shaped: teams, logins,
+invitations, seats, deriving and deciding what an organisation should look
+like, the change calls, status documents and audit events. The rails take
+funcs and small interfaces rather than a generated client, so they import
+nothing of either system.
+
+This is deliberately not a reconciler framework. The pieces above are the
+ones a second reconciler was shown, by being written, to call identically.
+The rest (the row and action types, the pass skeleton, the status document,
+the metrics) differ in kind, or are exported names that must stay
+identical to what one system already publishes, and a shared shape for
+them would be a guess fitted to one system and bent to the other. A piece
+moves here when a second reconciler needs it unchanged, not before.
 
 ## Audit
 

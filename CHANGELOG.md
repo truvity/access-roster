@@ -11,6 +11,14 @@
   policy digest, and their groups count as consumed. A controller that
   reads them is being built; until it ships, nothing reads these keys.
   See [docs/reference/policy.md](docs/reference/policy.md#slack-channels).
+- **Internal: `internal/rails` now holds what the GitHub controller and the
+  reconcilers after it share: the pass loop with its policy-retry backoff
+  (`Run`), the console's two questions gated by the policy digest
+  (`Directory`) with the removal rule (`Removal`), the held-once ledger
+  (`Ledger`) and the last-good-report journal (`Journal`).** The GitHub
+  controller calls them and keeps everything GitHub-shaped to itself. No
+  user-visible change: same decisions, same audit records, same metrics.
+  See [docs/design/access-roster.md](docs/design/access-roster.md#reconciler-rails).
 
 ## v1.40.0
 
