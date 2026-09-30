@@ -61,6 +61,10 @@ type Verified struct {
 	// GivenName and FamilyName are its halves, for a UI that wants them.
 	GivenName  string
 	FamilyName string
+	// ClientID is the client the token was minted for: the `azp` claim,
+	// or `client_id` where that is absent. For a record of which software
+	// called, never a thing to authorize on.
+	ClientID string
 	// Groups are the internal groups the policy put the caller in,
 	// verbatim from the token. Never re-mapped.
 	Groups []string
@@ -244,6 +248,13 @@ func (c *Cluster) Verify(ctx context.Context, token string) (Verified, error) {
 // recovery sign-in: either way it is not a person and has no address.
 func fromClaims(claims *oidc.AccessTokenClaims) Verified {
 	out := Verified{Subject: claims.Subject, Groups: groupsOf(claims)}
+	out.ClientID = claims.AuthorizedParty
+	if out.ClientID == "" {
+		out.ClientID = claims.ClientID
+	}
+	if out.ClientID == "" {
+		out.ClientID = stringClaim(claims.Claims, "client_id")
+	}
 
 	if account, ok := policy.ParseServiceAccountSubject(claims.Subject); ok {
 		out.ServiceAccount = &account

@@ -17,6 +17,20 @@ import (
 )
 ```
 
+## An MCP server's own side — `identity/resource`
+
+```go
+res, _ := resource.New(resource.Config{IssuerURL: "https://access.example", ResourceURL: "https://mcp.example.com/metrics", Scope: "openid"})
+mux.Handle(res.Path(), res.Metadata())
+mux.Handle("/", res.Protect(mcp))
+```
+
+`Protect` verifies the bearer for the resource's own URL and answers the
+RFC 9728 challenge; `Metadata` serves the Protected Resource Metadata.
+[connect/mcp.md](../connect/mcp.md#a-go-server-identityresource) is the
+guide, and `resource-proxy` is the same thing as a sidecar for a server
+you did not write.
+
 ## A console behind a proxy that forwards a bearer — the issuer anchor
 
 The proxy in front — gateway-native OIDC, `access-proxy` (deprecated,

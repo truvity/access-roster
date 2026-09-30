@@ -1,4 +1,4 @@
-# Release: two service images and their binaries, from one tag.
+# Release: three images and their binaries, from one tag.
 #
 # The tag is the sole version authority. The chart's own version field is
 # a placeholder the release workflow stamps, and this file stamps the
@@ -50,6 +50,20 @@ builds:
     ldflags:
       - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
 
+  # The resource-server sidecar: verifies an access-roster token in front
+  # of a service that knows nothing about access-roster, and gives that
+  # service an identity of its own for what it calls. Its own image,
+  # because it runs beside somebody else's container and not in a pod
+  # of ours.
+  - id: resource-proxy
+    main: ./cmd/resource-proxy
+    binary: resource-proxy
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
+
   # Not an image either, and for a stronger reason than the one below:
   # this opens a browser and writes into somebody's own kubeconfig and
   # AWS configuration. A container would have neither.
@@ -95,7 +109,7 @@ archives:
   # The service and the acceptance runner: what an operator pulls to run
   # a build outside a container.
   - id: binaries
-    ids: [access-issuer, github-roster, acceptance]
+    ids: [access-issuer, github-roster, resource-proxy, acceptance]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
@@ -147,6 +161,25 @@ kos:
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: https://github.com/truvity/access-roster
 
+  # The resource-server sidecar's image. No chart of ours renders it: a
+  # consumer's chart names it beside the stock container it fronts, pinned
+  # by digest.
+  - id: resource-proxy
+    build: resource-proxy
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .IsSnapshot }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: true
+    base_image: gcr.io/distroless/static:nonroot
+    sbom: none
+    labels:
+      org.opencontainers.image.title: resource-proxy
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/truvity/access-roster
+
 release:
   github:
     owner: truvity
@@ -157,6 +190,7 @@ release:
     | | |
     |---|---|
     | Image | `ghcr.io/truvity/access-roster/access-issuer:{{ .Version }}` |
+    | Sidecar image | `ghcr.io/truvity/access-roster/resource-proxy:{{ .Version }}` |
     | Chart | `oci://ghcr.io/truvity/charts/access-issuer:{{ .Version }}` |
     | TypeScript | `@truvity/access-roster@{{ .Version }}` on GitHub Packages |
     | Go | `go get github.com/truvity/access-roster@{{ .Tag }}` |

@@ -12,6 +12,8 @@ cmd/access-issuer         the whole service: the directory, the policy,
                           trail
 cmd/github-roster         the GitHub controller, a second process from
                           the same chart
+cmd/resource-proxy        the sidecar that fronts a stock MCP server
+                          with a resource server's front door
 cmd/accessctl             the CLI, for laptops and CI jobs
 cmd/acceptance            the acceptance runner against a kind cluster
 charts/access-issuer      the chart: both processes
@@ -19,7 +21,8 @@ action.yml                the GitHub Action, at the root so
                           `uses: truvity/access-roster@<tag>` works
 identity/ tokens/ policy/ backend/
                           the Go module's public packages: the two
-                          verifiers and the net/http middleware, the
+                          verifiers, the net/http middleware and
+                          identity/resource (an MCP server's own side), the
                           exchange and credential encoders, the
                           seven-table policy, the directory backend
                           interface and its fake
