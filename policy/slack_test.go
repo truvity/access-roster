@@ -70,6 +70,37 @@ func TestSlackRoundTrips(t *testing.T) {
 	}
 }
 
+// A strict private channel with an ignore list of addresses and user ids
+// is accepted, and extend is the default.
+func TestSlackModeAndIgnore(t *testing.T) {
+	t.Parallel()
+	text := strings.Replace(slackBase, "eng-private: { private: true,",
+		"eng-private: { private: true, mode: strict, ignore: [Boss@acme.example, U0123ABCD],", 1)
+	declared, err := policy.Parse([]byte(text))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if err := declared.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	ws := declared.Slack.Workspaces["acme"]
+	if !ws.Channels["eng-private"].Strict() || len(ws.Channels["eng-private"].Ignore) != 2 {
+		t.Errorf("eng-private read as %+v", ws.Channels["eng-private"])
+	}
+	if ws.Channels["ops"].Strict() || ws.Channels["ops"].Mode != "" {
+		t.Errorf("ops must default to extend, read as %+v", ws.Channels["ops"])
+	}
+	// A private channel may also be explicitly extend.
+	explicit := strings.Replace(slackBase, "eng-private: { private: true,", "eng-private: { private: true, mode: extend,", 1)
+	again, err := policy.Parse([]byte(explicit))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := again.Validate(); err != nil {
+		t.Errorf("explicit extend refused: %v", err)
+	}
+}
+
 func TestSlackPerSidePrivacy(t *testing.T) {
 	t.Parallel()
 	text := strings.Replace(slackBase, "private: true\n", "private: { acme: true, globex: false }\n", 1)
@@ -126,6 +157,12 @@ func TestSlackRefusals(t *testing.T) {
 			"people:\n  jdoe: [j.doe@acme.example, john@globex.example]\n  other: [JOHN@globex.example]",
 			"both jdoe and other",
 		},
+		"mode unknown":                {"eng-private: { private: true,", "eng-private: { mode: exact, private: true,", "neither extend nor strict"},
+		"strict on a public channel":  {"ops: { from", "ops: { mode: strict, from", "needs private: true"},
+		"ignore without strict":       {"eng-private: { private: true,", "eng-private: { ignore: [a@acme.example], private: true,", "only applies to mode: strict"},
+		"ignore with explicit extend": {"eng-private: { private: true,", "eng-private: { mode: extend, ignore: [a@acme.example], private: true,", "only applies to mode: strict"},
+		"ignore entry neither":        {"eng-private: { private: true,", "eng-private: { mode: strict, ignore: [somebody], private: true,", "neither an address nor a Slack user id"},
+		"ignore twice":                {"eng-private: { private: true,", "eng-private: { mode: strict, ignore: [a@acme.example, A@Acme.example], private: true,", "twice"},
 		"address twice in one person": {"jdoe: [j.doe@acme.example,", "jdoe: [j.doe@acme.example, J.Doe@acme.example,", "twice"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -183,6 +220,16 @@ func TestChangingASlackFieldChangesTheDigest(t *testing.T) {
 			c := p.Slack.Workspaces["acme"].Channels["ops"]
 			c.Private = true
 			p.Slack.Workspaces["acme"].Channels["ops"] = c
+		},
+		"mode": func(p *policy.Policy) {
+			c := p.Slack.Workspaces["acme"].Channels["eng-private"]
+			c.Mode = policy.SlackModeStrict
+			p.Slack.Workspaces["acme"].Channels["eng-private"] = c
+		},
+		"ignore": func(p *policy.Policy) {
+			c := p.Slack.Workspaces["acme"].Channels["eng-private"]
+			c.Mode, c.Ignore = policy.SlackModeStrict, []string{"U0123ABCD"}
+			p.Slack.Workspaces["acme"].Channels["eng-private"] = c
 		},
 		"adopt": func(p *policy.Policy) {
 			c := p.Slack.Workspaces["acme"].Channels["ops"]

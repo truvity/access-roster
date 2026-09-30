@@ -1025,7 +1025,8 @@ lowercased. The same person declared in two merged files is a clash.
 
 > **A controller that reads this is being built. Until it ships, nothing
 > reads these keys**: they are validated at load, merged, digested and
-> shown, and nothing more.
+> shown, and nothing more. The decision logic it will run is in
+> [the Slack reconciler](../design/access-roster.md#the-slack-reconciler).
 
 ```yaml
 slack:
@@ -1034,7 +1035,7 @@ slack:
       team_id: T0123ABCD                    # Slack's own id; the connect flow must match it
       domains: [acme.example]               # how a person is found in this workspace
       channels:                             # by channel NAME, as Slack spells it
-        eng-private: {private: true, from: [acme:eng:member]}
+        eng-private: {private: true, mode: strict, ignore: [boss@acme.example, U0123ABCD], from: [acme:eng:member]}
         ops: {from: [acme:sre:member], adopt: C0123ABCD}   # take over an existing channel
     globex:
       team_id: T0456EFGH
@@ -1060,16 +1061,30 @@ user groups are out of scope.) A channel is created if absent, or taken
 over by **ID** with `adopt` — by ID, because a name can be changed or
 reused and an ID cannot.
 
-**What the controller will do:**
+**What the controller will do.** Each channel has a `mode`:
 
-- a **public** channel is **add-only**: anyone may join it themselves, so
-  the controller adds the people the bindings name and removes nobody;
-- a **private** channel is **exact**: membership is granted, so the
-  controller makes it match the bindings;
+- `extend` (the default): **only add**. The controller invites the people
+  the bindings name and removes nobody, so whoever else is in the channel
+  stays;
+- `strict`: **add and remove**. The channel is made to match the bindings.
+  Strict is allowed on **private channels only**, because Slack lets only
+  an administrator remove somebody from a public channel and the bot would
+  be refused at every pass; `mode: strict` with `private` unset is refused
+  at load. `ignore` (addresses, or Slack user ids such as `U0123ABCD` for
+  somebody with no address here) names people a strict channel never
+  removes; it is refused without `mode: strict`.
+
+A strict channel never removes bots or apps, the controller's own bot,
+deactivated users, guests (reported, never touched) or anybody on
+`ignore`. And in every channel:
+
 - people are **removed only after the directory vouches** for the answer,
   so a directory outage never empties a channel;
-- a **breaker** stops a run that would remove an implausible share of a
-  channel at once.
+- a **breaker** stops a run that would remove more than half of a
+  channel's members, or more than half of the workspace's managed members,
+  unless an operator confirms exactly that set;
+- a person with no Slack account yet, or with no address in the
+  workspace's domains, is **held** with that reason, never an error.
 
 **Shared channels** span workspaces. `host` creates and owns the channel
 (Slack requires exactly one); `with` lists the other workspaces; `from`
@@ -1087,6 +1102,8 @@ What is refused, and why each would otherwise be silent:
 | one `team_id` under two workspace keys | the connect flow finds a workspace by the team id Slack returns, and two answers is no answer |
 | no `domains`, an invalid domain, or one domain in two workspaces | nobody could be found, or read order would decide which workspace an address is in |
 | a channel name that is not lowercase letters, digits, `-`, `_` (at most 80) | Slack would refuse it at create time, not at load |
+| `mode` other than `extend` or `strict`; `mode: strict` on a channel that is not `private` | Slack would refuse every removal from a public channel, at every pass |
+| `ignore` without `mode: strict`, or an entry that is neither an address nor a Slack user id, or one listed twice | an extend channel removes nobody, so the list would mean nothing |
 | a channel with no `from` | *empty this channel* is not something to express by leaving a list out |
 | a group nothing declares | the binding would name something with no meaning |
 | `adopt` not `^[CG][A-Z0-9]{8,}$`, or one ID adopted twice in a workspace | two bindings would fight over one channel |

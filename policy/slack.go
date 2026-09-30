@@ -65,21 +65,27 @@ type SlackWorkspace struct {
 
 // SlackChannel is one channel's binding.
 //
-// How membership is reconciled depends on the channel's visibility, and
-// that difference is deliberate. A PUBLIC channel is add-only: anybody can
-// join it themselves, so removing a person the bindings do not name would
-// fight Slack's own model and undo a choice the person was entitled to
-// make. A PRIVATE channel is exact: membership there is granted, so the
-// controller makes it match the bindings, removing people only after the
-// directory has vouched for the answer and never past the controller's
-// breaker.
+// How membership is reconciled is the channel's [SlackChannel.Mode], and
+// it is chosen, never inferred from visibility. An `extend` channel (the
+// default) is add-only: the controller adds the people the bindings name
+// and removes nobody, so whatever else is in the channel stays. A `strict`
+// channel is exact: membership is made to match the bindings, removing
+// people only after the directory has vouched for the answer and never
+// past the controller's breaker. Strict is for private channels only:
+// Slack lets only an administrator remove somebody from a public channel,
+// so a bot asked to would be refused at every pass.
 type SlackChannel struct {
-	// Private makes the channel private when the controller creates it,
-	// and tells it to treat membership as exact rather than add-only. For
-	// an adopted channel it must agree with the channel as it exists; a
-	// disagreement is a refusal at reconcile time, never a silent change of
-	// visibility.
+	// Private makes the channel private when the controller creates it.
+	// For an adopted channel it must agree with the channel as it exists;
+	// a disagreement is a hold at reconcile time, never a silent change
+	// of visibility.
 	Private bool `yaml:"private,omitempty"`
+	// Mode is `extend` (the default) or `strict`; see above.
+	Mode string `yaml:"mode,omitempty"`
+	// Ignore lists people a strict channel never removes: addresses, or
+	// Slack user ids (`U0123ABCD`) for somebody with no address here.
+	// Only meaningful, and only allowed, with `mode: strict`.
+	Ignore []string `yaml:"ignore,omitempty"`
 	// From are the internal groups whose holders belong in the channel.
 	// At least one: a channel fed by nothing would be a channel the
 	// controller empties, and that is not something to express by leaving
@@ -92,6 +98,20 @@ type SlackChannel struct {
 	// different channel. One ID may be adopted once per workspace.
 	Adopt string `yaml:"adopt,omitempty"`
 }
+
+// The channel modes.
+const (
+	// SlackModeExtend only adds. It is the default.
+	SlackModeExtend = "extend"
+	// SlackModeStrict adds and removes.
+	SlackModeStrict = "strict"
+)
+
+// Strict reports whether the channel is exact.
+func (c SlackChannel) Strict() bool { return c.Mode == SlackModeStrict }
+
+// slackUserID is the shape of a Slack user id.
+var slackUserID = regexp.MustCompile(`^[UW][A-Z0-9]{6,}$`)
 
 // SlackSharedChannel is a Slack Connect channel. One workspace, the
 // host, creates and owns it — Slack requires exactly one — and invites the
@@ -330,6 +350,9 @@ func (p Policy) validateSlackWorkspace(key string, domainOwner map[string]string
 		if err := p.checkBoundGroups(where+" from", channel.From); err != nil {
 			return err
 		}
+		if err := validateSlackMode(where, channel); err != nil {
+			return err
+		}
 		if channel.Adopt == "" {
 			continue
 		}
@@ -340,6 +363,36 @@ func (p Policy) validateSlackWorkspace(key string, domainOwner map[string]string
 			return fmt.Errorf("slack: %s adopts %s for both %s and %s", key, channel.Adopt, prev, name)
 		}
 		adopted[channel.Adopt] = name
+	}
+	return nil
+}
+
+// validateSlackMode checks a channel's mode and ignore list.
+func validateSlackMode(where string, channel SlackChannel) error {
+	switch channel.Mode {
+	case "", SlackModeExtend:
+		if len(channel.Ignore) > 0 {
+			return fmt.Errorf("%s: ignore only applies to mode: strict; an extend channel removes nobody", where)
+		}
+	case SlackModeStrict:
+		if !channel.Private {
+			return fmt.Errorf("%s: mode: strict needs private: true; Slack lets only administrators remove people from a public channel, so the bot would be refused", where)
+		}
+	default:
+		return fmt.Errorf("%s: mode %q is neither extend nor strict", where, channel.Mode)
+	}
+	seen := map[string]bool{}
+	for _, entry := range channel.Ignore {
+		key := strings.TrimSpace(entry)
+		if address, ok := normaliseAddress(key); ok {
+			key = address
+		} else if !slackUserID.MatchString(key) {
+			return fmt.Errorf("%s: ignore %q is neither an address nor a Slack user id (like U0123ABCD)", where, entry)
+		}
+		if seen[key] {
+			return fmt.Errorf("%s: ignore lists %s twice", where, key)
+		}
+		seen[key] = true
 	}
 	return nil
 }
