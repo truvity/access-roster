@@ -1,5 +1,18 @@
 ## Unreleased
 
+- **New: per-organisation operators for GitHub.** `github.<org>.owner`
+  names the directory workspace that owns an organisation; its scoped
+  operator (`<id>:access-roster:operator`) may then connect, reconnect and
+  disconnect it, confirm its removals and manage its runner and catalogue
+  Apps, beside the installation-wide operator. An organisation with no
+  `owner` is operated by the installation-wide roles alone, as before, so
+  nothing changes until one is named. The check is one helper
+  (`requireOwner`) that Slack workspaces will use for theirs. The GitHub
+  pages list only the organisations the caller may view, each row says
+  whether the caller may operate it (`can_operate`), and the connect
+  callbacks ask the role question again. See
+  [docs/reference/policy.md](docs/reference/policy.md#scoping-a-github-organisation-githuborgowner).
+
 - **New: `people` and `slack` in the policy schema (schema only; no
   controller yet).** `people` links the addresses of one person across
   domains; `slack` declares workspaces (own key, Slack `team_id`, email

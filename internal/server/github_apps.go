@@ -124,15 +124,24 @@ func secretNameOf(store any) string {
 func (c *Console) ListGitHubApps(
 	ctx context.Context, _ *connect.Request[directoryrosterv1.ListGitHubAppsRequest],
 ) (*connect.Response[directoryrosterv1.ListGitHubAppsResponse], error) {
-	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+	id, err := c.requireAnyOrg(ctx, access.RoleViewer)
+	if err != nil {
 		return nil, err
 	}
 	specs, facts, err := c.githubAppSpecs(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
+	// Only the Apps of organisations the caller may view: a scoped viewer
+	// never sees another company's organisation, or an App in it.
+	specs = slices.DeleteFunc(specs, func(spec githubAppSpec) bool { return !c.mayApp(id, access.RoleViewer, &spec) })
+	facts.bound = slices.DeleteFunc(facts.bound, func(org string) bool { return !c.mayOrg(id, access.RoleViewer, org) })
+	views := c.githubAppViews(ctx, specs)
+	for i := range views {
+		views[i].CanOperate = c.mayApp(id, access.RoleOperator, &specs[i])
+	}
 	return connect.NewResponse(&directoryrosterv1.ListGitHubAppsResponse{
-		Apps:                c.githubAppViews(ctx, specs),
+		Apps:                views,
 		ConnectingAvailable: facts.connecting,
 		LinkingAvailable:    facts.linking,
 		CatalogueAvailable:  facts.catalogue,
@@ -146,14 +155,20 @@ func (c *Console) ListGitHubApps(
 func (c *Console) GetGitHubApp(
 	ctx context.Context, req *connect.Request[directoryrosterv1.GetGitHubAppRequest],
 ) (*connect.Response[directoryrosterv1.GetGitHubAppResponse], error) {
-	if _, err := requireRole(ctx, access.RoleViewer); err != nil {
+	if _, err := requireAnywhere(ctx, access.RoleViewer); err != nil {
 		return nil, err
 	}
 	spec, err := c.githubAppSpec(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&directoryrosterv1.GetGitHubAppResponse{App: c.githubAppView(ctx, spec, false)}), nil
+	id, err := c.requireApp(ctx, access.RoleViewer, &spec)
+	if err != nil {
+		return nil, err
+	}
+	app := c.githubAppView(ctx, spec, false)
+	app.CanOperate = c.mayApp(id, access.RoleOperator, &spec)
+	return connect.NewResponse(&directoryrosterv1.GetGitHubAppResponse{App: app}), nil
 }
 
 // ListGitHubAppTokens implements an App's *Recent tokens*: the last
@@ -172,7 +187,7 @@ func (c *Console) GetGitHubApp(
 func (c *Console) ListGitHubAppTokens(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ListGitHubAppTokensRequest],
 ) (*connect.Response[directoryrosterv1.ListGitHubAppTokensResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	if _, err := requireAnywhere(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	// The App first, so an id nothing declares is not_found rather than an
@@ -180,6 +195,11 @@ func (c *Console) ListGitHubAppTokens(
 	// reporting that nothing has been asked for.
 	spec, err := c.githubAppSpec(ctx, req.Msg.GetId())
 	if err != nil {
+		return nil, err
+	}
+	// The organisation's own operator, not any operator: a request names who
+	// asked for it, and that is another company's business.
+	if _, err = c.requireApp(ctx, access.RoleOperator, &spec); err != nil {
 		return nil, err
 	}
 	switch {
@@ -209,14 +229,20 @@ func (c *Console) ListGitHubAppTokens(
 func (c *Console) CheckGitHubApp(
 	ctx context.Context, req *connect.Request[directoryrosterv1.CheckGitHubAppRequest],
 ) (*connect.Response[directoryrosterv1.CheckGitHubAppResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	if _, err := requireAnywhere(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	spec, err := c.githubAppSpec(ctx, req.Msg.GetId())
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&directoryrosterv1.CheckGitHubAppResponse{App: c.githubAppView(ctx, spec, true)}), nil
+	id, err := c.requireApp(ctx, access.RoleOperator, &spec)
+	if err != nil {
+		return nil, err
+	}
+	app := c.githubAppView(ctx, spec, true)
+	app.CanOperate = c.mayApp(id, access.RoleOperator, &spec)
+	return connect.NewResponse(&directoryrosterv1.CheckGitHubAppResponse{App: app}), nil
 }
 
 // BeginGitHubAppConnect starts creating any App, or finishing installing
@@ -229,11 +255,14 @@ func (c *Console) CheckGitHubApp(
 func (c *Console) BeginGitHubAppConnect(
 	ctx context.Context, req *connect.Request[directoryrosterv1.BeginGitHubAppConnectRequest],
 ) (*connect.Response[directoryrosterv1.BeginGitHubAppConnectResponse], error) {
-	id, err := requireRole(ctx, access.RoleOperator)
-	if err != nil {
+	if _, err := requireAnywhere(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	spec, err := c.githubAppSpec(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, err
+	}
+	id, err := c.requireApp(ctx, access.RoleOperator, &spec)
 	if err != nil {
 		return nil, err
 	}
@@ -260,11 +289,14 @@ func (c *Console) BeginGitHubAppConnect(
 func (c *Console) DisconnectGitHubApp(
 	ctx context.Context, req *connect.Request[directoryrosterv1.DisconnectGitHubAppRequest],
 ) (*connect.Response[directoryrosterv1.DisconnectGitHubAppResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	if _, err := requireAnywhere(ctx, access.RoleOperator); err != nil {
 		return nil, err
 	}
 	spec, err := c.githubAppSpec(ctx, req.Msg.GetId())
 	if err != nil {
+		return nil, err
+	}
+	if _, err = c.requireApp(ctx, access.RoleOperator, &spec); err != nil {
 		return nil, err
 	}
 	var gone githubDisconnect

@@ -63,11 +63,12 @@ func (c *Console) runnerTier(tier string) error {
 func (c *Console) BeginGitHubRunnerAppConnect(
 	ctx context.Context, req *connect.Request[directoryrosterv1.BeginGitHubRunnerAppConnectRequest],
 ) (*connect.Response[directoryrosterv1.BeginGitHubRunnerAppConnectResponse], error) {
-	id, err := requireRole(ctx, access.RoleOperator)
+	org := strings.TrimSpace(req.Msg.GetOrg())
+	id, err := c.requireOrg(ctx, access.RoleOperator, org)
 	if err != nil {
 		return nil, err
 	}
-	begun, err := c.beginRunnerAppConnect(ctx, id.Who(), strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetTier()))
+	begun, err := c.beginRunnerAppConnect(ctx, id.Who(), org, strings.TrimSpace(req.Msg.GetTier()))
 	if err != nil {
 		return nil, err
 	}
@@ -121,10 +122,11 @@ func (c *Console) beginRunnerAppConnect(ctx context.Context, actor, org, tier st
 func (c *Console) DisconnectGitHubRunnerApp(
 	ctx context.Context, req *connect.Request[directoryrosterv1.DisconnectGitHubRunnerAppRequest],
 ) (*connect.Response[directoryrosterv1.DisconnectGitHubRunnerAppResponse], error) {
-	if _, err := requireRole(ctx, access.RoleOperator); err != nil {
+	org := strings.TrimSpace(req.Msg.GetOrg())
+	if _, err := c.requireOrg(ctx, access.RoleOperator, org); err != nil {
 		return nil, err
 	}
-	gone, err := c.disconnectRunnerApp(ctx, strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetTier()))
+	gone, err := c.disconnectRunnerApp(ctx, org, strings.TrimSpace(req.Msg.GetTier()))
 	if err != nil {
 		return nil, err
 	}

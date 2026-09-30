@@ -57,6 +57,9 @@ import { useAsync } from "./hooks";
 import { go, paths } from "./router";
 import { Facts, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, ShortNames, State, type StateKind } from "./ui";
 
+/** `operator` is the server's per-organisation answer (`canOperate` on the
+ *  organisation or the App), never the caller's installation-wide role: a
+ *  scoped operator operates its own directory's organisations and no others. */
 type Props = { operator: boolean; onDone: (message: string) => void };
 
 /** GitHub, as tabs: what needs attention across every organisation, each
@@ -65,7 +68,7 @@ type Props = { operator: boolean; onDone: (message: string) => void };
  *  Two calls feed every tab — the organisations and their reports, and the
  *  Apps — so moving between them never waits, and neither answer is
  *  derived from the other. */
-export function GitHubPage({ section, rest, operator, onDone }: Props & { section?: string; rest: string[] }) {
+export function GitHubPage({ section, rest, onDone }: Omit<Props, "operator"> & { section?: string; rest: string[] }) {
   const status = useAsync(() => github.getGitHubStatus({}), []);
   const listed = useAsync(() => github.listGitHubApps({}), []);
   const tab = section === "organisations" ? "organisations" : section === "apps" ? "apps" : "overview";
@@ -86,14 +89,14 @@ export function GitHubPage({ section, rest, operator, onDone }: Props & { sectio
       ) : rest[1] === "teams" && rest[2] ? (
         <TeamPage org={org} team={rest[2]} />
       ) : (
-        <OrganisationPage org={org} apps={apps} operator={operator} onDone={onDone} reload={reload} />
+        <OrganisationPage org={org} apps={apps} operator={org.canOperate} onDone={onDone} reload={reload} />
       );
     } else if (tab === "organisations") {
       body = <OrganisationsList status={value} apps={apps} />;
     } else if (tab === "apps" && rest[0]) {
       const app = apps.find((a) => a.id === rest[0]);
       body = app ? (
-        <AppPage key={app.id} app={app} listed={catalogue} status={value} operator={operator} onDone={onDone} reload={reload} />
+        <AppPage key={app.id} app={app} listed={catalogue} status={value} operator={app.canOperate} onDone={onDone} reload={reload} />
       ) : (
         <Nothing>
           No App {rest[0]} is declared or created here. Every App is on the <Ref to={paths.githubApps()}>Apps</Ref> tab.

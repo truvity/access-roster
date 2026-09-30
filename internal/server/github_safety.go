@@ -36,11 +36,11 @@ const importLimit = 500
 func (c *Console) ConfirmGitHubRemovals(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ConfirmGitHubRemovalsRequest],
 ) (*connect.Response[directoryrosterv1.ConfirmGitHubRemovalsResponse], error) {
-	id, err := requireRole(ctx, access.RoleOperator)
+	org, fingerprint := strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetFingerprint())
+	id, err := c.requireOrg(ctx, access.RoleOperator, org)
 	if err != nil {
 		return nil, err
 	}
-	org, fingerprint := strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetFingerprint())
 	switch {
 	case !status.ValidOrg(org) || fingerprint == "":
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("an organisation and a fingerprint are required"))
@@ -76,7 +76,11 @@ func (c *Console) ConfirmGitHubRemovals(
 func (c *Console) ImportGitHubLinks(
 	ctx context.Context, req *connect.Request[directoryrosterv1.ImportGitHubLinksRequest],
 ) (*connect.Response[directoryrosterv1.ImportGitHubLinksResponse], error) {
-	id, err := requireRole(ctx, access.RoleOperator)
+	// Links are people's, not an organisation's, so the call is open to an
+	// operator of any directory — but it adopts an account only on the
+	// evidence of an organisation the caller may operate, so one company's
+	// operator cannot pair accounts against another's membership.
+	id, err := requireAnywhere(ctx, access.RoleOperator)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +94,7 @@ func (c *Console) ImportGitHubLinks(
 	case c.deps.GitHubOrgs == nil || c.deps.GitHubLinks == nil:
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no links"))
 	}
-	members, err := c.memberCheck(ctx)
+	members, err := c.memberCheck(ctx, id)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
@@ -160,9 +164,9 @@ func (c *Console) ImportGitHubLinks(
 }
 
 // memberCheck returns a function answering whether a login is a member of
-// any connected organisation, with the canonical login and a token to
+// any connected organisation the caller may operate, with the canonical login and a token to
 // read the account with. Installation tokens are minted once per call.
-func (c *Console) memberCheck(ctx context.Context) (func(context.Context, string) (string, string, bool, error), error) {
+func (c *Console) memberCheck(ctx context.Context, id access.Identity) (func(context.Context, string) (string, string, bool, error), error) {
 	records, err := c.deps.GitHubOrgs.List(ctx)
 	if err != nil {
 		return nil, err
@@ -173,7 +177,7 @@ func (c *Console) memberCheck(ctx context.Context) (func(context.Context, string
 	}
 	var orgs []installed
 	for _, record := range records {
-		if !record.Installed() {
+		if !record.Installed() || !c.mayOrg(id, access.RoleOperator, record.Org) {
 			continue
 		}
 		credential, found, err := c.deps.GitHubOrgs.Credential(ctx, record.Org)
