@@ -142,6 +142,13 @@ func (h *slackHarness) app(t *testing.T, id string) *directoryrosterv1.SlackApp 
 	return nil
 }
 
+// installErr is what InstallSlackApp answers, for a test that wants the
+// refusal and not the flow.
+func (h *slackHarness) installErr(ctx context.Context, id, token string) error {
+	_, err := h.console.InstallSlackApp(ctx, connect.NewRequest(&directoryrosterv1.InstallSlackAppRequest{Id: id, ConfigurationToken: token}))
+	return err
+}
+
 func (h *slackHarness) create(ctx context.Context, id, token string) error {
 	_, err := h.console.CreateSlackApp(ctx, connect.NewRequest(&directoryrosterv1.CreateSlackAppRequest{Id: id, ConfigurationToken: token}))
 	return err
@@ -149,7 +156,9 @@ func (h *slackHarness) create(ctx context.Context, id, token string) error {
 
 // install begins an install and plays the owner: Slack sends the browser
 // back with a code for the workspace the owner chose.
-func (h *slackHarness) install(t *testing.T, id, configToken, installIn string) (begun *connect.Response[directoryrosterv1.InstallSlackAppResponse], done func() (code int, location string, body string)) {
+func (h *slackHarness) install(
+	t *testing.T, id, configToken, installIn string,
+) (*connect.Response[directoryrosterv1.InstallSlackAppResponse], func() (code int, location, body string)) {
 	t.Helper()
 	begun, err := h.console.InstallSlackApp(operator(), connect.NewRequest(&directoryrosterv1.InstallSlackAppRequest{Id: id, ConfigurationToken: configToken}))
 	if err != nil {
@@ -163,8 +172,6 @@ func (h *slackHarness) install(t *testing.T, id, configToken, installIn string) 
 		return got.Code, got.Header().Get("Location"), got.Body.String()
 	}
 }
-
-const configToken = "xoxe.xoxp-1-a-throwaway-token"
 
 // fake-config-token is the one the fake Slack accepts.
 var accepted = slackfake.ConfigToken
@@ -184,7 +191,7 @@ func TestASlackAppIsCreatedInstalledRefusedForTheWrongWorkspaceAndReinstalled(t 
 	}
 
 	// Install before Create is refused.
-	if _, err := h.console.InstallSlackApp(ctx, connect.NewRequest(&directoryrosterv1.InstallSlackAppRequest{Id: "sync"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+	if err := h.installErr(ctx, "sync", ""); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("Install before Create = %v, want failed precondition", err)
 	}
 
@@ -194,7 +201,8 @@ func TestASlackAppIsCreatedInstalledRefusedForTheWrongWorkspaceAndReinstalled(t 
 		t.Fatalf("Create: %v", err)
 	}
 	app = h.app(t, "sync")
-	if app.GetState() != slackAppCreated || app.GetAppId() == "" || app.GetAppSettingsUrl() != "https://api.slack.com/apps/"+app.GetAppId() || app.GetCreatedBy() == "" {
+	if app.GetState() != slackAppCreated || app.GetAppId() == "" || app.GetCreatedBy() == "" ||
+		app.GetAppSettingsUrl() != "https://api.slack.com/apps/"+app.GetAppId() {
 		t.Errorf("after Create = %+v", app)
 	}
 	created := h.slack.Apps[app.GetAppId()]
@@ -282,11 +290,11 @@ apps:
 	if app.GetState() != slackAppScopesMissing || strings.Join(app.GetMissingScopes(), ",") != "users:read.email" || !app.GetNeedsConfigurationToken() {
 		t.Errorf("with a scope added = %+v", app)
 	}
-	if _, err := h.console.InstallSlackApp(ctx, connect.NewRequest(&directoryrosterv1.InstallSlackAppRequest{Id: "sync"})); connect.CodeOf(err) != connect.CodeFailedPrecondition ||
+	if err := h.installErr(ctx, "sync", ""); connect.CodeOf(err) != connect.CodeFailedPrecondition ||
 		!strings.Contains(err.Error(), "configuration token") {
 		t.Errorf("a reinstall that could grant nothing new = %v", err)
 	}
-	if _, err := h.console.InstallSlackApp(ctx, connect.NewRequest(&directoryrosterv1.InstallSlackAppRequest{Id: "sync", ConfigurationToken: "xoxe-wrong"})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+	if err := h.installErr(ctx, "sync", "xoxe-wrong"); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("a reinstall with a token Slack refuses = %v", err)
 	}
 
@@ -305,7 +313,8 @@ apps:
 	}
 
 	// What was recorded, in order, and never a credential.
-	if got := strings.Join(h.recorded.Actions(), ","); got != "roster.slack_app.created,roster.slack_app.install_refused,roster.slack_app.installed,roster.slack_app.installed" {
+	want := "roster.slack_app.created,roster.slack_app.install_refused,roster.slack_app.installed,roster.slack_app.installed"
+	if got := strings.Join(h.recorded.Actions(), ","); got != want {
 		t.Errorf("audit actions = %s", got)
 	}
 }
@@ -316,7 +325,7 @@ apps:
 func TestTheConfigurationTokenIsNeverKeptOrLogged(t *testing.T) {
 	h := newSlackHarness(t)
 
-	_, refusal := h.console.CreateSlackApp(operator(), connect.NewRequest(&directoryrosterv1.CreateSlackAppRequest{Id: "sync", ConfigurationToken: "xoxe-not-the-accepted-one"}))
+	refusal := h.create(operator(), "sync", "xoxe-not-the-accepted-one")
 	if refusal == nil || strings.Contains(refusal.Error(), "xoxe-not-the-accepted-one") {
 		t.Errorf("a refused Create = %v, which must fail and not echo the token", refusal)
 	}
@@ -354,13 +363,14 @@ func TestOnlyAnOperatorCreatesOrInstalls(t *testing.T) {
 	if err := h.create(viewer(), "sync", accepted); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Errorf("a viewer's Create = %v, want permission denied", err)
 	}
-	if _, err := h.console.InstallSlackApp(viewer(), connect.NewRequest(&directoryrosterv1.InstallSlackAppRequest{Id: "sync"})); connect.CodeOf(err) != connect.CodePermissionDenied {
+	if err := h.installErr(viewer(), "sync", ""); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Errorf("a viewer's Install = %v, want permission denied", err)
 	}
 	if err := h.create(context.Background(), "sync", accepted); connect.CodeOf(err) != connect.CodeUnauthenticated {
 		t.Errorf("an anonymous Create = %v, want unauthenticated", err)
 	}
-	if _, err := h.console.ListSlackApps(context.Background(), connect.NewRequest(&directoryrosterv1.ListSlackAppsRequest{})); connect.CodeOf(err) != connect.CodeUnauthenticated {
+	_, err := h.console.ListSlackApps(context.Background(), connect.NewRequest(&directoryrosterv1.ListSlackAppsRequest{}))
+	if connect.CodeOf(err) != connect.CodeUnauthenticated {
 		t.Errorf("an anonymous List = %v, want unauthenticated", err)
 	}
 	if len(h.slack.Calls()) != 0 {
@@ -457,7 +467,8 @@ func TestASlackInstallIsFinishedOnlyByTheBrowserThatStartedIt(t *testing.T) {
 	}
 
 	// Declined in Slack: said, not a failure of this service.
-	if got := redirect(h.server.slackCatalogueCallback, slackCatalogueCallbackPath, url.Values{"error": {"access_denied"}, "state": {state}}, cookie); got.Code != http.StatusBadRequest ||
+	declined := url.Values{"error": {"access_denied"}, "state": {state}}
+	if got := redirect(h.server.slackCatalogueCallback, slackCatalogueCallbackPath, declined, cookie); got.Code != http.StatusBadRequest ||
 		!strings.Contains(got.Body.String(), "not approved") {
 		t.Errorf("a declined install = %d:\n%s", got.Code, got.Body)
 	}

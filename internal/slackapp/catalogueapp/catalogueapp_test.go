@@ -9,8 +9,11 @@ import (
 )
 
 func created() catalogueapp.Record {
-	return catalogueapp.Record{ID: "sync", Workspace: "acme", AppID: "A0123", ClientID: "client-1", AuthorizeURL: "https://slack.example/oauth/v2/authorize?client_id=client-1",
-		CreatedAt: time.Unix(1, 0).UTC(), CreatedBy: "ada@north.example"}
+	return catalogueapp.Record{
+		ID: "sync", Workspace: "acme", AppID: "A0123", ClientID: "client-1",
+		AuthorizeURL: "https://slack.example/oauth/v2/authorize?client_id=client-1",
+		CreatedAt:    time.Unix(1, 0).UTC(), CreatedBy: "ada@north.example",
+	}
 }
 
 // A created App has no bot token key at all, so a push that names the key
