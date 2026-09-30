@@ -54,6 +54,13 @@ type SlackWorkspace struct {
 	// belong to only one workspace: two would leave "which workspace is
 	// this address in" to read order. Compared lowercased.
 	Domains []string `yaml:"domains,omitempty"`
+	// Owner is the directory workspace id that owns this Slack workspace:
+	// the workspace whose SCOPED operator (`<id>:access-roster:operator`)
+	// may create, install and reinstall its Apps, beside the
+	// installation-wide operator. Empty, the workspace is operated by the
+	// installation-wide roles alone. Like [GitHubOrg.Owner]; see
+	// policy.md#the-services-own-two-groups-and-scoping-them.
+	Owner string `yaml:"owner,omitempty"`
 	// Channels are the channels bound in this workspace, keyed by channel
 	// NAME as Slack spells it (lowercase letters, digits, `-` and `_`, at
 	// most 80 characters). The controller creates a channel that is
@@ -240,6 +247,9 @@ func (p Policy) validateSlackWorkspace(key string, domainOwner map[string]string
 	if !slackTeamID.MatchString(ws.TeamID) {
 		return fmt.Errorf("slack: %s team_id %q is not a Slack team id (like T0123ABCD)", key, ws.TeamID)
 	}
+	if ws.Owner != "" && !ValidWorkspaceID(ws.Owner) {
+		return fmt.Errorf("slack: %s owner: %q is not a workspace id", key, ws.Owner)
+	}
 	if len(ws.Domains) == 0 {
 		return fmt.Errorf("slack: %s has no domains, so nobody could be found in it", key)
 	}
@@ -330,6 +340,15 @@ func (p *Policy) mergeSlack(other Slack, from string) error {
 				return fmt.Errorf("%s: slack workspace %s declares team_id twice", from, key)
 			}
 			into.TeamID = incoming.TeamID
+		}
+		// The owner is one scalar per workspace: a second file naming one
+		// is a clash, because the second would silently replace the first
+		// and with it decide who may operate the workspace.
+		if incoming.Owner != "" {
+			if into.Owner != "" {
+				return fmt.Errorf("%s: slack workspace %s declares owner twice", from, key)
+			}
+			into.Owner = incoming.Owner
 		}
 		if len(incoming.Domains) > 0 {
 			if len(into.Domains) > 0 {

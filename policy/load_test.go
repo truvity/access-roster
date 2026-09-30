@@ -138,6 +138,11 @@ var slackWorkspaceFields = map[string]mergeRule{
 		declare: "version: 1\nslack: { workspaces: { acme: { domains: [acme.example] } } }\n",
 		twice:   clash,
 	},
+	"Owner": {
+		rule:    "one file per workspace; a second is a clash",
+		declare: "version: 1\nslack: { workspaces: { acme: { owner: C0northern } } }\n",
+		twice:   clash,
+	},
 	"Channels": {
 		rule:    "per channel; a channel in two files is a clash",
 		declare: "version: 1\nslack: { workspaces: { acme: { channels: { ops: { from: [g] } } } } }\n",

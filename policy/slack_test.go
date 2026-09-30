@@ -107,6 +107,9 @@ func TestSlackRefusals(t *testing.T) {
 		"channel group undeclared":  {"from: [acme:sre:member]", "from: [acme:nobody:member]", "not a declared group"},
 		"adopt misshapen":           {"adopt: C0123ABCD", "adopt: c123", "channel id"},
 		"adopt twice":               {"eng-private: { private: true,", "eng-private: { adopt: C0123ABCD, private: true,", "adopts C0123ABCD for both"},
+		"owner has a separator":     {"      team_id: T0456EFGH\n", "      team_id: T0456EFGH\n      owner: 'C0:north'\n", "not a workspace id"},
+		"owner has a space":         {"      team_id: T0456EFGH\n", "      team_id: T0456EFGH\n      owner: 'C0 north'\n", "not a workspace id"},
+		"owner is all":              {"      team_id: T0456EFGH\n", "      team_id: T0456EFGH\n      owner: all\n", "not a workspace id"},
 		"person no address":         {"jdoe: [j.doe@acme.example, john@globex.example]", "jdoe: []", "no address"},
 		"person address invalid":    {"john@globex.example", "john", "not an address"},
 		"person key not a slug":     {"jdoe:", "J Doe:", "not a usable name"},
@@ -172,6 +175,11 @@ func TestChangingASlackFieldChangesTheDigest(t *testing.T) {
 			w.TeamID = "T0999ZZZZ"
 			p.Slack.Workspaces["globex"] = w
 		},
+		"owner": func(p *policy.Policy) {
+			w := p.Slack.Workspaces["globex"]
+			w.Owner = "C0north"
+			p.Slack.Workspaces["globex"] = w
+		},
 		"domain": func(p *policy.Policy) {
 			w := p.Slack.Workspaces["globex"]
 			w.Domains = append(w.Domains, "globex.example.org")
@@ -230,5 +238,30 @@ func TestSlackMergesAcrossFiles(t *testing.T) {
 	}
 	if merged.Slack.Workspaces["acme"].TeamID == "" || len(merged.Slack.Workspaces["acme"].Channels) != 1 {
 		t.Errorf("merged = %+v", merged.Slack)
+	}
+}
+
+// A workspace's owner is read back exactly as declared, and a workspace
+// that names none has none.
+func TestASlackWorkspacesOwner(t *testing.T) {
+	t.Parallel()
+	declared, err := policy.Parse([]byte(strings.Replace(slackBase, "      team_id: T0456EFGH\n", "      team_id: T0456EFGH\n      owner: C0north\n", 1)))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatalf("NewSet: %v", err)
+	}
+	for key, want := range map[string]string{"globex": "C0north", "acme": "", "unbound": ""} {
+		if got := set.SlackOwner(key); got != want {
+			t.Errorf("SlackOwner(%s) = %q, want %q", key, got, want)
+		}
+	}
+	if team, ok := set.SlackWorkspaceTeam("globex"); !ok || team != "T0456EFGH" {
+		t.Errorf("SlackWorkspaceTeam(globex) = %q, %v", team, ok)
+	}
+	if _, ok := set.SlackWorkspaceTeam("unbound"); ok {
+		t.Error("an undeclared workspace has a team")
 	}
 }
