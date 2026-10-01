@@ -174,6 +174,10 @@ func BotID(team string) string { return "B" + team }
 
 func (s *Slack) id(prefix string) string {
 	s.nextID++
+	if prefix == "C" {
+		// Real channel ids are long: the roster's records refuse a short one.
+		return fmt.Sprintf("%s%08d", prefix, 1000+s.nextID)
+	}
 	return prefix + strconv.Itoa(1000+s.nextID)
 }
 

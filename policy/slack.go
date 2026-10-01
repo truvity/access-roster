@@ -25,9 +25,9 @@ import (
 // which domains its people use are not policy: access-roster records them
 // when the workspace is connected and reads them from the directory.
 //
-// A controller that reads this is being built. Until it ships, nothing
-// reads these keys: they are validated at load, merged, digested and
-// shown, and that is all.
+// The Slack controller reads these keys and acts on them: it creates or
+// adopts each bound channel and keeps its members in step with the groups
+// that are bound to it, in the workspaces it is told to act in.
 type Slack struct {
 	// Workspaces are the Slack workspaces, keyed by a name WE choose —
 	// the workspace's own name is the operator's to change, so nothing
@@ -39,15 +39,16 @@ type Slack struct {
 // Shared Slack Connect channels are not declared here. They are created and
 // edited on the console, which keeps them as records of its own, so the
 // policy file describes only what is fixed at deploy time: which
-// workspaces exist, whose domain is whose, and the channels bound inside
-// each.
+// workspaces exist and the channels bound inside each. Whose domain is
+// whose is not here: the directory that owns a workspace is recorded on the
+// console when the workspace is connected.
 
 // SlackWorkspace is one workspace and the channels bound inside it.
 type SlackWorkspace struct {
 	// Channels are the channels bound in this workspace, keyed by channel
 	// NAME as Slack spells it (lowercase letters, digits, `-` and `_`, at
 	// most 80 characters). The controller creates a channel that is
-	// missing and otherwise takes over the existing one BY NAME;
+	// missing and otherwise adopts the existing one BY NAME;
 	// [SlackChannel.Adopt] is only a disambiguation.
 	Channels map[string]SlackChannel `yaml:"channels,omitempty"`
 }
@@ -81,8 +82,8 @@ type SlackChannel struct {
 	// a list out.
 	From []string `yaml:"from,omitempty"`
 	// Adopt is the ID (`C0123ABCD`, or `G…` for an older private channel)
-	// of an existing channel to take over, optionally. A channel with the
-	// declared name is taken over by name without it; the ID is for a
+	// of an existing channel to adopt, optionally. A channel with the
+	// declared name is adopted by name without it; the ID is for a
 	// renamed channel, or when two channels are candidates, and by ID
 	// because a name can be changed or reused and an ID cannot. One ID may
 	// be adopted once per workspace.
@@ -115,6 +116,11 @@ var (
 	// slackChannelName is Slack's own rule for a channel name.
 	slackChannelName = regexp.MustCompile(`^[a-z0-9_-]{1,80}$`)
 )
+
+// ValidSlackChannelID reports whether a string has the shape of a Slack
+// channel id. The one definition: a policy binding's `adopt` and a console or
+// Slack Connect record's channel id are both checked with it.
+func ValidSlackChannelID(id string) bool { return slackChannelID.MatchString(id) }
 
 // normaliseAddress trims and lowercases an address and reports whether it
 // has a local part and a domain, using the same rule as everywhere else
@@ -222,7 +228,7 @@ func (p Policy) validateSlackWorkspace(key string) error {
 		if channel.Adopt == "" {
 			continue
 		}
-		if !slackChannelID.MatchString(channel.Adopt) {
+		if !ValidSlackChannelID(channel.Adopt) {
 			return fmt.Errorf("%s adopt: %q is not a Slack channel id (like C0123ABCD)", where, channel.Adopt)
 		}
 		if prev, dup := adopted[channel.Adopt]; dup {

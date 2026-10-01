@@ -93,8 +93,7 @@ func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[s
 					continue
 				}
 			} else {
-				host := teamOf[rec.Host]
-				if rec.Name != d.Name || (host != "" && d.HostTeam != "" && host != d.HostTeam) {
+				if !rec.NamesChannel(d.Name, d.HostTeam, teamOf[rec.Host], listed[id][rec.Host]) {
 					continue
 				}
 			}

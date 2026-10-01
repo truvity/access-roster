@@ -368,12 +368,7 @@ func (d *Draft) managed(ch *Channel) bool {
 			}
 			continue
 		}
-		host := d.in.Facts[rec.Host].Team
-		isHost := ch.HostTeamID == host && host != ""
-		if rec.Host == d.in.Workspace {
-			isHost = true
-		}
-		if isHost && rec.Name == ch.Name {
+		if rec.NamesChannel(ch.Name, ch.HostTeamID, d.in.Facts[rec.Host].Team, rec.Host == d.in.Workspace) {
 			return true
 		}
 	}

@@ -129,7 +129,7 @@ type Controller struct {
 	held rails.Ledger
 	// leavers is the same for leaver reports.
 	leavers rails.Ledger
-	// adopted is the same for the channels taken over, so that each is
+	// adopted is the same for the channels adopted, so that each is
 	// recorded once, when it is first managed, and not every pass.
 	adopted rails.Ledger
 	// journal is each workspace's last report that was not a failure, so a
@@ -493,7 +493,7 @@ func (c *Controller) reportConsoleRefused(report *status.Workspace, _ string, re
 		}
 		reason := "the console channel's record is refused and not acted on: " + r.err.Error()
 		if errors.Is(r.err, reconcile.ErrDefinedInGit) {
-			reason = definedTwiceReason
+			reason = reconcile.DefinedTwice
 		}
 		report.Channels = append(report.Channels, status.Channel{
 			Name: r.name, ID: r.channel.ChannelID, Console: true, Mode: mode, Private: r.channel.Private,
@@ -501,11 +501,6 @@ func (c *Controller) reportConsoleRefused(report *status.Workspace, _ string, re
 		})
 	}
 }
-
-// definedTwiceReason is why a channel the policy and a console record both
-// define is held: the roster never mixes the two.
-const definedTwiceReason = "defined in both git and the console: held and unchanged until one definition is removed " +
-	"(remove it from git to manage it here, or delete the console record)"
 
 // definedTwice are the policy channels of a workspace that a refused console
 // record also defines, by name or by adopted channel id.
@@ -537,7 +532,7 @@ func (c *Controller) reportDefinedTwice(report *status.Workspace, key string, he
 		}
 		report.Channels = append(report.Channels, status.Channel{
 			Name: name, ID: b.Adopt, Private: b.Private, Mode: mode,
-			State: status.ChannelHeld, Reason: definedTwiceReason,
+			State: status.ChannelHeld, Reason: reconcile.DefinedTwice,
 		})
 	}
 }

@@ -1367,7 +1367,7 @@ func TestAnArchivedSharedChannelIsHeldOnBothSides(t *testing.T) {
 // ---------------------------------------------------------------- taking over a channel that is already shared
 
 func existingShared(name string) reconcile.SharedChannel {
-	return reconcile.SharedChannel{Name: name, Host: "acme", With: []string{"globex"}, Sources: []string{"g"}, ChannelID: "C7"}
+	return reconcile.SharedChannel{Name: name, Host: "acme", With: []string{"globex"}, Sources: []string{"g"}, ChannelID: "C00000007"}
 }
 
 func TestAnAlreadySharedChannelIsTakenOverByTheHostWithoutInvitingASideThatIsConnected(t *testing.T) {
@@ -1375,7 +1375,7 @@ func TestAnAlreadySharedChannelIsTakenOverByTheHostWithoutInvitingASideThatIsCon
 	// Created long ago by a person, public, already shared with globex; the bot
 	// is not in it yet.
 	e := newEnv("acme").shared(existingShared("legacy")).holders("g", "ann@acme.example").account("ann@acme.example", "U1").
-		channel(reconcile.Channel{ID: "C7", Name: "legacy", Creator: "UPERSON", BotIn: false, Shared: true,
+		channel(reconcile.Channel{ID: "C00000007", Name: "legacy", Creator: "UPERSON", BotIn: false, Shared: true,
 			SharedTeamIDs: []string{"TACME", "TGLOBEX"}, HostTeamID: "TACME", Members: []string{"UPERSON"}}).
 		member("UPERSON", "old@acme.example")
 	dec := e.decide(t, nil, reconcile.Confirmed{})
@@ -1395,11 +1395,11 @@ func TestAnAlreadySharedChannelIsFoundByNameWhenNoIDIsRecorded(t *testing.T) {
 	rec := existingShared("legacy")
 	rec.ChannelID = ""
 	e := newEnv("acme").shared(rec).
-		channel(reconcile.Channel{ID: "C7", Name: "legacy", Creator: "UPERSON", BotIn: true, Shared: true,
+		channel(reconcile.Channel{ID: "C00000007", Name: "legacy", Creator: "UPERSON", BotIn: true, Shared: true,
 			SharedTeamIDs: []string{"TACME", "TGLOBEX"}, HostTeamID: "TACME", Members: []string{"BACME"}})
 	dec := e.decide(t, nil, reconcile.Confirmed{})
 	wantKinds(t, dec)
-	if c := channelOf(t, dec, "legacy"); c.State != status.ChannelOK || c.ID != "C7" {
+	if c := channelOf(t, dec, "legacy"); c.State != status.ChannelOK || c.ID != "C00000007" {
 		t.Errorf("channel = %+v", c)
 	}
 }
@@ -1416,7 +1416,7 @@ func TestAPrivateHostSideTheBotIsNotInIsHeldAndNotCreatedAgain(t *testing.T) {
 		t.Errorf("channel = %+v", c)
 	}
 	// Listed, bot not in it (some Slack plans do): the same hold.
-	dec = newEnv("acme").shared(rec).channel(reconcile.Channel{ID: "C7", Name: "legacy", Private: true, Shared: true,
+	dec = newEnv("acme").shared(rec).channel(reconcile.Channel{ID: "C00000007", Name: "legacy", Private: true, Shared: true,
 		SharedTeamIDs: []string{"TACME", "TGLOBEX"}}).decide(t, nil, reconcile.Confirmed{})
 	wantKinds(t, dec)
 	if c := channelOf(t, dec, "legacy"); c.State != status.ChannelHeld || !strings.Contains(c.Reason, "invite the bot") {
@@ -1428,13 +1428,13 @@ func TestAGuestSideThatIsAlreadyConnectedJoinsAPublicChannelAndManagesItsPeople(
 	t.Parallel()
 	e := newEnv("globex").shared(existingShared("legacy")).holders("g", "bob@globex.example", "cy@globex.example").
 		account("bob@globex.example", "U2").account("cy@globex.example", "U3").
-		channel(reconcile.Channel{ID: "C7", Name: "legacy-globex", BotIn: false, Shared: true,
+		channel(reconcile.Channel{ID: "C00000007", Name: "legacy-globex", BotIn: false, Shared: true,
 			SharedTeamIDs: []string{"TACME", "TGLOBEX"}, HostTeamID: "TACME", Members: []string{"UHOST", "U2"}}).
 		memberOf(reconcile.Member{ID: "UHOST", Email: "ann@acme.example", TeamID: "TACME"})
 	// An invitation that would otherwise be accepted must not be waited for.
 	dec := e.decide(t, nil, reconcile.Confirmed{})
 	wantKinds(t, dec, "adopt:legacy", "invite:legacy:U3")
-	if c := channelOf(t, dec, "legacy"); c.State != status.ChannelWillAdopt || c.ID != "C7" {
+	if c := channelOf(t, dec, "legacy"); c.State != status.ChannelWillAdopt || c.ID != "C00000007" {
 		t.Errorf("channel = %+v", c)
 	}
 }
@@ -1444,7 +1444,7 @@ func TestAGuestSideThatIsPrivateAndWithoutTheBotIsHeld(t *testing.T) {
 	rec := existingShared("legacy")
 	rec.Private = reconcile.Privacy{PerSide: map[string]bool{"acme": false, "globex": true}}
 	e := newEnv("globex").shared(rec).holders("g", "bob@globex.example").account("bob@globex.example", "U2").
-		channel(reconcile.Channel{ID: "C7", Name: "legacy", Private: true, BotIn: false, Shared: true,
+		channel(reconcile.Channel{ID: "C00000007", Name: "legacy", Private: true, BotIn: false, Shared: true,
 			SharedTeamIDs: []string{"TACME", "TGLOBEX"}, HostTeamID: "TACME"})
 	dec := e.decide(t, nil, reconcile.Confirmed{})
 	wantKinds(t, dec)
@@ -1465,7 +1465,7 @@ func TestAGuestSideStillAcceptsAnInvitationForTheRecordedChannel(t *testing.T) {
 	rec := existingShared("legacy")
 	e := newEnv("globex").shared(rec)
 	e.in.Observed.Invites = []reconcile.Invite{inv("I1", true, "TACME", "renamed-on-host", "BGLOBEX")}
-	e.in.Observed.Invites[0].ChannelID = "C7"
+	e.in.Observed.Invites[0].ChannelID = "C00000007"
 	wantKinds(t, e.decide(t, nil, reconcile.Confirmed{}), "share-accept:legacy")
 }
 
@@ -1474,7 +1474,7 @@ func TestASideThatIsNotAConnectedWorkspaceIsNeverTouched(t *testing.T) {
 	// The channel also reaches an external team: it is not in `with`, so
 	// nothing is invited to it and nothing is asked of it.
 	e := newEnv("acme").shared(existingShared("legacy")).
-		channel(reconcile.Channel{ID: "C7", Name: "legacy", BotIn: true, Shared: true,
+		channel(reconcile.Channel{ID: "C00000007", Name: "legacy", BotIn: true, Shared: true,
 			SharedTeamIDs: []string{"TACME", "TGLOBEX", "TEXTERNAL"}, HostTeamID: "TACME", Members: []string{"BACME"}})
 	dec := e.decide(t, nil, reconcile.Confirmed{})
 	wantKinds(t, dec)
@@ -1486,7 +1486,7 @@ func TestASideThatIsNotAConnectedWorkspaceIsNeverTouched(t *testing.T) {
 func TestATakenOverSharedChannelNeverRemovesAnybody(t *testing.T) {
 	t.Parallel()
 	e := newEnv("acme").shared(existingShared("legacy")).holders("g", "ann@acme.example").account("ann@acme.example", "U1").
-		channel(reconcile.Channel{ID: "C7", Name: "legacy", Creator: "UPERSON", BotIn: true, Shared: true,
+		channel(reconcile.Channel{ID: "C00000007", Name: "legacy", Creator: "UPERSON", BotIn: true, Shared: true,
 			SharedTeamIDs: []string{"TACME", "TGLOBEX"}, HostTeamID: "TACME", Members: []string{"BACME", "U1", "UX"}}).
 		member("UX", "extra@acme.example")
 	dec := e.draft(t).Decide(vouch(gone(), "extra@acme.example"), reconcile.Confirmed{})
@@ -1498,7 +1498,7 @@ func TestAnExistingChannelWithoutARecordedIDStillNeedsTheBotToHaveMadeIt(t *test
 	// Not shared yet, made by a person: the record names no id, so it is held as before.
 	rec := existingShared("legacy")
 	rec.ChannelID = ""
-	e := newEnv("acme").shared(rec).channel(reconcile.Channel{ID: "C7", Name: "legacy", Creator: "UPERSON", BotIn: true, Members: []string{"BACME"}})
+	e := newEnv("acme").shared(rec).channel(reconcile.Channel{ID: "C00000007", Name: "legacy", Creator: "UPERSON", BotIn: true, Members: []string{"BACME"}})
 	dec := e.decide(t, nil, reconcile.Confirmed{})
 	wantKinds(t, dec)
 	if c := channelOf(t, dec, "legacy"); c.State != status.ChannelHeld {
@@ -1509,7 +1509,7 @@ func TestAnExistingChannelWithoutARecordedIDStillNeedsTheBotToHaveMadeIt(t *test
 func TestAnUnsharedChannelWithARecordedIDIsTakenOverAndSharedOut(t *testing.T) {
 	t.Parallel()
 	e := newEnv("acme").shared(existingShared("legacy")).
-		channel(reconcile.Channel{ID: "C7", Name: "legacy", Creator: "UPERSON", BotIn: true, Members: []string{"BACME"}})
+		channel(reconcile.Channel{ID: "C00000007", Name: "legacy", Creator: "UPERSON", BotIn: true, Members: []string{"BACME"}})
 	wantKinds(t, e.decide(t, nil, reconcile.Confirmed{}), "share-invite:legacy")
 }
 
@@ -1517,7 +1517,7 @@ func TestARecordedIDTheBotCannotSeeOnTheHostIsHeld(t *testing.T) {
 	t.Parallel()
 	dec := newEnv("acme").shared(existingShared("legacy")).decide(t, nil, reconcile.Confirmed{})
 	wantKinds(t, dec)
-	if c := channelOf(t, dec, "legacy"); c.State != status.ChannelHeld || !strings.Contains(c.Reason, "C7") {
+	if c := channelOf(t, dec, "legacy"); c.State != status.ChannelHeld || !strings.Contains(c.Reason, "C00000007") {
 		t.Errorf("channel = %+v", c)
 	}
 }
@@ -1530,7 +1530,7 @@ func TestSharedChannelIDIsValidated(t *testing.T) {
 	if err := good.Validate(p); err != nil {
 		t.Fatalf("a good record: %v", err)
 	}
-	for _, id := range []string{"c7", "X123", "C 7", "C", "C7;drop"} {
+	for _, id := range []string{"c7", "X123", "C 7", "C", "C7;drop", "C7", "C123"} {
 		bad := good
 		bad.ChannelID = id
 		if err := bad.Validate(p); err == nil || !strings.Contains(err.Error(), "channel_id") {
@@ -1543,7 +1543,7 @@ func TestTheReportListsEverySharedChannelTheBotSeesAndMarksTheManagedOnes(t *tes
 	t.Parallel()
 	byName := reconcile.SharedChannel{Name: "byname", Host: "acme", With: []string{"globex"}, Sources: []string{"g"}}
 	e := newEnv("acme").shared(existingShared("legacy")).shared(byName).
-		channel(reconcile.Channel{ID: "C7", Name: "legacy", BotIn: true, Shared: true, SharedTeamIDs: []string{"TACME", "TGLOBEX"}, HostTeamID: "TACME",
+		channel(reconcile.Channel{ID: "C00000007", Name: "legacy", BotIn: true, Shared: true, SharedTeamIDs: []string{"TACME", "TGLOBEX"}, HostTeamID: "TACME",
 			Teams: []string{"TACME", "TGLOBEX"}, NumMembers: 5, Members: []string{"BACME"}}).
 		channel(reconcile.Channel{ID: "C8", Name: "byname", Creator: "BACME", BotIn: true, Shared: true, HostTeamID: "TACME",
 			Teams: []string{"TACME", "TGLOBEX"}, Members: []string{"BACME"}}).
@@ -1557,15 +1557,39 @@ func TestTheReportListsEverySharedChannelTheBotSeesAndMarksTheManagedOnes(t *tes
 		t.Fatalf("team %q discovered %+v", dec.Report.Team, got)
 	}
 	want := map[string]status.Discovered{
-		"C7": {ID: "C7", Name: "legacy", Members: 5, HostTeam: "TACME", Teams: []string{"TACME", "TGLOBEX"}, Managed: true},
-		"C8": {ID: "C8", Name: "byname", HostTeam: "TACME", Teams: []string{"TACME", "TGLOBEX"}, Managed: true},
-		"C9": {ID: "C9", Name: "stranger", Private: true, Members: 2, HostTeam: "TEXTERNAL", Teams: []string{"TEXTERNAL", "TACME"}},
+		"C00000007": {ID: "C00000007", Name: "legacy", Members: 5, HostTeam: "TACME", Teams: []string{"TACME", "TGLOBEX"}, Managed: true},
+		"C8":        {ID: "C8", Name: "byname", HostTeam: "TACME", Teams: []string{"TACME", "TGLOBEX"}, Managed: true},
+		"C9":        {ID: "C9", Name: "stranger", Private: true, Members: 2, HostTeam: "TEXTERNAL", Teams: []string{"TEXTERNAL", "TACME"}},
 	}
 	for _, d := range got {
 		w := want[d.ID]
 		if !slices.Equal(w.Teams, d.Teams) || w.Managed != d.Managed || w.Name != d.Name || w.Private != d.Private ||
 			w.Members != d.Members || w.HostTeam != d.HostTeam {
 			t.Errorf("%s = %+v, want %+v", d.ID, d, w)
+		}
+	}
+}
+
+// A record without a channel id is a channel only when its host is proven:
+// the reporter is the host, or both host teams are known and equal. A
+// same-named channel of an unknown host is not the record's.
+func TestARecordWithoutAnIDNamesAChannelOnlyOfAProvenHost(t *testing.T) {
+	t.Parallel()
+	rec := reconcile.SharedChannel{Name: "legacy", Host: "acme"}
+	for _, c := range []struct {
+		what                           string
+		name, channelHost, hostTeam    string
+		reporterIsHost, wantNamesTheCh bool
+	}{
+		{"the host reports it", "legacy", "", "", true, true},
+		{"both teams known and equal", "legacy", "TACME", "TACME", false, true},
+		{"both teams known and different", "legacy", "TOTHER", "TACME", false, false},
+		{"the channel's host team unknown", "legacy", "", "TACME", false, false},
+		{"the record host's team unknown", "legacy", "TACME", "", false, false},
+		{"another name", "other", "TACME", "TACME", true, false},
+	} {
+		if got := rec.NamesChannel(c.name, c.channelHost, c.hostTeam, c.reporterIsHost); got != c.wantNamesTheCh {
+			t.Errorf("%s: NamesChannel = %v, want %v", c.what, got, c.wantNamesTheCh)
 		}
 	}
 }

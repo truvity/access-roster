@@ -24,7 +24,7 @@ type resolved struct {
 	kind   resKind
 	reason string
 	// adopted marks a bound channel that exists, was not made by the bot and
-	// is being managed: taken over by name or by `adopt`.
+	// is being managed: adopted by name or by `adopt`.
 	adopted bool
 	// change names what a hold is about: create, adopt, share.
 	change string
@@ -118,7 +118,7 @@ func ready(ch *Channel, private bool, joinable bool) resolved {
 }
 
 // resolveBound is where a bound channel stands: an idempotent upsert. It is
-// created when no channel of that name is visible, and otherwise taken over
+// created when no channel of that name is visible, and otherwise adopted
 // BY NAME (or by `adopt`, which only disambiguates). Visibility is never
 // converted, an archived channel is never unarchived, and a channel the bot
 // cannot see is found out when creating it is refused (see package apply).
@@ -155,10 +155,10 @@ func archivedReason(name, id string) string {
 }
 
 // resolveHost is where the host's side of a shared channel stands. With a
-// recorded channel id it takes over exactly that channel; without one, the
+// recorded channel id it adopts exactly that channel; without one, the
 // channel of the declared name the bot made, or one that is already shared
 // (it is the channel the record means). A channel of that name that is
-// neither, which the roster did not make, is held, never taken over.
+// neither, which the roster did not make, is held, never adopted.
 func (d *Draft) resolveHost(lc layoutChannel) resolved {
 	var ch *Channel
 	if id := lc.shared.ChannelID; id != "" {
@@ -185,7 +185,7 @@ func (d *Draft) resolveHost(lc layoutChannel) resolved {
 }
 
 // resolveGuest is where a guest side stands: the channel is visible here
-// already (by the recorded id, else by name) and is taken over, joined when
+// already (by the recorded id, else by name) and is adopted, joined when
 // it is public and the bot is not in it; or the host's invitation is
 // accepted; or this side waits.
 func (d *Draft) resolveGuest(lc layoutChannel) resolved {
