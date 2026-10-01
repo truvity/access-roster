@@ -25,7 +25,9 @@ func every() []*record.Record {
 	shared := audit.SlackShared{Host: "acme", Guest: "globex", Channel: "partners", ID: "C0456", Invite: "I0789"}
 	sw := audit.SlackWorkspace{Key: "acme", Team: "T0123", App: "A0123", Owner: "C0north"}
 	sharedChannel := audit.SlackSharedChannel{Name: "partners", Host: "acme", With: []string{"globex", "initech"},
-		From: []string{"all:platform:engineer"}, PerSide: map[string]bool{"acme": true, "globex": false, "initech": true}}
+		Sources: []string{"engineers@acme.example"}, PerSide: map[string]bool{"acme": true, "globex": false, "initech": true}}
+	consoleChannel := audit.SlackConsoleChannel{Workspace: "acme", Name: "platform", Private: true, Mode: "strict",
+		Sources: []string{"engineers@acme.example", "ops@acme.example"}}
 	sa := audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme", Team: "T0123", Scopes: []string{"channels:read", "users:read"}}
 	return []*record.Record{
 		audit.SlackWorkspaceConnected(person, sw),
@@ -37,6 +39,9 @@ func every() []*record.Record {
 		audit.SlackSharedChannelCreated(person, sharedChannel),
 		audit.SlackSharedChannelUpdated(person, sharedChannel, "with: globex -> globex,initech"),
 		audit.SlackSharedChannelDeleted(person, sharedChannel),
+		audit.SlackConsoleChannelCreated(person, consoleChannel),
+		audit.SlackConsoleChannelUpdated(person, consoleChannel, "sources: 1 group -> 2 groups; mode: extend -> strict"),
+		audit.SlackConsoleChannelDeleted(person, consoleChannel),
 		audit.SlackChannelCreated(ch, audit.Succeeded()),
 		audit.SlackChannelAdopted(ch, audit.Failed("Slack refused")),
 		audit.SlackMemberInvited(sm, audit.Succeeded()),
