@@ -527,7 +527,7 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 	installed, err := console.slackSetup().OAuthAccess(callCtx, record.ClientID, creds.ClientSecret, r.URL.Query().Get("code"), console.slackRedirect())
 	if err != nil {
 		s.log.WarnContext(r.Context(), "a Slack App was installed and its token could not be collected",
-			"id", id, "workspace", entry.Workspace, "error", logsafe.Error(err))
+			"id", logsafe.Value(id), "workspace", logsafe.Value(entry.Workspace), "error", logsafe.Error(err))
 		s.slackProblem(flow, w, r, http.StatusConflict, "Slack accepted the install, and then would not hand over the bot token.", err.Error(), []string{
 			"The page was reloaded: the code Slack returns can be exchanged once.",
 			"More than ten minutes passed between approving and returning here.",
@@ -542,7 +542,7 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 		// left working in Slack.
 		revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
 		s.log.WarnContext(r.Context(), "a Slack App was installed into the wrong workspace and refused",
-			"id", id, "workspace", entry.Workspace, "expected", team, "got", logsafe.Value(installed.TeamID),
+			"id", logsafe.Value(id), "workspace", logsafe.Value(entry.Workspace), "expected", logsafe.Value(team), "got", logsafe.Value(installed.TeamID),
 			"by", logsafe.Value(actor), "revoked", revokeErr == nil)
 		console.record(r.Context(), audit.SlackCatalogueAppInstallRefused(audit.Identified(actor), app,
 			fmt.Sprintf("installed into team %s, and the workspace was first installed as %s; %s", installed.TeamID, team, revokedWords(revokeErr))))
@@ -558,13 +558,13 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 	record.Scopes, record.InstalledAt, record.InstalledBy = scopeList(installed.Scope), now, actor
 	creds.BotToken = installed.BotToken
 	if err = store.Put(r.Context(), record, creds); err != nil {
-		s.log.ErrorContext(r.Context(), "a Slack App was installed and its token could not be kept", "id", id, "error", err)
+		s.log.ErrorContext(r.Context(), "a Slack App was installed and its token could not be kept", "id", logsafe.Value(id), "error", logsafe.Error(err))
 		s.slackProblem(flow, w, r, http.StatusConflict, "The App is installed and its token could not be saved here. Install it again.", err.Error(), nil)
 		return
 	}
 	app.Scopes = record.Scopes
-	s.log.InfoContext(r.Context(), "catalogue Slack App installed", "id", id, "workspace", entry.Workspace,
-		"team", installed.TeamID, "scopes", strings.Join(record.Scopes, ","), "by", logsafe.Value(actor))
+	s.log.InfoContext(r.Context(), "catalogue Slack App installed", "id", logsafe.Value(id), "workspace", logsafe.Value(entry.Workspace),
+		"team", logsafe.Value(installed.TeamID), "scopes", logsafe.Value(strings.Join(record.Scopes, ",")), "by", logsafe.Value(actor))
 	console.record(r.Context(), audit.SlackCatalogueAppInstalled(audit.Identified(actor), app))
 	http.Redirect(w, r, s.at("/#/slack-apps"), http.StatusFound)
 }
