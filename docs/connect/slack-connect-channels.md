@@ -24,7 +24,7 @@ edited **interactively on the console**, and every change is audited.
 | `with` | the other workspaces that share it, in order. Order decides where a person with no host-domain address joins from. At least one; none repeats; never the host |
 | `from` (`sources` in the stored record) | the **directory groups**, by address, of **any connected directory**, whose members belong, on whichever side. Never an internal group |
 | `members` | **individual addresses**, each an active user of **any connected directory**, who belong too, on whichever side. At least one of `from` and `members`. Lowercased, none repeats; a group address entered here, or a person's address entered as a group, is refused with a message saying where it goes |
-| `channel_id` | optional: the Slack id of a channel that already exists and is already shared, which the record takes over; set when a record is created with **Manage** from Discovered, the same on every side, and **immutable** |
+| `channel_id` | optional: the Slack id of a channel that already exists and is already shared, which the record adopts; set when a record is created with **Manage** from Discovered, the same on every side, and **immutable** |
 | `private` | one visibility for every side, or one per side (Slack lets each organisation choose its own side's). A per-side choice names the host and every `with` workspace, exactly |
 
 The console checks a record against the policy in force and the directories
@@ -151,13 +151,13 @@ workspace's owner, or of the installation) opens the create form prefilled: the
 name on the host's side, the host, the other connected workspaces the channel
 is placed in, and each side's privacy as seen. A side nobody could see is a
 required choice. The operator picks the directory groups; the record is a normal one, and it also
-keeps the discovered channel's id in `channel_id` so the reconciler takes over
+keeps the discovered channel's id in `channel_id` so the reconciler adopts
 exactly that channel. The console accepts an id only when the host workspace's
 own report lists it as hosted there. Viewers see the list and nothing more.
 
 What the reconciler then does for a record with `channel_id`:
 
-- **Host side:** takes over the channel by that id. A public channel the bot is
+- **Host side:** adopts the channel by that id. A public channel the bot is
   not in is joined; a private one the bot is not in is **held** ("invite the
   bot"). A side that is already connected is never invited again. The channel
   need not have been made by the roster.
@@ -172,7 +172,7 @@ What the reconciler then does for a record with `channel_id`:
   stays.
 
 A record without `channel_id` behaves as before: the host creates the channel
-(or takes over one of that name the roster made, or that is already shared),
+(or adopts one of that name the roster made, or that is already shared),
 invites each guest's bot and the guest accepts. `channel_id` cannot be changed
 afterwards.
 

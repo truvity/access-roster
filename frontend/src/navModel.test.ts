@@ -6,7 +6,7 @@ import { parse } from "./router";
 const labels = (options: { sessions: boolean; audit: boolean }) => clusters(options).map((c) => [c.heading ?? "", c.entries.map((e) => e.label)]);
 
 describe("clusters", () => {
-  it("lays the rail out in five clusters", () => {
+  it("lays the rail out as Overview and four clusters", () => {
     expect(labels({ sessions: true, audit: true })).toEqual([
       ["", ["Overview"]],
       ["Identity", ["Directories", "Directory groups", "People", "Rules"]],

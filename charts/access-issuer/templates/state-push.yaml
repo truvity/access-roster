@@ -20,8 +20,8 @@ worse than none.
 
 THE SLACK RECORDS ARE A SECRET ON PURPOSE. They live in a ConfigMap, and a
 PushSecret reads Secrets only, so the service keeps a mirror Secret,
-`<release>-slack-records`, of exactly the ConfigMap's workspace records and
-Slack Connect definitions (never confirmations or pass markers, which are
+`<release>-slack-records`, of exactly the ConfigMap's workspace records, Slack Connect
+definitions and console channel records (never confirmations or pass markers, which are
 transient) and rewrites it in the same code path that writes the ConfigMap.
 That is why slackState.push takes two remote keys: two Secrets, two copies,
 and a restore that can tell them apart. The derived status ConfigMap is not
