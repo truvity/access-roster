@@ -1,3 +1,22 @@
+## Unreleased
+
+- **Filters on the Slack Discovered and Slack Connect tabs.** Discovered
+  narrows by workspace, kind (ordinary or Slack Connect), visibility (public,
+  private, unknown) and a name search, sorts by workspace then name (or most
+  members), and its summary reads "N of M shown". Slack Connect narrows by host,
+  by a workspace on either side, by state (active, waiting, pending, held,
+  invalid, not reported) and a name search. Every selection is in the address
+  query (`#/slack/discovered?workspace=&kind=&visibility=&q=&sort=`,
+  `#/slack/connect?host=&side=&state=&q=`), like the Channels tab's.
+- **Fix: Manage on a discovered Slack Connect channel left a side out and
+  defaulted an unseen side to public.** A workspace whose own report lists the
+  channel (found, or probed from the guest side) is now a prefilled side with
+  the privacy it reported, even when its report carries no team id; a side
+  nobody could see has no default and must be chosen ("private there and the
+  bot is not in it, or not shared"). A managed Slack Connect channel the
+  controller holds for a visibility that differs from its record now says so,
+  with an Edit hint, on the Slack Connect row and the channel page.
+
 ## v1.47.0
 
 - **Take over a policy channel from git on the console, with no unmanaged

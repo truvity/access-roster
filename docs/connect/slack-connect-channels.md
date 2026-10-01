@@ -108,6 +108,18 @@ member count, the host team (Slack's `conversation_host_id`) and the teams the
 channel reaches. A channel is marked **managed** when a record matches it, by
 channel id, else by host and name. Nothing is changed by finding a channel.
 
+The **Discovered** tab narrows by `workspace`, `kind` (`ordinary` or `shared`),
+`visibility` (`public`, `private`, `unknown`), `q` (a name or channel id) and
+`sort` (`members`; the default is workspace, then name); the **Slack Connect**
+tab narrows by `host`, `side` (a workspace on either end), `state` (`active`,
+`waiting`, `pending`, `held`, `invalid`, `not_reported`) and `q`. Each is a
+query parameter of the tab's address, for example
+`#/slack/discovered?workspace=<key>&kind=shared&q=ops`. A workspace whose own
+report lists a channel (found or probed) is a prefilled side of **Manage** with
+the privacy it reported; a side nobody saw has no default and must be chosen.
+A held record whose Slack visibility differs from its record shows a
+*visibility mismatch* hint on its row and page: **Edit** the record.
+
 On the **Discovered** tab (`#/slack/discovered`) the Slack Connect rows merge the reports into one row
 per channel: its name and privacy on each connected side, members per side,
 the host workspace and whether it is managed. **Every connected workspace is a

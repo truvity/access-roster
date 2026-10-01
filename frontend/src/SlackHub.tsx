@@ -50,8 +50,8 @@ export function SlackHub({
 
 function IndexTabs({ tab, rest, query, auditConnected, onDone }: { tab: "channels" | "connect" | "discovered"; rest: string[]; query: URLSearchParams; auditConnected: boolean; onDone: (message: string) => void }) {
   const index = useSlackIndex();
-  if (tab === "connect") return <ConnectTab index={index} onDone={onDone} />;
-  if (tab === "discovered") return <DiscoveredTab index={index} onDone={onDone} />;
+  if (tab === "connect") return <ConnectTab index={index} query={query} onDone={onDone} />;
+  if (tab === "discovered") return <DiscoveredTab index={index} query={query} onDone={onDone} />;
   if (rest[0] && rest[1]) return <SlackChannelPage workspace={rest[0]} nameOrId={rest[1]} index={index} auditConnected={auditConnected} onDone={onDone} />;
   return <ChannelsTab index={index} query={query} onDone={onDone} />;
 }

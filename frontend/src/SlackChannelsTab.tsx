@@ -16,13 +16,26 @@ import type { ListSlackChannelsResponse, SlackChannelRecord, SlackDiscoveredOrdi
 import type { ListSlackSharedChannelsResponse, SlackDiscoveredChannel, SlackSharedChannel } from "./gen/directoryroster/v1/slack_connect_pb";
 import type { GetSlackStatusResponse } from "./gen/directoryroster/v1/slack_pb";
 import { useAsync, type Async } from "./hooks";
-import { go, paths } from "./router";
+import { go, paths, replace } from "./router";
 import { ChannelDeleteDialog, ChannelEditDialog, DiscoveredOrdinary } from "./SlackChannels";
 import { ConnectDeleteDialog, ConnectEditDialog, DiscoveredConnect } from "./SlackConnect";
 import { canTakeOver, modeLabel, manageableWorkspaces } from "./slackChannelsModel";
-import { hostChoices, privacyLabel } from "./slackConnectModel";
-import { buildRows, filterRows, kindLabel, kindSentence, rowPath, type ChannelKind, type ChannelRow } from "./slackIndex";
-import { Facet, Facets, Failure, Loading, Mono, Names, Nothing, Page, Ref, State } from "./ui";
+import { hostChoices, privacyLabel, visibilityMismatchHint } from "./slackConnectModel";
+import {
+  connectFilterOf,
+  connectStateLabel,
+  connectStates,
+  connectWorkspaces,
+  discoveredFilterOf,
+  discoveredItems,
+  discoveredKinds,
+  discoveredVisibilities,
+  filterConnect,
+  filterDiscovered,
+  shownSentence,
+} from "./slackFilters";
+import { buildRows, filterRows, kindLabel, kindSentence, rowPath, visibilityMismatch, type ChannelKind, type ChannelRow } from "./slackIndex";
+import { Facet, Facets, Failure, Loading, Mono, Names, Nothing, Page, Ref, SearchField, State } from "./ui";
 
 /** Everything the channel tabs and a channel's page read, loaded once for
  *  the Slack page: the controller's report of every workspace (with the
@@ -250,9 +263,13 @@ export function privacySummary(row: ChannelRow): string {
 /** The Slack Connect channels the console keeps records of: host, sides,
  *  and where each side stands. Creating and editing are here and on the
  *  channel's page. */
-export function ConnectTab({ index, onDone }: { index: SlackIndex; onDone: (message: string) => void }) {
+export function ConnectTab({ index, query, onDone }: { index: SlackIndex; query: URLSearchParams; onDone: (message: string) => void }) {
   const [dialogue, setDialogue] = useState<Dialogue | undefined>();
-  const rows = index.rows.filter((row) => row.kind === "connect");
+  const all = index.rows.filter((row) => row.kind === "connect");
+  const filter = connectFilterOf(query);
+  const rows = filterConnect(all, filter);
+  const { hosts, sides } = connectWorkspaces(all);
+  const narrow = (next: Partial<typeof filter>) => go(paths.slackConnect({ ...filter, ...next }));
   const canCreate = hostChoices(index.shared.value?.workspaces ?? []).length > 0 && index.shared.value?.available === true;
   return (
     <Page
@@ -268,12 +285,30 @@ export function ConnectTab({ index, onDone }: { index: SlackIndex; onDone: (mess
     >
       <Loading busy={index.loading} />
       <Failure error={index.error} />
+      {all.length > 0 ? (
+        <Facets>
+          <Facet value={filter.host} onChange={(next) => narrow({ host: next })} options={hosts.map((key) => ({ value: key, label: key }))} all={{ value: "", label: "Every host" }} mono />
+          <Facet value={filter.side} onChange={(next) => narrow({ side: next })} options={sides.map((key) => ({ value: key, label: key }))} all={{ value: "", label: "Any side" }} mono />
+          <Facet
+            value={filter.state}
+            onChange={(next) => narrow({ state: next as typeof filter.state })}
+            options={connectStates.map((st) => ({ value: st as string, label: connectStateLabel[st] }))}
+            all={{ value: "", label: "Every state" }}
+          />
+          <SearchField label="Channel name" value={filter.q} onChange={(q) => replace(paths.slackConnect({ ...filter, q }))} />
+          {rows.length !== all.length ? (
+            <Typography variant="caption" color="text.secondary">
+              {rows.length} of {all.length} shown
+            </Typography>
+          ) : null}
+        </Facets>
+      ) : null}
       {index.shared.value && !index.shared.value.available ? (
         <Alert severity="info" sx={{ mb: 2 }}>
           This deployment keeps no state in Kubernetes, so it keeps no shared channel records.
         </Alert>
       ) : null}
-      {!index.loading && rows.length === 0 ? <Nothing>No shared channel is defined for a workspace you may see.</Nothing> : null}
+      {!index.loading && rows.length === 0 ? <Nothing>{all.length === 0 ? "No shared channel is defined for a workspace you may see." : "No shared channel matches that filter."}</Nothing> : null}
       {rows.length > 0 ? (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
           <Table size="small" sx={{ minWidth: 760 }}>
@@ -311,6 +346,12 @@ export function ConnectTab({ index, onDone }: { index: SlackIndex; onDone: (mess
                         {row.reason}
                       </Typography>
                     ) : null}
+                    {visibilityMismatch(row) ? (
+                      <Typography variant="caption" color="warning.main" sx={{ display: "block", maxWidth: 320 }}>
+                        Visibility mismatch. {row.canOperate ? "Edit: " : ""}
+                        {visibilityMismatchHint}
+                      </Typography>
+                    ) : null}
                   </TableCell>
                   <TableCell align="right">
                     <RowActions row={row} onEdit={() => setDialogue({ kind: "edit", row })} onDelete={() => setDialogue({ kind: "delete", row })} />
@@ -328,37 +369,68 @@ export function ConnectTab({ index, onDone }: { index: SlackIndex; onDone: (mess
 
 /** Every channel a bot can see that nothing manages, ordinary and shared,
  *  each with the Manage that takes it under management. */
-export function DiscoveredTab({ index, onDone }: { index: SlackIndex; onDone: (message: string) => void }) {
+export function DiscoveredTab({ index, query, onDone }: { index: SlackIndex; query: URLSearchParams; onDone: (message: string) => void }) {
   const [dialogue, setDialogue] = useState<Dialogue | undefined>();
   const ordinary = index.ordinary.value;
   const shared = index.shared.value;
   const unmanagedShared = (shared?.discovered ?? []).filter((row) => !row.managed);
-  const ordinaryRows = ordinary?.discovered ?? [];
-  const nothing = !index.loading && ordinaryRows.length === 0 && unmanagedShared.length === 0;
+  const items = discoveredItems(ordinary?.discovered ?? [], unmanagedShared);
+  const filter = discoveredFilterOf(query);
+  const kept = filterDiscovered(items, filter);
+  const ordinaryRows = kept.flatMap((item) => (item.ordinary ? [item.ordinary] : []));
+  const sharedRows = kept.flatMap((item) => (item.shared ? [item.shared] : []));
+  const keys = (index.status.value?.workspaces ?? []).map((w) => w.workspace);
+  const nothing = !index.loading && items.length === 0;
+  const narrow = (next: Partial<typeof filter>) => go(paths.slackDiscovered({ ...filter, ...next }));
   return (
     <Page
       title="Discovered"
       lede={
         nothing
           ? "Nothing is visible that is not already managed."
-          : `${ordinaryRows.length + unmanagedShared.length} ${ordinaryRows.length + unmanagedShared.length === 1 ? "channel is" : "channels are"} visible to a workspace's bot and managed by nothing. Manage takes one over without removing anybody from it.`
+          : `${shownSentence(kept.length, items.length)} visible to a workspace's bot and managed by nothing. Manage takes one over without removing anybody from it.`
       }
     >
       <Loading busy={index.loading} />
       <Failure error={index.error} />
+      {items.length > 0 ? (
+        <Facets>
+          <Facet value={filter.workspace} onChange={(next) => narrow({ workspace: next })} options={keys.map((key) => ({ value: key, label: key }))} all={{ value: "", label: "Every workspace" }} mono />
+          <Facet
+            value={filter.kind}
+            onChange={(next) => narrow({ kind: next as typeof filter.kind })}
+            options={discoveredKinds.map((k) => ({ value: k as string, label: k === "shared" ? "Slack Connect" : "ordinary" }))}
+            all={{ value: "", label: "Every kind" }}
+          />
+          <Facet
+            value={filter.visibility}
+            onChange={(next) => narrow({ visibility: next as typeof filter.visibility })}
+            options={discoveredVisibilities.map((v) => ({ value: v as string, label: v }))}
+            all={{ value: "", label: "Every visibility" }}
+          />
+          <Facet
+            value={filter.sort}
+            onChange={(next) => narrow({ sort: next as typeof filter.sort })}
+            options={[{ value: "members", label: "Most members" }]}
+            all={{ value: "", label: "By workspace, name" }}
+          />
+          <SearchField label="Channel name" value={filter.q} onChange={(q) => replace(paths.slackDiscovered({ ...filter, q }))} />
+        </Facets>
+      ) : null}
       {nothing ? <Nothing>Every channel the bots can see is already a policy, console or Slack Connect channel.</Nothing> : null}
+      {!nothing && kept.length === 0 ? <Nothing>No channel matches that filter.</Nothing> : null}
       {ordinaryRows.length > 0 ? (
         <Typography variant="subtitle1" sx={{ mt: 2 }}>
           Ordinary channels
         </Typography>
       ) : null}
       <DiscoveredOrdinary rows={ordinaryRows} more={(ordinary?.workspaces ?? []).reduce((n, w) => n + w.discoveredMore, 0)} available={ordinary?.available === true} onManage={(row) => setDialogue({ kind: "manage-console", row })} />
-      {unmanagedShared.length > 0 ? (
+      {sharedRows.length > 0 ? (
         <Typography variant="subtitle1" sx={{ mt: 2 }}>
           Slack Connect channels
         </Typography>
       ) : null}
-      <DiscoveredConnect rows={unmanagedShared} available={shared?.available === true} onManage={(row) => setDialogue({ kind: "manage-connect", row })} />
+      <DiscoveredConnect rows={sharedRows} available={shared?.available === true} onManage={(row) => setDialogue({ kind: "manage-connect", row })} />
       <ChannelDialogues dialogue={dialogue} index={index} close={() => setDialogue(undefined)} onDone={onDone} />
     </Page>
   );
