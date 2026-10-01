@@ -125,7 +125,7 @@ export const paths = {
   // declares (connect, status, removals), keeps the address it always had.
   slack: () => "/slack",
   // Every managed channel across the workspaces, narrowed by workspace or kind.
-  slackChannels: (filter?: { workspace?: string; kind?: string }) => withQuery("/slack/channels", filter),
+  slackChannels: (filter?: { workspace?: string; kind?: string; state?: string; q?: string }) => withQuery("/slack/channels", filter),
   // One channel: by its name in the workspace, or by its Slack id.
   slackChannel: (workspace: string, nameOrId: string) => `/slack/channels/${encodeURIComponent(workspace)}/${encodeURIComponent(nameOrId)}`,
   // Slack Connect channels between the installation's own workspaces.

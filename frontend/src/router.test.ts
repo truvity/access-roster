@@ -35,8 +35,10 @@ describe("parse", () => {
     expect(parse("#/slack-connect?x=1").query.get("x")).toBe("1");
   });
 
-  it("narrows the channels by workspace and kind in the address", () => {
-    const route = parse(`#${paths.slackChannels({ workspace: "acme", kind: "console" })}`);
+  it("narrows the channels by workspace, kind, state and name in the address", () => {
+    const route = parse(`#${paths.slackChannels({ workspace: "acme", kind: "console", state: "held", q: "en" })}`);
+    expect(route.query.get("state")).toBe("held");
+    expect(route.query.get("q")).toBe("en");
     expect(route).toMatchObject({ view: "slack", id: "channels" });
     expect(route.query.get("workspace")).toBe("acme");
     expect(route.query.get("kind")).toBe("console");
