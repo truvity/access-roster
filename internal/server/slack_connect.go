@@ -78,10 +78,12 @@ func (c *Console) ListSlackSharedChannels(
 		}
 		operate := book.mayAct(id, key)
 		anyOperate = anyOperate || operate
-		out.Workspaces = append(out.Workspaces, &directoryrosterv1.SlackConnectWorkspace{Key: key, CanOperate: operate})
+		out.Workspaces = append(out.Workspaces, &directoryrosterv1.SlackConnectWorkspace{Key: key, CanOperate: operate, Owner: book.owner(key)})
 	}
 	if anyOperate {
-		out.Groups = slices.Sorted(maps.Keys(p.Groups))
+		// Any connected directory's groups: a Slack Connect channel is not
+		// bound to one directory.
+		out.SourceDirectories = c.sourceDirectories(ctx)
 	}
 	if c.deps.SlackShared == nil {
 		return connect.NewResponse(out), nil
@@ -188,7 +190,7 @@ func orDefault(s, fallback string) string {
 
 func sharedView(ch reconcile.SharedChannel) *directoryrosterv1.SlackSharedChannel {
 	def := &directoryrosterv1.SlackSharedChannelDefinition{
-		Name: ch.Name, Host: ch.Host, With: slices.Clone(ch.With), From: slices.Clone(ch.From), Private: ch.Private.All, ChannelId: ch.ChannelID,
+		Name: ch.Name, Host: ch.Host, With: slices.Clone(ch.With), From: slices.Clone(ch.Sources), Private: ch.Private.All, ChannelId: ch.ChannelID,
 	}
 	if len(ch.Private.PerSide) > 0 {
 		def.PrivatePerSide = maps.Clone(ch.Private.PerSide)
@@ -196,21 +198,12 @@ func sharedView(ch reconcile.SharedChannel) *directoryrosterv1.SlackSharedChanne
 	return &directoryrosterv1.SlackSharedChannel{Channel: def}
 }
 
-// sharedOf is a request's definition as the reconciler's: trimmed, `from`
-// without repeats.
+// sharedOf is a request's definition as the reconciler's: trimmed, sources
+// lowercased and without repeats.
 func sharedOf(def *directoryrosterv1.SlackSharedChannelDefinition) reconcile.SharedChannel {
-	trim := func(in []string) []string {
-		out := []string{}
-		for _, s := range in {
-			if s = strings.TrimSpace(s); s != "" && !slices.Contains(out, s) {
-				out = append(out, s)
-			}
-		}
-		return out
-	}
 	ch := reconcile.SharedChannel{
 		Name: strings.TrimSpace(def.GetName()), Host: strings.TrimSpace(def.GetHost()),
-		With: trim(def.GetWith()), From: trim(def.GetFrom()), ChannelID: strings.TrimSpace(def.GetChannelId()),
+		With: trimmed(def.GetWith(), false), Sources: trimmed(def.GetFrom(), true), ChannelID: strings.TrimSpace(def.GetChannelId()),
 	}
 	if per := def.GetPrivatePerSide(); len(per) > 0 {
 		ch.Private.PerSide = maps.Clone(per)
@@ -220,9 +213,25 @@ func sharedOf(def *directoryrosterv1.SlackSharedChannelDefinition) reconcile.Sha
 	return ch
 }
 
+// trimmed is a request's list without blanks and repeats; lower folds case,
+// for addresses.
+func trimmed(in []string, lower bool) []string {
+	out := []string{}
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if lower {
+			s = strings.ToLower(s)
+		}
+		if s != "" && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func auditShared(ch reconcile.SharedChannel) audit.SlackSharedChannel {
 	return audit.SlackSharedChannel{
-		Name: ch.Name, Host: ch.Host, With: ch.With, From: ch.From, Private: ch.Private.All, PerSide: ch.Private.PerSide,
+		Name: ch.Name, Host: ch.Host, With: ch.With, Sources: ch.Sources, Private: ch.Private.All, PerSide: ch.Private.PerSide,
 	}
 }
 
@@ -261,6 +270,12 @@ func (c *Console) CreateSlackSharedChannel(
 	if err = want.Validate(c.deps.Authorizer.Policy().Declared()); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if err = c.checkSources(ctx, want.Sources, "", false); err != nil {
+		return nil, err
+	}
+	if err = c.sharedClashesWithConsole(ctx, want); err != nil {
+		return nil, err
+	}
 	if want.ChannelID != "" {
 		reports := c.slackReports(ctx)
 		seen, found := discoveredIn(reports, want.Host, want.ChannelID)
@@ -291,7 +306,7 @@ func (c *Console) CreateSlackSharedChannel(
 	return connect.NewResponse(&directoryrosterv1.CreateSlackSharedChannelResponse{Channel: view}), nil
 }
 
-// UpdateSlackSharedChannel changes with, from and private. The caller's
+// UpdateSlackSharedChannel changes with, from (directory groups) and private. The caller's
 // role is asked about the STORED host, which a request cannot change.
 func (c *Console) UpdateSlackSharedChannel(
 	ctx context.Context, req *connect.Request[directoryrosterv1.UpdateSlackSharedChannelRequest],
@@ -321,6 +336,9 @@ func (c *Console) UpdateSlackSharedChannel(
 		if err := want.Validate(c.deps.Authorizer.Policy().Declared()); err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
+		if err := c.checkSources(ctx, want.Sources, "", false); err != nil {
+			return nil, err
+		}
 		changes = sharedChanges(*current, want)
 		return &want, nil
 	})
@@ -336,6 +354,27 @@ func (c *Console) UpdateSlackSharedChannel(
 	return connect.NewResponse(&directoryrosterv1.UpdateSlackSharedChannelResponse{Channel: view}), nil
 }
 
+// sourcesChange says how a channel's directory groups changed, by count: the
+// groups themselves are the audit record's targets, and an address is never
+// carried as data. Empty when they did not change.
+func sourcesChange(before, after []string) string {
+	if slices.Equal(slices.Sorted(slices.Values(before)), slices.Sorted(slices.Values(after))) {
+		return ""
+	}
+	added, removed := 0, 0
+	for _, s := range after {
+		if !slices.Contains(before, s) {
+			added++
+		}
+	}
+	for _, s := range before {
+		if !slices.Contains(after, s) {
+			removed++
+		}
+	}
+	return fmt.Sprintf("sources: %d -> %d groups (%d added, %d removed)", len(before), len(after), added, removed)
+}
+
 // sharedChanges says what an edit changed, as 'field: before -> after'
 // parts in a fixed order; empty when nothing did.
 func sharedChanges(before, after reconcile.SharedChannel) string {
@@ -343,8 +382,8 @@ func sharedChanges(before, after reconcile.SharedChannel) string {
 	if !slices.Equal(before.With, after.With) {
 		parts = append(parts, "with: "+strings.Join(before.With, ",")+" -> "+strings.Join(after.With, ","))
 	}
-	if !slices.Equal(slices.Sorted(slices.Values(before.From)), slices.Sorted(slices.Values(after.From))) {
-		parts = append(parts, "from: "+strings.Join(before.From, ",")+" -> "+strings.Join(after.From, ","))
+	if part := sourcesChange(before.Sources, after.Sources); part != "" {
+		parts = append(parts, part)
 	}
 	was, is := auditShared(before).Privacy(), auditShared(after).Privacy()
 	if was != is {
