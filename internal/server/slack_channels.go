@@ -515,12 +515,16 @@ func byHand(format string, args ...any) error {
 }
 
 // slackShared reports whether Slack says a channel is shared beyond its own
-// workspace: Slack Connect (with another organisation, accepted or pending)
-// or shared across an Enterprise Grid.
-func slackShared(ch slackapp.Channel) bool {
-	return ch.IsExtShared || ch.IsShared || ch.IsOrgShared || len(ch.SharedTeamIDs) > 1 ||
-		len(ch.ConnectedTeamIDs) > 0 || len(ch.PendingSharedTeamIDs) > 0 || len(ch.PendingConnectedTeamIDs) > 0 ||
-		len(ch.InternalTeamIDs) > 0
+// workspace: one of Slack's sharing flags, or any team id other than own in the
+// teams it lists (Slack may list a workspace's own team for an ordinary
+// channel, which is not sharing). With own unknown, any listed id counts.
+func slackShared(ch slackapp.Channel, own string) bool {
+	if ch.IsExtShared || ch.IsShared || ch.IsOrgShared {
+		return true
+	}
+	listed := slices.Concat(ch.SharedTeamIDs, ch.ConnectedTeamIDs, ch.PendingSharedTeamIDs, ch.PendingConnectedTeamIDs, ch.InternalTeamIDs,
+		[]string{ch.ConversationHostID})
+	return slices.ContainsFunc(listed, func(id string) bool { return id != "" && (own == "" || id != own) })
 }
 
 // checkArchive is everything an archiving delete asks before it changes
@@ -563,7 +567,7 @@ func (c *Console) checkArchive(ctx context.Context, store SlackChannelRecords, w
 	if err != nil {
 		return archiveTarget{}, byHand("this deployment keeps no Slack connections: archive %s in Slack by hand", name)
 	}
-	_, credential, found, err := ws.Get(ctx, workspace)
+	record, credential, found, err := ws.Get(ctx, workspace)
 	if err != nil {
 		return archiveTarget{}, connect.NewError(connect.CodeUnavailable, err)
 	}
@@ -579,7 +583,7 @@ func (c *Console) checkArchive(ctx context.Context, store SlackChannelRecords, w
 	case err != nil:
 		return archiveTarget{}, connect.NewError(connect.CodeUnavailable, fmt.Errorf(
 			"no answer from Slack about %s, so it was not archived and nothing was changed: %w", name, err))
-	case slackShared(info):
+	case slackShared(info, orDefault(record.TeamID, report.Team)):
 		return archiveTarget{}, byHand("%s is a Slack Connect channel: archiving closes it for every organisation in it; archive it in Slack by hand", name)
 	}
 	return archiveTarget{id: id, token: credential.BotToken}, nil
