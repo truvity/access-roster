@@ -186,3 +186,11 @@ describe("Refresh", () => {
     expect(tickNotice(ws({ connectionState: "installed", passRequestedAt: requestedAt, tick: after }))).toBeUndefined();
   });
 });
+
+describe("a person with no Slack account", () => {
+  it("waits for them, not for the operator", () => {
+    expect(memberKind({ state: "held", reason: "no Slack account yet" })).toBe("their-move");
+    expect(memberKind(member("held"))).toBe("held");
+    expect(memberKind({ state: "held", reason: "the Slack account is deactivated" })).toBe("held");
+  });
+});
