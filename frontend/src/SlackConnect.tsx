@@ -42,6 +42,7 @@ import {
   withPerSide,
   type Form,
 } from "./slackConnectModel";
+import { connectArchiveNote } from "./slackChannelsModel";
 import { directoryLabel } from "./ownerModel";
 import { landings, landingSentence, sourceOptions, unreachedWarning } from "./slackSourcesModel";
 import { SourcePicker } from "./SourcePicker";
@@ -324,6 +325,9 @@ export function ConnectDeleteDialog({ channel, onCancel, onDone }: { channel: Sl
           This deletes the record only. <strong>The channel stays in Slack</strong>, in every workspace that has it, and is not archived. The reconciler stops
           managing it: people who were added stay until someone removes them in Slack, and nobody is added or removed any more.
         </DialogContentText>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          {connectArchiveNote}
+        </Typography>
         <Failure error={failure} />
       </DialogContent>
       <DialogActions>

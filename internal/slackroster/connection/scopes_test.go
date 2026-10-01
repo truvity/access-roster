@@ -25,6 +25,7 @@ var methodScopes = map[string][]string{
 	"conversations.join":               {"channels:join"},
 	"conversations.invite":             {"channels:manage", "groups:write"},
 	"conversations.kick":               {"channels:manage", "groups:write"},
+	"conversations.archive":            {"channels:manage", "groups:write"},
 	"conversations.inviteShared":       {"conversations.connect:write"},
 	"conversations.listConnectInvites": {"conversations.connect:manage"},
 	"conversations.acceptSharedInvite": {"conversations.connect:write"},
@@ -40,6 +41,7 @@ var bothKinds = map[string][]string{
 	"conversations.create":  {"channels:manage", "groups:write"},
 	"conversations.invite":  {"channels:manage", "groups:write"},
 	"conversations.kick":    {"channels:manage", "groups:write"},
+	"conversations.archive": {"channels:manage", "groups:write"},
 }
 
 func TestBotScopesCoverEveryMethodTheControllerCalls(t *testing.T) {

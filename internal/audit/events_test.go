@@ -44,6 +44,7 @@ func every() []*record.Record {
 		audit.SlackConsoleChannelDeleted(person, consoleChannel),
 		audit.SlackChannelCreated(ch, audit.Succeeded()),
 		audit.SlackChannelAdopted(ch, audit.Failed("Slack refused")),
+		audit.SlackChannelArchived(person, ch, audit.Succeeded()),
 		audit.SlackMemberInvited(sm, audit.Succeeded()),
 		audit.SlackMemberRemoved(audit.SlackMember{Channel: ch, User: "U0999"}, audit.Succeeded()),
 		audit.SlackSharedInvited(shared, audit.Succeeded()),

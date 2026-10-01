@@ -170,6 +170,15 @@ the rest. On the Slack page's **Discovered** tab (`#/slack/discovered`) they are
 which opens the form prefilled with the workspace, the name, the channel id and
 the visibility as seen; you choose the directory groups and the mode.
 
+**Archiving.** Deleting a record leaves the channel in Slack. The delete dialog
+has an opt-in, *Also archive #name in Slack* (off by default), which makes the
+bot call `conversations.archive` after the record is forgotten and is audited as
+`roster.slack_channel.archived`. If the bot is not in the channel (a private one
+it cannot see) or Slack refuses, the record is still deleted and the note says
+to archive the channel in Slack by hand. A Slack Connect channel is never
+archived from the console: archiving closes it for every organisation in it, so
+the console refuses the request and you archive it by hand.
+
 **Who may.** Create, edit and delete: the operator over the workspace's owning
 directory, or the installation-wide operator. A viewer sees the records and what
 was discovered. Every change is audited as

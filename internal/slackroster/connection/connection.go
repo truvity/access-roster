@@ -61,8 +61,8 @@ func Reserved(key string) bool { return strings.HasPrefix(key, "_") }
 //	users:read.email                  users.lookupByEmail, and the address in users.info
 //	channels:read                     conversations.list, .info, .members of public channels
 //	groups:read                       the same, for private channels the bot is in
-//	channels:manage                   conversations.create, .invite, .kick in public channels
-//	groups:write                      conversations.create, .invite, .kick in private channels
+//	channels:manage                   conversations.create, .invite, .kick, .archive in public channels
+//	groups:write                      conversations.create, .invite, .kick, .archive in private channels
 //	channels:join                     conversations.join, which adopts a public channel
 //	conversations.connect:write       conversations.inviteShared, .acceptSharedInvite
 //	conversations.connect:manage      conversations.listConnectInvites

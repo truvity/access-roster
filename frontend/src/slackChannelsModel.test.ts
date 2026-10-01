@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  archiveLabel,
   channelDefinitionOf,
+  connectArchiveNote,
   channelProblems,
   definedInGit,
   discoveredSentence,
@@ -39,6 +41,17 @@ describe("channelProblems", () => {
     expect(channelProblems({ ...good, mode: "strict" }, "C0north")[0]).toContain("private channels only");
     expect(channelProblems({ ...good, mode: "strict", private: true }, "C0north")).toEqual([]);
     expect(channelProblems({ ...good, ignore: ["boss@acme.example"] }, "C0north")[0]).toContain("only for a strict channel");
+  });
+});
+
+describe("archiving from the delete dialog", () => {
+  it("is an opt-in named after the channel", () => {
+    expect(archiveLabel("eng")).toBe("Also archive #eng in Slack");
+  });
+
+  it("is left to the owner's hand for a Slack Connect channel", () => {
+    expect(connectArchiveNote).toContain("archived by hand in Slack");
+    expect(connectArchiveNote).toContain("every organisation");
   });
 });
 

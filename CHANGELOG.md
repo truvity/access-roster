@@ -1,5 +1,18 @@
 ## Unreleased
 
+- **Archive a channel in Slack when forgetting its console record.** The
+  delete dialog of a console channel has an opt-in, off by default: *Also
+  archive #name in Slack*. Ticked, the bot calls `conversations.archive` after
+  the record is forgotten (`channels:manage` and `groups:write`, already in the
+  App's scopes), under the same operator role as the delete, and the action is
+  audited as `roster.slack_channel.archived` (the audit catalogue is
+  **1.4.0**). When the bot cannot (it is not in the channel, or Slack refuses)
+  the record is still deleted and the note says to archive it by hand. A Slack
+  Connect channel is never archived from the console, whoever hosts it: the
+  dialog says so and the server refuses the request with nothing changed,
+  because archiving closes the channel for every organisation in it. Channels
+  the policy defines cannot be deleted here at all.
+
 - **The Channels tab uses the shared filter bar.** It narrows by workspace
   (any side of a channel), kind (policy, console, Slack Connect), state (ok,
   waiting, held, invalid, not reported) and a name or Slack id search, with the

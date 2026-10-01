@@ -683,9 +683,15 @@ func (x *UpdateSlackChannelResponse) GetChannel() *SlackChannelRecord {
 }
 
 type DeleteSlackChannelRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Workspace     string                 `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Workspace string                 `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
+	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// also archive the channel in Slack, after the record is forgotten. Off
+	// unless asked for. When the bot cannot (it is not in the channel, or Slack
+	// refuses) the record is still deleted and the note says to archive it by
+	// hand. Refused, with nothing changed, for a Slack Connect channel:
+	// archiving closes it for every organisation in it.
+	Archive       bool `protobuf:"varint,3,opt,name=archive,proto3" json:"archive,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -734,10 +740,19 @@ func (x *DeleteSlackChannelRequest) GetName() string {
 	return ""
 }
 
+func (x *DeleteSlackChannelRequest) GetArchive() bool {
+	if x != nil {
+		return x.Archive
+	}
+	return false
+}
+
 type DeleteSlackChannelResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// says plainly what was and was not done.
-	Note          string `protobuf:"bytes,1,opt,name=note,proto3" json:"note,omitempty"`
+	Note string `protobuf:"bytes,1,opt,name=note,proto3" json:"note,omitempty"`
+	// the channel was archived in Slack.
+	Archived      bool `protobuf:"varint,2,opt,name=archived,proto3" json:"archived,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -777,6 +792,13 @@ func (x *DeleteSlackChannelResponse) GetNote() string {
 		return x.Note
 	}
 	return ""
+}
+
+func (x *DeleteSlackChannelResponse) GetArchived() bool {
+	if x != nil {
+		return x.Archived
+	}
+	return false
 }
 
 var File_directoryroster_v1_slack_channels_proto protoreflect.FileDescriptor
@@ -840,12 +862,14 @@ const file_directoryroster_v1_slack_channels_proto_rawDesc = "" +
 	"\x19UpdateSlackChannelRequest\x12D\n" +
 	"\achannel\x18\x01 \x01(\v2*.directoryroster.v1.SlackChannelDefinitionR\achannel\"^\n" +
 	"\x1aUpdateSlackChannelResponse\x12@\n" +
-	"\achannel\x18\x01 \x01(\v2&.directoryroster.v1.SlackChannelRecordR\achannel\"M\n" +
+	"\achannel\x18\x01 \x01(\v2&.directoryroster.v1.SlackChannelRecordR\achannel\"g\n" +
 	"\x19DeleteSlackChannelRequest\x12\x1c\n" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"0\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
+	"\aarchive\x18\x03 \x01(\bR\aarchive\"L\n" +
 	"\x1aDeleteSlackChannelResponse\x12\x12\n" +
-	"\x04note\x18\x01 \x01(\tR\x04note2\xe6\x03\n" +
+	"\x04note\x18\x01 \x01(\tR\x04note\x12\x1a\n" +
+	"\barchived\x18\x02 \x01(\bR\barchived2\xe6\x03\n" +
 	"\x13SlackChannelService\x12p\n" +
 	"\x11ListSlackChannels\x12,.directoryroster.v1.ListSlackChannelsRequest\x1a-.directoryroster.v1.ListSlackChannelsResponse\x12s\n" +
 	"\x12CreateSlackChannel\x12-.directoryroster.v1.CreateSlackChannelRequest\x1a..directoryroster.v1.CreateSlackChannelResponse\x12s\n" +

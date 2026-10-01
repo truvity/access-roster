@@ -6,6 +6,7 @@ import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
+import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -24,6 +25,7 @@ import { reason, slackChannels } from "./api";
 import type { ListSlackChannelsResponse, SlackChannelRecord, SlackDiscoveredOrdinary } from "./gen/directoryroster/v1/slack_channels_pb";
 import {
   channelDefinitionOf,
+  archiveLabel,
   channelProblems,
   discoveredSentence,
   emptyChannelForm,
@@ -231,12 +233,13 @@ export function ChannelDeleteDialog({ record, onCancel, onDone }: { record: Slac
   const [failure, setFailure] = useState<string | undefined>();
   const workspace = record.channel?.workspace ?? "";
   const name = record.channel?.name ?? "";
+  const [archive, setArchive] = useState(false);
 
   const submit = async () => {
     setBusy(true);
     setFailure(undefined);
     try {
-      const deleted = await slackChannels.deleteSlackChannel({ workspace, name });
+      const deleted = await slackChannels.deleteSlackChannel({ workspace, name, archive });
       onDone(deleted.note);
     } catch (error) {
       setFailure(reason(error));
@@ -249,9 +252,18 @@ export function ChannelDeleteDialog({ record, onCancel, onDone }: { record: Slac
       <DialogTitle>Delete the record of #{name}?</DialogTitle>
       <DialogContent>
         <DialogContentText>
-          This deletes the record only. <strong>The channel stays in Slack</strong> and is not archived. The reconciler stops managing it: people who were added stay
+          This deletes the record. <strong>The channel stays in Slack</strong> unless you tick the box below. The reconciler stops managing it: people who were added stay
           until someone removes them in Slack, and nobody is added or removed any more.
         </DialogContentText>
+        <FormControlLabel
+          control={<Checkbox checked={archive} onChange={(event) => setArchive(event.target.checked)} disabled={busy} />}
+          label={archiveLabel(name)}
+        />
+        {archive ? (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+            The bot archives it after the record is deleted. If the bot is not in the channel, the record is still deleted and you archive it in Slack by hand.
+          </Typography>
+        ) : null}
         <Failure error={failure} />
       </DialogContent>
       <DialogActions>
