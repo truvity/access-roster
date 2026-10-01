@@ -57,10 +57,10 @@ full.
 |---|---|---|
 | origin allow-listed | checked first, before anything is dialled | the allow-list is also what stops the issuer being used to fetch an arbitrary URL — the origin decision is made before a request exists |
 | response size | 64 KiB | the URL is caller-chosen, so the response is an untrusted stream |
-| fetch timeout | 5 seconds | a sign-in is waiting on it; a client whose metadata is slow to serve is a client somebody should fix |
+| fetch timeout | 10 seconds per attempt, one retry of a transient failure | a sign-in is waiting on it; the last validated copy may be served for up to an hour past its expiry, only when the origin is unreachable or answers 5xx |
 | cache | 10 minutes, then re-fetched | short enough that a client correcting its redirect URIs is not locked out for an afternoon |
 | redirects | none — the fetch's `http.Client` refuses every one | the document is served *at* its own id; a redirect chain is how an allow-list on the first hop stops meaning anything |
-| stale fallback | none | a document that cannot be fetched right now is a client whose redirect URIs are not known right now; honouring yesterday's copy would honour URIs it may have retired |
+| stale fallback | at most 1 hour past expiry, transport errors only | the copy was already validated and access is still decided by the person's groups; never served after a validation failure, a redirect or a 4xx |
 
 **The SSRF note.** Resolving a document means the issuer makes a
 server-side HTTP request to a URL the caller effectively chooses (by
