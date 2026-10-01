@@ -56,15 +56,20 @@ export function formOf(def: SlackSharedChannelDefinition): Form {
   return { name: def.name, host: def.host, with: [...def.with], from: [...def.from], private: def.private, perSide: per, channelId: def.channelId, unknownSides: [] };
 }
 
+type DiscoveredSideView = Pick<SlackDiscoveredSide, "workspace" | "name" | "privacy"> & { seen?: boolean; listed?: boolean };
+
 /** The create form for a discovered channel: the name on the host's side,
- *  the host, the other connected workspaces that have it, and each side's
- *  visibility as seen. A side nobody could see starts as public and is
- *  listed in `unknownSides`: the operator must choose it. */
-export function discoveredForm(row: Pick<SlackDiscoveredChannel, "channelId" | "hostWorkspace"> & { sides: Pick<SlackDiscoveredSide, "workspace" | "name" | "privacy">[] }): Form {
+ *  the host, the other connected workspaces something places the channel
+ *  in, and each side's visibility as seen. A side nobody could see starts as
+ *  public and is listed in `unknownSides`: the operator must choose it. A
+ *  workspace nothing places the channel in is not prefilled (see
+ *  [unplacedSides]) but may be added by hand. */
+export function discoveredForm(row: Pick<SlackDiscoveredChannel, "channelId" | "hostWorkspace"> & { sides: DiscoveredSideView[] }): Form {
   const host = row.hostWorkspace;
+  const placed = row.sides.filter((side) => side.workspace === host || side.listed !== false);
   const perSide: Record<string, boolean> = {};
   const unknownSides: string[] = [];
-  for (const side of row.sides) {
+  for (const side of placed) {
     perSide[side.workspace] = side.privacy === "private";
     if (side.privacy === "unknown") unknownSides.push(side.workspace);
   }
@@ -72,7 +77,7 @@ export function discoveredForm(row: Pick<SlackDiscoveredChannel, "channelId" | "
   return {
     name: hostSide?.name ?? "",
     host,
-    with: row.sides.map((side) => side.workspace).filter((key) => key !== host),
+    with: placed.map((side) => side.workspace).filter((key) => key !== host),
     from: [],
     private: false,
     perSide,
@@ -81,10 +86,20 @@ export function discoveredForm(row: Pick<SlackDiscoveredChannel, "channelId" | "
   };
 }
 
+/** The connected workspaces nothing places a discovered channel in. Their
+ *  bots may simply not list it: a private channel they are not in, a public
+ *  one they have not joined. That is unknown, not "not shared": the form
+ *  does not guess, and the operator adds one by hand if the channel is
+ *  shared there. */
+export function unplacedSides(row: Pick<SlackDiscoveredChannel, "hostWorkspace"> & { sides: DiscoveredSideView[] }): string[] {
+  return row.sides.filter((side) => side.workspace !== row.hostWorkspace && side.listed === false).map((side) => side.workspace);
+}
+
 /** A discovered side in words: its name and visibility as the bot saw it. */
-export function sideLabel(side: Pick<SlackDiscoveredSide, "seen" | "name" | "privacy">): string {
-  if (!side.seen) return "private, the bot is not in it, or not shared here";
-  return `#${side.name}, ${side.privacy}`;
+export function sideLabel(side: Omit<DiscoveredSideView, "workspace">): string {
+  if (side.seen) return `#${side.name}, ${side.privacy}`;
+  if (side.listed === false) return "no trace: its bot may not list it (private and the bot is not in it, or public and not joined), or it is not shared here";
+  return "private, the bot is not in it, or not shared here";
 }
 
 /** What the Managed column says for a discovered channel. */

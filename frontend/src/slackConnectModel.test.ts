@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { definitionOf, discoveredForm, discoveredStatus, emptyForm, guestChoices, manageBlocked, sideLabel, withSidePrivate, hostChoices, privacyLabel, problems, stateView, withGuests, withHost, withPerSide } from "./slackConnectModel";
+import { definitionOf, discoveredForm, discoveredStatus, emptyForm, guestChoices, manageBlocked, sideLabel, unplacedSides, withSidePrivate, hostChoices, privacyLabel, problems, stateView, withGuests, withHost, withPerSide } from "./slackConnectModel";
 
-const form = { ...emptyForm, name: "partners", host: "acme", with: ["globex"], from: ["all:partners"] };
+const form = { ...emptyForm, name: "partners", host: "acme", with: ["globex"], from: ["partners@north.example"] };
 
 describe("stateView", () => {
   it("says who moves next", () => {
@@ -64,16 +64,16 @@ describe("the form", () => {
   });
 });
 
-const side = (workspace: string, privacy: string, name = "", seen = privacy !== "unknown") => ({ workspace, privacy, name, seen, members: 3 });
+const side = (workspace: string, privacy: string, name = "", seen = privacy !== "unknown", listed = true) => ({ workspace, privacy, name, seen, listed, members: 3 });
 
 describe("a discovered channel", () => {
   const row = {
     channelId: "C0LEGACY1",
     hostWorkspace: "acme",
-    sides: [side("acme", "public", "legacy"), side("globex", "private", "legacy-globex"), side("initech", "unknown")],
+    sides: [side("acme", "public", "legacy"), side("globex", "private", "legacy-globex"), side("initech", "unknown"), side("hooli", "unknown", "", false, false)],
   };
 
-  it("prefills the host side's name, the host, the other connected workspaces, the id and each side as seen", () => {
+  it("prefills the host side's name, the host, the other workspaces the channel is placed in, the id and each side as seen", () => {
     const f = discoveredForm(row);
     expect(f).toMatchObject({
       name: "legacy",
@@ -86,11 +86,21 @@ describe("a discovered channel", () => {
     });
   });
 
+  it("does not guess at a workspace nothing places the channel in, and says so", () => {
+    expect(discoveredForm(row).with).not.toContain("hooli");
+    expect(discoveredForm(row).perSide).not.toHaveProperty("hooli");
+    expect(unplacedSides(row)).toEqual(["hooli"]);
+    expect(unplacedSides({ hostWorkspace: "acme", sides: [side("acme", "public", "x")] })).toEqual([]);
+    // The operator adds it by hand: it then needs a visibility chosen like any other side.
+    const f = withGuests(discoveredForm(row), ["globex", "initech", "hooli"]);
+    expect(f.perSide).toMatchObject({ hooli: false });
+  });
+
   it("requires the groups and a choice for every side that was not seen, and sends the id", () => {
     let f = discoveredForm(row);
     expect(problems(f).join(" ")).toContain("Choose the visibility of initech");
     expect(problems(f).join(" ")).toContain("Pick at least one group");
-    f = withSidePrivate({ ...f, from: ["all:partners"] }, "initech", true);
+    f = withSidePrivate({ ...f, from: ["partners@north.example"] }, "initech", true);
     expect(problems(f)).toEqual([]);
     expect(definitionOf(f)).toMatchObject({ channelId: "C0LEGACY1", privatePerSide: { acme: false, globex: true, initech: true }, private: false });
   });
@@ -107,6 +117,7 @@ describe("a discovered channel", () => {
   it("says what each side and the row are", () => {
     expect(sideLabel(side("globex", "private", "legacy-globex"))).toBe("#legacy-globex, private");
     expect(sideLabel(side("initech", "unknown"))).toContain("the bot is not in it");
+    expect(sideLabel(side("hooli", "unknown", "", false, false))).toContain("no trace");
     expect(discoveredStatus({ hostWorkspace: "acme", managed: false, managedAs: "" })).toBe("not managed");
     expect(discoveredStatus({ hostWorkspace: "", managed: false, managedAs: "" })).toBe("external, not managed");
     expect(discoveredStatus({ hostWorkspace: "acme", managed: true, managedAs: "legacy" })).toBe("managed as #legacy");

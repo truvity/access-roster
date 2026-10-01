@@ -33,6 +33,7 @@ import {
   guestChoices,
   hostChoices,
   manageBlocked,
+  unplacedSides,
   privacyLabel,
   problems,
   sideLabel,
@@ -43,6 +44,9 @@ import {
   withPerSide,
   type Form,
 } from "./slackConnectModel";
+import { directoryLabel } from "./ownerModel";
+import { landings, landingSentence, sourceOptions, unreachedWarning } from "./slackSourcesModel";
+import { SourcePicker } from "./SourcePicker";
 import { Failure, Loading, Mono, Nothing, Page, State } from "./ui";
 
 type Props = { onDone: (message: string) => void };
@@ -73,7 +77,7 @@ export function SlackConnectPage({ onDone }: Props) {
   return (
     <Page
       title="Slack Connect"
-      lede="Shared channels between this installation's own Slack workspaces. The host workspace creates and owns a channel and invites the others' bots; each side then manages its own people, who come only from the groups named here. Changes are recorded in the audit trail."
+      lede="Shared channels between this installation's own Slack workspaces. The host workspace creates and owns a channel and invites the others' bots; each side then manages its own people, who come only from the directory groups named here. Changes are recorded in the audit trail."
       actions={
         canCreate ? (
           <Button variant="contained" onClick={() => setDialogue({ kind: "create" })}>
@@ -98,7 +102,7 @@ export function SlackConnectPage({ onDone }: Props) {
                 <TableCell>Channel</TableCell>
                 <TableCell>Host</TableCell>
                 <TableCell>Shared with</TableCell>
-                <TableCell>Groups</TableCell>
+                <TableCell>Directory groups</TableCell>
                 <TableCell>Visibility</TableCell>
                 <TableCell>State</TableCell>
                 <TableCell align="right" />
@@ -189,8 +193,9 @@ function DiscoveredSection({ rows, available, onManage }: { rows: SlackDiscovere
         Discovered
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Slack Connect channels that already exist and that a connected workspace's bot can see. A side shown as unknown is one whose bot cannot see the channel: it is
-        private there and the bot is not in it, or it is not shared with that workspace. Taking a channel under management never removes anybody from it.
+        Slack Connect channels that already exist and that a connected workspace's bot can see. Every connected workspace is a side. One nothing places the channel
+        in is unknown, not absent: its bot lists a private channel only once it is in it, and a public one it has not joined may not be listed at all, so add it
+        by hand if the channel is shared there. Taking a channel under management never removes anybody from it.
       </Typography>
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
         <Table size="small" sx={{ minWidth: 720 }}>
@@ -222,6 +227,11 @@ function DiscoveredSection({ rows, available, onManage }: { rows: SlackDiscovere
                     {row.externalTeams > 0 ? (
                       <Typography variant="caption" color="text.secondary">
                         and {row.externalTeams} {row.externalTeams === 1 ? "team" : "teams"} that {row.externalTeams === 1 ? "is" : "are"} not connected here
+                      </Typography>
+                    ) : null}
+                    {unplacedSides(row).length > 0 ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        Not prefilled: {unplacedSides(row).join(", ")}
                       </Typography>
                     ) : null}
                   </TableCell>
@@ -264,6 +274,20 @@ function EditDialog({
   const hosts = hostChoices(options.workspaces);
   const guests = guestChoices(options.workspaces, form.host);
   const wrong = problems(form);
+  // Where the chosen groups land: each side takes the groups of the
+  // directory that owns it.
+  const picker = sourceOptions(options.sourceDirectories);
+  const ownerOfSide = (workspace: string) => options.workspaces.find((w) => w.key === workspace)?.owner ?? "";
+  const placed = landings(
+    [form.host, ...form.with].map((workspace) => ({ workspace, owner: ownerOfSide(workspace) })),
+    form.from,
+    picker,
+  );
+  const ownerName = (owner: string) => {
+    const dir = options.sourceDirectories.find((d) => d.workspaceId === owner);
+    return dir ? directoryLabel(dir.workspaceId, dir.domains) : owner;
+  };
+  const warning = unreachedWarning(placed.unreached);
 
   const submit = async () => {
     setBusy(true);
@@ -329,14 +353,26 @@ function EditDialog({
             disabled={busy}
             renderInput={(params) => <TextField {...params} label="Shared with" helperText="The other workspaces. Each accepts the invitation in Slack." />}
           />
-          <Autocomplete
-            multiple
-            options={options.groups}
+          <SourcePicker
+            options={picker}
             value={form.from}
-            onChange={(_, value) => setForm({ ...form, from: value })}
+            onChange={(value) => setForm({ ...form, from: value })}
             disabled={busy}
-            renderInput={(params) => <TextField {...params} label="Groups" helperText="Members come only from these groups, never from individuals." />}
+            helperText="Groups of any connected directory. Members come only from these groups, never from individuals."
           />
+          {form.host && form.from.length > 0 ? (
+            <Stack sx={{ gap: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">
+                A person joins on the side whose workspace&apos;s owning directory serves their address, so the chosen groups land like this:
+              </Typography>
+              {placed.perSide.map((landing) => (
+                <Typography key={landing.workspace} variant="caption" color="text.secondary" sx={{ pl: 1 }}>
+                  {landingSentence(landing, ownerName(landing.owner))}
+                </Typography>
+              ))}
+              {warning ? <Alert severity="warning">{warning}</Alert> : null}
+            </Stack>
+          ) : null}
           <FormControlLabel
             control={<Switch checked={form.private} onChange={(event) => setForm({ ...form, private: event.target.checked, perSide: undefined })} disabled={busy || !!form.perSide} />}
             label={form.perSide ? "Visibility set per side" : form.private ? "Private on every side" : "Public on every side"}
@@ -358,7 +394,7 @@ function EditDialog({
           {discovered ? (
             <Typography variant="caption" color="text.secondary">
               The existing channel {discovered.channelId} is taken over as it is: the bot joins a public side, a private side needs the bot invited, and nobody is
-              removed. Its members come only from the groups chosen here.
+              removed. Its members come only from the directory groups chosen here.
             </Typography>
           ) : null}
           {wrong.length > 0 && (form.name !== "" || form.host !== "") ? (

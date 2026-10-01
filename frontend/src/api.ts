@@ -12,6 +12,7 @@ import { AccessService, Role } from "./gen/directoryroster/v1/access_pb";
 import { GitHubService } from "./gen/directoryroster/v1/github_pb";
 import { SlackAppService } from "./gen/directoryroster/v1/slack_apps_pb";
 import { SlackSharedChannelService } from "./gen/directoryroster/v1/slack_connect_pb";
+import { SlackChannelService } from "./gen/directoryroster/v1/slack_channels_pb";
 import { SlackService } from "./gen/directoryroster/v1/slack_pb";
 import { SessionService, How } from "./gen/accessissuer/v1/session_pb";
 
@@ -45,6 +46,7 @@ export const access = createClient(AccessService, transport);
 export const github = createClient(GitHubService, transport);
 export const slackApps = createClient(SlackAppService, transport);
 export const slackConnect = createClient(SlackSharedChannelService, transport);
+export const slackChannels = createClient(SlackChannelService, transport);
 export const slack = createClient(SlackService, transport);
 
 // The audit installation's query service, through this console: the console
