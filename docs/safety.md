@@ -41,6 +41,41 @@ substance. For a map of every page in the repository, not just these, see
 - [reference/accessctl.md](reference/accessctl.md#what-each-failure-exits-with)
   — every failure of `accessctl bao`/`pg`/`psql` and its exit code, and a
   key it will never overwrite
+- [reference/policy.md](reference/policy.md#slack-channels) — what the loader
+  refuses about Slack channels (a strict public channel, an empty `from`, the
+  removed keys `team_id`, `domains` and `owner`, which now name where the value
+  comes from)
+
+## The reconcilers: what they refuse to do
+
+- [connect/slack-workspace.md](connect/slack-workspace.md#what-it-never-does)
+  and [design/access-roster.md](design/access-roster.md#the-slack-reconciler)
+  — what the Slack controller will not do: create an account, touch a user
+  group, remove anybody from a public channel, convert a channel's visibility,
+  unarchive a channel, create a second channel under another name, invite or
+  remove a guest, or remove anyone the directory has not vouched for
+- [connect/slack-workspace.md](connect/slack-workspace.md#breakers) and
+  [connect/slack-workspace.md](connect/slack-workspace.md#confirming-a-breaker-from-the-console)
+  — the two removal breakers (a channel, the workspace), the fingerprint an
+  operator confirms, and its 24-hour lapse
+- [connect/slack-workspace.md](connect/slack-workspace.md#dry-run-until-actsin)
+  — every workspace is a dry run until the chart lists it; removing it from the
+  list is the emergency stop
+- [connect/slack-workspace.md](connect/slack-workspace.md#modes) — `extend` adds
+  only and is the default; `strict` is for private channels only and refused at
+  load for a public one; Slack Connect channels are always `extend`
+- [connect/slack-workspace.md](connect/slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console)
+  — a channel defined in git and in the console is held, not merged; the
+  console refuses to manage a channel git defines; archiving from the console is
+  off by default and refused for Slack Connect channels
+- [connect/slack-workspace.md](connect/slack-workspace.md#connect-a-workspace-from-the-console)
+  — a team that is not the recorded one is revoked and refused; the
+  configuration token is never stored or logged
+- [connect/slack-apps-catalogue.md](connect/slack-apps-catalogue.md#errors) —
+  how a Slack App install is refused
+
+## And the rest
+
 - [conformance.md](conformance.md) — what the OpenID conformance suite
   found, and what was fixed
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — the fixes that must not be

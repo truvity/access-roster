@@ -35,11 +35,11 @@ same person.
 So the answer about a person is a function call. What that leaves is one
 chart, one Valkey, one policy file, one health endpoint, and a console
 served on the issuer's own origin — plus, beside the service, the one
-process that had to be separate, the GitHub controller, because it holds
-keys and writes somewhere else.
+processes that had to be separate, the GitHub controller and the Slack
+controller, because each holds keys and writes somewhere else.
 
-The directory's own endpoint stays unserved. The one candidate for it,
-the GitHub controller, reads the console's API instead, with its own
+The directory's own endpoint stays unserved. The candidates for it,
+the GitHub and Slack controllers, read the console's API instead, with its own
 ServiceAccount token verified against the cluster's published key set
 like any workload's.
 
@@ -531,15 +531,16 @@ or a verifier to carry across the redirect. The code expires unused and
 is stripped from the URL, so it reaches no bookmark and no referrer.
 
 The console **reads**. It shows every person, every provider group, every
-internal group, every rule that grants one, and every open session — the
-whole chain from a directory to a client, and why each link exists.
+internal group, every rule that grants one, every open session, and every
+GitHub organisation and Slack workspace with what its controller would change —
+the whole chain from a directory to a client, and why each link exists.
 
 A person's page states that chain as one line per internal group held,
 not just the group's own name: the directory group or matcher at the
-root, a [mapping wildcard](taxonomy.md#mapping-wildcards) named when one
+root, a [mapping wildcard](../taxonomy.md#mapping-wildcards) named when one
 is the reason (`*:k8s:admin`, not just `devel:k8s:admin`), and — once a
-[declared vocabulary](reference/policy.md#vocabulary) puts groups in an
-[implies ladder](taxonomy.md#inheritance) — every hop back to the group
+[declared vocabulary](../reference/policy.md#vocabulary) puts groups in an
+[implies ladder](../taxonomy.md#inheritance) — every hop back to the group
 that was actually granted, one direct parent at a time rather than a
 root the reader has to trust:
 `stage:k8s:viewer ← implied by stage:k8s:operator ← implied by
@@ -554,9 +555,23 @@ What it changes is bootstrap, removals and confirmations — never policy:
 - **Connect** a provider by admin consent, a GitHub organisation by its
   owner creating and installing an App, the link App people authorize,
   and a **runner App** per organisation per tier for self-hosted
-  runners. Each genuinely needs a browser and no credential of theirs
-  can be obtained as code; what they produce — a refresh token, an App's
-  private key — is what this process writes for itself.
+  runners, and a **Slack workspace** by pasting a throwaway app
+  configuration token and sending a workspace owner through Slack's install,
+  and a catalogue Slack App the same way. Each genuinely needs a browser and no
+  credential of theirs can be obtained as code; what they produce — a refresh
+  token, an App's private key, a bot token — is what this process writes for
+  itself.
+- **Keep records** — and only these: a console channel
+  (`_channel.<workspace>.<name>.json`) and a Slack Connect channel
+  (`_shared.<name>.json`). They are membership definitions for Slack channels
+  fed by directory groups and individual addresses, never by internal groups;
+  they are validated against the policy and the connected directories, audited
+  (`roster.slack_console_channel.*`, `roster.slack_shared_channel.*`), mirrored
+  into a Secret for backup, and never grant access to infrastructure.
+- **Archive** a console channel in Slack, opt-in, when forgetting its record.
+  Never a Slack Connect channel.
+- **Request a pass** (Refresh): a marker in the records ConfigMap, at most one a
+  minute per workspace.
 - **Revoke a session.** A removal, and the lever between sign-out and
   expiry. Disconnecting a provider, an organisation or an App is the same
   kind of removal: it revokes at the other side, then forgets.
@@ -565,21 +580,23 @@ What it changes is bootstrap, removals and confirmations — never policy:
   elsewhere. Both let the controller act on something it could not
   decide alone; neither adds anybody to a group.
 
-It cannot change who is in a group. Operator therefore means *may
-connect*, *may revoke* and *may confirm*; everything else is a viewer.
+It cannot change who is in an internal group. Operator therefore means *may
+connect*, *may revoke*, *may confirm*, *may keep Slack channel records* and *may
+request a pass*, each over the installation, or over the one directory that owns
+the organisation or Slack workspace concerned; everything else is a viewer.
 
 **GitHub** is a page on the internal side, beside clients, because a
-GitHub team consumes internal groups the way a client does. It is three
+GitHub team consumes internal groups the way a client does. It is four
 tabs, in the order the work happens. *Overview* says what needs attention
 next: a card per organisation, and the people who have not linked, with
 their addresses to copy. *Organisations* opens each one — what enabling
 it would do in one sentence, removals first, every person with a row
 that reads **OK**, **waiting for them** or **needs you** with the
 controller's exact state in the tooltip, and each team with a page.
-*Apps* holds the link App, every organisation's App and the runner Apps,
-and links to the *Catalogue*: one row per declared App, each with a page
-of its own for its permissions beside GitHub's, its grants, and the two
-clicks that create and install it.
+*Apps* holds the link App, every organisation's controller App and every
+catalogue App, one row each with a page of its own for its permissions beside
+GitHub's, its grants, and the two clicks that create and install it; *Runners*
+holds the runner Apps, one per bound organisation per tier.
 A person's page shows them on GitHub and, on your own, a button to link
 your account; a group's page lists the teams it feeds. A disabled
 organisation is still derived every pass, so its page is the dry run an
@@ -587,10 +604,10 @@ operator reads before enabling it. Nothing on it writes to GitHub; the
 report is read from a ConfigMap the controller writes, and a report that
 is missing or unreadable hides none of the bindings.
 
-**Navigation** is the model, in five clusters: *Overview*; **Identity**
-(Directories, Directory groups, People, Rules); **Access** (Internal groups,
-Clients, Sessions); **Systems** (GitHub, Slack, one entry each, with tabs of
-their own); **Admin** (Audit, Settings). **Slack** is *Workspaces* (the
+**Navigation** is the model, in four clusters under *Overview*: **IDENTITY**
+(Directories, Directory groups, People, Rules); **ACCESS** (Internal groups,
+Clients, Sessions); **SYSTEMS** (GitHub, Slack, one entry each, with tabs of
+their own); **ADMIN** (Audit, Settings). **Slack** is *Workspaces* (the
 connection, owning directory, team, install state and last pass of each),
 *Channels* (every managed channel across workspaces in one table: the
 policy's, read-only and *defined in git*, with the internal groups that feed
@@ -598,7 +615,13 @@ them; the console's, editable, with their directory groups and mode;
 and Slack Connect's, filtered by workspace or kind), *Slack Connect*
 (host, sides and per-side state; create and edit), *Discovered* (every
 visible channel nothing manages, ordinary and shared, each with Manage) and
-*Apps* (the catalogue). **A channel has a page**,
+*Apps* (the catalogue). The Channels, Slack Connect and Discovered tabs share
+one filter bar; every selection is in the address query
+(`#/slack/channels?workspace=&kind=&state=&q=`,
+`#/slack/connect?host=&side=&state=&q=`,
+`#/slack/discovered?workspace=&kind=&visibility=&q=&sort=`), so a filtered view
+is a link. Channel states are ok, pending (about to be created, adopted or
+accepted), waiting, held, invalid and not reported. **A channel has a page**,
 `#/slack/channels/<workspace>/<name>` or by Slack id: one sentence, where it
 comes from (every source a link), the state of every person in it and why,
 each side of a Slack Connect channel, and its history, which is the audit
@@ -689,9 +712,9 @@ every session and refresh token.
 A reconciler is a loop that, every pass and for every target the policy
 binds, reads what a system holds, asks the console who should hold it,
 decides, acts where the target is enabled, and reports. GitHub
-organisations are the first; Slack workspaces are the second. What both
-call with the same meaning lives in `internal/rails` instead of
-`internal/githubroster`:
+organisations are the first; Slack workspaces are the second. Both are built
+on `internal/rails`, which holds what they call with the same meaning, instead
+of `internal/githubroster`:
 
 - the pass loop and its backoff: a pass that met a console on another
   policy is tried again within seconds a bounded number of times, then left
@@ -704,12 +727,16 @@ call with the same meaning lives in `internal/rails` instead of
   not every pass or after a restart;
 - the journal of each target's last good report, so a failed pass reports
   its failure over what was known;
-- the removal circuit breaker and its fingerprint, and the dry-run switch a
-  target is born behind.
+- the confirmation loop (`Confirm`), asked one address at a time under the
+  removal rule;
+- the removal circuit breaker and its fingerprint, which is the unit of
+  operator confirmation: one confirmation satisfies every gate the fingerprint
+  covers, and the dry-run switch a target is born behind.
 
-`internal/githubroster` still owns everything GitHub-shaped: teams, logins,
-invitations, seats, deriving and deciding what an organisation should look
-like, the change calls, status documents and audit events. The rails take
+`internal/githubroster` and `internal/slackroster` each own everything shaped
+like their system: for GitHub teams, logins, invitations, seats, deriving and
+deciding what an organisation should look like, the change calls, status
+documents and audit events. The rails take
 funcs and small interfaces rather than a generated client, so they import
 nothing of either system.
 
@@ -724,12 +751,27 @@ moves here when a second reconciler needs it unchanged, not before.
 ### The Slack reconciler
 
 The second reconciler makes each Slack workspace's channels contain the
-people who hold the groups bound to them. Its core is in
-`internal/slackroster`; the controller loop that runs it comes separately.
-It is four small packages: `reconcile` (the decision, no network),
-`status` (the report document the console reads), `connection` (the
-per-workspace record and credential) and `apply` (reading a workspace and
-carrying out a decision through the Slack client).
+people who hold the groups bound to them. See
+[Connect a Slack workspace](../connect/slack-workspace.md),
+[Slack Connect channels](../connect/slack-connect-channels.md) and
+[Slack Apps](../connect/slack-apps-catalogue.md). It lives in
+`internal/slackroster`: `reconcile` (the decision, no network), `status` (the
+report document the console reads), `connection` (the per-workspace record,
+credential, and the console's channel, Slack Connect, confirmation and
+pass-request records), `apply` (reading a workspace and carrying out a decision
+through the Slack client), `controller` (the loop: the pass, the 30-second
+credential and request watch, the directory questions, the guest-side probe and
+the metrics) and `app` (the OAuth connect and install flow). The Slack API
+client is `internal/slackapp`, with a fake beside it for tests.
+
+**Nothing is declared that the product already knows.** The owner is recorded
+in the connection record when the workspace is connected (the installation-wide
+operator chooses; an operator of exactly one directory owns what they connect),
+the team is recorded at the first install and every later install must match it,
+and a person is looked up by the served domains of the owning directory, read
+from the console every pass. The policy keeps what is policy: the workspace key,
+`channels` and `people`. A policy that still carries `team_id`, `domains` or
+`owner` is refused at load, naming where the value now comes from.
 
 **Who is who.** Workspaces are independent. A person is looked up in a
 workspace by their address in one of the domains its **owning directory**
@@ -741,12 +783,25 @@ no account path in that workspace and is **held** ("no account path in this
 workspace"); in a workspace with no owner every person is held ("no owning
 directory: set the owner on the console"). A person
 with no Slack account yet (`users.lookupByEmail` finds nobody) is held ("no
-Slack account yet"), never an error and never created. Guests are never
-invited and never removed; they are reported.
+Slack account yet"), never an error and never created, and the console shows
+the row as *waiting for them*, not *needs you*: nobody here has anything to do.
+Guests are never invited and never removed; they are reported.
+
+**Two kinds of channel, never mixed.** A *policy channel* is bound in git to
+internal groups. A *console channel* is a record fed by directory groups of the
+workspace's owning directory and by individual addresses (`members`, each an
+active user of that directory); the desired membership is the union, resolved
+through nested groups (cycles end, depth and size are bounded, and a read cut
+short refuses the channel for the pass). One channel is managed one way: the
+console refuses a record for a channel the policy binds (by name, or by adopted
+id), and a channel defined both ways is held on both sides — *defined in both
+git and the console* — and nothing on it changes until one definition is
+removed. There is no take-over from git: to move a channel to the console,
+remove it from the policy and Manage it from Discovered.
 
 **Channels.** A channel is bound to groups, and its wanted members are those
 groups' holders. It is an idempotent upsert: created when no channel of that
-name is visible, public or private as the policy says, and otherwise taken over
+name is visible, public or private as the policy says, and otherwise adopted
 **by name**: a public channel is joined, a private one the bot is in is managed,
 and each adoption is recorded once (`roster.slack_channel.adopted`). `adopt`
 names an id only to disambiguate (a renamed channel, two candidates). A
@@ -755,7 +810,8 @@ channel of that name is held, never unarchived; and when creating a channel is
 refused because its name is taken by a private channel the bot cannot see, it is
 held ("invite the bot to it"), never created again under another name.
 
-**Two modes.** An `extend` channel (the default) only adds. A `strict`
+**Two modes.** Both kinds of channel support both modes, except Slack Connect
+channels, which are always `extend`. An `extend` channel (the default) only adds. A `strict`
 channel, private only, also removes: it makes membership match the bindings.
 It never removes bots or apps, its own bot, deactivated users, guests, people
 of another workspace, anybody with no address on the account, or anybody on
@@ -767,23 +823,40 @@ unreadable directory removes nobody.
 **Two breakers.** Removals over half of a channel's members, or over half of
 the workspace's managed members (distinct people, across every channel the
 workspace binds), remove nobody unless an operator confirmed the fingerprint
-of exactly that set. They are separate gates over the same candidates, so one
-confirmation never stands in for the other.
+of exactly that set. They are separate gates over the same candidates, each with its own
+fingerprint; a confirmation names a fingerprint, so one confirmation satisfies
+every gate that fingerprint is the fingerprint of (when a channel's whole
+removal set is also the workspace's, one confirmation clears both). It lapses
+after 24 hours.
 
 **Leavers.** A person the directory no longer has, still an active member of a
 managed channel, is a report row and a `roster.slack_leaver.reported` record,
 never an action (a strict channel removes them as any extra).
 
 **Slack Connect channels** are an input list of definitions (name, host, the
-workspaces it is shared `with`, groups, visibility as one bool or per side),
-not something the policy declares: the console manages them as records. The
+workspaces it is shared `with`, sources — directory groups of any connected
+directory — and individual addresses, visibility as one bool or per side), not
+something the policy declares: the console manages them as records. The
+record keeps the channel's Slack id when it was found rather than created. The
 host creates the channel and invites each guest workspace's bot; a guest
 accepts the pending invitation for that channel from the host's team and
 only that. Then each side invites only its own people: a person joins from the
 host when they have a host-domain address, otherwise from the first `with`
 workspace, in order, where they have one, otherwise the host holds them.
-Shared channels are `extend` for now. A side waiting for the other is a
-`waiting` state, not a hold.
+Shared channels are always `extend`. A side waiting for the other is a
+`waiting` state, not a hold. A bot that does not list a side is asked once per
+pass, by id with `conversations.info`, but only for a channel a record manages,
+and only the workspaces Slack names as guests or, when Slack names none, the
+workspaces the record names as sides; an expected not-visible answer is logged
+at debug, with one `guest-side probe` summary at info. A channel no record
+manages is never probed.
+
+**What it never does.** It creates no Slack account, touches no user group,
+invites or removes no guest, removes nobody from a public channel, never
+converts a channel's visibility, never unarchives, never creates a second
+channel under another name, and never removes anyone the directory has not
+vouched for. It acts only in workspaces listed in `slackRoster.actsIn`; every
+other workspace is derived and reported.
 
 **A read is whole or it is nothing.** A missing `users:read.email` scope, a
 rate limit that outlasts every retry, a failed page: any of them fails the
@@ -800,8 +873,14 @@ connection is two objects for the reason GitHub's is: a record the console
 shows, and a credential (client id and secret, bot token) that only the
 controller mounts. The token is empty between creating the app and installing
 it, which is its own state, and the client secret is kept because a
-scope-upgrade reinstall needs it. Every document is a `<workspace>.json` key;
-keys starting with an underscore belong to other documents the console keeps.
+scope-upgrade reinstall needs it. The report ConfigMap is
+`<release>-slack-status`, one `<workspace>.json` key per workspace, created by
+the service. The records ConfigMap is `<release>-slack-workspaces`:
+`<workspace>.json` (connection, with `owner`; team optional until first
+install), `_shared.<name>.json`, `_channel.<workspace>.<name>.json`,
+`_confirm.*` and `_pass.*`. A Secret `<release>-slack-records` mirrors exactly
+the first three kinds for backup; a start with an empty ConfigMap repopulates it
+from the mirror.
 
 ## Audit
 
@@ -820,12 +899,13 @@ them.
 
 **The catalogue is the model.** [`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml)
 declares every action — `roster.person.signed_in`, `roster.token.exchanged`,
-`roster.github_member.invited`, … thirty-seven of them — with what kind of
+`roster.github_member.invited`, … sixty-one of them (catalogue 1.5.0) — with what kind of
 operation it is, the framework categories it answers, which profile keeps
 it (`security`, every one of them: this service serves one organisation,
 and a second copy under a second retention would answer nothing), the
 types of its targets (a client, a workspace, an organisation, a team, a
-GitHub account, a GitHub App), the kinds of actor (a person, recovery, a CI
+GitHub account, a GitHub App, a Slack workspace, a Slack channel, a Slack user,
+a Slack App, a directory group, a directory user), the kinds of actor (a person, recovery, a CI
 job, a workload, the service itself), a schema for its data, and how it
 reads as a sentence. Every action has one constructor in
 [`internal/audit/events.go`](../../internal/audit/events.go), and nothing
@@ -834,7 +914,9 @@ else builds a record, so the vocabulary is fixed by the compiler;
 own validator and emitter check. The model this replaced had a free-text
 kind, an untyped target that meant a client, a workspace or `@login`
 depending on the kind, the actor repeated as the subject, and addresses in
-free attributes; the catalogue's validator refuses each of those.
+free attributes; the catalogue's validator refuses each of those. A change to
+the catalogue needs a new version and its released fixture; an installation
+refuses a changed document under a version it already holds.
 
 **Who is who.** The actor is who acted, by kind; the subject is who it
 concerns, and differs from the actor as often as not — an operator revokes
@@ -849,8 +931,8 @@ address is ever data.
 `@platform`: an installation of access-roster serves one organisation, and
 its trail is the organisation's own.
 
-**Each process records as itself.** The service and the GitHub controller
-each present their own projected service-account token; the installation
+**Each process records as itself.** The service, the GitHub controller and the
+Slack controller each present their own projected service-account token; the installation
 stamps the verified workload as every record's observer. The controller no
 longer reports through this service, and the reporter group and RPC that
 made that possible are gone: a component that can write to the trail
@@ -954,7 +1036,9 @@ Secrets alone restore a namespace: start-up puts back every workspace
 ConfigMap and every GitHub record that is missing beside a credential.
 The backup is therefore a copy of five named Secrets — the workspace
 credentials, the GitHub Apps, the links, the runner Apps, the catalogue
-Apps — which a
+Apps — and, for Slack, `<release>-slack-credentials` and the records mirror
+`<release>-slack-records` (written by `slackState.push`); the catalogue Slack
+Apps' `<release>-slack-catalogue-apps` is one more. A
 deployment makes with a `PushSecret` each; nothing in the service depends
 on the copy. Without one, the recovery for a lost workspace credential
 is **Reconnect**, and a declared Secret is re-delivered by whatever
@@ -970,6 +1054,9 @@ need to be allowed to create any ConfigMap in this namespace — including
 one that reads as a workspace record. It is not rendered by the chart
 either, because a ConfigMap whose data a controller rewrites is one a
 GitOps sync reverts.
+
+The Slack controller's report is `<release>-slack-status`, created by the
+service for the same reason.
 
 A connected GitHub organisation is two objects for the reason a workspace
 is: a record in `<release>-github-orgs` that the console shows, and a
@@ -1045,6 +1132,12 @@ is written durably before it completes, and refused when it cannot be
 | Credential revoked or admin suspended | probe fails → provisional; reconnect is the recovery |
 | A request would wait on the directory | it does not: the work runs detached and the answer is *first snapshot pending* |
 | A policy the process refuses to load | the new pod does not start and the previous pods keep serving the previous policy |
+| a GitHub pass fails | the last report with rows stands; the pass is retried next interval; nothing is removed on a failed read |
+| the console answers a controller under another policy | the pass changes nothing and is tried again within seconds, six times at most before the interval resumes |
+| a Slack workspace is not connected or not installed yet | that workspace reports a `waiting` pass with no error; nothing else is affected |
+| a Slack pass cannot read the workspace whole, or the directory cannot be read | the report is kept with the failure on it; nothing is decided or changed on a partial read, and nobody is removed |
+| a removal set is over half of a channel or of the workspace's managed members | nobody in that set is removed until an operator confirms that exact fingerprint (valid 24 hours; one confirmation covers every gate it fits) |
+| a channel is defined in both git and the console | held on both sides, unchanged, until one definition is removed |
 | The whole installation is down | no new sign-ins; existing sessions and tokens live to expiry; recovery is by cluster proof |
 
 The rule under all of them: **access is removed only on an authoritative
@@ -1068,6 +1161,10 @@ adds one back without a reason.
 | introspection (RFC 7662) | never applied: these are JWTs, verified offline against the key set |
 | dynamic client registration (RFC 7591) | an endpoint that mints trust is not carried, and the Model Context Protocol deprecated DCR in its 2026-07-28 revision anyway. A client that this installation does not deploy identifies itself with a **Client ID Metadata Document** instead: no endpoint, no stored registration, nothing that accumulates, and an allow-list of origins keeps the answer readable in the repository — the set of origins rather than the set of clients |
 | the implicit and hybrid flows | superseded by code with PKCE, which is what PKCE exists for |
+| take over from git (`supersedes_policy`, v1.47.0, removed v1.48.0) | a migration aid that made one channel two definitions. A channel defined in both places is now held; the field is ignored on read and never written |
+| `slack.workspaces.<key>.team_id`, `.domains`, `.owner` and `github.<org>.owner` (v1.41.0, removed v1.42.0) | each is known at run time; declaring it twice was drift. Refused at load with the new source named |
+| a Slack Connect record's `from` internal groups (v1.41.0, replaced v1.45.0) | Slack Connect channels are fed by directory groups; a record with internal groups is listed `invalid` |
+| guest-side probe of every shared channel (v1.46.1, narrowed v1.49.1) | it spent a call per other workspace per unmanaged channel per pass; only managed channels are probed |
 | TokenReview for workload exchange | it works on one cluster and would need a kubeconfig per cluster for the rest. A published key set needs none. It stays for recovery alone |
 
 Not served, and never was: the session-management iframe, front-channel

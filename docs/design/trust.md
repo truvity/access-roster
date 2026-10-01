@@ -113,7 +113,10 @@ three segments, `:` between, lowercase. *Role, on thing, in scope.*
 So: `prod:k8s:admin`, `prod:shop:deployer`, `all:access-roster:operator`,
 `C0north:access-roster:viewer` — the last being a role held over one
 directory rather than the installation, with the scope where every other
-name has it and the **workspace id** as the scope, never a domain.
+name has it and the **workspace id** as the scope, never a domain. The same
+scoped role gates what a directory *owns*: the GitHub organisations and Slack
+workspaces connected under it. Who owns a thing is recorded when it is
+connected, never declared in the policy.
 
 Two rules that follow from the shape:
 
@@ -205,7 +208,7 @@ take the browser's own session, and its API takes an issuer token or a
 workload's ServiceAccount token — verified against the cluster's
 published key set, so the service holds access to no cluster — with the
 policy's `service_account` matchers deciding what that workload is in.
-The GitHub controller is that caller. One listener is fine when every
+The GitHub and Slack controllers are those callers. One listener is fine when every
 route says which proof it takes; two is fine when it does not have to.
 
 The console may share the issuer's hostname under a path — the family's

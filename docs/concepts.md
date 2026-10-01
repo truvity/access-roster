@@ -16,6 +16,12 @@ The words this repository uses precisely.
 | **contested** | a domain two workspaces both serve. Authoritative for neither until one of them stops serving it: a move in progress, or a misconfiguration |
 | **`max_age`** | a caller's freshness demand: omitted serves the snapshot, a value makes it fresher first, zero fetches now. Point lookups satisfy it with one live read, never a full refresh |
 
+**A Slack workspace is not a workspace in this table.** Here, *workspace* is a
+directory tenant. A Slack workspace is a Slack team the Slack controller
+manages; it is always written *Slack workspace*, is named by a key in the
+policy's `slack.workspaces` table, and is owned by one directory workspace (its
+*owning directory*), recorded when it is connected.
+
 ## Trust
 
 | Term | Means |
@@ -36,27 +42,37 @@ The words this repository uses precisely.
 | **lifetime** | how long a token lives: the shortest across the caller's groups, then the client's cap. A property of the privilege, never of where the person signed in |
 | **client** | a relying party: the software *asking* for a token. Its `requires` is who may be issued one, and it is **declared** by the deployment — never created by a console and never registered by a workload. One exception, off unless configured: a client may identify itself by an HTTPS URL serving a document about itself, admitted only from an allow-listed origin, so what stays answerable by reading the repository is the set of *origins* rather than the set of clients. [reference/policy.md](reference/policy.md#clients-that-describe-themselves) |
 | **resource** | what a token is *for*, when that is not the client asking. A client names one with `resource` (RFC 8707) and it becomes the token's audience; with none, the client's own id is. Declared, with its own `requires` — so the client says who may ask and the resource says what may be asked for, and both apply. [reference/policy.md](reference/policy.md#resources--what-a-token-is-for) |
-| **scope** | a role held over one workspace rather than the installation, written `<workspace id>:access-roster:operator` in the groups table — the first segment of every grant's `<scope>:<thing>:<role>` name ([design/trust.md](design/trust.md#naming)). It gates every action done TO that workspace and filters what its holder lists; it never widens or narrows the installation-wide role, and recovery is never scoped |
+| **scope** | a role held over one workspace rather than the installation, written `<workspace id>:access-roster:operator` in the groups table — the first segment of every grant's `<scope>:<thing>:<role>` name ([design/trust.md](design/trust.md#naming)). It gates every action done TO that workspace (a directory workspace, or a GitHub organisation or Slack workspace it owns) and filters what its holder lists; it never widens or narrows the installation-wide role, and recovery is never scoped |
 
 ## The console
 
 The console **reads**. It shows every person, every provider group, every
 internal group, every rule that grants one, every open session, and
-every GitHub organisation with what the controller would change — the
-whole chain from a directory to a client or a team, and why each link
-exists. What it changes is bootstrap, removal and confirmation rather
-than policy: it **connects** a directory by admin consent and a GitHub
-organisation, the link App or a runner App by an owner creating the App,
-each of which genuinely needs a browser because there is no
-infrastructure-as-code way to obtain that credential; it **revokes** a
-session and **disconnects** what it connected; and it **confirms** a set
-of removals the controller held, or **imports** GitHub links approved
-elsewhere.
+every GitHub organisation and Slack workspace with what its controller would
+change — the whole chain from a directory to a client, a team or a channel, and
+why each link exists. What it changes is bootstrap, removal and confirmation
+rather than policy: it **connects** a directory by admin consent and a GitHub
+organisation, the link App or a runner App by an owner creating the App, and a
+Slack workspace (a configuration token pasted once, then OAuth install) and a
+catalogue Slack App the same way, each of which genuinely needs a browser
+because there is no infrastructure-as-code way to obtain that credential; it
+**revokes** a session and **disconnects** what it connected; it **keeps**
+console channel and Slack Connect records; it **archives** a channel in Slack
+only when asked to, as an opt-in when forgetting an ordinary console channel;
+it **asks for a pass now** (Refresh); and it **confirms** a set of removals a
+controller held, Slack's the same way as GitHub's, or **imports** GitHub links
+approved elsewhere.
 
-It cannot change who is in a group. That is the policy, rendered from the
-installation's own access model and reviewed in git, so `git
-log` is the complete history of access and there is nothing for a console
-and a repository to disagree about.
+It cannot change who is in an internal group. That is the policy, rendered from
+the installation's own access model and reviewed in git. There is one
+deliberate exception in kind, not in rule: **console channels and Slack Connect
+channels** are records the console writes, because the people who own a Slack
+channel are not the people who own the infrastructure. They are fed by directory
+groups and individual addresses, never by internal groups, are audited action by
+action (`roster.slack_console_channel.*`, `roster.slack_shared_channel.*`),
+backed up, and shown beside the policy's channels with their kind. Git remains
+the complete history of access to infrastructure; the trail is the history of
+these records.
 
 | Term | Means |
 |---|---|
@@ -67,26 +83,41 @@ and a repository to disagree about.
 | **recovery** | the way in for the day no directory can vouch for anybody: a Kubernetes ServiceAccount token, checked by the API server against a mandatory audience. Nothing is stored, and it grants nothing by itself — at the issuer it completes as the ServiceAccount *subject*, and only a `service_account` matcher in the policy puts that subject in a group. It is the **cluster anchor used as the floor** — the issuer depends on the directory, and the directory is what is broken — not a third anchor and not a back door |
 | **secret store** | an OpenBAO (or Vault) that trusts this issuer as an ordinary relying party and mints credentials for it — SSH certificates, database client certificates, or shared development values. There is no second authorization model: the issuer holds no grant in the store, and the store's policy decides who may ask. Accessed through `accessctl` or a workload's identity |
 
-## GitHub
+## Reconcilers: GitHub and Slack
 
 | Term | Means |
 |---|---|
 | **binding** | a row of the policy's `github` table: an organisation's own `members`, and each team's `members` and `maintainers`, every entry an internal group. The controller makes the team equal to who holds those groups |
 | **link** | the tie between a GitHub account and a person, by the work addresses GitHub verified on it. Made by the **person** authorizing the link App, **matched** from a public profile that shows a work address the directory has, or **imported** from a pairing approved elsewhere. A self-link is checked every pass; the other two hold no token and are not. A link is `linked`, `lost` (the address left GitHub) or `unverifiable` (the link App is gone) |
-| **dry run** | what every organisation is until the chart lists it in `githubRoster.actsIn`: derived every pass, shown on its page with what would change, and left alone |
-| **held** | a change the controller decided not to make because a person is needed: no free seat, an owner it would demote, a removal set over half the organisation. Shown as *needs you* |
-| **reported** | a fact the controller notes and never acts on: an owner's team or link, an outside collaborator |
-| **retrying** | a change that failed for a transient reason — the directory unable to vouch just now, a change GitHub refused — and is tried again next pass rather than held |
-| **breaker** | the rule that a pass whose removals concern more than half an organisation's members removes nobody until an operator confirms exactly that set |
+| **dry run** | what every organisation or Slack workspace is until the chart lists it in `githubRoster.actsIn` / `slackRoster.actsIn`: derived every pass, shown on its page with what would change, and left alone |
+| **held** | a change the controller decided not to make because a person is needed: no free GitHub seat, an owner it would demote, a removal set over the breaker, a private Slack channel the bot cannot see, a channel whose visibility differs from the declared one, an archived channel of that name, a channel defined in both git and the console. Shown with its reason, as *needs you* |
+| **waiting** | Slack only: nobody here needs to act. A person has no Slack account yet (*waiting for them*), or a Slack Connect side waits for the other workspace to accept |
+| **reported** | a fact the controller notes and never acts on: an owner's team or link, an outside collaborator, a Slack guest, a leaver in a channel that is not strict |
+| **retrying** | a change that failed for a transient reason (the directory unable to vouch just now, a change the system refused) and is tried again next pass rather than held |
+| **breaker** | the rule that a pass whose removals concern more than half of a unit removes nobody until an operator confirms exactly that set. The unit is an organisation's members on GitHub; on Slack, a channel's members, and separately the workspace's managed members. A confirmation names the set by a fingerprint, lapses after 24 hours, and one confirmation covers every gate that fingerprint fits |
 | **runner App** | the GitHub App a self-hosted runner scale set registers with: one per organisation per **tier**, created from the console, kept in a Secret for the deployment to hand to its runners. Nothing in the service acts with it |
 | **catalogue App** | a GitHub App the deployment declares as data (`githubApps.catalogue`): created and installed from the console, its key kept in a Secret by its catalogue id, its permissions compared with what GitHub holds. Its **grants** name the groups that may ask for its installation tokens |
+
+## Slack
+
+| Term | Means |
+|---|---|
+| **policy channel** | a channel bound in git, in `slack.workspaces.<key>.channels`: private or public, fed by internal groups, `mode: extend` (the default, add only) or `strict` (private only; adds and removes), with an `ignore` list and an optional `adopt` id used only to disambiguate. For channels the infrastructure owns, such as alert channels |
+| **console channel** | an ordinary channel managed on the console, kept as a record `_channel.<workspace>.<name>.json`: fed by **directory** groups of the workspace's owning directory and by **individual addresses** (`members`), never by internal groups. Audited and backed up with the other Slack records |
+| **Slack Connect channel** | a channel shared between your own Slack workspaces, kept as a console record `_shared.<name>.json`: a host (immutable), the workspaces it is shared `with`, privacy per side, and members from directory groups and addresses of any connected directory. Always `extend`. Never in git |
+| **no mixing** | a channel is one kind. Directory groups never feed a policy channel and internal groups never feed a console channel. A channel defined both in git and as a console record is held on both sides until one definition is removed |
+| **owning directory** | the connected directory that owns a Slack workspace (or a GitHub organisation). Recorded when the connection is made, never in the policy. Its served domains are how a person is found in the workspace, and its scoped operator may operate the workspace |
+| **connect** | pasting a throwaway Slack app configuration token (12 hours, used once, never stored or logged); the service creates the roster's own Slack App from a manifest and sends a workspace owner to Slack to install it. The bot token lands in `<release>-slack-credentials` only when the team matches the one recorded at first install |
+| **catalogue App** (Slack) | a Slack App the deployment declares as data in `slackApps`: created and installed from the console, bot token kept in `<release>-slack-catalogue-apps`, optionally copied by a `push` to a secret store. Not used by the reconciler |
+| **Discovered** | every channel the bots can see that no policy binding or record manages, with **Manage** to bring one under management |
+| **guest-side probe** | for a managed Slack Connect channel, a `conversations.info` by id to the workspaces its record names as sides, to learn a side the bot did not list. Expected "not visible" answers are logged at debug |
 
 ## The audit trail
 
 | Term | Means |
 |---|---|
 | **audit installation** | an installation of [truvity/audit](https://github.com/truvity/audit) that keeps the trail. It belongs to this application and runs in its namespace: one address takes both the catalogue this service registers at start-up and every record it sends |
-| **action** | one thing that can happen, declared in the catalogue (`internal/audit/catalogue/roster.yaml`): `roster.person.signed_in`, `roster.github_member.invited`, … Each has one constructor in `internal/audit/events.go` |
+| **action** | one thing that can happen, declared in the catalogue (`internal/audit/catalogue/roster.yaml`): `roster.person.signed_in`, `roster.github_member.invited`, `roster.slack_member.invited`, `roster.slack_action.held`, `roster.slack_removals.confirmed`, … Each has one constructor in `internal/audit/events.go` |
 | **record** | one action that happened, or was refused: who acted, who it concerns, what it was about, how it ended. Every record is also one log line, sharing its id |
 | **block** | the one delivery that waits: a recovery sign-in is kept by the installation before it succeeds, and refused when it cannot be |
 | **async** | every other delivery: the record goes on a bounded queue in the process and is retried with backoff until the writer takes it. A restart loses what the queue held, and past its bound the oldest are dropped and counted -- which is the trade a trail that must not block the request makes, deliberately |

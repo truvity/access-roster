@@ -12,7 +12,7 @@ page in the repository, not just these, see [index.md](index.md).
 
 **A consumer adopts a release only when the render it produces is
 byte-identical to what runs, or differs exactly by the change the release
-announces.** Render both charts with your values at the pinned version
+announces.** Render the chart with your values at the pinned version
 and at the new one, and compare; a difference you cannot explain from
 [CHANGELOG.md](../CHANGELOG.md) is a reason to stop. Moving from
 hand-written objects, or from another installation method, to these
@@ -20,12 +20,14 @@ charts is one change whose render diff is empty; tightening a default is
 a separate release, adopted separately. The policy is part of the
 values, so a policy change is a render diff too, and is reviewed as one.
 [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md#without-argocd-or-kargo)
-shows the comparison with nothing but `helm template` and `diff`.
+shows the comparison with nothing but `helm template` and `diff`. Upgrade order
+for 1.42 and later: roll the console before the Slack controller; the controller
+fails every pass against a console older than the `ListServedDomains` RPC.
 
 ## Where it is written down
 
 - [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md) —
-  prerequisites, install order for both charts with neutral values, the
+  prerequisites, install order with neutral values, the
   first sign-in, and taking releases without a GitOps controller
 - [reference/configuration.md](reference/configuration.md) — what the
   issuer's chart renders and expects, and the objects the service writes
@@ -40,11 +42,26 @@ shows the comparison with nothing but `helm template` and `diff`.
   [GitHub Actions](connect/github-actions.md),
   [a GitHub organisation](connect/github-organisation.md),
   [catalogue GitHub Apps](connect/github-apps-catalogue.md),
+  [a Slack workspace](connect/slack-workspace.md),
+  [catalogue Slack Apps](connect/slack-apps-catalogue.md),
+  [Slack Connect channels](connect/slack-connect-channels.md),
   [an infrastructure-as-code program](connect/infrastructure-as-code.md),
   [registries and artifacts](connect/registries-and-artifacts.md),
   [a service called by workloads](connect/service-to-service.md),
   [a secret manager that mints certificates](connect/openbao.md),
   [the corporate directory](connect/corporate-directory.md)
+- [operations/runbook.md](operations/runbook.md#enabling-a-slack-workspace) —
+  enabling a Slack workspace: connect it, read its dry run, then list it in
+  `slackRoster.actsIn`; and
+  [operations/runbook.md](operations/runbook.md#slack-state) — backing up and
+  restoring Slack state
+- [connect/slack-workspace.md](connect/slack-workspace.md#moving-a-policy-channel-to-the-console)
+  — moving a channel from git to the console: remove it from the policy, then
+  Manage it from Discovered (a channel defined in both places is held, and there
+  is no take-over)
+- [CHANGELOG.md](../CHANGELOG.md) v1.42.0 — a policy that still carries
+  `slack.workspaces.<key>.team_id`, `domains` or `owner`, or `github.<org>.owner`,
+  is refused at load: delete the keys and connect (or reconnect) from the console
 - [operations/migration-from-an-idp.md](operations/migration-from-an-idp.md)
   — retiring an identity provider run for infrastructure without a day of
   broken logins
