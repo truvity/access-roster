@@ -66,7 +66,7 @@ A workspace only acts where `slackRoster.actsIn` names it; every other one is
 derived and reported, and left alone. See
 [slack-workspace.md](slack-workspace.md).
 
-The Slack Connect page shows, for each record, what the host's controller last
+The **Slack Connect** tab of the Slack page (`#/slack/connect`) shows, for each record, what the host's controller last
 reported: *not reported* (nothing yet), *pending* (it will create, adopt or
 accept on the next pass), *waiting for acceptance*, *active*, *needs you*
 (held until a person acts) or *invalid* (the policy refuses it).
@@ -108,7 +108,7 @@ member count, the host team (Slack's `conversation_host_id`) and the teams the
 channel reaches. A channel is marked **managed** when a record matches it, by
 channel id, else by host and name. Nothing is changed by finding a channel.
 
-On `#/slack-connect` the **Discovered** section merges the reports into one row
+On the **Discovered** tab (`#/slack/discovered`) the Slack Connect rows merge the reports into one row
 per channel: its name and privacy on each connected side, members per side,
 the host workspace and whether it is managed. **Every connected workspace is a
 side.** One whose bot cannot see the channel shows as **unknown**: it is private

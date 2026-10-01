@@ -36,7 +36,7 @@ slackApps:
 | Field | Meaning |
 |---|---|
 | `id` | the App's name **here**: where it is kept and what the console names. Lower-case letters, digits and dashes, at most 32 |
-| `workspace` | a key of the policy's `slack.workspaces`, **already connected** on the Slack page. The App is installed into that workspace, and **only** that one: the install is refused when Slack says the token belongs to another team than the one recorded when the workspace was first installed |
+| `workspace` | a key of the policy's `slack.workspaces`, **already connected** on the Slack page's Workspaces tab. The App is installed into that workspace, and **only** that one: the install is refused when Slack says the token belongs to another team than the one recorded when the workspace was first installed |
 | `name` | the App's name in Slack. Empty is `<workspace>-<id>`, cut to 35 characters; a declared name over 35 is refused |
 | `description` | Slack's short description; at most 140 characters |
 | `botScopes` | the bot scopes the App asks for, by Slack's names (`channels:read`, `users:read.email`, `conversations.connect:write`, ...). Listed once each |
@@ -77,7 +77,7 @@ updates it). Paste a fresh one each time; throw it away afterwards.
 
 ## Creating and installing
 
-On the console's **Slack Apps** page each declared App is a row with its
+On the **Apps** tab of the console's Slack page (`#/slack/apps`) each declared App is a row with its
 state and the step it waits for.
 
 1. **Create.** The operator pastes a configuration token into the dialog.

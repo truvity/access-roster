@@ -15,7 +15,7 @@ than starting up empty.
 `Groups`, `Account`, `GroupsOf` and `Revoke` — and the way it is opened:
 from a consent the console runs, or from an uploaded key. Register it
 under a name. The service's record, routing, snapshots, freshness and
-console need no change; Providers gains a button. Ship: the
+console need no change; Directories gains a button. Ship: the
 backend's fake, a consent-runbook page, and the acceptance scenarios
 connect / revoke / domain move against the fake.
 

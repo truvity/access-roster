@@ -59,10 +59,10 @@ Workspace {
 }
 ```
 
-The console calls a workspace a **provider**, and the groups it holds
-**provider groups**. The word changed in 0.12 so that both sides of the
-rail could read simply *Groups*, with the section heading telling them
-apart; the model, the URLs and the API keep the older word.
+The console calls a workspace a **directory**, and the groups it holds
+**directory groups** (it said *provider* before). The rail puts each
+under its own heading, *Identity* and *Access*, so the two sides read as
+mirrors; the model, the URLs and the API keep the older word.
 
 - **Domains are discovered, not typed.** After connecting, the tenant's
   domain list is read and re-read on every probe. A domain that moves
@@ -586,6 +586,30 @@ organisation is still derived every pass, so its page is the dry run an
 operator reads before enabling it. Nothing on it writes to GitHub; the
 report is read from a ConfigMap the controller writes, and a report that
 is missing or unreadable hides none of the bindings.
+
+**Navigation** is the model, in five clusters: *Overview*; **Identity**
+(Directories, Directory groups, People, Rules); **Access** (Internal groups,
+Clients, Sessions); **Systems** (GitHub, Slack, one entry each, with tabs of
+their own); **Admin** (Audit, Settings). **Slack** is *Workspaces* (the
+connection, owning directory, team, install state and last pass of each),
+*Channels* (every managed channel across workspaces in one table: the
+policy's, read-only and *defined in git*, with the internal groups that feed
+them; the console's, editable, with their directory groups and mode;
+and Slack Connect's, filtered by workspace or kind), *Slack Connect*
+(host, sides and per-side state; create and edit), *Discovered* (every
+visible channel nothing manages, ordinary and shared, each with Manage) and
+*Apps* (the catalogue). **A channel has a page**,
+`#/slack/channels/<workspace>/<name>` or by Slack id: one sentence, where it
+comes from (every source a link), the state of every person in it and why,
+each side of a Slack Connect channel, and its history, which is the audit
+trail narrowed to the channel's target. The reverse edges are drawn from the
+same reports and records, with no call of their own: a directory group's
+page lists the Slack channels it feeds, per workspace, with how its people
+stand in each, and the GitHub teams it feeds through the internal groups; a
+person's page lists their channels per workspace with the state and reason
+(*waiting for them: no Slack account yet*). GitHub is likewise one entry:
+*Overview*, *Organisations*, *Apps* and *Runners*. The old addresses
+`#/slack-apps` and `#/slack-connect` open the tabs that replaced them.
 
 Every page reads in the same direction, from the identity side toward the
 access side, and the two group pages carry the same sections mirrored. The
