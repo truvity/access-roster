@@ -154,9 +154,9 @@ report, with the reason, acted on by nobody):
 - a source that is not a group of a connected directory, or, for an ordinary
   channel, of another directory than the workspace's owner;
 - a channel the **policy already defines**, the same name in the workspace or
-  the same channel id adopted by a binding: *this channel is defined in git*,
-  unless the record is a [takeover](#moving-a-policy-channel-to-the-console)
-  (`supersedes_policy: true`) of exactly that channel;
+  the same channel id adopted by a binding: *this channel is defined in git;
+  remove it there to manage it here*. If one gets through (the policy entry
+  came later), both are held as *defined in both git and the console*;
 - `strict` on a public channel, or an `ignore` list without `strict`;
 - a workspace with no owning directory yet;
 - a channel that is already managed the other way (an ordinary record and a
@@ -178,43 +178,9 @@ directory groups as targets of type `directory_group`.
 
 #### Moving a policy channel to the console
 
-A channel the policy binds today, fed by an internal group, can be moved to the
-console and fed by the directory group itself, with **no unmanaged gap**: a
-console channel **takes it over**. For example a private `strict` channel
-`ops-room` fed by an internal group that is in turn fed by the directory group
-`ops@example.com`:
-
-1. Open the channel's page (`#/slack/channels/<workspace>/ops-room`) and choose
-   **Take over from git** (the operator over the workspace's owning directory,
-   or the installation-wide operator). The form is prefilled with the
-   workspace, the name, the channel id from the latest report, the visibility,
-   the mode and the `ignore` list; choose the **directory groups** that feed it
-   (an internal group is not allowed on a console channel).
-2. Save. This writes the usual `_channel.<workspace>.<name>.json` record with
-   `supersedes_policy: true` and audits it as
-   `roster.slack_console_channel.created` with `reason: takeover`. The record
-   is refused unless it names exactly that policy channel (same workspace and
-   name, or the same channel id), the same visibility, and the channel id the
-   policy and the report know it by.
-3. From the next pass the **record** is reconciled and the policy entry is
-   **not**: one owner at a time, never both in one pass. The report marks the
-   policy entry **superseded** ("taken over on the console by X at T; remove it
-   from git"), and the Channels tab and the channel page show it. Remove the
-   entry from git when you are ready; doing so changes nothing in Slack.
-
-A takeover never removes anybody by itself beyond what the new console
-definition implies. Strict removals still need the directory to vouch, and the
-breaker applies to the first pass after the takeover like any other. If the
-record's group holds fewer people than the old internal group did, a strict
-channel removes the difference only once the directory vouches for each.
-
-**Undo.** Delete the console record (the channel's page, **Delete**): the
-policy entry's management is restored on the next pass, as long as it is still
-in git. If it was already removed from git, the channel simply stays in Slack
-unmanaged, like any deleted record.
-
-**The other way**, remove the entry from git first (an unmanaged gap, in which
-nothing is added or removed):
+To move a channel from git to the console: **remove it from the policy, then
+Manage it from Discovered.** The console never manages a channel the policy
+defines, and there is no take-over.
 
 1. **Remove it from the policy in git** (the `channels` entry under its
    workspace). It becomes **unmanaged**: nothing is added to or removed from it
@@ -222,15 +188,21 @@ nothing is added or removed):
 2. After the next pass it appears on the Slack page's **Discovered** tab,
    because the bot is in it.
 3. **Manage** it. The form is prefilled with the workspace, the name, the id and
-   *private*; choose the **same mode** (`strict`), set its `ignore` list if it
-   had one, and pick the directory group `ops@example.com` as the source.
+   *private*; choose the mode (the same one keeps its behaviour), set its
+   `ignore` list if it had one, and pick the directory groups as the sources.
 
-Do these in this order. Adding an ordinary record (not a takeover) while the
-policy still binds the channel is refused as *defined in git*, which is what
-keeps one channel from being managed twice. If the new record's group holds
-fewer people than the old internal group did, a strict channel will remove the
-difference only once the directory vouches for each, and never past the
-breaker: the first pass after the move is subject to it like any other.
+Do these in this order. The form refuses a channel the policy still defines
+(*this channel is defined in git; remove it there to manage it here*), and the
+server refuses it the same way. If a record and a policy entry end up defining
+the same channel anyway (the entry was added later, or the record is older),
+**no mixing**: both are reported **held** (*defined in both git and the
+console*) and nothing on the channel changes until one of the definitions is
+removed. A record that still carries the retired `supersedes_policy: true`
+loads with the field ignored and is never written with it again; once git no
+longer defines the channel it is a plain console channel. If the new record's
+group holds fewer people than the old internal group did, a strict channel will
+remove the difference only once the directory vouches for each, and never past
+the breaker: the first pass after the move is subject to it like any other.
 
 ### Shared channels
 

@@ -10,6 +10,21 @@
   `channel_not_found` and `not_in_channel` stay at debug, real errors warn, and
   each pass still logs one `guest-side probe` summary.
 
+- **Removed: Take over from git.** It was a migration aid. The channel page has
+  no **Take over from git** action and no *taken over* state; the Manage form
+  refuses a channel the policy defines in that workspace (*this channel is
+  defined in git; remove it there to manage it here*), and the server refuses
+  a create or update the same way. To move a channel from git to the console:
+  remove it from the policy, then Manage it from Discovered. **No mixing:** a
+  channel defined both in the policy and as a console record is held on both
+  sides (*defined in both git and the console*) and nothing on it changes
+  until one definition is removed. A stored record that still carries
+  `supersedes_policy: true` keeps loading with the field ignored, is never
+  written with it again, and is a plain console channel once git no longer
+  defines the channel. The field is reserved in
+  `SlackChannelDefinition`, and `superseded` and `ignore` are gone from the
+  Slack status. The audit catalogue stays **1.3.0**: records already written
+  keep their `reason: takeover`, and nothing emits it any more.
 - **Filters on the Slack Discovered and Slack Connect tabs.** Discovered
   narrows by workspace, kind (ordinary or Slack Connect), visibility (public,
   private, unknown) and a name search, sorts by workspace then name (or most

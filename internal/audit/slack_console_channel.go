@@ -18,9 +18,6 @@ type SlackConsoleChannel struct {
 	// Mode is extend or strict.
 	Mode    string
 	Sources []string
-	// Takeover marks a record that took over a policy channel defined in git
-	// (a create only).
-	Takeover bool
 }
 
 func (c SlackConsoleChannel) targets() []*record.Target {
@@ -28,17 +25,16 @@ func (c SlackConsoleChannel) targets() []*record.Target {
 }
 
 func (c SlackConsoleChannel) data(changes string) data {
-	reason := ""
-	if c.Takeover {
-		reason = "takeover"
-	}
 	mode := c.Mode
 	if mode == "" {
 		mode = "extend"
 	}
+	// reason stays in the data (catalogue 1.3.0 declares it, and an
+	// installation holds that version) but is always empty: a create with a
+	// takeover reason was only written by the removed take-over feature.
 	return data{
 		"name": c.Name, "privacy": visibility(c.Private), "mode": mode,
-		"sources": len(c.Sources), "changes": changes, "reason": reason,
+		"sources": len(c.Sources), "changes": changes, "reason": "",
 	}
 }
 

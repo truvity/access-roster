@@ -175,7 +175,6 @@ export type StateKind =
   | "will-create"
   | "will-adopt"
   | "will-accept"
-  | "superseded"
   | "in-channel"
   | "will-invite"
   | "will-remove"
@@ -272,7 +271,6 @@ const states: Record<StateKind, { label: string; color: "success" | "warning" | 
   "not-connected": { label: "not connected", color: "default", title: "No Slack App is connected for this workspace: the controller cannot act in it." },
   "will-create": { label: "will create", color: "secondary", title: "The policy names this channel and Slack has none: the controller creates it." },
   "will-adopt": { label: "will adopt", color: "secondary", title: "A channel of this name exists: the controller joins it and manages who is in it." },
-  superseded: { label: "taken over", color: "default", title: "Defined in git and taken over on the console: the controller does not reconcile this entry. Remove it from git when you are ready." },
   "will-accept": { label: "will accept", color: "secondary", title: "A Slack Connect invitation from the host is waiting and the controller accepts it." },
   "in-channel": { label: "OK", color: "success", title: "In the channel, as the policy says." },
   "will-invite": { label: "will invite", color: "secondary", title: "Belongs in the channel and is not in it: the controller invites them." },

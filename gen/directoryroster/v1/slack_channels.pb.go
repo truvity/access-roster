@@ -316,14 +316,9 @@ type SlackChannelDefinition struct {
 	Ignore []string `protobuf:"bytes,6,rep,name=ignore,proto3" json:"ignore,omitempty"`
 	// directory group addresses whose members belong. Of the workspace's
 	// owning directory.
-	Sources []string `protobuf:"bytes,7,rep,name=sources,proto3" json:"sources,omitempty"`
-	// takes over the policy channel defined in git (same workspace, same name
-	// or channel id): the record is reconciled and the policy entry is not,
-	// until the record is deleted. Set once, on create; immutable. Refused on
-	// create when no policy channel is covered.
-	SupersedesPolicy bool `protobuf:"varint,8,opt,name=supersedes_policy,json=supersedesPolicy,proto3" json:"supersedes_policy,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	Sources       []string `protobuf:"bytes,7,rep,name=sources,proto3" json:"sources,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SlackChannelDefinition) Reset() {
@@ -403,13 +398,6 @@ func (x *SlackChannelDefinition) GetSources() []string {
 		return x.Sources
 	}
 	return nil
-}
-
-func (x *SlackChannelDefinition) GetSupersedesPolicy() bool {
-	if x != nil {
-		return x.SupersedesPolicy
-	}
-	return false
 }
 
 // SlackChannelRecord is one record and where the controller has it.
@@ -821,7 +809,7 @@ const file_directoryroster_v1_slack_channels_proto_rawDesc = "" +
 	"\aprivate\x18\x04 \x01(\bR\aprivate\x12\x18\n" +
 	"\amembers\x18\x05 \x01(\x05R\amembers\x12\x1d\n" +
 	"\n" +
-	"can_manage\x18\x06 \x01(\bR\tcanManage\"\xf6\x01\n" +
+	"can_manage\x18\x06 \x01(\bR\tcanManage\"\xe2\x01\n" +
 	"\x16SlackChannelDefinition\x12\x1c\n" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
@@ -830,8 +818,7 @@ const file_directoryroster_v1_slack_channels_proto_rawDesc = "" +
 	"\aprivate\x18\x04 \x01(\bR\aprivate\x12\x12\n" +
 	"\x04mode\x18\x05 \x01(\tR\x04mode\x12\x16\n" +
 	"\x06ignore\x18\x06 \x03(\tR\x06ignore\x12\x18\n" +
-	"\asources\x18\a \x03(\tR\asources\x12+\n" +
-	"\x11supersedes_policy\x18\b \x01(\bR\x10supersedesPolicy\"\xdd\x02\n" +
+	"\asources\x18\a \x03(\tR\asourcesJ\x04\b\b\x10\tR\x11supersedes_policy\"\xdd\x02\n" +
 	"\x12SlackChannelRecord\x12D\n" +
 	"\achannel\x18\x01 \x01(\v2*.directoryroster.v1.SlackChannelDefinitionR\achannel\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x16\n" +

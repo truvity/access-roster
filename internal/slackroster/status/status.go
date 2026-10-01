@@ -165,11 +165,6 @@ const (
 	// ChannelHeld: the channel cannot be managed until a person acts;
 	// Reason says what.
 	ChannelHeld ChannelState = "held"
-	// ChannelSuperseded: a policy channel that a console record has taken
-	// over. The controller does not reconcile it (the record is the one
-	// owner); Reason says who took it over and that it should be removed
-	// from git.
-	ChannelSuperseded ChannelState = "superseded"
 )
 
 // Member is one person in a channel: who, and whether that is already true.

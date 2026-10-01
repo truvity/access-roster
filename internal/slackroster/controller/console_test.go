@@ -110,21 +110,6 @@ func TestAConsoleChannelWhoseSourcesCannotBeActedOnIsRefused(t *testing.T) {
 			}
 		})
 	}
-	// A record that duplicates a policy channel is refused as defined in git.
-	r.writeConsole(reconcile.ConsoleChannel{Name: "announce"})
-	r.pass("acme")
-	var refused status.Channel
-	for _, c := range r.reports.workspace(t, "acme").Channels {
-		if c.Name == "announce" && c.Console {
-			refused = c
-		}
-	}
-	if refused.State != status.ChannelHeld || !strings.Contains(refused.Reason, "defined in git") {
-		t.Errorf("the duplicate = %+v", refused)
-	}
-	if rep := r.reports.channel(t, "acme", "announce"); rep.Console || rep.State == status.ChannelHeld {
-		t.Errorf("the policy channel was disturbed by the duplicate: %+v", rep)
-	}
 	// An undecodable record is not acted on either.
 	r.writeRecord(connection.ConsoleKey("acme", "garbled"), "not json")
 	r.pass("acme")
@@ -341,72 +326,70 @@ func TestALegacySharedRecordIsHeldOnItsHostAndActedOnByNobody(t *testing.T) {
 	}
 }
 
-// A console record that supersedes a policy channel is the channel's one
-// owner: the policy entry is reported superseded and not reconciled (never
-// both in one pass), the record's directory group feeds the channel, and
-// deleting the record gives the policy entry its management back.
-func TestAConsoleRecordTakesOverAPolicyChannelAndDeletingItRestoresIt(t *testing.T) {
+// No mixing: a channel the policy and a console record both define is held on
+// both sides and nothing on it changes, however the record got there. Deleting
+// the record gives the policy entry its management back.
+func TestAChannelDefinedInGitAndOnTheConsoleIsHeldAndUnchanged(t *testing.T) {
 	r := newRig(t)
-	bea := r.person("bea@acme.example", []string{"g-all"}, "acme")
-	ann := r.person("ann@acme.example", []string{clubGroup}, "acme")
-	r.pass("acme")
-	announce, made := r.fake.ChannelNamed("TACME", "announce")
-	if !made || !slices.Contains(announce.Members, bea) {
-		t.Fatalf("the policy channel was not created and fed: %+v", announce)
-	}
+	r.person("bea@acme.example", []string{"g-all"}, "acme")
+	r.person("ann@acme.example", []string{clubGroup}, "acme")
+	// Even a record written while take over from git existed (the field is
+	// ignored) is held beside the policy entry, never preferred.
+	r.writeRecord(connection.ConsoleKey("acme", "announce"),
+		`{"version":1,"workspace":"acme","name":"announce","sources":["`+clubGroup+`"],"supersedes_policy":true}`)
 
-	r.writeConsole(reconcile.ConsoleChannel{Name: "announce", ChannelID: announce.ID, SupersedesPolicy: true, CreatedBy: "ada@acme.example"})
 	r.pass("acme")
 
-	var consoleRep, superseded []status.Channel
+	var held []status.Channel
 	for _, c := range r.reports.workspace(t, "acme").Channels {
-		switch {
-		case c.Name == "announce" && c.Console:
-			consoleRep = append(consoleRep, c)
-		case c.Name == "announce":
-			superseded = append(superseded, c)
+		if c.Name == "announce" {
+			held = append(held, c)
 		}
 	}
-	if len(consoleRep) != 1 || consoleRep[0].State != status.ChannelOK {
-		t.Fatalf("console entries = %+v, want one ok", consoleRep)
+	if len(held) != 2 {
+		t.Fatalf("announce entries = %+v, want the policy entry and the record", held)
 	}
-	if len(superseded) != 1 || superseded[0].State != status.ChannelSuperseded ||
-		!strings.Contains(superseded[0].Reason, "ada@acme.example") || !strings.Contains(superseded[0].Reason, "remove it from git") {
-		t.Fatalf("policy entries = %+v, want exactly one superseded", superseded)
+	for _, c := range held {
+		if c.State != status.ChannelHeld || !strings.Contains(c.Reason, "defined in both git and the console") {
+			t.Errorf("%+v, want held as defined in both", c)
+		}
 	}
-	if n := r.createdNamed("announce"); n != 1 {
-		t.Errorf("announce was created %d times", n)
+	if held[0].Console == held[1].Console {
+		t.Errorf("want one policy entry and one console entry: %+v", held)
 	}
-	got, _ := r.fake.ChannelNamed("TACME", "announce")
-	if !slices.Contains(got.Members, ann) {
-		t.Errorf("members = %v, want the directory group's ann invited", got.Members)
-	}
-	if !slices.Contains(got.Members, bea) {
-		t.Errorf("members = %v: a takeover removed somebody by itself", got.Members)
+	if _, made := r.fake.ChannelNamed("TACME", "announce"); made {
+		t.Error("a channel defined twice was created")
 	}
 
-	// Undo: delete the record, the policy channel is managed again.
 	if err := os.Remove(filepath.Join(r.records, connection.ConsoleKey("acme", "announce"))); err != nil {
 		t.Fatal(err)
 	}
 	r.pass("acme")
+	if _, made := r.fake.ChannelNamed("TACME", "announce"); !made {
+		t.Error("deleting the record did not give the policy channel back")
+	}
 	for _, c := range r.reports.workspace(t, "acme").Channels {
 		if c.Name == "announce" && (c.Console || c.State != status.ChannelOK) {
-			t.Errorf("after the delete: %+v, want the policy entry ok again", c)
+			t.Errorf("after the delete: %+v, want the policy entry ok", c)
 		}
 	}
 }
 
-// A record that does not supersede, or covers another channel, never takes
-// a policy channel over.
-func TestAConsoleRecordWithoutTheFlagNeverSupersedes(t *testing.T) {
+// A record written while take over from git existed still loads, with the
+// field ignored: while git defines the channel it is held with it, and once
+// git does not, it is a plain console channel.
+func TestAStoredTakeOverRecordLoadsAsAPlainConsoleChannel(t *testing.T) {
 	r := newRig(t)
 	r.person("ann@acme.example", []string{clubGroup}, "acme")
-	r.writeConsole(reconcile.ConsoleChannel{Name: "announce"})
+	raw := `{"version":1,"workspace":"acme","name":"club","sources":["` + clubGroup + `"],"supersedes_policy":true,"created_by":"ada@acme.example"}`
+	r.writeRecord(connection.ConsoleKey("acme", "club"), raw)
+
 	r.pass("acme")
-	for _, c := range r.reports.workspace(t, "acme").Channels {
-		if c.State == status.ChannelSuperseded {
-			t.Errorf("%+v is superseded by a record without the flag", c)
-		}
+
+	if _, made := r.fake.ChannelNamed("TACME", "club"); !made {
+		t.Error("a stored record carrying supersedes_policy was not acted on as a console channel")
+	}
+	if rep := r.reports.channel(t, "acme", "club"); !rep.Console || rep.State != status.ChannelOK {
+		t.Errorf("report = %+v", rep)
 	}
 }
