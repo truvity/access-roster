@@ -708,10 +708,14 @@ per-workspace record and credential) and `apply` (reading a workspace and
 carrying out a decision through the Slack client).
 
 **Who is who.** Workspaces are independent. A person is looked up in a
-workspace by their address in one of that workspace's domains: the address
-the directory knows them by, if it is in-domain, otherwise another address of
-the same person from `people`. With none, they have no account path in that
-workspace and are **held** ("no account path in this workspace"). A person
+workspace by their address in one of the domains its **owning directory**
+serves: the address the directory knows them by, if it is in-domain, otherwise
+another address of the same person from `people`. The owner is recorded when
+the workspace is connected, and the served domains are read from the console
+every pass, so the policy names neither. With no address in them, a person has
+no account path in that workspace and is **held** ("no account path in this
+workspace"); in a workspace with no owner every person is held ("no owning
+directory: set the owner on the console"). A person
 with no Slack account yet (`users.lookupByEmail` finds nobody) is held ("no
 Slack account yet"), never an error and never created. Guests are never
 invited and never removed; they are reported.

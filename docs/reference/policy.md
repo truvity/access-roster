@@ -283,46 +283,66 @@ What a scope means, exactly:
 A scope never widens the installation-wide role and never narrows it: an
 identity holding one may act everywhere and carries no scopes at all.
 
-### Scoping a GitHub organisation: `github.<org>.owner`
+### Who owns a GitHub organisation
 
 The same two groups can operate one company's GitHub organisations and not
-another's. An organisation names the directory workspace that owns it:
+another's. Which directory owns an organisation is **not in the policy**: it
+is recorded in the organisation's own connection when it is connected, because
+access-roster already knows which directories are connected, and a second copy
+in a file would only drift from the first. The policy names an organisation by
+its login and binds its teams; it carries no `owner`.
 
-```yaml
-github:
-  acme:
-    owner: C0northern      # the workspace id, exactly as in the group name
-    teams: { platform: { members: [platform-engineers] } }
-  globex:
-    owner: C0southern
-    teams: { platform: { members: [platform-engineers] } }
-  initech:                 # no owner
-    teams: { platform: { members: [platform-engineers] } }
-```
+**Who may connect an organisation nobody has connected yet, and who then owns
+it** (one rule, the same for a Slack workspace):
+
+| The caller | Owner of what it connects |
+|---|---|
+| the installation-wide operator (`all:access-roster:operator`) | **chosen** on the connect form: any connected directory, or none |
+| an operator of exactly one connected directory (`<id>:access-roster:operator`) | that directory, without being asked |
+| an operator of several connected directories | **chosen** among them, and must |
+| an operator of a directory that is not connected, a viewer, anyone else | refused |
+
+The owner is recorded with the connection and with its audit record
+(`roster.github_org.connected` carries `owner`). It is a directory workspace
+id; the console shows the directory by its primary domain, the domain of the
+account the hub connected it as. A directory that is not connected cannot be
+named, and none ever is by a caller who does not operate it.
+
+**Changing it** is the installation-wide operator's alone, to any connected
+directory or to none (`ChangeGitHubOrganisationOwner`, or the *Change owner*
+button on the organisation's page). It is recorded as a configuration change
+(`roster.github_org.owner_changed`, with the previous and the new owner). The
+owner of an organisation cannot hand it to another directory, or take one.
 
 | An organisation… | may be operated by |
 |---|---|
-| with an `owner` | the `<owner>:access-roster:operator` of that workspace, **or** the `all:access-roster:operator` |
-| with no `owner` | the `all:access-roster:operator` alone (how it always was) |
+| connected with an owner | the `<owner>:access-roster:operator` of that workspace, **or** the `all:access-roster:operator` |
+| connected with none, or connected before owners were recorded | the `all:access-roster:operator` alone (how it always was) |
+| not connected yet | connecting it: the installation-wide operator, or an operator of a directory, as above |
 
 "Operated" is every action on it: connect, reconnect, disconnect, confirm its
 removals, its runner Apps, the Apps the catalogue declares for it and their
 recent tokens, and finishing a connect when GitHub sends the browser back (the
-role is checked again there, for whoever is signed in then). Adopting links
-(`ImportGitHubLinks`) is people's rather than an organisation's, so it is open
-to an operator of any directory but adopts an account only on the evidence of
-an organisation that caller may operate.
+role is checked again there, for whoever is signed in then; the owner a flow
+will record travels in the signed state, so it cannot be changed on the way).
+Adopting links (`ImportGitHubLinks`) is people's rather than an organisation's,
+so it is open to an operator of any directory but adopts an account only on the
+evidence of an organisation that caller may operate.
 
-What is *seen* follows the same owner: a viewer scoped to a workspace sees the
-organisations that workspace owns, their Apps and reports, and nothing of
-another company's. The link App and the links are every organisation's, so
-they are the installation-wide viewer's alone. A scoped role over a workspace
-that owns no organisation is refused the GitHub pages rather than shown an
-empty one.
+What is *seen* follows the recorded owner: a viewer scoped to a workspace sees
+the organisations that workspace owns, their Apps and reports, and nothing of
+another company's. An organisation nobody has connected shows its bindings
+alone, and only to whoever could connect it. The link App and the links are
+every organisation's, so they are the installation-wide viewer's alone. A
+scoped role over a workspace that owns no organisation, and could connect none,
+is refused the GitHub pages rather than shown an empty one.
 
-`owner` is one value per organisation, so two policy files naming it is a
-clash, as for any other scalar. It must be a single workspace id (no `:`, no
-whitespace, not `all`). [Slack workspaces take the same mechanism](#scoping-a-slack-workspace-slackworkspaceskeyowner).
+A policy that still carries `github.<org>.owner` (a key v1.41.0 briefly
+accepted) is **refused at load**, with a message saying the owner is now
+chosen on the console when the organisation is connected. Delete the key; the
+organisation keeps working as an installation-wide one until it is connected
+again with an owner, or its owner is changed by the installation-wide operator.
+[Slack workspaces follow the same rule](#who-owns-a-slack-workspace).
 
 **Recovery is not scoped**, by construction. It exists for the day the
 directory or the policy is what is broken, and a recovery scoped to one
@@ -1062,38 +1082,48 @@ address under two people (or twice under one), a key that is not a plain
 name (lowercase letters, digits, `.`, `_`, `-`). Addresses are compared
 lowercased. The same person declared in two merged files is a clash.
 
-### Scoping a Slack workspace: `slack.workspaces.<key>.owner`
+### Who owns a Slack workspace
 
-A Slack workspace names the directory workspace that owns it, exactly as a
-GitHub organisation does:
+A Slack workspace is known to the policy by its **key** and the channels bound
+in it. Three things the policy used to be asked for are not in it any more,
+because access-roster already knows each at run time:
 
-```yaml
-slack:
-  workspaces:
-    acme:
-      team_id: T0123ABCD
-      owner: C0northern      # the workspace id, exactly as in the group name
-      domains: [acme.example]
-    globex:                  # no owner
-      team_id: T0456EFGH
-      domains: [globex.example]
-```
+| Fact | Where it comes from |
+|---|---|
+| the workspace's **owner**, the directory it belongs to | chosen when the workspace is connected, by the [one rule](#who-owns-a-github-organisation) (the installation-wide operator chooses a connected directory or none; an operator of one directory owns what it connects; an operator of several chooses among theirs), and recorded in the workspace's connection |
+| the Slack **team** | recorded from `oauth.v2.access` at the **first install**; every later install or reconnect must belong to the same team (anything else is revoked and refused), and the controller acts with a bot token only while `auth.test` agrees |
+| the **domains** a person is looked up by | the domains the **owning directory serves**, read from the console every pass; never copied |
+
+Changing the owner is the installation-wide operator's alone
+(`ChangeSlackWorkspaceOwner`, the *Change owner* button on the workspace), and
+is recorded as `roster.slack_workspace.owner_changed`. A workspace with **no
+owner** has no domains to look anyone up by, so every person in it is **held**
+with *no owning directory: set the owner on the console*, and nothing is
+invited. If the owning directory cannot be read, or is no longer connected, the
+workspace's pass fails and changes nothing, rather than reading as "nobody is
+here".
 
 | A Slack workspace… | may be operated by |
 |---|---|
-| with an `owner` | the `<owner>:access-roster:operator` of that directory workspace, **or** the `all:access-roster:operator` |
-| with no `owner` | the `all:access-roster:operator` alone |
+| connected with an owner | the `<owner>:access-roster:operator` of that directory workspace, **or** the `all:access-roster:operator` |
+| connected with none | the `all:access-roster:operator` alone |
+| not connected yet | connecting it: the installation-wide operator, or an operator of a directory |
 
-"Operated" is every action on the workspace's [catalogue Apps](../connect/slack-apps-catalogue.md):
-creating, installing and reinstalling, and finishing an install when Slack
-sends the browser back (the role is checked again there, for whoever is signed
-in then). What is *seen* follows the same owner: a viewer scoped to a
-directory workspace sees the Slack Apps of the workspaces it owns and nothing of
-another company's; a scoped role over a directory that owns no Slack workspace
-is refused the page rather than shown an empty one.
+"Operated" is every action on the workspace and on its [catalogue
+Apps](../connect/slack-apps-catalogue.md): connecting, creating, installing and
+reinstalling, and finishing an install when Slack sends the browser back (the
+role is checked again there, for whoever is signed in then). A catalogue App is
+created in a workspace that is **already connected**: the page refuses with
+*connect the workspace first* until the workspace has recorded its team. What
+is *seen* follows the recorded owner: a viewer scoped to a directory workspace
+sees the Slack workspaces and Apps it owns and nothing of another company's; a
+scoped role over a directory that owns no Slack workspace and could connect
+none is refused the page rather than shown an empty one.
 
-`owner` is one value per workspace, so two policy files naming it is a clash.
-It must be a single workspace id (no `:`, no whitespace, not `all`).
+A policy that still carries `slack.workspaces.<key>.team_id`, `.domains` or
+`.owner` (keys v1.41.0 briefly accepted) is **refused at load**, with a message
+saying where the value now comes from. Delete the keys and connect from the
+console.
 
 ## Slack channels
 
@@ -1106,22 +1136,18 @@ It must be a single workspace id (no `:`, no whitespace, not `all`).
 slack:
   workspaces:
     acme:                                   # a key WE choose
-      team_id: T0123ABCD                    # Slack's own id; the connect flow must match it
-      domains: [acme.example]               # how a person is found in this workspace
       channels:                             # by channel NAME, as Slack spells it
         eng-private: {private: true, mode: strict, ignore: [boss@acme.example, U0123ABCD], from: [acme:eng:member]}
         ops: {from: [acme:sre:member], adopt: C0123ABCD}   # take over an existing channel
-    globex:
-      team_id: T0456EFGH
-      domains: [globex.example]
+    globex: {}                              # declared; its channels are bound elsewhere
 ```
 
 Each workspace is connected by **its own app** and bot token; the token is
-never in this file. The workspace key is ours, and `team_id` is what ties
-it to a real workspace: the connect flow refuses a token whose workspace
-is not the one declared. A person is found in a workspace by their address
-in one of its `domains` (and `people` links their other addresses). A
-domain belongs to one workspace only.
+never in this file. The workspace key is ours; the Slack team, the owning
+directory and the domains are not declared here (see
+[who owns a Slack workspace](#who-owns-a-slack-workspace)). A person is found
+in a workspace by their address in one of the **owning directory's served
+domains** (and `people` links their other addresses).
 
 Channels are bound to **internal groups directly**, exactly as a GitHub
 team is: the holders of `from` are who the channel should contain. (Slack
@@ -1157,17 +1183,14 @@ deactivated users, guests (reported, never touched) or anybody on
 **Shared (Slack Connect) channels are not in the policy.** They span
 workspaces, and they are created and edited interactively on the console,
 which keeps them as records of its own. The policy declares only what is
-fixed at deploy time: the workspaces, whose domain is whose, and the
-channels bound inside each.
+fixed at deploy time: the workspaces by key, and the channels bound inside each.
 
 What is refused, and why each would otherwise be silent:
 
 | Refused | Because |
 |---|---|
 | a workspace key that is not a plain slug | it appears in messages, audit records and credential names |
-| `team_id` missing or not `^T[A-Z0-9]{6,}$` | nothing would tie the entry to a real workspace |
-| one `team_id` under two workspace keys | the connect flow finds a workspace by the team id Slack returns, and two answers is no answer |
-| no `domains`, an invalid domain, or one domain in two workspaces | nobody could be found, or read order would decide which workspace an address is in |
+| `team_id`, `domains` or `owner` on a workspace, or `owner` on a GitHub organisation | removed in favour of what access-roster records and reads at run time; the message says where each comes from, so a stale policy fails the rollout rather than being half-read |
 | a channel name that is not lowercase letters, digits, `-`, `_` (at most 80) | Slack would refuse it at create time, not at load |
 | `mode` other than `extend` or `strict`; `mode: strict` on a channel that is not `private` | Slack would refuse every removal from a public channel, at every pass |
 | `ignore` without `mode: strict`, or an entry that is neither an address nor a Slack user id, or one listed twice | an extend channel removes nobody, so the list would mean nothing |
@@ -1176,9 +1199,8 @@ What is refused, and why each would otherwise be silent:
 | `adopt` not `^[CG][A-Z0-9]{8,}$`, or one ID adopted twice in a workspace | two bindings would fight over one channel |
 
 Across merged files a workspace merges field by field, as a GitHub
-organisation does: one file may declare it (`team_id`, `domains`) and
-another bind channels in it. `team_id` and `domains` come from one file, a
-channel from one file, and a repeat is a clash. Bound
+organisation does: one file may declare it and another bind channels in it.
+A channel comes from one file, and a repeat is a clash. Bound
 groups count as consumed, so they are not reported by the unused-group
 lint. Validation runs on the merged policy, so a reference across files
 is checked once, after the merge.

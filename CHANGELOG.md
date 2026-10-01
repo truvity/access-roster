@@ -1,3 +1,63 @@
+## Unreleased
+
+- **BREAKING: a Slack workspace's team, owner and domains, and a GitHub
+  organisation's owner, are no longer policy keys.** v1.41.0 briefly let the
+  policy carry `slack.workspaces.<key>.team_id`, `.domains` and `.owner` and
+  `github.<org>.owner`. access-roster already knows each at run time (each
+  connected directory has its workspace id and the domains it serves, a Slack
+  install tells us the team, and the person connecting acts within a
+  directory), so holding them twice was drift waiting to happen. A policy that
+  still carries any of them is **refused at load**, with a message saying where
+  the value now comes from. **Migration:** delete the keys, then connect (or
+  reconnect) from the console, where the owning directory is chosen. A Slack
+  workspace stays held (*no owning directory: set the owner on the console*)
+  until it has an owner; a GitHub organisation keeps working as an
+  installation-wide one until it is connected with an owner, or the
+  installation-wide operator sets one. The policy keeps what is policy: the
+  workspace key and `channels` (with `mode` and `ignore`), `people`, and GitHub
+  team bindings. Removed from `policy`: `SlackWorkspace.TeamID`, `.Domains`,
+  `.Owner`, `GitHubOrg.Owner`, `Set.SlackWorkspaceTeam`, `Set.SlackOwner`,
+  `Set.GitHubOwner` and `SlackWorkspace.NormalisedDomains`; added
+  `Set.SlackWorkspaceDeclared`.
+- **New: the owner is recorded when a connection is made.** One rule for Slack
+  workspaces and GitHub organisations. The installation-wide operator chooses
+  the owning directory from the connected ones, or none; an operator of
+  exactly one connected directory owns what they connect; an operator of
+  several chooses among theirs; a directory the caller does not operate, or one
+  that is not connected, is refused. The owner is the connection record's
+  `owner` (optional in version 1, so a record written before it reads as "no
+  owner" and stays installation-wide) and is carried in the signed connect state
+  to the callback that creates the record. Every owner check (`requireOwner`, the
+  Slack catalogue, the workspace page, the Slack Connect editor, viewer
+  filtering, `github_owner`) now reads the **connection record**, not the policy.
+  Only the installation-wide operator changes it afterwards: new RPCs
+  `ChangeSlackWorkspaceOwner` and `ChangeGitHubOrganisationOwner`, audited as
+  `roster.slack_workspace.owner_changed` and `roster.github_org.owner_changed`.
+  `roster.slack_workspace.connected` and `roster.github_org.connected` now carry
+  `owner`. The connect forms show the owner choice where there is one, the rows
+  show the owner by its primary domain, and the installation-wide operator gets
+  *Change owner*. New request fields `BeginSlackWorkspaceConnectRequest.owner`
+  and `BeginGitHubConnectRequest`/`BeginGitHubAppConnectRequest.owner_directory`;
+  new response fields `owner_choices` and `may_connect_without_owner`, and
+  `owner_domain`, `can_change_owner` on the rows.
+- **New: the Slack team is recorded at the first install.** The workspace
+  connect callback records the team from `oauth.v2.access`; any later install
+  or reconnect must match it (a mismatch is revoked and refused, as before),
+  and so is a first install into a team already connected under another key.
+  The Slack App catalogue now requires its entry's workspace to be connected
+  first (*connect the workspace first*) and holds its install to the recorded
+  team. A record is valid with no team until the first install
+  (`connection.Record.TeamID` is optional).
+- **New: a person is looked up by the owning directory's served domains, every
+  pass.** The Slack controller reads the domains each connected directory serves
+  from the console (new `AccessService.ListServedDomains`, a viewer's read,
+  scoped like the others) and finds a person in a workspace by their address in
+  its **owner's** domains. A workspace with no owner holds its people (*no owning
+  directory: set the owner on the console*); a directory that cannot be read or
+  is no longer connected fails the workspace's pass and changes nothing.
+- **State:** `access.Binding` carries the owner a flow will record; a state
+  issued before it (four parts) still verifies, as one with no owner.
+
 ## v1.41.0
 
 - **New: `OUTBOUND_CA_FILE` for resource-proxy.** A PEM bundle appended to the
@@ -74,7 +134,7 @@
   `github.<org>.owner`: its scoped operator creates, installs and reinstalls
   its Apps, the Slack Apps page lists only what the caller may view, and each
   row says whether the caller may operate it (`can_operate`). See
-  [docs/reference/policy.md](docs/reference/policy.md#scoping-a-slack-workspace-slackworkspaceskeyowner).
+  [docs/reference/policy.md](docs/reference/policy.md#who-owns-a-slack-workspace).
 
 - **New: per-organisation operators for GitHub.** `github.<org>.owner`
   names the directory workspace that owns an organisation; its scoped
@@ -87,7 +147,7 @@
   pages list only the organisations the caller may view, each row says
   whether the caller may operate it (`can_operate`), and the connect
   callbacks ask the role question again. See
-  [docs/reference/policy.md](docs/reference/policy.md#scoping-a-github-organisation-githuborgowner).
+  [docs/reference/policy.md](docs/reference/policy.md#who-owns-a-github-organisation).
 - **New: the Slack controller, `slack-roster`, and its chart values
   `slackRoster.*`.** A second process from the `access-issuer` chart (and its
   own image and archive) that makes each Slack workspace's channels match the

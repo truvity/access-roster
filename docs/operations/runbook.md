@@ -331,9 +331,10 @@ workspace](../connect/slack-workspace.md).
 3. To stop, remove the key. Nothing is undone. That is also the emergency stop.
 
 A workspace reported `failed` says why: not connected, created and not yet
-installed, a bot token that belongs to another workspace than the policy's
-`team_id`, a Slack read that was not whole, or a console answering under another
-policy (tried again within seconds; it clears when the rollout ends). The rows of
+installed, a bot token that belongs to another Slack team than the one recorded
+at the workspace's first install, an owning directory that cannot be read or is
+no longer connected (set another owner on the console), a Slack read that was
+not whole, or a console answering under another policy (tried again within seconds; it clears when the rollout ends). The rows of
 the last good report are kept under it.
 
 A removal over half of a channel or of the workspace is held with a fingerprint;

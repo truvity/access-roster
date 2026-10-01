@@ -77,6 +77,21 @@ the same reason every other grant lives here.
    Install instead of creating a second App. Only an organisation the
    policy binds can be connected, so a typo in a login is caught here
    rather than on GitHub's 404.
+
+   **Which directory owns the organisation** is chosen here, not in the
+   policy: the installation-wide operator picks a connected directory (or
+   none) on the form; an operator of exactly one connected directory owns what
+   they connect without being asked; an operator of several picks among
+   theirs. It is recorded in the organisation's connection and in the audit
+   record (`roster.github_org.connected` carries `owner`). The owner's
+   operators then operate the organisation beside the installation-wide
+   operator; an organisation connected with no owner, or before owners were
+   recorded, is the installation-wide operator's alone. Only the
+   installation-wide operator changes it afterwards, with *Change owner* on the
+   organisation's page (`roster.github_org.owner_changed`). A policy that still
+   carries `github.<org>.owner` is refused at load: delete the key. The rule,
+   once, is in [the policy
+   reference](../reference/policy.md#who-owns-a-github-organisation).
 6. **Run the controller**, disabled for the organisation. See *Running the
    controller* below. Its first pass reports on the GitHub page what it
    WOULD do; read it.
