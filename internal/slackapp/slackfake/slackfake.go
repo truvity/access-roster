@@ -84,6 +84,10 @@ type Channel struct {
 	// PrivateIn overrides Private for one workspace's side: Slack lets each
 	// organisation choose its own side's visibility.
 	PrivateIn map[string]bool
+	// UnlistedIn hides a public side from that workspace's conversations.list
+	// while conversations.info still answers for it: a public side of a Slack
+	// Connect channel the bot has not joined is often not listed.
+	UnlistedIn map[string]bool
 }
 
 // privateIn is whether a workspace's side is private.
@@ -374,6 +378,9 @@ func (s *Slack) dispatch(method, team, token string, r *http.Request, p url.Valu
 				continue
 			}
 			if c.privateIn(team) && !slices.Contains(c.Members, BotID(team)) {
+				continue
+			}
+			if c.UnlistedIn[team] && !slices.Contains(c.Members, BotID(team)) {
 				continue
 			}
 			rows = append(rows, s.channelJSON(c, team))

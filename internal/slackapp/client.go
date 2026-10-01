@@ -239,6 +239,19 @@ func (c *Client) ChannelInfo(ctx context.Context, channel string) (Channel, erro
 	return out.Channel, err
 }
 
+// ProbeChannel asks this bot about a channel by id, with the member count,
+// whether or not the bot is in it or lists it. A Slack Connect channel that
+// is public on this side answers; a private one the bot is not in is
+// [ErrChannelNotFound], which Slack does not tell apart from "not shared
+// with this workspace".
+func (c *Client) ProbeChannel(ctx context.Context, channel string) (Channel, error) {
+	var out struct {
+		Channel Channel `json:"channel"`
+	}
+	err := c.call(ctx, "conversations.info", url.Values{"channel": {channel}, "include_num_members": {"true"}}, &out)
+	return out.Channel, err
+}
+
 // Members lists the user ids in a channel, following the cursor. It is
 // the "actual" side of the reconcile: the controller diffs it against who
 // is entitled to decide who to invite and who to remove.

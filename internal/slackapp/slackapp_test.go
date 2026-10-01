@@ -690,3 +690,26 @@ func TestTeamsNameEveryWorkspaceSlackPlacesAChannelIn(t *testing.T) {
 		t.Errorf("Teams = %v", got)
 	}
 }
+
+// A non-member guest bot reads a Slack Connect channel that is public on its
+// side by id, even when its listing leaves it out; a private side it is not in
+// is not found.
+func TestProbeChannelFromANonMemberGuestBot(t *testing.T) {
+	w := newWorld(t)
+	pub := w.fake.AddSharedChannel("pub", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": false}, "U1", "U2")
+	w.fake.Channels[pub.ID].UnlistedIn = map[string]bool{"TGLOBEX": true}
+	priv := w.fake.AddSharedChannel("priv", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": true}, "U1")
+	ctx := context.Background()
+
+	listed, err := w.globex.Channels(ctx)
+	if err != nil || slices.ContainsFunc(listed, func(c slackapp.Channel) bool { return c.ID == pub.ID || c.ID == priv.ID }) {
+		t.Fatalf("the guest bot lists %v, %v; want neither shared channel", listed, err)
+	}
+	info, err := w.globex.ProbeChannel(ctx, pub.ID)
+	if err != nil || info.Name != "pub" || info.IsPrivate || info.IsMember || !info.IsExtShared || info.NumMembers != 2 || info.ConversationHostID != "TACME" {
+		t.Fatalf("probe = %+v, %v", info, err)
+	}
+	if _, err := w.globex.ProbeChannel(ctx, priv.ID); !errors.Is(err, slackapp.ErrChannelNotFound) {
+		t.Fatalf("a private side the bot is not in: err = %v", err)
+	}
+}

@@ -1,3 +1,20 @@
+## Unreleased
+
+- **fix(slackroster): a Slack Connect side the guest bot does not list is now
+  probed by id.** A bot lists a channel that is public on its side only
+  sometimes, and one it has not joined often not at all, so discovery showed
+  that side as "not listed" and the operator had to add it by hand. For every
+  Slack Connect channel any connected workspace discovered, the controller now
+  asks each other connected workspace that did not list it, with
+  `conversations.info` by channel id (bot token, `include_num_members`), at
+  most once per channel and workspace per pass. An answer is published in that
+  workspace's `discovered_shared` (privacy, name and member count as that side
+  sees them, bot not joined), so the Manage form prefills the side; a public
+  side the bot has not joined is joined on Manage as before. A private side
+  answers `channel_not_found` and stays unknown. A probe that fails is logged
+  and never fails the pass. Nothing else changes; the status document only
+  gains entries.
+
 ## v1.46.0
 
 - **The console is organised as four clusters, and Slack is one place.** The

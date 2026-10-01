@@ -243,6 +243,7 @@ func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
 		c.metrics.recordPass(ctx, &report)
 		reports[key] = report
 	}
+	c.probeGuestSides(ctx, p, reports)
 	c.journal.Publish(ctx, reports)
 	return otherPolicy
 }

@@ -1369,3 +1369,80 @@ func (r *rig) createdNamed(name string) int {
 	}
 	return n
 }
+
+// shareHostedByAcme is a channel acme hosts and globex has as a public side
+// its bot does not list.
+func (r *rig) shareHostedByAcme() slackfake.Channel {
+	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": false}, "U1")
+	ch.UnlistedIn = map[string]bool{"TGLOBEX": true}
+	ch.TeamNames = map[string]string{"TGLOBEX": "legacy-globex"}
+	return *ch
+}
+
+func (r *rig) probes(team string) int {
+	n := 0
+	for _, c := range r.fake.Calls() {
+		if c.Method == "conversations.info" && c.Team == team && c.Params.Get("include_num_members") == "true" {
+			n++
+		}
+	}
+	return n
+}
+
+// A side the guest bot does not list is asked about by id and published as
+// that side, once per pass, without touching the channel.
+func TestAGuestSideTheBotDoesNotListIsProbedAndPublished(t *testing.T) {
+	r := newRig(t)
+	ch := r.shareHostedByAcme()
+	r.pass("acme", "globex")
+
+	got := r.reports.workspace(t, "globex").DiscoveredShared
+	if len(got) != 1 || got[0].ID != ch.ID || got[0].Name != "legacy-globex" || got[0].Private || got[0].Members != 1 || got[0].HostTeam != "TACME" {
+		t.Fatalf("globex's discovered = %+v", got)
+	}
+	if n := r.probes("TGLOBEX"); n != 1 {
+		t.Errorf("probes of globex = %d, want 1 per pass", n)
+	}
+	if n := r.probes("TACME"); n != 0 {
+		t.Errorf("acme listed it and must not be probed: %d", n)
+	}
+	if n := r.touching(ch.ID); n != 0 {
+		t.Errorf("probing changed the channel: %d mutations", n)
+	}
+	r.pass("acme", "globex")
+	if n := r.probes("TGLOBEX"); n != 2 {
+		t.Errorf("after two passes probes = %d, want 2", n)
+	}
+}
+
+// A private side the guest bot is not in stays unknown.
+func TestAPrivateGuestSideStaysUnknown(t *testing.T) {
+	r := newRig(t)
+	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": true}, "U1")
+	r.pass("acme", "globex")
+	if got := r.reports.workspace(t, "globex").DiscoveredShared; len(got) != 0 {
+		t.Errorf("globex's private side was published: %+v", got)
+	}
+	if got := r.reports.workspace(t, "acme").DiscoveredShared; len(got) != 1 || got[0].ID != ch.ID {
+		t.Errorf("acme's = %+v", got)
+	}
+}
+
+// A probe that fails never fails the pass.
+func TestAFailingProbeDoesNotFailThePass(t *testing.T) {
+	r := newRig(t)
+	r.shareHostedByAcme()
+	r.fake.Fail("conversations.info", "internal_error", -1)
+	r.pass("acme", "globex")
+	for _, ws := range []string{"acme", "globex"} {
+		if tick := r.reports.workspace(t, ws).Tick; tick.Outcome == status.OutcomeFailed {
+			t.Errorf("%s failed: %+v", ws, tick)
+		}
+	}
+	if got := r.reports.workspace(t, "globex").DiscoveredShared; len(got) != 0 {
+		t.Errorf("a failed probe published %+v", got)
+	}
+	if n := r.probes("TGLOBEX"); n != 1 {
+		t.Errorf("probes = %d, want 1", n)
+	}
+}
