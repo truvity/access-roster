@@ -142,11 +142,16 @@ func (d *Draft) resolveBound(lc layoutChannel) resolved {
 	}
 	if ch.Archived {
 		return resolved{kind: resHeld, ch: ch, change: "adopt",
-			reason: "the channel " + lc.name + " (" + ch.ID + ") is archived: unarchive it in Slack or rename it; the roster never unarchives"}
+			reason: archivedReason(lc.name, ch.ID)}
 	}
 	res := ready(ch, lc.private, true)
 	res.adopted = res.usable() && ch.Creator != d.in.Observed.BotUserID
 	return res
+}
+
+// archivedReason is why an archived channel of a bound name is held.
+func archivedReason(name, id string) string {
+	return "the channel " + name + " (" + id + ") is archived: unarchive it in Slack or rename it; the roster never unarchives"
 }
 
 func (d *Draft) resolveHost(lc layoutChannel) resolved {
@@ -154,6 +159,10 @@ func (d *Draft) resolveHost(lc layoutChannel) resolved {
 	switch {
 	case ch == nil:
 		return resolved{kind: resCreate}
+	case ch.Archived:
+		// Archived channels keep their name: never join, unarchive or
+		// create a second one beside it.
+		return resolved{kind: resHeld, ch: ch, change: "create", reason: archivedReason(lc.name, ch.ID)}
 	case ch.Creator != d.in.Observed.BotUserID:
 		return resolved{kind: resHeld, ch: ch, change: "create",
 			reason: "a channel named " + lc.name + " already exists here (" + ch.ID + ") and this roster did not create it"}
@@ -164,6 +173,9 @@ func (d *Draft) resolveHost(lc layoutChannel) resolved {
 func (d *Draft) resolveGuest(lc layoutChannel) resolved {
 	obs := d.in.Observed
 	if ch := d.byName(lc.name); ch != nil {
+		if ch.Archived {
+			return resolved{kind: resHeld, ch: ch, change: "share", reason: archivedReason(lc.name, ch.ID)}
+		}
 		if !ch.Shared {
 			return resolved{kind: resHeld, ch: ch, change: "share",
 				reason: "a channel named " + lc.name + " already exists here and is not the shared channel"}

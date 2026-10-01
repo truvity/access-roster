@@ -1324,3 +1324,34 @@ func TestPrivacyIsOneValueOrPerSide(t *testing.T) {
 		t.Error("per-side values are not honoured")
 	}
 }
+
+// An archived channel keeps its name, so a shared channel of that name is
+// held on either side, like a bound one: never joined, unarchived or created
+// again beside it.
+func TestAnArchivedSharedChannelIsHeldOnBothSides(t *testing.T) {
+	t.Parallel()
+	archived := reconcile.Channel{ID: "C1", Name: "platform", Creator: "BACME", Archived: true, Shared: true}
+	for side, e := range map[string]*env{
+		"host":  newEnv("acme").shared(sharedPlatform()).holders("g", "ann@acme.example").account("ann@acme.example", "U1").channel(archived),
+		"guest": newEnv("globex").shared(sharedPlatform()).holders("g", "bob@globex.example").account("bob@globex.example", "U2").channel(archived),
+	} {
+		if side == "guest" {
+			e.in.Observed.Invites = []reconcile.Invite{inv("I1", true, "TACME", "platform", "BGLOBEX")}
+		}
+		dec := e.decide(t, nil, reconcile.Confirmed{})
+		wantKinds(t, dec)
+		got := channelOf(t, dec, "platform")
+		if got.State != status.ChannelHeld || !strings.Contains(got.Reason, "archived: unarchive it in Slack or rename it") {
+			t.Errorf("%s: channel = %+v", side, got)
+		}
+		if len(dec.Held) != 1 {
+			t.Errorf("%s: held = %+v", side, dec.Held)
+		}
+	}
+	// Not shared in Slack but archived, on the host side as well.
+	plain := archived
+	plain.Shared = false
+	if dec := newEnv("acme").shared(sharedPlatform()).channel(plain).decide(t, nil, reconcile.Confirmed{}); len(dec.Actions) != 0 {
+		t.Errorf("an archived plain channel of the host's name was acted on: %+v", dec.Actions)
+	}
+}
