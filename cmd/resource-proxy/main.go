@@ -106,7 +106,7 @@ func parse(args []string, getenv func(string) string) (resourceproxy.Config, err
 	str(&cfg.OutboundClientID, "outbound-client-id", "", "the exchange client this workload presents")
 	str(&cfg.OutboundAudience, "outbound-audience", "", "the audience to exchange for")
 	str(&cfg.OutboundSATokenFile, "outbound-sa-token-file", "", "projected ServiceAccount token (audience: the issuer), re-read for every exchange")
-	str(&cfg.OutboundCAFile, "outbound-ca-file", "", "PEM bundle appended to the system roots for the connection to the outbound target only (a private CA); read at start")
+	str(&cfg.OutboundCAFile, "outbound-ca-file", "", "PEM bundle added to the system roots for the outbound target only (a private CA); read at start")
 	boolean(&cfg.OutboundAllowNonLoopback, "outbound-allow-non-loopback", "let the outbound listener bind a non-loopback address")
 	dur(&cfg.RefreshBefore, "refresh-before", resourceproxy.DefaultRefreshBefore, "exchange again this long before a token expires")
 
