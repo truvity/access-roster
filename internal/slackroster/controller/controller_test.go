@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
@@ -232,6 +233,21 @@ type rig struct {
 	// controllers are kept across passes, one per setting: what a
 	// controller remembers between passes is part of what is under test.
 	controllers map[string]*controller.Controller
+	// logs, when set, receives the controllers' log at debug level.
+	logs *bytes.Buffer
+}
+
+// captureLogs makes every controller built after it log into the returned buffer.
+func (r *rig) captureLogs() *bytes.Buffer {
+	r.logs = &bytes.Buffer{}
+	return r.logs
+}
+
+func (r *rig) logger() *slog.Logger {
+	if r.logs == nil {
+		return slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return slog.New(slog.NewTextHandler(r.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
 var teams = map[string]string{"acme": "TACME", "globex": "TGLOBEX"}
@@ -352,7 +368,7 @@ func (r *rig) freshWith(poll time.Duration, enabled ...string) *controller.Contr
 		cfg.Interval = time.Hour
 	}
 	return controller.New(cfg, controller.Deps{
-		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Log:    r.logger(),
 		Access: r.console, Audit: r.audit, Status: r.reports, Policy: r.policy, Digest: testPolicy,
 		Now: func() time.Time { return r.now },
 		Slack: func(token string) *slackapp.Client {
@@ -1418,8 +1434,18 @@ func TestAGuestSideTheBotDoesNotListIsProbedAndPublished(t *testing.T) {
 // A private side the guest bot is not in stays unknown.
 func TestAPrivateGuestSideStaysUnknown(t *testing.T) {
 	r := newRig(t)
+	logs := r.captureLogs()
 	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": true}, "U1")
 	r.pass("acme", "globex")
+	if n := r.probes("TGLOBEX"); n != 1 {
+		t.Errorf("globex is listed and must be probed: %d", n)
+	}
+	if strings.Contains(logs.String(), "level=WARN") {
+		t.Errorf("an expected channel_not_found warned:\n%s", logs)
+	}
+	if !strings.Contains(logs.String(), "level=DEBUG") || !strings.Contains(logs.String(), "guest-side probe") {
+		t.Errorf("want a debug line and an info summary:\n%s", logs)
+	}
 	if got := r.reports.workspace(t, "globex").DiscoveredShared; len(got) != 0 {
 		t.Errorf("globex's private side was published: %+v", got)
 	}
@@ -1432,8 +1458,12 @@ func TestAPrivateGuestSideStaysUnknown(t *testing.T) {
 func TestAFailingProbeDoesNotFailThePass(t *testing.T) {
 	r := newRig(t)
 	r.shareHostedByAcme()
+	logs := r.captureLogs()
 	r.fake.Fail("conversations.info", "internal_error", -1)
 	r.pass("acme", "globex")
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "probing a workspace") {
+		t.Errorf("a real probe error must warn:\n%s", logs)
+	}
 	for _, ws := range []string{"acme", "globex"} {
 		if tick := r.reports.workspace(t, ws).Tick; tick.Outcome == status.OutcomeFailed {
 			t.Errorf("%s failed: %+v", ws, tick)
@@ -1444,5 +1474,20 @@ func TestAFailingProbeDoesNotFailThePass(t *testing.T) {
 	}
 	if n := r.probes("TGLOBEX"); n != 1 {
 		t.Errorf("probes = %d, want 1", n)
+	}
+}
+
+// A workspace whose team the channel does not list is never asked.
+func TestAnUnlistedWorkspaceIsNotProbed(t *testing.T) {
+	r := newRig(t)
+	logs := r.captureLogs()
+	r.fake.AddTeam("TOUTSIDE", "Outside")
+	r.fake.AddSharedChannel("elsewhere", "TACME", []string{"TOUTSIDE"}, map[string]bool{"TACME": false, "TOUTSIDE": false}, "U1")
+	r.pass("acme", "globex")
+	if n := r.probes("TGLOBEX"); n != 0 {
+		t.Errorf("globex is not in the channel and must not be probed: %d", n)
+	}
+	if strings.Contains(logs.String(), "level=WARN") {
+		t.Errorf("unexpected warning:\n%s", logs)
 	}
 }

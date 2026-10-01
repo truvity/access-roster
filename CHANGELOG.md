@@ -17,6 +17,16 @@
   controller holds for a visibility that differs from its record now says so,
   with an Edit hint, on the Slack Connect row and the channel page.
 
+- **The guest-side probe no longer logs a warning per channel per pass.** The
+  controller now asks a connected workspace about a Slack Connect channel
+  only when Slack lists that workspace's team in it (the host, shared,
+  connected, pending or internal team ids a report carries); every other
+  workspace is skipped without a call. A `channel_not_found` or
+  `not_in_channel` from a probe that was expected is an invisible side, logged
+  at debug (the old check matched the error the wrong way round, so it always
+  warned). Real errors still warn, and each pass logs one summary line:
+  `guest-side probe` with `probed`, `visible` and `invisible` counts.
+
 ## v1.47.0
 
 - **Take over a policy channel from git on the console, with no unmanaged
