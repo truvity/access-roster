@@ -52,6 +52,7 @@ import (
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/logsafe"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
 	slackcatalogue "github.com/truvity/access-roster/internal/slackapp/catalogue"
@@ -530,6 +531,16 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 	if err = slackShared.Ensure(ctx); err != nil {
 		log.WarnContext(ctx, "the ConfigMap Slack Connect channels are kept in could not be created",
 			"configMap", slackShared.ConfigMapName(), "error", err)
+	}
+	// The records ConfigMap has a mirror Secret, the thing the chart's
+	// recovery copy pushes (a PushSecret reads Secrets only). A ConfigMap
+	// left with no records beside a mirror that has them is a restore, and
+	// the records come back; otherwise the mirror is brought up to date.
+	if restored, err := slackWorkspaces.ReconcileRecords(ctx); err != nil {
+		log.WarnContext(ctx, "the Slack records and their recovery copy could not be reconciled",
+			"configMap", slackWorkspaces.ConfigMapName(), "secret", slackWorkspaces.RecordsSecretName(), "error", logsafe.Error(err))
+	} else if len(restored) > 0 {
+		log.InfoContext(ctx, "restored Slack records from their recovery copy", "keys", restored)
 	}
 	// Each connection's credential carries its record, so the GitHub Apps
 	// Secret alone restores every organisation: put back a record a

@@ -321,6 +321,10 @@ connected the controller reports each declared workspace as not connected. Keys
 that start with an underscore are other documents and are never read as a
 workspace.
 
+The service also keeps `<release>-slack-records`, a mirror Secret of the
+records ConfigMap, for the recovery copy `slackState.push` renders; the
+controller does not read it. See [Slack state](../operations/runbook.md#slack-state).
+
 **Deploy the controller and the console together**, as the chart does: every
 answer carries the digest of the policy it was computed under, and a pass under
 another policy changes nothing and is tried again within seconds.

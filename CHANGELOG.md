@@ -1,3 +1,22 @@
+## Unreleased
+
+- **A recovery copy of the Slack state: `slackState.push`.** In the shape of
+  `directory.push` and `githubApps.push` (`secretStore`, `remoteKey`,
+  `refreshInterval`, `deletionPolicy` fixed at `None`) with one more required
+  key, `recordsRemoteKey`. It renders two External Secrets `PushSecret`s: the
+  whole of `Secret <release>-slack-credentials` at `remoteKey`, and the whole
+  of the new `Secret <release>-slack-records` at `recordsRemoteKey`. The
+  records live in a ConfigMap and a `PushSecret` reads Secrets only, so the
+  service now keeps that Secret as a mirror of exactly the ConfigMap's
+  `<workspace>.json` and `_shared.*` entries (never confirmations or pass
+  markers), written in the same code path as the ConfigMap and reconciled at
+  start. If the ConfigMap holds no record and the mirror does, start
+  repopulates the ConfigMap from it. Off unless `slackState.push` is written,
+  and refused at render without `directory.store: kubernetes`, without a
+  store or either key, or for two pushes sharing one path. The mirror Secret
+  is written regardless; it uses the permissions the service already has.
+  Restore procedure: docs/operations/runbook.md, Slack state.
+
 ## v1.43.1
 
 ## v1.43.0

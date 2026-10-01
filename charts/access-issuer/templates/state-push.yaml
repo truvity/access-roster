@@ -1,7 +1,9 @@
 {{- /*
-Second copies of the two Secrets this service writes and nothing else can
-re-deliver: the workspace credential an operator connected, and the Apps
-the service acts as.
+Second copies of the Secrets this service writes and nothing else can
+re-deliver: the workspace credential an operator connected, the Apps the
+service acts as, and the Slack state (every Slack workspace's credential,
+and the records that say which workspaces and Slack Connect channels the
+console holds).
 
 These are RECOVERY copies, which is what separates them from
 github-apps-push.yaml beside this file. That one exists so a consumer can
@@ -15,6 +17,15 @@ reconnect, and `<org>.json` appears when an organisation is bound -- so a
 per-key mapping written today stops matching later, silently, and leaves a
 copy that is stale while still reporting healthy. A backup that lies is
 worse than none.
+
+THE SLACK RECORDS ARE A SECRET ON PURPOSE. They live in a ConfigMap, and a
+PushSecret reads Secrets only, so the service keeps a mirror Secret,
+`<release>-slack-records`, of exactly the ConfigMap's workspace records and
+Slack Connect definitions (never confirmations or pass markers, which are
+transient) and rewrites it in the same code path that writes the ConfigMap.
+That is why slackState.push takes two remote keys: two Secrets, two copies,
+and a restore that can tell them apart. The derived status ConfigMap is not
+copied: the controller rebuilds it.
 
 WHAT IS NOT HERE: the session key. The service writes it, it is a Secret,
 and copying it would be a mistake -- losing it signs everyone out and a
@@ -37,6 +48,24 @@ carries the argument in full.
       "push" .Values.githubApps.push
       "secret" (printf "%s-github-apps" (include "access-issuer.fullname" $root))
       "what" "the link App and one App per bound organisation") }}
+{{- end }}
+{{- if .Values.slackState.push }}
+{{- $slack := .Values.slackState.push }}
+{{- $pushes = append $pushes (dict
+      "name" "slackState"
+      "push" $slack
+      "secret" (printf "%s-slack-credentials" (include "access-issuer.fullname" $root))
+      "copy" "slack-credentials"
+      "what" "the credential of every connected Slack workspace") }}
+{{- if not $slack.recordsRemoteKey }}
+{{- fail "slackState.push needs a recordsRemoteKey: the records are a second Secret and need an address of their own, apart from remoteKey" }}
+{{- end }}
+{{- $pushes = append $pushes (dict
+      "name" "slackState.records"
+      "push" (dict "secretStore" $slack.secretStore "remoteKey" $slack.recordsRemoteKey "refreshInterval" $slack.refreshInterval)
+      "secret" (printf "%s-slack-records" (include "access-issuer.fullname" $root))
+      "copy" "slack-records"
+      "what" "every Slack workspace's record and every Slack Connect channel's definition (the mirror of the records ConfigMap)") }}
 {{- end }}
 {{- $seen := dict }}
 {{- range $pushes }}
@@ -62,7 +91,7 @@ carries the argument in full.
 apiVersion: external-secrets.io/v1alpha1
 kind: PushSecret
 metadata:
-  name: {{ include "access-issuer.fullname" $root }}-{{ .name }}-copy
+  name: {{ include "access-issuer.fullname" $root }}-{{ .copy | default .name }}-copy
   labels:
     {{- include "access-issuer.labels" $root | nindent 4 }}
 spec:
