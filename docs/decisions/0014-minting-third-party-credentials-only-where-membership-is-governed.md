@@ -1,6 +1,6 @@
 # 0014 — Minting third-party credentials: only where membership is governed, brokers elsewhere
 
-**Status:** Accepted
+**Status:** Accepted; refines [0008](0008-credentials-only-where-we-govern-membership.md)
 **Date:** 2026-09-27
 
 ## Context

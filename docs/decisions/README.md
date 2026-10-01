@@ -32,6 +32,15 @@ timeline and nothing is silently rewritten under an old date.
 | [0014](0014-minting-third-party-credentials-only-where-membership-is-governed.md) | Minting third-party credentials: only where membership is governed, brokers elsewhere |
 | [0015](0015-a-per-audience-groups-delimiter-for-opkssh.md) | A per-audience groups delimiter, for opkssh's colon-splitting bug |
 | [0016](0016-a-managed-known-hosts-file-for-ssh-host-cas.md) | A managed known_hosts file for SSH host CAs, distinct from `accessctl bao` |
+| [0017](0017-the-slack-reconciler-membership-only.md) | The Slack reconciler keeps channel membership and nothing else |
+| [0018](0018-do-not-configure-what-the-product-knows.md) | Do not configure what the product already knows |
+| [0019](0019-two-kinds-of-slack-channel-never-mixed.md) | Two kinds of Slack channel, never mixed |
+| [0020](0020-hold-on-double-definition-instead-of-taking-over.md) | A channel defined twice is held, not taken over |
+| [0021](0021-slack-connect-channels-are-console-records.md) | Slack Connect channels are console-managed, audited records |
+| [0022](0022-the-console-archives-only-ordinary-channels-only-when-asked.md) | The console archives only ordinary channels, only when asked |
+| [0023](0023-guest-side-probe-only-for-managed-slack-connect-channels.md) | The guest-side probe asks only about managed Slack Connect channels |
+| [0024](0024-reconciler-rails-are-shared-pieces-not-a-framework.md) | Reconciler rails are shared pieces, not a framework |
+| [0025](0025-slack-apps-catalogue-keeps-credentials-mints-none.md) | The Slack Apps catalogue keeps credentials but mints none |
 
 ## Template
 
@@ -41,7 +50,7 @@ the reasoning checkable, short enough that the next reader finishes it.
 ```markdown
 # NNNN — <a decision, stated as a decision>
 
-**Status:** Proposed | Accepted | Superseded by [NNNN](NNNN-slug.md)
+**Status:** Proposed | Accepted | Accepted; amended by [NNNN](NNNN-slug.md) | Accepted; partly superseded by [NNNN](NNNN-slug.md) | Superseded by [NNNN](NNNN-slug.md)
 **Date:** YYYY-MM-DD
 
 ## Context
@@ -67,3 +76,7 @@ Each one named, with the specific reason it was not chosen. "We didn't
 think of it" is a fine thing to be able to write here later; do not
 retrofit reasons no one had at the time.
 ```
+
+Use `refines`, `extends` or `amends` on the newer record, and add the matching
+`amended by`, `refined by` or `extended by` to the older one's Status line only.
+The older record's text is never edited.

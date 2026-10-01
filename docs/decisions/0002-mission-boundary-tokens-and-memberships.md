@@ -1,6 +1,6 @@
 # 0002 — Mission boundary: tokens and memberships
 
-**Status:** Accepted; partly superseded by [0008](0008-credentials-only-where-we-govern-membership.md) and, for `accessctl credential db`/`client` specifically, by [0013](0013-openbao-access-through-the-bao-cli.md)
+**Status:** Accepted; partly superseded by [0008](0008-credentials-only-where-we-govern-membership.md) and, for `accessctl credential db`/`client` specifically, by [0013](0013-openbao-access-through-the-bao-cli.md); its "next candidate, a chat workspace's channel membership" was built as the Slack reconciler, see [0017](0017-the-slack-reconciler-membership-only.md)
 **Date:** 2026-09-25
 
 ## Context

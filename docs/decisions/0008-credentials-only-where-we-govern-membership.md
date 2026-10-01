@@ -1,6 +1,6 @@
 # 0008 — Credentials only where we govern membership
 
-**Status:** Accepted
+**Status:** Accepted; supersedes [0002](0002-mission-boundary-tokens-and-memberships.md) in part; refined by [0014](0014-minting-third-party-credentials-only-where-membership-is-governed.md); applied to Slack by [0025](0025-slack-apps-catalogue-keeps-credentials-mints-none.md)
 **Date:** 2026-09-26
 
 ## Context
