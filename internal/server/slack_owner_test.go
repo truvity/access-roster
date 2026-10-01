@@ -176,3 +176,36 @@ func TestASlackInstallIsFinishedOnlyByAnOperatorOfTheWorkspaceNow(t *testing.T) 
 		t.Errorf("installed by %q, want the signed-in operator's identity", h.app(t, "acme-bot").GetInstalledBy())
 	}
 }
+
+// A connected workspace with no owner is connected all the same: a scoped
+// role is neither let in by it nor shown it, the installation-wide roles are.
+func TestAConnectedWorkspaceWithNoOwnerIsInvisibleToScopedRoles(t *testing.T) {
+	h := newConnectedWorkspaceHarness(t)
+	scoped := asSlackIdentity(access.Identity{Scopes: map[string]access.Role{"C0north": access.RoleViewer}})
+	for name, who := range map[string]context.Context{
+		"a scoped viewer":   scoped,
+		"a scoped operator": asSlackIdentity(northOp),
+	} {
+		got, err := h.console.GetSlackStatus(who, connect.NewRequest(&directoryrosterv1.GetSlackStatusRequest{}))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for _, row := range got.Msg.GetWorkspaces() {
+			if row.GetWorkspace() == "initech" {
+				t.Errorf("%s was shown the ownerless workspace initech", name)
+			}
+		}
+	}
+	if _, err := h.console.requireSlack(asSlackIdentity(northOp), access.RoleViewer, "initech"); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("a scoped operator on an ownerless workspace = %v, want permission denied", err)
+	}
+	for name, who := range map[string]context.Context{"an operator": operator(), "a viewer": viewer()} {
+		found := false
+		for _, row := range h.status(who, t).GetWorkspaces() {
+			found = found || row.GetWorkspace() == "initech"
+		}
+		if !found {
+			t.Errorf("%s installation-wide does not see initech", name)
+		}
+	}
+}

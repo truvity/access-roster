@@ -591,3 +591,44 @@ func TestTheGitHubPagesShowTheOwnersDomainAndWhoMayChangeIt(t *testing.T) {
 		t.Errorf("a scoped operator's choices = %v, without owner %v", got, scoped.Msg.GetMayConnectWithoutOwner())
 	}
 }
+
+// A connected organisation whose record names no owner is connected all the
+// same: it is not "still to be connected", so a scoped role is neither let in
+// by it nor shown it, and the installation-wide roles are.
+func TestAConnectedOrganisationWithNoOwnerIsInvisibleToScopedRoles(t *testing.T) {
+	store := newMemoryConnections()
+	record := connection.Record{Org: "initech", AppID: 42, InstallationID: 7, ConnectedAt: time.Now().UTC(), ConnectedBy: "ada@north.example"}
+	if err := store.Put(context.Background(), record, connection.Credential{Org: "initech", AppID: 42, InstallationID: 7, PrivateKey: "key"}); err != nil {
+		t.Fatal(err)
+	}
+	_, console := ownerConsoleOver(t, store)
+	declared, err := policy.Parse([]byte("version: 1\ngroups:\n  all:platform:engineer: { members: [team-platform@globex.example] }\n" +
+		"github:\n  initech:\n    teams:\n      team-platform: { members: [all:platform:engineer] }\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := policy.NewSet(declared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	console.deps.Authorizer = access.NewAuthorizer(set, nil, 0)
+
+	for name, who := range map[string]access.Identity{"a viewer": northViewer, "an operator": northOp, "an operator elsewhere": elsewhereOp} {
+		ctx := asIdentity(who)
+		if _, err := console.ListGitHubApps(ctx, connect.NewRequest(&directoryrosterv1.ListGitHubAppsRequest{})); !refused(err) {
+			t.Errorf("%s listing Apps = %v, want permission denied", name, err)
+		}
+		if _, err := console.GetGitHubStatus(ctx, connect.NewRequest(&directoryrosterv1.GetGitHubStatusRequest{})); !refused(err) {
+			t.Errorf("%s reading the status = %v, want permission denied", name, err)
+		}
+	}
+	for name, who := range map[string]access.Identity{"an operator": everywhere, "a viewer": {Role: access.RoleViewer}} {
+		listed, err := console.ListGitHubApps(asIdentity(who), connect.NewRequest(&directoryrosterv1.ListGitHubAppsRequest{}))
+		if err != nil {
+			t.Fatalf("%s installation-wide listing Apps: %v", name, err)
+		}
+		if !slices.Equal(listed.Msg.GetBoundOrganisations(), []string{"initech"}) {
+			t.Errorf("%s installation-wide sees bound %v, want [initech]", name, listed.Msg.GetBoundOrganisations())
+		}
+	}
+}

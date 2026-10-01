@@ -12,10 +12,12 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 )
 
-// githubOwners are the recorded owners of the connected organisations, by
-// login. An organisation that is not connected, or whose record names none
-// (every record written before owners were recorded), has no entry: only
-// the installation-wide roles operate it.
+// githubOwners are the connected organisations, by login, with the owner
+// each record names. An organisation whose record names none (every record
+// written before owners were recorded) is connected all the same: its entry
+// is "" and only the installation-wide roles operate it. An organisation
+// that is not connected has no entry at all, so presence is what "connected"
+// means and the value alone is the owner.
 func (c *Console) githubOwners(ctx context.Context) (map[string]string, error) {
 	if c.deps.GitHubOrgs == nil {
 		return nil, nil
@@ -26,9 +28,7 @@ func (c *Console) githubOwners(ctx context.Context) (map[string]string, error) {
 	}
 	out := make(map[string]string, len(records))
 	for i := range records {
-		if records[i].Owner != "" {
-			out[records[i].Org] = records[i].Owner
-		}
+		out[records[i].Org] = records[i].Owner
 	}
 	return out, nil
 }
@@ -105,12 +105,12 @@ func (c *Console) requireAnyOrg(ctx context.Context, want access.Role) (access.I
 	}
 	for org := range boundOrganisations(c.deps.Authorizer.Policy()) {
 		owner, connected := owners[org]
-		if (connected && id.CanFor(want, owner)) || (!connected && id.CanAnywhere(access.RoleOperator)) {
+		if (connected && mayOwned(id, want, owner)) || (!connected && id.CanAnywhere(access.RoleOperator)) {
 			return id, nil
 		}
 	}
 	for _, owner := range owners {
-		if id.CanFor(want, owner) {
+		if owner != "" && id.CanFor(want, owner) {
 			return id, nil
 		}
 	}
