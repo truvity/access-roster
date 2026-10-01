@@ -67,6 +67,7 @@ func consoleOf(def *directoryrosterv1.SlackChannelDefinition) reconcile.ConsoleC
 		Workspace: strings.TrimSpace(def.GetWorkspace()), Name: strings.TrimSpace(def.GetName()),
 		ChannelID: strings.TrimSpace(def.GetChannelId()), Private: def.GetPrivate(), Mode: mode,
 		Ignore: trimmed(def.GetIgnore(), false), Sources: trimmed(def.GetSources(), true),
+		SupersedesPolicy: def.GetSupersedesPolicy(),
 	}
 }
 
@@ -77,7 +78,7 @@ func consoleDefinition(ch reconcile.ConsoleChannel) *directoryrosterv1.SlackChan
 	}
 	return &directoryrosterv1.SlackChannelDefinition{
 		Workspace: ch.Workspace, Name: ch.Name, ChannelId: ch.ChannelID, Private: ch.Private, Mode: mode,
-		Ignore: slices.Clone(ch.Ignore), Sources: slices.Clone(ch.Sources),
+		Ignore: slices.Clone(ch.Ignore), Sources: slices.Clone(ch.Sources), SupersedesPolicy: ch.SupersedesPolicy,
 	}
 }
 
@@ -94,6 +95,40 @@ func consoleView(ch reconcile.ConsoleChannel) *directoryrosterv1.SlackChannelRec
 
 func auditConsole(ch reconcile.ConsoleChannel) audit.SlackConsoleChannel {
 	return audit.SlackConsoleChannel{Workspace: ch.Workspace, Name: ch.Name, Private: ch.Private, Mode: ch.Mode, Sources: ch.Sources}
+}
+
+// checkTakeover is what a record that takes over a policy channel must also
+// satisfy: it covers exactly one policy channel (Validate has refused two),
+// shows the same visibility, and names the channel the policy and the latest
+// report know it by, so the takeover can never land on another channel.
+func (c *Console) checkTakeover(want reconcile.ConsoleChannel, reports map[string]status.Workspace) error {
+	ws := c.deps.Authorizer.Policy().Declared().Slack.Workspaces[want.Workspace]
+	covered := want.CoveredPolicy(ws)
+	if len(covered) != 1 {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+			"supersedes_policy is set but %s defines no policy channel called %s or with channel id %q to take over",
+			want.Workspace, want.Name, want.ChannelID))
+	}
+	b := ws.Channels[covered[0]]
+	if b.Private != want.Private {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+			"the policy channel %s is %s and the record says %s: the roster never changes a channel's visibility",
+			covered[0], visibilityWord(b.Private), visibilityWord(want.Private)))
+	}
+	expected := b.Adopt
+	if expected == "" {
+		for i := range reports[want.Workspace].Channels {
+			rep := &reports[want.Workspace].Channels[i]
+			if rep.Name == covered[0] && !rep.Console && !rep.Shared {
+				expected = rep.ID
+			}
+		}
+	}
+	if expected != "" && want.ChannelID != expected {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+			"the policy channel %s is the Slack channel %s: a takeover must name that channel id, not %q", covered[0], expected, want.ChannelID))
+	}
+	return nil
 }
 
 // consoleState is where a record stands: first whether the policy in force
@@ -297,7 +332,12 @@ func (c *Console) CreateSlackChannel(
 		return nil, err
 	}
 	reports := c.slackReports(ctx)
-	if want.ChannelID != "" {
+	if want.SupersedesPolicy {
+		// A policy channel is not "discovered": it is managed, by git.
+		if err = c.checkTakeover(want, reports); err != nil {
+			return nil, err
+		}
+	} else if want.ChannelID != "" {
 		seen, found := discoveredOrdinaryIn(reports, want.Workspace, want.ChannelID)
 		switch {
 		case !found:
@@ -329,7 +369,9 @@ func (c *Console) CreateSlackChannel(
 	if err != nil {
 		return nil, channelError(err)
 	}
-	c.record(ctx, audit.SlackConsoleChannelCreated(actorOf(ctx), auditConsole(want)))
+	created := auditConsole(want)
+	created.Takeover = want.SupersedesPolicy
+	c.record(ctx, audit.SlackConsoleChannelCreated(actorOf(ctx), created))
 	view := consoleView(want)
 	view.State, view.Reason = consoleState(want, c.deps.Authorizer.Policy().Declared(), reports)
 	view.CanOperate = true
@@ -405,6 +447,9 @@ func (c *Console) UpdateSlackChannel(
 		}
 		if want.Private != current.Private {
 			return nil, errConsoleImmutable("visibility", visibilityWord(current.Private), visibilityWord(want.Private))
+		}
+		if want.SupersedesPolicy != current.SupersedesPolicy {
+			return nil, errConsoleImmutable("supersedes_policy", fmt.Sprint(current.SupersedesPolicy), fmt.Sprint(want.SupersedesPolicy))
 		}
 		if err := c.validateConsole(ctx, want, book); err != nil {
 			return nil, err

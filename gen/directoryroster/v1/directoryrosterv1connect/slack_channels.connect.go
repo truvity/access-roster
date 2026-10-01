@@ -55,7 +55,9 @@ type SlackChannelServiceClient interface {
 	// see that nothing manages.
 	ListSlackChannels(context.Context, *connect.Request[v1.ListSlackChannelsRequest]) (*connect.Response[v1.ListSlackChannelsResponse], error)
 	// CreateSlackChannel validates and keeps a record. Operator of the
-	// workspace's owner, or the installation-wide operator.
+	// workspace's owner, or the installation-wide operator. With
+	// supersedes_policy it takes over a policy channel, and is audited as a
+	// create with a takeover reason.
 	CreateSlackChannel(context.Context, *connect.Request[v1.CreateSlackChannelRequest]) (*connect.Response[v1.CreateSlackChannelResponse], error)
 	// UpdateSlackChannel changes the mode, the ignore list and the
 	// sources. The workspace, the name, the channel id and the visibility are
@@ -141,7 +143,9 @@ type SlackChannelServiceHandler interface {
 	// see that nothing manages.
 	ListSlackChannels(context.Context, *connect.Request[v1.ListSlackChannelsRequest]) (*connect.Response[v1.ListSlackChannelsResponse], error)
 	// CreateSlackChannel validates and keeps a record. Operator of the
-	// workspace's owner, or the installation-wide operator.
+	// workspace's owner, or the installation-wide operator. With
+	// supersedes_policy it takes over a policy channel, and is audited as a
+	// create with a takeover reason.
 	CreateSlackChannel(context.Context, *connect.Request[v1.CreateSlackChannelRequest]) (*connect.Response[v1.CreateSlackChannelResponse], error)
 	// UpdateSlackChannel changes the mode, the ignore list and the
 	// sources. The workspace, the name, the channel id and the visibility are

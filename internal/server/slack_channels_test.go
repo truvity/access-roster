@@ -627,3 +627,104 @@ func TestWithoutAStoreNoConsoleChannelCanBeKept(t *testing.T) {
 		t.Error("available with no store")
 	}
 }
+
+func takingOver(d *directoryrosterv1.SlackChannelDefinition) *directoryrosterv1.SlackChannelDefinition {
+	d.SupersedesPolicy = true
+	return d
+}
+
+// A console record may duplicate a policy channel only as a takeover that
+// names exactly that channel: the same visibility, and the channel id the
+// latest report knows it by.
+func TestATakeoverOfAPolicyChannelIsAllowedOnlyForThatChannel(t *testing.T) {
+	h := newConnectHarness(t)
+	ctx := as(everywhere)
+	h.reportOrdinary(t, "acme", []status.Channel{{Name: "general", ID: "C0GENERAL1", State: status.ChannelOK, Mode: "extend"}})
+	for _, c := range []struct {
+		name string
+		def  *directoryrosterv1.SlackChannelDefinition
+		say  string
+	}{
+		{"a duplicate without the flag", withID(chdef("acme", "general", "partners@north.example"), "C0GENERAL1"), "defined in git"},
+		{"the flag with nothing to take over", takingOver(chdef("acme", "nothing-here", "partners@north.example")), "defines no policy channel"},
+		{"another channel's id", takingOver(withID(chdef("acme", "general", "partners@north.example"), "C0OTHER001")), "must name that channel id"},
+		{"no id where the report knows one", takingOver(chdef("acme", "general", "partners@north.example")), "must name that channel id"},
+		{"a flipped visibility", func() *directoryrosterv1.SlackChannelDefinition {
+			d := takingOver(withID(chdef("acme", "general", "partners@north.example"), "C0GENERAL1"))
+			d.Private = true
+			return d
+		}(), "never changes a channel's visibility"},
+		{"an internal group", takingOver(withID(chdef("acme", "general", "all:partners"), "C0GENERAL1")), "not a directory group address"},
+	} {
+		err := h.createChannel(ctx, c.def)
+		wantCode(t, c.name, err, connect.CodeInvalidArgument)
+		if err == nil || !strings.Contains(err.Error(), c.say) {
+			t.Errorf("%s: the refusal does not say %q: %v", c.name, c.say, err)
+		}
+	}
+	if len(h.storedChannels(t)) != 0 {
+		t.Fatalf("a refused takeover was kept: %v", h.storedChannels(t))
+	}
+
+	want := takingOver(withID(chdef("acme", "general", "partners@north.example"), "C0GENERAL1"))
+	if err := h.createChannel(ctx, want); err != nil {
+		t.Fatalf("takeover = %v", err)
+	}
+	stored := h.storedChannels(t)
+	if raw := stored[connection.ConsoleKey("acme", "general")]; !strings.Contains(raw, `"supersedes_policy":true`) {
+		t.Errorf("the record = %s, want supersedes_policy", raw)
+	}
+	created := h.recorded.Find("roster.slack_console_channel.created")
+	if len(created) != 1 || created[0].GetData().AsMap()["reason"] != "takeover" {
+		t.Errorf("audit = %v, want one create with reason takeover", created)
+	}
+	// The flag is immutable, and an edit keeps it.
+	wantCode(t, "dropping the flag", h.updateChannel(ctx, withID(chdef("acme", "general", "partners@north.example"), "C0GENERAL1")), connect.CodeInvalidArgument)
+	edited := withMode(takingOver(withID(chdef("acme", "general", "partners@north.example", "devops@north.example"), "C0GENERAL1")), "extend")
+	if err := h.updateChannel(ctx, edited); err != nil {
+		t.Errorf("an edit of a takeover = %v", err)
+	}
+	for _, rec := range h.listChannels(ctx, t).GetChannels() {
+		if rec.GetChannel().GetName() == "general" && !rec.GetChannel().GetSupersedesPolicy() {
+			t.Errorf("the listing lost the flag: %v", rec)
+		}
+	}
+	// Undo: deleting the record is the way back.
+	if _, err := h.deleteChannel(ctx, "acme", "general"); err != nil {
+		t.Errorf("delete = %v", err)
+	}
+	if len(h.storedChannels(t)) != 0 {
+		t.Error("the record was not deleted")
+	}
+}
+
+func TestWhoMayTakeOverAPolicyChannel(t *testing.T) {
+	viewerEverywhere := access.Identity{Role: access.RoleViewer}
+	for _, c := range []struct {
+		name string
+		who  access.Identity
+		code connect.Code
+	}{
+		{"installation-wide operator", everywhere, 0},
+		{"the owner's operator", northOp, 0},
+		{"another directory's operator", southOp, connect.CodePermissionDenied},
+		{"a scoped viewer", northViewer, connect.CodePermissionDenied},
+		{"an installation-wide viewer", viewerEverywhere, connect.CodePermissionDenied},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newConnectHarness(t)
+			h.reportOrdinary(t, "acme", []status.Channel{{Name: "general", ID: "C0GENERAL1", State: status.ChannelOK, Mode: "extend"}})
+			err := h.createChannel(as(c.who), takingOver(withID(chdef("acme", "general", "partners@north.example"), "C0GENERAL1")))
+			if c.code == 0 {
+				if err != nil {
+					t.Fatalf("takeover = %v, want allowed", err)
+				}
+				return
+			}
+			wantCode(t, "takeover", err, c.code)
+			if len(h.storedChannels(t)) != 0 {
+				t.Error("a refused takeover was kept")
+			}
+		})
+	}
+}

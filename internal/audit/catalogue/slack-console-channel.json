@@ -28,6 +28,12 @@
       "x-audit-class": "shared",
       "x-audit-pii": "none"
     },
+    "reason": {
+      "type": "string",
+      "description": "Why it was written when that is not a plain create: takeover (a policy channel defined in git was taken over); empty otherwise.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
     "changes": {
       "type": "string",
       "description": "For an edit, what changed, as 'field: before -> after' parts; empty otherwise.",

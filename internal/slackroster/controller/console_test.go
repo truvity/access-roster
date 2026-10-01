@@ -3,6 +3,8 @@ package controller_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -336,5 +338,75 @@ func TestALegacySharedRecordIsHeldOnItsHostAndActedOnByNobody(t *testing.T) {
 	rep := r.reports.channel(t, "acme", "old")
 	if rep.State != status.ChannelHeld || !rep.Shared || !strings.Contains(rep.Reason, "internal groups") || !strings.Contains(rep.Reason, "directory groups") {
 		t.Errorf("report = %+v", rep)
+	}
+}
+
+// A console record that supersedes a policy channel is the channel's one
+// owner: the policy entry is reported superseded and not reconciled (never
+// both in one pass), the record's directory group feeds the channel, and
+// deleting the record gives the policy entry its management back.
+func TestAConsoleRecordTakesOverAPolicyChannelAndDeletingItRestoresIt(t *testing.T) {
+	r := newRig(t)
+	bea := r.person("bea@acme.example", []string{"g-all"}, "acme")
+	ann := r.person("ann@acme.example", []string{clubGroup}, "acme")
+	r.pass("acme")
+	announce, made := r.fake.ChannelNamed("TACME", "announce")
+	if !made || !slices.Contains(announce.Members, bea) {
+		t.Fatalf("the policy channel was not created and fed: %+v", announce)
+	}
+
+	r.writeConsole(reconcile.ConsoleChannel{Name: "announce", ChannelID: announce.ID, SupersedesPolicy: true, CreatedBy: "ada@acme.example"})
+	r.pass("acme")
+
+	var consoleRep, superseded []status.Channel
+	for _, c := range r.reports.workspace(t, "acme").Channels {
+		switch {
+		case c.Name == "announce" && c.Console:
+			consoleRep = append(consoleRep, c)
+		case c.Name == "announce":
+			superseded = append(superseded, c)
+		}
+	}
+	if len(consoleRep) != 1 || consoleRep[0].State != status.ChannelOK {
+		t.Fatalf("console entries = %+v, want one ok", consoleRep)
+	}
+	if len(superseded) != 1 || superseded[0].State != status.ChannelSuperseded ||
+		!strings.Contains(superseded[0].Reason, "ada@acme.example") || !strings.Contains(superseded[0].Reason, "remove it from git") {
+		t.Fatalf("policy entries = %+v, want exactly one superseded", superseded)
+	}
+	if n := r.createdNamed("announce"); n != 1 {
+		t.Errorf("announce was created %d times", n)
+	}
+	got, _ := r.fake.ChannelNamed("TACME", "announce")
+	if !slices.Contains(got.Members, ann) {
+		t.Errorf("members = %v, want the directory group's ann invited", got.Members)
+	}
+	if !slices.Contains(got.Members, bea) {
+		t.Errorf("members = %v: a takeover removed somebody by itself", got.Members)
+	}
+
+	// Undo: delete the record, the policy channel is managed again.
+	if err := os.Remove(filepath.Join(r.records, connection.ConsoleKey("acme", "announce"))); err != nil {
+		t.Fatal(err)
+	}
+	r.pass("acme")
+	for _, c := range r.reports.workspace(t, "acme").Channels {
+		if c.Name == "announce" && (c.Console || c.State != status.ChannelOK) {
+			t.Errorf("after the delete: %+v, want the policy entry ok again", c)
+		}
+	}
+}
+
+// A record that does not supersede, or covers another channel, never takes
+// a policy channel over.
+func TestAConsoleRecordWithoutTheFlagNeverSupersedes(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{clubGroup}, "acme")
+	r.writeConsole(reconcile.ConsoleChannel{Name: "announce"})
+	r.pass("acme")
+	for _, c := range r.reports.workspace(t, "acme").Channels {
+		if c.State == status.ChannelSuperseded {
+			t.Errorf("%+v is superseded by a record without the flag", c)
+		}
 	}
 }
