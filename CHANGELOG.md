@@ -1,19 +1,4 @@
-## Unreleased
-
-- **fix(slackroster): a Slack Connect side the guest bot does not list is now
-  probed by id.** A bot lists a channel that is public on its side only
-  sometimes, and one it has not joined often not at all, so discovery showed
-  that side as "not listed" and the operator had to add it by hand. For every
-  Slack Connect channel any connected workspace discovered, the controller now
-  asks each other connected workspace that did not list it, with
-  `conversations.info` by channel id (bot token, `include_num_members`), at
-  most once per channel and workspace per pass. An answer is published in that
-  workspace's `discovered_shared` (privacy, name and member count as that side
-  sees them, bot not joined), so the Manage form prefills the side; a public
-  side the bot has not joined is joined on Manage as before. A private side
-  answers `channel_not_found` and stays unknown. A probe that fails is logged
-  and never fails the pass. Nothing else changes; the status document only
-  gains entries.
+## v1.47.0
 
 - **Take over a policy channel from git on the console, with no unmanaged
   gap.** A policy channel (`slack.workspaces[k].channels`) shows **Take over
@@ -35,6 +20,23 @@
   strict removals still need the directory to vouch and the breakers apply.
   Deleting the console record restores the policy entry's management on the next
   pass. The old way (remove it from git first) still works.
+
+## v1.46.1
+
+- **A Slack Connect side the guest bot does not list is now
+  probed by id.** A bot lists a channel that is public on its side only
+  sometimes, and one it has not joined often not at all, so discovery showed
+  that side as "not listed" and the operator had to add it by hand. For every
+  Slack Connect channel any connected workspace discovered, the controller now
+  asks each other connected workspace that did not list it, with
+  `conversations.info` by channel id (bot token, `include_num_members`), at
+  most once per channel and workspace per pass. An answer is published in that
+  workspace's `discovered_shared` (privacy, name and member count as that side
+  sees them, bot not joined), so the Manage form prefills the side; a public
+  side the bot has not joined is joined on Manage as before. A private side
+  answers `channel_not_found` and stays unknown. A probe that fails is logged
+  and never fails the pass. Nothing else changes; the status document only
+  gains entries.
 
 ## v1.46.0
 
