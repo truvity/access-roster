@@ -57,4 +57,5 @@ yet know which of those you want.
 | read the trail: what each Slack action is recorded as | [architecture.md](architecture.md#the-audit-trail-and-who-writes-it), [CHANGELOG.md](../CHANGELOG.md) (audit catalogue 1.6.0) |
 | see why a decision was made, and what it forecloses | [decisions/](decisions/README.md) |
 | extend it — a new directory backend, a new kind of client | [development/extending.md](development/extending.md) |
+| see what is planned but not started | [roadmap.md](roadmap.md) |
 | change the console or run it locally | [CONTRIBUTING.md](../CONTRIBUTING.md) |
