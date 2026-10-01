@@ -366,6 +366,9 @@ func TestAPrivateChannelOfThatNameTheBotCannotSeeIsAHoldNotAFailure(t *testing.T
 	for i := range res.Outcomes {
 		if res.Outcomes[i].Action.Kind == "create" {
 			held = res.Outcomes[i].Held
+			if res.Outcomes[i].Err != nil || res.Outcomes[i].Done || res.Outcomes[i].Held == "" {
+				t.Errorf("a held outcome = %+v, want a reason, no error and not done", res.Outcomes[i])
+			}
 		}
 	}
 	if held == "" || !strings.Contains(held, "a private channel named eng exists that the bot cannot see; invite the bot to it") {
