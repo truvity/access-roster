@@ -29,6 +29,9 @@ type Pacing struct {
 	// PolicyRetry is the first wait after a pass that met another policy;
 	// each further retry waits twice as long. Zero is [DefaultPolicyRetry].
 	PolicyRetry time.Duration
+	// Wake, when it receives, ends the wait for the next pass early: the
+	// pass runs now and the interval starts over. Nil never wakes it.
+	Wake <-chan struct{}
 }
 
 // Run calls pass now and then every Interval, until the context ends. A
@@ -62,6 +65,9 @@ func Run(ctx context.Context, log *slog.Logger, p Pacing, pass func(context.Cont
 			timer.Stop()
 			return ctx.Err()
 		case <-timer.C:
+		case <-p.Wake:
+			timer.Stop()
+			retries = 0
 		}
 	}
 }

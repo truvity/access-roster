@@ -874,6 +874,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 
 	console, err := server.NewConsole(ctx, server.ConsoleDeps{
+		Log:          log,
 		Hub:          directory,
 		Authorizer:   authorizer,
 		Settings:     kept.settings,

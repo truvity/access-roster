@@ -200,6 +200,56 @@ func DecodeCredential(raw []byte) (Credential, error) {
 // forgotten confirmation doing something weeks later.
 const ConfirmationTTL = 24 * time.Hour
 
+// PassGap is how soon after one request for a pass another is refused.
+const PassGap = time.Minute
+
+// PassKey is where an operator's request for a pass now is kept, beside the
+// records: `_pass.<workspace>.json`, one per workspace, replaced by each
+// request. The controller never deletes it; it compares the request's time
+// with the last one it acted on.
+func PassKey(workspace string) string { return "_pass." + workspace + ".json" }
+
+// ParsePassKey reads a pass request's workspace back out of a key.
+func ParsePassKey(key string) (workspace string, ok bool) {
+	body, found := strings.CutPrefix(key, "_pass.")
+	if !found {
+		return "", false
+	}
+	workspace, found = strings.CutSuffix(body, ".json")
+	if !found || !status.ValidWorkspace(workspace) {
+		return "", false
+	}
+	return workspace, true
+}
+
+// PassRequest is an operator's request that the controller pass over a
+// workspace now.
+type PassRequest struct {
+	Version   int       `json:"version"`
+	Workspace string    `json:"workspace"`
+	At        time.Time `json:"at"`
+	By        string    `json:"by"`
+}
+
+// EncodePassRequest writes a request.
+func EncodePassRequest(r PassRequest) (string, error) {
+	r.Version = Version
+	raw, err := json.Marshal(r)
+	return string(raw), err
+}
+
+// DecodePassRequest reads a request.
+func DecodePassRequest(raw string) (PassRequest, error) {
+	var r PassRequest
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		return PassRequest{}, fmt.Errorf("connection: decode a pass request: %w", err)
+	}
+	if r.Version != Version {
+		return PassRequest{}, fmt.Errorf("%w: %d", ErrVersion, r.Version)
+	}
+	return r, nil
+}
+
 // ConfirmationKey is where a confirmation is kept, beside the records. A
 // workspace-wide one is `_confirm.<workspace>.json`; one for a channel's own
 // breaker is `_confirm.<workspace>.<channel>.json`. A workspace key and a

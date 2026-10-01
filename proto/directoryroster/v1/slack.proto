@@ -42,6 +42,13 @@ service SlackService {
   // Slack: it is neither stored nor logged.
   rpc BeginSlackWorkspaceConnect(BeginSlackWorkspaceConnectRequest) returns (BeginSlackWorkspaceConnectResponse);
 
+  // RequestSlackPass asks the Slack controller to pass over now instead of at
+  // its next interval: it leaves a marker in the records the controller
+  // watches. The operator of the workspace's recorded owner, or the
+  // installation-wide operator. Refused with RESOURCE_EXHAUSTED while the
+  // workspace's last request is under a minute old.
+  rpc RequestSlackPass(RequestSlackPassRequest) returns (RequestSlackPassResponse);
+
   // ChangeSlackWorkspaceOwner changes the directory recorded as a
   // connected workspace's owner, or removes it. Installation-wide
   // operator only: an owner may not hand its own workspace to another or
@@ -189,6 +196,17 @@ message SlackWorkspaceStatus {
   bool can_change_owner = 17;  // whether the policy still names the workspace key. A key it no longer
   // names can only be disconnected.
   bool declared = 18;
+  // when an operator last asked for a pass now; unset when nobody has. The
+  // page says a pass is requested until a report newer than this exists.
+  google.protobuf.Timestamp pass_requested_at = 19;
+}
+
+message RequestSlackPassRequest {
+  string workspace = 1;
+}
+
+message RequestSlackPassResponse {
+  google.protobuf.Timestamp requested_at = 1;
 }
 
 // SlackConnection is what connecting left behind. Never a credential.

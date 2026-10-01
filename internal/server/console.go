@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"net/http"
 	"slices"
@@ -91,6 +92,9 @@ type SignInConnector interface {
 
 // ConsoleDeps is everything the operator services need.
 type ConsoleDeps struct {
+	// Log is where the console logs what is not an audit record; nil is the
+	// default logger.
+	Log        *slog.Logger
 	Hub        *hub.Hub
 	Authorizer *access.Authorizer
 	Settings   settings.Store
@@ -221,6 +225,14 @@ func NewConsole(_ context.Context, deps ConsoleDeps) (*Console, error) {
 		c.connectors[conn.Kind()] = conn
 	}
 	return c, nil
+}
+
+// log is the console's logger: the one it was given, or the default.
+func (c *Console) log() *slog.Logger {
+	if c.deps.Log != nil {
+		return c.deps.Log
+	}
+	return slog.Default()
 }
 
 // ------------------------------------------------------- WorkspaceService

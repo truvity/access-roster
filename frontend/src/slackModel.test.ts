@@ -1,8 +1,27 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it } from "vitest";
 
 import { SlackMemberStatusSchema, SlackWorkspaceStatusSchema } from "./gen/directoryroster/v1/slack_pb";
-import { breakerSentence, connectionView, isConfirmed, memberKind, needsToken, nextStep, offersDisconnect, offersReconnect, ordered, split, summaryOf, tickNotice } from "./slackModel";
+import {
+  awaitingFirstPass,
+  awaitingText,
+  breakerSentence,
+  connectionView,
+  isConfirmed,
+  memberKind,
+  needsToken,
+  nextStep,
+  offersDisconnect,
+  offersReconnect,
+  offersRefresh,
+  ordered,
+  passRequested,
+  requestedText,
+  split,
+  summaryOf,
+  tickNotice,
+} from "./slackModel";
 
 const ws = (init: MessageInitShape<typeof SlackWorkspaceStatusSchema> = {}) =>
   create(SlackWorkspaceStatusSchema, { workspace: "acme", declared: true, connectionState: "not_connected", ...init });
@@ -116,5 +135,54 @@ describe("the people of a channel", () => {
       "slack-reported",
       "slack-ignored",
     ]);
+  });
+});
+
+const moment = (iso: string) => timestampFromDate(new Date(iso));
+
+describe("the first pass after an install", () => {
+  const installed = { connectionState: "installed", connection: { connectedAt: moment("2026-10-01T10:00:00Z") } };
+
+  it("waits, neutrally, until a report newer than the connection exists", () => {
+    const old = { at: moment("2026-10-01T09:00:00Z"), outcome: "failed", error: "acme is not installed" };
+    expect(awaitingFirstPass(ws({ ...installed, tick: old }))).toBe(true);
+    expect(awaitingFirstPass(ws(installed))).toBe(true);
+    expect(tickNotice(ws({ ...installed, tick: old }))).toEqual({ severity: "info", text: awaitingText });
+    expect(summaryOf(ws({ ...installed, tick: old, reported: true, acting: true }))).toBe(awaitingText);
+  });
+
+  it("gives way to the banner once a newer report exists", () => {
+    const fresh = { at: moment("2026-10-01T10:00:30Z"), outcome: "failed", error: "slack said no" };
+    expect(awaitingFirstPass(ws({ ...installed, tick: fresh }))).toBe(false);
+    expect(tickNotice(ws({ ...installed, tick: fresh }))).toEqual({ severity: "error", text: "The last pass failed: slack said no" });
+  });
+
+  it("is not about a workspace that is not installed, or whose connection has no time", () => {
+    expect(awaitingFirstPass(ws({ connectionState: "created", connection: installed.connection }))).toBe(false);
+    expect(awaitingFirstPass(ws({ connectionState: "installed" }))).toBe(false);
+  });
+});
+
+describe("Refresh", () => {
+  it("is offered where there is a bot token to pass with", () => {
+    expect(offersRefresh(ws({ connectionState: "installed" }))).toBe(true);
+    expect(offersRefresh(ws({ connectionState: "scopes_missing" }))).toBe(true);
+    expect(offersRefresh(ws({ connectionState: "created" }))).toBe(false);
+    expect(offersRefresh(ws())).toBe(false);
+  });
+
+  it("says a pass is requested until a report newer than the request exists", () => {
+    const requestedAt = moment("2026-10-01T10:00:00Z");
+    const before = { at: moment("2026-10-01T09:59:00Z"), outcome: "applied" };
+    const after = { at: moment("2026-10-01T10:00:20Z"), outcome: "applied" };
+    expect(passRequested(ws({ passRequestedAt: requestedAt, tick: before }))).toBe(true);
+    expect(passRequested(ws({ passRequestedAt: requestedAt }))).toBe(true);
+    expect(passRequested(ws({ passRequestedAt: requestedAt, tick: after }))).toBe(false);
+    expect(passRequested(ws({ tick: before }))).toBe(false);
+    expect(tickNotice(ws({ connectionState: "installed", passRequestedAt: requestedAt, tick: before }))).toEqual({
+      severity: "info",
+      text: requestedText,
+    });
+    expect(tickNotice(ws({ connectionState: "installed", passRequestedAt: requestedAt, tick: after }))).toBeUndefined();
   });
 });

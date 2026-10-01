@@ -39,6 +39,9 @@ const (
 	// SlackServiceBeginSlackWorkspaceConnectProcedure is the fully-qualified name of the SlackService's
 	// BeginSlackWorkspaceConnect RPC.
 	SlackServiceBeginSlackWorkspaceConnectProcedure = "/directoryroster.v1.SlackService/BeginSlackWorkspaceConnect"
+	// SlackServiceRequestSlackPassProcedure is the fully-qualified name of the SlackService's
+	// RequestSlackPass RPC.
+	SlackServiceRequestSlackPassProcedure = "/directoryroster.v1.SlackService/RequestSlackPass"
 	// SlackServiceChangeSlackWorkspaceOwnerProcedure is the fully-qualified name of the SlackService's
 	// ChangeSlackWorkspaceOwner RPC.
 	SlackServiceChangeSlackWorkspaceOwnerProcedure = "/directoryroster.v1.SlackService/ChangeSlackWorkspaceOwner"
@@ -75,6 +78,12 @@ type SlackServiceClient interface {
 	// The configuration token lives in this request and in one call to
 	// Slack: it is neither stored nor logged.
 	BeginSlackWorkspaceConnect(context.Context, *connect.Request[v1.BeginSlackWorkspaceConnectRequest]) (*connect.Response[v1.BeginSlackWorkspaceConnectResponse], error)
+	// RequestSlackPass asks the Slack controller to pass over now instead of at
+	// its next interval: it leaves a marker in the records the controller
+	// watches. The operator of the workspace's recorded owner, or the
+	// installation-wide operator. Refused with RESOURCE_EXHAUSTED while the
+	// workspace's last request is under a minute old.
+	RequestSlackPass(context.Context, *connect.Request[v1.RequestSlackPassRequest]) (*connect.Response[v1.RequestSlackPassResponse], error)
 	// ChangeSlackWorkspaceOwner changes the directory recorded as a
 	// connected workspace's owner, or removes it. Installation-wide
 	// operator only: an owner may not hand its own workspace to another or
@@ -116,6 +125,12 @@ func NewSlackServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(slackServiceMethods.ByName("BeginSlackWorkspaceConnect")),
 			connect.WithClientOptions(opts...),
 		),
+		requestSlackPass: connect.NewClient[v1.RequestSlackPassRequest, v1.RequestSlackPassResponse](
+			httpClient,
+			baseURL+SlackServiceRequestSlackPassProcedure,
+			connect.WithSchema(slackServiceMethods.ByName("RequestSlackPass")),
+			connect.WithClientOptions(opts...),
+		),
 		changeSlackWorkspaceOwner: connect.NewClient[v1.ChangeSlackWorkspaceOwnerRequest, v1.ChangeSlackWorkspaceOwnerResponse](
 			httpClient,
 			baseURL+SlackServiceChangeSlackWorkspaceOwnerProcedure,
@@ -141,6 +156,7 @@ func NewSlackServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 type slackServiceClient struct {
 	getSlackStatus             *connect.Client[v1.GetSlackStatusRequest, v1.GetSlackStatusResponse]
 	beginSlackWorkspaceConnect *connect.Client[v1.BeginSlackWorkspaceConnectRequest, v1.BeginSlackWorkspaceConnectResponse]
+	requestSlackPass           *connect.Client[v1.RequestSlackPassRequest, v1.RequestSlackPassResponse]
 	changeSlackWorkspaceOwner  *connect.Client[v1.ChangeSlackWorkspaceOwnerRequest, v1.ChangeSlackWorkspaceOwnerResponse]
 	disconnectSlackWorkspace   *connect.Client[v1.DisconnectSlackWorkspaceRequest, v1.DisconnectSlackWorkspaceResponse]
 	confirmSlackRemovals       *connect.Client[v1.ConfirmSlackRemovalsRequest, v1.ConfirmSlackRemovalsResponse]
@@ -154,6 +170,11 @@ func (c *slackServiceClient) GetSlackStatus(ctx context.Context, req *connect.Re
 // BeginSlackWorkspaceConnect calls directoryroster.v1.SlackService.BeginSlackWorkspaceConnect.
 func (c *slackServiceClient) BeginSlackWorkspaceConnect(ctx context.Context, req *connect.Request[v1.BeginSlackWorkspaceConnectRequest]) (*connect.Response[v1.BeginSlackWorkspaceConnectResponse], error) {
 	return c.beginSlackWorkspaceConnect.CallUnary(ctx, req)
+}
+
+// RequestSlackPass calls directoryroster.v1.SlackService.RequestSlackPass.
+func (c *slackServiceClient) RequestSlackPass(ctx context.Context, req *connect.Request[v1.RequestSlackPassRequest]) (*connect.Response[v1.RequestSlackPassResponse], error) {
+	return c.requestSlackPass.CallUnary(ctx, req)
 }
 
 // ChangeSlackWorkspaceOwner calls directoryroster.v1.SlackService.ChangeSlackWorkspaceOwner.
@@ -196,6 +217,12 @@ type SlackServiceHandler interface {
 	// The configuration token lives in this request and in one call to
 	// Slack: it is neither stored nor logged.
 	BeginSlackWorkspaceConnect(context.Context, *connect.Request[v1.BeginSlackWorkspaceConnectRequest]) (*connect.Response[v1.BeginSlackWorkspaceConnectResponse], error)
+	// RequestSlackPass asks the Slack controller to pass over now instead of at
+	// its next interval: it leaves a marker in the records the controller
+	// watches. The operator of the workspace's recorded owner, or the
+	// installation-wide operator. Refused with RESOURCE_EXHAUSTED while the
+	// workspace's last request is under a minute old.
+	RequestSlackPass(context.Context, *connect.Request[v1.RequestSlackPassRequest]) (*connect.Response[v1.RequestSlackPassResponse], error)
 	// ChangeSlackWorkspaceOwner changes the directory recorded as a
 	// connected workspace's owner, or removes it. Installation-wide
 	// operator only: an owner may not hand its own workspace to another or
@@ -233,6 +260,12 @@ func NewSlackServiceHandler(svc SlackServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(slackServiceMethods.ByName("BeginSlackWorkspaceConnect")),
 		connect.WithHandlerOptions(opts...),
 	)
+	slackServiceRequestSlackPassHandler := connect.NewUnaryHandler(
+		SlackServiceRequestSlackPassProcedure,
+		svc.RequestSlackPass,
+		connect.WithSchema(slackServiceMethods.ByName("RequestSlackPass")),
+		connect.WithHandlerOptions(opts...),
+	)
 	slackServiceChangeSlackWorkspaceOwnerHandler := connect.NewUnaryHandler(
 		SlackServiceChangeSlackWorkspaceOwnerProcedure,
 		svc.ChangeSlackWorkspaceOwner,
@@ -257,6 +290,8 @@ func NewSlackServiceHandler(svc SlackServiceHandler, opts ...connect.HandlerOpti
 			slackServiceGetSlackStatusHandler.ServeHTTP(w, r)
 		case SlackServiceBeginSlackWorkspaceConnectProcedure:
 			slackServiceBeginSlackWorkspaceConnectHandler.ServeHTTP(w, r)
+		case SlackServiceRequestSlackPassProcedure:
+			slackServiceRequestSlackPassHandler.ServeHTTP(w, r)
 		case SlackServiceChangeSlackWorkspaceOwnerProcedure:
 			slackServiceChangeSlackWorkspaceOwnerHandler.ServeHTTP(w, r)
 		case SlackServiceDisconnectSlackWorkspaceProcedure:
@@ -278,6 +313,10 @@ func (UnimplementedSlackServiceHandler) GetSlackStatus(context.Context, *connect
 
 func (UnimplementedSlackServiceHandler) BeginSlackWorkspaceConnect(context.Context, *connect.Request[v1.BeginSlackWorkspaceConnectRequest]) (*connect.Response[v1.BeginSlackWorkspaceConnectResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.SlackService.BeginSlackWorkspaceConnect is not implemented"))
+}
+
+func (UnimplementedSlackServiceHandler) RequestSlackPass(context.Context, *connect.Request[v1.RequestSlackPassRequest]) (*connect.Response[v1.RequestSlackPassResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.SlackService.RequestSlackPass is not implemented"))
 }
 
 func (UnimplementedSlackServiceHandler) ChangeSlackWorkspaceOwner(context.Context, *connect.Request[v1.ChangeSlackWorkspaceOwnerRequest]) (*connect.Response[v1.ChangeSlackWorkspaceOwnerResponse], error) {

@@ -35,6 +35,8 @@ import {
   nextStep,
   offersDisconnect,
   offersReconnect,
+  offersRefresh,
+  passRequested,
   split,
   summaryOf,
   tickNotice,
@@ -187,9 +189,34 @@ function WorkspaceCard({
   onDone: (message: string) => void;
   reload: () => void;
 }) {
+  const [failure, setFailure] = useState<string | undefined>();
+  const [confirming, setConfirming] = useState<string | undefined>();
+  const [refreshing, setRefreshing] = useState(false);
+  // Refresh asks the controller for a pass over this workspace now, instead
+  // of at its next interval; it notices within a minute.
+  const refresh = async () => {
+    setRefreshing(true);
+    setFailure(undefined);
+    try {
+      await slack.requestSlackPass({ workspace: ws.workspace });
+      onDone(`A pass over ${ws.workspace} is requested. The controller notices within a minute.`);
+      reload();
+    } catch (error) {
+      setFailure(reason(error));
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const view = connectionView(ws);
   const step = nextStep(ws);
   const buttons: ReactNode[] = [];
+  if (ws.canOperate && connecting && offersRefresh(ws)) {
+    buttons.push(
+      <Button key="refresh" size="small" variant="text" disabled={busy || refreshing || passRequested(ws)} onClick={() => void refresh()}>
+        Refresh
+      </Button>,
+    );
+  }
   if (ws.canOperate && connecting) {
     if (step === "connect" || step === "install") {
       buttons.push(
@@ -220,8 +247,6 @@ function WorkspaceCard({
       );
     }
   }
-  const [failure, setFailure] = useState<string | undefined>();
-  const [confirming, setConfirming] = useState<string | undefined>();
   const confirm = async (channel: string, breaker: SlackBreaker) => {
     setConfirming(channel);
     setFailure(undefined);

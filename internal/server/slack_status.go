@@ -64,6 +64,13 @@ func (c *Console) GetSlackStatus(
 		}
 	}
 
+	passes := map[string]connection.PassRequest{}
+	if c.deps.SlackWorkspaces != nil {
+		if passes, err = c.deps.SlackWorkspaces.PassRequests(ctx); err != nil {
+			return nil, connect.NewError(connect.CodeUnavailable, err)
+		}
+	}
+
 	seen, declared := map[string]bool{}, map[string]bool{}
 	for _, workspace := range c.deps.Authorizer.Policy().SlackWorkspaceKeys() {
 		seen[workspace], declared[workspace] = true, true
@@ -95,6 +102,7 @@ func (c *Console) GetSlackStatus(
 			row.CanChangeOwner = id.Can(access.RoleOperator)
 		}
 		row.CanOperate = mayOperate
+		row.PassRequestedAt = timestampOf(passes[workspace].At)
 		out.Workspaces = append(out.Workspaces, row)
 	}
 	return connect.NewResponse(out), nil
