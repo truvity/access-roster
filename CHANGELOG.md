@@ -1,3 +1,14 @@
+## Unreleased
+
+- **The guest-side probe asks only about managed Slack Connect channels.** A
+  shared channel no console record manages is no longer probed with
+  `conversations.info`, so the roster stops spending a call per other
+  connected workspace per unmanaged channel every pass. For a managed channel
+  the rules are unchanged (Slack-named guests when informative, workspaces
+  that already list it skipped), except that when Slack names no guest the
+  probe asks exactly the workspaces the record names as sides (host and
+  `with`), not every connected workspace.
+
 ## v1.49.0
 
 - **Individual addresses as Slack channel members.** A console channel record

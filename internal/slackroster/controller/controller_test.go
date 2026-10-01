@@ -1402,12 +1402,28 @@ func (r *rig) createdNamed(name string) int {
 
 // shareHostedByAcme is a channel acme hosts and globex has as a public side
 // its bot does not list.
+// creator is a real user of acme to create a fixture channel, so the pass can
+// identify the member.
+func (r *rig) creator() string { return r.fake.AddUser("TACME", "old@acme.example").ID }
+
 func (r *rig) shareHostedByAcme() slackfake.Channel {
-	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": false}, "U1")
+	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": false}, r.creator())
 	ch.UnlistedIn = map[string]bool{"TGLOBEX": true}
 	ch.ListOwnTeamOnly = true
 	ch.TeamNames = map[string]string{"TGLOBEX": "legacy-globex"}
 	return *ch
+}
+
+// manage writes a console record that takes over an existing shared channel,
+// so the controller counts it managed.
+func (r *rig) manage(name, id string, with ...string) {
+	r.t.Helper()
+	r.person("ann@acme.example", []string{"g-all", dirAll}, "")
+	raw, err := connection.EncodeShared(reconcile.SharedChannel{Name: name, Host: "acme", With: with, Sources: []string{dirAll}, ChannelID: id})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	r.writeRecord(connection.SharedKey(name), raw)
 }
 
 func (r *rig) probes(team string) int {
@@ -1425,10 +1441,11 @@ func (r *rig) probes(team string) int {
 func TestAGuestSideTheBotDoesNotListIsProbedAndPublished(t *testing.T) {
 	r := newRig(t)
 	ch := r.shareHostedByAcme()
+	r.manage("legacy", ch.ID, "globex")
 	r.pass("acme", "globex")
 
 	got := r.reports.workspace(t, "globex").DiscoveredShared
-	if len(got) != 1 || got[0].ID != ch.ID || got[0].Name != "legacy-globex" || got[0].Private || got[0].Members != 1 || got[0].HostTeam != "TACME" {
+	if len(got) != 1 || got[0].ID != ch.ID || got[0].Name != "legacy-globex" || got[0].Private || got[0].HostTeam != "TACME" {
 		t.Fatalf("globex's discovered = %+v", got)
 	}
 	if n := r.probes("TGLOBEX"); n != 1 {
@@ -1436,9 +1453,6 @@ func TestAGuestSideTheBotDoesNotListIsProbedAndPublished(t *testing.T) {
 	}
 	if n := r.probes("TACME"); n != 0 {
 		t.Errorf("acme listed it and must not be probed: %d", n)
-	}
-	if n := r.touching(ch.ID); n != 0 {
-		t.Errorf("probing changed the channel: %d mutations", n)
 	}
 	r.pass("acme", "globex")
 	if n := r.probes("TGLOBEX"); n != 2 {
@@ -1450,7 +1464,8 @@ func TestAGuestSideTheBotDoesNotListIsProbedAndPublished(t *testing.T) {
 func TestAPrivateGuestSideStaysUnknown(t *testing.T) {
 	r := newRig(t)
 	logs := r.captureLogs()
-	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": true}, "U1")
+	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": true}, r.creator())
+	r.manage("legacy", ch.ID, "globex")
 	r.pass("acme", "globex")
 	if n := r.probes("TGLOBEX"); n != 1 {
 		t.Errorf("globex is listed and must be probed: %d", n)
@@ -1472,7 +1487,7 @@ func TestAPrivateGuestSideStaysUnknown(t *testing.T) {
 // A probe that fails never fails the pass.
 func TestAFailingProbeDoesNotFailThePass(t *testing.T) {
 	r := newRig(t)
-	r.shareHostedByAcme()
+	r.manage("legacy", r.shareHostedByAcme().ID, "globex")
 	logs := r.captureLogs()
 	r.fake.Fail("conversations.info", "internal_error", -1)
 	r.pass("acme", "globex")
@@ -1510,7 +1525,8 @@ func TestAWorkspaceSlackDoesNotNameIsNotProbed(t *testing.T) {
 	r := newRig(t)
 	r.addInitech()
 	logs := r.captureLogs()
-	r.fake.AddSharedChannel("elsewhere", "TACME", []string{"TINITECH"}, map[string]bool{"TACME": false, "TINITECH": true}, "U1")
+	elsewhere := r.fake.AddSharedChannel("elsewhere", "TACME", []string{"TINITECH"}, map[string]bool{"TACME": false, "TINITECH": true}, r.creator())
+	r.manage("elsewhere", elsewhere.ID, "globex", "initech")
 	r.pass("acme", "globex", "initech")
 	if n := r.probes("TGLOBEX"); n != 0 {
 		t.Errorf("globex is not named and must not be probed: %d", n)
@@ -1531,10 +1547,11 @@ func TestEveryWorkspaceIsProbedWhenSlackNamesNoGuests(t *testing.T) {
 	r.addInitech()
 	logs := r.captureLogs()
 	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX", "TINITECH"},
-		map[string]bool{"TACME": false, "TGLOBEX": false, "TINITECH": true}, "U1")
+		map[string]bool{"TACME": false, "TGLOBEX": false, "TINITECH": true}, r.creator())
 	ch.ListOwnTeamOnly = true
 	ch.UnlistedIn = map[string]bool{"TGLOBEX": true}
 	ch.TeamNames = map[string]string{"TGLOBEX": "legacy-globex"}
+	r.manage("legacy", ch.ID, "globex", "initech")
 	r.pass("acme", "globex", "initech")
 
 	if n := r.probes("TGLOBEX"); n != 1 {
@@ -1553,10 +1570,45 @@ func TestEveryWorkspaceIsProbedWhenSlackNamesNoGuests(t *testing.T) {
 	if got := r.reports.workspace(t, "initech").DiscoveredShared; len(got) != 0 {
 		t.Errorf("initech's invisible side was published: %+v", got)
 	}
-	if strings.Contains(logs.String(), "level=WARN") {
+	if strings.Contains(logs.String(), "probing a workspace") {
 		t.Errorf("an expected channel_not_found warned:\n%s", logs)
 	}
 	if !strings.Contains(logs.String(), "guest-side probe") || !strings.Contains(logs.String(), "probed=2 visible=1 invisible=1") {
 		t.Errorf("want one summary of 2 probed, 1 visible, 1 invisible:\n%s", logs)
+	}
+}
+
+// A shared channel no record manages is never probed, however many
+// workspaces are connected.
+func TestAnUnmanagedSharedChannelIsNeverProbed(t *testing.T) {
+	r := newRig(t)
+	r.addInitech()
+	logs := r.captureLogs()
+	r.shareHostedByAcme()
+	r.pass("acme", "globex", "initech")
+	r.pass("acme", "globex", "initech")
+	for _, team := range []string{"TACME", "TGLOBEX", "TINITECH"} {
+		if n := r.probes(team); n != 0 {
+			t.Errorf("an unmanaged channel probed %s %d times", team, n)
+		}
+	}
+	if strings.Contains(logs.String(), "guest-side probe") {
+		t.Errorf("nothing was probed, so no summary:\n%s", logs)
+	}
+}
+
+// With Slack naming no guest, a managed channel is probed on exactly the
+// workspaces its record names as sides, not on every connected one.
+func TestAManagedChannelIsProbedOnItsRecordSidesOnly(t *testing.T) {
+	r := newRig(t)
+	r.addInitech()
+	ch := r.shareHostedByAcme()
+	r.manage("legacy", ch.ID, "globex")
+	r.pass("acme", "globex", "initech")
+	if n := r.probes("TGLOBEX"); n != 1 {
+		t.Errorf("globex is a record side: probes = %d, want 1", n)
+	}
+	if n := r.probes("TINITECH"); n != 0 {
+		t.Errorf("initech is not a record side: probes = %d, want 0", n)
 	}
 }
