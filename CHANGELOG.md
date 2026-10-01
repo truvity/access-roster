@@ -1,3 +1,24 @@
+## v1.46.0
+
+- **The console is organised as four clusters, and Slack is one place.** The
+  rail reads Overview · IDENTITY (Directories, Directory groups, People, Rules)
+  · ACCESS (Internal groups, Clients, Sessions) · SYSTEMS (GitHub, Slack) ·
+  ADMIN (Audit, Settings). Slack is a single entry with tabs — Workspaces,
+  Channels, Slack Connect, Discovered, Apps — and every managed channel has a
+  page of its own: what feeds it (internal groups for a channel defined in
+  git, directory groups for a console channel), its mode, each person's state
+  and why, the Slack Connect sides, the removal breaker, and its audit
+  history. GitHub gains a Runners tab. Old links (`#/slack-apps`,
+  `#/slack-connect`) still work.
+- **Reverse links.** A directory group's page lists the Slack channels it
+  feeds and how its people stand there, and the GitHub teams it reaches; an
+  internal group's page lists the channels defined in git that name it; a
+  person's page has a Slack section with each channel's state and reason
+  (e.g. "waiting for them: no Slack account yet").
+- `SlackChannelStatus.sources` now also carries the internal groups a channel
+  defined in git is fed by, so the channel page can link them. No other API
+  change; nothing new calls Slack.
+
 ## v1.45.0
 
 - **Console channels: ordinary Slack channels managed on the console, fed by
