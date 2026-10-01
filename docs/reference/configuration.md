@@ -7,7 +7,7 @@ things it expects the deployment to provide.
 **One chart, `charts/access-issuer`, for one service.** It renders the
 whole of access-roster — the directory, the policy, the OpenID provider,
 the login page and the console — and, when enabled, the GitHub
-controller beside it. It keeps no audit trail of its own: it records
+controller and the Slack controller beside it. It keeps no audit trail of its own: it records
 into an installation of [truvity/audit](https://github.com/truvity/audit)
 that the deployment provides, and reads that installation's query service
 for the console's Audit page.
@@ -67,12 +67,14 @@ service writes *itself*, where it is the producer and gets to choose.
 | `directory.login` | `true` | whether the console offers a sign-in of its own, under `<mount>/login`. With `console.client` set it is a second door: the issuer's page is the one people use |
 | `directory.workspaces[]` | `[]` | declared workspaces, see below |
 | `directory.push` | absent | a **recovery copy** of `Secret <release>-workspace-credentials`: `{secretStore: {name, kind}, remoteKey, refreshInterval}` renders `PushSecret <release>-workspace-copy`, which writes the whole Secret as one JSON object at `remoteKey` — bundled, because the keys inside are `<workspace-id>.json` and a reconnect mints a new id, so a per-key mapping would go stale while reporting healthy. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`, because the case this exists for is the Secret going away. Refused at render without `directory.store: kubernetes`, without a store or a key, or for two pushes sharing one path. It is a push and not an `ExternalSecret` because the service is the writer: a pull would let a stale copy overwrite a freshly connected workspace. What lands there **is** the credential |
-| `githubApps.catalogue[]` | `[]` | GitHub Apps declared as data — `{id, org, name, description, public, permissions, events, installation, grants, push}` each — created and installed by an operator on the GitHub page (Apps, then Catalogue). Rendered to `ConfigMap <release>-github-apps-catalogue`; the service refuses to start on a malformed entry or a grant naming a group the policy does not declare. A default set to copy ships as the chart's `examples/github-apps.yaml`. See [connect/github-apps-catalogue.md](../connect/github-apps-catalogue.md) |
+| `githubApps.catalogue[]` | `[]` | GitHub Apps declared as data — `{id, org, name, description, public, permissions, events, installation, grants, push}` each — created and installed by an operator on the GitHub page (the Apps tab: the App's own page). Rendered to `ConfigMap <release>-github-apps-catalogue`; the service refuses to start on a malformed entry or a grant naming a group the policy does not declare. A default set to copy ships as the chart's `examples/github-apps.yaml`. See [connect/github-apps-catalogue.md](../connect/github-apps-catalogue.md) |
 | `githubApps.catalogue[].grants[]` | `[]` | who may ask for that App's installation tokens, and for how much: `{group, repositories[], permissions{}}` each. `group` is an internal group the policy declares; `repositories` are names in the App's organisation, `["*"]` for all; `permissions` is `{name: level}`. A request is served by the first grant, in catalogue order, that covers all of it ([contract](contracts.md#installation-tokens-at-token)) |
 | `githubApps.catalogue[].push` | absent | copy one App's credential to a secret store: `{secretStore: {name, kind}, remoteKey, refreshInterval, deletionPolicy}` renders `PushSecret <release>-github-app-<id>`, which writes `app_id`, `installation_id` and `private_key` at `remoteKey` — that App's three property keys and nothing else. Off unless written, and refused at render for two entries sharing one path in one store, or without `directory.store: kubernetes`. The copy is a real credential, rotated as one. See [connect/infrastructure-as-code.md](../connect/infrastructure-as-code.md) |
 | `githubApps.push` | absent | a **recovery copy** of `Secret <release>-github-apps` — the link App and one App per bound organisation, the identities this service acts as — with the same shape and rules as `directory.push`, rendering `PushSecret <release>-github-apps-copy`. Distinct from `catalogue[].push`, which copies one catalogue App's three keys for a consumer that must act as it; this copies the service's own Apps, and only so they can be restored. An App cannot be re-created with its old id, so losing them means every grant rebinds and every installation is re-authorised by hand |
 | `slackState.push` | absent | a **recovery copy** of the Slack state, in the shape of `directory.push` with one more key: `{secretStore: {name, kind}, remoteKey, recordsRemoteKey, refreshInterval}` renders `PushSecret <release>-slack-credentials-copy` (the whole of `Secret <release>-slack-credentials`, at `remoteKey`) and `PushSecret <release>-slack-records-copy` (the whole of `Secret <release>-slack-records`, at `recordsRemoteKey`). Each is bundled under one remote key because the keys inside are `<workspace-id>.json`. `recordsRemoteKey` is required and must differ from `remoteKey`. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`. Refused at render without `directory.store: kubernetes`, without a store or either key, or for two pushes sharing one path. The records are a mirror Secret because they live in a ConfigMap and a `PushSecret` reads Secrets only. What lands there **is** every workspace's credential |
-| `githubRunnerApps.tiers` | `[]` | the runner tiers an operator may create a runner App for on the GitHub page (Apps), one App per bound organisation per tier — e.g. `[preview, stable]`. Empty creates none. The Apps are kept in `Secret <release>-github-runner-apps` for the deployment to hand to its runners |
+| `slackApps[]` | `[]` | Slack Apps declared as data — `{id, workspace, name, description, botScopes, push}` each — created (with a throwaway app configuration token, used once and never stored) and installed (by an owner of the workspace) by an operator on the console's Slack area (the Apps tab). `id` is `[a-z0-9-]`, at most 32, unique, and never changes; `workspace` is a key of the policy's `slack.workspaces`; `name` defaults to `<workspace>-<id>`, at most 35; `description` at most 140. Rendered to `ConfigMap <release>-slack-apps-catalogue`; the service refuses to start on a malformed entry or an entry for a workspace the policy does not name. Needs `directory.store: kubernetes`. See [connect/slack-apps-catalogue.md](../connect/slack-apps-catalogue.md) |
+| `slackApps[].push` | absent | copy one App's bot token — one key, `bot_token`, never the client secret or the record — to a secret store: `{secretStore: {name, kind}, remoteKey, refreshInterval, deletionPolicy}`, rendering `PushSecret <release>-slack-app-<id>`. Refused at render for two entries sharing one path in one store, or without `directory.store: kubernetes`. The copy is a real credential, rotated as one |
+| `githubRunnerApps.tiers` | `[]` | the runner tiers an operator may create a runner App for on the GitHub page (the Runners tab), one App per bound organisation per tier — e.g. `[preview, stable]`. Empty creates none. The Apps are kept in `Secret <release>-github-runner-apps` for the deployment to hand to its runners |
 | `oauthClient.secret.name` | `""` | a Secret holding the client for sign-in and admin consent. Empty means nobody can sign in and this installation issues tokens to machines only, which is a real posture and is said at start |
 | `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the service does not produce this object: whatever delivers it already had an opinion, and a chart that insisted on two names could not read a Secret already in the namespace |
 | `console.mount` | `/console` | where the console sits on this origin. A **path** and not a host, because discovery must be at the root of the origin named in every token's `iss`. It is also what the console prefixes onto every link it hands a browser — `/login` resolves against the origin, where the issuer's page is. Empty serves no console |
@@ -102,13 +104,13 @@ service writes *itself*, where it is the producer and gets to choose.
 | `githubRoster.enabled` | `false` | render the GitHub controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, because either is a controller that can read nothing |
 | `githubRoster.actsIn[]` | `[]` | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled |
 | `githubRoster.interval` | `15m` | how long between passes |
-| `githubRoster.image.repository` / `.tag` | `ghcr.io/truvity/access-roster/github-roster` / app version | from the same release as the service |
-| `slackRoster.enabled` | `false` | render the Slack controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, for the same reason |
-| `slackRoster.actsIn[]` | `[]` | the workspaces (the policy's keys) the controller **changes**. Every other declared workspace is derived and reported, and left alone: a workspace is born disabled |
+| `githubRoster.image.repository` / `.tag` / `.pullPolicy` | `ghcr.io/truvity/access-roster/github-roster` / app version / `IfNotPresent` | from the same release as the service |
+| `slackRoster.enabled` | `false` | render the Slack controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, for the same reason. The policy must put the controller's ServiceAccount (`<release>-slack-roster`) in `all:access-roster:viewer`; without it every pass fails on the first read. Roll the console before the controller when upgrading from before 1.42.0 (the controller needs `ListServedDomains`) |
+| `slackRoster.actsIn[]` | `[]` | the workspaces (the policy's keys) the controller **changes**. Every other declared workspace is derived and reported, and left alone: a workspace is born disabled. The controller refuses to start if `actsIn` names a workspace the policy does not declare |
 | `slackRoster.interval` | `15m` | how long between passes |
-| `slackRoster.image.repository` / `.tag` | `ghcr.io/truvity/access-roster/slack-roster` / app version | from the same release as the service |
+| `slackRoster.image.repository` / `.tag` / `.pullPolicy` | `ghcr.io/truvity/access-roster/slack-roster` / app version / `IfNotPresent` | from the same release as the service |
 | `slackRoster.resources` | `{}` | the controller pod's resources |
-| `audit.writer` | `""` | the audit installation's receiver: one address, which takes the records and answers the catalogue's registration on the same port. Set, the service and the controller record into it, each with its own projected token; empty, nothing is kept beyond the log line every record also is. The installation must map both service accounts to the source `roster` |
+| `audit.writer` | `""` | the audit installation's receiver: one address, which takes the records and answers the catalogue's registration on the same port. Set, the service and the controller record into it, each with its own projected token; empty, nothing is kept beyond the log line every record also is. The installation must map every service account (`<release>`, `<release>-github-roster`, `<release>-slack-roster`) to the source `roster` |
 | `audit.query` | `""` | the installation's query service, for the console's Audit page; empty shows no page |
 | `audit.audience` | `audit` | the policy client whose audience the Audit page's tokens carry. The policy must declare it, requiring the groups that may read the trail; the query service's grants must trust this issuer with it |
 | `audit.token.audience` / `.expirationSeconds` | `audit` / `3600` | the projected token presented to the receiver |
@@ -252,6 +254,8 @@ so the hash carries the uniqueness the readable part may have lost.
 | `ConfigMap <release>-workspace-<tenant>` | backend, domains, served domains, admin, connected by/at, last health, credential type | the service |
 | `Secret <release>-workspace-credentials` | one entry per console-connected workspace, key `<tenant>.json`: the credential (refresh token, or service-account key) and a copy of the workspace's record without its health | the service (Connect, UploadKey), created empty at start. Releases before 1.7 kept a `Secret <release>-credential-<tenant>` each; start-up moves them in |
 | `Secret <release>-slack-records` | a MIRROR of the Slack records ConfigMap `<release>-slack-workspaces`: exactly its `<workspace>.json` records, `_shared.<name>.json` Slack Connect definitions and `_channel.<workspace>.<name>.json` console channel records, never `_confirm.*` or `_pass.*`. It exists because a `PushSecret` reads Secrets only; nothing reads it but the chart's recovery copy and the service's own start | the service, in the same code path that writes the ConfigMap, and reconciled at start. If the ConfigMap holds no record and this Secret does, start repopulates the ConfigMap from it |
+| `ConfigMap <release>-slack-workspaces` | one record per connected Slack workspace (`<workspace>.json`), the Slack Connect records (`_shared.<name>.json`), the console channel records (`_channel.<workspace>.<name>.json`), and the transient operator markers: confirmations (`_confirm.*`), pass requests (`_pass.*`) and consumed install states | the service (Connect, the Slack Connect and channel editors, Refresh, Confirm), created empty at start |
+| `Secret <release>-slack-credentials` | one entry per connected workspace, `<workspace-id>.json`: the App's client id and secret and, once installed, the bot token | the service (Connect, the install callback), created empty at start; mounted read-only into the Slack controller |
 | `Secret <release>-oauth-client` | OAuth client id and secret | declared via `oauthClient.secret.name` and read-only. The console used to be able to write one; it cannot since the console became read-only, because a credential a console can change is one somebody can change from a browser |
 | `Secret <release>-session-key` | signs the session cookie and the consent-flow state | the service, generated on first start; rotate by deleting |
 | the signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it from the file, never through the API; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
@@ -264,6 +268,10 @@ so the hash carries the uniqueness the readable part may have lost.
 | `PushSecret <release>-github-apps-copy` | the same for `Secret <release>-github-apps` — the link App and one App per bound organisation — to where `githubApps.push` names | the chart, when `githubApps.push` is written; External Secrets does the copying |
 | `PushSecret <release>-slack-credentials-copy` | the instruction to copy the whole of `Secret <release>-slack-credentials` to the store and path `slackState.push` names. `deletionPolicy: None` | the chart, when `slackState.push` is written; External Secrets does the copying |
 | `PushSecret <release>-slack-records-copy` | the same for `Secret <release>-slack-records`, to `slackState.push.recordsRemoteKey` | the chart, when `slackState.push` is written; External Secrets does the copying |
+| `ConfigMap <release>-slack-status` | the Slack controller's last report, one document per workspace | created empty by the service at start; its data replaced by the controller, which is granted this one name (get, update, patch) |
+| `ConfigMap <release>-slack-apps-catalogue` | the declared Slack App catalogue (`slackApps`), without `push`. **No secret in it** | the chart, when `slackApps` is not empty |
+| `Secret <release>-slack-catalogue-apps` | every catalogue Slack App: `<id>.client_id`, `<id>.client_secret` and, once installed, `<id>.slack_bot_token`, beside `<id>.record.json` | the service (a catalogue App's Create and Install), created empty at start |
+| `PushSecret <release>-slack-app-<id>` | the instruction to copy one catalogue Slack App's bot token (property `bot_token`, nothing else) to the store and path its entry names. What lands there is the token | the chart, for each `slackApps` entry carrying `push` |
 | `ConfigMap <release>-github-status` | the GitHub controller's last report, one document per organisation | created empty by the service at start; its data replaced by the controller, which is granted this one name |
 | `ConfigMap <release>-github-orgs` | one record per connected GitHub organisation: App id and slug, installation, connected by and at | the service (Connect a GitHub organisation), created empty at start |
 | `Secret <release>-github-apps` | one credential per connected organisation: the App's id, installation and private key, and a copy of the organisation's record; the link App's likewise | the service (Connect), created empty at start so the controller's volume always has a Secret behind it; read by the service only to uninstall on Disconnect |
@@ -283,7 +291,7 @@ Labels on every service-written object: `app.kubernetes.io/managed-by=directory-
 `app.kubernetes.io/part-of=<release>`, and
 `access-roster.truvity.github.io/kind` = `workspace`, `workspace-credentials`,
 `settings`, `github-status`, `github-orgs` (both the records ConfigMap and
-the Apps Secret), `github-links`, `github-runner-apps`, `github-catalogue-apps`, `slack-workspaces` (the records ConfigMap and the credentials Secret), `slack-records`, or `credential`
+the Apps Secret), `github-links`, `github-runner-apps`, `github-catalogue-apps`, `slack-workspaces` (the records ConfigMap and the credentials Secret), `slack-records`, `slack-status`, `slack-catalogue-apps`, or `credential`
 on a per-workspace Secret a release before 1.7 wrote. The workspace id as the backend spells it is the annotation
 `access-roster.truvity.github.io/workspace-id`. Releases before these keys
 wrote the kind label and the annotation under an older prefix; the service
@@ -298,8 +306,8 @@ kubectl -n directory-roster get secret,configmap -l app.kubernetes.io/managed-by
 
 ### Restoring from the Secrets alone
 
-Five Secrets hold everything a console added that cannot be minted again,
-each under a name a deployment knows in advance:
+Five Secrets, and the Slack state below, hold everything a console added that
+cannot be minted again, each under a name a deployment knows in advance:
 
 - `<release>-workspace-credentials`;
 - `<release>-github-apps`;
@@ -321,6 +329,11 @@ reopening anything:
 
 - it restores every console-connected workspace's ConfigMap;
 - it restores every GitHub organisation's record and the link App's.
+
+Slack keeps its state in `<release>-slack-credentials`, `<release>-slack-records`
+(a mirror of the records ConfigMap) and `<release>-slack-catalogue-apps`; the
+chart renders the copy for the first two through `slackState.push`. Restore:
+[runbook, Slack state](../operations/runbook.md#slack-state).
 
 A restored workspace shows as never probed until its first probe. A link
 token may have rotated since the copy; that person links again. A
@@ -405,7 +418,8 @@ keys are a volume, so it holds no permission to read any other Secret.
 ## The Slack controller's environment
 
 The controller reads its own few, all set by
-`templates/slack-roster.yaml`:
+`templates/slack-roster.yaml`. It runs as one replica with `Recreate`: two
+controllers would make every change twice.
 
 | Variable | From |
 |---|---|
@@ -415,9 +429,11 @@ The controller reads its own few, all set by
 | `CONSOLE_URL` | the service's in-cluster address plus `console.mount` |
 | `TOKEN_FILE` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
 | `CREDENTIALS_DIR` | the mounted `<release>-slack-credentials` Secret, one file per connected workspace; optional |
-| `RECORDS_DIR` | the mounted `<release>-slack-workspaces` ConfigMap: workspace records, shared channels and confirmations; optional |
-| `INTERVAL` | `slackRoster.interval` |
-| `ENABLED_WORKSPACES` | `slackRoster.actsIn` |
+| `RECORDS_DIR` | the mounted `<release>-slack-workspaces` ConfigMap: workspace records, Slack Connect records, console channel records, confirmations and pass requests; optional |
+| `INTERVAL` | `slackRoster.interval`: the pass interval (15m by default). Independently, the controller looks at the mounted credentials and records every 30 seconds and passes without waiting for the interval when a workspace's credential changed or an operator pressed Refresh. It reads them afresh at every pass, so rotating or restoring them needs no restart |
+| `ENABLED_WORKSPACES` | `slackRoster.actsIn`. Naming a key the policy does not declare stops the controller at start |
+| `AUDIT_WRITER_URL`, `AUDIT_TOKEN_FILE` | `audit.writer` and the projected token; the controller records for itself, as its own workload |
+| `POD_NAME` | the pod's name, from the downward API |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty |
 | `LOG_LEVEL` | `logLevel` |
 
@@ -429,12 +445,23 @@ workspace](../connect/slack-workspace.md).
 
 ## Roles
 
-Two roles, held by membership of two declared internal groups.
+Two roles, held by membership of two declared internal groups, and the same two
+scoped to one directory.
 
 | Role | Group | May |
 |---|---|---|
-| viewer | `all:access-roster:viewer` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders`, `GetGitHubStatus`, `ListGitHubApps`, `GetGitHubApp` for anybody else (one's own reach, like `Explain` of oneself, needs no role), and listing one's own sessions — the whole console, read-only |
-| operator | `all:access-roster:operator` | everything: Connect, Reconnect, UploadKey, `SetServedDomains`, `SetSyncedGroups`, Probe, Refresh, Disconnect, the GitHub connects and disconnects, `ListGitHubAppTokens` (a request names who asked), `ConfirmGitHubRemovals`, `ImportGitHubLinks`, listing and revoking anyone's sessions |
+| viewer | `all:access-roster:viewer` | every read: `ListWorkspaces`, `GetSettings`, `GetPolicy`, `WhoAmI`, `Explain`, `ListDirectoryGroups`, `GetDirectoryGroup`, `SearchPeople`, `ListHolders`, `GetGitHubStatus`, `ListGitHubApps`, `GetGitHubApp`, `GetSlackStatus`, `ListSlackApps`, `ListSlackChannels`, `ListSlackSharedChannels`, `ResolveDirectoryGroups`, `ListServedDomains` (a scoped viewer sees only what its directory owns) for anybody else (one's own reach, like `Explain` of oneself, needs no role), and listing one's own sessions — the whole console, read-only |
+| operator | `all:access-roster:operator` | everything: Connect, Reconnect, UploadKey, `SetServedDomains`, `SetSyncedGroups`, Probe, Refresh, Disconnect, the GitHub connects and disconnects, `ListGitHubAppTokens` (a request names who asked), `ConfirmGitHubRemovals`, `ImportGitHubLinks`, `BeginSlackWorkspaceConnect`, `RequestSlackPass`, `DisconnectSlackWorkspace`, `ConfirmSlackRemovals`, `CreateSlackApp`, `InstallSlackApp`, the Slack channel and Slack Connect create, update and delete, `ChangeSlackWorkspaceOwner` and `ChangeGitHubOrganisationOwner` (installation-wide operator only), listing and revoking anyone's sessions |
+
+**Per-directory operators.** Beside the two installation-wide groups,
+`<directory-workspace-id>:access-roster:viewer` and `:operator` give the same
+roles over what that directory owns: the Slack workspaces and GitHub
+organisations connected with it as owner, their Apps and the channels in them.
+The owner is recorded at connect (the installation-wide operator may name any
+connected directory or none; an operator of one directory owns what it
+connects; an operator of several chooses among theirs) and only the
+installation-wide operator changes it (*Change owner*). A workspace or
+organisation with no owner is operated by the installation-wide operator alone.
 
 Behind a gateway that forwards a token, the forwarded identity's email is
 resolved through the directory like any other; the groups in the token
@@ -444,9 +471,9 @@ from.
 ## The repository
 
 access-roster ships from one repository: the `access-issuer` chart with
-its two images — the service and the GitHub controller — the
-`access-proxy` chart, `accessctl`, the GitHub Action, the Go module and
-the TypeScript package, all stamped with one tag. Shared Go packages —
+its three images — the service, the GitHub controller and the Slack
+controller — `accessctl`, the GitHub Action, the Go module and the TypeScript
+package, all stamped with one tag. Shared Go packages —
 the backends, the policy engine, the verifiers, the exchange — are
 importable behind interfaces.
 

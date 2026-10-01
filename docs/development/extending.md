@@ -1,6 +1,6 @@
 # Extension points
 
-Six places something new plugs in, each behind an interface that already
+Eight places something new plugs in, each behind an interface that already
 has one implementation. The rule for all of them: the new thing ships
 with its fake and its acceptance scenario, or it is not done.
 
@@ -92,10 +92,42 @@ name the record's fields with underscores (`{targets_0_id}`,
 place its name is spelled. `just audit-catalogue` validates the document,
 fails on an action emitted and not declared, and regenerates the console's
 sentences; `TestTheConstructorsAreTheCatalogue` fails on one declared with
-no constructor. A change to what an existing action carries is a new
-catalogue `version`. Never put an address, a name or a secret in data: an
+no constructor. **Any** change to the catalogue document, a new action as much
+as a changed one, needs a new `version` in `roster.yaml` AND the released
+document saved as `internal/audit/catalogue/testdata/released/roster-<version>.yaml`:
+an audit installation refuses a different document under a version it already
+holds, which stops the service at start (v1.41.0 and v1.42.0 did that, fixed in
+v1.42.1), and `TestAReleasedCatalogueVersionIsNeverChanged` fails on it.
+`just audit-catalogue` also regenerates `frontend/src/auditSentences.ts`;
+commit it, or the recipe fails on the diff. Register the new data schema file
+beside `roster.yaml` and add it to the action's `data_schema`. Never put an address, a name or a secret in data: an
 identifier belongs in the actor, the subject or a target, where the
 installation's profiles treat it.
+
+## 8. A reconciler for another system (a SaaS, a forge)
+
+GitHub organisations and Slack workspaces are reconcilers: a loop that, every
+pass and for every target the policy binds, reads what the system holds, asks the
+console who should hold it, decides, acts where the target is enabled, and
+reports. `internal/rails` is what they share, with only the nouns different:
+`Run` and `Pacing` (the pass loop and its backoff while a rollout leaves the
+console on another policy), `Directory`, `Holders`, `Vouch` and `Removal` (the
+console's two questions, each answer gated by `PolicyGuard`, and the rule that a
+removal rests on a vouched answer or does not happen), `Ledger` (a held row is
+recorded once, not again after a restart), `Journal` (the last good report per
+target, so a failed pass keeps what was known), `CheckBreaker` and `Fingerprint`
+(the circuit breaker: a pass that would remove more than half of a target waits
+for an operator to confirm exactly that set) and `Switch` (the dry-run gate a
+target is born behind). It is deliberately not a framework: there is no
+`Reconciler` interface, and the decision, the change calls, the credentials, the
+status document and the audit actions stay in the system's own package
+(`internal/githubroster`, `internal/slackroster`); see
+[ADR 0024](../decisions/0024-reconciler-rails-are-shared-pieces-not-a-framework.md).
+A new one ships with: its fake of the system (`internal/slackapp/slackfake` is
+the worked example), a pure `reconcile` package tested without I/O, a status
+document the console shows, a chart value `…Roster.actsIn` (born disabled), its
+audit actions, and a `docs/connect/<system>.md` page. Order the rollout so the
+console, which the controller reads, goes first.
 
 ## What is not an extension point
 

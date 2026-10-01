@@ -437,7 +437,7 @@ are there too for a plain download.
 ## Where things are kept
 
 `<config>/config.yaml` (`~/.config/accessctl/config.yaml` on Linux; see
-[above](#keys-and-where-the-files-go) for the directory) holds the
+[above](#where-things-are-kept) for the directory) holds the
 **default** issuer and the client id, written by `login`.
 
 The sign-in itself lives in `<config>/sessions/<issuer>-<hash>.json`,

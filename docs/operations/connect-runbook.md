@@ -150,3 +150,7 @@ is part of the backup set
 a deployment that copies it can put a lost namespace back without
 another visit to the cloud console. The connect and every disconnect are
 recorded in the audit trail.
+
+Connecting a Slack workspace is a different flow:
+[connect/slack-workspace.md](../connect/slack-workspace.md). Connecting a GitHub
+organisation: [connect/github-organisation.md](../connect/github-organisation.md).

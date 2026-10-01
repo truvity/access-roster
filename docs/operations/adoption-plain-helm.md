@@ -1,35 +1,26 @@
 # Adopting it with plain Helm
 
-Nothing in access-roster assumes a GitOps controller. Both charts are
-ordinary OCI Helm charts, every value an installation needs is in its own
-values file, and every Secret they read is one the installation creates.
-This page installs the issuer and one `access-proxy` with `helm install`,
-signs in for the first time, and says how to take new releases without
-ArgoCD or Kargo. Every name below is a placeholder: `example.com` for
-your domain, `eu-example-1` for your region.
+Nothing in access-roster assumes a GitOps controller. The `access-issuer`
+chart is an ordinary OCI Helm chart, every value an installation needs is in its
+own values file, and every Secret it reads is one the installation creates. This
+page installs the issuer with `helm install`, signs in for the first time, and
+says how to take new releases without ArgoCD or Kargo. Every name below is a
+placeholder: `example.com` for your domain, `eu-example-1` for your region.
 
-`access-proxy` is deprecated, with removal planned
-([ADR 0003](../decisions/0003-deprecate-access-proxy.md)). It is, and has
-only ever been, Envoy Gateway's own external authorization backend, so it
-runs nowhere else. On that same Envoy Gateway, gateway-native OIDC — a
-`SecurityPolicy` with `oidc:` against a declared client — is the default
-replacement now, and needs no chart of ours; see
-[design/access-proxy.md](../design/access-proxy.md) for why. For a
-gateway that is not Envoy Gateway, this chart was never an option: run
-upstream oauth2-proxy yourself, with a declared confidential client row —
-a documentation page for that is planned, and it is not a chart of ours.
-Step 4 below is the `access-proxy` walk-through, kept for as long as the
-chart lasts on Envoy Gateway.
+The `access-proxy` chart was removed in v1.32.0
+([ADR 0003](../decisions/0003-deprecate-access-proxy.md)): on Envoy Gateway,
+gateway-native OIDC replaces it and needs no chart of ours; for any other
+gateway, run upstream oauth2-proxy yourself (step 4).
 
 ## Prerequisites
 
 | Needed | For | Notes |
 |---|---|---|
-| Kubernetes | both charts | the issuer's recovery sign-in asks the API server to review a ServiceAccount token, so it runs in the cluster it trusts |
+| Kubernetes | the issuer | the issuer's recovery sign-in asks the API server to review a ServiceAccount token, so it runs in the cluster it trusts |
 | cert-manager, and a `ClusterIssuer` | the issuer | two certificates: the **signing key** (by default from a `ClusterIssuer` named `selfsigned`; only the key is used) and the TLS certificate for its Gateway (`route.certificate`). Or deliver the signing key yourself and set `signingKey.existingSecret` |
 | Gateway API, and a controller that serves a `GatewayClass` | the issuer's route | the chart renders a `Gateway` of `route.gatewayClassName` and two `HTTPRoute`s. With `route.parentRefs` it attaches to a parent you already have and renders no Gateway. Without `route.host` it renders no route at all, for a trial by port-forward |
-| Envoy Gateway | `access-proxy` only | the proxy is Envoy's external authorization backend, through a `SecurityPolicy` (`gateway.envoyproxy.io/v1alpha1`) |
-| a Valkey (or any Redis-protocol store) | the issuer with more than one replica; every `access-proxy` | neither chart installs one. One replica of the issuer may run without it (`replicaCount: 1`, `valkey.address: ""`), keeping sessions in memory |
+| Envoy Gateway | gateway-native OIDC for consoles (optional) | a `SecurityPolicy` with an `oidc:` block (`gateway.envoyproxy.io/v1alpha1`); see [../connect/console-app.md](../connect/console-app.md) |
+| a Valkey (or any Redis-protocol store) | the issuer with more than one replica | the chart does not install one. One replica of the issuer may run without it (`replicaCount: 1`, `valkey.address: ""`), keeping sessions in memory |
 | a Google Workspace, and an OAuth client in a Google Cloud project | people signing in, and the directory the groups are read from | the one upstream that is built; a second directory backend (Entra) is designed and not written. [connect-runbook.md](connect-runbook.md) walks through the client |
 | an audit installation ([truvity/audit](https://github.com/truvity/audit)) | the audit trail (optional) | without `audit.writer` nothing is kept beyond the log line every record also is, and the service says so at start. This service writes no object itself: the installation owns the archive |
 | OpenBAO, or a Vault with the same API | short-lived SSH, database and client certificates (optional) | not installed by these charts; [../connect/openbao.md](../connect/openbao.md) |
@@ -100,7 +91,7 @@ chart lasts on Envoy Gateway.
          display_name: access-roster
          redirects: [https://access.example.com/console/]
          requires: [all:access-roster:operator, all:access-roster:viewer]
-       dashboard.example.com:                 # the proxy's client: its id is the proxied host
+       dashboard.example.com:                 # a console's client: its id is the proxied host
          kind: confidential
          secret: dashboard-oidc-client        # key client-secret, in the issuer's namespace
          display_name: Dashboard
@@ -151,6 +142,11 @@ that granted each group. Who may mint a recovery token is the cluster's
 RBAC on `serviceaccounts/token` for that one account
 ([runbook.md](runbook.md#day-one)).
 
+**Controllers.** `githubRoster.enabled` and `slackRoster.enabled` are both off by
+default, and a GitHub organisation or Slack workspace they know is a dry run
+until listed in `actsIn`; see
+[the runbook](runbook.md#enabling-a-slack-workspace).
+
 From there each connection is one guide: a
 [cluster](../connect/kubernetes-cluster.md), an
 [AWS account](../connect/aws-account.md),
@@ -164,7 +160,7 @@ that sign in against the issuer ([argocd.md](../connect/argocd.md),
 [kargo.md](../connect/kargo.md)) — not as the way to deploy it. With plain
 Helm:
 
-- **Pin one version for both charts** and keep the values files in your
+- **Pin one version** and keep the values files in your
   own repository. The policy is values, so a change of who may do what is
   a reviewed change to that file followed by `helm upgrade`; the pods
   roll on a policy change by checksum.
@@ -182,12 +178,15 @@ Helm:
   An image tag and the version labels move on every release; anything
   else in the diff should be a line of [CHANGELOG.md](../../CHANGELOG.md).
   Then `helm upgrade` with the same values.
-- **Back up what the console adds.** Five Secrets hold everything that
-  cannot be minted again; with no controller copying them, copy them
-  yourself
-  ([restoring from the Secrets alone](../reference/configuration.md#restoring-from-the-secrets-alone)).
-- **Adopting objects that already exist.** Moving an issuer or a proxy
-  that was installed another way into these charts is the same gate:
+- **Back up what the console adds.** Five Secrets, and the Slack state if the
+  Slack controller is used (`<release>-slack-credentials`,
+  `<release>-slack-records`, `<release>-slack-catalogue-apps`;
+  `slackState.push` copies the first two), hold everything that cannot be
+  minted again; with no controller copying them, copy them yourself
+  ([restoring from the Secrets alone](../reference/configuration.md#restoring-from-the-secrets-alone),
+  [Slack state](runbook.md#slack-state)).
+- **Adopting objects that already exist.** Moving an issuer
+  that was installed another way into this chart is the same gate:
   choose the release name and values so the render reproduces the live
   objects' names, and make the switch one change whose diff is empty.
   Moving from another identity provider is

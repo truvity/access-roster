@@ -43,6 +43,10 @@ logins.
    from the console, read the dry run on its page, then list it in
    `githubRoster.actsIn`; the tool that synced teams before retires with
    it, and the pairings it approved are imported once.
+   **Slack workspaces.** Declare the workspace in the policy, connect it from
+   the console, read the dry run, then list it in `slackRoster.actsIn`. A channel
+   the infrastructure owns is a policy channel fed by internal groups; a channel
+   people manage themselves is a console channel fed by directory groups.
 9. **Retire.** When the old IdP has no relying party left: the IdP, its
    database and operator, the login hook, the broker, the minted clients,
    and its audit log, which the audit installation's trail replaces.

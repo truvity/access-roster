@@ -212,6 +212,19 @@ since every fetch re-checks that the document's own `client_id` matches
 the URL it was served from, but worth knowing before treating "it worked
 when I retried" as a fluke.
 
+## The controllers are single-replica on purpose
+
+`githubRoster` and `slackRoster` each run one pod with `strategy: Recreate`: two
+controllers would make every change twice, and Slack's answer to the second is
+an error that reads as a failure. A rollout or a node loss pauses reconciling
+for the time the pod needs to start; every pass recomputes from the console and
+the target system, so nothing is missed, and a pass that meets a console on
+another policy is retried within seconds (5s doubling to a minute, six times).
+The Slack controller's last report is in the ConfigMap `<release>-slack-status`,
+so a restarted pod does not record every hold and leaver again. Removals still
+need the directory to vouch, so a console outage never empties a channel or a
+team.
+
 ## PodDisruptionBudget, anti-affinity, probes
 
 **The chart renders neither a PodDisruptionBudget nor any pod

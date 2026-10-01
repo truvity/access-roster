@@ -148,6 +148,16 @@ again; a declared Secret is re-delivered by whatever declared it.
 ([Rotating](#rotating)): writing the good value back is not enough on
 its own.
 
+**Without a copy**, a lost workspace credential is recovered by pressing
+**Connect** again as the same admin role account — the tenant id matches
+and the domains return authoritative after the first snapshot — and a
+lost App by *Disconnect* then *Create* on the App's page, on the GitHub page's Apps tab.
+
+A namespace that ran a release before 1.7 still holds one
+`<release>-credential-<tenant>` Secret per workspace beside the new one:
+start-up copied each in by name and left the old object for a rollback,
+and reconnecting or disconnecting that workspace removes it.
+
 ### Slack state
 
 Slack keeps its state in two Secrets and a ConfigMap, none of which anything
@@ -156,7 +166,7 @@ upstream can re-deliver:
 | Object | Holds |
 |---|---|
 | `Secret <release>-slack-credentials` | each connected workspace's client id and secret, and its bot token once installed |
-| `ConfigMap <release>-slack-workspaces` | each workspace's record (`<workspace>.json`), the Slack Connect channels defined on the console (`_shared.<name>.json`), the ordinary console channels (`_channel.<workspace>.<name>.json`), and transient confirmations and pass markers |
+| `ConfigMap <release>-slack-workspaces` | each workspace's record (`<workspace>.json`), the Slack Connect channels defined on the console (`_shared.<name>.json`), the ordinary console channels (`_channel.<workspace>.<name>.json`), and transient confirmations (`_confirm.*`) and pass markers (`_pass.*`) |
 | `Secret <release>-slack-records` | a mirror of the records above, exactly the `<workspace>.json`, `_shared.*` and `_channel.*` entries, kept by the service in the same code path that writes the ConfigMap. It exists because a `PushSecret` reads Secrets only |
 
 `slackState.push` copies the two Secrets, each whole under its own remote
@@ -183,23 +193,22 @@ workspace's credential, so name a store the installation already trusts.
    the ConfigMap from it, and logs the restored keys. A ConfigMap that has
    records is never added to, because a record missing from it may have been
    removed on purpose; the mirror is brought up to date with it instead.
-3. Restart the Slack controller, which reads the credentials once. Each
-   workspace shows as never probed until its first pass. Confirmations and
+3. The Slack controller needs no restart: it notices the restored credentials
+   and records within 30 seconds (the kubelet may take up to about a minute to
+   project the Secret and the ConfigMap into the pod) and passes straight away.
+   Each workspace shows as never probed until that first pass. Confirmations and
    pass markers are not restored: re-confirm any pending removal set.
 
 Both copies are needed: the records say which workspaces are connected and
-carry the Slack Connect channel definitions, the credentials let the
-controller act.
+carry the console channel and Slack Connect definitions, the credentials let
+the controller act.
 
-**Without a copy**, a lost workspace credential is recovered by pressing
-**Connect** again as the same admin role account — the tenant id matches
-and the domains return authoritative after the first snapshot — and a
-lost App by *Disconnect* then *Create* on the GitHub page's Apps tab.
-
-A namespace that ran a release before 1.7 still holds one
-`<release>-credential-<tenant>` Secret per workspace beside the new one:
-start-up copied each in by name and left the old object for a rollback,
-and reconnecting or disconnecting that workspace removes it.
+**Without a copy of the Slack state**, press **Connect** again for each
+workspace (a new throwaway configuration token, a new App, an owner installs
+it): the team must match the one recorded at the first install, which is lost
+with the records, so the first install after a total loss records the new team.
+Console channel and Slack Connect records, and each workspace's owner, are lost
+and must be re-entered; channels in Slack are untouched.
 
 ## Rotating
 
@@ -256,6 +265,13 @@ Per credential:
   somebody can change from a browser — and the sign-in half reads the
   two mounted files once at start. Existing refresh tokens keep working;
   the secret is used only to exchange and refresh.
+- **Slack bot token:** press **Connect** on the workspace (a reinstall; a
+  configuration token is needed only when the roster's scopes grew). The new
+  token is written to `<release>-slack-credentials`; the controller reads it
+  within about two minutes and passes straight away, no restart.
+- **Catalogue Slack App:** reinstall from the Apps tab; a consumer of a
+  `slackApps[].push` copy reads the new value from the store when External
+  Secrets refreshes it (default 1h).
 - **Session key:** delete `Secret <release>-session-key` and restart;
   the service mints a fresh one, and everyone signs in again. Never copy
   it anywhere: there is no `session.push`, deliberately.
@@ -366,6 +382,11 @@ close.
 The controller is described in [Connect a Slack
 workspace](../connect/slack-workspace.md).
 
+**Before the first step:** the policy declares the workspace under
+`slack.workspaces.<key>`, the controller's ServiceAccount is in
+`all:access-roster:viewer`, `slackRoster.enabled` is true, and the console is
+rolled out before the controller (it needs `ListServedDomains`, 1.42.0).
+
 1. Connect and install the workspace, list nothing in `slackRoster.actsIn`,
    and let a pass run. The report's `tick.outcome` is `dry-run` and its rows are
    what enabling would do; read the held and retrying rows and the leavers.
@@ -373,12 +394,68 @@ workspace](../connect/slack-workspace.md).
    appear in the audit trail as `roster.slack_*`.
 3. To stop, remove the key. Nothing is undone. That is also the emergency stop.
 
-A workspace reported `failed` says why: not connected, created and not yet
-installed, a bot token that belongs to another Slack team than the one recorded
-at the workspace's first install, an owning directory that cannot be read or is
-no longer connected (set another owner on the console), a Slack read that was
-not whole, or a console answering under another policy (tried again within seconds; it clears when the rollout ends). The rows of
-the last good report are kept under it.
+**Connect and Refresh.** Connecting is on the console: SYSTEMS, Slack,
+Workspaces, **Connect** (paste an app configuration token from
+api.slack.com/apps; it expires in 12 hours, is used once and is never stored or
+logged), then an owner of the Slack workspace approves the install. The install
+starts a pass without waiting for the interval: the controller looks at the
+credentials every 30 seconds, and the kubelet may take up to about a minute to
+project a changed Secret into the pod, so allow up to two minutes. Until a
+report newer than the connection exists the page says *Installed - waiting for
+the first pass*. **Refresh** on an installed workspace asks for a pass now (one
+request per minute per workspace; *Pass requested* shows until a newer report
+exists). Saving a console channel or Slack Connect record does not start a
+pass; it waits for the interval or for Refresh. A callback Slack sends that is
+refused (wrong team, a missing cookie) is logged and audited as
+`roster.slack_workspace.connect_refused` or `roster.slack_app.install_refused`,
+and the token is revoked.
+
+A workspace not yet connected, or created and not yet installed, reports
+`waiting` with no error. A workspace reported `failed` says why: a bot token
+that belongs to another Slack team than the one recorded at the workspace's
+first install, an owning directory that cannot be read or is no longer connected
+(set another owner on the console), a Slack read that was not whole, or a
+console answering under another policy (tried again within seconds; it clears
+when the rollout ends). The rows of the last good report are kept under it. A
+workspace with no owning directory is not a failure: every person is held *no
+owning directory: set the owner on the console*.
+
+**Holds and their reasons.** What the Slack area shows as *held*, each with its
+reason and none an error: no Slack account yet (shown as *waiting for them*),
+an account of another workspace, a bot, a deactivated account, no address in the
+owner's served domains, *no owning directory: set the owner on the console*, a
+channel whose visibility differs from the declared or recorded one (never
+converted), an archived channel (never unarchived), a private channel with that
+name the bot cannot see (*invite the bot to it*), a private channel the bot is
+not in, a Slack Connect guest not yet connected or not accepted, *defined in
+both git and the console*, and a console record whose sources are no longer
+allowed (*the console channel's record is refused and not acted on*). A guest
+account is reported, never invited or removed.
+
+**The breaker.** It trips when a pass would remove more than half of a channel's
+managed members, or more than half of the workspace's. The report carries a
+fingerprint of exactly that set. **Confirm** (operator of the owning directory or
+installation-wide) names that fingerprint; one confirmation satisfies every gate
+the set covers; it lapses after 24 hours and a different set needs confirming
+again. Confirmations are recorded as `roster.slack_removals.confirmed`.
+
+**The audit actions**, in one list so an operator can search them:
+`roster.slack_channel.created|adopted|archived`,
+`roster.slack_member.invited|removed`, `roster.slack_shared.invited|accepted`,
+`roster.slack_action.held`, `roster.slack_leaver.reported`,
+`roster.slack_removals.confirmed`, and the console's
+`roster.slack_workspace.connected|owner_changed|connect_refused|disconnected`,
+`roster.slack_app.created|installed|install_refused`,
+`roster.slack_shared_channel.created|updated|deleted` and
+`roster.slack_console_channel.created|updated|deleted`.
+
+**The guest-side probe.** The controller asks a connected workspace about a Slack
+Connect channel (`conversations.info`) only for a channel a console record
+manages, and only the sides the record names (host and `with`), or the
+workspaces Slack names as guests when it names any. The expected answers
+(`channel_not_found`, `not_in_channel`: a private side the bot is not in) are
+logged at DEBUG; real errors warn; each pass logs one `guest-side probe` line
+with `probed`, `visible` and `invisible`.
 
 A removal over half of a channel or of the workspace is held with a fingerprint;
 confirm exactly that set to let it go, once, within 24 hours. A person gone from
@@ -454,7 +531,7 @@ left the organisation (`roster.github_link.lost`, then
 ## Runner Apps
 
 The chart declares the tiers (`githubRunnerApps.tiers: [preview, stable]`)
-and the GitHub page's Apps tab then shows a row per bound organisation
+and the GitHub page's Runners tab then shows a row per bound organisation
 per tier. *Create* is the same two clicks as an organisation's App:
 GitHub's create page, then its install page, by an owner of the
 organisation. The App lands in `Secret <release>-github-runner-apps` as
@@ -468,7 +545,7 @@ with.
 
 | Symptom | Means | Do |
 |---|---|---|
-| a row reads *created, not installed* | the owner stopped after Create | *Finish installing* on the row |
+| a row reads *created, not installed* | the owner stopped after Create | *Install* on the App's page |
 | runners stop taking jobs after a Disconnect | the App was uninstalled and its keys forgotten, as Disconnect does | create a new App for that tier and hand its keys to the runners |
 | the runners' copy is empty | the App is not installed yet, or the copy runs before the keys exist | install it; the three keys appear only then |
 
@@ -483,7 +560,10 @@ sign-ins and their refusals — at the issuer and at the console's own door,
 recovery as its own action — token exchanges and GitHub installation tokens
 by the kind of proof, refused refreshes, sign-outs and revokes, directory
 connects and changes, GitHub Apps created, installed and disconnected, and
-what the GitHub controller did to memberships and links.
+what the GitHub controller did to memberships and links; Slack workspaces
+connected, owned, refused and disconnected, Slack Apps, console and Slack
+Connect channel records, and what the Slack controller did to channels and
+members.
 
 The installation locks, indexes and signs; retention is its profile's
 (`security`, every action, people in clear), not a setting here. Its own
@@ -520,16 +600,17 @@ deployment's own proxies, read from the right. Count the proxies that
 append: behind an edge that appends the client and a gateway that appends
 the edge's connector, it is 1.
 
-**The GitHub controller records for itself**, with its own service
-account's token, and the installation stamps it as those records' observer.
-Both service accounts must be mapped to the source `roster` in the
-installation's `workloadIdentity.workloads`.
+**The GitHub controller and the Slack controller each record for
+themselves**, with their own service account's token, and the installation
+stamps each as those records' observer. All three service accounts
+(`<release>`, `<release>-github-roster`, `<release>-slack-roster`) must be mapped
+to the source `roster` in the installation's `workloadIdentity.workloads`.
 
 ### Connecting an installation
 
 1. Deploy the installation and give it the deployment document its
    profiles come from; see its deploy guide.
-2. Map this release's service account, and the controller's when it runs,
+2. Map this release's service account, and each controller's when it runs,
    to the source `roster` in its `workloadIdentity.workloads`, with the
    audience `audit.token.audience` (default `audit`).
 3. Declare a client for the page in the policy — its id is
@@ -540,6 +621,23 @@ installation's `workloadIdentity.workloads`.
    its catalogue on the writer's own address; `audit installation connected`
    in the log says it did on the first try, `audit catalogue registered`
    that a retry did.
+
+### Changing what is recorded
+
+An audit installation keeps every catalogue version it was sent and refuses a
+different document under a version it already holds, which stops the service
+(and the controllers) at start: this is what v1.41.0 and v1.42.0 did, fixed in
+v1.42.1. So any change to `internal/audit/catalogue/roster.yaml`, even one new
+action, needs: (1) a new `version` in the file (the current version is 1.5.0);
+(2) the released document saved as
+`internal/audit/catalogue/testdata/released/roster-<version>.yaml` (a copy of the
+file as shipped); (3) `just audit-catalogue`, which validates the document,
+fails on an action emitted and not declared (or the reverse) and regenerates
+`frontend/src/auditSentences.ts` (commit the result; the recipe fails on a
+diff). `TestAReleasedCatalogueVersionIsNeverChanged` fails if a catalogue
+carrying a released version differs from its fixture. An installation connected
+to this release accepts the new version at start; roll the audit installation's
+grants and `workloadIdentity` only if a new source was added.
 
 ### When the installation cannot be reached
 
