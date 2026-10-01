@@ -19,7 +19,7 @@ import { useAsync, type Async } from "./hooks";
 import { go, paths } from "./router";
 import { ChannelDeleteDialog, ChannelEditDialog, DiscoveredOrdinary } from "./SlackChannels";
 import { ConnectDeleteDialog, ConnectEditDialog, DiscoveredConnect } from "./SlackConnect";
-import { modeLabel, manageableWorkspaces } from "./slackChannelsModel";
+import { canTakeOver, modeLabel, manageableWorkspaces } from "./slackChannelsModel";
 import { hostChoices, privacyLabel } from "./slackConnectModel";
 import { buildRows, filterRows, kindLabel, kindSentence, rowPath, type ChannelKind, type ChannelRow } from "./slackIndex";
 import { Facet, Facets, Failure, Loading, Mono, Names, Nothing, Page, Ref, State } from "./ui";
@@ -59,7 +59,7 @@ export function useSlackIndex(): SlackIndex {
 }
 
 type Dialogue =
-  | { kind: "edit" | "delete"; row: ChannelRow }
+  | { kind: "edit" | "delete" | "takeover"; row: ChannelRow }
   | { kind: "create-console" }
   | { kind: "create-connect" }
   | { kind: "manage-console"; row: SlackDiscoveredOrdinary }
@@ -90,6 +90,10 @@ export function ChannelDialogues({ dialogue, index, close, onDone }: { dialogue?
       ) : dialogue.row.kind === "connect" && shared ? (
         <ConnectEditDialog key={dialogue.row.name} options={shared} editing={dialogue.row.record as SlackSharedChannel} onCancel={close} onDone={done} />
       ) : null;
+    case "takeover":
+      return dialogue.row.kind === "policy" && ordinary ? (
+        <ChannelEditDialog key={`takeover-${dialogue.row.name}`} options={ordinary} takeover={dialogue.row} onCancel={close} onDone={done} />
+      ) : null;
     case "create-console":
       return ordinary ? <ChannelEditDialog key="new-console" options={ordinary} onCancel={close} onDone={done} /> : null;
     case "create-connect":
@@ -104,7 +108,16 @@ export function ChannelDialogues({ dialogue, index, close, onDone }: { dialogue?
 /** Edit and Delete for a channel the console keeps a record of, which is
  *  where an action on a channel belongs: on the channel. A policy channel
  *  has neither, and the caller who may not operate it sees neither. */
-export function RowActions({ row, onEdit, onDelete }: { row: ChannelRow; onEdit: () => void; onDelete: () => void }) {
+export function RowActions({ row, onEdit, onDelete, onTakeover }: { row: ChannelRow; onEdit: () => void; onDelete: () => void; onTakeover?: () => void }) {
+  if (onTakeover && canTakeOver(row)) {
+    return (
+      <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
+        <Button size="small" onClick={onTakeover}>
+          Take over from git
+        </Button>
+      </Stack>
+    );
+  }
   if (!row.canOperate || !row.record) return null;
   return (
     <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
@@ -130,6 +143,7 @@ export function SourceNames({ row }: { row: ChannelRow }) {
 }
 
 function kindCaption(row: ChannelRow): string {
+  if (row.kind === "console" && row.supersedes) return "console · took over a git entry";
   return row.kind === "policy" ? "policy · defined in git" : kindLabel[row.kind];
 }
 

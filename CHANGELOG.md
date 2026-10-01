@@ -15,6 +15,27 @@
   and never fails the pass. Nothing else changes; the status document only
   gains entries.
 
+- **Take over a policy channel from git on the console, with no unmanaged
+  gap.** A policy channel (`slack.workspaces[k].channels`) shows **Take over
+  from git** on its channel page (operator over the workspace's owning
+  directory, or installation-wide operator): the console-channel form opens
+  prefilled with its workspace, name, channel id (from the latest report),
+  visibility, mode and `ignore` list, and asks for directory-group sources.
+  Saving writes the usual `_channel.<workspace>.<name>.json` record with the
+  new field `supersedes_policy: true` (also `SlackChannelDefinition.supersedes_policy`)
+  and audits it as `roster.slack_console_channel.created` with a new optional
+  data field `reason: takeover`; the audit catalogue is **1.3.0**. A console
+  channel that duplicates a policy channel is still refused as *defined in git*
+  unless it sets `supersedes_policy` and covers exactly that channel (same
+  workspace and name, or channel id; same visibility). The controller then
+  reconciles the record and never the policy entry, reports the entry as
+  `superseded` (`taken over on the console by X at T; remove it from git`,
+  also on the Channels tab and the channel page), and removing the entry from
+  git later changes nothing in Slack. A takeover removes nobody by itself;
+  strict removals still need the directory to vouch and the breakers apply.
+  Deleting the console record restores the policy entry's management on the next
+  pass. The old way (remove it from git first) still works.
+
 ## v1.46.0
 
 - **The console is organised as four clusters, and Slack is one place.** The

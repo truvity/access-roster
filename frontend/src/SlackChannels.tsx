@@ -29,12 +29,15 @@ import {
   emptyChannelForm,
   formOfDiscovered,
   formOfRecord,
+  formOfTakeover,
   manageableWorkspaces,
   manageHint,
   modeLabel,
   ownerOf,
+  takeoverSentence,
   type ChannelForm,
 } from "./slackChannelsModel";
+import type { ChannelRow } from "./slackIndex";
 import { sourceOptions } from "./slackSourcesModel";
 import { SourcePicker } from "./SourcePicker";
 import { Failure, Mono } from "./ui";
@@ -92,23 +95,26 @@ export function ChannelEditDialog({
   options,
   editing,
   discovered,
+  takeover,
   onCancel,
   onDone,
 }: {
   options: ListSlackChannelsResponse;
   editing?: SlackChannelRecord;
   discovered?: SlackDiscoveredOrdinary;
+  /** A policy channel being taken over from git. */
+  takeover?: ChannelRow;
   onCancel: () => void;
   onDone: (message: string) => void;
 }) {
-  const [form, setForm] = useState<ChannelForm>(editing ? formOfRecord(editing) : discovered ? formOfDiscovered(discovered) : emptyChannelForm);
+  const [form, setForm] = useState<ChannelForm>(editing ? formOfRecord(editing) : takeover ? formOfTakeover(takeover) : discovered ? formOfDiscovered(discovered) : emptyChannelForm);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const owner = ownerOf(options.workspaces, form.workspace);
   // An ordinary channel takes its own directory's groups only.
   const picker = sourceOptions(options.sourceDirectories.filter((dir) => dir.workspaceId === owner));
   const wrong = channelProblems(form, owner);
-  const fixed = !!editing || !!discovered;
+  const fixed = !!editing || !!discovered || !!takeover;
 
   const submit = async () => {
     setBusy(true);
@@ -121,7 +127,9 @@ export function ChannelEditDialog({
       } else {
         await slackChannels.createSlackChannel({ channel });
         onDone(
-          discovered
+          takeover
+            ? `#${channel.name} is taken over from git. The controller reconciles the console record from its next pass; remove the entry from git when you are ready.`
+            : discovered
             ? `#${channel.name} is under management. The controller takes over the existing channel on its next pass.`
             : `#${channel.name} is defined. The controller takes it over by name, or creates it, on its next pass.`,
         );
@@ -134,7 +142,7 @@ export function ChannelEditDialog({
 
   return (
     <Dialog open onClose={busy ? undefined : onCancel} fullWidth maxWidth="sm">
-      <DialogTitle>{editing ? `Edit #${form.name}` : discovered ? "Manage an existing channel" : "New console channel"}</DialogTitle>
+      <DialogTitle>{editing ? `Edit #${form.name}` : takeover ? `Take over #${form.name} from git` : discovered ? "Manage an existing channel" : "New console channel"}</DialogTitle>
       <DialogContent>
         <Stack sx={{ gap: 2, pt: 1 }}>
           <TextField
@@ -195,6 +203,11 @@ export function ChannelEditDialog({
             disabled={busy || owner === ""}
             helperText={owner === "" ? "Pick a workspace with an owning directory." : "Members come only from these groups of the workspace's own directory, never from individuals."}
           />
+          {takeover ? (
+            <Typography variant="caption" color="text.secondary">
+              {takeoverSentence}
+            </Typography>
+          ) : null}
           {discovered ? (
             <Typography variant="caption" color="text.secondary">
               The existing channel {discovered.channelId} is taken over as it is: the bot joins a public channel, and a private one needs the bot in it already. Its
@@ -214,7 +227,7 @@ export function ChannelEditDialog({
           Cancel
         </Button>
         <Button variant="contained" disabled={busy || wrong.length > 0} onClick={() => void submit()}>
-          {editing ? "Save" : "Create"}
+          {editing ? "Save" : takeover ? "Take over" : "Create"}
         </Button>
       </DialogActions>
     </Dialog>
