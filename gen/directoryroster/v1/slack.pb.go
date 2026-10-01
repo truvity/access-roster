@@ -70,10 +70,17 @@ type GetSlackStatusResponse struct {
 	BotScopes []string `protobuf:"bytes,3,rep,name=bot_scopes,json=botScopes,proto3" json:"bot_scopes,omitempty"`
 	// where Slack sends the owner back to after installing: to be listed in
 	// the App's redirect URLs.
-	RedirectUrl   string                  `protobuf:"bytes,4,opt,name=redirect_url,json=redirectUrl,proto3" json:"redirect_url,omitempty"`
-	Workspaces    []*SlackWorkspaceStatus `protobuf:"bytes,5,rep,name=workspaces,proto3" json:"workspaces,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RedirectUrl string                  `protobuf:"bytes,4,opt,name=redirect_url,json=redirectUrl,proto3" json:"redirect_url,omitempty"`
+	Workspaces  []*SlackWorkspaceStatus `protobuf:"bytes,5,rep,name=workspaces,proto3" json:"workspaces,omitempty"`
+	// the directories the caller may name as the owner of a workspace it
+	// connects, or change one to: every connected directory for the
+	// installation-wide operator, the caller's own for a scoped one.
+	OwnerChoices []*DirectoryRef `protobuf:"bytes,6,rep,name=owner_choices,json=ownerChoices,proto3" json:"owner_choices,omitempty"`
+	// whether the caller may connect a workspace with no owner: the
+	// installation-wide operator alone.
+	MayConnectWithoutOwner bool `protobuf:"varint,7,opt,name=may_connect_without_owner,json=mayConnectWithoutOwner,proto3" json:"may_connect_without_owner,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *GetSlackStatusResponse) Reset() {
@@ -141,6 +148,20 @@ func (x *GetSlackStatusResponse) GetWorkspaces() []*SlackWorkspaceStatus {
 	return nil
 }
 
+func (x *GetSlackStatusResponse) GetOwnerChoices() []*DirectoryRef {
+	if x != nil {
+		return x.OwnerChoices
+	}
+	return nil
+}
+
+func (x *GetSlackStatusResponse) GetMayConnectWithoutOwner() bool {
+	if x != nil {
+		return x.MayConnectWithoutOwner
+	}
+	return false
+}
+
 type BeginSlackWorkspaceConnectRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// the policy's key of the workspace.
@@ -150,8 +171,14 @@ type BeginSlackWorkspaceConnectRequest struct {
 	// Required to create the App; optional afterwards, needed only when the
 	// scopes the roster asks for have grown since the App was created.
 	ConfigurationToken string `protobuf:"bytes,2,opt,name=configuration_token,json=configurationToken,proto3" json:"configuration_token,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// the directory workspace id that will own a workspace not yet
+	// connected. Empty is "none" for the installation-wide operator, and for
+	// an operator scoped to exactly one directory means that one; an
+	// operator scoped to several must name one of them. Ignored once the
+	// workspace is connected.
+	Owner         string `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BeginSlackWorkspaceConnectRequest) Reset() {
@@ -194,6 +221,13 @@ func (x *BeginSlackWorkspaceConnectRequest) GetWorkspace() string {
 func (x *BeginSlackWorkspaceConnectRequest) GetConfigurationToken() string {
 	if x != nil {
 		return x.ConfigurationToken
+	}
+	return ""
+}
+
+func (x *BeginSlackWorkspaceConnectRequest) GetOwner() string {
+	if x != nil {
+		return x.Owner
 	}
 	return ""
 }
@@ -243,6 +277,96 @@ func (x *BeginSlackWorkspaceConnectResponse) GetUrl() string {
 	return ""
 }
 
+type ChangeSlackWorkspaceOwnerRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Workspace string                 `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
+	// the directory workspace id to record, which must be a connected
+	// directory; empty removes the owner.
+	Owner         string `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeSlackWorkspaceOwnerRequest) Reset() {
+	*x = ChangeSlackWorkspaceOwnerRequest{}
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeSlackWorkspaceOwnerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeSlackWorkspaceOwnerRequest) ProtoMessage() {}
+
+func (x *ChangeSlackWorkspaceOwnerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeSlackWorkspaceOwnerRequest.ProtoReflect.Descriptor instead.
+func (*ChangeSlackWorkspaceOwnerRequest) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ChangeSlackWorkspaceOwnerRequest) GetWorkspace() string {
+	if x != nil {
+		return x.Workspace
+	}
+	return ""
+}
+
+func (x *ChangeSlackWorkspaceOwnerRequest) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+type ChangeSlackWorkspaceOwnerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeSlackWorkspaceOwnerResponse) Reset() {
+	*x = ChangeSlackWorkspaceOwnerResponse{}
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeSlackWorkspaceOwnerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeSlackWorkspaceOwnerResponse) ProtoMessage() {}
+
+func (x *ChangeSlackWorkspaceOwnerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeSlackWorkspaceOwnerResponse.ProtoReflect.Descriptor instead.
+func (*ChangeSlackWorkspaceOwnerResponse) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{5}
+}
+
 type DisconnectSlackWorkspaceRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Workspace string                 `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
@@ -256,7 +380,7 @@ type DisconnectSlackWorkspaceRequest struct {
 
 func (x *DisconnectSlackWorkspaceRequest) Reset() {
 	*x = DisconnectSlackWorkspaceRequest{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[4]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -268,7 +392,7 @@ func (x *DisconnectSlackWorkspaceRequest) String() string {
 func (*DisconnectSlackWorkspaceRequest) ProtoMessage() {}
 
 func (x *DisconnectSlackWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[4]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -281,7 +405,7 @@ func (x *DisconnectSlackWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectSlackWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*DisconnectSlackWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{4}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DisconnectSlackWorkspaceRequest) GetWorkspace() string {
@@ -309,7 +433,7 @@ type DisconnectSlackWorkspaceResponse struct {
 
 func (x *DisconnectSlackWorkspaceResponse) Reset() {
 	*x = DisconnectSlackWorkspaceResponse{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[5]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -321,7 +445,7 @@ func (x *DisconnectSlackWorkspaceResponse) String() string {
 func (*DisconnectSlackWorkspaceResponse) ProtoMessage() {}
 
 func (x *DisconnectSlackWorkspaceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[5]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -334,7 +458,7 @@ func (x *DisconnectSlackWorkspaceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectSlackWorkspaceResponse.ProtoReflect.Descriptor instead.
 func (*DisconnectSlackWorkspaceResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{5}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DisconnectSlackWorkspaceResponse) GetRevoked() bool {
@@ -358,7 +482,7 @@ type ConfirmSlackRemovalsRequest struct {
 
 func (x *ConfirmSlackRemovalsRequest) Reset() {
 	*x = ConfirmSlackRemovalsRequest{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[6]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -370,7 +494,7 @@ func (x *ConfirmSlackRemovalsRequest) String() string {
 func (*ConfirmSlackRemovalsRequest) ProtoMessage() {}
 
 func (x *ConfirmSlackRemovalsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[6]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -383,7 +507,7 @@ func (x *ConfirmSlackRemovalsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmSlackRemovalsRequest.ProtoReflect.Descriptor instead.
 func (*ConfirmSlackRemovalsRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{6}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ConfirmSlackRemovalsRequest) GetWorkspace() string {
@@ -415,7 +539,7 @@ type ConfirmSlackRemovalsResponse struct {
 
 func (x *ConfirmSlackRemovalsResponse) Reset() {
 	*x = ConfirmSlackRemovalsResponse{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[7]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -427,7 +551,7 @@ func (x *ConfirmSlackRemovalsResponse) String() string {
 func (*ConfirmSlackRemovalsResponse) ProtoMessage() {}
 
 func (x *ConfirmSlackRemovalsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[7]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -440,7 +564,7 @@ func (x *ConfirmSlackRemovalsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmSlackRemovalsResponse.ProtoReflect.Descriptor instead.
 func (*ConfirmSlackRemovalsResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{7}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{9}
 }
 
 // SlackWorkspaceStatus is one Slack workspace: what the policy declares,
@@ -449,11 +573,12 @@ type SlackWorkspaceStatus struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// the policy's key.
 	Workspace string `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
-	// the Slack team id the policy declares: the only one an install is
-	// accepted from. Empty for a workspace the policy no longer declares.
+	// the Slack team id recorded at the first install: the only one a later
+	// install is accepted from. Empty until the App is first installed.
 	TeamId string `protobuf:"bytes,2,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	// the directory workspace that owns it, empty when the policy names none
-	// (then only the installation-wide role operates it).
+	// the directory workspace id recorded as its owner when it was
+	// connected, empty when it has none (then only the installation-wide
+	// role operates it, and its people are held).
 	Owner string `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
 	// not_connected, created (the App exists and nobody has installed it),
 	// installed, or scopes_missing (installed, and the grant lacks scopes the
@@ -482,13 +607,21 @@ type SlackWorkspaceStatus struct {
 	NeedsConfigurationToken bool `protobuf:"varint,14,opt,name=needs_configuration_token,json=needsConfigurationToken,proto3" json:"needs_configuration_token,omitempty"`
 	// the roster's bot scopes the grant lacks.
 	MissingScopes []string `protobuf:"bytes,15,rep,name=missing_scopes,json=missingScopes,proto3" json:"missing_scopes,omitempty"`
+	// the owner's primary domain, which is how a person knows the directory.
+	// Empty without an owner, or when the owner is no longer connected.
+	OwnerDomain string `protobuf:"bytes,16,opt,name=owner_domain,json=ownerDomain,proto3" json:"owner_domain,omitempty"`
+	// whether the caller may change the owner: the installation-wide
+	// operator, once the workspace is connected.
+	CanChangeOwner bool `protobuf:"varint,17,opt,name=can_change_owner,json=canChangeOwner,proto3" json:"can_change_owner,omitempty"` // whether the policy still names the workspace key. A key it no longer
+	// names can only be disconnected.
+	Declared      bool `protobuf:"varint,18,opt,name=declared,proto3" json:"declared,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SlackWorkspaceStatus) Reset() {
 	*x = SlackWorkspaceStatus{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[8]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -500,7 +633,7 @@ func (x *SlackWorkspaceStatus) String() string {
 func (*SlackWorkspaceStatus) ProtoMessage() {}
 
 func (x *SlackWorkspaceStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[8]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -513,7 +646,7 @@ func (x *SlackWorkspaceStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackWorkspaceStatus.ProtoReflect.Descriptor instead.
 func (*SlackWorkspaceStatus) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{8}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SlackWorkspaceStatus) GetWorkspace() string {
@@ -621,6 +754,27 @@ func (x *SlackWorkspaceStatus) GetMissingScopes() []string {
 	return nil
 }
 
+func (x *SlackWorkspaceStatus) GetOwnerDomain() string {
+	if x != nil {
+		return x.OwnerDomain
+	}
+	return ""
+}
+
+func (x *SlackWorkspaceStatus) GetCanChangeOwner() bool {
+	if x != nil {
+		return x.CanChangeOwner
+	}
+	return false
+}
+
+func (x *SlackWorkspaceStatus) GetDeclared() bool {
+	if x != nil {
+		return x.Declared
+	}
+	return false
+}
+
 // SlackConnection is what connecting left behind. Never a credential.
 type SlackConnection struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -638,7 +792,7 @@ type SlackConnection struct {
 
 func (x *SlackConnection) Reset() {
 	*x = SlackConnection{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[9]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -650,7 +804,7 @@ func (x *SlackConnection) String() string {
 func (*SlackConnection) ProtoMessage() {}
 
 func (x *SlackConnection) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[9]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -663,7 +817,7 @@ func (x *SlackConnection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackConnection.ProtoReflect.Descriptor instead.
 func (*SlackConnection) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{9}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SlackConnection) GetAppId() string {
@@ -727,7 +881,7 @@ type SlackTick struct {
 
 func (x *SlackTick) Reset() {
 	*x = SlackTick{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[10]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -739,7 +893,7 @@ func (x *SlackTick) String() string {
 func (*SlackTick) ProtoMessage() {}
 
 func (x *SlackTick) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[10]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -752,7 +906,7 @@ func (x *SlackTick) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackTick.ProtoReflect.Descriptor instead.
 func (*SlackTick) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{10}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SlackTick) GetAt() *timestamppb.Timestamp {
@@ -826,7 +980,7 @@ type SlackChannelStatus struct {
 
 func (x *SlackChannelStatus) Reset() {
 	*x = SlackChannelStatus{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[11]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -838,7 +992,7 @@ func (x *SlackChannelStatus) String() string {
 func (*SlackChannelStatus) ProtoMessage() {}
 
 func (x *SlackChannelStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[11]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -851,7 +1005,7 @@ func (x *SlackChannelStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackChannelStatus.ProtoReflect.Descriptor instead.
 func (*SlackChannelStatus) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{11}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SlackChannelStatus) GetName() string {
@@ -947,7 +1101,7 @@ type SlackMemberStatus struct {
 
 func (x *SlackMemberStatus) Reset() {
 	*x = SlackMemberStatus{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[12]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -959,7 +1113,7 @@ func (x *SlackMemberStatus) String() string {
 func (*SlackMemberStatus) ProtoMessage() {}
 
 func (x *SlackMemberStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[12]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -972,7 +1126,7 @@ func (x *SlackMemberStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackMemberStatus.ProtoReflect.Descriptor instead.
 func (*SlackMemberStatus) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{12}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SlackMemberStatus) GetPerson() string {
@@ -1029,7 +1183,7 @@ type SlackLeaver struct {
 
 func (x *SlackLeaver) Reset() {
 	*x = SlackLeaver{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[13]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1041,7 +1195,7 @@ func (x *SlackLeaver) String() string {
 func (*SlackLeaver) ProtoMessage() {}
 
 func (x *SlackLeaver) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[13]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1054,7 +1208,7 @@ func (x *SlackLeaver) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackLeaver.ProtoReflect.Descriptor instead.
 func (*SlackLeaver) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{13}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SlackLeaver) GetEmail() string {
@@ -1098,7 +1252,7 @@ type SlackBreaker struct {
 
 func (x *SlackBreaker) Reset() {
 	*x = SlackBreaker{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[14]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1110,7 +1264,7 @@ func (x *SlackBreaker) String() string {
 func (*SlackBreaker) ProtoMessage() {}
 
 func (x *SlackBreaker) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[14]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1123,7 +1277,7 @@ func (x *SlackBreaker) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackBreaker.ProtoReflect.Descriptor instead.
 func (*SlackBreaker) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{14}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SlackBreaker) GetAffected() int32 {
@@ -1167,7 +1321,7 @@ type SlackRemovalConfirmation struct {
 
 func (x *SlackRemovalConfirmation) Reset() {
 	*x = SlackRemovalConfirmation{}
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[15]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1179,7 +1333,7 @@ func (x *SlackRemovalConfirmation) String() string {
 func (*SlackRemovalConfirmation) ProtoMessage() {}
 
 func (x *SlackRemovalConfirmation) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_proto_msgTypes[15]
+	mi := &file_directoryroster_v1_slack_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1192,7 +1346,7 @@ func (x *SlackRemovalConfirmation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackRemovalConfirmation.ProtoReflect.Descriptor instead.
 func (*SlackRemovalConfirmation) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{15}
+	return file_directoryroster_v1_slack_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SlackRemovalConfirmation) GetFingerprint() string {
@@ -1220,8 +1374,8 @@ var File_directoryroster_v1_slack_proto protoreflect.FileDescriptor
 
 const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	"\n" +
-	"\x1edirectoryroster/v1/slack.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x17\n" +
-	"\x15GetSlackStatusRequest\"\x84\x02\n" +
+	"\x1edirectoryroster/v1/slack.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"directoryroster/v1/workspace.proto\"\x17\n" +
+	"\x15GetSlackStatusRequest\"\x86\x03\n" +
 	"\x16GetSlackStatusResponse\x12+\n" +
 	"\x11reports_available\x18\x01 \x01(\bR\x10reportsAvailable\x121\n" +
 	"\x14connecting_available\x18\x02 \x01(\bR\x13connectingAvailable\x12\x1d\n" +
@@ -1230,12 +1384,19 @@ const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	"\fredirect_url\x18\x04 \x01(\tR\vredirectUrl\x12H\n" +
 	"\n" +
 	"workspaces\x18\x05 \x03(\v2(.directoryroster.v1.SlackWorkspaceStatusR\n" +
-	"workspaces\"r\n" +
+	"workspaces\x12E\n" +
+	"\rowner_choices\x18\x06 \x03(\v2 .directoryroster.v1.DirectoryRefR\fownerChoices\x129\n" +
+	"\x19may_connect_without_owner\x18\a \x01(\bR\x16mayConnectWithoutOwner\"\x88\x01\n" +
 	"!BeginSlackWorkspaceConnectRequest\x12\x1c\n" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12/\n" +
-	"\x13configuration_token\x18\x02 \x01(\tR\x12configurationToken\"6\n" +
+	"\x13configuration_token\x18\x02 \x01(\tR\x12configurationToken\x12\x14\n" +
+	"\x05owner\x18\x03 \x01(\tR\x05owner\"6\n" +
 	"\"BeginSlackWorkspaceConnectResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"d\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"V\n" +
+	" ChangeSlackWorkspaceOwnerRequest\x12\x1c\n" +
+	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x14\n" +
+	"\x05owner\x18\x02 \x01(\tR\x05owner\"#\n" +
+	"!ChangeSlackWorkspaceOwnerResponse\"d\n" +
 	"\x1fDisconnectSlackWorkspaceRequest\x12\x1c\n" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12#\n" +
 	"\rforget_anyway\x18\x02 \x01(\bR\fforgetAnyway\"<\n" +
@@ -1245,7 +1406,7 @@ const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x18\n" +
 	"\achannel\x18\x02 \x01(\tR\achannel\x12 \n" +
 	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint\"\x1e\n" +
-	"\x1cConfirmSlackRemovalsResponse\"\xda\x05\n" +
+	"\x1cConfirmSlackRemovalsResponse\"\xc3\x06\n" +
 	"\x14SlackWorkspaceStatus\x12\x1c\n" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x17\n" +
 	"\ateam_id\x18\x02 \x01(\tR\x06teamId\x12\x14\n" +
@@ -1265,7 +1426,10 @@ const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	"\abreaker\x18\f \x01(\v2 .directoryroster.v1.SlackBreakerR\abreaker\x12_\n" +
 	"\x14removal_confirmation\x18\r \x01(\v2,.directoryroster.v1.SlackRemovalConfirmationR\x13removalConfirmation\x12:\n" +
 	"\x19needs_configuration_token\x18\x0e \x01(\bR\x17needsConfigurationToken\x12%\n" +
-	"\x0emissing_scopes\x18\x0f \x03(\tR\rmissingScopes\"\xfb\x01\n" +
+	"\x0emissing_scopes\x18\x0f \x03(\tR\rmissingScopes\x12!\n" +
+	"\fowner_domain\x18\x10 \x01(\tR\vownerDomain\x12(\n" +
+	"\x10can_change_owner\x18\x11 \x01(\bR\x0ecanChangeOwner\x12\x1a\n" +
+	"\bdeclared\x18\x12 \x01(\bR\bdeclared\"\xfb\x01\n" +
 	"\x0fSlackConnection\x12\x15\n" +
 	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12(\n" +
 	"\x10app_settings_url\x18\x02 \x01(\tR\x0eappSettingsUrl\x12\x1e\n" +
@@ -1314,10 +1478,11 @@ const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	"\x18SlackRemovalConfirmation\x12 \n" +
 	"\vfingerprint\x18\x01 \x01(\tR\vfingerprint\x12!\n" +
 	"\fconfirmed_by\x18\x02 \x01(\tR\vconfirmedBy\x12=\n" +
-	"\fconfirmed_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vconfirmedAt2\x88\x04\n" +
+	"\fconfirmed_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vconfirmedAt2\x93\x05\n" +
 	"\fSlackService\x12g\n" +
 	"\x0eGetSlackStatus\x12).directoryroster.v1.GetSlackStatusRequest\x1a*.directoryroster.v1.GetSlackStatusResponse\x12\x8b\x01\n" +
-	"\x1aBeginSlackWorkspaceConnect\x125.directoryroster.v1.BeginSlackWorkspaceConnectRequest\x1a6.directoryroster.v1.BeginSlackWorkspaceConnectResponse\x12\x85\x01\n" +
+	"\x1aBeginSlackWorkspaceConnect\x125.directoryroster.v1.BeginSlackWorkspaceConnectRequest\x1a6.directoryroster.v1.BeginSlackWorkspaceConnectResponse\x12\x88\x01\n" +
+	"\x19ChangeSlackWorkspaceOwner\x124.directoryroster.v1.ChangeSlackWorkspaceOwnerRequest\x1a5.directoryroster.v1.ChangeSlackWorkspaceOwnerResponse\x12\x85\x01\n" +
 	"\x18DisconnectSlackWorkspace\x123.directoryroster.v1.DisconnectSlackWorkspaceRequest\x1a4.directoryroster.v1.DisconnectSlackWorkspaceResponse\x12y\n" +
 	"\x14ConfirmSlackRemovals\x12/.directoryroster.v1.ConfirmSlackRemovalsRequest\x1a0.directoryroster.v1.ConfirmSlackRemovalsResponseB\xd8\x01\n" +
 	"\x16com.directoryroster.v1B\n" +
@@ -1335,53 +1500,59 @@ func file_directoryroster_v1_slack_proto_rawDescGZIP() []byte {
 	return file_directoryroster_v1_slack_proto_rawDescData
 }
 
-var file_directoryroster_v1_slack_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_directoryroster_v1_slack_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_directoryroster_v1_slack_proto_goTypes = []any{
 	(*GetSlackStatusRequest)(nil),              // 0: directoryroster.v1.GetSlackStatusRequest
 	(*GetSlackStatusResponse)(nil),             // 1: directoryroster.v1.GetSlackStatusResponse
 	(*BeginSlackWorkspaceConnectRequest)(nil),  // 2: directoryroster.v1.BeginSlackWorkspaceConnectRequest
 	(*BeginSlackWorkspaceConnectResponse)(nil), // 3: directoryroster.v1.BeginSlackWorkspaceConnectResponse
-	(*DisconnectSlackWorkspaceRequest)(nil),    // 4: directoryroster.v1.DisconnectSlackWorkspaceRequest
-	(*DisconnectSlackWorkspaceResponse)(nil),   // 5: directoryroster.v1.DisconnectSlackWorkspaceResponse
-	(*ConfirmSlackRemovalsRequest)(nil),        // 6: directoryroster.v1.ConfirmSlackRemovalsRequest
-	(*ConfirmSlackRemovalsResponse)(nil),       // 7: directoryroster.v1.ConfirmSlackRemovalsResponse
-	(*SlackWorkspaceStatus)(nil),               // 8: directoryroster.v1.SlackWorkspaceStatus
-	(*SlackConnection)(nil),                    // 9: directoryroster.v1.SlackConnection
-	(*SlackTick)(nil),                          // 10: directoryroster.v1.SlackTick
-	(*SlackChannelStatus)(nil),                 // 11: directoryroster.v1.SlackChannelStatus
-	(*SlackMemberStatus)(nil),                  // 12: directoryroster.v1.SlackMemberStatus
-	(*SlackLeaver)(nil),                        // 13: directoryroster.v1.SlackLeaver
-	(*SlackBreaker)(nil),                       // 14: directoryroster.v1.SlackBreaker
-	(*SlackRemovalConfirmation)(nil),           // 15: directoryroster.v1.SlackRemovalConfirmation
-	(*timestamppb.Timestamp)(nil),              // 16: google.protobuf.Timestamp
+	(*ChangeSlackWorkspaceOwnerRequest)(nil),   // 4: directoryroster.v1.ChangeSlackWorkspaceOwnerRequest
+	(*ChangeSlackWorkspaceOwnerResponse)(nil),  // 5: directoryroster.v1.ChangeSlackWorkspaceOwnerResponse
+	(*DisconnectSlackWorkspaceRequest)(nil),    // 6: directoryroster.v1.DisconnectSlackWorkspaceRequest
+	(*DisconnectSlackWorkspaceResponse)(nil),   // 7: directoryroster.v1.DisconnectSlackWorkspaceResponse
+	(*ConfirmSlackRemovalsRequest)(nil),        // 8: directoryroster.v1.ConfirmSlackRemovalsRequest
+	(*ConfirmSlackRemovalsResponse)(nil),       // 9: directoryroster.v1.ConfirmSlackRemovalsResponse
+	(*SlackWorkspaceStatus)(nil),               // 10: directoryroster.v1.SlackWorkspaceStatus
+	(*SlackConnection)(nil),                    // 11: directoryroster.v1.SlackConnection
+	(*SlackTick)(nil),                          // 12: directoryroster.v1.SlackTick
+	(*SlackChannelStatus)(nil),                 // 13: directoryroster.v1.SlackChannelStatus
+	(*SlackMemberStatus)(nil),                  // 14: directoryroster.v1.SlackMemberStatus
+	(*SlackLeaver)(nil),                        // 15: directoryroster.v1.SlackLeaver
+	(*SlackBreaker)(nil),                       // 16: directoryroster.v1.SlackBreaker
+	(*SlackRemovalConfirmation)(nil),           // 17: directoryroster.v1.SlackRemovalConfirmation
+	(*DirectoryRef)(nil),                       // 18: directoryroster.v1.DirectoryRef
+	(*timestamppb.Timestamp)(nil),              // 19: google.protobuf.Timestamp
 }
 var file_directoryroster_v1_slack_proto_depIdxs = []int32{
-	8,  // 0: directoryroster.v1.GetSlackStatusResponse.workspaces:type_name -> directoryroster.v1.SlackWorkspaceStatus
-	9,  // 1: directoryroster.v1.SlackWorkspaceStatus.connection:type_name -> directoryroster.v1.SlackConnection
-	10, // 2: directoryroster.v1.SlackWorkspaceStatus.tick:type_name -> directoryroster.v1.SlackTick
-	11, // 3: directoryroster.v1.SlackWorkspaceStatus.channels:type_name -> directoryroster.v1.SlackChannelStatus
-	13, // 4: directoryroster.v1.SlackWorkspaceStatus.leavers:type_name -> directoryroster.v1.SlackLeaver
-	14, // 5: directoryroster.v1.SlackWorkspaceStatus.breaker:type_name -> directoryroster.v1.SlackBreaker
-	15, // 6: directoryroster.v1.SlackWorkspaceStatus.removal_confirmation:type_name -> directoryroster.v1.SlackRemovalConfirmation
-	16, // 7: directoryroster.v1.SlackConnection.connected_at:type_name -> google.protobuf.Timestamp
-	16, // 8: directoryroster.v1.SlackTick.at:type_name -> google.protobuf.Timestamp
-	12, // 9: directoryroster.v1.SlackChannelStatus.members:type_name -> directoryroster.v1.SlackMemberStatus
-	14, // 10: directoryroster.v1.SlackChannelStatus.breaker:type_name -> directoryroster.v1.SlackBreaker
-	15, // 11: directoryroster.v1.SlackChannelStatus.removal_confirmation:type_name -> directoryroster.v1.SlackRemovalConfirmation
-	16, // 12: directoryroster.v1.SlackRemovalConfirmation.confirmed_at:type_name -> google.protobuf.Timestamp
-	0,  // 13: directoryroster.v1.SlackService.GetSlackStatus:input_type -> directoryroster.v1.GetSlackStatusRequest
-	2,  // 14: directoryroster.v1.SlackService.BeginSlackWorkspaceConnect:input_type -> directoryroster.v1.BeginSlackWorkspaceConnectRequest
-	4,  // 15: directoryroster.v1.SlackService.DisconnectSlackWorkspace:input_type -> directoryroster.v1.DisconnectSlackWorkspaceRequest
-	6,  // 16: directoryroster.v1.SlackService.ConfirmSlackRemovals:input_type -> directoryroster.v1.ConfirmSlackRemovalsRequest
-	1,  // 17: directoryroster.v1.SlackService.GetSlackStatus:output_type -> directoryroster.v1.GetSlackStatusResponse
-	3,  // 18: directoryroster.v1.SlackService.BeginSlackWorkspaceConnect:output_type -> directoryroster.v1.BeginSlackWorkspaceConnectResponse
-	5,  // 19: directoryroster.v1.SlackService.DisconnectSlackWorkspace:output_type -> directoryroster.v1.DisconnectSlackWorkspaceResponse
-	7,  // 20: directoryroster.v1.SlackService.ConfirmSlackRemovals:output_type -> directoryroster.v1.ConfirmSlackRemovalsResponse
-	17, // [17:21] is the sub-list for method output_type
-	13, // [13:17] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	10, // 0: directoryroster.v1.GetSlackStatusResponse.workspaces:type_name -> directoryroster.v1.SlackWorkspaceStatus
+	18, // 1: directoryroster.v1.GetSlackStatusResponse.owner_choices:type_name -> directoryroster.v1.DirectoryRef
+	11, // 2: directoryroster.v1.SlackWorkspaceStatus.connection:type_name -> directoryroster.v1.SlackConnection
+	12, // 3: directoryroster.v1.SlackWorkspaceStatus.tick:type_name -> directoryroster.v1.SlackTick
+	13, // 4: directoryroster.v1.SlackWorkspaceStatus.channels:type_name -> directoryroster.v1.SlackChannelStatus
+	15, // 5: directoryroster.v1.SlackWorkspaceStatus.leavers:type_name -> directoryroster.v1.SlackLeaver
+	16, // 6: directoryroster.v1.SlackWorkspaceStatus.breaker:type_name -> directoryroster.v1.SlackBreaker
+	17, // 7: directoryroster.v1.SlackWorkspaceStatus.removal_confirmation:type_name -> directoryroster.v1.SlackRemovalConfirmation
+	19, // 8: directoryroster.v1.SlackConnection.connected_at:type_name -> google.protobuf.Timestamp
+	19, // 9: directoryroster.v1.SlackTick.at:type_name -> google.protobuf.Timestamp
+	14, // 10: directoryroster.v1.SlackChannelStatus.members:type_name -> directoryroster.v1.SlackMemberStatus
+	16, // 11: directoryroster.v1.SlackChannelStatus.breaker:type_name -> directoryroster.v1.SlackBreaker
+	17, // 12: directoryroster.v1.SlackChannelStatus.removal_confirmation:type_name -> directoryroster.v1.SlackRemovalConfirmation
+	19, // 13: directoryroster.v1.SlackRemovalConfirmation.confirmed_at:type_name -> google.protobuf.Timestamp
+	0,  // 14: directoryroster.v1.SlackService.GetSlackStatus:input_type -> directoryroster.v1.GetSlackStatusRequest
+	2,  // 15: directoryroster.v1.SlackService.BeginSlackWorkspaceConnect:input_type -> directoryroster.v1.BeginSlackWorkspaceConnectRequest
+	4,  // 16: directoryroster.v1.SlackService.ChangeSlackWorkspaceOwner:input_type -> directoryroster.v1.ChangeSlackWorkspaceOwnerRequest
+	6,  // 17: directoryroster.v1.SlackService.DisconnectSlackWorkspace:input_type -> directoryroster.v1.DisconnectSlackWorkspaceRequest
+	8,  // 18: directoryroster.v1.SlackService.ConfirmSlackRemovals:input_type -> directoryroster.v1.ConfirmSlackRemovalsRequest
+	1,  // 19: directoryroster.v1.SlackService.GetSlackStatus:output_type -> directoryroster.v1.GetSlackStatusResponse
+	3,  // 20: directoryroster.v1.SlackService.BeginSlackWorkspaceConnect:output_type -> directoryroster.v1.BeginSlackWorkspaceConnectResponse
+	5,  // 21: directoryroster.v1.SlackService.ChangeSlackWorkspaceOwner:output_type -> directoryroster.v1.ChangeSlackWorkspaceOwnerResponse
+	7,  // 22: directoryroster.v1.SlackService.DisconnectSlackWorkspace:output_type -> directoryroster.v1.DisconnectSlackWorkspaceResponse
+	9,  // 23: directoryroster.v1.SlackService.ConfirmSlackRemovals:output_type -> directoryroster.v1.ConfirmSlackRemovalsResponse
+	19, // [19:24] is the sub-list for method output_type
+	14, // [14:19] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_slack_proto_init() }
@@ -1389,13 +1560,14 @@ func file_directoryroster_v1_slack_proto_init() {
 	if File_directoryroster_v1_slack_proto != nil {
 		return
 	}
+	file_directoryroster_v1_workspace_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_slack_proto_rawDesc), len(file_directoryroster_v1_slack_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -356,7 +356,7 @@ type SlackApp struct {
 	NeedsConfigurationToken bool `protobuf:"varint,20,opt,name=needs_configuration_token,json=needsConfigurationToken,proto3" json:"needs_configuration_token,omitempty"`
 	// whether the caller may create, install and reinstall this App: the
 	// installation-wide operator, or the operator of the directory workspace
-	// that owns the Slack workspace (`slack.workspaces.<key>.owner`).
+	// recorded as the Slack workspace's owner.
 	CanOperate    bool `protobuf:"varint,21,opt,name=can_operate,json=canOperate,proto3" json:"can_operate,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -23,8 +23,14 @@ func newEnv(ws string) *env {
 	e := &env{in: reconcile.Input{
 		Workspace: ws,
 		Workspaces: map[string]policy.SlackWorkspace{
-			"acme":   {TeamID: "TACME", Domains: []string{domain["acme"]}},
-			"globex": {TeamID: "TGLOBEX", Domains: []string{domain["globex"]}},
+			"acme":   {},
+			"globex": {},
+		},
+		// What is recorded and read at run time, not declared: each workspace
+		// is owned by a directory, which serves the domains it is found by.
+		Facts: map[string]reconcile.Facts{
+			"acme":   {Team: "TACME", Owner: "C0acme", Domains: []string{domain["acme"]}},
+			"globex": {Team: "TGLOBEX", Owner: "C0globex", Domains: []string{domain["globex"]}},
 		},
 		People:  map[string][]string{"jdoe": {"j.doe@acme.example", "john@globex.example"}},
 		Holders: rails.Holders{},
@@ -240,6 +246,53 @@ func TestAPersonIsLookedUpByTheirAddressInTheWorkspacesDomains(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The domains a person is looked up by are the OWNING directory's served
+// domains, read at run time: serving another domain moves a person into the
+// workspace, and a workspace with no owner holds every person, saying why.
+func TestPeopleAreLookedUpByTheOwningDirectorysServedDomains(t *testing.T) {
+	t.Parallel()
+	t.Run("a domain the owner starts serving finds a person", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv("acme").bind("eng", extendCh("g")).holders("g", "ann@acme.example", "bob@acme.example.org")
+		if got := reconcile.Lookups(e.in); !slices.Equal(got, []string{"ann@acme.example"}) {
+			t.Fatalf("Lookups = %v, want only the served domain's address", got)
+		}
+		facts := e.in.Facts["acme"]
+		facts.Domains = []string{"acme.example", "Acme.Example.Org"}
+		e.in.Facts["acme"] = facts
+		if got := reconcile.Lookups(e.in); !slices.Equal(got, []string{"ann@acme.example", "bob@acme.example.org"}) {
+			t.Fatalf("Lookups after the owner serves a second domain = %v", got)
+		}
+	})
+	t.Run("a workspace with no owner holds its people", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv("acme").bind("eng", extendCh("g")).holders("g", "ann@acme.example")
+		e.in.Facts["acme"] = reconcile.Facts{Team: "TACME"}
+		if got := reconcile.Lookups(e.in); len(got) != 0 {
+			t.Fatalf("Lookups = %v, want none without an owner", got)
+		}
+		e.channel(reconcile.Channel{ID: "C1", Name: "eng", Creator: e.in.Observed.BotUserID, BotIn: true})
+		d := e.decide(t, nil, reconcile.Confirmed{})
+		m := channelOf(t, d, "eng").Members[0]
+		if m.State != status.StateHeld || m.Reason != reconcile.NoOwner {
+			t.Errorf("row = %+v, want held with %q", m, reconcile.NoOwner)
+		}
+		if len(d.Actions) != 0 {
+			t.Errorf("actions = %v, want none", d.Actions)
+		}
+	})
+	t.Run("an owner serving no domains is not an absent owner", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv("acme").bind("eng", extendCh("g")).holders("g", "ann@acme.example")
+		e.in.Facts["acme"] = reconcile.Facts{Team: "TACME", Owner: "C0acme"}
+		e.channel(reconcile.Channel{ID: "C1", Name: "eng", Creator: e.in.Observed.BotUserID, BotIn: true})
+		m := channelOf(t, e.decide(t, nil, reconcile.Confirmed{}), "eng").Members[0]
+		if m.State != status.StateHeld || !strings.Contains(m.Reason, "no account path") {
+			t.Errorf("row = %+v", m)
+		}
+	})
 }
 
 // ---------------------------------------------------------------- rule 2
@@ -660,7 +713,7 @@ func TestTheWorkspaceBreakerCountsPeopleAcrossChannels(t *testing.T) {
 	e.channel(ours(reconcile.Channel{ID: "CB", Name: "b", Private: true, Members: append([]string{"BACME"}, ids...)}))
 	// The directory wants only the first three in a, and the last three in b:
 	// use two groups.
-	e.in.Workspaces["acme"] = policy.SlackWorkspace{TeamID: "TACME", Domains: []string{"acme.example"}, Channels: map[string]policy.SlackChannel{
+	e.in.Workspaces["acme"] = policy.SlackWorkspace{Channels: map[string]policy.SlackChannel{
 		"a": strictCh("ga"), "b": strictCh("gb"),
 	}}
 	e.holders("ga", addrs[:3]...).holders("gb", addrs[3:]...)
@@ -867,7 +920,8 @@ func TestSharedHostStateMachine(t *testing.T) {
 			c.Shared, c.SharedTeamIDs = true, []string{"TACME", "TGLOBEX"}
 			return c
 		}())
-		e.in.Workspaces["initech"] = policy.SlackWorkspace{TeamID: "TINITECH", Domains: []string{"initech.example"}}
+		e.in.Workspaces["initech"] = policy.SlackWorkspace{}
+		e.in.Facts["initech"] = reconcile.Facts{Team: "TINITECH", Owner: "C0initech", Domains: []string{"initech.example"}}
 		e.in.Bots["initech"] = "BINITECH"
 		dec := e.decide(t, nil, reconcile.Confirmed{})
 		wantKinds(t, dec, "share-invite:platform")
@@ -950,7 +1004,8 @@ func TestSharedPeopleJoinFromTheHostElseTheFirstGuestElseAreHeld(t *testing.T) {
 	t.Parallel()
 	s := reconcile.SharedChannel{Name: "platform", Host: "acme", With: []string{"globex", "initech"}, From: []string{"g"}}
 	workspaces := func(e *env) {
-		e.in.Workspaces["initech"] = policy.SlackWorkspace{TeamID: "TINITECH", Domains: []string{"initech.example"}}
+		e.in.Workspaces["initech"] = policy.SlackWorkspace{}
+		e.in.Facts["initech"] = reconcile.Facts{Team: "TINITECH", Owner: "C0initech", Domains: []string{"initech.example"}}
 		e.in.Bots["initech"] = "BINITECH"
 		e.in.People["multi"] = []string{"m@globex.example", "m@initech.example"}
 		e.in.People["both"] = []string{"b@acme.example", "b@globex.example"}
@@ -1084,9 +1139,9 @@ func TestSharedChannelValidation(t *testing.T) {
 		return policy.Policy{
 			Groups: map[string]policy.Group{"g": {}},
 			Slack: policy.Slack{Workspaces: map[string]policy.SlackWorkspace{
-				"acme":    {TeamID: "TACME1", Domains: []string{"acme.example"}, Channels: map[string]policy.SlackChannel{"eng": {From: []string{"g"}}}},
-				"globex":  {TeamID: "TGLOBEX1", Domains: []string{"globex.example"}},
-				"initech": {TeamID: "TINITECH1", Domains: []string{"initech.example"}},
+				"acme":    {Channels: map[string]policy.SlackChannel{"eng": {From: []string{"g"}}}},
+				"globex":  {},
+				"initech": {},
 			}},
 		}
 	}

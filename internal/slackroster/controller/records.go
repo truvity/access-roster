@@ -37,9 +37,21 @@ type store struct {
 	// credentials are by workspace key; a workspace with no file is absent.
 	credentials map[string]credentialResult
 	// bots are each installed workspace's bot user id, from its record.
-	bots         map[string]string
+	bots map[string]string
+	// recorded are the team and the owner each workspace's record carries:
+	// what the policy does not say and connecting it recorded.
+	recorded     map[string]recorded
 	shared       []sharedRecord
 	confirmation []connection.Confirmation
+}
+
+// recorded is what connecting a workspace left in its record that the policy
+// never names.
+type recorded struct {
+	// team is the Slack team id recorded at the first install.
+	team string
+	// owner is the directory workspace id recorded as the owner.
+	owner string
 }
 
 // readStore reads both directories. A directory that is not there is an
@@ -47,7 +59,7 @@ type store struct {
 // mount is optional for that reason. A key that is not one this contract
 // wrote is left alone.
 func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
-	s := store{credentials: map[string]credentialResult{}, bots: map[string]string{}}
+	s := store{credentials: map[string]credentialResult{}, bots: map[string]string{}, recorded: map[string]recorded{}}
 	for _, name := range entries(credentialsDir, log) {
 		// A reserved key is another document's, never a workspace's.
 		if connection.Reserved(name) {
@@ -86,6 +98,7 @@ func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 				log.Warn("a workspace's record could not be read", "workspace", workspace, "error", err)
 				continue
 			}
+			s.recorded[workspace] = recorded{team: record.TeamID, owner: record.Owner}
 			if record.Installed() {
 				s.bots[workspace] = record.BotUserID
 			}
@@ -183,3 +196,15 @@ func (s store) confirmed(workspace string, now time.Time) reconcile.Confirmed {
 
 // botsFor is every known bot user id, copied so a pass can add its own.
 func (s store) botsFor() map[string]string { return maps.Clone(s.bots) }
+
+// facts are what is known of every declared workspace at run time: the team
+// and the owner its record carries, and the domains the owning directory
+// serves now. served is nil when the directory could not be asked.
+func (s store) facts(declared map[string]policy.SlackWorkspace, served map[string][]string) map[string]reconcile.Facts {
+	out := make(map[string]reconcile.Facts, len(declared))
+	for key := range declared {
+		rec := s.recorded[key]
+		out[key] = reconcile.Facts{Team: rec.team, Owner: rec.owner, Domains: served[rec.owner]}
+	}
+	return out
+}

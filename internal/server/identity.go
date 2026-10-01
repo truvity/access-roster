@@ -79,8 +79,8 @@ func requireAnywhere(ctx context.Context, want access.Role) (access.Identity, er
 //   - owner set: the installation-wide role passes, and so does the same
 //     role held over that one directory workspace ([requireWorkspace]).
 //
-// owner is a directory workspace id, read from the policy (for a GitHub
-// organisation, `github.<org>.owner`). subject names the thing acted on
+// owner is a directory workspace id, read from the connection's own record
+// (recorded when it was connected, never declared in the policy). subject names the thing acted on
 // — the organisation's login — so the refusal says whose directory the
 // caller was missing rather than that a role was lost.
 func requireOwner(ctx context.Context, want access.Role, owner, subject string) (access.Identity, error) {

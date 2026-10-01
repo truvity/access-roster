@@ -21,8 +21,9 @@ import (
 )
 
 // ErrWrongWorkspace is a bot token that belongs to another workspace than
-// the policy's team id for the key.
-var ErrWrongWorkspace = errors.New("apply: the bot token belongs to a different Slack workspace than the policy's team_id")
+// the team recorded for the key when it was first installed (or to one
+// with no team recorded at all).
+var ErrWrongWorkspace = errors.New("apply: the bot token belongs to a different Slack workspace than the team recorded at the first install")
 
 func normalise(address string) string { return strings.ToLower(strings.TrimSpace(address)) }
 
@@ -40,7 +41,7 @@ func Observe(ctx context.Context, client *slackapp.Client, in reconcile.Input) (
 	if err != nil {
 		return reconcile.Observed{}, fmt.Errorf("apply: ask who the bot token is: %w", err)
 	}
-	if who.TeamID != cfg.TeamID {
+	if recorded := in.Facts[in.Workspace].Team; recorded == "" || who.TeamID != recorded {
 		return reconcile.Observed{}, ErrWrongWorkspace
 	}
 	obs := reconcile.Observed{

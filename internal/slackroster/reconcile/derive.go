@@ -159,10 +159,10 @@ func (d *Draft) resolveGuest(lc layoutChannel) resolved {
 		}
 		return ready(ch, lc.private, false)
 	}
-	host := d.in.Workspaces[lc.shared.Host].TeamID
+	host := d.in.Facts[lc.shared.Host].Team
 	for i := range obs.Invites {
 		inv := &obs.Invites[i]
-		if inv.Incoming && inv.HostTeamID == host && inv.ChannelName == lc.name && inv.RecipientUserID == obs.BotUserID {
+		if host != "" && inv.Incoming && inv.HostTeamID == host && inv.ChannelName == lc.name && inv.RecipientUserID == obs.BotUserID {
 			return resolved{kind: resAccept, invite: inv}
 		}
 	}
@@ -263,7 +263,7 @@ func (d *Draft) shareActions(p *plan) {
 		return
 	}
 	for _, g := range lc.shared.With {
-		team, bot := d.in.Workspaces[g].TeamID, d.in.Bots[g]
+		team, bot := d.in.Facts[g].Team, d.in.Bots[g]
 		invite := Action{Kind: status.ActionShareInvite, Channel: lc.name, Private: lc.private, Host: d.in.Workspace, Guest: g, GuestBot: bot, Shared: true,
 			Reason: "the channel is shared with " + g}
 		ch := p.res.ch

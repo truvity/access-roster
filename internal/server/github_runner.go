@@ -206,7 +206,7 @@ func (c *Console) runnerStatus(ctx context.Context, out *directoryrosterv1.GetGi
 // githubRunnerFlow checks a runner flow's redirect and names its tier and
 // organisation.
 func (s *ConsoleServer) githubRunnerFlow(w http.ResponseWriter, r *http.Request) (tier, org, actor string, ok bool) {
-	bind, actor, ok := s.githubBound(w, r)
+	bind, actor, _, ok := s.githubBound(w, r)
 	if !ok {
 		return "", "", "", false
 	}

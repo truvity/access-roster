@@ -36,17 +36,9 @@ groups:
   all:platform:engineer: { members: [team-platform@globex.example] }
 slack:
   workspaces:
-    acme:
-      team_id: T0123ABCD
-      owner: C0north
-      domains: [acme.example]
-    globex:
-      team_id: T0456EFGH
-      owner: C0south
-      domains: [globex.example]
-    initech:
-      team_id: T0789IJKL
-      domains: [initech.example]
+    acme: {}
+    globex: {}
+    initech: {}
 `
 
 const slackTestCatalogue = `
@@ -61,16 +53,32 @@ apps:
 `
 
 type slackHarness struct {
-	server   *ConsoleServer
-	console  *Console
-	store    *kube.SlackCatalogueApps
-	client   *kube.Client
-	slack    *slackfake.Slack
-	recorded *audittest.Recorder
-	logs     *bytes.Buffer
+	server     *ConsoleServer
+	console    *Console
+	store      *kube.SlackCatalogueApps
+	workspaces *kube.SlackWorkspaces
+	client     *kube.Client
+	slack      *slackfake.Slack
+	recorded   *audittest.Recorder
+	logs       *bytes.Buffer
 }
 
+// newSlackHarness is a console with every workspace connected: acme owned by
+// C0north's directory, globex by C0south's and initech by nobody's, each
+// installed into the team the fake Slack knows it as. A test of connecting
+// starts from [newBareSlackHarness] instead.
 func newSlackHarness(t *testing.T) *slackHarness {
+	t.Helper()
+	h := newBareSlackHarness(t)
+	seedSlackWorkspace(t, h.workspaces, "acme", "C0north", acmeTeam)
+	seedSlackWorkspace(t, h.workspaces, "globex", "C0south", globexTeam)
+	seedSlackWorkspace(t, h.workspaces, "initech", "", "T0789IJKL")
+	return h
+}
+
+// newBareSlackHarness is a console with the three workspaces declared and
+// none connected, over a hub serving the two directories that can own one.
+func newBareSlackHarness(t *testing.T) *slackHarness {
 	t.Helper()
 	declared, err := policy.Parse([]byte(slackTestPolicy))
 	if err != nil {
@@ -89,6 +97,7 @@ func newSlackHarness(t *testing.T) *slackHarness {
 	fakeSlack.AddTeam(globexTeam, "Globex")
 	client := kube.NewClient(fake.NewClientset(), "access-issuer", "access-issuer")
 	store := kube.NewSlackCatalogueApps(client)
+	workspaces := kube.NewSlackWorkspaces(client)
 	recorded := audittest.New(t)
 	console := &Console{deps: ConsoleDeps{
 		Authorizer:         access.NewAuthorizer(set, nil, 0),
@@ -97,6 +106,8 @@ func newSlackHarness(t *testing.T) *slackHarness {
 		RootURL:            "https://access.example",
 		SlackCatalogue:     catalogue,
 		SlackCatalogueApps: store,
+		SlackWorkspaces:    workspaces,
+		Hub:                ownerHub(t),
 		SlackAPI:           []slackapp.Option{slackapp.WithBaseURL(fakeSlack.URL())},
 		Audit:              recorded,
 	}}
@@ -108,7 +119,7 @@ func newSlackHarness(t *testing.T) *slackHarness {
 		log:      slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		mount:    "/console",
 	}
-	return &slackHarness{server: server, console: console, store: store, client: client, slack: fakeSlack, recorded: recorded, logs: logs}
+	return &slackHarness{server: server, console: console, store: store, workspaces: workspaces, client: client, slack: fakeSlack, recorded: recorded, logs: logs}
 }
 
 func viewer() context.Context {
@@ -480,5 +491,47 @@ func TestASlackInstallIsFinishedOnlyByTheBrowserThatStartedIt(t *testing.T) {
 	// And the page it lands on says nothing a log should not: no token.
 	if strings.Contains(h.logs.String(), slackfake.Token(acmeTeam)) {
 		t.Error("the bot token is in the logs")
+	}
+}
+
+// A catalogue App is created in and installed into a workspace that is
+// connected already: the workspace's team and owner are what connecting it
+// recorded, and until then there is neither to hold an App to.
+func TestACatalogueAppNeedsItsWorkspaceConnectedFirst(t *testing.T) {
+	h := newBareSlackHarness(t)
+	ctx := operator()
+
+	check := func(when string) {
+		t.Helper()
+		err := h.create(ctx, "sync", accepted)
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition || err == nil || !strings.Contains(err.Error(), "connect the workspace first") {
+			t.Errorf("Create %s = %v, want failed precondition saying to connect the workspace first", when, err)
+		}
+		err = h.installErr(ctx, "sync", "")
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition || err == nil || !strings.Contains(err.Error(), "connect the workspace first") {
+			t.Errorf("Install %s = %v, want failed precondition saying to connect the workspace first", when, err)
+		}
+		if h.slack.Count("apps.manifest.create") != 0 {
+			t.Errorf("a refused Create %s reached Slack", when)
+		}
+	}
+	check("with the workspace not connected")
+
+	// Created and never installed: there is an App, and still no team.
+	seedSlackWorkspace(t, h.workspaces, "acme", "C0north", "")
+	check("with the workspace's App created and not installed")
+
+	// The row says why nobody can operate it yet.
+	if app := h.app(t, "sync"); app.GetCanOperate() || app.GetTeamId() != "" {
+		t.Errorf("an App of an unconnected workspace = %+v", app)
+	}
+
+	// Installed: the recorded team is the one shown and the one held to.
+	seedSlackWorkspace(t, h.workspaces, "acme", "C0north", acmeTeam)
+	if err := h.create(ctx, "sync", accepted); err != nil {
+		t.Fatalf("Create once the workspace is connected: %v", err)
+	}
+	if app := h.app(t, "sync"); app.GetTeamId() != acmeTeam {
+		t.Errorf("the App's team = %q, want the one recorded at the workspace's first install", app.GetTeamId())
 	}
 }

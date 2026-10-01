@@ -35,7 +35,7 @@ type GitHubReports interface {
 // binds — rather than hiding either side.
 //
 // A viewer of some directory sees the organisations that directory owns
-// (policy `github.<org>.owner`) and no others; the installation-wide
+// (the owner recorded when each was connected) and no others; the installation-wide
 // viewer sees all. A report names the members of every bound team, which
 // is more than a scoped viewer may see of another company. The link App
 // and every link are people's across all organisations, so they are the
@@ -71,8 +71,8 @@ func (c *Console) GetGitHubStatus(
 		if err != nil {
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
-		for _, record := range records {
-			connections[record.Org] = record
+		for i := range records {
+			connections[records[i].Org] = records[i]
 		}
 	}
 
@@ -110,7 +110,18 @@ func (c *Console) GetGitHubStatus(
 		}
 		out.Organisations = append(out.Organisations, row)
 	}
-	out.Organisations = c.visibleOrganisations(id, out.Organisations)
+	owners := make(map[string]string, len(connections))
+	for org := range connections {
+		if connections[org].Owner != "" {
+			owners[org] = connections[org].Owner
+		}
+	}
+	dirs, err := c.directories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out.OwnerChoices, out.MayConnectWithoutOwner = ownerChoices(id, dirs)
+	out.Organisations = visibleOrganisations(id, owners, ownerDomains(dirs), out.Organisations)
 	if id.Can(access.RoleViewer) {
 		if err = c.linkStatus(ctx, out); err != nil {
 			return nil, connect.NewError(connect.CodeUnavailable, err)
@@ -123,10 +134,10 @@ func (c *Console) GetGitHubStatus(
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
 	out.RunnerApps = slices.DeleteFunc(out.RunnerApps, func(app *directoryrosterv1.GitHubRunnerApp) bool {
-		return !c.mayOrg(id, access.RoleViewer, app.GetOrg())
+		return !mayOwned(id, access.RoleViewer, owners[app.GetOrg()])
 	})
 	out.CatalogueApps = slices.DeleteFunc(out.CatalogueApps, func(app *directoryrosterv1.GitHubCatalogueApp) bool {
-		return !c.mayOrg(id, access.RoleViewer, app.GetOrg())
+		return !mayOwned(id, access.RoleViewer, owners[app.GetOrg()])
 	})
 	return connect.NewResponse(out), nil
 }

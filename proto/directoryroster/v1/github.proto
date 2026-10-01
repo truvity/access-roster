@@ -4,6 +4,8 @@ package directoryroster.v1;
 
 import "google/protobuf/timestamp.proto";
 
+import "directoryroster/v1/workspace.proto";
+
 // GitHubService is the console's view of GitHub organisations: which the
 // policy binds, and what the GitHub controller last reported for each.
 //
@@ -75,6 +77,12 @@ service GitHubService {
   // Superseded by BeginGitHubAppConnect, which does this for every kind of
   // App. Kept so a console mid-rollout keeps working.
   rpc BeginGitHubConnect(BeginGitHubConnectRequest) returns (BeginGitHubConnectResponse);
+
+  // ChangeGitHubOrganisationOwner changes the directory recorded as a
+  // connected organisation's owner, or removes it. Installation-wide
+  // operator only: an owner may not hand its own organisation to another
+  // or take it for itself. Recorded as a configuration change.
+  rpc ChangeGitHubOrganisationOwner(ChangeGitHubOrganisationOwnerRequest) returns (ChangeGitHubOrganisationOwnerResponse);
 
   // DisconnectGitHubOrganisation uninstalls the App, then forgets the
   // organisation's record and credential. Operator.
@@ -282,10 +290,20 @@ message GitHubApp {
   // how many accounts people linked through it. The link App only.
   int32 linked_accounts = 30;
   // whether the caller may operate it: hold the operator role over the
-  // directory that owns its organisation (policy `github.<org>.owner`), or
-  // installation-wide. The link App has no organisation of its own and is
-  // operated installation-wide alone.
+  // directory recorded as its organisation's owner, or installation-wide.
+  // The link App has no organisation of its own and is operated
+  // installation-wide alone. The controller App of an organisation nobody
+  // has connected yet may be operated by anyone who could connect it.
   bool can_operate = 31;
+  // the directory workspace id recorded as its organisation's owner when
+  // the organisation was connected; empty for none, and for the link App.
+  string owner_directory = 32;
+  // the owner's primary domain, which is how a person knows the directory.
+  string owner_domain = 33;
+  // whether the caller may change the organisation's owner: the
+  // installation-wide operator, on the controller App of a connected
+  // organisation.
+  bool can_change_owner = 34;
 }
 
 message ListGitHubAppsRequest {}
@@ -306,6 +324,13 @@ message ListGitHubAppsResponse {
   repeated string bound_organisations = 6;
   // the page a person opens to link their account. Share it.
   string link_url = 7;
+  // the directories the caller may name as the owner of an organisation it
+  // connects: every connected directory for the installation-wide
+  // operator, the caller's own for a scoped one.
+  repeated DirectoryRef owner_choices = 8;
+  // whether the caller may connect an organisation with no owner: the
+  // installation-wide operator alone.
+  bool may_connect_without_owner = 9;
 }
 
 message GetGitHubAppRequest {
@@ -323,6 +348,12 @@ message BeginGitHubAppConnectRequest {
   // alone, which belongs to no one organisation; every other App is
   // created under the organisation it acts on.
   string owner = 2;
+  // for the controller App of an organisation not yet connected: the
+  // directory workspace id that will own it. Empty is "none" for the
+  // installation-wide operator, and for an operator scoped to exactly one
+  // directory means that one; an operator scoped to several must name one
+  // of them. Ignored once the organisation is connected.
+  string owner_directory = 3;
 }
 
 message BeginGitHubAppConnectResponse {
@@ -601,7 +632,18 @@ message DisconnectGitHubLinkAppResponse {
 message BeginGitHubConnectRequest {
   // the organisation's login.
   string org = 1;
+  // the directory that will own it; see BeginGitHubAppConnectRequest.
+  string owner_directory = 2;
 }
+
+message ChangeGitHubOrganisationOwnerRequest {
+  string org = 1;
+  // the directory workspace id to record, which must be a connected
+  // directory; empty removes the owner.
+  string owner_directory = 2;
+}
+
+message ChangeGitHubOrganisationOwnerResponse {}
 
 message BeginGitHubConnectResponse {
   // where the browser goes next.
@@ -659,6 +701,9 @@ message GetGitHubStatusResponse {
   repeated GitHubCatalogueApp catalogue_apps = 10;
   // false where this deployment keeps no catalogue Apps.
   bool catalogue_available = 11;
+  // as in ListGitHubAppsResponse.
+  repeated DirectoryRef owner_choices = 12;
+  bool may_connect_without_owner = 13;
 }
 
 // GitHubRunnerApp is the App one tier's runners register with in one
@@ -744,9 +789,15 @@ message GitHubOrganisation {
   // addresses and GitHub logins the policy says to leave alone here.
   repeated string ignored = 16;
   // whether the caller may operate it: hold the operator role over the
-  // directory that owns it (policy `github.<org>.owner`), or
-  // installation-wide.
+  // directory recorded as its owner, or installation-wide.
   bool can_operate = 17;
+  // the directory workspace id recorded as its owner when it was
+  // connected; empty for none.
+  string owner_directory = 18;
+  // the owner's primary domain.
+  string owner_domain = 19;
+  // whether the caller may change the owner.
+  bool can_change_owner = 20;
 }
 
 // GitHubSeats is what the organisation pays for.

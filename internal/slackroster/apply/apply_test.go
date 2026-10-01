@@ -46,8 +46,12 @@ func newWorld(t *testing.T) *world {
 	}
 	w.in = reconcile.Input{
 		Workspaces: map[string]policy.SlackWorkspace{
-			"acme":   {TeamID: "TACME", Domains: []string{"acme.example"}, Channels: map[string]policy.SlackChannel{}},
-			"globex": {TeamID: "TGLOBEX", Domains: []string{"globex.example"}, Channels: map[string]policy.SlackChannel{}},
+			"acme":   {Channels: map[string]policy.SlackChannel{}},
+			"globex": {Channels: map[string]policy.SlackChannel{}},
+		},
+		Facts: map[string]reconcile.Facts{
+			"acme":   {Team: "TACME", Owner: "C0acme", Domains: []string{"acme.example"}},
+			"globex": {Team: "TGLOBEX", Owner: "C0globex", Domains: []string{"globex.example"}},
 		},
 		People: map[string][]string{"jdoe": {"j.doe@acme.example", "john@globex.example"}},
 		Bots:   map[string]string{"acme": slackfake.BotID("TACME"), "globex": slackfake.BotID("TGLOBEX")},
@@ -384,6 +388,19 @@ func TestATokenOfAnotherWorkspaceIsRefused(t *testing.T) {
 	in.Workspace = "acme"
 	_, err := apply.Observe(context.Background(), w.clients["globex"], in)
 	if !errors.Is(err, apply.ErrWrongWorkspace) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// A workspace with no team recorded has no team to compare a token with, so
+// no token is acted with.
+func TestATokenIsRefusedWhenNoTeamIsRecorded(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	in := w.in
+	in.Workspace = "acme"
+	in.Facts = map[string]reconcile.Facts{"acme": {Owner: "C0acme", Domains: []string{"acme.example"}}}
+	if _, err := apply.Observe(context.Background(), w.clients["acme"], in); !errors.Is(err, apply.ErrWrongWorkspace) {
 		t.Errorf("err = %v", err)
 	}
 }

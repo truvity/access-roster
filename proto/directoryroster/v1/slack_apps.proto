@@ -115,6 +115,6 @@ message SlackApp {
   bool needs_configuration_token = 20;
   // whether the caller may create, install and reinstall this App: the
   // installation-wide operator, or the operator of the directory workspace
-  // that owns the Slack workspace (`slack.workspaces.<key>.owner`).
+  // recorded as the Slack workspace's owner.
   bool can_operate = 21;
 }

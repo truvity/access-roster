@@ -283,7 +283,7 @@ export type SlackApp = Message<"directoryroster.v1.SlackApp"> & {
   /**
    * whether the caller may create, install and reinstall this App: the
    * installation-wide operator, or the operator of the directory workspace
-   * that owns the Slack workspace (`slack.workspaces.<key>.owner`).
+   * recorded as the Slack workspace's owner.
    *
    * @generated from field: bool can_operate = 21;
    */

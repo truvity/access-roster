@@ -57,6 +57,9 @@ const (
 	// GitHubServiceBeginGitHubConnectProcedure is the fully-qualified name of the GitHubService's
 	// BeginGitHubConnect RPC.
 	GitHubServiceBeginGitHubConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubConnect"
+	// GitHubServiceChangeGitHubOrganisationOwnerProcedure is the fully-qualified name of the
+	// GitHubService's ChangeGitHubOrganisationOwner RPC.
+	GitHubServiceChangeGitHubOrganisationOwnerProcedure = "/directoryroster.v1.GitHubService/ChangeGitHubOrganisationOwner"
 	// GitHubServiceDisconnectGitHubOrganisationProcedure is the fully-qualified name of the
 	// GitHubService's DisconnectGitHubOrganisation RPC.
 	GitHubServiceDisconnectGitHubOrganisationProcedure = "/directoryroster.v1.GitHubService/DisconnectGitHubOrganisation"
@@ -147,6 +150,11 @@ type GitHubServiceClient interface {
 	// Superseded by BeginGitHubAppConnect, which does this for every kind of
 	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error)
+	// ChangeGitHubOrganisationOwner changes the directory recorded as a
+	// connected organisation's owner, or removes it. Installation-wide
+	// operator only: an owner may not hand its own organisation to another
+	// or take it for itself. Recorded as a configuration change.
+	ChangeGitHubOrganisationOwner(context.Context, *connect.Request[v1.ChangeGitHubOrganisationOwnerRequest]) (*connect.Response[v1.ChangeGitHubOrganisationOwnerResponse], error)
 	// DisconnectGitHubOrganisation uninstalls the App, then forgets the
 	// organisation's record and credential. Operator.
 	//
@@ -289,6 +297,12 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubConnect")),
 			connect.WithClientOptions(opts...),
 		),
+		changeGitHubOrganisationOwner: connect.NewClient[v1.ChangeGitHubOrganisationOwnerRequest, v1.ChangeGitHubOrganisationOwnerResponse](
+			httpClient,
+			baseURL+GitHubServiceChangeGitHubOrganisationOwnerProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("ChangeGitHubOrganisationOwner")),
+			connect.WithClientOptions(opts...),
+		),
 		disconnectGitHubOrganisation: connect.NewClient[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse](
 			httpClient,
 			baseURL+GitHubServiceDisconnectGitHubOrganisationProcedure,
@@ -362,6 +376,7 @@ type gitHubServiceClient struct {
 	checkGitHubApp                 *connect.Client[v1.CheckGitHubAppRequest, v1.CheckGitHubAppResponse]
 	getGitHubStatus                *connect.Client[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse]
 	beginGitHubConnect             *connect.Client[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse]
+	changeGitHubOrganisationOwner  *connect.Client[v1.ChangeGitHubOrganisationOwnerRequest, v1.ChangeGitHubOrganisationOwnerResponse]
 	disconnectGitHubOrganisation   *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
 	beginGitHubLinkAppConnect      *connect.Client[v1.BeginGitHubLinkAppConnectRequest, v1.BeginGitHubLinkAppConnectResponse]
 	beginGitHubRunnerAppConnect    *connect.Client[v1.BeginGitHubRunnerAppConnectRequest, v1.BeginGitHubRunnerAppConnectResponse]
@@ -412,6 +427,12 @@ func (c *gitHubServiceClient) GetGitHubStatus(ctx context.Context, req *connect.
 // BeginGitHubConnect calls directoryroster.v1.GitHubService.BeginGitHubConnect.
 func (c *gitHubServiceClient) BeginGitHubConnect(ctx context.Context, req *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error) {
 	return c.beginGitHubConnect.CallUnary(ctx, req)
+}
+
+// ChangeGitHubOrganisationOwner calls
+// directoryroster.v1.GitHubService.ChangeGitHubOrganisationOwner.
+func (c *gitHubServiceClient) ChangeGitHubOrganisationOwner(ctx context.Context, req *connect.Request[v1.ChangeGitHubOrganisationOwnerRequest]) (*connect.Response[v1.ChangeGitHubOrganisationOwnerResponse], error) {
+	return c.changeGitHubOrganisationOwner.CallUnary(ctx, req)
 }
 
 // DisconnectGitHubOrganisation calls directoryroster.v1.GitHubService.DisconnectGitHubOrganisation.
@@ -523,6 +544,11 @@ type GitHubServiceHandler interface {
 	// Superseded by BeginGitHubAppConnect, which does this for every kind of
 	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error)
+	// ChangeGitHubOrganisationOwner changes the directory recorded as a
+	// connected organisation's owner, or removes it. Installation-wide
+	// operator only: an owner may not hand its own organisation to another
+	// or take it for itself. Recorded as a configuration change.
+	ChangeGitHubOrganisationOwner(context.Context, *connect.Request[v1.ChangeGitHubOrganisationOwnerRequest]) (*connect.Response[v1.ChangeGitHubOrganisationOwnerResponse], error)
 	// DisconnectGitHubOrganisation uninstalls the App, then forgets the
 	// organisation's record and credential. Operator.
 	//
@@ -661,6 +687,12 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubConnect")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gitHubServiceChangeGitHubOrganisationOwnerHandler := connect.NewUnaryHandler(
+		GitHubServiceChangeGitHubOrganisationOwnerProcedure,
+		svc.ChangeGitHubOrganisationOwner,
+		connect.WithSchema(gitHubServiceMethods.ByName("ChangeGitHubOrganisationOwner")),
+		connect.WithHandlerOptions(opts...),
+	)
 	gitHubServiceDisconnectGitHubOrganisationHandler := connect.NewUnaryHandler(
 		GitHubServiceDisconnectGitHubOrganisationProcedure,
 		svc.DisconnectGitHubOrganisation,
@@ -739,6 +771,8 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 			gitHubServiceGetGitHubStatusHandler.ServeHTTP(w, r)
 		case GitHubServiceBeginGitHubConnectProcedure:
 			gitHubServiceBeginGitHubConnectHandler.ServeHTTP(w, r)
+		case GitHubServiceChangeGitHubOrganisationOwnerProcedure:
+			gitHubServiceChangeGitHubOrganisationOwnerHandler.ServeHTTP(w, r)
 		case GitHubServiceDisconnectGitHubOrganisationProcedure:
 			gitHubServiceDisconnectGitHubOrganisationHandler.ServeHTTP(w, r)
 		case GitHubServiceBeginGitHubLinkAppConnectProcedure:
@@ -798,6 +832,10 @@ func (UnimplementedGitHubServiceHandler) GetGitHubStatus(context.Context, *conne
 
 func (UnimplementedGitHubServiceHandler) BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.BeginGitHubConnect is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) ChangeGitHubOrganisationOwner(context.Context, *connect.Request[v1.ChangeGitHubOrganisationOwnerRequest]) (*connect.Response[v1.ChangeGitHubOrganisationOwnerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.ChangeGitHubOrganisationOwner is not implemented"))
 }
 
 func (UnimplementedGitHubServiceHandler) DisconnectGitHubOrganisation(context.Context, *connect.Request[v1.DisconnectGitHubOrganisationRequest]) (*connect.Response[v1.DisconnectGitHubOrganisationResponse], error) {

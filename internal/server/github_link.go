@@ -164,7 +164,7 @@ func (c *Console) disconnectLinkApp(ctx context.Context) (githubDisconnect, erro
 // link App. There is nothing to install: the App is used by being
 // authorized, never by being installed.
 func (s *ConsoleServer) githubLinkAppCallback(w http.ResponseWriter, r *http.Request) {
-	owner, actor, ok := s.githubFlowFor(w, r, githubLinkAppBind)
+	owner, actor, _, ok := s.githubFlowFor(w, r, githubLinkAppBind)
 	if !ok {
 		return
 	}

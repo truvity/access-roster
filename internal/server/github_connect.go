@@ -77,11 +77,11 @@ func (c *Console) BeginGitHubConnect(
 	ctx context.Context, req *connect.Request[directoryrosterv1.BeginGitHubConnectRequest],
 ) (*connect.Response[directoryrosterv1.BeginGitHubConnectResponse], error) {
 	org := strings.TrimSpace(req.Msg.GetOrg())
-	id, err := c.requireOrg(ctx, access.RoleOperator, org)
+	id, err := requireAnywhere(ctx, access.RoleOperator)
 	if err != nil {
 		return nil, err
 	}
-	begun, err := c.beginOrganisationConnect(ctx, id.Who(), org)
+	begun, err := c.beginOrganisationConnect(ctx, id, org, req.Msg.GetOwnerDirectory())
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,15 @@ func (c *Console) BeginGitHubConnect(
 
 // beginOrganisationConnect is the work of it, which
 // [Console.BeginGitHubAppConnect] does too.
-func (c *Console) beginOrganisationConnect(ctx context.Context, actor, org string) (githubBegin, error) {
+//
+// Who may begin, and who will own what it connects, is decided here against
+// the record: an organisation already created is the recorded owner's to
+// finish (the installation-wide operator's too); one not yet created is
+// connectable by the installation-wide operator, or by an operator of a
+// directory, and [resolveOwner] says who then owns it.
+func (c *Console) beginOrganisationConnect(
+	ctx context.Context, who access.Identity, org, requestedOwner string,
+) (githubBegin, error) {
 	switch {
 	case !status.ValidOrg(org):
 		return githubBegin{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", org))
@@ -109,6 +117,20 @@ func (c *Console) beginOrganisationConnect(ctx context.Context, actor, org strin
 		return githubBegin{}, connect.NewError(connect.CodeUnavailable, err)
 	}
 	existing, connected := recordOf(records, org)
+	owner := existing.Owner
+	if connected {
+		if _, err = requireOwner(ctx, access.RoleOperator, existing.Owner, org); err != nil {
+			return githubBegin{}, err
+		}
+	} else {
+		dirs, err := c.directories(ctx)
+		if err != nil {
+			return githubBegin{}, err
+		}
+		if owner, err = resolveOwner(who, requestedOwner, dirs); err != nil {
+			return githubBegin{}, err
+		}
+	}
 	if connected && existing.Installed() {
 		return githubBegin{}, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("%s is already connected through %s: disconnect it first, or a second App would sit beside the first", org, existing.AppSlug))
@@ -116,7 +138,7 @@ func (c *Console) beginOrganisationConnect(ctx context.Context, actor, org strin
 
 	// The state carries who asked: the callbacks are redirects from GitHub
 	// and carry no identity of their own.
-	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubBind + org, Actor: actor})
+	state, err := c.deps.State.IssueAs(access.Binding{Bind: githubBind + org, Actor: who.Who(), Owner: owner})
 	if err != nil {
 		return githubBegin{}, connect.NewError(connect.CodeInternal, err)
 	}
@@ -192,9 +214,9 @@ func (c *Console) disconnectOrganisation(ctx context.Context, org string) (githu
 }
 
 func recordOf(records []connection.Record, org string) (connection.Record, bool) {
-	for _, record := range records {
-		if record.Org == org {
-			return record, true
+	for i := range records {
+		if records[i].Org == org {
+			return records[i], true
 		}
 	}
 	return connection.Record{}, false
@@ -205,7 +227,7 @@ func recordOf(records []connection.Record, org string) (connection.Record, bool)
 // straight on to Install, under a fresh state: the one that brought them
 // here is spent.
 func (s *ConsoleServer) githubCallback(w http.ResponseWriter, r *http.Request) {
-	org, actor, ok := s.githubFlow(w, r)
+	org, actor, owner, ok := s.githubFlow(w, r)
 	if !ok {
 		return
 	}
@@ -236,7 +258,7 @@ func (s *ConsoleServer) githubCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	record := connection.Record{
 		Org: org, AppID: registration.ID, AppSlug: registration.Slug, HTMLURL: registration.HTMLURL,
-		ConnectedAt: time.Now().UTC(), ConnectedBy: actor,
+		ConnectedAt: time.Now().UTC(), ConnectedBy: actor, Owner: owner,
 	}
 	credential := connection.Credential{Org: org, AppID: registration.ID, PrivateKey: registration.PEM}
 	if err = store.Put(r.Context(), record, credential); err != nil {
@@ -251,7 +273,7 @@ func (s *ConsoleServer) githubCallback(w http.ResponseWriter, r *http.Request) {
 	s.console.record(r.Context(), audit.GitHubAppCreated(audit.Identified(actor), org,
 		audit.App{ID: registration.ID, Slug: registration.Slug}))
 
-	state, err := s.state.IssueAs(access.Binding{Bind: githubBind + org, Actor: actor})
+	state, err := s.state.IssueAs(access.Binding{Bind: githubBind + org, Actor: actor, Owner: owner})
 	if err != nil {
 		s.githubProblem(w, r, http.StatusConflict, "The App was created; start Connect again to install it.", err.Error(), nil)
 		return
@@ -264,7 +286,7 @@ func (s *ConsoleServer) githubCallback(w http.ResponseWriter, r *http.Request) {
 // installation id in the query is a browser's word for it; what is kept is
 // what GitHub says, asked as the App.
 func (s *ConsoleServer) githubSetup(w http.ResponseWriter, r *http.Request) {
-	org, actor, ok := s.githubFlow(w, r)
+	org, actor, owner, ok := s.githubFlow(w, r)
 	if !ok {
 		return
 	}
@@ -307,7 +329,7 @@ func (s *ConsoleServer) githubSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	record, known := recordOf(records, org)
 	if !known {
-		record = connection.Record{Org: org, AppID: credential.AppID, ConnectedAt: time.Now().UTC(), ConnectedBy: actor}
+		record = connection.Record{Org: org, AppID: credential.AppID, ConnectedAt: time.Now().UTC(), ConnectedBy: actor, Owner: owner}
 	}
 	record.InstallationID, credential.InstallationID = installation, installation
 	if record.AppSlug == "" {
@@ -319,35 +341,36 @@ func (s *ConsoleServer) githubSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.InfoContext(r.Context(), "GitHub App installed", "org", org, "installation", installation, "by", logsafe.Value(actor))
-	s.console.record(r.Context(), audit.GitHubOrgConnected(audit.Identified(actor), org, credential.AppID, installation))
+	s.console.record(r.Context(), audit.GitHubOrgConnected(audit.Identified(actor), org, credential.AppID, installation, record.Owner))
 	http.Redirect(w, r, s.at("/#/github"), http.StatusFound)
 }
 
 // githubFlow checks what every GitHub redirect must carry: the state this
 // browser was given, signed by this service, naming a GitHub organisation
 // and the operator who started the flow.
-func (s *ConsoleServer) githubFlow(w http.ResponseWriter, r *http.Request) (org, actor string, ok bool) {
+func (s *ConsoleServer) githubFlow(w http.ResponseWriter, r *http.Request) (org, actor, owner string, ok bool) {
 	return s.githubFlowFor(w, r, githubBind)
 }
 
 // githubFlowFor is [ConsoleServer.githubFlow] for a flow whose state names
 // its organisation behind another prefix.
-func (s *ConsoleServer) githubFlowFor(w http.ResponseWriter, r *http.Request, prefix string) (org, actor string, ok bool) {
-	bind, actor, ok := s.githubBound(w, r)
+func (s *ConsoleServer) githubFlowFor(w http.ResponseWriter, r *http.Request, prefix string) (org, actor, owner string, ok bool) {
+	bind, actor, owner, ok := s.githubBound(w, r)
 	if !ok {
-		return "", "", false
+		return "", "", "", false
 	}
 	org, isGitHub := strings.CutPrefix(bind, prefix)
 	if !isGitHub || !status.ValidOrg(org) {
 		s.githubProblem(w, r, http.StatusBadRequest, "This is not a GitHub connect.", "", nil)
-		return "", "", false
+		return "", "", "", false
 	}
-	return org, actor, true
+	return org, actor, owner, true
 }
 
 // githubBound checks the state this browser was given, signed by this
-// service, and returns what it binds and the operator who started the flow.
-func (s *ConsoleServer) githubBound(w http.ResponseWriter, r *http.Request) (bind, actor string, ok bool) {
+// service, and returns what it binds, the operator who started the flow and
+// the owner the flow was begun to record.
+func (s *ConsoleServer) githubBound(w http.ResponseWriter, r *http.Request) (bind, actor, owner string, ok bool) {
 	state := r.URL.Query().Get("state")
 	cookie, err := r.Cookie(access.ConnectCookieName)
 	if err != nil || cookie.Value == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
@@ -356,12 +379,12 @@ func (s *ConsoleServer) githubBound(w http.ResponseWriter, r *http.Request) (bin
 			"More than ten minutes passed on GitHub's page before returning.",
 			"The browser is refusing the cookie this flow is pinned to.",
 		})
-		return "", "", false
+		return "", "", "", false
 	}
 	binding, err := s.state.VerifyBinding(state)
 	if err != nil {
 		s.githubProblem(w, r, http.StatusBadRequest, "This connect cannot be finished.", err.Error(), nil)
-		return "", "", false
+		return "", "", "", false
 	}
 	actor = binding.Actor
 	// The state binds who began the flow, and that was checked then. It is
@@ -370,18 +393,22 @@ func (s *ConsoleServer) githubBound(w http.ResponseWriter, r *http.Request) (bin
 	// directory must not finish in another's organisation, nor after the
 	// role was taken away.
 	if id, signedIn := IdentityFrom(r.Context()); signedIn {
-		owner, subject := s.console.ownerOfBind(binding.Bind)
-		if _, err = requireOwner(r.Context(), access.RoleOperator, owner, subject); err != nil {
+		bound, subject, ownerErr := s.console.ownerOfBind(r.Context(), binding)
+		if ownerErr != nil {
+			s.githubProblem(w, r, http.StatusConflict, "The connection records could not be read.", ownerErr.Error(), nil)
+			return "", "", "", false
+		}
+		if _, err = requireOwner(r.Context(), access.RoleOperator, bound, subject); err != nil {
 			s.githubProblem(w, r, http.StatusForbidden, err.Error()+".", "", nil)
-			return "", "", false
+			return "", "", "", false
 		}
 		actor = id.Who()
 	}
 	if actor == "" {
 		s.githubProblem(w, r, http.StatusForbidden, "Connecting a GitHub organisation needs the operator role.", "", nil)
-		return "", "", false
+		return "", "", "", false
 	}
-	return binding.Bind, actor, true
+	return binding.Bind, actor, binding.Owner, true
 }
 
 // githubProblem is the page a GitHub redirect lands on when it cannot
@@ -410,4 +437,50 @@ func errString(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// ChangeGitHubOrganisationOwner changes the directory recorded as a
+// connected organisation's owner, or removes it. The installation-wide
+// operator alone: an owner that could hand its organisation to another, or
+// take one, would make "who may operate this" a thing its operators decide.
+func (c *Console) ChangeGitHubOrganisationOwner(
+	ctx context.Context, req *connect.Request[directoryrosterv1.ChangeGitHubOrganisationOwnerRequest],
+) (*connect.Response[directoryrosterv1.ChangeGitHubOrganisationOwnerResponse], error) {
+	org, owner := strings.TrimSpace(req.Msg.GetOrg()), strings.TrimSpace(req.Msg.GetOwnerDirectory())
+	who, err := c.requireOwnerChange(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case !status.ValidOrg(org):
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not an organisation login", org))
+	case c.deps.GitHubOrgs == nil:
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no connected organisations"))
+	}
+	records, err := c.deps.GitHubOrgs.List(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
+	record, connected := recordOf(records, org)
+	if !connected {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("%s is not connected: its owner is chosen when it is connected", org))
+	}
+	credential, found, err := c.deps.GitHubOrgs.Credential(ctx, org)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
+	if !found {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("%s has no credential kept, so its record cannot be rewritten", org))
+	}
+	previous := record.Owner
+	if previous == owner {
+		return connect.NewResponse(&directoryrosterv1.ChangeGitHubOrganisationOwnerResponse{}), nil
+	}
+	record.Owner = owner
+	if err = c.deps.GitHubOrgs.Put(ctx, record, credential); err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
+	c.record(ctx, audit.GitHubOrgOwnerChanged(identityActor(who), org, previous, owner))
+	return connect.NewResponse(&directoryrosterv1.ChangeGitHubOrganisationOwnerResponse{}), nil
 }

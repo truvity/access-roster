@@ -780,11 +780,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 
 	// An App declared for a workspace the policy does not name could never
-	// be installed: there is no team id to hold the install to.
-	if err := cfg.slackCatalogue.CheckWorkspaces(func(key string) bool {
-		_, declared := set.SlackWorkspaceTeam(key)
-		return declared
-	}); err != nil {
+	// be installed: there is no connected workspace to install it into.
+	if err := cfg.slackCatalogue.CheckWorkspaces(set.SlackWorkspaceDeclared); err != nil {
 		return nil, fmt.Errorf("SLACK_APPS_CATALOGUE_FILE: %w", err)
 	}
 

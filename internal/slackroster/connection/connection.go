@@ -3,7 +3,7 @@
 //
 // Two objects, for the reason the GitHub connection is two: the record and
 // the credential have different readers. The RECORD (which app, in which
-// Slack team, whose bot, connected when and by whom) is what the console
+// Slack team once installed, owned by which directory, whose bot, connected when and by whom) is what the console
 // shows. The CREDENTIAL (the app's client id and secret, and the bot token)
 // is what only the controller acts with; it lives in one Secret the
 // controller mounts as a volume, so the controller needs no permission to
@@ -86,10 +86,21 @@ type Record struct {
 	Version int `json:"version"`
 	// Workspace is the policy's key for the workspace.
 	Workspace string `json:"workspace"`
-	// TeamID is Slack's own id for it, checked against the policy's and
-	// against auth.test.
-	TeamID string `json:"team_id"`
-	AppID  string `json:"app_id"`
+	// TeamID is Slack's own id for it, recorded from the first install
+	// (oauth.v2.access) and empty until then. Every later install must
+	// belong to the same team, and the controller acts with a bot token
+	// only while auth.test agrees. The policy never names it.
+	TeamID string `json:"team_id,omitempty"`
+	// Owner is the directory workspace id that owns this Slack workspace,
+	// chosen when it was connected: the workspace whose SCOPED operator
+	// (`<id>:access-roster:operator`) may operate it beside the
+	// installation-wide operator, and whose served domains a person is
+	// looked up by. Empty, only the installation-wide roles operate it and
+	// its people are held until an owner is set. Only the installation-wide
+	// operator changes it afterwards. The field is optional in version 1,
+	// so a record written before it existed reads as "no owner".
+	Owner string `json:"owner,omitempty"`
+	AppID string `json:"app_id"`
 	// AuthorizeURL is where an owner installs the App, as Slack returned it
 	// at creation: a public URL carrying no secret.
 	AuthorizeURL string `json:"authorize_url,omitempty"`
@@ -137,8 +148,8 @@ func EncodeRecord(r Record) (string, error) {
 	switch {
 	case !status.ValidWorkspace(r.Workspace):
 		return "", fmt.Errorf("connection: %q is not a workspace key", r.Workspace)
-	case r.TeamID == "" || r.AppID == "":
-		return "", errors.New("connection: a record needs a team id and an app id")
+	case r.AppID == "":
+		return "", errors.New("connection: a record needs an app id")
 	}
 	r.Version = Version
 	raw, err := json.Marshal(r)

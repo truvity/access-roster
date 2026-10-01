@@ -228,9 +228,28 @@ func GitHubAppCreated(actor Actor, org string, app App) *record.Record {
 }
 
 // GitHubOrgConnected is an organisation connected by installing its App.
-func GitHubOrgConnected(actor Actor, org string, app, installation int64) *record.Record {
+// owner is the directory workspace id recorded as its owner, empty when
+// only the installation-wide roles operate it.
+func GitHubOrgConnected(actor Actor, org string, app, installation int64, owner string) *record.Record {
 	return build("roster.github_org.connected", actor, Succeeded(), nil,
-		[]*record.Target{targetOrg(org)}, App{ID: app}.installed(installation))
+		[]*record.Target{targetOrg(org)},
+		data{"app": strconv.FormatInt(app, 10), "installation": strconv.FormatInt(installation, 10), "owner": ownerWord(owner)})
+}
+
+// ownerWord spells an empty owner, which is a decision, as "none".
+func ownerWord(owner string) string {
+	if owner == "" {
+		return "none"
+	}
+	return owner
+}
+
+// GitHubOrgOwnerChanged is an organisation's recorded owner changed by the
+// installation-wide operator. from and to are directory workspace ids, empty
+// for none.
+func GitHubOrgOwnerChanged(actor Actor, org, from, to string) *record.Record {
+	return build("roster.github_org.owner_changed", actor, Succeeded(), nil,
+		[]*record.Target{targetOrg(org)}, data{"from": ownerWord(from), "to": ownerWord(to)})
 }
 
 // GitHubOrgDisconnected is an organisation disconnected; reason is what the
@@ -505,6 +524,9 @@ type SlackWorkspace struct {
 	Key  string
 	Team string
 	App  string
+	// Owner is the directory workspace id recorded as the workspace's owner,
+	// empty for none.
+	Owner string
 }
 
 func targetSlackWorkspace(key string) *record.Target {
@@ -522,11 +544,19 @@ func targetSlackUser(id string) *record.Target {
 // SlackWorkspaceConnected is a workspace connected from the console.
 func SlackWorkspaceConnected(actor Actor, w SlackWorkspace) *record.Record {
 	return build("roster.slack_workspace.connected", actor, Succeeded(), nil,
-		[]*record.Target{targetSlackWorkspace(w.Key), {Type: "slack_app", Id: w.App}}, data{"team": w.Team, "app": w.App})
+		[]*record.Target{targetSlackWorkspace(w.Key), {Type: "slack_app", Id: w.App}}, data{"team": w.Team, "app": w.App, "owner": ownerWord(w.Owner)})
+}
+
+// SlackWorkspaceOwnerChanged is a workspace's recorded owner changed by the
+// installation-wide operator. from and to are directory workspace ids, empty
+// for none.
+func SlackWorkspaceOwnerChanged(actor Actor, key, from, to string) *record.Record {
+	return build("roster.slack_workspace.owner_changed", actor, Succeeded(), nil,
+		[]*record.Target{targetSlackWorkspace(key)}, data{"from": ownerWord(from), "to": ownerWord(to)})
 }
 
 // SlackWorkspaceConnectRefused is an install that Slack completed for a
-// workspace other than the one the policy names. The token it handed over
+// workspace other than the one recorded at its first install. The token it handed over
 // was revoked and dropped, never kept.
 func SlackWorkspaceConnectRefused(actor Actor, w SlackWorkspace, reason string) *record.Record {
 	return build("roster.slack_workspace.connect_refused", actor, Denied(reason), nil,

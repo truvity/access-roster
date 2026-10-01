@@ -14,6 +14,12 @@
       "description": "The Slack App's id.",
       "x-audit-class": "shared",
       "x-audit-pii": "none"
+    },
+    "owner": {
+      "type": "string",
+      "description": "The directory workspace id recorded as the workspace's owner; \"none\" when only the installation-wide roles operate it.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
     }
   }
 }

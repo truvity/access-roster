@@ -47,6 +47,27 @@ type console struct {
 	policy string
 	// explained counts the Explain questions, by address.
 	explained map[string]int
+	// served are the domains each connected directory serves, by its
+	// workspace id; servedErr is the answer when it cannot be read.
+	served    map[string][]string
+	servedErr error
+}
+
+func (c *console) ListServedDomains(
+	context.Context, *connect.Request[directoryrosterv1.ListServedDomainsRequest],
+) (*connect.Response[directoryrosterv1.ListServedDomainsResponse], error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.servedErr != nil {
+		return nil, c.servedErr
+	}
+	out := &directoryrosterv1.ListServedDomainsResponse{}
+	for _, id := range slices.Sorted(maps.Keys(c.served)) {
+		out.Directories = append(out.Directories, &directoryrosterv1.DirectoryDomains{
+			WorkspaceId: id, PrimaryDomain: c.served[id][0], Domains: c.served[id],
+		})
+	}
+	return connect.NewResponse(out), nil
 }
 
 func (c *console) ListHolders(
@@ -173,15 +194,19 @@ func newRig(t *testing.T) *rig {
 	r := &rig{
 		t: t, fake: fake, audit: audittest.New(t), reports: &reports{}, now: time.Now(),
 		creds: t.TempDir(), records: t.TempDir(), users: map[string]string{}, controllers: map[string]*controller.Controller{},
-		console: &console{policy: testPolicy, dir: map[string][]string{}, unsure: map[string]bool{}, explained: map[string]int{}},
+		console: &console{
+			policy: testPolicy, dir: map[string][]string{}, unsure: map[string]bool{}, explained: map[string]int{},
+			// Each Slack workspace is owned by a directory that serves its domain.
+			served: map[string][]string{"C0acme": {"acme.example"}, "C0globex": {"globex.example"}},
+		},
 		policy: policy.Policy{
 			Groups: map[string]policy.Group{"g-eng": {}, "g-all": {}, "g-gx": {}},
 			Slack: policy.Slack{Workspaces: map[string]policy.SlackWorkspace{
-				"acme": {TeamID: "TACME", Domains: []string{"acme.example"}, Channels: map[string]policy.SlackChannel{
+				"acme": {Channels: map[string]policy.SlackChannel{
 					"announce": {From: []string{"g-all"}},
 					"eng":      {Private: true, Mode: policy.SlackModeStrict, From: []string{"g-eng"}},
 				}},
-				"globex": {TeamID: "TGLOBEX", Domains: []string{"globex.example"}, Channels: map[string]policy.SlackChannel{
+				"globex": {Channels: map[string]policy.SlackChannel{
 					"ops": {From: []string{"g-gx"}},
 				}},
 			}},
@@ -189,7 +214,24 @@ func newRig(t *testing.T) *rig {
 	}
 	r.writeCredential("acme", slackfake.Token("TACME"))
 	r.writeCredential("globex", slackfake.Token("TGLOBEX"))
+	r.writeConnection("acme", "TACME", "C0acme")
+	r.writeConnection("globex", "TGLOBEX", "C0globex")
 	return r
+}
+
+// writeConnection is the record the console keeps when a workspace is
+// connected: the team recorded at its first install and the directory chosen
+// as its owner.
+func (r *rig) writeConnection(ws, team, owner string) {
+	r.t.Helper()
+	raw, err := connection.EncodeRecord(connection.Record{
+		Workspace: ws, TeamID: team, Owner: owner, AppID: "A1", BotUserID: slackfake.BotID(team),
+		ConnectedAt: r.now, ConnectedBy: "ada@acme.example",
+	})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	r.writeRecord(connection.Key(ws), raw)
 }
 
 // person is a directory entry and, when they have one, a Slack account.
@@ -397,6 +439,11 @@ type policySplit struct {
 func (p *policySplit) ListHolders(ctx context.Context, req *connect.Request[directoryrosterv1.ListHoldersRequest],
 ) (*connect.Response[directoryrosterv1.ListHoldersResponse], error) {
 	return p.console.ListHolders(ctx, req)
+}
+
+func (p *policySplit) ListServedDomains(ctx context.Context, req *connect.Request[directoryrosterv1.ListServedDomainsRequest],
+) (*connect.Response[directoryrosterv1.ListServedDomainsResponse], error) {
+	return p.console.ListServedDomains(ctx, req)
 }
 
 func (p *policySplit) Explain(ctx context.Context, req *connect.Request[directoryrosterv1.ExplainRequest],
@@ -730,15 +777,10 @@ func TestTheControllerReadsWhatTheConsoleWrites(t *testing.T) {
 	r := newRig(t)
 	r.person("ann@acme.example", []string{"g-all"}, "acme")
 	// The service validates against the same policy in the shape the real
-	// one has: only the team ids differ, which the rig's fake Slack spells
-	// its own way.
+	// one has.
 	declared := r.policy
 	declared.Version = 1
 	declared.Slack.Workspaces = maps.Clone(r.policy.Slack.Workspaces)
-	for key, ws := range declared.Slack.Workspaces {
-		ws.TeamID = "T0" + strings.ToUpper(key) + "ABCD"
-		declared.Slack.Workspaces[key] = ws
-	}
 	set, err := policy.NewSet(declared)
 	if err != nil {
 		t.Fatal(err)
@@ -779,5 +821,98 @@ func TestTheControllerReadsWhatTheConsoleWrites(t *testing.T) {
 		if rep := r.reports.channel(t, "acme", name); rep.State == status.ChannelHeld {
 			t.Errorf("%s is held: %s", name, rep.Reason)
 		}
+	}
+}
+
+// A person is looked up by the OWNING directory's served domains, read from
+// the console every pass: serving a second domain finds the people in it with
+// no change to the policy.
+func TestPeopleAreFoundByTheOwningDirectorysServedDomains(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-all"}, "acme")
+	late := r.person("late@acme.example.org", []string{"g-all"}, "acme")
+
+	r.pass("acme")
+	announce, ok := r.fake.ChannelNamed("TACME", "announce")
+	if !ok || slices.Contains(announce.Members, late) {
+		t.Fatalf("announce = %+v (found %v): a person outside the served domains was invited", announce, ok)
+	}
+	held := false
+	for _, m := range r.reports.channel(t, "acme", "announce").Members {
+		held = held || (m.Email == "late@acme.example.org" && m.State == status.StateHeld)
+	}
+	if !held {
+		t.Errorf("the person in an unserved domain is not held: %+v", r.reports.channel(t, "acme", "announce").Members)
+	}
+
+	r.console.set(func() { r.console.served["C0acme"] = []string{"acme.example", "acme.example.org"} })
+	r.pass("acme")
+	announce, _ = r.fake.ChannelNamed("TACME", "announce")
+	if !slices.Contains(announce.Members, late) {
+		t.Errorf("announce members = %v: the owner serves the domain now, so the person is invited", announce.Members)
+	}
+}
+
+// Without an owner nobody can be looked up: every person is held with the
+// reason, and nothing is invited.
+func TestAWorkspaceWithNoOwnerHoldsItsPeople(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-all"}, "acme")
+	r.writeConnection("acme", "TACME", "")
+
+	r.pass("acme")
+
+	if n := r.fake.Count("conversations.invite"); n != 0 {
+		t.Errorf("%d people were invited into a workspace with no owning directory", n)
+	}
+	members := r.reports.channel(t, "acme", "announce").Members
+	if len(members) != 1 || members[0].State != status.StateHeld || members[0].Reason != reconcile.NoOwner {
+		t.Errorf("members = %+v, want one held row saying %q", members, reconcile.NoOwner)
+	}
+}
+
+// A directory that cannot be read, or an owner that is not connected here,
+// fails the pass rather than reading as a workspace with nobody in it: a
+// strict channel must not empty itself on a question nobody answered.
+func TestAnUnreadableOrUnconnectedOwnerFailsThePass(t *testing.T) {
+	for name, set := range map[string]func(*rig){
+		"the console cannot say": func(r *rig) { r.console.servedErr = connect.NewError(connect.CodeUnavailable, io.ErrUnexpectedEOF) },
+		"the owner is not connected": func(r *rig) {
+			delete(r.console.served, "C0acme")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			ann := r.person("ann@acme.example", []string{"g-eng"}, "acme")
+			gone := r.person("gone@acme.example", nil, "acme")
+			ch := r.strictChannel(ann, gone)
+			r.console.set(func() { set(r) })
+
+			r.pass("acme")
+
+			if got := r.reports.workspace(t, "acme"); got.Tick.Outcome != status.OutcomeFailed || !strings.Contains(got.Tick.Error, "owning directory") {
+				t.Errorf("tick = %+v, want failed, naming the owning directory", got.Tick)
+			}
+			if !slices.Contains(r.fake.Members(ch.ID), gone) || r.mutations() != 0 {
+				t.Error("a failed read of the owner's domains changed the workspace")
+			}
+		})
+	}
+}
+
+// A bot token for another Slack team than the one recorded at the first
+// install is refused: the workspace fails, and nothing is changed.
+func TestATokenForAnotherTeamThanTheRecordedOneFailsThePass(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-all"}, "acme")
+	r.writeConnection("acme", "TGLOBEX", "C0acme")
+
+	r.pass("acme")
+
+	if got := r.reports.workspace(t, "acme"); got.Tick.Outcome != status.OutcomeFailed || !strings.Contains(got.Tick.Error, "recorded at the first install") {
+		t.Errorf("tick = %+v, want failed with the wrong-team refusal", got.Tick)
+	}
+	if r.mutations() != 0 {
+		t.Error("a token for the wrong team was acted with")
 	}
 }

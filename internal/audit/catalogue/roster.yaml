@@ -214,9 +214,20 @@ actions:
     profiles: [security]
     target_types: [organisation]
     delivery: async
-    data_schema: https://schemas.example/access-roster/v1/app-installed.json
+    data_schema: https://schemas.example/access-roster/v1/github-org-connected.json
     message:
       en: "{actor} connected GitHub organisation {targets_0_id}"
+
+  roster.github_org.owner_changed:
+    summary: The directory that owns a GitHub organisation was changed by the installation-wide operator.
+    operation: modify
+    categories: [configuration_change]
+    profiles: [security]
+    target_types: [organisation]
+    delivery: async
+    data_schema: https://schemas.example/access-roster/v1/owner-changed.json
+    message:
+      en: "{actor} changed the owner of GitHub organisation {targets_0_id} from {data_from} to {data_to}"
 
   roster.github_org.disconnected:
     summary: A GitHub organisation was disconnected.
@@ -483,8 +494,19 @@ actions:
     message:
       en: "{actor} connected Slack workspace {targets_0_id}"
 
+  roster.slack_workspace.owner_changed:
+    summary: The directory that owns a Slack workspace was changed by the installation-wide operator.
+    operation: modify
+    categories: [configuration_change]
+    profiles: [security]
+    target_types: [slack_workspace]
+    delivery: async
+    data_schema: https://schemas.example/access-roster/v1/owner-changed.json
+    message:
+      en: "{actor} changed the owner of Slack workspace {targets_0_id} from {data_from} to {data_to}"
+
   roster.slack_workspace.connect_refused:
-    summary: An install of the roster's Slack App was refused because it was made into another workspace.
+    summary: An install of the roster's Slack App was refused because it was made into a workspace other than the one first connected.
     operation: create
     categories: [configuration_change]
     profiles: [security]

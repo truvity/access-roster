@@ -83,6 +83,17 @@ enum CredentialType {
 }
 
 // Workspace is one directory tenant the hub holds a credential for.
+// DirectoryRef names a connected directory the way a person knows it: by
+// the domain it is known by, with its workspace id beside it for the
+// machine. It is how the console offers a directory as an owner.
+message DirectoryRef {
+  // the backend's tenant identifier (Google: the customer id).
+  string workspace_id = 1;
+  // the domain people know the directory by: the admin account's domain
+  // when the directory serves it, else the first domain it serves.
+  string primary_domain = 2;
+}
+
 message Workspace {
   // the backend's tenant identifier (Google: the customer id).
   string id = 1;

@@ -448,7 +448,7 @@ func appSettingsURL(org, slug string) string {
 // githubCatalogueFlow checks a catalogue flow's redirect and names its
 // entry.
 func (s *ConsoleServer) githubCatalogueFlow(w http.ResponseWriter, r *http.Request) (catalogue.App, string, bool) {
-	bind, actor, ok := s.githubBound(w, r)
+	bind, actor, _, ok := s.githubBound(w, r)
 	if !ok {
 		return catalogue.App{}, "", false
 	}

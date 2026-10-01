@@ -19,11 +19,41 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/workspace.proto.
  */
 export const file_directoryroster_v1_workspace: GenFile = /*@__PURE__*/
-  fileDesc("CiJkaXJlY3Rvcnlyb3N0ZXIvdjEvd29ya3NwYWNlLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEiqQMKCVdvcmtzcGFjZRIKCgJpZBgBIAEoCRIsCgdiYWNrZW5kGAIgASgOMhsuZGlyZWN0b3J5cm9zdGVyLnYxLkJhY2tlbmQSNAoHZG9tYWlucxgDIAMoCzIjLmRpcmVjdG9yeXJvc3Rlci52MS5Xb3Jrc3BhY2VEb21haW4SDQoFYWRtaW4YBCABKAkSNgoKY3JlZGVudGlhbBgFIAEoDjIiLmRpcmVjdG9yeXJvc3Rlci52MS5DcmVkZW50aWFsVHlwZRIUCgxjb25uZWN0ZWRfYnkYBiABKAkSMAoMY29ubmVjdGVkX2F0GAcgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIqCgZoZWFsdGgYCCABKAsyGi5kaXJlY3Rvcnlyb3N0ZXIudjEuSGVhbHRoEi8KC3NuYXBzaG90X2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIQCghkZWNsYXJlZBgKIAEoCBITCgtzeW5jX2dyb3VwcxgLIAMoCRIZChFkaXNjb3ZlcmVkX2dyb3VwcxgMIAMoCSKZAQoPV29ya3NwYWNlRG9tYWluEgwKBG5hbWUYASABKAkSFQoNYXV0aG9yaXRhdGl2ZRgCIAEoCBIQCghjb25mbGljdBgDIAEoCBIOCgZzZXJ2ZWQYBCABKAgSDQoFb3duZWQYBSABKAgSMAoGcmVhc29uGAYgASgOMiAuZGlyZWN0b3J5cm9zdGVyLnYxLkRvbWFpblJlYXNvbiJSCgZIZWFsdGgSLQoJcHJvYmVkX2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIKCgJvaxgCIAEoCBINCgVlcnJvchgDIAEoCSIXChVMaXN0V29ya3NwYWNlc1JlcXVlc3QiSwoWTGlzdFdvcmtzcGFjZXNSZXNwb25zZRIxCgp3b3Jrc3BhY2VzGAEgAygLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZSJDChNCZWdpbkNvbm5lY3RSZXF1ZXN0EiwKB2JhY2tlbmQYASABKA4yGy5kaXJlY3Rvcnlyb3N0ZXIudjEuQmFja2VuZCIrChRCZWdpbkNvbm5lY3RSZXNwb25zZRITCgtjb25zZW50X3VybBgBIAEoCSIoChBSZWNvbm5lY3RSZXF1ZXN0EhQKDHdvcmtzcGFjZV9pZBgBIAEoCSIoChFSZWNvbm5lY3RSZXNwb25zZRITCgtjb25zZW50X3VybBgBIAEoCSJcChBVcGxvYWRLZXlSZXF1ZXN0EiwKB2JhY2tlbmQYASABKA4yGy5kaXJlY3Rvcnlyb3N0ZXIudjEuQmFja2VuZBILCgNrZXkYAiABKAwSDQoFYWRtaW4YAyABKAkiRQoRVXBsb2FkS2V5UmVzcG9uc2USMAoJd29ya3NwYWNlGAEgASgLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZSIkCgxQcm9iZVJlcXVlc3QSFAoMd29ya3NwYWNlX2lkGAEgASgJInEKDVByb2JlUmVzcG9uc2USKgoGaGVhbHRoGAEgASgLMhouZGlyZWN0b3J5cm9zdGVyLnYxLkhlYWx0aBI0Cgdkb21haW5zGAIgAygLMiMuZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZURvbWFpbiImCg5SZWZyZXNoUmVxdWVzdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkiQgoPUmVmcmVzaFJlc3BvbnNlEi8KC3NuYXBzaG90X2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJAChdTZXRTZXJ2ZWREb21haW5zUmVxdWVzdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkSDwoHZG9tYWlucxgCIAMoCSJMChhTZXRTZXJ2ZWREb21haW5zUmVzcG9uc2USMAoJd29ya3NwYWNlGAEgASgLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZSI+ChZTZXRTeW5jZWRHcm91cHNSZXF1ZXN0EhQKDHdvcmtzcGFjZV9pZBgBIAEoCRIOCgZncm91cHMYAiADKAkiSwoXU2V0U3luY2VkR3JvdXBzUmVzcG9uc2USMAoJd29ya3NwYWNlGAEgASgLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZSIpChFEaXNjb25uZWN0UmVxdWVzdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkiFAoSRGlzY29ubmVjdFJlc3BvbnNlKlsKB0JhY2tlbmQSFwoTQkFDS0VORF9VTlNQRUNJRklFRBAAEhIKDkJBQ0tFTkRfR09PR0xFEAESEQoNQkFDS0VORF9FTlRSQRACEhAKDEJBQ0tFTkRfREVNTxADKoMBCg5DcmVkZW50aWFsVHlwZRIfChtDUkVERU5USUFMX1RZUEVfVU5TUEVDSUZJRUQQABInCiNDUkVERU5USUFMX1RZUEVfT0FVVEhfUkVGUkVTSF9UT0tFThABEicKI0NSRURFTlRJQUxfVFlQRV9TRVJWSUNFX0FDQ09VTlRfS0VZEAIqtgEKDERvbWFpblJlYXNvbhIdChlET01BSU5fUkVBU09OX1VOU1BFQ0lGSUVEEAASKAokRE9NQUlOX1JFQVNPTl9GSVJTVF9TTkFQU0hPVF9QRU5ESU5HEAESIAocRE9NQUlOX1JFQVNPTl9TTkFQU0hPVF9TVEFMRRACEh4KGkRPTUFJTl9SRUFTT05fUFJPQkVfRkFJTEVEEAMSGwoXRE9NQUlOX1JFQVNPTl9DT05URVNURUQQBDLsBgoQV29ya3NwYWNlU2VydmljZRJnCg5MaXN0V29ya3NwYWNlcxIpLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0V29ya3NwYWNlc1JlcXVlc3QaKi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdFdvcmtzcGFjZXNSZXNwb25zZRJhCgxCZWdpbkNvbm5lY3QSJy5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5Db25uZWN0UmVxdWVzdBooLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkNvbm5lY3RSZXNwb25zZRJYCglSZWNvbm5lY3QSJC5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVjb25uZWN0UmVxdWVzdBolLmRpcmVjdG9yeXJvc3Rlci52MS5SZWNvbm5lY3RSZXNwb25zZRJYCglVcGxvYWRLZXkSJC5kaXJlY3Rvcnlyb3N0ZXIudjEuVXBsb2FkS2V5UmVxdWVzdBolLmRpcmVjdG9yeXJvc3Rlci52MS5VcGxvYWRLZXlSZXNwb25zZRJtChBTZXRTZXJ2ZWREb21haW5zEisuZGlyZWN0b3J5cm9zdGVyLnYxLlNldFNlcnZlZERvbWFpbnNSZXF1ZXN0GiwuZGlyZWN0b3J5cm9zdGVyLnYxLlNldFNlcnZlZERvbWFpbnNSZXNwb25zZRJqCg9TZXRTeW5jZWRHcm91cHMSKi5kaXJlY3Rvcnlyb3N0ZXIudjEuU2V0U3luY2VkR3JvdXBzUmVxdWVzdBorLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRTeW5jZWRHcm91cHNSZXNwb25zZRJMCgVQcm9iZRIgLmRpcmVjdG9yeXJvc3Rlci52MS5Qcm9iZVJlcXVlc3QaIS5kaXJlY3Rvcnlyb3N0ZXIudjEuUHJvYmVSZXNwb25zZRJSCgdSZWZyZXNoEiIuZGlyZWN0b3J5cm9zdGVyLnYxLlJlZnJlc2hSZXF1ZXN0GiMuZGlyZWN0b3J5cm9zdGVyLnYxLlJlZnJlc2hSZXNwb25zZRJbCgpEaXNjb25uZWN0EiUuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RSZXF1ZXN0GiYuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RSZXNwb25zZULcAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUIOV29ya3NwYWNlUHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("CiJkaXJlY3Rvcnlyb3N0ZXIvdjEvd29ya3NwYWNlLnByb3RvEhJkaXJlY3Rvcnlyb3N0ZXIudjEiPAoMRGlyZWN0b3J5UmVmEhQKDHdvcmtzcGFjZV9pZBgBIAEoCRIWCg5wcmltYXJ5X2RvbWFpbhgCIAEoCSKpAwoJV29ya3NwYWNlEgoKAmlkGAEgASgJEiwKB2JhY2tlbmQYAiABKA4yGy5kaXJlY3Rvcnlyb3N0ZXIudjEuQmFja2VuZBI0Cgdkb21haW5zGAMgAygLMiMuZGlyZWN0b3J5cm9zdGVyLnYxLldvcmtzcGFjZURvbWFpbhINCgVhZG1pbhgEIAEoCRI2CgpjcmVkZW50aWFsGAUgASgOMiIuZGlyZWN0b3J5cm9zdGVyLnYxLkNyZWRlbnRpYWxUeXBlEhQKDGNvbm5lY3RlZF9ieRgGIAEoCRIwCgxjb25uZWN0ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEioKBmhlYWx0aBgIIAEoCzIaLmRpcmVjdG9yeXJvc3Rlci52MS5IZWFsdGgSLwoLc25hcHNob3RfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhAKCGRlY2xhcmVkGAogASgIEhMKC3N5bmNfZ3JvdXBzGAsgAygJEhkKEWRpc2NvdmVyZWRfZ3JvdXBzGAwgAygJIpkBCg9Xb3Jrc3BhY2VEb21haW4SDAoEbmFtZRgBIAEoCRIVCg1hdXRob3JpdGF0aXZlGAIgASgIEhAKCGNvbmZsaWN0GAMgASgIEg4KBnNlcnZlZBgEIAEoCBINCgVvd25lZBgFIAEoCBIwCgZyZWFzb24YBiABKA4yIC5kaXJlY3Rvcnlyb3N0ZXIudjEuRG9tYWluUmVhc29uIlIKBkhlYWx0aBItCglwcm9iZWRfYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEgoKAm9rGAIgASgIEg0KBWVycm9yGAMgASgJIhcKFUxpc3RXb3Jrc3BhY2VzUmVxdWVzdCJLChZMaXN0V29ya3NwYWNlc1Jlc3BvbnNlEjEKCndvcmtzcGFjZXMYASADKAsyHS5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlIkMKE0JlZ2luQ29ubmVjdFJlcXVlc3QSLAoHYmFja2VuZBgBIAEoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kIisKFEJlZ2luQ29ubmVjdFJlc3BvbnNlEhMKC2NvbnNlbnRfdXJsGAEgASgJIigKEFJlY29ubmVjdFJlcXVlc3QSFAoMd29ya3NwYWNlX2lkGAEgASgJIigKEVJlY29ubmVjdFJlc3BvbnNlEhMKC2NvbnNlbnRfdXJsGAEgASgJIlwKEFVwbG9hZEtleVJlcXVlc3QSLAoHYmFja2VuZBgBIAEoDjIbLmRpcmVjdG9yeXJvc3Rlci52MS5CYWNrZW5kEgsKA2tleRgCIAEoDBINCgVhZG1pbhgDIAEoCSJFChFVcGxvYWRLZXlSZXNwb25zZRIwCgl3b3Jrc3BhY2UYASABKAsyHS5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlIiQKDFByb2JlUmVxdWVzdBIUCgx3b3Jrc3BhY2VfaWQYASABKAkicQoNUHJvYmVSZXNwb25zZRIqCgZoZWFsdGgYASABKAsyGi5kaXJlY3Rvcnlyb3N0ZXIudjEuSGVhbHRoEjQKB2RvbWFpbnMYAiADKAsyIy5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlRG9tYWluIiYKDlJlZnJlc2hSZXF1ZXN0EhQKDHdvcmtzcGFjZV9pZBgBIAEoCSJCCg9SZWZyZXNoUmVzcG9uc2USLwoLc25hcHNob3RfYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIkAKF1NldFNlcnZlZERvbWFpbnNSZXF1ZXN0EhQKDHdvcmtzcGFjZV9pZBgBIAEoCRIPCgdkb21haW5zGAIgAygJIkwKGFNldFNlcnZlZERvbWFpbnNSZXNwb25zZRIwCgl3b3Jrc3BhY2UYASABKAsyHS5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlIj4KFlNldFN5bmNlZEdyb3Vwc1JlcXVlc3QSFAoMd29ya3NwYWNlX2lkGAEgASgJEg4KBmdyb3VwcxgCIAMoCSJLChdTZXRTeW5jZWRHcm91cHNSZXNwb25zZRIwCgl3b3Jrc3BhY2UYASABKAsyHS5kaXJlY3Rvcnlyb3N0ZXIudjEuV29ya3NwYWNlIikKEURpc2Nvbm5lY3RSZXF1ZXN0EhQKDHdvcmtzcGFjZV9pZBgBIAEoCSIUChJEaXNjb25uZWN0UmVzcG9uc2UqWwoHQmFja2VuZBIXChNCQUNLRU5EX1VOU1BFQ0lGSUVEEAASEgoOQkFDS0VORF9HT09HTEUQARIRCg1CQUNLRU5EX0VOVFJBEAISEAoMQkFDS0VORF9ERU1PEAMqgwEKDkNyZWRlbnRpYWxUeXBlEh8KG0NSRURFTlRJQUxfVFlQRV9VTlNQRUNJRklFRBAAEicKI0NSRURFTlRJQUxfVFlQRV9PQVVUSF9SRUZSRVNIX1RPS0VOEAESJwojQ1JFREVOVElBTF9UWVBFX1NFUlZJQ0VfQUNDT1VOVF9LRVkQAiq2AQoMRG9tYWluUmVhc29uEh0KGURPTUFJTl9SRUFTT05fVU5TUEVDSUZJRUQQABIoCiRET01BSU5fUkVBU09OX0ZJUlNUX1NOQVBTSE9UX1BFTkRJTkcQARIgChxET01BSU5fUkVBU09OX1NOQVBTSE9UX1NUQUxFEAISHgoaRE9NQUlOX1JFQVNPTl9QUk9CRV9GQUlMRUQQAxIbChdET01BSU5fUkVBU09OX0NPTlRFU1RFRBAEMuwGChBXb3Jrc3BhY2VTZXJ2aWNlEmcKDkxpc3RXb3Jrc3BhY2VzEikuZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3RXb3Jrc3BhY2VzUmVxdWVzdBoqLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0V29ya3NwYWNlc1Jlc3BvbnNlEmEKDEJlZ2luQ29ubmVjdBInLmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpbkNvbm5lY3RSZXF1ZXN0GiguZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luQ29ubmVjdFJlc3BvbnNlElgKCVJlY29ubmVjdBIkLmRpcmVjdG9yeXJvc3Rlci52MS5SZWNvbm5lY3RSZXF1ZXN0GiUuZGlyZWN0b3J5cm9zdGVyLnYxLlJlY29ubmVjdFJlc3BvbnNlElgKCVVwbG9hZEtleRIkLmRpcmVjdG9yeXJvc3Rlci52MS5VcGxvYWRLZXlSZXF1ZXN0GiUuZGlyZWN0b3J5cm9zdGVyLnYxLlVwbG9hZEtleVJlc3BvbnNlEm0KEFNldFNlcnZlZERvbWFpbnMSKy5kaXJlY3Rvcnlyb3N0ZXIudjEuU2V0U2VydmVkRG9tYWluc1JlcXVlc3QaLC5kaXJlY3Rvcnlyb3N0ZXIudjEuU2V0U2VydmVkRG9tYWluc1Jlc3BvbnNlEmoKD1NldFN5bmNlZEdyb3VwcxIqLmRpcmVjdG9yeXJvc3Rlci52MS5TZXRTeW5jZWRHcm91cHNSZXF1ZXN0GisuZGlyZWN0b3J5cm9zdGVyLnYxLlNldFN5bmNlZEdyb3Vwc1Jlc3BvbnNlEkwKBVByb2JlEiAuZGlyZWN0b3J5cm9zdGVyLnYxLlByb2JlUmVxdWVzdBohLmRpcmVjdG9yeXJvc3Rlci52MS5Qcm9iZVJlc3BvbnNlElIKB1JlZnJlc2gSIi5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVmcmVzaFJlcXVlc3QaIy5kaXJlY3Rvcnlyb3N0ZXIudjEuUmVmcmVzaFJlc3BvbnNlElsKCkRpc2Nvbm5lY3QSJS5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdFJlcXVlc3QaJi5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdFJlc3BvbnNlQtwBChZjb20uZGlyZWN0b3J5cm9zdGVyLnYxQg5Xb3Jrc3BhY2VQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * Workspace is one directory tenant the hub holds a credential for.
+ * DirectoryRef names a connected directory the way a person knows it: by
+ * the domain it is known by, with its workspace id beside it for the
+ * machine. It is how the console offers a directory as an owner.
  *
+ * @generated from message directoryroster.v1.DirectoryRef
+ */
+export type DirectoryRef = Message<"directoryroster.v1.DirectoryRef"> & {
+  /**
+   * the backend's tenant identifier (Google: the customer id).
+   *
+   * @generated from field: string workspace_id = 1;
+   */
+  workspaceId: string;
+
+  /**
+   * the domain people know the directory by: the admin account's domain
+   * when the directory serves it, else the first domain it serves.
+   *
+   * @generated from field: string primary_domain = 2;
+   */
+  primaryDomain: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.DirectoryRef.
+ * Use `create(DirectoryRefSchema)` to create a new message.
+ */
+export const DirectoryRefSchema: GenMessage<DirectoryRef> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_workspace, 0);
+
+/**
  * @generated from message directoryroster.v1.Workspace
  */
 export type Workspace = Message<"directoryroster.v1.Workspace"> & {
@@ -112,7 +142,7 @@ export type Workspace = Message<"directoryroster.v1.Workspace"> & {
  * Use `create(WorkspaceSchema)` to create a new message.
  */
 export const WorkspaceSchema: GenMessage<Workspace> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 0);
+  messageDesc(file_directoryroster_v1_workspace, 1);
 
 /**
  * WorkspaceDomain is one domain a workspace holds, and its standing.
@@ -174,7 +204,7 @@ export type WorkspaceDomain = Message<"directoryroster.v1.WorkspaceDomain"> & {
  * Use `create(WorkspaceDomainSchema)` to create a new message.
  */
 export const WorkspaceDomainSchema: GenMessage<WorkspaceDomain> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 1);
+  messageDesc(file_directoryroster_v1_workspace, 2);
 
 /**
  * Health is the outcome of the last probe.
@@ -205,7 +235,7 @@ export type Health = Message<"directoryroster.v1.Health"> & {
  * Use `create(HealthSchema)` to create a new message.
  */
 export const HealthSchema: GenMessage<Health> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 2);
+  messageDesc(file_directoryroster_v1_workspace, 3);
 
 /**
  * @generated from message directoryroster.v1.ListWorkspacesRequest
@@ -218,7 +248,7 @@ export type ListWorkspacesRequest = Message<"directoryroster.v1.ListWorkspacesRe
  * Use `create(ListWorkspacesRequestSchema)` to create a new message.
  */
 export const ListWorkspacesRequestSchema: GenMessage<ListWorkspacesRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 3);
+  messageDesc(file_directoryroster_v1_workspace, 4);
 
 /**
  * @generated from message directoryroster.v1.ListWorkspacesResponse
@@ -235,7 +265,7 @@ export type ListWorkspacesResponse = Message<"directoryroster.v1.ListWorkspacesR
  * Use `create(ListWorkspacesResponseSchema)` to create a new message.
  */
 export const ListWorkspacesResponseSchema: GenMessage<ListWorkspacesResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 4);
+  messageDesc(file_directoryroster_v1_workspace, 5);
 
 /**
  * @generated from message directoryroster.v1.BeginConnectRequest
@@ -252,7 +282,7 @@ export type BeginConnectRequest = Message<"directoryroster.v1.BeginConnectReques
  * Use `create(BeginConnectRequestSchema)` to create a new message.
  */
 export const BeginConnectRequestSchema: GenMessage<BeginConnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 5);
+  messageDesc(file_directoryroster_v1_workspace, 6);
 
 /**
  * @generated from message directoryroster.v1.BeginConnectResponse
@@ -269,7 +299,7 @@ export type BeginConnectResponse = Message<"directoryroster.v1.BeginConnectRespo
  * Use `create(BeginConnectResponseSchema)` to create a new message.
  */
 export const BeginConnectResponseSchema: GenMessage<BeginConnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 6);
+  messageDesc(file_directoryroster_v1_workspace, 7);
 
 /**
  * @generated from message directoryroster.v1.ReconnectRequest
@@ -286,7 +316,7 @@ export type ReconnectRequest = Message<"directoryroster.v1.ReconnectRequest"> & 
  * Use `create(ReconnectRequestSchema)` to create a new message.
  */
 export const ReconnectRequestSchema: GenMessage<ReconnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 7);
+  messageDesc(file_directoryroster_v1_workspace, 8);
 
 /**
  * @generated from message directoryroster.v1.ReconnectResponse
@@ -303,7 +333,7 @@ export type ReconnectResponse = Message<"directoryroster.v1.ReconnectResponse"> 
  * Use `create(ReconnectResponseSchema)` to create a new message.
  */
 export const ReconnectResponseSchema: GenMessage<ReconnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 8);
+  messageDesc(file_directoryroster_v1_workspace, 9);
 
 /**
  * @generated from message directoryroster.v1.UploadKeyRequest
@@ -334,7 +364,7 @@ export type UploadKeyRequest = Message<"directoryroster.v1.UploadKeyRequest"> & 
  * Use `create(UploadKeyRequestSchema)` to create a new message.
  */
 export const UploadKeyRequestSchema: GenMessage<UploadKeyRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 9);
+  messageDesc(file_directoryroster_v1_workspace, 10);
 
 /**
  * @generated from message directoryroster.v1.UploadKeyResponse
@@ -351,7 +381,7 @@ export type UploadKeyResponse = Message<"directoryroster.v1.UploadKeyResponse"> 
  * Use `create(UploadKeyResponseSchema)` to create a new message.
  */
 export const UploadKeyResponseSchema: GenMessage<UploadKeyResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 10);
+  messageDesc(file_directoryroster_v1_workspace, 11);
 
 /**
  * @generated from message directoryroster.v1.ProbeRequest
@@ -368,7 +398,7 @@ export type ProbeRequest = Message<"directoryroster.v1.ProbeRequest"> & {
  * Use `create(ProbeRequestSchema)` to create a new message.
  */
 export const ProbeRequestSchema: GenMessage<ProbeRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 11);
+  messageDesc(file_directoryroster_v1_workspace, 12);
 
 /**
  * @generated from message directoryroster.v1.ProbeResponse
@@ -390,7 +420,7 @@ export type ProbeResponse = Message<"directoryroster.v1.ProbeResponse"> & {
  * Use `create(ProbeResponseSchema)` to create a new message.
  */
 export const ProbeResponseSchema: GenMessage<ProbeResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 12);
+  messageDesc(file_directoryroster_v1_workspace, 13);
 
 /**
  * @generated from message directoryroster.v1.RefreshRequest
@@ -407,7 +437,7 @@ export type RefreshRequest = Message<"directoryroster.v1.RefreshRequest"> & {
  * Use `create(RefreshRequestSchema)` to create a new message.
  */
 export const RefreshRequestSchema: GenMessage<RefreshRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 13);
+  messageDesc(file_directoryroster_v1_workspace, 14);
 
 /**
  * @generated from message directoryroster.v1.RefreshResponse
@@ -424,7 +454,7 @@ export type RefreshResponse = Message<"directoryroster.v1.RefreshResponse"> & {
  * Use `create(RefreshResponseSchema)` to create a new message.
  */
 export const RefreshResponseSchema: GenMessage<RefreshResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 14);
+  messageDesc(file_directoryroster_v1_workspace, 15);
 
 /**
  * @generated from message directoryroster.v1.SetServedDomainsRequest
@@ -448,7 +478,7 @@ export type SetServedDomainsRequest = Message<"directoryroster.v1.SetServedDomai
  * Use `create(SetServedDomainsRequestSchema)` to create a new message.
  */
 export const SetServedDomainsRequestSchema: GenMessage<SetServedDomainsRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 15);
+  messageDesc(file_directoryroster_v1_workspace, 16);
 
 /**
  * @generated from message directoryroster.v1.SetServedDomainsResponse
@@ -465,7 +495,7 @@ export type SetServedDomainsResponse = Message<"directoryroster.v1.SetServedDoma
  * Use `create(SetServedDomainsResponseSchema)` to create a new message.
  */
 export const SetServedDomainsResponseSchema: GenMessage<SetServedDomainsResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 16);
+  messageDesc(file_directoryroster_v1_workspace, 17);
 
 /**
  * @generated from message directoryroster.v1.SetSyncedGroupsRequest
@@ -489,7 +519,7 @@ export type SetSyncedGroupsRequest = Message<"directoryroster.v1.SetSyncedGroups
  * Use `create(SetSyncedGroupsRequestSchema)` to create a new message.
  */
 export const SetSyncedGroupsRequestSchema: GenMessage<SetSyncedGroupsRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 17);
+  messageDesc(file_directoryroster_v1_workspace, 18);
 
 /**
  * @generated from message directoryroster.v1.SetSyncedGroupsResponse
@@ -506,7 +536,7 @@ export type SetSyncedGroupsResponse = Message<"directoryroster.v1.SetSyncedGroup
  * Use `create(SetSyncedGroupsResponseSchema)` to create a new message.
  */
 export const SetSyncedGroupsResponseSchema: GenMessage<SetSyncedGroupsResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 18);
+  messageDesc(file_directoryroster_v1_workspace, 19);
 
 /**
  * @generated from message directoryroster.v1.DisconnectRequest
@@ -523,7 +553,7 @@ export type DisconnectRequest = Message<"directoryroster.v1.DisconnectRequest"> 
  * Use `create(DisconnectRequestSchema)` to create a new message.
  */
 export const DisconnectRequestSchema: GenMessage<DisconnectRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 19);
+  messageDesc(file_directoryroster_v1_workspace, 20);
 
 /**
  * @generated from message directoryroster.v1.DisconnectResponse
@@ -536,7 +566,7 @@ export type DisconnectResponse = Message<"directoryroster.v1.DisconnectResponse"
  * Use `create(DisconnectResponseSchema)` to create a new message.
  */
 export const DisconnectResponseSchema: GenMessage<DisconnectResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_workspace, 20);
+  messageDesc(file_directoryroster_v1_workspace, 21);
 
 /**
  * Backend is the kind of directory behind a workspace.

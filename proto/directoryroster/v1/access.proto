@@ -45,6 +45,15 @@ service AccessService {
   // than from a navigation tree. Viewer.
   rpc SearchPeople(SearchPeopleRequest) returns (SearchPeopleResponse);
 
+  // ListServedDomains returns, for every connected directory the caller
+  // may view, the domains the hub serves for it now. It is what a
+  // controller looks a person up by: a Slack workspace names no domains of
+  // its own, it is owned by a directory (recorded when it was connected)
+  // and its people are those with an address in that directory's served
+  // domains. Viewer, installation-wide or over the directory: a scoped
+  // viewer is told only of its own directories.
+  rpc ListServedDomains(ListServedDomainsRequest) returns (ListServedDomainsResponse);
+
   // GetPolicy returns every internal group with its members and what each
   // adds, the state of the break-glass admin, and the enabled sign-in
   // sources. Viewer.
@@ -373,6 +382,23 @@ message ListHoldersResponse {
   // ExplainResponse. A group this policy does not define has no holders,
   // which is not the same as nobody holding it under the asker's policy.
   string policy_digest = 4;
+}
+
+message ListServedDomainsRequest {}
+
+message ListServedDomainsResponse {
+  repeated DirectoryDomains directories = 1;
+}
+
+// DirectoryDomains is one directory and what it serves.
+message DirectoryDomains {
+  // the backend's tenant identifier, which is what an owner is recorded as.
+  string workspace_id = 1;
+  // the domain people know the directory by; see DirectoryRef.
+  string primary_domain = 2;
+  // the domains the hub serves for it, lowercased and sorted: the
+  // discovered domains, narrowed by the deployment's serve list.
+  repeated string domains = 3;
 }
 
 message SearchPeopleRequest {

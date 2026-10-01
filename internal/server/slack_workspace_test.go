@@ -27,27 +27,43 @@ import (
 // controller's report wired in.
 type wsHarness struct {
 	*slackHarness
-	workspaces *kube.SlackWorkspaces
-	reports    *kube.SlackStatus
+	reports *kube.SlackStatus
+}
+
+// newConnectedWorkspaceHarness is the workspace harness with the three
+// workspaces connected: acme owned by C0north's directory, globex by
+// C0south's, initech by nobody's.
+func newConnectedWorkspaceHarness(t *testing.T) *wsHarness {
+	t.Helper()
+	h := newWorkspaceHarness(t)
+	seedSlackWorkspace(t, h.workspaces, "acme", "C0north", acmeTeam)
+	seedSlackWorkspace(t, h.workspaces, "globex", "C0south", globexTeam)
+	seedSlackWorkspace(t, h.workspaces, "initech", "", "T0789IJKL")
+	return h
 }
 
 func newWorkspaceHarness(t *testing.T) *wsHarness {
 	t.Helper()
-	h := &wsHarness{slackHarness: newSlackHarness(t)}
+	h := &wsHarness{slackHarness: newBareSlackHarness(t)}
 	h.slack.AddTeam("T0789IJKL", "Initech")
-	h.workspaces = kube.NewSlackWorkspaces(h.client)
 	h.reports = kube.NewSlackStatus(h.client)
 	if err := h.reports.Ensure(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	h.console.deps.SlackWorkspaces = h.workspaces
 	h.console.deps.SlackStatus = h.reports
 	return h
 }
 
 func (h *wsHarness) begin(ctx context.Context, workspace, token string) (*connect.Response[directoryrosterv1.BeginSlackWorkspaceConnectResponse], error) {
+	return h.beginOwned(ctx, workspace, token, "")
+}
+
+// beginOwned is a connect that names the directory to own the workspace.
+func (h *wsHarness) beginOwned(
+	ctx context.Context, workspace, token, owner string,
+) (*connect.Response[directoryrosterv1.BeginSlackWorkspaceConnectResponse], error) {
 	return h.console.BeginSlackWorkspaceConnect(ctx, connect.NewRequest(
-		&directoryrosterv1.BeginSlackWorkspaceConnectRequest{Workspace: workspace, ConfigurationToken: token}))
+		&directoryrosterv1.BeginSlackWorkspaceConnectRequest{Workspace: workspace, ConfigurationToken: token, Owner: owner}))
 }
 
 func (h *wsHarness) disconnect(
@@ -108,19 +124,30 @@ type httpResult struct {
 	Location, Body string
 }
 
-// Not connected, created, installed into the wrong workspace (revoked and
-// refused), installed, scopes grown (reconnected with a configuration
+// Not connected, created (owned by a directory the operator chose),
+// installed (the team Slack reports is recorded), reinstalled into another
+// team (revoked and refused), scopes grown (reconnected with a configuration
 // token), disconnected (revoked): the whole life of a workspace's App.
-func TestAWorkspaceIsConnectedRefusedForTheWrongTeamUpgradedAndDisconnected(t *testing.T) {
+func TestAWorkspaceIsConnectedRecordedRefusedForAnotherTeamUpgradedAndDisconnected(t *testing.T) {
 	h := newWorkspaceHarness(t)
 	ctx := operator()
 
 	row := h.row(ctx, t, "acme")
-	if row.GetConnectionState() != slackNotConnected || row.GetTeamId() != acmeTeam || !row.GetCanOperate() || row.GetOwner() != "C0north" {
+	if row.GetConnectionState() != slackNotConnected || row.GetTeamId() != "" || !row.GetCanOperate() || row.GetOwner() != "" {
 		t.Errorf("before connecting = %+v", row)
 	}
-	if got := h.status(ctx, t).GetBotScopes(); !slices.Equal(got, connection.BotScopes) {
+	page := h.status(ctx, t)
+	if got := page.GetBotScopes(); !slices.Equal(got, connection.BotScopes) {
 		t.Errorf("status scopes = %v", got)
+	}
+	// The installation-wide operator chooses among every connected
+	// directory, or none.
+	var choices []string
+	for _, dir := range page.GetOwnerChoices() {
+		choices = append(choices, dir.GetWorkspaceId()+"="+dir.GetPrimaryDomain())
+	}
+	if !slices.Equal(choices, []string{"C0north=north.example", "C0south=south.example"}) || !page.GetMayConnectWithoutOwner() {
+		t.Errorf("owner choices = %v, without owner %v", choices, page.GetMayConnectWithoutOwner())
 	}
 
 	// A workspace needs a token to be created; a sentence is not one.
@@ -132,13 +159,17 @@ func TestAWorkspaceIsConnectedRefusedForTheWrongTeamUpgradedAndDisconnected(t *t
 	if _, err := h.begin(ctx, "nowhere", accepted); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("connect to a workspace the policy does not name = %v", err)
 	}
+	if _, err := h.beginOwned(ctx, "acme", accepted, "C0nowhere"); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("connect with an owner that is not a connected directory = %v, want invalid argument", err)
+	}
 	if h.slack.Count("apps.manifest.create") != 0 {
 		t.Fatal("a refused connect reached Slack")
 	}
 
 	// Create: the manifest carries the roster's scopes and this console's
-	// callback, and what is kept is "created, not installed".
-	begun, err := h.begin(ctx, "acme", accepted)
+	// callback, and what is kept is "created, not installed", owned by the
+	// directory chosen, with no team yet.
+	begun, err := h.beginOwned(ctx, "acme", accepted, "C0north")
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -154,12 +185,16 @@ func TestAWorkspaceIsConnectedRefusedForTheWrongTeamUpgradedAndDisconnected(t *t
 		!strings.Contains(created.Manifest, `"name":"access-roster-acme"`) {
 		t.Errorf("manifest = %s, scopes = %v", created.Manifest, created.Scopes)
 	}
-	if u := begun.Msg.GetUrl(); mustQuery(t, u, "team") != acmeTeam || mustQuery(t, u, "redirect_uri") != "https://access.example"+slackWorkspaceCallbackPath ||
+	if u := begun.Msg.GetUrl(); mustQuery(t, u, "redirect_uri") != "https://access.example"+slackWorkspaceCallbackPath ||
 		mustQuery(t, u, "scope") != strings.Join(connection.BotScopes, ",") {
 		t.Errorf("authorize URL = %s", u)
 	}
+	if parsed, _ := url.Parse(begun.Msg.GetUrl()); parsed.Query().Has("team") {
+		t.Errorf("the first install preselects a team nobody recorded yet: %s", begun.Msg.GetUrl())
+	}
 	row = h.row(ctx, t, "acme")
-	if row.GetConnectionState() != slackCreated || row.GetConnection().GetAppId() != created.ID || row.GetConnection().GetBotUserId() != "" {
+	if row.GetConnectionState() != slackCreated || row.GetConnection().GetAppId() != created.ID || row.GetConnection().GetBotUserId() != "" ||
+		row.GetOwner() != "C0north" || row.GetOwnerDomain() != "north.example" || row.GetTeamId() != "" || !row.GetCanChangeOwner() {
 		t.Errorf("after create = %+v", row)
 	}
 	raw := h.credentials(t)["acme.json"]
@@ -171,60 +206,71 @@ func TestAWorkspaceIsConnectedRefusedForTheWrongTeamUpgradedAndDisconnected(t *t
 	if h.slack.Count("oauth.v2.access") != 0 {
 		t.Error("created and already exchanging a code")
 	}
-	// A second connect without a token reuses the App: no second App.
-	if _, err = h.begin(ctx, "acme", ""); err != nil {
+	// A second connect without a token reuses the App: no second App, and
+	// the owner chosen first is not changed by naming another.
+	if _, err = h.beginOwned(ctx, "acme", "", "C0south"); err != nil {
 		t.Fatalf("connect again: %v", err)
 	}
 	if len(h.slack.Apps) != 1 {
 		t.Errorf("a second connect created another App: %d", len(h.slack.Apps))
 	}
+	if got := h.row(ctx, t, "acme").GetOwner(); got != "C0north" {
+		t.Errorf("connecting again changed the owner to %q", got)
+	}
 
-	// Installed into the wrong workspace: the token is revoked, not kept,
-	// and the refusal is recorded.
+	// The first install records the team Slack reports.
 	begun, err = h.begin(ctx, "acme", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := h.finish(t, begun, "acme", globexTeam)
+	got := h.finish(t, begun, "acme", acmeTeam)
+	if got.Code != http.StatusFound || got.Location != "/console/#/slack" {
+		t.Fatalf("the first install = %d %s:\n%s", got.Code, got.Location, got.Body)
+	}
+	row = h.row(ctx, t, "acme")
+	if row.GetConnectionState() != slackInstalled || row.GetTeamId() != acmeTeam || row.GetOwner() != "C0north" ||
+		row.GetConnection().GetBotUserId() != slackfake.BotID(acmeTeam) ||
+		!slices.Equal(row.GetConnection().GetGrantedScopes(), connection.BotScopes) || row.GetConnection().GetConnectedBy() != "ada@north.example" ||
+		row.GetNeedsConfigurationToken() || len(row.GetMissingScopes()) != 0 {
+		t.Errorf("after install = %+v", row)
+	}
+	if credential, _ = connection.DecodeCredential(h.credentials(t)["acme.json"]); credential.BotToken != slackfake.Token(acmeTeam) ||
+		credential.Record == nil || credential.Record.BotUserID != slackfake.BotID(acmeTeam) || credential.Record.TeamID != acmeTeam ||
+		credential.Record.Owner != "C0north" {
+		t.Errorf("credential after install = %+v", credential)
+	}
+	connected := h.recorded.Find("roster.slack_workspace.connected")
+	if len(connected) != 1 || !strings.Contains(fmt.Sprint(connected[0]), "C0north") {
+		t.Errorf("connected recorded = %v, want one naming the owner", connected)
+	}
+
+	// A later install must be the same team: the token for another is
+	// revoked, not kept, and the refusal is recorded.
+	begun, err = h.begin(ctx, "acme", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mustQuery(t, begun.Msg.GetUrl(), "team") != acmeTeam {
+		t.Errorf("a reinstall does not preselect the recorded team: %s", begun.Msg.GetUrl())
+	}
+	got = h.finish(t, begun, "acme", globexTeam)
 	if got.Code != http.StatusConflict || !strings.Contains(got.Body, "revoked") || !strings.Contains(got.Body, `href="/console/#/slack"`) {
-		t.Fatalf("an install into the wrong workspace = %d:\n%s", got.Code, got.Body)
+		t.Fatalf("an install into another team = %d:\n%s", got.Code, got.Body)
 	}
 	if !h.slack.Revoked(globexTeam) || h.slack.Revoked(acmeTeam) {
 		t.Errorf("revoked: globex %v acme %v, want only globex", h.slack.Revoked(globexTeam), h.slack.Revoked(acmeTeam))
 	}
-	if h.row(ctx, t, "acme").GetConnectionState() != slackCreated {
-		t.Error("a refused install changed the state")
+	if row = h.row(ctx, t, "acme"); row.GetConnectionState() != slackInstalled || row.GetTeamId() != acmeTeam {
+		t.Errorf("a refused install changed the connection: %+v", row)
 	}
-	if credential, _ = connection.DecodeCredential(h.credentials(t)["acme.json"]); credential.BotToken != "" {
-		t.Error("a refused install kept a token")
+	if credential, _ = connection.DecodeCredential(h.credentials(t)["acme.json"]); credential.BotToken != slackfake.Token(acmeTeam) {
+		t.Error("a refused install replaced the token")
 	}
 	if refused := h.recorded.Find("roster.slack_workspace.connect_refused"); len(refused) != 1 {
 		t.Fatalf("refusals recorded = %d, want 1", len(refused))
 	}
 	if strings.Contains(h.logs.String(), slackfake.Token(globexTeam)) {
 		t.Error("the refused token is in the logs")
-	}
-
-	// Installed into the right one.
-	begun, err = h.begin(ctx, "acme", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got = h.finish(t, begun, "acme", acmeTeam); got.Code != http.StatusFound || got.Location != "/console/#/slack" {
-		t.Fatalf("the right install = %d %s:\n%s", got.Code, got.Location, got.Body)
-	}
-	row = h.row(ctx, t, "acme")
-	if row.GetConnectionState() != slackInstalled || row.GetConnection().GetBotUserId() != slackfake.BotID(acmeTeam) ||
-		!slices.Equal(row.GetConnection().GetGrantedScopes(), connection.BotScopes) || row.GetConnection().GetConnectedBy() != "ada@north.example" ||
-		row.GetNeedsConfigurationToken() || len(row.GetMissingScopes()) != 0 {
-		t.Errorf("after install = %+v", row)
-	}
-	if credential, _ = connection.DecodeCredential(h.credentials(t)["acme.json"]); credential.BotToken != slackfake.Token(acmeTeam) ||
-		credential.Record == nil || credential.Record.BotUserID != slackfake.BotID(acmeTeam) {
-		t.Errorf("credential after install = %+v", credential)
-	}
-	if connected := h.recorded.Find("roster.slack_workspace.connected"); len(connected) != 1 {
-		t.Errorf("connected recorded = %d, want 1", len(connected))
 	}
 
 	// The roster's scopes grow: installed, yet scopes are missing, and a
@@ -281,7 +327,7 @@ func TestAWorkspaceIsConnectedRefusedForTheWrongTeamUpgradedAndDisconnected(t *t
 	if _, ok := h.credentials(t)["acme.json"]; ok {
 		t.Error("disconnect kept the credential")
 	}
-	if row = h.row(ctx, t, "acme"); row.GetConnectionState() != slackNotConnected || row.GetConnection() != nil {
+	if row = h.row(ctx, t, "acme"); row.GetConnectionState() != slackNotConnected || row.GetConnection() != nil || row.GetOwner() != "" || row.GetTeamId() != "" {
 		t.Errorf("after disconnect = %+v", row)
 	}
 	if _, err = h.disconnect(ctx, "acme", false); connect.CodeOf(err) != connect.CodeFailedPrecondition {
@@ -333,10 +379,11 @@ func TestADisconnectSlackWillNotRevokeKeepsTheConnectionUnlessForced(t *testing.
 	}
 }
 
-// The catalogue's install is refused for the wrong workspace the same way:
-// the token is revoked before the refusal.
+// The catalogue's install is refused for another team than the one the
+// workspace was first installed as, the same way: the token is revoked before
+// the refusal.
 func TestACatalogueInstallIntoTheWrongWorkspaceIsRevoked(t *testing.T) {
-	h := newWorkspaceHarness(t)
+	h := newConnectedWorkspaceHarness(t)
 	if err := h.create(operator(), "sync", accepted); err != nil {
 		t.Fatal(err)
 	}
@@ -404,36 +451,183 @@ func TestTheWorkspaceConfigurationTokenIsNeverKeptOrLogged(t *testing.T) {
 	}
 }
 
-func TestOnlyAnOperatorOfTheOwnerConnects(t *testing.T) {
-	h := newWorkspaceHarness(t)
-	for name, who := range map[string]context.Context{
-		"a viewer":                 viewer(),
-		"a foreign operator":       asSlackIdentity(southOp),
-		"an operator of no owner":  asSlackIdentity(elsewhereOp),
-		"the owner's viewer":       asSlackIdentity(northViewer),
-		"another workspace's only": asSlackIdentity(southOp),
+// bothOp operates two connected directories, which is the one case a scoped
+// operator has a choice to make.
+var bothOp = access.Identity{Scopes: map[string]access.Role{"C0north": access.RoleOperator, "C0south": access.RoleOperator}}
+
+// Who may connect a workspace nobody has connected yet, and who then owns it:
+// the one rule for a Slack workspace and a GitHub organisation alike.
+func TestConnectingAnUnconnectedWorkspaceFollowsTheOwnerRule(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		who   context.Context
+		owner string // what the request names
+		// want is the code refused with, or OK; recorded is the owner kept.
+		want     connect.Code
+		recorded string
+	}{
+		{"the installation-wide operator chooses a directory", operator(), "C0south", 0, "C0south"},
+		{"the installation-wide operator may choose none", operator(), "", 0, ""},
+		{"the installation-wide operator cannot name a directory that is not connected", operator(), "C0nowhere", connect.CodeInvalidArgument, ""},
+		{"an operator of one directory owns it without saying so", asSlackIdentity(northOp), "", 0, "C0north"},
+		{"an operator of one directory may name it", asSlackIdentity(northOp), "C0north", 0, "C0north"},
+		{"an operator of one directory cannot hand it to another", asSlackIdentity(northOp), "C0south", connect.CodePermissionDenied, ""},
+		{"a foreign operator cannot name the other directory", asSlackIdentity(southOp), "C0north", connect.CodePermissionDenied, ""},
+		{"an operator of several must choose", asSlackIdentity(bothOp), "", connect.CodeInvalidArgument, ""},
+		{"an operator of several chooses among theirs", asSlackIdentity(bothOp), "C0south", 0, "C0south"},
+		{"an operator of several cannot choose another", asSlackIdentity(bothOp), "C0nowhere", connect.CodePermissionDenied, ""},
+		{"an operator of a directory that is not connected has nothing to own it with", asSlackIdentity(elsewhereOp), "", connect.CodePermissionDenied, ""},
+		{"a viewer", viewer(), "", connect.CodePermissionDenied, ""},
+		{"the owner's viewer", asSlackIdentity(northViewer), "C0north", connect.CodePermissionDenied, ""},
+		{"nobody signed in", context.Background(), "", connect.CodeUnauthenticated, ""},
 	} {
-		if _, err := h.begin(who, "acme", accepted); connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("%s connecting = %v, want permission denied", name, err)
+		t.Run(c.name, func(t *testing.T) {
+			h := newWorkspaceHarness(t)
+			_, err := h.beginOwned(c.who, "acme", accepted, c.owner)
+			if (err == nil) != (c.want == 0) || (err != nil && connect.CodeOf(err) != c.want) {
+				t.Fatalf("connect = %v, want code %v (0 is success)", err, c.want)
+			}
+			if c.want != 0 {
+				if h.slack.Count("apps.manifest.create") != 0 {
+					t.Error("a refused connect reached Slack")
+				}
+				if _, _, found, _ := h.workspaces.Get(context.Background(), "acme"); found {
+					t.Error("a refused connect left a record")
+				}
+				return
+			}
+			record, _, found, err := h.workspaces.Get(context.Background(), "acme")
+			if err != nil || !found || record.Owner != c.recorded {
+				t.Errorf("record = %+v (found %v, %v), want owner %q", record, found, err, c.recorded)
+			}
+		})
+	}
+}
+
+// Once recorded, the owner decides who operates the workspace: its own
+// directory's operator and the installation-wide operator, nobody else; and a
+// workspace recorded with no owner is the installation-wide operator's alone.
+func TestAConnectedWorkspaceIsOperatedByItsRecordedOwnerOnly(t *testing.T) {
+	h := newConnectedWorkspaceHarness(t)
+	for name, who := range map[string]context.Context{
+		"a viewer":                viewer(),
+		"a foreign operator":      asSlackIdentity(southOp),
+		"an operator of no owner": asSlackIdentity(elsewhereOp),
+		"the owner's viewer":      asSlackIdentity(northViewer),
+	} {
+		if _, err := h.begin(who, "acme", ""); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("%s reconnecting = %v, want permission denied", name, err)
+		}
+		if _, err := h.disconnect(who, "acme", false); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("%s disconnecting = %v, want permission denied", name, err)
 		}
 	}
-	if _, err := h.begin(context.Background(), "acme", accepted); connect.CodeOf(err) != connect.CodeUnauthenticated {
+	if _, err := h.begin(context.Background(), "acme", ""); connect.CodeOf(err) != connect.CodeUnauthenticated {
 		t.Errorf("anonymous connect = %v", err)
 	}
-	// initech names no owner: the installation-wide role only.
-	if _, err := h.begin(asSlackIdentity(northOp), "initech", accepted); connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Errorf("an owner's operator connecting an unowned workspace = %v", err)
+	// initech was recorded with no owner: the installation-wide role only.
+	if _, err := h.begin(asSlackIdentity(northOp), "initech", ""); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("an owner's operator reconnecting an unowned workspace = %v", err)
 	}
 	if h.slack.Count("apps.manifest.create") != 0 {
 		t.Error("a refused connect reached Slack")
 	}
-	if _, err := h.begin(asSlackIdentity(northOp), "acme", accepted); err != nil {
+	if _, err := h.begin(asSlackIdentity(northOp), "acme", ""); err != nil {
 		t.Errorf("the owner's operator = %v", err)
+	}
+	if _, err := h.begin(operator(), "initech", ""); err != nil {
+		t.Errorf("the installation-wide operator = %v", err)
 	}
 	// Without a store there is nowhere to keep a token.
 	h.console.deps.SlackWorkspaces = nil
 	if _, err := h.begin(operator(), "globex", accepted); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("connect without a store = %v", err)
+	}
+}
+
+// Only the installation-wide operator changes a recorded owner, to a
+// connected directory or to none, and the change is audited.
+func TestOnlyTheInstallationWideOperatorChangesAnOwner(t *testing.T) {
+	h := newConnectedWorkspaceHarness(t)
+	change := func(ctx context.Context, workspace, owner string) error {
+		_, err := h.console.ChangeSlackWorkspaceOwner(ctx, connect.NewRequest(
+			&directoryrosterv1.ChangeSlackWorkspaceOwnerRequest{Workspace: workspace, Owner: owner}))
+		return err
+	}
+	for name, who := range map[string]context.Context{
+		"the owner's operator":     asSlackIdentity(northOp),
+		"the new owner's operator": asSlackIdentity(southOp),
+		"an operator of several":   asSlackIdentity(bothOp),
+		"a viewer":                 viewer(),
+		"nobody signed in":         context.Background(),
+	} {
+		if err := change(who, "acme", "C0south"); connect.CodeOf(err) == 0 {
+			t.Errorf("%s changed the owner", name)
+		}
+		if got := h.row(operator(), t, "acme").GetOwner(); got != "C0north" {
+			t.Fatalf("after %s tried, the owner is %q", name, got)
+		}
+	}
+	if len(h.recorded.Find("roster.slack_workspace.owner_changed")) != 0 {
+		t.Error("a refused change was recorded")
+	}
+	if err := change(operator(), "acme", "C0nowhere"); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("an owner that is not a connected directory = %v", err)
+	}
+	if err := change(operator(), "nowhere", "C0south"); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("a workspace that is not connected = %v", err)
+	}
+	if err := change(operator(), "acme", "C0south"); err != nil {
+		t.Fatalf("the installation-wide operator = %v", err)
+	}
+	row := h.row(operator(), t, "acme")
+	if row.GetOwner() != "C0south" || row.GetOwnerDomain() != "south.example" {
+		t.Errorf("after the change = %+v", row)
+	}
+	// The new owner now operates it, and the old one does not.
+	if _, err := h.begin(asSlackIdentity(southOp), "acme", ""); err != nil {
+		t.Errorf("the new owner's operator = %v", err)
+	}
+	if _, err := h.begin(asSlackIdentity(northOp), "acme", ""); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("the previous owner's operator = %v, want permission denied", err)
+	}
+	if err := change(operator(), "acme", ""); err != nil {
+		t.Fatalf("removing the owner = %v", err)
+	}
+	if got := h.row(operator(), t, "acme").GetOwner(); got != "" {
+		t.Errorf("after removing, the owner is %q", got)
+	}
+	changed := h.recorded.Find("roster.slack_workspace.owner_changed")
+	if len(changed) != 2 || !strings.Contains(fmt.Sprint(changed[0]), "C0north") || !strings.Contains(fmt.Sprint(changed[0]), "C0south") ||
+		!strings.Contains(fmt.Sprint(changed[1]), "none") {
+		t.Errorf("owner changes recorded = %v", changed)
+	}
+}
+
+// The same Slack team cannot be connected under two keys: the first install
+// of the second is refused and its token revoked.
+func TestOneSlackTeamCannotBeConnectedUnderTwoKeys(t *testing.T) {
+	h := newWorkspaceHarness(t)
+	ctx := operator()
+	begun, err := h.beginOwned(ctx, "acme", accepted, "C0north")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h.finish(t, begun, "acme", acmeTeam); got.Code != http.StatusFound {
+		t.Fatalf("first install = %d", got.Code)
+	}
+	if begun, err = h.beginOwned(ctx, "globex", accepted, "C0south"); err != nil {
+		t.Fatal(err)
+	}
+	got := h.finish(t, begun, "globex", acmeTeam)
+	if got.Code != http.StatusConflict || !strings.Contains(got.Body, "already connected as") || !strings.Contains(got.Body, "revoked") {
+		t.Fatalf("a second key for the same team = %d:\n%s", got.Code, got.Body)
+	}
+	if row := h.row(ctx, t, "globex"); row.GetConnectionState() != slackCreated || row.GetTeamId() != "" {
+		t.Errorf("globex after the refusal = %+v", row)
+	}
+	if refused := h.recorded.Find("roster.slack_workspace.connect_refused"); len(refused) != 1 {
+		t.Errorf("refusals recorded = %d, want 1", len(refused))
 	}
 }
 
@@ -518,7 +712,7 @@ func TestAWorkspaceInstallIsFinishedOnlyByTheBrowserThatStartedIt(t *testing.T) 
 // What the controller reports is shown only to those who may view the
 // workspace, each row saying whether the caller may operate it.
 func TestTheStatusShowsEachCallerOnlyTheWorkspacesItMayView(t *testing.T) {
-	h := newWorkspaceHarness(t)
+	h := newConnectedWorkspaceHarness(t)
 	h.putReport(t, report("acme", true, nil))
 	h.putReport(t, report("globex", false, nil))
 	h.putReport(t, report("initech", true, nil))
@@ -563,7 +757,7 @@ func TestTheStatusShowsEachCallerOnlyTheWorkspacesItMayView(t *testing.T) {
 }
 
 func TestTheStatusSaysWhatTheControllerDid(t *testing.T) {
-	h := newWorkspaceHarness(t)
+	h := newConnectedWorkspaceHarness(t)
 	at := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
 	doc := status.Workspace{
 		Workspace: "acme", Enabled: false,
@@ -642,7 +836,7 @@ func TestTheStatusSaysWhatTheControllerDid(t *testing.T) {
 // The matrix of who may confirm which set: the fingerprint of the latest
 // report for exactly that gate, by an operator of the workspace's owner.
 func TestConfirmingSlackRemovalsIsForTheSetTheReportShows(t *testing.T) {
-	h := newWorkspaceHarness(t)
+	h := newConnectedWorkspaceHarness(t)
 	h.putReport(t, status.Workspace{
 		Workspace: "acme", Enabled: true, Tick: status.Tick{At: time.Now(), Outcome: status.OutcomeHeld},
 		Breaker: &status.Breaker{Affected: 5, Total: 8, Fingerprint: "ws-fp"},
