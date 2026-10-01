@@ -16,8 +16,8 @@ of every page in the repository, not just these, see
 - [design/trust.md](design/trust.md) — two anchors and one vocabulary of
   internal groups: the rule under everything
 - [design/access-roster.md](design/access-roster.md) — one process, the
-  directory model, freshness, sessions, the console, the GitHub
-  controller, the audit trail
+  directory model, freshness, sessions, the console, the GitHub and
+  Slack controllers and the rails they share, the audit trail
 - [design/access-proxy.md](design/access-proxy.md) — why the proxy is
   upstream oauth2-proxy in a chart and no code of ours
 - [design/accessctl.md](design/accessctl.md) — why a CLI at all, the
@@ -30,3 +30,10 @@ of every page in the repository, not just these, see
   new plugs in, and what it must ship with
 - [decisions/](decisions/README.md) — the accepted decisions this doctrine
   follows from, one record per decision, with what was weighed against it
+- the Slack rules that decide design questions, each its own record:
+  [0017](decisions/0017-the-slack-reconciler-membership-only.md) the Slack
+  reconciler's scope (membership only),
+  [0018](decisions/0018-do-not-configure-what-the-product-knows.md) do not
+  configure what the product already knows,
+  [0019](decisions/0019-two-kinds-of-slack-channel-never-mixed.md) two kinds of
+  channel, never mixed

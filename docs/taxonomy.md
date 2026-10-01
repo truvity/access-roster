@@ -69,7 +69,7 @@ transitively, on the **same** `S:T`. This is applied once, at evaluation
 — [reference/policy.md#groups--token-by-deep-merge](reference/policy.md#groups--token-by-deep-merge)
 — so every downstream reader sees the expanded set without knowing
 inheritance exists: a `requires` gate, a token's `groups` claim, a GitHub
-team bound to `S:T:viewer` fed by someone who is only ever `S:T:admin`.
+team or a Slack channel bound to `S:T:viewer` fed by someone who is only ever `S:T:admin`.
 
 **There is no scope inheritance.** `all:x:admin` never implies
 `devel:x:admin`, whatever the two things otherwise have in common — the
@@ -107,7 +107,7 @@ that was never meant to reach `kernel`.
 
 `*` is allowed in the **scope** and/or **thing** position of a
 Groups-table key, and nowhere else — never in `requires`, a GitHub
-binding, `claims` or `lifetimes`, and never in the role position:
+binding, a Slack channel's `from`, `claims` or `lifetimes`, and never in the role position:
 `*:k8s:admin`, `devel:*:viewer`, but not `devel:k8s:*` and not `*:*:*`.
 Wildcards need a [declared vocabulary](reference/policy.md#vocabulary);
 without one, `*` is an ordinary character with no special meaning refused
@@ -125,8 +125,8 @@ restricts itself to `devel`, silently skipping `kernel`, `stage` and
 matches the key's members or matchers is in **all** of those concrete
 groups, unioned with whatever concrete keys separately match, and then
 [inheritance](#inheritance) applies on top. Nothing past evaluation ever
-sees the wildcard itself — a token, a `requires` gate and a GitHub
-binding all see only concrete names.
+sees the wildcard itself — a token, a `requires` gate, a GitHub
+binding and a Slack channel all see only concrete names.
 
 **A wildcard that expands to nothing is refused, not silently accepted.**
 A `groups` key nobody is ever in is the one failure this vocabulary
@@ -147,6 +147,7 @@ the specific reason.
 | `prod:k8s:admin` | admin of prod's Kubernetes |
 | `all:access-roster:operator` | operator of this hub, installation-wide |
 | `C0north:access-roster:viewer` | viewer of one directory only |
+| `C0north:access-roster:operator` | operator over one directory, which also operates the GitHub organisations and Slack workspaces that directory owns |
 | `*:k8s:admin` (Groups key only) | admin of every non-sensitive environment's Kubernetes |
 | `devel:*:viewer` (Groups key only) | viewer of everything devel has that declares a viewer role |
 | `devel:ssh:user` | user of devel's ssh, a role scoped to devel alone |
@@ -173,7 +174,7 @@ the specific reason.
   `all` to reach an environment — see [What `all`
   means](#what-all-means) and [Inheritance](#inheritance).
 - **A mapping wildcard anywhere but a Groups-table key** — in `requires`,
-  a GitHub binding, `claims` or `lifetimes`. Those name a caller's
+  a GitHub binding, a Slack channel's `from`, `claims` or `lifetimes`. Those name a caller's
   entitlement or a token's shape directly, in one concrete name a person
   reviewing the file can check; a wildcard there would make the same line
   mean something different depending on the vocabulary in force elsewhere

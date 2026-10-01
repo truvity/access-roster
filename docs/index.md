@@ -29,7 +29,7 @@ yet know which of those you want.
 | name a grant, or declare a vocabulary that checks it | [taxonomy.md](taxonomy.md) |
 | connect the corporate directory people sign in with | [connect/corporate-directory.md](connect/corporate-directory.md), and [operations/connect-runbook.md](operations/connect-runbook.md) |
 | give a CI job an identity with no stored secret | [connect/github-actions.md](connect/github-actions.md) |
-| deploy it | [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md), [reference/configuration.md](reference/configuration.md), then [operations/connect-runbook.md](operations/connect-runbook.md) |
+| deploy it | [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md), [reference/configuration.md](reference/configuration.md) (and [the Slack controller's environment](reference/configuration.md#the-slack-controllers-environment)), then [operations/connect-runbook.md](operations/connect-runbook.md) |
 | run it: what to check, what to back up, how to restore | [operations/runbook.md](operations/runbook.md), [configuration.md — restoring from the Secrets alone](reference/configuration.md#restoring-from-the-secrets-alone) |
 | run more than one replica of the issuer | [operations/high-availability.md](operations/high-availability.md) |
 | use it from a laptop or a CI job | [reference/accessctl.md](reference/accessctl.md) |
@@ -37,7 +37,10 @@ yet know which of those you want.
 | decide whether a console signs itself in or lets the gateway do it, then build the gateway shape | [connect/choosing-native-or-gateway-oidc.md](connect/choosing-native-or-gateway-oidc.md) |
 | keep a GitHub organisation's teams in step with the policy | [connect/github-organisation.md](connect/github-organisation.md) |
 | declare GitHub Apps as data and create them from the console | [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md) |
-| connect a Slack workspace from the console, read what the controller did and confirm held removals | [connect/slack-workspace.md](connect/slack-workspace.md#connect-a-workspace-from-the-console) |
+| keep a Slack workspace's channels in step with the policy (and with directory groups, for console channels), read what the controller did and confirm held removals | [connect/slack-workspace.md](connect/slack-workspace.md) |
+| connect a Slack workspace from the console | [connect/slack-workspace.md](connect/slack-workspace.md#connect-a-workspace-from-the-console) |
+| manage ordinary Slack channels from the console, fed by directory groups and individual addresses | [connect/slack-workspace.md](connect/slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console) |
+| bind a Slack channel in git, fed by internal groups | [reference/policy.md](reference/policy.md#slack-channels) |
 | declare Slack Apps as data and create and install them from the console | [connect/slack-apps-catalogue.md](connect/slack-apps-catalogue.md) |
 | share Slack Connect channels between your own workspaces, edited on the console | [connect/slack-connect-channels.md](connect/slack-connect-channels.md) |
 | give a Pulumi or Terraform program that manages the organisation an identity of its own | [connect/infrastructure-as-code.md](connect/infrastructure-as-code.md) |
@@ -49,6 +52,9 @@ yet know which of those you want.
 | see what the conformance suite said, and why | [conformance.md](conformance.md) |
 | run the conformance suite | [operations/conformance.md](operations/conformance.md) |
 | build a service that accepts both people and workloads | [connect/service-to-service.md](connect/service-to-service.md) |
+| see how the console is organised (IDENTITY, ACCESS, SYSTEMS, ADMIN) and what each Systems tab does | [design/access-roster.md](design/access-roster.md#the-console) |
+| understand how the GitHub and Slack controllers share one set of rails, and what neither will ever do | [design/access-roster.md](design/access-roster.md#reconciler-rails), [safety.md](safety.md#the-reconcilers-what-they-refuse-to-do) |
+| read the trail: what each Slack action is recorded as | [architecture.md](architecture.md#the-audit-trail-and-who-writes-it), [CHANGELOG.md](../CHANGELOG.md) (audit catalogue 1.5.0) |
 | see why a decision was made, and what it forecloses | [decisions/](decisions/README.md) |
 | extend it — a new directory backend, a new kind of client | [development/extending.md](development/extending.md) |
 | change the console or run it locally | [CONTRIBUTING.md](../CONTRIBUTING.md) |

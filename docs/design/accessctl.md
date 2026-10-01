@@ -26,13 +26,16 @@ a login cache and an issuer configuration.
 | `aws` | exchanges the cached login for the role's audience and answers the credential-process JSON | people |
 | `token` | prints a token for one audience on stdout and nothing else, for a caller that is neither kubectl nor an AWS SDK: `accessctl token --audience openbao \| bao write -field=token auth/jwt-roster/login role=roster jwt=-`. The laptop sign-in, or the job's own token in CI | people, jobs |
 | `github-token` | prints a GitHub App installation token of a catalogue App, `--app <id>`, narrowed by `--repository` and `--permission name=level`, under the catalogue's grants; `--json` prints what GitHub granted beside it. The laptop sign-in, or the job's own token in CI | people, jobs |
-| `credential` | mints a short-lived certificate through OpenBAO: `credential ssh\|db\|client --env <env>`, one exchange for `openbao`, one login on the JWT mount, one `sign` call, delivered into the ssh-agent, a psql service entry or a named path. The laptop sign-in, or the job's own token in CI | people, jobs |
+| `bao` | authenticates (the sign-in, or the job's own token, exchanged for `openbao`, then one login on the JWT mount), then runs the real `bao` CLI unchanged; accessctl's own flags go before the bao subcommand | people, jobs |
+| `psql` / `pg` | authenticate, mint a Postgres client certificate through OpenBAO's PKI, then run `psql` or any command with libpq's environment pointed at it | people, jobs |
+| `r2` | authenticates, then runs the real r2broker CLI unchanged | people, jobs |
+| `ssh known-hosts` | trusts the configured SSH host CAs before the first connect, in one file it owns | people |
 | `setup` | `kubeconfig` + `aws-config` in one go, then prints the Docker and CodeArtifact lines | people |
 | `exchange` | the raw exchange: subject token in, token with the requested audience out | scripts |
 
 **A job runs the same commands.** With `ACTIONS_ID_TOKEN_REQUEST_URL`
 and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` set, `kube-token`, `aws`,
-`token`, `github-token`, and `credential` ask GitHub for the job's own identity token, minted for the
+`token`, `github-token`, `bao`, `psql`/`pg` and `r2` ask GitHub for the job's own identity token, minted for the
 issuer, and exchange that, presenting the audience as the client the way
 the action does. So one committed kubeconfig and one `aws.ini` serve a
 laptop and a job alike, where a repository used to keep a second copy of
@@ -76,40 +79,44 @@ artifact domains are just many profiles and many `--profile` flags, and no
 version of ours moves when Amazon's tooling does. The recipes are in
 [connect/registries-and-artifacts.md](../connect/registries-and-artifacts.md).
 
-## `credential`: the broker for what OpenBAO mints
+<a id="credential-the-broker-for-what-openbao-mints"></a>
 
-Three kinds of credential that nothing else in this tool can serve — an
-SSH certificate, a database client certificate, a machine client
-certificate — and one security model for all three. The command is a
-courier, and the design is mostly a list of decisions it does **not**
-make:
+## `bao`, `psql` / `pg`, `r2`: couriers for what a store mints
+
+`accessctl credential ssh|db|client` was removed in v1.34.0
+([ADR 0013](../decisions/0013-openbao-access-through-the-bao-cli.md)): each
+reimplemented a slice of what the `bao` CLI already does, and that slice grew
+every time OpenBAO did. What replaced it is a courier, and the design is mostly
+a list of decisions it does **not** make:
 
 | Decided by | What |
 |---|---|
 | the exchange client's `requires` | who may ask at all. A session revoked in the console stops issuance within the exchange's token cap, because every run exchanges afresh |
 | the OpenBAO role | the lifetime, the extensions, the key id, which principals and names are allowed. No request from here carries a TTL, so a role change reaches every credential in flight |
+| `bao` itself | everything after accessctl's own flags: its subcommands, its flags, its bugs and its fixes stay upstream |
 | the caller | which public key is signed, and which principals or names are asked for — a request, never a grant |
 
-**The key is generated for the certificate, not decorated by it.** For
-SSH the pair is made in the process, signed once, and handed to the agent
-with the certificate's own lifetime; nothing long-lived survives the
-expiry to be signed again by somebody else. The PKI kinds are the same:
-an ECDSA P-384 key is made in the process, a CSR for it goes to
-`pki/sign/<role>`, and the key is written beside the certificate that
-comes back — never sent, so a role can offer `sign` alone and no call
-exists that would have the manager make a key and put it on the wire.
+**The key is generated for the certificate, not decorated by it.** For `psql`
+and `pg` an ECDSA P-384 key is made in the process, a CSR for it goes to
+`pki/sign/<role>`, and the key is written beside the certificate that comes
+back, in a `0600` file in a `0700` directory — never sent, so a role can offer
+`sign` alone and no call exists that would have the manager make a key and put
+it on the wire. The certificate is reused only while it has enough life left
+and was minted for the same common name.
 
-**Nothing that could mint a second credential outlives the command.** The
-OpenBAO token is held in memory and revoked on the way out; a batch token
-refuses that revoke and says so, which is swallowed rather than turned
-into a failed exit for a credential that was delivered — it was never on
-disk and it expires on its own.
+**What is kept is short-lived and advisory.** The OpenBAO token is cached, one
+file per address, login namespace and subject, until a margin before its own
+expiry, and `--forget` revokes it and removes it; a login whose answer carries
+no lease is used for that one command and never cached. None of it can mint its
+own successor but the sign-in's refresh token, which `login` replaces.
 
-**Delivery is where each kind is actually consumed**: the ssh-agent (or
-`~/.ssh`, certificate beside key, the way OpenSSH looks for it), a psql
-service entry naming the files, or a path the caller gives. What is
-printed is what an investigator needs — the `key_id` or common name, the
-principals, the serial and the expiry — and never the key.
+**Delivery is where each kind is actually consumed**: `bao` gets `BAO_ADDR`,
+`BAO_TOKEN` and, when named, `BAO_CACERT` in its environment alone, and the
+process image is replaced where the platform allows it, so an interactive
+`bao ssh -mode=ca` gets the terminal as if run directly; `psql` and `pg` get
+libpq's own variables. What is printed is what an investigator needs, never the
+key. The commands' flags and exit codes are in
+[reference/accessctl.md](../reference/accessctl.md).
 
 ## Installing it
 

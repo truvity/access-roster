@@ -1,6 +1,8 @@
 # The libraries — Go module and TypeScript package
 
-**Status:** built. The Go module ships `identity`, `tokens` and `policy`;
+**Status:** built. The Go module ships `identity`, `tokens` and `policy` (and `backend`, the
+contract a directory backend implements, see
+[extending.md](../development/extending.md));
 the TypeScript package ships a browser half, a React half and a Node
 server half. The exact surface is in
 [reference/go-module.md](../reference/go-module.md) and
@@ -22,7 +24,7 @@ the same three the Go module gives.
 |---|---|
 | `identity` | `Verified{Subject, Email, Name, GivenName, FamilyName, Groups, ServiceAccount}` and **exactly two verifiers**, one per anchor ([trust.md](trust.md)): `Issuer` (a bearer or forwarded token: the key set, issuer URL, audience) and `Cluster` (a ServiceAccount token: a check you supply — a TokenReview, or the cluster's published key set — an audience, and the names it admits). A net/http `Middleware` puts the `Verified` in the context, `Require(groups...)` gates a handler, `WhoAmI` serves `GET /.access/whoami` for the UI, `FromContext` reads it back. Both verifiers yield the same `Verified`, so a handler never learns which anchor proved the caller |
 | `tokens` | `Exchanger.Exchange(ctx, subject, kind, audience)` — `TypeJWT` for a proof from outside, `TypeAccessToken` for the CLI's own sign-in — and the encoders `accessctl` uses: the Kubernetes exec credential, `AssumeRoleWithWebIdentity` and the AWS `credential_process` |
-| `policy` | the policy engine and its schema — groups, claims, lifetimes, clients, github — one loader for the issuer, the console and the controller, so all three act on the same policy; `Evaluate` takes a person, a CI job or a workload as one `Input` |
+| `policy` | the policy engine and its schema — groups, claims, lifetimes, clients, github, slack, people — one loader for the issuer, the console and the two controllers, so all of them act on the same policy; `Evaluate` takes a person, a CI job or a workload as one `Input` |
 
 Not built, and additive when it is: `authz` (role helpers over
 `Verified`), `directory` (a client for the endpoint that returns when

@@ -36,7 +36,9 @@ anywhere.
 2. **Leavers must lose access without a click.** A suspended account
    keeps any session it already has unless something notices. That
    something must know whether its answer can be trusted, or it will
-   remove access on a hiccup.
+   remove access on a hiccup. The same holds where membership lives outside a
+   token: GitHub teams and Slack channels are kept in step with the groups, and
+   a leaver is removed only on an answer the directory vouches for.
 3. **Several directories, one policy.** Two companies, two Workspaces,
    later a third tenant; the mapping to infrastructure roles must live
    in one file, not in each Workspace's admin console and each cluster's
@@ -82,15 +84,21 @@ earlier one wins.
 2. **Configuration is chart values.** No database, no operator, no
    admin UI that writes policy. The policy is a file in git; the console
    reads it and never edits it, so `git log` is the complete history of
-   access. What the console does write — a directory it connected, a
-   GitHub App an owner created, a confirmation — is bootstrap and
-   removal, kept in a handful of Secrets a copy of restores.
+   access to infrastructure. What the console does write — a directory it
+   connected, a GitHub App an owner created, a Slack workspace an owner
+   connected, a confirmation, and the records of Slack channels that people
+   rather than infrastructure own — is bootstrap, removal and a few records of
+   its own, each audited, kept in a handful of ConfigMaps and Secrets a copy of
+   restores. Those records never name an internal group and never grant access
+   to infrastructure.
 3. **Almost nothing is a secret.** One signing key. The OAuth client
    credentials the corporate IdP issued. The refresh token a directory
-   admin's consent produced, and the key of a GitHub App an owner
-   created from the console. Nothing else — machines prove themselves
+   admin's consent produced, the key of a GitHub App an owner
+   created from the console, and the bot token of a Slack App an owner
+   installed. Nothing else — machines prove themselves
    with tokens their own platform issued, and the issuer holds no
-   credential to verify them, only a public key set.
+   credential to verify them, only a public key set. The one more throwaway is
+   a Slack app configuration token, used once and never stored.
 4. **Strict where implemented, and not one grant more.** Three grants
    and three endpoints — six things — cover a browser, a CLI with a
    browser to confirm in, and a machine that already holds a token. Each one that is served passes the
@@ -129,4 +137,8 @@ in with their own IdP needs per-organisation federation, and only the
 directory connector here is reusable for that. Not a service mesh:
 workloads keep their platform identities. Not a secrets manager. Not a
 replacement for the corporate directory: it reads one, and if the
-directory is wrong, so is every token.
+directory is wrong, so is every token. Not a chat or source-hosting
+administrator: it keeps the membership of GitHub teams and Slack channels equal
+to groups it already resolves and does nothing else there — it creates no
+accounts, manages no user groups and removes no one from a public Slack
+channel.
