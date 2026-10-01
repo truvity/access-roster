@@ -61,6 +61,13 @@ export type ChannelRow = {
   canOperate: boolean;
   /** Per-side visibility, for a Slack Connect channel whose sides differ. */
   privatePerSide: Record<string, boolean>;
+  /** For a policy channel: whether the caller may take it over from git. */
+  canTakeOver: boolean;
+  /** For a policy channel: the people its strict mode never removes. */
+  ignore: string[];
+  /** For a console channel that took a policy channel over: what the report
+   *  says of the superseded git entry. */
+  supersedes?: string;
 };
 
 const lower = (s: string) => s.toLowerCase();
@@ -111,6 +118,8 @@ export function buildRows(
       record,
       canOperate: record.canOperate,
       privatePerSide: { ...def.privatePerSide },
+      canTakeOver: false,
+      ignore: [],
     });
   }
 
@@ -120,6 +129,12 @@ export function buildRows(
     if (!def) continue;
     const found = reported(def.workspace)?.channels.find((c) => c.console && c.name === def.name);
     if (found) mark(def.workspace, found);
+    // A takeover: the report also holds the git entry, marked superseded;
+    // it is shown on this row, not as a second row of the same address.
+    const superseded = def.supersedesPolicy
+      ? reported(def.workspace)?.channels.find((c) => !c.console && !c.shared && c.state === "superseded" && (c.name === def.name || (def.channelId !== "" && c.id === def.channelId)))
+      : undefined;
+    if (superseded) mark(def.workspace, superseded);
     out.push({
       kind: "console",
       workspace: def.workspace,
@@ -134,6 +149,9 @@ export function buildRows(
       record,
       canOperate: record.canOperate,
       privatePerSide: {},
+      canTakeOver: false,
+      ignore: [],
+      supersedes: superseded?.reason || (def.supersedesPolicy ? "Takes over a policy channel; remove it from git." : undefined),
     });
   }
 
@@ -156,6 +174,8 @@ export function buildRows(
         sides: [{ workspace: ws.workspace, name: channel.name, id: channel.id, status: channel, canOperate: ws.canOperate }],
         canOperate: false,
         privatePerSide: {},
+        canTakeOver: !connect && ws.canOperate && channel.state !== "superseded" && ordinary?.available === true,
+        ignore: [...channel.ignore],
       });
     }
   }

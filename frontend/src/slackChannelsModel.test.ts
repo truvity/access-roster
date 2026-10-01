@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canTakeOver,
   channelDefinitionOf,
   channelProblems,
   discoveredSentence,
   emptyChannelForm,
   formOfDiscovered,
   formOfRecord,
+  formOfTakeover,
   manageableWorkspaces,
   manageHint,
   modeLabel,
@@ -51,6 +53,7 @@ describe("the definition sent", () => {
       mode: "extend",
       ignore: [],
       sources: ["eng@acme.example"],
+      supersedesPolicy: false,
     });
   });
 
@@ -63,7 +66,7 @@ describe("the definition sent", () => {
 describe("the form of a record or a discovered channel", () => {
   it("reads a record back, extend unless it says strict", () => {
     const record = { channel: { workspace: "acme", name: "eng", channelId: "C0123ABCD", private: true, mode: "strict", ignore: ["a@acme.example"], sources: ["eng@acme.example"] } };
-    expect(formOfRecord(record)).toEqual({ workspace: "acme", name: "eng", channelId: "C0123ABCD", private: true, mode: "strict", ignore: ["a@acme.example"], sources: ["eng@acme.example"] });
+    expect(formOfRecord(record)).toEqual({ workspace: "acme", name: "eng", channelId: "C0123ABCD", private: true, mode: "strict", ignore: ["a@acme.example"], sources: ["eng@acme.example"], supersedesPolicy: false });
     expect(formOfRecord({ channel: { ...record.channel, mode: "" } }).mode).toBe("extend");
     expect(formOfRecord({ channel: undefined })).toEqual(emptyChannelForm);
   });
@@ -101,5 +104,35 @@ describe("words", () => {
     expect(manageHint({ canManage: false })).toContain("owning directory");
     expect(discoveredSentence({ private: true, members: 1 })).toBe("private, 1 member");
     expect(discoveredSentence({ private: false, members: 40 })).toBe("public, 40 members");
+  });
+});
+
+describe("taking a policy channel over from git", () => {
+  const policyRow = { workspace: "acme", name: "alerts", id: "C0ALERTS1", private: true, mode: "strict", ignore: ["boss@acme.example"] };
+
+  it("prefills what git has and leaves the directory sources to the operator", () => {
+    const form = formOfTakeover(policyRow);
+    expect(form).toMatchObject({ workspace: "acme", name: "alerts", channelId: "C0ALERTS1", private: true, mode: "strict", ignore: ["boss@acme.example"], sources: [], supersedesPolicy: true });
+    expect(channelProblems(form, "C0north")).toEqual(["Pick at least one directory group: members come only from groups."]);
+  });
+
+  it("sends the flag, the id and the visibility, so the server can match exactly", () => {
+    const def = channelDefinitionOf({ ...formOfTakeover(policyRow), sources: ["eng@acme.example"] });
+    expect(def).toMatchObject({ supersedesPolicy: true, channelId: "C0ALERTS1", private: true, mode: "strict", sources: ["eng@acme.example"] });
+  });
+
+  it("drops a strict mode git cannot have on a public channel", () => {
+    expect(formOfTakeover({ ...policyRow, private: false })).toMatchObject({ mode: "extend", ignore: [] });
+  });
+
+  it("offers the action on a policy channel the caller may manage, and nowhere else", () => {
+    expect(canTakeOver({ kind: "policy", canTakeOver: true })).toBe(true);
+    expect(canTakeOver({ kind: "policy", canTakeOver: false })).toBe(false);
+    expect(canTakeOver({ kind: "console", canTakeOver: true })).toBe(false);
+    expect(canTakeOver({ kind: "connect", canTakeOver: true })).toBe(false);
+  });
+
+  it("keeps the flag when a record is edited", () => {
+    expect(formOfRecord({ channel: { ...policyRow, channelId: "C0ALERTS1", ignore: [], sources: ["a@acme.example"], supersedesPolicy: true } }).supersedesPolicy).toBe(true);
   });
 });
