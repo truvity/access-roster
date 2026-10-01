@@ -960,16 +960,26 @@ document cannot displace one.
 |---|---|
 | a document whose `client_id` is not the URL it was served from | otherwise a document at any allow-listed host could claim to be any client, and the id a person sees, the id the audit records and the id the token is minted for would all be a name its holder chose |
 | an origin that is not allow-listed | decided before anything is dialled, so the allow-list is also what stops the issuer being used to fetch arbitrary URLs |
-| a response larger than 64 KiB, or slower than 5 seconds | the URL is caller-chosen, so the response is an untrusted stream and a sign-in is waiting on it |
+| a response larger than 64 KiB, or slower than 10 seconds per attempt | the URL is caller-chosen, so the response is an untrusted stream and a sign-in is waiting on it |
 | a redirect to anywhere else | the document is served *at* its own id; a redirect chain is how an allow-list on the first hop stops meaning anything |
 | a document with no `redirect_uris` | there would be nowhere to deliver a code |
 | an `origins` entry with a scheme, a path or a `*` | an origin is a host; a wildcard also admits every subdomain somebody forgot about |
 | `requires` or `ttl_cap` with no `origins` | written by somebody who expected it to apply |
 
-A fetched document is honoured for ten minutes and then fetched again.
-**There is no stale fallback**: a document that cannot be fetched is a
-client whose redirect URIs are not known right now, and honouring
-yesterday's copy is honouring URIs it may have retired.
+A fetched document is honoured for ten minutes and then fetched again. A
+transient failure of the fetch (a timeout, a reset connection, a 5xx answer)
+is retried once after a short pause, within the sign-in's own deadline.
+
+**Stale-while-error is bounded and transport-only.** If the refresh of a
+document that was already validated still fails that way, the last good copy
+is served for at most one hour past its normal expiry, and the issuer logs a
+warning with the origin and the error each time. It is never served when the
+origin *answered* and the answer is refused: a document that changed and no
+longer validates, a redirect, a 4xx, an oversized body. This is safe because
+the copy passed every check when it was fetched, access is still decided by
+the person's groups and not by the document, and the window is short. Past
+the window, a document that cannot be fetched is a client whose redirect URIs
+are not known right now, and the flow fails.
 
 The display name comes from the document, so it is text chosen by whoever
 served it, shown on a page **before anybody has authenticated**. It is

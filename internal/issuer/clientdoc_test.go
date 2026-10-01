@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -294,17 +296,140 @@ func TestDocumentsAreCachedAndDoNotGoStale(t *testing.T) {
 		t.Errorf("fetches = %d, want 1: the second resolve should have been served from the cache", fetches)
 	}
 
-	// Past the cache's life, with the origin now failing. The entry must
-	// not be honoured: a document that cannot be fetched is a client
-	// whose redirect URIs are not known right now, and honouring a copy
-	// is honouring URIs it may have retired.
+	// Past the cache's life, with the origin now failing on the transport
+	// (5xx): the validated copy is served, inside the window only.
+	resolver.backoff = time.Millisecond
 	clock = clock.Add(documentCacheFor + time.Second)
 	failing = true
-	if _, err := resolver.Resolve(ctx, id); err == nil {
-		t.Fatal("an expired document was honoured after the fetch failed")
+	if _, err := resolver.Resolve(ctx, id); err != nil {
+		t.Fatalf("a validated copy inside the stale window was refused: %v", err)
 	}
-	if fetches != 2 {
-		t.Errorf("fetches = %d, want 2: the expired entry should have been re-fetched", fetches)
+	if fetches != 3 {
+		t.Errorf("fetches = %d, want 3: the expired entry is re-fetched, and the 5xx retried once", fetches)
+	}
+
+	// Past the window, nothing is served.
+	clock = clock.Add(documentStaleFor + time.Second)
+	if _, err := resolver.Resolve(ctx, id); err == nil {
+		t.Fatal("a document past the stale window was honoured")
+	}
+}
+
+func goodDoc(w http.ResponseWriter, r *http.Request) {
+	self := "https://" + r.Host + r.URL.Path
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"client_id": self, "client_name": "An Editor",
+		"redirect_uris": []string{"https://app.example/cb"},
+	})
+}
+
+func TestATimeoutIsRetriedOnce(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	resolver, srv := served(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			// Hijack and drop: a reset connection, the transport failure.
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			_ = conn.Close()
+			return
+		}
+		goodDoc(w, r)
+	}))
+	resolver.backoff = time.Millisecond
+
+	if _, err := resolver.Resolve(context.Background(), srv.URL+"/cimd.json"); err != nil {
+		t.Fatalf("Resolve after one transient failure: %v", err)
+	}
+	if calls.Load() != 2 {
+		t.Errorf("calls = %d, want 2", calls.Load())
+	}
+
+	// A slow answer: the per-attempt client timeout fires, then the retry succeeds.
+	var slow atomic.Int32
+	resolver2, srv2 := served(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if slow.Add(1) == 1 {
+			time.Sleep(300 * time.Millisecond)
+		}
+		goodDoc(w, r)
+	}))
+	resolver2.backoff = time.Millisecond
+	resolver2.fetch.Timeout = 100 * time.Millisecond
+	if _, err := resolver2.Resolve(context.Background(), srv2.URL+"/cimd.json"); err != nil {
+		t.Fatalf("Resolve after one timeout: %v", err)
+	}
+}
+
+func TestTheRetryDoesNotOutliveTheRequest(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	resolver, srv := served(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	resolver.backoff = 5 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := resolver.Resolve(ctx, srv.URL+"/cimd.json"); err == nil {
+		t.Fatal("a persistently failing origin was admitted")
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Errorf("Resolve took %v: the backoff outlived the request context", time.Since(start))
+	}
+	if calls.Load() != 1 {
+		t.Errorf("calls = %d, want 1: no retry once the context is done", calls.Load())
+	}
+}
+
+func TestAValidationFailureIsNeverServedStale(t *testing.T) {
+	t.Parallel()
+
+	mode := "good"
+	var mu sync.Mutex
+	resolver, srv := served(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		m := mode
+		mu.Unlock()
+		switch m {
+		case "invalid":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"client_id":"https://elsewhere.example/x","redirect_uris":["https://a.example/cb"]}`))
+		case "redirect":
+			http.Redirect(w, r, "https://elsewhere.example/x", http.StatusFound)
+		case "forbidden":
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			goodDoc(w, r)
+		}
+	}))
+	resolver.backoff = time.Millisecond
+	clock := time.Now()
+	resolver.now = func() time.Time { return clock }
+	id := srv.URL + "/cimd.json"
+
+	if _, err := resolver.Resolve(context.Background(), id); err != nil {
+		t.Fatalf("first Resolve: %v", err)
+	}
+	for _, m := range []string{"invalid", "redirect", "forbidden"} {
+		mu.Lock()
+		mode = m
+		mu.Unlock()
+		// Inside the stale window, expired but recent.
+		clock = clock.Add(documentCacheFor + time.Second)
+		if _, err := resolver.Resolve(context.Background(), id); err == nil {
+			t.Errorf("%s: a stale copy was served over the origin's own answer", m)
+		}
+		// Put the good copy back so each case starts from a cached entry.
+		mu.Lock()
+		mode = "good"
+		mu.Unlock()
+		if _, err := resolver.Resolve(context.Background(), id); err != nil {
+			t.Fatalf("%s: refresh: %v", m, err)
+		}
 	}
 }
 

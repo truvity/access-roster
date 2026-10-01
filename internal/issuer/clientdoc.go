@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -34,10 +35,20 @@ const (
 	// stream and an unbounded read of one is a way to exhaust this
 	// process from outside.
 	documentMaxBytes = 64 << 10
-	// documentFetchTimeout bounds the whole fetch. A sign-in is waiting
-	// on it, so this is short: a client whose own metadata is slow to
-	// serve is a client somebody should fix.
-	documentFetchTimeout = 5 * time.Second
+	// documentFetchTimeout bounds ONE attempt at the fetch, connection to
+	// last byte. A sign-in is waiting on it, so it is finite; it is also
+	// generous enough that one slow answer from somebody else's web
+	// server does not fail a sign-in. The retry below runs inside the
+	// sign-in's own request context, which has the last word.
+	documentFetchTimeout = 10 * time.Second
+	// documentRetryBackoff is the pause before the single retry of a
+	// transient failure. Short: long enough for a reset connection or a
+	// restarting pod to be gone, short enough to stay inside a sign-in.
+	documentRetryBackoff = 300 * time.Millisecond
+	// documentStaleFor is how long past its normal expiry the last good
+	// copy of a document may still be served, and ONLY when refreshing it
+	// failed on the transport (see Resolve).
+	documentStaleFor = time.Hour
 	// documentCacheFor is how long a fetched document is honoured without
 	// asking again. Short enough that a client correcting its redirect
 	// URIs is not locked out for an afternoon, long enough that a browser
@@ -54,6 +65,17 @@ const (
 	documentNameMax = 64
 )
 
+// errTransient marks a fetch failure that says nothing about the document
+// itself: the origin could not be reached in time, reset the connection or
+// answered 5xx. Only these are retried, and only these may be answered from
+// a stale copy. A redirect, a 4xx, a body that is too large or does not
+// validate is the origin's answer and is never transient.
+var errTransient = errors.New("transient")
+
+// errRedirected is what the no-redirect policy returns, so a redirect is
+// never mistaken for a transport failure.
+var errRedirected = errors.New("redirected")
+
 // errNotADocumentClient says the id was never a URL, so the caller should
 // go on treating it as a declared client's id and refuse it as unknown.
 var errNotADocumentClient = errors.New("not a client document URL")
@@ -63,6 +85,9 @@ type documentClients struct {
 	allow policy.ClientDocuments
 	fetch *http.Client
 	now   func() time.Time
+	log   *slog.Logger
+	// backoff is the pause before the retry; a field so tests need not wait.
+	backoff time.Duration
 
 	mu     sync.Mutex
 	cached map[string]cachedDocument
@@ -82,12 +107,14 @@ type cachedDocument struct {
 // an allow-list on the first hop stops meaning anything.
 func newDocumentClients(allow policy.ClientDocuments) *documentClients {
 	return &documentClients{
-		allow: allow,
-		now:   time.Now,
+		allow:   allow,
+		now:     time.Now,
+		log:     slog.Default(),
+		backoff: documentRetryBackoff,
 		fetch: &http.Client{
 			Timeout: documentFetchTimeout,
 			CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-				return fmt.Errorf("the document redirected to %s; a client document is served at its own id", req.URL.Redacted())
+				return fmt.Errorf("%w: the document redirected to %s; a client document is served at its own id", errRedirected, req.URL.Redacted())
 			},
 		},
 		cached: map[string]cachedDocument{},
@@ -119,12 +146,29 @@ func (d *documentClients) Resolve(ctx context.Context, clientID string) (policy.
 		return client, nil
 	}
 
-	client, err := d.load(ctx, target)
+	client, err := d.loadWithRetry(ctx, target)
 	if err != nil {
-		// NO STALE FALLBACK. A document that cannot be fetched is a
-		// client whose metadata is not known right now, and honouring a
-		// copy from an hour ago is honouring redirect URIs the client may
-		// have retired. The flow fails instead.
+		// BOUNDED STALE-WHILE-ERROR, on the transport only. If the origin
+		// could not be reached (timeout, reset, 5xx) and a copy that was
+		// ALREADY VALIDATED expired less than documentStaleFor ago, that
+		// copy is served, with a warning each time.
+		//
+		// Never on anything else: a document that changed and no longer
+		// validates, a redirect, a 4xx, an oversized body are the origin
+		// SAYING something, and honouring the old copy over it would be
+		// honouring redirect URIs the client may have retired on purpose.
+		//
+		// Why this is safe: the copy passed every check when it was
+		// fetched; it only grants what the allow-list's `requires` already
+		// grants, since access is decided by the person's groups and not
+		// by the document; and the window is short, so a retired redirect
+		// URI outlives its retirement by at most the cache life plus an
+		// hour -- and only while the origin is down.
+		if stale, ok := d.fromStale(clientID); ok && errors.Is(err, errTransient) {
+			d.log.Warn("serving a stale client document: the origin could not be reached",
+				"origin", target.Host, "client_id", clientID, "error", err)
+			return stale, nil
+		}
 		return policy.Client{}, err
 	}
 
@@ -144,10 +188,43 @@ func (d *documentClients) fromCache(clientID string) (policy.Client, bool) {
 		return policy.Client{}, false
 	}
 	if d.now().After(entry.until) {
-		delete(d.cached, clientID)
+		// Kept, not deleted: it is the stale copy, until its window ends.
+		if d.now().After(entry.until.Add(documentStaleFor)) {
+			delete(d.cached, clientID)
+		}
 		return policy.Client{}, false
 	}
 	return entry.client, true
+}
+
+// fromStale returns an expired entry still inside its stale window.
+func (d *documentClients) fromStale(clientID string) (policy.Client, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	entry, ok := d.cached[clientID]
+	if !ok || d.now().After(entry.until.Add(documentStaleFor)) {
+		return policy.Client{}, false
+	}
+	return entry.client, true
+}
+
+// loadWithRetry is [documentClients.load] with one retry of a transient
+// failure, after a short backoff, and never past the caller's context.
+func (d *documentClients) loadWithRetry(ctx context.Context, target *url.URL) (policy.Client, error) {
+	client, err := d.load(ctx, target)
+	if err == nil || !errors.Is(err, errTransient) || ctx.Err() != nil {
+		return client, err
+	}
+
+	timer := time.NewTimer(d.backoff)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return policy.Client{}, err
+	case <-timer.C:
+	}
+	return d.load(ctx, target)
 }
 
 // documentURL decides whether an id is a document URL, and refuses the
@@ -192,19 +269,26 @@ func (d *documentClients) load(ctx context.Context, target *url.URL) (policy.Cli
 
 	resp, err := d.fetch.Do(req)
 	if err != nil {
+		if !errors.Is(err, errRedirected) {
+			err = fmt.Errorf("%w: %w", errTransient, err)
+		}
 		return policy.Client{}, fmt.Errorf("fetch the client document at %s: %w", target.Redacted(), err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return policy.Client{}, fmt.Errorf("the client document at %s answered %s", target.Redacted(), resp.Status)
+		var kind error = errors.New("refused")
+		if resp.StatusCode >= 500 {
+			kind = errTransient
+		}
+		return policy.Client{}, fmt.Errorf("%w: the client document at %s answered %s", kind, target.Redacted(), resp.Status)
 	}
 
 	// One byte past the limit is enough to know it was exceeded, and
 	// enough not to have read the rest.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, documentMaxBytes+1))
 	if err != nil {
-		return policy.Client{}, fmt.Errorf("read the client document at %s: %w", target.Redacted(), err)
+		return policy.Client{}, fmt.Errorf("%w: read the client document at %s: %w", errTransient, target.Redacted(), err)
 	}
 	if len(body) > documentMaxBytes {
 		return policy.Client{}, fmt.Errorf("the client document at %s is larger than %d bytes", target.Redacted(), documentMaxBytes)
