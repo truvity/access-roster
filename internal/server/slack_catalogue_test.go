@@ -494,6 +494,50 @@ func TestASlackInstallIsFinishedOnlyByTheBrowserThatStartedIt(t *testing.T) {
 	}
 }
 
+// The catalogue's callback leaves the same trail: a log line and an audited
+// refusal, with the reason.
+func TestARefusedSlackAppInstallIsLoggedAndAuditedWithItsReason(t *testing.T) {
+	h := newSlackHarness(t)
+	if err := h.create(operator(), "sync", accepted); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	begun, err := h.console.InstallSlackApp(operator(), connect.NewRequest(&directoryrosterv1.InstallSlackAppRequest{Id: "sync"}))
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	cookie, state := cookieFrom(t, begun.Header()), mustQuery(t, begun.Msg.GetUrl(), "state")
+	call := func(q url.Values, cookie string) int {
+		return redirect(h.server.slackCatalogueCallback, slackCatalogueCallbackPath, q, cookie).Code
+	}
+	for name, c := range map[string]struct {
+		got    int
+		reason string
+	}{
+		"no cookie":        {call(url.Values{"code": {"x"}, "state": {state}}, ""), "flow cookie"},
+		"a tampered state": {call(url.Values{"code": {"x"}, "state": {state + "x"}}, cookie), "state is not valid"},
+		"no state":         {call(url.Values{"code": {"x"}}, cookie), "no state"},
+		"declined":         {call(url.Values{"error": {"access_denied"}, "state": {state}}, cookie), "not approved in Slack"},
+		"an unknown code":  {call(url.Values{"code": {"not-a-code"}, "state": {state}}, cookie), "oauth.v2.access"},
+	} {
+		if c.got < 400 || c.got >= 500 {
+			t.Errorf("%s = %d, want a 4xx", name, c.got)
+		}
+		found := false
+		for _, rec := range h.recorded.Find("roster.slack_app.install_refused") {
+			found = found || strings.Contains(rec.GetOutcome().GetReason(), c.reason)
+		}
+		if !found {
+			t.Errorf("%s: no audited refusal mentioning %q", name, c.reason)
+		}
+	}
+	if strings.Count(h.logs.String(), "a Slack install callback was refused") != 5 {
+		t.Errorf("refusals logged:\n%s", h.logs.String())
+	}
+	if strings.Contains(h.logs.String(), "not-a-code") {
+		t.Error("a code is in the logs")
+	}
+}
+
 // A catalogue App is created in and installed into a workspace that is
 // connected already: the workspace's team and owner are what connecting it
 // recorded, and until then there is neither to hold an App to.
