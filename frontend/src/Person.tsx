@@ -18,6 +18,7 @@ import type { Session } from "./gen/accessissuer/v1/session_pb";
 import { formatChain } from "./heldChain";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
+import { PersonSlack } from "./SlackReach";
 import { labelOf, linkPage, rowsOf, sentence, tooltipOf } from "./githubModel";
 import { loginCell, OwnerRule, sourceName as linkSourceName } from "./GitHub";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Section, State, type Fact } from "./ui";
@@ -59,6 +60,7 @@ export function Person({
         />
       ) : null}
       {explained.value ? <GitHubSection email={email} self={self} /> : null}
+      {explained.value ? <PersonSlack email={email} /> : null}
     </Box>
   );
 }
