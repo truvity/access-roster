@@ -86,6 +86,15 @@ func dial(ctx context.Context, cfg Config) (redis.UniversalClient, string, error
 	options := &redis.UniversalOptions{
 		Addrs:    []string{cfg.Address},
 		Password: cfg.Password,
+		// A dead node does not refuse a connection, it leaves it
+		// unanswered, so every dial to it costs the whole timeout. The
+		// library's default is five seconds tried five times: almost half
+		// a minute spent on one node that is never coming back, during
+		// which the topology reload that would have found its successor
+		// waits behind it. A store on the same network answers a dial in
+		// milliseconds; a second, twice, is generous.
+		DialTimeout:   dialTimeout,
+		DialerRetries: dialAttempts,
 	}
 	if cfg.TLS {
 		options.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
@@ -94,7 +103,14 @@ func dial(ctx context.Context, cfg Config) (redis.UniversalClient, string, error
 	// options, not by asking the server, so the choice is stated.
 	var client redis.UniversalClient
 	if cfg.Cluster {
-		client = redis.NewClusterClient(options.Cluster())
+		clusterOptions := options.Cluster()
+		// The backstop for a topology change nothing reported. The
+		// library's default is a minute, which is a minute of refused
+		// logins for every key on a shard whose primary died.
+		clusterOptions.ClusterStateReloadInterval = topologyReloadInterval
+		cluster := redis.NewClusterClient(clusterOptions)
+		cluster.AddHook(followFailover{cluster: cluster})
+		client = cluster
 	} else {
 		client = redis.NewClient(options.Simple())
 	}
@@ -108,6 +124,70 @@ func dial(ctx context.Context, cfg Config) (redis.UniversalClient, string, error
 		prefix = "directory-roster"
 	}
 	return client, prefix, nil
+}
+
+const (
+	dialTimeout            = time.Second
+	dialAttempts           = 2
+	topologyReloadInterval = 5 * time.Second
+)
+
+// followFailover makes a cluster client look for a new topology the moment
+// a node stops answering, rather than when it next happens to.
+//
+// The library re-reads the topology when a node SAYS it has moved (MOVED,
+// ASK, a read-only replica) and on a timer. A primary that dies says
+// nothing: its replica is promoted within a couple of seconds, but every
+// command for that shard keeps going to the dead address, and each one
+// fails the same way, until the timer fires. Measured against a real
+// three-shard cluster with the defaults, a third of all writes were still
+// failing thirty seconds after the kill -- a third of the people signing
+// in, refused, with a healthy replica already serving their keys.
+//
+// So a failure that is not an answer from the server -- a dial that timed
+// out, a connection that was reset -- asks for a reload. The reload is
+// asynchronous and coalesced by the library, so a burst of failures costs
+// one CLUSTER SLOTS, not one each. CLUSTERDOWN is the one server answer
+// treated the same way: it is what the survivors say while the election
+// is running, and the next topology is the one to ask for.
+type followFailover struct {
+	cluster *redis.ClusterClient
+}
+
+func (followFailover) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (f followFailover) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		err := next(ctx, cmd)
+		if nodeLost(err) {
+			f.cluster.ReloadState(ctx)
+		}
+		return err
+	}
+}
+
+func (f followFailover) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		err := next(ctx, cmds)
+		if nodeLost(err) {
+			f.cluster.ReloadState(ctx)
+		}
+		return err
+	}
+}
+
+// nodeLost reports whether err says the node may be gone, rather than
+// that the node answered. A server's answer -- including "no such key" --
+// is proof the node is there.
+func nodeLost(err error) bool {
+	if err == nil {
+		return false
+	}
+	if redis.IsClusterDownError(err) {
+		return true
+	}
+	var answered redis.Error
+	return !errors.As(err, &answered)
 }
 
 // Open connects a snapshot store.
