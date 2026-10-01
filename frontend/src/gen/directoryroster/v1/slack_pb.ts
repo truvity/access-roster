@@ -6,13 +6,15 @@ import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegen
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
+import type { DirectoryRef } from "./workspace_pb";
+import { file_directoryroster_v1_workspace } from "./workspace_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file directoryroster/v1/slack.proto.
  */
 export const file_directoryroster_v1_slack: GenFile = /*@__PURE__*/
-  fileDesc("Ch5kaXJlY3Rvcnlyb3N0ZXIvdjEvc2xhY2sucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSIXChVHZXRTbGFja1N0YXR1c1JlcXVlc3QiuQEKFkdldFNsYWNrU3RhdHVzUmVzcG9uc2USGQoRcmVwb3J0c19hdmFpbGFibGUYASABKAgSHAoUY29ubmVjdGluZ19hdmFpbGFibGUYAiABKAgSEgoKYm90X3Njb3BlcxgDIAMoCRIUCgxyZWRpcmVjdF91cmwYBCABKAkSPAoKd29ya3NwYWNlcxgFIAMoCzIoLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1dvcmtzcGFjZVN0YXR1cyJTCiFCZWdpblNsYWNrV29ya3NwYWNlQ29ubmVjdFJlcXVlc3QSEQoJd29ya3NwYWNlGAEgASgJEhsKE2NvbmZpZ3VyYXRpb25fdG9rZW4YAiABKAkiMQoiQmVnaW5TbGFja1dvcmtzcGFjZUNvbm5lY3RSZXNwb25zZRILCgN1cmwYASABKAkiSwofRGlzY29ubmVjdFNsYWNrV29ya3NwYWNlUmVxdWVzdBIRCgl3b3Jrc3BhY2UYASABKAkSFQoNZm9yZ2V0X2FueXdheRgCIAEoCCIzCiBEaXNjb25uZWN0U2xhY2tXb3Jrc3BhY2VSZXNwb25zZRIPCgdyZXZva2VkGAEgASgIIlYKG0NvbmZpcm1TbGFja1JlbW92YWxzUmVxdWVzdBIRCgl3b3Jrc3BhY2UYASABKAkSDwoHY2hhbm5lbBgCIAEoCRITCgtmaW5nZXJwcmludBgDIAEoCSIeChxDb25maXJtU2xhY2tSZW1vdmFsc1Jlc3BvbnNlIqYEChRTbGFja1dvcmtzcGFjZVN0YXR1cxIRCgl3b3Jrc3BhY2UYASABKAkSDwoHdGVhbV9pZBgCIAEoCRINCgVvd25lchgDIAEoCRIYChBjb25uZWN0aW9uX3N0YXRlGAQgASgJEjcKCmNvbm5lY3Rpb24YBSABKAsyIy5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tDb25uZWN0aW9uEhMKC2Nhbl9vcGVyYXRlGAYgASgIEhAKCHJlcG9ydGVkGAcgASgIEg4KBmFjdGluZxgIIAEoCBIrCgR0aWNrGAkgASgLMh0uZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrVGljaxI4CghjaGFubmVscxgKIAMoCzImLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja0NoYW5uZWxTdGF0dXMSMAoHbGVhdmVycxgLIAMoCzIfLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja0xlYXZlchIxCgdicmVha2VyGAwgASgLMiAuZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrQnJlYWtlchJKChRyZW1vdmFsX2NvbmZpcm1hdGlvbhgNIAEoCzIsLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1JlbW92YWxDb25maXJtYXRpb24SIQoZbmVlZHNfY29uZmlndXJhdGlvbl90b2tlbhgOIAEoCBIWCg5taXNzaW5nX3Njb3BlcxgPIAMoCSKwAQoPU2xhY2tDb25uZWN0aW9uEg4KBmFwcF9pZBgBIAEoCRIYChBhcHBfc2V0dGluZ3NfdXJsGAIgASgJEhMKC2JvdF91c2VyX2lkGAMgASgJEhYKDmdyYW50ZWRfc2NvcGVzGAQgAygJEjAKDGNvbm5lY3RlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFAoMY29ubmVjdGVkX2J5GAYgASgJIpUBCglTbGFja1RpY2sSJgoCYXQYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEg8KB291dGNvbWUYAiABKAkSDQoFZXJyb3IYAyABKAkSDwoHY2hhbmdlcxgEIAEoBRIMCgRoZWxkGAUgASgFEhAKCHJldHJ5aW5nGAYgASgFEg8KB3dhaXRpbmcYByABKAUiwQIKElNsYWNrQ2hhbm5lbFN0YXR1cxIMCgRuYW1lGAEgASgJEgoKAmlkGAIgASgJEg8KB3ByaXZhdGUYAyABKAgSDAoEbW9kZRgEIAEoCRIOCgZzaGFyZWQYBSABKAgSDAoEaG9zdBgGIAEoCRINCgVzdGF0ZRgHIAEoCRIOCgZyZWFzb24YCCABKAkSNgoHbWVtYmVycxgJIAMoCzIlLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja01lbWJlclN0YXR1cxIxCgdicmVha2VyGAogASgLMiAuZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrQnJlYWtlchJKChRyZW1vdmFsX2NvbmZpcm1hdGlvbhgLIAEoCzIsLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1JlbW92YWxDb25maXJtYXRpb24icgoRU2xhY2tNZW1iZXJTdGF0dXMSDgoGcGVyc29uGAEgASgJEg0KBWVtYWlsGAIgASgJEg8KB3VzZXJfaWQYAyABKAkSDQoFc3RhdGUYBCABKAkSDgoGYWN0aW9uGAUgASgJEg4KBnJlYXNvbhgGIAEoCSJPCgtTbGFja0xlYXZlchINCgVlbWFpbBgBIAEoCRIPCgd1c2VyX2lkGAIgASgJEhAKCGNoYW5uZWxzGAMgAygJEg4KBnJlYXNvbhgEIAEoCSJXCgxTbGFja0JyZWFrZXISEAoIYWZmZWN0ZWQYASABKAUSDQoFdG90YWwYAiABKAUSEwoLZmluZ2VycHJpbnQYAyABKAkSEQoJY29uZmlybWVkGAQgASgIIncKGFNsYWNrUmVtb3ZhbENvbmZpcm1hdGlvbhITCgtmaW5nZXJwcmludBgBIAEoCRIUCgxjb25maXJtZWRfYnkYAiABKAkSMAoMY29uZmlybWVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcDKIBAoMU2xhY2tTZXJ2aWNlEmcKDkdldFNsYWNrU3RhdHVzEikuZGlyZWN0b3J5cm9zdGVyLnYxLkdldFNsYWNrU3RhdHVzUmVxdWVzdBoqLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRTbGFja1N0YXR1c1Jlc3BvbnNlEosBChpCZWdpblNsYWNrV29ya3NwYWNlQ29ubmVjdBI1LmRpcmVjdG9yeXJvc3Rlci52MS5CZWdpblNsYWNrV29ya3NwYWNlQ29ubmVjdFJlcXVlc3QaNi5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5TbGFja1dvcmtzcGFjZUNvbm5lY3RSZXNwb25zZRKFAQoYRGlzY29ubmVjdFNsYWNrV29ya3NwYWNlEjMuZGlyZWN0b3J5cm9zdGVyLnYxLkRpc2Nvbm5lY3RTbGFja1dvcmtzcGFjZVJlcXVlc3QaNC5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdFNsYWNrV29ya3NwYWNlUmVzcG9uc2USeQoUQ29uZmlybVNsYWNrUmVtb3ZhbHMSLy5kaXJlY3Rvcnlyb3N0ZXIudjEuQ29uZmlybVNsYWNrUmVtb3ZhbHNSZXF1ZXN0GjAuZGlyZWN0b3J5cm9zdGVyLnYxLkNvbmZpcm1TbGFja1JlbW92YWxzUmVzcG9uc2VC2AEKFmNvbS5kaXJlY3Rvcnlyb3N0ZXIudjFCClNsYWNrUHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("Ch5kaXJlY3Rvcnlyb3N0ZXIvdjEvc2xhY2sucHJvdG8SEmRpcmVjdG9yeXJvc3Rlci52MSIXChVHZXRTbGFja1N0YXR1c1JlcXVlc3QilQIKFkdldFNsYWNrU3RhdHVzUmVzcG9uc2USGQoRcmVwb3J0c19hdmFpbGFibGUYASABKAgSHAoUY29ubmVjdGluZ19hdmFpbGFibGUYAiABKAgSEgoKYm90X3Njb3BlcxgDIAMoCRIUCgxyZWRpcmVjdF91cmwYBCABKAkSPAoKd29ya3NwYWNlcxgFIAMoCzIoLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1dvcmtzcGFjZVN0YXR1cxI3Cg1vd25lcl9jaG9pY2VzGAYgAygLMiAuZGlyZWN0b3J5cm9zdGVyLnYxLkRpcmVjdG9yeVJlZhIhChltYXlfY29ubmVjdF93aXRob3V0X293bmVyGAcgASgIImIKIUJlZ2luU2xhY2tXb3Jrc3BhY2VDb25uZWN0UmVxdWVzdBIRCgl3b3Jrc3BhY2UYASABKAkSGwoTY29uZmlndXJhdGlvbl90b2tlbhgCIAEoCRINCgVvd25lchgDIAEoCSIxCiJCZWdpblNsYWNrV29ya3NwYWNlQ29ubmVjdFJlc3BvbnNlEgsKA3VybBgBIAEoCSJECiBDaGFuZ2VTbGFja1dvcmtzcGFjZU93bmVyUmVxdWVzdBIRCgl3b3Jrc3BhY2UYASABKAkSDQoFb3duZXIYAiABKAkiIwohQ2hhbmdlU2xhY2tXb3Jrc3BhY2VPd25lclJlc3BvbnNlIksKH0Rpc2Nvbm5lY3RTbGFja1dvcmtzcGFjZVJlcXVlc3QSEQoJd29ya3NwYWNlGAEgASgJEhUKDWZvcmdldF9hbnl3YXkYAiABKAgiMwogRGlzY29ubmVjdFNsYWNrV29ya3NwYWNlUmVzcG9uc2USDwoHcmV2b2tlZBgBIAEoCCJWChtDb25maXJtU2xhY2tSZW1vdmFsc1JlcXVlc3QSEQoJd29ya3NwYWNlGAEgASgJEg8KB2NoYW5uZWwYAiABKAkSEwoLZmluZ2VycHJpbnQYAyABKAkiHgocQ29uZmlybVNsYWNrUmVtb3ZhbHNSZXNwb25zZSLoBAoUU2xhY2tXb3Jrc3BhY2VTdGF0dXMSEQoJd29ya3NwYWNlGAEgASgJEg8KB3RlYW1faWQYAiABKAkSDQoFb3duZXIYAyABKAkSGAoQY29ubmVjdGlvbl9zdGF0ZRgEIAEoCRI3Cgpjb25uZWN0aW9uGAUgASgLMiMuZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrQ29ubmVjdGlvbhITCgtjYW5fb3BlcmF0ZRgGIAEoCBIQCghyZXBvcnRlZBgHIAEoCBIOCgZhY3RpbmcYCCABKAgSKwoEdGljaxgJIAEoCzIdLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1RpY2sSOAoIY2hhbm5lbHMYCiADKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tDaGFubmVsU3RhdHVzEjAKB2xlYXZlcnMYCyADKAsyHy5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tMZWF2ZXISMQoHYnJlYWtlchgMIAEoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja0JyZWFrZXISSgoUcmVtb3ZhbF9jb25maXJtYXRpb24YDSABKAsyLC5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tSZW1vdmFsQ29uZmlybWF0aW9uEiEKGW5lZWRzX2NvbmZpZ3VyYXRpb25fdG9rZW4YDiABKAgSFgoObWlzc2luZ19zY29wZXMYDyADKAkSFAoMb3duZXJfZG9tYWluGBAgASgJEhgKEGNhbl9jaGFuZ2Vfb3duZXIYESABKAgSEAoIZGVjbGFyZWQYEiABKAgisAEKD1NsYWNrQ29ubmVjdGlvbhIOCgZhcHBfaWQYASABKAkSGAoQYXBwX3NldHRpbmdzX3VybBgCIAEoCRITCgtib3RfdXNlcl9pZBgDIAEoCRIWCg5ncmFudGVkX3Njb3BlcxgEIAMoCRIwCgxjb25uZWN0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhQKDGNvbm5lY3RlZF9ieRgGIAEoCSKVAQoJU2xhY2tUaWNrEiYKAmF0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIPCgdvdXRjb21lGAIgASgJEg0KBWVycm9yGAMgASgJEg8KB2NoYW5nZXMYBCABKAUSDAoEaGVsZBgFIAEoBRIQCghyZXRyeWluZxgGIAEoBRIPCgd3YWl0aW5nGAcgASgFIsECChJTbGFja0NoYW5uZWxTdGF0dXMSDAoEbmFtZRgBIAEoCRIKCgJpZBgCIAEoCRIPCgdwcml2YXRlGAMgASgIEgwKBG1vZGUYBCABKAkSDgoGc2hhcmVkGAUgASgIEgwKBGhvc3QYBiABKAkSDQoFc3RhdGUYByABKAkSDgoGcmVhc29uGAggASgJEjYKB21lbWJlcnMYCSADKAsyJS5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tNZW1iZXJTdGF0dXMSMQoHYnJlYWtlchgKIAEoCzIgLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja0JyZWFrZXISSgoUcmVtb3ZhbF9jb25maXJtYXRpb24YCyABKAsyLC5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tSZW1vdmFsQ29uZmlybWF0aW9uInIKEVNsYWNrTWVtYmVyU3RhdHVzEg4KBnBlcnNvbhgBIAEoCRINCgVlbWFpbBgCIAEoCRIPCgd1c2VyX2lkGAMgASgJEg0KBXN0YXRlGAQgASgJEg4KBmFjdGlvbhgFIAEoCRIOCgZyZWFzb24YBiABKAkiTwoLU2xhY2tMZWF2ZXISDQoFZW1haWwYASABKAkSDwoHdXNlcl9pZBgCIAEoCRIQCghjaGFubmVscxgDIAMoCRIOCgZyZWFzb24YBCABKAkiVwoMU2xhY2tCcmVha2VyEhAKCGFmZmVjdGVkGAEgASgFEg0KBXRvdGFsGAIgASgFEhMKC2ZpbmdlcnByaW50GAMgASgJEhEKCWNvbmZpcm1lZBgEIAEoCCJ3ChhTbGFja1JlbW92YWxDb25maXJtYXRpb24SEwoLZmluZ2VycHJpbnQYASABKAkSFAoMY29uZmlybWVkX2J5GAIgASgJEjAKDGNvbmZpcm1lZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAykwUKDFNsYWNrU2VydmljZRJnCg5HZXRTbGFja1N0YXR1cxIpLmRpcmVjdG9yeXJvc3Rlci52MS5HZXRTbGFja1N0YXR1c1JlcXVlc3QaKi5kaXJlY3Rvcnlyb3N0ZXIudjEuR2V0U2xhY2tTdGF0dXNSZXNwb25zZRKLAQoaQmVnaW5TbGFja1dvcmtzcGFjZUNvbm5lY3QSNS5kaXJlY3Rvcnlyb3N0ZXIudjEuQmVnaW5TbGFja1dvcmtzcGFjZUNvbm5lY3RSZXF1ZXN0GjYuZGlyZWN0b3J5cm9zdGVyLnYxLkJlZ2luU2xhY2tXb3Jrc3BhY2VDb25uZWN0UmVzcG9uc2USiAEKGUNoYW5nZVNsYWNrV29ya3NwYWNlT3duZXISNC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2hhbmdlU2xhY2tXb3Jrc3BhY2VPd25lclJlcXVlc3QaNS5kaXJlY3Rvcnlyb3N0ZXIudjEuQ2hhbmdlU2xhY2tXb3Jrc3BhY2VPd25lclJlc3BvbnNlEoUBChhEaXNjb25uZWN0U2xhY2tXb3Jrc3BhY2USMy5kaXJlY3Rvcnlyb3N0ZXIudjEuRGlzY29ubmVjdFNsYWNrV29ya3NwYWNlUmVxdWVzdBo0LmRpcmVjdG9yeXJvc3Rlci52MS5EaXNjb25uZWN0U2xhY2tXb3Jrc3BhY2VSZXNwb25zZRJ5ChRDb25maXJtU2xhY2tSZW1vdmFscxIvLmRpcmVjdG9yeXJvc3Rlci52MS5Db25maXJtU2xhY2tSZW1vdmFsc1JlcXVlc3QaMC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ29uZmlybVNsYWNrUmVtb3ZhbHNSZXNwb25zZULYAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUIKU2xhY2tQcm90b1ABWklnaXRodWIuY29tL3RydXZpdHkvYWNjZXNzLXJvc3Rlci9nZW4vZGlyZWN0b3J5cm9zdGVyL3YxO2RpcmVjdG9yeXJvc3RlcnYxogIDRFhYqgISRGlyZWN0b3J5cm9zdGVyLlYxygISRGlyZWN0b3J5cm9zdGVyXFYx4gIeRGlyZWN0b3J5cm9zdGVyXFYxXEdQQk1ldGFkYXRh6gITRGlyZWN0b3J5cm9zdGVyOjpWMWIGcHJvdG8z", [file_google_protobuf_timestamp, file_directoryroster_v1_workspace]);
 
 /**
  * @generated from message directoryroster.v1.GetSlackStatusRequest
@@ -66,6 +68,23 @@ export type GetSlackStatusResponse = Message<"directoryroster.v1.GetSlackStatusR
    * @generated from field: repeated directoryroster.v1.SlackWorkspaceStatus workspaces = 5;
    */
   workspaces: SlackWorkspaceStatus[];
+
+  /**
+   * the directories the caller may name as the owner of a workspace it
+   * connects, or change one to: every connected directory for the
+   * installation-wide operator, the caller's own for a scoped one.
+   *
+   * @generated from field: repeated directoryroster.v1.DirectoryRef owner_choices = 6;
+   */
+  ownerChoices: DirectoryRef[];
+
+  /**
+   * whether the caller may connect a workspace with no owner: the
+   * installation-wide operator alone.
+   *
+   * @generated from field: bool may_connect_without_owner = 7;
+   */
+  mayConnectWithoutOwner: boolean;
 };
 
 /**
@@ -95,6 +114,17 @@ export type BeginSlackWorkspaceConnectRequest = Message<"directoryroster.v1.Begi
    * @generated from field: string configuration_token = 2;
    */
   configurationToken: string;
+
+  /**
+   * the directory workspace id that will own a workspace not yet
+   * connected. Empty is "none" for the installation-wide operator, and for
+   * an operator scoped to exactly one directory means that one; an
+   * operator scoped to several must name one of them. Ignored once the
+   * workspace is connected.
+   *
+   * @generated from field: string owner = 3;
+   */
+  owner: string;
 };
 
 /**
@@ -124,6 +154,44 @@ export const BeginSlackWorkspaceConnectResponseSchema: GenMessage<BeginSlackWork
   messageDesc(file_directoryroster_v1_slack, 3);
 
 /**
+ * @generated from message directoryroster.v1.ChangeSlackWorkspaceOwnerRequest
+ */
+export type ChangeSlackWorkspaceOwnerRequest = Message<"directoryroster.v1.ChangeSlackWorkspaceOwnerRequest"> & {
+  /**
+   * @generated from field: string workspace = 1;
+   */
+  workspace: string;
+
+  /**
+   * the directory workspace id to record, which must be a connected
+   * directory; empty removes the owner.
+   *
+   * @generated from field: string owner = 2;
+   */
+  owner: string;
+};
+
+/**
+ * Describes the message directoryroster.v1.ChangeSlackWorkspaceOwnerRequest.
+ * Use `create(ChangeSlackWorkspaceOwnerRequestSchema)` to create a new message.
+ */
+export const ChangeSlackWorkspaceOwnerRequestSchema: GenMessage<ChangeSlackWorkspaceOwnerRequest> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_slack, 4);
+
+/**
+ * @generated from message directoryroster.v1.ChangeSlackWorkspaceOwnerResponse
+ */
+export type ChangeSlackWorkspaceOwnerResponse = Message<"directoryroster.v1.ChangeSlackWorkspaceOwnerResponse"> & {
+};
+
+/**
+ * Describes the message directoryroster.v1.ChangeSlackWorkspaceOwnerResponse.
+ * Use `create(ChangeSlackWorkspaceOwnerResponseSchema)` to create a new message.
+ */
+export const ChangeSlackWorkspaceOwnerResponseSchema: GenMessage<ChangeSlackWorkspaceOwnerResponse> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_slack, 5);
+
+/**
  * @generated from message directoryroster.v1.DisconnectSlackWorkspaceRequest
  */
 export type DisconnectSlackWorkspaceRequest = Message<"directoryroster.v1.DisconnectSlackWorkspaceRequest"> & {
@@ -147,7 +215,7 @@ export type DisconnectSlackWorkspaceRequest = Message<"directoryroster.v1.Discon
  * Use `create(DisconnectSlackWorkspaceRequestSchema)` to create a new message.
  */
 export const DisconnectSlackWorkspaceRequestSchema: GenMessage<DisconnectSlackWorkspaceRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 4);
+  messageDesc(file_directoryroster_v1_slack, 6);
 
 /**
  * @generated from message directoryroster.v1.DisconnectSlackWorkspaceResponse
@@ -167,7 +235,7 @@ export type DisconnectSlackWorkspaceResponse = Message<"directoryroster.v1.Disco
  * Use `create(DisconnectSlackWorkspaceResponseSchema)` to create a new message.
  */
 export const DisconnectSlackWorkspaceResponseSchema: GenMessage<DisconnectSlackWorkspaceResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 5);
+  messageDesc(file_directoryroster_v1_slack, 7);
 
 /**
  * @generated from message directoryroster.v1.ConfirmSlackRemovalsRequest
@@ -199,7 +267,7 @@ export type ConfirmSlackRemovalsRequest = Message<"directoryroster.v1.ConfirmSla
  * Use `create(ConfirmSlackRemovalsRequestSchema)` to create a new message.
  */
 export const ConfirmSlackRemovalsRequestSchema: GenMessage<ConfirmSlackRemovalsRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 6);
+  messageDesc(file_directoryroster_v1_slack, 8);
 
 /**
  * @generated from message directoryroster.v1.ConfirmSlackRemovalsResponse
@@ -212,7 +280,7 @@ export type ConfirmSlackRemovalsResponse = Message<"directoryroster.v1.ConfirmSl
  * Use `create(ConfirmSlackRemovalsResponseSchema)` to create a new message.
  */
 export const ConfirmSlackRemovalsResponseSchema: GenMessage<ConfirmSlackRemovalsResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 7);
+  messageDesc(file_directoryroster_v1_slack, 9);
 
 /**
  * SlackWorkspaceStatus is one Slack workspace: what the policy declares,
@@ -229,16 +297,17 @@ export type SlackWorkspaceStatus = Message<"directoryroster.v1.SlackWorkspaceSta
   workspace: string;
 
   /**
-   * the Slack team id the policy declares: the only one an install is
-   * accepted from. Empty for a workspace the policy no longer declares.
+   * the Slack team id recorded at the first install: the only one a later
+   * install is accepted from. Empty until the App is first installed.
    *
    * @generated from field: string team_id = 2;
    */
   teamId: string;
 
   /**
-   * the directory workspace that owns it, empty when the policy names none
-   * (then only the installation-wide role operates it).
+   * the directory workspace id recorded as its owner when it was
+   * connected, empty when it has none (then only the installation-wide
+   * role operates it, and its people are held).
    *
    * @generated from field: string owner = 3;
    */
@@ -326,6 +395,31 @@ export type SlackWorkspaceStatus = Message<"directoryroster.v1.SlackWorkspaceSta
    * @generated from field: repeated string missing_scopes = 15;
    */
   missingScopes: string[];
+
+  /**
+   * the owner's primary domain, which is how a person knows the directory.
+   * Empty without an owner, or when the owner is no longer connected.
+   *
+   * @generated from field: string owner_domain = 16;
+   */
+  ownerDomain: string;
+
+  /**
+   * whether the caller may change the owner: the installation-wide
+   * operator, once the workspace is connected.
+   *
+   * whether the policy still names the workspace key. A key it no longer
+   *
+   * @generated from field: bool can_change_owner = 17;
+   */
+  canChangeOwner: boolean;
+
+  /**
+   * names can only be disconnected.
+   *
+   * @generated from field: bool declared = 18;
+   */
+  declared: boolean;
 };
 
 /**
@@ -333,7 +427,7 @@ export type SlackWorkspaceStatus = Message<"directoryroster.v1.SlackWorkspaceSta
  * Use `create(SlackWorkspaceStatusSchema)` to create a new message.
  */
 export const SlackWorkspaceStatusSchema: GenMessage<SlackWorkspaceStatus> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 8);
+  messageDesc(file_directoryroster_v1_slack, 10);
 
 /**
  * SlackConnection is what connecting left behind. Never a credential.
@@ -381,7 +475,7 @@ export type SlackConnection = Message<"directoryroster.v1.SlackConnection"> & {
  * Use `create(SlackConnectionSchema)` to create a new message.
  */
 export const SlackConnectionSchema: GenMessage<SlackConnection> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 9);
+  messageDesc(file_directoryroster_v1_slack, 11);
 
 /**
  * SlackTick is how the controller's last pass over the workspace went.
@@ -436,7 +530,7 @@ export type SlackTick = Message<"directoryroster.v1.SlackTick"> & {
  * Use `create(SlackTickSchema)` to create a new message.
  */
 export const SlackTickSchema: GenMessage<SlackTick> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 10);
+  messageDesc(file_directoryroster_v1_slack, 12);
 
 /**
  * @generated from message directoryroster.v1.SlackChannelStatus
@@ -509,7 +603,7 @@ export type SlackChannelStatus = Message<"directoryroster.v1.SlackChannelStatus"
  * Use `create(SlackChannelStatusSchema)` to create a new message.
  */
 export const SlackChannelStatusSchema: GenMessage<SlackChannelStatus> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 11);
+  messageDesc(file_directoryroster_v1_slack, 13);
 
 /**
  * @generated from message directoryroster.v1.SlackMemberStatus
@@ -555,7 +649,7 @@ export type SlackMemberStatus = Message<"directoryroster.v1.SlackMemberStatus"> 
  * Use `create(SlackMemberStatusSchema)` to create a new message.
  */
 export const SlackMemberStatusSchema: GenMessage<SlackMemberStatus> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 12);
+  messageDesc(file_directoryroster_v1_slack, 14);
 
 /**
  * @generated from message directoryroster.v1.SlackLeaver
@@ -587,7 +681,7 @@ export type SlackLeaver = Message<"directoryroster.v1.SlackLeaver"> & {
  * Use `create(SlackLeaverSchema)` to create a new message.
  */
 export const SlackLeaverSchema: GenMessage<SlackLeaver> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 13);
+  messageDesc(file_directoryroster_v1_slack, 15);
 
 /**
  * @generated from message directoryroster.v1.SlackBreaker
@@ -621,7 +715,7 @@ export type SlackBreaker = Message<"directoryroster.v1.SlackBreaker"> & {
  * Use `create(SlackBreakerSchema)` to create a new message.
  */
 export const SlackBreakerSchema: GenMessage<SlackBreaker> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 14);
+  messageDesc(file_directoryroster_v1_slack, 16);
 
 /**
  * SlackRemovalConfirmation is an operator's confirmation of one set that
@@ -651,7 +745,7 @@ export type SlackRemovalConfirmation = Message<"directoryroster.v1.SlackRemovalC
  * Use `create(SlackRemovalConfirmationSchema)` to create a new message.
  */
 export const SlackRemovalConfirmationSchema: GenMessage<SlackRemovalConfirmation> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack, 15);
+  messageDesc(file_directoryroster_v1_slack, 17);
 
 /**
  * SlackService is the console's view of the Slack workspaces the policy
@@ -672,9 +766,10 @@ export const SlackService: GenService<{
    * GetSlackStatus returns every Slack workspace the caller may view, each
    * with its connection, the controller's last report and whether the
    * caller may operate it. Viewer, installation-wide or over the directory
-   * workspace that owns the Slack workspace (`slack.workspaces.<key>.owner`):
-   * a scoped viewer sees only the workspaces its directory owns.
-   * Never a client secret or a bot token.
+   * workspace recorded as the Slack workspace's owner when it was
+   * connected: a scoped viewer sees only the workspaces its directory
+   * owns, and a workspace nobody has connected yet is shown to anyone who
+   * could connect it. Never a client secret or a bot token.
    *
    * @generated from rpc directoryroster.v1.SlackService.GetSlackStatus
    */
@@ -688,8 +783,13 @@ export const SlackService: GenService<{
    * workspace from its manifest with the configuration token, or — for a
    * workspace whose App is already created — prepares a reinstall, and
    * returns Slack's authorize URL carrying signed state. The response
-   * header pins the flow to this browser with a cookie. Operator of the
-   * workspace's owner, or the installation-wide operator.
+   * header pins the flow to this browser with a cookie. For a workspace
+   * not yet connected, the installation-wide operator, who chooses the
+   * owning directory from the connected ones or none, or an operator of
+   * one or more directories, whose own directory becomes the owner (they
+   * choose among theirs when they have several). Afterwards, the operator
+   * of the recorded owner or the installation-wide operator; the owner
+   * never changes here.
    *
    * The configuration token lives in this request and in one call to
    * Slack: it is neither stored nor logged.
@@ -700,6 +800,19 @@ export const SlackService: GenService<{
     methodKind: "unary";
     input: typeof BeginSlackWorkspaceConnectRequestSchema;
     output: typeof BeginSlackWorkspaceConnectResponseSchema;
+  },
+  /**
+   * ChangeSlackWorkspaceOwner changes the directory recorded as a
+   * connected workspace's owner, or removes it. Installation-wide
+   * operator only: an owner may not hand its own workspace to another or
+   * take it for itself. Recorded as a configuration change.
+   *
+   * @generated from rpc directoryroster.v1.SlackService.ChangeSlackWorkspaceOwner
+   */
+  changeSlackWorkspaceOwner: {
+    methodKind: "unary";
+    input: typeof ChangeSlackWorkspaceOwnerRequestSchema;
+    output: typeof ChangeSlackWorkspaceOwnerResponseSchema;
   },
   /**
    * DisconnectSlackWorkspace revokes the workspace's bot token at Slack and

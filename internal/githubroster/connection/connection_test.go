@@ -53,3 +53,30 @@ func TestARecordAndACredentialReadBackAsWritten(t *testing.T) {
 		t.Error("a record with no App was encoded")
 	}
 }
+
+// A record written before owners were recorded has none, and reads as an
+// organisation only the installation-wide roles operate; a record with an
+// owner reads it back.
+func TestAnOldRecordHasNoOwnerAndANewOneKeepsIt(t *testing.T) {
+	t.Parallel()
+	old, err := connection.DecodeRecord(
+		`{"version":1,"org":"globex","app_id":42,"app_slug":"globex-access-roster","installation_id":7,` +
+			`"connected_at":"2026-09-01T09:00:00Z","connected_by":"o@example.com"}`)
+	if err != nil || old.Owner != "" || !old.Installed() {
+		t.Fatalf("an old record = %+v, %v; want installed, with no owner", old, err)
+	}
+	raw, err := connection.EncodeRecord(connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster", Owner: "C0north"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := connection.DecodeRecord(raw); err != nil || got.Owner != "C0north" {
+		t.Errorf("record = %+v, %v; want owner C0north", got, err)
+	}
+	raw, err = connection.EncodeRecord(connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(raw, "owner") {
+		t.Errorf("a record with no owner writes one: %s", raw)
+	}
+}

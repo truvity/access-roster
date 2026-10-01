@@ -36,18 +36,10 @@ groups:
 slack:
   workspaces:
     acme:
-      team_id: T0123ABCD
-      owner: C0north
-      domains: [acme.example]
       channels:
         general: { from: [all:platform:engineer] }
-    globex:
-      team_id: T0456EFGH
-      owner: C0south
-      domains: [globex.example]
-    initech:
-      team_id: T0789IJKL
-      domains: [initech.example]
+    globex: {}
+    initech: {}
 `
 
 type connectHarness struct {
@@ -75,12 +67,18 @@ func newConnectHarness(t *testing.T) *connectHarness {
 	clientset := fake.NewClientset()
 	client := kube.NewClient(clientset, "access-issuer", "access-issuer")
 	h := &connectHarness{client: client, clientset: clientset, recorded: audittest.New(t), reports: map[string]string{}}
+	workspaces := kube.NewSlackWorkspaces(client)
 	h.console = &Console{deps: ConsoleDeps{
-		Authorizer:  access.NewAuthorizer(set, nil, 0),
-		SlackShared: kube.NewSlackShared(client),
-		SlackStatus: fixedReports{docs: h.reports},
-		Audit:       h.recorded,
+		Authorizer:      access.NewAuthorizer(set, nil, 0),
+		SlackShared:     kube.NewSlackShared(client),
+		SlackWorkspaces: workspaces,
+		SlackStatus:     fixedReports{docs: h.reports},
+		Audit:           h.recorded,
 	}}
+	// Connected, which is where each workspace's owner is recorded.
+	seedSlackWorkspace(t, workspaces, "acme", "C0north", acmeTeam)
+	seedSlackWorkspace(t, workspaces, "globex", "C0south", globexTeam)
+	seedSlackWorkspace(t, workspaces, "initech", "", "T0789IJKL")
 	return h
 }
 
@@ -131,7 +129,15 @@ func (h *connectHarness) stored(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatalf("read the records: %v", err)
 	}
-	return cm.Data
+	// The shared channels' records alone: the workspaces' own records sit in
+	// the same ConfigMap and are not what these tests look at.
+	shared := map[string]string{}
+	for key, doc := range cm.Data {
+		if _, ok := connection.ParseSharedKey(key); ok {
+			shared[key] = doc
+		}
+	}
+	return shared
 }
 
 func wantCode(t *testing.T, what string, err error, code connect.Code) {

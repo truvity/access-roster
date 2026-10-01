@@ -4,6 +4,8 @@ package directoryroster.v1;
 
 import "google/protobuf/timestamp.proto";
 
+import "directoryroster/v1/workspace.proto";
+
 // SlackService is the console's view of the Slack workspaces the policy
 // declares (`slack.workspaces`): whether each is connected to the roster's
 // bot, what the Slack controller last reported for its channels and people,
@@ -18,21 +20,33 @@ service SlackService {
   // GetSlackStatus returns every Slack workspace the caller may view, each
   // with its connection, the controller's last report and whether the
   // caller may operate it. Viewer, installation-wide or over the directory
-  // workspace that owns the Slack workspace (`slack.workspaces.<key>.owner`):
-  // a scoped viewer sees only the workspaces its directory owns.
-  // Never a client secret or a bot token.
+  // workspace recorded as the Slack workspace's owner when it was
+  // connected: a scoped viewer sees only the workspaces its directory
+  // owns, and a workspace nobody has connected yet is shown to anyone who
+  // could connect it. Never a client secret or a bot token.
   rpc GetSlackStatus(GetSlackStatusRequest) returns (GetSlackStatusResponse);
 
   // BeginSlackWorkspaceConnect creates the roster's Slack App for a
   // workspace from its manifest with the configuration token, or — for a
   // workspace whose App is already created — prepares a reinstall, and
   // returns Slack's authorize URL carrying signed state. The response
-  // header pins the flow to this browser with a cookie. Operator of the
-  // workspace's owner, or the installation-wide operator.
+  // header pins the flow to this browser with a cookie. For a workspace
+  // not yet connected, the installation-wide operator, who chooses the
+  // owning directory from the connected ones or none, or an operator of
+  // one or more directories, whose own directory becomes the owner (they
+  // choose among theirs when they have several). Afterwards, the operator
+  // of the recorded owner or the installation-wide operator; the owner
+  // never changes here.
   //
   // The configuration token lives in this request and in one call to
   // Slack: it is neither stored nor logged.
   rpc BeginSlackWorkspaceConnect(BeginSlackWorkspaceConnectRequest) returns (BeginSlackWorkspaceConnectResponse);
+
+  // ChangeSlackWorkspaceOwner changes the directory recorded as a
+  // connected workspace's owner, or removes it. Installation-wide
+  // operator only: an owner may not hand its own workspace to another or
+  // take it for itself. Recorded as a configuration change.
+  rpc ChangeSlackWorkspaceOwner(ChangeSlackWorkspaceOwnerRequest) returns (ChangeSlackWorkspaceOwnerResponse);
 
   // DisconnectSlackWorkspace revokes the workspace's bot token at Slack and
   // forgets the connection, so the controller stops acting there. Operator
@@ -63,6 +77,13 @@ message GetSlackStatusResponse {
   // the App's redirect URLs.
   string redirect_url = 4;
   repeated SlackWorkspaceStatus workspaces = 5;
+  // the directories the caller may name as the owner of a workspace it
+  // connects, or change one to: every connected directory for the
+  // installation-wide operator, the caller's own for a scoped one.
+  repeated DirectoryRef owner_choices = 6;
+  // whether the caller may connect a workspace with no owner: the
+  // installation-wide operator alone.
+  bool may_connect_without_owner = 7;
 }
 
 message BeginSlackWorkspaceConnectRequest {
@@ -73,12 +94,27 @@ message BeginSlackWorkspaceConnectRequest {
   // Required to create the App; optional afterwards, needed only when the
   // scopes the roster asks for have grown since the App was created.
   string configuration_token = 2;
+  // the directory workspace id that will own a workspace not yet
+  // connected. Empty is "none" for the installation-wide operator, and for
+  // an operator scoped to exactly one directory means that one; an
+  // operator scoped to several must name one of them. Ignored once the
+  // workspace is connected.
+  string owner = 3;
 }
 
 message BeginSlackWorkspaceConnectResponse {
   // where the browser goes next: Slack's authorize page.
   string url = 1;
 }
+
+message ChangeSlackWorkspaceOwnerRequest {
+  string workspace = 1;
+  // the directory workspace id to record, which must be a connected
+  // directory; empty removes the owner.
+  string owner = 2;
+}
+
+message ChangeSlackWorkspaceOwnerResponse {}
 
 message DisconnectSlackWorkspaceRequest {
   string workspace = 1;
@@ -110,11 +146,12 @@ message ConfirmSlackRemovalsResponse {}
 message SlackWorkspaceStatus {
   // the policy's key.
   string workspace = 1;
-  // the Slack team id the policy declares: the only one an install is
-  // accepted from. Empty for a workspace the policy no longer declares.
+  // the Slack team id recorded at the first install: the only one a later
+  // install is accepted from. Empty until the App is first installed.
   string team_id = 2;
-  // the directory workspace that owns it, empty when the policy names none
-  // (then only the installation-wide role operates it).
+  // the directory workspace id recorded as its owner when it was
+  // connected, empty when it has none (then only the installation-wide
+  // role operates it, and its people are held).
   string owner = 3;
   // not_connected, created (the App exists and nobody has installed it),
   // installed, or scopes_missing (installed, and the grant lacks scopes the
@@ -143,6 +180,14 @@ message SlackWorkspaceStatus {
   bool needs_configuration_token = 14;
   // the roster's bot scopes the grant lacks.
   repeated string missing_scopes = 15;
+  // the owner's primary domain, which is how a person knows the directory.
+  // Empty without an owner, or when the owner is no longer connected.
+  string owner_domain = 16;
+  // whether the caller may change the owner: the installation-wide
+  // operator, once the workspace is connected.
+  bool can_change_owner = 17;  // whether the policy still names the workspace key. A key it no longer
+  // names can only be disconnected.
+  bool declared = 18;
 }
 
 // SlackConnection is what connecting left behind. Never a credential.

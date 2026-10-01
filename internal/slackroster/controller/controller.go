@@ -161,6 +161,11 @@ type pass struct {
 	refused    map[string][]refusal
 	holders    reconcile.Holders
 	holdersErr error
+	// served are the domains each connected directory serves now, by its
+	// workspace id: what a person is looked up by in the workspaces it
+	// owns. servedErr is why they could not be read.
+	served    map[string][]string
+	servedErr error
 	// answers are the directory's answers so far, by address: one question
 	// per address per pass, whoever asks.
 	answers map[string]answer
@@ -190,6 +195,7 @@ func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
 	}
 	c.metrics.recordInvalid(ctx, invalid)
 	p.holders, p.holdersErr = c.directory().Holders(ctx, c.groups(p.shared))
+	p.served, p.servedErr = c.servedDomains(ctx)
 
 	workspaces := c.deps.Policy.Slack.Workspaces
 	reports := map[string]status.Workspace{}
@@ -242,8 +248,28 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 		return fail(err)
 	}
 	client := c.deps.Slack(token)
+	facts := p.store.facts(c.deps.Policy.Slack.Workspaces, p.served)
+	// Every workspace's people are looked up by its OWNING directory's
+	// served domains, and a shared channel looks in the guests' as well, so
+	// a directory that cannot be read, or that is no longer connected,
+	// fails the pass rather than reading as "nobody here".
+	for _, k := range slices.Sorted(maps.Keys(facts)) {
+		if k != key && !c.sharesWith(p.shared, key, k) {
+			continue
+		}
+		owner := facts[k].Owner
+		if owner == "" {
+			continue
+		}
+		if p.servedErr != nil {
+			return fail(fmt.Errorf("the domains of %s's owning directory could not be read: %w", k, p.servedErr))
+		}
+		if _, connected := p.served[owner]; !connected {
+			return fail(fmt.Errorf("%s's owning directory %s is not connected here: set another owner on the console", k, owner))
+		}
+	}
 	in := reconcile.Input{
-		Workspace: key, Workspaces: c.deps.Policy.Slack.Workspaces, People: c.deps.Policy.People,
+		Workspace: key, Workspaces: c.deps.Policy.Slack.Workspaces, Facts: facts, People: c.deps.Policy.People,
 		Holders: p.holders, Shared: p.shared, Bots: p.store.botsFor(),
 	}
 	if in.Observed, err = apply.Observe(ctx, client, in); err != nil {
@@ -277,6 +303,33 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 		"retrying", report.Tick.Retrying, "leavers", len(report.Leavers))
 	c.journal.Remember(key, report)
 	return report, otherPolicy
+}
+
+// sharesWith reports whether a shared channel hosted by one of the two
+// workspaces is also shared with the other, so that deciding one needs the
+// other's domains.
+func (c *Controller) sharesWith(shared []reconcile.SharedChannel, a, b string) bool {
+	for i := range shared {
+		sides := append([]string{shared[i].Host}, shared[i].With...)
+		if slices.Contains(sides, a) && slices.Contains(sides, b) {
+			return true
+		}
+	}
+	return false
+}
+
+// servedDomains asks the console which domains each connected directory it
+// may see serves now. One question per pass, however many workspaces ask.
+func (c *Controller) servedDomains(ctx context.Context) (map[string][]string, error) {
+	response, err := c.deps.Access.ListServedDomains(ctx, connect.NewRequest(&directoryrosterv1.ListServedDomainsRequest{}))
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]string{}
+	for _, dir := range response.Msg.GetDirectories() {
+		out[dir.GetWorkspaceId()] = dir.GetDomains()
+	}
+	return out, nil
 }
 
 // token is the bot token a workspace acts with, or why it has none.

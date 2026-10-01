@@ -42,6 +42,36 @@ func TestRecordRoundTripsAndKnowsWhetherItIsInstalled(t *testing.T) {
 	if got, _ := connection.DecodeRecord(raw); got.Installed() || strings.Contains(raw, "bot_user_id") {
 		t.Errorf("a created-only record reads as installed: %s", raw)
 	}
+	// Created and not yet installed also has no team: it is recorded at the
+	// first install, never before.
+	created.TeamID = ""
+	raw, err = connection.EncodeRecord(created)
+	if err != nil {
+		t.Fatalf("a record with no team yet must encode: %v", err)
+	}
+	if got, _ := connection.DecodeRecord(raw); got.TeamID != "" || strings.Contains(raw, "team_id") {
+		t.Errorf("a record with no team yet reads as having one: %s", raw)
+	}
+}
+
+// The owner is recorded with the connection and read back; a record written
+// before owners existed has none, and reads as such.
+func TestRecordsKeepTheirOwnerAndOldOnesHaveNone(t *testing.T) {
+	t.Parallel()
+	owned := record()
+	owned.Owner = "C0north"
+	raw, err := connection.EncodeRecord(owned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := connection.DecodeRecord(raw); err != nil || got.Owner != "C0north" {
+		t.Errorf("got %+v, %v", got, err)
+	}
+	old, err := connection.DecodeRecord(`{"version":1,"workspace":"acme","team_id":"T0123ABCD","app_id":"A0123",` +
+		`"connected_at":"2026-10-01T09:00:00Z","connected_by":"o@example.com"}`)
+	if err != nil || old.Owner != "" {
+		t.Errorf("an old record = %+v, %v; want no owner", old, err)
+	}
 }
 
 func TestRecordValidation(t *testing.T) {
@@ -50,7 +80,6 @@ func TestRecordValidation(t *testing.T) {
 		"no workspace":      func(r *connection.Record) { r.Workspace = "" },
 		"workspace not key": func(r *connection.Record) { r.Workspace = "Acme Corp" },
 		"underscore key":    func(r *connection.Record) { r.Workspace = "_confirm" },
-		"no team":           func(r *connection.Record) { r.TeamID = "" },
 		"no app":            func(r *connection.Record) { r.AppID = "" },
 	} {
 		r := record()

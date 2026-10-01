@@ -111,6 +111,12 @@ type Binding struct {
 	// The authorisation itself still happens at the start, where an
 	// operator asked for the consent. This only carries the answer.
 	Actor string
+	// Owner is the directory workspace id the flow will record as the
+	// owner of what it connects, empty for none. It is chosen where the
+	// flow begins, under the role question asked then, and read back by the
+	// callback that creates the record: signed, so a browser cannot change
+	// it on the way.
+	Owner string
 }
 
 // Issue returns a signed state bound to a workspace and to nobody.
@@ -128,6 +134,7 @@ func (c *StateCodec) IssueAs(b Binding) (string, error) {
 		base64.RawURLEncoding.EncodeToString(nonce),
 		base64.RawURLEncoding.EncodeToString([]byte(b.Bind)),
 		base64.RawURLEncoding.EncodeToString([]byte(b.Actor)),
+		base64.RawURLEncoding.EncodeToString([]byte(b.Owner)),
 		strconv.FormatInt(c.now().Add(c.ttl).Unix(), 10),
 	}, ":")
 	return body + "." + c.sign(body), nil
@@ -149,10 +156,24 @@ func (c *StateCodec) VerifyBinding(state string) (Binding, error) {
 		return Binding{}, fmt.Errorf("%w: signature", ErrBadState)
 	}
 	parts := strings.Split(body, ":")
-	if len(parts) != 4 {
+	// A state issued before an owner was carried has four parts: nonce,
+	// binding, actor, expiry. It lives ten minutes, so a rollout must not
+	// strand a flow begun just before it.
+	var (
+		owner []byte
+		err   error
+	)
+	switch len(parts) {
+	case 4:
+		parts = []string{parts[0], parts[1], parts[2], "", parts[3]}
+	case 5:
+		if owner, err = base64.RawURLEncoding.DecodeString(parts[3]); err != nil {
+			return Binding{}, fmt.Errorf("%w: owner", ErrBadState)
+		}
+	default:
 		return Binding{}, ErrBadState
 	}
-	expires, err := strconv.ParseInt(parts[3], 10, 64)
+	expires, err := strconv.ParseInt(parts[4], 10, 64)
 	if err != nil {
 		return Binding{}, fmt.Errorf("%w: expiry", ErrBadState)
 	}
@@ -167,7 +188,7 @@ func (c *StateCodec) VerifyBinding(state string) (Binding, error) {
 	if err != nil {
 		return Binding{}, fmt.Errorf("%w: actor", ErrBadState)
 	}
-	return Binding{Bind: string(bind), Actor: string(actor)}, nil
+	return Binding{Bind: string(bind), Actor: string(actor), Owner: string(owner)}, nil
 }
 
 func (c *StateCodec) sign(body string) string {

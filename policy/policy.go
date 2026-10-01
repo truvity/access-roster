@@ -324,13 +324,6 @@ type GitHubOrg struct {
 	// never added, removed or changed, linked or not. Removing the line
 	// brings them back under the bindings.
 	Ignore []string `yaml:"ignore,omitempty"`
-	// Owner is the directory workspace id that owns this organisation:
-	// the workspace whose SCOPED operator (`<id>:access-roster:operator`)
-	// may connect, reconnect and disconnect it, confirm its removals and
-	// manage its Apps, beside the installation-wide operator. Empty, the
-	// organisation is operated by the installation-wide roles alone.
-	// See policy.md#the-services-own-two-groups-and-scoping-them.
-	Owner string `yaml:"owner,omitempty"`
 }
 
 // ignoredLogin is what GitHub allows in a login.
@@ -574,6 +567,9 @@ type Client struct {
 // a renamed field must fail a rollout, not a login.
 func Parse(data []byte) (Policy, error) {
 	var p Policy
+	if err := refuseRemovedKeys(data); err != nil {
+		return Policy{}, fmt.Errorf("parse policy: %w", err)
+	}
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	dec.KnownFields(true)
 	if err := dec.Decode(&p); err != nil {
@@ -784,9 +780,6 @@ func (p Policy) validateGitHubOrg(org string) error {
 		return fmt.Errorf("github: an organisation with no name")
 	}
 	binding := p.GitHub[org]
-	if binding.Owner != "" && !ValidWorkspaceID(binding.Owner) {
-		return fmt.Errorf("github: %s owner: %q is not a workspace id", org, binding.Owner)
-	}
 	// An organisation that binds nothing is one the controller would
 	// connect and then have no opinion about — and, read the other way,
 	// one whose every member is accounted for by no binding. Refused, so

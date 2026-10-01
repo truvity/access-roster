@@ -176,8 +176,9 @@ func (c *Console) memberCheck(ctx context.Context, id access.Identity) (func(con
 		token string
 	}
 	var orgs []installed
-	for _, record := range records {
-		if !record.Installed() || !c.mayOrg(id, access.RoleOperator, record.Org) {
+	for i := range records {
+		record := &records[i]
+		if !record.Installed() || !mayOwned(id, access.RoleOperator, record.Owner) {
 			continue
 		}
 		credential, found, err := c.deps.GitHubOrgs.Credential(ctx, record.Org)

@@ -111,7 +111,7 @@ var policyFields = map[string]mergeRule{
 	},
 	"Slack": {
 		rule:    "field by field: see slackFields",
-		declare: "version: 1\nslack: { workspaces: { acme: { team_id: T0123ABCD } } }\n",
+		declare: "version: 1\nslack: { workspaces: { acme: { channels: { ops: { from: [g] } } } } }\n",
 		twice:   clash,
 	},
 }
@@ -120,7 +120,7 @@ var policyFields = map[string]mergeRule{
 var slackFields = map[string]mergeRule{
 	"Workspaces": {
 		rule:    "per workspace, field by field: see slackWorkspaceFields",
-		declare: "version: 1\nslack: { workspaces: { acme: { team_id: T0123ABCD } } }\n",
+		declare: "version: 1\nslack: { workspaces: { acme: { channels: { ops: { from: [g] } } } } }\n",
 		twice:   clash,
 	},
 }
@@ -128,21 +128,6 @@ var slackFields = map[string]mergeRule{
 // slackWorkspaceFields is a workspace's rule per field: a workspace is
 // merged field by field, as a GitHub organisation is.
 var slackWorkspaceFields = map[string]mergeRule{
-	"TeamID": {
-		rule:    "one file per workspace; a second is a clash",
-		declare: "version: 1\nslack: { workspaces: { acme: { team_id: T0123ABCD } } }\n",
-		twice:   clash,
-	},
-	"Domains": {
-		rule:    "one file per workspace; a second is a clash",
-		declare: "version: 1\nslack: { workspaces: { acme: { domains: [acme.example] } } }\n",
-		twice:   clash,
-	},
-	"Owner": {
-		rule:    "one file per workspace; a second is a clash",
-		declare: "version: 1\nslack: { workspaces: { acme: { owner: C0northern } } }\n",
-		twice:   clash,
-	},
 	"Channels": {
 		rule:    "per channel; a channel in two files is a clash",
 		declare: "version: 1\nslack: { workspaces: { acme: { channels: { ops: { from: [g] } } } } }\n",
@@ -168,11 +153,6 @@ var githubOrgFields = map[string]mergeRule{
 		rule:    "additive: every file's entries, each once",
 		declare: "version: 1\ngithub: { globex: { ignore: [someone@a.example] } }\n",
 		twice:   same,
-	},
-	"Owner": {
-		rule:    "one file per organisation; a second is a clash",
-		declare: "version: 1\ngithub: { globex: { owner: C0northern } }\n",
-		twice:   clash,
 	},
 }
 
@@ -402,11 +382,9 @@ client_documents:
 slack:
   workspaces:
     acme:
-      team_id: T0123ABCD
-      domains: [a.example]
       channels:
         ops: { from: [devel:k8s:admin], adopt: C0123ABCD }
-    globex: { team_id: T0456EFGH, domains: [b.example] }
+    globex: {}
 `,
 	}
 

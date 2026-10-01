@@ -217,16 +217,6 @@ func (s *Set) GitHubOrgs() []OrgView {
 	return out
 }
 
-// GitHubOwner returns the directory workspace id that owns an
-// organisation, or "" when the policy names none — in which case only
-// the installation-wide roles may operate it. An organisation the policy
-// does not bind at all has no owner either.
-func (s *Set) GitHubOwner(org string) string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.declared.GitHub[org].Owner
-}
-
 // ClientView is one declared client as the console shows it.
 type ClientView struct {
 	ID string
@@ -425,15 +415,6 @@ func (p *Policy) mergeLayer(other Policy, from string) error {
 				return fmt.Errorf("%s: github organisation %s declares members twice", from, org)
 			}
 			into.Members = slices.Clone(incoming.Members)
-		}
-		// The owner is one scalar per organisation: a second file naming
-		// one is a clash, because the second would silently replace the
-		// first and with it decide who may operate the organisation.
-		if incoming.Owner != "" {
-			if into.Owner != "" {
-				return fmt.Errorf("%s: github organisation %s declares owner twice", from, org)
-			}
-			into.Owner = incoming.Owner
 		}
 		// Ignoring is additive: two files leaving two accounts alone leave
 		// both alone, and neither can make the other's line mean less.

@@ -78,6 +78,9 @@ type githubAppSpec struct {
 	htmlURL        string
 	connectedAt    time.Time
 	connectedBy    string
+	// owner is the directory workspace recorded as the owner of the
+	// organisation this App acts on, empty for none; the link App has none.
+	owner string
 
 	// key reads the App's private key, for asking GitHub as the App. Nil
 	// where this service keeps none, and keyless then says why.
@@ -106,6 +109,8 @@ type githubAppsFacts struct {
 	tiers      []string
 	bound      []string
 	linkURL    string
+	// owners are the recorded owners of the connected organisations.
+	owners map[string]string
 }
 
 // secretNamer is a store that can say which Kubernetes Secret it keeps
@@ -134,13 +139,25 @@ func (c *Console) ListGitHubApps(
 	}
 	// Only the Apps of organisations the caller may view: a scoped viewer
 	// never sees another company's organisation, or an App in it.
-	specs = slices.DeleteFunc(specs, func(spec githubAppSpec) bool { return !c.mayApp(id, access.RoleViewer, &spec) })
-	facts.bound = slices.DeleteFunc(facts.bound, func(org string) bool { return !c.mayOrg(id, access.RoleViewer, org) })
+	specs = slices.DeleteFunc(specs, func(spec githubAppSpec) bool { return !mayApp(id, access.RoleViewer, &spec) })
+	facts.bound = slices.DeleteFunc(facts.bound, func(org string) bool {
+		owner, connected := facts.owners[org]
+		if connected {
+			return !id.CanFor(access.RoleViewer, owner)
+		}
+		return !id.Can(access.RoleViewer) && !id.CanAnywhere(access.RoleOperator)
+	})
+	dirs, err := c.directories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	choices, mayNone := ownerChoices(id, dirs)
 	views := c.githubAppViews(ctx, specs)
 	for i := range views {
-		views[i].CanOperate = c.mayApp(id, access.RoleOperator, &specs[i])
+		c.decorateApp(views[i], id, &specs[i], ownerDomains(dirs))
 	}
 	return connect.NewResponse(&directoryrosterv1.ListGitHubAppsResponse{
+		OwnerChoices: choices, MayConnectWithoutOwner: mayNone,
 		Apps:                views,
 		ConnectingAvailable: facts.connecting,
 		LinkingAvailable:    facts.linking,
@@ -149,6 +166,18 @@ func (c *Console) ListGitHubApps(
 		BoundOrganisations:  facts.bound,
 		LinkUrl:             facts.linkURL,
 	}), nil
+}
+
+// decorateApp sets what an App's view says of the caller and of the
+// organisation's owner: whether it may operate the App, which directory owns
+// the organisation (by its primary domain), and whether it may change that.
+func (c *Console) decorateApp(app *directoryrosterv1.GitHubApp, id access.Identity, spec *githubAppSpec, domains map[string]string) {
+	app.CanOperate = mayApp(id, access.RoleOperator, spec)
+	if spec.purpose == appLink {
+		return
+	}
+	app.OwnerDirectory, app.OwnerDomain = spec.owner, domains[spec.owner]
+	app.CanChangeOwner = spec.purpose == appController && spec.created && id.Can(access.RoleOperator)
 }
 
 // GetGitHubApp implements one App's page.
@@ -167,7 +196,11 @@ func (c *Console) GetGitHubApp(
 		return nil, err
 	}
 	app := c.githubAppView(ctx, spec, false)
-	app.CanOperate = c.mayApp(id, access.RoleOperator, &spec)
+	dirs, err := c.directories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.decorateApp(app, id, &spec, ownerDomains(dirs))
 	return connect.NewResponse(&directoryrosterv1.GetGitHubAppResponse{App: app}), nil
 }
 
@@ -241,7 +274,11 @@ func (c *Console) CheckGitHubApp(
 		return nil, err
 	}
 	app := c.githubAppView(ctx, spec, true)
-	app.CanOperate = c.mayApp(id, access.RoleOperator, &spec)
+	dirs, err := c.directories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.decorateApp(app, id, &spec, ownerDomains(dirs))
 	return connect.NewResponse(&directoryrosterv1.CheckGitHubAppResponse{App: app}), nil
 }
 
@@ -271,7 +308,7 @@ func (c *Console) BeginGitHubAppConnect(
 	case appLink:
 		begun, err = c.beginLinkAppConnect(ctx, id.Who(), strings.TrimSpace(req.Msg.GetOwner()))
 	case appController:
-		begun, err = c.beginOrganisationConnect(ctx, id.Who(), spec.org)
+		begun, err = c.beginOrganisationConnect(ctx, id, spec.org, req.Msg.GetOwnerDirectory())
 	case appRunners:
 		begun, err = c.beginRunnerAppConnect(ctx, id.Who(), spec.org, spec.tier)
 	default:
@@ -393,6 +430,14 @@ func (c *Console) githubAppSpecs(ctx context.Context) ([]githubAppSpec, githubAp
 		return nil, facts, err
 	}
 	specs := slices.Concat(linkSpecs, controllerSpecs, runnerSpecs, catalogueSpecs)
+	if facts.owners, err = c.githubOwners(ctx); err != nil {
+		return nil, facts, err
+	}
+	for i := range specs {
+		if specs[i].purpose != appLink {
+			specs[i].owner = facts.owners[specs[i].org]
+		}
+	}
 	return specs, facts, nil
 }
 
@@ -456,8 +501,8 @@ func (c *Console) controllerAppSpecs(ctx context.Context, bound map[string]*bind
 		if err != nil {
 			return nil, err
 		}
-		for _, record := range listed {
-			records[record.Org] = record
+		for i := range listed {
+			records[listed[i].Org] = listed[i]
 		}
 	}
 	reported := map[string]bool{}

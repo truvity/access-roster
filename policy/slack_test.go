@@ -20,14 +20,10 @@ people:
 slack:
   workspaces:
     acme:
-      team_id: T0123ABCD
-      domains: [acme.example]
       channels:
         eng-private: { private: true, from: [acme:eng:member] }
         ops: { from: [acme:sre:member], adopt: C0123ABCD }
-    globex:
-      team_id: T0456EFGH
-      domains: [globex.example]
+    globex: {}
 `
 
 func TestSlackRoundTrips(t *testing.T) {
@@ -40,7 +36,7 @@ func TestSlackRoundTrips(t *testing.T) {
 		t.Fatalf("NewSet: %v", err)
 	}
 	acme := declared.Slack.Workspaces["acme"]
-	if acme.TeamID != "T0123ABCD" || !acme.Channels["eng-private"].Private ||
+	if !acme.Channels["eng-private"].Private ||
 		acme.Channels["ops"].Adopt != "C0123ABCD" || acme.Channels["ops"].Private {
 		t.Errorf("acme read as %+v", acme)
 	}
@@ -93,26 +89,16 @@ func TestSlackModeAndIgnore(t *testing.T) {
 func TestSlackRefusals(t *testing.T) {
 	t.Parallel()
 	for name, c := range map[string]struct{ from, to, want string }{
-		"workspace key not a slug":  {"    acme:\n      team_id", "    Acme_Corp:\n      team_id", "workspace key"},
-		"team id missing":           {"      team_id: T0123ABCD\n", "", "team_id"},
-		"team id misshapen":         {"T0456EFGH", "t456", "team_id"},
-		"team id in two workspaces": {"T0456EFGH", "T0123ABCD", "belongs to both"},
-		"no domains":                {"      domains: [globex.example]\n", "", "no domains"},
-		"domain not a domain":       {"domains: [globex.example]", "domains: [globex]", "not a domain"},
-		"domain in two workspaces":  {"domains: [globex.example]", "domains: [ACME.example]", "belongs to both"},
-		"domain twice in one":       {"domains: [acme.example]", "domains: [acme.example, Acme.Example]", "twice"},
-		"channel name uppercase":    {"ops: {", "Ops: {", "channel name"},
-		"channel name too long":     {"ops: {", strings.Repeat("a", 81) + ": {", "channel name"},
-		"channel fed by nothing":    {"ops: { from: [acme:sre:member], ", "ops: { from: [], ", "fed by no group"},
-		"channel group undeclared":  {"from: [acme:sre:member]", "from: [acme:nobody:member]", "not a declared group"},
-		"adopt misshapen":           {"adopt: C0123ABCD", "adopt: c123", "channel id"},
-		"adopt twice":               {"eng-private: { private: true,", "eng-private: { adopt: C0123ABCD, private: true,", "adopts C0123ABCD for both"},
-		"owner has a separator":     {"      team_id: T0456EFGH\n", "      team_id: T0456EFGH\n      owner: 'C0:north'\n", "not a workspace id"},
-		"owner has a space":         {"      team_id: T0456EFGH\n", "      team_id: T0456EFGH\n      owner: 'C0 north'\n", "not a workspace id"},
-		"owner is all":              {"      team_id: T0456EFGH\n", "      team_id: T0456EFGH\n      owner: all\n", "not a workspace id"},
-		"person no address":         {"jdoe: [j.doe@acme.example, john@globex.example]", "jdoe: []", "no address"},
-		"person address invalid":    {"john@globex.example", "john", "not an address"},
-		"person key not a slug":     {"jdoe:", "J Doe:", "not a usable name"},
+		"workspace key not a slug": {"    acme:\n      channels", "    Acme_Corp:\n      channels", "workspace key"},
+		"channel name uppercase":   {"ops: {", "Ops: {", "channel name"},
+		"channel name too long":    {"ops: {", strings.Repeat("a", 81) + ": {", "channel name"},
+		"channel fed by nothing":   {"ops: { from: [acme:sre:member], ", "ops: { from: [], ", "fed by no group"},
+		"channel group undeclared": {"from: [acme:sre:member]", "from: [acme:nobody:member]", "not a declared group"},
+		"adopt misshapen":          {"adopt: C0123ABCD", "adopt: c123", "channel id"},
+		"adopt twice":              {"eng-private: { private: true,", "eng-private: { adopt: C0123ABCD, private: true,", "adopts C0123ABCD for both"},
+		"person no address":        {"jdoe: [j.doe@acme.example, john@globex.example]", "jdoe: []", "no address"},
+		"person address invalid":   {"john@globex.example", "john", "not an address"},
+		"person key not a slug":    {"jdoe:", "J Doe:", "not a usable name"},
 		"address in two people": {
 			"people:\n  jdoe: [j.doe@acme.example, john@globex.example]",
 			"people:\n  jdoe: [j.doe@acme.example, john@globex.example]\n  other: [JOHN@globex.example]",
@@ -170,21 +156,6 @@ func TestChangingASlackFieldChangesTheDigest(t *testing.T) {
 	}
 	want, _ := base.Digest()
 	for name, edit := range map[string]func(*policy.Policy){
-		"team id": func(p *policy.Policy) {
-			w := p.Slack.Workspaces["globex"]
-			w.TeamID = "T0999ZZZZ"
-			p.Slack.Workspaces["globex"] = w
-		},
-		"owner": func(p *policy.Policy) {
-			w := p.Slack.Workspaces["globex"]
-			w.Owner = "C0north"
-			p.Slack.Workspaces["globex"] = w
-		},
-		"domain": func(p *policy.Policy) {
-			w := p.Slack.Workspaces["globex"]
-			w.Domains = append(w.Domains, "globex.example.org")
-			p.Slack.Workspaces["globex"] = w
-		},
 		"channel privacy": func(p *policy.Policy) {
 			c := p.Slack.Workspaces["acme"].Channels["ops"]
 			c.Private = true
@@ -226,7 +197,7 @@ func TestSlackMergesAcrossFiles(t *testing.T) {
 	t.Parallel()
 	merged, err := loadFiles(t,
 		"version: 1\ngroups: { g: { members: [g@acme.example] } }\n"+
-			"slack: { workspaces: { acme: { team_id: T0123ABCD, domains: [acme.example] } } }\n",
+			"slack: { workspaces: { acme: {} } }\n",
 		"version: 1\nslack: { workspaces: { acme: { channels: { ops: { from: [g] } } } } }\n"+
 			"people: { jdoe: [a@acme.example] }\n",
 	)
@@ -236,16 +207,38 @@ func TestSlackMergesAcrossFiles(t *testing.T) {
 	if _, err := policy.NewSet(merged); err != nil {
 		t.Fatalf("NewSet: %v", err)
 	}
-	if merged.Slack.Workspaces["acme"].TeamID == "" || len(merged.Slack.Workspaces["acme"].Channels) != 1 {
+	if len(merged.Slack.Workspaces["acme"].Channels) != 1 {
 		t.Errorf("merged = %+v", merged.Slack)
 	}
 }
 
-// A workspace's owner is read back exactly as declared, and a workspace
-// that names none has none.
-func TestASlackWorkspacesOwner(t *testing.T) {
+// A policy that still carries a key v1.41.0 briefly allowed is refused,
+// and the message says where the value now comes from.
+func TestRemovedKeysAreRefusedWithTheirMigration(t *testing.T) {
 	t.Parallel()
-	declared, err := policy.Parse([]byte(strings.Replace(slackBase, "      team_id: T0456EFGH\n", "      team_id: T0456EFGH\n      owner: C0north\n", 1)))
+	for name, c := range map[string]struct{ doc, key, from string }{
+		"slack team_id": {"slack: { workspaces: { acme: { team_id: T0123ABCD } } }\n", "team_id", "recorded when it is first connected"},
+		"slack domains": {"slack: { workspaces: { acme: { domains: [acme.example] } } }\n", "domains", "served domains of the owning directory"},
+		"slack owner":   {"slack: { workspaces: { acme: { owner: C0north } } }\n", "owner", "chosen on the console"},
+		"github owner":  {"github: { globex: { members: [a], owner: C0north } }\n", "owner", "chosen on the console"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := policy.Parse([]byte("version: 1\ngroups: { a: { members: [g@h.example] } }\n" + c.doc))
+			if err == nil {
+				t.Fatal("a removed key was accepted")
+			}
+			if msg := err.Error(); !strings.Contains(msg, `"`+c.key+`" is no longer a policy key`) ||
+				!strings.Contains(msg, c.from) || !strings.Contains(msg, "delete the key") {
+				t.Errorf("message does not say where the value comes from: %v", err)
+			}
+		})
+	}
+}
+
+func TestASlackWorkspaceIsKnownByItsKeyAlone(t *testing.T) {
+	t.Parallel()
+	declared, err := policy.Parse([]byte(slackBase))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -253,15 +246,7 @@ func TestASlackWorkspacesOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSet: %v", err)
 	}
-	for key, want := range map[string]string{"globex": "C0north", "acme": "", "unbound": ""} {
-		if got := set.SlackOwner(key); got != want {
-			t.Errorf("SlackOwner(%s) = %q, want %q", key, got, want)
-		}
-	}
-	if team, ok := set.SlackWorkspaceTeam("globex"); !ok || team != "T0456EFGH" {
-		t.Errorf("SlackWorkspaceTeam(globex) = %q, %v", team, ok)
-	}
-	if _, ok := set.SlackWorkspaceTeam("unbound"); ok {
-		t.Error("an undeclared workspace has a team")
+	if !set.SlackWorkspaceDeclared("acme") || !set.SlackWorkspaceDeclared("globex") || set.SlackWorkspaceDeclared("unbound") {
+		t.Error("SlackWorkspaceDeclared does not follow the declared keys")
 	}
 }

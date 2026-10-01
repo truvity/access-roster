@@ -257,12 +257,30 @@ func (c Confirmed) covers(fingerprint string) string {
 	return ""
 }
 
+// Facts are what is recorded or read at run time about one workspace, never
+// declared in the policy.
+type Facts struct {
+	// Team is the Slack team id recorded at the workspace's first install,
+	// empty before it.
+	Team string
+	// Owner is the directory workspace id recorded as the workspace's owner
+	// when it was connected, empty for none.
+	Owner string
+	// Domains are the domains the owning directory serves, as the console
+	// reports them now: the only domains a person is looked up by here.
+	// Empty without an owner.
+	Domains []string
+}
+
 // Input is everything a workspace's decision rests on.
 type Input struct {
 	// Workspace is the workspace key being decided.
 	Workspace string
-	// Workspaces are every declared workspace: domains and team ids.
+	// Workspaces are every declared workspace: the channels bound in each.
 	Workspaces map[string]policy.SlackWorkspace
+	// Facts are what access-roster knows of each workspace at run time and
+	// the policy does not say, by workspace key.
+	Facts map[string]Facts
 	// People links one person's addresses ([policy.Policy.People]).
 	People map[string][]string
 	// Holders are the holders of every group a channel here, or a shared
@@ -379,8 +397,12 @@ type resolver struct {
 
 func newResolver(in Input) resolver {
 	r := resolver{in: in, domains: map[string][]string{}, byAddr: map[string]string{}, ofPerson: map[string][]string{}}
-	for key, ws := range in.Workspaces {
-		r.domains[key] = ws.NormalisedDomains()
+	for key, facts := range in.Facts {
+		domains := make([]string, 0, len(facts.Domains))
+		for _, domain := range facts.Domains {
+			domains = append(domains, strings.ToLower(strings.TrimSpace(domain)))
+		}
+		r.domains[key] = domains
 	}
 	for key, addrs := range in.People {
 		for _, a := range addrs {
@@ -466,7 +488,21 @@ func (r resolver) path(workspace string, p person) (string, bool) {
 	return "", false
 }
 
-const noPath = "no account path in this workspace: none of their addresses is in its domains"
+const (
+	noPath = "no account path in this workspace: none of their addresses is in its owning directory's domains"
+	// NoOwner is why a workspace's people are held while it has no owner:
+	// without one nobody knows which domains to look a person up by.
+	NoOwner = "no owning directory: set the owner on the console"
+)
+
+// noPathIn is why nobody can be looked up in a workspace: it has no owner,
+// or its owner's domains hold none of the person's addresses.
+func (r resolver) noPathIn(workspace string) string {
+	if r.in.Facts[workspace].Owner == "" {
+		return NoOwner
+	}
+	return noPath
+}
 
 // layout lays out every channel this workspace manages or takes part in.
 func (r resolver) layout() []layoutChannel {
@@ -481,7 +517,7 @@ func (r resolver) layout() []layoutChannel {
 			if addr, ok := r.path(ws, p); ok {
 				s.addr = addr
 			} else {
-				s.reason = noPath
+				s.reason = r.noPathIn(ws)
 			}
 			lc.slots = append(lc.slots, s)
 		}

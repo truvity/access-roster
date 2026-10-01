@@ -49,6 +49,14 @@ type Record struct {
 	HTMLURL        string    `json:"html_url,omitempty"`
 	ConnectedAt    time.Time `json:"connected_at"`
 	ConnectedBy    string    `json:"connected_by"`
+	// Owner is the directory workspace id that owns this organisation,
+	// chosen when it was connected: the workspace whose SCOPED operator
+	// (`<id>:access-roster:operator`) may operate it beside the
+	// installation-wide operator. Empty, only the installation-wide roles
+	// operate it. Only the installation-wide operator changes it
+	// afterwards. The field is optional in version 1, so a record written
+	// before it existed reads as "no owner" and behaves exactly as it did.
+	Owner string `json:"owner,omitempty"`
 }
 
 // Installed reports whether the App can act yet.

@@ -1,0 +1,25 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/github-org-connected.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "app": {
+      "type": "string",
+      "description": "The GitHub App's id.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "installation": {
+      "type": "string",
+      "description": "The installation's id.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "owner": {
+      "type": "string",
+      "description": "The directory workspace id recorded as the organisation's owner; \"none\" when only the installation-wide roles operate it.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

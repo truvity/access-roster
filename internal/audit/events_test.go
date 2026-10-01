@@ -23,7 +23,7 @@ func every() []*record.Record {
 	ch := audit.SlackChannel{Workspace: "acme", Name: "#platform", ID: "C0123", Private: true}
 	sm := audit.SlackMember{Person: "a.person@example.com", Channel: ch, User: "U0123", Groups: []string{"platform"}, Reason: "bound to platform"}
 	shared := audit.SlackShared{Host: "acme", Guest: "globex", Channel: "partners", ID: "C0456", Invite: "I0789"}
-	sw := audit.SlackWorkspace{Key: "acme", Team: "T0123", App: "A0123"}
+	sw := audit.SlackWorkspace{Key: "acme", Team: "T0123", App: "A0123", Owner: "C0north"}
 	sharedChannel := audit.SlackSharedChannel{Name: "partners", Host: "acme", With: []string{"globex", "initech"},
 		From: []string{"all:platform:engineer"}, PerSide: map[string]bool{"acme": true, "globex": false, "initech": true}}
 	sa := audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme", Team: "T0123", Scopes: []string{"channels:read", "users:read"}}
@@ -65,7 +65,9 @@ func every() []*record.Record {
 		audit.WorkspaceDomainsChanged(person, "ws-1", []string{"example.com"}),
 		audit.WorkspaceGroupsChanged(person, "ws-1", 3),
 		audit.GitHubAppCreated(person, "example", app),
-		audit.GitHubOrgConnected(person, "example", 42, 7),
+		audit.GitHubOrgConnected(person, "example", 42, 7, "C0north"),
+		audit.GitHubOrgOwnerChanged(person, "example", "", "C0north"),
+		audit.SlackWorkspaceOwnerChanged(person, "acme", "C0north", ""),
 		audit.GitHubOrgDisconnected(audit.System(), "example", true, "the App was uninstalled"),
 		audit.GitHubRemovalsConfirmed(person, "example", "f00d", 3, 40),
 		audit.LinkAppConnected(person, app, "example"),

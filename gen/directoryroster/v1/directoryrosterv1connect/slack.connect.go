@@ -39,6 +39,9 @@ const (
 	// SlackServiceBeginSlackWorkspaceConnectProcedure is the fully-qualified name of the SlackService's
 	// BeginSlackWorkspaceConnect RPC.
 	SlackServiceBeginSlackWorkspaceConnectProcedure = "/directoryroster.v1.SlackService/BeginSlackWorkspaceConnect"
+	// SlackServiceChangeSlackWorkspaceOwnerProcedure is the fully-qualified name of the SlackService's
+	// ChangeSlackWorkspaceOwner RPC.
+	SlackServiceChangeSlackWorkspaceOwnerProcedure = "/directoryroster.v1.SlackService/ChangeSlackWorkspaceOwner"
 	// SlackServiceDisconnectSlackWorkspaceProcedure is the fully-qualified name of the SlackService's
 	// DisconnectSlackWorkspace RPC.
 	SlackServiceDisconnectSlackWorkspaceProcedure = "/directoryroster.v1.SlackService/DisconnectSlackWorkspace"
@@ -52,20 +55,31 @@ type SlackServiceClient interface {
 	// GetSlackStatus returns every Slack workspace the caller may view, each
 	// with its connection, the controller's last report and whether the
 	// caller may operate it. Viewer, installation-wide or over the directory
-	// workspace that owns the Slack workspace (`slack.workspaces.<key>.owner`):
-	// a scoped viewer sees only the workspaces its directory owns.
-	// Never a client secret or a bot token.
+	// workspace recorded as the Slack workspace's owner when it was
+	// connected: a scoped viewer sees only the workspaces its directory
+	// owns, and a workspace nobody has connected yet is shown to anyone who
+	// could connect it. Never a client secret or a bot token.
 	GetSlackStatus(context.Context, *connect.Request[v1.GetSlackStatusRequest]) (*connect.Response[v1.GetSlackStatusResponse], error)
 	// BeginSlackWorkspaceConnect creates the roster's Slack App for a
 	// workspace from its manifest with the configuration token, or — for a
 	// workspace whose App is already created — prepares a reinstall, and
 	// returns Slack's authorize URL carrying signed state. The response
-	// header pins the flow to this browser with a cookie. Operator of the
-	// workspace's owner, or the installation-wide operator.
+	// header pins the flow to this browser with a cookie. For a workspace
+	// not yet connected, the installation-wide operator, who chooses the
+	// owning directory from the connected ones or none, or an operator of
+	// one or more directories, whose own directory becomes the owner (they
+	// choose among theirs when they have several). Afterwards, the operator
+	// of the recorded owner or the installation-wide operator; the owner
+	// never changes here.
 	//
 	// The configuration token lives in this request and in one call to
 	// Slack: it is neither stored nor logged.
 	BeginSlackWorkspaceConnect(context.Context, *connect.Request[v1.BeginSlackWorkspaceConnectRequest]) (*connect.Response[v1.BeginSlackWorkspaceConnectResponse], error)
+	// ChangeSlackWorkspaceOwner changes the directory recorded as a
+	// connected workspace's owner, or removes it. Installation-wide
+	// operator only: an owner may not hand its own workspace to another or
+	// take it for itself. Recorded as a configuration change.
+	ChangeSlackWorkspaceOwner(context.Context, *connect.Request[v1.ChangeSlackWorkspaceOwnerRequest]) (*connect.Response[v1.ChangeSlackWorkspaceOwnerResponse], error)
 	// DisconnectSlackWorkspace revokes the workspace's bot token at Slack and
 	// forgets the connection, so the controller stops acting there. Operator
 	// of the workspace's owner, or the installation-wide operator. The App
@@ -102,6 +116,12 @@ func NewSlackServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(slackServiceMethods.ByName("BeginSlackWorkspaceConnect")),
 			connect.WithClientOptions(opts...),
 		),
+		changeSlackWorkspaceOwner: connect.NewClient[v1.ChangeSlackWorkspaceOwnerRequest, v1.ChangeSlackWorkspaceOwnerResponse](
+			httpClient,
+			baseURL+SlackServiceChangeSlackWorkspaceOwnerProcedure,
+			connect.WithSchema(slackServiceMethods.ByName("ChangeSlackWorkspaceOwner")),
+			connect.WithClientOptions(opts...),
+		),
 		disconnectSlackWorkspace: connect.NewClient[v1.DisconnectSlackWorkspaceRequest, v1.DisconnectSlackWorkspaceResponse](
 			httpClient,
 			baseURL+SlackServiceDisconnectSlackWorkspaceProcedure,
@@ -121,6 +141,7 @@ func NewSlackServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 type slackServiceClient struct {
 	getSlackStatus             *connect.Client[v1.GetSlackStatusRequest, v1.GetSlackStatusResponse]
 	beginSlackWorkspaceConnect *connect.Client[v1.BeginSlackWorkspaceConnectRequest, v1.BeginSlackWorkspaceConnectResponse]
+	changeSlackWorkspaceOwner  *connect.Client[v1.ChangeSlackWorkspaceOwnerRequest, v1.ChangeSlackWorkspaceOwnerResponse]
 	disconnectSlackWorkspace   *connect.Client[v1.DisconnectSlackWorkspaceRequest, v1.DisconnectSlackWorkspaceResponse]
 	confirmSlackRemovals       *connect.Client[v1.ConfirmSlackRemovalsRequest, v1.ConfirmSlackRemovalsResponse]
 }
@@ -133,6 +154,11 @@ func (c *slackServiceClient) GetSlackStatus(ctx context.Context, req *connect.Re
 // BeginSlackWorkspaceConnect calls directoryroster.v1.SlackService.BeginSlackWorkspaceConnect.
 func (c *slackServiceClient) BeginSlackWorkspaceConnect(ctx context.Context, req *connect.Request[v1.BeginSlackWorkspaceConnectRequest]) (*connect.Response[v1.BeginSlackWorkspaceConnectResponse], error) {
 	return c.beginSlackWorkspaceConnect.CallUnary(ctx, req)
+}
+
+// ChangeSlackWorkspaceOwner calls directoryroster.v1.SlackService.ChangeSlackWorkspaceOwner.
+func (c *slackServiceClient) ChangeSlackWorkspaceOwner(ctx context.Context, req *connect.Request[v1.ChangeSlackWorkspaceOwnerRequest]) (*connect.Response[v1.ChangeSlackWorkspaceOwnerResponse], error) {
+	return c.changeSlackWorkspaceOwner.CallUnary(ctx, req)
 }
 
 // DisconnectSlackWorkspace calls directoryroster.v1.SlackService.DisconnectSlackWorkspace.
@@ -150,20 +176,31 @@ type SlackServiceHandler interface {
 	// GetSlackStatus returns every Slack workspace the caller may view, each
 	// with its connection, the controller's last report and whether the
 	// caller may operate it. Viewer, installation-wide or over the directory
-	// workspace that owns the Slack workspace (`slack.workspaces.<key>.owner`):
-	// a scoped viewer sees only the workspaces its directory owns.
-	// Never a client secret or a bot token.
+	// workspace recorded as the Slack workspace's owner when it was
+	// connected: a scoped viewer sees only the workspaces its directory
+	// owns, and a workspace nobody has connected yet is shown to anyone who
+	// could connect it. Never a client secret or a bot token.
 	GetSlackStatus(context.Context, *connect.Request[v1.GetSlackStatusRequest]) (*connect.Response[v1.GetSlackStatusResponse], error)
 	// BeginSlackWorkspaceConnect creates the roster's Slack App for a
 	// workspace from its manifest with the configuration token, or — for a
 	// workspace whose App is already created — prepares a reinstall, and
 	// returns Slack's authorize URL carrying signed state. The response
-	// header pins the flow to this browser with a cookie. Operator of the
-	// workspace's owner, or the installation-wide operator.
+	// header pins the flow to this browser with a cookie. For a workspace
+	// not yet connected, the installation-wide operator, who chooses the
+	// owning directory from the connected ones or none, or an operator of
+	// one or more directories, whose own directory becomes the owner (they
+	// choose among theirs when they have several). Afterwards, the operator
+	// of the recorded owner or the installation-wide operator; the owner
+	// never changes here.
 	//
 	// The configuration token lives in this request and in one call to
 	// Slack: it is neither stored nor logged.
 	BeginSlackWorkspaceConnect(context.Context, *connect.Request[v1.BeginSlackWorkspaceConnectRequest]) (*connect.Response[v1.BeginSlackWorkspaceConnectResponse], error)
+	// ChangeSlackWorkspaceOwner changes the directory recorded as a
+	// connected workspace's owner, or removes it. Installation-wide
+	// operator only: an owner may not hand its own workspace to another or
+	// take it for itself. Recorded as a configuration change.
+	ChangeSlackWorkspaceOwner(context.Context, *connect.Request[v1.ChangeSlackWorkspaceOwnerRequest]) (*connect.Response[v1.ChangeSlackWorkspaceOwnerResponse], error)
 	// DisconnectSlackWorkspace revokes the workspace's bot token at Slack and
 	// forgets the connection, so the controller stops acting there. Operator
 	// of the workspace's owner, or the installation-wide operator. The App
@@ -196,6 +233,12 @@ func NewSlackServiceHandler(svc SlackServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(slackServiceMethods.ByName("BeginSlackWorkspaceConnect")),
 		connect.WithHandlerOptions(opts...),
 	)
+	slackServiceChangeSlackWorkspaceOwnerHandler := connect.NewUnaryHandler(
+		SlackServiceChangeSlackWorkspaceOwnerProcedure,
+		svc.ChangeSlackWorkspaceOwner,
+		connect.WithSchema(slackServiceMethods.ByName("ChangeSlackWorkspaceOwner")),
+		connect.WithHandlerOptions(opts...),
+	)
 	slackServiceDisconnectSlackWorkspaceHandler := connect.NewUnaryHandler(
 		SlackServiceDisconnectSlackWorkspaceProcedure,
 		svc.DisconnectSlackWorkspace,
@@ -214,6 +257,8 @@ func NewSlackServiceHandler(svc SlackServiceHandler, opts ...connect.HandlerOpti
 			slackServiceGetSlackStatusHandler.ServeHTTP(w, r)
 		case SlackServiceBeginSlackWorkspaceConnectProcedure:
 			slackServiceBeginSlackWorkspaceConnectHandler.ServeHTTP(w, r)
+		case SlackServiceChangeSlackWorkspaceOwnerProcedure:
+			slackServiceChangeSlackWorkspaceOwnerHandler.ServeHTTP(w, r)
 		case SlackServiceDisconnectSlackWorkspaceProcedure:
 			slackServiceDisconnectSlackWorkspaceHandler.ServeHTTP(w, r)
 		case SlackServiceConfirmSlackRemovalsProcedure:
@@ -233,6 +278,10 @@ func (UnimplementedSlackServiceHandler) GetSlackStatus(context.Context, *connect
 
 func (UnimplementedSlackServiceHandler) BeginSlackWorkspaceConnect(context.Context, *connect.Request[v1.BeginSlackWorkspaceConnectRequest]) (*connect.Response[v1.BeginSlackWorkspaceConnectResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.SlackService.BeginSlackWorkspaceConnect is not implemented"))
+}
+
+func (UnimplementedSlackServiceHandler) ChangeSlackWorkspaceOwner(context.Context, *connect.Request[v1.ChangeSlackWorkspaceOwnerRequest]) (*connect.Response[v1.ChangeSlackWorkspaceOwnerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.SlackService.ChangeSlackWorkspaceOwner is not implemented"))
 }
 
 func (UnimplementedSlackServiceHandler) DisconnectSlackWorkspace(context.Context, *connect.Request[v1.DisconnectSlackWorkspaceRequest]) (*connect.Response[v1.DisconnectSlackWorkspaceResponse], error) {

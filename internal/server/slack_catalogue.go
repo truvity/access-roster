@@ -67,18 +67,28 @@ func (c *Console) slackCatalogueStore() (SlackCatalogueApps, error) {
 	return c.deps.SlackCatalogueApps, nil
 }
 
-// slackTeam is the team id the policy names for a workspace key, or the
-// refusal to say when it names none.
-func (c *Console) slackTeam(workspace string) (string, error) {
+// connectedSlackTeam is the team id recorded when a workspace was first
+// installed, or the refusal to say when it has none. A catalogue App is
+// created in, and installed into, a workspace that is connected already: the
+// policy names the workspace by its key alone, and the connection is where
+// its team and its owner are recorded.
+func (c *Console) connectedSlackTeam(ctx context.Context, workspace string) (string, slackBook, error) {
 	if c.deps.Authorizer == nil {
-		return "", connect.NewError(connect.CodeFailedPrecondition, errors.New("no policy is loaded"))
+		return "", nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no policy is loaded"))
 	}
-	team, declared := c.deps.Authorizer.Policy().SlackWorkspaceTeam(workspace)
-	if !declared {
-		return "", connect.NewError(connect.CodeFailedPrecondition,
+	if !c.deps.Authorizer.Policy().SlackWorkspaceDeclared(workspace) {
+		return "", nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("the policy's slack.workspaces does not name workspace %q", workspace))
 	}
-	return team, nil
+	book, err := c.slackBook(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	if book.team(workspace) == "" {
+		return "", book, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"connect the workspace first: %s has no connected Slack workspace yet, and a catalogue App is installed into the team recorded when it is", workspace))
+	}
+	return book.team(workspace), book, nil
 }
 
 // ListSlackApps is every declared App, and every App created from an entry
@@ -86,7 +96,7 @@ func (c *Console) slackTeam(workspace string) (string, error) {
 func (c *Console) ListSlackApps(
 	ctx context.Context, _ *connect.Request[directoryrosterv1.ListSlackAppsRequest],
 ) (*connect.Response[directoryrosterv1.ListSlackAppsResponse], error) {
-	id, err := c.requireAnySlack(ctx, access.RoleViewer)
+	id, book, err := c.requireAnySlack(ctx, access.RoleViewer)
 	if err != nil {
 		return nil, err
 	}
@@ -106,23 +116,28 @@ func (c *Console) ListSlackApps(
 			entry := &c.deps.SlackCatalogue.Apps[i]
 			record, has := kept[entry.ID]
 			delete(kept, entry.ID)
-			out.Apps = c.appendVisible(out.Apps, id, c.slackAppView(entry, recordPtr(record, has)))
+			out.Apps = appendVisible(out.Apps, id, book, c.slackAppView(entry, recordPtr(record, has), book))
 		}
 	}
 	for _, orphan := range slices.Sorted(maps.Keys(kept)) {
 		record := kept[orphan]
-		out.Apps = c.appendVisible(out.Apps, id, c.slackAppView(nil, &record))
+		out.Apps = appendVisible(out.Apps, id, book, c.slackAppView(nil, &record, book))
 	}
 	return connect.NewResponse(out), nil
 }
 
 // appendVisible adds an App to the list if the caller may view its
 // workspace, saying whether the caller may also operate it.
-func (c *Console) appendVisible(apps []*directoryrosterv1.SlackApp, id access.Identity, app *directoryrosterv1.SlackApp) []*directoryrosterv1.SlackApp {
-	if !c.maySlack(id, access.RoleViewer, app.GetWorkspace()) {
+func appendVisible(
+	apps []*directoryrosterv1.SlackApp, id access.Identity, book slackBook, app *directoryrosterv1.SlackApp,
+) []*directoryrosterv1.SlackApp {
+	if !book.may(id, access.RoleViewer, app.GetWorkspace()) {
 		return apps
 	}
-	app.CanOperate = c.maySlack(id, access.RoleOperator, app.GetWorkspace())
+	// An App is operated once its workspace is connected, and not before:
+	// there is nobody yet whose directory it could be.
+	_, connected := book[app.GetWorkspace()]
+	app.CanOperate = connected && book.mayAct(id, app.GetWorkspace())
 	return append(apps, app)
 }
 
@@ -140,25 +155,21 @@ func scopeList(granted string) []string {
 
 // slackAppView is one App as the console shows it: the declaration, the
 // record, and what follows from comparing them. Never a credential.
-func (c *Console) slackAppView(entry *slackcatalogue.App, record *catalogueapp.Record) *directoryrosterv1.SlackApp {
+func (c *Console) slackAppView(entry *slackcatalogue.App, record *catalogueapp.Record, book slackBook) *directoryrosterv1.SlackApp {
 	out := &directoryrosterv1.SlackApp{State: slackAppDeclared, Declared: entry != nil}
 	var declaredScopes []string
 	if entry != nil {
 		out.Id, out.Workspace, out.Name, out.Description = entry.ID, entry.Workspace, entry.DisplayName(), entry.Description
 		out.BotScopes = slices.Clone(entry.BotScopes)
 		declaredScopes = entry.BotScopes
-		if c.deps.Authorizer != nil {
-			out.TeamId, _ = c.deps.Authorizer.Policy().SlackWorkspaceTeam(entry.Workspace)
-		}
+		out.TeamId = book.team(entry.Workspace)
 	}
 	if record == nil {
 		return out
 	}
 	if entry == nil {
 		out.Id, out.Workspace, out.Name = record.ID, record.Workspace, record.ID
-		if c.deps.Authorizer != nil {
-			out.TeamId, _ = c.deps.Authorizer.Policy().SlackWorkspaceTeam(record.Workspace)
-		}
+		out.TeamId = book.team(record.Workspace)
 	}
 	out.State = slackAppCreated
 	out.AppId = record.AppID
@@ -268,7 +279,8 @@ func (c *Console) CreateSlackApp(
 	if err != nil {
 		return nil, err
 	}
-	if _, err = c.slackTeam(entry.Workspace); err != nil {
+	_, book, err := c.connectedSlackTeam(ctx, entry.Workspace)
+	if err != nil {
 		return nil, err
 	}
 	configToken := strings.TrimSpace(req.Msg.GetConfigurationToken())
@@ -303,7 +315,7 @@ func (c *Console) CreateSlackApp(
 			"slack created the App and it could not be saved here: delete it at %s and create it again: %w", slackAppSettingsURL(app.AppID), err))
 	}
 	c.record(ctx, audit.SlackCatalogueAppCreated(actorOf(ctx), audit.SlackCatalogueApp{ID: id, App: app.AppID, Workspace: entry.Workspace}))
-	return connect.NewResponse(&directoryrosterv1.CreateSlackAppResponse{App: c.slackAppView(&entry, &record)}), nil
+	return connect.NewResponse(&directoryrosterv1.CreateSlackAppResponse{App: c.slackAppView(&entry, &record, book)}), nil
 }
 
 // InstallSlackApp starts installing, or reinstalling, a created App: the
@@ -328,7 +340,7 @@ func (c *Console) InstallSlackApp(
 	if err != nil {
 		return nil, err
 	}
-	team, err := c.slackTeam(entry.Workspace)
+	team, _, err := c.connectedSlackTeam(ctx, entry.Workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +411,9 @@ func slackAuthorizeURL(authorize, state, redirect, team string, scopes []string)
 	q.Set("state", state)
 	q.Set("redirect_uri", redirect)
 	q.Set("scope", strings.Join(scopes, ","))
-	q.Set("team", team)
+	if team != "" {
+		q.Set("team", team)
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -495,9 +509,9 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 		s.slackProblem(flow, w, r, http.StatusBadRequest, "The installation was not approved in Slack.", denied, nil)
 		return
 	}
-	team, err := console.slackTeam(entry.Workspace)
+	team, _, err := console.connectedSlackTeam(r.Context(), entry.Workspace)
 	if err != nil {
-		s.slackProblem(flow, w, r, http.StatusConflict, "The policy no longer names this App's workspace.", err.Error(), nil)
+		s.slackProblem(flow, w, r, http.StatusConflict, "This App's workspace is not connected.", err.Error(), nil)
 		return
 	}
 	store := console.deps.SlackCatalogueApps
@@ -531,11 +545,11 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 			"id", id, "workspace", entry.Workspace, "expected", team, "got", logsafe.Value(installed.TeamID),
 			"by", logsafe.Value(actor), "revoked", revokeErr == nil)
 		console.record(r.Context(), audit.SlackCatalogueAppInstallRefused(audit.Identified(actor), app,
-			fmt.Sprintf("installed into team %s, and the policy names %s; %s", installed.TeamID, team, revokedWords(revokeErr))))
+			fmt.Sprintf("installed into team %s, and the workspace was first installed as %s; %s", installed.TeamID, team, revokedWords(revokeErr))))
 		s.slackProblem(flow, w, r, http.StatusConflict, fmt.Sprintf(
-			"The App was installed into workspace %s (%s), and the policy names %s for %q. %s "+
+			"The App was installed into workspace %s (%s), and %q was first installed as %s. %s "+
 				"Install again from the right workspace.",
-			installed.TeamID, installed.TeamName, team, entry.Workspace, refusedToken(revokeErr)), "", nil)
+			installed.TeamID, installed.TeamName, entry.Workspace, team, refusedToken(revokeErr)), "", nil)
 		return
 	}
 

@@ -64,7 +64,7 @@ func (c *Console) slackSharedStore() (SlackSharedRecords, error) {
 func (c *Console) ListSlackSharedChannels(
 	ctx context.Context, _ *connect.Request[directoryrosterv1.ListSlackSharedChannelsRequest],
 ) (*connect.Response[directoryrosterv1.ListSlackSharedChannelsResponse], error) {
-	id, err := c.requireAnySlack(ctx, access.RoleViewer)
+	id, book, err := c.requireAnySlack(ctx, access.RoleViewer)
 	if err != nil {
 		return nil, err
 	}
@@ -73,10 +73,10 @@ func (c *Console) ListSlackSharedChannels(
 	out := &directoryrosterv1.ListSlackSharedChannelsResponse{Available: c.deps.SlackShared != nil}
 	anyOperate := false
 	for _, key := range set.SlackWorkspaceKeys() {
-		if !c.maySlack(id, access.RoleViewer, key) {
+		if !book.may(id, access.RoleViewer, key) {
 			continue
 		}
-		operate := c.maySlack(id, access.RoleOperator, key)
+		operate := book.mayAct(id, key)
 		anyOperate = anyOperate || operate
 		out.Workspaces = append(out.Workspaces, &directoryrosterv1.SlackConnectWorkspace{Key: key, CanOperate: operate})
 	}
@@ -104,12 +104,12 @@ func (c *Console) ListSlackSharedChannels(
 			}
 			continue
 		}
-		if !c.maySeeShared(id, rec.Channel) {
+		if !maySeeShared(id, book, rec.Channel) {
 			continue
 		}
 		view := sharedView(rec.Channel)
 		view.State, view.Reason = sharedState(rec.Channel, p, reports)
-		view.CanOperate = c.maySlack(id, access.RoleOperator, rec.Channel.Host)
+		view.CanOperate = book.mayAct(id, rec.Channel.Host)
 		out.Channels = append(out.Channels, view)
 	}
 	return connect.NewResponse(out), nil
@@ -117,9 +117,9 @@ func (c *Console) ListSlackSharedChannels(
 
 // maySeeShared is whether the caller may view the host workspace or any
 // workspace the channel is shared with.
-func (c *Console) maySeeShared(id access.Identity, ch reconcile.SharedChannel) bool {
+func maySeeShared(id access.Identity, book slackBook, ch reconcile.SharedChannel) bool {
 	return slices.ContainsFunc(append([]string{ch.Host}, ch.With...), func(w string) bool {
-		return c.maySlack(id, access.RoleViewer, w)
+		return book.may(id, access.RoleViewer, w)
 	})
 }
 

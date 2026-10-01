@@ -116,6 +116,12 @@ export const roster: Sentences = {
         "en": "{actor} disconnected GitHub organisation {targets_0_id}"
       }
     },
+    "roster.github_org.owner_changed": {
+      "summary": "The directory that owns a GitHub organisation was changed by the installation-wide operator.",
+      "message": {
+        "en": "{actor} changed the owner of GitHub organisation {targets_0_id} from {data_from} to {data_to}"
+      }
+    },
     "roster.github_owner.reported": {
       "summary": "An organisation owner the directory does not vouch for was reported rather than removed.",
       "message": {
@@ -285,7 +291,7 @@ export const roster: Sentences = {
       }
     },
     "roster.slack_workspace.connect_refused": {
-      "summary": "An install of the roster's Slack App was refused because it was made into another workspace.",
+      "summary": "An install of the roster's Slack App was refused because it was made into a workspace other than the one first connected.",
       "message": {
         "en": "{actor}'s install of the roster's Slack App for workspace {targets_0_id} was refused: {outcome_reason}"
       }
@@ -300,6 +306,12 @@ export const roster: Sentences = {
       "summary": "A Slack workspace was disconnected.",
       "message": {
         "en": "{actor} disconnected Slack workspace {targets_0_id}"
+      }
+    },
+    "roster.slack_workspace.owner_changed": {
+      "summary": "The directory that owns a Slack workspace was changed by the installation-wide operator.",
+      "message": {
+        "en": "{actor} changed the owner of Slack workspace {targets_0_id} from {data_from} to {data_to}"
       }
     },
     "roster.token.exchanged": {

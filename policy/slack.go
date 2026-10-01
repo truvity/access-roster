@@ -20,8 +20,10 @@ import (
 // file — and a channel is a consumer of a group exactly as a GitHub team
 // or a client's `requires` is. Which accounts hold a group is a question
 // only the directory answers, so nothing about a Slack account appears
-// here; the only Slack-specific facts are the ones the directory cannot
-// know: which workspace is which, and which domain is whose.
+// here; the only Slack-specific facts are the workspace's key and the channels
+// bound in it. Which team the key stands for, which directory owns it and
+// which domains its people use are not policy: access-roster records them
+// when the workspace is connected and reads them from the directory.
 //
 // A controller that reads this is being built. Until it ships, nothing
 // reads these keys: they are validated at load, merged, digested and
@@ -42,25 +44,6 @@ type Slack struct {
 
 // SlackWorkspace is one workspace and the channels bound inside it.
 type SlackWorkspace struct {
-	// TeamID is Slack's own identifier for the workspace (`T0123ABCD`).
-	// The key above is ours and could be typed against the wrong
-	// workspace; this is what the connect flow compares with the
-	// workspace the bot token actually belongs to, and refuses a
-	// mismatch, so a token cannot be attached to the wrong entry.
-	TeamID string `yaml:"team_id"`
-	// Domains are the email domains this workspace's people use. A person
-	// is looked up in a workspace by their address in one of them, so a
-	// workspace that declares none would never find anyone. A domain may
-	// belong to only one workspace: two would leave "which workspace is
-	// this address in" to read order. Compared lowercased.
-	Domains []string `yaml:"domains,omitempty"`
-	// Owner is the directory workspace id that owns this Slack workspace:
-	// the workspace whose SCOPED operator (`<id>:access-roster:operator`)
-	// may create, install and reinstall its Apps, beside the
-	// installation-wide operator. Empty, the workspace is operated by the
-	// installation-wide roles alone. Like [GitHubOrg.Owner]; see
-	// policy.md#the-services-own-two-groups-and-scoping-them.
-	Owner string `yaml:"owner,omitempty"`
 	// Channels are the channels bound in this workspace, keyed by channel
 	// NAME as Slack spells it (lowercase letters, digits, `-` and `_`, at
 	// most 80 characters). The controller creates a channel that is
@@ -125,26 +108,12 @@ var (
 	slackSlug = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$`)
 	// personSlug is what a key in `people` may be.
 	personSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
-	// slackTeamID is the shape of a Slack workspace id.
-	slackTeamID = regexp.MustCompile(`^T[A-Z0-9]{6,}$`)
 	// slackChannelID is the shape of a channel id: public `C…`, or the
 	// `G…` older private channels and groups carry.
 	slackChannelID = regexp.MustCompile(`^[CG][A-Z0-9]{8,}$`)
 	// slackChannelName is Slack's own rule for a channel name.
 	slackChannelName = regexp.MustCompile(`^[a-z0-9_-]{1,80}$`)
-	// dnsDomain is a plausible registrable-style domain: dot-separated
-	// labels of letters, digits and inner hyphens, at least two labels.
-	dnsDomain = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
-
-// NormalisedDomains are the workspace's domains, trimmed and lowercased.
-func (w SlackWorkspace) NormalisedDomains() []string {
-	out := make([]string, 0, len(w.Domains))
-	for _, domain := range w.Domains {
-		out = append(out, strings.ToLower(strings.TrimSpace(domain)))
-	}
-	return out
-}
 
 // normaliseAddress trims and lowercases an address and reports whether it
 // has a local part and a domain, using the same rule as everywhere else
@@ -220,51 +189,19 @@ func (p Policy) checkBoundGroups(where string, groups []string) error {
 
 // validateSlack checks the whole `slack` block.
 func (p Policy) validateSlack() error {
-	workspaces := p.Slack.Workspaces
-	domainOwner := map[string]string{}
-	teamOwner := map[string]string{}
-	for _, key := range slices.Sorted(maps.Keys(workspaces)) {
-		if err := p.validateSlackWorkspace(key, domainOwner); err != nil {
+	for _, key := range slices.Sorted(maps.Keys(p.Slack.Workspaces)) {
+		if err := p.validateSlackWorkspace(key); err != nil {
 			return err
 		}
-		// One Slack team under two keys would make an install ambiguous:
-		// the connect flow finds the workspace a callback belongs to by
-		// the team id Slack returns, and two answers is no answer.
-		team := workspaces[key].TeamID
-		if prev, dup := teamOwner[team]; dup {
-			return fmt.Errorf("slack: the team_id %s belongs to both %s and %s", team, prev, key)
-		}
-		teamOwner[team] = key
 	}
 	return nil
 }
 
-func (p Policy) validateSlackWorkspace(key string, domainOwner map[string]string) error {
+func (p Policy) validateSlackWorkspace(key string) error {
 	if !slackSlug.MatchString(key) {
 		return fmt.Errorf("slack: %q is not a usable workspace key (lowercase letters, digits and '-', at most 40)", key)
 	}
 	ws := p.Slack.Workspaces[key]
-	if !slackTeamID.MatchString(ws.TeamID) {
-		return fmt.Errorf("slack: %s team_id %q is not a Slack team id (like T0123ABCD)", key, ws.TeamID)
-	}
-	if ws.Owner != "" && !ValidWorkspaceID(ws.Owner) {
-		return fmt.Errorf("slack: %s owner: %q is not a workspace id", key, ws.Owner)
-	}
-	if len(ws.Domains) == 0 {
-		return fmt.Errorf("slack: %s has no domains, so nobody could be found in it", key)
-	}
-	for _, domain := range ws.NormalisedDomains() {
-		if !dnsDomain.MatchString(domain) {
-			return fmt.Errorf("slack: %s domains: %q is not a domain", key, domain)
-		}
-		if prev, dup := domainOwner[domain]; dup {
-			if prev == key {
-				return fmt.Errorf("slack: %s lists the domain %s twice", key, domain)
-			}
-			return fmt.Errorf("slack: the domain %s belongs to both %s and %s", domain, prev, key)
-		}
-		domainOwner[domain] = key
-	}
 	adopted := map[string]string{}
 	for _, name := range slices.Sorted(maps.Keys(ws.Channels)) {
 		where := fmt.Sprintf("slack: %s/%s", key, name)
@@ -328,34 +265,12 @@ func validateSlackMode(where string, channel SlackChannel) error {
 
 // mergeSlack folds another file's `slack` block into p's. Per workspace
 // and field by field, exactly as GitHub's organisations are: one file may
-// declare a workspace and another bind channels in it. A workspace's
-// identity (team_id, domains) is declared by one file only, each channel
-// by one file, and a repeat is a clash, because
-// the second would silently replace the first.
+// declare a workspace and another bind channels in it. Each channel is
+// declared by one file, and a repeat is a clash, because the second would
+// silently replace the first.
 func (p *Policy) mergeSlack(other Slack, from string) error {
 	for _, key := range slices.Sorted(maps.Keys(other.Workspaces)) {
 		incoming, into := other.Workspaces[key], p.Slack.Workspaces[key]
-		if incoming.TeamID != "" {
-			if into.TeamID != "" {
-				return fmt.Errorf("%s: slack workspace %s declares team_id twice", from, key)
-			}
-			into.TeamID = incoming.TeamID
-		}
-		// The owner is one scalar per workspace: a second file naming one
-		// is a clash, because the second would silently replace the first
-		// and with it decide who may operate the workspace.
-		if incoming.Owner != "" {
-			if into.Owner != "" {
-				return fmt.Errorf("%s: slack workspace %s declares owner twice", from, key)
-			}
-			into.Owner = incoming.Owner
-		}
-		if len(incoming.Domains) > 0 {
-			if len(into.Domains) > 0 {
-				return fmt.Errorf("%s: slack workspace %s declares domains twice", from, key)
-			}
-			into.Domains = slices.Clone(incoming.Domains)
-		}
 		if err := mergeTable(&into.Channels, incoming.Channels, func(name string) error {
 			return fmt.Errorf("%s: slack channel %s/%s is declared twice", from, key, name)
 		}); err != nil {

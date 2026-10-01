@@ -43,6 +43,9 @@ const (
 	// AccessServiceSearchPeopleProcedure is the fully-qualified name of the AccessService's
 	// SearchPeople RPC.
 	AccessServiceSearchPeopleProcedure = "/directoryroster.v1.AccessService/SearchPeople"
+	// AccessServiceListServedDomainsProcedure is the fully-qualified name of the AccessService's
+	// ListServedDomains RPC.
+	AccessServiceListServedDomainsProcedure = "/directoryroster.v1.AccessService/ListServedDomains"
 	// AccessServiceGetPolicyProcedure is the fully-qualified name of the AccessService's GetPolicy RPC.
 	AccessServiceGetPolicyProcedure = "/directoryroster.v1.AccessService/GetPolicy"
 	// AccessServiceListDirectoryGroupsProcedure is the fully-qualified name of the AccessService's
@@ -80,6 +83,14 @@ type AccessServiceClient interface {
 	// snapshotted workspace, so that a console can start from a name rather
 	// than from a navigation tree. Viewer.
 	SearchPeople(context.Context, *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error)
+	// ListServedDomains returns, for every connected directory the caller
+	// may view, the domains the hub serves for it now. It is what a
+	// controller looks a person up by: a Slack workspace names no domains of
+	// its own, it is owned by a directory (recorded when it was connected)
+	// and its people are those with an address in that directory's served
+	// domains. Viewer, installation-wide or over the directory: a scoped
+	// viewer is told only of its own directories.
+	ListServedDomains(context.Context, *connect.Request[v1.ListServedDomainsRequest]) (*connect.Response[v1.ListServedDomainsResponse], error)
 	// GetPolicy returns every internal group with its members and what each
 	// adds, the state of the break-glass admin, and the enabled sign-in
 	// sources. Viewer.
@@ -139,6 +150,12 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(accessServiceMethods.ByName("SearchPeople")),
 			connect.WithClientOptions(opts...),
 		),
+		listServedDomains: connect.NewClient[v1.ListServedDomainsRequest, v1.ListServedDomainsResponse](
+			httpClient,
+			baseURL+AccessServiceListServedDomainsProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("ListServedDomains")),
+			connect.WithClientOptions(opts...),
+		),
 		getPolicy: connect.NewClient[v1.GetPolicyRequest, v1.GetPolicyResponse](
 			httpClient,
 			baseURL+AccessServiceGetPolicyProcedure,
@@ -166,6 +183,7 @@ type accessServiceClient struct {
 	explain             *connect.Client[v1.ExplainRequest, v1.ExplainResponse]
 	listHolders         *connect.Client[v1.ListHoldersRequest, v1.ListHoldersResponse]
 	searchPeople        *connect.Client[v1.SearchPeopleRequest, v1.SearchPeopleResponse]
+	listServedDomains   *connect.Client[v1.ListServedDomainsRequest, v1.ListServedDomainsResponse]
 	getPolicy           *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
 	listDirectoryGroups *connect.Client[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse]
 	getDirectoryGroup   *connect.Client[v1.GetDirectoryGroupRequest, v1.GetDirectoryGroupResponse]
@@ -189,6 +207,11 @@ func (c *accessServiceClient) ListHolders(ctx context.Context, req *connect.Requ
 // SearchPeople calls directoryroster.v1.AccessService.SearchPeople.
 func (c *accessServiceClient) SearchPeople(ctx context.Context, req *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error) {
 	return c.searchPeople.CallUnary(ctx, req)
+}
+
+// ListServedDomains calls directoryroster.v1.AccessService.ListServedDomains.
+func (c *accessServiceClient) ListServedDomains(ctx context.Context, req *connect.Request[v1.ListServedDomainsRequest]) (*connect.Response[v1.ListServedDomainsResponse], error) {
+	return c.listServedDomains.CallUnary(ctx, req)
 }
 
 // GetPolicy calls directoryroster.v1.AccessService.GetPolicy.
@@ -233,6 +256,14 @@ type AccessServiceHandler interface {
 	// snapshotted workspace, so that a console can start from a name rather
 	// than from a navigation tree. Viewer.
 	SearchPeople(context.Context, *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error)
+	// ListServedDomains returns, for every connected directory the caller
+	// may view, the domains the hub serves for it now. It is what a
+	// controller looks a person up by: a Slack workspace names no domains of
+	// its own, it is owned by a directory (recorded when it was connected)
+	// and its people are those with an address in that directory's served
+	// domains. Viewer, installation-wide or over the directory: a scoped
+	// viewer is told only of its own directories.
+	ListServedDomains(context.Context, *connect.Request[v1.ListServedDomainsRequest]) (*connect.Response[v1.ListServedDomainsResponse], error)
 	// GetPolicy returns every internal group with its members and what each
 	// adds, the state of the break-glass admin, and the enabled sign-in
 	// sources. Viewer.
@@ -288,6 +319,12 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(accessServiceMethods.ByName("SearchPeople")),
 		connect.WithHandlerOptions(opts...),
 	)
+	accessServiceListServedDomainsHandler := connect.NewUnaryHandler(
+		AccessServiceListServedDomainsProcedure,
+		svc.ListServedDomains,
+		connect.WithSchema(accessServiceMethods.ByName("ListServedDomains")),
+		connect.WithHandlerOptions(opts...),
+	)
 	accessServiceGetPolicyHandler := connect.NewUnaryHandler(
 		AccessServiceGetPolicyProcedure,
 		svc.GetPolicy,
@@ -316,6 +353,8 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 			accessServiceListHoldersHandler.ServeHTTP(w, r)
 		case AccessServiceSearchPeopleProcedure:
 			accessServiceSearchPeopleHandler.ServeHTTP(w, r)
+		case AccessServiceListServedDomainsProcedure:
+			accessServiceListServedDomainsHandler.ServeHTTP(w, r)
 		case AccessServiceGetPolicyProcedure:
 			accessServiceGetPolicyHandler.ServeHTTP(w, r)
 		case AccessServiceListDirectoryGroupsProcedure:
@@ -345,6 +384,10 @@ func (UnimplementedAccessServiceHandler) ListHolders(context.Context, *connect.R
 
 func (UnimplementedAccessServiceHandler) SearchPeople(context.Context, *connect.Request[v1.SearchPeopleRequest]) (*connect.Response[v1.SearchPeopleResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.SearchPeople is not implemented"))
+}
+
+func (UnimplementedAccessServiceHandler) ListServedDomains(context.Context, *connect.Request[v1.ListServedDomainsRequest]) (*connect.Response[v1.ListServedDomainsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.ListServedDomains is not implemented"))
 }
 
 func (UnimplementedAccessServiceHandler) GetPolicy(context.Context, *connect.Request[v1.GetPolicyRequest]) (*connect.Response[v1.GetPolicyResponse], error) {

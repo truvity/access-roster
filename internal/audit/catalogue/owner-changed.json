@@ -1,0 +1,19 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/owner-changed.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "from": {
+      "type": "string",
+      "description": "The directory workspace id that owned the connection before; \"none\" for no owner.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "to": {
+      "type": "string",
+      "description": "The directory workspace id that owns it now; \"none\" for no owner.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}

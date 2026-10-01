@@ -22,20 +22,27 @@ import (
 // GetSlackStatus is every Slack workspace the caller may view: the ones the
 // policy declares, and any the controller reports on or a connection
 // exists for that it no longer does (which only the installation-wide role
-// sees, for want of an owner).
+// sees, for want of an owner). A workspace's owner and team are the ones its
+// connection recorded.
 func (c *Console) GetSlackStatus(
 	ctx context.Context, _ *connect.Request[directoryrosterv1.GetSlackStatusRequest],
 ) (*connect.Response[directoryrosterv1.GetSlackStatusResponse], error) {
-	id, err := c.requireAnySlack(ctx, access.RoleViewer)
+	id, book, err := c.requireAnySlack(ctx, access.RoleViewer)
 	if err != nil {
 		return nil, err
 	}
+	dirs, err := c.directories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	domains := ownerDomains(dirs)
 	out := &directoryrosterv1.GetSlackStatusResponse{
 		ReportsAvailable:    c.deps.SlackStatus != nil,
 		ConnectingAvailable: c.deps.SlackWorkspaces != nil,
 		BotScopes:           slices.Clone(connection.BotScopes),
 		RedirectUrl:         c.slackWorkspaceRedirect(),
 	}
+	out.OwnerChoices, out.MayConnectWithoutOwner = ownerChoices(id, dirs)
 
 	reports := map[string]string{}
 	if c.deps.SlackStatus != nil {
@@ -49,24 +56,17 @@ func (c *Console) GetSlackStatus(
 			}
 		}
 	}
-	connections := map[string]connection.Record{}
+	connections := map[string]connection.Record(book)
 	confirmations := map[string]connection.Confirmation{}
 	if c.deps.SlackWorkspaces != nil {
-		records, err := c.deps.SlackWorkspaces.List(ctx)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeUnavailable, err)
-		}
-		for i := range records {
-			connections[records[i].Workspace] = records[i]
-		}
 		if confirmations, err = c.deps.SlackWorkspaces.Confirmations(ctx); err != nil {
 			return nil, connect.NewError(connect.CodeUnavailable, err)
 		}
 	}
 
-	seen := map[string]bool{}
+	seen, declared := map[string]bool{}, map[string]bool{}
 	for _, workspace := range c.deps.Authorizer.Policy().SlackWorkspaceKeys() {
-		seen[workspace] = true
+		seen[workspace], declared[workspace] = true, true
 	}
 	for workspace := range reports {
 		seen[workspace] = true
@@ -76,14 +76,25 @@ func (c *Console) GetSlackStatus(
 	}
 	now := time.Now()
 	for _, workspace := range slices.Sorted(maps.Keys(seen)) {
-		if !c.maySlack(id, access.RoleViewer, workspace) {
+		// A key nothing declares and nothing is connected for (a stale
+		// report) is nobody's to connect: the installation-wide role sees it.
+		_, connected := connections[workspace]
+		mayView, mayOperate := book.may(id, access.RoleViewer, workspace), book.may(id, access.RoleOperator, workspace)
+		if !connected && !declared[workspace] {
+			mayView, mayOperate = id.Can(access.RoleViewer), id.Can(access.RoleOperator)
+		}
+		if !mayView {
 			continue
 		}
 		row := c.slackWorkspaceView(workspace, reports[workspace], confirmations, now)
+		row.Declared = declared[workspace]
 		if record, connected := connections[workspace]; connected {
 			c.slackConnectionView(row, record)
+			row.Owner, row.TeamId = record.Owner, record.TeamID
+			row.OwnerDomain = domains[record.Owner]
+			row.CanChangeOwner = id.Can(access.RoleOperator)
 		}
-		row.CanOperate = c.maySlack(id, access.RoleOperator, workspace)
+		row.CanOperate = mayOperate
 		out.Workspaces = append(out.Workspaces, row)
 	}
 	return connect.NewResponse(out), nil
@@ -108,7 +119,7 @@ func (c *Console) slackConnectionView(row *directoryrosterv1.SlackWorkspaceStatu
 	}
 }
 
-// slackWorkspaceView is one workspace's row: the policy's part, and the
+// slackWorkspaceView is one workspace's row: its key, and the
 // controller's report. A report that cannot be read is shown as a failed
 // pass with the reason, not as no report: a page that says nothing about a
 // workspace looks like one that has nothing to say.
@@ -116,9 +127,8 @@ func (c *Console) slackWorkspaceView(
 	workspace, document string, confirmations map[string]connection.Confirmation, now time.Time,
 ) *directoryrosterv1.SlackWorkspaceStatus {
 	row := &directoryrosterv1.SlackWorkspaceStatus{
-		Workspace: workspace, ConnectionState: slackNotConnected, Owner: c.slackOwner(workspace),
+		Workspace: workspace, ConnectionState: slackNotConnected,
 	}
-	row.TeamId, _ = c.deps.Authorizer.Policy().SlackWorkspaceTeam(workspace)
 	if document == "" {
 		return row
 	}
