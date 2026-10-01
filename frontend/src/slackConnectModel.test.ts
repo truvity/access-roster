@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { definitionOf, emptyForm, guestChoices, hostChoices, privacyLabel, problems, stateView, withGuests, withHost, withPerSide } from "./slackConnectModel";
+import { definitionOf, discoveredForm, discoveredStatus, emptyForm, guestChoices, manageBlocked, sideLabel, withSidePrivate, hostChoices, privacyLabel, problems, stateView, withGuests, withHost, withPerSide } from "./slackConnectModel";
 
 const form = { ...emptyForm, name: "partners", host: "acme", with: ["globex"], from: ["all:partners"] };
 
@@ -61,5 +61,61 @@ describe("the form", () => {
       private: false,
       privatePerSide: { acme: true, globex: false },
     });
+  });
+});
+
+const side = (workspace: string, privacy: string, name = "", seen = privacy !== "unknown") => ({ workspace, privacy, name, seen, members: 3 });
+
+describe("a discovered channel", () => {
+  const row = {
+    channelId: "C0LEGACY1",
+    hostWorkspace: "acme",
+    sides: [side("acme", "public", "legacy"), side("globex", "private", "legacy-globex"), side("initech", "unknown")],
+  };
+
+  it("prefills the host side's name, the host, the other connected workspaces, the id and each side as seen", () => {
+    const f = discoveredForm(row);
+    expect(f).toMatchObject({
+      name: "legacy",
+      host: "acme",
+      with: ["globex", "initech"],
+      channelId: "C0LEGACY1",
+      perSide: { acme: false, globex: true, initech: false },
+      unknownSides: ["initech"],
+      from: [],
+    });
+  });
+
+  it("requires the groups and a choice for every side that was not seen, and sends the id", () => {
+    let f = discoveredForm(row);
+    expect(problems(f).join(" ")).toContain("Choose the visibility of initech");
+    expect(problems(f).join(" ")).toContain("Pick at least one group");
+    f = withSidePrivate({ ...f, from: ["all:partners"] }, "initech", true);
+    expect(problems(f)).toEqual([]);
+    expect(definitionOf(f)).toMatchObject({ channelId: "C0LEGACY1", privatePerSide: { acme: false, globex: true, initech: true }, private: false });
+  });
+
+  it("forgets an unknown side that is dropped from the guests", () => {
+    const f = withGuests(discoveredForm(row), ["globex"]);
+    expect(f.unknownSides).toEqual([]);
+  });
+
+  it("starts with no name when the host's bot cannot see its own side", () => {
+    expect(discoveredForm({ ...row, sides: [side("acme", "unknown"), side("globex", "public", "x")] }).name).toBe("");
+  });
+
+  it("says what each side and the row are", () => {
+    expect(sideLabel(side("globex", "private", "legacy-globex"))).toBe("#legacy-globex, private");
+    expect(sideLabel(side("initech", "unknown"))).toContain("the bot is not in it");
+    expect(discoveredStatus({ hostWorkspace: "acme", managed: false, managedAs: "" })).toBe("not managed");
+    expect(discoveredStatus({ hostWorkspace: "", managed: false, managedAs: "" })).toBe("external, not managed");
+    expect(discoveredStatus({ hostWorkspace: "acme", managed: true, managedAs: "legacy" })).toBe("managed as #legacy");
+  });
+
+  it("explains why Manage is unavailable", () => {
+    expect(manageBlocked({ hostWorkspace: "", managed: false, canManage: false })).toContain("not a connected workspace");
+    expect(manageBlocked({ hostWorkspace: "acme", managed: false, canManage: false })).toContain("operator of the host");
+    expect(manageBlocked({ hostWorkspace: "acme", managed: false, canManage: true })).toBe("");
+    expect(manageBlocked({ hostWorkspace: "acme", managed: true, canManage: false })).toBe("");
   });
 });

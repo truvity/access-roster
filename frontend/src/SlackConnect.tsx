@@ -22,17 +22,22 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import { reason, slackConnect } from "./api";
-import type { ListSlackSharedChannelsResponse, SlackSharedChannel } from "./gen/directoryroster/v1/slack_connect_pb";
+import type { ListSlackSharedChannelsResponse, SlackDiscoveredChannel, SlackSharedChannel } from "./gen/directoryroster/v1/slack_connect_pb";
 import { useAsync } from "./hooks";
 import {
   definitionOf,
+  discoveredForm,
+  discoveredStatus,
   emptyForm,
   formOf,
   guestChoices,
   hostChoices,
+  manageBlocked,
   privacyLabel,
   problems,
+  sideLabel,
   stateView,
+  withSidePrivate,
   withGuests,
   withHost,
   withPerSide,
@@ -44,7 +49,7 @@ type Props = { onDone: (message: string) => void };
 
 /** What a dialog is doing: writing a new channel, editing one, or
  *  confirming a delete. */
-type Dialogue = { kind: "create" } | { kind: "edit"; channel: SlackSharedChannel } | { kind: "delete"; channel: SlackSharedChannel };
+type Dialogue = { kind: "create" } | { kind: "manage"; row: SlackDiscoveredChannel } | { kind: "edit"; channel: SlackSharedChannel } | { kind: "delete"; channel: SlackSharedChannel };
 
 /** The Slack Connect channels between this installation's own
  *  workspaces, created and edited here.
@@ -112,12 +117,14 @@ export function SlackConnectPage({ onDone }: Props) {
           </Table>
         </TableContainer>
       ) : null}
+      <DiscoveredSection rows={listed.value?.discovered ?? []} available={listed.value?.available === true} onManage={(row) => setDialogue({ kind: "manage", row })} />
       {dialogue?.kind === "delete" ? <DeleteDialog channel={dialogue.channel} onCancel={() => setDialogue(undefined)} onDone={done} /> : null}
       {dialogue && dialogue.kind !== "delete" && listed.value ? (
         <EditDialog
-          key={dialogue.kind === "edit" ? dialogue.channel.channel?.name : "new"}
+          key={dialogue.kind === "edit" ? dialogue.channel.channel?.name : dialogue.kind === "manage" ? dialogue.row.channelId : "new"}
           options={listed.value}
           editing={dialogue.kind === "edit" ? dialogue.channel : undefined}
+          discovered={dialogue.kind === "manage" ? dialogue.row : undefined}
           onCancel={() => setDialogue(undefined)}
           onDone={done}
         />
@@ -171,18 +178,87 @@ function ChannelRow({ channel, onEdit, onDelete }: { channel: SlackSharedChannel
   );
 }
 
+/** The channels the workspaces' bots can see in Slack, one row each,
+ *  whether or not a record manages them. Managing one opens the create
+ *  form prefilled from what was seen. */
+function DiscoveredSection({ rows, available, onManage }: { rows: SlackDiscoveredChannel[]; available: boolean; onManage: (row: SlackDiscoveredChannel) => void }) {
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
+        Discovered
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        Slack Connect channels that already exist and that a connected workspace's bot can see. A side shown as unknown is one whose bot cannot see the channel: it is
+        private there and the bot is not in it, or it is not shared with that workspace. Taking a channel under management never removes anybody from it.
+      </Typography>
+      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+        <Table size="small" sx={{ minWidth: 720 }}>
+          <TableHead>
+            <TableRow>
+              <TableCell>Channel</TableCell>
+              <TableCell>Host</TableCell>
+              <TableCell>Sides</TableCell>
+              <TableCell>Managed</TableCell>
+              <TableCell align="right" />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((row) => {
+              const blocked = manageBlocked(row);
+              return (
+                <TableRow hover key={row.channelId}>
+                  <TableCell>
+                    <Mono>{row.sides.find((s) => s.workspace === row.hostWorkspace)?.name || row.channelId}</Mono>
+                  </TableCell>
+                  <TableCell>{row.hostWorkspace ? <Mono>{row.hostWorkspace}</Mono> : "external"}</TableCell>
+                  <TableCell>
+                    {row.sides.map((side) => (
+                      <Typography key={side.workspace} variant="body2" sx={{ wordBreak: "break-word" }}>
+                        <strong>{side.workspace}</strong>: {sideLabel(side)}
+                        {side.seen ? `, ${side.members} members` : ""}
+                      </Typography>
+                    ))}
+                    {row.externalTeams > 0 ? (
+                      <Typography variant="caption" color="text.secondary">
+                        and {row.externalTeams} {row.externalTeams === 1 ? "team" : "teams"} that {row.externalTeams === 1 ? "is" : "are"} not connected here
+                      </Typography>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>{discoveredStatus(row)}</TableCell>
+                  <TableCell align="right">
+                    {!row.managed && available ? (
+                      <span title={blocked}>
+                        <Button size="small" disabled={!row.canManage} onClick={() => onManage(row)}>
+                          Manage
+                        </Button>
+                      </span>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </>
+  );
+}
+
 function EditDialog({
   options,
   editing,
+  discovered,
   onCancel,
   onDone,
 }: {
   options: ListSlackSharedChannelsResponse;
   editing?: SlackSharedChannel;
+  discovered?: SlackDiscoveredChannel;
   onCancel: () => void;
   onDone: (message: string) => void;
 }) {
-  const [form, setForm] = useState<Form>(editing?.channel ? formOf(editing.channel) : emptyForm);
+  const [form, setForm] = useState<Form>(editing?.channel ? formOf(editing.channel) : discovered ? discoveredForm(discovered) : emptyForm);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const hosts = hostChoices(options.workspaces);
@@ -199,6 +275,10 @@ function EditDialog({
         onDone(`#${channel.name} is updated. The controller applies it on its next pass.`);
       } else {
         await slackConnect.createSlackSharedChannel({ channel });
+        if (discovered) {
+          onDone(`#${channel.name} is under management. The controller takes over the existing channel on its next pass; nobody is removed from it.`);
+          return;
+        }
         onDone(`#${channel.name} is defined. ${channel.host} creates it and invites ${channel.with.join(", ")} on the controller's next pass.`);
       }
     } catch (error) {
@@ -209,7 +289,7 @@ function EditDialog({
 
   return (
     <Dialog open onClose={busy ? undefined : onCancel} fullWidth maxWidth="sm">
-      <DialogTitle>{editing ? `Edit #${form.name}` : "New Slack Connect channel"}</DialogTitle>
+      <DialogTitle>{editing ? `Edit #${form.name}` : discovered ? "Manage an existing channel" : "New Slack Connect channel"}</DialogTitle>
       <DialogContent>
         <Stack sx={{ gap: 2, pt: 1 }}>
           <TextField
@@ -226,11 +306,13 @@ function EditDialog({
             label="Host workspace"
             value={form.host}
             onChange={(event) => setForm(withHost(form, event.target.value))}
-            disabled={busy || !!editing}
+            disabled={busy || !!editing || !!discovered}
             helperText={
               editing
                 ? "The host cannot change: it owns the channel in Slack. Create a new channel to host from another workspace."
-                : "The workspace that creates and owns the channel. Only workspaces you operate are offered."
+                : discovered
+                  ? "The workspace that hosts the channel in Slack."
+                  : "The workspace that creates and owns the channel. Only workspaces you operate are offered."
             }
           >
             {(editing ? [form.host] : hosts).map((key) => (
@@ -268,17 +350,17 @@ function EditDialog({
                 <FormControlLabel
                   key={side}
                   sx={{ ml: 2 }}
-                  control={
-                    <Switch
-                      checked={form.perSide?.[side] ?? false}
-                      onChange={(event) => setForm({ ...form, perSide: { ...form.perSide, [side]: event.target.checked } })}
-                      disabled={busy}
-                    />
-                  }
-                  label={`${side}: ${form.perSide?.[side] ? "private" : "public"}`}
+                  control={<Switch checked={form.perSide?.[side] ?? false} onChange={(event) => setForm(withSidePrivate(form, side, event.target.checked))} disabled={busy} />}
+                  label={`${side}: ${form.unknownSides.includes(side) ? "choose, the bot cannot see this side" : form.perSide?.[side] ? "private" : "public"}`}
                 />
               ))
             : null}
+          {discovered ? (
+            <Typography variant="caption" color="text.secondary">
+              The existing channel {discovered.channelId} is taken over as it is: the bot joins a public side, a private side needs the bot invited, and nobody is
+              removed. Its members come only from the groups chosen here.
+            </Typography>
+          ) : null}
           {wrong.length > 0 && (form.name !== "" || form.host !== "") ? (
             <Typography variant="caption" color="text.secondary">
               {wrong.join(" ")}

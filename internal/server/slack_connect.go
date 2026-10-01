@@ -112,6 +112,7 @@ func (c *Console) ListSlackSharedChannels(
 		view.CanOperate = book.mayAct(id, rec.Channel.Host)
 		out.Channels = append(out.Channels, view)
 	}
+	out.Discovered = discoveredChannels(id, book, p, reports, records, true)
 	return connect.NewResponse(out), nil
 }
 
@@ -187,7 +188,7 @@ func orDefault(s, fallback string) string {
 
 func sharedView(ch reconcile.SharedChannel) *directoryrosterv1.SlackSharedChannel {
 	def := &directoryrosterv1.SlackSharedChannelDefinition{
-		Name: ch.Name, Host: ch.Host, With: slices.Clone(ch.With), From: slices.Clone(ch.From), Private: ch.Private.All,
+		Name: ch.Name, Host: ch.Host, With: slices.Clone(ch.With), From: slices.Clone(ch.From), Private: ch.Private.All, ChannelId: ch.ChannelID,
 	}
 	if len(ch.Private.PerSide) > 0 {
 		def.PrivatePerSide = maps.Clone(ch.Private.PerSide)
@@ -209,7 +210,7 @@ func sharedOf(def *directoryrosterv1.SlackSharedChannelDefinition) reconcile.Sha
 	}
 	ch := reconcile.SharedChannel{
 		Name: strings.TrimSpace(def.GetName()), Host: strings.TrimSpace(def.GetHost()),
-		With: trim(def.GetWith()), From: trim(def.GetFrom()),
+		With: trim(def.GetWith()), From: trim(def.GetFrom()), ChannelID: strings.TrimSpace(def.GetChannelId()),
 	}
 	if per := def.GetPrivatePerSide(); len(per) > 0 {
 		ch.Private.PerSide = maps.Clone(per)
@@ -260,6 +261,19 @@ func (c *Console) CreateSlackSharedChannel(
 	if err = want.Validate(c.deps.Authorizer.Policy().Declared()); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	if want.ChannelID != "" {
+		reports := c.slackReports(ctx)
+		seen, found := discoveredIn(reports, want.Host, want.ChannelID)
+		switch {
+		case !found:
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+				"the channel %s has not been discovered in the host workspace %s: only a channel its bot can see is taken under management; "+
+					"if it is private there, invite the bot and refresh", want.ChannelID, want.Host))
+		case seen.HostTeam != "" && reports[want.Host].Team != "" && seen.HostTeam != reports[want.Host].Team:
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+				"the channel %s is hosted by another Slack team, not by %s: it can be managed only from a connected workspace that hosts it", want.ChannelID, want.Host))
+		}
+	}
 	err = store.Apply(ctx, want.Name, func(current *reconcile.SharedChannel) (*reconcile.SharedChannel, error) {
 		if current != nil {
 			return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf(
@@ -300,6 +314,9 @@ func (c *Console) UpdateSlackSharedChannel(
 		}
 		if want.Host != current.Host {
 			return nil, errSharedImmutable("host", current.Host, want.Host)
+		}
+		if want.ChannelID != current.ChannelID {
+			return nil, errSharedImmutable("channel id", current.ChannelID, want.ChannelID)
 		}
 		if err := want.Validate(c.deps.Authorizer.Policy().Declared()); err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)

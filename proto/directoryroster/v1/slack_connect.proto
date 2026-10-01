@@ -47,6 +47,48 @@ message ListSlackSharedChannelsResponse {
   repeated SlackConnectWorkspace workspaces = 3;
   // every group the policy declares, for the form's from choice.
   repeated string groups = 4;
+  // the Slack Connect channels the workspaces' bots can see, merged into
+  // one row per channel, whether or not a record manages them. Only what
+  // the caller may see.
+  repeated SlackDiscoveredChannel discovered = 5;
+}
+
+// SlackDiscoveredChannel is one existing Slack Connect channel, merged from
+// every connected workspace's report.
+message SlackDiscoveredChannel {
+  // the Slack channel id, the same on every side.
+  string channel_id = 1;
+  // the policy key of the connected workspace that hosts it; empty when the
+  // host is a team that is not a connected workspace (external: it cannot
+  // be managed).
+  string host_workspace = 2;
+  // the host's Slack team id, empty when no report said.
+  string host_team = 3;
+  // one entry per connected workspace the channel reaches.
+  repeated SlackDiscoveredSide sides = 4;
+  // how many teams the channel reaches that are not connected workspaces.
+  int32 external_teams = 5;
+  // whether a record manages it, and which.
+  bool managed = 6;
+  string managed_as = 7;
+  // whether the caller may take it under management: operator of the host
+  // workspace's owner, or of the installation, and the host is connected.
+  bool can_manage = 8;
+}
+
+// SlackDiscoveredSide is one connected workspace's side of a discovered
+// channel.
+message SlackDiscoveredSide {
+  // the policy workspace key.
+  string workspace = 1;
+  // the name on this side; empty when the bot cannot see it.
+  string name = 2;
+  // public, private, or unknown: the bot cannot see this side, so it is
+  // either not shared with this workspace or private with the bot not in it.
+  string privacy = 3;
+  int32 members = 4;
+  // whether this workspace's bot saw the channel.
+  bool seen = 5;
 }
 
 message SlackConnectWorkspace {
@@ -71,6 +113,10 @@ message SlackSharedChannelDefinition {
   // one visibility per side: names the host and every `with` workspace,
   // exactly. When non-empty, private is ignored.
   map<string, bool> private_per_side = 6;
+  // the Slack id of a channel that already exists and is already shared,
+  // which the record takes over instead of the host creating one. Set from
+  // a discovered channel; immutable.
+  string channel_id = 7;
 }
 
 message CreateSlackSharedChannelRequest {

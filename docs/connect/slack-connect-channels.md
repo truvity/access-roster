@@ -77,6 +77,56 @@ Two people saving at once do not overwrite each other: the write is made under
 the ConfigMap's version, retried against what the other left, and refused
 cleanly (the console says to reload) when it cannot land.
 
+## Taking over a channel that is already shared
+
+A channel can exist long before the roster does: made by a person in one
+workspace, shared with others, each side naming it and choosing its own
+visibility. The controller finds these. For every connected workspace it lists
+the Slack Connect channels its bot **can see** (public ones, and private ones
+the bot is a member of) and publishes them in the workspace's report as
+`discovered_shared`: the channel id, the name and privacy on that side, the
+member count, the host team (Slack's `conversation_host_id`) and the teams the
+channel reaches. A channel is marked **managed** when a record matches it, by
+channel id, else by host and name. Nothing is changed by finding a channel.
+
+On `#/slack-connect` the **Discovered** section merges the reports into one row
+per channel: its name and privacy on each connected side, members per side,
+the host workspace and whether it is managed. A side whose bot cannot see the
+channel shows as **unknown**: it is private there and the bot is not in it, or
+it is not shared with that workspace, and Slack does not say which. A team that
+is not a connected workspace is only counted, never named, and a channel it
+hosts shows as **external, not managed** and cannot be managed.
+
+**Manage** (the same rule as creating a record: an operator of the host
+workspace's owner, or of the installation) opens the create form prefilled: the
+name on the host's side, the host, the other connected workspaces that have the
+channel, and each side's privacy as seen. A side nobody could see is a required
+choice. The operator picks the groups; the record is a normal one, and it also
+keeps the discovered channel's id in `channel_id` so the reconciler takes over
+exactly that channel. The console accepts an id only when the host workspace's
+own report lists it as hosted there. Viewers see the list and nothing more.
+
+What the reconciler then does for a record with `channel_id`:
+
+- **Host side:** takes over the channel by that id. A public channel the bot is
+  not in is joined; a private one the bot is not in is **held** ("invite the
+  bot"). A side that is already connected is never invited again. The channel
+  need not have been made by the roster.
+- **Guest side that is already connected:** the channel is visible there, so
+  nothing waits for an invitation to accept. A public side is joined; a private
+  side the bot is not in is held until somebody invites the bot (until then it
+  is not visible, and the side reports that it is waiting and what to do). Then
+  the side's own people are added, as for any shared channel.
+- **A team that is not a connected workspace** is ignored: never invited,
+  asked or touched.
+- Nobody is ever removed: a taken-over channel is `extend`, whoever is in it
+  stays.
+
+A record without `channel_id` behaves as before: the host creates the channel
+(or takes over one of that name the roster made, or that is already shared),
+invites each guest's bot and the guest accepts. `channel_id` cannot be changed
+afterwards.
+
 ## Deleting is not archiving
 
 Deleting removes the **record only**. The channel stays in Slack, in every

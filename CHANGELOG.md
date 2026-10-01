@@ -17,6 +17,21 @@
   is written regardless; it uses the permissions the service already has.
   Restore procedure: docs/operations/runbook.md, Slack state.
 
+- **Slack Connect: find channels that already exist and take them under
+  management.** The Slack controller now lists, per connected workspace, the
+  Slack Connect channels its bot can see and publishes them in the report as
+  `discovered_shared` (additive; status version unchanged). `#/slack-connect`
+  has a Discovered section: one row per channel with its name, privacy and
+  members per side, its host workspace and whether it is managed; Manage opens
+  the create form prefilled, and the record keeps the channel's id
+  (`channel_id`) so the reconciler takes over exactly that channel. A host side
+  takes over by id and never invites a side that is already connected; a
+  connected guest side joins a public channel instead of waiting for an
+  invitation, and a private side without the bot is held until the bot is
+  invited. Nobody is ever removed, and a team that is not a connected workspace
+  is never touched. The audit catalogue is unchanged. See
+  [docs/connect/slack-connect-channels.md](docs/connect/slack-connect-channels.md).
+
 ## v1.43.1
 
 - **Fix: a refused Slack install now says why.** Every refused or failed
