@@ -73,6 +73,18 @@ export function go(to: string) {
   window.location.hash = to;
 }
 
+/** Changes the address without a history entry of its own: for a filter
+ *  typed key by key, so Back leaves the page rather than undoing a letter. */
+export function replace(to: string) {
+  window.location.replace(`#${to}`);
+}
+
+/** A path with the non-empty entries of a filter as its query. */
+function withQuery(path: string, filter?: object): string {
+  const query = new URLSearchParams(Object.entries(filter ?? {}).filter(([, v]) => v) as [string, string][]).toString();
+  return query ? `${path}?${query}` : path;
+}
+
 /** Two hierarchies, joined by the membership. The identity side is where
  *  people come from: a directory, its groups, its accounts, and the
  *  rules that put them into an internal group. The access side is what
@@ -113,16 +125,15 @@ export const paths = {
   // declares (connect, status, removals), keeps the address it always had.
   slack: () => "/slack",
   // Every managed channel across the workspaces, narrowed by workspace or kind.
-  slackChannels: (filter?: { workspace?: string; kind?: string }) => {
-    const query = new URLSearchParams(Object.entries(filter ?? {}).filter(([, v]) => v) as [string, string][]).toString();
-    return query ? `/slack/channels?${query}` : "/slack/channels";
-  },
+  slackChannels: (filter?: { workspace?: string; kind?: string }) => withQuery("/slack/channels", filter),
   // One channel: by its name in the workspace, or by its Slack id.
   slackChannel: (workspace: string, nameOrId: string) => `/slack/channels/${encodeURIComponent(workspace)}/${encodeURIComponent(nameOrId)}`,
   // Slack Connect channels between the installation's own workspaces.
-  slackConnect: () => "/slack/connect",
+  // Narrowed by host, side (a workspace on either end), state and a name.
+  slackConnect: (filter?: { host?: string; side?: string; state?: string; q?: string }) => withQuery("/slack/connect", filter),
   // Every channel a bot can see that nothing manages, ordinary and shared.
-  slackDiscovered: () => "/slack/discovered",
+  // Narrowed by workspace, kind, visibility, a name, and a sort.
+  slackDiscovered: (filter?: { workspace?: string; kind?: string; visibility?: string; q?: string; sort?: string }) => withQuery("/slack/discovered", filter),
   // The Slack Apps the deployment declares: create, install, reinstall.
   slackApps: () => "/slack/apps",
   // Every open session in the installation. Operator-only, and

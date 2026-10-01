@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import TextField from "@mui/material/TextField";
 
 import { DomainReason } from "./gen/directoryroster/v1/workspace_pb";
 import Alert from "@mui/material/Alert";
@@ -407,6 +408,27 @@ export function Facet<T extends string | number>({
         </ToggleButton>
       ))}
     </ToggleButtonGroup>
+  );
+}
+
+/** A text filter that sits with the facets: typed text narrows by name. It
+ *  keeps what is typed itself and reports each change, so the caller can put
+ *  it in the address without the field losing the caret. */
+export function SearchField({ value, onChange, label }: { value: string; onChange: (next: string) => void; label: string }) {
+  const [text, setText] = useState(value);
+  return (
+    <TextField
+      size="small"
+      type="search"
+      label={label}
+      value={text}
+      onChange={(event) => {
+        setText(event.target.value);
+        onChange(event.target.value);
+      }}
+      slotProps={{ htmlInput: { spellCheck: false, autoCapitalize: "off" } }}
+      sx={{ minWidth: 220 }}
+    />
   );
 }
 
