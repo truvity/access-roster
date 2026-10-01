@@ -180,7 +180,8 @@ message SlackWorkspaceStatus {
   bool needs_configuration_token = 14;
   // the roster's bot scopes the grant lacks.
   repeated string missing_scopes = 15;
-  // the owner's primary domain, which is how a person knows the directory.
+  // every domain the owner is authoritative for, sorted and joined with ", "
+  // (how a person knows the directory); the console words it with the id.
   // Empty without an owner, or when the owner is no longer connected.
   string owner_domain = 16;
   // whether the caller may change the owner: the installation-wide

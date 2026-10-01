@@ -242,7 +242,8 @@ export type GitHubApp = Message<"directoryroster.v1.GitHubApp"> & {
   ownerDirectory: string;
 
   /**
-   * the owner's primary domain, which is how a person knows the directory.
+   * every domain the owner is authoritative for, sorted and joined with ", "
+   * (how a person knows the directory); the console words it with the id.
    *
    * @generated from field: string owner_domain = 33;
    */
@@ -1983,7 +1984,7 @@ export type GitHubOrganisation = Message<"directoryroster.v1.GitHubOrganisation"
   ownerDirectory: string;
 
   /**
-   * the owner's primary domain.
+   * every domain the owner is authoritative for, sorted, joined with ", ".
    *
    * @generated from field: string owner_domain = 19;
    */
