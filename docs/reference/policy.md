@@ -1156,9 +1156,7 @@ Channels in the policy are fed by **internal groups** (`from`), for channels
 the infrastructure owns, such as alert channels. Channels managed
 interactively on the console are not here: they are records fed by **directory
 groups**, and a record for a channel this section already binds (the same name,
-or the same `adopt` id) is refused as *defined in git*, unless it is a
-console takeover of exactly that channel (`supersedes_policy`), after which
-the policy entry is reported *superseded* and not reconciled. See
+or the same `adopt` id) is refused as *defined in git*. See
 [console channels](../connect/slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console).
 
 Each workspace is connected by **its own app** and bot token; the token is

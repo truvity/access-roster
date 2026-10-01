@@ -279,32 +279,6 @@ func TestAConsoleChannelIsValidatedAgainstThePolicy(t *testing.T) {
 			}
 		})
 	}
-	// A takeover is allowed only when it says so and covers exactly one
-	// policy channel, by name or by channel id.
-	takeover := map[string]struct {
-		edit func(*reconcile.ConsoleChannel)
-		ok   bool
-	}{
-		"by name":                    {func(c *reconcile.ConsoleChannel) { c.Name = "alerts" }, true},
-		"by adopted id":              {func(c *reconcile.ConsoleChannel) { c.ChannelID = "C0ADOPTED1" }, true},
-		"by name and the same id":    {func(c *reconcile.ConsoleChannel) { c.Name, c.ChannelID = "legacy", "C0ADOPTED1" }, true},
-		"name of one, id of another": {func(c *reconcile.ConsoleChannel) { c.Name, c.ChannelID = "alerts", "C0ADOPTED1" }, false},
-		"nothing left to take over":  {func(*reconcile.ConsoleChannel) {}, true},
-	}
-	for name, tc := range takeover {
-		c := good()
-		c.SupersedesPolicy = true
-		tc.edit(&c)
-		if err := c.Validate(p); (err == nil) != tc.ok {
-			t.Errorf("takeover %s: Validate = %v, want ok=%v", name, err, tc.ok)
-		}
-	}
-	// The flag never excuses another workspace's channel.
-	other := good()
-	other.Workspace, other.Name, other.SupersedesPolicy = "globex", "alerts", true
-	if err := other.Validate(p); err != nil {
-		t.Errorf("globex has no policy channel alerts, the record is a plain one: %v", err)
-	}
 	// "defined in git" is an error callers can recognise.
 	c := good()
 	c.Name = "alerts"

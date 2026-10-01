@@ -112,8 +112,6 @@ export function channelKind(channel: Pick<SlackChannelStatus, "state">): StateKi
       return "waiting";
     case "held":
       return "held";
-    case "superseded":
-      return "superseded";
     default:
       return "ok";
   }

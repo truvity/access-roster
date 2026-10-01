@@ -378,6 +378,7 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 		Workspace: key, Workspaces: c.deps.Policy.Slack.Workspaces, Facts: facts, People: c.deps.Policy.People,
 		Holders: p.holders, Shared: p.shared, Console: p.console, Bots: p.store.botsFor(),
 		DirHolders: p.dir.holders, DirNested: p.dir.nestedOf(allSources(p.console, p.shared)),
+		DefinedTwice: definedTwice(c.deps.Policy.Slack.Workspaces[key], p.consoleRefused[key]),
 	}
 	if in.Observed, err = apply.Observe(ctx, client, in); err != nil {
 		return fail(err)
@@ -394,7 +395,7 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	report.Tick.At = started
 	c.reportRefused(&report, key, p.refused[key])
 	c.reportConsoleRefused(&report, key, p.consoleRefused[key])
-	c.reportSuperseded(&report, key, p.console)
+	c.reportDefinedTwice(&report, key, in.DefinedTwice)
 
 	// enabled is this workspace's dry-run switch (internal/rails): disabled
 	// derives and reports what would change, and changes nothing.
@@ -484,45 +485,53 @@ func (c *Controller) reportConsoleRefused(report *status.Workspace, _ string, re
 		if mode == "" {
 			mode = policy.SlackModeExtend
 		}
+		reason := "the console channel's record is refused and not acted on: " + r.err.Error()
+		if errors.Is(r.err, reconcile.ErrDefinedInGit) {
+			reason = definedTwiceReason
+		}
 		report.Channels = append(report.Channels, status.Channel{
 			Name: r.name, ID: r.channel.ChannelID, Console: true, Mode: mode, Private: r.channel.Private,
-			State: status.ChannelHeld, Reason: "the console channel's record is refused and not acted on: " + r.err.Error(),
+			State: status.ChannelHeld, Reason: reason,
 		})
 	}
 }
 
-// reportSuperseded lists, in the workspace's report, each policy channel a
-// console record has taken over: not reconciled, marked superseded with who
-// took it over and when. It is a report only; nothing is done to the channel
-// in Slack, and removing the entry from git changes nothing there.
-func (c *Controller) reportSuperseded(report *status.Workspace, key string, console []reconcile.ConsoleChannel) {
-	bound := c.deps.Policy.Slack.Workspaces[key].Channels
-	for _, name := range slices.Sorted(maps.Keys(bound)) {
-		b := bound[name]
-		rec := reconcile.SupersededBy(console, key, name, b)
-		if rec == nil {
+// definedTwiceReason is why a channel the policy and a console record both
+// define is held: the roster never mixes the two.
+const definedTwiceReason = "defined in both git and the console: held and unchanged until one definition is removed " +
+	"(remove it from git to manage it here, or delete the console record)"
+
+// definedTwice are the policy channels of a workspace that a refused console
+// record also defines, by name or by adopted channel id.
+func definedTwice(ws policy.SlackWorkspace, refused []consoleRefusal) map[string]bool {
+	var out map[string]bool
+	for i := range refused {
+		if !errors.Is(refused[i].err, reconcile.ErrDefinedInGit) {
 			continue
 		}
-		by, at := rec.CreatedBy, rec.CreatedAt
-		who := "a console operator"
-		if by != "" {
-			who = by
+		for _, name := range refused[i].channel.CoveredPolicy(ws) {
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[name] = true
 		}
-		when := ""
-		if !at.IsZero() {
-			when = " at " + at.UTC().Format(time.RFC3339)
-		}
+	}
+	return out
+}
+
+// reportDefinedTwice lists, in the workspace's report, each policy channel a
+// console record also defines: held, with nothing done to it in Slack.
+func (c *Controller) reportDefinedTwice(report *status.Workspace, key string, held map[string]bool) {
+	bound := c.deps.Policy.Slack.Workspaces[key].Channels
+	for _, name := range slices.Sorted(maps.Keys(held)) {
+		b := bound[name]
 		mode := b.Mode
 		if mode == "" {
 			mode = policy.SlackModeExtend
 		}
-		id := rec.ChannelID
-		if id == "" {
-			id = b.Adopt
-		}
 		report.Channels = append(report.Channels, status.Channel{
-			Name: name, ID: id, Private: b.Private, Mode: mode, State: status.ChannelSuperseded,
-			Reason: fmt.Sprintf("taken over on the console by %s%s as #%s; remove it from git", who, when, rec.Name),
+			Name: name, ID: b.Adopt, Private: b.Private, Mode: mode,
+			State: status.ChannelHeld, Reason: definedTwiceReason,
 		})
 	}
 }

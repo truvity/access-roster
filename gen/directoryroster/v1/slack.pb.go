@@ -1067,8 +1067,7 @@ type SlackChannelStatus struct {
 	// a Slack Connect channel, and the workspace that owns it.
 	Shared bool   `protobuf:"varint,5,opt,name=shared,proto3" json:"shared,omitempty"`
 	Host   string `protobuf:"bytes,6,opt,name=host,proto3" json:"host,omitempty"`
-	// ok, will-create, will-adopt, will-accept, waiting, held or superseded
-	// (a policy channel a console record has taken over; not reconciled).
+	// ok, will-create, will-adopt, will-accept, waiting or held.
 	State               string                    `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
 	Reason              string                    `protobuf:"bytes,8,opt,name=reason,proto3" json:"reason,omitempty"`
 	Members             []*SlackMemberStatus      `protobuf:"bytes,9,rep,name=members,proto3" json:"members,omitempty"`
@@ -1080,10 +1079,7 @@ type SlackChannelStatus struct {
 	// the internal groups the policy binds the channel to (`from`), for a
 	// channel the policy defines in git. Empty for a console channel (its
 	// directory groups are in its record) and for a Slack Connect channel.
-	Sources []string `protobuf:"bytes,13,rep,name=sources,proto3" json:"sources,omitempty"`
-	// the people the policy's strict channel never removes (`ignore`), for a
-	// channel the policy defines in git; the takeover form prefills them.
-	Ignore        []string `protobuf:"bytes,14,rep,name=ignore,proto3" json:"ignore,omitempty"`
+	Sources       []string `protobuf:"bytes,13,rep,name=sources,proto3" json:"sources,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1205,13 +1201,6 @@ func (x *SlackChannelStatus) GetConsole() bool {
 func (x *SlackChannelStatus) GetSources() []string {
 	if x != nil {
 		return x.Sources
-	}
-	return nil
-}
-
-func (x *SlackChannelStatus) GetIgnore() []string {
-	if x != nil {
-		return x.Ignore
 	}
 	return nil
 }
@@ -1580,7 +1569,7 @@ const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	"\achanges\x18\x04 \x01(\x05R\achanges\x12\x12\n" +
 	"\x04held\x18\x05 \x01(\x05R\x04held\x12\x1a\n" +
 	"\bretrying\x18\x06 \x01(\x05R\bretrying\x12\x18\n" +
-	"\awaiting\x18\a \x01(\x05R\awaiting\"\xea\x03\n" +
+	"\awaiting\x18\a \x01(\x05R\awaiting\"\xe0\x03\n" +
 	"\x12SlackChannelStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x18\n" +
@@ -1595,8 +1584,7 @@ const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	" \x01(\v2 .directoryroster.v1.SlackBreakerR\abreaker\x12_\n" +
 	"\x14removal_confirmation\x18\v \x01(\v2,.directoryroster.v1.SlackRemovalConfirmationR\x13removalConfirmation\x12\x18\n" +
 	"\aconsole\x18\f \x01(\bR\aconsole\x12\x18\n" +
-	"\asources\x18\r \x03(\tR\asources\x12\x16\n" +
-	"\x06ignore\x18\x0e \x03(\tR\x06ignore\"\xa0\x01\n" +
+	"\asources\x18\r \x03(\tR\asourcesJ\x04\b\x0e\x10\x0fR\x06ignore\"\xa0\x01\n" +
 	"\x11SlackMemberStatus\x12\x16\n" +
 	"\x06person\x18\x01 \x01(\tR\x06person\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x17\n" +

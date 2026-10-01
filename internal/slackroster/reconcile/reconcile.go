@@ -143,10 +143,10 @@ func (s SharedChannel) Validate(p policy.Policy) error {
 		return fmt.Errorf("%s: host %q is not a declared workspace", where, s.Host)
 	}
 	if policyChannelNamed(host, s.Name) {
-		return fmt.Errorf("%s: %w: the host workspace %s binds a channel of that name", where, ErrDefinedInGit, s.Host)
+		return fmt.Errorf("%s: %w (the host workspace %s binds a channel of that name)", where, ErrDefinedInGit, s.Host)
 	}
 	if s.ChannelID != "" && policyChannelAdopts(host, s.ChannelID) {
-		return fmt.Errorf("%s: %w: the host workspace %s adopts that channel id", where, ErrDefinedInGit, s.Host)
+		return fmt.Errorf("%s: %w (the host workspace %s adopts that channel id)", where, ErrDefinedInGit, s.Host)
 	}
 	if s.ChannelID != "" && !ValidChannelID(s.ChannelID) {
 		return fmt.Errorf("%s: channel_id %q is not a Slack channel id", where, s.ChannelID)
@@ -188,7 +188,7 @@ func (s SharedChannel) Validate(p policy.Policy) error {
 
 // ErrDefinedInGit is what a console channel that a policy channel already
 // covers is refused with.
-var ErrDefinedInGit = errors.New("this channel is defined in git")
+var ErrDefinedInGit = errors.New("this channel is defined in git; remove it there to manage it here")
 
 // policyChannelNamed reports whether the workspace's policy binds a channel
 // of this name.
@@ -247,12 +247,6 @@ type ConsoleChannel struct {
 	Ignore []string `json:"ignore,omitempty"`
 	// Sources are directory group addresses.
 	Sources []string `json:"sources"`
-	// SupersedesPolicy marks a record that TAKES OVER the policy channel
-	// (same workspace, same name or same channel id) defined in git: the
-	// record is reconciled and the policy entry is not, until the record is
-	// deleted. Without it a record that duplicates a policy channel is
-	// refused.
-	SupersedesPolicy bool `json:"supersedes_policy,omitempty"`
 	// CreatedBy, CreatedAt, UpdatedBy and UpdatedAt say who wrote the record
 	// and when, for the page; the audit trail is the record of truth.
 	CreatedBy string    `json:"created_by,omitempty"`
@@ -269,16 +263,9 @@ func (c ConsoleChannel) Binding() policy.SlackChannel {
 	return policy.SlackChannel{Private: c.Private, Mode: c.Mode, Ignore: slices.Clone(c.Ignore), From: slices.Clone(c.Sources), Adopt: c.ChannelID}
 }
 
-// Supersedes reports whether this record takes over the policy channel
-// called name with the binding b: it says so, is of the workspace, and has
-// the same name or the same channel id.
-func (c ConsoleChannel) Supersedes(workspace, name string, b policy.SlackChannel) bool {
-	return c.SupersedesPolicy && c.Workspace == workspace &&
-		(c.Name == name || (c.ChannelID != "" && b.Adopt == c.ChannelID))
-}
-
 // CoveredPolicy are the names of the policy channels of ws this record's
-// name or channel id duplicates, sorted.
+// name or channel id duplicates, sorted. A record that covers any is held
+// with the channel (see Input.DefinedTwice), never acted on.
 func (c ConsoleChannel) CoveredPolicy(ws policy.SlackWorkspace) []string {
 	var out []string
 	for name, b := range ws.Channels {
@@ -294,10 +281,7 @@ func (c ConsoleChannel) CoveredPolicy(ws policy.SlackWorkspace) []string {
 // is declared, the name and id are Slack's, the mode and ignore list agree
 // (strict is for private channels, ignore only with strict), there are
 // sources, and no policy channel covers it: the same name in the workspace,
-// or the same channel id adopted by any binding there. The one exception is
-// a record that sets SupersedesPolicy and covers exactly one policy channel;
-// a flag with nothing left to cover (the entry was removed from git) is
-// harmless.
+// or the same channel id adopted by any binding there.
 func (c ConsoleChannel) Validate(p policy.Policy) error {
 	where := "console channel " + c.Name
 	if !channelName.MatchString(c.Name) {
@@ -307,19 +291,16 @@ func (c ConsoleChannel) Validate(p policy.Policy) error {
 	if !ok {
 		return fmt.Errorf("%s: workspace %q is not a declared workspace", where, c.Workspace)
 	}
-	if c.ChannelID != "" && !ValidChannelID(c.ChannelID) {
-		return fmt.Errorf("%s: channel_id %q is not a Slack channel id", where, c.ChannelID)
+	if policyChannelNamed(ws, c.Name) {
+		return fmt.Errorf("%s: %w (the workspace %s binds a channel of that name)", where, ErrDefinedInGit, c.Workspace)
 	}
-	covered := c.CoveredPolicy(ws)
-	switch {
-	case len(covered) > 1:
-		return fmt.Errorf("%s: %w: its name and channel id match more than one policy channel of %s (%s); a takeover covers exactly one",
-			where, ErrDefinedInGit, c.Workspace, strings.Join(covered, ", "))
-	case len(covered) == 1 && !c.SupersedesPolicy:
-		if policyChannelNamed(ws, c.Name) {
-			return fmt.Errorf("%s: %w: the workspace %s binds a channel of that name", where, ErrDefinedInGit, c.Workspace)
+	if c.ChannelID != "" {
+		if !ValidChannelID(c.ChannelID) {
+			return fmt.Errorf("%s: channel_id %q is not a Slack channel id", where, c.ChannelID)
 		}
-		return fmt.Errorf("%s: %w: the workspace %s adopts that channel id", where, ErrDefinedInGit, c.Workspace)
+		if policyChannelAdopts(ws, c.ChannelID) {
+			return fmt.Errorf("%s: %w (the workspace %s adopts that channel id)", where, ErrDefinedInGit, c.Workspace)
+		}
 	}
 	switch c.Mode {
 	case "", policy.SlackModeExtend:
@@ -474,6 +455,11 @@ type Input struct {
 	// Console are the ordinary channels managed from the console, those of
 	// this workspace only matter.
 	Console []ConsoleChannel
+	// DefinedTwice names the policy channels of this workspace that a
+	// console record also defines (the record is refused as defined in git).
+	// "No mixing": the channel is held, so none of them is reconciled and
+	// nothing on it changes until one of the two definitions is removed.
+	DefinedTwice map[string]bool
 	// DirHolders are the live members of every directory group a console
 	// channel or a shared channel names, by group address, nested groups
 	// expanded.
@@ -744,8 +730,8 @@ func (r resolver) layout() []layoutChannel {
 	cfg := r.in.Workspaces[ws]
 	for _, name := range slices.Sorted(maps.Keys(cfg.Channels)) {
 		b := cfg.Channels[name]
-		if SupersededBy(r.in.Console, ws, name, b) != nil {
-			continue // taken over on the console: one owner at a time
+		if r.in.DefinedTwice[name] {
+			continue // defined in git and on the console: held, nothing changes
 		}
 		lc := layoutChannel{name: name, binding: b, private: b.Private, strict: b.Strict(), groups: b.From, belongs: b.From, all: r.wanted(b.From)}
 		r.slotsOwn(&lc)
@@ -758,7 +744,7 @@ func (r resolver) layout() []layoutChannel {
 		if c.Workspace != ws {
 			continue
 		}
-		if b, bound := cfg.Channels[c.Name]; bound && !c.Supersedes(ws, c.Name, b) {
+		if _, bound := cfg.Channels[c.Name]; bound {
 			continue // a policy channel of that name wins; the record is refused before this
 		}
 		lc := layoutChannel{name: c.Name, binding: c.Binding(), private: c.Private, strict: c.Strict(), groups: c.Sources,
@@ -787,19 +773,6 @@ func (r resolver) layout() []layoutChannel {
 		out = append(out, lc)
 	}
 	return out
-}
-
-// SupersededBy is the console record among records that takes over the
-// policy channel name of workspace ws, or nil: the first, in name order.
-func SupersededBy(records []ConsoleChannel, ws, name string, b policy.SlackChannel) *ConsoleChannel {
-	var found *ConsoleChannel
-	for i := range records {
-		c := &records[i]
-		if c.Supersedes(ws, name, b) && (found == nil || c.Name < found.Name) {
-			found = c
-		}
-	}
-	return found
 }
 
 // slotsOwn gives every wanted person of an ordinary channel the account

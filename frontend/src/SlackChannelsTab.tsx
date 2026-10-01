@@ -19,7 +19,7 @@ import { useAsync, type Async } from "./hooks";
 import { go, paths, replace } from "./router";
 import { ChannelDeleteDialog, ChannelEditDialog, DiscoveredOrdinary } from "./SlackChannels";
 import { ConnectDeleteDialog, ConnectEditDialog, DiscoveredConnect } from "./SlackConnect";
-import { canTakeOver, modeLabel, manageableWorkspaces } from "./slackChannelsModel";
+import { modeLabel, manageableWorkspaces } from "./slackChannelsModel";
 import { hostChoices, privacyLabel, visibilityMismatchHint } from "./slackConnectModel";
 import {
   connectFilterOf,
@@ -72,7 +72,7 @@ export function useSlackIndex(): SlackIndex {
 }
 
 type Dialogue =
-  | { kind: "edit" | "delete" | "takeover"; row: ChannelRow }
+  | { kind: "edit" | "delete"; row: ChannelRow }
   | { kind: "create-console" }
   | { kind: "create-connect" }
   | { kind: "manage-console"; row: SlackDiscoveredOrdinary }
@@ -90,6 +90,7 @@ export function ChannelDialogues({ dialogue, index, close, onDone }: { dialogue?
   };
   const ordinary = index.ordinary.value;
   const shared = index.shared.value;
+  const inGit = index.rows.filter((row) => row.kind === "policy").map((row) => ({ workspace: row.workspace, name: row.name, id: row.id }));
   switch (dialogue.kind) {
     case "delete":
       return dialogue.row.kind === "console" ? (
@@ -99,20 +100,16 @@ export function ChannelDialogues({ dialogue, index, close, onDone }: { dialogue?
       ) : null;
     case "edit":
       return dialogue.row.kind === "console" && ordinary ? (
-        <ChannelEditDialog key={dialogue.row.name} options={ordinary} editing={dialogue.row.record as SlackChannelRecord} onCancel={close} onDone={done} />
+        <ChannelEditDialog key={dialogue.row.name} options={ordinary} editing={dialogue.row.record as SlackChannelRecord} inGit={inGit} onCancel={close} onDone={done} />
       ) : dialogue.row.kind === "connect" && shared ? (
         <ConnectEditDialog key={dialogue.row.name} options={shared} editing={dialogue.row.record as SlackSharedChannel} onCancel={close} onDone={done} />
       ) : null;
-    case "takeover":
-      return dialogue.row.kind === "policy" && ordinary ? (
-        <ChannelEditDialog key={`takeover-${dialogue.row.name}`} options={ordinary} takeover={dialogue.row} onCancel={close} onDone={done} />
-      ) : null;
     case "create-console":
-      return ordinary ? <ChannelEditDialog key="new-console" options={ordinary} onCancel={close} onDone={done} /> : null;
+      return ordinary ? <ChannelEditDialog key="new-console" options={ordinary} inGit={inGit} onCancel={close} onDone={done} /> : null;
     case "create-connect":
       return shared ? <ConnectEditDialog key="new-connect" options={shared} onCancel={close} onDone={done} /> : null;
     case "manage-console":
-      return ordinary ? <ChannelEditDialog key={dialogue.row.channelId} options={ordinary} discovered={dialogue.row} onCancel={close} onDone={done} /> : null;
+      return ordinary ? <ChannelEditDialog key={dialogue.row.channelId} options={ordinary} discovered={dialogue.row} inGit={inGit} onCancel={close} onDone={done} /> : null;
     case "manage-connect":
       return shared ? <ConnectEditDialog key={dialogue.row.channelId} options={shared} discovered={dialogue.row} onCancel={close} onDone={done} /> : null;
   }
@@ -121,16 +118,7 @@ export function ChannelDialogues({ dialogue, index, close, onDone }: { dialogue?
 /** Edit and Delete for a channel the console keeps a record of, which is
  *  where an action on a channel belongs: on the channel. A policy channel
  *  has neither, and the caller who may not operate it sees neither. */
-export function RowActions({ row, onEdit, onDelete, onTakeover }: { row: ChannelRow; onEdit: () => void; onDelete: () => void; onTakeover?: () => void }) {
-  if (onTakeover && canTakeOver(row)) {
-    return (
-      <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
-        <Button size="small" onClick={onTakeover}>
-          Take over from git
-        </Button>
-      </Stack>
-    );
-  }
+export function RowActions({ row, onEdit, onDelete }: { row: ChannelRow; onEdit: () => void; onDelete: () => void }) {
   if (!row.canOperate || !row.record) return null;
   return (
     <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
@@ -156,7 +144,6 @@ export function SourceNames({ row }: { row: ChannelRow }) {
 }
 
 function kindCaption(row: ChannelRow): string {
-  if (row.kind === "console" && row.supersedes) return "console · took over a git entry";
   return row.kind === "policy" ? "policy · defined in git" : kindLabel[row.kind];
 }
 

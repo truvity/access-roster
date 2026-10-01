@@ -95,23 +95,11 @@ export function SlackChannelPage({
         { label: "State", value: <State kind={row.state.kind} label={row.state.label} title={row.state.title} /> },
         { label: "Record", value: definedBy },
       ]}
-      actions={
-        <RowActions
-          row={row}
-          onEdit={() => setDialogue({ kind: "edit", row })}
-          onDelete={() => setDialogue({ kind: "delete", row })}
-          onTakeover={() => setDialogue({ kind: "takeover", row })}
-        />
-      }
+      actions={<RowActions row={row} onEdit={() => setDialogue({ kind: "edit", row })} onDelete={() => setDialogue({ kind: "delete", row })} />}
     >
       <Loading busy={index.loading} />
       <Failure error={index.error} />
-      {row.supersedes ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {row.supersedes}
-        </Typography>
-      ) : null}
-      {row.reason && (row.state.kind === "refused" || row.state.kind === "needs-you" || row.state.kind === "superseded") ? (
+      {row.reason && (row.state.kind === "refused" || row.state.kind === "needs-you") ? (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {row.reason}
         </Typography>
