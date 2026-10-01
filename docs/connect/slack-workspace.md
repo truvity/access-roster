@@ -621,7 +621,7 @@ accepted it), `slack_roster.breaker_trips`, `slack_roster.rows` and
 ### Audit
 
 Every action is in the audit catalogue (`internal/audit/catalogue/roster.yaml`,
-version 1.5.0). The controller records for itself; the console records what it
+version 1.6.0). The controller records for itself; the console records what it
 does:
 
 | Recorded by | Actions |

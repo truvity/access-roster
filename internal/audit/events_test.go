@@ -25,7 +25,8 @@ func every() []*record.Record {
 	shared := audit.SlackShared{Host: "acme", Guest: "globex", Channel: "partners", ID: "C0456", Invite: "I0789"}
 	sw := audit.SlackWorkspace{Key: "acme", Team: "T0123", App: "A0123", Owner: "C0north"}
 	sharedChannel := audit.SlackSharedChannel{Name: "partners", Host: "acme", With: []string{"globex", "initech"},
-		Sources: []string{"engineers@acme.example"}, PerSide: map[string]bool{"acme": true, "globex": false, "initech": true}}
+		Sources: []string{"engineers@acme.example"}, Members: []string{"a.person@example.com"},
+		PerSide: map[string]bool{"acme": true, "globex": false, "initech": true}}
 	consoleChannel := audit.SlackConsoleChannel{Workspace: "acme", Name: "platform", Private: true, Mode: "strict",
 		Sources: []string{"engineers@acme.example", "ops@acme.example"}}
 	sa := audit.SlackCatalogueApp{ID: "sync", App: "A0123", Workspace: "acme", Team: "T0123", Scopes: []string{"channels:read", "users:read"}}
@@ -72,6 +73,7 @@ func every() []*record.Record {
 		audit.WorkspaceGroupsChanged(person, "ws-1", 3),
 		audit.GitHubAppCreated(person, "example", app),
 		audit.GitHubOrgConnected(person, "example", 42, 7, "C0north"),
+		audit.GitHubPassRequested(person, "example"),
 		audit.GitHubOrgOwnerChanged(person, "example", "", "C0north"),
 		audit.SlackWorkspaceOwnerChanged(person, "acme", "C0north", ""),
 		audit.GitHubOrgDisconnected(audit.System(), "example", true, "the App was uninstalled"),
@@ -246,5 +248,35 @@ func TestSlackRecordsAreNamedByPlaceAndPerson(t *testing.T) {
 	held := audit.SlackActionHeld("acme", nil, nil, "remove", "breaker")
 	if held.GetOutcome().GetResult() != auditv1.Outcome_RESULT_FAILURE {
 		t.Fatalf("held outcome %v", held.GetOutcome())
+	}
+}
+
+// The channel records carry the same counts, and neither writes the fields
+// catalogue 1.6.0 keeps declared only so older records read: `reason` on a
+// console channel, `from` on a shared one.
+func TestChannelRecordsCountSourcesAndMembersAndWriteNoHistoricalField(t *testing.T) {
+	shared := audit.SlackSharedChannel{Name: "partners", Host: "acme", With: []string{"globex"},
+		Sources: []string{"a@example.com", "b@example.com"}, Members: []string{"c@example.com"}}
+	console := audit.SlackConsoleChannel{Workspace: "acme", Name: "platform", Sources: []string{"a@example.com"},
+		Members: []string{"c@example.com", "d@example.com"}}
+	for _, tc := range []struct {
+		name            string
+		r               *record.Record
+		sources, member float64
+		historical      string
+	}{
+		{"shared", audit.SlackSharedChannelCreated(audit.System(), shared), 2, 1, "from"},
+		{"console", audit.SlackConsoleChannelCreated(audit.System(), console), 1, 2, "reason"},
+	} {
+		fields := tc.r.GetData().GetFields()
+		if got := fields["sources"].GetNumberValue(); got != tc.sources {
+			t.Errorf("%s: sources = %v, want %v", tc.name, got, tc.sources)
+		}
+		if got := fields["members"].GetNumberValue(); got != tc.member {
+			t.Errorf("%s: members = %v, want %v", tc.name, got, tc.member)
+		}
+		if _, written := fields[tc.historical]; written {
+			t.Errorf("%s: writes %s, which is historical", tc.name, tc.historical)
+		}
 	}
 }

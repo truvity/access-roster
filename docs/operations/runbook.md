@@ -628,7 +628,7 @@ An audit installation keeps every catalogue version it was sent and refuses a
 different document under a version it already holds, which stops the service
 (and the controllers) at start: this is what v1.41.0 and v1.42.0 did, fixed in
 v1.42.1. So any change to `internal/audit/catalogue/roster.yaml`, even one new
-action, needs: (1) a new `version` in the file (the current version is 1.5.0);
+action, needs: (1) a new `version` in the file (the current version is 1.6.0);
 (2) the released document saved as
 `internal/audit/catalogue/testdata/released/roster-<version>.yaml` (a copy of the
 file as shipped); (3) `just audit-catalogue`, which validates the document,

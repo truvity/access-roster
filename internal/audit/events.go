@@ -244,6 +244,12 @@ func ownerWord(owner string) string {
 	return owner
 }
 
+// GitHubPassRequested is an operator asking the controller to pass over an
+// organisation now rather than at its next interval.
+func GitHubPassRequested(actor Actor, org string) *record.Record {
+	return build("roster.github_org.pass_requested", actor, Succeeded(), nil, []*record.Target{targetOrg(org)}, nil)
+}
+
 // GitHubOrgOwnerChanged is an organisation's recorded owner changed by the
 // installation-wide operator. from and to are directory workspace ids, empty
 // for none.

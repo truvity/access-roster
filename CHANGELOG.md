@@ -36,6 +36,19 @@
   fails, naming each one, when a service or RPC in `proto/` is not mentioned in
   `docs/reference/contracts.md`. It found `accessissuer.v1.SessionService`
   (`ListSessions`, `RevokeSessions`) undocumented, and the page now describes it.
+- **Audit catalogue 1.6.0 removes what was dead and states what is historical.**
+  The `takeover` branch of the console-channel message (the feature was removed
+  in v1.48.0) and the stale "taken over by id" summary of
+  `roster.slack_channel.adopted` (adoption is by name) are gone; a Slack Connect
+  channel's records now carry the `sources` count its console counterpart always
+  had, and its created message says how many directory groups and individual
+  addresses feed it. `reason` on console-channel records and `from` on
+  Slack Connect records are no longer written; both stay declared in their
+  schemas, described as historical, because records written under 1.3.0 to 1.5.0
+  carry them and must still read. A console-channel record written by the
+  removed take-over feature now reads without its "taken over from git" suffix.
+  Adds `roster.github_org.pass_requested`. Existing installations take the new
+  version at the next start.
 
 - **Fix: archiving from the console asks Slack first.** Deleting a console
   channel's record with *Also archive* ticked now refuses, with the record kept

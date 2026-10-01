@@ -3,7 +3,7 @@ import type { Sentences } from "@truvity/audit";
 
 export const roster: Sentences = {
   "source": "roster",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "locales": [
     "en"
   ],
@@ -122,6 +122,12 @@ export const roster: Sentences = {
         "en": "{actor} changed the owner of GitHub organisation {targets_0_id} from {data_from} to {data_to}"
       }
     },
+    "roster.github_org.pass_requested": {
+      "summary": "An operator asked the GitHub controller to pass over an organisation now.",
+      "message": {
+        "en": "{actor} asked for a pass over GitHub organisation {targets_0_id} now"
+      }
+    },
     "roster.github_owner.reported": {
       "summary": "An organisation owner the directory does not vouch for was reported rather than removed.",
       "message": {
@@ -225,7 +231,7 @@ export const roster: Sentences = {
       }
     },
     "roster.slack_channel.adopted": {
-      "summary": "An existing Slack channel was taken over by id.",
+      "summary": "An existing Slack channel was adopted into management, by name.",
       "message": {
         "en": "{outcome, select, success {{targets_1_id} was adopted} other {Slack refused to let {targets_1_id} be adopted}}"
       }
@@ -245,7 +251,7 @@ export const roster: Sentences = {
     "roster.slack_console_channel.created": {
       "summary": "An ordinary Slack channel was put under management from the console.",
       "message": {
-        "en": "{actor} put the Slack channel {targets_1_id} in {targets_0_id} under management ({data_mode}, fed by {data_sources} directory groups and {data_members} individual addresses{data_reason, select, takeover {; taken over from git} other {}})"
+        "en": "{actor} put the Slack channel {targets_1_id} in {targets_0_id} under management ({data_mode}, fed by {data_sources} directory groups and {data_members} individual addresses)"
       }
     },
     "roster.slack_console_channel.deleted": {
@@ -299,7 +305,7 @@ export const roster: Sentences = {
     "roster.slack_shared_channel.created": {
       "summary": "A Slack Connect channel was defined from the console.",
       "message": {
-        "en": "{actor} defined the Slack Connect channel {targets_1_id}, hosted by {targets_0_id}, shared with {data_with}"
+        "en": "{actor} defined the Slack Connect channel {targets_1_id}, hosted by {targets_0_id}, shared with {data_with}, fed by {data_sources} directory groups and {data_members} individual addresses"
       }
     },
     "roster.slack_shared_channel.deleted": {

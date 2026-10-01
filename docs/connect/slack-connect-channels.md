@@ -225,8 +225,8 @@ a restart, and the console says so instead of writing one.
 
 A directory group's address, and an individual's, is an identifier, never data: they are
 targets, and an edit's `changes` counts them (`members: 2 -> 3 people (1 added, 0 removed)`).
-Unlike a console channel's record, a Slack Connect record's data has no `sources`
-count; the groups are targets.
+Like a console channel's record, a Slack Connect record's data counts them as `sources` and
+`members` (since catalogue 1.6.0 for `sources`); the groups and addresses themselves are targets.
 Audit catalogue 1.5.0 added the `directory_user` target type and the `members` count. Audit catalogue 1.2.0 added the
 `directory_group` target type and the console channel actions, see
 [slack-workspace.md](slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console).
