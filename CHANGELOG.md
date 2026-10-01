@@ -1,4 +1,4 @@
-## Unreleased
+## v1.42.0
 
 - **BREAKING: a Slack workspace's team, owner and domains, and a GitHub
   organisation's owner, are no longer policy keys.** v1.41.0 briefly let the
