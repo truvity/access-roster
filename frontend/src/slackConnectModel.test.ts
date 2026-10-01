@@ -52,7 +52,17 @@ describe("the form", () => {
     expect(problems(form)).toEqual([]);
     expect(problems(emptyForm)).toHaveLength(4);
     expect(problems({ ...form, name: "Not A Name" })[0]).toContain("lowercase");
-    expect(problems({ ...form, from: [] })[0]).toContain("groups");
+    expect(problems({ ...form, from: [] })[0]).toContain("group or individual");
+    expect(problems({ ...form, from: [], members: ["eve@south.example"] })).toEqual([]);
+  });
+
+  it("takes individuals of any connected directory and refuses the rest", () => {
+    const known = { allowed: [{ label: "C0north", domains: ["north.example"] }, { label: "C0south", domains: ["south.example"] }], groups: ["partners@north.example"] };
+    expect(problems({ ...form, members: ["ann@north.example", "eve@south.example"] }, known)).toEqual([]);
+    expect(problems({ ...form, members: ["x@nowhere.example"] }, known)[0]).toContain("is not a user of a connected directory");
+    expect(problems({ ...form, members: ["partners@north.example"] }, known)[0]).toContain("is a group, not a person");
+    expect(problems({ ...form, members: ["ann@north.example", "ann@north.example"] }, known)).toEqual(["ann@north.example is listed twice"]);
+    expect(definitionOf({ ...form, members: ["ann@north.example"] }).members).toEqual(["ann@north.example"]);
   });
 
   it("sends one visibility or per side, never both", () => {

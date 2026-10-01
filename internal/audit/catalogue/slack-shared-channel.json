@@ -22,6 +22,12 @@
       "x-audit-class": "shared",
       "x-audit-pii": "none"
     },
+    "members": {
+      "type": "integer",
+      "description": "How many individual addresses are listed beside the groups; the addresses are the record's targets.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
     "privacy": {
       "type": "string",
       "description": "The visibility: public, private, or one workspace=public|private pair per side.",

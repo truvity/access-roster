@@ -393,3 +393,65 @@ func TestAStoredTakeOverRecordLoadsAsAPlainConsoleChannel(t *testing.T) {
 		t.Errorf("report = %+v", rep)
 	}
 }
+
+// A console channel lists individuals beside its groups: the union is
+// invited, somebody in both is one person, and an individual gone from the
+// directory is never added.
+func TestAConsoleChannelIsFedFromIndividualAddressesToo(t *testing.T) {
+	r := newRig(t)
+	ann := r.person("ann@acme.example", []string{clubGroup}, "acme")
+	cy := r.person("cy@acme.example", []string{"elsewhere@acme.example"}, "acme")
+	gone := r.person("gone@acme.example", nil, "acme")
+	r.writeConsole(reconcile.ConsoleChannel{Name: "club", Private: true,
+		Members: []string{"ann@acme.example", "cy@acme.example", "gone@acme.example"}})
+
+	r.pass("acme")
+
+	ch, made := r.fake.ChannelNamed("TACME", "club")
+	if !made {
+		t.Fatal("the channel was not created")
+	}
+	members := r.fake.Members(ch.ID)
+	if !slices.Contains(members, ann) || !slices.Contains(members, cy) || slices.Contains(members, gone) {
+		t.Errorf("members = %v, want ann (group and listed) and cy (listed), never the leaver", members)
+	}
+	if rep := r.reports.channel(t, "acme", "club"); !rep.Console || rep.State != status.ChannelOK {
+		t.Errorf("report = %+v", rep)
+	}
+}
+
+// Individuals alone feed a channel, and a strict one removes somebody who is
+// no longer an active listed user, on the directory's say.
+func TestAStrictConsoleChannelOfIndividualsRemovesALeaver(t *testing.T) {
+	r := newRig(t)
+	ann := r.person("ann@acme.example", []string{"x@acme.example"}, "acme")
+	left := r.person("left@acme.example", nil, "acme")
+	ch := r.clubChannel("club", ann, left)
+	r.writeConsole(reconcile.ConsoleChannel{Name: "club", Private: true, Mode: "strict",
+		Sources: []string{}, Members: []string{"ann@acme.example", "left@acme.example"}})
+
+	r.pass("acme")
+
+	members := r.fake.Members(ch.ID)
+	if !slices.Contains(members, ann) || slices.Contains(members, left) {
+		t.Errorf("members = %v, want ann kept and the leaver removed", members)
+	}
+}
+
+// An individual of another directory than the workspace's owner is refused
+// by the controller, as a group of another directory is.
+func TestAConsoleChannelListingAnotherDirectorysUserIsRefused(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{clubGroup}, "acme")
+	r.person("gus@globex.example", []string{"g-gx"}, "globex")
+	r.writeConsole(reconcile.ConsoleChannel{Name: "club", Members: []string{"gus@globex.example"}})
+
+	r.pass("acme")
+
+	if _, made := r.fake.ChannelNamed("TACME", "club"); made {
+		t.Error("a refused console channel was created")
+	}
+	if rep := r.reports.channel(t, "acme", "club"); rep.State != status.ChannelHeld || !strings.Contains(rep.Reason, "another directory") {
+		t.Errorf("report = %+v", rep)
+	}
+}

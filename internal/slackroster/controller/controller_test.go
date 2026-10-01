@@ -118,6 +118,20 @@ func (c *console) ResolveDirectoryGroups(
 			resolved.Members = append(resolved.Members, &directoryrosterv1.DirectoryGroupMember{Email: m, Known: true, Live: true})
 		}
 	}
+	for _, u := range req.Msg.GetUsers() {
+		email := strings.ToLower(u)
+		resolved := &directoryrosterv1.ResolvedDirectoryUser{Email: email}
+		switch {
+		case strings.HasSuffix(email, "@acme.example"):
+			resolved.WorkspaceId = "C0acme"
+		case strings.HasSuffix(email, "@globex.example"):
+			resolved.WorkspaceId = "C0globex"
+		}
+		if _, there := c.dir[email]; there && resolved.WorkspaceId != "" {
+			resolved.Found, resolved.Live = true, true
+		}
+		out.Users = append(out.Users, resolved)
+	}
 	return connect.NewResponse(out), nil
 }
 

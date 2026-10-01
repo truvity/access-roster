@@ -53,6 +53,8 @@ export type ChannelRow = {
   state: StateView;
   reason: string;
   sources: Source[];
+  /** Individual addresses listed beside the groups; empty for a policy channel. */
+  members: string[];
   sides: Side[];
   /** The record the channel is managed by; absent for a policy channel. */
   record?: SlackChannelRecord | SlackSharedChannel;
@@ -107,6 +109,7 @@ export function buildRows(
       state: stateView(record),
       reason: record.reason,
       sources: def.from.map((address) => ({ address, internal: false })),
+      members: [...def.members],
       sides,
       record,
       canOperate: record.canOperate,
@@ -130,6 +133,7 @@ export function buildRows(
       state: stateView({ state: record.state, reason: record.reason }),
       reason: record.reason,
       sources: def.sources.map((address) => ({ address, internal: false })),
+      members: [...def.members],
       sides: [{ workspace: def.workspace, name: def.name, id: found?.id || def.channelId, status: found, canOperate: record.canOperate }],
       record,
       canOperate: record.canOperate,
@@ -153,6 +157,7 @@ export function buildRows(
         state: policyState(channel),
         reason: channel.reason,
         sources: channel.sources.map((address) => ({ address, internal: true })),
+        members: [],
         sides: [{ workspace: ws.workspace, name: channel.name, id: channel.id, status: channel, canOperate: ws.canOperate }],
         canOperate: false,
         privatePerSide: {},
@@ -261,9 +266,11 @@ export function memberSentence(member: Pick<SlackMemberStatus, "state" | "reason
 /** The one sentence a channel's page opens with. */
 export function summaryLine(row: ChannelRow): string {
   const where = row.kind === "connect" ? `hosted by ${row.workspace}, shared with ${row.sides.slice(1).map((s) => s.workspace).join(", ") || "nobody yet"}` : `in ${row.workspace}`;
-  const fed = row.sources.length === 0 ? "" : `, fed by ${row.sources.length} ${row.sources[0]?.internal ? (row.sources.length === 1 ? "internal group" : "internal groups") : row.sources.length === 1 ? "directory group" : "directory groups"}`;
-  const people = peopleSentence(membersOf(row));
-  const tail = people ? `: ${people}.` : row.sides.every((s) => !s.status) ? ": the controller has not reported it yet." : ": nobody is reported in it.";
+  const groups = row.sources.length === 0 ? "" : `${row.sources.length} ${row.sources[0]?.internal ? (row.sources.length === 1 ? "internal group" : "internal groups") : row.sources.length === 1 ? "directory group" : "directory groups"}`;
+  const people = row.members.length === 0 ? "" : `${row.members.length} individual ${row.members.length === 1 ? "address" : "addresses"}`;
+  const fed = groups || people ? `, fed by ${[groups, people].filter(Boolean).join(" and ")}` : "";
+  const said = peopleSentence(membersOf(row));
+  const tail = said ? `: ${said}.` : row.sides.every((s) => !s.status) ? ": the controller has not reported it yet." : ": nobody is reported in it.";
   return `A ${kindLabel[row.kind]} channel ${where}${fed}${tail}`;
 }
 
@@ -296,7 +303,7 @@ export function groupPeople(row: ChannelRow, emails: string[]): { present: Slack
 }
 
 /** One place a person is in Slack. */
-export type Place = { workspace: string; channel: ChannelStatusRef; member: SlackMemberStatus; row?: ChannelRow };
+export type Place = { workspace: string; channel: ChannelStatusRef; member: SlackMemberStatus; row?: ChannelRow; /** The person is listed by address in the channel's record, not only through a group. */ individually: boolean };
 type ChannelStatusRef = { name: string; kind: ChannelKind };
 
 /** Every channel a person has a row in, by workspace, from the reports. */
@@ -308,7 +315,9 @@ export function placesOfPerson(status: GetSlackStatusResponse | undefined, rows:
       const member = channel.members.find((m) => lower(m.email) === address || lower(m.person) === address);
       if (!member) continue;
       const kind: ChannelKind = channel.shared ? "connect" : channel.console ? "console" : "policy";
-      out.push({ workspace: ws.workspace, channel: { name: channel.name, kind }, member, row: findRow(rows, ws.workspace, channel.name) });
+      const row = findRow(rows, ws.workspace, channel.name);
+      const individually = !!row && row.members.some((m) => lower(m) === address || lower(m) === lower(member.email) || lower(m) === lower(member.person));
+      out.push({ workspace: ws.workspace, channel: { name: channel.name, kind }, member, row, individually });
     }
   }
   return out.sort((a, b) => a.workspace.localeCompare(b.workspace) || a.channel.name.localeCompare(b.channel.name));

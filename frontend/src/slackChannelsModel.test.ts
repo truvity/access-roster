@@ -27,7 +27,7 @@ describe("channelProblems", () => {
     expect(channelProblems(emptyChannelForm, "")).toEqual([
       "Pick the workspace the channel is in.",
       "The name is lowercase letters, digits, '-' and '_', at most 80.",
-      "Pick at least one directory group: members come only from groups.",
+      "Pick at least one directory group or individual address: members come only from these.",
     ]);
     expect(channelProblems({ ...good, name: "Not A Name" }, "C0north")[0]).toContain("lowercase");
     expect(channelProblems({ ...good, sources: [] }, "C0north")[0]).toContain("directory group");
@@ -73,6 +73,36 @@ describe("a channel defined in git", () => {
   });
 });
 
+describe("individual addresses on the form", () => {
+  const owner = [{ label: "C0north — acme.example", domains: ["acme.example"] }];
+  const known = { allowed: owner, groups: ["eng@acme.example"] };
+
+  it("takes a form with only individual addresses", () => {
+    expect(channelProblems({ ...good, sources: [], members: ["ann@acme.example"] }, "C0north", [], known)).toEqual([]);
+    expect(channelProblems({ ...good, sources: [], members: [] }, "C0north", [], known)[0]).toContain("individual address");
+  });
+
+  it("refuses an address outside the owner directory, in the server's words", () => {
+    const [why] = channelProblems({ ...good, members: ["gus@globex.example"] }, "C0north", [], known);
+    expect(why).toContain("gus@globex.example is not a user of the directory that owns this workspace (C0north — acme.example)");
+    expect(why).toContain("individual addresses come from the directories this channel draws from");
+  });
+
+  it("refuses a group typed as a person, a repeat and a non-address", () => {
+    expect(channelProblems({ ...good, members: ["eng@acme.example"] }, "C0north", [], known)[0]).toContain("is a group, not a person");
+    expect(channelProblems({ ...good, members: ["ann@acme.example", "ann@acme.example"] }, "C0north", [], known)).toEqual(["ann@acme.example is listed twice"]);
+    expect(channelProblems({ ...good, members: ["ann"] }, "C0north", [], known)[0]).toContain("is not an email address");
+  });
+
+  it("leaves the directory's knowledge of the user to the server", () => {
+    expect(channelProblems({ ...good, members: ["ghost@acme.example"] }, "C0north", [], known)).toEqual([]);
+  });
+
+  it("sends the addresses", () => {
+    expect(channelDefinitionOf({ ...good, members: ["ann@acme.example"] }).members).toEqual(["ann@acme.example"]);
+  });
+});
+
 describe("the definition sent", () => {
   it("carries the form, trimming the name", () => {
     expect(channelDefinitionOf({ ...good, name: " eng ", private: true, channelId: "C0123ABCD" })).toEqual({
@@ -83,6 +113,7 @@ describe("the definition sent", () => {
       mode: "extend",
       ignore: [],
       sources: ["eng@acme.example"],
+      members: [],
     });
   });
 
@@ -95,7 +126,8 @@ describe("the definition sent", () => {
 describe("the form of a record or a discovered channel", () => {
   it("reads a record back, extend unless it says strict", () => {
     const record = { channel: { workspace: "acme", name: "eng", channelId: "C0123ABCD", private: true, mode: "strict", ignore: ["a@acme.example"], sources: ["eng@acme.example"] } };
-    expect(formOfRecord(record)).toEqual({ workspace: "acme", name: "eng", channelId: "C0123ABCD", private: true, mode: "strict", ignore: ["a@acme.example"], sources: ["eng@acme.example"] });
+    expect(formOfRecord(record)).toEqual({ workspace: "acme", name: "eng", channelId: "C0123ABCD", private: true, mode: "strict", ignore: ["a@acme.example"], sources: ["eng@acme.example"], members: [] });
+    expect(formOfRecord({ channel: { ...record.channel, members: ["ann@acme.example"] } }).members).toEqual(["ann@acme.example"]);
     expect(formOfRecord({ channel: { ...record.channel, mode: "" } }).mode).toBe("extend");
     expect(formOfRecord({ channel: undefined })).toEqual(emptyChannelForm);
   });

@@ -44,7 +44,9 @@ import {
 } from "./slackConnectModel";
 import { connectArchiveNote } from "./slackChannelsModel";
 import { directoryLabel } from "./ownerModel";
+import { allowedDirectories, badMembers, memberProblems } from "./slackMembersModel";
 import { landings, landingSentence, sourceOptions, unreachedWarning } from "./slackSourcesModel";
+import { MemberPicker } from "./MemberPicker";
 import { SourcePicker } from "./SourcePicker";
 import { Failure, Mono } from "./ui";
 
@@ -137,7 +139,10 @@ export function ConnectEditDialog({
   const [failure, setFailure] = useState<string | undefined>();
   const hosts = hostChoices(options.workspaces);
   const guests = guestChoices(options.workspaces, form.host);
-  const wrong = problems(form);
+  const allDirs = allowedDirectories(options.sourceDirectories);
+  const groupAddresses = sourceOptions(options.sourceDirectories).map((option) => option.email);
+  const wrong = problems(form, { allowed: allDirs, groups: groupAddresses });
+  const memberFaults = memberProblems(form.members, form.from, groupAddresses, allDirs, false);
   // Where the chosen groups land: each side takes the groups of the
   // directory that owns it.
   const picker = sourceOptions(options.sourceDirectories);
@@ -222,7 +227,15 @@ export function ConnectEditDialog({
             value={form.from}
             onChange={(value) => setForm({ ...form, from: value })}
             disabled={busy}
-            helperText="Groups of any connected directory. Members come only from these groups, never from individuals."
+            helperText="Groups of any connected directory: all their members belong."
+          />
+          <MemberPicker
+            value={form.members}
+            bad={badMembers(form.members, form.from, groupAddresses, allDirs, false)}
+            problems={memberFaults}
+            onChange={(members) => setForm({ ...form, members })}
+            disabled={busy}
+            helperText="People of any connected directory, by address, who belong too. Type or paste, then Enter."
           />
           {form.host && form.from.length > 0 ? (
             <Stack sx={{ gap: 0.5 }}>
@@ -279,9 +292,9 @@ export function ConnectEditDialog({
               removed. Its members come only from the directory groups chosen here.
             </Typography>
           ) : null}
-          {wrong.length > 0 && (form.name !== "" || form.host !== "") ? (
+          {wrong.some((w) => !memberFaults.includes(w)) && (form.name !== "" || form.host !== "") ? (
             <Typography variant="caption" color="text.secondary">
-              {wrong.join(" ")}
+              {wrong.filter((w) => !memberFaults.includes(w)).join(" ")}
             </Typography>
           ) : null}
           <Failure error={failure} />

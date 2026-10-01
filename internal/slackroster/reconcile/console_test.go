@@ -267,6 +267,11 @@ func TestAConsoleChannelIsValidatedAgainstThePolicy(t *testing.T) {
 		"an internal group as a source": {func(c *reconcile.ConsoleChannel) { c.Sources = []string{"all:platform:engineer"} }, "not a directory group address"},
 		"a source twice":                {func(c *reconcile.ConsoleChannel) { c.Sources = []string{"a@acme.example", "a@acme.example"} }, "twice"},
 		"a source in capitals":          {func(c *reconcile.ConsoleChannel) { c.Sources = []string{"A@acme.example"} }, "not lowercase"},
+		"no sources and no members":     {func(c *reconcile.ConsoleChannel) { c.Sources, c.Members = nil, nil }, "no individual address"},
+		"a member that is no address":   {func(c *reconcile.ConsoleChannel) { c.Members = []string{"ann"} }, "not an email address"},
+		"a member in capitals":          {func(c *reconcile.ConsoleChannel) { c.Members = []string{"Ann@acme.example"} }, "not lowercase"},
+		"a member twice":                {func(c *reconcile.ConsoleChannel) { c.Members = []string{"ann@acme.example", "ann@acme.example"} }, "twice"},
+		"an address as group and user":  {func(c *reconcile.ConsoleChannel) { c.Members = append([]string{}, c.Sources...) }, "both as a group and as an individual"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {

@@ -18,10 +18,14 @@ type SlackConsoleChannel struct {
 	// Mode is extend or strict.
 	Mode    string
 	Sources []string
+	// Members are the individual addresses listed beside the groups: targets
+	// too, never data.
+	Members []string
 }
 
 func (c SlackConsoleChannel) targets() []*record.Target {
-	return append([]*record.Target{targetSlackWorkspace(c.Workspace), targetSlackChannel(c.Workspace, c.Name)}, directoryGroupTargets(c.Sources)...)
+	out := append([]*record.Target{targetSlackWorkspace(c.Workspace), targetSlackChannel(c.Workspace, c.Name)}, directoryGroupTargets(c.Sources)...)
+	return append(out, directoryUserTargets(c.Members)...)
 }
 
 func (c SlackConsoleChannel) data(changes string) data {
@@ -34,7 +38,7 @@ func (c SlackConsoleChannel) data(changes string) data {
 	// takeover reason was only written by the removed take-over feature.
 	return data{
 		"name": c.Name, "privacy": visibility(c.Private), "mode": mode,
-		"sources": len(c.Sources), "changes": changes, "reason": "",
+		"sources": len(c.Sources), "members": len(c.Members), "changes": changes, "reason": "",
 	}
 }
 
@@ -62,6 +66,16 @@ func directoryGroupTargets(groups []string) []*record.Target {
 	out := make([]*record.Target, 0, len(groups))
 	for _, g := range slices.Compact(slices.Sorted(slices.Values(groups))) {
 		out = append(out, &record.Target{Type: "directory_group", Id: strings.ToLower(strings.TrimSpace(g))})
+	}
+	return out
+}
+
+// directoryUserTargets are the individually listed people of a channel, as
+// targets, in address order without repeats.
+func directoryUserTargets(members []string) []*record.Target {
+	out := make([]*record.Target, 0, len(members))
+	for _, m := range slices.Compact(slices.Sorted(slices.Values(members))) {
+		out = append(out, &record.Target{Type: "directory_user", Id: strings.ToLower(strings.TrimSpace(m))})
 	}
 	return out
 }

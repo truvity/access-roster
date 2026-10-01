@@ -166,7 +166,7 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 		default:
 			removeActs = append(removeActs, Action{Kind: status.ActionRemove, Channel: r.channel, ChannelID: p.res.ch.ID, Private: p.lc.private, User: r.member.ID,
 				Person: r.key, Email: r.email, Groups: slices.Clone(p.lc.groups),
-				Reason: "the directory vouches that they no longer hold " + joinGroups(p.lc.groups)})
+				Reason: noLongerReason(p.lc)})
 		}
 	}
 
@@ -378,4 +378,17 @@ func (d *Draft) managed(ch *Channel) bool {
 		}
 	}
 	return false
+}
+
+// noLongerReason says why somebody is removed: the directory vouches that
+// they hold none of the channel's groups and are not listed individually, or
+// are suspended or gone.
+func noLongerReason(lc layoutChannel) string {
+	switch {
+	case len(lc.groups) == 0:
+		return "the directory vouches that they are no longer an active user listed in " + lc.name
+	case lc.individual:
+		return "the directory vouches that they no longer hold " + joinGroups(lc.groups) + " and are no longer an active listed user"
+	}
+	return "the directory vouches that they no longer hold " + joinGroups(lc.groups)
 }

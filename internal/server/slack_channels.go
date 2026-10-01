@@ -67,7 +67,7 @@ func consoleOf(def *directoryrosterv1.SlackChannelDefinition) reconcile.ConsoleC
 	return reconcile.ConsoleChannel{
 		Workspace: strings.TrimSpace(def.GetWorkspace()), Name: strings.TrimSpace(def.GetName()),
 		ChannelID: strings.TrimSpace(def.GetChannelId()), Private: def.GetPrivate(), Mode: mode,
-		Ignore: trimmed(def.GetIgnore(), false), Sources: trimmed(def.GetSources(), true),
+		Ignore: trimmed(def.GetIgnore(), false), Sources: trimmed(def.GetSources(), true), Members: addresses(def.GetMembers()),
 	}
 }
 
@@ -78,7 +78,7 @@ func consoleDefinition(ch reconcile.ConsoleChannel) *directoryrosterv1.SlackChan
 	}
 	return &directoryrosterv1.SlackChannelDefinition{
 		Workspace: ch.Workspace, Name: ch.Name, ChannelId: ch.ChannelID, Private: ch.Private, Mode: mode,
-		Ignore: slices.Clone(ch.Ignore), Sources: slices.Clone(ch.Sources),
+		Ignore: slices.Clone(ch.Ignore), Sources: slices.Clone(ch.Sources), Members: slices.Clone(ch.Members),
 	}
 }
 
@@ -94,7 +94,7 @@ func consoleView(ch reconcile.ConsoleChannel) *directoryrosterv1.SlackChannelRec
 }
 
 func auditConsole(ch reconcile.ConsoleChannel) audit.SlackConsoleChannel {
-	return audit.SlackConsoleChannel{Workspace: ch.Workspace, Name: ch.Name, Private: ch.Private, Mode: ch.Mode, Sources: ch.Sources}
+	return audit.SlackConsoleChannel{Workspace: ch.Workspace, Name: ch.Name, Private: ch.Private, Mode: ch.Mode, Sources: ch.Sources, Members: ch.Members}
 }
 
 // consoleState is where a record stands: first whether the policy in force
@@ -268,7 +268,7 @@ func (c *Console) validateConsole(ctx context.Context, want reconcile.ConsoleCha
 	if err := want.Validate(c.deps.Authorizer.Policy().Declared()); err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	return c.checkSources(ctx, want.Sources, book.owner(want.Workspace), true)
+	return c.checkSources(ctx, want.Sources, want.Members, book.owner(want.Workspace), true)
 }
 
 // CreateSlackChannel puts a channel under management: operator of the
@@ -441,6 +441,9 @@ func consoleChanges(before, after reconcile.ConsoleChannel) string {
 		parts = append(parts, "mode: "+was+" -> "+is)
 	}
 	if part := sourcesChange(before.Sources, after.Sources); part != "" {
+		parts = append(parts, part)
+	}
+	if part := membersChange(before.Members, after.Members); part != "" {
 		parts = append(parts, part)
 	}
 	if !slices.Equal(slices.Sorted(slices.Values(before.Ignore)), slices.Sorted(slices.Values(after.Ignore))) {

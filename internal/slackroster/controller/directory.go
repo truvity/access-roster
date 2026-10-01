@@ -30,14 +30,36 @@ type dirGroup struct {
 type directoryGroups struct {
 	groups  map[string]dirGroup
 	holders reconcile.Holders
+	// users are the individual addresses asked about, and what the console
+	// said of each.
+	users map[string]dirUser
+}
+
+// dirUser is what the console said of one individually listed address.
+type dirUser struct {
+	// owner is the directory workspace that serves the address's domain;
+	// empty when no connected directory does.
+	owner string
+	// live is true when that directory holds the account and it is active.
+	live bool
+}
+
+// holdersOf are the users as holders, which a reconcile reads them as.
+func (d directoryGroups) holdersOf() map[string]reconcile.Holder {
+	out := make(map[string]reconcile.Holder, len(d.users))
+	for email, u := range d.users {
+		out[email] = reconcile.Holder{Email: email, Live: u.live}
+	}
+	return out
 }
 
 // resolveDirectory asks the console about each group, in batches. Any
 // error, or an answer under another policy ([rails.ErrPolicyDiffers]),
 // fails the whole question, like the holders of an internal group: what is
 // added rests on a complete read of the groups asked, and nothing else.
-func (c *Controller) resolveDirectory(ctx context.Context, groups []string) (directoryGroups, error) {
-	out := directoryGroups{groups: map[string]dirGroup{}, holders: reconcile.Holders{}}
+func (c *Controller) resolveDirectory(ctx context.Context, groups, users []string) (directoryGroups, error) {
+	out := directoryGroups{groups: map[string]dirGroup{}, holders: reconcile.Holders{}, users: map[string]dirUser{}}
+	users = slices.Compact(slices.Sorted(slices.Values(users)))
 	groups = slices.Compact(slices.Sorted(slices.Values(groups)))
 	for len(groups) > 0 {
 		n := min(len(groups), resolveBatch)
@@ -63,6 +85,21 @@ func (c *Controller) resolveDirectory(ctx context.Context, groups []string) (dir
 			}
 		}
 	}
+	for len(users) > 0 {
+		n := min(len(users), resolveBatch)
+		batch := users[:n]
+		users = users[n:]
+		response, err := c.deps.Access.ResolveDirectoryGroups(ctx, connect.NewRequest(&directoryrosterv1.ResolveDirectoryGroupsRequest{Users: batch}))
+		if err != nil {
+			return directoryGroups{}, fmt.Errorf("ask about the individually listed users: %w", err)
+		}
+		if err = c.directory().Guard.Check(response.Msg.GetPolicyDigest()); err != nil {
+			return directoryGroups{}, fmt.Errorf("ask about the individually listed users: %w", err)
+		}
+		for _, u := range response.Msg.GetUsers() {
+			out.users[strings.ToLower(u.GetEmail())] = dirUser{owner: u.GetWorkspaceId(), live: u.GetFound() && u.GetLive()}
+		}
+	}
 	return out, nil
 }
 
@@ -72,7 +109,18 @@ func (c *Controller) resolveDirectory(ctx context.Context, groups []string) (dir
 // The console checks the same when the record is written; the controller
 // asks again because a directory can be disconnected, a group deleted and
 // an owner changed since.
-func (d directoryGroups) checkSources(sources []string, owner string, ordinary bool) string {
+func (d directoryGroups) checkSources(sources, members []string, owner string, ordinary bool) string {
+	for _, m := range members {
+		u, ok := d.users[m]
+		switch {
+		case !ok || u.owner == "":
+			return "member " + m + " is not a user of a connected directory"
+		case ordinary && owner == "":
+			return "the workspace has no owning directory yet: set the owner on the console"
+		case ordinary && u.owner != owner:
+			return "member " + m + " belongs to another directory than the one that owns this workspace"
+		}
+	}
 	for _, s := range sources {
 		g, ok := d.groups[s]
 		switch {

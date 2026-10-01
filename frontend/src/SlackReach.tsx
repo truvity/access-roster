@@ -103,6 +103,7 @@ export function PersonSlack({ email }: { email: string }) {
               secondary={(place) => (
                 <>
                   {kindLabel[place.channel.kind]} · {memberSentence(place.member)}
+                  {place.individually ? " · individually" : ""}
                   {place.member.userId ? (
                     <>
                       {" · "}

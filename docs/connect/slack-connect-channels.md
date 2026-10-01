@@ -21,7 +21,8 @@ edited **interactively on the console**, and every change is audited.
 | `name` | the channel's Slack name: lowercase letters, digits, `-` and `_`, at most 80. Unique among the records, and it never changes |
 | `host` | the workspace (a key of the policy's `slack.workspaces`) that **creates and owns** the channel. **Immutable** after creation |
 | `with` | the other workspaces that share it, in order. Order decides where a person with no host-domain address joins from. At least one; none repeats; never the host |
-| `from` (`sources` in the stored record) | the **directory groups**, by address, of **any connected directory**, whose members belong, on whichever side. At least one. Members come **only** from groups: there is no way to name an individual, and never an internal group |
+| `from` (`sources` in the stored record) | the **directory groups**, by address, of **any connected directory**, whose members belong, on whichever side. Never an internal group |
+| `members` | **individual addresses**, each an active user of **any connected directory**, who belong too, on whichever side. At least one of `from` and `members`. Lowercased, none repeats; a group address entered here, or a person's address entered as a group, is refused with a message saying where it goes |
 | `private` | one visibility for every side, or one per side (Slack lets each organisation choose its own side's). A per-side choice names the host and every `with` workspace, exactly |
 
 The console checks a record against the policy in force and the directories
@@ -185,12 +186,13 @@ a restart, and the console says so instead of writing one.
 
 | Action | When | Targets | Data |
 |---|---|---|---|
-| `roster.slack_shared_channel.created` | a record is created | the host workspace, the channel, and each directory group (type `directory_group`) | `name`, `with`, `privacy` |
+| `roster.slack_shared_channel.created` | a record is created | the host workspace, the channel, each directory group (type `directory_group`) and each individual address (type `directory_user`) | `name`, `with`, `privacy`, `members` (a count) |
 | `roster.slack_shared_channel.updated` | an edit changed something | the same | the same, and `changes`: `with: a -> a,b; sources: 1 -> 2 groups (1 added, 0 removed); private: ...` |
 | `roster.slack_shared_channel.deleted` | a record is deleted | the same | the record as it was |
 
-A directory group's address is an identifier, never data: the groups are
-targets, and an edit's `changes` counts them. Audit catalogue 1.2.0 added the
+A directory group's address, and an individual's, is an identifier, never data: they are
+targets, and an edit's `changes` counts them (`members: 2 -> 3 people (1 added, 0 removed)`).
+Audit catalogue 1.5.0 added the `directory_user` target type and the `members` count. Audit catalogue 1.2.0 added the
 `directory_group` target type and the console channel actions, see
 [slack-workspace.md](slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console).
 

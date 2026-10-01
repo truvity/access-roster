@@ -1296,6 +1296,8 @@ func TestSharedChannelValidation(t *testing.T) {
 		"host in with":           {func(s *reconcile.SharedChannel) { s.With = []string{"acme"} }, "also listed in with"},
 		"with twice":             {func(s *reconcile.SharedChannel) { s.With = []string{"globex", "globex"} }, "twice"},
 		"sources empty":          {func(s *reconcile.SharedChannel) { s.Sources = nil }, "fed by no directory group"},
+		"member not an address":  {func(s *reconcile.SharedChannel) { s.Members = []string{"nobody"} }, "not an email address"},
+		"member twice":           {func(s *reconcile.SharedChannel) { s.Members = []string{"a@acme.example", "a@acme.example"} }, "twice"},
 		"source not an address":  {func(s *reconcile.SharedChannel) { s.Sources = []string{"all:platform:engineer"} }, "not a directory group address"},
 		"source uppercase":       {func(s *reconcile.SharedChannel) { s.Sources = []string{"Eng@acme.example"} }, "not lowercase"},
 		"source twice":           {func(s *reconcile.SharedChannel) { s.Sources = []string{"eng@acme.example", "eng@acme.example"} }, "twice"},

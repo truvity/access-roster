@@ -10,6 +10,7 @@ import (
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
+	"github.com/truvity/access-roster/internal/hub"
 )
 
 // The bounds of one resolution: how many groups one call may ask about, and
@@ -31,8 +32,9 @@ func (c *Console) ResolveDirectoryGroups(
 		return nil, err
 	}
 	asked := req.Msg.GetGroups()
-	if len(asked) > resolveMaxGroups {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("ask about at most 200 groups at a time"))
+	users := req.Msg.GetUsers()
+	if len(asked) > resolveMaxGroups || len(users) > resolveMaxGroups {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("ask about at most 200 groups and 200 users at a time"))
 	}
 	groups, err := c.deps.Hub.ResolveGroups(ctx, asked, resolveMaxDepth, resolveMaxNested)
 	if err != nil {
@@ -60,5 +62,31 @@ func (c *Console) ResolveDirectoryGroups(
 			})
 		}
 	}
+	for _, address := range users {
+		resolved, err := c.resolveUser(ctx, address, visible)
+		if err != nil {
+			return nil, err
+		}
+		out.Users = append(out.Users, resolved)
+	}
 	return connect.NewResponse(out), nil
+}
+
+// resolveUser answers for one individually listed address: the directory
+// that serves its domain and whether that directory holds an active account.
+// A directory the caller may not view reads as no directory, like a group.
+func (c *Console) resolveUser(ctx context.Context, address string, visible []string) (*directoryrosterv1.ResolvedDirectoryUser, error) {
+	email := strings.ToLower(strings.TrimSpace(address))
+	out := &directoryrosterv1.ResolvedDirectoryUser{Email: email}
+	got, err := c.deps.Hub.ResolveUser(ctx, email, nil)
+	switch {
+	case errors.Is(err, hub.ErrInvalidAddress):
+		return out, nil
+	case err != nil:
+		return nil, rpcError(err)
+	case got.Workspace == "" || (visible != nil && !slices.Contains(visible, got.Workspace)):
+		return out, nil
+	}
+	out.WorkspaceId, out.Found, out.Live = got.Workspace, got.Found, got.Found && !got.Suspended
+	return out, nil
 }

@@ -503,6 +503,9 @@ message DirectoryGroupSummary {
 message ResolveDirectoryGroupsRequest {
   // group addresses, at most 200.
   repeated string groups = 1;
+  // individual addresses, counted with groups against the same ceiling: each
+  // is answered in ResolveDirectoryGroupsResponse.users.
+  repeated string users = 2;
 }
 
 // ResolvedDirectoryGroup is one directory group as a consumer that feeds
@@ -534,6 +537,22 @@ message ResolveDirectoryGroupsResponse {
   repeated ResolvedDirectoryGroup groups = 1;
   // names the policy the answer was computed under, as on ListHolders.
   string policy_digest = 2;
+  // one per user asked, in order.
+  repeated ResolvedDirectoryUser users = 3;
+}
+
+// ResolvedDirectoryUser is one address as a consumer that feeds something
+// from individually listed people reads it.
+message ResolvedDirectoryUser {
+  // the address asked, lowercased.
+  string email = 1;
+  // the directory workspace that serves the address's domain; empty when no
+  // connected directory the caller may view does.
+  string workspace_id = 2;
+  // whether that directory's snapshot holds the account.
+  bool found = 3;
+  // whether the account is active (found and not suspended).
+  bool live = 4;
 }
 
 message GetDirectoryGroupRequest {

@@ -556,7 +556,10 @@ type SlackSharedChannelDefinition struct {
 	// the Slack id of a channel that already exists and is already shared,
 	// which the record takes over instead of the host creating one. Set from
 	// a discovered channel; immutable.
-	ChannelId     string `protobuf:"bytes,7,opt,name=channel_id,json=channelId,proto3" json:"channel_id,omitempty"`
+	ChannelId string `protobuf:"bytes,7,opt,name=channel_id,json=channelId,proto3" json:"channel_id,omitempty"`
+	// individual addresses whose owners belong, beside the groups: each a user
+	// of any connected directory. At least one of from and members is set.
+	Members       []string `protobuf:"bytes,8,rep,name=members,proto3" json:"members,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -638,6 +641,13 @@ func (x *SlackSharedChannelDefinition) GetChannelId() string {
 		return x.ChannelId
 	}
 	return ""
+}
+
+func (x *SlackSharedChannelDefinition) GetMembers() []string {
+	if x != nil {
+		return x.Members
+	}
+	return nil
 }
 
 type CreateSlackSharedChannelRequest struct {
@@ -1028,7 +1038,7 @@ const file_directoryroster_v1_slack_connect_proto_rawDesc = "" +
 	"\x06groups\x18\x03 \x03(\v2$.directoryroster.v1.SlackSourceGroupR\x06groups\"B\n" +
 	"\x10SlackSourceGroup\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x18\n" +
-	"\amembers\x18\x02 \x01(\x05R\amembers\"\xda\x02\n" +
+	"\amembers\x18\x02 \x01(\x05R\amembers\"\xf4\x02\n" +
 	"\x1cSlackSharedChannelDefinition\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
@@ -1037,7 +1047,8 @@ const file_directoryroster_v1_slack_connect_proto_rawDesc = "" +
 	"\aprivate\x18\x05 \x01(\bR\aprivate\x12n\n" +
 	"\x10private_per_side\x18\x06 \x03(\v2D.directoryroster.v1.SlackSharedChannelDefinition.PrivatePerSideEntryR\x0eprivatePerSide\x12\x1d\n" +
 	"\n" +
-	"channel_id\x18\a \x01(\tR\tchannelId\x1aA\n" +
+	"channel_id\x18\a \x01(\tR\tchannelId\x12\x18\n" +
+	"\amembers\x18\b \x03(\tR\amembers\x1aA\n" +
 	"\x13PrivatePerSideEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\bR\x05value:\x028\x01\"m\n" +

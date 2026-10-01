@@ -99,6 +99,10 @@ message SlackChannelDefinition {
   // directory group addresses whose members belong. Of the workspace's
   // owning directory.
   repeated string sources = 7;
+  // individual addresses whose owners belong, beside the groups: each a user
+  // of the workspace's owning directory. At least one of sources and members
+  // is set.
+  repeated string members = 9;
   // 8 was supersedes_policy (taking over a policy channel from git), removed:
   // a stored record that still carries it loads with the field ignored.
   reserved 8;
