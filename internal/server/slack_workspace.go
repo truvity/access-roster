@@ -32,6 +32,9 @@ type SlackWorkspaces interface {
 	// Get is one workspace's record and credential; found is false when
 	// there is no credential.
 	Get(ctx context.Context, workspace string) (connection.Record, connection.Credential, bool, error)
+	// SetOwner changes only a record's owner, under the object's version;
+	// found is false when the workspace has no record.
+	SetOwner(ctx context.Context, workspace, owner string) (previous string, found bool, err error)
 	// Delete forgets a workspace and what belongs to it.
 	Delete(ctx context.Context, workspace string) error
 	PutConfirmation(ctx context.Context, confirmation connection.Confirmation) error
@@ -393,7 +396,7 @@ func (c *Console) ChangeSlackWorkspaceOwner(
 	if !status.ValidWorkspace(workspace) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not a workspace key", workspace))
 	}
-	record, credential, found, err := store.Get(ctx, workspace)
+	previous, found, err := store.SetOwner(ctx, workspace, owner)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
@@ -401,13 +404,8 @@ func (c *Console) ChangeSlackWorkspaceOwner(
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("slack workspace %s is not connected: its owner is chosen when it is connected", workspace))
 	}
-	previous := record.Owner
 	if previous == owner {
 		return connect.NewResponse(&directoryrosterv1.ChangeSlackWorkspaceOwnerResponse{}), nil
-	}
-	record.Owner = owner
-	if err = store.Put(ctx, record, credential); err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
 	c.record(ctx, audit.SlackWorkspaceOwnerChanged(identityActor(who), workspace, previous, owner))
 	return connect.NewResponse(&directoryrosterv1.ChangeSlackWorkspaceOwnerResponse{}), nil

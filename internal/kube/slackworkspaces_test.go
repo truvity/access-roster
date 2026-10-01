@@ -2,10 +2,16 @@ package kube
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/truvity/access-roster/internal/slackroster/connection"
 )
@@ -65,5 +71,60 @@ func TestSlackWorkspacesKeepARecordAndACredentialEach(t *testing.T) {
 	}
 	if confirmations, _ = store.Confirmations(ctx); len(confirmations) != 0 {
 		t.Errorf("a deleted workspace's confirmation stayed: %+v", confirmations)
+	}
+}
+
+// Changing an owner touches the owner alone: an install that lands between
+// the read and the write keeps its team and bot token.
+func TestSettingAWorkspacesOwnerKeepsAConcurrentInstall(t *testing.T) {
+	ctx := context.Background()
+	clientset := fake.NewClientset()
+	store := NewSlackWorkspaces(NewClient(clientset, "access-issuer", "access-issuer"))
+	if err := store.Put(ctx, connection.Record{Workspace: "acme", AppID: "A0123", Owner: "C0north"},
+		connection.Credential{Workspace: "acme", AppID: "A0123", ClientID: "c", ClientSecret: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	raced := false
+	clientset.PrependReactor("update", "configmaps", func(k8stesting.Action) (bool, runtime.Object, error) {
+		if raced {
+			return false, nil, nil
+		}
+		raced = true
+		// Written through the tracker: the fake client holds its own lock
+		// while a reactor runs.
+		fresh := connection.Record{Version: connection.Version, Workspace: "acme", AppID: "A0123", TeamID: "T0123ABCD", BotUserID: "B1", Owner: "C0north"}
+		rawRecord, err := connection.EncodeRecord(fresh)
+		if err != nil {
+			t.Error(err)
+		}
+		rawCredential, err := connection.EncodeCredential(connection.Credential{
+			Workspace: "acme", AppID: "A0123", ClientID: "c", ClientSecret: "s", BotToken: "fresh-token", Record: &fresh})
+		if err != nil {
+			t.Error(err)
+		}
+		tracker, key := clientset.Tracker(), connection.Key("acme")
+		cmGVR, secretGVR := corev1.SchemeGroupVersion.WithResource("configmaps"), corev1.SchemeGroupVersion.WithResource("secrets")
+		cmObj, _ := tracker.Get(cmGVR, "access-issuer", store.ConfigMapName())
+		cm := cmObj.(*corev1.ConfigMap).DeepCopy()
+		cm.Data[key] = rawRecord
+		secretObj, _ := tracker.Get(secretGVR, "access-issuer", store.SecretName())
+		secret := secretObj.(*corev1.Secret).DeepCopy()
+		secret.Data[key] = rawCredential
+		if err = errors.Join(tracker.Update(cmGVR, cm, "access-issuer"), tracker.Update(secretGVR, secret, "access-issuer")); err != nil {
+			t.Error(err)
+		}
+		return true, nil, apierrors.NewConflict(schema.GroupResource{Resource: "configmaps"}, "x", errors.New("stale"))
+	})
+	previous, found, err := store.SetOwner(ctx, "acme", "C0south")
+	if err != nil || !found || previous != "C0north" {
+		t.Fatalf("SetOwner = %q %v %v", previous, found, err)
+	}
+	record, credential, _, err := store.Get(ctx, "acme")
+	if err != nil || record.Owner != "C0south" || record.TeamID != "T0123ABCD" || credential.BotToken != "fresh-token" ||
+		credential.Record == nil || credential.Record.Owner != "C0south" {
+		t.Errorf("after = %+v %+v %v: the concurrent install was overwritten", record, credential, err)
+	}
+	if _, found, err = store.SetOwner(ctx, "nowhere", "C0south"); err != nil || found {
+		t.Errorf("SetOwner of an unconnected workspace = %v, %v", found, err)
 	}
 }

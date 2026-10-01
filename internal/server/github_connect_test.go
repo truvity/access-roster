@@ -62,6 +62,19 @@ func (m *memoryConnections) Credential(_ context.Context, org string) (connectio
 	return c, ok, nil
 }
 
+func (m *memoryConnections) SetOwner(_ context.Context, org, owner string) (string, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.records[org]
+	if !ok {
+		return "", false, nil
+	}
+	previous := r.Owner
+	r.Owner = owner
+	m.records[org] = r
+	return previous, true, nil
+}
+
 func (m *memoryConnections) Delete(_ context.Context, org string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

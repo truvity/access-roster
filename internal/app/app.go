@@ -1599,3 +1599,7 @@ func (demoConnections) Put(context.Context, connection.Record, connection.Creden
 }
 
 func (demoConnections) Delete(context.Context, string) error { return errDemoConnect }
+
+func (demoConnections) SetOwner(context.Context, string, string) (string, bool, error) {
+	return "", false, errDemoConnect
+}

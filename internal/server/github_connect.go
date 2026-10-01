@@ -29,6 +29,9 @@ type GitHubConnections interface {
 	Put(ctx context.Context, record connection.Record, credential connection.Credential) error
 	List(ctx context.Context) ([]connection.Record, error)
 	Credential(ctx context.Context, org string) (connection.Credential, bool, error)
+	// SetOwner changes only a record's owner, under the object's version;
+	// found is false when the organisation has no record.
+	SetOwner(ctx context.Context, org, owner string) (previous string, found bool, err error)
 	Delete(ctx context.Context, org string) error
 }
 
@@ -457,29 +460,16 @@ func (c *Console) ChangeGitHubOrganisationOwner(
 	case c.deps.GitHubOrgs == nil:
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("this deployment keeps no connected organisations"))
 	}
-	records, err := c.deps.GitHubOrgs.List(ctx)
+	previous, connected, err := c.deps.GitHubOrgs.SetOwner(ctx, org, owner)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	record, connected := recordOf(records, org)
 	if !connected {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("%s is not connected: its owner is chosen when it is connected", org))
 	}
-	credential, found, err := c.deps.GitHubOrgs.Credential(ctx, org)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
-	}
-	if !found {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("%s has no credential kept, so its record cannot be rewritten", org))
-	}
-	previous := record.Owner
 	if previous == owner {
 		return connect.NewResponse(&directoryrosterv1.ChangeGitHubOrganisationOwnerResponse{}), nil
-	}
-	record.Owner = owner
-	if err = c.deps.GitHubOrgs.Put(ctx, record, credential); err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
 	c.record(ctx, audit.GitHubOrgOwnerChanged(identityActor(who), org, previous, owner))
 	return connect.NewResponse(&directoryrosterv1.ChangeGitHubOrganisationOwnerResponse{}), nil
