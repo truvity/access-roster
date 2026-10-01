@@ -101,6 +101,10 @@ func auditConsole(ch reconcile.ConsoleChannel) audit.SlackConsoleChannel {
 // still accepts it, then what the workspace's controller reported for it.
 func consoleState(ch reconcile.ConsoleChannel, p policy.Policy, reports map[string]status.Workspace) (state, reason string) {
 	if err := ch.Validate(p); err != nil {
+		if errors.Is(err, reconcile.ErrDefinedInGit) {
+			// Held, as the controller reports it on both rows: not an invalid record.
+			return sharedHeld, reconcile.DefinedTwice
+		}
 		return sharedInvalid, err.Error()
 	}
 	report, ok := reports[ch.Workspace]
@@ -155,7 +159,7 @@ func (c *Console) ListSlackChannels(
 		})
 	}
 	if len(owners) > 0 {
-		out.SourceDirectories = c.sourceDirectories(ctx, owners...)
+		out.SourceDirectories, out.SourceDirectoriesError = c.sourceDirectories(ctx, owners...)
 	}
 	var records []kube.ChannelRecord
 	if c.deps.SlackChannels != nil {

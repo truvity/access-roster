@@ -57,8 +57,8 @@ type SlackChannelServiceClient interface {
 	// CreateSlackChannel validates and keeps a record. Operator of the
 	// workspace's owner, or the installation-wide operator.
 	CreateSlackChannel(context.Context, *connect.Request[v1.CreateSlackChannelRequest]) (*connect.Response[v1.CreateSlackChannelResponse], error)
-	// UpdateSlackChannel changes the mode, the ignore list and the
-	// sources. The workspace, the name, the channel id and the visibility are
+	// UpdateSlackChannel changes the mode, the ignore list, the sources
+	// (directory groups) and the members (individual addresses). The workspace, the name, the channel id and the visibility are
 	// immutable.
 	UpdateSlackChannel(context.Context, *connect.Request[v1.UpdateSlackChannelRequest]) (*connect.Response[v1.UpdateSlackChannelResponse], error)
 	// DeleteSlackChannel forgets the record: the channel stays in Slack and the
@@ -144,8 +144,8 @@ type SlackChannelServiceHandler interface {
 	// CreateSlackChannel validates and keeps a record. Operator of the
 	// workspace's owner, or the installation-wide operator.
 	CreateSlackChannel(context.Context, *connect.Request[v1.CreateSlackChannelRequest]) (*connect.Response[v1.CreateSlackChannelResponse], error)
-	// UpdateSlackChannel changes the mode, the ignore list and the
-	// sources. The workspace, the name, the channel id and the visibility are
+	// UpdateSlackChannel changes the mode, the ignore list, the sources
+	// (directory groups) and the members (individual addresses). The workspace, the name, the channel id and the visibility are
 	// immutable.
 	UpdateSlackChannel(context.Context, *connect.Request[v1.UpdateSlackChannelRequest]) (*connect.Response[v1.UpdateSlackChannelResponse], error)
 	// DeleteSlackChannel forgets the record: the channel stays in Slack and the

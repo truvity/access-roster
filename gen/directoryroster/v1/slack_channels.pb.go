@@ -73,8 +73,11 @@ type ListSlackChannelsResponse struct {
 	// the directories an ordinary channel may be fed from: the owning
 	// directory of each workspace the caller may manage, with its groups.
 	SourceDirectories []*SlackSourceDirectory `protobuf:"bytes,5,rep,name=source_directories,json=sourceDirectories,proto3" json:"source_directories,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// set when the directories' groups could not be read: source_directories
+	// is then empty because the read failed, not because no group exists.
+	SourceDirectoriesError string `protobuf:"bytes,6,opt,name=source_directories_error,json=sourceDirectoriesError,proto3" json:"source_directories_error,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ListSlackChannelsResponse) Reset() {
@@ -140,6 +143,13 @@ func (x *ListSlackChannelsResponse) GetSourceDirectories() []*SlackSourceDirecto
 		return x.SourceDirectories
 	}
 	return nil
+}
+
+func (x *ListSlackChannelsResponse) GetSourceDirectoriesError() string {
+	if x != nil {
+		return x.SourceDirectoriesError
+	}
+	return ""
 }
 
 type SlackChannelWorkspace struct {
@@ -316,8 +326,8 @@ type SlackChannelDefinition struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Workspace string                 `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
 	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	// the Slack id of an existing channel the record takes over; empty to take
-	// over, or create, by name. Immutable.
+	// the Slack id of an existing channel the record adopts; empty to adopt,
+	// or create, by name. Immutable.
 	ChannelId string `protobuf:"bytes,3,opt,name=channel_id,json=channelId,proto3" json:"channel_id,omitempty"`
 	// immutable: converting a channel's visibility is never done.
 	Private bool `protobuf:"varint,4,opt,name=private,proto3" json:"private,omitempty"`
@@ -828,7 +838,7 @@ var File_directoryroster_v1_slack_channels_proto protoreflect.FileDescriptor
 const file_directoryroster_v1_slack_channels_proto_rawDesc = "" +
 	"\n" +
 	"'directoryroster/v1/slack_channels.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a&directoryroster/v1/slack_connect.proto\"\x1a\n" +
-	"\x18ListSlackChannelsRequest\"\xee\x02\n" +
+	"\x18ListSlackChannelsRequest\"\xa8\x03\n" +
 	"\x19ListSlackChannelsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12B\n" +
 	"\bchannels\x18\x02 \x03(\v2&.directoryroster.v1.SlackChannelRecordR\bchannels\x12I\n" +
@@ -838,7 +848,8 @@ const file_directoryroster_v1_slack_channels_proto_rawDesc = "" +
 	"\n" +
 	"discovered\x18\x04 \x03(\v2+.directoryroster.v1.SlackDiscoveredOrdinaryR\n" +
 	"discovered\x12W\n" +
-	"\x12source_directories\x18\x05 \x03(\v2(.directoryroster.v1.SlackSourceDirectoryR\x11sourceDirectories\"\xa1\x01\n" +
+	"\x12source_directories\x18\x05 \x03(\v2(.directoryroster.v1.SlackSourceDirectoryR\x11sourceDirectories\x128\n" +
+	"\x18source_directories_error\x18\x06 \x01(\tR\x16sourceDirectoriesError\"\xa1\x01\n" +
 	"\x15SlackChannelWorkspace\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1f\n" +
 	"\vcan_operate\x18\x02 \x01(\bR\n" +

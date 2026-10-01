@@ -134,7 +134,7 @@ export function ChannelEditDialog({
         await slackChannels.createSlackChannel({ channel });
         onDone(
           discovered
-            ? `#${channel.name} is under management. The controller takes over the existing channel within a couple of minutes.`
+            ? `#${channel.name} is under management. The controller adopts the existing channel within a couple of minutes.`
             : `#${channel.name} is defined. The controller takes it over by name, or creates it, within a couple of minutes.`,
         );
       }
@@ -168,7 +168,7 @@ export function ChannelEditDialog({
             value={form.name}
             onChange={(event) => setForm({ ...form, name: event.target.value })}
             disabled={busy || fixed}
-            helperText={fixed ? "A name cannot change: create a new record to use another." : "Lowercase letters, digits, '-' and '_'. A channel of that name is taken over; none, created."}
+            helperText={fixed ? "A name cannot change: create a new record to use another." : "Lowercase letters, digits, '-' and '_'. A channel of that name is adopted; none, created."}
             slotProps={{ htmlInput: { spellCheck: false, autoCapitalize: "off" } }}
             autoFocus={!fixed}
           />
@@ -202,6 +202,7 @@ export function ChannelEditDialog({
           ) : null}
           <SourcePicker
             options={picker}
+            error={options.sourceDirectoriesError}
             value={form.sources}
             onChange={(sources) => setForm({ ...form, sources })}
             disabled={busy || owner === ""}
@@ -217,7 +218,7 @@ export function ChannelEditDialog({
           />
           {discovered ? (
             <Typography variant="caption" color="text.secondary">
-              The existing channel {discovered.channelId} is taken over as it is: the bot joins a public channel, and a private one needs the bot in it already. Its
+              The existing channel {discovered.channelId} is adopted as it is: the bot joins a public channel, and a private one needs the bot in it already. Its
               visibility is not changed.
             </Typography>
           ) : null}

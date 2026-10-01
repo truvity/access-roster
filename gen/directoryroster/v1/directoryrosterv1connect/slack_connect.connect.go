@@ -59,9 +59,11 @@ type SlackSharedChannelServiceClient interface {
 	// keeps it. Operator of the HOST workspace's owner, or the
 	// installation-wide operator. Refuses a name that is already a record.
 	CreateSlackSharedChannel(context.Context, *connect.Request[v1.CreateSlackSharedChannelRequest]) (*connect.Response[v1.CreateSlackSharedChannelResponse], error)
-	// UpdateSlackSharedChannel changes `with`, `from` (directory groups) and `private`. The host
-	// and the name are immutable: a request naming a different host is
-	// refused, and the answer says to create a new channel instead.
+	// UpdateSlackSharedChannel changes `with`, `from` (directory groups),
+	// `members` (individual addresses), `private` and `private_per_side`. The
+	// host, the name and the channel id are immutable: a request naming a
+	// different host is refused, and the answer says to create a new channel
+	// instead.
 	UpdateSlackSharedChannel(context.Context, *connect.Request[v1.UpdateSlackSharedChannelRequest]) (*connect.Response[v1.UpdateSlackSharedChannelResponse], error)
 	// DeleteSlackSharedChannel forgets the record, and nothing else: the
 	// channel stays in Slack, and the reconciler stops managing it.
@@ -150,9 +152,11 @@ type SlackSharedChannelServiceHandler interface {
 	// keeps it. Operator of the HOST workspace's owner, or the
 	// installation-wide operator. Refuses a name that is already a record.
 	CreateSlackSharedChannel(context.Context, *connect.Request[v1.CreateSlackSharedChannelRequest]) (*connect.Response[v1.CreateSlackSharedChannelResponse], error)
-	// UpdateSlackSharedChannel changes `with`, `from` (directory groups) and `private`. The host
-	// and the name are immutable: a request naming a different host is
-	// refused, and the answer says to create a new channel instead.
+	// UpdateSlackSharedChannel changes `with`, `from` (directory groups),
+	// `members` (individual addresses), `private` and `private_per_side`. The
+	// host, the name and the channel id are immutable: a request naming a
+	// different host is refused, and the answer says to create a new channel
+	// instead.
 	UpdateSlackSharedChannel(context.Context, *connect.Request[v1.UpdateSlackSharedChannelRequest]) (*connect.Response[v1.UpdateSlackSharedChannelResponse], error)
 	// DeleteSlackSharedChannel forgets the record, and nothing else: the
 	// channel stays in Slack, and the reconciler stops managing it.

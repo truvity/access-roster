@@ -23,7 +23,9 @@ service SlackService {
   // workspace recorded as the Slack workspace's owner when it was
   // connected: a scoped viewer sees only the workspaces its directory
   // owns, and a workspace nobody has connected yet is shown to anyone who
-  // could connect it. Never a client secret or a bot token.
+  // could connect it. A scoped viewer over a directory that owns no Slack
+  // workspace is refused (permission denied) rather than shown an empty
+  // list. Never a client secret or a bot token.
   rpc GetSlackStatus(GetSlackStatusRequest) returns (GetSlackStatusResponse);
 
   // BeginSlackWorkspaceConnect creates the roster's Slack App for a
@@ -193,7 +195,8 @@ message SlackWorkspaceStatus {
   string owner_domain = 16;
   // whether the caller may change the owner: the installation-wide
   // operator, once the workspace is connected.
-  bool can_change_owner = 17;  // whether the policy still names the workspace key. A key it no longer
+  bool can_change_owner = 17;
+  // whether the policy still names the workspace key. A key it no longer
   // names can only be disconnected.
   bool declared = 18;
   // when an operator last asked for a pass now; unset when nobody has. The

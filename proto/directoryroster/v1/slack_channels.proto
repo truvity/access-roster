@@ -14,7 +14,7 @@ import "directoryroster/v1/slack_connect.proto";
 // by internal groups (alert channels, say), and never overlap them: a
 // channel the policy binds is refused here as "defined in git". The Slack
 // controller reads the records and does the rest, with the same rules as for
-// a policy channel: create or take over by name or id, extend or strict,
+// a policy channel: create or adopt by name or id, extend or strict,
 // removals only on the directory's say-so and never past the breaker.
 //
 // Slack Connect channels are SlackSharedChannelService.
@@ -32,8 +32,8 @@ service SlackChannelService {
   // workspace's owner, or the installation-wide operator.
   rpc CreateSlackChannel(CreateSlackChannelRequest) returns (CreateSlackChannelResponse);
 
-  // UpdateSlackChannel changes the mode, the ignore list and the
-  // sources. The workspace, the name, the channel id and the visibility are
+  // UpdateSlackChannel changes the mode, the ignore list, the sources
+  // (directory groups) and the members (individual addresses). The workspace, the name, the channel id and the visibility are
   // immutable.
   rpc UpdateSlackChannel(UpdateSlackChannelRequest) returns (UpdateSlackChannelResponse);
 
@@ -59,6 +59,9 @@ message ListSlackChannelsResponse {
   // the directories an ordinary channel may be fed from: the owning
   // directory of each workspace the caller may manage, with its groups.
   repeated SlackSourceDirectory source_directories = 5;
+  // set when the directories' groups could not be read: source_directories
+  // is then empty because the read failed, not because no group exists.
+  string source_directories_error = 6;
 }
 
 message SlackChannelWorkspace {
@@ -91,8 +94,8 @@ message SlackDiscoveredOrdinary {
 message SlackChannelDefinition {
   string workspace = 1;
   string name = 2;
-  // the Slack id of an existing channel the record takes over; empty to take
-  // over, or create, by name. Immutable.
+  // the Slack id of an existing channel the record adopts; empty to adopt,
+  // or create, by name. Immutable.
   string channel_id = 3;
   // immutable: converting a channel's visibility is never done.
   bool private = 4;

@@ -409,13 +409,12 @@ export type SlackWorkspaceStatus = Message<"directoryroster.v1.SlackWorkspaceSta
    * whether the caller may change the owner: the installation-wide
    * operator, once the workspace is connected.
    *
-   * whether the policy still names the workspace key. A key it no longer
-   *
    * @generated from field: bool can_change_owner = 17;
    */
   canChangeOwner: boolean;
 
   /**
+   * whether the policy still names the workspace key. A key it no longer
    * names can only be disconnected.
    *
    * @generated from field: bool declared = 18;
@@ -829,7 +828,9 @@ export const SlackService: GenService<{
    * workspace recorded as the Slack workspace's owner when it was
    * connected: a scoped viewer sees only the workspaces its directory
    * owns, and a workspace nobody has connected yet is shown to anyone who
-   * could connect it. Never a client secret or a bot token.
+   * could connect it. A scoped viewer over a directory that owns no Slack
+   * workspace is refused (permission denied) rather than shown an empty
+   * list. Never a client secret or a bot token.
    *
    * @generated from rpc directoryroster.v1.SlackService.GetSlackStatus
    */

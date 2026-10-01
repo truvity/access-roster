@@ -10,7 +10,8 @@ package directoryroster.v1;
 // feed it and how private each side is. The Slack controller reads the
 // records and does the rest: the host creates the channel, invites each
 // guest workspace's bot, the guest accepts, and each side manages its own
-// people. Members come only from directory groups, never from individuals.
+// people. Members come from directory groups and from individual addresses
+// of users of a connected directory.
 //
 // Every create, edit and delete is audited.
 service SlackSharedChannelService {
@@ -24,9 +25,11 @@ service SlackSharedChannelService {
   // installation-wide operator. Refuses a name that is already a record.
   rpc CreateSlackSharedChannel(CreateSlackSharedChannelRequest) returns (CreateSlackSharedChannelResponse);
 
-  // UpdateSlackSharedChannel changes `with`, `from` (directory groups) and `private`. The host
-  // and the name are immutable: a request naming a different host is
-  // refused, and the answer says to create a new channel instead.
+  // UpdateSlackSharedChannel changes `with`, `from` (directory groups),
+  // `members` (individual addresses), `private` and `private_per_side`. The
+  // host, the name and the channel id are immutable: a request naming a
+  // different host is refused, and the answer says to create a new channel
+  // instead.
   rpc UpdateSlackSharedChannel(UpdateSlackSharedChannelRequest) returns (UpdateSlackSharedChannelResponse);
 
   // DeleteSlackSharedChannel forgets the record, and nothing else: the
@@ -53,6 +56,9 @@ message ListSlackSharedChannelsResponse {
   // for an operator who may host a channel; empty for anyone else. A
   // Slack Connect channel may be fed from ANY connected directory.
   repeated SlackSourceDirectory source_directories = 6;
+  // set when the directories' groups could not be read: source_directories
+  // is then empty because the read failed, not because no group exists.
+  string source_directories_error = 7;
   // the Slack Connect channels the workspaces' bots can see, merged into
   // one row per channel, whether or not a record manages them. Only what
   // the caller may see.
@@ -149,7 +155,7 @@ message SlackSharedChannelDefinition {
   // exactly. When non-empty, private is ignored.
   map<string, bool> private_per_side = 6;
   // the Slack id of a channel that already exists and is already shared,
-  // which the record takes over instead of the host creating one. Set from
+  // which the record adopts instead of the host creating one. Set from
   // a discovered channel; immutable.
   string channel_id = 7;
   // individual addresses whose owners belong, beside the groups: each a user

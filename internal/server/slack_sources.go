@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
+	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 )
 
 // checkSources is the console's side of the rule on a channel's sources and
@@ -24,7 +26,7 @@ func (c *Console) checkSources(ctx context.Context, sources, members []string, o
 	}
 	if ordinary && owner == "" {
 		return connect.NewError(connect.CodeFailedPrecondition,
-			fmt.Errorf("the workspace has no owning directory yet: set the owner on the console before a channel there is fed by a directory group"))
+			errors.New(reconcile.NoOwner))
 	}
 	for _, source := range sources {
 		group, err := c.deps.Hub.DirectoryGroup(ctx, source)
@@ -90,14 +92,16 @@ func (c *Console) checkMembers(ctx context.Context, members []string, owner stri
 }
 
 // sourceDirectories are the connected directories and their groups, as a
-// picker lists them, sorted. only, when set, keeps the one directory.
-func (c *Console) sourceDirectories(ctx context.Context, only ...string) []*directoryrosterv1.SlackSourceDirectory {
+// picker lists them, sorted. only, when set, keeps the one directory. When the
+// groups cannot be read the second result says so, so that the picker shows
+// the failure rather than an empty list that reads as "no group exists".
+func (c *Console) sourceDirectories(ctx context.Context, only ...string) ([]*directoryrosterv1.SlackSourceDirectory, string) {
 	if c.deps.Hub == nil {
-		return nil
+		return nil, ""
 	}
 	groups, served, err := c.deps.Hub.ListGroups(ctx, "", nil)
 	if err != nil {
-		return nil
+		return nil, "the directories' groups could not be read just now: reload to try again"
 	}
 	byDomain := map[string]string{}
 	domains := map[string][]string{}
@@ -125,5 +129,5 @@ func (c *Console) sourceDirectories(ctx context.Context, only ...string) []*dire
 		slices.SortFunc(dirs[ws].Groups, func(a, b *directoryrosterv1.SlackSourceGroup) int { return compareStrings(a.Email, b.Email) })
 		out = append(out, dirs[ws])
 	}
-	return out
+	return out, ""
 }
