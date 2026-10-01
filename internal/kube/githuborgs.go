@@ -82,6 +82,68 @@ func (s *GitHubOrgs) Put(ctx context.Context, record connection.Record, credenti
 	return s.editConfigMap(ctx, func(data map[string]string) { data[key] = rawRecord })
 }
 
+// SetOwner changes one organisation's recorded owner and nothing else, under
+// the objects' versions: the record is read fresh, only its owner is
+// changed, and a conflict is retried against what a concurrent write left,
+// so a bot token or team a concurrent install just recorded is never
+// written over. The credential's own copy of the record, which a restore
+// reads, follows. found is false when there is no record; previous is the
+// owner it had.
+func (s *GitHubOrgs) SetOwner(ctx context.Context, org, owner string) (previous string, found bool, err error) {
+	key := connection.Key(org)
+	err = retryConflict(func() error {
+		found, previous = false, ""
+		cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read %s: %w", s.ConfigMapName(), err)
+		}
+		raw, ok := cm.Data[key]
+		if !ok {
+			return nil
+		}
+		record, err := connection.DecodeRecord(raw)
+		if err != nil {
+			return fmt.Errorf("the stored record of %s cannot be read: %w", org, err)
+		}
+		found, previous = true, record.Owner
+		if previous == owner {
+			return nil
+		}
+		record.Owner = owner
+		if raw, err = connection.EncodeRecord(record); err != nil {
+			return err
+		}
+		cm.Data[key] = raw
+		_, err = s.c.api.CoreV1().ConfigMaps(s.c.namespace).Update(ctx, cm, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil || !found || previous == owner {
+		return previous, found && err == nil, err
+	}
+	var copyErr error
+	if err = s.editSecret(ctx, func(data map[string][]byte) {
+		raw, ok := data[key]
+		if !ok {
+			return
+		}
+		credential, derr := connection.DecodeCredential(raw)
+		if derr != nil || credential.Record == nil {
+			copyErr = derr
+			return
+		}
+		credential.Record.Owner = owner
+		if raw, copyErr = connection.EncodeCredential(credential); copyErr == nil {
+			data[key] = raw
+		}
+	}); err != nil {
+		return previous, true, err
+	}
+	return previous, true, copyErr
+}
+
 // List returns every connected organisation's record, sorted. A record
 // that does not decode is skipped rather than failing the list: one bad
 // entry must not hide every good one.

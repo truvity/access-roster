@@ -2,10 +2,17 @@ package kube_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/kube"
@@ -76,5 +83,95 @@ func TestAConnectedOrganisationIsARecordAndACredentialAndDisconnectingForgetsBot
 	records, _ = store.List(ctx)
 	if len(records) != 1 || records[0].Org != "acme" {
 		t.Errorf("after Delete = %+v, want acme alone", records)
+	}
+}
+
+// Changing an owner touches the owner alone: an install that lands between
+// the read and the write is neither lost nor written over, and the
+// credential it recorded survives.
+func TestSettingAnOrganisationsOwnerKeepsAConcurrentInstall(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	clientset := fake.NewClientset()
+	store := kube.NewGitHubOrgs(kube.NewClient(clientset, namespace, "directory-roster"))
+	if err := store.Put(ctx, connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster", Owner: "C0north"},
+		connection.Credential{Org: "globex", AppID: 42, PrivateKey: "old-key"}); err != nil {
+		t.Fatal(err)
+	}
+	// The first write of the record loses a race to an install that
+	// finishes meanwhile.
+	raced := false
+	clientset.PrependReactor("update", "configmaps", func(k8stesting.Action) (bool, runtime.Object, error) {
+		if raced {
+			return false, nil, nil
+		}
+		raced = true
+		// Written through the tracker: the fake client holds its own lock
+		// while a reactor runs.
+		install(t, clientset, store.ConfigMapName(), store.SecretName(), connection.Key("globex"),
+			mustRecord(t, connection.Record{Org: "globex", AppID: 42, AppSlug: "globex-access-roster", InstallationID: 7, Owner: "C0north"}),
+			mustCredential(t, connection.Credential{Org: "globex", AppID: 42, InstallationID: 7, PrivateKey: "new-key",
+				Record: &connection.Record{Version: connection.Version, Org: "globex", AppID: 42, AppSlug: "globex-access-roster", InstallationID: 7, Owner: "C0north"}}))
+		return true, nil, apierrors.NewConflict(schema.GroupResource{Resource: "configmaps"}, "x", errors.New("stale"))
+	})
+	previous, found, err := store.SetOwner(ctx, "globex", "C0south")
+	if err != nil || !found || previous != "C0north" {
+		t.Fatalf("SetOwner = %q %v %v", previous, found, err)
+	}
+	records, _ := store.List(ctx)
+	if len(records) != 1 || records[0].Owner != "C0south" || records[0].InstallationID != 7 {
+		t.Errorf("record = %+v, want the new owner over the concurrent install", records)
+	}
+	credential, ok, err := store.Credential(ctx, "globex")
+	if err != nil || !ok || credential.PrivateKey != "new-key" || credential.InstallationID != 7 ||
+		credential.Record == nil || credential.Record.Owner != "C0south" {
+		t.Errorf("credential = %+v %v %v: the concurrent install's key was overwritten", credential, ok, err)
+	}
+	if _, found, err = store.SetOwner(ctx, "nowhere", "C0south"); err != nil || found {
+		t.Errorf("SetOwner of an unconnected organisation = %v, %v", found, err)
+	}
+}
+
+func mustRecord(t *testing.T, r connection.Record) string {
+	t.Helper()
+	raw, err := connection.EncodeRecord(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func mustCredential(t *testing.T, c connection.Credential) []byte {
+	t.Helper()
+	raw, err := connection.EncodeCredential(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// install lands a concurrent write of one key in the record and credential
+// objects, as another replica finishing an install would.
+func install(t *testing.T, clientset *fake.Clientset, configMap, secret, key, record string, credential []byte) {
+	t.Helper()
+	tracker := clientset.Tracker()
+	ns := namespace
+	cmObj, err := tracker.Get(corev1.SchemeGroupVersion.WithResource("configmaps"), ns, configMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm := cmObj.(*corev1.ConfigMap).DeepCopy()
+	cm.Data[key] = record
+	if err = tracker.Update(corev1.SchemeGroupVersion.WithResource("configmaps"), cm, ns); err != nil {
+		t.Fatal(err)
+	}
+	secObj, err := tracker.Get(corev1.SchemeGroupVersion.WithResource("secrets"), ns, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sec := secObj.(*corev1.Secret).DeepCopy()
+	sec.Data[key] = credential
+	if err = tracker.Update(corev1.SchemeGroupVersion.WithResource("secrets"), sec, ns); err != nil {
+		t.Fatal(err)
 	}
 }
