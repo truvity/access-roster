@@ -1213,6 +1213,30 @@ func TestAChangedCredentialRunsAPassWithoutWaitingForTheInterval(t *testing.T) {
 	}
 }
 
+// An operator's save of a channel or Slack Connect record wakes a pass; a
+// confirmation does not.
+func TestASavedChannelRecordWakesAPassButAConfirmationDoesNot(t *testing.T) {
+	r := newRig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.freshWith(10*time.Millisecond, "acme").Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	waitFor(t, "the first pass", func() bool { return r.reports.published() >= 1 })
+
+	r.writeRecord(connection.ConfirmationKey("acme", ""), "{}")
+	time.Sleep(150 * time.Millisecond)
+	if got := r.reports.published(); got != 1 {
+		t.Fatalf("%d publications after a confirmation changed, want 1", got)
+	}
+	r.writeRecord(connection.ConsoleKey("acme", "eng"), "not json")
+	waitFor(t, "a pass after a channel record changed", func() bool { return r.reports.published() >= 2 })
+	r.writeRecord(connection.SharedKey("ops"), "not json")
+	waitFor(t, "a pass after a Slack Connect record changed", func() bool { return r.reports.published() >= 3 })
+}
+
 // An operator's request for a pass is a marker in the records. A request newer
 // than the last one acted on runs a pass at once; the one that was already
 // there when the controller started, and one that is not newer, run nothing.

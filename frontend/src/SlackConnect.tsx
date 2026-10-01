@@ -165,14 +165,14 @@ export function ConnectEditDialog({
       const channel = definitionOf(form);
       if (editing) {
         await slackConnect.updateSlackSharedChannel({ channel });
-        onDone(`#${channel.name} is updated. The controller applies it on its next pass.`);
+        onDone(`#${channel.name} is updated. The controller applies it within a couple of minutes.`);
       } else {
         await slackConnect.createSlackSharedChannel({ channel });
         if (discovered) {
-          onDone(`#${channel.name} is under management. The controller takes over the existing channel on its next pass; nobody is removed from it.`);
+          onDone(`#${channel.name} is under management. The controller takes over the existing channel within a couple of minutes; nobody is removed from it.`);
           return;
         }
-        onDone(`#${channel.name} is defined. ${channel.host} creates it and invites ${channel.with.join(", ")} on the controller's next pass.`);
+        onDone(`#${channel.name} is defined. ${channel.host} creates it and invites ${channel.with.join(", ")} within a couple of minutes.`);
       }
     } catch (error) {
       setFailure(reason(error));
