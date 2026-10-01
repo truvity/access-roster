@@ -178,7 +178,7 @@ function AppRow({
       <TableCell>
         <Mono>{app.workspace}</Mono>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-          {app.teamId}
+          {app.teamId || "workspace not connected yet"}
         </Typography>
       </TableCell>
       <TableCell>

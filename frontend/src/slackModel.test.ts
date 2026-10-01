@@ -5,7 +5,7 @@ import { SlackMemberStatusSchema, SlackWorkspaceStatusSchema } from "./gen/direc
 import { breakerSentence, connectionView, isConfirmed, memberKind, needsToken, nextStep, offersDisconnect, offersReconnect, ordered, split, summaryOf } from "./slackModel";
 
 const ws = (init: MessageInitShape<typeof SlackWorkspaceStatusSchema> = {}) =>
-  create(SlackWorkspaceStatusSchema, { workspace: "acme", teamId: "T0123ABCD", connectionState: "not_connected", ...init });
+  create(SlackWorkspaceStatusSchema, { workspace: "acme", declared: true, connectionState: "not_connected", ...init });
 const member = (state: string, email = `${state}@acme.example`) => create(SlackMemberStatusSchema, { email, state });
 
 describe("a Slack workspace's steps", () => {
@@ -17,8 +17,8 @@ describe("a Slack workspace's steps", () => {
   });
 
   it("asks nothing to connect a workspace the policy no longer declares", () => {
-    expect(nextStep(ws({ teamId: "" }))).toBe("none");
-    expect(offersDisconnect(ws({ teamId: "", connectionState: "installed" }))).toBe(true);
+    expect(nextStep(ws({ declared: false }))).toBe("none");
+    expect(offersDisconnect(ws({ declared: false, connectionState: "installed" }))).toBe(true);
   });
 
   it("offers Disconnect on anything that holds an App, and Reconnect on what is installed", () => {
@@ -45,7 +45,7 @@ describe("a Slack workspace's steps", () => {
 describe("what the page says about a workspace", () => {
   it("says what is missing, and what is waiting", () => {
     expect(summaryOf(ws({ connectionState: "scopes_missing", missingScopes: ["users:read.email"] }))).toContain("users:read.email is asked for and not granted");
-    expect(summaryOf(ws())).toContain("T0123ABCD");
+    expect(summaryOf(ws())).toContain("Connect it to acme");
     expect(summaryOf(ws({ connectionState: "installed" }))).toContain("not reported");
   });
 
