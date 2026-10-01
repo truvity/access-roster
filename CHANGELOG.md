@@ -1,5 +1,15 @@
 ## Unreleased
 
+- **Fix: the guest-side probe skipped every channel when Slack named no
+  guests.** Slack returns a bot only its own team for a Slack Connect channel,
+  so the team filter added for the probe skipped every workspace and a guest
+  side only the probe could find disappeared from the report. The probe now
+  asks only the workspaces Slack names as guests when it names any connected
+  one besides the host and the workspaces that listed the channel; when it
+  names none, it asks every other connected workspace again. Expected
+  `channel_not_found` and `not_in_channel` stay at debug, real errors warn, and
+  each pass still logs one `guest-side probe` summary.
+
 - **Filters on the Slack Discovered and Slack Connect tabs.** Discovered
   narrows by workspace, kind (ordinary or Slack Connect), visibility (public,
   private, unknown) and a name search, sorts by workspace then name (or most
