@@ -78,7 +78,7 @@ func Observe(ctx context.Context, client *slackapp.Client, in reconcile.Input) (
 	for i := range channels {
 		ch := &channels[i]
 		c := reconcile.Channel{
-			ID: ch.ID, Name: ch.Name, Creator: ch.Creator, Private: ch.IsPrivate, BotIn: ch.IsMember, Archived: ch.IsArchived,
+			ID: ch.ID, Name: ch.Name, Creator: ch.Creator, Private: ch.IsPrivate, BotIn: ch.IsMember, General: ch.IsGeneral, Archived: ch.IsArchived,
 			Shared: ch.IsExtShared, SharedTeamIDs: slices.Clone(ch.SharedTeamIDs),
 			HostTeamID: ch.ConversationHostID, Teams: ch.Teams(), NumMembers: ch.NumMembers,
 		}
@@ -138,6 +138,17 @@ func named(in reconcile.Input, cfg policy.SlackWorkspace) (names, ids map[string
 			ids[ch.Adopt] = true
 		} else {
 			names[name] = true
+		}
+	}
+	for i := range in.Console {
+		c := &in.Console[i]
+		if c.Workspace != in.Workspace {
+			continue
+		}
+		if c.ChannelID != "" {
+			ids[c.ChannelID] = true
+		} else {
+			names[c.Name] = true
 		}
 	}
 	for _, s := range in.Shared {

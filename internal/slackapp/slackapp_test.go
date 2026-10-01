@@ -3,6 +3,7 @@ package slackapp_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -668,5 +669,24 @@ func TestSharedChannelFieldsAreReadPerSide(t *testing.T) {
 		if ch.ID == c.ID {
 			t.Errorf("globex lists a private side its bot is not in")
 		}
+	}
+}
+
+// Slack names a guest that has not accepted yet, and the other workspaces of
+// an organisation, in fields of their own: they place the channel in more
+// workspaces than the shared and connected lists do.
+func TestTeamsNameEveryWorkspaceSlackPlacesAChannelIn(t *testing.T) {
+	var c slackapp.Channel
+	raw := `{"id":"C1","conversation_host_id":"TACME","shared_team_ids":["TACME"],"connected_team_ids":["TGLOBEX"],` +
+		`"pending_shared":["TINITECH"],"pending_connected_team_ids":["TINITECH","THOOLI"],"internal_team_ids":["TACME","TUMBRELLA"]}`
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"TACME", "TGLOBEX", "TINITECH", "THOOLI", "TUMBRELLA"}; !slices.Equal(c.Teams(), want) {
+		t.Errorf("Teams = %v, want %v", c.Teams(), want)
+	}
+	// A channel Slack says nothing about reaches no team.
+	if got := (slackapp.Channel{}).Teams(); len(got) != 0 {
+		t.Errorf("Teams = %v", got)
 	}
 }

@@ -96,6 +96,7 @@ func (w *world) pass(ws string, dry bool, confirmed reconcile.Confirmed) (reconc
 	w.t.Helper()
 	in := w.in
 	in.Workspace, in.Holders = ws, w.holders()
+	in.DirHolders = in.Holders
 	obs, err := apply.Observe(context.Background(), w.clients[ws], in)
 	if err != nil {
 		return reconcile.Decision{}, apply.Result{}, err
@@ -244,6 +245,7 @@ func TestADirectoryThatCannotVouchRemovesNobody(t *testing.T) {
 
 	in := w.in
 	in.Workspace, in.Holders = "acme", w.holders()
+	in.DirHolders = in.Holders
 	obs, err := apply.Observe(context.Background(), w.clients["acme"], in)
 	if err != nil {
 		t.Fatal(err)
@@ -505,7 +507,7 @@ func TestATokenIsRefusedWhenNoTeamIsRecorded(t *testing.T) {
 func TestASharedChannelConvergesAcrossTwoPasses(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.in.Shared = []reconcile.SharedChannel{{Name: "platform", Host: "acme", With: []string{"globex"}, From: []string{"g"}}}
+	w.in.Shared = []reconcile.SharedChannel{{Name: "platform", Host: "acme", With: []string{"globex"}, Sources: []string{"g"}}}
 	ann := w.person("ann@acme.example", []string{"g"}, "acme")
 	bob := w.person("bob@globex.example", []string{"g"}, "globex")
 	jdoeAcme := w.person("j.doe@acme.example", []string{"g"}, "acme")

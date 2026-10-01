@@ -62,6 +62,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/truvity/access-roster/internal/emailaddr"
 	"github.com/truvity/access-roster/internal/rails"
@@ -85,8 +86,10 @@ type SharedChannel struct {
 	// With are the other workspace keys, in order: order decides where a
 	// person with no host-domain address joins from.
 	With []string `json:"with"`
-	// From are the groups whose holders belong, whichever side.
-	From []string `json:"from"`
+	// Sources are the DIRECTORY groups, by address, whose members belong,
+	// whichever side. Never internal groups: a console channel is fed by
+	// the people the directories hold.
+	Sources []string `json:"sources"`
 	// Private is one visibility for every side, or one per side.
 	Private Privacy `json:"private"`
 	// ChannelID is the Slack id of a channel that already exists and is
@@ -124,9 +127,12 @@ func ValidChannelID(id string) bool { return channelIDPattern.MatchString(id) }
 
 // Validate checks a definition against the policy it runs under: the host
 // and every `with` workspace are declared, the host is not among them, there
-// is at least one, and none repeats; every `from` group is declared; a
+// is at least one, and none repeats; every source is a group address; a
 // per-side privacy names exactly the host and `with`; the name is a Slack
-// channel name and is not one the host workspace already binds.
+// channel name and is not one the host workspace already binds (that
+// channel is defined in git). Whether a source is a known directory group
+// is a question for the directory, asked by the console and by the
+// controller, not decided here.
 func (s SharedChannel) Validate(p policy.Policy) error {
 	where := "shared channel " + s.Name
 	if !channelName.MatchString(s.Name) {
@@ -136,8 +142,11 @@ func (s SharedChannel) Validate(p policy.Policy) error {
 	if !ok {
 		return fmt.Errorf("%s: host %q is not a declared workspace", where, s.Host)
 	}
-	if _, taken := host.Channels[s.Name]; taken {
-		return fmt.Errorf("%s: the host workspace %s already binds a channel of that name", where, s.Host)
+	if policyChannelNamed(host, s.Name) {
+		return fmt.Errorf("%s: %w: the host workspace %s binds a channel of that name", where, ErrDefinedInGit, s.Host)
+	}
+	if s.ChannelID != "" && policyChannelAdopts(host, s.ChannelID) {
+		return fmt.Errorf("%s: %w: the host workspace %s adopts that channel id", where, ErrDefinedInGit, s.Host)
 	}
 	if s.ChannelID != "" && !ValidChannelID(s.ChannelID) {
 		return fmt.Errorf("%s: channel_id %q is not a Slack channel id", where, s.ChannelID)
@@ -158,13 +167,8 @@ func (s SharedChannel) Validate(p policy.Policy) error {
 		}
 		seen[other] = true
 	}
-	if len(s.From) == 0 {
-		return fmt.Errorf("%s is fed by no group, which would empty the channel", where)
-	}
-	for _, group := range s.From {
-		if _, ok := p.Groups[group]; !ok {
-			return fmt.Errorf("%s: from %q is not a declared group", where, group)
-		}
+	if err := validSources(where, s.Sources); err != nil {
+		return err
 	}
 	if per := s.Private.PerSide; per != nil {
 		sides := append([]string{s.Host}, s.With...)
@@ -180,6 +184,123 @@ func (s SharedChannel) Validate(p policy.Policy) error {
 		}
 	}
 	return nil
+}
+
+// ErrDefinedInGit is what a console channel that a policy channel already
+// covers is refused with.
+var ErrDefinedInGit = errors.New("this channel is defined in git")
+
+// policyChannelNamed reports whether the workspace's policy binds a channel
+// of this name.
+func policyChannelNamed(ws policy.SlackWorkspace, name string) bool {
+	_, taken := ws.Channels[name]
+	return taken
+}
+
+// policyChannelAdopts reports whether the workspace's policy adopts this
+// channel id.
+func policyChannelAdopts(ws policy.SlackWorkspace, id string) bool {
+	for _, b := range ws.Channels {
+		if b.Adopt != "" && b.Adopt == id {
+			return true
+		}
+	}
+	return false
+}
+
+// validSources checks a console channel's sources: at least one, each a
+// group address, none repeated.
+func validSources(where string, sources []string) error {
+	if len(sources) == 0 {
+		return fmt.Errorf("%s is fed by no directory group, which would empty the channel", where)
+	}
+	seen := map[string]bool{}
+	for _, group := range sources {
+		if _, ok := emailaddr.Domain(group); !ok || strings.ContainsAny(group, " \t\r\n,") {
+			return fmt.Errorf("%s: source %q is not a directory group address", where, group)
+		}
+		if group != strings.ToLower(group) {
+			return fmt.Errorf("%s: source %q is not lowercase", where, group)
+		}
+		if seen[group] {
+			return fmt.Errorf("%s: sources lists %s twice", where, group)
+		}
+		seen[group] = true
+	}
+	return nil
+}
+
+// ConsoleChannel is one ordinary channel managed from the console: a record
+// beside the policy's own channels, which it never overlaps. Its members
+// come from DIRECTORY groups of the workspace's owning directory.
+type ConsoleChannel struct {
+	// Workspace is the workspace key the channel lives in.
+	Workspace string `json:"workspace"`
+	Name      string `json:"name"`
+	// ChannelID is the Slack id of an existing channel the record takes
+	// over; empty for a channel to be taken by name or created.
+	ChannelID string `json:"channel_id,omitempty"`
+	Private   bool   `json:"private,omitempty"`
+	// Mode is `extend` (the default) or `strict`.
+	Mode string `json:"mode,omitempty"`
+	// Ignore lists people a strict channel never removes.
+	Ignore []string `json:"ignore,omitempty"`
+	// Sources are directory group addresses.
+	Sources []string `json:"sources"`
+	// CreatedBy, CreatedAt, UpdatedBy and UpdatedAt say who wrote the record
+	// and when, for the page; the audit trail is the record of truth.
+	CreatedBy string    `json:"created_by,omitempty"`
+	CreatedAt time.Time `json:"created_at,omitzero"`
+	UpdatedBy string    `json:"updated_by,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitzero"`
+}
+
+// Strict reports whether the channel is exact.
+func (c ConsoleChannel) Strict() bool { return c.Mode == policy.SlackModeStrict }
+
+// Binding is the channel as the reconciler lays a policy channel out.
+func (c ConsoleChannel) Binding() policy.SlackChannel {
+	return policy.SlackChannel{Private: c.Private, Mode: c.Mode, Ignore: slices.Clone(c.Ignore), From: slices.Clone(c.Sources), Adopt: c.ChannelID}
+}
+
+// Validate checks a record against the policy it runs under: the workspace
+// is declared, the name and id are Slack's, the mode and ignore list agree
+// (strict is for private channels, ignore only with strict), there are
+// sources, and no policy channel covers it: the same name in the workspace,
+// or the same channel id adopted by any binding there.
+func (c ConsoleChannel) Validate(p policy.Policy) error {
+	where := "console channel " + c.Name
+	if !channelName.MatchString(c.Name) {
+		return fmt.Errorf("%s: not a Slack channel name (lowercase letters, digits, '-' and '_', at most 80)", where)
+	}
+	ws, ok := p.Slack.Workspaces[c.Workspace]
+	if !ok {
+		return fmt.Errorf("%s: workspace %q is not a declared workspace", where, c.Workspace)
+	}
+	if policyChannelNamed(ws, c.Name) {
+		return fmt.Errorf("%s: %w: the workspace %s binds a channel of that name", where, ErrDefinedInGit, c.Workspace)
+	}
+	if c.ChannelID != "" {
+		if !ValidChannelID(c.ChannelID) {
+			return fmt.Errorf("%s: channel_id %q is not a Slack channel id", where, c.ChannelID)
+		}
+		if policyChannelAdopts(ws, c.ChannelID) {
+			return fmt.Errorf("%s: %w: the workspace %s adopts that channel id", where, ErrDefinedInGit, c.Workspace)
+		}
+	}
+	switch c.Mode {
+	case "", policy.SlackModeExtend:
+	case policy.SlackModeStrict:
+		if !c.Private {
+			return fmt.Errorf("%s: strict is for private channels only: Slack lets only an administrator remove somebody from a public channel", where)
+		}
+	default:
+		return fmt.Errorf("%s: mode %q is neither extend nor strict", where, c.Mode)
+	}
+	if len(c.Ignore) > 0 && !c.Strict() {
+		return fmt.Errorf("%s: ignore is only allowed with mode strict", where)
+	}
+	return validSources(where, c.Sources)
 }
 
 // Account is what looking an address up in the workspace found.
@@ -207,6 +328,9 @@ type Member struct {
 type Channel struct {
 	ID, Name, Creator string
 	Private, BotIn    bool
+	// General is the workspace's #general: nobody is invited to it or
+	// removed from it, so it is never offered for management.
+	General bool
 	// Archived channels keep their name, so one is listed to be told from a
 	// free name; it is never managed and never unarchived.
 	Archived bool
@@ -314,6 +438,17 @@ type Input struct {
 	Holders Holders
 	// Shared are the Slack Connect channels.
 	Shared []SharedChannel
+	// Console are the ordinary channels managed from the console, those of
+	// this workspace only matter.
+	Console []ConsoleChannel
+	// DirHolders are the live members of every directory group a console
+	// channel or a shared channel names, by group address, nested groups
+	// expanded.
+	DirHolders Holders
+	// DirNested are the nested groups a directory group's members come
+	// through, by the group address that names them: the groups a removal
+	// must ask whether somebody still belongs to.
+	DirNested map[string][]string
 	// Bots are each workspace's roster bot user id, by workspace key.
 	Bots     map[string]string
 	Observed Observed
@@ -422,6 +557,12 @@ type layoutChannel struct {
 	private bool
 	strict  bool
 	groups  []string
+	// belongs are the groups a person must still hold, according to the
+	// directory, to be left in the channel: groups, plus the nested groups
+	// a directory group's members come through.
+	belongs []string
+	// console marks a channel managed from the console.
+	console bool
 	// all are every wanted person; slots the ones this workspace handles.
 	all   []person
 	slots []slot
@@ -475,11 +616,31 @@ func (r resolver) addressesOf(address string) []string {
 	return out
 }
 
+// belongsTo are the groups somebody must still hold, according to the
+// directory, to stay in a channel fed by these directory groups: the
+// groups themselves and every group their members come through.
+func (r resolver) belongsTo(sources []string) []string {
+	out := slices.Clone(sources)
+	for _, g := range sources {
+		for _, n := range r.in.DirNested[g] {
+			if !slices.Contains(out, n) {
+				out = append(out, n)
+			}
+		}
+	}
+	return out
+}
+
 // wanted are the live holders of groups, merged by person.
-func (r resolver) wanted(groups []string) []person {
+func (r resolver) wanted(groups []string) []person { return r.wantedFrom(r.in.Holders, groups) }
+
+// wantedFrom are the live members of groups in a holders table, merged by
+// person: the policy's internal groups read r.in.Holders, a console
+// channel's directory groups r.in.DirHolders.
+func (r resolver) wantedFrom(holders Holders, groups []string) []person {
 	byKey := map[string]*person{}
 	for _, group := range slices.Compact(slices.Sorted(slices.Values(groups))) {
-		for _, h := range r.in.Holders[group] {
+		for _, h := range holders[group] {
 			if !h.Live {
 				continue
 			}
@@ -550,16 +711,23 @@ func (r resolver) layout() []layoutChannel {
 	cfg := r.in.Workspaces[ws]
 	for _, name := range slices.Sorted(maps.Keys(cfg.Channels)) {
 		b := cfg.Channels[name]
-		lc := layoutChannel{name: name, binding: b, private: b.Private, strict: b.Strict(), groups: b.From, all: r.wanted(b.From)}
-		for _, p := range lc.all {
-			s := slot{person: p}
-			if addr, ok := r.path(ws, p); ok {
-				s.addr = addr
-			} else {
-				s.reason = r.noPathIn(ws)
-			}
-			lc.slots = append(lc.slots, s)
+		lc := layoutChannel{name: name, binding: b, private: b.Private, strict: b.Strict(), groups: b.From, belongs: b.From, all: r.wanted(b.From)}
+		r.slotsOwn(&lc)
+		out = append(out, lc)
+	}
+	console := slices.Clone(r.in.Console)
+	sort.SliceStable(console, func(i, j int) bool { return console[i].Name < console[j].Name })
+	for i := range console {
+		c := &console[i]
+		if c.Workspace != ws {
+			continue
 		}
+		if _, bound := cfg.Channels[c.Name]; bound {
+			continue // a policy channel of that name wins; the record is refused before this
+		}
+		lc := layoutChannel{name: c.Name, binding: c.Binding(), private: c.Private, strict: c.Strict(), groups: c.Sources,
+			belongs: r.belongsTo(c.Sources), console: true, all: r.wantedFrom(r.in.DirHolders, c.Sources)}
+		r.slotsOwn(&lc)
 		out = append(out, lc)
 	}
 	shared := slices.Clone(r.in.Shared)
@@ -569,7 +737,8 @@ func (r resolver) layout() []layoutChannel {
 		if s.Host != ws && !slices.Contains(s.With, ws) {
 			continue
 		}
-		lc := layoutChannel{name: s.Name, shared: s, private: s.Private.IsPrivate(ws), groups: s.From, all: r.wanted(s.From)}
+		lc := layoutChannel{name: s.Name, shared: s, private: s.Private.IsPrivate(ws), groups: s.Sources,
+			belongs: r.belongsTo(s.Sources), all: r.wantedFrom(r.in.DirHolders, s.Sources)}
 		for _, p := range lc.all {
 			owner, addr := r.owner(*s, p)
 			switch {
@@ -582,6 +751,21 @@ func (r resolver) layout() []layoutChannel {
 		out = append(out, lc)
 	}
 	return out
+}
+
+// slotsOwn gives every wanted person of an ordinary channel the account
+// path this workspace looks them up by.
+func (r resolver) slotsOwn(lc *layoutChannel) {
+	ws := r.in.Workspace
+	for _, p := range lc.all {
+		s := slot{person: p}
+		if addr, ok := r.path(ws, p); ok {
+			s.addr = addr
+		} else {
+			s.reason = r.noPathIn(ws)
+		}
+		lc.slots = append(lc.slots, s)
+	}
 }
 
 // owner is the workspace of a shared channel that invites a person: the

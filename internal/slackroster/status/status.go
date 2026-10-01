@@ -75,6 +75,14 @@ type Workspace struct {
 	// that does not know the field shows no discovery, and nothing else
 	// changes.
 	DiscoveredShared []Discovered `json:"discovered_shared,omitempty"`
+	// Discovered are the ordinary channels this workspace's bot can see
+	// that nothing manages: no policy binding and no console record. Public
+	// channels, and private ones the bot is in. Additive, like
+	// DiscoveredShared, and capped at [MaxDiscovered] so a large workspace
+	// cannot outgrow the object the reports live in; DiscoveredMore counts
+	// what the cap left out.
+	Discovered     []Discovered `json:"discovered,omitempty"`
+	DiscoveredMore int          `json:"discovered_more,omitempty"`
 	// Leavers are people the directory no longer has who are still active
 	// in a managed channel. Reported; nobody acts on them here.
 	Leavers []Leaver `json:"leavers,omitempty"`
@@ -89,7 +97,11 @@ type Workspace struct {
 	Recorded []string `json:"recorded,omitempty"`
 }
 
-// Discovered is one Slack Connect channel as this workspace's bot sees it.
+// MaxDiscovered is how many unmanaged ordinary channels one workspace's
+// report lists.
+const MaxDiscovered = 500
+
+// Discovered is one channel as this workspace's bot sees it.
 type Discovered struct {
 	ID string `json:"id"`
 	// Name is the name on this side.
@@ -119,9 +131,12 @@ type Channel struct {
 	Mode string `json:"mode"`
 	// Shared marks a Slack Connect channel; Host is then the workspace that
 	// owns it (this one, or another).
-	Shared bool         `json:"shared,omitempty"`
-	Host   string       `json:"host,omitempty"`
-	State  ChannelState `json:"state"`
+	Shared bool   `json:"shared,omitempty"`
+	Host   string `json:"host,omitempty"`
+	// Console marks an ordinary channel a console record manages, fed by
+	// directory groups, as opposed to one the policy binds.
+	Console bool         `json:"console,omitempty"`
+	State   ChannelState `json:"state"`
 	// Reason says why a channel is held or waiting.
 	Reason  string   `json:"reason,omitempty"`
 	Members []Member `json:"members,omitempty"`
@@ -323,6 +338,14 @@ func Encode(w Workspace) (string, error) {
 	for i := range w.DiscoveredShared {
 		w.DiscoveredShared[i].Teams = slices.Sorted(slices.Values(w.DiscoveredShared[i].Teams))
 	}
+	w.Discovered = slices.Clone(w.Discovered)
+	sort.Slice(w.Discovered, func(i, j int) bool {
+		a, b := w.Discovered[i], w.Discovered[j]
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.ID < b.ID
+	})
 	w.Leavers = slices.Clone(w.Leavers)
 	sort.Slice(w.Leavers, func(i, j int) bool {
 		if w.Leavers[i].Email != w.Leavers[j].Email {

@@ -74,7 +74,7 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 				rows = append(rows, status.Member{UserID: e.member.ID, State: status.StateReported,
 					Reason: "no address on the account, so the directory cannot vouch for it; never removed"})
 			case strict:
-				reason, remove := rails.Removal(e.addrs, vouches, p.lc.groups)
+				reason, remove := rails.Removal(e.addrs, vouches, p.lc.belongs)
 				switch {
 				case remove:
 					removals = append(removals, removal{channel: p.lc.name, key: e.key, member: e.member, email: e.member.Email, row: len(rows)})
@@ -178,6 +178,7 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 		if p.lc.shared != nil {
 			ch.Shared, ch.Host = true, p.lc.shared.Host
 		}
+		ch.Console = p.lc.console
 		if p.res.ch != nil {
 			ch.ID, ch.Private = p.res.ch.ID, p.res.ch.Private
 		}
@@ -204,6 +205,7 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 	dec.Report.Workspace = d.in.Workspace
 	dec.Report.Team = d.in.Observed.TeamID
 	dec.Report.DiscoveredShared = d.discovered()
+	dec.Report.Discovered, dec.Report.DiscoveredMore = d.discoveredOrdinary()
 	dec.Report.Breaker = status.BreakerOf(wsBreaker)
 	dec.Report.Tick.Changes = len(dec.Actions)
 	dec.Report.Tick.Held = len(dec.Held)
@@ -305,6 +307,56 @@ func (d *Draft) discovered() []status.Discovered {
 		})
 	}
 	return out
+}
+
+// discoveredOrdinary are the ordinary channels the bot can see that nothing
+// manages, archived channels and #general left out, by name and capped at
+// [status.MaxDiscovered]; the second result is how many the cap left out. A
+// channel is managed when a binding or a console record has resolved to it,
+// or names it: by id, else by this workspace's name.
+func (d *Draft) discoveredOrdinary() (out []status.Discovered, more int) {
+	taken := map[string]bool{}
+	for _, p := range d.plans {
+		if p.lc.shared == nil && p.res.ch != nil {
+			taken[p.res.ch.ID] = true
+		}
+	}
+	ws := d.in.Workspaces[d.in.Workspace]
+	names := map[string]bool{}
+	for name, b := range ws.Channels {
+		names[name] = true
+		if b.Adopt != "" {
+			taken[b.Adopt] = true
+		}
+	}
+	for i := range d.in.Console {
+		c := &d.in.Console[i]
+		if c.Workspace != d.in.Workspace {
+			continue
+		}
+		names[c.Name] = true
+		if c.ChannelID != "" {
+			taken[c.ChannelID] = true
+		}
+	}
+	for i := range d.in.Observed.Channels {
+		ch := &d.in.Observed.Channels[i]
+		if ch.Shared || ch.Archived || ch.General || taken[ch.ID] || names[ch.Name] {
+			continue
+		}
+		out = append(out, status.Discovered{ID: ch.ID, Name: ch.Name, Private: ch.Private, Members: ch.NumMembers})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].ID < out[j].ID
+	})
+	if len(out) > status.MaxDiscovered {
+		more = len(out) - status.MaxDiscovered
+		out = out[:status.MaxDiscovered]
+	}
+	return out, more
 }
 
 func (d *Draft) managed(ch *Channel) bool {

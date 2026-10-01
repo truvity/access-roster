@@ -52,9 +52,16 @@ func TestSlackRecordsMirrorFollowsEveryWrite(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// An ordinary console channel's record is mirrored too.
+	channels := NewSlackChannels(client)
+	if err := channels.Apply(ctx, "acme", "ops", func(*reconcile.ConsoleChannel, []ChannelRecord) (*reconcile.ConsoleChannel, error) {
+		return &reconcile.ConsoleChannel{Workspace: "acme", Name: "ops", Sources: []string{"ops@acme.example"}}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	got := mirrorKeys(t, api)
-	if len(got) != 2 || got["acme.json"] == "" || got[connection.SharedKey("eng")] == "" {
-		t.Fatalf("mirror keys = %v, want the record and the shared definition only", got)
+	if len(got) != 3 || got["acme.json"] == "" || got[connection.SharedKey("eng")] == "" || got[connection.ConsoleKey("acme", "ops")] == "" {
+		t.Fatalf("mirror keys = %v, want the record, the shared definition and the console channel only", got)
 	}
 	cm, _ := api.CoreV1().ConfigMaps("access-issuer").Get(ctx, store.ConfigMapName(), metav1.GetOptions{})
 	if got["acme.json"] != cm.Data["acme.json"] {
@@ -69,6 +76,13 @@ func TestSlackRecordsMirrorFollowsEveryWrite(t *testing.T) {
 	}
 	if err := shared.Apply(ctx, "eng", func(*reconcile.SharedChannel) (*reconcile.SharedChannel, error) { return nil, nil }); err != nil {
 		t.Fatal(err)
+	}
+	remove := func(*reconcile.ConsoleChannel, []ChannelRecord) (*reconcile.ConsoleChannel, error) { return nil, nil }
+	if err := channels.Apply(ctx, "acme", "ops", remove); err != nil {
+		t.Fatal(err)
+	}
+	if got = mirrorKeys(t, api); len(got) != 1 || got["acme.json"] == "" {
+		t.Errorf("after deleting the channels the mirror holds %v", got)
 	}
 	if err := store.Delete(ctx, "acme"); err != nil {
 		t.Fatal(err)

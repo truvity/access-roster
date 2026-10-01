@@ -78,6 +78,16 @@ service AccessService {
   // that direction is not derivable from the policy alone. Viewer, for
   // the same reason as Explain.
   rpc GetDirectoryGroup(GetDirectoryGroupRequest) returns (GetDirectoryGroupResponse);
+
+  // ResolveDirectoryGroups returns, for each directory group asked, who is
+  // in it with nested groups expanded, and which directory it comes from:
+  // the question a controller asks to feed a channel from directory groups
+  // (a console channel), where ListHolders asks it of an internal group.
+  // Viewer, installation-wide: a scoped viewer is told found=false of a
+  // group of a directory it may not view, so the answer never reveals a
+  // directory the caller cannot see. The answer carries the policy digest,
+  // like ListHolders, so a consumer checks it decided under the same policy.
+  rpc ResolveDirectoryGroups(ResolveDirectoryGroupsRequest) returns (ResolveDirectoryGroupsResponse);
 }
 
 // Role is what an identity may do in this console. Operator implies
@@ -488,6 +498,42 @@ message DirectoryGroupSummary {
   string workspace_id = 3;
   // members is the flat membership count at the last snapshot.
   int32 members = 4;
+}
+
+message ResolveDirectoryGroupsRequest {
+  // group addresses, at most 200.
+  repeated string groups = 1;
+}
+
+// ResolvedDirectoryGroup is one directory group as a consumer that feeds
+// something from it reads it.
+message ResolvedDirectoryGroup {
+  // the address asked, lowercased.
+  string email = 1;
+  // whether the hub has the group in a snapshot of a directory the caller
+  // may view.
+  bool found = 2;
+  // whether the snapshot can be vouched for; false makes members an
+  // opinion, which only ever adds.
+  bool authoritative = 3;
+  // the directory workspace the group belongs to; empty when not found.
+  string workspace_id = 4;
+  // everyone in it, nested groups expanded, each once. A member of a tenant
+  // the hub does not read has known=false and is not live.
+  repeated DirectoryGroupMember members = 5;
+  // the addresses of the nested groups the members came through, so that
+  // somebody who is in one of them is not mistaken for a leaver.
+  repeated string nested = 6;
+  // true when the expansion was cut short (depth or size): the members are
+  // then not whole, and nobody may be removed on their absence.
+  bool truncated = 7;
+}
+
+message ResolveDirectoryGroupsResponse {
+  // one per group asked, in order.
+  repeated ResolvedDirectoryGroup groups = 1;
+  // names the policy the answer was computed under, as on ListHolders.
+  string policy_digest = 2;
 }
 
 message GetDirectoryGroupRequest {

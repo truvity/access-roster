@@ -30,6 +30,14 @@ type sharedRecord struct {
 	err     error
 }
 
+// consoleRecord is one console channel's record as read, or why it could not
+// be.
+type consoleRecord struct {
+	workspace, name string
+	channel         reconcile.ConsoleChannel
+	err             error
+}
+
 // store is what a pass reads from the two mounted directories: the
 // credentials the controller acts with, and the console's own records
 // beside them. Both are mounted volumes, so the controller needs no
@@ -43,6 +51,7 @@ type store struct {
 	// what the policy does not say and connecting it recorded.
 	recorded     map[string]recorded
 	shared       []sharedRecord
+	console      []consoleRecord
 	confirmation []connection.Confirmation
 }
 
@@ -112,6 +121,14 @@ func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 				s.shared = append(s.shared, sharedRecord{key: channel, channel: definition, err: err})
 				continue
 			}
+			if workspace, channel, ok := connection.ParseConsoleKey(name); ok {
+				definition, err := connection.DecodeConsole(string(raw))
+				if err == nil && (definition.Workspace != workspace || definition.Name != channel) {
+					err = fmt.Errorf("the record is kept as %s and names the channel %s/%s", name, definition.Workspace, definition.Name)
+				}
+				s.console = append(s.console, consoleRecord{workspace: workspace, name: channel, channel: definition, err: err})
+				continue
+			}
 			if workspace, channel, ok := connection.ParseConfirmationKey(name); ok {
 				confirmation, err := connection.DecodeConfirmation(string(raw))
 				if err != nil || confirmation.Workspace != workspace || confirmation.Channel != channel {
@@ -169,6 +186,33 @@ func (s store) sharedChannels(p policy.Policy) (valid []reconcile.SharedChannel,
 		valid = append(valid, rec.channel)
 	}
 	return valid, refused
+}
+
+// consoleChannels are the console's ordinary channel records the policy
+// accepts, and the reasons it refuses the others, by the workspace they
+// name.
+func (s store) consoleChannels(p policy.Policy) (valid []reconcile.ConsoleChannel, refused map[string][]consoleRefusal) {
+	refused = map[string][]consoleRefusal{}
+	for i := range s.console {
+		rec := &s.console[i]
+		err := rec.err
+		if err == nil {
+			err = rec.channel.Validate(p)
+		}
+		if err != nil {
+			refused[rec.workspace] = append(refused[rec.workspace], consoleRefusal{name: rec.name, channel: rec.channel, err: err})
+			continue
+		}
+		valid = append(valid, rec.channel)
+	}
+	return valid, refused
+}
+
+// consoleRefusal is a console channel record the controller refused.
+type consoleRefusal struct {
+	name    string
+	channel reconcile.ConsoleChannel
+	err     error
 }
 
 // refusal is a shared channel definition the policy refused.
