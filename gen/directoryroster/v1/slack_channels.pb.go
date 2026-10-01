@@ -152,8 +152,12 @@ type SlackChannelWorkspace struct {
 	// how many channels the bot saw that the report did not list (the report
 	// is capped).
 	DiscoveredMore int32 `protobuf:"varint,4,opt,name=discovered_more,json=discoveredMore,proto3" json:"discovered_more,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// whether the workspace's controller reports that it acts (the dry-run
+	// switch is on for it). Only then may a delete archive the channel in
+	// Slack; false also when there is no report yet.
+	Acting        bool `protobuf:"varint,5,opt,name=acting,proto3" json:"acting,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SlackChannelWorkspace) Reset() {
@@ -212,6 +216,13 @@ func (x *SlackChannelWorkspace) GetDiscoveredMore() int32 {
 		return x.DiscoveredMore
 	}
 	return 0
+}
+
+func (x *SlackChannelWorkspace) GetActing() bool {
+	if x != nil {
+		return x.Acting
+	}
+	return false
 }
 
 // SlackDiscoveredOrdinary is one channel a workspace's bot can see.
@@ -827,13 +838,14 @@ const file_directoryroster_v1_slack_channels_proto_rawDesc = "" +
 	"\n" +
 	"discovered\x18\x04 \x03(\v2+.directoryroster.v1.SlackDiscoveredOrdinaryR\n" +
 	"discovered\x12W\n" +
-	"\x12source_directories\x18\x05 \x03(\v2(.directoryroster.v1.SlackSourceDirectoryR\x11sourceDirectories\"\x89\x01\n" +
+	"\x12source_directories\x18\x05 \x03(\v2(.directoryroster.v1.SlackSourceDirectoryR\x11sourceDirectories\"\xa1\x01\n" +
 	"\x15SlackChannelWorkspace\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1f\n" +
 	"\vcan_operate\x18\x02 \x01(\bR\n" +
 	"canOperate\x12\x14\n" +
 	"\x05owner\x18\x03 \x01(\tR\x05owner\x12'\n" +
-	"\x0fdiscovered_more\x18\x04 \x01(\x05R\x0ediscoveredMore\"\xbd\x01\n" +
+	"\x0fdiscovered_more\x18\x04 \x01(\x05R\x0ediscoveredMore\x12\x16\n" +
+	"\x06acting\x18\x05 \x01(\bR\x06acting\"\xbd\x01\n" +
 	"\x17SlackDiscoveredOrdinary\x12\x1c\n" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x1d\n" +
 	"\n" +

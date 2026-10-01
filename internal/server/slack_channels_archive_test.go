@@ -91,43 +91,97 @@ func TestForgettingAChannelArchivesItOnlyWhenAskedTo(t *testing.T) {
 	}
 }
 
-func TestAChannelTheBotIsNotInIsForgottenAndLeftForYouToArchive(t *testing.T) {
+func TestAChannelTheBotCannotSeeIsRefusedAndItsRecordStays(t *testing.T) {
 	r := newArchiveRig(t)
 	r.reportOrdinary(t, "acme", []status.Channel{{Name: "vault", ID: r.hidden, Console: true, Private: true, State: status.ChannelOK}})
 
-	got, err := r.forget(t, "vault", true)
-	if err != nil || got.GetArchived() || !strings.Contains(got.GetNote(), "Archive it in Slack by hand") {
-		t.Fatalf("got %+v, %v", got, err)
+	_, err := r.forget(t, "vault", true)
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "archive it in Slack by hand") {
+		t.Fatalf("err = %v", err)
 	}
-	if len(r.storedChannels(t)) != 0 {
-		t.Error("the record was not deleted")
+	if len(r.storedChannels(t)) != 1 || r.slack.Count("conversations.archive") != 0 || r.slack.Channel(r.hidden).Archived {
+		t.Error("a refused request changed something")
 	}
-	if r.slack.Channel(r.hidden).Archived {
-		t.Error("the channel was archived")
-	}
-	found := r.recorded.Find("roster.slack_channel.archived")
-	if len(found) != 1 || found[0].GetOutcome().GetResult().String() == "RESULT_SUCCESS" {
-		t.Errorf("want one failed archive record, got %v", found)
+	if n := len(r.recorded.Find("roster.slack_channel.archived")); n != 0 {
+		t.Errorf("%d archive records for a refusal", n)
 	}
 }
 
-func TestASlackConnectChannelIsNeverArchivedFromTheConsole(t *testing.T) {
-	r := newArchiveRig(t)
-	r.reportOrdinary(t, "acme", []status.Channel{{Name: "eng", ID: r.inside, Console: true, Shared: true, Host: "globex", State: status.ChannelOK}})
-	if err := r.createChannel(as(northOp), chdef("acme", "eng", "partners@north.example")); err != nil {
+// refuses asks to forget a held console record with the archive box ticked and
+// wants a refusal that changed nothing.
+func (r *archiveRig) refuses(t *testing.T, name, want string) {
+	t.Helper()
+	if err := r.createChannel(as(northOp), chdef("acme", name, "partners@north.example")); err != nil {
 		t.Fatal(err)
 	}
-
-	request := &directoryrosterv1.DeleteSlackChannelRequest{Workspace: "acme", Name: "eng", Archive: true}
+	request := &directoryrosterv1.DeleteSlackChannelRequest{Workspace: "acme", Name: name, Archive: true}
 	_, err := r.console.DeleteSlackChannel(as(northOp), connect.NewRequest(request))
-	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "Slack Connect") {
-		t.Fatalf("err = %v", err)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want it to say %q", err, want)
 	}
 	if r.slack.Count("conversations.archive") != 0 || len(r.storedChannels(t)) != 1 {
 		t.Error("a refused request changed something")
 	}
+	if n := len(r.recorded.Find("roster.slack_channel.archived")); n != 0 {
+		t.Errorf("%d archive records for a refusal", n)
+	}
+}
+
+// The controller holds a console record whose channel is a Slack Connect
+// channel in Slack: its report row says Console, not Shared. Slack is asked.
+func TestASlackConnectChannelIsNeverArchivedFromTheConsole(t *testing.T) {
+	r := newArchiveRig(t)
+	shared := r.slack.AddSharedChannel("partners", acmeTeam, []string{"TGLOBEX"}, nil, slackfake.BotID(acmeTeam))
+	r.reportOrdinary(t, "acme", []status.Channel{{Name: "partners", ID: shared.ID, Console: true, State: status.ChannelHeld,
+		Reason: "partners is a Slack Connect channel; it is managed as a shared channel, not bound here"}})
+
+	r.refuses(t, "partners", "Slack Connect channel")
+	if got := r.slack.Count("conversations.info"); got == 0 {
+		t.Error("Slack was not asked")
+	}
 	// Forgetting the record without archiving is still allowed.
-	if _, err = r.deleteChannel(as(northOp), "acme", "eng"); err != nil {
+	if _, err := r.deleteChannel(as(northOp), "acme", "partners"); err != nil {
 		t.Errorf("plain delete: %v", err)
+	}
+}
+
+func TestArchivingNeedsAReportThatSaysTheWorkspaceActs(t *testing.T) {
+	r := newArchiveRig(t)
+	r.refuses(t, "eng", "dry run")
+
+	raw, err := status.Encode(status.Workspace{Version: status.Version, Workspace: "acme", Enabled: false,
+		Channels: []status.Channel{{Name: "eng", ID: r.inside, Console: true, Private: true, State: status.ChannelOK}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.reports[status.Key("acme")] = raw
+	request := &directoryrosterv1.DeleteSlackChannelRequest{Workspace: "acme", Name: "eng", Archive: true}
+	if _, err = r.console.DeleteSlackChannel(as(northOp), connect.NewRequest(request)); connect.CodeOf(err) != connect.CodeFailedPrecondition ||
+		!strings.Contains(err.Error(), "dry run") {
+		t.Fatalf("disabled workspace: %v", err)
+	}
+	r.reports[status.Key("acme")] = "not a report"
+	if _, err = r.console.DeleteSlackChannel(as(northOp), connect.NewRequest(request)); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("unreadable report: %v", err)
+	}
+	if r.slack.Count("conversations.archive") != 0 || r.slack.Count("conversations.info") != 0 || len(r.storedChannels(t)) != 1 {
+		t.Error("a refused request changed or asked something")
+	}
+}
+
+func TestArchivingWhenSlackIsUnreachableKeepsTheRecord(t *testing.T) {
+	r := newArchiveRig(t)
+	r.reportOrdinary(t, "acme", []status.Channel{{Name: "eng", ID: r.inside, Console: true, Private: true, State: status.ChannelOK}})
+	if err := r.createChannel(as(northOp), chdef("acme", "eng", "partners@north.example")); err != nil {
+		t.Fatal(err)
+	}
+	r.console.deps.SlackAPI = []slackapp.Option{slackapp.WithBaseURL("http://127.0.0.1:1")}
+	request := &directoryrosterv1.DeleteSlackChannelRequest{Workspace: "acme", Name: "eng", Archive: true}
+	_, err := r.console.DeleteSlackChannel(as(northOp), connect.NewRequest(request))
+	if connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("err = %v", err)
+	}
+	if len(r.storedChannels(t)) != 1 || r.slack.Channel(r.inside).Archived {
+		t.Error("a refused request changed something")
 	}
 }
