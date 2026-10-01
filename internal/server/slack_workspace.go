@@ -311,53 +311,66 @@ func (c *Console) DisconnectSlackWorkspace(
 // dropped without being stored, and the refusal is recorded.
 func (s *ConsoleServer) slackWorkspaceCallback(w http.ResponseWriter, r *http.Request) {
 	flow := slackWorkspaceFlow
-	bind, actor, ok := s.slackBound(flow, w, r)
+	console := s.console
+	subject := audit.SlackWorkspace{Key: "unknown", App: "unknown"}
+	actor := ""
+	refuse := func(code int, summary, detail, reason string, causes []string) {
+		s.slackRefused(flow, r, actor, reason)
+		console.record(r.Context(), audit.SlackWorkspaceConnectRefused(audit.Identified(actor), subject, reason))
+		s.slackProblem(flow, w, r, code, summary, detail, causes)
+	}
+	learn := func(bind, who string) {
+		actor = who
+		if key, ok := strings.CutPrefix(bind, slackWorkspaceBind); ok && status.ValidWorkspace(key) {
+			subject.Key = key
+		}
+	}
+	bind, actor, ok := s.slackBound(r, refuse, learn)
 	if !ok {
 		return
 	}
 	// The flow ends here, whichever way it goes.
 	http.SetCookie(w, access.ConnectCookie("", s.sessions.Secure(), 0))
-	console := s.console
 	workspace, isWorkspace := strings.CutPrefix(bind, slackWorkspaceBind)
 	if !isWorkspace || !status.ValidWorkspace(workspace) {
-		s.slackProblem(flow, w, r, http.StatusBadRequest, "This is not a Slack workspace's connect.", "", nil)
+		refuse(http.StatusBadRequest, "This is not a Slack workspace's connect.", "", "the state is for another flow", nil)
 		return
 	}
 	if console.deps.SlackWorkspaces == nil {
-		s.slackProblem(flow, w, r, http.StatusConflict, "This deployment keeps no Slack connections.", "", nil)
+		refuse(http.StatusConflict, "This deployment keeps no Slack connections.", "", "no store for Slack connections", nil)
 		return
 	}
 	if denied := r.URL.Query().Get("error"); denied != "" {
-		s.slackProblem(flow, w, r, http.StatusBadRequest, "The installation was not approved in Slack.", denied, nil)
+		refuse(http.StatusBadRequest, "The installation was not approved in Slack.", denied, "the install was not approved in Slack: "+denied, nil)
 		return
 	}
 	if err := console.requireDeclaredSlack(workspace); err != nil {
-		s.slackProblem(flow, w, r, http.StatusConflict, "The policy no longer names this workspace.", err.Error(), nil)
+		refuse(http.StatusConflict, "The policy no longer names this workspace.", err.Error(), "the policy no longer names the workspace", nil)
 		return
 	}
 	store := console.deps.SlackWorkspaces
 	record, credential, found, err := store.Get(r.Context(), workspace)
 	if err != nil || !found {
-		s.slackProblem(flow, w, r, http.StatusConflict,
-			fmt.Sprintf("There is no App for %s to finish installing. Connect it first.", workspace), errString(err), nil)
+		refuse(http.StatusConflict, fmt.Sprintf("There is no App for %s to finish installing. Connect it first.", workspace), errString(err),
+			"the workspace has no App to finish installing", nil)
 		return
 	}
+	subject.App, subject.Owner = record.AppID, record.Owner
 
 	callCtx, cancel := context.WithTimeout(r.Context(), slackTimeout)
 	defer cancel()
 	installed, err := console.slackSetup().OAuthAccess(callCtx, credential.ClientID, credential.ClientSecret,
 		r.URL.Query().Get("code"), console.slackWorkspaceRedirect())
 	if err != nil {
-		s.log.WarnContext(r.Context(), "a Slack workspace was installed and its token could not be collected",
-			"workspace", logsafe.Value(workspace), "error", logsafe.Error(err))
-		s.slackProblem(flow, w, r, http.StatusConflict, "Slack accepted the install, and then would not hand over the bot token.", err.Error(), []string{
-			"The page was reloaded: the code Slack returns can be exchanged once.",
-			"More than ten minutes passed between approving and returning here.",
-			"This service cannot reach slack.com: the cluster's egress policy has to allow it.",
-		})
+		refuse(http.StatusConflict, "Slack accepted the install, and then would not hand over the bot token.", err.Error(),
+			"slack's oauth.v2.access refused: "+logsafe.Error(err), []string{
+				"The page was reloaded: the code Slack returns can be exchanged once.",
+				"More than ten minutes passed between approving and returning here.",
+				"This service cannot reach slack.com: the cluster's egress policy has to allow it.",
+			})
 		return
 	}
-	subject := audit.SlackWorkspace{Key: workspace, Team: installed.TeamID, App: record.AppID, Owner: record.Owner}
+	subject.Team = installed.TeamID
 	team := record.TeamID
 	if team == "" {
 		// The first install: the team Slack reports is the one recorded, as
@@ -365,17 +378,18 @@ func (s *ConsoleServer) slackWorkspaceCallback(w http.ResponseWriter, r *http.Re
 		// make an install ambiguous.
 		book, bookErr := console.slackBook(r.Context())
 		if bookErr != nil {
-			s.slackProblem(flow, w, r, http.StatusConflict, "The connection records could not be read.", bookErr.Error(), nil)
+			revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
+			refuse(http.StatusConflict, "The connection records could not be read.", bookErr.Error(),
+				"the connection records could not be read: "+logsafe.Error(bookErr)+"; "+revokedWords(revokeErr), nil)
 			return
 		}
 		for other := range book {
 			if other != workspace && book[other].TeamID == installed.TeamID {
 				revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
-				console.record(r.Context(), audit.SlackWorkspaceConnectRefused(audit.Identified(actor), subject,
-					fmt.Sprintf("team %s is already connected as %s; %s", installed.TeamID, other, revokedWords(revokeErr))))
-				s.slackProblem(flow, w, r, http.StatusConflict, fmt.Sprintf(
+				refuse(http.StatusConflict, fmt.Sprintf(
 					"The App was installed into workspace %s (%s), which is already connected as %q. %s",
-					installed.TeamID, installed.TeamName, other, refusedToken(revokeErr)), "", nil)
+					installed.TeamID, installed.TeamName, other, refusedToken(revokeErr)), "",
+					fmt.Sprintf("team %s is already connected as %s; %s", installed.TeamID, other, revokedWords(revokeErr)), nil)
 				return
 			}
 		}
@@ -383,15 +397,11 @@ func (s *ConsoleServer) slackWorkspaceCallback(w http.ResponseWriter, r *http.Re
 	}
 	if installed.TeamID != team {
 		revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
-		s.log.WarnContext(r.Context(), "the Slack App was installed into the wrong workspace and refused",
-			"workspace", logsafe.Value(workspace), "expected", logsafe.Value(team), "got", logsafe.Value(installed.TeamID),
-			"by", logsafe.Value(actor), "revoked", revokeErr == nil)
-		console.record(r.Context(), audit.SlackWorkspaceConnectRefused(audit.Identified(actor), subject,
-			fmt.Sprintf("installed into team %s, and the workspace was first installed as %s; %s", installed.TeamID, team, revokedWords(revokeErr))))
-		s.slackProblem(flow, w, r, http.StatusConflict, fmt.Sprintf(
+		refuse(http.StatusConflict, fmt.Sprintf(
 			"The App was installed into workspace %s (%s), and %q was first installed as %s. %s "+
 				"Install again from the right workspace.",
-			installed.TeamID, installed.TeamName, workspace, team, refusedToken(revokeErr)), "", nil)
+			installed.TeamID, installed.TeamName, workspace, team, refusedToken(revokeErr)), "",
+			fmt.Sprintf("installed into team %s, and the workspace was first installed as %s; %s", installed.TeamID, team, revokedWords(revokeErr)), nil)
 		return
 	}
 
@@ -401,9 +411,8 @@ func (s *ConsoleServer) slackWorkspaceCallback(w http.ResponseWriter, r *http.Re
 	if err = store.Put(r.Context(), record, credential); err != nil {
 		// A token nobody keeps is one nobody can revoke later.
 		revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
-		s.log.ErrorContext(r.Context(), "a Slack workspace was installed and its token could not be kept",
-			"workspace", logsafe.Value(workspace), "revoked", revokeErr == nil, "error", logsafe.Error(err))
-		s.slackProblem(flow, w, r, http.StatusConflict, "The App is installed and its token could not be saved here. Install it again.", err.Error(), nil)
+		refuse(http.StatusConflict, "The App is installed and its token could not be saved here. Install it again.", err.Error(),
+			"the token could not be kept: "+logsafe.Error(err)+"; "+revokedWords(revokeErr), nil)
 		return
 	}
 	s.log.InfoContext(r.Context(), "Slack workspace connected", "workspace", logsafe.Value(workspace), "team", logsafe.Value(installed.TeamID),

@@ -787,6 +787,66 @@ func TestAWorkspaceInstallIsFinishedOnlyByTheBrowserThatStartedIt(t *testing.T) 
 	}
 }
 
+// A callback that cannot finish says why, in the log and in the audit trail:
+// a refusal nobody can see is one nobody can explain.
+func TestEveryRefusedSlackCallbackIsLoggedAndAuditedWithItsReason(t *testing.T) {
+	h := newWorkspaceHarness(t)
+	begun, err := h.begin(operator(), "acme", accepted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookie, state := cookieFrom(t, begun.Header()), mustQuery(t, begun.Msg.GetUrl(), "state")
+	_, credential, _, _ := h.workspaces.Get(context.Background(), "acme")
+	code := h.slack.Install(credential.AppID, acmeTeam)
+	call := func(q url.Values, cookie string) int {
+		return redirect(h.server.slackWorkspaceCallback, slackWorkspaceCallbackPath, q, cookie).Code
+	}
+	github, _ := h.server.state.IssueAs(access.Binding{Bind: "github-catalogue:sync", Actor: "ada@north.example"})
+	noActor, _ := h.server.state.IssueAs(access.Binding{Bind: slackWorkspaceBind + "acme"})
+	for name, c := range map[string]struct {
+		got    int
+		reason string
+	}{
+		"no cookie":                {call(url.Values{"code": {code}, "state": {state}}, ""), "flow cookie"},
+		"another browser":          {call(url.Values{"code": {code}, "state": {state}}, "elsewhere"), "flow cookie"},
+		"a tampered state":         {call(url.Values{"code": {code}, "state": {state + "x"}}, cookie), "state is not valid"},
+		"no state":                 {call(url.Values{"code": {code}}, cookie), "no state"},
+		"another flow's state":     {call(url.Values{"code": {code}, "state": {github}}, github), "another flow"},
+		"a state with no operator": {call(url.Values{"code": {code}, "state": {noActor}}, noActor), "no operator"},
+		"declined in Slack":        {call(url.Values{"error": {"access_denied"}, "state": {state}}, cookie), "not approved in Slack"},
+	} {
+		if c.got < 400 || c.got >= 500 {
+			t.Errorf("%s = %d, want a 4xx", name, c.got)
+		}
+		found := false
+		for _, rec := range h.recorded.Find("roster.slack_workspace.connect_refused") {
+			found = found || strings.Contains(rec.GetOutcome().GetReason(), c.reason)
+		}
+		if !found {
+			t.Errorf("%s: no audited refusal mentioning %q", name, c.reason)
+		}
+	}
+	if logged := h.logs.String(); strings.Count(logged, "a Slack install callback was refused") < 7 {
+		t.Errorf("refusals logged = %d, want one per refusal:\n%s", strings.Count(logged, "a Slack install callback was refused"), logged)
+	}
+
+	// Slack handing back no token is logged and audited too, without the code.
+	h.slack.Install(credential.AppID, acmeTeam)
+	if got := call(url.Values{"code": {"not-a-code"}, "state": {state}}, cookie); got != http.StatusConflict {
+		t.Fatalf("an unknown code = %d", got)
+	}
+	found := false
+	for _, rec := range h.recorded.Find("roster.slack_workspace.connect_refused") {
+		found = found || strings.Contains(rec.GetOutcome().GetReason(), "oauth.v2.access")
+	}
+	if !found {
+		t.Error("a failed code exchange was not audited")
+	}
+	if strings.Contains(h.logs.String(), "not-a-code") || strings.Contains(h.logs.String(), code) {
+		t.Error("a code is in the logs")
+	}
+}
+
 // What the controller reports is shown only to those who may view the
 // workspace, each row saying whether the caller may operate it.
 func TestTheStatusShowsEachCallerOnlyTheWorkspacesItMayView(t *testing.T) {
@@ -1059,7 +1119,7 @@ func TestARefusedInstallCannotForgeALogRecordThroughTheTeamSlackReports(t *testi
 		t.Fatalf("an install into a team that is not the recorded one = %d:\n%s", got.Code, got.Body)
 	}
 	logged := h.logs.String()
-	if !strings.Contains(logged, "the Slack App was installed into the wrong workspace and refused") {
+	if !strings.Contains(logged, "a Slack install callback was refused") {
 		t.Fatalf("the refusal was not logged:\n%s", logged)
 	}
 	for _, bad := range []string{"\r", "\t", "\\r", "\\n", "level=ERROR msg=forged"} {

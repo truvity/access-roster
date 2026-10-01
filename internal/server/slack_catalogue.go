@@ -221,11 +221,11 @@ func (c *Console) slackRevoke(ctx context.Context, token string) error {
 
 // slackFlow is which install a redirect belongs to, for the page a failure
 // lands on.
-type slackFlow struct{ back, heading string }
+type slackFlow struct{ name, back, heading string }
 
 var (
-	slackCatalogueFlow = slackFlow{back: "/#/slack-apps", heading: "The Slack App could not be installed"}
-	slackWorkspaceFlow = slackFlow{back: "/#/slack", heading: "The Slack workspace could not be connected"}
+	slackCatalogueFlow = slackFlow{name: "catalogue", back: "/#/slack-apps", heading: "The Slack App could not be installed"}
+	slackWorkspaceFlow = slackFlow{name: "workspace", back: "/#/slack", heading: "The Slack workspace could not be connected"}
 )
 
 // revokedWords is what became of a refused token, for the audit record.
@@ -418,24 +418,44 @@ func slackAuthorizeURL(authorize, state, redirect, team string, scopes []string)
 	return u.String(), nil
 }
 
+// slackRefusal ends a Slack callback that cannot finish: it logs why, records
+// why, and answers with the page. reason is the short sentence the log and
+// the audit record carry; it may hold Slack's own words, so the log takes it
+// through logsafe, and it never holds the code, a token or a secret.
+type slackRefusal func(code int, summary, detail, reason string, causes []string)
+
+// slackRefused is the log line every refused Slack callback leaves, whichever
+// of its reasons, so that nobody has to guess why an install did nothing.
+func (s *ConsoleServer) slackRefused(flow slackFlow, r *http.Request, actor, reason string) {
+	s.log.WarnContext(r.Context(), "a Slack install callback was refused", "flow", flow.name,
+		"reason", logsafe.Value(reason), "by", logsafe.Value(actor))
+}
+
 // slackBound checks a catalogue flow's redirect the way GitHub's is
 // checked: the cookie the flow was pinned with must equal the state, the
 // state must be one this service signed, and whoever it names must be an
-// operator. It returns the state's bind and the actor.
-func (s *ConsoleServer) slackBound(flow slackFlow, w http.ResponseWriter, r *http.Request) (bind, actor string, ok bool) {
+// operator. It returns the state's bind and the actor. learn is told what
+// the state names as soon as it is known, so a later refusal can say whose
+// install it was.
+func (s *ConsoleServer) slackBound(r *http.Request, refuse slackRefusal, learn func(bind, actor string)) (bind, actor string, ok bool) {
 	state := r.URL.Query().Get("state")
-	cookie, err := r.Cookie(access.ConnectCookieName)
-	if err != nil || cookie.Value == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
-		s.slackProblem(flow, w, r, http.StatusBadRequest, "This install did not start in this browser.", "", []string{
-			"It was started in another browser, profile or private window.",
-			"More than ten minutes passed on Slack's page before returning.",
-			"The browser is refusing the cookie this flow is pinned to.",
-		})
+	if state == "" {
+		refuse(http.StatusBadRequest, "This install did not start in this browser.", "", "no state in the redirect", nil)
 		return "", "", false
 	}
 	binding, err := s.state.VerifyBinding(state)
 	if err != nil {
-		s.slackProblem(flow, w, r, http.StatusBadRequest, "This install cannot be finished.", err.Error(), nil)
+		refuse(http.StatusBadRequest, "This install cannot be finished.", err.Error(), "the state is not valid: "+err.Error(), nil)
+		return "", "", false
+	}
+	learn(binding.Bind, binding.Actor)
+	cookie, err := r.Cookie(access.ConnectCookieName)
+	if err != nil || cookie.Value == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
+		refuse(http.StatusBadRequest, "This install did not start in this browser.", "", "the flow cookie is missing or is not this state's", []string{
+			"It was started in another browser, profile or private window.",
+			"More than ten minutes passed on Slack's page before returning.",
+			"The browser is refusing the cookie this flow is pinned to.",
+		})
 		return "", "", false
 	}
 	actor = binding.Actor
@@ -447,13 +467,14 @@ func (s *ConsoleServer) slackBound(flow slackFlow, w http.ResponseWriter, r *htt
 	if id, signedIn := IdentityFrom(r.Context()); signedIn {
 		workspace := s.console.slackWorkspaceOfBind(binding.Bind)
 		if _, err = s.console.requireSlack(r.Context(), access.RoleOperator, workspace); err != nil {
-			s.slackProblem(flow, w, r, http.StatusForbidden, err.Error()+".", "", nil)
+			refuse(http.StatusForbidden, err.Error()+".", "", "the signed-in operator may not operate the workspace: "+err.Error(), nil)
 			return "", "", false
 		}
 		actor = id.Who()
+		learn(binding.Bind, actor)
 	}
 	if actor == "" {
-		s.slackProblem(flow, w, r, http.StatusForbidden, "Installing a Slack App needs the operator role.", "", nil)
+		refuse(http.StatusForbidden, "Installing a Slack App needs the operator role.", "", "the state names no operator", nil)
 		return "", "", false
 	}
 	return binding.Bind, actor, true
@@ -488,68 +509,78 @@ func (s *ConsoleServer) slackProblem(flow slackFlow, w http.ResponseWriter, r *h
 // without being stored, and the refusal is recorded.
 func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Request) {
 	flow := slackCatalogueFlow
-	bind, actor, ok := s.slackBound(flow, w, r)
+	console := s.console
+	app := audit.SlackCatalogueApp{ID: "unknown", App: "unknown", Workspace: "unknown"}
+	actor := ""
+	refuse := func(code int, summary, detail, reason string, causes []string) {
+		s.slackRefused(flow, r, actor, reason)
+		console.record(r.Context(), audit.SlackCatalogueAppInstallRefused(audit.Identified(actor), app, reason))
+		s.slackProblem(flow, w, r, code, summary, detail, causes)
+	}
+	learn := func(bind, who string) {
+		actor = who
+		if id, ok := strings.CutPrefix(bind, slackCatalogueBind); ok && slackcatalogue.ValidID(id) {
+			app.ID = id
+		}
+	}
+	bind, actor, ok := s.slackBound(r, refuse, learn)
 	if !ok {
 		return
 	}
 	// The flow ends here, whichever way it goes.
 	http.SetCookie(w, access.ConnectCookie("", s.sessions.Secure(), 0))
-	console := s.console
 	id, isCatalogue := strings.CutPrefix(bind, slackCatalogueBind)
 	if !isCatalogue || !slackcatalogue.ValidID(id) {
-		s.slackProblem(flow, w, r, http.StatusBadRequest, "This is not a catalogue Slack App's install.", "", nil)
+		refuse(http.StatusBadRequest, "This is not a catalogue Slack App's install.", "", "the state is for another flow", nil)
 		return
 	}
 	entry, declared := console.deps.SlackCatalogue.Get(id)
 	if console.deps.SlackCatalogueApps == nil || !declared {
-		s.slackProblem(flow, w, r, http.StatusConflict, fmt.Sprintf("This deployment's catalogue declares no Slack App %s.", id), "", nil)
+		refuse(http.StatusConflict, fmt.Sprintf("This deployment's catalogue declares no Slack App %s.", id), "", "the catalogue declares no such App", nil)
 		return
 	}
+	app.Workspace = entry.Workspace
 	if denied := r.URL.Query().Get("error"); denied != "" {
-		s.slackProblem(flow, w, r, http.StatusBadRequest, "The installation was not approved in Slack.", denied, nil)
+		refuse(http.StatusBadRequest, "The installation was not approved in Slack.", denied, "the install was not approved in Slack: "+denied, nil)
 		return
 	}
 	team, _, err := console.connectedSlackTeam(r.Context(), entry.Workspace)
 	if err != nil {
-		s.slackProblem(flow, w, r, http.StatusConflict, "This App's workspace is not connected.", err.Error(), nil)
+		refuse(http.StatusConflict, "This App's workspace is not connected.", err.Error(), "the App's workspace is not connected: "+err.Error(), nil)
 		return
 	}
 	store := console.deps.SlackCatalogueApps
 	record, creds, created, err := store.Get(r.Context(), id)
 	if err != nil || !created {
-		s.slackProblem(flow, w, r, http.StatusConflict,
-			fmt.Sprintf("There is no Slack App %s to finish installing. Create it first.", id), errString(err), nil)
+		refuse(http.StatusConflict, fmt.Sprintf("There is no Slack App %s to finish installing. Create it first.", id), errString(err),
+			"the App was not created", nil)
 		return
 	}
+	app.App = record.AppID
 
 	callCtx, cancel := context.WithTimeout(r.Context(), slackTimeout)
 	defer cancel()
 	installed, err := console.slackSetup().OAuthAccess(callCtx, record.ClientID, creds.ClientSecret, r.URL.Query().Get("code"), console.slackRedirect())
 	if err != nil {
-		s.log.WarnContext(r.Context(), "a Slack App was installed and its token could not be collected",
-			"id", logsafe.Value(id), "workspace", logsafe.Value(entry.Workspace), "error", logsafe.Error(err))
-		s.slackProblem(flow, w, r, http.StatusConflict, "Slack accepted the install, and then would not hand over the bot token.", err.Error(), []string{
-			"The page was reloaded: the code Slack returns can be exchanged once.",
-			"More than ten minutes passed between approving and returning here.",
-			"This service cannot reach slack.com: the cluster's egress policy has to allow it.",
-		})
+		refuse(http.StatusConflict, "Slack accepted the install, and then would not hand over the bot token.", err.Error(),
+			"slack's oauth.v2.access refused: "+logsafe.Error(err), []string{
+				"The page was reloaded: the code Slack returns can be exchanged once.",
+				"More than ten minutes passed between approving and returning here.",
+				"This service cannot reach slack.com: the cluster's egress policy has to allow it.",
+			})
 		return
 	}
-	app := audit.SlackCatalogueApp{ID: id, App: record.AppID, Workspace: entry.Workspace, Team: installed.TeamID}
+	app.Team = installed.TeamID
 	if installed.TeamID != team {
 		// The token was minted for somebody else's workspace: take it back
 		// before refusing, so a token this service will not keep is not
 		// left working in Slack.
 		revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
-		s.log.WarnContext(r.Context(), "a Slack App was installed into the wrong workspace and refused",
-			"id", logsafe.Value(id), "workspace", logsafe.Value(entry.Workspace), "expected", logsafe.Value(team), "got", logsafe.Value(installed.TeamID),
-			"by", logsafe.Value(actor), "revoked", revokeErr == nil)
-		console.record(r.Context(), audit.SlackCatalogueAppInstallRefused(audit.Identified(actor), app,
-			fmt.Sprintf("installed into team %s, and the workspace was first installed as %s; %s", installed.TeamID, team, revokedWords(revokeErr))))
-		s.slackProblem(flow, w, r, http.StatusConflict, fmt.Sprintf(
+		refuse(http.StatusConflict, fmt.Sprintf(
 			"The App was installed into workspace %s (%s), and %q was first installed as %s. %s "+
 				"Install again from the right workspace.",
-			installed.TeamID, installed.TeamName, entry.Workspace, team, refusedToken(revokeErr)), "", nil)
+			installed.TeamID, installed.TeamName, entry.Workspace, team, refusedToken(revokeErr)), "",
+			fmt.Sprintf("installed into team %s, and the workspace was first installed as %s; %s", installed.TeamID, team, revokedWords(revokeErr)), nil)
 		return
 	}
 
@@ -558,8 +589,10 @@ func (s *ConsoleServer) slackCatalogueCallback(w http.ResponseWriter, r *http.Re
 	record.Scopes, record.InstalledAt, record.InstalledBy = scopeList(installed.Scope), now, actor
 	creds.BotToken = installed.BotToken
 	if err = store.Put(r.Context(), record, creds); err != nil {
-		s.log.ErrorContext(r.Context(), "a Slack App was installed and its token could not be kept", "id", logsafe.Value(id), "error", logsafe.Error(err))
-		s.slackProblem(flow, w, r, http.StatusConflict, "The App is installed and its token could not be saved here. Install it again.", err.Error(), nil)
+		// A token nobody keeps is one nobody can revoke later.
+		revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
+		refuse(http.StatusConflict, "The App is installed and its token could not be saved here. Install it again.", err.Error(),
+			"the token could not be kept: "+logsafe.Error(err)+"; "+revokedWords(revokeErr), nil)
 		return
 	}
 	app.Scopes = record.Scopes
