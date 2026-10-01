@@ -1,3 +1,9 @@
+## Unreleased
+
+- **Fix: the audit catalogue's version is now 1.1.0.** v1.41.0 and v1.42.0 added
+  actions under 1.0.0, so an audit installation that had already registered
+  1.0.0 refused the changed document and the service stopped at start.
+
 ## v1.42.0
 
 - **BREAKING: a Slack workspace's team, owner and domains, and a GitHub

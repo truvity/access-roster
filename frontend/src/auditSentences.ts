@@ -3,7 +3,7 @@ import type { Sentences } from "@truvity/audit";
 
 export const roster: Sentences = {
   "source": "roster",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "locales": [
     "en"
   ],
