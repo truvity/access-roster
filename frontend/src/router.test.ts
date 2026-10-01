@@ -42,6 +42,7 @@ describe("parse", () => {
     expect(route).toMatchObject({ view: "slack", id: "channels" });
     expect(route.query.get("workspace")).toBe("acme");
     expect(route.query.get("kind")).toBe("console");
+    expect(parse(`#${paths.slackChannels({ state: "pending" })}`).query.get("state")).toBe("pending");
     expect(paths.slackChannels({ workspace: "", kind: "" })).toBe("/slack/channels");
   });
 
