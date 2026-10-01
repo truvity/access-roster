@@ -57,6 +57,9 @@ const (
 	// GitHubServiceBeginGitHubConnectProcedure is the fully-qualified name of the GitHubService's
 	// BeginGitHubConnect RPC.
 	GitHubServiceBeginGitHubConnectProcedure = "/directoryroster.v1.GitHubService/BeginGitHubConnect"
+	// GitHubServiceRequestGitHubPassProcedure is the fully-qualified name of the GitHubService's
+	// RequestGitHubPass RPC.
+	GitHubServiceRequestGitHubPassProcedure = "/directoryroster.v1.GitHubService/RequestGitHubPass"
 	// GitHubServiceChangeGitHubOrganisationOwnerProcedure is the fully-qualified name of the
 	// GitHubService's ChangeGitHubOrganisationOwner RPC.
 	GitHubServiceChangeGitHubOrganisationOwnerProcedure = "/directoryroster.v1.GitHubService/ChangeGitHubOrganisationOwner"
@@ -150,6 +153,14 @@ type GitHubServiceClient interface {
 	// Superseded by BeginGitHubAppConnect, which does this for every kind of
 	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error)
+	// RequestGitHubPass asks the GitHub controller to pass over now instead of
+	// at its next interval: it leaves a marker in the records the controller
+	// watches. The operator of the organisation's recorded owner, or the
+	// installation-wide operator. Refused with FAILED_PRECONDITION while the
+	// organisation is not installed (there is nothing for a pass to act with)
+	// and with RESOURCE_EXHAUSTED while the organisation's last request is
+	// under a minute old. Recorded as a configuration change.
+	RequestGitHubPass(context.Context, *connect.Request[v1.RequestGitHubPassRequest]) (*connect.Response[v1.RequestGitHubPassResponse], error)
 	// ChangeGitHubOrganisationOwner changes the directory recorded as a
 	// connected organisation's owner, or removes it. Installation-wide
 	// operator only: an owner may not hand its own organisation to another
@@ -297,6 +308,12 @@ func NewGitHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubConnect")),
 			connect.WithClientOptions(opts...),
 		),
+		requestGitHubPass: connect.NewClient[v1.RequestGitHubPassRequest, v1.RequestGitHubPassResponse](
+			httpClient,
+			baseURL+GitHubServiceRequestGitHubPassProcedure,
+			connect.WithSchema(gitHubServiceMethods.ByName("RequestGitHubPass")),
+			connect.WithClientOptions(opts...),
+		),
 		changeGitHubOrganisationOwner: connect.NewClient[v1.ChangeGitHubOrganisationOwnerRequest, v1.ChangeGitHubOrganisationOwnerResponse](
 			httpClient,
 			baseURL+GitHubServiceChangeGitHubOrganisationOwnerProcedure,
@@ -376,6 +393,7 @@ type gitHubServiceClient struct {
 	checkGitHubApp                 *connect.Client[v1.CheckGitHubAppRequest, v1.CheckGitHubAppResponse]
 	getGitHubStatus                *connect.Client[v1.GetGitHubStatusRequest, v1.GetGitHubStatusResponse]
 	beginGitHubConnect             *connect.Client[v1.BeginGitHubConnectRequest, v1.BeginGitHubConnectResponse]
+	requestGitHubPass              *connect.Client[v1.RequestGitHubPassRequest, v1.RequestGitHubPassResponse]
 	changeGitHubOrganisationOwner  *connect.Client[v1.ChangeGitHubOrganisationOwnerRequest, v1.ChangeGitHubOrganisationOwnerResponse]
 	disconnectGitHubOrganisation   *connect.Client[v1.DisconnectGitHubOrganisationRequest, v1.DisconnectGitHubOrganisationResponse]
 	beginGitHubLinkAppConnect      *connect.Client[v1.BeginGitHubLinkAppConnectRequest, v1.BeginGitHubLinkAppConnectResponse]
@@ -427,6 +445,11 @@ func (c *gitHubServiceClient) GetGitHubStatus(ctx context.Context, req *connect.
 // BeginGitHubConnect calls directoryroster.v1.GitHubService.BeginGitHubConnect.
 func (c *gitHubServiceClient) BeginGitHubConnect(ctx context.Context, req *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error) {
 	return c.beginGitHubConnect.CallUnary(ctx, req)
+}
+
+// RequestGitHubPass calls directoryroster.v1.GitHubService.RequestGitHubPass.
+func (c *gitHubServiceClient) RequestGitHubPass(ctx context.Context, req *connect.Request[v1.RequestGitHubPassRequest]) (*connect.Response[v1.RequestGitHubPassResponse], error) {
+	return c.requestGitHubPass.CallUnary(ctx, req)
 }
 
 // ChangeGitHubOrganisationOwner calls
@@ -544,6 +567,14 @@ type GitHubServiceHandler interface {
 	// Superseded by BeginGitHubAppConnect, which does this for every kind of
 	// App. Kept so a console mid-rollout keeps working.
 	BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error)
+	// RequestGitHubPass asks the GitHub controller to pass over now instead of
+	// at its next interval: it leaves a marker in the records the controller
+	// watches. The operator of the organisation's recorded owner, or the
+	// installation-wide operator. Refused with FAILED_PRECONDITION while the
+	// organisation is not installed (there is nothing for a pass to act with)
+	// and with RESOURCE_EXHAUSTED while the organisation's last request is
+	// under a minute old. Recorded as a configuration change.
+	RequestGitHubPass(context.Context, *connect.Request[v1.RequestGitHubPassRequest]) (*connect.Response[v1.RequestGitHubPassResponse], error)
 	// ChangeGitHubOrganisationOwner changes the directory recorded as a
 	// connected organisation's owner, or removes it. Installation-wide
 	// operator only: an owner may not hand its own organisation to another
@@ -687,6 +718,12 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(gitHubServiceMethods.ByName("BeginGitHubConnect")),
 		connect.WithHandlerOptions(opts...),
 	)
+	gitHubServiceRequestGitHubPassHandler := connect.NewUnaryHandler(
+		GitHubServiceRequestGitHubPassProcedure,
+		svc.RequestGitHubPass,
+		connect.WithSchema(gitHubServiceMethods.ByName("RequestGitHubPass")),
+		connect.WithHandlerOptions(opts...),
+	)
 	gitHubServiceChangeGitHubOrganisationOwnerHandler := connect.NewUnaryHandler(
 		GitHubServiceChangeGitHubOrganisationOwnerProcedure,
 		svc.ChangeGitHubOrganisationOwner,
@@ -771,6 +808,8 @@ func NewGitHubServiceHandler(svc GitHubServiceHandler, opts ...connect.HandlerOp
 			gitHubServiceGetGitHubStatusHandler.ServeHTTP(w, r)
 		case GitHubServiceBeginGitHubConnectProcedure:
 			gitHubServiceBeginGitHubConnectHandler.ServeHTTP(w, r)
+		case GitHubServiceRequestGitHubPassProcedure:
+			gitHubServiceRequestGitHubPassHandler.ServeHTTP(w, r)
 		case GitHubServiceChangeGitHubOrganisationOwnerProcedure:
 			gitHubServiceChangeGitHubOrganisationOwnerHandler.ServeHTTP(w, r)
 		case GitHubServiceDisconnectGitHubOrganisationProcedure:
@@ -832,6 +871,10 @@ func (UnimplementedGitHubServiceHandler) GetGitHubStatus(context.Context, *conne
 
 func (UnimplementedGitHubServiceHandler) BeginGitHubConnect(context.Context, *connect.Request[v1.BeginGitHubConnectRequest]) (*connect.Response[v1.BeginGitHubConnectResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.BeginGitHubConnect is not implemented"))
+}
+
+func (UnimplementedGitHubServiceHandler) RequestGitHubPass(context.Context, *connect.Request[v1.RequestGitHubPassRequest]) (*connect.Response[v1.RequestGitHubPassResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.GitHubService.RequestGitHubPass is not implemented"))
 }
 
 func (UnimplementedGitHubServiceHandler) ChangeGitHubOrganisationOwner(context.Context, *connect.Request[v1.ChangeGitHubOrganisationOwnerRequest]) (*connect.Response[v1.ChangeGitHubOrganisationOwnerResponse], error) {

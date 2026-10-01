@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 )
@@ -78,5 +79,37 @@ func TestAnOldRecordHasNoOwnerAndANewOneKeepsIt(t *testing.T) {
 	}
 	if strings.Contains(raw, "owner") {
 		t.Errorf("a record with no owner writes one: %s", raw)
+	}
+}
+
+// A pass request lives under a key no organisation login can be, reads back
+// its organisation, and refuses another document's shape.
+func TestAPassRequestKeyReadsBackAndNeverLooksLikeAnOrganisation(t *testing.T) {
+	key := connection.PassKey("globex")
+	if org, ok := connection.ParsePassKey(key); !ok || org != "globex" {
+		t.Errorf("ParsePassKey(%q) = %q, %v", key, org, ok)
+	}
+	if _, ok := connection.OrgOfKey(key); ok {
+		t.Errorf("%q reads as an organisation's own key", key)
+	}
+	for _, bad := range []string{"globex.json", "_pass.globex", "_pass..json", "_pass.not a login.json", "_confirm.globex.json"} {
+		if _, ok := connection.ParsePassKey(bad); ok {
+			t.Errorf("ParsePassKey(%q) accepted it", bad)
+		}
+	}
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	raw, err := connection.EncodePassRequest(connection.PassRequest{Org: "globex", At: at, By: "ada@globex.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := connection.DecodePassRequest(raw)
+	if err != nil || got.Org != "globex" || !got.At.Equal(at) || got.By != "ada@globex.example" {
+		t.Errorf("round trip = %+v, %v", got, err)
+	}
+	if _, err = connection.EncodePassRequest(connection.PassRequest{Org: "not a login"}); err == nil {
+		t.Error("encoded a request for no organisation")
+	}
+	if _, err = connection.DecodePassRequest(`{"version":99,"org":"globex"}`); !errors.Is(err, connection.ErrVersion) {
+		t.Errorf("a future version = %v, want ErrVersion", err)
 	}
 }

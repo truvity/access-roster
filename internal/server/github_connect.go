@@ -33,6 +33,11 @@ type GitHubConnections interface {
 	// found is false when the organisation has no record.
 	SetOwner(ctx context.Context, org, owner string) (previous string, found bool, err error)
 	Delete(ctx context.Context, org string) error
+	// RequestPass keeps an operator's request for a pass now; kept is false,
+	// with when the last one was, if that is under connection.PassGap old.
+	RequestPass(ctx context.Context, r connection.PassRequest) (kept bool, last time.Time, err error)
+	// PassRequests reads every organisation's last request for a pass.
+	PassRequests(ctx context.Context) (map[string]connection.PassRequest, error)
 }
 
 // The two places GitHub sends the browser back to, at the origin root

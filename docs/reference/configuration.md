@@ -404,6 +404,7 @@ The controller reads its own few, all set by
 | `CONSOLE_URL` | the service's in-cluster address plus `console.mount` |
 | `TOKEN_FILE` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
 | `APPS_DIR` | the mounted `<release>-github-apps` Secret, one file per connected organisation |
+| `RECORDS_DIR` | the mounted `<release>-github-orgs` ConfigMap: the organisations' records and the console's requests for a pass. With `APPS_DIR` it is looked at every 30 seconds, and a change (an install, a credential, a **Refresh**) runs a pass without waiting for `INTERVAL` |
 | `INTERVAL` | `githubRoster.interval` |
 | `ENABLED_ORGS` | `githubRoster.actsIn` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty |
@@ -413,7 +414,8 @@ Its account, `<release>-github-roster`, has two permissions, each by
 name: `get`, `update` and `patch` on the ConfigMap
 `<release>-github-status` it reports into, and `get` and `update` on the
 Secret `<release>-github-links` it rewrites as it checks links. The App
-keys are a volume, so it holds no permission to read any other Secret.
+keys and the console's records are volumes, so it holds no permission to read
+any other Secret or ConfigMap, and watching them for a change takes none.
 
 ## The Slack controller's environment
 

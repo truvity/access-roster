@@ -571,7 +571,7 @@ What it changes is bootstrap, removals and confirmations — never policy:
 - **Archive** a console channel in Slack, opt-in, when forgetting its record.
   Never a Slack Connect channel.
 - **Request a pass** (Refresh): a marker in the records ConfigMap, at most one a
-  minute per workspace.
+  minute per Slack workspace or GitHub organisation.
 - **Revoke a session.** A removal, and the lever between sign-out and
   expiry. Disconnecting a provider, an organisation or an App is the same
   kind of removal: it revokes at the other side, then forgets.
@@ -663,6 +663,17 @@ operator RPC, after three checks. A self-link is checked on GitHub every
 pass, and an account whose link GitHub says is gone leaves the
 organisation at once; a profile match or an import holds no token of the
 App's and is not re-checked.
+
+The loop is `internal/rails`' (the Slack controller's too): a pass every
+interval, and a pass at once when the watch sees a change. Every 30 seconds the
+controller hashes its mounted credentials Secret and records ConfigMap, and
+reads the `_pass.<organisation>.json` markers an operator's **Refresh** leaves
+there. A changed hash, or a marker newer than the last one acted on, wakes the
+loop; the markers are never deleted (the volume is read-only), and those that
+exist at start are answered by the first pass. The pass is always the full one,
+because the reports are published as one document set. The request is rate
+limited to one a minute per organisation under the records' version, and
+audited.
 
 Every pass derives everything, for every bound organisation, and changes
 only those listed in `githubRoster.actsIn`: an organisation is born
@@ -899,7 +910,7 @@ them.
 
 **The catalogue is the model.** [`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml)
 declares every action — `roster.person.signed_in`, `roster.token.exchanged`,
-`roster.github_member.invited`, … sixty-one of them (catalogue 1.5.0) — with what kind of
+`roster.github_member.invited`, … sixty-two of them (catalogue 1.6.0) — with what kind of
 operation it is, the framework categories it answers, which profile keeps
 it (`security`, every one of them: this service serves one organisation,
 and a second copy under a second retention would answer nothing), the

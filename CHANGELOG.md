@@ -36,6 +36,27 @@
   fails, naming each one, when a service or RPC in `proto/` is not mentioned in
   `docs/reference/contracts.md`. It found `accessissuer.v1.SessionService`
   (`ListSessions`, `RevokeSessions`) undocumented, and the page now describes it.
+
+- **GitHub organisations get Refresh and a prompt pass, as Slack workspaces
+  have.** The GitHub controller now looks every 30 seconds at its mounted App
+  credentials and at the console's records, and runs a full pass at once when an
+  organisation's credential or record changed (a new installation, a reconnect)
+  or an operator asked for one, instead of waiting out `githubRoster.interval`.
+  The organisation's page has a **Refresh** button for the organisation's
+  operators (the installation-wide operator, or the operator of the owning
+  directory), backed by the new `RequestGitHubPass` RPC: it leaves a
+  `_pass.<organisation>.json` marker in the `<release>-github-orgs` ConfigMap,
+  is refused within a minute of the last request (`resource_exhausted`) and for
+  an organisation whose App is not installed (`failed_precondition`), is
+  forgotten when the organisation is disconnected, and is audited as the new
+  `roster.github_org.pass_requested`. `GetGitHubStatus` carries the last request
+  as `pass_requested_at`, and the page says *Pass requested* until a newer report
+  exists. The chart mounts `<release>-github-orgs` read-only into the controller
+  (new `RECORDS_DIR`, optional volume); no RBAC changes, because a mounted volume
+  is read by the kubelet. The watch itself, the directory listing and the
+  rate-limit gate are now shared with the Slack controller in `internal/rails`
+  (`Watch`, `Digest`, `Entries`, `Gate`).
+
 - **Audit catalogue 1.6.0 removes what was dead and states what is historical.**
   The `takeover` branch of the console-channel message (the feature was removed
   in v1.48.0) and the stale "taken over by id" summary of

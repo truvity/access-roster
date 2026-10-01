@@ -1623,6 +1623,14 @@ func (demoConnections) Put(context.Context, connection.Record, connection.Creden
 
 func (demoConnections) Delete(context.Context, string) error { return errDemoConnect }
 
+func (demoConnections) RequestPass(context.Context, connection.PassRequest) (bool, time.Time, error) {
+	return false, time.Time{}, errDemoConnect
+}
+
+func (demoConnections) PassRequests(context.Context) (map[string]connection.PassRequest, error) {
+	return nil, nil
+}
+
 func (demoConnections) SetOwner(context.Context, string, string) (string, bool, error) {
 	return "", false, errDemoConnect
 }

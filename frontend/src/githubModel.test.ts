@@ -8,6 +8,7 @@ import {
   AppState,
   GetGitHubStatusResponseSchema,
   GitHubAppSchema,
+  GitHubOrganisationSchema,
   GitHubTeamStatusSchema,
 } from "./gen/directoryroster/v1/github_pb";
 import {
@@ -17,7 +18,9 @@ import {
   fixSentence,
   githubCell,
   groupApps,
+  offersRefresh,
   organisationNeeds,
+  passRequested,
   permissionDiffers,
   recentTokensEmpty,
   recentTokensKept,
@@ -262,5 +265,25 @@ describe("an App's recent tokens, when there are none to show", () => {
     expect(recentTokensKept("2h ago")).toContain("a restart forgets them");
     expect(recentTokensKept("2h ago")).toContain("2h ago");
     expect(recentTokensKept("")).toBe("Kept by this service; a restart forgets them.");
+  });
+});
+
+describe("Refresh", () => {
+  const at = (seconds: number) => ({ seconds: BigInt(seconds), nanos: 0 });
+  const org = (init: MessageInitShape<typeof GitHubOrganisationSchema> = {}) => create(GitHubOrganisationSchema, { org: "example-org", ...init });
+
+  it("is offered where the App is installed, which is what a pass acts with", () => {
+    expect(offersRefresh(org({ connection: { installed: true } }))).toBe(true);
+    expect(offersRefresh(org({ connection: { installed: false } }))).toBe(false);
+    expect(offersRefresh(org())).toBe(false);
+  });
+
+  it("says a pass is requested until a report newer than the request exists", () => {
+    const requested = at(1000);
+    expect(passRequested(org({ passRequestedAt: requested, tick: { at: at(900) } }))).toBe(true);
+    expect(passRequested(org({ passRequestedAt: requested }))).toBe(true);
+    expect(passRequested(org({ passRequestedAt: requested, tick: { at: at(1100) } }))).toBe(false);
+    expect(passRequested(org({ tick: { at: at(900) } }))).toBe(false);
+    expect(passRequested(org())).toBe(false);
   });
 });

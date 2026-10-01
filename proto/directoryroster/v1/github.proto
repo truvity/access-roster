@@ -78,6 +78,15 @@ service GitHubService {
   // App. Kept so a console mid-rollout keeps working.
   rpc BeginGitHubConnect(BeginGitHubConnectRequest) returns (BeginGitHubConnectResponse);
 
+  // RequestGitHubPass asks the GitHub controller to pass over now instead of
+  // at its next interval: it leaves a marker in the records the controller
+  // watches. The operator of the organisation's recorded owner, or the
+  // installation-wide operator. Refused with FAILED_PRECONDITION while the
+  // organisation is not installed (there is nothing for a pass to act with)
+  // and with RESOURCE_EXHAUSTED while the organisation's last request is
+  // under a minute old. Recorded as a configuration change.
+  rpc RequestGitHubPass(RequestGitHubPassRequest) returns (RequestGitHubPassResponse);
+
   // ChangeGitHubOrganisationOwner changes the directory recorded as a
   // connected organisation's owner, or removes it. Installation-wide
   // operator only: an owner may not hand its own organisation to another
@@ -637,6 +646,14 @@ message BeginGitHubConnectRequest {
   string owner_directory = 2;
 }
 
+message RequestGitHubPassRequest {
+  string org = 1;
+}
+
+message RequestGitHubPassResponse {
+  google.protobuf.Timestamp requested_at = 1;
+}
+
 message ChangeGitHubOrganisationOwnerRequest {
   string org = 1;
   // the directory workspace id to record, which must be a connected
@@ -799,6 +816,9 @@ message GitHubOrganisation {
   string owner_domain = 19;
   // whether the caller may change the owner.
   bool can_change_owner = 20;
+  // when an operator last asked for a pass over it now, if ever. The page
+  // says "pass requested" until a report newer than this exists.
+  google.protobuf.Timestamp pass_requested_at = 21;
 }
 
 // GitHubSeats is what the organisation pays for.

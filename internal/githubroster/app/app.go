@@ -31,14 +31,15 @@ import (
 // Config is what a deployment decides. It is read from the environment,
 // which is what the chart sets.
 type Config struct {
-	release   string
-	policyDir string
-	console   string
-	tokenFile string
-	appsDir   string
-	interval  time.Duration
-	enabled   map[string]bool
-	logLevel  slog.Level
+	release    string
+	policyDir  string
+	console    string
+	tokenFile  string
+	appsDir    string
+	recordsDir string
+	interval   time.Duration
+	enabled    map[string]bool
+	logLevel   slog.Level
 	// audit is the audit installation the controller records to, with its
 	// own identity; without one it only logs what it did.
 	audit audit.Config
@@ -61,12 +62,13 @@ func (c Config) LogLevel() slog.Level { return c.logLevel }
 // Load reads the configuration from the environment.
 func Load() (Config, error) {
 	c := Config{
-		release:   envString("RELEASE_NAME", "access-issuer"),
-		policyDir: envString("POLICY_DIR", ""),
-		console:   strings.TrimSuffix(envString("CONSOLE_URL", ""), "/"),
-		tokenFile: envString("TOKEN_FILE", "/var/run/secrets/github-roster/token"),
-		appsDir:   envString("APPS_DIR", "/var/run/github-roster/apps"),
-		enabled:   map[string]bool{},
+		release:    envString("RELEASE_NAME", "access-issuer"),
+		policyDir:  envString("POLICY_DIR", ""),
+		console:    strings.TrimSuffix(envString("CONSOLE_URL", ""), "/"),
+		tokenFile:  envString("TOKEN_FILE", "/var/run/secrets/github-roster/token"),
+		appsDir:    envString("APPS_DIR", "/var/run/github-roster/apps"),
+		recordsDir: envString("RECORDS_DIR", "/var/run/github-roster/records"),
+		enabled:    map[string]bool{},
 		audit: audit.Config{
 			Writer:    envString("AUDIT_WRITER_URL", ""),
 			TokenFile: envString("AUDIT_TOKEN_FILE", ""),
@@ -197,7 +199,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		log:   log,
 		trail: trail,
 		fatal: fatal,
-		controller: controller.New(controller.Config{Interval: cfg.interval, Enabled: cfg.enabled, AppsDir: cfg.appsDir}, controller.Deps{
+		controller: controller.New(controller.Config{Interval: cfg.interval, Enabled: cfg.enabled, AppsDir: cfg.appsDir, RecordsDir: cfg.recordsDir}, controller.Deps{
 			Log:      log,
 			GitHub:   web,
 			Access:   directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, bearer),

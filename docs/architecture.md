@@ -126,7 +126,11 @@ in the login path, so it runs in its own Deployment with no listener. It
 reads the console's API with its own ServiceAccount token, the way any
 workload would, and reports into a ConfigMap the console shows. Every
 organisation is a dry run until the chart lists it in
-`githubRoster.actsIn`; removing one from the list is the emergency stop.
+`githubRoster.actsIn`; removing one from the list is the emergency stop. A pass
+runs every `githubRoster.interval` (15 minutes) and also, without waiting, when
+the mounted credentials or records change (a new installation) or an operator
+presses **Refresh** (looked at every 30 seconds, and as quick as the kubelet
+refreshes the mounted files: within a couple of minutes).
 
 **The Slack controller is the same shape.** `slack-roster` holds each Slack
 workspace's bot token, writes to Slack, and runs in its own Deployment (one
@@ -146,7 +150,8 @@ two controllers share one set of rails (`internal/rails`): the pass loop and its
 policy-retry backoff, the two questions put to the console (who holds a group,
 and does the directory vouch for this address) gated by the policy digest, the
 held-once ledger, the last-good-report journal, the removal breaker and its
-fingerprint, and the dry-run switch. See
+fingerprint, the dry-run switch, and the watch that wakes a pass when mounted
+credentials or records change or an operator asks for one. See
 [Connect a Slack workspace](connect/slack-workspace.md) and
 [the design](design/access-roster.md#the-slack-reconciler).
 
@@ -305,7 +310,7 @@ controller (`roster.slack_channel.created` and `.adopted`,
 channel actions carry the channel and workspace as targets, so a channel's page
 in the console is the trail narrowed to it. A directory group or an individual
 address that feeds a console channel is a target (`directory_group`,
-`directory_user`), never data. The catalogue is versioned (1.5.0 now): any
+`directory_user`), never data. The catalogue is versioned (1.6.0 now): any
 change to it needs a new version and a released fixture, and an installation
 refuses a changed document under a version it already holds.
 

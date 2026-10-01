@@ -16,9 +16,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/truvity/access-roster/internal/githubroster/status"
+	"github.com/truvity/access-roster/internal/rails"
 )
 
 // Version is the document version this build writes and reads.
@@ -166,4 +168,58 @@ func DecodeConfirmation(raw string) (Confirmation, error) {
 		return Confirmation{}, fmt.Errorf("%w: %d", ErrVersion, c.Version)
 	}
 	return c, nil
+}
+
+// PassGap is how soon after one request for a pass another is refused.
+const PassGap = rails.PassGap
+
+// PassKey is where an operator's request for a pass now is kept, beside the
+// records: `_pass.<org>.json`, one per organisation, replaced by each
+// request. The controller never deletes it; it compares the request's time
+// with the last one it acted on. A leading underscore is never an
+// organisation's login.
+func PassKey(org string) string { return "_pass." + org + ".json" }
+
+// ParsePassKey reads a pass request's organisation back out of a key.
+func ParsePassKey(key string) (org string, ok bool) {
+	body, found := strings.CutPrefix(key, "_pass.")
+	if !found {
+		return "", false
+	}
+	org, found = strings.CutSuffix(body, ".json")
+	if !found || !status.ValidOrg(org) {
+		return "", false
+	}
+	return org, true
+}
+
+// PassRequest is an operator's request that the controller pass over an
+// organisation now.
+type PassRequest struct {
+	Version int       `json:"version"`
+	Org     string    `json:"org"`
+	At      time.Time `json:"at"`
+	By      string    `json:"by"`
+}
+
+// EncodePassRequest writes a request.
+func EncodePassRequest(r PassRequest) (string, error) {
+	if !status.ValidOrg(r.Org) {
+		return "", fmt.Errorf("connection: a pass request needs an organisation, not %q", r.Org)
+	}
+	r.Version = Version
+	raw, err := json.Marshal(r)
+	return string(raw), err
+}
+
+// DecodePassRequest reads a request.
+func DecodePassRequest(raw string) (PassRequest, error) {
+	var r PassRequest
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		return PassRequest{}, fmt.Errorf("connection: decode a pass request: %w", err)
+	}
+	if r.Version != Version {
+		return PassRequest{}, fmt.Errorf("%w: %d", ErrVersion, r.Version)
+	}
+	return r, nil
 }

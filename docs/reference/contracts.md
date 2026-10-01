@@ -261,6 +261,7 @@ are installation-wide alone.
 | `DisconnectGitHubApp` | operator | `id` | `uninstalled`, `detail`, `app_settings_url`, `invalidated` | uninstalls where there is an installation, then forgets the record and the key — even when the uninstall fails, which `detail` explains. `invalidated` is how many links became unverifiable, for the link App alone |
 | `CheckGitHubApp` | operator | `id` | `app` | asks GitHub again, as the App, what the App and its installation hold, bypassing the minute the list caches it for |
 | `BeginGitHubConnect` | operator | `org`, `owner_directory` | `url`, `manifest` | starts connecting an organisation the policy binds, and sets the flow's state cookie. With `manifest` set the browser POSTs it as the form field `manifest` to `url`, GitHub's create page; without, `url` is the App's install page, for an App created and never installed. `failed_precondition` for an unbound organisation, for one already connected and installed, and where the deployment keeps no state in Kubernetes |
+| `RequestGitHubPass` | operator of the owner, or installation-wide | `org` | `requested_at` | Refresh: leaves a `_pass.<org>.json` marker the controller notices at its next look (every 30 seconds). `failed_precondition` while the organisation's App is not installed; `resource_exhausted` while its last request is under a minute old. Audited as `roster.github_org.pass_requested`. `GetGitHubStatus` carries the last request as `organisations[].pass_requested_at` |
 | `ChangeGitHubOrganisationOwner` | installation-wide operator | `org`, `owner_directory` (a connected directory's workspace id; empty removes) | — | changes or removes the directory recorded as a connected organisation's owner; the new owner must be a connected directory. Audited as `roster.github_org.owner_changed` |
 | `DisconnectGitHubOrganisation` | operator | `org` | `uninstalled`, `detail`, `app_settings_url` | uninstalls the App, then forgets the record and the key — the latter even when the uninstall fails, which `detail` explains. `app_settings_url` is where the owner deletes the App, which the API cannot |
 | `BeginGitHubLinkAppConnect` | operator | `owner` | `url`, `manifest` | starts creating the link App under an organisation: public, `emails: read` alone, installed nowhere, calling back to the link callback. `failed_precondition` when one is connected already, or where the deployment keeps no state in Kubernetes |
@@ -473,7 +474,7 @@ pass, and only for somebody signed in. See
 [operations/runbook.md](../operations/runbook.md#audit-what-happened-lately).
 The actions and what each carries are the catalogue,
 [`internal/audit/catalogue/roster.yaml`](../../internal/audit/catalogue/roster.yaml)
-(version 1.5.0, with the `roster.slack_*` actions). The GitHub and Slack
+(version 1.6.0, with the `roster.slack_*` actions). The GitHub and Slack
 controllers record for themselves, each with its own service-account token.
 
 ## Installation tokens at `/token`

@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/link"
+	"github.com/truvity/access-roster/internal/rails"
 )
 
 // GitHubOrgs keeps connected GitHub organisations: a record per
@@ -191,7 +193,10 @@ func (s *GitHubOrgs) Credential(ctx context.Context, org string) (connection.Cre
 // shows an organisation whose credential is already gone.
 func (s *GitHubOrgs) Delete(ctx context.Context, org string) error {
 	key := connection.Key(org)
-	if err := s.editConfigMap(ctx, func(data map[string]string) { delete(data, key) }); err != nil {
+	if err := s.editConfigMap(ctx, func(data map[string]string) {
+		delete(data, key)
+		delete(data, connection.PassKey(org))
+	}); err != nil {
 		return err
 	}
 	return s.editSecret(ctx, func(data map[string][]byte) { delete(data, key) })
@@ -381,6 +386,48 @@ func (s *GitHubOrgs) Confirmations(ctx context.Context) (map[string]connection.C
 		}
 		if confirmation, err := connection.DecodeConfirmation(raw); err == nil {
 			out[confirmation.Org] = confirmation
+		}
+	}
+	return out, nil
+}
+
+// RequestPass keeps an operator's request for a pass now, replacing the
+// organisation's last one. It keeps nothing, and reports false with when the
+// last request was, if that is under connection.PassGap before r.At. The
+// check and the write are one change under the object's version, so two
+// requests at once cannot both pass it.
+func (s *GitHubOrgs) RequestPass(ctx context.Context, r connection.PassRequest) (kept bool, last time.Time, err error) {
+	raw, err := connection.EncodePassRequest(r)
+	if err != nil {
+		return false, time.Time{}, err
+	}
+	key := connection.PassKey(r.Org)
+	err = s.editConfigMap(ctx, func(data map[string]string) {
+		kept, last = rails.Gate(data, key, raw, r.At, func(old string) (time.Time, error) {
+			prev, err := connection.DecodePassRequest(old)
+			return prev.At, err
+		})
+	})
+	return kept && err == nil, last, err
+}
+
+// PassRequests reads every organisation's last request for a pass.
+func (s *GitHubOrgs) PassRequests(ctx context.Context) (map[string]connection.PassRequest, error) {
+	cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", s.ConfigMapName(), err)
+	}
+	out := map[string]connection.PassRequest{}
+	for key, raw := range cm.Data {
+		org, ok := connection.ParsePassKey(key)
+		if !ok {
+			continue
+		}
+		if r, err := connection.DecodePassRequest(raw); err == nil && r.Org == org {
+			out[org] = r
 		}
 	}
 	return out, nil
