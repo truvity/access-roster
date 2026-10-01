@@ -31,15 +31,26 @@ export function ownerValid(offer: OwnerOffer, owner: string): boolean {
   return offer.choices.some((choice) => choice.workspaceId === owner);
 }
 
-/** What an owner is called: the domain people know the directory by. */
-export function ownerName(choice: Pick<DirectoryRef, "workspaceId" | "primaryDomain">): string {
-  return choice.primaryDomain || choice.workspaceId;
+/** What a directory is called wherever it is named as an owner: its
+ *  workspace id and every domain it is authoritative for, sorted, so an
+ *  operator looking for any one of its domains finds it:
+ *  `C0north — alpha.example, globex.example`. `domains` is the list, or
+ *  the server's already-joined text; a directory with none is its id. */
+export function directoryLabel(workspaceId: string, domains: readonly string[] | string): string {
+  const list = typeof domains === "string" ? domains : [...domains].sort().join(", ");
+  return list ? `${workspaceId} \u2014 ${list}` : workspaceId;
 }
 
-/** The phrase for a connected thing's owner: the directory by its primary
- *  domain, or the plain statement that nobody owns it. `domain` is empty
- *  when the owner is no longer connected, and the id says which it was. */
-export function ownerSentence(owner: string, domain: string, consequence: string): string {
+/** What an owner choice is called: see [directoryLabel]. */
+export function ownerName(choice: Pick<DirectoryRef, "workspaceId" | "domains">): string {
+  return directoryLabel(choice.workspaceId, choice.domains);
+}
+
+/** The phrase for a connected thing's owner: the directory by its label, or
+ *  the plain statement that nobody owns it. `domains` is empty when the
+ *  owner serves nothing authoritatively or is no longer connected; the id
+ *  alone then says which it was. */
+export function ownerSentence(owner: string, domains: string, consequence: string): string {
   if (owner === "") return `no owning directory: ${consequence}`;
-  return `owned by the ${domain || owner} directory${domain ? "" : " (no longer connected)"}`;
+  return `owned by the ${directoryLabel(owner, domains)} directory`;
 }

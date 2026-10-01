@@ -41,6 +41,9 @@ type connectedDirectory struct {
 	id      string
 	primary string
 	served  []string
+	// authoritative is the served domains the directory answers for with
+	// confidence, sorted: what an owner is labelled with.
+	authoritative []string
 }
 
 // primaryDomain is the domain people know a directory by: its admin
@@ -70,16 +73,28 @@ func (c *Console) directories(ctx context.Context) ([]connectedDirectory, error)
 	for i := range views {
 		served := views[i].Workspace.Served()
 		slices.Sort(served)
-		out = append(out, connectedDirectory{id: views[i].Workspace.ID, primary: primaryDomain(&views[i].Workspace, served), served: served})
+		var authoritative []string
+		for _, d := range views[i].Domains {
+			if d.Served && d.Authoritative {
+				authoritative = append(authoritative, d.Name)
+			}
+		}
+		slices.Sort(authoritative)
+		out = append(out, connectedDirectory{
+			id: views[i].Workspace.ID, primary: primaryDomain(&views[i].Workspace, served), served: served, authoritative: authoritative,
+		})
 	}
 	return out, nil
 }
 
-// ownerDomains maps a directory id to the domain it is known by.
+// ownerDomains maps a directory id to every domain it is authoritative for,
+// sorted and joined with ", ": the one text a row names its owner by. The
+// console words it with the directory's id beside it, the same way it words
+// an owner choice.
 func ownerDomains(dirs []connectedDirectory) map[string]string {
 	out := make(map[string]string, len(dirs))
 	for i := range dirs {
-		out[dirs[i].id] = dirs[i].primary
+		out[dirs[i].id] = strings.Join(dirs[i].authoritative, ", ")
 	}
 	return out
 }
@@ -95,7 +110,7 @@ func ownerChoices(id access.Identity, dirs []connectedDirectory) (refs []*direct
 		if !mayNone && !slices.Contains(scope, dirs[i].id) {
 			continue
 		}
-		refs = append(refs, &directoryrosterv1.DirectoryRef{WorkspaceId: dirs[i].id, PrimaryDomain: dirs[i].primary})
+		refs = append(refs, &directoryrosterv1.DirectoryRef{WorkspaceId: dirs[i].id, PrimaryDomain: dirs[i].primary, Domains: slices.Clone(dirs[i].authoritative)})
 	}
 	return refs, mayNone
 }

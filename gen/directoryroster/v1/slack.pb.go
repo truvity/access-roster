@@ -607,7 +607,8 @@ type SlackWorkspaceStatus struct {
 	NeedsConfigurationToken bool `protobuf:"varint,14,opt,name=needs_configuration_token,json=needsConfigurationToken,proto3" json:"needs_configuration_token,omitempty"`
 	// the roster's bot scopes the grant lacks.
 	MissingScopes []string `protobuf:"bytes,15,rep,name=missing_scopes,json=missingScopes,proto3" json:"missing_scopes,omitempty"`
-	// the owner's primary domain, which is how a person knows the directory.
+	// every domain the owner is authoritative for, sorted and joined with ", "
+	// (how a person knows the directory); the console words it with the id.
 	// Empty without an owner, or when the owner is no longer connected.
 	OwnerDomain string `protobuf:"bytes,16,opt,name=owner_domain,json=ownerDomain,proto3" json:"owner_domain,omitempty"`
 	// whether the caller may change the owner: the installation-wide

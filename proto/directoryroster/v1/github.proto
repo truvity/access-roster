@@ -298,7 +298,8 @@ message GitHubApp {
   // the directory workspace id recorded as its organisation's owner when
   // the organisation was connected; empty for none, and for the link App.
   string owner_directory = 32;
-  // the owner's primary domain, which is how a person knows the directory.
+  // every domain the owner is authoritative for, sorted and joined with ", "
+  // (how a person knows the directory); the console words it with the id.
   string owner_domain = 33;
   // whether the caller may change the organisation's owner: the
   // installation-wide operator, on the controller App of a connected
@@ -794,7 +795,7 @@ message GitHubOrganisation {
   // the directory workspace id recorded as its owner when it was
   // connected; empty for none.
   string owner_directory = 18;
-  // the owner's primary domain.
+  // every domain the owner is authoritative for, sorted, joined with ", ".
   string owner_domain = 19;
   // whether the caller may change the owner.
   bool can_change_owner = 20;

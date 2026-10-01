@@ -397,7 +397,8 @@ export type SlackWorkspaceStatus = Message<"directoryroster.v1.SlackWorkspaceSta
   missingScopes: string[];
 
   /**
-   * the owner's primary domain, which is how a person knows the directory.
+   * every domain the owner is authoritative for, sorted and joined with ", "
+   * (how a person knows the directory); the console words it with the id.
    * Empty without an owner, or when the owner is no longer connected.
    *
    * @generated from field: string owner_domain = 16;

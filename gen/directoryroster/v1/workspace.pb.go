@@ -217,6 +217,11 @@ type DirectoryRef struct {
 	// the domain people know the directory by: the admin account's domain
 	// when the directory serves it, else the first domain it serves.
 	PrimaryDomain string `protobuf:"bytes,2,opt,name=primary_domain,json=primaryDomain,proto3" json:"primary_domain,omitempty"`
+	// every domain the directory is AUTHORITATIVE for, lowercased and sorted:
+	// what an operator looks for when asking whether a domain is connected.
+	// Served domains that are not authoritative (contested, probe failed,
+	// first snapshot pending) are left out.
+	Domains       []string `protobuf:"bytes,3,rep,name=domains,proto3" json:"domains,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -263,6 +268,13 @@ func (x *DirectoryRef) GetPrimaryDomain() string {
 		return x.PrimaryDomain
 	}
 	return ""
+}
+
+func (x *DirectoryRef) GetDomains() []string {
+	if x != nil {
+		return x.Domains
+	}
+	return nil
 }
 
 type Workspace struct {
@@ -1393,10 +1405,11 @@ var File_directoryroster_v1_workspace_proto protoreflect.FileDescriptor
 
 const file_directoryroster_v1_workspace_proto_rawDesc = "" +
 	"\n" +
-	"\"directoryroster/v1/workspace.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"X\n" +
+	"\"directoryroster/v1/workspace.proto\x12\x12directoryroster.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"r\n" +
 	"\fDirectoryRef\x12!\n" +
 	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12%\n" +
-	"\x0eprimary_domain\x18\x02 \x01(\tR\rprimaryDomain\"\xa8\x04\n" +
+	"\x0eprimary_domain\x18\x02 \x01(\tR\rprimaryDomain\x12\x18\n" +
+	"\adomains\x18\x03 \x03(\tR\adomains\"\xa8\x04\n" +
 	"\tWorkspace\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x125\n" +
 	"\abackend\x18\x02 \x01(\x0e2\x1b.directoryroster.v1.BackendR\abackend\x12=\n" +

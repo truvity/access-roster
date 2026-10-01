@@ -92,6 +92,11 @@ message DirectoryRef {
   // the domain people know the directory by: the admin account's domain
   // when the directory serves it, else the first domain it serves.
   string primary_domain = 2;
+  // every domain the directory is AUTHORITATIVE for, lowercased and sorted:
+  // what an operator looks for when asking whether a domain is connected.
+  // Served domains that are not authoritative (contested, probe failed,
+  // first snapshot pending) are left out.
+  repeated string domains = 3;
 }
 
 message Workspace {

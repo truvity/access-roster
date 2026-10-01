@@ -329,7 +329,8 @@ type GitHubApp struct {
 	// the directory workspace id recorded as its organisation's owner when
 	// the organisation was connected; empty for none, and for the link App.
 	OwnerDirectory string `protobuf:"bytes,32,opt,name=owner_directory,json=ownerDirectory,proto3" json:"owner_directory,omitempty"`
-	// the owner's primary domain, which is how a person knows the directory.
+	// every domain the owner is authoritative for, sorted and joined with ", "
+	// (how a person knows the directory); the console words it with the id.
 	OwnerDomain string `protobuf:"bytes,33,opt,name=owner_domain,json=ownerDomain,proto3" json:"owner_domain,omitempty"`
 	// whether the caller may change the organisation's owner: the
 	// installation-wide operator, on the controller App of a connected
@@ -3702,7 +3703,7 @@ type GitHubOrganisation struct {
 	// the directory workspace id recorded as its owner when it was
 	// connected; empty for none.
 	OwnerDirectory string `protobuf:"bytes,18,opt,name=owner_directory,json=ownerDirectory,proto3" json:"owner_directory,omitempty"`
-	// the owner's primary domain.
+	// every domain the owner is authoritative for, sorted, joined with ", ".
 	OwnerDomain string `protobuf:"bytes,19,opt,name=owner_domain,json=ownerDomain,proto3" json:"owner_domain,omitempty"`
 	// whether the caller may change the owner.
 	CanChangeOwner bool `protobuf:"varint,20,opt,name=can_change_owner,json=canChangeOwner,proto3" json:"can_change_owner,omitempty"`

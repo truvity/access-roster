@@ -88,3 +88,23 @@ func TestListServedDomainsIsScopedLikeEveryOtherRead(t *testing.T) {
 		t.Errorf("an identity with no role = %v", err)
 	}
 }
+
+// A directory serving several domains is labelled by ALL the domains it is
+// authoritative for, sorted; a served domain that is not authoritative is
+// left out, and a directory with none is just its id.
+func TestAnOwnerIsLabelledByEveryAuthoritativeDomain(t *testing.T) {
+	dirs := []connectedDirectory{
+		{
+			id: "C0north", primary: "globex.example", served: []string{"alpha.example", "contested.example", "globex.example"},
+			authoritative: []string{"alpha.example", "globex.example"},
+		},
+		{id: "C0bare", primary: "C0bare"},
+	}
+	if got := ownerDomains(dirs); got["C0north"] != "alpha.example, globex.example" || got["C0bare"] != "" {
+		t.Errorf("ownerDomains = %v", got)
+	}
+	refs, _ := ownerChoices(access.Identity{Role: access.RoleOperator}, dirs)
+	if len(refs) != 2 || !slices.Equal(refs[0].GetDomains(), []string{"alpha.example", "globex.example"}) || len(refs[1].GetDomains()) != 0 {
+		t.Errorf("owner choices = %v", refs)
+	}
+}
