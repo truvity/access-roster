@@ -129,6 +129,10 @@ type Channel struct {
 	IsMember bool `json:"is_member"`
 	// IsExtShared is a Slack Connect channel.
 	IsExtShared bool `json:"is_ext_shared"`
+	// IsShared and IsOrgShared are Slack's other sharing flags: shared with
+	// another workspace, and shared across the organisation's workspaces.
+	IsShared    bool `json:"is_shared"`
+	IsOrgShared bool `json:"is_org_shared"`
 	// SharedTeamIDs are the workspaces a Slack Connect channel is shared
 	// with, the channel's own among them. Empty for an ordinary channel.
 	SharedTeamIDs []string `json:"shared_team_ids"`

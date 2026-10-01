@@ -4,6 +4,8 @@ import {
   archiveLabel,
   channelDefinitionOf,
   connectArchiveNote,
+  dryRunArchiveNote,
+  mayArchive,
   channelProblems,
   definedInGit,
   discoveredSentence,
@@ -52,6 +54,17 @@ describe("archiving from the delete dialog", () => {
   it("is left to the owner's hand for a Slack Connect channel", () => {
     expect(connectArchiveNote).toContain("archived by hand in Slack");
     expect(connectArchiveNote).toContain("every organisation");
+  });
+
+  it("is offered only for a workspace whose controller acts", () => {
+    const workspaces = [
+      { key: "acme", acting: true },
+      { key: "globex", acting: false },
+    ];
+    expect(mayArchive(workspaces, "acme")).toBe(true);
+    expect(mayArchive(workspaces, "globex")).toBe(false);
+    expect(mayArchive(workspaces, "unknown")).toBe(false);
+    expect(dryRunArchiveNote).toContain("archive in Slack by hand");
   });
 });
 

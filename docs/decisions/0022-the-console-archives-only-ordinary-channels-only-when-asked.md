@@ -13,19 +13,25 @@ closes the channel for every organisation in it.
 ## Decision
 
 The delete dialog of a console channel has an opt-in, off by default: "Also
-archive #name in Slack". Ticked, the bot calls `conversations.archive` after the
-record is forgotten, under the same operator role as the delete, and the action
-is audited as `roster.slack_channel.archived`. If the bot cannot (it is not in the
-channel, or Slack or the workspace settings refuse), the record is still deleted
-and the note says to archive it by hand. A Slack Connect channel is **never**
-archived from the console, whoever hosts it; the server refuses the request with
-nothing changed. A channel the policy defines cannot be deleted from the console at
+archive #name in Slack". It is offered only for a workspace whose controller
+reports that it acts (a dry run, or no report, is archived by hand). Ticked, the
+server first checks, with nothing changed on a refusal, that the workspace acts
+and asks Slack (`conversations.info`) whether the channel is shared; only then
+does it delete the record and call `conversations.archive`, under the same
+operator role as the delete, audited as `roster.slack_channel.archived`. A Slack
+Connect channel is **never** archived from the console, whoever hosts it: Slack
+is asked, not the controller's report, so a held record whose channel became
+shared is caught too. A channel the bot cannot see, or a Slack that does not
+answer, is refused the same way. If the archive call itself then fails, the
+record is already deleted and the note says to archive it by hand. A channel the policy defines cannot be deleted from the console at
 all. The reconciler itself never archives.
 
 ## Consequences
 
 Archiving a shared channel is a manual act in Slack, by someone who sees the
 other organisations. The record deletion and the archive are two audit records.
+The archive option costs one `conversations.info` call and needs a fresh enough
+report: with none, the operator archives by hand.
 
 ## Alternatives considered
 

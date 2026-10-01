@@ -223,19 +223,25 @@ the mode. The tab also lists Slack Connect channels, and its filters (`kind`,
 `visibility`, `sort`) are described under
 [Slack Connect channels](slack-connect-channels.md#adopting-a-channel-that-is-already-shared).
 
-**Archiving.** Deleting a record leaves the channel in Slack. The delete dialog
-has an opt-in, *Also archive #name in Slack* (off by default), which makes the
-bot call `conversations.archive` after the record is forgotten and is audited as
-`roster.slack_channel.archived`. If the bot is not in the channel (a private one
-it cannot see), the App lacks the scope, or the workspace forbids a bot
-archiving, the record is still deleted, the failed attempt is audited as
-`roster.slack_channel.archived` with outcome failure, and the note says to
-archive the channel in Slack by hand. This call is made by the console itself,
-with the workspace's bot token, not by the controller, so it is NOT held back by
-a workspace that is still a dry run in `slackRoster.actsIn`. A Slack Connect
-channel is never archived from the console: archiving closes it for every
-organisation in it, so the console refuses the request and you archive it by
-hand.
+**Archiving.** Deleting a record leaves the channel in Slack. When the
+workspace's controller reports that it acts (it is in `slackRoster.actsIn`), the
+delete dialog has an opt-in, *Also archive #name in Slack* (off by default);
+for a dry-run workspace the dialog says to archive in Slack by hand instead.
+Before anything is changed the console checks, in order: the latest report says
+the workspace acts (no report, an unreadable one, or a dry run refuses); the
+channel's Slack id is known (the record's `channel_id`, else the report's);
+and Slack itself, asked with `conversations.info` and the workspace's bot token,
+says the channel is not shared. A Slack Connect channel (Slack's `is_ext_shared`,
+or any other sharing flag it sets) is refused, because archiving closes it for
+every organisation in it, whoever hosts it; so is a channel the bot cannot see
+(a private one it is not in), and a Slack that does not answer. A refusal is
+`FailedPrecondition` (or `Unavailable` when Slack did not answer), changes
+nothing and leaves the record in place; you archive the channel in Slack by hand.
+Only then is the record deleted and the bot's `conversations.archive` called,
+audited as `roster.slack_channel.archived`. If that call still fails (the App
+lacks the scope, or the workspace forbids a bot archiving), the record is
+already deleted, the failed attempt is audited with outcome failure, and the
+note says to archive the channel in Slack by hand.
 
 **Who may.** Create, edit and delete: the operator over the workspace's owning
 directory, or the installation-wide operator. A viewer sees the records and what
@@ -297,10 +303,12 @@ A workspace is born disabled. Every pass derives it, publishes what WOULD
 change, and calls Slack for nothing that changes it and records nothing in the
 audit trail. Enabling one is a reviewed change to `slackRoster.actsIn`; removing
 it again stops the controller acting in it, and undoes nothing. The console's
-own Slack calls (connect, disconnect, revoke, archive on delete) are not part of
-a pass and are not gated by `actsIn`. Remove a workspace from `actsIn` before
-removing it from the policy: the controller refuses to start naming a key the
-policy does not declare, and the chart refuses to render it.
+own Slack calls (connect, disconnect, revoke) are not part of a pass and are not
+gated by `actsIn`. Archiving on delete follows the switch: it is offered, and
+accepted, only for a workspace whose controller reports that it acts. Remove a
+workspace from `actsIn` before removing it from the policy: the controller
+refuses to start naming a key the policy does not declare, and the chart refuses
+to render it.
 
 ### What it never does
 

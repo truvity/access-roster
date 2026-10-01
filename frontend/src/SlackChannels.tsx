@@ -26,6 +26,7 @@ import type { ListSlackChannelsResponse, SlackChannelRecord, SlackDiscoveredOrdi
 import {
   channelDefinitionOf,
   archiveLabel,
+  dryRunArchiveNote,
   channelProblems,
   discoveredSentence,
   emptyChannelForm,
@@ -241,7 +242,7 @@ export function ChannelEditDialog({
 }
 
 /** Confirms forgetting a console channel's record. */
-export function ChannelDeleteDialog({ record, onCancel, onDone }: { record: SlackChannelRecord; onCancel: () => void; onDone: (message: string) => void }) {
+export function ChannelDeleteDialog({ record, mayArchive, onCancel, onDone }: { record: SlackChannelRecord; mayArchive: boolean; onCancel: () => void; onDone: (message: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const workspace = record.channel?.workspace ?? "";
@@ -252,7 +253,7 @@ export function ChannelDeleteDialog({ record, onCancel, onDone }: { record: Slac
     setBusy(true);
     setFailure(undefined);
     try {
-      const deleted = await slackChannels.deleteSlackChannel({ workspace, name, archive });
+      const deleted = await slackChannels.deleteSlackChannel({ workspace, name, archive: mayArchive && archive });
       onDone(deleted.note);
     } catch (error) {
       setFailure(reason(error));
@@ -268,15 +269,24 @@ export function ChannelDeleteDialog({ record, onCancel, onDone }: { record: Slac
           This deletes the record. <strong>The channel stays in Slack</strong> unless you tick the box below. The reconciler stops managing it: people who were added stay
           until someone removes them in Slack, and nobody is added or removed any more.
         </DialogContentText>
-        <FormControlLabel
-          control={<Checkbox checked={archive} onChange={(event) => setArchive(event.target.checked)} disabled={busy} />}
-          label={archiveLabel(name)}
-        />
-        {archive ? (
+        {mayArchive ? (
+          <>
+            <FormControlLabel
+              control={<Checkbox checked={archive} onChange={(event) => setArchive(event.target.checked)} disabled={busy} />}
+              label={archiveLabel(name)}
+            />
+            {archive ? (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                Slack is asked first. If the channel is a Slack Connect channel, or the bot cannot see it, nothing is changed and you archive it in Slack by hand; otherwise the
+                record is deleted and the bot archives it.
+              </Typography>
+            ) : null}
+          </>
+        ) : (
           <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-            The bot archives it after the record is deleted. If the bot is not in the channel, the record is still deleted and you archive it in Slack by hand.
+            {dryRunArchiveNote}
           </Typography>
-        ) : null}
+        )}
         <Failure error={failure} />
       </DialogContent>
       <DialogActions>

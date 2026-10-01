@@ -155,6 +155,28 @@ func (c *Console) slackReports(ctx context.Context) map[string]status.Workspace 
 	return out
 }
 
+// slackReport is one workspace's latest report, and whether there is one that
+// reads: unlike slackReports, an absent or unreadable report is told apart, for
+// a caller that must refuse on it.
+func (c *Console) slackReport(ctx context.Context, workspace string) (status.Workspace, bool) {
+	if c.deps.SlackStatus == nil {
+		return status.Workspace{}, false
+	}
+	raw, err := c.deps.SlackStatus.Reports(ctx)
+	if err != nil {
+		return status.Workspace{}, false
+	}
+	doc, ok := raw[status.Key(workspace)]
+	if !ok {
+		return status.Workspace{}, false
+	}
+	report, err := status.Decode(doc)
+	if err != nil {
+		return status.Workspace{}, false
+	}
+	return report, true
+}
+
 // sharedState is where a record stands: first whether the policy in force
 // still accepts it, then what the host's controller reported for it.
 func sharedState(ch reconcile.SharedChannel, p policy.Policy, reports map[string]status.Workspace) (state, reason string) {

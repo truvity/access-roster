@@ -1,5 +1,16 @@
 ## Unreleased
 
+- **Fix: archiving from the console asks Slack first.** Deleting a console
+  channel's record with *Also archive* ticked now refuses, with the record kept
+  and nothing changed, unless the workspace's controller reports that it acts
+  (a dry-run workspace, or none reported, is archived by hand), asks Slack
+  (`conversations.info`) and refuses a Slack Connect channel whatever the
+  controller's report says (a held console record over a channel that is shared
+  in Slack used to be archived for every organisation in it), and refuses a
+  channel the bot cannot see or a Slack that does not answer. The delete dialog
+  shows the checkbox only for a workspace that acts (new `acting` field on
+  `SlackChannelWorkspace`).
+
 - **The chart refuses an `actsIn` entry the policy does not define.** With the
   policy given inline in values, `slackRoster.actsIn` must name keys of
   `policy.slack.workspaces` and `githubRoster.actsIn` must name organisations of

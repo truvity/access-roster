@@ -19,7 +19,7 @@ import { useAsync, type Async } from "./hooks";
 import { go, paths, replace } from "./router";
 import { ChannelDeleteDialog, ChannelEditDialog, DiscoveredOrdinary } from "./SlackChannels";
 import { ConnectDeleteDialog, ConnectEditDialog, DiscoveredConnect } from "./SlackConnect";
-import { modeLabel, manageableWorkspaces } from "./slackChannelsModel";
+import { modeLabel, manageableWorkspaces, mayArchive } from "./slackChannelsModel";
 import { feedCount } from "./slackMembersModel";
 import { hostChoices, privacyLabel, visibilityMismatchHint } from "./slackConnectModel";
 import {
@@ -100,7 +100,7 @@ export function ChannelDialogues({ dialogue, index, close, onDone }: { dialogue?
   switch (dialogue.kind) {
     case "delete":
       return dialogue.row.kind === "console" ? (
-        <ChannelDeleteDialog record={dialogue.row.record as SlackChannelRecord} onCancel={close} onDone={done} />
+        <ChannelDeleteDialog record={dialogue.row.record as SlackChannelRecord} mayArchive={mayArchive(ordinary?.workspaces ?? [], dialogue.row.workspace)} onCancel={close} onDone={done} />
       ) : dialogue.row.kind === "connect" ? (
         <ConnectDeleteDialog channel={dialogue.row.record as SlackSharedChannel} onCancel={close} onDone={done} />
       ) : null;

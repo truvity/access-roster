@@ -64,6 +64,16 @@ export function ownerOf(workspaces: Pick<SlackChannelWorkspace, "key" | "owner">
 /** The opt-in on the delete dialog: archiving is never the default. */
 export const archiveLabel = (name: string) => `Also archive #${name} in Slack`;
 
+/** Whether the delete dialog may offer to archive: only when the workspace's
+ *  controller reports that it acts. A dry run, or no report yet, is archived
+ *  by hand: the service refuses an archive request for it. */
+export function mayArchive(workspaces: Pick<SlackChannelWorkspace, "key" | "acting">[], workspace: string): boolean {
+  return workspaces.find((w) => w.key === workspace)?.acting === true;
+}
+
+/** What the delete dialog says instead of the checkbox for a workspace that does not act. */
+export const dryRunArchiveNote = "This workspace is a dry run: archive in Slack by hand.";
+
 /** What the delete dialog of a Slack Connect channel says instead of offering
  *  to archive it: archiving closes the channel for every organisation in it. */
 export const connectArchiveNote = "Slack Connect channels are archived by hand in Slack: archiving closes the channel for every organisation in it.";

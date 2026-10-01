@@ -70,6 +70,10 @@ message SlackChannelWorkspace {
   // how many channels the bot saw that the report did not list (the report
   // is capped).
   int32 discovered_more = 4;
+  // whether the workspace's controller reports that it acts (the dry-run
+  // switch is on for it). Only then may a delete archive the channel in
+  // Slack; false also when there is no report yet.
+  bool acting = 5;
 }
 
 // SlackDiscoveredOrdinary is one channel a workspace's bot can see.
