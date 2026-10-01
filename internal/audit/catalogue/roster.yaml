@@ -9,7 +9,7 @@
 # A change to what an action carries is a new version. The installation keeps
 # every version it was sent, so records already written keep their meaning.
 source: roster
-version: "1.0.0"
+version: "1.1.0"
 locales: [en]
 
 actor_kinds:
