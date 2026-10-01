@@ -540,3 +540,178 @@ func TestNoStoreIsRefusedPlainly(t *testing.T) {
 		t.Error("available with no store")
 	}
 }
+
+// ---------------------------------------------------------------- discovered channels
+
+const externalTeam = "T0EXTERN1"
+
+func (h *connectHarness) report(t *testing.T, workspace, team string, found ...status.Discovered) {
+	t.Helper()
+	raw, err := status.Encode(status.Workspace{Version: status.Version, Workspace: workspace, Team: team, Enabled: true, DiscoveredShared: found})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.reports[status.Key(workspace)] = raw
+}
+
+// legacyReports is one channel made in acme, public there, shared with
+// globex (private on its side) and a team that is not connected.
+func (h *connectHarness) legacyReports(t *testing.T) {
+	t.Helper()
+	teams := []string{acmeTeam, globexTeam, externalTeam}
+	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0LEGACY1", Name: "legacy", Members: 7, HostTeam: acmeTeam, Teams: teams})
+	h.report(t, "globex", globexTeam, status.Discovered{ID: "C0LEGACY1", Name: "legacy-globex", Private: true, Members: 7, HostTeam: acmeTeam, Teams: teams})
+}
+
+func sideOf(row *directoryrosterv1.SlackDiscoveredChannel, workspace string) *directoryrosterv1.SlackDiscoveredSide {
+	for _, s := range row.Sides {
+		if s.Workspace == workspace {
+			return s
+		}
+	}
+	return nil
+}
+
+func TestDiscoveredChannelsAreMergedIntoOneRowAcrossWorkspaces(t *testing.T) {
+	h := newConnectHarness(t)
+	h.legacyReports(t)
+	got := h.list(as(everywhere), t).Discovered
+	if len(got) != 1 {
+		t.Fatalf("discovered = %v", got)
+	}
+	row := got[0]
+	if row.ChannelId != "C0LEGACY1" || row.HostWorkspace != "acme" || row.HostTeam != acmeTeam || row.ExternalTeams != 1 || row.Managed || !row.CanManage {
+		t.Errorf("row = %+v", row)
+	}
+	if len(row.Sides) != 2 || row.Sides[0].Workspace != "acme" {
+		t.Fatalf("sides = %v (the host comes first)", row.Sides)
+	}
+	if a := sideOf(row, "acme"); !a.Seen || a.Name != "legacy" || a.Privacy != "public" || a.Members != 7 {
+		t.Errorf("acme side = %+v", a)
+	}
+	if g := sideOf(row, "globex"); !g.Seen || g.Name != "legacy-globex" || g.Privacy != "private" {
+		t.Errorf("globex side = %+v", g)
+	}
+}
+
+func TestADiscoveredSideTheBotCannotSeeIsUnknown(t *testing.T) {
+	h := newConnectHarness(t)
+	teams := []string{acmeTeam, globexTeam}
+	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0LEGACY1", Name: "legacy", HostTeam: acmeTeam, Teams: teams})
+	row := h.list(as(everywhere), t).Discovered[0]
+	if g := sideOf(row, "globex"); g == nil || g.Seen || g.Privacy != "unknown" || g.Name != "" {
+		t.Errorf("globex side = %+v, want unknown (the bot is not in it, or it is not shared)", g)
+	}
+}
+
+func TestAChannelHostedByATeamThatIsNotConnectedCannotBeManaged(t *testing.T) {
+	h := newConnectHarness(t)
+	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0OTHER1", Name: "theirs", HostTeam: externalTeam, Teams: []string{externalTeam, acmeTeam}})
+	row := h.list(as(everywhere), t).Discovered[0]
+	if row.HostWorkspace != "" || row.CanManage || row.ExternalTeams != 1 {
+		t.Errorf("row = %+v, want external and not manageable", row)
+	}
+	// acme's bot sees it, but acme is not its host: a record naming acme is refused.
+	wantCode(t, "a record for an externally hosted channel", h.create(as(everywhere), &directoryrosterv1.SlackSharedChannelDefinition{
+		Name: "theirs", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, ChannelId: "C0OTHER1"}), connect.CodeInvalidArgument)
+}
+
+func TestOnlyTheHostsOperatorMayManageADiscoveredChannel(t *testing.T) {
+	h := newConnectHarness(t)
+	h.legacyReports(t)
+	viewer := access.Identity{Role: access.RoleViewer}
+	for name, tc := range map[string]struct {
+		id     access.Identity
+		manage bool
+		sees   bool
+	}{
+		"installation operator":     {everywhere, true, true},
+		"the host owner's operator": {northOp, true, true},
+		"a guest owner's operator":  {southOp, false, true},
+		"an installation viewer":    {viewer, false, true},
+		"an unrelated operator":     {elsewhereOp, false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !tc.sees {
+				_, err := h.console.ListSlackSharedChannels(as(tc.id), connect.NewRequest(&directoryrosterv1.ListSlackSharedChannelsRequest{}))
+				wantCode(t, "list", err, connect.CodePermissionDenied)
+				return
+			}
+			got := h.list(as(tc.id), t).Discovered
+			if len(got) != 1 || got[0].CanManage != tc.manage {
+				t.Errorf("discovered = %+v, want can_manage %v", got, tc.manage)
+			}
+		})
+	}
+	// A guest's operator sees only its own side's details.
+	south := h.list(as(southOp), t).Discovered[0]
+	if a := sideOf(south, "acme"); a == nil || a.Seen || a.Name != "" {
+		t.Errorf("a guest's operator sees the host side's details: %+v", a)
+	}
+	if g := sideOf(south, "globex"); !g.Seen || g.Name != "legacy-globex" {
+		t.Errorf("globex side = %+v", g)
+	}
+	// ... and cannot take it under management by writing the record.
+	err := h.create(as(southOp), &directoryrosterv1.SlackSharedChannelDefinition{
+		Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, ChannelId: "C0LEGACY1"})
+	wantCode(t, "create by a guest's operator", err, connect.CodePermissionDenied)
+}
+
+func TestManagingADiscoveredChannelWritesARecordThatNamesItsID(t *testing.T) {
+	h := newConnectHarness(t)
+	h.legacyReports(t)
+	d := &directoryrosterv1.SlackSharedChannelDefinition{
+		Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, ChannelId: "  C0LEGACY1 ",
+		PrivatePerSide: map[string]bool{"acme": false, "globex": true},
+	}
+	if err := h.create(as(northOp), d); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	kept, err := connection.DecodeShared(h.stored(t)[connection.SharedKey("legacy")])
+	if err != nil || kept.ChannelID != "C0LEGACY1" || !kept.Private.PerSide["globex"] {
+		t.Fatalf("kept = %+v, %v", kept, err)
+	}
+	if err = kept.Validate(h.console.deps.Authorizer.Policy().Declared()); err != nil {
+		t.Errorf("the controller would refuse what was kept: %v", err)
+	}
+	listed := h.list(as(everywhere), t)
+	if row := listed.Discovered[0]; !row.Managed || row.ManagedAs != "legacy" || row.CanManage {
+		t.Errorf("row after managing = %+v", row)
+	}
+	if got := listed.Channels[0].Channel.ChannelId; got != "C0LEGACY1" {
+		t.Errorf("the record's view lacks the id: %q", got)
+	}
+
+	// The id cannot change afterwards.
+	d.ChannelId = "C0OTHER000"
+	wantCode(t, "update with another id", h.update(as(northOp), d), connect.CodeInvalidArgument)
+	d.ChannelId = ""
+	wantCode(t, "update dropping the id", h.update(as(northOp), d), connect.CodeInvalidArgument)
+}
+
+func TestAnIDThatWasNotDiscoveredInTheHostIsRefused(t *testing.T) {
+	h := newConnectHarness(t)
+	h.legacyReports(t)
+	base := func(id string) *directoryrosterv1.SlackSharedChannelDefinition {
+		return &directoryrosterv1.SlackSharedChannelDefinition{Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, ChannelId: id}
+	}
+	wantCode(t, "an id nobody saw", h.create(as(everywhere), base("C0NEVERSAW")), connect.CodeInvalidArgument)
+	wantCode(t, "not a channel id", h.create(as(everywhere), base("not an id")), connect.CodeInvalidArgument)
+	// Seen by the guest only: the host is the one that must see it.
+	h.report(t, "acme", acmeTeam)
+	wantCode(t, "seen by a guest only", h.create(as(everywhere), base("C0LEGACY1")), connect.CodeInvalidArgument)
+	if len(h.stored(t)) != 0 {
+		t.Errorf("a record was kept: %v", h.stored(t))
+	}
+}
+
+func TestADiscoveredChannelIsMarkedManagedByARecordOfTheSameHostAndName(t *testing.T) {
+	h := newConnectHarness(t)
+	h.legacyReports(t)
+	if err := h.create(as(everywhere), def("legacy", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+		t.Fatal(err)
+	}
+	if row := h.list(as(everywhere), t).Discovered[0]; !row.Managed || row.ManagedAs != "legacy" || row.CanManage {
+		t.Errorf("row = %+v", row)
+	}
+}

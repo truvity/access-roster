@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file directoryroster/v1/slack_connect.proto.
  */
 export const file_directoryroster_v1_slack_connect: GenFile = /*@__PURE__*/
-  fileDesc("CiZkaXJlY3Rvcnlyb3N0ZXIvdjEvc2xhY2tfY29ubmVjdC5wcm90bxISZGlyZWN0b3J5cm9zdGVyLnYxIiAKHkxpc3RTbGFja1NoYXJlZENoYW5uZWxzUmVxdWVzdCK9AQofTGlzdFNsYWNrU2hhcmVkQ2hhbm5lbHNSZXNwb25zZRIRCglhdmFpbGFibGUYASABKAgSOAoIY2hhbm5lbHMYAiADKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tTaGFyZWRDaGFubmVsEj0KCndvcmtzcGFjZXMYAyADKAsyKS5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tDb25uZWN0V29ya3NwYWNlEg4KBmdyb3VwcxgEIAMoCSI5ChVTbGFja0Nvbm5lY3RXb3Jrc3BhY2USCwoDa2V5GAEgASgJEhMKC2Nhbl9vcGVyYXRlGAIgASgIIv4BChxTbGFja1NoYXJlZENoYW5uZWxEZWZpbml0aW9uEgwKBG5hbWUYASABKAkSDAoEaG9zdBgCIAEoCRIMCgR3aXRoGAMgAygJEgwKBGZyb20YBCADKAkSDwoHcHJpdmF0ZRgFIAEoCBJeChBwcml2YXRlX3Blcl9zaWRlGAYgAygLMkQuZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrU2hhcmVkQ2hhbm5lbERlZmluaXRpb24uUHJpdmF0ZVBlclNpZGVFbnRyeRo1ChNQcml2YXRlUGVyU2lkZUVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCDoCOAEiZAofQ3JlYXRlU2xhY2tTaGFyZWRDaGFubmVsUmVxdWVzdBJBCgdjaGFubmVsGAEgASgLMjAuZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrU2hhcmVkQ2hhbm5lbERlZmluaXRpb24iWwogQ3JlYXRlU2xhY2tTaGFyZWRDaGFubmVsUmVzcG9uc2USNwoHY2hhbm5lbBgBIAEoCzImLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1NoYXJlZENoYW5uZWwiZAofVXBkYXRlU2xhY2tTaGFyZWRDaGFubmVsUmVxdWVzdBJBCgdjaGFubmVsGAEgASgLMjAuZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrU2hhcmVkQ2hhbm5lbERlZmluaXRpb24iWwogVXBkYXRlU2xhY2tTaGFyZWRDaGFubmVsUmVzcG9uc2USNwoHY2hhbm5lbBgBIAEoCzImLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1NoYXJlZENoYW5uZWwiLwofRGVsZXRlU2xhY2tTaGFyZWRDaGFubmVsUmVxdWVzdBIMCgRuYW1lGAEgASgJIjAKIERlbGV0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlc3BvbnNlEgwKBG5vdGUYASABKAkiiwEKElNsYWNrU2hhcmVkQ2hhbm5lbBJBCgdjaGFubmVsGAEgASgLMjAuZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrU2hhcmVkQ2hhbm5lbERlZmluaXRpb24SDQoFc3RhdGUYAiABKAkSDgoGcmVhc29uGAMgASgJEhMKC2Nhbl9vcGVyYXRlGAQgASgIMrgEChlTbGFja1NoYXJlZENoYW5uZWxTZXJ2aWNlEoIBChdMaXN0U2xhY2tTaGFyZWRDaGFubmVscxIyLmRpcmVjdG9yeXJvc3Rlci52MS5MaXN0U2xhY2tTaGFyZWRDaGFubmVsc1JlcXVlc3QaMy5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdFNsYWNrU2hhcmVkQ2hhbm5lbHNSZXNwb25zZRKFAQoYQ3JlYXRlU2xhY2tTaGFyZWRDaGFubmVsEjMuZGlyZWN0b3J5cm9zdGVyLnYxLkNyZWF0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlcXVlc3QaNC5kaXJlY3Rvcnlyb3N0ZXIudjEuQ3JlYXRlU2xhY2tTaGFyZWRDaGFubmVsUmVzcG9uc2UShQEKGFVwZGF0ZVNsYWNrU2hhcmVkQ2hhbm5lbBIzLmRpcmVjdG9yeXJvc3Rlci52MS5VcGRhdGVTbGFja1NoYXJlZENoYW5uZWxSZXF1ZXN0GjQuZGlyZWN0b3J5cm9zdGVyLnYxLlVwZGF0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlc3BvbnNlEoUBChhEZWxldGVTbGFja1NoYXJlZENoYW5uZWwSMy5kaXJlY3Rvcnlyb3N0ZXIudjEuRGVsZXRlU2xhY2tTaGFyZWRDaGFubmVsUmVxdWVzdBo0LmRpcmVjdG9yeXJvc3Rlci52MS5EZWxldGVTbGFja1NoYXJlZENoYW5uZWxSZXNwb25zZULfAQoWY29tLmRpcmVjdG9yeXJvc3Rlci52MUIRU2xhY2tDb25uZWN0UHJvdG9QAVpJZ2l0aHViLmNvbS90cnV2aXR5L2FjY2Vzcy1yb3N0ZXIvZ2VuL2RpcmVjdG9yeXJvc3Rlci92MTtkaXJlY3Rvcnlyb3N0ZXJ2MaICA0RYWKoCEkRpcmVjdG9yeXJvc3Rlci5WMcoCEkRpcmVjdG9yeXJvc3RlclxWMeICHkRpcmVjdG9yeXJvc3RlclxWMVxHUEJNZXRhZGF0YeoCE0RpcmVjdG9yeXJvc3Rlcjo6VjFiBnByb3RvMw");
+  fileDesc("CiZkaXJlY3Rvcnlyb3N0ZXIvdjEvc2xhY2tfY29ubmVjdC5wcm90bxISZGlyZWN0b3J5cm9zdGVyLnYxIiAKHkxpc3RTbGFja1NoYXJlZENoYW5uZWxzUmVxdWVzdCL9AQofTGlzdFNsYWNrU2hhcmVkQ2hhbm5lbHNSZXNwb25zZRIRCglhdmFpbGFibGUYASABKAgSOAoIY2hhbm5lbHMYAiADKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tTaGFyZWRDaGFubmVsEj0KCndvcmtzcGFjZXMYAyADKAsyKS5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tDb25uZWN0V29ya3NwYWNlEg4KBmdyb3VwcxgEIAMoCRI+CgpkaXNjb3ZlcmVkGAUgAygLMiouZGlyZWN0b3J5cm9zdGVyLnYxLlNsYWNrRGlzY292ZXJlZENoYW5uZWwi4AEKFlNsYWNrRGlzY292ZXJlZENoYW5uZWwSEgoKY2hhbm5lbF9pZBgBIAEoCRIWCg5ob3N0X3dvcmtzcGFjZRgCIAEoCRIRCglob3N0X3RlYW0YAyABKAkSNgoFc2lkZXMYBCADKAsyJy5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tEaXNjb3ZlcmVkU2lkZRIWCg5leHRlcm5hbF90ZWFtcxgFIAEoBRIPCgdtYW5hZ2VkGAYgASgIEhIKCm1hbmFnZWRfYXMYByABKAkSEgoKY2FuX21hbmFnZRgIIAEoCCJmChNTbGFja0Rpc2NvdmVyZWRTaWRlEhEKCXdvcmtzcGFjZRgBIAEoCRIMCgRuYW1lGAIgASgJEg8KB3ByaXZhY3kYAyABKAkSDwoHbWVtYmVycxgEIAEoBRIMCgRzZWVuGAUgASgIIjkKFVNsYWNrQ29ubmVjdFdvcmtzcGFjZRILCgNrZXkYASABKAkSEwoLY2FuX29wZXJhdGUYAiABKAgikgIKHFNsYWNrU2hhcmVkQ2hhbm5lbERlZmluaXRpb24SDAoEbmFtZRgBIAEoCRIMCgRob3N0GAIgASgJEgwKBHdpdGgYAyADKAkSDAoEZnJvbRgEIAMoCRIPCgdwcml2YXRlGAUgASgIEl4KEHByaXZhdGVfcGVyX3NpZGUYBiADKAsyRC5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tTaGFyZWRDaGFubmVsRGVmaW5pdGlvbi5Qcml2YXRlUGVyU2lkZUVudHJ5EhIKCmNoYW5uZWxfaWQYByABKAkaNQoTUHJpdmF0ZVBlclNpZGVFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAg6AjgBImQKH0NyZWF0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlcXVlc3QSQQoHY2hhbm5lbBgBIAEoCzIwLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1NoYXJlZENoYW5uZWxEZWZpbml0aW9uIlsKIENyZWF0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlc3BvbnNlEjcKB2NoYW5uZWwYASABKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tTaGFyZWRDaGFubmVsImQKH1VwZGF0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlcXVlc3QSQQoHY2hhbm5lbBgBIAEoCzIwLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1NoYXJlZENoYW5uZWxEZWZpbml0aW9uIlsKIFVwZGF0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlc3BvbnNlEjcKB2NoYW5uZWwYASABKAsyJi5kaXJlY3Rvcnlyb3N0ZXIudjEuU2xhY2tTaGFyZWRDaGFubmVsIi8KH0RlbGV0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlcXVlc3QSDAoEbmFtZRgBIAEoCSIwCiBEZWxldGVTbGFja1NoYXJlZENoYW5uZWxSZXNwb25zZRIMCgRub3RlGAEgASgJIosBChJTbGFja1NoYXJlZENoYW5uZWwSQQoHY2hhbm5lbBgBIAEoCzIwLmRpcmVjdG9yeXJvc3Rlci52MS5TbGFja1NoYXJlZENoYW5uZWxEZWZpbml0aW9uEg0KBXN0YXRlGAIgASgJEg4KBnJlYXNvbhgDIAEoCRITCgtjYW5fb3BlcmF0ZRgEIAEoCDK4BAoZU2xhY2tTaGFyZWRDaGFubmVsU2VydmljZRKCAQoXTGlzdFNsYWNrU2hhcmVkQ2hhbm5lbHMSMi5kaXJlY3Rvcnlyb3N0ZXIudjEuTGlzdFNsYWNrU2hhcmVkQ2hhbm5lbHNSZXF1ZXN0GjMuZGlyZWN0b3J5cm9zdGVyLnYxLkxpc3RTbGFja1NoYXJlZENoYW5uZWxzUmVzcG9uc2UShQEKGENyZWF0ZVNsYWNrU2hhcmVkQ2hhbm5lbBIzLmRpcmVjdG9yeXJvc3Rlci52MS5DcmVhdGVTbGFja1NoYXJlZENoYW5uZWxSZXF1ZXN0GjQuZGlyZWN0b3J5cm9zdGVyLnYxLkNyZWF0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlc3BvbnNlEoUBChhVcGRhdGVTbGFja1NoYXJlZENoYW5uZWwSMy5kaXJlY3Rvcnlyb3N0ZXIudjEuVXBkYXRlU2xhY2tTaGFyZWRDaGFubmVsUmVxdWVzdBo0LmRpcmVjdG9yeXJvc3Rlci52MS5VcGRhdGVTbGFja1NoYXJlZENoYW5uZWxSZXNwb25zZRKFAQoYRGVsZXRlU2xhY2tTaGFyZWRDaGFubmVsEjMuZGlyZWN0b3J5cm9zdGVyLnYxLkRlbGV0ZVNsYWNrU2hhcmVkQ2hhbm5lbFJlcXVlc3QaNC5kaXJlY3Rvcnlyb3N0ZXIudjEuRGVsZXRlU2xhY2tTaGFyZWRDaGFubmVsUmVzcG9uc2VC3wEKFmNvbS5kaXJlY3Rvcnlyb3N0ZXIudjFCEVNsYWNrQ29ubmVjdFByb3RvUAFaSWdpdGh1Yi5jb20vdHJ1dml0eS9hY2Nlc3Mtcm9zdGVyL2dlbi9kaXJlY3Rvcnlyb3N0ZXIvdjE7ZGlyZWN0b3J5cm9zdGVydjGiAgNEWFiqAhJEaXJlY3Rvcnlyb3N0ZXIuVjHKAhJEaXJlY3Rvcnlyb3N0ZXJcVjHiAh5EaXJlY3Rvcnlyb3N0ZXJcVjFcR1BCTWV0YWRhdGHqAhNEaXJlY3Rvcnlyb3N0ZXI6OlYxYgZwcm90bzM");
 
 /**
  * @generated from message directoryroster.v1.ListSlackSharedChannelsRequest
@@ -57,6 +57,15 @@ export type ListSlackSharedChannelsResponse = Message<"directoryroster.v1.ListSl
    * @generated from field: repeated string groups = 4;
    */
   groups: string[];
+
+  /**
+   * the Slack Connect channels the workspaces' bots can see, merged into
+   * one row per channel, whether or not a record manages them. Only what
+   * the caller may see.
+   *
+   * @generated from field: repeated directoryroster.v1.SlackDiscoveredChannel discovered = 5;
+   */
+  discovered: SlackDiscoveredChannel[];
 };
 
 /**
@@ -65,6 +74,127 @@ export type ListSlackSharedChannelsResponse = Message<"directoryroster.v1.ListSl
  */
 export const ListSlackSharedChannelsResponseSchema: GenMessage<ListSlackSharedChannelsResponse> = /*@__PURE__*/
   messageDesc(file_directoryroster_v1_slack_connect, 1);
+
+/**
+ * SlackDiscoveredChannel is one existing Slack Connect channel, merged from
+ * every connected workspace's report.
+ *
+ * @generated from message directoryroster.v1.SlackDiscoveredChannel
+ */
+export type SlackDiscoveredChannel = Message<"directoryroster.v1.SlackDiscoveredChannel"> & {
+  /**
+   * the Slack channel id, the same on every side.
+   *
+   * @generated from field: string channel_id = 1;
+   */
+  channelId: string;
+
+  /**
+   * the policy key of the connected workspace that hosts it; empty when the
+   * host is a team that is not a connected workspace (external: it cannot
+   * be managed).
+   *
+   * @generated from field: string host_workspace = 2;
+   */
+  hostWorkspace: string;
+
+  /**
+   * the host's Slack team id, empty when no report said.
+   *
+   * @generated from field: string host_team = 3;
+   */
+  hostTeam: string;
+
+  /**
+   * one entry per connected workspace the channel reaches.
+   *
+   * @generated from field: repeated directoryroster.v1.SlackDiscoveredSide sides = 4;
+   */
+  sides: SlackDiscoveredSide[];
+
+  /**
+   * how many teams the channel reaches that are not connected workspaces.
+   *
+   * @generated from field: int32 external_teams = 5;
+   */
+  externalTeams: number;
+
+  /**
+   * whether a record manages it, and which.
+   *
+   * @generated from field: bool managed = 6;
+   */
+  managed: boolean;
+
+  /**
+   * @generated from field: string managed_as = 7;
+   */
+  managedAs: string;
+
+  /**
+   * whether the caller may take it under management: operator of the host
+   * workspace's owner, or of the installation, and the host is connected.
+   *
+   * @generated from field: bool can_manage = 8;
+   */
+  canManage: boolean;
+};
+
+/**
+ * Describes the message directoryroster.v1.SlackDiscoveredChannel.
+ * Use `create(SlackDiscoveredChannelSchema)` to create a new message.
+ */
+export const SlackDiscoveredChannelSchema: GenMessage<SlackDiscoveredChannel> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_slack_connect, 2);
+
+/**
+ * SlackDiscoveredSide is one connected workspace's side of a discovered
+ * channel.
+ *
+ * @generated from message directoryroster.v1.SlackDiscoveredSide
+ */
+export type SlackDiscoveredSide = Message<"directoryroster.v1.SlackDiscoveredSide"> & {
+  /**
+   * the policy workspace key.
+   *
+   * @generated from field: string workspace = 1;
+   */
+  workspace: string;
+
+  /**
+   * the name on this side; empty when the bot cannot see it.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * public, private, or unknown: the bot cannot see this side, so it is
+   * either not shared with this workspace or private with the bot not in it.
+   *
+   * @generated from field: string privacy = 3;
+   */
+  privacy: string;
+
+  /**
+   * @generated from field: int32 members = 4;
+   */
+  members: number;
+
+  /**
+   * whether this workspace's bot saw the channel.
+   *
+   * @generated from field: bool seen = 5;
+   */
+  seen: boolean;
+};
+
+/**
+ * Describes the message directoryroster.v1.SlackDiscoveredSide.
+ * Use `create(SlackDiscoveredSideSchema)` to create a new message.
+ */
+export const SlackDiscoveredSideSchema: GenMessage<SlackDiscoveredSide> = /*@__PURE__*/
+  messageDesc(file_directoryroster_v1_slack_connect, 3);
 
 /**
  * @generated from message directoryroster.v1.SlackConnectWorkspace
@@ -90,7 +220,7 @@ export type SlackConnectWorkspace = Message<"directoryroster.v1.SlackConnectWork
  * Use `create(SlackConnectWorkspaceSchema)` to create a new message.
  */
 export const SlackConnectWorkspaceSchema: GenMessage<SlackConnectWorkspace> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 2);
+  messageDesc(file_directoryroster_v1_slack_connect, 4);
 
 /**
  * SlackSharedChannelDefinition is what an operator writes: the record.
@@ -140,6 +270,15 @@ export type SlackSharedChannelDefinition = Message<"directoryroster.v1.SlackShar
    * @generated from field: map<string, bool> private_per_side = 6;
    */
   privatePerSide: { [key: string]: boolean };
+
+  /**
+   * the Slack id of a channel that already exists and is already shared,
+   * which the record takes over instead of the host creating one. Set from
+   * a discovered channel; immutable.
+   *
+   * @generated from field: string channel_id = 7;
+   */
+  channelId: string;
 };
 
 /**
@@ -147,7 +286,7 @@ export type SlackSharedChannelDefinition = Message<"directoryroster.v1.SlackShar
  * Use `create(SlackSharedChannelDefinitionSchema)` to create a new message.
  */
 export const SlackSharedChannelDefinitionSchema: GenMessage<SlackSharedChannelDefinition> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 3);
+  messageDesc(file_directoryroster_v1_slack_connect, 5);
 
 /**
  * @generated from message directoryroster.v1.CreateSlackSharedChannelRequest
@@ -164,7 +303,7 @@ export type CreateSlackSharedChannelRequest = Message<"directoryroster.v1.Create
  * Use `create(CreateSlackSharedChannelRequestSchema)` to create a new message.
  */
 export const CreateSlackSharedChannelRequestSchema: GenMessage<CreateSlackSharedChannelRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 4);
+  messageDesc(file_directoryroster_v1_slack_connect, 6);
 
 /**
  * @generated from message directoryroster.v1.CreateSlackSharedChannelResponse
@@ -181,7 +320,7 @@ export type CreateSlackSharedChannelResponse = Message<"directoryroster.v1.Creat
  * Use `create(CreateSlackSharedChannelResponseSchema)` to create a new message.
  */
 export const CreateSlackSharedChannelResponseSchema: GenMessage<CreateSlackSharedChannelResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 5);
+  messageDesc(file_directoryroster_v1_slack_connect, 7);
 
 /**
  * @generated from message directoryroster.v1.UpdateSlackSharedChannelRequest
@@ -201,7 +340,7 @@ export type UpdateSlackSharedChannelRequest = Message<"directoryroster.v1.Update
  * Use `create(UpdateSlackSharedChannelRequestSchema)` to create a new message.
  */
 export const UpdateSlackSharedChannelRequestSchema: GenMessage<UpdateSlackSharedChannelRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 6);
+  messageDesc(file_directoryroster_v1_slack_connect, 8);
 
 /**
  * @generated from message directoryroster.v1.UpdateSlackSharedChannelResponse
@@ -218,7 +357,7 @@ export type UpdateSlackSharedChannelResponse = Message<"directoryroster.v1.Updat
  * Use `create(UpdateSlackSharedChannelResponseSchema)` to create a new message.
  */
 export const UpdateSlackSharedChannelResponseSchema: GenMessage<UpdateSlackSharedChannelResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 7);
+  messageDesc(file_directoryroster_v1_slack_connect, 9);
 
 /**
  * @generated from message directoryroster.v1.DeleteSlackSharedChannelRequest
@@ -235,7 +374,7 @@ export type DeleteSlackSharedChannelRequest = Message<"directoryroster.v1.Delete
  * Use `create(DeleteSlackSharedChannelRequestSchema)` to create a new message.
  */
 export const DeleteSlackSharedChannelRequestSchema: GenMessage<DeleteSlackSharedChannelRequest> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 8);
+  messageDesc(file_directoryroster_v1_slack_connect, 10);
 
 /**
  * @generated from message directoryroster.v1.DeleteSlackSharedChannelResponse
@@ -254,7 +393,7 @@ export type DeleteSlackSharedChannelResponse = Message<"directoryroster.v1.Delet
  * Use `create(DeleteSlackSharedChannelResponseSchema)` to create a new message.
  */
 export const DeleteSlackSharedChannelResponseSchema: GenMessage<DeleteSlackSharedChannelResponse> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 9);
+  messageDesc(file_directoryroster_v1_slack_connect, 11);
 
 /**
  * SlackSharedChannel is one record and where the controller has it.
@@ -297,7 +436,7 @@ export type SlackSharedChannel = Message<"directoryroster.v1.SlackSharedChannel"
  * Use `create(SlackSharedChannelSchema)` to create a new message.
  */
 export const SlackSharedChannelSchema: GenMessage<SlackSharedChannel> = /*@__PURE__*/
-  messageDesc(file_directoryroster_v1_slack_connect, 10);
+  messageDesc(file_directoryroster_v1_slack_connect, 12);
 
 /**
  * SlackSharedChannelService is where Slack Connect channels between the
