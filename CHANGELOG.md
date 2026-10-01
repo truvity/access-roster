@@ -1,8 +1,13 @@
-## Unreleased
+## v1.43.1
 
-- **Fix: the audit catalogue's version is now 1.1.0.** v1.41.0 and v1.42.0 added
-  actions under 1.0.0, so an audit installation that had already registered
-  1.0.0 refused the changed document and the service stopped at start.
+## v1.43.0
+
+## v1.42.4
+
+## v1.42.3
+
+## v1.42.2
+
 - **Fix: a slow client-document origin no longer fails a sign-in.** The fetch
   of a client document (`client_documents`) now allows 10 seconds per attempt
   (was 5) and retries once, after a short pause, on a timeout, a reset
@@ -12,6 +17,12 @@
   time. Never on a validation failure, a redirect or a 4xx: those stay refused.
   Allow-listed origins, no redirects, the size limit and document validation
   are unchanged.
+
+## v1.42.1
+
+- **Fix: the audit catalogue's version is now 1.1.0.** v1.41.0 and v1.42.0 added
+  actions under 1.0.0, so an audit installation that had already registered
+  1.0.0 refused the changed document and the service stopped at start.
 
 ## v1.42.0
 
