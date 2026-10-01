@@ -104,9 +104,11 @@ leak-canary:
 
 # Every Go symbol the documentation names must exist. Nothing compiles a
 # code block in a Markdown file, so a rename leaves the old name in the
-# guide and the first person to notice is a stranger following it.
+# guide and the first person to notice is a stranger following it. Every
+# proto service and RPC must also be named in docs/reference/contracts.md.
 docs-check:
     ./hack/check-docs-symbols.py
+    go test -count=1 ./internal/contractsdoc/
 
 # Run go mod tidy
 tidy:
