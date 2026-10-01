@@ -483,7 +483,10 @@ function ChannelBlock({
                     )}
                   </TableCell>
                   <TableCell>
-                    <State kind={memberKind(member)} />
+                    <State
+                      kind={memberKind(member)}
+                      title={memberKind(member) === "their-move" ? "Only the person can move this forward: they need a Slack account under this address." : undefined}
+                    />
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">

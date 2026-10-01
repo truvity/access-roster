@@ -75,7 +75,12 @@ export function needsToken(ws: Pick<SlackWorkspaceStatus, "connectionState" | "n
 }
 
 /** The chip a person's row shows. */
-export function memberKind(member: Pick<SlackMemberStatus, "state">): StateKind {
+/** The hold reason of a person who has no Slack account for their address:
+ *  only they can move it forward, so it is theirs, not the operator's. */
+export const noAccountReason = "no Slack account yet";
+
+export function memberKind(member: Pick<SlackMemberStatus, "state"> & Partial<Pick<SlackMemberStatus, "reason">>): StateKind {
+  if (member.state === "held" && member.reason === noAccountReason) return "their-move";
   switch (member.state) {
     case "will-invite":
       return "will-invite";
