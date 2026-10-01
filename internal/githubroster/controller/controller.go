@@ -66,6 +66,17 @@ type Config struct {
 	// AppsDir is where the organisations' credentials are mounted, one
 	// file per organisation.
 	AppsDir string
+	// RecordsDir is where the console's records are mounted: each
+	// organisation's record and the operators' pass requests. Empty, or
+	// absent, is no records.
+	RecordsDir string
+	// CredentialPoll is how often the mounted credentials and records are
+	// looked at for a change, which runs a pass at once instead of at the
+	// next interval: an install lands as a new installation id in the
+	// credential, and an operator's Refresh as a marker, and neither should
+	// wait for the full interval. Zero is thirty seconds; negative turns it
+	// off.
+	CredentialPoll time.Duration
 }
 
 // Deps are what the controller talks to.
@@ -145,8 +156,16 @@ func New(cfg Config, deps Deps) *Controller {
 // Run passes now and then every interval, until the context ends. A pass
 // that met a console answering under another policy is tried again soon
 // (see [rails.Run]).
+//
+// Beside the interval, the mounted credentials and records are watched (see
+// [Controller.watchCredentials]): a new install, a changed credential or an
+// operator's request for a pass runs a pass within the poll period.
 func (c *Controller) Run(ctx context.Context) error {
-	return rails.Run(ctx, c.deps.Log, rails.Pacing{Interval: c.cfg.Interval, PolicyRetry: c.cfg.PolicyRetry}, c.Pass)
+	wake := make(chan struct{}, 1)
+	watchCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	go c.watchCredentials(watchCtx, wake)
+	return rails.Run(ctx, c.deps.Log, rails.Pacing{Interval: c.cfg.Interval, PolicyRetry: c.cfg.PolicyRetry, Wake: wake}, c.Pass)
 }
 
 // Pass goes over every bound organisation once and replaces the report.

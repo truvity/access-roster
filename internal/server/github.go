@@ -76,6 +76,15 @@ func (c *Console) GetGitHubStatus(
 		}
 	}
 
+	passes := map[string]connection.PassRequest{}
+	if c.deps.GitHubOrgs != nil {
+		read, err := c.deps.GitHubOrgs.PassRequests(ctx)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeUnavailable, err)
+		}
+		passes = read
+	}
+
 	confirmations := map[string]connection.Confirmation{}
 	if c.deps.GitHubConfirmations != nil {
 		read, err := c.deps.GitHubConfirmations.Confirmations(ctx)
@@ -103,6 +112,7 @@ func (c *Console) GetGitHubStatus(
 		if record, connected := connections[org]; connected {
 			row.Connection = connectionProto(record)
 		}
+		row.PassRequestedAt = timestampOf(passes[org].At)
 		if confirmation, ok := confirmations[org]; ok && confirmation.Current(time.Now()) {
 			row.RemovalConfirmation = &directoryrosterv1.GitHubRemovalConfirmation{
 				Fingerprint: confirmation.Fingerprint, ConfirmedBy: confirmation.By, ConfirmedAt: timestampOf(confirmation.At),

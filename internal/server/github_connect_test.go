@@ -32,6 +32,7 @@ type memoryConnections struct {
 	mu          sync.Mutex
 	records     map[string]connection.Record
 	credentials map[string]connection.Credential
+	passes      map[string]connection.PassRequest
 }
 
 func newMemoryConnections() *memoryConnections {
@@ -73,6 +74,29 @@ func (m *memoryConnections) SetOwner(_ context.Context, org, owner string) (stri
 	r.Owner = owner
 	m.records[org] = r
 	return previous, true, nil
+}
+
+func (m *memoryConnections) RequestPass(_ context.Context, r connection.PassRequest) (bool, time.Time, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.passes == nil {
+		m.passes = map[string]connection.PassRequest{}
+	}
+	kept, last := true, time.Time{}
+	if prev, ok := m.passes[r.Org]; ok {
+		last = prev.At
+		kept = r.At.Sub(prev.At) >= connection.PassGap
+	}
+	if kept {
+		m.passes[r.Org] = r
+	}
+	return kept, last, nil
+}
+
+func (m *memoryConnections) PassRequests(context.Context) (map[string]connection.PassRequest, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return maps.Clone(m.passes), nil
 }
 
 func (m *memoryConnections) Delete(_ context.Context, org string) error {

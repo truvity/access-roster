@@ -40,12 +40,15 @@ import {
   organisationNeeds,
   ownerRule,
   peopleOf,
+  offersRefresh,
+  passRequested,
   permissionDiffers,
   purposeWords,
   recentTokensEmpty,
   recentTokensKept,
   recentTokensProblem,
   repositoryWords,
+  requestedText,
   rowsOf,
   sentence,
   summaryOf,
@@ -387,6 +390,23 @@ function OrganisationPage({
     }
   };
 
+  // Refresh asks the controller for a pass over this organisation now,
+  // instead of at its next interval; it notices within a minute.
+  const refresh = async () => {
+    setBusy(true);
+    setFailure(undefined);
+    try {
+      await github.requestGitHubPass({ org: org.org });
+      onDone(`A pass over ${org.org} is requested. The controller notices within a minute.`);
+      reload();
+    } catch (error) {
+      setFailure(reason(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const mayRefresh = org.canOperate && offersRefresh(org);
+
   const plan = [
     count("invite") && `invite ${count("invite")}`,
     count("add") && `add ${count("add")} to teams`,
@@ -402,10 +422,19 @@ function OrganisationPage({
       title={org.org}
       mono
       actions={
-        org.canChangeOwner ? (
-          <Button size="small" onClick={() => setChangingOwner(true)}>
-            Change owner
-          </Button>
+        mayRefresh || org.canChangeOwner ? (
+          <>
+            {mayRefresh ? (
+              <Button size="small" disabled={busy || passRequested(org)} onClick={() => void refresh()}>
+                Refresh
+              </Button>
+            ) : null}
+            {org.canChangeOwner ? (
+              <Button size="small" onClick={() => setChangingOwner(true)}>
+                Change owner
+              </Button>
+            ) : null}
+          </>
         ) : null
       }
       lede={
@@ -447,6 +476,7 @@ function OrganisationPage({
       ) : null}
       <Stack sx={{ gap: 2, mb: 4 }}>
         <Failure error={failure} />
+        {passRequested(org) ? <Alert severity="info">{requestedText}</Alert> : null}
         {org.reportError ? <Failure error={`The last report could not be read: ${org.reportError}`} /> : null}
         {org.tick?.error ? <Failure error={`The last pass failed: ${org.tick.error}`} /> : null}
         {seats && !seats.known ? (

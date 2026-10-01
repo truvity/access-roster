@@ -66,7 +66,9 @@ spec:
 # report, and updating the one Secret people's linked GitHub accounts are
 # kept in — each link's token pair rotates every time it is renewed, and
 # the renewed pair has to be written back. The Secret with the Apps' keys
-# is a mounted volume, so no other Secret is readable at all.
+# and the ConfigMap with the console's records are mounted volumes, so no
+# other Secret or ConfigMap is readable at all, and watching them for a
+# change (an install, a Refresh) needs no permission either.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -868,6 +870,8 @@ spec:
               value: /var/run/secrets/github-roster/token
             - name: APPS_DIR
               value: /var/run/github-roster/apps
+            - name: RECORDS_DIR
+              value: /var/run/github-roster/records
             # Read-only, and for one reason only: so the "internal groups
             # are declared but nothing consumes them" warning does not name
             # a GitHub-derived group a catalogue grant actually consumes.
@@ -905,6 +909,9 @@ spec:
             - name: apps
               mountPath: /var/run/github-roster/apps
               readOnly: true
+            - name: records
+              mountPath: /var/run/github-roster/records
+              readOnly: true
             - name: github-apps-catalogue
               mountPath: /var/run/github-roster/github-apps-catalogue.yaml
               subPath: catalogue.yaml
@@ -937,6 +944,14 @@ spec:
         - name: apps
           secret:
             secretName: access-issuer-github-apps
+            optional: true
+        # The console's records beside them: each organisation's record, the
+        # operators' confirmations and their requests for a pass now. The
+        # controller watches it, so a Refresh runs a pass at once. Optional
+        # for the same reason.
+        - name: records
+          configMap:
+            name: access-issuer-github-orgs
             optional: true
         - name: github-apps-catalogue
           configMap:

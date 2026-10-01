@@ -1,4 +1,5 @@
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { timestampMs } from "@bufbuild/protobuf/wkt";
 // The wire enums, under other names: this module's own words for the
 // same four things are what every page is written in.
 import {
@@ -525,4 +526,23 @@ export function recentTokensKept(since: string): string {
 export function recentTokensProblem(error: string): string {
   const said = error.trim() || "the reason is not known";
   return `Recent tokens could not be read: ${said.replace(/\.$/, "")}.`;
+}
+
+/** Whether Refresh is offered on an organisation: a pass needs the App's
+ *  installation, so only an installed organisation has anything to pass
+ *  with. Whether the caller may operate it is the page's own question
+ *  (`canOperate`). */
+export function offersRefresh(org: Pick<GitHubOrganisation, "connection">): boolean {
+  return org.connection?.installed === true;
+}
+
+/** What is shown between an operator's Refresh and the report it asked for. */
+export const requestedText = "Pass requested \u2014 waiting for the controller to report.";
+
+/** Whether an operator asked for a pass that has not reported yet: the
+ *  request is newer than the last report, or there is no report at all. */
+export function passRequested(org: Pick<GitHubOrganisation, "tick" | "passRequestedAt">): boolean {
+  const asked = org.passRequestedAt;
+  if (!asked) return false;
+  return !org.tick?.at || timestampMs(org.tick.at) < timestampMs(asked);
 }

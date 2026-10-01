@@ -150,10 +150,9 @@ The account's name is `<release>-github-roster`. The chart refuses to
 render the controller without an `exchange.clusters` row or a console
 mount, because either absence is a controller that can never read
 anything. `githubRoster.interval` (15 minutes) is how long between
-passes. Unlike the [Slack controller](slack-workspace.md#a-pass-runs-promptly-after-an-install),
-the GitHub controller has no 30-second credential watch and no *Refresh*: a
-freshly installed organisation is passed over at the next interval unless the
-controller restarts.
+passes. Like the [Slack controller](slack-workspace.md#a-pass-runs-promptly-after-an-install),
+it does not wait out the interval for what an operator just did: see
+[A pass runs promptly](#a-pass-runs-promptly).
 
 **Deploy the controller and the console together**, as the chart does.
 Every answer the console gives carries the digest of the policy it was
@@ -373,11 +372,36 @@ Any other GitHub App a deployment needs — for dependency updates, for
 releases — is declared in a catalogue and created the same way: see
 [github-apps-catalogue.md](github-apps-catalogue.md).
 
+## A pass runs promptly
+
+Besides its interval (`githubRoster.interval`, 15 minutes), the controller
+looks every 30 seconds at the mounted `<release>-github-apps` Secret and
+`<release>-github-orgs` ConfigMap. When an organisation's own credential or
+record changed (a new installation after **Install**, a reconnect, a
+disconnect), it runs a full pass without waiting for the interval. Allow up to
+about two minutes: the look is every 30 seconds, and the kubelet takes up to
+about a minute to project a changed Secret or ConfigMap into the pod. Nothing
+needs a restart.
+
+**Refresh** on an installed organisation's page (operators of the organisation
+only: the installation-wide operator, or the operator of the directory that
+owns it) asks for a pass over it now. The console writes a marker
+`_pass.<organisation>.json` into the records ConfigMap and the controller
+notices it at its next look. A second request less than 60 seconds after the
+first is refused (`resource_exhausted`), and an organisation whose App is not
+installed has nothing to pass with and is refused (`failed_precondition`). The
+page says *Pass requested* until a report newer than the request exists. The
+pass is the full one: the controller publishes its reports as one document set,
+so it never passes over one organisation alone. The marker is not a record, and
+is forgotten when the organisation is disconnected. Each kept request is
+audited as `roster.github_org.pass_requested`, naming the organisation and who
+asked.
+
 ## What connecting leaves behind
 
 | Object | Holds | Read by |
 |---|---|---|
-| ConfigMap `<release>-github-orgs` | one record per organisation: the App's id and slug, where it is installed, when and by whom it was connected | the console |
+| ConfigMap `<release>-github-orgs` | one record per organisation: the App's id and slug, where it is installed, when and by whom it was connected; beside them the operators' removal confirmations (`_confirm.<organisation>.json`) and requests for a pass (`_pass.<organisation>.json`) | the console; the controller, as a read-only mounted volume, for the change check and the pass requests |
 | Secret `<release>-github-apps` | one credential per organisation: the App's id, its installation, its private key; and the link App's client id and secret under `_link.json` | the controller, as a mounted volume; this service to uninstall on Disconnect and to redeem a person's authorization |
 | Secret `<release>-github-links` | one link per GitHub account (`<id>.json`): its login, the addresses it proves, its state, the person's token pair | this service, which writes a link; the controller, which rewrites it as it checks — the one Secret its Role may update, by name |
 | Secret `<release>-github-runner-apps` | every runner App: its three keys once installed, its record beside them | this service, to find the installation and to uninstall; the deployment, copying the keys to its runners |

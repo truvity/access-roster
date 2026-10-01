@@ -100,13 +100,22 @@ func (a *auditLog) kinds() []string {
 type report struct {
 	mu        sync.Mutex
 	documents map[string]string
+	// replaced counts the publications.
+	replaced int
 }
 
 func (r *report) Replace(_ context.Context, documents map[string]string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.documents = documents
+	r.replaced++
 	return nil
+}
+
+func (r *report) published() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.replaced
 }
 
 func (r *report) Reports(context.Context) (map[string]string, error) {

@@ -175,3 +175,54 @@ func install(t *testing.T, clientset *fake.Clientset, configMap, secret, key, re
 		t.Fatal(err)
 	}
 }
+
+// A request for a pass is one marker per organisation, kept in the records'
+// ConfigMap: a second under the gap is refused and leaves the first, one past
+// it replaces it, and disconnecting forgets the marker with the rest. The
+// marker is not an organisation's record, so listing never reads it as one.
+func TestARequestedPassIsOneMarkerPerOrganisationAndIsForgottenWithIt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := kube.NewGitHubOrgs(newClient())
+	at := time.Date(2026, 9, 12, 23, 0, 0, 0, time.UTC)
+	for _, org := range []string{"globex", "acme"} {
+		if err := store.Put(ctx, connection.Record{Org: org, AppID: 42, AppSlug: org, ConnectedAt: at, ConnectedBy: "x"},
+			connection.Credential{Org: org, AppID: 42, PrivateKey: "k"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ask := func(org string, when time.Time) (bool, time.Time) {
+		kept, last, err := store.RequestPass(ctx, connection.PassRequest{Org: org, At: when, By: "ada@north.example"})
+		if err != nil {
+			t.Fatalf("RequestPass %s: %v", org, err)
+		}
+		return kept, last
+	}
+	if kept, last := ask("globex", at); !kept || !last.IsZero() {
+		t.Fatalf("the first request = %v, %v", kept, last)
+	}
+	if kept, last := ask("globex", at.Add(connection.PassGap-time.Second)); kept || !last.Equal(at) {
+		t.Errorf("a request within the gap = %v, %v, want refused with the first's time", kept, last)
+	}
+	if kept, _ := ask("acme", at.Add(time.Second)); !kept {
+		t.Error("another organisation shares globex's gap")
+	}
+	later := at.Add(connection.PassGap)
+	if kept, _ := ask("globex", later); !kept {
+		t.Error("a request past the gap was refused")
+	}
+	got, err := store.PassRequests(ctx)
+	if err != nil || len(got) != 2 || !got["globex"].At.Equal(later) || got["globex"].By != "ada@north.example" {
+		t.Fatalf("PassRequests = %+v, %v", got, err)
+	}
+	records, err := store.List(ctx)
+	if err != nil || len(records) != 2 {
+		t.Errorf("List = %d records, %v: a marker is not a record", len(records), err)
+	}
+	if err = store.Delete(ctx, "globex"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = store.PassRequests(ctx); len(got) != 1 || got["acme"].Org == "" {
+		t.Errorf("markers after disconnecting globex = %+v", got)
+	}
+}
