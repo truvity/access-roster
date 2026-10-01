@@ -12,7 +12,10 @@ import "directoryroster/v1/slack_connect.proto";
 //
 // They live beside the policy's own channels, which stay in git and are fed
 // by internal groups (alert channels, say), and never overlap them: a
-// channel the policy binds is refused here as "defined in git". The Slack
+// channel the policy binds is refused here as "defined in git", unless the
+// record sets supersedes_policy and covers exactly that channel: a takeover,
+// with no unmanaged gap (the policy entry is reported superseded and left
+// alone; deleting the record gives it back). The Slack
 // controller reads the records and does the rest, with the same rules as for
 // a policy channel: create or take over by name or id, extend or strict,
 // removals only on the directory's say-so and never past the breaker.
@@ -29,7 +32,9 @@ service SlackChannelService {
   rpc ListSlackChannels(ListSlackChannelsRequest) returns (ListSlackChannelsResponse);
 
   // CreateSlackChannel validates and keeps a record. Operator of the
-  // workspace's owner, or the installation-wide operator.
+  // workspace's owner, or the installation-wide operator. With
+  // supersedes_policy it takes over a policy channel, and is audited as a
+  // create with a takeover reason.
   rpc CreateSlackChannel(CreateSlackChannelRequest) returns (CreateSlackChannelResponse);
 
   // UpdateSlackChannel changes the mode, the ignore list and the
@@ -98,6 +103,11 @@ message SlackChannelDefinition {
   // directory group addresses whose members belong. Of the workspace's
   // owning directory.
   repeated string sources = 7;
+  // takes over the policy channel defined in git (same workspace, same name
+  // or channel id): the record is reconciled and the policy entry is not,
+  // until the record is deleted. Set once, on create; immutable. Refused on
+  // create when no policy channel is covered.
+  bool supersedes_policy = 8;
 }
 
 // SlackChannelRecord is one record and where the controller has it.

@@ -170,6 +170,7 @@ func (c *Console) slackWorkspaceView(
 		}
 		if binding, ok := bound[ch.Name]; ok && !ch.Console && !ch.Shared {
 			view.Sources = slices.Clone(binding.From)
+			view.Ignore = slices.Clone(binding.Ignore)
 		}
 		for j := range ch.Members {
 			m := &ch.Members[j]

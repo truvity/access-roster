@@ -394,6 +394,7 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	report.Tick.At = started
 	c.reportRefused(&report, key, p.refused[key])
 	c.reportConsoleRefused(&report, key, p.consoleRefused[key])
+	c.reportSuperseded(&report, key, p.console)
 
 	// enabled is this workspace's dry-run switch (internal/rails): disabled
 	// derives and reports what would change, and changes nothing.
@@ -486,6 +487,42 @@ func (c *Controller) reportConsoleRefused(report *status.Workspace, _ string, re
 		report.Channels = append(report.Channels, status.Channel{
 			Name: r.name, ID: r.channel.ChannelID, Console: true, Mode: mode, Private: r.channel.Private,
 			State: status.ChannelHeld, Reason: "the console channel's record is refused and not acted on: " + r.err.Error(),
+		})
+	}
+}
+
+// reportSuperseded lists, in the workspace's report, each policy channel a
+// console record has taken over: not reconciled, marked superseded with who
+// took it over and when. It is a report only; nothing is done to the channel
+// in Slack, and removing the entry from git changes nothing there.
+func (c *Controller) reportSuperseded(report *status.Workspace, key string, console []reconcile.ConsoleChannel) {
+	bound := c.deps.Policy.Slack.Workspaces[key].Channels
+	for _, name := range slices.Sorted(maps.Keys(bound)) {
+		b := bound[name]
+		rec := reconcile.SupersededBy(console, key, name, b)
+		if rec == nil {
+			continue
+		}
+		by, at := rec.CreatedBy, rec.CreatedAt
+		who := "a console operator"
+		if by != "" {
+			who = by
+		}
+		when := ""
+		if !at.IsZero() {
+			when = " at " + at.UTC().Format(time.RFC3339)
+		}
+		mode := b.Mode
+		if mode == "" {
+			mode = policy.SlackModeExtend
+		}
+		id := rec.ChannelID
+		if id == "" {
+			id = b.Adopt
+		}
+		report.Channels = append(report.Channels, status.Channel{
+			Name: name, ID: id, Private: b.Private, Mode: mode, State: status.ChannelSuperseded,
+			Reason: fmt.Sprintf("taken over on the console by %s%s as #%s; remove it from git", who, when, rec.Name),
 		})
 	}
 }

@@ -68,7 +68,7 @@ func (m instruments) recordPass(ctx context.Context, report *status.Workspace) {
 	}
 	for _, state := range []status.ChannelState{
 		status.ChannelOK, status.ChannelWillCreate, status.ChannelWillAdopt, status.ChannelWillAccept,
-		status.ChannelWaiting, status.ChannelHeld,
+		status.ChannelWaiting, status.ChannelHeld, status.ChannelSuperseded,
 	} {
 		m.channels.Record(ctx, channels[state], metric.WithAttributes(workspace, attribute.String("state", string(state))))
 	}
