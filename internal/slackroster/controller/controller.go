@@ -15,9 +15,14 @@
 //     answers must carry ([rails.PolicyGuard]).
 //  2. The mounted credentials and the console's records are read: bot tokens,
 //     each installed workspace's bot user id, the shared channels' definitions
-//     (validated against the policy; the refused are reported), and the
+//     and the console's ordinary channels (validated against the policy; the
+//     refused are reported), and the
 //     operators' confirmations that are still current.
-//  3. The holders of every bound group are asked once for all workspaces.
+//  3. The holders of every bound group are asked once for all workspaces, and
+//     who is in every DIRECTORY group the console channels and the shared
+//     channels name, nested groups expanded. A record whose source is not a
+//     group of an allowed directory is refused and reported; a directory that
+//     cannot be read fails only the workspaces that depend on one.
 //  4. Per workspace: observe Slack whole, derive, ask the directory to vouch
 //     for each address a removal or a leaver report rests on (one question per
 //     address per pass, however many channels or workspaces name it), decide.
