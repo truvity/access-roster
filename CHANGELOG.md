@@ -1,3 +1,58 @@
+## Unreleased
+
+- **Console channels: ordinary Slack channels managed on the console, fed by
+  directory groups.** Slack channels now come in two kinds that are never mixed
+  on one channel. **Policy channels** (`slack.workspaces[k].channels`, in git)
+  are fed by internal groups and are unchanged, for channels the
+  infrastructure owns. **Console channels** are records on the console, audited
+  and backed up with the other Slack records, fed by **directory (IdP) groups**
+  by address and never by internal groups: an **ordinary** channel in one
+  workspace takes the groups of the directory that owns the workspace, and a
+  **Slack Connect** channel takes groups of any connected directory, each person
+  joining on the side whose owning directory serves their address. Members are
+  resolved through nested groups (new `AccessService.ResolveDirectoryGroups`,
+  gated like the other reads; cycles end and the depth and size are bounded,
+  and a read cut short refuses the channel for the pass). The controller
+  reconciles a console channel with the same rules as a policy channel (create
+  or take over by name or id, `extend` or `strict`, the directory vouches
+  before a removal and now asks about the directory groups and the groups they
+  nest, breakers, holds, never a visibility change), refuses a record whose
+  source is not a group of an allowed directory, and fails only the workspaces
+  that depend on a directory it cannot read. A console channel is refused as
+  *this channel is defined in git* when the policy binds the same name or
+  adopts the same channel id, and one channel is managed one way. New record
+  `_channel.<workspace>.<name>.json` (workspace, name, channel_id, private,
+  mode, ignore, sources, created/updated by and at) in
+  `<release>-slack-workspaces`, included in the `slack-records` mirror, and
+  `SlackChannelService` (list, create, update, delete: operator over the
+  workspace's owning directory, or installation-wide). The Slack page lists the
+  console channels with a form, and **Discovered channels**: every channel the
+  bots see that no policy binding or record manages (reports gain
+  `discovered`, additive, capped at 500 per workspace with a count of the
+  rest), with **Manage** prefilled. **Breaking for a record, not for a
+  release:** a Slack Connect record's `from` is now `sources`, directory
+  groups. A record written with internal groups is listed `invalid` with a
+  message, its host's operators can edit it, and it is acted on by nobody until
+  then. The Slack Connect form's picker lists directory groups of every
+  connected directory under the directory (id and domains), searchable; it shows
+  which chosen groups land on each side and warns about a group whose directory
+  owns no side. Audit catalogue **1.2.0** adds
+  `roster.slack_console_channel.created`, `.updated` and `.deleted` and the
+  `directory_group` target type: a group's address is carried as a target,
+  never as data, so the Slack Connect records no longer write `from`. Moving a
+  policy channel to the console: remove it from the policy, find it under
+  Discovered, Manage it with the directory group as the source and the same
+  mode ([docs](docs/connect/slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console)).
+
+- **Fix: a Slack Connect side no report mentions is shown as unknown, not
+  dropped.** Slack names only the host among a channel's teams when the host's
+  channel list is read, and a guest bot lists a private channel only once it is
+  in it, so a guest side could leave no trace in any report and the Manage form
+  omitted it. Discovery now offers every connected workspace the caller may view
+  as a side: one nothing places the channel in is unknown (`listed: false`) and
+  is not prefilled; Slack's pending-guest and internal team lists now place a
+  channel in those workspaces too.
+
 ## v1.44.0
 
 - **A recovery copy of the Slack state: `slackState.push`.** In the shape of
