@@ -1073,8 +1073,11 @@ type SlackChannelStatus struct {
 	Members             []*SlackMemberStatus      `protobuf:"bytes,9,rep,name=members,proto3" json:"members,omitempty"`
 	Breaker             *SlackBreaker             `protobuf:"bytes,10,opt,name=breaker,proto3" json:"breaker,omitempty"`
 	RemovalConfirmation *SlackRemovalConfirmation `protobuf:"bytes,11,opt,name=removal_confirmation,json=removalConfirmation,proto3" json:"removal_confirmation,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// an ordinary channel managed from the console (fed by directory
+	// groups), as opposed to one the policy binds.
+	Console       bool `protobuf:"varint,12,opt,name=console,proto3" json:"console,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SlackChannelStatus) Reset() {
@@ -1182,6 +1185,13 @@ func (x *SlackChannelStatus) GetRemovalConfirmation() *SlackRemovalConfirmation 
 		return x.RemovalConfirmation
 	}
 	return nil
+}
+
+func (x *SlackChannelStatus) GetConsole() bool {
+	if x != nil {
+		return x.Console
+	}
+	return false
 }
 
 type SlackMemberStatus struct {
@@ -1548,7 +1558,7 @@ const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	"\achanges\x18\x04 \x01(\x05R\achanges\x12\x12\n" +
 	"\x04held\x18\x05 \x01(\x05R\x04held\x12\x1a\n" +
 	"\bretrying\x18\x06 \x01(\x05R\bretrying\x12\x18\n" +
-	"\awaiting\x18\a \x01(\x05R\awaiting\"\x9e\x03\n" +
+	"\awaiting\x18\a \x01(\x05R\awaiting\"\xb8\x03\n" +
 	"\x12SlackChannelStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x18\n" +
@@ -1561,7 +1571,8 @@ const file_directoryroster_v1_slack_proto_rawDesc = "" +
 	"\amembers\x18\t \x03(\v2%.directoryroster.v1.SlackMemberStatusR\amembers\x12:\n" +
 	"\abreaker\x18\n" +
 	" \x01(\v2 .directoryroster.v1.SlackBreakerR\abreaker\x12_\n" +
-	"\x14removal_confirmation\x18\v \x01(\v2,.directoryroster.v1.SlackRemovalConfirmationR\x13removalConfirmation\"\xa0\x01\n" +
+	"\x14removal_confirmation\x18\v \x01(\v2,.directoryroster.v1.SlackRemovalConfirmationR\x13removalConfirmation\x12\x18\n" +
+	"\aconsole\x18\f \x01(\bR\aconsole\"\xa0\x01\n" +
 	"\x11SlackMemberStatus\x12\x16\n" +
 	"\x06person\x18\x01 \x01(\tR\x06person\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x17\n" +

@@ -250,6 +250,9 @@ message SlackChannelStatus {
   repeated SlackMemberStatus members = 9;
   SlackBreaker breaker = 10;
   SlackRemovalConfirmation removal_confirmation = 11;
+  // an ordinary channel managed from the console (fed by directory
+  // groups), as opposed to one the policy binds.
+  bool console = 12;
 }
 
 message SlackMemberStatus {
