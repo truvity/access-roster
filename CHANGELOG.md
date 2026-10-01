@@ -32,6 +32,11 @@
   over*, for an existing channel; the navigation as Overview and four clusters)
   say what the code does.
 
+- **A test keeps `contracts.md` in step with the protos.** `just docs-check` now
+  fails, naming each one, when a service or RPC in `proto/` is not mentioned in
+  `docs/reference/contracts.md`. It found `accessissuer.v1.SessionService`
+  (`ListSessions`, `RevokeSessions`) undocumented, and the page now describes it.
+
 - **Fix: archiving from the console asks Slack first.** Deleting a console
   channel's record with *Also archive* ticked now refuses, with the record kept
   and nothing changed, unless the workspace's controller reports that it acts
