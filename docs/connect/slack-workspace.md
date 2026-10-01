@@ -30,7 +30,8 @@ For every workspace the policy declares:
    set the owner on the console*; a directory that cannot be read, or is no
    longer connected, fails the workspace's pass and changes nothing.
 3. **Asks the directory who holds each bound group**, once per pass for every
-   workspace. The console answers under the digest of the policy it computed
+   workspace, and **who is in each directory group** the console channels and
+   Slack Connect channels name (see [Console channels](#console-channels-ordinary-channels-managed-on-the-console)). The console answers under the digest of the policy it computed
    with, and the controller acts only on answers under its own: during a rollout
    the two restart at different moments.
 4. **Derives** the wanted state, and **asks the directory to vouch** for each
@@ -108,13 +109,107 @@ account alone: a strict channel's removal rule is the only thing that removes,
 and a leaver in an `extend` channel or a public channel stays there until a
 person deals with it.
 
+### Console channels: ordinary channels managed on the console
+
+Two kinds of channel are fed by two kinds of group, and never mixed on one
+channel:
+
+| Kind | Where it is declared | Fed by |
+|---|---|---|
+| **Policy channel** | `slack.workspaces[k].channels` in git | **internal** groups. For channels the infrastructure owns, such as alert channels |
+| **Console channel** | a record on the console, `_channel.<workspace>.<name>.json` | **directory** groups (IdP groups, by address) |
+
+A console channel is **ordinary** (one workspace) or **Slack Connect** (see
+[Shared channels](#shared-channels)). Both are created and edited on the
+console, audited, and backed up with the workspaces' own records
+(`Secret <release>-slack-records`). The controller reconciles an ordinary
+console channel with **the same rules as a policy channel**: created when
+missing, otherwise taken over by name (or by the record's `channel_id`),
+`extend` or `strict`, the directory vouches before anybody is removed, the
+breakers hold a large removal set, and a hold is recorded once. Visibility is
+never converted.
+
+**The groups.** A source is a **directory group address** such as
+`team@example.com`, of a directory access-roster has connected. An ordinary
+channel takes groups of **its workspace's owning directory** only (the
+directory recorded as the workspace's owner when it was connected). Members are
+resolved **through nested groups**: a member of a group that is itself a group
+in a connected directory is expanded, each group once, so a cycle ends, to a
+bounded depth. A chain the console cannot expand whole is reported as cut short
+and the channel is refused for that pass, because nobody may be added or
+removed on a read that is not whole. A member of a directory the console does
+not read is not live and is not invited.
+
+**Removals ask about the directory groups.** Where a policy channel asks the
+directory whether somebody still holds an internal group, a strict console
+channel asks whether they are still in one of its directory groups, or in a
+group those nest. Somebody the directory still finds there is never removed,
+however the member list came out; somebody it cannot vouch for waits (`retrying`).
+
+**What is refused** (by the console when the record is written, and again by
+the controller at every pass, because a directory can be disconnected or an
+owner changed afterwards; the refusal is a held channel on the workspace's
+report, with the reason, acted on by nobody):
+
+- a source that is not a group of a connected directory, or, for an ordinary
+  channel, of another directory than the workspace's owner;
+- a channel the **policy already defines**, the same name in the workspace or
+  the same channel id adopted by a binding: *this channel is defined in git*;
+- `strict` on a public channel, or an `ignore` list without `strict`;
+- a workspace with no owning directory yet;
+- a channel that is already managed the other way (an ordinary record and a
+  Slack Connect record of the same host and name or id).
+
+**Discovery.** Every pass the report lists, per workspace, every channel the
+bot can see that **neither a policy binding nor a record manages**: public
+channels, and private ones the bot is in. `#general` and archived channels are
+left out. The list is by name and capped at 500 per workspace, with a count of
+the rest. On the Slack page, **Discovered channels** shows them with **Manage**,
+which opens the form prefilled with the workspace, the name, the channel id and
+the visibility as seen; you choose the directory groups and the mode.
+
+**Who may.** Create, edit and delete: the operator over the workspace's owning
+directory, or the installation-wide operator. A viewer sees the records and what
+was discovered. Every change is audited as
+`roster.slack_console_channel.created`, `.updated` or `.deleted`, with the
+directory groups as targets of type `directory_group`.
+
+#### Moving a policy channel to the console
+
+A channel the policy binds today, fed by an internal group, can be moved to the
+console and fed by the directory group itself. For example a private `strict`
+channel `ops-room` fed by an internal group that is in turn fed by the
+directory group `ops@example.com`:
+
+1. **Remove it from the policy in git** (the `channels` entry under its
+   workspace). It becomes **unmanaged**: nothing is added to or removed from it
+   while it is, and no removals happen.
+2. After the next pass it appears under **Discovered channels** on the Slack
+   page, because the bot is in it.
+3. **Manage** it. The form is prefilled with the workspace, the name, the id and
+   *private*; choose the **same mode** (`strict`), set its `ignore` list if it
+   had one, and pick the directory group `ops@example.com` as the source.
+
+Do these in this order. Adding the record while the policy still binds the
+channel is refused as *defined in git*, which is what keeps one channel from
+being managed twice. If the new record's group holds fewer people than the old
+internal group did, a strict channel will remove the difference only once the
+directory vouches for each, and never past the breaker: the first pass after
+the move is subject to it like any other.
+
 ### Shared channels
 
 Slack Connect channels are not in the policy: the console keeps each as a
-record beside the workspaces' records, `_shared.<name>.json`. The controller
-validates every one against the policy it runs under. A valid one is acted on,
+record beside the workspaces' records, `_shared.<name>.json`, fed by **directory
+groups of any connected directory**: each resolved person joins on the side whose
+workspace's owning directory serves their address. The controller
+validates every one against the policy it runs under and asks the console who is
+in its groups. A valid one is acted on,
 a refused one is reported on its host workspace as a held channel with the
-reason, and acted on by nobody. They are created and edited on the console's
+reason, and acted on by nobody. A record written before shared channels were fed
+by directory groups, with internal groups in `from`, is reported invalid with a
+message that says to edit it and pick directory groups; its names are never
+reread as directory groups. They are created and edited on the console's
 Slack Connect page: see [slack-connect-channels.md](slack-connect-channels.md).
 
 ### Dry run until `actsIn`
@@ -268,7 +363,9 @@ that gate: a set that changed since the page was loaded needs looking at again.
 
 The API behind the page is `SlackService` (`GetSlackStatus`,
 `BeginSlackWorkspaceConnect`, `ChangeSlackWorkspaceOwner`,
-`DisconnectSlackWorkspace`, `ConfirmSlackRemovals`). The catalogue's [Slack Apps](slack-apps-catalogue.md)
+`DisconnectSlackWorkspace`, `ConfirmSlackRemovals`), and, for the console
+channels listed on it, `SlackChannelService` (`ListSlackChannels`,
+`CreateSlackChannel`, `UpdateSlackChannel`, `DeleteSlackChannel`). The catalogue's [Slack Apps](slack-apps-catalogue.md)
 are separate: they create Apps for other purposes; this page's App is the
 roster's own.
 
@@ -315,7 +412,7 @@ and sees every directory). The rest are mounted volumes, so the account needs no
 read any Secret or other ConfigMap through the API: the Secret
 `<release>-slack-credentials` (one `<workspace>.json` per workspace: app id,
 client id and secret, the bot token once installed) and the ConfigMap
-`<release>-slack-workspaces` (each workspace's record, `_shared.*` shared
+`<release>-slack-workspaces` (each workspace's record, `_channel.*` console channels, `_shared.*` shared
 channels, `_confirm.*` confirmations). Both are optional: before anything is
 connected the controller reports each declared workspace as not connected. Keys
 that start with an underscore are other documents and are never read as a

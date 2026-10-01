@@ -156,8 +156,8 @@ upstream can re-deliver:
 | Object | Holds |
 |---|---|
 | `Secret <release>-slack-credentials` | each connected workspace's client id and secret, and its bot token once installed |
-| `ConfigMap <release>-slack-workspaces` | each workspace's record (`<workspace>.json`), the Slack Connect channels defined on the console (`_shared.<name>.json`), and transient confirmations and pass markers |
-| `Secret <release>-slack-records` | a mirror of the records above, exactly the `<workspace>.json` and `_shared.*` entries, kept by the service in the same code path that writes the ConfigMap. It exists because a `PushSecret` reads Secrets only |
+| `ConfigMap <release>-slack-workspaces` | each workspace's record (`<workspace>.json`), the Slack Connect channels defined on the console (`_shared.<name>.json`), the ordinary console channels (`_channel.<workspace>.<name>.json`), and transient confirmations and pass markers |
+| `Secret <release>-slack-records` | a mirror of the records above, exactly the `<workspace>.json`, `_shared.*` and `_channel.*` entries, kept by the service in the same code path that writes the ConfigMap. It exists because a `PushSecret` reads Secrets only |
 
 `slackState.push` copies the two Secrets, each whole under its own remote
 key (`remoteKey` for the credentials, `recordsRemoteKey` for the records),

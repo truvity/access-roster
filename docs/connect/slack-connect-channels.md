@@ -5,8 +5,8 @@
 > page.
 
 **Anchor:** a record on the console, not a line in the policy. An operator
-says which workspace hosts a channel, which others share it and which groups
-feed it; the Slack controller does the rest.
+says which workspace hosts a channel, which others share it and which
+**directory groups** feed it; the Slack controller does the rest.
 
 A Slack Connect channel is one channel that several Slack workspaces take
 part in. Declaring each by hand in a values file means a rollout for every
@@ -21,15 +21,33 @@ edited **interactively on the console**, and every change is audited.
 | `name` | the channel's Slack name: lowercase letters, digits, `-` and `_`, at most 80. Unique among the records, and it never changes |
 | `host` | the workspace (a key of the policy's `slack.workspaces`) that **creates and owns** the channel. **Immutable** after creation |
 | `with` | the other workspaces that share it, in order. Order decides where a person with no host-domain address joins from. At least one; none repeats; never the host |
-| `from` | the policy **groups** whose holders belong, on whichever side. At least one. Members come **only** from groups: there is no way to name an individual |
+| `from` (`sources` in the stored record) | the **directory groups**, by address, of **any connected directory**, whose members belong, on whichever side. At least one. Members come **only** from groups: there is no way to name an individual, and never an internal group |
 | `private` | one visibility for every side, or one per side (Slack lets each organisation choose its own side's). A per-side choice names the host and every `with` workspace, exactly |
 
-The console checks a record against the policy in force before it writes it:
-the workspaces and groups are declared, the host does not already bind a
-channel of that name in its own `channels`, and the privacy names exactly the
-sides. The controller checks again under the policy it runs with, so a record
-the policy no longer accepts is reported `invalid` with the reason, and acted
-on by nobody.
+The console checks a record against the policy in force and the directories
+before it writes it: the workspaces are declared, every source is a group of a
+connected directory, the host's policy does not already bind a channel of that
+name or adopt that channel id (*this channel is defined in git*), no console
+channel of the host already manages it, and the privacy names exactly the
+sides. The controller checks again under the policy it runs with, and asks the
+console who is in the groups, so a record the policy or the directories no
+longer accept is reported `invalid` with the reason, and acted on by nobody.
+
+**Where the people land.** A person joins on the side whose workspace's
+**owning directory** serves their address's domain (the host first, then each
+`with` workspace in order); somebody with an address on no side is held. A
+group is chosen from any connected directory, so the form shows, for each
+side, which of the chosen groups land there, and **warns about a group whose
+directory owns no side of this channel**: its members would have no account
+path on any side and would be held. That is allowed, and said. Members of a
+group are resolved through nested groups, as for an ordinary
+[console channel](slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console).
+
+**A record from before directory groups.** A record written when `from` named
+internal groups cannot be read as directory groups, and is not. It is listed
+`invalid` with a message that says so, to the operators of its host, who edit
+it and pick directory groups (or delete it); the controller reports it held on
+its host and acts on nothing until then.
 
 ## What the reconciler then does
 
@@ -68,7 +86,8 @@ The page offers only the workspaces the caller operates as hosts.
 
 ## Editing
 
-An edit may change `with`, `from` and `private`. It **cannot change the host or
+An edit may change `with`, `from` (the directory groups) and `private`, and is
+audited as an update. It **cannot change the host or
 the name**: both are where the channel lives in Slack. A request that does is
 refused, with the instruction to create a new channel. To move a channel to
 another host, create a new one there, and delete the old record.
@@ -91,17 +110,23 @@ channel id, else by host and name. Nothing is changed by finding a channel.
 
 On `#/slack-connect` the **Discovered** section merges the reports into one row
 per channel: its name and privacy on each connected side, members per side,
-the host workspace and whether it is managed. A side whose bot cannot see the
-channel shows as **unknown**: it is private there and the bot is not in it, or
-it is not shared with that workspace, and Slack does not say which. A team that
+the host workspace and whether it is managed. **Every connected workspace is a
+side.** One whose bot cannot see the channel shows as **unknown**: it is private
+there and the bot is not in it, or public and not joined, or not shared with
+that workspace, and Slack does not say which. Slack names only the host among a
+channel's teams when the host's list is read, and a guest bot lists a private
+channel only once it is in it, so a side no report mentions leaves no trace; it
+is shown as unknown, never dropped as if the channel were not shared there, and
+**Manage** does not prefill it (add it by hand if the channel is shared there;
+the sides Slack or a bot places the channel in are prefilled). A team that
 is not a connected workspace is only counted, never named, and a channel it
 hosts shows as **external, not managed** and cannot be managed.
 
 **Manage** (the same rule as creating a record: an operator of the host
 workspace's owner, or of the installation) opens the create form prefilled: the
-name on the host's side, the host, the other connected workspaces that have the
-channel, and each side's privacy as seen. A side nobody could see is a required
-choice. The operator picks the groups; the record is a normal one, and it also
+name on the host's side, the host, the other connected workspaces the channel
+is placed in, and each side's privacy as seen. A side nobody could see is a
+required choice. The operator picks the directory groups; the record is a normal one, and it also
 keeps the discovered channel's id in `channel_id` so the reconciler takes over
 exactly that channel. The console accepts an id only when the host workspace's
 own report lists it as hosted there. Viewers see the list and nothing more.
@@ -139,7 +164,8 @@ end.
 
 Each record is the versioned document `_shared.<name>.json` in
 `ConfigMap <release>-slack-workspaces`, beside the workspaces' own records; the
-controller mounts that ConfigMap and reads it on every pass. Needs
+controller mounts that ConfigMap and reads it on every pass. It is also in the
+`Secret <release>-slack-records` mirror that the recovery copy pushes. Needs
 `directory.store: kubernetes`: with any other store a record would not survive
 a restart, and the console says so instead of writing one.
 
@@ -147,9 +173,14 @@ a restart, and the console says so instead of writing one.
 
 | Action | When | Targets | Data |
 |---|---|---|---|
-| `roster.slack_shared_channel.created` | a record is created | the host workspace, the channel | `name`, `with`, `from`, `privacy` |
-| `roster.slack_shared_channel.updated` | an edit changed something | the same | the same, and `changes`: `with: a -> a,b; from: ...; private: ...` |
+| `roster.slack_shared_channel.created` | a record is created | the host workspace, the channel, and each directory group (type `directory_group`) | `name`, `with`, `privacy` |
+| `roster.slack_shared_channel.updated` | an edit changed something | the same | the same, and `changes`: `with: a -> a,b; sources: 1 -> 2 groups (1 added, 0 removed); private: ...` |
 | `roster.slack_shared_channel.deleted` | a record is deleted | the same | the record as it was |
+
+A directory group's address is an identifier, never data: the groups are
+targets, and an edit's `changes` counts them. Audit catalogue 1.2.0 added the
+`directory_group` target type and the console channel actions, see
+[slack-workspace.md](slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console).
 
 The actor is the person. An edit that changes nothing writes and records
 nothing.

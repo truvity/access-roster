@@ -718,13 +718,14 @@ githubApps:
 #   `<release>-slack-credentials`  `remoteKey`         every connected
 #       workspace's client id and secret, and its bot token once installed
 #   `<release>-slack-records`      `recordsRemoteKey`  which workspaces are
-#       connected and the Slack Connect channels defined on the console
+#       connected, the Slack Connect channels and the ordinary channels
+#       defined on the console
 #
 # The second is a MIRROR the service keeps, and not a Secret of the
 # installation's own: those records live in the ConfigMap
 # `<release>-slack-workspaces`, and an External Secrets PushSecret reads
-# Secrets only. The mirror holds exactly the ConfigMap's `<workspace>.json`
-# and `_shared.<name>.json` entries -- never an operator's confirmation or
+# Secrets only. The mirror holds exactly the ConfigMap's `<workspace>.json`,
+# `_shared.<name>.json` and `_channel.<workspace>.<name>.json` entries -- never an operator's confirmation or
 # a pass marker, which are transient -- and the service rewrites it in the
 # same code path that writes the ConfigMap. If the ConfigMap is lost and
 # the mirror is put back, the service repopulates the ConfigMap at start.
