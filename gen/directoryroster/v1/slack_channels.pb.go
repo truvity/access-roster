@@ -316,7 +316,11 @@ type SlackChannelDefinition struct {
 	Ignore []string `protobuf:"bytes,6,rep,name=ignore,proto3" json:"ignore,omitempty"`
 	// directory group addresses whose members belong. Of the workspace's
 	// owning directory.
-	Sources       []string `protobuf:"bytes,7,rep,name=sources,proto3" json:"sources,omitempty"`
+	Sources []string `protobuf:"bytes,7,rep,name=sources,proto3" json:"sources,omitempty"`
+	// individual addresses whose owners belong, beside the groups: each a user
+	// of the workspace's owning directory. At least one of sources and members
+	// is set.
+	Members       []string `protobuf:"bytes,9,rep,name=members,proto3" json:"members,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -396,6 +400,13 @@ func (x *SlackChannelDefinition) GetIgnore() []string {
 func (x *SlackChannelDefinition) GetSources() []string {
 	if x != nil {
 		return x.Sources
+	}
+	return nil
+}
+
+func (x *SlackChannelDefinition) GetMembers() []string {
+	if x != nil {
+		return x.Members
 	}
 	return nil
 }
@@ -831,7 +842,7 @@ const file_directoryroster_v1_slack_channels_proto_rawDesc = "" +
 	"\aprivate\x18\x04 \x01(\bR\aprivate\x12\x18\n" +
 	"\amembers\x18\x05 \x01(\x05R\amembers\x12\x1d\n" +
 	"\n" +
-	"can_manage\x18\x06 \x01(\bR\tcanManage\"\xe2\x01\n" +
+	"can_manage\x18\x06 \x01(\bR\tcanManage\"\xfc\x01\n" +
 	"\x16SlackChannelDefinition\x12\x1c\n" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
@@ -840,7 +851,8 @@ const file_directoryroster_v1_slack_channels_proto_rawDesc = "" +
 	"\aprivate\x18\x04 \x01(\bR\aprivate\x12\x12\n" +
 	"\x04mode\x18\x05 \x01(\tR\x04mode\x12\x16\n" +
 	"\x06ignore\x18\x06 \x03(\tR\x06ignore\x12\x18\n" +
-	"\asources\x18\a \x03(\tR\asourcesJ\x04\b\b\x10\tR\x11supersedes_policy\"\xdd\x02\n" +
+	"\asources\x18\a \x03(\tR\asources\x12\x18\n" +
+	"\amembers\x18\t \x03(\tR\amembersJ\x04\b\b\x10\tR\x11supersedes_policy\"\xdd\x02\n" +
 	"\x12SlackChannelRecord\x12D\n" +
 	"\achannel\x18\x01 \x01(\v2*.directoryroster.v1.SlackChannelDefinitionR\achannel\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x16\n" +

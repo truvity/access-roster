@@ -20,6 +20,7 @@ import { go, paths, replace } from "./router";
 import { ChannelDeleteDialog, ChannelEditDialog, DiscoveredOrdinary } from "./SlackChannels";
 import { ConnectDeleteDialog, ConnectEditDialog, DiscoveredConnect } from "./SlackConnect";
 import { modeLabel, manageableWorkspaces } from "./slackChannelsModel";
+import { feedCount } from "./slackMembersModel";
 import { hostChoices, privacyLabel, visibilityMismatchHint } from "./slackConnectModel";
 import {
   channelFilterOf,
@@ -137,14 +138,26 @@ export function RowActions({ row, onEdit, onDelete }: { row: ChannelRow; onEdit:
   );
 }
 
-/** Where the channel's people come from, as links. */
+/** Where the channel's people come from, as links: its groups, then the
+ *  people it lists by address, with how many of each. */
 export function SourceNames({ row }: { row: ChannelRow }) {
+  const count = feedCount(row.sources.length, row.members.length);
   return (
-    <Names
-      items={row.sources.map((s) => ({ label: s.address, to: s.internal ? paths.group(s.address) : paths.directoryGroup(s.address), mono: true }))}
-      empty="none"
-      muted
-    />
+    <>
+      {count && row.members.length > 0 ? (
+        <Typography component="span" variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          {count}
+        </Typography>
+      ) : null}
+      <Names
+        items={[
+          ...row.sources.map((s) => ({ label: s.address, to: s.internal ? paths.group(s.address) : paths.directoryGroup(s.address), mono: true })),
+          ...row.members.map((address) => ({ label: address, to: paths.person(address), mono: true })),
+        ]}
+        empty="none"
+        muted
+      />
+    </>
   );
 }
 

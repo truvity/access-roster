@@ -18,6 +18,9 @@ type SlackSharedChannel struct {
 	// Sources are the directory groups, by address: carried as targets, because
 	// an address is an identifier and never data.
 	Sources []string
+	// Members are the individual addresses listed beside the groups: targets
+	// too, never data.
+	Members []string
 	// Private is one visibility for every side, unless PerSide is set.
 	Private bool
 	// PerSide is a visibility per workspace key, for a channel whose sides
@@ -26,7 +29,8 @@ type SlackSharedChannel struct {
 }
 
 func (c SlackSharedChannel) targets() []*record.Target {
-	return append([]*record.Target{targetSlackWorkspace(c.Host), targetSlackChannel(c.Host, c.Name)}, directoryGroupTargets(c.Sources)...)
+	out := append([]*record.Target{targetSlackWorkspace(c.Host), targetSlackChannel(c.Host, c.Name)}, directoryGroupTargets(c.Sources)...)
+	return append(out, directoryUserTargets(c.Members)...)
 }
 
 // Privacy is the visibility in one word, or as workspace=word pairs in key
@@ -52,7 +56,7 @@ func visibility(private bool) string {
 func (c SlackSharedChannel) data(changes string) data {
 	return data{
 		"name": c.Name, "with": strings.Join(c.With, ","),
-		"privacy": c.Privacy(), "changes": changes,
+		"privacy": c.Privacy(), "members": len(c.Members), "changes": changes,
 	}
 }
 

@@ -151,7 +151,8 @@ func named(in reconcile.Input, cfg policy.SlackWorkspace) (names, ids map[string
 			names[c.Name] = true
 		}
 	}
-	for _, s := range in.Shared {
+	for i := range in.Shared {
+		s := &in.Shared[i]
 		if s.Host == in.Workspace || slices.Contains(s.With, in.Workspace) {
 			names[s.Name] = true
 			if s.ChannelID != "" {
@@ -164,8 +165,8 @@ func named(in reconcile.Input, cfg policy.SlackWorkspace) (names, ids map[string
 
 // involved reports whether the workspace takes part in any shared channel.
 func involved(in reconcile.Input) bool {
-	for _, s := range in.Shared {
-		if s.Host == in.Workspace || slices.Contains(s.With, in.Workspace) {
+	for i := range in.Shared {
+		if s := &in.Shared[i]; s.Host == in.Workspace || slices.Contains(s.With, in.Workspace) {
 			return true
 		}
 	}

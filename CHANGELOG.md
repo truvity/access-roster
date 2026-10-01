@@ -1,3 +1,23 @@
+## Unreleased
+
+- **Individual addresses as Slack channel members.** A console channel record
+  (`_channel.<workspace>.<name>.json`) and a Slack Connect record
+  (`_shared.<name>.json`) gain `members: [<email>...]` beside `sources`
+  (directory groups). Either may be set, at least one must be. The Manage form
+  has an *Individual addresses* field next to *Directory groups*. An address
+  must be an active user of a directory the channel draws from: an ordinary
+  channel, the directory that owns its workspace; a Slack Connect channel, any
+  connected directory. The console refuses a group typed as a person, a person
+  typed as a group, a repeat, and an address outside those directories. The
+  desired membership is the union of the groups' members and the individuals,
+  mapped to people exactly as group members are; an individual who is
+  suspended or gone is a leaver like a group member (never added, removed by a
+  strict channel). The channel page, the Channels and Slack Connect rows show
+  both ("2 groups, 3 people"), and a person's page marks the channels that list
+  them *individually*. `ResolveDirectoryGroups` also answers for `users`.
+  Audit catalogue **1.5.0**: the individuals are targets of the new
+  `directory_user` type and the record's data counts them (`members`).
+
 ## v1.48.0
 
 - **Archive a channel in Slack when forgetting its console record.** The

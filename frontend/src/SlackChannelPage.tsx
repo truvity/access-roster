@@ -116,19 +116,19 @@ export function SlackChannelPage({
         hint={
           row.kind === "policy"
             ? "internal groups, named in the policy: change them there, in git"
-            : "directory groups, whose members belong whichever side they are on"
+            : "directory groups, and people listed by address, whose members belong whichever side they are on"
         }
       >
         <Rows
-          items={row.sources}
-          keyOf={(s) => s.address}
+          items={[...row.sources.map((s) => ({ ...s, person: false })), ...row.members.map((address) => ({ address, internal: false, person: true }))]}
+          keyOf={(s) => `${s.person ? "person" : "group"}|${s.address}`}
           primary={(s) => (
-            <Ref to={s.internal ? paths.group(s.address) : paths.directoryGroup(s.address)} mono>
+            <Ref to={s.person ? paths.person(s.address) : s.internal ? paths.group(s.address) : paths.directoryGroup(s.address)} mono>
               {s.address}
             </Ref>
           )}
-          secondary={(s) => (s.internal ? "internal group" : "directory group")}
-          empty="Nothing feeds it: a channel is fed by at least one group, so this record is refused or not reported."
+          secondary={(s) => (s.person ? "individual address" : s.internal ? "internal group" : "directory group")}
+          empty="Nothing feeds it: a channel is fed by at least one group or individual address, so this record is refused or not reported."
         />
       </Section>
 

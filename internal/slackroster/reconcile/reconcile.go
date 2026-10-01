@@ -90,6 +90,10 @@ type SharedChannel struct {
 	// whichever side. Never internal groups: a console channel is fed by
 	// the people the directories hold.
 	Sources []string `json:"sources"`
+	// Members are individual addresses whose owners belong too, beside the
+	// groups: each a user of a connected directory. At least one of Sources
+	// and Members is set.
+	Members []string `json:"members,omitempty"`
 	// Private is one visibility for every side, or one per side.
 	Private Privacy `json:"private"`
 	// ChannelID is the Slack id of a channel that already exists and is
@@ -167,7 +171,7 @@ func (s SharedChannel) Validate(p policy.Policy) error {
 		}
 		seen[other] = true
 	}
-	if err := validSources(where, s.Sources); err != nil {
+	if err := validSources(where, s.Sources, s.Members); err != nil {
 		return err
 	}
 	if per := s.Private.PerSide; per != nil {
@@ -208,11 +212,29 @@ func policyChannelAdopts(ws policy.SlackWorkspace, id string) bool {
 	return false
 }
 
-// validSources checks a console channel's sources: at least one, each a
-// group address, none repeated.
-func validSources(where string, sources []string) error {
-	if len(sources) == 0 {
-		return fmt.Errorf("%s is fed by no directory group, which would empty the channel", where)
+// validSources checks a console channel's sources and individual members: at
+// least one of the two, each source a group address and each member a user
+// address, none repeated, and no address in both lists. Whether an address is
+// a known group or user, and of which directory, is for the directory.
+func validSources(where string, sources, members []string) error {
+	if len(sources) == 0 && len(members) == 0 {
+		return fmt.Errorf("%s is fed by no directory group and no individual address, which would empty the channel", where)
+	}
+	seenMember := map[string]bool{}
+	for _, m := range members {
+		if _, ok := emailaddr.Domain(m); !ok || strings.ContainsAny(m, " \t\r\n,") {
+			return fmt.Errorf("%s: member %q is not an email address", where, m)
+		}
+		if m != strings.ToLower(m) {
+			return fmt.Errorf("%s: member %q is not lowercase", where, m)
+		}
+		if seenMember[m] {
+			return fmt.Errorf("%s: members lists %s twice", where, m)
+		}
+		if slices.Contains(sources, m) {
+			return fmt.Errorf("%s: %s is listed both as a group and as an individual address", where, m)
+		}
+		seenMember[m] = true
 	}
 	seen := map[string]bool{}
 	for _, group := range sources {
@@ -247,6 +269,10 @@ type ConsoleChannel struct {
 	Ignore []string `json:"ignore,omitempty"`
 	// Sources are directory group addresses.
 	Sources []string `json:"sources"`
+	// Members are individual addresses, each a user of the workspace's
+	// owning directory, whose owners belong beside the groups' members. At
+	// least one of Sources and Members is set.
+	Members []string `json:"members,omitempty"`
 	// CreatedBy, CreatedAt, UpdatedBy and UpdatedAt say who wrote the record
 	// and when, for the page; the audit trail is the record of truth.
 	CreatedBy string    `json:"created_by,omitempty"`
@@ -314,7 +340,7 @@ func (c ConsoleChannel) Validate(p policy.Policy) error {
 	if len(c.Ignore) > 0 && !c.Strict() {
 		return fmt.Errorf("%s: ignore is only allowed with mode strict", where)
 	}
-	return validSources(where, c.Sources)
+	return validSources(where, c.Sources, c.Members)
 }
 
 // Account is what looking an address up in the workspace found.
@@ -464,6 +490,11 @@ type Input struct {
 	// channel or a shared channel names, by group address, nested groups
 	// expanded.
 	DirHolders Holders
+	// DirUsers are the individual addresses a console channel or a shared
+	// channel lists in Members, by lowercase address, as the directory has
+	// them: Live false for one suspended, deleted or never seen, who is a
+	// leaver like a group's member who left.
+	DirUsers map[string]Holder
 	// DirNested are the nested groups a directory group's members come
 	// through, by the group address that names them: the groups a removal
 	// must ask whether somebody still belongs to.
@@ -554,6 +585,9 @@ func inDomains(address string, domains []string) bool {
 // person is one wanted person in one channel.
 type person struct {
 	key string
+	// individual is true when a record lists one of their addresses in its
+	// members, whether or not they also hold a group.
+	individual bool
 	// addrs are the addresses the directory listed them under.
 	addrs  []string
 	groups []string
@@ -576,6 +610,8 @@ type layoutChannel struct {
 	private bool
 	strict  bool
 	groups  []string
+	// individual is true when the channel lists individual addresses.
+	individual bool
 	// belongs are the groups a person must still hold, according to the
 	// directory, to be left in the channel: groups, plus the nested groups
 	// a directory group's members come through.
@@ -651,35 +687,47 @@ func (r resolver) belongsTo(sources []string) []string {
 }
 
 // wanted are the live holders of groups, merged by person.
-func (r resolver) wanted(groups []string) []person { return r.wantedFrom(r.in.Holders, groups) }
+func (r resolver) wanted(groups []string) []person {
+	return r.wantedFrom(r.in.Holders, groups, nil)
+}
 
 // wantedFrom are the live members of groups in a holders table, merged by
-// person: the policy's internal groups read r.in.Holders, a console
-// channel's directory groups r.in.DirHolders.
-func (r resolver) wantedFrom(holders Holders, groups []string) []person {
+// person, plus the live individuals listed by address: the policy's internal
+// groups read r.in.Holders, a console channel's directory groups
+// r.in.DirHolders and its individual addresses r.in.DirUsers. A person who
+// holds a group and is listed individually is one person, wanted once.
+func (r resolver) wantedFrom(holders Holders, groups, members []string) []person {
 	byKey := map[string]*person{}
+	add := func(h Holder, group string) {
+		if !h.Live {
+			return
+		}
+		addr := normalise(h.Email)
+		if addr == "" {
+			return
+		}
+		key := r.personKey(addr)
+		p := byKey[key]
+		if p == nil {
+			p = &person{key: key}
+			byKey[key] = p
+		}
+		if !slices.Contains(p.addrs, addr) {
+			p.addrs = append(p.addrs, addr)
+		}
+		if group == "" {
+			p.individual = true
+		} else if !slices.Contains(p.groups, group) {
+			p.groups = append(p.groups, group)
+		}
+	}
 	for _, group := range slices.Compact(slices.Sorted(slices.Values(groups))) {
 		for _, h := range holders[group] {
-			if !h.Live {
-				continue
-			}
-			addr := normalise(h.Email)
-			if addr == "" {
-				continue
-			}
-			key := r.personKey(addr)
-			p := byKey[key]
-			if p == nil {
-				p = &person{key: key}
-				byKey[key] = p
-			}
-			if !slices.Contains(p.addrs, addr) {
-				p.addrs = append(p.addrs, addr)
-			}
-			if !slices.Contains(p.groups, group) {
-				p.groups = append(p.groups, group)
-			}
+			add(h, group)
 		}
+	}
+	for _, m := range slices.Compact(slices.Sorted(slices.Values(members))) {
+		add(r.in.DirUsers[normalise(m)], "")
 	}
 	out := make([]person, 0, len(byKey))
 	for _, key := range slices.Sorted(maps.Keys(byKey)) {
@@ -747,8 +795,8 @@ func (r resolver) layout() []layoutChannel {
 		if _, bound := cfg.Channels[c.Name]; bound {
 			continue // a policy channel of that name wins; the record is refused before this
 		}
-		lc := layoutChannel{name: c.Name, binding: c.Binding(), private: c.Private, strict: c.Strict(), groups: c.Sources,
-			belongs: r.belongsTo(c.Sources), console: true, all: r.wantedFrom(r.in.DirHolders, c.Sources)}
+		lc := layoutChannel{name: c.Name, binding: c.Binding(), private: c.Private, strict: c.Strict(), groups: c.Sources, individual: len(c.Members) > 0,
+			belongs: r.belongsTo(c.Sources), console: true, all: r.wantedFrom(r.in.DirHolders, c.Sources, c.Members)}
 		r.slotsOwn(&lc)
 		out = append(out, lc)
 	}
@@ -759,8 +807,8 @@ func (r resolver) layout() []layoutChannel {
 		if s.Host != ws && !slices.Contains(s.With, ws) {
 			continue
 		}
-		lc := layoutChannel{name: s.Name, shared: s, private: s.Private.IsPrivate(ws), groups: s.Sources,
-			belongs: r.belongsTo(s.Sources), all: r.wantedFrom(r.in.DirHolders, s.Sources)}
+		lc := layoutChannel{name: s.Name, shared: s, private: s.Private.IsPrivate(ws), groups: s.Sources, individual: len(s.Members) > 0,
+			belongs: r.belongsTo(s.Sources), all: r.wantedFrom(r.in.DirHolders, s.Sources, s.Members)}
 		for _, p := range lc.all {
 			owner, addr := r.owner(*s, p)
 			switch {

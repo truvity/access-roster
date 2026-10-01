@@ -390,7 +390,7 @@ func (d *Draft) people(p *plan, exists bool) error {
 			row.State, row.Action = status.StateWillInvite, status.ActionInvite
 			act := Action{Kind: status.ActionInvite, Channel: p.lc.name, Private: p.lc.private, User: acct.ID, Person: s.person.key, Email: s.addr,
 				Groups: slices.Clone(s.person.groups), Shared: p.lc.shared != nil,
-				Reason: "holds " + joinGroups(s.person.groups)}
+				Reason: holdsReason(s.person)}
 			if p.res.ch != nil {
 				act.ChannelID = p.res.ch.ID
 			}
@@ -399,6 +399,18 @@ func (d *Draft) people(p *plan, exists bool) error {
 		p.rows = append(p.rows, row)
 	}
 	return nil
+}
+
+// holdsReason says why somebody is invited: the groups they hold, and that
+// they are listed individually.
+func holdsReason(p person) string {
+	switch {
+	case len(p.groups) == 0:
+		return "is listed individually"
+	case p.individual:
+		return "holds " + joinGroups(p.groups) + " and is listed individually"
+	}
+	return "holds " + joinGroups(p.groups)
 }
 
 func joinGroups(groups []string) string {

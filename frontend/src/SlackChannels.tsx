@@ -38,7 +38,9 @@ import {
   type ChannelForm,
   type GitChannel,
 } from "./slackChannelsModel";
+import { allowedDirectories, badMembers, memberProblems } from "./slackMembersModel";
 import { sourceOptions } from "./slackSourcesModel";
+import { MemberPicker } from "./MemberPicker";
 import { SourcePicker } from "./SourcePicker";
 import { Failure, Mono } from "./ui";
 
@@ -113,7 +115,10 @@ export function ChannelEditDialog({
   const owner = ownerOf(options.workspaces, form.workspace);
   // An ordinary channel takes its own directory's groups only.
   const picker = sourceOptions(options.sourceDirectories.filter((dir) => dir.workspaceId === owner));
-  const wrong = channelProblems(form, owner, inGit);
+  const ownerDirs = allowedDirectories(options.sourceDirectories.filter((dir) => dir.workspaceId === owner));
+  const groupAddresses = picker.map((option) => option.email);
+  const wrong = channelProblems(form, owner, inGit, { allowed: ownerDirs, groups: groupAddresses });
+  const memberFaults = memberProblems(form.members, form.sources, groupAddresses, ownerDirs, true);
   const fixed = !!editing || !!discovered;
 
   const submit = async () => {
@@ -147,7 +152,7 @@ export function ChannelEditDialog({
             select
             label="Workspace"
             value={form.workspace}
-            onChange={(event) => setForm({ ...form, workspace: event.target.value, sources: [] })}
+            onChange={(event) => setForm({ ...form, workspace: event.target.value, sources: [], members: [] })}
             disabled={busy || fixed}
             helperText={fixed ? "A channel's workspace cannot change." : "Only workspaces you operate are offered."}
           >
@@ -199,7 +204,15 @@ export function ChannelEditDialog({
             value={form.sources}
             onChange={(sources) => setForm({ ...form, sources })}
             disabled={busy || owner === ""}
-            helperText={owner === "" ? "Pick a workspace with an owning directory." : "Members come only from these groups of the workspace's own directory, never from individuals."}
+            helperText={owner === "" ? "Pick a workspace with an owning directory." : "Groups of the workspace's own directory: all their members belong."}
+          />
+          <MemberPicker
+            value={form.members}
+            bad={badMembers(form.members, form.sources, groupAddresses, ownerDirs, true)}
+            problems={memberFaults}
+            onChange={(members) => setForm({ ...form, members })}
+            disabled={busy || owner === ""}
+            helperText="People of the workspace's own directory, by address, who belong too. Type or paste, then Enter."
           />
           {discovered ? (
             <Typography variant="caption" color="text.secondary">
@@ -207,9 +220,9 @@ export function ChannelEditDialog({
               visibility is not changed.
             </Typography>
           ) : null}
-          {wrong.length > 0 && (form.name !== "" || form.workspace !== "") ? (
+          {wrong.some((w) => !memberFaults.includes(w)) && (form.name !== "" || form.workspace !== "") ? (
             <Typography variant="caption" color="text.secondary">
-              {wrong.join(" ")}
+              {wrong.filter((w) => !memberFaults.includes(w)).join(" ")}
             </Typography>
           ) : null}
           <Failure error={failure} />

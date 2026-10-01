@@ -1,4 +1,5 @@
 import type { SlackChannelWorkspace, SlackDiscoveredOrdinary } from "./gen/directoryroster/v1/slack_channels_pb";
+import { memberProblems, type AllowedDirectory } from "./slackMembersModel";
 
 /** Ordinary Slack channels managed from the console: one workspace, members
  *  from DIRECTORY groups of the directory that owns it. The server checks
@@ -20,13 +21,15 @@ export type ChannelForm = {
   ignore: string[];
   /** Directory group addresses. */
   sources: string[];
+  /** Individual addresses, users of the workspace's owning directory. */
+  members: string[];
 };
 
-export const emptyChannelForm: ChannelForm = { workspace: "", name: "", channelId: "", private: false, mode: "extend", ignore: [], sources: [] };
+export const emptyChannelForm: ChannelForm = { workspace: "", name: "", channelId: "", private: false, mode: "extend", ignore: [], sources: [], members: [] };
 
 /** The form of a record being edited. */
 export function formOfRecord(record: {
-  channel?: { workspace: string; name: string; channelId: string; private: boolean; mode: string; ignore: readonly string[]; sources: readonly string[] };
+  channel?: { workspace: string; name: string; channelId: string; private: boolean; mode: string; ignore: readonly string[]; sources: readonly string[]; members?: readonly string[] };
 }): ChannelForm {
   const def = record.channel;
   if (!def) return emptyChannelForm;
@@ -38,6 +41,7 @@ export function formOfRecord(record: {
     mode: def.mode === "strict" ? "strict" : "extend",
     ignore: [...def.ignore],
     sources: [...def.sources],
+    members: [...(def.members ?? [])],
   };
 }
 
@@ -74,7 +78,13 @@ export type GitChannel = { workspace: string; name: string; id: string };
  *  in; empty when nothing is. `inGit` are the policy's channels: a channel
  *  whose name (or Slack id) one of them has in the same workspace is refused,
  *  as the server refuses it. */
-export function channelProblems(form: ChannelForm, owner: string, inGit: readonly GitChannel[] = []): string[] {
+export function channelProblems(
+  form: ChannelForm,
+  owner: string,
+  inGit: readonly GitChannel[] = [],
+  /** The owning directory, and every group address the form knows, to say what is wrong with an individual address before it is sent. */
+  known: { allowed?: readonly AllowedDirectory[]; groups?: readonly string[] } = {},
+): string[] {
   const out: string[] = [];
   if (!form.workspace) out.push("Pick the workspace the channel is in.");
   else if (owner === "") out.push(`${form.workspace} has no owning directory yet: set the owner on the Slack page before a channel there is fed by a directory group.`);
@@ -82,7 +92,8 @@ export function channelProblems(form: ChannelForm, owner: string, inGit: readonl
   else if (inGit.some((g) => g.workspace === form.workspace && (g.name === form.name || (form.channelId !== "" && g.id === form.channelId)))) out.push(definedInGit);
   if (form.mode === "strict" && !form.private) out.push("Strict is for private channels only: Slack lets only an administrator remove somebody from a public channel.");
   if (form.ignore.length > 0 && form.mode !== "strict") out.push("The ignore list is only for a strict channel.");
-  if (form.sources.length === 0) out.push("Pick at least one directory group: members come only from groups.");
+  if (form.sources.length === 0 && form.members.length === 0) out.push("Pick at least one directory group or individual address: members come only from these.");
+  out.push(...memberProblems(form.members, form.sources, known.groups ?? [], known.allowed ?? [], true));
   return out;
 }
 
@@ -94,6 +105,7 @@ export type ChannelDefinition = {
   mode: string;
   ignore: string[];
   sources: string[];
+  members: string[];
 };
 
 /** The form as the request's definition. */
@@ -106,6 +118,7 @@ export function channelDefinitionOf(form: ChannelForm): ChannelDefinition {
     mode: form.mode,
     ignore: form.mode === "strict" ? form.ignore.map((entry) => entry.trim()).filter(Boolean) : [],
     sources: form.sources,
+    members: form.members,
   };
 }
 

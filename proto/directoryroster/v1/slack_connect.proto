@@ -152,6 +152,9 @@ message SlackSharedChannelDefinition {
   // which the record takes over instead of the host creating one. Set from
   // a discovered channel; immutable.
   string channel_id = 7;
+  // individual addresses whose owners belong, beside the groups: each a user
+  // of any connected directory. At least one of from and members is set.
+  repeated string members = 8;
 }
 
 message CreateSlackSharedChannelRequest {

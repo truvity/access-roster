@@ -1,4 +1,5 @@
 import type { SlackConnectWorkspace, SlackDiscoveredChannel, SlackDiscoveredSide, SlackSharedChannel, SlackSharedChannelDefinition } from "./gen/directoryroster/v1/slack_connect_pb";
+import { memberProblems, type AllowedDirectory } from "./slackMembersModel";
 import type { StateKind } from "./ui";
 
 /** What the row's chip shows: the shared chip's kind, a word after it,
@@ -39,6 +40,8 @@ export type Form = {
   host: string;
   with: string[];
   from: string[];
+  /** Individual addresses, users of any connected directory. */
+  members: string[];
   private: boolean;
   perSide?: Record<string, boolean>;
   /** The Slack id of an existing, already shared channel the record takes
@@ -49,11 +52,11 @@ export type Form = {
   unknownSides: string[];
 };
 
-export const emptyForm: Form = { name: "", host: "", with: [], from: [], private: false, channelId: "", unknownSides: [] };
+export const emptyForm: Form = { name: "", host: "", with: [], from: [], members: [], private: false, channelId: "", unknownSides: [] };
 
 export function formOf(def: SlackSharedChannelDefinition): Form {
   const per = Object.keys(def.privatePerSide ?? {}).length > 0 ? { ...def.privatePerSide } : undefined;
-  return { name: def.name, host: def.host, with: [...def.with], from: [...def.from], private: def.private, perSide: per, channelId: def.channelId, unknownSides: [] };
+  return { name: def.name, host: def.host, with: [...def.with], from: [...def.from], members: [...(def.members ?? [])], private: def.private, perSide: per, channelId: def.channelId, unknownSides: [] };
 }
 
 type DiscoveredSideView = Pick<SlackDiscoveredSide, "workspace" | "name" | "privacy"> & { seen?: boolean; listed?: boolean };
@@ -80,6 +83,7 @@ export function discoveredForm(row: Pick<SlackDiscoveredChannel, "channelId" | "
     host,
     with: placed.map((side) => side.workspace).filter((key) => key !== host),
     from: [],
+    members: [],
     private: false,
     perSide,
     channelId: row.channelId,
@@ -172,12 +176,13 @@ export const channelName = /^[a-z0-9_-]{1,80}$/;
 /** What is wrong with the form before it is sent, in the order the form
  *  is filled in; empty when nothing is. The server checks all of it
  *  again against the policy. */
-export function problems(form: Form): string[] {
+export function problems(form: Form, known: { allowed?: readonly AllowedDirectory[]; groups?: readonly string[] } = {}): string[] {
   const out: string[] = [];
   if (!channelName.test(form.name)) out.push("The name is lowercase letters, digits, '-' and '_', at most 80.");
   if (!form.host) out.push("Pick the workspace that hosts the channel.");
   if (form.with.length === 0) out.push("Share it with at least one other workspace.");
-  if (form.from.length === 0) out.push("Pick at least one group: members come only from groups.");
+  if (form.from.length === 0 && form.members.length === 0) out.push("Pick at least one group or individual address: members come only from these.");
+  out.push(...memberProblems(form.members, form.from, known.groups ?? [], known.allowed ?? [], false));
   if (form.unknownSides.length > 0) {
     out.push(`Choose the visibility of ${form.unknownSides.join(", ")}: the bot cannot see ${form.unknownSides.length === 1 ? "that side" : "those sides"}.`);
   }
@@ -189,6 +194,7 @@ export type Definition = {
   host: string;
   with: string[];
   from: string[];
+  members: string[];
   private: boolean;
   privatePerSide: Record<string, boolean>;
   channelId: string;
@@ -201,6 +207,7 @@ export function definitionOf(form: Form): Definition {
     host: form.host,
     with: form.with,
     from: form.from,
+    members: form.members,
     private: form.perSide ? false : form.private,
     privatePerSide: form.perSide ? { ...form.perSide } : {},
     channelId: form.channelId,

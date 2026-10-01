@@ -265,23 +265,25 @@ func (c *Controller) groups() []string {
 // record in place, and fails the workspaces that depend on them (see
 // [Controller.workspace]) rather than read as "nobody is in these groups".
 func (c *Controller) resolveSources(ctx context.Context, p *pass) {
-	var sources []string
+	var sources, members []string
 	for i := range p.console {
 		sources = append(sources, p.console[i].Sources...)
+		members = append(members, p.console[i].Members...)
 	}
 	for i := range p.shared {
 		sources = append(sources, p.shared[i].Sources...)
+		members = append(members, p.shared[i].Members...)
 	}
-	if len(sources) == 0 {
+	if len(sources) == 0 && len(members) == 0 {
 		return
 	}
-	if p.dir, p.dirErr = c.resolveDirectory(ctx, sources); p.dirErr != nil {
+	if p.dir, p.dirErr = c.resolveDirectory(ctx, sources, members); p.dirErr != nil {
 		return
 	}
 	var console []reconcile.ConsoleChannel
 	for i := range p.console {
 		ch := p.console[i]
-		if why := p.dir.checkSources(ch.Sources, p.store.recorded[ch.Workspace].owner, true); why != "" {
+		if why := p.dir.checkSources(ch.Sources, ch.Members, p.store.recorded[ch.Workspace].owner, true); why != "" {
 			p.consoleRefused[ch.Workspace] = append(p.consoleRefused[ch.Workspace], consoleRefusal{name: ch.Name, channel: ch, err: errors.New(why)})
 			continue
 		}
@@ -291,7 +293,7 @@ func (c *Controller) resolveSources(ctx context.Context, p *pass) {
 	var shared []reconcile.SharedChannel
 	for i := range p.shared {
 		ch := p.shared[i]
-		if why := p.dir.checkSources(ch.Sources, "", false); why != "" {
+		if why := p.dir.checkSources(ch.Sources, ch.Members, "", false); why != "" {
 			p.refused[ch.Host] = append(p.refused[ch.Host], refusal{name: ch.Name, channel: ch, err: errors.New(why)})
 			continue
 		}
@@ -377,7 +379,7 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	in := reconcile.Input{
 		Workspace: key, Workspaces: c.deps.Policy.Slack.Workspaces, Facts: facts, People: c.deps.Policy.People,
 		Holders: p.holders, Shared: p.shared, Console: p.console, Bots: p.store.botsFor(),
-		DirHolders: p.dir.holders, DirNested: p.dir.nestedOf(allSources(p.console, p.shared)),
+		DirHolders: p.dir.holders, DirUsers: p.dir.holdersOf(), DirNested: p.dir.nestedOf(allSources(p.console, p.shared)),
 		DefinedTwice: definedTwice(c.deps.Policy.Slack.Workspaces[key], p.consoleRefused[key]),
 	}
 	if in.Observed, err = apply.Observe(ctx, client, in); err != nil {

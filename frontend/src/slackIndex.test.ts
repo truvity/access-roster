@@ -30,7 +30,7 @@ const status = create(GetSlackStatusResponseSchema, {
 const ordinary = create(ListSlackChannelsResponseSchema, {
   channels: [
     { channel: { workspace: "acme", name: "eng", private: true, mode: "strict", sources: ["eng@acme.example"] }, state: "active", canOperate: true },
-    { channel: { workspace: "acme", name: "ideas", sources: ["eng@acme.example", "all@acme.example"] }, state: "pending", canOperate: true },
+    { channel: { workspace: "acme", name: "ideas", sources: ["eng@acme.example", "all@acme.example"], members: ["cy@acme.example", "dan@acme.example", "eve@acme.example"] }, state: "pending", canOperate: true },
   ],
 });
 const shared = create(ListSlackSharedChannelsResponseSchema, {
@@ -118,7 +118,7 @@ describe("what a channel says about its people", () => {
 
   it("opens each page with one sentence", () => {
     expect(summaryLine(rows[2])).toBe("A policy channel in acme, fed by 1 internal group: 1 in step, 1 waiting for them.");
-    expect(summaryLine(rows[1])).toBe("A console channel in acme, fed by 2 directory groups: the controller has not reported it yet.");
+    expect(summaryLine(rows[1])).toBe("A console channel in acme, fed by 2 directory groups and 3 individual addresses: the controller has not reported it yet.");
     expect(summaryLine(rows[3])).toContain("hosted by acme, shared with globex");
   });
 });
@@ -132,6 +132,14 @@ describe("reverse links", () => {
       ["infra-alerts", "all:platform:engineer"],
     ]);
     expect(reachOfDirectoryGroup(rows, "nobody@acme.example", [])).toEqual([]);
+  });
+
+  it("marks a channel a person is listed in individually", () => {
+    const places = placesOfPerson(status, rows, "cy@acme.example");
+    expect(places.map((p) => [p.channel.name, p.individually])).toEqual([["eng", false]]);
+    const withCy = buildRows(status, create(ListSlackChannelsResponseSchema, { channels: [{ channel: { workspace: "acme", name: "eng", sources: ["eng@acme.example"], members: ["CY@acme.example"] }, state: "active" }] }), undefined);
+    expect(placesOfPerson(status, withCy, "cy@acme.example").find((p) => p.channel.name === "eng")?.individually).toBe(true);
+    expect(placesOfPerson(status, withCy, "ann@acme.example").find((p) => p.channel.name === "eng")?.individually).toBe(false);
   });
 
   it("says what a group's people are doing in a channel, and who is not reported", () => {

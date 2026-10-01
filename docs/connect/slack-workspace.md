@@ -117,7 +117,7 @@ channel:
 | Kind | Where it is declared | Fed by |
 |---|---|---|
 | **Policy channel** | `slack.workspaces[k].channels` in git | **internal** groups. For channels the infrastructure owns, such as alert channels |
-| **Console channel** | a record on the console, `_channel.<workspace>.<name>.json` | **directory** groups (IdP groups, by address) |
+| **Console channel** | a record on the console, `_channel.<workspace>.<name>.json` | **directory** groups (IdP groups, by address), and individual addresses |
 
 A console channel is **ordinary** (one workspace) or **Slack Connect** (see
 [Shared channels](#shared-channels)). Both are created and edited on the
@@ -139,6 +139,28 @@ bounded depth. A chain the console cannot expand whole is reported as cut short
 and the channel is refused for that pass, because nobody may be added or
 removed on a read that is not whole. A member of a directory the console does
 not read is not live and is not invited.
+
+**Individual addresses.** Beside `sources`, a record may list `members`: people
+by address, for the few who belong without being in any group. At least one of
+`sources` and `members` is set; both may be. An ordinary channel takes users of
+**its workspace's owning directory** only, by domain, and the directory must
+actually know the user and the account must be active when the record is
+written. Addresses are lowercased and none repeats. The console refuses, with
+the reason: an address that is a **group** (enter it under *Directory groups*),
+a group address entered as a person (enter it under *Individual addresses*), a
+repeat, and an address of another directory (*not a user of the directory that
+owns this workspace; individual addresses come from the directories this channel
+draws from*). The controller asks again at every pass and refuses the record
+when an address is of another directory than the owner's. The people wanted are
+the **union** of the groups' members and the individuals, mapped to people
+exactly as group members are: the `people` aliases, the per-workspace address
+choice, `users.lookupByEmail`, so somebody in a group and listed individually is
+one person, invited once. An individual who is suspended or deleted in the
+directory is a **leaver** like a group member: never added, reported on an
+`extend` channel, removed by a `strict` one on the directory's say. One with no
+Slack account yet is held, *no Slack account yet*, as a group member is. On the
+console, the channel page and the Channels rows show both ("2 groups, 3
+people"), and a person's page lists the channels that name them *individually*.
 
 **Removals ask about the directory groups.** Where a policy channel asks the
 directory whether somebody still holds an internal group, a strict console
@@ -183,7 +205,9 @@ the console refuses the request and you archive it by hand.
 directory, or the installation-wide operator. A viewer sees the records and what
 was discovered. Every change is audited as
 `roster.slack_console_channel.created`, `.updated` or `.deleted`, with the
-directory groups as targets of type `directory_group`.
+directory groups as targets of type `directory_group` and the individual addresses as
+targets of type `directory_user` (audit catalogue 1.5.0; the data counts them as
+`members`, and an edit's `changes` says `members: 2 -> 3 people (1 added, 0 removed)`).
 
 #### Moving a policy channel to the console
 
