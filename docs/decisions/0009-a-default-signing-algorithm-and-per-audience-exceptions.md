@@ -1,6 +1,6 @@
 # 0009 — A default signing algorithm, and per-audience exceptions
 
-**Status:** Accepted
+**Status:** Accepted; partly supersedes [0005](0005-es384-signing-algorithm.md)
 **Date:** 2026-09-26
 
 ## Context

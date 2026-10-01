@@ -1,6 +1,6 @@
 # 0011 — SSH: people on opkssh, machines and hosts on the secret store's OpenBAO
 
-**Status:** Accepted; amended by [0013](0013-openbao-access-through-the-bao-cli.md) (the machine path is now `accessctl bao ssh -mode=ca` / `accessctl bao write ... sign/<role>`, not a dedicated `accessctl credential ssh`)
+**Status:** Accepted; amended by [0013](0013-openbao-access-through-the-bao-cli.md) (the machine path is now `accessctl bao ssh -mode=ca` / `accessctl bao write ... sign/<role>`, not a dedicated `accessctl credential ssh`); refined by [0015](0015-a-per-audience-groups-delimiter-for-opkssh.md), [0016](0016-a-managed-known-hosts-file-for-ssh-host-cas.md)
 **Date:** 2026-09-26
 
 ## Context

@@ -1,6 +1,6 @@
 # 0012 — Per-role scopes in the vocabulary
 
-**Status:** Accepted
+**Status:** Accepted; extends [0010](0010-a-declared-vocabulary.md)
 **Date:** 2026-09-27
 
 Extends [0010](0010-a-declared-vocabulary.md).

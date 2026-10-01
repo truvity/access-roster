@@ -1,6 +1,6 @@
 # 0015 — A per-audience groups delimiter, for opkssh's colon-splitting bug
 
-**Status:** Accepted
+**Status:** Accepted; refines [0004](0004-ssh-opkssh-and-the-secret-stores-ca.md) and [0011](0011-ssh-people-opkssh-machines-and-hosts-openbao.md)
 **Date:** 2026-09-28
 
 ## Context
