@@ -93,6 +93,9 @@ describe("the Channels filters", () => {
     chan("partners", "globex", "connect", "their-move", "C0PART", ["acme"]),
     chan("old", "globex", "console", "refused"),
     chan("fresh", "globex", "policy", "will-create"),
+    chan("taken", "acme", "policy", "will-adopt"),
+    chan("joining", "globex", "connect", "will-accept"),
+    chan("queued", "globex", "connect", "pending"),
   ];
   const by = (query: string) => filterChannels(all, channelFilterOf(q(query))).map((r) => r.name);
 
@@ -102,17 +105,18 @@ describe("the Channels filters", () => {
   });
 
   it("keep everything with no filter", () => {
-    expect(by("")).toHaveLength(6);
+    expect(by("")).toHaveLength(9);
   });
 
   it("narrow by a workspace on any side, and by kind", () => {
-    expect(by("workspace=acme")).toEqual(["alerts", "eng", "partners"]);
+    expect(by("workspace=acme")).toEqual(["alerts", "eng", "partners", "taken"]);
     expect(by("kind=console")).toEqual(["eng", "ideas", "old"]);
     expect(by("workspace=globex&kind=console")).toEqual(["ideas", "old"]);
   });
 
   it("name a state whatever manages the channel", () => {
-    expect(all.map((r) => channelStateOf(r))).toEqual(["ok", "held", "not_reported", "waiting", "invalid", ""]);
+    expect(all.map((r) => channelStateOf(r))).toEqual(["ok", "held", "not_reported", "waiting", "invalid", "pending", "pending", "pending", "pending"]);
+    expect(by("state=pending")).toEqual(["fresh", "taken", "joining", "queued"]);
     expect(by("state=ok")).toEqual(["alerts"]);
     expect(by("state=waiting")).toEqual(["partners"]);
     expect(by("state=held")).toEqual(["eng"]);
@@ -127,7 +131,7 @@ describe("the Channels filters", () => {
 
   it("combine, and say N of M", () => {
     expect(by("workspace=globex&state=not_reported&q=id")).toEqual(["ideas"]);
-    expect(shownSentence(by("kind=policy").length, all.length)).toBe("2 of 6 shown");
+    expect(shownSentence(by("kind=policy").length, all.length)).toBe("3 of 9 shown");
   });
 });
 
@@ -140,6 +144,7 @@ describe("the filters in the address", () => {
     expect(c).toMatchObject({ view: "slack", id: "connect" });
     expect(connectFilterOf(c.query)).toEqual({ host: "acme", side: "globex", state: "held", q: "x" });
     const ch = parse(`#${paths.slackChannels({ workspace: "acme", kind: "console", state: "not_reported", q: "en" })}`);
+    expect(channelFilterOf(parse(`#${paths.slackChannels({ state: "pending" })}`).query).state).toBe("pending");
     expect(ch).toMatchObject({ view: "slack", id: "channels" });
     expect(channelFilterOf(ch.query)).toEqual({ workspace: "acme", kind: "console", state: "not_reported", q: "en" });
     expect(paths.slackChannels({ workspace: "", kind: "", state: "", q: "" })).toBe("/slack/channels");

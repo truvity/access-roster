@@ -158,10 +158,11 @@ export function connectWorkspaces(rows: ChannelRow[]): { hosts: string[]; sides:
 // ---------------------------------------------------------------- Channels
 
 export const channelKinds = ["policy", "console", "connect"] as const;
-export const channelStates = ["ok", "waiting", "held", "invalid", "not_reported"] as const;
+export const channelStates = ["ok", "pending", "waiting", "held", "invalid", "not_reported"] as const;
 
 export const channelStateLabel: Record<(typeof channelStates)[number], string> = {
   ok: "ok",
+  pending: "pending",
   waiting: "waiting",
   held: "held",
   invalid: "invalid",
@@ -185,12 +186,17 @@ export function channelFilterOf(query: URLSearchParams): ChannelFilter {
 }
 
 /** A channel row's state as the filter names it, whatever manages the
- *  channel; "" for a state the filter does not offer (a channel about to be
- *  created, adopted or accepted), which only "every state" shows. */
+ *  channel; pending is a channel the controller is about to create, adopt or
+ *  accept. "" for a state the filter does not offer. */
 export function channelStateOf(row: Pick<ChannelRow, "state">): "" | (typeof channelStates)[number] {
   switch (row.state.kind) {
     case "ok":
       return "ok";
+    case "will-create":
+    case "will-adopt":
+    case "will-accept":
+    case "pending":
+      return "pending";
     case "waiting":
     case "their-move":
       return "waiting";
