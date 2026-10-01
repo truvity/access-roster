@@ -202,6 +202,8 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 		dec.Report.Leavers = append(dec.Report.Leavers, status.Leaver{Email: l.email, UserID: key, Channels: l.channels, Reason: l.reason})
 	}
 	dec.Report.Workspace = d.in.Workspace
+	dec.Report.Team = d.in.Observed.TeamID
+	dec.Report.DiscoveredShared = d.discovered()
 	dec.Report.Breaker = status.BreakerOf(wsBreaker)
 	dec.Report.Tick.Changes = len(dec.Actions)
 	dec.Report.Tick.Held = len(dec.Held)
@@ -284,4 +286,44 @@ func joinNotes(notes []string) string {
 		out += n
 	}
 	return out
+}
+
+// discovered are the Slack Connect channels the bot can see, archived ones
+// left out: a private side the bot is not in is not visible to it and is
+// not listed. Managed says a record matches: by channel id, else by the
+// host workspace's team and the name the record gives.
+func (d *Draft) discovered() []status.Discovered {
+	var out []status.Discovered
+	for i := range d.in.Observed.Channels {
+		ch := &d.in.Observed.Channels[i]
+		if !ch.Shared || ch.Archived {
+			continue
+		}
+		out = append(out, status.Discovered{
+			ID: ch.ID, Name: ch.Name, Private: ch.Private, Members: ch.NumMembers, HostTeam: ch.HostTeamID,
+			Teams: slices.Clone(ch.Teams), Managed: d.managed(ch),
+		})
+	}
+	return out
+}
+
+func (d *Draft) managed(ch *Channel) bool {
+	for i := range d.in.Shared {
+		rec := &d.in.Shared[i]
+		if rec.ChannelID != "" {
+			if rec.ChannelID == ch.ID {
+				return true
+			}
+			continue
+		}
+		host := d.in.Facts[rec.Host].Team
+		isHost := ch.HostTeamID == host && host != ""
+		if rec.Host == d.in.Workspace {
+			isHost = true
+		}
+		if isHost && rec.Name == ch.Name {
+			return true
+		}
+	}
+	return false
 }

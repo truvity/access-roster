@@ -154,25 +154,50 @@ func archivedReason(name, id string) string {
 	return "the channel " + name + " (" + id + ") is archived: unarchive it in Slack or rename it; the roster never unarchives"
 }
 
+// resolveHost is where the host's side of a shared channel stands. With a
+// recorded channel id it takes over exactly that channel; without one, the
+// channel of the declared name the bot made, or one that is already shared
+// (it is the channel the record means). A channel of that name that is
+// neither, which the roster did not make, is held, never taken over.
 func (d *Draft) resolveHost(lc layoutChannel) resolved {
-	ch := d.byName(lc.name)
-	switch {
-	case ch == nil:
+	var ch *Channel
+	if id := lc.shared.ChannelID; id != "" {
+		if ch = d.byID(id); ch == nil {
+			return resolved{kind: resHeld, change: "adopt",
+				reason: "the recorded channel " + id + " is not visible to the bot; if it is private, invite the bot to it first, otherwise check the id"}
+		}
+	} else if ch = d.byName(lc.name); ch == nil {
 		return resolved{kind: resCreate}
-	case ch.Archived:
+	}
+	if ch.Archived {
 		// Archived channels keep their name: never join, unarchive or
 		// create a second one beside it.
 		return resolved{kind: resHeld, ch: ch, change: "create", reason: archivedReason(lc.name, ch.ID)}
-	case ch.Creator != d.in.Observed.BotUserID:
+	}
+	madeHere := ch.Creator == d.in.Observed.BotUserID
+	if lc.shared.ChannelID == "" && !madeHere && !ch.Shared {
 		return resolved{kind: resHeld, ch: ch, change: "create",
 			reason: "a channel named " + lc.name + " already exists here (" + ch.ID + ") and this roster did not create it"}
 	}
-	return ready(ch, lc.private, true)
+	res := ready(ch, lc.private, true)
+	res.adopted = res.usable() && !madeHere
+	return res
 }
 
+// resolveGuest is where a guest side stands: the channel is visible here
+// already (by the recorded id, else by name) and is taken over, joined when
+// it is public and the bot is not in it; or the host's invitation is
+// accepted; or this side waits.
 func (d *Draft) resolveGuest(lc layoutChannel) resolved {
 	obs := d.in.Observed
-	if ch := d.byName(lc.name); ch != nil {
+	id := lc.shared.ChannelID
+	var ch *Channel
+	if id != "" {
+		ch = d.byID(id)
+	} else {
+		ch = d.byName(lc.name)
+	}
+	if ch != nil {
 		if ch.Archived {
 			return resolved{kind: resHeld, ch: ch, change: "share", reason: archivedReason(lc.name, ch.ID)}
 		}
@@ -180,14 +205,23 @@ func (d *Draft) resolveGuest(lc layoutChannel) resolved {
 			return resolved{kind: resHeld, ch: ch, change: "share",
 				reason: "a channel named " + lc.name + " already exists here and is not the shared channel"}
 		}
-		return ready(ch, lc.private, false)
+		res := ready(ch, lc.private, true)
+		res.adopted = res.kind == resJoin
+		return res
 	}
 	host := d.in.Facts[lc.shared.Host].Team
 	for i := range obs.Invites {
 		inv := &obs.Invites[i]
-		if host != "" && inv.Incoming && inv.HostTeamID == host && inv.ChannelName == lc.name && inv.RecipientUserID == obs.BotUserID {
+		if host == "" || !inv.Incoming || inv.HostTeamID != host || inv.RecipientUserID != obs.BotUserID {
+			continue
+		}
+		if (id != "" && inv.ChannelID == id) || (id == "" && inv.ChannelName == lc.name) {
 			return resolved{kind: resAccept, invite: inv}
 		}
+	}
+	if id != "" {
+		return resolved{kind: resWaiting, reason: "the channel " + id + " is not visible to this workspace's bot: waiting for " + lc.shared.Host +
+			" to invite this workspace, or, if it is already shared and private on this side, invite the bot to it"}
 	}
 	return resolved{kind: resWaiting, reason: "waiting for " + lc.shared.Host + " to invite this workspace"}
 }
@@ -292,7 +326,8 @@ func (d *Draft) shareActions(p *plan) {
 		ch := p.res.ch
 		if ch != nil {
 			invite.ChannelID = ch.ID
-			if slices.Contains(ch.SharedTeamIDs, team) {
+			if team != "" && (slices.Contains(ch.SharedTeamIDs, team) || slices.Contains(ch.Teams, team)) {
+				// Already shared with that workspace: nothing to invite or wait for.
 				continue
 			}
 			pending := false

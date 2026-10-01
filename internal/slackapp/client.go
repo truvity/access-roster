@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -131,7 +132,35 @@ type Channel struct {
 	// SharedTeamIDs are the workspaces a Slack Connect channel is shared
 	// with, the channel's own among them. Empty for an ordinary channel.
 	SharedTeamIDs []string `json:"shared_team_ids"`
-	Creator       string   `json:"creator"`
+	// ConnectedTeamIDs are the external workspaces a Slack Connect channel
+	// reaches, from this side's view.
+	ConnectedTeamIDs []string `json:"connected_team_ids"`
+	// ConversationHostID is the team that owns a Slack Connect channel
+	// (`conversation_host_id`); empty for an ordinary channel.
+	ConversationHostID string `json:"conversation_host_id"`
+	// NumMembers is how many members the channel has on this side's view.
+	NumMembers int    `json:"num_members"`
+	Creator    string `json:"creator"`
+}
+
+// Teams are every workspace a Slack Connect channel reaches, as this side
+// reports it: the shared and the connected teams and the host, without
+// repeats, in first-seen order.
+func (c Channel) Teams() []string {
+	var out []string
+	add := func(id string) {
+		if id != "" && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	add(c.ConversationHostID)
+	for _, id := range c.SharedTeamIDs {
+		add(id)
+	}
+	for _, id := range c.ConnectedTeamIDs {
+		add(id)
+	}
+	return out
 }
 
 type listed struct {

@@ -130,3 +130,32 @@ func TestBreakerAndOutcomeMapRails(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscoveredSharedIsAdditiveAndEncodedInAFixedOrder(t *testing.T) {
+	t.Parallel()
+	in := sample()
+	in.Team = "TACME"
+	in.DiscoveredShared = []status.Discovered{
+		{ID: "C2", Name: "zeta", Teams: []string{"TB", "TA"}},
+		{ID: "C1", Name: "alpha", Private: true, Members: 3, HostTeam: "TA", Teams: []string{"TA", "TB"}, Managed: true},
+	}
+	raw, err := status.Encode(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := status.Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Team != "TACME" || len(out.DiscoveredShared) != 2 || out.DiscoveredShared[0].Name != "alpha" || out.DiscoveredShared[1].Teams[0] != "TA" {
+		t.Errorf("discovered = %+v", out.DiscoveredShared)
+	}
+	if in.DiscoveredShared[0].Name != "zeta" {
+		t.Error("Encode reordered the caller's slice")
+	}
+	// A document from before the field decodes, with none.
+	old, err := status.Decode(`{"version":1,"workspace":"acme","enabled":true,"tick":{"at":"2026-10-01T00:00:00Z","outcome":"in-sync","changes":0,"held":0}}`)
+	if err != nil || len(old.DiscoveredShared) != 0 {
+		t.Errorf("old document: %+v %v", old, err)
+	}
+}

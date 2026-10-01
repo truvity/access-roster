@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/truvity/access-roster/internal/slackroster/connection"
+	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 )
 
 func record() connection.Record {
@@ -221,5 +222,23 @@ func TestConfirmationKeysReadBackAndExpire(t *testing.T) {
 	}
 	if _, err := connection.DecodeConfirmation(`{"version":3}`); !errors.Is(err, connection.ErrVersion) {
 		t.Errorf("version 3: %v", err)
+	}
+}
+
+func TestASharedRecordKeepsTheChannelIDItTakesOver(t *testing.T) {
+	t.Parallel()
+	raw, err := connection.EncodeShared(reconcile.SharedChannel{
+		Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"g"}, ChannelID: "C0LEGACY1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := connection.DecodeShared(raw)
+	if err != nil || got.ChannelID != "C0LEGACY1" {
+		t.Errorf("decoded %+v %v", got, err)
+	}
+	// A record without one still reads, and writes none.
+	raw, _ = connection.EncodeShared(reconcile.SharedChannel{Name: "fresh", Host: "acme", With: []string{"globex"}, From: []string{"g"}})
+	if strings.Contains(raw, "channel_id") {
+		t.Errorf("a record that creates a channel carries an id: %s", raw)
 	}
 }
