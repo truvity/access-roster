@@ -284,6 +284,7 @@ func (s *ConsoleServer) Handler() http.Handler {
 	mux.Handle(directoryrosterv1connect.NewGitHubServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewSlackAppServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewSlackSharedChannelServiceHandler(s.console))
+	mux.Handle(directoryrosterv1connect.NewSlackChannelServiceHandler(s.console))
 	mux.Handle(directoryrosterv1connect.NewSlackServiceHandler(s.console))
 
 	if s.consoleUI != nil {

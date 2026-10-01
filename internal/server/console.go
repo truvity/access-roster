@@ -169,6 +169,9 @@ type ConsoleDeps struct {
 	// SlackShared is where Slack Connect channel definitions are kept. Nil is
 	// a deployment keeping no state in Kubernetes, which can define none.
 	SlackShared SlackSharedRecords
+	// SlackChannels is where console channels' records are kept. Nil is a
+	// deployment keeping no state in Kubernetes, which can manage none.
+	SlackChannels SlackChannelRecords
 	// SlackStatus is what the Slack controller last reported. Nil shows every
 	// channel as not reported.
 	SlackStatus SlackStatusReports
@@ -208,6 +211,7 @@ var (
 	_ directoryrosterv1connect.GitHubServiceHandler             = (*Console)(nil)
 	_ directoryrosterv1connect.SlackAppServiceHandler           = (*Console)(nil)
 	_ directoryrosterv1connect.SlackSharedChannelServiceHandler = (*Console)(nil)
+	_ directoryrosterv1connect.SlackChannelServiceHandler       = (*Console)(nil)
 	_ directoryrosterv1connect.SlackServiceHandler              = (*Console)(nil)
 )
 

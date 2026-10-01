@@ -83,7 +83,7 @@ func discoveredChannels(
 				view.ExternalTeams++
 				continue
 			}
-			side := &directoryrosterv1.SlackDiscoveredSide{Workspace: key, Privacy: privacyUnknown}
+			side := &directoryrosterv1.SlackDiscoveredSide{Workspace: key, Privacy: privacyUnknown, Listed: true}
 			if d, ok := row.seen[key]; ok {
 				side.Seen, side.Name, side.Members = true, d.Name, int32(d.Members) //nolint:gosec // a member count
 				side.Privacy = privacyPublic
@@ -93,12 +93,29 @@ func discoveredChannels(
 			}
 			view.Sides = append(view.Sides, side)
 		}
-		// The host first, then the rest by key.
+		// Every other connected workspace the caller may view is a side too,
+		// unknown: nothing says the channel reaches it, and nothing says it
+		// does not. A guest side's bot lists a private channel only once it
+		// is in it, and Slack's own team lists on the host's row name the
+		// host alone, so a side nobody saw is invisible, which is not absent.
+		// The form starts from the listed sides and lets the operator add
+		// the rest.
+		for _, key := range slices.Sorted(maps.Keys(p.Slack.Workspaces)) {
+			present := slices.ContainsFunc(view.Sides, func(s *directoryrosterv1.SlackDiscoveredSide) bool { return s.Workspace == key })
+			if book.may(id, access.RoleViewer, key) && !present {
+				view.Sides = append(view.Sides, &directoryrosterv1.SlackDiscoveredSide{Workspace: key, Privacy: privacyUnknown})
+			}
+		}
+		// The host first, then the listed sides, then the rest, each by key.
 		slices.SortStableFunc(view.Sides, func(a, b *directoryrosterv1.SlackDiscoveredSide) int {
 			switch {
 			case a.Workspace == host && b.Workspace != host:
 				return -1
 			case b.Workspace == host && a.Workspace != host:
+				return 1
+			case a.Listed && !b.Listed:
+				return -1
+			case b.Listed && !a.Listed:
 				return 1
 			}
 			return compareStrings(a.Workspace, b.Workspace)

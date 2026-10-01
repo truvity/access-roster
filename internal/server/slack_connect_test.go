@@ -71,6 +71,8 @@ func newConnectHarness(t *testing.T) *connectHarness {
 	h.console = &Console{deps: ConsoleDeps{
 		Authorizer:      access.NewAuthorizer(set, nil, 0),
 		SlackShared:     kube.NewSlackShared(client),
+		SlackChannels:   kube.NewSlackChannels(client),
+		Hub:             groupHub(t),
 		SlackWorkspaces: workspaces,
 		SlackStatus:     fixedReports{docs: h.reports},
 		Audit:           h.recorded,
@@ -151,7 +153,7 @@ func TestASharedChannelIsCreatedEditedAndDeleted(t *testing.T) {
 	h := newConnectHarness(t)
 	ctx := as(everywhere)
 
-	if err := h.create(ctx, def("partners", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+	if err := h.create(ctx, def("partners", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	// What is kept is the versioned document the controller reads.
@@ -168,7 +170,7 @@ func TestASharedChannelIsCreatedEditedAndDeleted(t *testing.T) {
 	}
 
 	// Edit with, from and private.
-	edited := def("partners", "acme", []string{"globex", "initech"}, []string{"all:partners", "all:platform:engineer"})
+	edited := def("partners", "acme", []string{"globex", "initech"}, []string{"partners@north.example", "eng@south.example"})
 	edited.PrivatePerSide = map[string]bool{"acme": true, "globex": false, "initech": true}
 	if err = h.update(ctx, edited); err != nil {
 		t.Fatalf("update: %v", err)
@@ -198,7 +200,9 @@ func TestASharedChannelIsCreatedEditedAndDeleted(t *testing.T) {
 			t.Fatalf("%s: %d records", action, len(found))
 		}
 		rec := found[0]
-		if len(rec.GetTargets()) != 2 || rec.GetTargets()[0].GetId() != "acme" || rec.GetTargets()[1].GetId() != "acme/partners" {
+		// The workspace and channel first, then the directory groups that feed it.
+		if len(rec.GetTargets()) < 3 || rec.GetTargets()[0].GetId() != "acme" || rec.GetTargets()[1].GetId() != "acme/partners" ||
+			rec.GetTargets()[2].GetType() != "directory_group" {
 			t.Errorf("%s targets = %v", action, rec.GetTargets())
 		}
 		if rec.GetActor().GetId() == "" {
@@ -209,7 +213,7 @@ func TestASharedChannelIsCreatedEditedAndDeleted(t *testing.T) {
 	changes, _ := updated["changes"].(string)
 	for _, part := range []string{
 		"with: globex -> globex,initech",
-		"from: all:partners -> all:partners,all:platform:engineer",
+		"sources: 1 -> 2 groups (1 added, 0 removed)",
 		"private: public -> acme=private,globex=public,initech=private",
 	} {
 		if !strings.Contains(changes, part) {
@@ -225,16 +229,16 @@ func TestASharedChannelIsRefusedWhenItDoesNotValidate(t *testing.T) {
 		name string
 		def  *directoryrosterv1.SlackSharedChannelDefinition
 	}{
-		{"a bad name", def("Not A Name", "acme", []string{"globex"}, []string{"all:partners"})},
-		{"an undeclared host", def("x", "nowhere", []string{"globex"}, []string{"all:partners"})},
-		{"an undeclared guest", def("x", "acme", []string{"nowhere"}, []string{"all:partners"})},
-		{"the host as a guest", def("x", "acme", []string{"acme"}, []string{"all:partners"})},
-		{"no guest", def("x", "acme", nil, []string{"all:partners"})},
+		{"a bad name", def("Not A Name", "acme", []string{"globex"}, []string{"partners@north.example"})},
+		{"an undeclared host", def("x", "nowhere", []string{"globex"}, []string{"partners@north.example"})},
+		{"an undeclared guest", def("x", "acme", []string{"nowhere"}, []string{"partners@north.example"})},
+		{"the host as a guest", def("x", "acme", []string{"acme"}, []string{"partners@north.example"})},
+		{"no guest", def("x", "acme", nil, []string{"partners@north.example"})},
 		{"no group", def("x", "acme", []string{"globex"}, nil)},
-		{"an undeclared group", def("x", "acme", []string{"globex"}, []string{"all:nobody"})},
-		{"a name the host already binds", def("general", "acme", []string{"globex"}, []string{"all:partners"})},
+		{"an undeclared group", def("x", "acme", []string{"globex"}, []string{"nobody@north.example"})},
+		{"a name the host already binds", def("general", "acme", []string{"globex"}, []string{"partners@north.example"})},
 		{"per-side privacy missing a side", &directoryrosterv1.SlackSharedChannelDefinition{
-			Name: "x", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, PrivatePerSide: map[string]bool{"acme": true}}},
+			Name: "x", Host: "acme", With: []string{"globex"}, From: []string{"partners@north.example"}, PrivatePerSide: map[string]bool{"acme": true}}},
 	} {
 		wantCode(t, c.name, h.create(ctx, c.def), connect.CodeInvalidArgument)
 	}
@@ -245,10 +249,10 @@ func TestASharedChannelIsRefusedWhenItDoesNotValidate(t *testing.T) {
 		t.Errorf("refusals were recorded as changes: %d", n)
 	}
 	// A name already taken is refused, naming the host.
-	if err := h.create(ctx, def("partners", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+	if err := h.create(ctx, def("partners", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
 		t.Fatal(err)
 	}
-	err := h.create(ctx, def("partners", "globex", []string{"acme"}, []string{"all:partners"}))
+	err := h.create(ctx, def("partners", "globex", []string{"acme"}, []string{"partners@north.example"}))
 	wantCode(t, "a second channel of the same name", err, connect.CodeAlreadyExists)
 	if err != nil && !strings.Contains(err.Error(), "acme") {
 		t.Errorf("the refusal does not name the host: %v", err)
@@ -258,17 +262,17 @@ func TestASharedChannelIsRefusedWhenItDoesNotValidate(t *testing.T) {
 func TestAHostAndANameAreImmutable(t *testing.T) {
 	h := newConnectHarness(t)
 	ctx := as(everywhere)
-	if err := h.create(ctx, def("partners", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+	if err := h.create(ctx, def("partners", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
 		t.Fatal(err)
 	}
 	before := h.stored(t)[connection.SharedKey("partners")]
-	err := h.update(ctx, def("partners", "globex", []string{"acme"}, []string{"all:partners"}))
+	err := h.update(ctx, def("partners", "globex", []string{"acme"}, []string{"partners@north.example"}))
 	wantCode(t, "a change of host", err, connect.CodeInvalidArgument)
 	if err == nil || !strings.Contains(err.Error(), "create a new channel") {
 		t.Errorf("the refusal does not say what to do: %v", err)
 	}
 	// A different name is a different record: there is none to edit.
-	wantCode(t, "an edit of another name", h.update(ctx, def("renamed", "acme", []string{"globex"}, []string{"all:partners"})), connect.CodeNotFound)
+	wantCode(t, "an edit of another name", h.update(ctx, def("renamed", "acme", []string{"globex"}, []string{"partners@north.example"})), connect.CodeNotFound)
 	if h.stored(t)[connection.SharedKey("partners")] != before || len(h.stored(t)) != 1 {
 		t.Errorf("a refused edit changed the records: %v", h.stored(t))
 	}
@@ -276,7 +280,7 @@ func TestAHostAndANameAreImmutable(t *testing.T) {
 		t.Errorf("%d updates recorded", n)
 	}
 	// An edit that changes nothing writes and records nothing new.
-	if err = h.update(ctx, def("partners", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+	if err = h.update(ctx, def("partners", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(h.recorded.Find("roster.slack_shared_channel.updated")); n != 0 {
@@ -287,7 +291,7 @@ func TestAHostAndANameAreImmutable(t *testing.T) {
 func TestWhoMayEditSharedChannels(t *testing.T) {
 	// acme's directory is C0north, globex's C0south, initech has none.
 	d := func(host string, with ...string) *directoryrosterv1.SlackSharedChannelDefinition {
-		return def("partners", host, with, []string{"all:partners"})
+		return def("partners", host, with, []string{"partners@north.example"})
 	}
 	viewerEverywhere := access.Identity{Role: access.RoleViewer}
 	for _, c := range []struct {
@@ -324,7 +328,7 @@ func TestWhoMayEditSharedChannels(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			edited := def("partners", c.host, c.with, []string{"all:partners", "all:platform:engineer"})
+			edited := def("partners", c.host, c.with, []string{"partners@north.example", "eng@south.example"})
 			errUpdate := h.update(as(c.who), edited)
 			_, errDelete := h.del(as(c.who), "partners")
 			if c.create == 0 {
@@ -345,9 +349,9 @@ func TestWhoMayEditSharedChannels(t *testing.T) {
 func TestSharedChannelsAreListedByWhatTheCallerMaySee(t *testing.T) {
 	h := newConnectHarness(t)
 	for _, d := range []*directoryrosterv1.SlackSharedChannelDefinition{
-		def("ab", "acme", []string{"globex"}, []string{"all:partners"}),
-		def("ai", "acme", []string{"initech"}, []string{"all:partners"}),
-		def("gi", "globex", []string{"initech"}, []string{"all:partners"}),
+		def("ab", "acme", []string{"globex"}, []string{"partners@north.example"}),
+		def("ai", "acme", []string{"initech"}, []string{"partners@north.example"}),
+		def("gi", "globex", []string{"initech"}, []string{"partners@north.example"}),
 	} {
 		if err := h.create(as(everywhere), d); err != nil {
 			t.Fatal(err)
@@ -370,8 +374,8 @@ func TestSharedChannelsAreListedByWhatTheCallerMaySee(t *testing.T) {
 			t.Errorf("a viewer may operate %s", c.Channel.Name)
 		}
 	}
-	if len(viewer.Groups) != 0 {
-		t.Errorf("a viewer is offered groups to choose from: %v", viewer.Groups)
+	if len(viewer.SourceDirectories) != 0 {
+		t.Errorf("a viewer is offered groups to choose from: %v", viewer.SourceDirectories)
 	}
 	// A guest owner's operator sees the channel, and may not operate it.
 	south := h.list(as(southOp), t)
@@ -384,8 +388,8 @@ func TestSharedChannelsAreListedByWhatTheCallerMaySee(t *testing.T) {
 		t.Errorf("globex's operator sees %v", got)
 	}
 	all := h.list(as(everywhere), t)
-	if len(all.Channels) != 3 || len(all.Workspaces) != 3 || len(all.Groups) != 2 {
-		t.Errorf("the installation-wide operator sees %d channels, %d workspaces, %d groups", len(all.Channels), len(all.Workspaces), len(all.Groups))
+	if len(all.Channels) != 3 || len(all.Workspaces) != 3 || len(all.SourceDirectories) != 2 {
+		t.Errorf("the installation-wide operator sees %d channels, %d workspaces, %d directories", len(all.Channels), len(all.Workspaces), len(all.SourceDirectories))
 	}
 	for _, w := range all.Workspaces {
 		if !w.CanOperate {
@@ -405,7 +409,7 @@ func TestSharedChannelsAreListedByWhatTheCallerMaySee(t *testing.T) {
 
 func TestSharedChannelStatesFollowTheHostsReport(t *testing.T) {
 	h := newConnectHarness(t)
-	if err := h.create(as(everywhere), def("partners", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+	if err := h.create(as(everywhere), def("partners", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
 		t.Fatal(err)
 	}
 	state := func() (string, string) {
@@ -440,7 +444,7 @@ func TestSharedChannelStatesFollowTheHostsReport(t *testing.T) {
 	}
 	// A record the policy in force no longer accepts is invalid whatever
 	// the report says.
-	raw, _ := connection.EncodeShared(reconcile.SharedChannel{Name: "stale", Host: "acme", With: []string{"gone"}, From: []string{"all:partners"}})
+	raw, _ := connection.EncodeShared(reconcile.SharedChannel{Name: "stale", Host: "acme", With: []string{"gone"}, Sources: []string{"partners@north.example"}})
 	cm, _ := h.client.API().CoreV1().ConfigMaps("access-issuer").Get(context.Background(), "access-issuer-slack-workspaces", metav1.GetOptions{})
 	cm.Data[connection.SharedKey("stale")] = raw
 	cm.Data[connection.SharedKey("broken")] = "{not json"
@@ -482,7 +486,7 @@ func TestAConflictingWriteIsRetriedOrRefusedCleanly(t *testing.T) {
 			}
 			return false, nil, nil
 		})
-		if err := h.create(as(everywhere), def("partners", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+		if err := h.create(as(everywhere), def("partners", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
 			t.Fatalf("create = %v, want it retried", err)
 		}
 		if failures != 2 || len(h.recorded.Find("roster.slack_shared_channel.created")) != 1 {
@@ -494,7 +498,7 @@ func TestAConflictingWriteIsRetriedOrRefusedCleanly(t *testing.T) {
 		h.clientset.PrependReactor("update", "configmaps", func(clienttesting.Action) (bool, runtime.Object, error) {
 			return true, nil, conflict()
 		})
-		err := h.create(as(everywhere), def("partners", "acme", []string{"globex"}, []string{"all:partners"}))
+		err := h.create(as(everywhere), def("partners", "acme", []string{"globex"}, []string{"partners@north.example"}))
 		wantCode(t, "create under endless conflict", err, connect.CodeAborted)
 		if len(h.stored(t)) != 0 || len(h.recorded.Records()) != 0 {
 			t.Errorf("a refused write left records %v, audit %d", h.stored(t), len(h.recorded.Records()))
@@ -502,7 +506,7 @@ func TestAConflictingWriteIsRetriedOrRefusedCleanly(t *testing.T) {
 	})
 	t.Run("the other writer's record is what an edit is decided against", func(t *testing.T) {
 		h := newConnectHarness(t)
-		if err := h.create(as(everywhere), def("partners", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+		if err := h.create(as(everywhere), def("partners", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
 			t.Fatal(err)
 		}
 		// Between the edit's first read and its write, somebody deletes the
@@ -527,7 +531,7 @@ func TestAConflictingWriteIsRetriedOrRefusedCleanly(t *testing.T) {
 			}
 			return false, nil, nil
 		})
-		err := h.update(as(everywhere), def("partners", "acme", []string{"globex", "initech"}, []string{"all:partners"}))
+		err := h.update(as(everywhere), def("partners", "acme", []string{"globex", "initech"}, []string{"partners@north.example"}))
 		wantCode(t, "edit of a record deleted meanwhile", err, connect.CodeNotFound)
 	})
 }
@@ -535,7 +539,7 @@ func TestAConflictingWriteIsRetriedOrRefusedCleanly(t *testing.T) {
 func TestNoStoreIsRefusedPlainly(t *testing.T) {
 	h := newConnectHarness(t)
 	h.console.deps.SlackShared = nil
-	wantCode(t, "create", h.create(as(everywhere), def("p", "acme", []string{"globex"}, []string{"all:partners"})), connect.CodeFailedPrecondition)
+	wantCode(t, "create", h.create(as(everywhere), def("p", "acme", []string{"globex"}, []string{"partners@north.example"})), connect.CodeFailedPrecondition)
 	if got := h.list(as(everywhere), t); got.Available {
 		t.Error("available with no store")
 	}
@@ -583,8 +587,11 @@ func TestDiscoveredChannelsAreMergedIntoOneRowAcrossWorkspaces(t *testing.T) {
 	if row.ChannelId != "C0LEGACY1" || row.HostWorkspace != "acme" || row.HostTeam != acmeTeam || row.ExternalTeams != 1 || row.Managed || !row.CanManage {
 		t.Errorf("row = %+v", row)
 	}
-	if len(row.Sides) != 2 || row.Sides[0].Workspace != "acme" {
-		t.Fatalf("sides = %v (the host comes first)", row.Sides)
+	if len(row.Sides) != 3 || row.Sides[0].Workspace != "acme" || row.Sides[1].Workspace != "globex" {
+		t.Fatalf("sides = %v (the host first, then the listed sides, then the connected workspaces nothing places it in)", row.Sides)
+	}
+	if i := sideOf(row, "initech"); i == nil || i.Seen || i.Listed || i.Privacy != "unknown" {
+		t.Errorf("initech side = %+v, want unknown and not listed", i)
 	}
 	if a := sideOf(row, "acme"); !a.Seen || a.Name != "legacy" || a.Privacy != "public" || a.Members != 7 {
 		t.Errorf("acme side = %+v", a)
@@ -604,6 +611,41 @@ func TestADiscoveredSideTheBotCannotSeeIsUnknown(t *testing.T) {
 	}
 }
 
+// Slack names only the host among the teams a channel reaches when the
+// host's own list is read, and a guest bot lists a private channel only once
+// it is in it, or a public one it has not joined may not be listed at all:
+// a guest side nobody saw leaves no trace in any report. It is still a
+// connected workspace the channel may be shared with, so it is offered as an
+// unknown side, never dropped as if the channel were not shared there.
+func TestAGuestSideNoReportTracesIsOfferedAsUnknownNotDropped(t *testing.T) {
+	h := newConnectHarness(t)
+	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0LEGACY1", Name: "legacy", Members: 3, HostTeam: acmeTeam, Teams: []string{acmeTeam}})
+	h.report(t, "globex", globexTeam)
+	row := h.list(as(everywhere), t).Discovered[0]
+	for _, ws := range []string{"globex", "initech"} {
+		if side := sideOf(row, ws); side == nil || side.Seen || side.Listed || side.Privacy != "unknown" {
+			t.Errorf("%s side = %+v, want an unknown side nothing places the channel in", ws, side)
+		}
+	}
+	if a := sideOf(row, "acme"); a == nil || !a.Listed || !a.Seen {
+		t.Errorf("the host side = %+v", a)
+	}
+	// Slack naming a pending guest places it, listed, though its bot cannot see it yet.
+	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0LEGACY1", Name: "legacy", Members: 3, HostTeam: acmeTeam, Teams: []string{acmeTeam, globexTeam}})
+	if side := sideOf(h.list(as(everywhere), t).Discovered[0], "globex"); side == nil || side.Seen || !side.Listed {
+		t.Errorf("a side Slack names = %+v, want listed and unseen", side)
+	}
+	// A caller who may not view a workspace is offered no guess about it, and
+	// told nothing of a side Slack names beyond that it is one.
+	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0LEGACY1", Name: "legacy", Members: 3, HostTeam: acmeTeam, Teams: []string{acmeTeam}})
+	north := h.list(as(northOp), t).Discovered[0]
+	for _, s := range north.Sides {
+		if s.Workspace != "acme" {
+			t.Errorf("a scoped viewer is shown the side of %s", s.Workspace)
+		}
+	}
+}
+
 func TestAChannelHostedByATeamThatIsNotConnectedCannotBeManaged(t *testing.T) {
 	h := newConnectHarness(t)
 	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0OTHER1", Name: "theirs", HostTeam: externalTeam, Teams: []string{externalTeam, acmeTeam}})
@@ -613,7 +655,7 @@ func TestAChannelHostedByATeamThatIsNotConnectedCannotBeManaged(t *testing.T) {
 	}
 	// acme's bot sees it, but acme is not its host: a record naming acme is refused.
 	wantCode(t, "a record for an externally hosted channel", h.create(as(everywhere), &directoryrosterv1.SlackSharedChannelDefinition{
-		Name: "theirs", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, ChannelId: "C0OTHER1"}), connect.CodeInvalidArgument)
+		Name: "theirs", Host: "acme", With: []string{"globex"}, From: []string{"partners@north.example"}, ChannelId: "C0OTHER1"}), connect.CodeInvalidArgument)
 }
 
 func TestOnlyTheHostsOperatorMayManageADiscoveredChannel(t *testing.T) {
@@ -653,7 +695,7 @@ func TestOnlyTheHostsOperatorMayManageADiscoveredChannel(t *testing.T) {
 	}
 	// ... and cannot take it under management by writing the record.
 	err := h.create(as(southOp), &directoryrosterv1.SlackSharedChannelDefinition{
-		Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, ChannelId: "C0LEGACY1"})
+		Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"partners@north.example"}, ChannelId: "C0LEGACY1"})
 	wantCode(t, "create by a guest's operator", err, connect.CodePermissionDenied)
 }
 
@@ -661,7 +703,7 @@ func TestManagingADiscoveredChannelWritesARecordThatNamesItsID(t *testing.T) {
 	h := newConnectHarness(t)
 	h.legacyReports(t)
 	d := &directoryrosterv1.SlackSharedChannelDefinition{
-		Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, ChannelId: "  C0LEGACY1 ",
+		Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"partners@north.example"}, ChannelId: "  C0LEGACY1 ",
 		PrivatePerSide: map[string]bool{"acme": false, "globex": true},
 	}
 	if err := h.create(as(northOp), d); err != nil {
@@ -693,7 +735,8 @@ func TestAnIDThatWasNotDiscoveredInTheHostIsRefused(t *testing.T) {
 	h := newConnectHarness(t)
 	h.legacyReports(t)
 	base := func(id string) *directoryrosterv1.SlackSharedChannelDefinition {
-		return &directoryrosterv1.SlackSharedChannelDefinition{Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"all:partners"}, ChannelId: id}
+		return &directoryrosterv1.SlackSharedChannelDefinition{
+			Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"partners@north.example"}, ChannelId: id}
 	}
 	wantCode(t, "an id nobody saw", h.create(as(everywhere), base("C0NEVERSAW")), connect.CodeInvalidArgument)
 	wantCode(t, "not a channel id", h.create(as(everywhere), base("not an id")), connect.CodeInvalidArgument)
@@ -708,7 +751,7 @@ func TestAnIDThatWasNotDiscoveredInTheHostIsRefused(t *testing.T) {
 func TestADiscoveredChannelIsMarkedManagedByARecordOfTheSameHostAndName(t *testing.T) {
 	h := newConnectHarness(t)
 	h.legacyReports(t)
-	if err := h.create(as(everywhere), def("legacy", "acme", []string{"globex"}, []string{"all:partners"})); err != nil {
+	if err := h.create(as(everywhere), def("legacy", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
 		t.Fatal(err)
 	}
 	if row := h.list(as(everywhere), t).Discovered[0]; !row.Managed || row.ManagedAs != "legacy" || row.CanManage {

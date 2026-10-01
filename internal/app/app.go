@@ -433,7 +433,9 @@ type stores struct {
 	// slackShared keeps Slack Connect channel definitions, and slackStatus is
 	// what the Slack controller reported. Nil with the memory store.
 	slackShared *kube.SlackShared
-	slackStatus *kube.SlackStatus
+	// slackChannels keeps console channels' records, in the same ConfigMap.
+	slackChannels *kube.SlackChannels
+	slackStatus   *kube.SlackStatus
 	// slackWorkspaces is where Slack workspaces are connected.
 	slackWorkspaces *kube.SlackWorkspaces
 }
@@ -589,6 +591,7 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		githubCatalogueApps: githubCatalogueApps,
 		slackCatalogueApps:  slackCatalogueApps,
 		slackShared:         slackShared,
+		slackChannels:       kube.NewSlackChannels(client),
 		slackStatus:         slackStatus,
 		slackWorkspaces:     slackWorkspaces,
 		workspaces:          workspaces,
@@ -913,6 +916,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		SlackCatalogue:      cfg.slackCatalogue,
 		SlackCatalogueApps:  slackCatalogueApps(kept.slackCatalogueApps),
 		SlackShared:         slackSharedRecords(kept.slackShared),
+		SlackChannels:       slackChannelRecords(kept.slackChannels),
 		SlackStatus:         slackStatusReports(kept.slackStatus),
 		SlackWorkspaces:     slackWorkspaces(kept.slackWorkspaces),
 		GitHubHTTP:          demoGitHub(cfg.demo && kept.githubCatalogueApps == nil),
@@ -1413,6 +1417,13 @@ func githubRunnerApps(store *kube.GitHubRunnerApps, demonstration bool, key stri
 // slackSharedRecords and slackStatusReports are the stores as the console's
 // interfaces, or nil: a typed nil pointer in an interface is not nil.
 func slackSharedRecords(store *kube.SlackShared) server.SlackSharedRecords {
+	if store == nil {
+		return nil
+	}
+	return store
+}
+
+func slackChannelRecords(store *kube.SlackChannels) server.SlackChannelRecords {
 	if store == nil {
 		return nil
 	}
