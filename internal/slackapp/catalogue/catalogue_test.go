@@ -68,7 +68,7 @@ func TestAWorkspaceThePolicyDoesNotNameIsRefusedAtStart(t *testing.T) {
 	}
 	err = c.CheckWorkspaces(func(key string) bool { return key == "acme" })
 	if err == nil || !strings.Contains(err.Error(), `"lost"`) || !strings.Contains(err.Error(), `"gone"`) || strings.Contains(err.Error(), `"acme"`) ||
-		!strings.Contains(err.Error(), "team_id") {
+		!strings.Contains(err.Error(), "workspace key") || strings.Contains(err.Error(), "team_id") {
 		t.Errorf("CheckWorkspaces = %v, want both undeclared workspaces named, with what to do", err)
 	}
 	if err = c.CheckWorkspaces(func(string) bool { return true }); err != nil {

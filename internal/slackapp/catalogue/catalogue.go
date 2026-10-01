@@ -179,7 +179,7 @@ func (c *Catalogue) CheckWorkspaces(declared func(key string) bool) error {
 		if !declared(c.Apps[i].Workspace) {
 			errs = append(errs, fmt.Errorf(
 				"slackApps: %s is declared for workspace %q, which the policy's slack.workspaces does not name: "+
-					"add the workspace, with its team_id, to the policy, or correct the entry",
+					"add the workspace key to the policy (its team is recorded when it is connected on the console), or correct the entry",
 				c.Apps[i].ID, c.Apps[i].Workspace))
 		}
 	}
