@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/slackroster/connection"
 )
 
@@ -282,17 +283,10 @@ func (s *SlackWorkspaces) RequestPass(ctx context.Context, r connection.PassRequ
 	}
 	key := connection.PassKey(r.Workspace)
 	err = s.editConfigMap(ctx, func(data map[string]string) {
-		kept, last = false, time.Time{}
-		if old, ok := data[key]; ok {
-			if prev, derr := connection.DecodePassRequest(old); derr == nil {
-				last = prev.At
-				if r.At.Sub(prev.At) < connection.PassGap {
-					return
-				}
-			}
-		}
-		data[key] = raw
-		kept = true
+		kept, last = rails.Gate(data, key, raw, r.At, func(old string) (time.Time, error) {
+			prev, err := connection.DecodePassRequest(old)
+			return prev.At, err
+		})
 	})
 	return kept && err == nil, last, err
 }
