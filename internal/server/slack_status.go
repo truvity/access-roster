@@ -160,12 +160,16 @@ func (c *Console) slackWorkspaceView(
 			Email: leaver.Email, UserId: leaver.UserID, Channels: slices.Clone(leaver.Channels), Reason: leaver.Reason,
 		})
 	}
+	bound := c.deps.Authorizer.Policy().Declared().Slack.Workspaces[workspace].Channels
 	for i := range report.Channels {
 		ch := &report.Channels[i]
 		view := &directoryrosterv1.SlackChannelStatus{
 			Name: ch.Name, Id: ch.ID, Private: ch.Private, Mode: ch.Mode, Shared: ch.Shared, Host: ch.Host, Console: ch.Console,
 			State: string(ch.State), Reason: ch.Reason, Breaker: slackBreakerView(ch.Breaker),
 			RemovalConfirmation: slackConfirmationView(confirmations, workspace, ch.Name, now),
+		}
+		if binding, ok := bound[ch.Name]; ok && !ch.Console && !ch.Shared {
+			view.Sources = slices.Clone(binding.From)
 		}
 		for j := range ch.Members {
 			m := &ch.Members[j]

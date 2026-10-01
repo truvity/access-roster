@@ -253,6 +253,10 @@ message SlackChannelStatus {
   // an ordinary channel managed from the console (fed by directory
   // groups), as opposed to one the policy binds.
   bool console = 12;
+  // the internal groups the policy binds the channel to (`from`), for a
+  // channel the policy defines in git. Empty for a console channel (its
+  // directory groups are in its record) and for a Slack Connect channel.
+  repeated string sources = 13;
 }
 
 message SlackMemberStatus {
