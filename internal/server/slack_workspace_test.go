@@ -1139,3 +1139,29 @@ func TestARefusedInstallCannotForgeALogRecordThroughTheTeamSlackReports(t *testi
 		t.Errorf("the team id was not logged with its line breaks removed:\n%s", logged)
 	}
 }
+
+// A channel the policy defines in git says which internal groups feed it, so
+// the console's channel page can name them. A console or Slack Connect
+// channel carries none: its groups are in its own record.
+func TestAPolicyChannelNamesItsInternalGroups(t *testing.T) {
+	h := newConnectedWorkspaceHarness(t)
+	h.putReport(t, status.Workspace{
+		Workspace: "acme", Enabled: true, Tick: status.Tick{At: time.Now(), Outcome: status.OutcomeInSync},
+		Channels: []status.Channel{
+			{Name: "infra-alerts", State: status.ChannelOK},
+			{Name: "infra-alerts", State: status.ChannelOK, Console: true},
+			{Name: "infra-alerts", State: status.ChannelOK, Shared: true, Host: "acme"},
+			{Name: "unbound", State: status.ChannelOK},
+		},
+	})
+	got := h.row(viewer(), t, "acme").GetChannels()
+	want := [][]string{{"all:platform:engineer"}, nil, nil, nil}
+	if len(got) != len(want) {
+		t.Fatalf("channels = %+v", got)
+	}
+	for i, channel := range got {
+		if !slices.Equal(channel.GetSources(), want[i]) {
+			t.Errorf("channel %d (%s) sources = %v, want %v", i, channel.GetName(), channel.GetSources(), want[i])
+		}
+	}
+}

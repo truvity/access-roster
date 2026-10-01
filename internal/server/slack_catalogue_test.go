@@ -36,7 +36,9 @@ groups:
   all:platform:engineer: { members: [team-platform@globex.example] }
 slack:
   workspaces:
-    acme: {}
+    acme:
+      channels:
+        infra-alerts: { from: [all:platform:engineer] }
     globex: {}
     initech: {}
 `
