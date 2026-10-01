@@ -1,4 +1,4 @@
-## Unreleased
+## v1.48.0
 
 - **Archive a channel in Slack when forgetting its console record.** The
   delete dialog of a console channel has an opt-in, off by default: *Also
@@ -21,16 +21,6 @@
   same components as Discovered and Slack Connect, and its summary reads "N of
   M shown". Every selection is in the address query
   (`#/slack/channels?workspace=&kind=&state=&q=`).
-- **Fix: the guest-side probe skipped every channel when Slack named no
-  guests.** Slack returns a bot only its own team for a Slack Connect channel,
-  so the team filter added for the probe skipped every workspace and a guest
-  side only the probe could find disappeared from the report. The probe now
-  asks only the workspaces Slack names as guests when it names any connected
-  one besides the host and the workspaces that listed the channel; when it
-  names none, it asks every other connected workspace again. Expected
-  `channel_not_found` and `not_in_channel` stay at debug, real errors warn, and
-  each pass still logs one `guest-side probe` summary.
-
 - **Removed: Take over from git.** It was a migration aid. The channel page has
   no **Take over from git** action and no *taken over* state; the Manage form
   refuses a channel the policy defines in that workspace (*this channel is
@@ -44,8 +34,23 @@
   written with it again, and is a plain console channel once git no longer
   defines the channel. The field is reserved in
   `SlackChannelDefinition`, and `superseded` and `ignore` are gone from the
-  Slack status. The audit catalogue stays **1.3.0**: records already written
-  keep their `reason: takeover`, and nothing emits it any more.
+  Slack status. The removal itself leaves the audit catalogue alone: records
+  already written keep their `reason: takeover`, and nothing emits it any more.
+
+## v1.47.2
+
+- **Fix: the guest-side probe skipped every channel when Slack named no
+  guests.** Slack returns a bot only its own team for a Slack Connect channel,
+  so the team filter added for the probe skipped every workspace and a guest
+  side only the probe could find disappeared from the report. The probe now
+  asks only the workspaces Slack names as guests when it names any connected
+  one besides the host and the workspaces that listed the channel; when it
+  names none, it asks every other connected workspace again. Expected
+  `channel_not_found` and `not_in_channel` stay at debug, real errors warn, and
+  each pass still logs one `guest-side probe` summary.
+
+## v1.47.1
+
 - **Filters on the Slack Discovered and Slack Connect tabs.** Discovered
   narrows by workspace, kind (ordinary or Slack Connect), visibility (public,
   private, unknown) and a name search, sorts by workspace then name (or most
