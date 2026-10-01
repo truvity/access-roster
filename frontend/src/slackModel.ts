@@ -122,6 +122,24 @@ export function split(members: SlackMemberStatus[]): { settled: SlackMemberStatu
 }
 
 /** The sentence for the top of a workspace's card. */
+/** The note under a workspace's header about its last pass: neutral where
+ *  the workspace simply is not connected or installed yet (an expected
+ *  state, even if an older report recorded it as a failure), red only for a
+ *  real failure. */
+export function tickNotice(
+  ws: Pick<SlackWorkspaceStatus, "connectionState" | "workspace" | "tick">,
+): { severity: "info" | "error"; text: string } | undefined {
+  switch (ws.connectionState) {
+    case "not_connected":
+      return { severity: "info", text: "Not connected yet \u2014 Connect it to start." };
+    case "created":
+      return { severity: "info", text: `Installed? Not yet \u2014 an owner of ${ws.workspace} approves the App in Slack.` };
+    default:
+      break;
+  }
+  return ws.tick?.error ? { severity: "error", text: `The last pass failed: ${ws.tick.error}` } : undefined;
+}
+
 export function summaryOf(ws: SlackWorkspaceStatus): string {
   switch (ws.connectionState) {
     case "not_connected":

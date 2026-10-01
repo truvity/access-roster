@@ -248,6 +248,16 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 		return fail(p.holdersErr)
 	}
 	token, err := p.store.token(key)
+	if errors.Is(err, errNotConnected) || errors.Is(err, errNotInstalled) {
+		// Not connected, or created and not installed, are states a workspace
+		// passes through on its way to being managed, not failures: the pass
+		// reports it is waiting, with no error, over what was last known.
+		c.deps.Log.InfoContext(ctx, "a workspace is waiting to be connected", "workspace", logsafe.Value(key), "reason", logsafe.Error(err))
+		report := c.journal.Previous(ctx, key)
+		report.Workspace, report.Enabled = key, enabled
+		report.Tick = status.Tick{At: started, Outcome: status.OutcomeWaiting}
+		return report, false
+	}
 	if err != nil {
 		return fail(err)
 	}
@@ -336,16 +346,23 @@ func (c *Controller) servedDomains(ctx context.Context) (map[string][]string, er
 	return out, nil
 }
 
+// errNotConnected and errNotInstalled mark the two EXPECTED reasons a
+// workspace has no bot token yet; every other reason is a failure.
+var (
+	errNotConnected = errors.New("not connected")
+	errNotInstalled = errors.New("not installed")
+)
+
 // token is the bot token a workspace acts with, or why it has none.
 func (s store) token(workspace string) (string, error) {
 	result, found := s.credentials[workspace]
 	switch {
 	case !found:
-		return "", fmt.Errorf("%s is not connected: connect it from the console's Slack page", workspace)
+		return "", fmt.Errorf("%s is not connected: connect it from the console's Slack page: %w", workspace, errNotConnected)
 	case result.err != nil:
 		return "", result.err
 	case !result.credential.Installed():
-		return "", fmt.Errorf("%s is not installed: the Slack app is created, and waits for someone to install it in the workspace", workspace)
+		return "", fmt.Errorf("%s is not installed: the Slack app is created, and waits for someone to install it in the workspace: %w", workspace, errNotInstalled)
 	}
 	return result.credential.BotToken, nil
 }

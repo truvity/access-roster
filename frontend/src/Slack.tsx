@@ -37,6 +37,7 @@ import {
   offersReconnect,
   split,
   summaryOf,
+  tickNotice,
   type Step,
 } from "./slackModel";
 import { Failure, Loading, Mono, Nothing, Page, Section, State, type StateKind } from "./ui";
@@ -236,6 +237,7 @@ function WorkspaceCard({
   };
 
   const tick = ws.tick;
+  const notice = tickNotice(ws);
   const when = at(tick?.at);
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
@@ -275,9 +277,9 @@ function WorkspaceCard({
         </Stack>
       </Stack>
 
-      <Stack sx={{ gap: 1.5, mt: ws.tick?.error || failure || ws.breaker ? 2 : 0 }}>
+      <Stack sx={{ gap: 1.5, mt: notice || failure || ws.breaker ? 2 : 0 }}>
         <Failure error={failure} />
-        {tick?.error ? <Alert severity="error">The last pass failed: {tick.error}</Alert> : null}
+        {notice ? <Alert severity={notice.severity}>{notice.text}</Alert> : null}
         {ws.breaker && !ws.breaker.confirmed ? (
           <BreakerBanner
             sentence={breakerSentence("workspace", ws.breaker.affected, ws.breaker.total)}

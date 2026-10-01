@@ -2,7 +2,7 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 
 import { SlackMemberStatusSchema, SlackWorkspaceStatusSchema } from "./gen/directoryroster/v1/slack_pb";
-import { breakerSentence, connectionView, isConfirmed, memberKind, needsToken, nextStep, offersDisconnect, offersReconnect, ordered, split, summaryOf } from "./slackModel";
+import { breakerSentence, connectionView, isConfirmed, memberKind, needsToken, nextStep, offersDisconnect, offersReconnect, ordered, split, summaryOf, tickNotice } from "./slackModel";
 
 const ws = (init: MessageInitShape<typeof SlackWorkspaceStatusSchema> = {}) =>
   create(SlackWorkspaceStatusSchema, { workspace: "acme", declared: true, connectionState: "not_connected", ...init });
@@ -39,6 +39,25 @@ describe("a Slack workspace's steps", () => {
     expect(connectionView(ws({ connectionState: "scopes_missing" }))).toMatchObject({ kind: "needs-you", label: "scopes missing" });
     expect(connectionView(ws({ connectionState: "installed" })).kind).toBe("installed");
     expect(connectionView(ws()).kind).toBe("not-connected");
+  });
+});
+
+describe("the note about a workspace's last pass", () => {
+  const tick = { at: undefined, outcome: "failed", error: "acme is not connected: connect it" };
+  it("is neutral for a workspace not connected or not installed yet, even over an old failed report", () => {
+    expect(tickNotice(ws({ tick }))).toEqual({ severity: "info", text: "Not connected yet \u2014 Connect it to start." });
+    expect(tickNotice(ws({ connectionState: "created", tick }))).toEqual({
+      severity: "info",
+      text: "Installed? Not yet \u2014 an owner of acme approves the App in Slack.",
+    });
+  });
+
+  it("stays red for a real failure, and silent without one", () => {
+    expect(tickNotice(ws({ connectionState: "installed", tick: { ...tick, error: "slack said no" } }))).toEqual({
+      severity: "error",
+      text: "The last pass failed: slack said no",
+    });
+    expect(tickNotice(ws({ connectionState: "installed" }))).toBeUndefined();
   });
 });
 
