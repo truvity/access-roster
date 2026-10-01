@@ -116,7 +116,7 @@ func (d directoryGroups) checkSources(sources, members []string, owner string, o
 		case !ok || u.owner == "":
 			return "member " + m + " is not a user of a connected directory"
 		case ordinary && owner == "":
-			return "the workspace has no owning directory yet: set the owner on the console"
+			return reconcile.NoOwner
 		case ordinary && u.owner != owner:
 			return "member " + m + " belongs to another directory than the one that owns this workspace"
 		}
@@ -129,7 +129,7 @@ func (d directoryGroups) checkSources(sources, members []string, owner string, o
 		case g.truncated:
 			return "source " + s + " nests too deeply to resolve whole, so nobody is added or removed on it"
 		case ordinary && owner == "":
-			return "the workspace has no owning directory yet: set the owner on the console"
+			return reconcile.NoOwner
 		case ordinary && g.owner != owner:
 			return "source " + s + " belongs to another directory than the one that owns this workspace"
 		}

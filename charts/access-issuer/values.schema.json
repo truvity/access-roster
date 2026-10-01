@@ -965,7 +965,7 @@
           },
           "workspace": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$",
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$",
             "description": "A key of the policy's slack.workspaces."
           },
           "name": {

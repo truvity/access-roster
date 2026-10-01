@@ -20,7 +20,7 @@
 // # Channels
 //
 // A channel is bound to groups; its wanted members are those groups'
-// holders. It is created when absent, and otherwise taken over BY NAME: a
+// holders. It is created when absent, and otherwise adopted BY NAME: a
 // visible channel with the declared name is adopted (a public one is joined,
 // a private one the bot is in is managed). `adopt` names an id to
 // disambiguate (a renamed channel, two candidates) and is never required.
@@ -97,7 +97,7 @@ type SharedChannel struct {
 	// Private is one visibility for every side, or one per side.
 	Private Privacy `json:"private"`
 	// ChannelID is the Slack id of a channel that already exists and is
-	// already shared, which the record takes over; empty for a channel the
+	// already shared, which the record adopts; empty for a channel the
 	// host is to create. The id is the same on every side.
 	ChannelID string `json:"channel_id,omitempty"`
 }
@@ -122,12 +122,9 @@ func (p Privacy) IsPrivate(workspace string) bool {
 
 var channelName = regexp.MustCompile(`^[a-z0-9_-]{1,80}$`)
 
-// ChannelIDPattern is what a Slack conversation id looks like: a C (public)
-// or G (private) and capitals and digits.
-var channelIDPattern = regexp.MustCompile(`^[CG][A-Z0-9]{1,20}$`)
-
-// ValidChannelID reports whether a string can be a Slack channel id.
-func ValidChannelID(id string) bool { return channelIDPattern.MatchString(id) }
+// ValidChannelID reports whether a string can be a Slack channel id: the
+// policy's own rule, so a record and a policy binding accept the same ids.
+func ValidChannelID(id string) bool { return policy.ValidSlackChannelID(id) }
 
 // Validate checks a definition against the policy it runs under: the host
 // and every `with` workspace are declared, the host is not among them, there
@@ -193,6 +190,26 @@ func (s SharedChannel) Validate(p policy.Policy) error {
 // ErrDefinedInGit is what a console channel that a policy channel already
 // covers is refused with.
 var ErrDefinedInGit = errors.New("this channel is defined in git; remove it there to manage it here")
+
+// NamesChannel reports whether a record that carries no channel id is the
+// channel of this name and host team. The name must match, and the host must
+// be proven: the reporter is the host workspace (reporterIsHost), or the
+// record's host workspace has a known team (hostTeam) equal to the channel's
+// (channelHost). A host team that is unknown on either side proves nothing,
+// so a same-named channel of an unknown host is not this record's. The one
+// definition of "this record is that channel", for the reconciler and the
+// controller's probe alike.
+func (s SharedChannel) NamesChannel(name, channelHost, hostTeam string, reporterIsHost bool) bool {
+	if s.Name != name {
+		return false
+	}
+	return reporterIsHost || (hostTeam != "" && channelHost == hostTeam)
+}
+
+// DefinedTwice is why a channel the policy and a console record both define
+// is held, on both rows: the roster never mixes the two.
+const DefinedTwice = "defined in both git and the console: held and unchanged until one definition is removed " +
+	"(remove it from git to manage it here, or delete the console record)"
 
 // policyChannelNamed reports whether the workspace's policy binds a channel
 // of this name.
@@ -560,7 +577,7 @@ type Decision struct {
 	Actions []Action
 	Held    []Held
 	// Adopted are the bound channels that exist and that the bot did not
-	// create, now managed: taken over by name, or by `adopt`. The controller
+	// create, now managed: adopted by name, or by `adopt`. The controller
 	// records each once.
 	Adopted []Adoption
 }
