@@ -42,6 +42,7 @@ import {
   tickNotice,
   type Step,
 } from "./slackModel";
+import { SlackChannelsSection } from "./SlackChannels";
 import { Failure, Loading, Mono, Nothing, Page, Section, State, type StateKind } from "./ui";
 
 type Props = { onDone: (message: string) => void };
@@ -120,6 +121,7 @@ export function SlackPage({ onDone }: Props) {
           />
         ))}
       </Stack>
+      <SlackChannelsSection onDone={onDone} />
       {asking && (asking.purpose === "connect" || asking.purpose === "reconnect") ? (
         <TokenDialog
           key={`${asking.purpose}:${asking.ws.workspace}`}
@@ -440,6 +442,7 @@ function ChannelBlock({
           <Typography variant="caption" color="text.secondary">
             {channel.private ? "private" : "public"} · {channel.mode || "extend"}
             {channel.shared ? ` · Slack Connect, hosted by ${channel.host}` : ""}
+            {channel.console ? " · console channel, fed by directory groups" : ""}
           </Typography>
         </Stack>
         {channel.reason ? (
