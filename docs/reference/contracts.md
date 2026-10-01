@@ -11,6 +11,7 @@ without a generated client.
 | Services | Reached by | Path prefix |
 |---|---|---|
 | `directoryroster.v1.WorkspaceService`, `SettingsService`, `AccessService`, `GitHubService`, `SlackService`, `SlackChannelService`, `SlackSharedChannelService`, `SlackAppService`, and the SPA; the audit installation's `QueryService`, forwarded under `/audit/` | the console, same-origin under `console.mount`; a workload with its own ServiceAccount token | `/directoryroster.v1.*/` |
+| `accessissuer.v1.SessionService` | a browser at the issuer's own host (the SSO cookie), or any caller with a token from this issuer | `/accessissuer.v1.SessionService/` |
 | `/login/*`, `/connect/*`, `/.access/*` | the origin root: the bootstrap surface, and the endpoints a CLI reads | — |
 
 > **`directory.v1.DirectoryService` has no listener.** Its one consumer
@@ -439,6 +440,24 @@ reason.
 The report is the ConfigMap `<release>-slack-status`, one key per workspace,
 each a versioned document; the service creates it and the controller only
 replaces its data.
+
+## `accessissuer.v1.SessionService`
+
+What the issuer answers about itself: the sessions it holds, and ending
+them. It can only ever remove; no call here grants anything. It is served
+by the issuer at its own host, not by the console's services above, so the
+console's pages call it directly (same origin, with the browser's SSO
+cookie) and the hub's code does not depend on it.
+
+Callers prove themselves with the SSO cookie, or with a bearer token this
+issuer minted (verified against its own keys). Neither is a 401. A caller
+may act on **their own** identity's sessions; acting on anyone else's, or
+on the whole installation, needs the `all:access-roster:operator` group.
+
+| RPC | Auth | Request | Response | Notes |
+|---|---|---|---|---|
+| `ListSessions` | own identity; operator for any other identity, for a client alone, for the global listing, and for `contains` | `identity?`, `client_id?`, `contains?`, `page_size?`, `page_token?` | `sessions[]{id, identity, client_id, how, issued_at, expires_at, last_refreshed?, sso}`, `next_page_token`, `sign_ins[]{id, identity, how, auth_time, expires_at}` | newest first; naming neither identity nor client lists every session. `contains` reads the two filters as substrings. `how` is `HOW_CODE` (browser), `HOW_DEVICE` or `HOW_EXCHANGE`. Zero `page_size` picks 50, capped at 500. `sign_ins` (one per browser, unpaged) come on the first page only. A refused call is `permission_denied` |
+| `RevokeSessions` | own identity; operator for anyone's | `identity`, `client_id?`, `session_id?`, `sso?` | `ended` | `identity` is required (`invalid_argument` if empty). `session_id` ends one session; `sso` ends one browser's sign-in and every session under it; `client_id` ends that client's sessions and leaves the sign-in; none of the three ends everything the identity holds and its sign-ins ("sign out everywhere"). An id that is absent or belongs to someone else ends nothing and answers `ended: 0`, so ids cannot be probed. Idempotent. Audited as `roster.session.revoked` |
 
 ## The audit trail
 
