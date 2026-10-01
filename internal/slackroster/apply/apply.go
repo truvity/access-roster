@@ -33,7 +33,8 @@ type Outcome struct {
 	Action reconcile.Action
 	// Done is true when Slack accepted it.
 	Done bool
-	// Err is why it was not done, in Slack's words.
+	// Err is why it was not done, in Slack's words. A held outcome carries
+	// none: it is a hold, not a failure.
 	Err error
 	// Skipped says why nothing was tried: a dry run, or the channel it
 	// depends on was not made.
@@ -116,7 +117,8 @@ func Apply(ctx context.Context, client *slackapp.Client, dec reconcile.Decision,
 			if errors.Is(out.Err, slackapp.ErrNameTaken) {
 				// The name is taken by a channel the bot cannot see. That is a
 				// hold, found by asking, and not a change that failed.
-				out.Held = TakenReason(a.Channel)
+				// Held is not a failure: Err is cleared, Done stays false.
+				out.Held, out.Err = TakenReason(a.Channel), nil
 				break
 			}
 			emit(ctx, opt, audit.SlackChannelCreated(channel, outcomeOf(out.Err)))

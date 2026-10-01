@@ -433,7 +433,7 @@ func (c *Controller) fold(ctx context.Context, workspace string, report *status.
 	done, failed := 0, 0
 	for i := range result.Outcomes {
 		o := &result.Outcomes[i]
-		c.metrics.recordChange(ctx, workspace, o.Action.Kind, o.Err == nil)
+		c.metrics.recordChange(ctx, workspace, o.Action.Kind, o.Err == nil && o.Held == "")
 		if o.Held != "" {
 			// A hold found by asking Slack: the channel says why, nobody is
 			// asked to retry, and the hold is recorded once like any other.
