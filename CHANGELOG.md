@@ -1,10 +1,54 @@
 ## v1.43.1
 
+- **Fix: a refused Slack install now says why.** Every refused or failed
+  install callback, for a workspace connection and for the catalogue App, is
+  logged (values through `logsafe`; never the code, a token or a secret) and
+  audited with its reason, using the existing `roster.slack_workspace.connect_refused`
+  and `roster.slack_app.install_refused` actions. There is no audit catalogue
+  change. The callbacks still require the flow cookie and the signed state
+  exactly as before.
+- **Fix: a person with no Slack account yet is waiting, not blocking.** The
+  hold reason on that person's row reads "waiting for them" instead of "needs
+  you".
+
 ## v1.43.0
+
+- **A pass runs right after a Slack workspace's credential changes, and the
+  console has a Refresh button.** The Slack controller now checks the mounted
+  credentials and records every 30 seconds and runs a full pass at once when a
+  workspace's credential changes, such as a new bot token after an install; the
+  15-minute interval is unchanged. Until a report newer than the connection
+  exists, the console shows "Installed - waiting for the first pass" instead of
+  the previous pass's banner. A new `RequestSlackPass` RPC and a per-workspace
+  **Refresh** button (offered only to operators, only for an installed
+  workspace) ask for a pass: the request is a marker in the
+  `<release>-slack-workspaces` records ConfigMap, a second request within 60
+  seconds is refused, and the card shows "Pass requested" until a newer report
+  exists. The requester is logged; there is no audit action.
 
 ## v1.42.4
 
+- **Fix: an owning directory is labelled by its id and every authoritative
+  domain.** In every owner dropdown and "owned by" line (Slack, GitHub, Change
+  owner) a directory reads `<workspace id> - <authoritative domains, sorted>`;
+  served domains that are not authoritative are left out. `DirectoryRef` gains
+  `domains`, and a row's `owner_domain` now carries the joined list.
+- **Fix: a Slack workspace that is not connected or not installed yet is
+  waiting, not failed.** Such a workspace reports a `waiting` pass with no
+  error, the console shows a neutral note, and metrics count it as a waiting
+  pass. Real failures stay red.
+
 ## v1.42.3
+
+- **Fix: Slack handlers no longer log raw request values.** Every request- or
+  Slack-derived value in the Slack console handlers, the Slack controller and
+  its records is routed through `logsafe`, as the GitHub handlers already did,
+  so a crafted value cannot forge a log record. This closes the open
+  `go/log-injection` findings; no token is logged.
+- **Guard: a changed audit catalogue under an unchanged version is refused by a
+  test.** The document of each released catalogue version is frozen as a test
+  fixture, and a catalogue carrying one of those versions must equal it. A
+  change to the catalogue now needs a new version and its fixture.
 
 ## v1.42.2
 
