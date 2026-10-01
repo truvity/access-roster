@@ -1,4 +1,4 @@
-## Unreleased
+## v1.44.0
 
 - **A recovery copy of the Slack state: `slackState.push`.** In the shape of
   `directory.push` and `githubApps.push` (`secretStore`, `remoteKey`,
