@@ -1,5 +1,13 @@
 ## Unreleased
 
+- **Disconnecting a Slack workspace clears its old report, and the dialog says
+  its records stay.** A workspace with no bot token (not connected, or created and
+  not installed) is now reported as waiting with nothing carried over, so the
+  Channels and People views no longer show the channels and members of a
+  connection that is gone, or of another team. The channel and Slack Connect
+  records are kept as before, and the Disconnect dialog now says they apply to
+  whichever Slack team is connected under that key next.
+
 - **Saving a channel or Slack Connect record wakes the Slack controller.** The
   controller's 30-second look at the mounted credentials and records now includes
   the console's `_channel.*` and `_shared.*` records (confirmations, pass

@@ -512,7 +512,8 @@ function DisconnectDialog({ ws, onCancel, onDone }: { ws: SlackWorkspaceStatus; 
       <DialogContent>
         <DialogContentText>
           The controller stops acting in {ws.workspace}: no channel is created, nobody is invited or removed. The bot token is revoked in Slack and forgotten
-          here. The App itself stays in Slack until it is deleted there; connecting again creates a new one.
+          here. The App itself stays in Slack until it is deleted there; connecting again creates a new one. Its channel records stay and apply to whichever
+          Slack team you connect under this key next.
         </DialogContentText>
         <Failure error={failure} />
       </DialogContent>

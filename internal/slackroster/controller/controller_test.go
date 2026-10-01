@@ -742,6 +742,28 @@ func TestAWorkspaceWithoutABotTokenIsNotInstalled(t *testing.T) {
 	}
 }
 
+// A workspace disconnected after a pass is reported as waiting with nothing
+// carried over: the channels of the connection that is gone are not shown as
+// current, and the console's records are not touched.
+func TestADisconnectedWorkspaceReportsNothingFromBefore(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-all", "g-eng"}, "acme")
+	r.pass("acme")
+	if len(r.reports.workspace(t, "acme").Channels) == 0 {
+		t.Fatal("the connected workspace reported no channels")
+	}
+
+	if err := os.Remove(filepath.Join(r.creds, connection.Key("acme"))); err != nil {
+		t.Fatal(err)
+	}
+	r.pass("acme")
+
+	got := r.reports.workspace(t, "acme")
+	if got.Tick.Outcome != status.OutcomeWaiting || len(got.Channels) != 0 || len(got.Discovered) != 0 || got.Team != "" {
+		t.Errorf("acme after its disconnect = %+v, want waiting with nothing carried over", got)
+	}
+}
+
 // One operator confirmation of a removal set satisfies the channel's
 // breaker and the workspace's.
 func TestOneConfirmationSatisfiesBothBreakers(t *testing.T) {
