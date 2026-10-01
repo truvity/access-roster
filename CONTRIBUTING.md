@@ -18,7 +18,7 @@ cmd/resource-proxy        the sidecar that fronts a stock MCP server
                           with a resource server's front door
 cmd/accessctl             the CLI, for laptops and CI jobs
 cmd/acceptance            the acceptance runner against a kind cluster
-charts/access-issuer      the chart: both processes
+charts/access-issuer      the chart: the service and both controllers
 action.yml                the GitHub Action, at the root so
                           `uses: truvity/access-roster@<tag>` works
 identity/ tokens/ policy/ backend/
@@ -26,16 +26,23 @@ identity/ tokens/ policy/ backend/
                           verifiers, the net/http middleware and
                           identity/resource (an MCP server's own side), the
                           exchange and credential encoders, the
-                          seven-table policy, the directory backend
+                          policy with its ten top-level keys, the directory backend
                           interface and its fake
 internal/                 hub (snapshots, routing, authority), issuer
                           (the OpenID surface, sessions, exchange),
                           access (roles, sessions, Explain), server
                           (ConnectRPC handlers, HTTP), verify (the
                           proofs), kube (what the console writes),
-                          githubroster (the controller), audit (the
-                          catalogue, one constructor per action, and
-                          the emitter), demo (fixtures). app and
+                          githubroster (the GitHub controller),
+                          slackroster (the Slack controller: reconcile,
+                          apply, status, connection, controller, app),
+                          slackapp (the Slack client, its catalogue Apps
+                          and slackfake), githubapp, rails (what the
+                          reconcilers share), logsafe (every request- or
+                          Slack-derived value goes through it before it
+                          is logged), audit (the catalogue, one
+                          constructor per action, and the emitter), demo
+                          (fixtures). app and
                           issuerapp assemble the two halves; rosterapp
                           is the wiring that makes them one process
 hack/                     the scripts the recipes call
@@ -61,7 +68,8 @@ helm, just and lefthook at the pinned versions. Never install the tools by
 hand next to it.
 
 `just check` runs what CI runs — build, test, lint, chart-lint,
-archive-check, docs-check, ts, console. The pre-push hook (installed by
+archive-check, docs-check, leak-canary, audit-catalogue, ts (`console` runs
+inside `build`). The pre-push hook (installed by
 devbox's init hook) runs the same. `vuln` is deliberately not part of
 `check`: a newly published CVE must not turn a PR red that never touched
 the dependency; run it on its own with `just vuln`, the same way
@@ -75,8 +83,13 @@ the dependency; run it on its own with `just vuln`, the same way
   request that makes a change someone using a release would notice adds
   its bullet under `## vX.Y.Z`, the version it will be tagged as, creating
   the heading if it is the first. A breaking bullet starts with
-  **Breaking:** and says what to do first. A patch cut only for
-  dependency bumps has no heading.
+  **Breaking:** and says what to do first. A patch tag with a user-visible
+  change gets its heading in the pull request, the same as a minor;
+  `changelog-heading: never` in `auto-release.yaml` means nothing adds it
+  afterwards. A patch cut only for dependency bumps has no heading. A change
+  to `internal/audit/catalogue/roster.yaml` needs a new catalogue `version`
+  and its `testdata/released/roster-<version>.yaml` fixture in the same pull
+  request ([extending.md](docs/development/extending.md#7-an-audit-action)).
 - **Rebase-merge only.** Branch from `master`, never stack pull requests.
 - **Generated code is committed.** `just generate` rebuilds `gen/` from
   `proto/`; CI does not run buf. A contract change and its generated code
@@ -150,9 +163,9 @@ exactly what each battery exposes; `CHANGELOG.md` says what exists today.
 The service is one process. By now: several directories connected, the
 policy rendered from the installation's access matrix, clusters, AWS
 accounts and CI on the issuer, resources and client-described clients in
-the policy, the GitHub controller acting in real organisations, runner
+the policy, the GitHub and Slack controllers acting in real organisations and workspaces, runner
 Apps from the console, the audit trail kept by an audit installation, and
-the console's state restorable from four Secrets. The conformance run at
+the console's state restorable from five Secrets and the Slack state. The conformance run at
 1.0 is in [docs/conformance.md](docs/conformance.md).
 [CHANGELOG.md](CHANGELOG.md) is the record of what exists at each
 version; read the newest entries before the design documents, which
@@ -172,17 +185,17 @@ its own set of anti-patterns, out of this file's scope — see
 ## Releasing
 
 Push a `v*` tag. The release workflow builds the binaries, the images
-(`ghcr.io/truvity/access-roster/access-issuer` and `/github-roster`),
+(`ghcr.io/truvity/access-roster/access-issuer`, `/github-roster` and
+`/slack-roster`),
 the chart (`oci://ghcr.io/truvity/charts/access-issuer`), `accessctl`'s
 archives and its Nix flake, and publishes the TypeScript package to GitHub
 Packages, all stamped with the tag.
 The Go module and the GitHub Action are the same tag. One tag, every
 artifact: a consumer pins one version of this repository.
 
-Auto-release is present but not armed (`vars.AUTO_RELEASE` is unset), so
-every release today is a manual tag. When armed it cuts **patches
-only**: at once for a merged `security`-labelled pull request, weekly for
-dependency bumps. Minors and majors are always manual — tag them when the
+Auto-release is armed (`vars.AUTO_RELEASE`) and cuts **patch** tags when
+changes merge: at once for a merged `security`-labelled pull request, weekly
+for dependency bumps. Minors and majors are always manual — tag them when the
 change merges, after its CHANGELOG heading has landed, because an armed
 weekly run would otherwise ship an untagged feature as a patch.
 

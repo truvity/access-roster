@@ -173,6 +173,15 @@ owner, ref, workflow, environment, visibility, as the job's token says —
 and `ServiceAccount` — cluster, namespace, name. A person, a CI job and
 a workload are the same evaluation against the same matchers.
 
+`policy.Policy` also carries the `slack` and `people` tables.
+`Set.SlackWorkspaceDeclared(key)` and `Set.SlackWorkspaceKeys()` say which Slack
+workspaces the policy names; `Policy.PeopleByAddress()` maps every listed
+address to its person; `Set.Declared()` returns the declared policy, read-only,
+for a caller that validates a definition of its own against it (a console
+channel record). `LoadDeclared` refuses `team_id`, `domains` and `owner` under a
+Slack workspace and `owner` under a GitHub organisation, with a message saying
+where each now comes from.
+
 One layer. There was a second that a console could write; it is gone,
 because a console that can disagree with git is a second
 source of truth and a merge to reconcile them.

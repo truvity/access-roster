@@ -64,8 +64,11 @@ client_documents:              # clients that describe themselves; empty means t
 | `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
 | `resources` | resource indicator (an absolute URI) | `requires`, `ttl_cap`, `display_name`, `description` — the gate on a service a token may be minted *for* | declared |
 | `client_documents` | — | `origins`, `requires`, `ttl_cap`: which hosts may serve a client's own description, and who may use such a client | declared |
+| `people` | a name you choose | the addresses that are the same person, across domains ([People](#people)) | declared |
+| `slack` | workspace key | the channels bound in that workspace, by name, each fed by internal groups ([Slack channels](#slack-channels)) | declared |
 
-Seven tables, one writer. There is no `memberships` table and no
+Ten top-level keys, one writer: the nine rows above, and `vocabulary` (the
+declared names a grant may use, [Vocabulary](#vocabulary)). There is no `memberships` table and no
 console-written layer: the console writes nothing into the policy, and
 the key is refused like any other unknown one rather than ignored. A
 directory group that should feed an internal group is named in that
@@ -76,7 +79,9 @@ mounts it. In a directory, every `*.yaml` file says `version: 1`. The
 keyed tables (`groups`, `claims`, `lifetimes`, `clients`, `resources`,
 and each organisation's `teams` under `github`) merge by key, and a key
 declared in two files is refused. `vocabulary` and `client_documents` are
-installation-wide: one file declares each, and a second is refused.
+installation-wide: one file declares each, and a second is refused. `slack`
+workspaces merge field by field, and a Slack channel comes from one file;
+`people` is a keyed table, and a person declared twice is a clash.
 Under `github`, one organisation's own `members` come from one file, and
 its `ignore` entries add up across files.
 
@@ -189,7 +194,7 @@ distinctly from a scope the *thing* does not have: `kernel:ssh:user` is
 refused — `ssh` does declare `kernel`, but `user` restricts itself to
 `devel` — with a message naming the role's own scopes, `role "user" of
 thing "ssh" is valid only on scopes [devel]`. A [mapping
-wildcard](#mapping-wildcards) skips rather than refuses: `*:ssh:user`
+wildcard](../taxonomy.md#mapping-wildcards) skips rather than refuses: `*:ssh:user`
 expands to `devel:ssh:user` alone, silently leaving out `kernel`, `stage`
 and `prod` the same way it already skips a thing that lacks the role
 entirely — see the next section for when that empties a wildcard
@@ -1089,7 +1094,8 @@ anything by being left out.
 
 Refused: a person with no address, an address that is not one, the same
 address under two people (or twice under one), a key that is not a plain
-name (lowercase letters, digits, `.`, `_`, `-`). Addresses are compared
+name (lowercase letters, digits, `.`, `_`, `-`, starting with a letter or digit,
+at most 63 characters). Addresses are compared
 lowercased. The same person declared in two merged files is a clash.
 
 ### Who owns a Slack workspace
@@ -1137,9 +1143,11 @@ console.
 
 ## Slack channels
 
-> **A controller that reads this is being built. Until it ships, nothing
-> reads these keys**: they are validated at load, merged, digested and
-> shown, and nothing more. The decision logic it will run is in
+> **The Slack controller, `slack-roster`, reads this table.** It is a second
+> process from the `access-issuer` chart and changes only the workspaces listed
+> in `slackRoster.actsIn`; every other declared workspace is a dry run. What it
+> does with the keys is on
+> [Connect a Slack workspace](../connect/slack-workspace.md) and in
 > [the Slack reconciler](../design/access-roster.md#the-slack-reconciler).
 
 ```yaml
@@ -1148,16 +1156,28 @@ slack:
     acme:                                   # a key WE choose
       channels:                             # by channel NAME, as Slack spells it
         eng-private: {private: true, mode: strict, ignore: [boss@acme.example, U0123ABCD], from: [acme:eng:member]}
-        ops: {from: [acme:sre:member], adopt: C0123ABCD}   # take over an existing channel
+        ops: {from: [acme:sre:member], adopt: C0123ABCD}   # adopt an existing channel by id
     globex: {}                              # declared; its channels are bound elsewhere
 ```
 
 Channels in the policy are fed by **internal groups** (`from`), for channels
 the infrastructure owns, such as alert channels. Channels managed
 interactively on the console are not here: they are records fed by **directory
-groups**, and a record for a channel this section already binds (the same name,
-or the same `adopt` id) is refused as *defined in git*. See
+groups**. See
 [console channels](../connect/slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console).
+
+A policy channel is fed by internal groups only (`from`). Individual addresses
+(`members`) and directory groups (`sources`) are fields of a console channel
+record, not of this file, and a `members` key here is refused as an unknown key.
+
+The two kinds never mix. The console refuses to create or edit a record for a
+channel this section already binds (the same name, or the same `adopt` id):
+*this channel is defined in git; remove it there to manage it here*. If both
+definitions exist anyway (a record written first, a binding added later), the
+channel is **held** on both sides, *defined in both git and the console*, and
+nothing on it changes until one definition is removed. There is no "take over
+from git": to move a channel to the console, remove it from this file, then
+Manage it from Discovered.
 
 Each workspace is connected by **its own app** and bot token; the token is
 never in this file. The workspace key is ours; the Slack team, the owning
@@ -1169,7 +1189,7 @@ domains** (and `people` links their other addresses).
 Channels are bound to **internal groups directly**, exactly as a GitHub
 team is: the holders of `from` are who the channel should contain. (Slack
 user groups are out of scope.) A channel is **created if missing, otherwise
-taken over by name**: a visible channel with the declared name is adopted (a
+adopted by name**: a visible channel with the declared name is adopted (a
 public one is joined, a private one the bot is in is managed) and recorded once
 as `roster.slack_channel.adopted`, so declaring a channel that already exists
 is safe and a second declaration of it changes nothing. `adopt: <id>` is
@@ -1219,14 +1239,14 @@ What is refused, and why each would otherwise be silent:
 
 | Refused | Because |
 |---|---|
-| a workspace key that is not a plain slug | it appears in messages, audit records and credential names |
+| a workspace key that is not lowercase letters, digits and `-`, starting and ending with a letter or digit, at most 40 characters | it appears in messages, audit records and credential names |
 | `team_id`, `domains` or `owner` on a workspace, or `owner` on a GitHub organisation | removed in favour of what access-roster records and reads at run time; the message says where each comes from, so a stale policy fails the rollout rather than being half-read |
 | a channel name that is not lowercase letters, digits, `-`, `_` (at most 80) | Slack would refuse it at create time, not at load |
 | `mode` other than `extend` or `strict`; `mode: strict` on a channel that is not `private` | Slack would refuse every removal from a public channel, at every pass |
 | `ignore` without `mode: strict`, or an entry that is neither an address nor a Slack user id, or one listed twice | an extend channel removes nobody, so the list would mean nothing |
 | a channel with no `from` | *empty this channel* is not something to express by leaving a list out |
 | a group nothing declares | the binding would name something with no meaning |
-| `adopt` not `^[CG][A-Z0-9]{8,}$`, or one ID adopted twice in a workspace | two bindings would fight over one channel (`adopt` itself is optional: a channel is taken over by name without it) |
+| `adopt` not `^[CG][A-Z0-9]{8,}$`, or one ID adopted twice in a workspace | two bindings would fight over one channel (`adopt` itself is optional: a channel is adopted by name without it) |
 
 Across merged files a workspace merges field by field, as a GitHub
 organisation does: one file may declare it and another bind channels in it.
@@ -1243,7 +1263,7 @@ twice is refused.
 
 Nothing is merged under the declared one at runtime. Who is in which
 internal group is this file and nothing else, so `git log` is the
-complete history of access.
+complete history of access to infrastructure.
 
 ## Not in this file
 
@@ -1280,6 +1300,10 @@ the issuer and github-roster warn if an internal group is declared in the
 - `client_documents` `requires`
 - any GitHub organisation `members` binding
 - any GitHub team `members` or `maintainers` binding
+- any Slack channel's `from` binding
+- any `groups:` override on a client, a resource or `client_documents`
+- a GitHub App catalogue grant's group (where the process keeping the
+  catalogue passes it)
 - this hub's own roles — groups whose third segment is `operator` or
   `viewer` and whose second segment is `access-roster`, which the hub reads
   directly from the token
@@ -1292,12 +1316,10 @@ reason.
 The groups with the `rung:` or `emp:` prefix are not grants and never
 reported: they are identities and sessions, not roles on things.
 
-KNOWN LIMITATION: a relying party may read groups from the token beyond what
-its `requires` names, for its own role mapping (for example, a console's
-viewer vs editor role). Such groups are consumed outside the policy's view,
-so this warning may name them. The gap closes when a client can declare the
-groups it maps — per `docs/decisions/0006-groups-claim-scoped-per-audience.md`
-— and the lint will then count those declarations.
+A group a relying party maps for its own roles (for example, a console's
+viewer vs editor role) is declared with a `groups:` override on that client,
+per [ADR 0006](../decisions/0006-groups-claim-scoped-per-audience.md), and this
+lint counts it.
 
 The warning is always a warning, not an error. An installation may
 legitimately declare a group ahead of the client or resource that will use
@@ -1309,9 +1331,11 @@ would see it: at load, where they read their logs.
 ## What the console may change
 
 Nothing in this file. The console reads the policy and shows it — every
-group, every rule, every client — and its only writes are removals of
-sessions (revoke, *sign out everywhere*). It cannot attach a directory
-group to an internal one: that is an edit to this file, in git.
+group, every rule, every client — and writes nothing into it. What it does
+write lives elsewhere: removals of sessions (revoke, *sign out everywhere*),
+connections and Apps, and the records of console and Slack Connect channels,
+none of which names an internal group. It cannot attach a directory group to an
+internal one: that is an edit to this file, in git.
 
 ## Testing the file
 

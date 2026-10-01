@@ -13,8 +13,8 @@ Everything that can read a claim gets that vocabulary **minted into a
 token**: Kubernetes, AWS, ArgoCD, Kargo and every console behind your
 gateway trust that one token, and so do CI jobs and workloads, from the
 identity they already hold. Everything that cannot read a claim — GitHub
-teams today — gets it **reconciled into a membership** instead, by a
-controller reading the same file. A console shows you who holds what and
+teams and Slack channels — gets it **reconciled into a membership** instead,
+by a controller reading the same file. A console shows you who holds what and
 why, and an audit installation of its own, rendered beside it, keeps who
 did what. A leaver disappears from the directory and, within a freshness
 window, from everything downstream: authoritative or held, never guessed.
@@ -33,13 +33,13 @@ repository.
 |---|---|---|---|
 | `access-issuer` chart and image | `oci://ghcr.io/truvity/charts/access-issuer`, `ghcr.io/truvity/access-roster/access-issuer` | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail | shipped |
 | `github-roster` image, in the same chart | `ghcr.io/truvity/access-roster/github-roster` | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console | shipped |
-| `slack-roster` image, in the same chart | `ghcr.io/truvity/access-roster/slack-roster` | a second process: one loop that keeps every connected Slack workspace's channels as the policy says; a dry run until a workspace is in `slackRoster.actsIn` | shipped with the next release |
+| `slack-roster` image, in the same chart | `ghcr.io/truvity/access-roster/slack-roster` | a second process: one loop that keeps every connected Slack workspace's channels as the policy says, and the console's channel records; a dry run until a workspace is in `slackRoster.actsIn` | shipped |
 | `access-proxy` chart | removed in v1.32.0 | the chart was Envoy Gateway's external authorization backend; gateway-native OIDC replaces it there. For a gateway that is not Envoy Gateway, run upstream oauth2-proxy yourself — see [docs/design/access-proxy.md](docs/design/access-proxy.md), [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md). Versions already published stay available. | removed |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
 | `accessctl` | the release's archives, and a Nix flake on every release | people on laptops and CI jobs: one sign-in, then kubeconfigs, AWS credentials, a token for any audience, and short-lived certificates a secret manager mints | shipped |
 | GitHub Action | `truvity/access-roster@<commit>` | workflows: one exchange, then a kubeconfig, AWS profiles, or a GitHub App token | shipped |
-| the policy | one file, one schema | the issuer and the controller | shipped |
+| the policy | one file, one schema | the issuer and the controllers | shipped |
 | an Entra directory backend | — | a second corporate directory, behind the same workspace record | planned |
 
 ## Who it is for
@@ -115,8 +115,9 @@ anywhere, and the rule sits in the same file as the human ones.
 
 **As the operator.** One chart. The policy is values. The console shows
 every person, every directory group, every internal group, every rule
-that grants one, every open session, and every GitHub organisation with
-what the controller would change and why. A leaver disappears from the
+that grants one, every open session, every GitHub organisation with
+what the controller would change and why, and every Slack workspace and channel,
+with its people and why each is held. A leaver disappears from the
 directory and, within the freshness window, from everything downstream,
 GitHub teams included. Every sign-in, refusal, exchange, revoke and
 console action is one record in an S3 bucket you own. What the console
@@ -147,11 +148,13 @@ flowchart LR
   subgraph ar["access-roster"]
     iss["the issuer<br/>reads the directory · applies the policy · mints tokens<br/>serves the login page and the console"]
     ctl["the GitHub controller<br/>keeps each organisation's teams as the policy says"]
+    sctl["the Slack controller<br/>keeps each workspace's channels as the policy says"]
   end
 
   gg["Envoy Gateway OIDC<br/>gateway-native, per console with no OIDC of its own"]
   apps["Kubernetes · AWS · ArgoCD · Kargo · consoles"]
   orgs["GitHub organisations"]
+  slack["Slack workspaces"]
   aud[("audit installation<br/>the audit trail, in this service's namespace")]
 
   idp -- "sign-in, and directory reads" --> iss
@@ -161,8 +164,11 @@ flowchart LR
   iss -- "trusted by" --> apps
   iss -. "who holds which group" .-> ctl
   ctl -- "invites, teams, removals" --> orgs
+  iss -. "who holds which group" .-> sctl
+  sctl -- "invites, channels, removals" --> slack
   iss -- "every record" --> aud
   ctl -- "what it did" --> aud
+  sctl -- "what it did" --> aud
 ```
 
 One chart, one Valkey, one bucket. A login makes no network call except
@@ -180,19 +186,21 @@ defaults instead to **gateway-native OIDC**: an Envoy Gateway
 client's `requires`, with no OIDC code in the console
 ([which door](docs/decisions/0001-sessions-and-an-absolute-limit.md)).
 `access-proxy` — upstream oauth2-proxy in a chart, and Envoy Gateway's
-external authorization backend, so it works nowhere else — is
-deprecated, with removal planned: gateway-native OIDC replaces it on
-Envoy Gateway now. On any other gateway, run upstream oauth2-proxy
-yourself, with a declared confidential client row of this issuer — a
-documentation page for that is planned; it is not a chart of ours. Its
+external authorization backend, so it worked nowhere else — was removed in
+v1.32.0: gateway-native OIDC replaces it on Envoy Gateway. On any other
+gateway, run upstream oauth2-proxy yourself, with a declared confidential
+client row of this issuer; it is not a chart of ours. Its
 server-side session store was never a reason to prefer it either way —
 oauth2-proxy encrypts each session with a key only the browser's cookie
 holds, so nothing server-side, Back-Channel Logout included, can end one
 ([why](docs/design/access-proxy.md),
 [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md)). The GitHub
-controller is a second process from the same chart, asking the issuer
-who holds which group and acting on GitHub with an App the organisation's
-owner created from the console.
+controller and the Slack controller are second processes from the same chart,
+asking the issuer who holds which group and acting on GitHub with an App, or on
+Slack with a bot, that an owner created from the console; each acts only in the
+organisations or workspaces listed in its `actsIn`, and a removal rests on a
+vouched directory answer and never exceeds half a target without an operator's
+confirmation.
 
 ### Many in, many out, one point in the middle
 
@@ -204,6 +212,7 @@ asking anyone.
 | [corporate directories](docs/connect/corporate-directory.md): several Google Workspaces, Entra next — each a workspace with its own credential and its own served domains | [Kubernetes clusters, for people](docs/connect/kubernetes-cluster.md): each trusts the one issuer as its identity provider |
 | [CI platforms](docs/connect/github-actions.md) — GitHub Actions today: one federated issuer, an owner allow-list | [AWS accounts](docs/connect/aws-account.md): each trusts the one issuer as an OIDC provider |
 | [every cluster's own ServiceAccount tokens](docs/connect/service-to-service.md), for workloads: one row per cluster naming its key set | [GitHub organisations](docs/connect/github-organisation.md): one controller App each, bindings in the same policy, and a runner App per tier for self-hosted runners |
+| | [Slack workspaces](docs/connect/slack-workspace.md): one bot each, channels bound in the same policy, console channels fed by directory groups, and [Slack Connect channels](docs/connect/slack-connect-channels.md) between your own workspaces; [Slack Apps](docs/connect/slack-apps-catalogue.md) declared as data |
 | | [consoles and applications](docs/connect/console-app.md): one client row each |
 
 Adding one of anything is one row and one trust registration. The
@@ -282,8 +291,8 @@ repositories:
   trusts them and issues certificates. See
   [openbao's docs/integrations/access-roster.md](https://github.com/truvity/openbao/blob/master/docs/integrations/access-roster.md).
 - **audit**: every decision, sign-in, refusal, exchange and console action
-  is one record in the audit trail, read by both the issuer and the
-  controller.
+  is one record in the audit trail, written by the issuer and by each
+  controller for itself.
 - **workstation**: `accessctl` (from this repository) and `awsctl` both mint
   AWS credentials on a developer machine; `accessctl` is the estate path,
   `awsctl` the SSO fallback (when access-roster is unreachable).
@@ -360,11 +369,11 @@ build order.
 
 ## Releasing
 
-Push a tag `vX.Y.Z`: the release workflow publishes the images, both
-charts, `accessctl` and its Nix flake, and the TypeScript package at that
+Push a tag `vX.Y.Z`: the release workflow publishes the images, the
+chart, `accessctl` and its Nix flake, and the TypeScript package at that
 version, and the Go module and the Action are the same tag. Auto-release
-is present but not armed, so every release today is a manual tag; when
-armed it cuts patches only, and minors and majors stay manual.
+is armed and cuts patch tags when changes merge to master; a minor needs its
+`## vX.Y.0` CHANGELOG heading and is tagged by hand.
 
 ## Licence
 

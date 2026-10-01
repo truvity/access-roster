@@ -21,19 +21,31 @@ Only the latest release is supported with security updates.
 - The service **holds directory credentials so that its consumers hold
   none**. Credentials — OAuth refresh tokens, service-account keys, the
   private keys of the GitHub Apps an owner created from the console,
-  people's GitHub link tokens — live only in Kubernetes Secrets in its
+  people's GitHub link tokens, the Slack Apps' client secrets and bot tokens — live only in Kubernetes Secrets in its
   own namespace; the ServiceAccount holds a namespaced Role, never a
   cluster-wide one. The console never returns secret material and the
-  logs never print it. An operator may copy four of those Secrets out as
+  logs never print it. An operator may copy five of those Secrets, and the Slack state, out as
   a backup; the copy's custody is the operator's.
 - The service is **read-only against the directory**: every scope it
   asks for is a read-only Admin SDK scope. A compromised service can
-  enumerate accounts and groups; it cannot change them. Its one write
-  surface is **GitHub**: the controller invites, adds, promotes and
-  removes members of the organisations listed in `githubRoster.actsIn`,
-  with a key that lives only in its namespace, and it removes only on an
-  answer the directory vouches for, never an owner, and never more than
-  half an organisation without an operator's confirmation.
+  enumerate accounts and groups; it cannot change them. Its write
+  surfaces are **GitHub** and **Slack**. The GitHub controller invites,
+  adds, promotes and removes members of the organisations listed in
+  `githubRoster.actsIn`, with a key that lives only in its namespace. The
+  Slack controller creates or adopts channels, invites people and, in
+  `strict` private channels, removes them, in the workspaces listed in
+  `slackRoster.actsIn`, with a bot token that lives only in its namespace (a
+  Secret mounted read-only into the controller, whose ServiceAccount can
+  update one report ConfigMap and read no Secret through the API). The
+  console can also archive an ordinary Slack channel, only when an operator
+  ticks *Also archive in Slack* when forgetting its record, and never a Slack
+  Connect channel. Both controllers remove only on an answer the directory
+  vouches for, never an owner, bot, app, guest or deactivated account, and
+  never more than half of a channel, team or organisation without an
+  operator's confirmation of exactly that set. The app configuration token an
+  operator pastes to create a Slack App is used for one call and is never
+  stored or logged. Every request- or Slack-derived value is routed through
+  `logsafe` before it is logged, so a crafted value cannot forge a log record.
 - The safety-critical output is the per-domain **authoritative** flag.
   Consumers that remove access act only on authoritative answers; a failed
   probe, a partial read, a stale snapshot or a domain conflict all read as

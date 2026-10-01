@@ -1,7 +1,7 @@
 # Testing
 
-Three layers; the shape is fixed now so the prototype and the build can
-grow into it.
+Unit tests, fakes with handler-level tests, and acceptance against a real
+API server; the other sections are what each deliverable adds.
 
 ## Unit
 
@@ -32,7 +32,7 @@ special case in the service, only a backend with no network behind it.
 - **Store fake:** the Kubernetes store behind an interface, with an
   in-memory implementation over the fake clientset; the real one is
   exercised against a kind cluster in the acceptance suite. The restore
-  and migration paths — four Secrets rebuilding a namespace, pre-1.7
+  and migration paths — five Secrets (and the Slack state) rebuilding a namespace, pre-1.7
   credential objects copied in by name — are tested here.
 - **Cache fake:** the snapshot store behind an interface; the in-memory
   backend is the fake. The Valkey backend is exercised against an
@@ -41,6 +41,31 @@ special case in the service, only a backend with no network behind it.
   invitations and seats, which the controller's reconcile and pass tests
   drive through joiners, movers, leavers, the breaker and every held
   state.
+- **Slack fake:** `internal/slackapp/slackfake` is Slack in memory: several
+  workspaces behind one httptest server, answering `auth.*`,
+  `apps.manifest.*`, `oauth.v2.access`, `users.*`,
+  `conversations.list|info|members|create|join|archive|invite|kick` and the
+  Slack Connect calls (`inviteShared`, `listConnectInvites`,
+  `acceptSharedInvite`), with the semantics a reconciler trips over: a caller
+  must be in a private channel to act there (`channel_not_found`, never
+  "forbidden"), removing anybody from a public channel is `restricted_action`,
+  names are taken, lists paginate, a Slack Connect channel is one channel with
+  members from two workspaces reached by an invitation the other side accepts.
+  A test can make any method fail with a code or a 429 and read back every
+  call. It is a package, not a test file, because the client's tests and the
+  controller's end-to-end tests both use it.
+- **Rails:** `internal/rails` carries the table tests for what both
+  controllers share (pass loop and backoff, vouching and the removal rule, the
+  held-once ledger, the journal, the breaker and its fingerprint, the dry-run
+  switch); the GitHub and Slack decision packages test only what is theirs.
+- **The audit catalogue guard:** `TestAReleasedCatalogueVersionIsNeverChanged`
+  (`internal/audit/catalogue_version_test.go`) compares `roster.yaml` with
+  `testdata/released/roster-<version>.yaml` for the version it carries and
+  fails on a difference, because an audit installation refuses a different
+  document under a version it already holds. `TestTheConstructorsAreTheCatalogue`
+  (`internal/audit/events_test.go`) fails on a declared action with no
+  constructor, and `just audit-catalogue` on an emitted action that is not
+  declared. See [extending.md](extending.md#7-an-audit-action).
 - **Audit:** every record a test makes goes through `audittest`, which
   holds it to the catalogue exactly as the installation would, so a test
   that records something the catalogue refuses fails; the issuer's and the
@@ -103,16 +128,14 @@ the rendered policy carried no `version`. Build an image with `ko build
 cluster and namespace you may create objects in; it cleans up by the
 labels it wrote, including when a check fails.
 
-## Issuer, proxy and CLI
+## Issuer and CLI
 
 The issuer's verifiers run against recorded tokens with rotated keys and
 a fake directory; the policy engine against fixtures; the OpenID
 Provider surface against the library's own tests, and, by hand and
 before a release that touches it, against the OpenID Foundation's suite
 ([operations/conformance.md](../operations/conformance.md)), whose
-results are [conformance.md](../conformance.md). `access-proxy` is tested by
-installing it in front of a fixture backend and driving a browser through
-login, sign-out and a revoked identity. `accessctl` is tested against the
+results are [conformance.md](../conformance.md). `accessctl` is tested against the
 acceptance issuer with a fake cloud STS and a kind cluster, on a laptop
 path and on a simulated CI path.
 
@@ -137,15 +160,15 @@ about and prints a table:
 
 ## Charts
 
-Both charts are tested without a cluster, in `just chart-lint`:
+The chart is tested without a cluster, in `just chart-lint`:
 
 - **Golden renders.** Every `tests/cases/<chart>/<case>/values.yaml` is
   rendered with `helm template` (release name = chart name, namespace
   from an optional `namespace` file beside it) and compared byte for
   byte with `tests/golden/<chart>/<case>.yaml` by `hack/golden.sh`. A
   template change therefore arrives as a reviewable diff of what the
-  cluster will be sent. Each chart has a `minimal` case and a `full` case
-  that sets every value; the other cases take the other side of each
+  cluster will be sent. The chart has a `minimal` case and a `full` case
+  that sets the values; the other cases take the other side of each
   switch (`headless`, `listenerset`, `attach`, `multiroute`, ...). After
   changing a template or a case, run `just golden` and review the diff
   before committing it.
@@ -169,11 +192,13 @@ update it by copying the canonical file again, not by editing this copy.
 ## What CI runs
 
 `just check` runs every recipe CI runs — `build`, `test`, `lint`,
-`chart-lint`, `archive-check`, `docs-check`, `ts`, `console`. `ts`
-typechecks and tests the published TypeScript package; `docs-check`
-refuses a documented Go symbol that does not exist; `console` builds the
-bundle the binary embeds, which is why every recipe that compiles Go runs
-it first.
+`chart-lint`, `archive-check`, `docs-check`, `leak-canary`, `audit-catalogue`,
+`ts` (`console` runs inside `build`). `ts` typechecks and tests the published
+TypeScript package; `docs-check` refuses a documented Go symbol that does not
+exist; `leak-canary` refuses a real name in the public history;
+`audit-catalogue` validates the catalogue and checks emitters against it;
+`console` builds the bundle the binary embeds, which is why every recipe that
+compiles Go runs it first.
 
 `vuln` is deliberately not part of `check`: a newly published CVE in a
 dependency must not turn the gate red on a push that never touched it.
