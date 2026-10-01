@@ -164,7 +164,7 @@ report, with the reason, acted on by nobody):
 bot can see that **neither a policy binding nor a record manages**: public
 channels, and private ones the bot is in. `#general` and archived channels are
 left out. The list is by name and capped at 500 per workspace, with a count of
-the rest. On the Slack page, **Discovered channels** shows them with **Manage**,
+the rest. On the Slack page's **Discovered** tab (`#/slack/discovered`) they are listed with **Manage**,
 which opens the form prefilled with the workspace, the name, the channel id and
 the visibility as seen; you choose the directory groups and the mode.
 
@@ -184,8 +184,8 @@ directory group `ops@example.com`:
 1. **Remove it from the policy in git** (the `channels` entry under its
    workspace). It becomes **unmanaged**: nothing is added to or removed from it
    while it is, and no removals happen.
-2. After the next pass it appears under **Discovered channels** on the Slack
-   page, because the bot is in it.
+2. After the next pass it appears on the Slack page's **Discovered** tab,
+   because the bot is in it.
 3. **Manage** it. The form is prefilled with the workspace, the name, the id and
    *private*; choose the **same mode** (`strict`), set its `ignore` list if it
    had one, and pick the directory group `ops@example.com` as the source.
