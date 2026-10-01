@@ -17,7 +17,9 @@ wider — no mail, no drive, nothing writable:
 
 The domain scope is what makes domain discovery possible at all: which
 addresses this service answers for is decided by reading a tenant's own
-domain list, not by configuration.
+domain list, not by configuration. The domains a directory serves are also how
+the Slack controller finds a person in the workspaces the directory owns
+([where they come from](slack-workspace.md#where-a-workspaces-team-owner-and-domains-come-from)).
 
 **Admin consent, through the console.** The installation registers one
 OAuth client, the way a SaaS vendor would, and every company connects by
@@ -79,8 +81,13 @@ values to disconnect it, rather than clicking there.
 
 A record in a ConfigMap the console shows and a credential in
 `Secret <release>-workspace-credentials`, one key per workspace, the
-credential carrying a copy of its record. That Secret, with the three the
-GitHub page writes, is the whole backup of what a console added: put them
-back and the next start rebuilds the records
-([configuration](../reference/configuration.md#restoring-from-the-secrets-alone)).
+credential carrying a copy of its record. That Secret is the one a directory
+connection writes. The whole backup of what the console adds is the set of
+Secrets listed under
+[restoring from the Secrets alone](../reference/configuration.md#restoring-from-the-secrets-alone):
+put them back and the next start rebuilds the records. The chart renders a
+recovery copy for this one with `directory.push`. A directory that is the owner
+of GitHub organisations or Slack workspaces also owns their access: see
+[GitHub](github-organisation.md) and
+[Slack](slack-workspace.md#where-a-workspaces-team-owner-and-domains-come-from).
 Connecting and disconnecting are recorded in the audit trail.

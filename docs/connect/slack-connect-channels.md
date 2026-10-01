@@ -1,12 +1,13 @@
 # Slack Connect channels
 
-> **Built.** Creating, editing and deleting shared channels between the
-> installation's own Slack workspaces ships on the console's Slack Connect
-> page.
+> **Built.** Creating, editing and deleting Slack Connect channels between the
+> installation's own Slack workspaces ships on the Slack Connect tab of the
+> console's Slack area.
 
 **Anchor:** a record on the console, not a line in the policy. An operator
 says which workspace hosts a channel, which others share it and which
-**directory groups** feed it; the Slack controller does the rest.
+**directory groups** and individual addresses feed it; the Slack controller does
+the rest.
 
 A Slack Connect channel is one channel that several Slack workspaces take
 part in. Declaring each by hand in a values file means a rollout for every
@@ -23,14 +24,16 @@ edited **interactively on the console**, and every change is audited.
 | `with` | the other workspaces that share it, in order. Order decides where a person with no host-domain address joins from. At least one; none repeats; never the host |
 | `from` (`sources` in the stored record) | the **directory groups**, by address, of **any connected directory**, whose members belong, on whichever side. Never an internal group |
 | `members` | **individual addresses**, each an active user of **any connected directory**, who belong too, on whichever side. At least one of `from` and `members`. Lowercased, none repeats; a group address entered here, or a person's address entered as a group, is refused with a message saying where it goes |
+| `channel_id` | optional: the Slack id of a channel that already exists and is already shared, which the record takes over; set when a record is created with **Manage** from Discovered, the same on every side, and **immutable** |
 | `private` | one visibility for every side, or one per side (Slack lets each organisation choose its own side's). A per-side choice names the host and every `with` workspace, exactly |
 
 The console checks a record against the policy in force and the directories
 before it writes it: the workspaces are declared, every source is a group of a
 connected directory, the host's policy does not already bind a channel of that
 name or adopt that channel id (*this channel is defined in git*), no console
-channel of the host already manages it, and the privacy names exactly the
-sides. The controller checks again under the policy it runs with, and asks the
+channel of the host already manages it (*a channel is managed one way*), the
+host is declared and is not among `with`, `with` is not empty, and the privacy
+names the host and every side, exactly. The controller checks again under the policy it runs with, and asks the
 console who is in the groups, so a record the policy or the directories no
 longer accept is reported `invalid` with the reason, and acted on by nobody.
 
@@ -59,16 +62,18 @@ its host and acts on nothing until then.
 3. The **guest** workspace's controller **accepts** the invitation (audited as
    `roster.slack_shared.accepted`). Until it does, the record shows **waiting
    for acceptance**, and nobody needs to act.
-4. From then on **each side manages its own people**: the host adds and, where
-   the workspace's rules allow, removes its own, and each guest does the same
-   for its own, from the same groups.
+4. From then on **each side adds its own people**, from the same groups and
+   addresses. A Slack Connect channel is always `extend`: nobody is ever removed
+   from it, by this record or by a change in the directory. A person who left the
+   directory and is still in the channel is reported as a **leaver**
+   (`roster.slack_leaver.reported`), and somebody has to remove them in Slack.
 
 A workspace only acts where `slackRoster.actsIn` names it; every other one is
 derived and reported, and left alone. See
 [slack-workspace.md](slack-workspace.md).
 
-The **Slack Connect** tab of the Slack page (`#/slack/connect`) shows, for each record, what the host's controller last
-reported: *not reported* (nothing yet), *pending* (it will create, adopt or
+The **Slack Connect** tab of the Slack area (`#/slack/connect`) shows, for each
+record, what the host's controller last reported: *not reported* (nothing yet), *pending* (it will create, adopt or
 accept on the next pass), *waiting for acceptance*, *active*, *needs you*
 (held until a person acts) or *invalid* (the policy refuses it).
 
@@ -83,25 +88,30 @@ accept on the next pass), *waiting for acceptance*, *active*, *needs you*
 - **See:** a viewer of the host or of any `with` workspace sees the record and
   its state; it cannot change it.
 
-The page offers only the workspaces the caller operates as hosts.
+The form offers only the workspaces the caller operates as hosts.
 
 ## Editing
 
-An edit may change `with`, `from` (the directory groups) and `private`, and is
-audited as an update. It **cannot change the host or
+An edit may change `with`, `from` (the directory groups), `members` (the
+individual addresses) and `private`, and is audited as an update. It **cannot change the host or
 the name**: both are where the channel lives in Slack. A request that does is
 refused, with the instruction to create a new channel. To move a channel to
 another host, create a new one there, and delete the old record.
 
 Two people saving at once do not overwrite each other: the write is made under
 the ConfigMap's version, retried against what the other left, and refused
-cleanly (the console says to reload) when it cannot land.
+cleanly (the console says to reload) when it cannot land. Saving a record takes
+effect at the controller's next pass, or on **Refresh** (see
+[slack-workspace.md](slack-workspace.md#a-pass-runs-promptly-after-an-install)).
 
-## Taking over a channel that is already shared
+## Adopting a channel that is already shared
 
 A channel can exist long before the roster does: made by a person in one
 workspace, shared with others, each side naming it and choosing its own
-visibility. The controller finds these. For every connected workspace it lists
+visibility. The controller finds these (a console channel that is not shared
+is found the same way; see
+[slack-workspace.md](slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console)).
+For every connected workspace it lists
 the Slack Connect channels its bot **can see** (public ones, and private ones
 the bot is a member of) and publishes them in the workspace's report as
 `discovered_shared`: the channel id, the name and privacy on that side, the
@@ -116,8 +126,9 @@ tab narrows by `host`, `side` (a workspace on either end), `state` (`active`,
 `waiting`, `pending`, `held`, `invalid`, `not_reported`) and `q`. Each is a
 query parameter of the tab's address, for example
 `#/slack/discovered?workspace=<key>&kind=shared&q=ops`. A workspace whose own
-report lists a channel (found or probed) is a prefilled side of **Manage** with
-the privacy it reported; a side nobody saw has no default and must be chosen.
+report lists a channel is a prefilled side of **Manage** with the privacy it
+reported (a managed channel's guest sides are also found by the probe, below);
+a side nobody saw has no default and must be chosen.
 A held record whose Slack visibility differs from its record shows a
 *visibility mismatch* hint on its row and page: **Edit** the record.
 
@@ -157,7 +168,7 @@ What the reconciler then does for a record with `channel_id`:
   the side's own people are added, as for any shared channel.
 - **A team that is not a connected workspace** is ignored: never invited,
   asked or touched.
-- Nobody is ever removed: a taken-over channel is `extend`, whoever is in it
+- Nobody is ever removed: an adopted channel is `extend`, whoever is in it
   stays.
 
 A record without `channel_id` behaves as before: the host creates the channel
@@ -165,13 +176,35 @@ A record without `channel_id` behaves as before: the host creates the channel
 invites each guest's bot and the guest accepts. `channel_id` cannot be changed
 afterwards.
 
+### Guest sides and the probe
+
+A bot lists a Slack Connect channel that is public on its side only sometimes,
+and one it has not joined often not at all. For a channel that a record
+**manages**, the controller therefore asks each connected workspace that did not
+list it, with `conversations.info` by channel id, at most once per channel and
+workspace per pass. When Slack names a connected guest workspace besides the
+host, only those named are asked; when Slack names none (a bot is often told
+nothing but its own team), exactly the workspaces the record names as sides
+(host and `with`) are asked. An answer is published as that side (privacy as it
+says, bot not joined). `channel_not_found` or `not_in_channel` is expected (a
+private side whose bot is not in it, or a workspace not in the channel), is
+logged at debug and leaves the side unknown; any other error is logged as a
+warning and never fails the pass. Each pass logs one `guest-side probe` line
+with the `probed`, `visible` and `invisible` counts. A channel no record manages
+is **never probed**: on the Discovered tab only the workspaces whose own report
+lists it are prefilled sides, and a side no report lists is unknown and must be
+added by hand on Manage.
+
 ## Deleting is not archiving
 
 Deleting removes the **record only**. The channel stays in Slack, in every
 workspace that has it, and is not archived. The reconciler stops managing it:
 nobody is added or removed any more, and the people already in it stay until
 someone removes them in Slack. Archive a channel in Slack itself if it should
-end.
+end. The console never archives a Slack Connect channel, whoever hosts it:
+archiving closes it for every organisation in it. (For an ordinary console
+channel the delete dialog has an opt-in *Also archive*; see
+[Archiving](slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console).)
 
 ## Where it is kept
 
@@ -192,6 +225,8 @@ a restart, and the console says so instead of writing one.
 
 A directory group's address, and an individual's, is an identifier, never data: they are
 targets, and an edit's `changes` counts them (`members: 2 -> 3 people (1 added, 0 removed)`).
+Unlike a console channel's record, a Slack Connect record's data has no `sources`
+count; the groups are targets.
 Audit catalogue 1.5.0 added the `directory_user` target type and the `members` count. Audit catalogue 1.2.0 added the
 `directory_group` target type and the console channel actions, see
 [slack-workspace.md](slack-workspace.md#console-channels-ordinary-channels-managed-on-the-console).

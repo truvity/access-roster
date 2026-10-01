@@ -330,11 +330,11 @@ grant — and never one that is known to be unused.
 
 The *Apps* tab of the GitHub page lists every App this service keeps a
 key for or is declared to — the link App, each organisation's controller
-App, each runner tier's App and every App the catalogue declares —
-grouped by organisation, those needing an operator first. Each App has a
-page of its own.
+App and every App the catalogue declares — grouped by organisation, those
+needing an operator first. The runner tiers' Apps are on the *Runners* tab,
+in the same shape. Each App has a page of its own.
 
-1. **Create.** An operator presses *Create*. The browser posts the App's
+1. **Create.** An operator presses *Create* on the App's page. The browser posts the App's
    manifest to GitHub's create page for the organisation; an owner of
    the organisation confirms. GitHub returns to
    `/connect/github/catalogue/callback` with a one-time code, and the
@@ -351,6 +351,20 @@ which picks up where they left off rather than creating a second App.
 Both redirects check the flow cookie against a state signed by this
 service naming the App and the operator who started; a state from any
 other GitHub flow is refused.
+
+## Who may
+
+Creating, installing, re-checking and disconnecting a catalogue App need the
+**operator** role over the directory recorded as the owner of the App's
+organisation (the operator role `<directory id>:access-roster:operator`), or the
+installation-wide operator. An App of an organisation nobody has connected yet
+can be created by anyone who could connect that organisation (see
+[Connect a GitHub organisation](github-organisation.md#adding-one-organisation));
+that connect records the owner. A viewer sees the Apps of the organisations they
+may view, and each row says whether they may operate it. Only the
+installation-wide operator changes an organisation's owner, with *Change owner*
+on the organisation's page or its controller App's page. The callbacks ask the
+role question again of whoever is signed in then.
 
 ## Where the key is kept
 

@@ -40,7 +40,10 @@ serves, mounted on the issuer's own origin. It signs in as a client of
 the issuer and then reads the SSO session directly rather than redeeming
 the code, because the process holding the session is the one serving the
 page. That is the directory console, and it is a property of that pair
-rather than a pattern to copy.
+rather than a pattern to copy. The directory console's areas (Overview,
+IDENTITY, ACCESS, SYSTEMS with GitHub and Slack, ADMIN) are described in
+[the design](../design/access-roster.md#the-console) and in
+[Slack](slack-workspace.md) and [GitHub](github-organisation.md).
 
 ## What you write
 

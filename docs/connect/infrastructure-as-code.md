@@ -93,8 +93,8 @@ from.
 
 1. **Declare.** Add the entry above to the deployment's values and roll
    the release out. The catalogue is read once at start.
-2. **Create.** On the console's GitHub page, *Apps* → *Catalogue* → the
-   App → *Create*. An owner of the organisation confirms GitHub's
+2. **Create.** On the console's GitHub page, *Apps* tab → the App (listed
+   under its organisation) → *Create* on its page. An owner of the organisation confirms GitHub's
    manifest; GitHub hands this service the key, once.
 3. **Install.** The browser goes on to the install page; the owner
    installs on the organisation.

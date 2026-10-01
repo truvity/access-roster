@@ -60,9 +60,9 @@ the same reason every other grant lives here.
 4. **Check the Rules page.** Each binding appears beside every other
    rule, with `GitHub team` as its kind, the internal group as its rule,
    and the same *depends on* column that group has.
-5. **Connect it**, on the *Apps* tab of the console's GitHub page. An
-   operator presses *Create* beside the organisation; the organisation's
-   **owner** then does two things on GitHub and types nothing:
+5. **Connect it**, on the *Apps* tab of the console's GitHub page: open the
+   organisation's own App (listed under the organisation) and an operator
+   presses *Create* on its page; the organisation's **owner** then does two things on GitHub and types nothing:
    - **Create** the App GitHub offers. It is private, asks for two
      permissions — `members: write`, and `organization_administration:
      read` for the seat count — and has no webhook. GitHub hands its key
@@ -73,8 +73,8 @@ the same reason every other grant lives here.
      connected.
 
    If the owner stops after Create, the organisation shows *created, not
-   installed* and the button becomes *Finish installing*: it picks up at
-   Install instead of creating a second App. Only an organisation the
+   installed* and the App's page offers *Install*: it picks up at Install
+   instead of creating a second App. Only an organisation the
    policy binds can be connected, so a typo in a login is caught here
    rather than on GitHub's 404.
 
@@ -88,7 +88,9 @@ the same reason every other grant lives here.
    operator; an organisation connected with no owner, or before owners were
    recorded, is the installation-wide operator's alone. Only the
    installation-wide operator changes it afterwards, with *Change owner* on the
-   organisation's page (`roster.github_org.owner_changed`). A policy that still
+   organisation's page or on its controller App's page
+   (`roster.github_org.owner_changed`). A directory is named by its workspace id
+   and every domain it is authoritative for. A policy that still
    carries `github.<org>.owner` is refused at load: delete the key. The rule,
    once, is in [the policy
    reference](../reference/policy.md#who-owns-a-github-organisation).
@@ -98,7 +100,9 @@ the same reason every other grant lives here.
    That is a rule about who operates the connection inside access-roster;
    GitHub itself still requires an owner of the target organisation to install
    the App, so the console grants nothing in GitHub. The installation-wide
-   operator can change the owner afterwards, and the change is audited.
+   operator can change the owner afterwards, and the change is audited. The
+   same rule gates catalogue Apps: see
+   [Who may](github-apps-catalogue.md#who-may).
 6. **Run the controller**, disabled for the organisation. See *Running the
    controller* below. Its first pass reports on the GitHub page what it
    WOULD do; read it.
@@ -144,7 +148,10 @@ The account's name is `<release>-github-roster`. The chart refuses to
 render the controller without an `exchange.clusters` row or a console
 mount, because either absence is a controller that can never read
 anything. `githubRoster.interval` (15 minutes) is how long between
-passes.
+passes. Unlike the [Slack controller](slack-workspace.md#a-pass-runs-promptly-after-an-install),
+the GitHub controller has no 30-second credential watch and no *Refresh*: a
+freshly installed organisation is passed over at the next interval unless the
+controller restarts.
 
 **Deploy the controller and the console together**, as the chart does.
 Every answer the console gives carries the digest of the policy it was
@@ -253,8 +260,10 @@ GitHub tells an organisation outside its Enterprise Cloud plan nothing
 about which work address a member has — not the App, not an owner. So
 each person shows it themselves, once.
 
-**Set up once.** On the GitHub page's *Apps* tab an operator presses
-**Create** beside *Link App*, under an organisation they own. It is a separate App from the
+**Set up once.** On the GitHub page's *Apps* tab, open the *Link App* and press
+**Create** on its page, under an organisation you own. The link App is
+installation-wide: only the installation-wide operator creates or disconnects
+it. It is a separate App from the
 organisations', on purpose:
 
 | | The link App | An organisation's App |
@@ -333,7 +342,7 @@ stops being managed.
 
 A runner App is the GitHub App a self-hosted runner scale set registers
 with: one per organisation per **tier**, so a compromised runner plane
-is confined to its tier. The chart declares the tiers, and the *Apps*
+is confined to its tier. The chart declares the tiers, and the *Runners*
 tab then shows a row per bound organisation per tier:
 
 ```yaml
@@ -370,6 +379,7 @@ releases — is declared in a catalogue and created the same way: see
 | Secret `<release>-github-apps` | one credential per organisation: the App's id, its installation, its private key; and the link App's client id and secret under `_link.json` | the controller, as a mounted volume; this service to uninstall on Disconnect and to redeem a person's authorization |
 | Secret `<release>-github-links` | one link per GitHub account (`<id>.json`): its login, the addresses it proves, its state, the person's token pair | this service, which writes a link; the controller, which rewrites it as it checks — the one Secret its Role may update, by name |
 | Secret `<release>-github-runner-apps` | every runner App: its three keys once installed, its record beside them | this service, to find the installation and to uninstall; the deployment, copying the keys to its runners |
+| ConfigMap `<release>-github-status` | the controller's report, one document per organisation | the console; the controller replaces its data |
 
 All of them exist, empty, from the service's first start, so the
 controller's volume always has a Secret behind it. Each credential
