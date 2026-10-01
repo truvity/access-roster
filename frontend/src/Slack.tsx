@@ -13,13 +13,12 @@ import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import { at, ago, reason, slack } from "./api";
-import type { SlackBreaker, SlackChannelStatus, SlackRemovalConfirmation, SlackWorkspaceStatus } from "./gen/directoryroster/v1/slack_pb";
+import type { SlackBreaker, SlackRemovalConfirmation, SlackWorkspaceStatus } from "./gen/directoryroster/v1/slack_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
 import { ChangeOwnerDialog, OwnerField } from "./Owner";
@@ -27,23 +26,19 @@ import { initialOwner, ownerSentence, ownerValid, type OwnerOffer } from "./owne
 import { configurationTokenUrl, looksLikeConfigurationToken } from "./slackAppsModel";
 import {
   breakerSentence,
-  channelKind,
   connectionView,
   isConfirmed,
-  memberKind,
   needsToken,
   nextStep,
   offersDisconnect,
   offersReconnect,
   offersRefresh,
   passRequested,
-  split,
   summaryOf,
   tickNotice,
   type Step,
 } from "./slackModel";
-import { SlackChannelsSection } from "./SlackChannels";
-import { Failure, Loading, Mono, Nothing, Page, Section, State, type StateKind } from "./ui";
+import { Failure, Loading, Mono, Nothing, Page, Ref, Section, State, type StateKind } from "./ui";
 
 type Props = { onDone: (message: string) => void };
 
@@ -87,8 +82,8 @@ export function SlackPage({ onDone }: Props) {
 
   return (
     <Page
-      title="Slack"
-      lede="The Slack workspaces the policy declares by key. Connecting one creates the roster's own Slack App in it from a manifest, with a throwaway app configuration token that is used once and never kept; an owner of the workspace installs it in Slack; the bot token that comes back is kept in a Secret, and the Slack team of the first install is the only one a later install is accepted from. The owning directory is chosen when it is connected: its operators operate the workspace, and its served domains are how people are found in it. The controller then keeps the channels the policy binds in step with the directory."
+      title="Workspaces"
+      lede="The Slack workspaces the policy declares by key. Connecting one creates the roster's own Slack App in it from a manifest, with a throwaway app configuration token that is used once and never kept; an owner of the workspace installs it; the controller then keeps its channels in step with the directory. The owning directory's operators operate the workspace, and its served domains are how people are found in it."
     >
       <Loading busy={loaded.loading} />
       <Failure error={loaded.error ?? failure} />
@@ -121,7 +116,6 @@ export function SlackPage({ onDone }: Props) {
           />
         ))}
       </Stack>
-      <SlackChannelsSection onDone={onDone} />
       {asking && (asking.purpose === "connect" || asking.purpose === "reconnect") ? (
         <TokenDialog
           key={`${asking.purpose}:${asking.ws.workspace}`}
@@ -263,6 +257,7 @@ function WorkspaceCard({
     }
   };
 
+  const held = ws.channels.filter((channel) => channel.breaker && !channel.breaker.confirmed).length;
   const tick = ws.tick;
   const notice = tickNotice(ws);
   const when = at(tick?.at);
@@ -308,7 +303,7 @@ function WorkspaceCard({
         <Failure error={failure} />
         {notice ? <Alert severity={notice.severity}>{notice.text}</Alert> : null}
         {ws.breaker && !ws.breaker.confirmed ? (
-          <BreakerBanner
+          <BreakerAlert
             sentence={breakerSentence("workspace", ws.breaker.affected, ws.breaker.total)}
             breaker={ws.breaker}
             confirmation={ws.removalConfirmation}
@@ -320,21 +315,16 @@ function WorkspaceCard({
       </Stack>
 
       {ws.channels.length > 0 ? (
-        <Box sx={{ mt: 2 }}>
-          <Section title="Channels" hint="what the policy binds, and whether each person is where they should be">
-            <Stack sx={{ gap: 2 }}>
-              {ws.channels.map((channel) => (
-                <ChannelBlock
-                  key={`${channel.name}|${channel.host}`}
-                  channel={channel}
-                  canOperate={ws.canOperate}
-                  confirming={confirming === channel.name}
-                  onConfirm={(breaker) => void confirm(channel.name, breaker)}
-                />
-              ))}
-            </Stack>
-          </Section>
-        </Box>
+        <Typography variant="body2" sx={{ mt: 2 }}>
+          <Ref to={paths.slackChannels({ workspace: ws.workspace })}>
+            {ws.channels.length} {ws.channels.length === 1 ? "channel" : "channels"}
+          </Ref>
+          <Typography component="span" variant="body2" color="text.secondary">
+            {" "}
+            managed here, and whether each person is where they should be
+            {held > 0 ? ` · ${held} ${held === 1 ? "channel holds" : "channels hold"} removals for you to confirm` : ""}
+          </Typography>
+        </Typography>
       ) : null}
 
       {ws.leavers.length > 0 ? (
@@ -381,7 +371,8 @@ function ActingChip({ ws }: { ws: SlackWorkspaceStatus }) {
   return <State kind={known[outcome] ?? (ws.acting ? "applied" : "dry-run")} />;
 }
 
-function BreakerBanner({
+/** The held removals of a workspace or a channel, and the confirmation that lets exactly that set go ahead. */
+export function BreakerAlert({
   sentence,
   breaker,
   confirmation,
@@ -414,108 +405,6 @@ function BreakerBanner({
         <> Confirmed by {confirmation.confirmedBy} {ago(at(confirmation.confirmedAt))}.</>
       ) : null}
     </Alert>
-  );
-}
-
-function ChannelBlock({
-  channel,
-  canOperate,
-  confirming,
-  onConfirm,
-}: {
-  channel: SlackChannelStatus;
-  canOperate: boolean;
-  confirming: boolean;
-  onConfirm: (breaker: SlackBreaker) => void;
-}) {
-  const { settled, open } = split(channel.members);
-  const [showSettled, setShowSettled] = useState(false);
-  const rows = showSettled ? [...open, ...settled] : open;
-  return (
-    <Paper variant="outlined">
-      <Box sx={{ px: 1.5, py: 1 }}>
-        <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}>
-          <Typography variant="subtitle2" sx={{ fontFamily: "monospace" }}>
-            #{channel.name}
-          </Typography>
-          <State kind={channelKind(channel)} />
-          <Typography variant="caption" color="text.secondary">
-            {channel.private ? "private" : "public"} · {channel.mode || "extend"}
-            {channel.shared ? ` · Slack Connect, hosted by ${channel.host}` : ""}
-            {channel.console ? " · console channel, fed by directory groups" : ""}
-          </Typography>
-        </Stack>
-        {channel.reason ? (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
-            {channel.reason}
-          </Typography>
-        ) : null}
-        {channel.breaker && !channel.breaker.confirmed ? (
-          <Box sx={{ mt: 1 }}>
-            <BreakerBanner
-              sentence={breakerSentence(`#${channel.name}`, channel.breaker.affected, channel.breaker.total)}
-              breaker={channel.breaker}
-              confirmation={channel.removalConfirmation}
-              canOperate={canOperate}
-              busy={confirming}
-              onConfirm={() => onConfirm(channel.breaker!)}
-            />
-          </Box>
-        ) : null}
-      </Box>
-      {rows.length > 0 ? (
-        <TableContainer sx={{ overflowX: "auto" }}>
-          <Table size="small" sx={{ minWidth: 520 }}>
-            <TableHead>
-              <TableRow>
-                <TableCell>Person</TableCell>
-                <TableCell>State</TableCell>
-                <TableCell>Why</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((member) => (
-                <TableRow key={`${member.person}|${member.email}|${member.userId}`} hover>
-                  <TableCell>
-                    {member.person ? (
-                      <a href={`#${paths.person(member.email || member.person)}`}>
-                        <Mono>{member.email || member.person}</Mono>
-                      </a>
-                    ) : (
-                      <Mono>{member.email || member.userId}</Mono>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <State
-                      kind={memberKind(member)}
-                      title={memberKind(member) === "their-move" ? "Only the person can move this forward: they need a Slack account under this address." : undefined}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {member.reason}
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
-      {settled.length > 0 ? (
-        <Box sx={{ px: 1.5, py: 0.5 }}>
-          <Button size="small" variant="text" onClick={() => setShowSettled((shown) => !shown)} sx={{ textTransform: "none", p: 0, minWidth: 0 }}>
-            {showSettled ? "Hide" : "Show"} {settled.length} in step
-          </Button>
-        </Box>
-      ) : open.length === 0 && channel.members.length === 0 ? (
-        <Box sx={{ px: 1.5, pb: 1 }}>
-          <Typography variant="caption" color="text.secondary">
-            No people reported yet.
-          </Typography>
-        </Box>
-      ) : null}
-    </Paper>
   );
 }
 

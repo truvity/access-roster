@@ -20,18 +20,41 @@ describe("parse", () => {
     expect(parse(`#${paths.githubApp("release-bot")}`).rest).toEqual(["release-bot"]);
   });
 
-  it("reads the Slack Apps page", () => {
-    expect(parse(`#${paths.slackApps()}`)).toMatchObject({ view: "slack-apps", id: undefined, rest: [] });
-  });
-
-  it("reads the Slack Connect page", () => {
-    expect(parse(`#${paths.slackConnect()}`)).toMatchObject({ view: "slack-connect", id: undefined, rest: [] });
-  });
-
-  it("reads the Slack workspaces page", () => {
+  it("reads Slack as one page with tabs", () => {
     expect(parse(`#${paths.slack()}`)).toMatchObject({ view: "slack", id: undefined, rest: [] });
-    // Not the Slack Apps page, and not a prefix of it.
-    expect(parse(`#${paths.slackApps()}`).view).toBe("slack-apps");
+    expect(parse(`#${paths.slackApps()}`)).toMatchObject({ view: "slack", id: "apps", rest: [] });
+    expect(parse(`#${paths.slackConnect()}`)).toMatchObject({ view: "slack", id: "connect", rest: [] });
+    expect(parse(`#${paths.slackDiscovered()}`)).toMatchObject({ view: "slack", id: "discovered", rest: [] });
+    expect(parse(`#${paths.slackChannels()}`)).toMatchObject({ view: "slack", id: "channels", rest: [] });
+  });
+
+  it("sends the old Slack addresses to the tab that took their place", () => {
+    // Slack Apps and Slack Connect were entries of their own: bookmarks.
+    expect(parse("#/slack-apps")).toMatchObject({ view: "slack", id: "apps", rest: [] });
+    expect(parse("#/slack-connect")).toMatchObject({ view: "slack", id: "connect", rest: [] });
+    expect(parse("#/slack-connect?x=1").query.get("x")).toBe("1");
+  });
+
+  it("narrows the channels by workspace and kind in the address", () => {
+    const route = parse(`#${paths.slackChannels({ workspace: "acme", kind: "console" })}`);
+    expect(route).toMatchObject({ view: "slack", id: "channels" });
+    expect(route.query.get("workspace")).toBe("acme");
+    expect(route.query.get("kind")).toBe("console");
+    expect(paths.slackChannels({ workspace: "", kind: "" })).toBe("/slack/channels");
+  });
+
+  it("reads one channel by workspace and name, or by Slack id", () => {
+    expect(parse(`#${paths.slackChannel("acme", "eng")}`)).toMatchObject({ view: "slack", id: "channels", rest: ["acme", "eng"] });
+    expect(parse(`#${paths.slackChannel("acme", "C0123ABCD")}`).rest).toEqual(["acme", "C0123ABCD"]);
+  });
+
+  it("opens the GitHub Runners tab", () => {
+    expect(parse(`#${paths.githubRunners()}`)).toMatchObject({ view: "github", id: "runners", rest: [] });
+  });
+
+  it("opens the overview at the root, so the rail can highlight it", () => {
+    expect(parse("#/").view).toBe("overview");
+    expect(parse("").view).toBe("overview");
   });
 
   it("opens People narrowed to linked accounts", () => {

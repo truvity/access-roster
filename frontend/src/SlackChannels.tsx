@@ -1,5 +1,4 @@
 import { useState } from "react";
-import Alert from "@mui/material/Alert";
 import Autocomplete from "@mui/material/Autocomplete";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
@@ -23,7 +22,6 @@ import Typography from "@mui/material/Typography";
 
 import { reason, slackChannels } from "./api";
 import type { ListSlackChannelsResponse, SlackChannelRecord, SlackDiscoveredOrdinary } from "./gen/directoryroster/v1/slack_channels_pb";
-import { useAsync } from "./hooks";
 import {
   channelDefinitionOf,
   channelProblems,
@@ -37,163 +35,15 @@ import {
   ownerOf,
   type ChannelForm,
 } from "./slackChannelsModel";
-import { stateView } from "./slackConnectModel";
 import { sourceOptions } from "./slackSourcesModel";
 import { SourcePicker } from "./SourcePicker";
-import { Failure, Loading, Mono, Nothing, State } from "./ui";
+import { Failure, Mono } from "./ui";
 
-type Dialogue =
-  | { kind: "create" }
-  | { kind: "manage"; row: SlackDiscoveredOrdinary }
-  | { kind: "edit"; record: SlackChannelRecord }
-  | { kind: "delete"; record: SlackChannelRecord };
-
-/** The ordinary channels managed from the console: members come from
- *  DIRECTORY groups of the directory that owns the workspace, never from
- *  internal groups. Channels the policy binds stay in git and are shown on
- *  each workspace's card above. Below the list are the channels the bots can
- *  see that nothing manages; Manage takes one under management, prefilled
- *  from what was seen.
- *
- *  Whether the caller may change a row is the server's per-record answer. */
-export function SlackChannelsSection({ onDone }: { onDone: (message: string) => void }) {
-  const listed = useAsync(() => slackChannels.listSlackChannels({}), []);
-  const records = listed.value?.channels ?? [];
-  const [dialogue, setDialogue] = useState<Dialogue | undefined>();
-  const canCreate = manageableWorkspaces(listed.value?.workspaces ?? []).length > 0 && listed.value?.available === true;
-
-  const done = (message: string) => {
-    setDialogue(undefined);
-    onDone(message);
-    listed.reload();
-  };
-
-  return (
-    <>
-      <Stack direction="row" sx={{ alignItems: "flex-end", justifyContent: "space-between", gap: 2, mt: 4, mb: 1 }}>
-        <Typography variant="h6">Console channels</Typography>
-        {canCreate ? (
-          <Button variant="contained" onClick={() => setDialogue({ kind: "create" })}>
-            New channel
-          </Button>
-        ) : null}
-      </Stack>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Ordinary channels managed here rather than in git. Their members come only from directory groups of the directory that owns the workspace, never from
-        internal groups; the controller reconciles them with the same rules as the policy&apos;s channels. Slack Connect channels are on their own page.
-        Changes are recorded in the audit trail.
-      </Typography>
-      <Loading busy={listed.loading} />
-      <Failure error={listed.error} />
-      {listed.value && !listed.value.available ? (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          This deployment keeps no state in Kubernetes, so it keeps no console channel records.
-        </Alert>
-      ) : null}
-      {listed.value && listed.value.available && records.length === 0 ? <Nothing>No console channel is defined for a workspace you may see.</Nothing> : null}
-      {records.length > 0 ? (
-        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-          <Table size="small" sx={{ minWidth: 720 }}>
-            <TableHead>
-              <TableRow>
-                <TableCell>Channel</TableCell>
-                <TableCell>Workspace</TableCell>
-                <TableCell>Directory groups</TableCell>
-                <TableCell>Mode</TableCell>
-                <TableCell>State</TableCell>
-                <TableCell align="right" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {records.map((record) => (
-                <RecordRow
-                  key={`${record.channel?.workspace}/${record.channel?.name}`}
-                  record={record}
-                  onEdit={() => setDialogue({ kind: "edit", record })}
-                  onDelete={() => setDialogue({ kind: "delete", record })}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
-      <DiscoveredSection
-        rows={listed.value?.discovered ?? []}
-        more={(listed.value?.workspaces ?? []).reduce((n, w) => n + w.discoveredMore, 0)}
-        available={listed.value?.available === true}
-        onManage={(row) => setDialogue({ kind: "manage", row })}
-      />
-      {dialogue?.kind === "delete" ? <DeleteDialog record={dialogue.record} onCancel={() => setDialogue(undefined)} onDone={done} /> : null}
-      {dialogue && dialogue.kind !== "delete" && listed.value ? (
-        <EditDialog
-          key={dialogue.kind === "edit" ? `${dialogue.record.channel?.workspace}/${dialogue.record.channel?.name}` : dialogue.kind === "manage" ? dialogue.row.channelId : "new"}
-          options={listed.value}
-          editing={dialogue.kind === "edit" ? dialogue.record : undefined}
-          discovered={dialogue.kind === "manage" ? dialogue.row : undefined}
-          onCancel={() => setDialogue(undefined)}
-          onDone={done}
-        />
-      ) : null}
-    </>
-  );
-}
-
-function RecordRow({ record, onEdit, onDelete }: { record: SlackChannelRecord; onEdit: () => void; onDelete: () => void }) {
-  const def = record.channel;
-  const view = stateView(record);
-  if (!def) return null;
-  return (
-    <TableRow hover>
-      <TableCell>
-        <Mono>#{def.name}</Mono>
-        {def.workspace ? (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-            {def.private ? "private" : "public"}
-          </Typography>
-        ) : null}
-      </TableCell>
-      <TableCell>
-        <Mono>{def.workspace || "—"}</Mono>
-      </TableCell>
-      <TableCell>
-        <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
-          {def.sources.join(", ")}
-        </Typography>
-      </TableCell>
-      <TableCell>{def.workspace ? def.mode || "extend" : ""}</TableCell>
-      <TableCell>
-        <State kind={view.kind} label={view.label} title={view.title} />
-        {record.reason && (record.state === "invalid" || record.state === "held") ? (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", maxWidth: 320 }}>
-            {record.reason}
-          </Typography>
-        ) : null}
-      </TableCell>
-      <TableCell align="right">
-        {record.canOperate ? (
-          <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
-            {def.workspace ? (
-              <Button size="small" onClick={onEdit}>
-                Edit
-              </Button>
-            ) : null}
-            <Button size="small" color="error" onClick={onDelete}>
-              Delete
-            </Button>
-          </Stack>
-        ) : null}
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function DiscoveredSection({ rows, more, available, onManage }: { rows: SlackDiscoveredOrdinary[]; more: number; available: boolean; onManage: (row: SlackDiscoveredOrdinary) => void }) {
+/** The ordinary channels the bots can see that nothing manages, one row each. */
+export function DiscoveredOrdinary({ rows, more, available, onManage }: { rows: SlackDiscoveredOrdinary[]; more: number; available: boolean; onManage: (row: SlackDiscoveredOrdinary) => void }) {
   if (rows.length === 0) return null;
   return (
     <>
-      <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
-        Discovered channels
-      </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         Channels a workspace&apos;s bot can see that neither the policy nor a record manages: public channels, and private ones the bot is in. Taking one under
         management never removes anybody from it unless you choose strict, and then only people the directory vouches have left.
@@ -237,7 +87,8 @@ function DiscoveredSection({ rows, more, available, onManage }: { rows: SlackDis
   );
 }
 
-function EditDialog({
+/** Defines a console channel, or edits one, or takes a discovered one under management. */
+export function ChannelEditDialog({
   options,
   editing,
   discovered,
@@ -370,7 +221,8 @@ function EditDialog({
   );
 }
 
-function DeleteDialog({ record, onCancel, onDone }: { record: SlackChannelRecord; onCancel: () => void; onDone: (message: string) => void }) {
+/** Confirms forgetting a console channel's record. */
+export function ChannelDeleteDialog({ record, onCancel, onDone }: { record: SlackChannelRecord; onCancel: () => void; onDone: (message: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const workspace = record.channel?.workspace ?? "";

@@ -73,7 +73,7 @@ type Props = { operator: boolean; onDone: (message: string) => void };
 export function GitHubPage({ section, rest, onDone }: Omit<Props, "operator"> & { section?: string; rest: string[] }) {
   const status = useAsync(() => github.getGitHubStatus({}), []);
   const listed = useAsync(() => github.listGitHubApps({}), []);
-  const tab = section === "organisations" ? "organisations" : section === "apps" ? "apps" : "overview";
+  const tab = section === "organisations" ? "organisations" : section === "apps" ? "apps" : section === "runners" ? "runners" : "overview";
   const value = status.value;
   const catalogue = listed.value;
   const apps = (catalogue?.apps ?? []).map(appView);
@@ -112,7 +112,9 @@ export function GitHubPage({ section, rest, onDone }: Omit<Props, "operator"> & 
         </Nothing>
       );
     } else if (tab === "apps") {
-      body = <AppsList listed={catalogue} apps={apps} />;
+      body = <AppsList listed={catalogue} apps={apps.filter((app) => app.purpose !== "runners")} />;
+    } else if (tab === "runners") {
+      body = <AppsList listed={catalogue} apps={apps.filter((app) => app.purpose === "runners")} runners />;
     } else {
       body = <Overview status={value} apps={apps} />;
     }
@@ -122,7 +124,9 @@ export function GitHubPage({ section, rest, onDone }: Omit<Props, "operator"> & 
     <Box>
       <Tabs
         value={tab}
-        onChange={(_, next: string) => go(next === "overview" ? paths.github() : next === "apps" ? paths.githubApps() : paths.githubOrganisations())}
+        onChange={(_, next: string) =>
+          go(next === "overview" ? paths.github() : next === "apps" ? paths.githubApps() : next === "runners" ? paths.githubRunners() : paths.githubOrganisations())
+        }
         variant="scrollable"
         allowScrollButtonsMobile
         sx={{ mb: 3 }}
@@ -130,6 +134,7 @@ export function GitHubPage({ section, rest, onDone }: Omit<Props, "operator"> & 
         <Tab value="overview" label="Overview" />
         <Tab value="organisations" label="Organisations" />
         <Tab value="apps" label="Apps" />
+        <Tab value="runners" label="Runners" />
       </Tabs>
       <Loading busy={status.loading || listed.loading} />
       <Failure error={status.error ?? listed.error} />
@@ -740,15 +745,23 @@ function Minters({ app }: { app: GitHubAppView }) {
 /** Every App in one list: the link App, then each organisation's Apps,
  *  those that need you first. What each is for is a word; what it holds
  *  and the buttons that change it are on its own page. */
-function AppsList({ listed, apps }: { listed: ListGitHubAppsResponse; apps: GitHubAppView[] }) {
+function AppsList({ listed, apps, runners }: { listed: ListGitHubAppsResponse; apps: GitHubAppView[]; runners?: boolean }) {
   const groups = groupApps(apps);
   return (
     <Page
-      title="Apps"
-      lede="Every GitHub App this service keeps a key for, or is declared to: the link App people authorize, one App per organisation the controller manages teams through, one per organisation per runner tier, and the Apps declared in the catalogue that mint tokens for internal groups. Open one to create, install, re-check or disconnect it."
+      title={runners ? "Runners" : "Apps"}
+      lede={
+        runners
+          ? "The App one tier's self-hosted runners register with, one per organisation per tier, so a compromised runner plane stays in its tier. Open one to create, install, re-check or disconnect it."
+          : "Every other GitHub App this service keeps a key for, or is declared to: the link App people authorize, one App per organisation the controller manages teams through, and the Apps declared in the catalogue that mint tokens for internal groups. Open one to create, install, re-check or disconnect it. The runners' Apps are on the Runners tab."
+      }
     >
       {groups.length === 0 ? (
-        <Nothing>No App is declared or created. Bind an organisation in the policy, or declare an App in githubApps.catalogue.</Nothing>
+        <Nothing>
+          {runners
+            ? "No runner App is declared or created. Bind an organisation with runner tiers in the policy."
+            : "No App is declared or created. Bind an organisation in the policy, or declare an App in githubApps.catalogue."}
+        </Nothing>
       ) : (
         <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
           <Table size="small" sx={{ minWidth: 640 }}>

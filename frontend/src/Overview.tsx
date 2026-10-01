@@ -81,7 +81,7 @@ export function Overview({ me, operator }: { me?: Me; operator: boolean }) {
       {settingUp && progress ? <Setup progress={progress} operator={operator} /> : null}
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", lg: "repeat(6, 1fr)" }, gap: 1.5, mb: 4 }}>
-        <Tile label="Providers" value={`${list.length - failing.length}/${list.length}`} hint={failing.length ? `${failing.length} failing` : "all healthy"} bad={failing.length > 0} to={paths.directories()} />
+        <Tile label="Directories" value={`${list.length - failing.length}/${list.length}`} hint={failing.length ? `${failing.length} failing` : "all healthy"} bad={failing.length > 0} to={paths.directories()} />
         <Tile
           label="Domains served"
           value={`${domains.length - contested.length - provisional.length}/${domains.length}`}

@@ -50,7 +50,7 @@ export function Directories({ operator, onDone }: { operator: boolean; onDone: (
 
   return (
     <Page
-      title="Providers"
+      title="Directories"
       lede="Every identity provider access-roster holds a credential for, one row per domain it serves. Domains are discovered, never typed, and the groups and accounts behind them are what memberships and people are made of."
       actions={
         <Button variant="contained" disabled={!operator || adding} onClick={() => setAdding(true)}>
