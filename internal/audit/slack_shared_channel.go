@@ -53,10 +53,13 @@ func visibility(private bool) string {
 	return "public"
 }
 
+// data leaves out `from`, which records written before groups became targets
+// carry: the schema declares it so they still read, and `sources` counts the
+// groups now.
 func (c SlackSharedChannel) data(changes string) data {
 	return data{
-		"name": c.Name, "with": strings.Join(c.With, ","),
-		"privacy": c.Privacy(), "members": len(c.Members), "changes": changes,
+		"name": c.Name, "with": strings.Join(c.With, ","), "privacy": c.Privacy(),
+		"sources": len(c.Sources), "members": len(c.Members), "changes": changes,
 	}
 }
 

@@ -33,12 +33,11 @@ func (c SlackConsoleChannel) data(changes string) data {
 	if mode == "" {
 		mode = "extend"
 	}
-	// reason stays in the data (catalogue 1.3.0 declares it, and an
-	// installation holds that version) but is always empty: a create with a
-	// takeover reason was only written by the removed take-over feature.
+	// The schema still declares `reason`, which records written under
+	// catalogue 1.3.0 to 1.5.0 carry: it is read, never written.
 	return data{
 		"name": c.Name, "privacy": visibility(c.Private), "mode": mode,
-		"sources": len(c.Sources), "members": len(c.Members), "changes": changes, "reason": "",
+		"sources": len(c.Sources), "members": len(c.Members), "changes": changes,
 	}
 }
 
