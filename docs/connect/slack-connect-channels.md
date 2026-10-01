@@ -100,8 +100,8 @@ another host, create a new one there, and delete the old record.
 
 Two people saving at once do not overwrite each other: the write is made under
 the ConfigMap's version, retried against what the other left, and refused
-cleanly (the console says to reload) when it cannot land. Saving a record takes
-effect at the controller's next pass, or on **Refresh** (see
+cleanly (the console says to reload) when it cannot land. Saving a record wakes the
+controller and takes effect within a couple of minutes (see
 [slack-workspace.md](slack-workspace.md#a-pass-runs-promptly-after-an-install)).
 
 ## Adopting a channel that is already shared

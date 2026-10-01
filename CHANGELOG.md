@@ -1,5 +1,14 @@
 ## Unreleased
 
+- **Saving a channel or Slack Connect record wakes the Slack controller.** The
+  controller's 30-second look at the mounted credentials and records now includes
+  the console's `_channel.*` and `_shared.*` records (confirmations, pass
+  requests and install states still do not count), so a save no longer waits up to
+  an interval for its pass; saves made close together are answered by one pass.
+  The console and the docs now say a change takes effect "within a couple of
+  minutes" (the kubelet's projection of the mounted files dominates), not "at
+  once" or "on the next pass".
+
 - **Documentation brought up to date with the Slack reconciler, console channels,
   Slack Connect and the v1.41–v1.49 changes; nine new decision records
   (0017–0025).**

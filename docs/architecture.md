@@ -137,9 +137,10 @@ controller may only update by name. Its records, the connections and the
 console's channel records, are mounted read-only from
 `<release>-slack-workspaces`; its credentials from `<release>-slack-credentials`.
 A pass runs every `slackRoster.interval` (15 minutes) and also, without waiting,
-when the mounted credentials or records change or an operator presses
-**Refresh** (looked at every 30 seconds, and as quick as the kubelet refreshes
-the mounted files). Every Slack workspace is a dry run until the chart lists it
+when the mounted credentials or records (including the console's channel and
+Slack Connect records) change or an operator presses **Refresh** (looked at every
+30 seconds, and as quick as the kubelet refreshes the mounted files: within a
+couple of minutes). Every Slack workspace is a dry run until the chart lists it
 in `slackRoster.actsIn`; removing one from the list is the emergency stop. The
 two controllers share one set of rails (`internal/rails`): the pass loop and its
 policy-retry backoff, the two questions put to the console (who holds a group,

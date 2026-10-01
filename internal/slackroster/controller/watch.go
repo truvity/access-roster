@@ -15,15 +15,16 @@ import (
 const defaultCredentialPoll = 30 * time.Second
 
 // credentialDigest is a hash of every workspace's mounted credential and
-// record: what a connect or an install changes. Reserved keys (the console's
-// confirmations, consumed install states, shared channels) are left out, so
-// only a change to a workspace's own documents counts. The two directories
-// are read through the same listing a pass uses.
+// record, and of the console's channel and Slack Connect records: what a
+// connect, an install or a save changes. Other reserved keys (the console's
+// confirmations and pass requests, consumed install states) are left out. The
+// two directories are read through the same listing a pass uses. Saves
+// coalesce: the wake channel holds one, and a pass answers them all.
 func (c *Controller) credentialDigest() [sha256.Size]byte {
 	h := sha256.New()
 	for _, dir := range []string{c.cfg.CredentialsDir, c.cfg.RecordsDir} {
 		for _, name := range entries(dir, c.deps.Log) {
-			if connection.Reserved(name) {
+			if !watched(name) {
 				continue
 			}
 			raw, err := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // the directory is a mounted Secret or ConfigMap
@@ -39,6 +40,17 @@ func (c *Controller) credentialDigest() [sha256.Size]byte {
 	var out [sha256.Size]byte
 	copy(out[:], h.Sum(nil))
 	return out
+}
+
+// watched reports a mounted key whose change wakes a pass: a workspace's own
+// document, or an operator's channel or Slack Connect record.
+func watched(name string) bool {
+	if !connection.Reserved(name) {
+		return true
+	}
+	_, _, channel := connection.ParseConsoleKey(name)
+	_, shared := connection.ParseSharedKey(name)
+	return channel || shared
 }
 
 // passRequests are the times of the operators' requests for a pass now, by

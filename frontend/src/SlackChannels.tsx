@@ -128,13 +128,13 @@ export function ChannelEditDialog({
       const channel = channelDefinitionOf(form);
       if (editing) {
         await slackChannels.updateSlackChannel({ channel });
-        onDone(`#${channel.name} is updated. The controller applies it on its next pass.`);
+        onDone(`#${channel.name} is updated. The controller applies it within a couple of minutes.`);
       } else {
         await slackChannels.createSlackChannel({ channel });
         onDone(
           discovered
-            ? `#${channel.name} is under management. The controller takes over the existing channel on its next pass.`
-            : `#${channel.name} is defined. The controller takes it over by name, or creates it, on its next pass.`,
+            ? `#${channel.name} is under management. The controller takes over the existing channel within a couple of minutes.`
+            : `#${channel.name} is defined. The controller takes it over by name, or creates it, within a couple of minutes.`,
         );
       }
     } catch (error) {

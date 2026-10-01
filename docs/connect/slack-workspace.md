@@ -208,8 +208,8 @@ groups and the individual addresses. It cannot change the workspace, the name,
 the channel id or the visibility; the console refuses such a request and says to
 create a new record and delete this one. Two people saving at once do not
 overwrite each other: the write is made under the ConfigMap's version, and the
-console says to reload when it cannot land. Saving a record takes effect at the
-controller's next pass, or on **Refresh** (see
+console says to reload when it cannot land. Saving a record wakes the controller: it takes
+effect within a couple of minutes (see
 [A pass runs promptly after an install](#a-pass-runs-promptly-after-an-install)).
 
 **Discovery.** Every pass the report lists, per workspace, every channel the
@@ -402,7 +402,7 @@ directory):
 
 Besides its 15-minute interval (`slackRoster.interval`), the controller looks
 every 30 seconds at the mounted credentials and records. When a workspace's own
-credential or record changed (a new bot token after an install, a reconnect), it
+credential or record, or a console channel or Slack Connect record, changed (a new bot token after an install, a reconnect), it
 runs a full pass without waiting for the interval. Allow up to about two
 minutes: the look is every 30 seconds, and the kubelet takes up to about a
 minute to project a changed Secret or ConfigMap into the pod. Until a report
@@ -415,8 +415,9 @@ into the records ConfigMap and the controller notices it at its next look. A
 second request less than 60 seconds after the first is refused. The card says
 *Pass requested* until a newer report exists. The marker is not a record: it is
 left out of the recovery copy, and there is no audit action for it (the
-requester is logged). Editing a console channel or a Slack Connect record does
-not start a pass by itself; it waits for the next interval, or for Refresh.
+requester is logged). Saving a console channel or a Slack Connect record
+starts a pass the same way: the controller's look at the records includes them,
+and saves made close together are answered by one pass.
 
 The bot scopes are one list, `connection.BotScopes`, each for a method the
 roster calls:
@@ -589,7 +590,7 @@ another policy changes nothing and is tried again within seconds.
 
 1. The workspace is declared in the policy, connected, installed, and the
    controller runs with it *not* in `slackRoster.actsIn`. After an install, a
-   pass runs promptly; **Refresh** asks for another.
+   pass runs within a couple of minutes; **Refresh** asks for another.
 2. Read its report after a pass. `tick.outcome` says `dry-run`; the rows say
    exactly what enabling would do. Look for anybody you did not expect to be
    removed, and for held rows: each carries its reason.
