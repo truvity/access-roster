@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { definitionOf, discoveredForm, discoveredStatus, emptyForm, guestChoices, manageBlocked, sideLabel, unplacedSides, withSidePrivate, hostChoices, privacyLabel, problems, stateView, withGuests, withHost, withPerSide } from "./slackConnectModel";
+import { definitionOf, discoveredForm, discoveredStatus, emptyForm, guestChoices, manageBlocked, sideLabel, unplacedSides, withSidePrivate, hostChoices, privacyLabel, problems, stateView, withGuests, withHost, withPerSide, unknownSideHint, isVisibilityMismatch } from "./slackConnectModel";
 
 const form = { ...emptyForm, name: "partners", host: "acme", with: ["globex"], from: ["partners@north.example"] };
 
@@ -128,5 +128,41 @@ describe("a discovered channel", () => {
     expect(manageBlocked({ hostWorkspace: "acme", managed: false, canManage: false })).toContain("operator of the host");
     expect(manageBlocked({ hostWorkspace: "acme", managed: false, canManage: true })).toBe("");
     expect(manageBlocked({ hostWorkspace: "acme", managed: true, canManage: false })).toBe("");
+  });
+});
+
+describe("the live shape: a host, a probed guest and a private guest nobody could see", () => {
+  const live = {
+    channelId: "C0LIVE1",
+    hostWorkspace: "acme",
+    sides: [side("acme", "public", "shared-one"), side("globex", "private", "shared-one"), side("initech", "unknown", "", false, true)],
+  };
+
+  it("prefills every workspace whose report lists the channel, with the privacy it reported", () => {
+    const f = discoveredForm(live);
+    expect(f.with).toEqual(["globex", "initech"]);
+    expect(f.perSide).toMatchObject({ acme: false, globex: true });
+  });
+
+  it("never defaults the side nobody saw: it is required input", () => {
+    const f = discoveredForm(live);
+    expect(f.unknownSides).toEqual(["initech"]);
+    expect(problems({ ...f, from: ["partners@north.example"] }).join(" ")).toContain("Choose the visibility of initech");
+    expect(unknownSideHint).toContain("the bot is not in it");
+    const chosen = withSidePrivate({ ...f, from: ["partners@north.example"] }, "initech", true);
+    expect(problems(chosen)).toEqual([]);
+  });
+
+  it("shows a side present only as a team id, with no report, as not listed", () => {
+    const f = discoveredForm({ ...live, sides: [...live.sides, side("hooli", "unknown", "", false, false)] });
+    expect(f.with).not.toContain("hooli");
+  });
+});
+
+describe("a visibility mismatch hold", () => {
+  it("is read from the controller's reason", () => {
+    expect(isVisibilityMismatch("the channel is private in Slack but the policy says public; change one of them")).toBe(true);
+    expect(isVisibilityMismatch("the bot is not in this private channel")).toBe(false);
+    expect(isVisibilityMismatch(undefined)).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Alert from "@mui/material/Alert";
 import { AuditProvider, AuditView } from "@truvity/audit/react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -19,7 +20,8 @@ import type { SlackBreaker, SlackChannelStatus } from "./gen/directoryroster/v1/
 import { paths } from "./router";
 import { BreakerAlert } from "./Slack";
 import { modeLabel } from "./slackChannelsModel";
-import { findRow, kindLabel, kindSentence, peopleSentence, summaryLine, type ChannelRow, type Side } from "./slackIndex";
+import { findRow, kindLabel, kindSentence, peopleSentence, summaryLine, visibilityMismatch, type ChannelRow, type Side } from "./slackIndex";
+import { visibilityMismatchHint } from "./slackConnectModel";
 import { breakerSentence, channelKind, memberKind, noAccountReason, split } from "./slackModel";
 import { ChannelDialogues, privacySummary, RowActions, type Dialogue, type SlackIndex } from "./SlackChannelsTab";
 import { Failure, Loading, Mono, Nothing, Page, Ref, Rows, Section, State } from "./ui";
@@ -113,6 +115,12 @@ export function SlackChannelPage({
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {row.reason}
         </Typography>
+      ) : null}
+      {visibilityMismatch(row) ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Visibility mismatch. {row.canOperate ? "Use Edit above: " : ""}
+          {visibilityMismatchHint}
+        </Alert>
       ) : null}
 
       <Section

@@ -547,7 +547,10 @@ func TestNoStoreIsRefusedPlainly(t *testing.T) {
 
 // ---------------------------------------------------------------- discovered channels
 
-const externalTeam = "T0EXTERN1"
+const (
+	externalTeam = "T0EXTERN1"
+	initechTeam  = "T0789IJKL"
+)
 
 func (h *connectHarness) report(t *testing.T, workspace, team string, found ...status.Discovered) {
 	t.Helper()
@@ -756,5 +759,41 @@ func TestADiscoveredChannelIsMarkedManagedByARecordOfTheSameHostAndName(t *testi
 	}
 	if row := h.list(as(everywhere), t).Discovered[0]; !row.Managed || row.ManagedAs != "legacy" || row.CanManage {
 		t.Errorf("row = %+v", row)
+	}
+}
+
+// The live shape: hosted in acme, shared with globex and initech. The host's
+// list names initech; globex's bot found its side by probing (host acme);
+// initech's side is private and its bot is not in it, so nothing of it was
+// seen. Every workspace whose report lists the channel is a listed side, with
+// the privacy it reported; the one nobody saw stays unknown.
+func TestAProbedGuestSideIsListedWithItsOwnPrivacy(t *testing.T) {
+	h := newConnectHarness(t)
+	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0LIVE1", Name: "shared-one", Members: 12, HostTeam: acmeTeam, Teams: []string{acmeTeam, initechTeam}})
+	h.report(t, "globex", globexTeam,
+		status.Discovered{ID: "C0LIVE1", Name: "shared-one", Private: true, Members: 12, HostTeam: acmeTeam, Teams: []string{acmeTeam}})
+	h.report(t, "initech", initechTeam)
+	row := h.list(as(everywhere), t).Discovered[0]
+	if g := sideOf(row, "globex"); g == nil || !g.Listed || !g.Seen || g.Privacy != "private" || g.Members != 12 {
+		t.Errorf("the probed side = %+v, want listed, seen and private", g)
+	}
+	if i := sideOf(row, "initech"); i == nil || !i.Listed || i.Seen || i.Privacy != "unknown" {
+		t.Errorf("the invisible side = %+v, want listed, unseen and unknown", i)
+	}
+}
+
+// A report that lists the channel makes its workspace a side by that fact,
+// even when the report carries no team id (an older controller's) and the
+// host's own list does not name it.
+func TestAReportThatListsTheChannelPlacesItsWorkspaceWithoutATeamID(t *testing.T) {
+	h := newConnectHarness(t)
+	h.report(t, "acme", acmeTeam, status.Discovered{ID: "C0LIVE1", Name: "shared-one", Members: 12, HostTeam: acmeTeam, Teams: []string{acmeTeam, initechTeam}})
+	h.report(t, "globex", "", status.Discovered{ID: "C0LIVE1", Name: "shared-one", Members: 12, HostTeam: acmeTeam, Teams: []string{acmeTeam}})
+	row := h.list(as(everywhere), t).Discovered[0]
+	if g := sideOf(row, "globex"); g == nil || !g.Listed || !g.Seen || g.Privacy != "public" {
+		t.Errorf("the reporting side = %+v, want listed, seen and public", g)
+	}
+	if i := sideOf(row, "initech"); i == nil || !i.Listed || i.Privacy != "unknown" {
+		t.Errorf("the named side = %+v", i)
 	}
 }

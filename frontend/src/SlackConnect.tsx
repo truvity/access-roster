@@ -35,6 +35,7 @@ import {
   unplacedSides,
   problems,
   sideLabel,
+  unknownSideHint,
   withSidePrivate,
   withGuests,
   withHost,
@@ -244,14 +245,32 @@ export function ConnectEditDialog({
             label="Choose visibility per side"
           />
           {form.perSide
-            ? Object.keys(form.perSide).map((side) => (
-                <FormControlLabel
-                  key={side}
-                  sx={{ ml: 2 }}
-                  control={<Switch checked={form.perSide?.[side] ?? false} onChange={(event) => setForm(withSidePrivate(form, side, event.target.checked))} disabled={busy} />}
-                  label={`${side}: ${form.unknownSides.includes(side) ? "choose, the bot cannot see this side" : form.perSide?.[side] ? "private" : "public"}`}
-                />
-              ))
+            ? Object.keys(form.perSide).map((side) =>
+                form.unknownSides.includes(side) ? (
+                  <TextField
+                    key={side}
+                    select
+                    size="small"
+                    sx={{ ml: 2 }}
+                    label={`${side}: visibility`}
+                    value=""
+                    onChange={(event) => setForm(withSidePrivate(form, side, event.target.value === "private"))}
+                    disabled={busy}
+                    required
+                    helperText={unknownSideHint}
+                  >
+                    <MenuItem value="public">public</MenuItem>
+                    <MenuItem value="private">private</MenuItem>
+                  </TextField>
+                ) : (
+                  <FormControlLabel
+                    key={side}
+                    sx={{ ml: 2 }}
+                    control={<Switch checked={form.perSide?.[side] ?? false} onChange={(event) => setForm(withSidePrivate(form, side, event.target.checked))} disabled={busy} />}
+                    label={`${side}: ${form.perSide?.[side] ? "private" : "public"}`}
+                  />
+                ),
+              )
             : null}
           {discovered ? (
             <Typography variant="caption" color="text.secondary">

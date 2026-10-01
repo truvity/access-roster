@@ -3,7 +3,7 @@ import type { ListSlackSharedChannelsResponse, SlackSharedChannel } from "./gen/
 import type { GetSlackStatusResponse, SlackChannelStatus, SlackMemberStatus } from "./gen/directoryroster/v1/slack_pb";
 import { paths } from "./router";
 import { channelKind, memberKind } from "./slackModel";
-import { stateView, type StateView } from "./slackConnectModel";
+import { isVisibilityMismatch, stateView, type StateView } from "./slackConnectModel";
 import type { StateKind } from "./ui";
 
 /** Every managed Slack channel in one list, whichever way it is managed.
@@ -213,6 +213,13 @@ export function filterRows(rows: ChannelRow[], filter: { workspace?: string; kin
       (!filter.workspace || row.sides.some((s) => s.workspace === filter.workspace) || row.workspace === filter.workspace) &&
       (!filter.kind || row.kind === filter.kind),
   );
+}
+
+/** Whether the controller holds a managed Slack Connect channel because a
+ *  side's visibility in Slack differs from its record: the row, or any side's
+ *  report, says so. The operator's way out is Edit. */
+export function visibilityMismatch(row: Pick<ChannelRow, "kind" | "record" | "reason" | "sides">): boolean {
+  return row.kind === "connect" && !!row.record && (isVisibilityMismatch(row.reason) || row.sides.some((s) => isVisibilityMismatch(s.status?.reason)));
 }
 
 /** The people on every side of a channel, the report's rows. */
