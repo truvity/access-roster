@@ -12,7 +12,7 @@ export const channelName = /^[a-z0-9_-]{1,80}$/;
 export type ChannelForm = {
   workspace: string;
   name: string;
-  /** The Slack id of an existing channel the record takes over; empty to take over, or create, by name. */
+  /** The Slack id of an existing channel the record adopts; empty to adopt, or create, by name. */
   channelId: string;
   private: boolean;
   /** extend adds only; strict adds and removes. */

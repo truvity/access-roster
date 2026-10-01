@@ -1,5 +1,37 @@
 ## Unreleased
 
+- **Fix: a shared channel's record no longer tells an outsider that it exists.**
+  Editing or deleting a Slack Connect record answers *no such channel* to a
+  caller who may not see it (a viewer of neither its host nor a guest), asked
+  before the role over its host; a caller who may see it but not operate it is
+  still refused plainly. Creating a record whose name another host's record
+  already holds no longer names that host to a caller who may not see it.
+
+- **Fix: a channel defined in both git and the console reads *held* on the
+  record's row too.** The console showed *invalid* for the record while the
+  controller reported both as held; both now say *held*, with the same reason.
+
+- **Fix: a directory-groups read that fails is said, not shown as an empty
+  picker.** The channel forms show the failure in the group picker (new
+  `source_directories_error` field on `ListSlackChannelsResponse` and
+  `ListSlackSharedChannelsResponse`).
+
+- **Fix: one definition of "this record is that channel" and of a channel id.**
+  The probe of a Slack Connect channel's guest sides matches a record that has
+  no channel id by name only for a proven host (the host reports it, or both host
+  teams are known and equal), as the reconciler does. A record's channel id is
+  checked with the policy's own rule (`C` or `G` and at least eight capitals or
+  digits); a shorter id on a console or Slack Connect record is now refused. The
+  chart's `slackApps[].workspace` takes the policy's workspace-key shape, so a
+  key the service would refuse fails `helm template`. The controller and the
+  console use one *no owning directory* hold text.
+
+- **Docs and wording.** The `policy` package, the proto comments (individual
+  members, the update fields, `can_change_owner`, the `GetSlackStatus` refusal),
+  the state-push mirror comment and the console wording (*adopted*, not *taken
+  over*, for an existing channel; the navigation as Overview and four clusters)
+  say what the code does.
+
 - **Fix: archiving from the console asks Slack first.** Deleting a console
   channel's record with *Also archive* ticked now refuses, with the record kept
   and nothing changed, unless the workspace's controller reports that it acts

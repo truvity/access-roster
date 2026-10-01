@@ -13,7 +13,7 @@ export type NavCluster = { heading?: string; hint?: string; entries: NavEntry[] 
  *  once an installation is connected. */
 export type NavOptions = { sessions: boolean; audit: boolean };
 
-/** The navigation is the model, in five clusters:
+/** The navigation is the model: Overview, then four clusters:
  *
  *  - Identity: where people come from — a directory, its groups, its
  *    accounts, and the rules that admit a proof by its shape.

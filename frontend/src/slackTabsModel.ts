@@ -1,7 +1,7 @@
 import { paths } from "./router";
 
 /** The tabs of the one Slack entry, in the order the work happens: connect
- *  a workspace, see its channels, share some between workspaces, take over
+ *  a workspace, see its channels, share some between workspaces, adopt
  *  what is already there, and manage the Apps behind it. */
 export const slackTabs = [
   { value: "workspaces", label: "Workspaces", to: paths.slack() },
