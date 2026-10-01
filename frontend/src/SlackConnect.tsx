@@ -23,7 +23,6 @@ import Typography from "@mui/material/Typography";
 
 import { reason, slackConnect } from "./api";
 import type { ListSlackSharedChannelsResponse, SlackDiscoveredChannel, SlackSharedChannel } from "./gen/directoryroster/v1/slack_connect_pb";
-import { useAsync } from "./hooks";
 import {
   definitionOf,
   discoveredForm,
@@ -34,10 +33,8 @@ import {
   hostChoices,
   manageBlocked,
   unplacedSides,
-  privacyLabel,
   problems,
   sideLabel,
-  stateView,
   withSidePrivate,
   withGuests,
   withHost,
@@ -47,151 +44,15 @@ import {
 import { directoryLabel } from "./ownerModel";
 import { landings, landingSentence, sourceOptions, unreachedWarning } from "./slackSourcesModel";
 import { SourcePicker } from "./SourcePicker";
-import { Failure, Loading, Mono, Nothing, Page, State } from "./ui";
-
-type Props = { onDone: (message: string) => void };
-
-/** What a dialog is doing: writing a new channel, editing one, or
- *  confirming a delete. */
-type Dialogue = { kind: "create" } | { kind: "manage"; row: SlackDiscoveredChannel } | { kind: "edit"; channel: SlackSharedChannel } | { kind: "delete"; channel: SlackSharedChannel };
-
-/** The Slack Connect channels between this installation's own
- *  workspaces, created and edited here.
- *
- *  Whether the caller may change a row is the server's per-record answer
- *  (`canOperate`): the operator of the HOST workspace's owner, or of the
- *  installation. A guest workspace's operator sees the channel and
- *  cannot change it. */
-export function SlackConnectPage({ onDone }: Props) {
-  const listed = useAsync(() => slackConnect.listSlackSharedChannels({}), []);
-  const channels = listed.value?.channels ?? [];
-  const [dialogue, setDialogue] = useState<Dialogue | undefined>();
-  const canCreate = hostChoices(listed.value?.workspaces ?? []).length > 0 && listed.value?.available === true;
-
-  const done = (message: string) => {
-    setDialogue(undefined);
-    onDone(message);
-    listed.reload();
-  };
-
-  return (
-    <Page
-      title="Slack Connect"
-      lede="Shared channels between this installation's own Slack workspaces. The host workspace creates and owns a channel and invites the others' bots; each side then manages its own people, who come only from the directory groups named here. Changes are recorded in the audit trail."
-      actions={
-        canCreate ? (
-          <Button variant="contained" onClick={() => setDialogue({ kind: "create" })}>
-            New channel
-          </Button>
-        ) : undefined
-      }
-    >
-      <Loading busy={listed.loading} />
-      <Failure error={listed.error} />
-      {listed.value && !listed.value.available ? (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          This deployment keeps no state in Kubernetes, so it keeps no shared channel records.
-        </Alert>
-      ) : null}
-      {listed.value && listed.value.available && channels.length === 0 ? <Nothing>No shared channel is defined for a workspace you may see.</Nothing> : null}
-      {channels.length > 0 ? (
-        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-          <Table size="small" sx={{ minWidth: 720 }}>
-            <TableHead>
-              <TableRow>
-                <TableCell>Channel</TableCell>
-                <TableCell>Host</TableCell>
-                <TableCell>Shared with</TableCell>
-                <TableCell>Directory groups</TableCell>
-                <TableCell>Visibility</TableCell>
-                <TableCell>State</TableCell>
-                <TableCell align="right" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {channels.map((channel) => (
-                <ChannelRow
-                  key={channel.channel?.name}
-                  channel={channel}
-                  onEdit={() => setDialogue({ kind: "edit", channel })}
-                  onDelete={() => setDialogue({ kind: "delete", channel })}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : null}
-      <DiscoveredSection rows={listed.value?.discovered ?? []} available={listed.value?.available === true} onManage={(row) => setDialogue({ kind: "manage", row })} />
-      {dialogue?.kind === "delete" ? <DeleteDialog channel={dialogue.channel} onCancel={() => setDialogue(undefined)} onDone={done} /> : null}
-      {dialogue && dialogue.kind !== "delete" && listed.value ? (
-        <EditDialog
-          key={dialogue.kind === "edit" ? dialogue.channel.channel?.name : dialogue.kind === "manage" ? dialogue.row.channelId : "new"}
-          options={listed.value}
-          editing={dialogue.kind === "edit" ? dialogue.channel : undefined}
-          discovered={dialogue.kind === "manage" ? dialogue.row : undefined}
-          onCancel={() => setDialogue(undefined)}
-          onDone={done}
-        />
-      ) : null}
-    </Page>
-  );
-}
-
-function ChannelRow({ channel, onEdit, onDelete }: { channel: SlackSharedChannel; onEdit: () => void; onDelete: () => void }) {
-  const def = channel.channel;
-  const view = stateView(channel);
-  if (!def) return null;
-  return (
-    <TableRow hover>
-      <TableCell>
-        <Mono>#{def.name}</Mono>
-      </TableCell>
-      <TableCell>
-        <Mono>{def.host || "—"}</Mono>
-      </TableCell>
-      <TableCell>{def.with.join(", ")}</TableCell>
-      <TableCell>
-        <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
-          {def.from.join(", ")}
-        </Typography>
-      </TableCell>
-      <TableCell>{def.host ? privacyLabel(def) : ""}</TableCell>
-      <TableCell>
-        <State kind={view.kind} label={view.label} title={view.title} />
-        {channel.reason && (channel.state === "invalid" || channel.state === "held") ? (
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", maxWidth: 320 }}>
-            {channel.reason}
-          </Typography>
-        ) : null}
-      </TableCell>
-      <TableCell align="right">
-        {channel.canOperate ? (
-          <Stack direction="row" sx={{ gap: 1, justifyContent: "flex-end" }}>
-            {def.host ? (
-              <Button size="small" onClick={onEdit}>
-                Edit
-              </Button>
-            ) : null}
-            <Button size="small" color="error" onClick={onDelete}>
-              Delete
-            </Button>
-          </Stack>
-        ) : null}
-      </TableCell>
-    </TableRow>
-  );
-}
+import { Failure, Mono } from "./ui";
 
 /** The channels the workspaces' bots can see in Slack, one row each,
  *  whether or not a record manages them. Managing one opens the create
  *  form prefilled from what was seen. */
-function DiscoveredSection({ rows, available, onManage }: { rows: SlackDiscoveredChannel[]; available: boolean; onManage: (row: SlackDiscoveredChannel) => void }) {
+export function DiscoveredConnect({ rows, available, onManage }: { rows: SlackDiscoveredChannel[]; available: boolean; onManage: (row: SlackDiscoveredChannel) => void }) {
   if (rows.length === 0) return null;
   return (
     <>
-      <Typography variant="h6" sx={{ mt: 4, mb: 1 }}>
-        Discovered
-      </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         Slack Connect channels that already exist and that a connected workspace's bot can see. Every connected workspace is a side. One nothing places the channel
         in is unknown, not absent: its bot lists a private channel only once it is in it, and a public one it has not joined may not be listed at all, so add it
@@ -255,7 +116,8 @@ function DiscoveredSection({ rows, available, onManage }: { rows: SlackDiscovere
   );
 }
 
-function EditDialog({
+/** Defines a Slack Connect channel, or edits one, or takes a discovered one under management. */
+export function ConnectEditDialog({
   options,
   editing,
   discovered,
@@ -417,7 +279,8 @@ function EditDialog({
   );
 }
 
-function DeleteDialog({ channel, onCancel, onDone }: { channel: SlackSharedChannel; onCancel: () => void; onDone: (message: string) => void }) {
+/** Confirms forgetting a Slack Connect channel's record. */
+export function ConnectDeleteDialog({ channel, onCancel, onDone }: { channel: SlackSharedChannel; onCancel: () => void; onDone: (message: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const name = channel.channel?.name ?? "";

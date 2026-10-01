@@ -16,9 +16,6 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
-import AppsIcon from "@mui/icons-material/Apps";
-import ForumIcon from "@mui/icons-material/Forum";
-import HubIcon from "@mui/icons-material/Hub";
 import TagIcon from "@mui/icons-material/Tag";
 import GitHubIcon from "@mui/icons-material/GitHub";
 import DashboardIcon from "@mui/icons-material/Dashboard";
@@ -31,10 +28,12 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import PeopleIcon from "@mui/icons-material/People";
 import SettingsIcon from "@mui/icons-material/Settings";
 import ShieldIcon from "@mui/icons-material/Shield";
+import AppsIcon from "@mui/icons-material/Apps";
 import RuleIcon from "@mui/icons-material/Rule";
 
 import { issuerIsSameOrigin, mounted, personName, whoami, type Me } from "./api";
 import { useAsync } from "./hooks";
+import { clusters } from "./navModel";
 import { paths, useRoute } from "./router";
 import { Search } from "./Search";
 import { Overview } from "./Overview";
@@ -47,9 +46,7 @@ import { Groups, Group } from "./Groups";
 import { Clients, Client } from "./Clients";
 import { GitHubPage } from "./GitHub";
 import { SessionsPage } from "./Sessions";
-import { SlackAppsPage } from "./SlackApps";
-import { SlackConnectPage } from "./SlackConnect";
-import { SlackPage } from "./Slack";
+import { SlackHub } from "./SlackHub";
 import { AuditPage } from "./Audit";
 import { SettingsView } from "./Settings";
 
@@ -57,44 +54,22 @@ const drawerWidth = 236;
 
 type Item = { value: string; label: string; to: string; icon: React.ReactNode };
 
-/** The navigation is the model: two sides, one adjective each, joined by
- *  the membership. A rail with grouped destinations is what Material
- *  recommends for this many, and it keeps the header for the two things
- *  that belong there — search and who you are. */
-// Two sides, and the SECTION is the adjective. Both sides have groups —
-// one kind comes from a provider, the other is ours — and naming them
-// "Directory groups" and "Internal groups" made the reader carry the
-// distinction in the label when the heading above already says it.
-//
-// The URLs are unchanged. `directories`, `directory-groups` and `groups`
-// stay as they are, because a bookmark is a URL and operators have them.
-const identity: Item[] = [
-  { value: "directories", label: "Providers", to: paths.directories(), icon: <DomainIcon fontSize="small" /> },
-  { value: "directory-groups", label: "Groups", to: paths.directoryGroups(), icon: <GroupsIcon fontSize="small" /> },
-  { value: "people", label: "People", to: paths.people(), icon: <PeopleIcon fontSize="small" /> },
-  { value: "rules", label: "Rules", to: paths.rules(), icon: <RuleIcon fontSize="small" /> },
-];
-const internalSide: Item[] = [
-  { value: "groups", label: "Groups", to: paths.groups(), icon: <ShieldIcon fontSize="small" /> },
-  { value: "clients", label: "Clients", to: paths.clients(), icon: <AppsIcon fontSize="small" /> },
-  // A GitHub team is fed by internal groups the way a client is opened by
-  // them, so it belongs on this side.
-  { value: "github", label: "GitHub", to: paths.github(), icon: <GitHubIcon fontSize="small" /> },
-  // The Slack workspaces the policy declares: connected, reconciled and
-  // reported on, like GitHub's organisations.
-  { value: "slack", label: "Slack", to: paths.slack(), icon: <TagIcon fontSize="small" /> },
-  // The Slack Apps the deployment declares, created and installed here.
-  { value: "slack-apps", label: "Slack Apps", to: paths.slackApps(), icon: <ForumIcon fontSize="small" /> },
-  // Shared channels between the installation's own Slack workspaces.
-  { value: "slack-connect", label: "Slack Connect", to: paths.slackConnect(), icon: <HubIcon fontSize="small" /> },
-];
-// Every open session in the installation. It only exists once
-// an issuer shares this console's origin, and even then it is
-// operator-only: the rail entry must not render for a viewer.
-const sessionsItem: Item = { value: "sessions", label: "Sessions", to: paths.sessions(), icon: <KeyIcon fontSize="small" /> };
-// The audit trail, when an installation is connected. Who may read what
-// there is the installation's grants' to say, not this console's role.
-const auditItem: Item = { value: "audit", label: "Audit", to: paths.audit(), icon: <HistoryIcon fontSize="small" /> };
+/** The rail's icons, by the view each destination opens. The destinations
+ *  themselves, and which a caller may see, are navModel's. */
+const icons: Record<string, React.ReactNode> = {
+  overview: <DashboardIcon fontSize="small" />,
+  directories: <DomainIcon fontSize="small" />,
+  "directory-groups": <GroupsIcon fontSize="small" />,
+  people: <PeopleIcon fontSize="small" />,
+  rules: <RuleIcon fontSize="small" />,
+  groups: <ShieldIcon fontSize="small" />,
+  clients: <AppsIcon fontSize="small" />,
+  sessions: <KeyIcon fontSize="small" />,
+  github: <GitHubIcon fontSize="small" />,
+  slack: <TagIcon fontSize="small" />,
+  audit: <HistoryIcon fontSize="small" />,
+  settings: <SettingsIcon fontSize="small" />,
+};
 
 export function App() {
   const route = useRoute();
@@ -209,29 +184,18 @@ export function App() {
         </Typography>
       </Box>
       <List dense disablePadding sx={{ pb: 1 }}>
-        <NavItem item={{ value: "overview", label: "Overview", to: paths.overview(), icon: <DashboardIcon fontSize="small" /> }} current={route.view} onPick={() => setOpen(false)} />
-        <ListSubheader disableSticky sx={{ mt: 1.5 }} title="Where people come from">
-          Identity
-        </ListSubheader>
-        {identity.map((item) => (
-          <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
+        {clusters({ sessions: operator && issuerIsSameOrigin(identityInfo?.issuerUrl), audit: Boolean(identityInfo?.audit) }).map((cluster) => (
+          <Box key={cluster.heading ?? "start"}>
+            {cluster.heading ? (
+              <ListSubheader disableSticky sx={{ mt: 1.5, textTransform: "uppercase", letterSpacing: "0.06em", fontSize: "0.7rem", lineHeight: "32px" }} title={cluster.hint}>
+                {cluster.heading}
+              </ListSubheader>
+            ) : null}
+            {cluster.entries.map((entry) => (
+              <NavItem key={entry.value} item={{ ...entry, icon: icons[entry.value] }} current={route.view} onPick={() => setOpen(false)} />
+            ))}
+          </Box>
         ))}
-        <ListSubheader disableSticky sx={{ mt: 1.5 }} title="What they get here">
-          Internal
-        </ListSubheader>
-        {internalSide.map((item) => (
-          <NavItem key={item.value} item={item} current={route.view} onPick={() => setOpen(false)} />
-        ))}
-        {operator && issuerIsSameOrigin(identityInfo?.issuerUrl) ? (
-          <NavItem item={sessionsItem} current={route.view} onPick={() => setOpen(false)} />
-        ) : null}
-        {identityInfo?.audit ? <NavItem item={auditItem} current={route.view} onPick={() => setOpen(false)} /> : null}
-        <Divider sx={{ my: 1 }} />
-        <NavItem
-          item={{ value: "settings", label: "Settings", to: paths.settings(), icon: <SettingsIcon fontSize="small" /> }}
-          current={route.view}
-          onPick={() => setOpen(false)}
-        />
       </List>
       <Box sx={{ flexGrow: 1 }} />
       <Divider />
@@ -357,11 +321,7 @@ function PageFor({
     case "github":
       return <GitHubPage section={id} rest={rest} onDone={onDone} />;
     case "slack":
-      return <SlackPage onDone={onDone} />;
-    case "slack-apps":
-      return <SlackAppsPage onDone={onDone} />;
-    case "slack-connect":
-      return <SlackConnectPage onDone={onDone} />;
+      return <SlackHub section={id} rest={rest} query={query} auditConnected={Boolean(me?.audit)} onDone={onDone} />;
     case "sessions":
       return <SessionsPage operator={operator} />;
     case "audit":

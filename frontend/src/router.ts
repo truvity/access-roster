@@ -12,7 +12,13 @@ export function parse(hash: string): Route {
   // its domain chooser open, rather than the operator having to find it.
   const [path, search = ""] = raw.split("?");
   const [, view, id, ...rest] = path.split("/");
-  const normalised = renamed[view] ?? view ?? "overview";
+  // Slack was three entries and is one: the old addresses open the tab
+  // that took their place.
+  const tab = slackTabs[view];
+  if (tab) {
+    return { view: "slack", id: tab, rest: [id, ...rest].filter(Boolean).map(decodeURIComponent), query: new URLSearchParams(search) };
+  }
+  const normalised = renamed[view] ?? (view || "overview");
   return {
     view: normalised,
     id: id ? decodeURIComponent(id) : undefined,
@@ -42,6 +48,14 @@ const renamed: Record<string, string> = {
   // Matchers showed the rules that admit a proof by its shape, which was
   // two thirds of them.
   matchers: "rules",
+};
+
+/** The Slack entries that became tabs of the one Slack page, and the tab
+ *  each opens on. `#/slack-apps` and `#/slack-connect` are bookmarks
+ *  operators have. */
+const slackTabs: Record<string, string> = {
+  "slack-apps": "apps",
+  "slack-connect": "connect",
 };
 
 export function useRoute(): Route {
@@ -89,16 +103,28 @@ export const paths = {
   githubOrganisation: (org: string) => `/github/organisations/${encodeURIComponent(org)}`,
   githubTeam: (org: string, team: string) => `/github/organisations/${encodeURIComponent(org)}/teams/${encodeURIComponent(team)}`,
   githubApps: () => "/github/apps",
+  // The Apps self-hosted runners register with, one per organisation per tier.
+  githubRunners: () => "/github/runners",
   // Every App, whatever made it, is a page of its own. An App whose id is
   // literally "catalogue" keeps the old prefix, which the parser strips,
   // so it is not read as the old list's address.
   githubApp: (id: string) => (id === "catalogue" ? "/github/apps/catalogue/catalogue" : `/github/apps/${encodeURIComponent(id)}`),
-  // The Slack workspaces the policy declares: connect, status, removals.
+  // Slack is one entry with tabs. The first tab, the workspaces the policy
+  // declares (connect, status, removals), keeps the address it always had.
   slack: () => "/slack",
-  // The Slack Apps the deployment declares: create, install, reinstall.
-  slackApps: () => "/slack-apps",
+  // Every managed channel across the workspaces, narrowed by workspace or kind.
+  slackChannels: (filter?: { workspace?: string; kind?: string }) => {
+    const query = new URLSearchParams(Object.entries(filter ?? {}).filter(([, v]) => v) as [string, string][]).toString();
+    return query ? `/slack/channels?${query}` : "/slack/channels";
+  },
+  // One channel: by its name in the workspace, or by its Slack id.
+  slackChannel: (workspace: string, nameOrId: string) => `/slack/channels/${encodeURIComponent(workspace)}/${encodeURIComponent(nameOrId)}`,
   // Slack Connect channels between the installation's own workspaces.
-  slackConnect: () => "/slack-connect",
+  slackConnect: () => "/slack/connect",
+  // Every channel a bot can see that nothing manages, ordinary and shared.
+  slackDiscovered: () => "/slack/discovered",
+  // The Slack Apps the deployment declares: create, install, reinstall.
+  slackApps: () => "/slack/apps",
   // Every open session in the installation. Operator-only, and
   // only present at all once an issuer shares this console's origin.
   sessions: () => "/sessions",
