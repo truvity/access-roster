@@ -300,7 +300,7 @@ func (s *ConsoleServer) slackWorkspaceCallback(w http.ResponseWriter, r *http.Re
 		r.URL.Query().Get("code"), console.slackWorkspaceRedirect())
 	if err != nil {
 		s.log.WarnContext(r.Context(), "a Slack workspace was installed and its token could not be collected",
-			"workspace", workspace, "error", logsafe.Error(err))
+			"workspace", logsafe.Value(workspace), "error", logsafe.Error(err))
 		s.slackProblem(flow, w, r, http.StatusConflict, "Slack accepted the install, and then would not hand over the bot token.", err.Error(), []string{
 			"The page was reloaded: the code Slack returns can be exchanged once.",
 			"More than ten minutes passed between approving and returning here.",
@@ -335,7 +335,7 @@ func (s *ConsoleServer) slackWorkspaceCallback(w http.ResponseWriter, r *http.Re
 	if installed.TeamID != team {
 		revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
 		s.log.WarnContext(r.Context(), "the Slack App was installed into the wrong workspace and refused",
-			"workspace", workspace, "expected", team, "got", logsafe.Value(installed.TeamID),
+			"workspace", logsafe.Value(workspace), "expected", logsafe.Value(team), "got", logsafe.Value(installed.TeamID),
 			"by", logsafe.Value(actor), "revoked", revokeErr == nil)
 		console.record(r.Context(), audit.SlackWorkspaceConnectRefused(audit.Identified(actor), subject,
 			fmt.Sprintf("installed into team %s, and the workspace was first installed as %s; %s", installed.TeamID, team, revokedWords(revokeErr))))
@@ -353,12 +353,12 @@ func (s *ConsoleServer) slackWorkspaceCallback(w http.ResponseWriter, r *http.Re
 		// A token nobody keeps is one nobody can revoke later.
 		revokeErr := console.slackRevoke(r.Context(), installed.BotToken)
 		s.log.ErrorContext(r.Context(), "a Slack workspace was installed and its token could not be kept",
-			"workspace", workspace, "revoked", revokeErr == nil, "error", logsafe.Error(err))
+			"workspace", logsafe.Value(workspace), "revoked", revokeErr == nil, "error", logsafe.Error(err))
 		s.slackProblem(flow, w, r, http.StatusConflict, "The App is installed and its token could not be saved here. Install it again.", err.Error(), nil)
 		return
 	}
-	s.log.InfoContext(r.Context(), "Slack workspace connected", "workspace", workspace, "team", installed.TeamID,
-		"scopes", strings.Join(record.Scopes, ","), "by", logsafe.Value(actor))
+	s.log.InfoContext(r.Context(), "Slack workspace connected", "workspace", logsafe.Value(workspace), "team", logsafe.Value(installed.TeamID),
+		"scopes", logsafe.Value(strings.Join(record.Scopes, ",")), "by", logsafe.Value(actor))
 	console.record(r.Context(), audit.SlackWorkspaceConnected(audit.Identified(actor), subject))
 	http.Redirect(w, r, s.at("/#/slack"), http.StatusFound)
 }

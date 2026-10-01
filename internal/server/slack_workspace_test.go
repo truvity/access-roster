@@ -958,3 +958,46 @@ func (h *wsHarness) putReport(t *testing.T, w status.Workspace) {
 		t.Fatal(err)
 	}
 }
+
+// A team id is what Slack says it is, and a log line is read by people who
+// trust it: the one a refused install writes must keep a forged record out of
+// the log, whatever the id carries.
+func TestARefusedInstallCannotForgeALogRecordThroughTheTeamSlackReports(t *testing.T) {
+	h := newWorkspaceHarness(t)
+	const forged = "T0EVIL\r\nlevel=ERROR msg=forged\tby=root"
+	h.slack.AddTeam(forged, "Evil")
+
+	begun, err := h.begin(operator(), "acme", accepted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h.finish(t, begun, "acme", acmeTeam); got.Code != http.StatusFound {
+		t.Fatalf("the first install = %d:\n%s", got.Code, got.Body)
+	}
+	if begun, err = h.begin(operator(), "acme", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.finish(t, begun, "acme", forged); got.Code != http.StatusConflict {
+		t.Fatalf("an install into a team that is not the recorded one = %d:\n%s", got.Code, got.Body)
+	}
+	logged := h.logs.String()
+	if !strings.Contains(logged, "the Slack App was installed into the wrong workspace and refused") {
+		t.Fatalf("the refusal was not logged:\n%s", logged)
+	}
+	for _, bad := range []string{"\r", "\t", "\\r", "\\n", "level=ERROR msg=forged"} {
+		// The forged text may survive as inert characters inside one quoted
+		// value, but never as a record or an escaped line break of its own.
+		if bad == "level=ERROR msg=forged" {
+			if strings.Contains(logged, "\nlevel=ERROR") || strings.Contains(logged, " level=ERROR msg=forged ") {
+				t.Errorf("a forged record in the log:\n%s", logged)
+			}
+			continue
+		}
+		if strings.Contains(logged, bad) {
+			t.Errorf("the log carries %q:\n%s", bad, logged)
+		}
+	}
+	if !strings.Contains(logged, "T0EVILlevel=ERROR") {
+		t.Errorf("the team id was not logged with its line breaks removed:\n%s", logged)
+	}
+}

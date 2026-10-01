@@ -45,6 +45,7 @@ import (
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/logsafe"
 	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/slackapp"
 	"github.com/truvity/access-roster/internal/slackroster/apply"
@@ -193,7 +194,7 @@ func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
 		for i := range list {
 			invalid++
 			c.deps.Log.WarnContext(ctx, "a shared channel's definition is refused and not acted on",
-				"channel", list[i].name, "host", host, "error", list[i].err)
+				"channel", logsafe.Value(list[i].name), "host", logsafe.Value(host), "error", logsafe.Error(list[i].err))
 		}
 	}
 	c.metrics.recordInvalid(ctx, invalid)
@@ -236,7 +237,7 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	// finds the holds it recorded, rather than an empty report that would
 	// have it record them all again.
 	fail := func(err error) (status.Workspace, bool) {
-		c.deps.Log.WarnContext(ctx, "a pass over a workspace failed", "workspace", key, "error", err)
+		c.deps.Log.WarnContext(ctx, "a pass over a workspace failed", "workspace", logsafe.Value(key), "error", logsafe.Error(err))
 		report := c.journal.Previous(ctx, key)
 		report.Workspace, report.Enabled = key, enabled
 		report.Tick = status.Tick{At: started, Outcome: status.OutcomeFailed, Error: err.Error()}
@@ -301,7 +302,7 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	report.Tick.Outcome = status.OutcomeOf(rails.Switch(enabled).Decide(rails.Tick{
 		Changes: report.Tick.Changes, Held: report.Tick.Held, Retrying: report.Tick.Retrying, Waiting: report.Tick.Waiting,
 	}))
-	c.deps.Log.InfoContext(ctx, "passed over a workspace", "workspace", key, "enabled", enabled,
+	c.deps.Log.InfoContext(ctx, "passed over a workspace", "workspace", logsafe.Value(key), "enabled", enabled,
 		"outcome", report.Tick.Outcome, "changes", report.Tick.Changes, "held", report.Tick.Held,
 		"retrying", report.Tick.Retrying, "leavers", len(report.Leavers))
 	c.journal.Remember(key, report)
@@ -446,8 +447,8 @@ func (c *Controller) fold(ctx context.Context, workspace string, report *status.
 		}
 		if o.Err != nil {
 			failed++
-			c.deps.Log.WarnContext(ctx, "Slack refused a change", "workspace", workspace, "kind", o.Action.Kind,
-				"channel", o.Action.Channel, "error", o.Err)
+			c.deps.Log.WarnContext(ctx, "Slack refused a change", "workspace", logsafe.Value(workspace), "kind", logsafe.Value(string(o.Action.Kind)),
+				"channel", logsafe.Value(o.Action.Channel), "error", logsafe.Error(o.Err))
 			markFailed(report, o.Action, o.Err)
 			continue
 		}

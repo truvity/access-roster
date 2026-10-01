@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/truvity/access-roster/internal/logsafe"
 	"github.com/truvity/access-roster/internal/slackroster/connection"
 	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 	"github.com/truvity/access-roster/policy"
@@ -84,7 +85,7 @@ func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 	for _, name := range entries(recordsDir, log) {
 		raw, err := os.ReadFile(filepath.Join(recordsDir, name)) //nolint:gosec // the directory is the mounted ConfigMap
 		if err != nil {
-			log.Warn("a record could not be read", "key", name, "error", err)
+			log.Warn("a record could not be read", "key", logsafe.Value(name), "error", logsafe.Error(err))
 			continue
 		}
 		switch {
@@ -95,7 +96,7 @@ func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 			}
 			record, err := connection.DecodeRecord(string(raw))
 			if err != nil {
-				log.Warn("a workspace's record could not be read", "workspace", workspace, "error", err)
+				log.Warn("a workspace's record could not be read", "workspace", logsafe.Value(workspace), "error", logsafe.Error(err))
 				continue
 			}
 			s.recorded[workspace] = recorded{team: record.TeamID, owner: record.Owner}
@@ -115,7 +116,7 @@ func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 				confirmation, err := connection.DecodeConfirmation(string(raw))
 				if err != nil || confirmation.Workspace != workspace || confirmation.Channel != channel {
 					// Not a confirmation of what its key says: confirms nothing.
-					log.Warn("a confirmation could not be read and confirms nothing", "key", name)
+					log.Warn("a confirmation could not be read and confirms nothing", "key", logsafe.Value(name))
 					continue
 				}
 				s.confirmation = append(s.confirmation, confirmation)
@@ -137,7 +138,7 @@ func entries(dir string, log *slog.Logger) []string {
 		return nil
 	}
 	if err != nil {
-		log.Warn("a directory could not be listed", "dir", dir, "error", err)
+		log.Warn("a directory could not be listed", "dir", logsafe.Value(dir), "error", logsafe.Error(err))
 		return nil
 	}
 	var names []string
