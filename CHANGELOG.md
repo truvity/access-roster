@@ -1,4 +1,4 @@
-## Unreleased
+## v1.49.0
 
 - **Individual addresses as Slack channel members.** A console channel record
   (`_channel.<workspace>.<name>.json`) and a Slack Connect record
