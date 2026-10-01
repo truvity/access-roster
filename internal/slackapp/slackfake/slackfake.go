@@ -88,6 +88,10 @@ type Channel struct {
 	// while conversations.info still answers for it: a public side of a Slack
 	// Connect channel the bot has not joined is often not listed.
 	UnlistedIn map[string]bool
+	// ListOwnTeamOnly mirrors what Slack really returns to a bot: its
+	// conversations.list carries only the bot's own team for a shared channel
+	// (no shared or connected teams of the guests).
+	ListOwnTeamOnly bool
 }
 
 // privateIn is whether a workspace's side is private.
@@ -383,7 +387,12 @@ func (s *Slack) dispatch(method, team, token string, r *http.Request, p url.Valu
 			if c.UnlistedIn[team] && !slices.Contains(c.Members, BotID(team)) {
 				continue
 			}
-			rows = append(rows, s.channelJSON(c, team))
+			row := s.channelJSON(c, team)
+			if c.ListOwnTeamOnly {
+				row["shared_team_ids"] = []string{team}
+				row["connected_team_ids"] = []string(nil)
+			}
+			rows = append(rows, row)
 		}
 		page, next := s.page(p, rows)
 		return reply{"ok": true, "channels": page, "response_metadata": reply{"next_cursor": next}}

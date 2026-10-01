@@ -1391,6 +1391,7 @@ func (r *rig) createdNamed(name string) int {
 func (r *rig) shareHostedByAcme() slackfake.Channel {
 	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX"}, map[string]bool{"TACME": false, "TGLOBEX": false}, "U1")
 	ch.UnlistedIn = map[string]bool{"TGLOBEX": true}
+	ch.ListOwnTeamOnly = true
 	ch.TeamNames = map[string]string{"TGLOBEX": "legacy-globex"}
 	return *ch
 }
@@ -1477,17 +1478,71 @@ func TestAFailingProbeDoesNotFailThePass(t *testing.T) {
 	}
 }
 
-// A workspace whose team the channel does not list is never asked.
-func TestAnUnlistedWorkspaceIsNotProbed(t *testing.T) {
+// addInitech connects a third workspace.
+func (r *rig) addInitech() {
+	r.t.Helper()
+	r.fake.AddTeam("TINITECH", "Initech")
+	teams["initech"] = "TINITECH"
+	r.t.Cleanup(func() { delete(teams, "initech") })
+	r.policy.Slack.Workspaces["initech"] = policy.SlackWorkspace{}
+	r.console.served["C0initech"] = []string{"initech.example"}
+	r.writeCredential("initech", slackfake.Token("TINITECH"))
+	r.writeConnection("initech", "TINITECH", "C0initech")
+}
+
+// When Slack names the guests, a connected workspace it does not name is
+// never asked.
+func TestAWorkspaceSlackDoesNotNameIsNotProbed(t *testing.T) {
 	r := newRig(t)
+	r.addInitech()
 	logs := r.captureLogs()
-	r.fake.AddTeam("TOUTSIDE", "Outside")
-	r.fake.AddSharedChannel("elsewhere", "TACME", []string{"TOUTSIDE"}, map[string]bool{"TACME": false, "TOUTSIDE": false}, "U1")
-	r.pass("acme", "globex")
+	r.fake.AddSharedChannel("elsewhere", "TACME", []string{"TINITECH"}, map[string]bool{"TACME": false, "TINITECH": true}, "U1")
+	r.pass("acme", "globex", "initech")
 	if n := r.probes("TGLOBEX"); n != 0 {
-		t.Errorf("globex is not in the channel and must not be probed: %d", n)
+		t.Errorf("globex is not named and must not be probed: %d", n)
+	}
+	if n := r.probes("TINITECH"); n != 1 {
+		t.Errorf("initech is named and must be probed: %d", n)
 	}
 	if strings.Contains(logs.String(), "level=WARN") {
 		t.Errorf("unexpected warning:\n%s", logs)
+	}
+}
+
+// Slack tells a bot only its own team: with no guest named, every other
+// connected workspace is asked, a visible side is recorded and an invisible
+// one stays unknown, without a warning.
+func TestEveryWorkspaceIsProbedWhenSlackNamesNoGuests(t *testing.T) {
+	r := newRig(t)
+	r.addInitech()
+	logs := r.captureLogs()
+	ch := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX", "TINITECH"},
+		map[string]bool{"TACME": false, "TGLOBEX": false, "TINITECH": true}, "U1")
+	ch.ListOwnTeamOnly = true
+	ch.UnlistedIn = map[string]bool{"TGLOBEX": true}
+	ch.TeamNames = map[string]string{"TGLOBEX": "legacy-globex"}
+	r.pass("acme", "globex", "initech")
+
+	if n := r.probes("TGLOBEX"); n != 1 {
+		t.Errorf("globex probes = %d, want 1", n)
+	}
+	if n := r.probes("TINITECH"); n != 1 {
+		t.Errorf("initech probes = %d, want 1", n)
+	}
+	if n := r.probes("TACME"); n != 0 {
+		t.Errorf("acme listed it and must not be probed: %d", n)
+	}
+	got := r.reports.workspace(t, "globex").DiscoveredShared
+	if len(got) != 1 || got[0].ID != ch.ID || got[0].Name != "legacy-globex" || got[0].HostTeam != "TACME" {
+		t.Errorf("globex's visible side = %+v", got)
+	}
+	if got := r.reports.workspace(t, "initech").DiscoveredShared; len(got) != 0 {
+		t.Errorf("initech's invisible side was published: %+v", got)
+	}
+	if strings.Contains(logs.String(), "level=WARN") {
+		t.Errorf("an expected channel_not_found warned:\n%s", logs)
+	}
+	if !strings.Contains(logs.String(), "guest-side probe") || !strings.Contains(logs.String(), "probed=2 visible=1 invisible=1") {
+		t.Errorf("want one summary of 2 probed, 1 visible, 1 invisible:\n%s", logs)
 	}
 }
