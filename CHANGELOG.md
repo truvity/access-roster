@@ -22,7 +22,7 @@
   the console. **Connect** pastes a throwaway app configuration token
   (api.slack.com/apps, *Your App Configuration Tokens*; 12 hours, used once,
   never stored or logged): the service creates the roster's own Slack App from
-  a manifest carrying `connection.BotScopes` (nine bot scopes, each for a
+  a manifest carrying `connection.BotScopes` (nine bot scopes, including `conversations.connect:manage` for listing Slack Connect invitations, each for a
   method the controller calls), keeps its client id and secret as "created, not
   installed", and sends an owner of the workspace to Slack. On the way back the
   bot token is written into `<release>-slack-credentials` and the record into

@@ -154,7 +154,7 @@ controller calls:
 | `groups:write` | `conversations.create`, `.invite` and `.kick` in private channels |
 | `channels:join` | `conversations.join`, which adopts a public channel |
 | `conversations.connect:write` | `conversations.inviteShared`, `.acceptSharedInvite` |
-| `conversations.connect:read` | `conversations.listConnectInvites` |
+| `conversations.connect:manage` | `conversations.listConnectInvites` |
 
 **Reconnect** approves the App again (to rotate the token, or to grant scopes a
 later release asks for). When the roster now asks for a scope the App was

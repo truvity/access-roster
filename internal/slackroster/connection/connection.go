@@ -65,7 +65,7 @@ func Reserved(key string) bool { return strings.HasPrefix(key, "_") }
 //	groups:write                      conversations.create, .invite, .kick in private channels
 //	channels:join                     conversations.join, which adopts a public channel
 //	conversations.connect:write       conversations.inviteShared, .acceptSharedInvite
-//	conversations.connect:read        conversations.listConnectInvites
+//	conversations.connect:manage      conversations.listConnectInvites
 //
 // It is the one list the console writes into the App's manifest, compares
 // an install's grant with, and the documentation quotes.
@@ -78,7 +78,7 @@ var BotScopes = []string{
 	"groups:write",
 	"channels:join",
 	"conversations.connect:write",
-	"conversations.connect:read",
+	"conversations.connect:manage",
 }
 
 // Record is one connected workspace, as the console shows it.
