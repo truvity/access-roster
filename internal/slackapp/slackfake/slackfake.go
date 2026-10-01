@@ -81,6 +81,32 @@ type Channel struct {
 	Members   []string
 	Teams     []string          // workspaces that have it; Teams[0] hosts
 	TeamNames map[string]string // name in a workspace that accepted a share
+	// PrivateIn overrides Private for one workspace's side: Slack lets each
+	// organisation choose its own side's visibility.
+	PrivateIn map[string]bool
+}
+
+// privateIn is whether a workspace's side is private.
+func (c *Channel) privateIn(team string) bool {
+	if v, ok := c.PrivateIn[team]; ok {
+		return v
+	}
+	return c.Private
+}
+
+// AddSharedChannel adds a channel that already exists in several workspaces:
+// hosts first, then the guests, each side named and made private or public
+// as given. Members are user ids, shared by every side.
+func (s *Slack) AddSharedChannel(name string, host string, guests []string, private map[string]bool, members ...string) *Channel {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := &Channel{ID: s.id("C"), Name: name, Teams: append([]string{host}, guests...), Members: slices.Clone(members),
+		PrivateIn: map[string]bool{}}
+	for team, v := range private {
+		c.PrivateIn[team] = v
+	}
+	s.Channels[c.ID] = c
+	return c
 }
 
 // Invite is a pending Slack Connect invitation.
@@ -347,7 +373,7 @@ func (s *Slack) dispatch(method, team, token string, r *http.Request, p url.Valu
 			if !slices.Contains(c.Teams, team) || (c.Archived && p.Get("exclude_archived") == "true") {
 				continue
 			}
-			if c.Private && !slices.Contains(c.Members, BotID(team)) {
+			if c.privateIn(team) && !slices.Contains(c.Members, BotID(team)) {
 				continue
 			}
 			rows = append(rows, s.channelJSON(c, team))
@@ -387,7 +413,7 @@ func (s *Slack) dispatch(method, team, token string, r *http.Request, p url.Valu
 		return reply{"ok": true, "channel": s.channelJSON(c, team)}
 	case "conversations.join":
 		c := s.Channels[p.Get("channel")]
-		if c == nil || !slices.Contains(c.Teams, team) || c.Private {
+		if c == nil || !slices.Contains(c.Teams, team) || c.privateIn(team) {
 			return fail("channel_not_found")
 		}
 		if c.Archived {
@@ -417,7 +443,7 @@ func (s *Slack) visible(team, id string) (*Channel, reply) {
 	if c == nil || !slices.Contains(c.Teams, team) {
 		return nil, fail("channel_not_found")
 	}
-	if c.Private && !slices.Contains(c.Members, BotID(team)) {
+	if c.privateIn(team) && !slices.Contains(c.Members, BotID(team)) {
 		return nil, fail("channel_not_found")
 	}
 	return c, nil
@@ -476,7 +502,7 @@ func (s *Slack) kick(team string, p url.Values) reply {
 		return fail("cant_kick_self")
 	case c.General:
 		return fail("cant_kick_from_general")
-	case !c.Private:
+	case !c.privateIn(team):
 		return fail("restricted_action")
 	}
 	i := slices.Index(c.Members, user)
@@ -593,6 +619,17 @@ func (s *Slack) accept(team string, p url.Values) reply {
 		c.TeamNames = map[string]string{}
 	}
 	c.TeamNames[team] = name
+	if v := p.Get("is_private"); v != "" {
+		if c.PrivateIn == nil {
+			c.PrivateIn = map[string]bool{}
+		}
+		for _, t := range c.Teams {
+			if _, set := c.PrivateIn[t]; !set && t != team {
+				c.PrivateIn[t] = c.Private
+			}
+		}
+		c.PrivateIn[team] = v == "true"
+	}
 	// The accepting side's bot joins so it can act there; so does the
 	// invited user, when one was named.
 	for _, id := range []string{BotID(team), inv.RecipientUser} {
@@ -673,11 +710,19 @@ func userJSON(u *User) reply {
 }
 
 func (s *Slack) channelJSON(c *Channel, team string) reply {
-	var shared []string
+	var shared, connected []string
+	host := ""
 	if len(c.Teams) > 1 {
 		shared = slices.Clone(c.Teams)
+		host = c.Teams[0]
+		for _, t := range c.Teams {
+			if t != team {
+				connected = append(connected, t)
+			}
+		}
 	}
-	return reply{"id": c.ID, "name": c.nameIn(team), "shared_team_ids": shared, "is_private": c.Private, "is_archived": c.Archived,
+	return reply{"id": c.ID, "name": c.nameIn(team), "shared_team_ids": shared, "connected_team_ids": connected, "conversation_host_id": host,
+		"num_members": len(c.Members), "is_private": c.privateIn(team), "is_archived": c.Archived,
 		"is_general": c.General, "is_member": slices.Contains(c.Members, BotID(team)),
 		"is_ext_shared": len(c.Teams) > 1, "creator": c.Creator}
 }

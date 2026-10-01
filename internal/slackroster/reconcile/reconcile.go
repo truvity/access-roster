@@ -89,6 +89,10 @@ type SharedChannel struct {
 	From []string `json:"from"`
 	// Private is one visibility for every side, or one per side.
 	Private Privacy `json:"private"`
+	// ChannelID is the Slack id of a channel that already exists and is
+	// already shared, which the record takes over; empty for a channel the
+	// host is to create. The id is the same on every side.
+	ChannelID string `json:"channel_id,omitempty"`
 }
 
 // Privacy is a shared channel's visibility: one for every side, or one per
@@ -111,6 +115,13 @@ func (p Privacy) IsPrivate(workspace string) bool {
 
 var channelName = regexp.MustCompile(`^[a-z0-9_-]{1,80}$`)
 
+// ChannelIDPattern is what a Slack conversation id looks like: a C (public)
+// or G (private) and capitals and digits.
+var channelIDPattern = regexp.MustCompile(`^[CG][A-Z0-9]{1,20}$`)
+
+// ValidChannelID reports whether a string can be a Slack channel id.
+func ValidChannelID(id string) bool { return channelIDPattern.MatchString(id) }
+
 // Validate checks a definition against the policy it runs under: the host
 // and every `with` workspace are declared, the host is not among them, there
 // is at least one, and none repeats; every `from` group is declared; a
@@ -127,6 +138,9 @@ func (s SharedChannel) Validate(p policy.Policy) error {
 	}
 	if _, taken := host.Channels[s.Name]; taken {
 		return fmt.Errorf("%s: the host workspace %s already binds a channel of that name", where, s.Host)
+	}
+	if s.ChannelID != "" && !ValidChannelID(s.ChannelID) {
+		return fmt.Errorf("%s: channel_id %q is not a Slack channel id", where, s.ChannelID)
 	}
 	if len(s.With) == 0 {
 		return fmt.Errorf("%s shares with no workspace; bind it under %s's own channels instead", where, s.Host)
@@ -200,6 +214,12 @@ type Channel struct {
 	// reaches.
 	Shared        bool
 	SharedTeamIDs []string
+	// HostTeamID is the team that owns a shared channel, empty when Slack
+	// did not say; Teams are every team it reaches, this one's among them;
+	// NumMembers is Slack's member count.
+	HostTeamID string
+	Teams      []string
+	NumMembers int
 	// Members are the user ids in it; MembersKnown is whether they were
 	// read, completely.
 	Members      []string

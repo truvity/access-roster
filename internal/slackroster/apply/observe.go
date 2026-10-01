@@ -75,10 +75,12 @@ func Observe(ctx context.Context, client *slackapp.Client, in reconcile.Input) (
 		return reconcile.Observed{}, fmt.Errorf("apply: list channels: %w", err)
 	}
 	names, ids := named(in, cfg)
-	for _, ch := range channels {
+	for i := range channels {
+		ch := &channels[i]
 		c := reconcile.Channel{
 			ID: ch.ID, Name: ch.Name, Creator: ch.Creator, Private: ch.IsPrivate, BotIn: ch.IsMember, Archived: ch.IsArchived,
 			Shared: ch.IsExtShared, SharedTeamIDs: slices.Clone(ch.SharedTeamIDs),
+			HostTeamID: ch.ConversationHostID, Teams: ch.Teams(), NumMembers: ch.NumMembers,
 		}
 		if !ch.IsArchived && (names[ch.Name] || ids[ch.ID]) && (ch.IsMember || !ch.IsPrivate) {
 			members, err := client.Members(ctx, ch.ID)
@@ -91,8 +93,8 @@ func Observe(ctx context.Context, client *slackapp.Client, in reconcile.Input) (
 	}
 
 	// Everyone else in those channels: who are they?
-	for _, c := range obs.Channels {
-		for _, id := range c.Members {
+	for i := range obs.Channels {
+		for _, id := range obs.Channels[i].Members {
 			if id == obs.BotUserID {
 				continue
 			}
@@ -141,6 +143,9 @@ func named(in reconcile.Input, cfg policy.SlackWorkspace) (names, ids map[string
 	for _, s := range in.Shared {
 		if s.Host == in.Workspace || slices.Contains(s.With, in.Workspace) {
 			names[s.Name] = true
+			if s.ChannelID != "" {
+				ids[s.ChannelID] = true
+			}
 		}
 	}
 	return names, ids

@@ -622,3 +622,51 @@ func TestAllChannelsIncludeTheArchivedOnesMarkedAsSuch(t *testing.T) {
 		t.Errorf("channels = %v, want general and live live, old archived", archived)
 	}
 }
+
+func TestSharedChannelFieldsAreReadPerSide(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	ann := w.fake.AddUser("TACME", "ann@acme.example").ID
+	// Hosted by acme, public there, private on globex's side (whose bot is in it).
+	c := w.fake.AddSharedChannel("old-project", "TACME", []string{"TGLOBEX"},
+		map[string]bool{"TACME": false, "TGLOBEX": true}, ann, slackfake.BotID("TGLOBEX"))
+	w.fake.Channels[c.ID].TeamNames = map[string]string{"TGLOBEX": "old-project-globex"}
+
+	for _, tc := range []struct {
+		client  *slackapp.Client
+		name    string
+		private bool
+		bots    bool
+	}{{w.acme, "old-project", false, false}, {w.globex, "old-project-globex", true, true}} {
+		list, err := tc.client.Channels(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got *slackapp.Channel
+		for i := range list {
+			if list[i].ID == c.ID {
+				got = &list[i]
+			}
+		}
+		if got == nil {
+			t.Fatalf("%s: the channel is not listed: %+v", tc.name, list)
+		}
+		if got.Name != tc.name || got.IsPrivate != tc.private || got.ConversationHostID != "TACME" || got.NumMembers != 2 {
+			t.Errorf("%s: %+v", tc.name, got)
+		}
+		if !slices.Equal(got.Teams(), []string{"TACME", "TGLOBEX"}) {
+			t.Errorf("%s: teams = %v", tc.name, got.Teams())
+		}
+	}
+	// acme's bot is not in the public channel; a private side the bot is not in is not listed.
+	w.fake.Channels[c.ID].Members = []string{ann}
+	list, err := w.globex.Channels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range list {
+		if ch.ID == c.ID {
+			t.Errorf("globex lists a private side its bot is not in")
+		}
+	}
+}

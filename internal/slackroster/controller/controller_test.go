@@ -1145,3 +1145,150 @@ func TestARequestedPassRunsOnceForANewerMarkerOnly(t *testing.T) {
 		t.Errorf("%d publications, want exactly one pass for one request", got)
 	}
 }
+
+// A channel made long ago in acme, shared with globex (public on its side)
+// and initech (private on its side), all three workspaces connected, and
+// nothing about it in any record yet: discovery lists it from every side that
+// can see it, a record naming its id takes it over, and the roster joins what
+// is public, waits on what is private until the bot is invited, invites
+// nobody's workspace again and removes nobody.
+func TestAChannelAlreadySharedAcrossThreeWorkspacesIsDiscoveredAndTakenOver(t *testing.T) {
+	r := newRig(t)
+	r.fake.AddTeam("TINITECH", "Initech")
+	teams["initech"] = "TINITECH"
+	t.Cleanup(func() { delete(teams, "initech") })
+	r.policy.Slack.Workspaces["initech"] = policy.SlackWorkspace{}
+	r.console.served["C0initech"] = []string{"initech.example"}
+	r.writeCredential("initech", slackfake.Token("TINITECH"))
+	r.writeConnection("initech", "TINITECH", "C0initech")
+
+	ann := r.person("ann@acme.example", []string{"g-all"}, "acme")
+	bob := r.person("bob@globex.example", []string{"g-all"}, "globex")
+	cy := r.person("cy@initech.example", []string{"g-all"}, "initech")
+	old := r.fake.AddUser("TACME", "old@acme.example").ID
+	shared := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX", "TINITECH"},
+		map[string]bool{"TACME": false, "TGLOBEX": false, "TINITECH": true}, old)
+	r.fake.Channels[shared.ID].TeamNames = map[string]string{"TGLOBEX": "legacy-globex", "TINITECH": "legacy-initech"}
+
+	// Before any record: found, not managed, and nothing touched.
+	r.pass("acme", "globex", "initech")
+	if n := r.touching(shared.ID); n != 0 {
+		t.Fatalf("discovery changed the channel: %d mutations", n)
+	}
+	acme := r.reports.workspace(t, "acme")
+	if acme.Team != "TACME" || len(acme.DiscoveredShared) != 1 {
+		t.Fatalf("acme's report: team %q discovered %+v", acme.Team, acme.DiscoveredShared)
+	}
+	d := acme.DiscoveredShared[0]
+	if d.ID != shared.ID || d.Name != "legacy" || d.Private || d.HostTeam != "TACME" || d.Managed || d.Members != 1 ||
+		!slices.Equal(d.Teams, []string{"TACME", "TGLOBEX", "TINITECH"}) {
+		t.Errorf("acme sees %+v", d)
+	}
+	if g := r.reports.workspace(t, "globex").DiscoveredShared; len(g) != 1 || g[0].Name != "legacy-globex" || g[0].Private {
+		t.Errorf("globex sees %+v", g)
+	}
+	if i := r.reports.workspace(t, "initech").DiscoveredShared; len(i) != 0 {
+		t.Errorf("initech's bot is not in the private side and cannot see it, yet it lists %+v", i)
+	}
+
+	// The console writes a record that names the channel.
+	rec := reconcile.SharedChannel{Name: "legacy", Host: "acme", With: []string{"globex", "initech"}, From: []string{"g-all"}, ChannelID: shared.ID,
+		Private: reconcile.Privacy{PerSide: map[string]bool{"acme": false, "globex": false, "initech": true}}}
+	raw, err := connection.EncodeShared(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.writeRecord(connection.SharedKey("legacy"), raw)
+
+	r.pass("acme", "globex", "initech")
+
+	members := r.fake.Members(shared.ID)
+	for _, want := range []string{slackfake.BotID("TACME"), slackfake.BotID("TGLOBEX"), ann, bob, old} {
+		if !slices.Contains(members, want) {
+			t.Errorf("members = %v, missing %s", members, want)
+		}
+	}
+	if slices.Contains(members, cy) || slices.Contains(members, slackfake.BotID("TINITECH")) {
+		t.Errorf("initech's private side was joined without an invitation: %v", members)
+	}
+	if r.fake.Count("conversations.inviteShared") != 0 || r.fake.Count("conversations.kick") != 0 || r.createdNamed("legacy") != 0 {
+		t.Errorf("invited a connected side, created or removed: share %d create %d kick %d",
+			r.fake.Count("conversations.inviteShared"), r.createdNamed("legacy"), r.fake.Count("conversations.kick"))
+	}
+	if c := r.reports.channel(t, "acme", "legacy"); c.State != status.ChannelOK || c.ID != shared.ID {
+		t.Errorf("host side = %+v", c)
+	}
+	if c := r.reports.channel(t, "initech", "legacy"); c.State != status.ChannelWaiting || !strings.Contains(c.Reason, "invite the bot") {
+		t.Errorf("private guest side = %+v, want waiting with the invite-the-bot hint", c)
+	}
+	if got := r.reports.workspace(t, "acme").DiscoveredShared; len(got) != 1 || !got[0].Managed {
+		t.Errorf("after the record the channel is not marked managed: %+v", got)
+	}
+
+	// Somebody invites initech's bot to its private side.
+	r.fake.Channels[shared.ID].Members = append(r.fake.Channels[shared.ID].Members, slackfake.BotID("TINITECH"))
+	r.pass("acme", "globex", "initech")
+
+	if members = r.fake.Members(shared.ID); !slices.Contains(members, cy) || !slices.Contains(members, old) {
+		t.Errorf("members = %v, want cy added and old kept", members)
+	}
+	if c := r.reports.channel(t, "initech", "legacy"); c.State != status.ChannelOK {
+		t.Errorf("private guest side = %+v", c)
+	}
+	if got := r.reports.workspace(t, "initech").DiscoveredShared; len(got) != 1 || !got[0].Private || !got[0].Managed || got[0].HostTeam != "TACME" {
+		t.Errorf("initech now sees %+v", got)
+	}
+	if r.fake.Count("conversations.inviteShared") != 0 || r.fake.Count("conversations.kick") != 0 {
+		t.Error("a later pass invited a connected side or removed somebody")
+	}
+}
+
+// The existing flow for a channel the host makes is unchanged: no id in the
+// record, the host creates it, invites the guest bot, the guest accepts.
+func TestANewSharedChannelStillFlowsThroughInviteAndAccept(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-all"}, "acme")
+	r.person("bob@globex.example", []string{"g-all"}, "globex")
+	raw, err := connection.EncodeShared(reconcile.SharedChannel{Name: "fresh", Host: "acme", With: []string{"globex"}, From: []string{"g-all"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.writeRecord(connection.SharedKey("fresh"), raw)
+
+	r.pass("acme", "globex")
+	r.pass("acme", "globex")
+
+	if r.createdNamed("fresh") != 1 || r.fake.Count("conversations.inviteShared") != 1 || r.fake.Count("conversations.acceptSharedInvite") != 1 {
+		t.Errorf("create %d share %d accept %d, want one each", r.createdNamed("fresh"), r.fake.Count("conversations.inviteShared"),
+			r.fake.Count("conversations.acceptSharedInvite"))
+	}
+	ch, ok := r.fake.ChannelNamed("TGLOBEX", "fresh")
+	if !ok || len(ch.Members) < 3 {
+		t.Errorf("the guest side = %+v %v", ch, ok)
+	}
+}
+
+// touching counts the calls that changed the channel with this id.
+func (r *rig) touching(id string) int {
+	n := 0
+	for _, c := range r.fake.Calls() {
+		switch c.Method {
+		case "conversations.join", "conversations.invite", "conversations.kick", "conversations.inviteShared":
+			if c.Params.Get("channel") == id {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// createdNamed counts the creations of a channel under a name.
+func (r *rig) createdNamed(name string) int {
+	n := 0
+	for _, c := range r.fake.Calls() {
+		if c.Method == "conversations.create" && c.Params.Get("name") == name {
+			n++
+		}
+	}
+	return n
+}

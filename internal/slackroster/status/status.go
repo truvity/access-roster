@@ -63,10 +63,18 @@ type Workspace struct {
 	// Enabled is whether the controller acts on this workspace. A disabled
 	// one is still derived every tick, and its rows say what WOULD change.
 	Enabled bool `json:"enabled"`
-	Tick    Tick `json:"tick"`
+	// Team is the Slack team id this workspace's bot is in, so a reader can
+	// tell which connected workspace a team id of another report names.
+	Team string `json:"team,omitempty"`
+	Tick Tick   `json:"tick"`
 	// Channels are the channels bound in this workspace, and the sides of
 	// shared channels this workspace takes part in.
 	Channels []Channel `json:"channels,omitempty"`
+	// DiscoveredShared are the Slack Connect channels this workspace's bot
+	// can see, whether or not anything manages them. Additive: a reader
+	// that does not know the field shows no discovery, and nothing else
+	// changes.
+	DiscoveredShared []Discovered `json:"discovered_shared,omitempty"`
 	// Leavers are people the directory no longer has who are still active
 	// in a managed channel. Reported; nobody acts on them here.
 	Leavers []Leaver `json:"leavers,omitempty"`
@@ -79,6 +87,26 @@ type Workspace struct {
 	// restarted controller reads them back and records none of them again.
 	// Nothing renders them.
 	Recorded []string `json:"recorded,omitempty"`
+}
+
+// Discovered is one Slack Connect channel as this workspace's bot sees it.
+type Discovered struct {
+	ID string `json:"id"`
+	// Name is the name on this side.
+	Name string `json:"name"`
+	// Private is whether this side is private.
+	Private bool `json:"private,omitempty"`
+	// Members is the member count Slack gives for this side.
+	Members int `json:"members"`
+	// HostTeam is the Slack team id of the workspace that owns the channel
+	// (conversation_host_id), empty when Slack did not say.
+	HostTeam string `json:"host_team,omitempty"`
+	// Teams are the team ids the channel reaches, this workspace's among
+	// them.
+	Teams []string `json:"teams,omitempty"`
+	// Managed is whether a shared channel record matches it, by channel id,
+	// else by the host and the name.
+	Managed bool `json:"managed,omitempty"`
 }
 
 // Channel is one channel's report.
@@ -283,6 +311,17 @@ func Encode(w Workspace) (string, error) {
 	})
 	for i := range w.Channels {
 		w.Channels[i].Members = sortedMembers(w.Channels[i].Members)
+	}
+	w.DiscoveredShared = slices.Clone(w.DiscoveredShared)
+	sort.Slice(w.DiscoveredShared, func(i, j int) bool {
+		a, b := w.DiscoveredShared[i], w.DiscoveredShared[j]
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.ID < b.ID
+	})
+	for i := range w.DiscoveredShared {
+		w.DiscoveredShared[i].Teams = slices.Sorted(slices.Values(w.DiscoveredShared[i].Teams))
 	}
 	w.Leavers = slices.Clone(w.Leavers)
 	sort.Slice(w.Leavers, func(i, j int) bool {
