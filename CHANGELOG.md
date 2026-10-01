@@ -1,4 +1,4 @@
-## Unreleased
+## v1.45.0
 
 - **Console channels: ordinary Slack channels managed on the console, fed by
   directory groups.** Slack channels now come in two kinds that are never mixed
