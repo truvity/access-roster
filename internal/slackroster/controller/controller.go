@@ -345,9 +345,13 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	if errors.Is(err, errNotConnected) || errors.Is(err, errNotInstalled) {
 		// Not connected, or created and not installed, are states a workspace
 		// passes through on its way to being managed, not failures: the pass
-		// reports it is waiting, with no error, over what was last known.
+		// reports it is waiting, with no error. It carries nothing over: a
+		// workspace with no bot has no known channels or people, and what an
+		// earlier connection saw (before a disconnect, or of another team)
+		// would be shown as if it were current.
 		c.deps.Log.InfoContext(ctx, "a workspace is waiting to be connected", "workspace", logsafe.Value(key), "reason", logsafe.Error(err))
-		report := c.journal.Previous(ctx, key)
+		var report status.Workspace
+		report.Version = status.Version
 		report.Workspace, report.Enabled = key, enabled
 		report.Tick = status.Tick{At: started, Outcome: status.OutcomeWaiting}
 		return report, false

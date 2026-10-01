@@ -443,14 +443,17 @@ one; it updates the manifest with it, then sends an owner to Slack.
 **Disconnect** (with a confirm dialog) revokes the bot token, deletes the
 credential, the record and any confirmation, and records
 `roster.slack_workspace.disconnected`. The controller then reports the
-workspace as not connected. If Slack will not revoke the token the connection is
+workspace as not connected, within a couple of minutes, and carries nothing over
+from the old connection: the Channels and People views stop showing its channels
+and members. If Slack will not revoke the token the connection is
 kept and the dialog offers **Forget anyway**, which forgets it and says in the
 audit record that the token was not revoked; remove the App in its Slack
 settings then. The App itself stays in Slack until it is deleted there.
 Disconnect leaves the workspace's console channel records
 (`_channel.<workspace>.*`) and the Slack Connect records it hosts in place:
-delete them first, or they apply to whatever workspace is connected under that
-key next.
+delete them first, or they apply to whichever Slack team is connected under that
+key next (the dialog says so). Their definitions are not reviewed for a
+different team, so delete them when the key is reused for one.
 
 A workspace's connection is an **owner's** to operate: the installation-wide
 operator, or the operator of the directory workspace recorded as its owner. A viewer sees the page and no buttons; every
