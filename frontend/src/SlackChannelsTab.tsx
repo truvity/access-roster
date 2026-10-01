@@ -22,6 +22,10 @@ import { ConnectDeleteDialog, ConnectEditDialog, DiscoveredConnect } from "./Sla
 import { modeLabel, manageableWorkspaces } from "./slackChannelsModel";
 import { hostChoices, privacyLabel, visibilityMismatchHint } from "./slackConnectModel";
 import {
+  channelFilterOf,
+  channelKinds,
+  channelStateLabel,
+  channelStates,
   connectFilterOf,
   connectStateLabel,
   connectStates,
@@ -30,11 +34,12 @@ import {
   discoveredItems,
   discoveredKinds,
   discoveredVisibilities,
+  filterChannels,
   filterConnect,
   filterDiscovered,
   shownSentence,
 } from "./slackFilters";
-import { buildRows, filterRows, kindLabel, kindSentence, rowPath, visibilityMismatch, type ChannelKind, type ChannelRow } from "./slackIndex";
+import { buildRows, kindLabel, kindSentence, rowPath, visibilityMismatch, type ChannelRow } from "./slackIndex";
 import { Facet, Facets, Failure, Loading, Mono, Names, Nothing, Page, Ref, SearchField, State } from "./ui";
 
 /** Everything the channel tabs and a channel's page read, loaded once for
@@ -153,15 +158,12 @@ function kindCaption(row: ChannelRow): string {
  *  Connect channel names its host and sides. Each name is the channel's
  *  own page. */
 export function ChannelsTab({ index, query, onDone }: { index: SlackIndex; query: URLSearchParams; onDone: (message: string) => void }) {
-  const workspace = query.get("workspace") ?? "";
-  const kind = query.get("kind") ?? "";
+  const filter = channelFilterOf(query);
   const [dialogue, setDialogue] = useState<Dialogue | undefined>();
-  const rows = filterRows(index.rows, { workspace, kind });
+  const rows = filterChannels(index.rows, filter);
   const keys = (index.status.value?.workspaces ?? []).map((w) => w.workspace);
   const canCreate = manageableWorkspaces(index.ordinary.value?.workspaces ?? []).length > 0 && index.ordinary.value?.available === true;
-  const narrow = (next: { workspace?: string; kind?: string }) => go(paths.slackChannels({ workspace, kind, ...next }));
-
-  const kinds: ChannelKind[] = ["policy", "console", "connect"];
+  const narrow = (next: Partial<typeof filter>) => go(paths.slackChannels({ ...filter, ...next }));
   return (
     <Page
       title="Channels"
@@ -177,8 +179,25 @@ export function ChannelsTab({ index, query, onDone }: { index: SlackIndex; query
       <Loading busy={index.loading} />
       <Failure error={index.error} />
       <Facets>
-        <Facet value={workspace} onChange={(next) => narrow({ workspace: next })} options={keys.map((key) => ({ value: key, label: key }))} all={{ value: "", label: "Every workspace" }} mono />
-        <Facet value={kind} onChange={(next) => narrow({ kind: next })} options={kinds.map((k) => ({ value: k as string, label: kindLabel[k] }))} all={{ value: "", label: "Every kind" }} />
+        <Facet value={filter.workspace} onChange={(next) => narrow({ workspace: next })} options={keys.map((key) => ({ value: key, label: key }))} all={{ value: "", label: "Every workspace" }} mono />
+        <Facet
+          value={filter.kind}
+          onChange={(next) => narrow({ kind: next as typeof filter.kind })}
+          options={channelKinds.map((k) => ({ value: k as string, label: kindLabel[k] }))}
+          all={{ value: "", label: "Every kind" }}
+        />
+        <Facet
+          value={filter.state}
+          onChange={(next) => narrow({ state: next as typeof filter.state })}
+          options={channelStates.map((st) => ({ value: st as string, label: channelStateLabel[st] }))}
+          all={{ value: "", label: "Every state" }}
+        />
+        <SearchField label="Channel name" value={filter.q} onChange={(q) => replace(paths.slackChannels({ ...filter, q }))} />
+        {rows.length !== index.rows.length ? (
+          <Typography variant="caption" color="text.secondary">
+            {rows.length} of {index.rows.length} shown
+          </Typography>
+        ) : null}
       </Facets>
       {index.ordinary.value && !index.ordinary.value.available ? (
         <Alert severity="info" sx={{ mb: 2 }}>

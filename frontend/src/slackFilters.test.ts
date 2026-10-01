@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { connectFilterOf, connectStateOf, connectWorkspaces, discoveredFilterOf, discoveredItems, filterConnect, filterDiscovered, shownSentence } from "./slackFilters";
+import { channelFilterOf, channelStateOf, connectFilterOf, filterChannels, connectStateOf, connectWorkspaces, discoveredFilterOf, discoveredItems, filterConnect, filterDiscovered, shownSentence } from "./slackFilters";
 import { paths, parse } from "./router";
 import type { ChannelRow } from "./slackIndex";
 import { visibilityMismatch } from "./slackIndex";
@@ -83,6 +83,54 @@ describe("the Slack Connect filters", () => {
   });
 });
 
+describe("the Channels filters", () => {
+  const chan = (name: string, workspace: string, kind: ChannelRow["kind"], state: string, id = "", sides: string[] = []) =>
+    ({ name, workspace, kind, id, state: { kind: state }, sides: [workspace, ...sides].map((w) => ({ workspace: w })) }) as unknown as ChannelRow;
+  const all = [
+    chan("alerts", "acme", "policy", "ok", "C0AAA"),
+    chan("eng", "acme", "console", "held"),
+    chan("ideas", "globex", "console", "unreported"),
+    chan("partners", "globex", "connect", "their-move", "C0PART", ["acme"]),
+    chan("old", "globex", "console", "refused"),
+    chan("fresh", "globex", "policy", "will-create"),
+  ];
+  const by = (query: string) => filterChannels(all, channelFilterOf(q(query))).map((r) => r.name);
+
+  it("read the query and ignore a value the tab does not offer", () => {
+    expect(channelFilterOf(q("workspace=acme&kind=connect&state=held&q=x"))).toEqual({ workspace: "acme", kind: "connect", state: "held", q: "x" });
+    expect(channelFilterOf(q("kind=bogus&state=nope"))).toMatchObject({ kind: "", state: "" });
+  });
+
+  it("keep everything with no filter", () => {
+    expect(by("")).toHaveLength(6);
+  });
+
+  it("narrow by a workspace on any side, and by kind", () => {
+    expect(by("workspace=acme")).toEqual(["alerts", "eng", "partners"]);
+    expect(by("kind=console")).toEqual(["eng", "ideas", "old"]);
+    expect(by("workspace=globex&kind=console")).toEqual(["ideas", "old"]);
+  });
+
+  it("name a state whatever manages the channel", () => {
+    expect(all.map((r) => channelStateOf(r))).toEqual(["ok", "held", "not_reported", "waiting", "invalid", ""]);
+    expect(by("state=ok")).toEqual(["alerts"]);
+    expect(by("state=waiting")).toEqual(["partners"]);
+    expect(by("state=held")).toEqual(["eng"]);
+    expect(by("state=invalid")).toEqual(["old"]);
+    expect(by("state=not_reported")).toEqual(["ideas"]);
+  });
+
+  it("search by name or Slack id, ignoring case", () => {
+    expect(by("q=ENG")).toEqual(["eng"]);
+    expect(by("q=c0part")).toEqual(["partners"]);
+  });
+
+  it("combine, and say N of M", () => {
+    expect(by("workspace=globex&state=not_reported&q=id")).toEqual(["ideas"]);
+    expect(shownSentence(by("kind=policy").length, all.length)).toBe("2 of 6 shown");
+  });
+});
+
 describe("the filters in the address", () => {
   it("round-trip through the router", () => {
     const d = parse(`#${paths.slackDiscovered({ workspace: "acme", kind: "shared", visibility: "private", q: "ga", sort: "members" })}`);
@@ -91,6 +139,10 @@ describe("the filters in the address", () => {
     const c = parse(`#${paths.slackConnect({ host: "acme", side: "globex", state: "held", q: "x" })}`);
     expect(c).toMatchObject({ view: "slack", id: "connect" });
     expect(connectFilterOf(c.query)).toEqual({ host: "acme", side: "globex", state: "held", q: "x" });
+    const ch = parse(`#${paths.slackChannels({ workspace: "acme", kind: "console", state: "not_reported", q: "en" })}`);
+    expect(ch).toMatchObject({ view: "slack", id: "channels" });
+    expect(channelFilterOf(ch.query)).toEqual({ workspace: "acme", kind: "console", state: "not_reported", q: "en" });
+    expect(paths.slackChannels({ workspace: "", kind: "", state: "", q: "" })).toBe("/slack/channels");
     expect(paths.slackDiscovered({ workspace: "", q: "" })).toBe("/slack/discovered");
     expect(paths.slackConnect()).toBe("/slack/connect");
   });

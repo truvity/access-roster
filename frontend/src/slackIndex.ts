@@ -186,15 +186,6 @@ export function rowPath(row: Pick<ChannelRow, "workspace" | "name">): string {
   return paths.slackChannel(row.workspace, row.name);
 }
 
-/** Narrow by workspace (any side) and by kind; an empty filter keeps all. */
-export function filterRows(rows: ChannelRow[], filter: { workspace?: string; kind?: string }): ChannelRow[] {
-  return rows.filter(
-    (row) =>
-      (!filter.workspace || row.sides.some((s) => s.workspace === filter.workspace) || row.workspace === filter.workspace) &&
-      (!filter.kind || row.kind === filter.kind),
-  );
-}
-
 /** Whether the controller holds a managed Slack Connect channel because a
  *  side's visibility in Slack differs from its record: the row, or any side's
  *  report, says so. The operator's way out is Edit. */

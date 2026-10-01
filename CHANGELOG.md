@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **The Channels tab uses the shared filter bar.** It narrows by workspace
+  (any side of a channel), kind (policy, console, Slack Connect), state (ok,
+  waiting, held, invalid, not reported) and a name or Slack id search, with the
+  same components as Discovered and Slack Connect, and its summary reads "N of
+  M shown". Every selection is in the address query
+  (`#/slack/channels?workspace=&kind=&state=&q=`).
 - **Fix: the guest-side probe skipped every channel when Slack named no
   guests.** Slack returns a bot only its own team for a Slack Connect channel,
   so the team filter added for the probe skipped every workspace and a guest

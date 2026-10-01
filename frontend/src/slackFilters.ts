@@ -154,3 +154,67 @@ export function connectWorkspaces(rows: ChannelRow[]): { hosts: string[]; sides:
     sides: [...new Set(rows.flatMap((r) => r.sides.map((s) => s.workspace)))].sort(),
   };
 }
+
+// ---------------------------------------------------------------- Channels
+
+export const channelKinds = ["policy", "console", "connect"] as const;
+export const channelStates = ["ok", "waiting", "held", "invalid", "not_reported"] as const;
+
+export const channelStateLabel: Record<(typeof channelStates)[number], string> = {
+  ok: "ok",
+  waiting: "waiting",
+  held: "held",
+  invalid: "invalid",
+  not_reported: "not reported",
+};
+
+export type ChannelFilter = {
+  workspace: string;
+  kind: "" | (typeof channelKinds)[number];
+  state: "" | (typeof channelStates)[number];
+  q: string;
+};
+
+export function channelFilterOf(query: URLSearchParams): ChannelFilter {
+  return {
+    workspace: query.get("workspace") ?? "",
+    kind: pick(query.get("kind"), channelKinds),
+    state: pick(query.get("state"), channelStates),
+    q: query.get("q") ?? "",
+  };
+}
+
+/** A channel row's state as the filter names it, whatever manages the
+ *  channel; "" for a state the filter does not offer (a channel about to be
+ *  created, adopted or accepted), which only "every state" shows. */
+export function channelStateOf(row: Pick<ChannelRow, "state">): "" | (typeof channelStates)[number] {
+  switch (row.state.kind) {
+    case "ok":
+      return "ok";
+    case "waiting":
+    case "their-move":
+      return "waiting";
+    case "held":
+    case "needs-you":
+      return "held";
+    case "refused":
+      return "invalid";
+    case "unreported":
+      return "not_reported";
+    default:
+      return "";
+  }
+}
+
+/** The channel rows the filter keeps: by a workspace on any side, by kind,
+ *  by state, and by name or Slack id. */
+export function filterChannels(rows: ChannelRow[], filter: ChannelFilter): ChannelRow[] {
+  const needle = lower(filter.q.trim());
+  return rows.filter(
+    (row) =>
+      (!filter.workspace || row.workspace === filter.workspace || row.sides.some((s) => s.workspace === filter.workspace)) &&
+      (!filter.kind || row.kind === filter.kind) &&
+      (!filter.state || channelStateOf(row) === filter.state) &&
+      (needle === "" || lower(row.name).includes(needle) || (row.id !== "" && lower(row.id).includes(needle))),
+  );
+}

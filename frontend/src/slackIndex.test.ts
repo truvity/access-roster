@@ -5,7 +5,8 @@ import { ListSlackChannelsResponseSchema } from "./gen/directoryroster/v1/slack_
 import { ListSlackSharedChannelsResponseSchema } from "./gen/directoryroster/v1/slack_connect_pb";
 import { GetSlackStatusResponseSchema } from "./gen/directoryroster/v1/slack_pb";
 import { parse, paths } from "./router";
-import { buildRows, filterRows, findRow, groupPeople, memberSentence, peopleSentence, placesOfPerson, reachOfDirectoryGroup, rowPath, summaryLine } from "./slackIndex";
+import { channelFilterOf, filterChannels } from "./slackFilters";
+import { buildRows, findRow, groupPeople, memberSentence, peopleSentence, placesOfPerson, reachOfDirectoryGroup, rowPath, summaryLine } from "./slackIndex";
 
 const member = (email: string, state: string, reason = "") => ({ person: email.split("@")[0], email, state, reason });
 
@@ -94,10 +95,11 @@ describe("addressing a channel", () => {
   });
 
   it("narrows by workspace and kind", () => {
-    expect(filterRows(rows, { workspace: "globex" }).map((r) => r.name)).toEqual(["partners"]);
-    expect(filterRows(rows, { kind: "console" }).map((r) => r.name)).toEqual(["eng", "ideas"]);
-    expect(filterRows(rows, { workspace: "acme", kind: "policy" }).map((r) => r.name)).toEqual(["infra-alerts"]);
-    expect(filterRows(rows, {})).toHaveLength(4);
+    const by = (query: string) => filterChannels(rows, channelFilterOf(new URLSearchParams(query))).map((r) => r.name);
+    expect(by("workspace=globex")).toEqual(["partners"]);
+    expect(by("kind=console")).toEqual(["eng", "ideas"]);
+    expect(by("workspace=acme&kind=policy")).toEqual(["infra-alerts"]);
+    expect(by("")).toHaveLength(4);
   });
 });
 
