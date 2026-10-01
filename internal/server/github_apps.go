@@ -143,7 +143,7 @@ func (c *Console) ListGitHubApps(
 	facts.bound = slices.DeleteFunc(facts.bound, func(org string) bool {
 		owner, connected := facts.owners[org]
 		if connected {
-			return !id.CanFor(access.RoleViewer, owner)
+			return !mayOwned(id, access.RoleViewer, owner)
 		}
 		return !id.Can(access.RoleViewer) && !id.CanAnywhere(access.RoleOperator)
 	})

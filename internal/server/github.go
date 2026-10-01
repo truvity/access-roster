@@ -112,9 +112,7 @@ func (c *Console) GetGitHubStatus(
 	}
 	owners := make(map[string]string, len(connections))
 	for org := range connections {
-		if connections[org].Owner != "" {
-			owners[org] = connections[org].Owner
-		}
+		owners[org] = connections[org].Owner
 	}
 	dirs, err := c.directories(ctx)
 	if err != nil {
