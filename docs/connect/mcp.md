@@ -145,30 +145,49 @@ without being told out of band. This is the MCP server's own
 responsibility to serve: access-roster is the authorization server named
 inside it, not the party that publishes it.
 
-## Forwarding the caller's identity onward
+## Calling a backend: the server's own identity, not the caller's
 
-When the MCP server calls a backend on the user's behalf rather than with
-an identity of its own, it forwards the caller's bearer token exactly as
-it received it — the same "present what you were given" rule as any
-other pass-through call, never re-minting or widening it.
+The caller's token is for the MCP server and no one else: its `aud` is
+the server's own resource URI, and the MCP authorization spec forbids a
+server to pass through the token it received. So when a tool calls a
+backend, the server does **not** forward the caller's bearer.
 
-**Not verified: this only works for an HTTP-based MCP transport**
-(Streamable HTTP, or the older HTTP+SSE transport), where the bearer
-travels as an `Authorization` header on each request. Over **stdio**
-there is no HTTP layer between the client and the server to carry a
-header at all, so header pass-through does not apply there by
-construction; whether any *particular* MCP server actually forwards the
-header correctly on an HTTP transport is a property of that server's own
-code, not of the issuer, and is not verified here for any specific one.
+1. **Verify** the caller: signature, issuer, and `aud` equal to the
+   server's own resource URI (above).
+2. **Decide** with the caller's identity: its `groups` and subject are
+   what the server authorizes the tool call against.
+3. **Log** the caller in the server's own audit line, so a record says
+   who asked.
+4. **Call upstream as the server itself**: its workload identity, traded
+   for a token for the backend's audience by RFC 8693 token exchange
+   ([service-to-service](service-to-service.md)). The two identities
+   answer different questions (who asked, and what this service may
+   read), and the backend sees only the second.
+
+[`resource-proxy`](#fronting-a-stock-mcp-server-with-resource-proxy)
+does steps 1, 3 and 4 for a stock server (see its
+[outbound section](#outbound-the-workloads-own-identity)); a Go server
+does the same with `identity/resource` below.
+
+**Acting on behalf of the user is not provided today.** If a backend must
+act as the user rather than as the service, that needs a delegation (a
+token exchange carrying an actor claim, naming the server as the actor
+for that user) designed explicitly, with its own consent and audit
+story. access-roster does not offer one yet; do not approximate it by
+forwarding the caller's token.
+
+This applies to HTTP transports (Streamable HTTP, HTTP+SSE), where the
+bearer arrives as an `Authorization` header. Over **stdio** there is no
+HTTP layer and so no bearer to verify at all.
 
 ## Permissions: nothing new is granted
 
-An MCP tool that calls a backend is bound by the same `groups` claim that
-backend's own RBAC already reads. The resource's `requires` decides who
-may reach the MCP server at all; what a tool may then do through it is
-whatever the caller's groups already let it do on the backend directly —
-an MCP server is a new way to call something, never a new grant. There is
-no separate "tool permission" vocabulary to maintain in the policy.
+An MCP tool that calls a backend is bound by the caller's `groups`: the
+resource's `requires` decides who may reach the MCP server at all, and the
+server decides what a tool may then do for that caller, bounded by what
+its own workload identity may do on the backend. An MCP server is a new
+way to call something, never a new grant. There is no separate "tool
+permission" vocabulary to maintain in the policy.
 
 ## A Go server: `identity/resource`
 
