@@ -173,6 +173,13 @@ changed only by the installation-wide operator, and the change is its own
 audit record (`roster.slack_workspace.owner_changed`, with the previous and
 new owner). The page shows the owner by its primary domain, not its id.
 
+Connecting a workspace nobody has connected records the **connecting
+operator's directory** as its owner: whoever connects it first owns it. That
+is a rule about who operates the connection inside access-roster; Slack itself
+still requires an owner or administrator of the target workspace to approve
+the App, so the console grants nothing in Slack. The installation-wide
+operator can change the owner afterwards, and the change is audited.
+
 ## Connect a workspace from the console
 
 The **Slack** page lists every workspace the policy declares
