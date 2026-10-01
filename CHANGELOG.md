@@ -1,4 +1,4 @@
-## Unreleased
+## v1.41.0
 
 - **New: `OUTBOUND_CA_FILE` for resource-proxy.** A PEM bundle appended to the
   system root pool, used only by the outbound forwarder's connection to
