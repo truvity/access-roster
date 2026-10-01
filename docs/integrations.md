@@ -27,7 +27,7 @@ flowchart TB
     hub["the directory<br/>inside access-issuer"]:::hub
     iss["access-issuer<br/>the issuer, the console"]:::token
     ghr["github-roster<br/>the controller, same chart"]:::token
-    proxy["access-proxy<br/>one per console"]:::token
+    slr["slack-roster<br/>the controller, same chart"]:::token
     lib["Go module · TS package<br/>inside applications"]:::token
     ctl["accessctl<br/>on laptops and in jobs"]:::token
     act["exchange action<br/>in workflows"]:::token
@@ -38,8 +38,10 @@ flowchart TB
     eks["Kubernetes API servers<br/>(one issuer each)"]:::ext
     aws["AWS accounts<br/>(IAM OIDC provider each)"]:::ext
     argo["ArgoCD · Kargo"]:::ext
+    proxy["gateway OIDC<br/>Envoy SecurityPolicy, or oauth2-proxy"]:::ext
     consoles["Consoles<br/>(ours and business test surfaces)"]:::ext
     ghteams["GitHub organisations<br/>teams, and runner Apps"]:::ext
+    slack["Slack workspaces<br/>channels, Slack Connect"]:::ext
     reg["ECR · CodeArtifact · any AWS service<br/>(on top of the profiles)"]:::ext
   end
 
@@ -59,6 +61,8 @@ flowchart TB
   act -- "⑬ exchange, shell only" --> iss
   iss -. "⑭ who holds each group<br/>console API, own ServiceAccount token" .-> ghr
   ghr -- "⑭ invites, teams, removals<br/>as each organisation's App" --> ghteams
+  iss -. "⑲ who holds each group, who is in each directory group<br/>console API, own ServiceAccount token" .-> slr
+  slr -- "⑲ invites, removals, channels<br/>as each workspace's App" --> slack
   aws -. "⑮ AWS's own tooling<br/>with --profile" .-> reg
 
   classDef ext fill:#8A93A3,stroke:#5E6675,color:#fff
@@ -75,15 +79,15 @@ flowchart TB
 |---|---|---|---|---|
 | **Service** | access-issuer | the whole of access-roster | the platform, once per installation | **running** since 0.6; the directory folded in at 0.12 ([design](design/access-roster.md)); all four OpenID profiles run with no failure ([conformance](conformance.md)) |
 | **Service** | github-roster | the GitHub controller: one loop beside the service that keeps every connected organisation's teams as the policy says | the platform, from the same chart | **acting** since 1.5; each organisation a dry run until listed in `githubRoster.actsIn` |
-| **Service** | slack-roster | the Slack controller: one loop beside the service that keeps every connected workspace's channels as the policy says ([connect](connect/slack-workspace.md)) | the platform, from the same chart | **built**; each workspace a dry run until listed in `slackRoster.actsIn` |
-| **Helm chart** | `access-issuer` | the whole service, both processes; expects a Valkey, and an audit installation to record into | the platform | published per tag |
+| **Service** | slack-roster | the Slack controller: one loop beside the service that keeps every connected workspace's channels as the policy says ([connect](connect/slack-workspace.md)) | the platform, from the same chart | **acting** since 1.41; each workspace a dry run until listed in `slackRoster.actsIn` |
+| **Helm chart** | `access-issuer` | the whole service, up to three processes; expects a Valkey, and an audit installation to record into | the platform | published per tag |
 | **Helm chart** | `access-proxy` | removed in v1.32.0 ([ADR 0003](decisions/0003-deprecate-access-proxy.md)) — was oauth2-proxy and its wiring in front of one console with no OpenID flow of its own on Envoy Gateway only. Gateway-native OIDC replaces it there; for other gateways, run upstream oauth2-proxy yourself. See [design/access-proxy.md](design/access-proxy.md) | was Envoy Gateway only | removed in v1.32.0 |
-| **Go module** | `github.com/truvity/access-roster` | `identity` (the two verifiers and a net/http middleware), `policy`, `backend`, `tokens` | every Go service and console | published per tag |
+| **Go module** | `github.com/truvity/access-roster` | `identity` (the two verifiers and a net/http middleware), `policy`, `tokens`, and `backend`, the contract a directory backend implements | every Go service and console | published per tag |
 | **TypeScript package** | `@truvity/access-roster`, on GitHub Packages | `useIdentity()`, `<UserBadge/>` over `/.access/whoami`; `/server` verifies a bearer in Node | every console UI, and Node services | published per tag |
-| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `token`, `whoami`, `exchange` | people, on laptops, and a CI job with the same files | built; a Nix flake on every release, for devbox |
+| **CLI** | `accessctl` | `login`, `setup`, `kubeconfig`, `aws-config`, `kube-token`, `aws`, `token`, `github-token`, `bao`, `r2`, `psql`/`pg`, `ssh known-hosts`, `whoami`, `exchange` | people, on laptops, and a CI job with the same files | built; a Nix flake on every release, for devbox |
 | **GitHub Action** | `truvity/access-roster` (root `action.yml`), pinned to a release | shell only: exchanges the job's token, writes a kubeconfig and AWS profiles | every workflow that deploys | built |
 | **Store** | the audit trail | not this service's: an installation of [truvity/audit](https://github.com/truvity/audit) in this service's namespace keeps it, locks it and signs it. This service declares what it can record in a catalogue, sends a record per action, and reads that installation's query service for the console's Audit page | the platform, one installation per application | connected since 1.26; kept in a bucket of its own until then, which ages out under its lock. A recovery sign-in is the one action refused when its record cannot be kept |
-| **File format** | the policy | groups, claims, lifetimes, clients, resources, client documents and GitHub bindings — one schema for both services | the platform, in its own repository, rendered from its access matrix | in force |
+| **File format** | the policy | groups, claims, lifetimes, clients, resources, client documents, GitHub bindings, `people` and Slack channels — one schema for the service and both controllers | the platform, in its own repository, rendered from its access matrix | in force |
 | **Contracts** | `proto/directory/v1`, `proto/directoryroster/v1` | DirectoryService and the console's own services | consumers of access-roster | now |
 | **Documentation** | `docs/connect/*` | one guide per kind of relying party, plus the recipes that run on top of the profiles | everyone | now |
 
@@ -91,7 +95,7 @@ flowchart TB
 
 | Ours (this repository) | Third-party, used as is |
 |---|---|
-| access-issuer and its GitHub controller, the Go module, the TypeScript package, accessctl, the exchange action, the policy schema | Google Workspace (sign-in, MFA, directory) — Entra the same way once its backend is built, GitHub Actions OIDC, Envoy Gateway (gateway-native OIDC), **oauth2-proxy** (if run upstream on non-Envoy gateways), Valkey, kubelogin, kubectl, the AWS CLI, `curl` and `jq` in the action, the OpenID Provider library the issuer is built on |
+| access-issuer and its two controllers (GitHub and Slack), the Go module, the TypeScript package, accessctl, the exchange action, the policy schema | Google Workspace (sign-in, MFA, directory) — Entra the same way once its backend is built, GitHub Actions OIDC, Envoy Gateway (gateway-native OIDC), **oauth2-proxy** (if run upstream on non-Envoy gateways), Valkey, kubelogin, kubectl, the AWS CLI, `curl` and `jq` in the action, the OpenID Provider library the issuer is built on |
 
 Cases ⑥, ⑦ and ⑧ read `aud` as the client asking. Since v1.29.0 a client
 may instead name a **resource** it wants a token *for* (RFC 8707) — a
@@ -117,22 +121,24 @@ with the full mechanism — the flow, what to configure, what you get.
 | ⑥ | The issuer → a Kubernetes cluster | the issuer; the API server reads `groups` | one OIDC provider per cluster, one public client, RBAC bound to internal group names exactly as the policy spells them | [connect/kubernetes-cluster.md](connect/kubernetes-cluster.md) |
 | ⑦ | The issuer → an AWS account | the issuer; the trust policy reads `aud` | one IAM OIDC provider per account, one trust policy per role, `AssumeRoleWithWebIdentity` | [connect/aws-account.md](connect/aws-account.md) |
 | ⑧ | The issuer → ArgoCD and Kargo | the issuer | their own OIDC login, reading `groups` through their own policy, unchanged | [connect/argocd.md](connect/argocd.md), [connect/kargo.md](connect/kargo.md) |
-| ⑨+⑩ | A console behind a proxy | the issuer, only | gateway-native OIDC by default on Envoy Gateway, `access-proxy` (deprecated) there until migrated, or upstream oauth2-proxy run by hand on any other gateway | [connect/console-app.md](connect/console-app.md), [connect/business-surface.md](connect/business-surface.md) |
+| ⑨+⑩ | A console behind a proxy | the issuer, only | gateway-native OIDC on Envoy Gateway, or upstream oauth2-proxy run by hand on any other gateway (the `access-proxy` chart was removed in v1.32.0) | [connect/console-app.md](connect/console-app.md), [connect/business-surface.md](connect/business-surface.md) |
 | ⑪ | An application reads who is calling | whichever its listener was built for | the Go module or the TypeScript package verifies a bearer and reads `groups`; no relying party re-maps a name | [reference/go-module.md](reference/go-module.md), [reference/typescript.md](reference/typescript.md) |
-| ⑫ | A person's laptop | the issuer | `accessctl login` once; `kubeconfig`, `aws-config`, `token` and `credential` all exchange the cached sign-in | [reference/accessctl.md](reference/accessctl.md) |
+| ⑫ | A person's laptop | the issuer | `accessctl login` once; `kubeconfig`, `aws-config`, `token`, `bao`, `r2` and `pg`/`psql` all exchange the cached sign-in | [reference/accessctl.md](reference/accessctl.md) |
 | ⑬ | A workflow | the issuer, by exchange (③) | one shell-only step exchanges the job's own token and writes a kubeconfig and an AWS profile | [connect/github-actions.md](connect/github-actions.md) |
 | ⑭ | GitHub teams | none of ours — a GitHub App per organisation | the controller asks who holds each bound group and invites, adds, promotes and removes — the **sync model**, because GitHub can be written to | [connect/github-organisation.md](connect/github-organisation.md), [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md), [connect/infrastructure-as-code.md](connect/infrastructure-as-code.md) |
 | ⑮ | Registries, artifacts and every other AWS service | none of ours — an AWS credential from ⑦ | `--profile <role>@<account>`, then the service's own login: ECR's credential helper, `aws codeartifact login`, and so on | [connect/registries-and-artifacts.md](connect/registries-and-artifacts.md) |
 | ⑯ | Break-glass | the cluster, used deliberately as the floor | a person mints a ServiceAccount token and signs in with it, for the day the directory is broken and the issuer's own anchor is unavailable by construction | [operations/runbook.md#lost-operator-access](operations/runbook.md#lost-operator-access) |
 | ⑰ | The issuer → a secret manager that mints certificates | the issuer; the manager's JWT mount reads `aud` and `groups` | exchange for `openbao`, log in on the mount, one `sign` call, the manager's token is revoked | [connect/openbao.md](connect/openbao.md) |
 | ⑱ | The issuer → an R2 credential broker | the issuer; the broker verifies a standard OIDC token, reading `aud` and `groups` | `accessctl r2` exchanges for the broker's audience and execs the broker's own CLI with the token in its environment; the broker maps **group only** to a bucket, prefixes and a permission — none of that decision lives here | [connect/r2-storage.md](connect/r2-storage.md) |
+| ⑲ | Slack channels | none of ours — a Slack App per workspace | the controller asks who holds each bound internal group and who is in each directory group (or individual address) a console channel names, then creates or adopts channels, invites people and, in a strict private channel, removes them after the directory vouches — the **sync model**; Slack Connect channels between the installation's own workspaces are records on the console and are never removed from | [connect/slack-workspace.md](connect/slack-workspace.md), [connect/slack-connect-channels.md](connect/slack-connect-channels.md), [connect/slack-apps-catalogue.md](connect/slack-apps-catalogue.md) |
+| ⑳ | A secret store receives recovery copies and projected App credentials | none of ours — the store's own access | External Secrets copies, whole and bundled under one remote key each, the Secrets the console writes that nothing else can re-deliver (`directory.push`, `githubApps.push`, `slackState.push` with its two keys), and, per catalogue App that carries `push`, exactly that App's credential (GitHub: the three property keys; Slack: the bot token) for a program that cannot ask the issuer at run time. Off unless written out; what lands there is a real credential | [reference/configuration.md](reference/configuration.md#restoring-from-the-secrets-alone), [connect/github-apps-catalogue.md](connect/github-apps-catalogue.md#projecting-one-app-to-a-secret-store), [connect/slack-apps-catalogue.md](connect/slack-apps-catalogue.md#projecting-one-apps-bot-token-to-a-secret-store) |
 
 ## Reading the two models together
 
 Cases ⑥ ⑦ ⑧ ⑩ ⑮ ⑰ ⑱ are the **claims model**: the decision rides in a token,
 because a cluster, a cloud account or a session cannot call a directory.
-Case ⑭ is the **sync model**: the decision is materialized where it is
-enforced, because GitHub can be written to. Both draw from the same directory
+Cases ⑭ and ⑲ are the **sync model**: the decision is materialized where it is
+enforced, because GitHub and Slack can be written to. Both draw from the same directory
 and the same policy; the choice per relying party is dictated by what that
 relying party can consume, never by preference.
 

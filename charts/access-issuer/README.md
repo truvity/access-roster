@@ -2,8 +2,10 @@
 
 Deploys the whole of access-roster: the directory reader, the policy,
 the OpenID provider, the login page, the console and the audit trail in
-one process, and, with `githubRoster.enabled`, the GitHub controller
-beside it. Published to `ghcr.io/truvity/charts/access-issuer` on every
+one process, and, with `githubRoster.enabled` and `slackRoster.enabled`, the
+GitHub and Slack controllers beside it. Each controller is a second Deployment
+from the same chart with no listener, and is a dry run for every organisation or
+workspace until it is listed in `githubRoster.actsIn` or `slackRoster.actsIn`. Published to `ghcr.io/truvity/charts/access-issuer` on every
 `v*` tag of the repository; the tag is the chart's version.
 
 What the chart includes, what it expects and every value are documented in
@@ -16,10 +18,15 @@ Three things it will not do for you. It does not create the signing key
 service that mints its own credential is an exception to how every other
 credential here is provisioned. It does not put an authenticating proxy
 in front of the issuer: this *is* the thing that authenticates, and a
-proxy would have nowhere to send anyone. And it does not back up what
-the console adds: the four Secrets that hold it are named in
-[docs/reference/configuration.md](../../docs/reference/configuration.md#restoring-from-the-secrets-alone),
-and copying them is the deployment's job.
+proxy would have nowhere to send anyone. And it does not make a second
+copy of what the console adds unless you ask it to: the Secrets that hold it are
+named in
+[docs/reference/configuration.md](../../docs/reference/configuration.md#restoring-from-the-secrets-alone)
+(the Slack ones, `<release>-slack-credentials`, `<release>-slack-records` and
+`<release>-slack-catalogue-apps`, are named in the values), and
+`directory.push`, `githubApps.push` and `slackState.push` render an External
+Secrets `PushSecret` for the ones nothing upstream can re-deliver. Copying the
+rest is the deployment's job.
 
 Without `audit.s3.bucket` the audit trail stays in one replica's memory,
 which is not a record; the service says so at start. A bucket needs an
@@ -36,12 +43,24 @@ default: creating an App is an owner of the organisation confirming a
 manifest
 ([guide](../../docs/connect/github-apps-catalogue.md#a-default-set)).
 
-`slackApps` declares Slack Apps the same way: an operator creates each from
+`slackApps` declares Slack Apps the way `githubApps.catalogue` declares GitHub
+Apps: an operator creates each from
 the console with a throwaway app configuration token (used once, never
 stored), an owner of the workspace installs it, and the bot token is kept in
 `<release>-slack-catalogue-apps`. An entry may `push` that one key to a
 secret store
 ([guide](../../docs/connect/slack-apps-catalogue.md)).
+
+`slackRoster` renders the Slack controller (`enabled`, `image`, `interval`,
+`actsIn`, `resources`): it needs `exchange.clusters` to name this cluster and
+`console.mount` to be set, and egress to `slack.com:443` from the fleet's own
+policy
+([guide](../../docs/connect/slack-workspace.md#running-the-controller)).
+`slackState.push` is a recovery copy of the Slack state: two `PushSecret`s, one
+for `<release>-slack-credentials` at `remoteKey` and one for the mirror
+`<release>-slack-records` at `recordsRemoteKey` (the two keys must differ), with
+`deletionPolicy` fixed at `None`; it needs `directory.store: kubernetes`
+([runbook](../../docs/operations/runbook.md#slack-state)).
 
 ```sh
 helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \

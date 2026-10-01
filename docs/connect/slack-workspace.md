@@ -7,6 +7,14 @@ people who belong and, where the channel is `strict`, removes the people who do
 not. It is a second process from the `access-issuer` chart, like the
 [GitHub controller](github-organisation.md), and has no listener.
 
+There are three kinds of channel. A **policy channel** is bound in git, to
+internal groups. A **console channel** is an ordinary channel kept as a record
+on the console, fed by directory groups and individual addresses. A **Slack
+Connect channel** is a channel shared between your own workspaces, also kept as
+a record on the console. A channel is one kind and is managed one way. The
+console has an area for all three, under SYSTEMS, Slack: see
+[What the Slack area shows](#what-the-slack-area-shows).
+
 How a channel is bound (`from`, `mode`, `ignore`, `adopt`, `private`) is the
 [policy's Slack section](../reference/policy.md#slack-channels). This page is
 what the controller does with it, and how to run it.
@@ -16,9 +24,9 @@ what the controller does with it, and how to run it.
 For every workspace the policy declares:
 
 1. **Reads Slack whole.** Who the bot token is (checked against the team
-   recorded when the workspace was first installed), every channel the bot can see, the members of the channels the
-   policy binds, the account for each address the decision needs, and pending
-   Slack Connect invitations. A read that is not whole, such as a missing scope,
+   recorded when the workspace was first installed), every channel the bot can
+   see, the members of the channels it manages, the account for each address
+   the decision needs, and pending Slack Connect invitations. A read that is not whole, such as a missing scope,
    a rate limit that outlasts every retry or a page that fails, fails the
    workspace's pass and decides nothing: a partial read must never look like a
    workspace in which nobody has an account.
@@ -44,7 +52,7 @@ For every workspace the policy declares:
 6. **Publishes every workspace's report together** into the ConfigMap
    `<release>-slack-status`, one key per workspace.
 
-### Channels: created if missing, otherwise taken over by name
+### Channels: created if missing, otherwise adopted by name
 
 A bound channel is an **idempotent upsert**. When no channel of the declared
 name is visible to the bot it is created; when one is, it is **adopted**: a
@@ -61,6 +69,10 @@ reason on the channel:
 | an archived channel has the name | *archived: unarchive it in Slack or rename it* |
 | Slack refuses to create it as `name_taken` and no such channel is visible | *a private channel named X exists that the bot cannot see; invite the bot to it* (or unarchive it, if that is what it is) |
 | the name is a Slack Connect channel | managed as a shared channel, not bound here |
+| `adopt: <id>` names a channel the bot cannot see | *adopt X: the bot cannot see that channel; if it is private, invite the bot first, otherwise check the id* |
+| `adopt: <id>` names a Slack Connect channel | *it is managed as a shared channel, not bound here* |
+| a private channel is visible but the bot is not in it | *the bot is not in this private channel: invite the bot first* |
+| the policy channel and a console record define the same channel (the same name, or the same channel id adopted) | *defined in both git and the console: held and unchanged until one definition is removed*, in the controller's report of the policy channel AND of the record; nothing on it changes in Slack. The console's own row for the record reads *invalid*, with the reason it gives for refusing a write |
 
 A `strict` adopted channel removes only after the usual vouching and breakers:
 the first pass after adopting it is subject to the breaker like any other, so a
@@ -84,6 +96,10 @@ operator's confirmation, never emptied.
 | `retrying` | a removal the directory could not vouch for this pass, or a change Slack refused (with Slack's words); tried again next pass |
 | `reported` | said, never acted on: a guest, an account of another workspace, an account with no address |
 | `ignored` | on the channel's `ignore` list |
+
+A row held only because the person has no Slack account yet is shown on the
+console as *waiting for them*: only the person can move it forward. Every other
+hold is *needs you*.
 
 A hold is recorded in the audit trail once, when it becomes held, as
 `roster.slack_action.held`; not every pass, and not again after a restart.
@@ -119,12 +135,13 @@ channel:
 | **Policy channel** | `slack.workspaces[k].channels` in git | **internal** groups. For channels the infrastructure owns, such as alert channels |
 | **Console channel** | a record on the console, `_channel.<workspace>.<name>.json` | **directory** groups (IdP groups, by address), and individual addresses |
 
-A console channel is **ordinary** (one workspace) or **Slack Connect** (see
-[Shared channels](#shared-channels)). Both are created and edited on the
-console, audited, and backed up with the workspaces' own records
-(`Secret <release>-slack-records`). The controller reconciles an ordinary
-console channel with **the same rules as a policy channel**: created when
-missing, otherwise taken over by name (or by the record's `channel_id`),
+A console channel is **ordinary**: one workspace. A channel shared between
+workspaces is the third kind, a **Slack Connect channel** (see
+[Shared channels](#shared-channels)). Both kinds of record are created and
+edited on the console, audited, and backed up with the workspaces' own records
+(`Secret <release>-slack-records`). The controller reconciles a console channel
+with **the same rules as a policy channel**: created when missing, otherwise
+adopted by name (or by the record's `channel_id`),
 `extend` or `strict`, the directory vouches before anybody is removed, the
 breakers hold a large removal set, and a hold is recorded once. Visibility is
 never converted.
@@ -148,9 +165,11 @@ actually know the user and the account must be active when the record is
 written. Addresses are lowercased and none repeats. The console refuses, with
 the reason: an address that is a **group** (enter it under *Directory groups*),
 a group address entered as a person (enter it under *Individual addresses*), a
-repeat, and an address of another directory (*not a user of the directory that
-owns this workspace; individual addresses come from the directories this channel
-draws from*). The controller asks again at every pass and refuses the record
+repeat, an address of another directory (*<address> is not a user of the
+directory that owns this workspace (<owner id>) — individual addresses come
+from the directories this channel draws from*), an address the directory does
+not know, and an address that is suspended (only an active user can be listed).
+The controller asks again at every pass and refuses the record
 when an address is of another directory than the owner's. The people wanted are
 the **union** of the groups' members and the individuals, mapped to people
 exactly as group members are: the `people` aliases, the per-workspace address
@@ -184,22 +203,39 @@ report, with the reason, acted on by nobody):
 - a channel that is already managed the other way (an ordinary record and a
   Slack Connect record of the same host and name or id).
 
+**What an edit may change.** An edit may change `mode`, `ignore`, the directory
+groups and the individual addresses. It cannot change the workspace, the name,
+the channel id or the visibility; the console refuses such a request and says to
+create a new record and delete this one. Two people saving at once do not
+overwrite each other: the write is made under the ConfigMap's version, and the
+console says to reload when it cannot land. Saving a record takes effect at the
+controller's next pass, or on **Refresh** (see
+[A pass runs promptly after an install](#a-pass-runs-promptly-after-an-install)).
+
 **Discovery.** Every pass the report lists, per workspace, every channel the
 bot can see that **neither a policy binding nor a record manages**: public
 channels, and private ones the bot is in. `#general` and archived channels are
 left out. The list is by name and capped at 500 per workspace, with a count of
-the rest. On the Slack page's **Discovered** tab (`#/slack/discovered`) they are listed with **Manage**,
-which opens the form prefilled with the workspace, the name, the channel id and
-the visibility as seen; you choose the directory groups and the mode.
+the rest. On the Slack area's **Discovered** tab (`#/slack/discovered`) they are listed
+with **Manage**, which opens the form prefilled with the workspace, the name,
+the channel id and the visibility as seen; you choose the directory groups and
+the mode. The tab also lists Slack Connect channels, and its filters (`kind`,
+`visibility`, `sort`) are described under
+[Slack Connect channels](slack-connect-channels.md#adopting-a-channel-that-is-already-shared).
 
 **Archiving.** Deleting a record leaves the channel in Slack. The delete dialog
 has an opt-in, *Also archive #name in Slack* (off by default), which makes the
 bot call `conversations.archive` after the record is forgotten and is audited as
 `roster.slack_channel.archived`. If the bot is not in the channel (a private one
-it cannot see) or Slack refuses, the record is still deleted and the note says
-to archive the channel in Slack by hand. A Slack Connect channel is never
-archived from the console: archiving closes it for every organisation in it, so
-the console refuses the request and you archive it by hand.
+it cannot see), the App lacks the scope, or the workspace forbids a bot
+archiving, the record is still deleted, the failed attempt is audited as
+`roster.slack_channel.archived` with outcome failure, and the note says to
+archive the channel in Slack by hand. This call is made by the console itself,
+with the workspace's bot token, not by the controller, so it is NOT held back by
+a workspace that is still a dry run in `slackRoster.actsIn`. A Slack Connect
+channel is never archived from the console: archiving closes it for every
+organisation in it, so the console refuses the request and you archive it by
+hand.
 
 **Who may.** Create, edit and delete: the operator over the workspace's owning
 directory, or the installation-wide operator. A viewer sees the records and what
@@ -218,7 +254,7 @@ defines, and there is no take-over.
 1. **Remove it from the policy in git** (the `channels` entry under its
    workspace). It becomes **unmanaged**: nothing is added to or removed from it
    while it is, and no removals happen.
-2. After the next pass it appears on the Slack page's **Discovered** tab,
+2. After the next pass it appears on the Slack area's **Discovered** tab,
    because the bot is in it.
 3. **Manage** it. The form is prefilled with the workspace, the name, the id and
    *private*; choose the mode (the same one keeps its behaviour), set its
@@ -241,23 +277,28 @@ the breaker: the first pass after the move is subject to it like any other.
 
 Slack Connect channels are not in the policy: the console keeps each as a
 record beside the workspaces' records, `_shared.<name>.json`, fed by **directory
-groups of any connected directory**: each resolved person joins on the side whose
-workspace's owning directory serves their address. The controller
-validates every one against the policy it runs under and asks the console who is
-in its groups. A valid one is acted on,
+groups and individual addresses of any connected directory**: each resolved
+person joins on the side whose workspace's owning directory serves their
+address. A Slack Connect channel is always `extend`: nobody is ever removed from
+one. The controller validates every one against the policy it runs under and
+asks the console who is in its groups. A valid one is acted on,
 a refused one is reported on its host workspace as a held channel with the
 reason, and acted on by nobody. A record written before shared channels were fed
 by directory groups, with internal groups in `from`, is reported invalid with a
 message that says to edit it and pick directory groups; its names are never
 reread as directory groups. They are created and edited on the console's
-Slack Connect page: see [slack-connect-channels.md](slack-connect-channels.md).
+Slack Connect tab: see [slack-connect-channels.md](slack-connect-channels.md),
+including how a guest workspace's side is found
+([Guest sides and the probe](slack-connect-channels.md#guest-sides-and-the-probe)).
 
 ### Dry run until `actsIn`
 
 A workspace is born disabled. Every pass derives it, publishes what WOULD
 change, and calls Slack for nothing that changes it and records nothing in the
 audit trail. Enabling one is a reviewed change to `slackRoster.actsIn`; removing
-it again stops the controller acting in it, and undoes nothing.
+it again stops the controller acting in it, and undoes nothing. The console's
+own Slack calls (connect, disconnect, revoke, archive on delete) are not part of
+a pass and are not gated by `actsIn`.
 
 ### What it never does
 
@@ -272,14 +313,20 @@ it again stops the controller acting in it, and undoes nothing.
 
 ## Failure is per workspace
 
-A workspace that is not connected, is created and not yet installed (no bot
-token), or whose read of Slack failed is reported `failed` with the reason over
-the last report that had rows, so the page does not blank. It does not stop the
-other workspaces' passes.
+A workspace that is not connected, or is created and not yet installed (no bot
+token), is reported `waiting` with no error over the last report that had rows:
+it is a state a workspace passes through, not a fault, and the console shows a
+neutral note. A workspace whose read of Slack failed, whose owning directory
+cannot be read or is not connected, or whose bot token belongs to another team
+than the one recorded, is reported `failed` with the reason over the last report
+that had rows, so the page does not blank. Neither stops the other workspaces'
+passes.
 
 ## Where a workspace's team, owner and domains come from
 
-The policy names a workspace by its **key** and binds channels in it. It does
+The policy names a workspace by its **key** and binds channels in it. A key is
+lowercase letters, digits and `-`, at most 40, starting and ending with a
+letter or digit. It does
 not say which Slack team the key stands for, which directory owns it or which
 domains its people use: access-roster knows each of those already, and a
 second copy in a file would only drift from the first. A policy that still
@@ -288,7 +335,7 @@ saying so.
 
 | Fact | Where it comes from | How to change it |
 |---|---|---|
-| **owner**: the connected directory the workspace belongs to | chosen when the workspace is connected, and recorded in its connection record | the installation-wide operator's **Change owner** on the workspace's card |
+| **owner**: the connected directory the workspace belongs to | chosen when the workspace is connected, and recorded in its connection record | the installation-wide operator's **Change owner**, on the workspace's card on the Workspaces tab |
 | **team**: the Slack workspace the key stands for | the team `oauth.v2.access` reports at the **first install**; every later install or reconnect must match it (a token for another team is revoked and refused) | disconnect and connect again |
 | **domains** a person is looked up by | the domains the **owning directory serves**, read from the console every pass | change what the directory serves (the directory's own page) |
 
@@ -306,7 +353,9 @@ The owner is recorded with the connect audit record
 (`roster.slack_workspace.connected` carries `owner`). Once recorded it is
 changed only by the installation-wide operator, and the change is its own
 audit record (`roster.slack_workspace.owner_changed`, with the previous and
-new owner). The page shows the owner by its primary domain, not its id.
+new owner). The console names an owning directory by its workspace id and every
+domain it is authoritative for, for example `C0example — acme.example,
+globex.example`; served domains that are not authoritative are left out.
 
 Connecting a workspace nobody has connected records the **connecting
 operator's directory** as its owner: whoever connects it first owns it. That
@@ -317,9 +366,11 @@ operator can change the owner afterwards, and the change is audited.
 
 ## Connect a workspace from the console
 
-The **Slack** page lists every workspace the policy declares
-(`slack.workspaces`) that you may view, with where it stands and what the
-controller last did there. Connecting one is three steps, and the only thing
+The **Workspaces** tab of the Slack area lists every workspace the policy
+declares (`slack.workspaces`) that you may view, with where it stands and what
+the controller last did there. A workspace the policy no longer declares but
+that is still connected stays listed, marked *no longer declared*, so it can be
+disconnected. Connecting one is three steps, and the only thing
 you type is a throwaway token (and, where you have a choice, the owning
 directory):
 
@@ -347,8 +398,28 @@ directory):
    recorded (so is a first install into a team already connected under another
    key). A successful install records `roster.slack_workspace.connected`.
 
+### A pass runs promptly after an install
+
+Besides its 15-minute interval (`slackRoster.interval`), the controller looks
+every 30 seconds at the mounted credentials and records. When a workspace's own
+credential or record changed (a new bot token after an install, a reconnect), it
+runs a full pass without waiting for the interval. Allow up to about two
+minutes: the look is every 30 seconds, and the kubelet takes up to about a
+minute to project a changed Secret or ConfigMap into the pod. Until a report
+newer than the connection exists, the card says *Installed - waiting for the
+first pass*.
+
+**Refresh** on an installed workspace's card (operators only) asks for a pass
+over that workspace now: the console writes a marker `_pass.<workspace>.json`
+into the records ConfigMap and the controller notices it at its next look. A
+second request less than 60 seconds after the first is refused. The card says
+*Pass requested* until a newer report exists. The marker is not a record: it is
+left out of the recovery copy, and there is no audit action for it (the
+requester is logged). Editing a console channel or a Slack Connect record does
+not start a pass by itself; it waits for the next interval, or for Refresh.
+
 The bot scopes are one list, `connection.BotScopes`, each for a method the
-controller calls:
+roster calls:
 
 | Scope | For |
 |---|---|
@@ -356,8 +427,8 @@ controller calls:
 | `users:read.email` | `users.lookupByEmail`, and the address in `users.info` |
 | `channels:read` | `conversations.list`, `.info` and `.members` of public channels |
 | `groups:read` | the same, for private channels the bot is in |
-| `channels:manage` | `conversations.create`, `.invite` and `.kick` in public channels |
-| `groups:write` | `conversations.create`, `.invite` and `.kick` in private channels |
+| `channels:manage` | `conversations.create`, `.invite`, `.kick` and `.archive` in public channels |
+| `groups:write` | `conversations.create`, `.invite`, `.kick` and `.archive` in private channels |
 | `channels:join` | `conversations.join`, which adopts a public channel |
 | `conversations.connect:write` | `conversations.inviteShared`, `.acceptSharedInvite` |
 | `conversations.connect:manage` | `conversations.listConnectInvites` |
@@ -375,6 +446,10 @@ workspace as not connected. If Slack will not revoke the token the connection is
 kept and the dialog offers **Forget anyway**, which forgets it and says in the
 audit record that the token was not revoked; remove the App in its Slack
 settings then. The App itself stays in Slack until it is deleted there.
+Disconnect leaves the workspace's console channel records
+(`_channel.<workspace>.*`) and the Slack Connect records it hosts in place:
+delete them first, or they apply to whatever workspace is connected under that
+key next.
 
 A workspace's connection is an **owner's** to operate: the installation-wide
 operator, or the operator of the directory workspace recorded as its owner. A viewer sees the page and no buttons; every
@@ -382,14 +457,46 @@ row carries `can_operate`, the server's answer. A deployment that keeps no state
 in Kubernetes cannot connect a workspace: a bot token would not survive a
 restart.
 
-### What the page shows
+### What the Slack area shows
 
-Per workspace: the connection (**not connected**, **created, not installed**,
-**installed**, **scopes missing**), whether the controller **acts** or is in a
-**dry run**, and when its last pass was. Per channel: its mode, privacy, whether
-it will be created or adopted or is held, and each person as in step, **will
-invite**, **will remove**, **held** (with the reason), **retrying** or
-**reported**. Leavers are listed apart. Nothing on the page is a credential.
+SYSTEMS, Slack is one entry with five tabs: Workspaces, Channels, Slack Connect,
+Discovered and Apps.
+
+**Workspaces** (`#/slack`) shows, per workspace, the connection (*not
+connected*, *created, not installed*, *installed*, *scopes missing*), the team
+once recorded, the owning directory, whether the controller **acts** or is in a
+**dry run**, when its last pass was, how many channels it manages (a link to the
+Channels tab), a breaker banner with **Confirm**, and the leavers.
+
+**Channels** (`#/slack/channels`) lists every managed channel of every
+workspace in one list (policy channels, console channels and Slack Connect
+channels), with *New channel* for operators. It narrows by workspace (any side
+of a channel), kind (policy, console, Slack Connect), state (ok, pending,
+waiting, held, invalid, not reported; *pending* is a channel the controller is
+about to create, adopt or accept) and a name or Slack-id search, reads "N of M
+shown" when a filter hides some, and keeps every selection in the address
+(`#/slack/channels?workspace=&kind=&state=&q=`).
+
+**Slack Connect** (`#/slack/connect`) and **Discovered** (`#/slack/discovered`)
+are described on [Slack Connect channels](slack-connect-channels.md), and
+**Apps** (`#/slack/apps`) on [Slack Apps](slack-apps-catalogue.md). The old
+addresses `#/slack-apps` and `#/slack-connect` still open the matching tab.
+
+Every managed channel has a page of its own,
+`#/slack/channels/<workspace>/<name>` (or by Slack id): what feeds it (internal
+groups for a policy channel; directory groups and individual addresses for a
+console or Slack Connect channel), its mode, each person's state and why, each
+side of a Slack Connect channel, the removal breaker with its **Confirm**, and
+its history from the audit trail. The pages of a directory group, an internal
+group and a person link back: a directory group lists the Slack channels it
+feeds and how its people stand there; an internal group lists the policy
+channels that name it; a person's page has a Slack section with each channel's
+state and reason, and marks the channels that list them individually. Nothing on
+these pages is a credential.
+
+Per channel the page says its mode, privacy, whether it will be created or
+adopted or is held, and each person as in step, **will invite**, **will
+remove**, **held** (with the reason), **retrying** or **reported**.
 
 ### Confirming a breaker from the console
 
@@ -401,13 +508,19 @@ records ConfigMap, records `roster.slack_removals.confirmed`, and lapses after
 24 hours. The console refuses a fingerprint that is not the latest report's for
 that gate: a set that changed since the page was loaded needs looking at again.
 
-The API behind the page is `SlackService` (`GetSlackStatus`,
-`BeginSlackWorkspaceConnect`, `ChangeSlackWorkspaceOwner`,
-`DisconnectSlackWorkspace`, `ConfirmSlackRemovals`), and, for the console
-channels listed on it, `SlackChannelService` (`ListSlackChannels`,
-`CreateSlackChannel`, `UpdateSlackChannel`, `DeleteSlackChannel`). The catalogue's [Slack Apps](slack-apps-catalogue.md)
-are separate: they create Apps for other purposes; this page's App is the
-roster's own.
+The API behind the area is `SlackService` (`GetSlackStatus`,
+`BeginSlackWorkspaceConnect`, `RequestSlackPass`, `ChangeSlackWorkspaceOwner`,
+`DisconnectSlackWorkspace`, `ConfirmSlackRemovals`), `SlackChannelService` for
+console channels (`ListSlackChannels`, `CreateSlackChannel`,
+`UpdateSlackChannel`, `DeleteSlackChannel`), `SlackSharedChannelService` for
+Slack Connect records (`ListSlackSharedChannels`, `CreateSlackSharedChannel`,
+`UpdateSlackSharedChannel`, `DeleteSlackSharedChannel`) and `SlackAppService`
+for catalogue Apps (`ListSlackApps`, `CreateSlackApp`, `InstallSlackApp`). The
+directory side is `AccessService.ListServedDomains` and
+`ResolveDirectoryGroups`; every call is in the
+[contracts](../reference/contracts.md). The catalogue's
+[Slack Apps](slack-apps-catalogue.md) are separate: they create Apps for other
+purposes; this page's App is the roster's own.
 
 ## Running the controller
 
@@ -422,7 +535,11 @@ exchange:
       jwksUri: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE/keys
 ```
 
-and the policy puts its account in the group that reads who holds a group:
+The other values are `slackRoster.interval` (the pass interval, default 15m),
+`slackRoster.image` and `slackRoster.resources`. The controller refuses to start
+when `slackRoster.actsIn` names a workspace the policy does not declare.
+
+The policy puts its account in the group that reads who holds a group:
 
 ```yaml
 groups:
@@ -445,15 +562,17 @@ policy. The chart does admit the controller to the service's port, for reading
 the console's API, when `networkPolicy.enabled`.
 
 **What it reads.** The console's API (with its own ServiceAccount token): who
-holds each group (`ListHolders`), whether the directory vouches for an address
-(`Explain`) and which domains each directory serves (`ListServedDomains`, a
+holds each group (`ListHolders`), who is in each directory group and each
+individually listed address (`ResolveDirectoryGroups`), whether the directory
+vouches for an address (`Explain`) and which domains each directory serves (`ListServedDomains`, a
 viewer's read: the controller's account is in the group the chart grants it,
 and sees every directory). The rest are mounted volumes, so the account needs no permission to
 read any Secret or other ConfigMap through the API: the Secret
 `<release>-slack-credentials` (one `<workspace>.json` per workspace: app id,
 client id and secret, the bot token once installed) and the ConfigMap
-`<release>-slack-workspaces` (each workspace's record, `_channel.*` console channels, `_shared.*` shared
-channels, `_confirm.*` confirmations). Both are optional: before anything is
+`<release>-slack-workspaces` (each workspace's record, `_channel.*` console
+channels, `_shared.*` Slack Connect channels, `_confirm.*` confirmations and
+`_pass.*` pass requests). Both are optional: before anything is
 connected the controller reports each declared workspace as not connected. Keys
 that start with an underscore are other documents and are never read as a
 workspace.
@@ -469,7 +588,8 @@ another policy changes nothing and is tried again within seconds.
 ### Enabling a workspace
 
 1. The workspace is declared in the policy, connected, installed, and the
-   controller runs with it *not* in `slackRoster.actsIn`.
+   controller runs with it *not* in `slackRoster.actsIn`. After an install, a
+   pass runs promptly; **Refresh** asks for another.
 2. Read its report after a pass. `tick.outcome` says `dry-run`; the rows say
    exactly what enabling would do. Look for anybody you did not expect to be
    removed, and for held rows: each carries its reason.
@@ -483,3 +603,14 @@ workspace and outcome), `slack_roster.changes` (by action and whether Slack
 accepted it), `slack_roster.breaker_trips`, `slack_roster.rows` and
 `slack_roster.channels` (by state), `slack_roster.leavers` and
 `slack_roster.shared_invalid`.
+
+### Audit
+
+Every action is in the audit catalogue (`internal/audit/catalogue/roster.yaml`,
+version 1.5.0). The controller records for itself; the console records what it
+does:
+
+| Recorded by | Actions |
+|---|---|
+| the controller | `roster.slack_channel.created`, `.adopted`; `roster.slack_member.invited`, `.removed`; `roster.slack_shared.invited`, `.accepted`; `roster.slack_action.held`; `roster.slack_leaver.reported` |
+| the console | `roster.slack_workspace.connected`, `.owner_changed`, `.connect_refused`, `.disconnected`; `roster.slack_app.created`, `.installed`, `.install_refused`; `roster.slack_console_channel.created`, `.updated`, `.deleted`; `roster.slack_shared_channel.created`, `.updated`, `.deleted`; `roster.slack_channel.archived`; `roster.slack_removals.confirmed` |
