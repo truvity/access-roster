@@ -6,15 +6,10 @@
 # `just audit-catalogue` holds the two together: an action emitted and not
 # declared, or declared and not emitted, fails the gate.
 #
-# Bump the version AND add the released fixture
-# (testdata/released/roster-<version>.yaml) when you change an action: an
-# installation refuses a different document under a version it already holds,
-# and TestAReleasedCatalogueVersionIsNeverChanged fails on it.
-#
 # A change to what an action carries is a new version. The installation keeps
 # every version it was sent, so records already written keep their meaning.
 source: roster
-version: "1.1.0"
+version: "1.0.0"
 locales: [en]
 
 actor_kinds:
@@ -51,15 +46,6 @@ target_types:
     is_person: true
   github_app:
     description: A GitHub App, by the id access-roster catalogues it under, or its slug where it has none.
-  slack_workspace:
-    description: A Slack workspace, by the key the policy names it under.
-  slack_channel:
-    description: A Slack channel, as <workspace key>/<channel name>.
-  slack_user:
-    description: A person's Slack account, by Slack user id.
-    is_person: true
-  slack_app:
-    description: A Slack App, by its id.
 
 actions:
   # ------------------------------------------------------------ signing in
@@ -219,20 +205,9 @@ actions:
     profiles: [security]
     target_types: [organisation]
     delivery: async
-    data_schema: https://schemas.example/access-roster/v1/github-org-connected.json
+    data_schema: https://schemas.example/access-roster/v1/app-installed.json
     message:
       en: "{actor} connected GitHub organisation {targets_0_id}"
-
-  roster.github_org.owner_changed:
-    summary: The directory that owns a GitHub organisation was changed by the installation-wide operator.
-    operation: modify
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [organisation]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/owner-changed.json
-    message:
-      en: "{actor} changed the owner of GitHub organisation {targets_0_id} from {data_from} to {data_to}"
 
   roster.github_org.disconnected:
     summary: A GitHub organisation was disconnected.
@@ -485,214 +460,3 @@ actions:
     data_schema: https://schemas.example/access-roster/v1/member-held.json
     message:
       en: "an owner of {targets_0_id} was reported: {outcome_reason}"
-
-  # ------------------------------------------------- Slack
-
-  roster.slack_workspace.connected:
-    summary: A Slack workspace was connected by installing the App.
-    operation: create
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_workspace, slack_app]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-workspace-connected.json
-    message:
-      en: "{actor} connected Slack workspace {targets_0_id}"
-
-  roster.slack_workspace.owner_changed:
-    summary: The directory that owns a Slack workspace was changed by the installation-wide operator.
-    operation: modify
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_workspace]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/owner-changed.json
-    message:
-      en: "{actor} changed the owner of Slack workspace {targets_0_id} from {data_from} to {data_to}"
-
-  roster.slack_workspace.connect_refused:
-    summary: An install of the roster's Slack App was refused because it was made into a workspace other than the one first connected.
-    operation: create
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_workspace, slack_app]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-workspace-connected.json
-    message:
-      en: "{actor}'s install of the roster's Slack App for workspace {targets_0_id} was refused: {outcome_reason}"
-
-  roster.slack_workspace.disconnected:
-    summary: A Slack workspace was disconnected.
-    operation: remove
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_workspace, slack_app]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-workspace-disconnected.json
-    message:
-      en: "{actor} disconnected Slack workspace {targets_0_id}"
-
-  roster.slack_app.created:
-    summary: A catalogued Slack App was created.
-    operation: create
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_app, slack_workspace]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-app-created.json
-    message:
-      en: "{actor} created Slack App {targets_0_id} for workspace {targets_1_id}"
-
-  roster.slack_app.installed:
-    summary: A catalogued Slack App was installed into its workspace.
-    operation: create
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_app, slack_workspace]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-app-installed.json
-    message:
-      en: "{actor} installed Slack App {targets_0_id} into workspace {targets_1_id}"
-
-  roster.slack_app.install_refused:
-    summary: An install of a catalogued Slack App was refused because it was made into another workspace.
-    operation: create
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_app, slack_workspace]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-app-installed.json
-    message:
-      en: "{actor}'s install of Slack App {targets_0_id} for workspace {targets_1_id} was refused: {outcome_reason}"
-
-  roster.slack_shared_channel.created:
-    summary: A Slack Connect channel was defined from the console.
-    operation: create
-    categories: [configuration_change, privileged_access]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-shared-channel.json
-    message:
-      en: "{actor} defined the Slack Connect channel {targets_1_id}, hosted by {targets_0_id}, shared with {data_with}"
-
-  roster.slack_shared_channel.updated:
-    summary: A Slack Connect channel's definition was changed from the console.
-    operation: modify
-    categories: [configuration_change, privileged_access]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-shared-channel.json
-    message:
-      en: "{actor} changed the Slack Connect channel {targets_1_id}, hosted by {targets_0_id} ({data_changes})"
-
-  roster.slack_shared_channel.deleted:
-    summary: A Slack Connect channel's definition was deleted from the console; the channel stays in Slack.
-    operation: remove
-    categories: [configuration_change, privileged_access]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-shared-channel.json
-    message:
-      en: "{actor} deleted the definition of the Slack Connect channel {targets_1_id}, hosted by {targets_0_id}; the channel stays in Slack"
-
-  roster.slack_channel.created:
-    summary: A Slack channel was created.
-    operation: create
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-channel.json
-    message:
-      en: "{outcome, select, success {{targets_1_id} was created} other {Slack refused to create {targets_1_id}}}"
-
-  roster.slack_channel.adopted:
-    summary: An existing Slack channel was taken over by id.
-    operation: modify
-    categories: [configuration_change]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-channel.json
-    message:
-      en: "{outcome, select, success {{targets_1_id} was adopted} other {Slack refused to let {targets_1_id} be adopted}}"
-
-  roster.slack_member.invited:
-    summary: A person was invited to a Slack channel.
-    operation: create
-    categories: [account_lifecycle]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel, slack_user]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-member-changed.json
-    message:
-      en: "{outcome, select, success {{subject} was invited to {targets_1_id}} other {Slack refused to invite {subject} to {targets_1_id}}}"
-
-  roster.slack_member.removed:
-    summary: A person was removed from a private Slack channel.
-    operation: remove
-    categories: [account_lifecycle]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel, slack_user]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-member-changed.json
-    message:
-      en: "{outcome, select, success {{subject} was removed from {targets_1_id}} other {Slack refused to remove {subject} from {targets_1_id}}}"
-
-  roster.slack_shared.invited:
-    summary: A workspace's bot was invited to a shared channel.
-    operation: create
-    categories: [account_lifecycle, privileged_access]
-    profiles: [security]
-    target_types: [slack_workspace, slack_workspace, slack_channel]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-shared.json
-    message:
-      en: "a shared-channel invitation to {targets_1_id} for {targets_2_id} was sent by {targets_0_id}"
-
-  roster.slack_shared.accepted:
-    summary: A workspace accepted an invitation to a shared channel.
-    operation: modify
-    categories: [account_lifecycle, privileged_access]
-    profiles: [security]
-    target_types: [slack_workspace, slack_workspace, slack_channel]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-shared.json
-    message:
-      en: "{outcome, select, success {{targets_1_id} accepted the shared channel {targets_2_id} from {targets_0_id}} other {{targets_1_id} could not accept the shared channel {targets_2_id} from {targets_0_id}}}"
-
-  roster.slack_action.held:
-    summary: A change to a Slack workspace or channel is held, and needs an operator.
-    operation: modify
-    categories: [account_lifecycle]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel, slack_user]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-action-held.json
-    message:
-      en: "a change to {targets_0_id} is held: {outcome_reason}"
-
-  roster.slack_removals.confirmed:
-    summary: An operator confirmed a set of Slack removals that were held.
-    operation: modify
-    categories: [privileged_access, account_lifecycle]
-    profiles: [security]
-    target_types: [slack_workspace, slack_channel]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-removals-confirmed.json
-    message:
-      en: "{actor} confirmed the removal of {data_affected} members from {targets_0_id}"
-
-  roster.slack_leaver.reported:
-    summary: A person gone from the directory is still an active Slack member; reported rather than acted on.
-    operation: access
-    categories: [privileged_access]
-    profiles: [security]
-    target_types: [slack_workspace, slack_user]
-    delivery: async
-    data_schema: https://schemas.example/access-roster/v1/slack-action-held.json
-    message:
-      en: "a leaver in {targets_0_id} was reported: {outcome_reason}"
