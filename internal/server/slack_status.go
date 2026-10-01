@@ -163,7 +163,7 @@ func (c *Console) slackWorkspaceView(
 	for i := range report.Channels {
 		ch := &report.Channels[i]
 		view := &directoryrosterv1.SlackChannelStatus{
-			Name: ch.Name, Id: ch.ID, Private: ch.Private, Mode: ch.Mode, Shared: ch.Shared, Host: ch.Host,
+			Name: ch.Name, Id: ch.ID, Private: ch.Private, Mode: ch.Mode, Shared: ch.Shared, Host: ch.Host, Console: ch.Console,
 			State: string(ch.State), Reason: ch.Reason, Breaker: slackBreakerView(ch.Breaker),
 			RemovalConfirmation: slackConfirmationView(confirmations, workspace, ch.Name, now),
 		}

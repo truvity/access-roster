@@ -111,7 +111,9 @@ func (s *SlackShared) Apply(
 		var current *reconcile.SharedChannel
 		if raw, ok := cm.Data[key]; ok {
 			rec := decodeShared(name, raw)
-			if rec.Err != nil {
+			// A record fed by internal groups still says whose it is: it is
+			// what an edit replaces, and is edited rather than refused.
+			if rec.Err != nil && !errors.Is(rec.Err, connection.ErrLegacySources) {
 				return fmt.Errorf("the stored record of %s cannot be read: %w", name, rec.Err)
 			}
 			current = &rec.Channel

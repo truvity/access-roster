@@ -319,3 +319,22 @@ func TestUnmanagedChannelsAreDiscoveredAndManagedOnesAreNot(t *testing.T) {
 	}
 	_ = context.Background
 }
+
+// A Slack Connect record written when its groups were internal groups is
+// reported on its host as held, naming what to do, and is acted on by nobody:
+// its names are never reread as directory groups.
+func TestALegacySharedRecordIsHeldOnItsHostAndActedOnByNobody(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-all"}, "acme")
+	r.writeRecord(connection.SharedKey("old"), `{"version":1,"name":"old","host":"acme","with":["globex"],"from":["g-all"],"private":{}}`)
+
+	r.pass("acme", "globex")
+
+	if _, made := r.fake.ChannelNamed("TACME", "old"); made || r.fake.Count("conversations.inviteShared") != 0 {
+		t.Error("a legacy record was acted on")
+	}
+	rep := r.reports.channel(t, "acme", "old")
+	if rep.State != status.ChannelHeld || !rep.Shared || !strings.Contains(rep.Reason, "internal groups") || !strings.Contains(rep.Reason, "directory groups") {
+		t.Errorf("report = %+v", rep)
+	}
+}

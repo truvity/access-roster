@@ -14,6 +14,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/slackroster/connection"
 	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 	"github.com/truvity/access-roster/internal/slackroster/status"
 	"github.com/truvity/access-roster/policy"
@@ -95,7 +96,7 @@ func (c *Console) ListSlackSharedChannels(
 	reports := c.slackReports(ctx)
 	for i := range records {
 		rec := &records[i]
-		if rec.Err != nil {
+		if rec.Err != nil && !errors.Is(rec.Err, connection.ErrLegacySources) {
 			// Whose it is cannot be read: only the installation-wide role
 			// sees it, to fix or delete it.
 			if id.Can(access.RoleViewer) {
@@ -111,6 +112,11 @@ func (c *Console) ListSlackSharedChannels(
 		}
 		view := sharedView(rec.Channel)
 		view.State, view.Reason = sharedState(rec.Channel, p, reports)
+		if rec.Err != nil {
+			// Fed by internal groups, as an old record was: it says whose it
+			// is, so it is shown to them and can be edited, and acts on nothing.
+			view.State, view.Reason = sharedInvalid, rec.Err.Error()
+		}
 		view.CanOperate = book.mayAct(id, rec.Channel.Host)
 		out.Channels = append(out.Channels, view)
 	}

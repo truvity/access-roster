@@ -45,8 +45,8 @@ func EncodeShared(s reconcile.SharedChannel) (string, error) {
 // ErrLegacySources is a shared channel record written when its `from` named
 // internal groups. Its members now come from directory groups, and an
 // internal group's name is not one: the record is reported invalid, never
-// reread as if it were.
-var ErrLegacySources = errors.New("connection: this shared channel record is fed by internal groups (`from`), " +
+// reread as if it were, and nothing is acted on until it is edited.
+var ErrLegacySources = errors.New("this shared channel record is fed by internal groups (`from`), " +
 	"and shared channels are now fed by directory groups (`sources`): edit it on the console and pick directory groups, or delete it")
 
 // DecodeShared reads a shared channel's record.
@@ -63,7 +63,9 @@ func DecodeShared(raw string) (reconcile.SharedChannel, error) {
 		return reconcile.SharedChannel{}, fmt.Errorf("%w: %d", ErrVersion, s.Version)
 	}
 	if len(s.Legacy) > 0 && len(s.Sources) == 0 {
-		return reconcile.SharedChannel{}, ErrLegacySources
+		// The rest of the record is returned with the error, so that the
+		// console can show whose it is and let an operator edit it.
+		return s.SharedChannel, ErrLegacySources
 	}
 	return s.SharedChannel, nil
 }

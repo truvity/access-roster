@@ -501,16 +501,38 @@ func TestALegacySharedRecordIsListedInvalid(t *testing.T) {
 	if _, err := h.client.API().CoreV1().ConfigMaps("access-issuer").Update(context.Background(), cm, metav1.UpdateOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range h.list(as(everywhere), t).Channels {
-		if c.Channel.Name != "legacy" {
-			continue
+	find := func(who access.Identity) *directoryrosterv1.SlackSharedChannel {
+		for _, c := range h.list(as(who), t).Channels {
+			if c.Channel.Name == "legacy" {
+				return c
+			}
 		}
-		if c.State != sharedInvalid || !strings.Contains(c.Reason, "internal groups") || !strings.Contains(c.Reason, "directory groups") {
-			t.Errorf("the legacy record = %+v", c)
-		}
-		return
+		return nil
 	}
-	t.Error("the legacy record is not listed")
+	c := find(everywhere)
+	if c == nil {
+		t.Fatal("the legacy record is not listed")
+	}
+	if c.State != sharedInvalid || !strings.Contains(c.Reason, "internal groups") || !strings.Contains(c.Reason, "directory groups") {
+		t.Errorf("the legacy record = %+v", c)
+	}
+	// It says whose it is, so its host's operator sees it and may edit it.
+	if c.Channel.Host != "acme" || !slices.Equal(c.Channel.With, []string{"globex"}) || len(c.Channel.From) != 0 {
+		t.Errorf("the legacy record's definition = %+v", c.Channel)
+	}
+	if mine := find(northOp); mine == nil || !mine.CanOperate {
+		t.Fatalf("the legacy record is not offered for editing to its host's operator: %+v", mine)
+	}
+	// Editing it in directory groups makes it valid again.
+	if err := h.update(as(northOp), def("legacy", "acme", []string{"globex"}, []string{"partners@north.example"})); err != nil {
+		t.Fatalf("editing a legacy record: %v", err)
+	}
+	if after := find(northOp); after.State == sharedInvalid || len(after.Channel.From) != 1 {
+		t.Errorf("after the edit = %+v", after)
+	}
+	if kept, err := connection.DecodeShared(h.stored(t)[connection.SharedKey("legacy")]); err != nil || len(kept.Sources) != 1 {
+		t.Errorf("kept = %+v, %v", kept, err)
+	}
 }
 
 func TestOrdinaryChannelsNobodyManagesAreDiscoveredAndManaged(t *testing.T) {
