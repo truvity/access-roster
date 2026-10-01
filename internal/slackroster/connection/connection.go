@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/slackroster/status"
 )
 
@@ -201,7 +202,7 @@ func DecodeCredential(raw []byte) (Credential, error) {
 const ConfirmationTTL = 24 * time.Hour
 
 // PassGap is how soon after one request for a pass another is refused.
-const PassGap = time.Minute
+const PassGap = rails.PassGap
 
 // PassKey is where an operator's request for a pass now is kept, beside the
 // records: `_pass.<workspace>.json`, one per workspace, replaced by each

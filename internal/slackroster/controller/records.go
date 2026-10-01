@@ -1,16 +1,15 @@
 package controller
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/truvity/access-roster/internal/logsafe"
+	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/slackroster/connection"
 	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 	"github.com/truvity/access-roster/policy"
@@ -70,7 +69,7 @@ type recorded struct {
 // wrote is left alone.
 func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 	s := store{credentials: map[string]credentialResult{}, bots: map[string]string{}, recorded: map[string]recorded{}}
-	for _, name := range entries(credentialsDir, log) {
+	for _, name := range rails.Entries(credentialsDir, log) {
 		// A reserved key is another document's, never a workspace's.
 		if connection.Reserved(name) {
 			continue
@@ -91,7 +90,7 @@ func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 		}
 		s.credentials[workspace] = credentialResult{credential: credential}
 	}
-	for _, name := range entries(recordsDir, log) {
+	for _, name := range rails.Entries(recordsDir, log) {
 		raw, err := os.ReadFile(filepath.Join(recordsDir, name)) //nolint:gosec // the directory is the mounted ConfigMap
 		if err != nil {
 			log.Warn("a record could not be read", "key", logsafe.Value(name), "error", logsafe.Error(err))
@@ -141,31 +140,6 @@ func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 		}
 	}
 	return s
-}
-
-// entries lists a mounted directory's file names, sorted. A Secret or
-// ConfigMap volume also holds the kubelet's own bookkeeping, which starts
-// with a dot and is never a key.
-func entries(dir string, log *slog.Logger) []string {
-	if dir == "" {
-		return nil
-	}
-	list, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		log.Warn("a directory could not be listed", "dir", logsafe.Value(dir), "error", logsafe.Error(err))
-		return nil
-	}
-	var names []string
-	for _, entry := range list {
-		if name := entry.Name(); name != "" && name[0] != '.' {
-			names = append(names, name)
-		}
-	}
-	slices.Sort(names)
-	return names
 }
 
 // sharedChannels are the definitions the policy accepts, and the reasons it
