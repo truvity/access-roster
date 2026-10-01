@@ -19,3 +19,14 @@ githubApps:
       name: example-store
     remoteKey: platform/access-issuer/github-apps
     refreshInterval: 30m
+# The Slack state is two Secrets, so two copies: the credentials the
+# console connected, and the mirror the service keeps of the records
+# ConfigMap (a PushSecret reads Secrets only). Each is bundled under its own
+# remote key; the records key is required, never derived from the first.
+slackState:
+  push:
+    secretStore:
+      name: example-store
+      kind: ClusterSecretStore
+    remoteKey: platform/access-issuer/slack-credentials
+    recordsRemoteKey: platform/access-issuer/slack-records

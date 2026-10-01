@@ -96,6 +96,7 @@ func (s *SlackShared) Apply(
 ) error {
 	api := s.c.api.CoreV1().ConfigMaps(s.c.namespace)
 	key := connection.SharedKey(name)
+	var mirrored map[string]string
 	err := retryConflict(func() error {
 		cm, err := api.Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -131,9 +132,15 @@ func (s *SlackShared) Apply(
 			}
 			cm.Data[key] = raw
 		}
-		_, err = api.Update(ctx, cm, metav1.UpdateOptions{})
-		return err
+		if _, err = api.Update(ctx, cm, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+		mirrored = maps.Clone(cm.Data)
+		return nil
 	})
+	if err == nil {
+		err = mirrorSlackRecords(ctx, s.c, mirrored)
+	}
 	var d *decided
 	switch {
 	case errors.As(err, &d):

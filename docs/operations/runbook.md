@@ -148,6 +148,49 @@ again; a declared Secret is re-delivered by whatever declared it.
 ([Rotating](#rotating)): writing the good value back is not enough on
 its own.
 
+### Slack state
+
+Slack keeps its state in two Secrets and a ConfigMap, none of which anything
+upstream can re-deliver:
+
+| Object | Holds |
+|---|---|
+| `Secret <release>-slack-credentials` | each connected workspace's client id and secret, and its bot token once installed |
+| `ConfigMap <release>-slack-workspaces` | each workspace's record (`<workspace>.json`), the Slack Connect channels defined on the console (`_shared.<name>.json`), and transient confirmations and pass markers |
+| `Secret <release>-slack-records` | a mirror of the records above, exactly the `<workspace>.json` and `_shared.*` entries, kept by the service in the same code path that writes the ConfigMap. It exists because a `PushSecret` reads Secrets only |
+
+`slackState.push` copies the two Secrets, each whole under its own remote
+key (`remoteKey` for the credentials, `recordsRemoteKey` for the records),
+with `deletionPolicy: None`. The status ConfigMap `<release>-slack-status`
+is derived and is not copied. What lands in the store **is** every
+workspace's credential, so name a store the installation already trusts.
+
+**Restore** after losing the namespace:
+
+1. Put both Secrets back before the service starts, with the labels they
+   carried (`app.kubernetes.io/managed-by=directory-roster`,
+   `app.kubernetes.io/part-of=<release>`, and
+   `access-roster.truvity.github.io/kind` of `slack-workspaces` for the
+   credentials and `slack-records` for the records). Either an
+   `ExternalSecret` that pulls each remote key into the Secret of that name
+   (`dataFrom: extract` of the remote key), applied once and deleted after,
+   or a one-off: read each remote key from the store and write its entries
+   as the Secret's keys. Do not leave a pulling `ExternalSecret` in place:
+   the service is the writer, and a pull would let a stale copy overwrite a
+   freshly connected workspace.
+2. Start (or restart) the service. If the records ConfigMap is missing or
+   holds no record and the `slack-records` Secret has some, start repopulates
+   the ConfigMap from it, and logs the restored keys. A ConfigMap that has
+   records is never added to, because a record missing from it may have been
+   removed on purpose; the mirror is brought up to date with it instead.
+3. Restart the Slack controller, which reads the credentials once. Each
+   workspace shows as never probed until its first pass. Confirmations and
+   pass markers are not restored: re-confirm any pending removal set.
+
+Both copies are needed: the records say which workspaces are connected and
+carry the Slack Connect channel definitions, the credentials let the
+controller act.
+
 **Without a copy**, a lost workspace credential is recovered by pressing
 **Connect** again as the same admin role account — the tenant id matches
 and the domains return authoritative after the first snapshot — and a

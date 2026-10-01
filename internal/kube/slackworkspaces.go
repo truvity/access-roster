@@ -91,8 +91,9 @@ func (s *SlackWorkspaces) Put(ctx context.Context, record connection.Record, cre
 // owner it had.
 func (s *SlackWorkspaces) SetOwner(ctx context.Context, workspace, owner string) (previous string, found bool, err error) {
 	key := connection.Key(workspace)
+	var mirrored map[string]string
 	err = retryConflict(func() error {
-		found, previous = false, ""
+		found, previous, mirrored = false, "", nil
 		cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -117,9 +118,15 @@ func (s *SlackWorkspaces) SetOwner(ctx context.Context, workspace, owner string)
 			return err
 		}
 		cm.Data[key] = raw
-		_, err = s.c.api.CoreV1().ConfigMaps(s.c.namespace).Update(ctx, cm, metav1.UpdateOptions{})
-		return err
+		if _, err = s.c.api.CoreV1().ConfigMaps(s.c.namespace).Update(ctx, cm, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+		mirrored = maps.Clone(cm.Data)
+		return nil
 	})
+	if err == nil && mirrored != nil {
+		err = mirrorSlackRecords(ctx, s.c, mirrored)
+	}
 	if err != nil || !found || previous == owner {
 		return previous, found && err == nil, err
 	}
@@ -313,8 +320,23 @@ func (s *SlackWorkspaces) PassRequests(ctx context.Context) (map[string]connecti
 }
 
 // editConfigMap applies one change under the object's version, retrying a
-// conflict, and creating the object if the service has not yet.
+// conflict, and creating the object if the service has not yet. The recovery
+// mirror follows the change (see [mirrorSlackRecords]).
 func (s *SlackWorkspaces) editConfigMap(ctx context.Context, change func(map[string]string)) error {
+	var written map[string]string
+	if err := s.editConfigMapKeeping(ctx, change, &written); err != nil {
+		return err
+	}
+	return mirrorSlackRecords(ctx, s.c, written)
+}
+
+// editConfigMapNoMirror is editConfigMap for the restore, which fills the
+// ConfigMap from the mirror and has nothing to write back.
+func (s *SlackWorkspaces) editConfigMapNoMirror(ctx context.Context, change func(map[string]string)) error {
+	return s.editConfigMapKeeping(ctx, change, new(map[string]string))
+}
+
+func (s *SlackWorkspaces) editConfigMapKeeping(ctx context.Context, change func(map[string]string), written *map[string]string) error {
 	return retryConflict(func() error {
 		cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -330,8 +352,11 @@ func (s *SlackWorkspaces) editConfigMap(ctx context.Context, change func(map[str
 			cm.Data = map[string]string{}
 		}
 		change(cm.Data)
-		_, err = s.c.api.CoreV1().ConfigMaps(s.c.namespace).Update(ctx, cm, metav1.UpdateOptions{})
-		return err
+		if _, err = s.c.api.CoreV1().ConfigMaps(s.c.namespace).Update(ctx, cm, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+		*written = maps.Clone(cm.Data)
+		return nil
 	})
 }
 

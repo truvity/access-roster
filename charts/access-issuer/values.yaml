@@ -701,6 +701,47 @@ githubApps:
   # adds a key, and a per-key mapping written today would not carry it.
   # (absent by default — the block above is the shape)
 
+# A SECOND COPY OF THE SLACK STATE, for recovery. Off unless written out,
+# same shape as `directory.push` and `githubApps.push`, with one more key:
+#
+#   slackState:
+#     push:
+#       secretStore: {name: openbao, kind: ClusterSecretStore}
+#       remoteKey: infra/access-issuer-slack-credentials
+#       recordsRemoteKey: infra/access-issuer-slack-records
+#
+# Two Secrets are copied, each whole and bundled under its own remote key,
+# because the key names inside are `<workspace-id>.json` and a reconnect
+# mints a new id, so a per-key mapping would go stale while reporting
+# healthy:
+#
+#   `<release>-slack-credentials`  `remoteKey`         every connected
+#       workspace's client id and secret, and its bot token once installed
+#   `<release>-slack-records`      `recordsRemoteKey`  which workspaces are
+#       connected and the Slack Connect channels defined on the console
+#
+# The second is a MIRROR the service keeps, and not a Secret of the
+# installation's own: those records live in the ConfigMap
+# `<release>-slack-workspaces`, and an External Secrets PushSecret reads
+# Secrets only. The mirror holds exactly the ConfigMap's `<workspace>.json`
+# and `_shared.<name>.json` entries -- never an operator's confirmation or
+# a pass marker, which are transient -- and the service rewrites it in the
+# same code path that writes the ConfigMap. If the ConfigMap is lost and
+# the mirror is put back, the service repopulates the ConfigMap at start.
+# The derived status ConfigMap is not copied: the controller rebuilds it.
+#
+# Catalogue Slack Apps (`slackApps`) have their own per-entry `push`, which
+# copies one App's bot token for a consumer; this is the service's own
+# state, and only so it can be restored.
+#
+# Needs `directory.store: kubernetes`, a store and both keys, and the two
+# keys must differ; `deletionPolicy` is fixed at `None`, because the case
+# this exists for is the Secret going away. What lands in the store IS the
+# credential of every workspace: name a store the installation already
+# trusts with material of that weight. See docs/operations/runbook.md.
+# (absent by default -- the block above is the shape)
+slackState: {}
+
 # A catalogue of Slack Apps, declared as data and created by an operator on
 # the console's Slack Apps page: create (with a throwaway app configuration
 # token, used once and never stored), then install (an owner of the

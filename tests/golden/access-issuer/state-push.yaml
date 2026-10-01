@@ -481,3 +481,119 @@ spec:
       storeRef:
         name: example-store
         kind: SecretStore
+
+---
+# Source: access-issuer/templates/state-push.yaml
+# A recovery copy of the credential of every connected Slack workspace, to ClusterSecretStore example-store
+# at platform/access-issuer/slack-credentials. Every key of the Secret lands there as one JSON
+# object; restoring is an operator writing it back, deliberately.
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: access-issuer-slack-credentials-copy
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  refreshInterval: 1h
+  # Declared rather than defaulted, as in github-apps-push.yaml: a field
+  # the CRD fills in but the manifest omits reads as drift to anything
+  # comparing desired against live, so an ArgoCD Application carrying this
+  # chart would sit permanently OutOfSync on a PushSecret that is doing its
+  # job -- and a permanent OutOfSync is a health signal nobody reads.
+  updatePolicy: Replace
+  # None, and not overridable to Delete by accident: the case this exists
+  # for IS the Secret going away. A copy that leaves with its source is not
+  # a backup. An installation that truly wants the copy removed can remove
+  # it where it lives.
+  deletionPolicy: None
+  secretStoreRefs:
+    - name: example-store
+      kind: ClusterSecretStore
+  selector:
+    secret:
+      name: access-issuer-slack-credentials
+  dataTo:
+    - conversionStrategy: None
+      remoteKey: platform/access-issuer/slack-credentials
+      # REQUIRED PER ENTRY. The top-level secretStoreRefs above does NOT
+      # satisfy it: external-secrets puts a CEL rule on every dataTo item,
+      #
+      #   has(self.storeRef) && (has(self.storeRef.name) ||
+      #                          has(self.storeRef.labelSelector))
+      #
+      # and an API server refuses the object outright without it --
+      # "spec.dataTo[0]: Invalid value: storeRef must specify either name
+      # or labelSelector", which names storeRef while pointing at dataTo
+      # and so reads as though the store block above were wrong.
+      #
+      # THE SAME STORE as secretStoreRefs, never a second value. A push
+      # already names where it writes; letting the two diverge would put
+      # the copy somewhere nobody looks for it.
+      #
+      # This shipped broken once. `helm template`, the values schema and
+      # the golden renders all passed, because a CEL rule lives in the CRD
+      # and none of them has one -- so chart-lint pins the shape instead.
+      storeRef:
+        name: example-store
+        kind: ClusterSecretStore
+
+---
+# Source: access-issuer/templates/state-push.yaml
+# A recovery copy of every Slack workspace's record and every Slack Connect channel's definition (the mirror of the records ConfigMap), to ClusterSecretStore example-store
+# at platform/access-issuer/slack-records. Every key of the Secret lands there as one JSON
+# object; restoring is an operator writing it back, deliberately.
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: access-issuer-slack-records-copy
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  refreshInterval: 1h
+  # Declared rather than defaulted, as in github-apps-push.yaml: a field
+  # the CRD fills in but the manifest omits reads as drift to anything
+  # comparing desired against live, so an ArgoCD Application carrying this
+  # chart would sit permanently OutOfSync on a PushSecret that is doing its
+  # job -- and a permanent OutOfSync is a health signal nobody reads.
+  updatePolicy: Replace
+  # None, and not overridable to Delete by accident: the case this exists
+  # for IS the Secret going away. A copy that leaves with its source is not
+  # a backup. An installation that truly wants the copy removed can remove
+  # it where it lives.
+  deletionPolicy: None
+  secretStoreRefs:
+    - name: example-store
+      kind: ClusterSecretStore
+  selector:
+    secret:
+      name: access-issuer-slack-records
+  dataTo:
+    - conversionStrategy: None
+      remoteKey: platform/access-issuer/slack-records
+      # REQUIRED PER ENTRY. The top-level secretStoreRefs above does NOT
+      # satisfy it: external-secrets puts a CEL rule on every dataTo item,
+      #
+      #   has(self.storeRef) && (has(self.storeRef.name) ||
+      #                          has(self.storeRef.labelSelector))
+      #
+      # and an API server refuses the object outright without it --
+      # "spec.dataTo[0]: Invalid value: storeRef must specify either name
+      # or labelSelector", which names storeRef while pointing at dataTo
+      # and so reads as though the store block above were wrong.
+      #
+      # THE SAME STORE as secretStoreRefs, never a second value. A push
+      # already names where it writes; letting the two diverge would put
+      # the copy somewhere nobody looks for it.
+      #
+      # This shipped broken once. `helm template`, the values schema and
+      # the golden renders all passed, because a CEL rule lives in the CRD
+      # and none of them has one -- so chart-lint pins the shape instead.
+      storeRef:
+        name: example-store
+        kind: ClusterSecretStore

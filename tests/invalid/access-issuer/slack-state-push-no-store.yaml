@@ -1,0 +1,7 @@
+# A copy with no store must fail rather than invent where a credential is written.
+# error: secretStore
+issuerURL: https://issuer.example
+slackState:
+  push:
+    remoteKey: platform/access-issuer/slack-credentials
+    recordsRemoteKey: platform/access-issuer/slack-records

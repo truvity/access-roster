@@ -1032,6 +1032,56 @@
           }
         }
       }
+    },
+    "slackState": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A recovery copy of the Slack state: see push.",
+      "properties": {
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Copy the credential of every connected Slack workspace, and the mirror of the records that say which workspaces and Slack Connect channels the console holds, to a secret store with an External Secrets PushSecret, for recovery: each whole Secret bundled under its own remote key (remoteKey for the credentials, recordsRemoteKey for the records), because the key names inside are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "required": [
+            "secretStore",
+            "remoteKey",
+            "recordsRemoteKey"
+          ],
+          "properties": {
+            "secretStore": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ]
+                }
+              }
+            },
+            "remoteKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "recordsRemoteKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {
