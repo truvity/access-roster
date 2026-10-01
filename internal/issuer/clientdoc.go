@@ -76,6 +76,9 @@ var errTransient = errors.New("transient")
 // never mistaken for a transport failure.
 var errRedirected = errors.New("redirected")
 
+// errRefused is a non-5xx answer that is not a document.
+var errRefused = errors.New("refused")
+
 // errNotADocumentClient says the id was never a URL, so the caller should
 // go on treating it as a declared client's id and refuse it as unknown.
 var errNotADocumentClient = errors.New("not a client document URL")
@@ -277,7 +280,7 @@ func (d *documentClients) load(ctx context.Context, target *url.URL) (policy.Cli
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		var kind error = errors.New("refused")
+		kind := errRefused
 		if resp.StatusCode >= 500 {
 			kind = errTransient
 		}
