@@ -15,25 +15,32 @@ what the controller does with it, and how to run it.
 
 For every workspace the policy declares:
 
-1. **Reads Slack whole.** Who the bot token is (checked against the policy's
-   `team_id`), every channel the bot can see, the members of the channels the
+1. **Reads Slack whole.** Who the bot token is (checked against the team
+   recorded when the workspace was first installed), every channel the bot can see, the members of the channels the
    policy binds, the account for each address the decision needs, and pending
    Slack Connect invitations. A read that is not whole, such as a missing scope,
    a rate limit that outlasts every retry or a page that fails, fails the
    workspace's pass and decides nothing: a partial read must never look like a
    workspace in which nobody has an account.
-2. **Asks the directory who holds each bound group**, once per pass for every
+2. **Asks the console which domains each directory serves**, once per pass:
+   a person is looked up in a workspace by their address in the domains of the
+   workspace's **owning directory**, and nowhere else (see
+   [Where a workspace's team, owner and domains come from](#where-a-workspaces-team-owner-and-domains-come-from)).
+   A workspace with no owner holds every person, saying *no owning directory:
+   set the owner on the console*; a directory that cannot be read, or is no
+   longer connected, fails the workspace's pass and changes nothing.
+3. **Asks the directory who holds each bound group**, once per pass for every
    workspace. The console answers under the digest of the policy it computed
    with, and the controller acts only on answers under its own: during a rollout
    the two restart at different moments.
-3. **Derives** the wanted state, and **asks the directory to vouch** for each
+4. **Derives** the wanted state, and **asks the directory to vouch** for each
    address a removal or a leaver report rests on. One question per address per
    pass, however many channels or workspaces name the person. An address the
    directory could not answer for, or answered for under another policy, is not
    vouched for, and its removal waits (row state `retrying`).
-4. **Decides**, then acts if the workspace is listed in `slackRoster.actsIn`;
+5. **Decides**, then acts if the workspace is listed in `slackRoster.actsIn`;
    otherwise it only reports.
-5. **Publishes every workspace's report together** into the ConfigMap
+6. **Publishes every workspace's report together** into the ConfigMap
    `<release>-slack-status`, one key per workspace.
 
 ### Modes
@@ -49,7 +56,7 @@ For every workspace the policy declares:
 
 | State | Means |
 |---|---|
-| `held` | something is to be done and is not being done until a person acts. The reason says what: no Slack account yet, the account is deactivated or a bot's, it belongs to another workspace, no address of the person is in the workspace's domains, a channel of that name exists and was not made by the bot (adopt it by id), a private channel the bot is not in (invite the bot), the visibility disagrees with the policy |
+| `held` | something is to be done and is not being done until a person acts. The reason says what: no Slack account yet, the account is deactivated or a bot's, it belongs to another workspace, no address of the person is in the owning directory's served domains, the workspace has no owner, a channel of that name exists and was not made by the bot (adopt it by id), a private channel the bot is not in (invite the bot), the visibility disagrees with the policy |
 | `retrying` | a removal the directory could not vouch for this pass, or a change Slack refused (with Slack's words); tried again next pass |
 | `reported` | said, never acted on: a guest, an account of another workspace, an account with no address |
 | `ignored` | on the channel's `ignore` list |
@@ -112,12 +119,44 @@ token), or whose read of Slack failed is reported `failed` with the reason over
 the last report that had rows, so the page does not blank. It does not stop the
 other workspaces' passes.
 
+## Where a workspace's team, owner and domains come from
+
+The policy names a workspace by its **key** and binds channels in it. It does
+not say which Slack team the key stands for, which directory owns it or which
+domains its people use: access-roster knows each of those already, and a
+second copy in a file would only drift from the first. A policy that still
+carries `team_id`, `domains` or `owner` is refused at load, with a message
+saying so.
+
+| Fact | Where it comes from | How to change it |
+|---|---|---|
+| **owner**: the connected directory the workspace belongs to | chosen when the workspace is connected, and recorded in its connection record | the installation-wide operator's **Change owner** on the workspace's card |
+| **team**: the Slack workspace the key stands for | the team `oauth.v2.access` reports at the **first install**; every later install or reconnect must match it (a token for another team is revoked and refused) | disconnect and connect again |
+| **domains** a person is looked up by | the domains the **owning directory serves**, read from the console every pass | change what the directory serves (the directory's own page) |
+
+Who may connect a workspace nobody has connected yet, and who then owns it:
+
+- the **installation-wide operator** chooses the owning directory from the
+  connected directories, or *none*;
+- an operator of **exactly one** connected directory owns what they connect:
+  the form shows that directory and asks nothing;
+- an operator of **several** connected directories chooses among theirs;
+- anybody else, and anybody who names a directory they do not operate, is
+  refused.
+
+The owner is recorded with the connect audit record
+(`roster.slack_workspace.connected` carries `owner`). Once recorded it is
+changed only by the installation-wide operator, and the change is its own
+audit record (`roster.slack_workspace.owner_changed`, with the previous and
+new owner). The page shows the owner by its primary domain, not its id.
+
 ## Connect a workspace from the console
 
 The **Slack** page lists every workspace the policy declares
 (`slack.workspaces`) that you may view, with where it stands and what the
 controller last did there. Connecting one is three steps, and the only thing
-you type is a throwaway token:
+you type is a throwaway token (and, where you have a choice, the owning
+directory):
 
 1. **Generate an app configuration token.** Open
    [api.slack.com/apps](https://api.slack.com/apps), scroll to **Your App
@@ -126,8 +165,9 @@ you type is a throwaway token:
    hours**, and the console uses it **once**: it creates (or updates) the App
    and is dropped. It is not written to the Secret or a record, not put in the
    signed state, and not in any log line, audit record or error.
-2. **Press Connect** on the workspace's card and paste the token into the
-   password field (the field is cleared before the call). The console builds the
+2. **Press Connect** on the workspace's card, choose the owning directory
+   where the form offers a choice, and paste the token into the password field
+   (the field is cleared before the call). The console builds the
    App's manifest (the bot user, the scopes below, and its own callback as the
    only redirect URL: nothing that receives a request from Slack), creates the
    App, and keeps its client id and secret as **created, not installed**. You
@@ -135,11 +175,12 @@ you type is a throwaway token:
 3. **An owner of the workspace approves the App** on Slack's page. Slack sends
    the browser back to `/connect/slack/workspace/callback`; the console
    exchanges the code for the bot token and keeps it, in the Secret
-   `<release>-slack-credentials`, **only if Slack says it belongs to the
-   workspace the policy names** (`team_id`). Any other workspace is refused: the
-   token is **revoked** (`auth.revoke`) and dropped, nothing is kept, and
-   `roster.slack_workspace.connect_refused` is recorded. A successful install
-   records `roster.slack_workspace.connected`.
+   `<release>-slack-credentials`. The **first** install records the team Slack
+   reports; a **later** install is kept only if it belongs to that same team.
+   Any other team is refused: the token is **revoked** (`auth.revoke`) and
+   dropped, nothing is kept, and `roster.slack_workspace.connect_refused` is
+   recorded (so is a first install into a team already connected under another
+   key). A successful install records `roster.slack_workspace.connected`.
 
 The bot scopes are one list, `connection.BotScopes`, each for a method the
 controller calls:
@@ -171,8 +212,7 @@ audit record that the token was not revoked; remove the App in its Slack
 settings then. The App itself stays in Slack until it is deleted there.
 
 A workspace's connection is an **owner's** to operate: the installation-wide
-operator, or the operator of the directory workspace that owns it
-(`slack.workspaces.<key>.owner`). A viewer sees the page and no buttons; every
+operator, or the operator of the directory workspace recorded as its owner. A viewer sees the page and no buttons; every
 row carries `can_operate`, the server's answer. A deployment that keeps no state
 in Kubernetes cannot connect a workspace: a bot token would not survive a
 restart.
@@ -197,8 +237,8 @@ records ConfigMap, records `roster.slack_removals.confirmed`, and lapses after
 that gate: a set that changed since the page was loaded needs looking at again.
 
 The API behind the page is `SlackService` (`GetSlackStatus`,
-`BeginSlackWorkspaceConnect`, `DisconnectSlackWorkspace`,
-`ConfirmSlackRemovals`). The catalogue's [Slack Apps](slack-apps-catalogue.md)
+`BeginSlackWorkspaceConnect`, `ChangeSlackWorkspaceOwner`,
+`DisconnectSlackWorkspace`, `ConfirmSlackRemovals`). The catalogue's [Slack Apps](slack-apps-catalogue.md)
 are separate: they create Apps for other purposes; this page's App is the
 roster's own.
 
@@ -237,7 +277,11 @@ controller). Allow `slack.com:443` for the controller's pods,
 policy. The chart does admit the controller to the service's port, for reading
 the console's API, when `networkPolicy.enabled`.
 
-**What it reads** are mounted volumes, so the account needs no permission to
+**What it reads.** The console's API (with its own ServiceAccount token): who
+holds each group (`ListHolders`), whether the directory vouches for an address
+(`Explain`) and which domains each directory serves (`ListServedDomains`, a
+viewer's read: the controller's account is in the group the chart grants it,
+and sees every directory). The rest are mounted volumes, so the account needs no permission to
 read any Secret or other ConfigMap through the API: the Secret
 `<release>-slack-credentials` (one `<workspace>.json` per workspace: app id,
 client id and secret, the bot token once installed) and the ConfigMap

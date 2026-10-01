@@ -56,7 +56,9 @@ accept on the next pass), *waiting for acceptance*, *active*, *needs you*
 ## Who may
 
 - **Create, edit, delete:** the operator over the **host** workspace's owner
-  (`slack.workspaces.<host>.owner`), or the installation-wide operator. The
+  (the directory recorded as the host's owner when it was connected, see
+  [slack-workspace.md](slack-workspace.md#where-a-workspaces-team-owner-and-domains-come-from)),
+  or the installation-wide operator. The
   operator of a **guest** workspace's owner alone may not: a channel is owned
   by its host.
 - **See:** a viewer of the host or of any `with` workspace sees the record and

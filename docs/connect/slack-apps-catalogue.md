@@ -36,7 +36,7 @@ slackApps:
 | Field | Meaning |
 |---|---|
 | `id` | the App's name **here**: where it is kept and what the console names. Lower-case letters, digits and dashes, at most 32 |
-| `workspace` | a key of the policy's `slack.workspaces`. The App is installed into that workspace, and **only** that one: the install is refused when Slack says the token belongs to another team than the policy's `team_id` for the key |
+| `workspace` | a key of the policy's `slack.workspaces`, **already connected** on the Slack page. The App is installed into that workspace, and **only** that one: the install is refused when Slack says the token belongs to another team than the one recorded when the workspace was first installed |
 | `name` | the App's name in Slack. Empty is `<workspace>-<id>`, cut to 35 characters; a declared name over 35 is refused |
 | `description` | Slack's short description; at most 140 characters |
 | `botScopes` | the bot scopes the App asks for, by Slack's names (`channels:read`, `users:read.email`, `conversations.connect:write`, ...). Listed once each |
@@ -47,7 +47,11 @@ mounted, and read once at start; a change rolls the service out. **The
 service refuses to start** on an unknown key, a duplicate id, a scope that
 is not a scope name, a name or description Slack would refuse, or an entry
 whose `workspace` the policy's `slack.workspaces` does not name. Add the
-workspace, with its `team_id`, to the policy first.
+workspace's key to the policy first, then connect it on the console's Slack
+page: the policy never carries its team, owner or domains (see
+[where they come from](slack-workspace.md#where-a-workspaces-team-owner-and-domains-come-from)).
+Until the workspace is connected, and has recorded its team at its first
+install, Create and Install are refused with *connect the workspace first*.
 
 Needs `directory.store: kubernetes`: with any other store a bot token would
 not survive a restart, and the console says so instead of creating an App.
@@ -84,12 +88,12 @@ state and the step it waits for.
    in the Secret below. The state is *created, not installed*: there is
    no bot token yet.
 2. **Install.** The console sends the browser to Slack's authorize page for
-   the workspace the policy names. An owner of that workspace approves, and
+   the workspace the entry names. An owner of that workspace approves, and
    Slack sends the browser back to the console, which exchanges the one-time
    code for the **bot token**. The token is kept only if it belongs to the
-   policy's `team_id` for the entry's `workspace`; a token for any other
-   team is dropped unread and the install is refused, with a record in the
-   audit trail. The state is *installed*.
+   team recorded for the entry's `workspace` when it was first installed; a
+   token for any other team is revoked and the install is refused, with a
+   record in the audit trail. The state is *installed*.
 
 The flow is pinned to the browser that started it by a cookie and a signed
 state that carries the operator who began it and the App it is for, exactly
@@ -116,10 +120,11 @@ again.
 
 Creating, installing and reinstalling need the **operator** role: the
 installation-wide operator, or the scoped operator of the directory
-workspace that owns the Slack workspace (`slack.workspaces.<key>.owner`, see
-[the policy reference](../reference/policy.md#scoping-a-slack-workspace-slackworkspaceskeyowner)).
-A workspace that names no owner is operated by the installation-wide
-operator alone. A viewer sees the Apps of the workspaces they may view and
+workspace recorded as the Slack workspace's owner when it was connected (see
+[who owns a Slack workspace](../reference/policy.md#who-owns-a-slack-workspace)).
+A workspace connected with no owner is operated by the installation-wide
+operator alone. The owner is read from the workspace's connection record, not
+from the policy; only the installation-wide operator changes it. A viewer sees the Apps of the workspaces they may view and
 nothing else, and each row says whether they may operate it.
 
 ## Where the credentials are kept
