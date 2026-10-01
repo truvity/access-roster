@@ -13,6 +13,7 @@ import { access, adds, ago, at, forHowLong, matcherKind, people as peopleCount, 
 import { atMost, repositoryWords } from "./githubModel";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
+import { SlackChannelsFed } from "./SlackReach";
 import { Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
 
 /** The access-side groups: the vocabulary everything downstream speaks. */
@@ -23,7 +24,7 @@ export function Groups() {
 
   return (
     <Page
-      title="Groups"
+      title="Internal groups"
       lede="The vocabulary of access. A person is in one through a group in a provider, a machine through a matcher, and every client and every claim speaks these names. They are declared by the deployment; who is in them is what this console edits."
     >
       <Loading busy={policy.loading} />
@@ -240,6 +241,8 @@ export function Group({ name }: { name: string }) {
           />
         </Section>
       ) : null}
+
+      <SlackChannelsFed group={name} internal emails={people.map((holder) => holder.email)} />
 
       {feeds.length ? (
         <Section title="GitHub teams it feeds" hint="its holders belong in these teams; the controller makes GitHub match">

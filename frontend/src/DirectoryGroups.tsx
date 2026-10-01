@@ -12,6 +12,7 @@ import TableRow from "@mui/material/TableRow";
 import { access, ago, at, forHowLong, people as peopleCount, personName } from "./api";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
+import { SlackChannelsFed } from "./SlackReach";
 import { Authority, Facet, Facets, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, State } from "./ui";
 
 /** The identity-side groups: what the providers say exists, and which
@@ -37,7 +38,7 @@ export function DirectoryGroups() {
 
   return (
     <Page
-      title="Groups"
+      title="Directory groups"
       lede="Every group in every connected provider, as the last snapshot has it. A group here grants nothing by itself: it does so by being attached to an internal group, and that attachment is the one thing this console edits."
     >
       <Facets>
@@ -114,6 +115,15 @@ export function DirectoryGroup({ email }: { email: string }) {
   const value = group.value;
   const feeds = value?.feeds ?? [];
   const clients = (policy.value?.clients ?? []).filter((client) => client.requires.some((name) => feeds.some((feed) => feed.group === name)));
+
+  const fed = new Set(feeds.map((feed) => feed.group));
+  const teams = (policy.value?.teams ?? []).flatMap((team) => {
+    const entry = (role: string, groups: readonly string[]) => {
+      const via = groups.filter((name) => fed.has(name));
+      return via.length ? [{ org: team.org, team: team.team, role, via }] : [];
+    };
+    return [...entry("member", team.members), ...entry("maintainer", team.maintainers)];
+  });
 
   if (!value) {
     return (
@@ -195,6 +205,29 @@ export function DirectoryGroup({ email }: { email: string }) {
           empty="None. Naming it in an internal group, in the policy, is what makes its members reach anything."
         />
       </Section>
+
+      <SlackChannelsFed group={value.email} feeds={feeds.map((feed) => feed.group)} emails={members.map((m) => m.email)} />
+
+      {teams.length ? (
+        <Section title="GitHub teams it feeds" hint="through the internal groups above: their holders belong in these teams">
+          <Rows
+            items={teams}
+            keyOf={(t) => `${t.org}/${t.team}/${t.role}`}
+            primary={(t) => (
+              <Ref to={paths.githubTeam(t.org, t.team)} mono>
+                {`${t.org} / ${t.team}`}
+              </Ref>
+            )}
+            secondary={(t) => (
+              <>
+                as {t.role}, through{" "}
+                <Names items={t.via.map((name) => ({ label: name, to: paths.group(name), mono: true }))} muted />
+              </>
+            )}
+            empty=""
+          />
+        </Section>
+      ) : null}
 
       <Section title="Clients that open through it" hint="what its members can be issued a token for">
         <Rows
