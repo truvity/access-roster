@@ -10,12 +10,14 @@ import (
 
 // SlackSharedChannel is a Slack Connect channel's definition as the trail
 // names it: by the host workspace and channel name, with the workspaces it
-// is shared with, the groups that feed it and its visibility.
+// is shared with, the directory groups that feed it and its visibility.
 type SlackSharedChannel struct {
 	Name string
 	Host string
 	With []string
-	From []string
+	// Sources are the directory groups, by address: carried as targets, because
+	// an address is an identifier and never data.
+	Sources []string
 	// Private is one visibility for every side, unless PerSide is set.
 	Private bool
 	// PerSide is a visibility per workspace key, for a channel whose sides
@@ -24,7 +26,7 @@ type SlackSharedChannel struct {
 }
 
 func (c SlackSharedChannel) targets() []*record.Target {
-	return []*record.Target{targetSlackWorkspace(c.Host), targetSlackChannel(c.Host, c.Name)}
+	return append([]*record.Target{targetSlackWorkspace(c.Host), targetSlackChannel(c.Host, c.Name)}, directoryGroupTargets(c.Sources)...)
 }
 
 // Privacy is the visibility in one word, or as workspace=word pairs in key
@@ -49,7 +51,7 @@ func visibility(private bool) string {
 
 func (c SlackSharedChannel) data(changes string) data {
 	return data{
-		"name": c.Name, "with": strings.Join(c.With, ","), "from": strings.Join(c.From, ","),
+		"name": c.Name, "with": strings.Join(c.With, ","),
 		"privacy": c.Privacy(), "changes": changes,
 	}
 }

@@ -3,7 +3,7 @@ import type { Sentences } from "@truvity/audit";
 
 export const roster: Sentences = {
   "source": "roster",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "locales": [
     "en"
   ],
@@ -234,6 +234,24 @@ export const roster: Sentences = {
       "summary": "A Slack channel was created.",
       "message": {
         "en": "{outcome, select, success {{targets_1_id} was created} other {Slack refused to create {targets_1_id}}}"
+      }
+    },
+    "roster.slack_console_channel.created": {
+      "summary": "An ordinary Slack channel was put under management from the console.",
+      "message": {
+        "en": "{actor} put the Slack channel {targets_1_id} in {targets_0_id} under management ({data_mode}, fed by {data_sources} directory groups)"
+      }
+    },
+    "roster.slack_console_channel.deleted": {
+      "summary": "A console-managed Slack channel's record was deleted from the console; the channel stays in Slack.",
+      "message": {
+        "en": "{actor} stopped managing the Slack channel {targets_1_id} in {targets_0_id}; the channel stays in Slack"
+      }
+    },
+    "roster.slack_console_channel.updated": {
+      "summary": "A console-managed Slack channel's record was changed from the console.",
+      "message": {
+        "en": "{actor} changed the managed Slack channel {targets_1_id} in {targets_0_id} ({data_changes})"
       }
     },
     "roster.slack_leaver.reported": {

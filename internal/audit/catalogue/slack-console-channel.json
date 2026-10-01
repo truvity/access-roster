@@ -1,0 +1,38 @@
+{
+  "$id": "https://schemas.example/access-roster/v1/slack-console-channel.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The channel's name.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none",
+      "x-audit-facet": true
+    },
+    "privacy": {
+      "type": "string",
+      "description": "The visibility: public or private.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "mode": {
+      "type": "string",
+      "description": "How membership is reconciled: extend (only adds) or strict (adds and removes).",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "sources": {
+      "type": "integer",
+      "description": "How many directory groups feed it; the groups are the record's targets.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    },
+    "changes": {
+      "type": "string",
+      "description": "For an edit, what changed, as 'field: before -> after' parts; empty otherwise.",
+      "x-audit-class": "shared",
+      "x-audit-pii": "none"
+    }
+  }
+}
