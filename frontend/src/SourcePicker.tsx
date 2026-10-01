@@ -14,6 +14,7 @@ export function SourcePicker({
   disabled,
   helperText,
   label = "Directory groups",
+  error,
 }: {
   options: SourceOption[];
   value: string[];
@@ -21,6 +22,8 @@ export function SourcePicker({
   disabled?: boolean;
   helperText?: string;
   label?: string;
+  /** Why the groups could not be listed: shown instead of an empty picker that reads as "no group exists". */
+  error?: string;
 }) {
   const chosen = value.map((email) => optionOf(options, email));
   const offered = [...options, ...chosen.filter((c) => c.directory === "")];
@@ -36,8 +39,8 @@ export function SourcePicker({
       filterOptions={(all, state) => matchingOptions(all, state.inputValue)}
       onChange={(_, next) => onChange(next.map((option) => option.email))}
       disabled={disabled}
-      noOptionsText="No directory group matches. Only groups of a connected directory can be chosen."
-      renderInput={(params) => <TextField {...params} label={label} helperText={helperText} />}
+      noOptionsText={error || "No directory group matches. Only groups of a connected directory can be chosen."}
+      renderInput={(params) => <TextField {...params} label={label} error={!!error} helperText={error || helperText} />}
     />
   );
 }

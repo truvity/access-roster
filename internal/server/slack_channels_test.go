@@ -476,7 +476,7 @@ func TestConsoleChannelStatesFollowTheWorkspacesReport(t *testing.T) {
 	for _, c := range h.listChannels(as(everywhere), t).Channels {
 		byName[c.Channel.Name] = c
 	}
-	if byName["general"].GetState() != sharedInvalid || !strings.Contains(byName["general"].GetReason(), "defined in git") {
+	if byName["general"].GetState() != sharedHeld || !strings.Contains(byName["general"].GetReason(), "defined in both git and the console") {
 		t.Errorf("a record that duplicates a policy channel = %+v", byName["general"])
 	}
 	if byName["broken"].GetState() != sharedInvalid {

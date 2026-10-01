@@ -72,7 +72,7 @@ reason on the channel:
 | `adopt: <id>` names a channel the bot cannot see | *adopt X: the bot cannot see that channel; if it is private, invite the bot first, otherwise check the id* |
 | `adopt: <id>` names a Slack Connect channel | *it is managed as a shared channel, not bound here* |
 | a private channel is visible but the bot is not in it | *the bot is not in this private channel: invite the bot first* |
-| the policy channel and a console record define the same channel (the same name, or the same channel id adopted) | *defined in both git and the console: held and unchanged until one definition is removed*, in the controller's report of the policy channel AND of the record; nothing on it changes in Slack. The console's own row for the record reads *invalid*, with the reason it gives for refusing a write |
+| the policy channel and a console record define the same channel (the same name, or the same channel id adopted) | *defined in both git and the console: held and unchanged until one definition is removed*, in the controller's report of the policy channel AND of the record; nothing on it changes in Slack. The console's own row for the record reads *held*, with the same reason |
 
 A `strict` adopted channel removes only after the usual vouching and breakers:
 the first pass after adopting it is subject to the breaker like any other, so a

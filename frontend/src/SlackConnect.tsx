@@ -169,7 +169,7 @@ export function ConnectEditDialog({
       } else {
         await slackConnect.createSlackSharedChannel({ channel });
         if (discovered) {
-          onDone(`#${channel.name} is under management. The controller takes over the existing channel within a couple of minutes; nobody is removed from it.`);
+          onDone(`#${channel.name} is under management. The controller adopts the existing channel within a couple of minutes; nobody is removed from it.`);
           return;
         }
         onDone(`#${channel.name} is defined. ${channel.host} creates it and invites ${channel.with.join(", ")} within a couple of minutes.`);
@@ -224,6 +224,7 @@ export function ConnectEditDialog({
           />
           <SourcePicker
             options={picker}
+            error={options.sourceDirectoriesError}
             value={form.from}
             onChange={(value) => setForm({ ...form, from: value })}
             disabled={busy}
@@ -288,7 +289,7 @@ export function ConnectEditDialog({
             : null}
           {discovered ? (
             <Typography variant="caption" color="text.secondary">
-              The existing channel {discovered.channelId} is taken over as it is: the bot joins a public side, a private side needs the bot invited, and nobody is
+              The existing channel {discovered.channelId} is adopted as it is: the bot joins a public side, a private side needs the bot invited, and nobody is
               removed. Its members come only from the directory groups chosen here.
             </Typography>
           ) : null}

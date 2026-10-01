@@ -259,6 +259,20 @@ func TestASharedChannelIsRefusedWhenItDoesNotValidate(t *testing.T) {
 	}
 }
 
+func TestACreateRefusalDoesNotNameAnotherHostsRecord(t *testing.T) {
+	h := newConnectHarness(t)
+	if err := h.create(as(everywhere), def("partners", "acme", []string{"initech"}, []string{"partners@north.example"})); err != nil {
+		t.Fatal(err)
+	}
+	// globex's operator sees neither side of the record: the name is taken,
+	// and that is all the refusal says.
+	err := h.create(as(southOp), def("partners", "globex", []string{"initech"}, []string{"partners@north.example"}))
+	wantCode(t, "a name another host's record holds", err, connect.CodeAlreadyExists)
+	if err != nil && strings.Contains(err.Error(), "acme") {
+		t.Errorf("the refusal names a host the caller may not see: %v", err)
+	}
+}
+
 func TestAHostAndANameAreImmutable(t *testing.T) {
 	h := newConnectHarness(t)
 	ctx := as(everywhere)
@@ -301,15 +315,18 @@ func TestWhoMayEditSharedChannels(t *testing.T) {
 		with []string
 		// create is the code a create of this channel is answered with.
 		create connect.Code
+		// hidden: the caller may not even see the record, so an edit or delete
+		// is answered "no such channel", as for a name nobody holds.
+		hidden bool
 	}{
-		{"installation-wide operator, acme hosts", everywhere, "acme", []string{"globex"}, 0},
-		{"installation-wide operator, unowned host", everywhere, "initech", []string{"acme"}, 0},
-		{"the host owner's operator", northOp, "acme", []string{"globex"}, 0},
-		{"the guest owner's operator alone", southOp, "acme", []string{"globex"}, connect.CodePermissionDenied},
-		{"an operator of an unrelated directory", elsewhereOp, "acme", []string{"globex"}, connect.CodePermissionDenied},
-		{"a scoped operator, unowned host", northOp, "initech", []string{"acme"}, connect.CodePermissionDenied},
-		{"a scoped viewer", northViewer, "acme", []string{"globex"}, connect.CodePermissionDenied},
-		{"an installation-wide viewer", viewerEverywhere, "acme", []string{"globex"}, connect.CodePermissionDenied},
+		{"installation-wide operator, acme hosts", everywhere, "acme", []string{"globex"}, 0, false},
+		{"installation-wide operator, unowned host", everywhere, "initech", []string{"acme"}, 0, false},
+		{"the host owner's operator", northOp, "acme", []string{"globex"}, 0, false},
+		{"the guest owner's operator alone", southOp, "acme", []string{"globex"}, connect.CodePermissionDenied, false},
+		{"an operator of an unrelated directory", elsewhereOp, "acme", []string{"globex"}, connect.CodePermissionDenied, true},
+		{"a scoped operator, unowned host", northOp, "initech", []string{"acme"}, connect.CodePermissionDenied, false},
+		{"a scoped viewer", northViewer, "acme", []string{"globex"}, connect.CodePermissionDenied, false},
+		{"an installation-wide viewer", viewerEverywhere, "acme", []string{"globex"}, connect.CodePermissionDenied, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h := newConnectHarness(t)
@@ -337,8 +354,12 @@ func TestWhoMayEditSharedChannels(t *testing.T) {
 				}
 				return
 			}
-			wantCode(t, "update", errUpdate, connect.CodePermissionDenied)
-			wantCode(t, "delete", errDelete, connect.CodePermissionDenied)
+			want := connect.CodePermissionDenied
+			if c.hidden {
+				want = connect.CodeNotFound
+			}
+			wantCode(t, "update", errUpdate, want)
+			wantCode(t, "delete", errDelete, want)
 			if _, still := h.stored(t)[connection.SharedKey("partners")]; !still {
 				t.Error("a refused delete removed the record")
 			}

@@ -84,7 +84,7 @@ func (c *Console) ListSlackSharedChannels(
 	if anyOperate {
 		// Any connected directory's groups: a Slack Connect channel is not
 		// bound to one directory.
-		out.SourceDirectories = c.sourceDirectories(ctx)
+		out.SourceDirectories, out.SourceDirectoriesError = c.sourceDirectories(ctx)
 	}
 	if c.deps.SlackShared == nil {
 		return connect.NewResponse(out), nil
@@ -286,7 +286,8 @@ func sharedError(err error) error {
 func (c *Console) CreateSlackSharedChannel(
 	ctx context.Context, req *connect.Request[directoryrosterv1.CreateSlackSharedChannelRequest],
 ) (*connect.Response[directoryrosterv1.CreateSlackSharedChannelResponse], error) {
-	if _, err := requireAnywhere(ctx, access.RoleOperator); err != nil {
+	id, err := requireAnywhere(ctx, access.RoleOperator)
+	if err != nil {
 		return nil, err
 	}
 	store, err := c.slackSharedStore()
@@ -321,8 +322,12 @@ func (c *Console) CreateSlackSharedChannel(
 	}
 	err = store.Apply(ctx, want.Name, func(current *reconcile.SharedChannel) (*reconcile.SharedChannel, error) {
 		if current != nil {
-			return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf(
-				"a shared channel named %s already exists, hosted by %s: edit it, or pick another name", want.Name, current.Host))
+			// Another host's record is named to a caller only when the caller may see it.
+			if book, berr := c.slackBook(ctx); berr == nil && maySeeShared(id, book, *current) {
+				return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf(
+					"a shared channel named %s already exists, hosted by %s: edit it, or pick another name", want.Name, current.Host))
+			}
+			return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("a shared channel named %s already exists: pick another name", want.Name))
 		}
 		return &want, nil
 	})
@@ -341,7 +346,8 @@ func (c *Console) CreateSlackSharedChannel(
 func (c *Console) UpdateSlackSharedChannel(
 	ctx context.Context, req *connect.Request[directoryrosterv1.UpdateSlackSharedChannelRequest],
 ) (*connect.Response[directoryrosterv1.UpdateSlackSharedChannelResponse], error) {
-	if _, err := requireAnywhere(ctx, access.RoleOperator); err != nil {
+	id, err := requireAnywhere(ctx, access.RoleOperator)
+	if err != nil {
 		return nil, err
 	}
 	store, err := c.slackSharedStore()
@@ -351,10 +357,7 @@ func (c *Console) UpdateSlackSharedChannel(
 	want := sharedOf(req.Msg.GetChannel())
 	var changes string
 	err = store.Apply(ctx, want.Name, func(current *reconcile.SharedChannel) (*reconcile.SharedChannel, error) {
-		if current == nil {
-			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("there is no shared channel named %s", want.Name))
-		}
-		if _, err := c.requireSlack(ctx, access.RoleOperator, current.Host); err != nil {
+		if err := c.requireStoredShared(ctx, id, want.Name, current); err != nil {
 			return nil, err
 		}
 		if want.Host != current.Host {
@@ -382,6 +385,28 @@ func (c *Console) UpdateSlackSharedChannel(
 	view.State, view.Reason = sharedState(want, c.deps.Authorizer.Policy().Declared(), c.slackReports(ctx))
 	view.CanOperate = true
 	return connect.NewResponse(&directoryrosterv1.UpdateSlackSharedChannelResponse{Channel: view}), nil
+}
+
+// requireStoredShared is the gate on changing a stored record: the role over
+// its STORED host, asked before the record's existence is admitted. A caller
+// who may not even see the record (a viewer of neither its host nor any guest)
+// is answered "no such channel", exactly as for a name nobody holds, so the
+// answer cannot be used to find out which names another directory's workspace
+// hosts. A caller who may see it but may not operate it is refused plainly.
+func (c *Console) requireStoredShared(ctx context.Context, id access.Identity, name string, current *reconcile.SharedChannel) error {
+	notFound := connect.NewError(connect.CodeNotFound, fmt.Errorf("there is no shared channel named %s", name))
+	if current == nil {
+		return notFound
+	}
+	book, err := c.slackBook(ctx)
+	if err != nil {
+		return err
+	}
+	if !maySeeShared(id, book, *current) {
+		return notFound
+	}
+	_, err = c.requireSlack(ctx, access.RoleOperator, current.Host)
+	return err
 }
 
 // sourcesChange says how a channel's directory groups changed, by count: the
@@ -462,7 +487,8 @@ func sharedChanges(before, after reconcile.SharedChannel) string {
 func (c *Console) DeleteSlackSharedChannel(
 	ctx context.Context, req *connect.Request[directoryrosterv1.DeleteSlackSharedChannelRequest],
 ) (*connect.Response[directoryrosterv1.DeleteSlackSharedChannelResponse], error) {
-	if _, err := requireAnywhere(ctx, access.RoleOperator); err != nil {
+	id, err := requireAnywhere(ctx, access.RoleOperator)
+	if err != nil {
 		return nil, err
 	}
 	store, err := c.slackSharedStore()
@@ -472,10 +498,7 @@ func (c *Console) DeleteSlackSharedChannel(
 	name := strings.TrimSpace(req.Msg.GetName())
 	var gone reconcile.SharedChannel
 	err = store.Apply(ctx, name, func(current *reconcile.SharedChannel) (*reconcile.SharedChannel, error) {
-		if current == nil {
-			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("there is no shared channel named %s", name))
-		}
-		if _, err := c.requireSlack(ctx, access.RoleOperator, current.Host); err != nil {
+		if err := c.requireStoredShared(ctx, id, name, current); err != nil {
 			return nil, err
 		}
 		gone = *current

@@ -71,6 +71,9 @@ type ListSlackSharedChannelsResponse struct {
 	// for an operator who may host a channel; empty for anyone else. A
 	// Slack Connect channel may be fed from ANY connected directory.
 	SourceDirectories []*SlackSourceDirectory `protobuf:"bytes,6,rep,name=source_directories,json=sourceDirectories,proto3" json:"source_directories,omitempty"`
+	// set when the directories' groups could not be read: source_directories
+	// is then empty because the read failed, not because no group exists.
+	SourceDirectoriesError string `protobuf:"bytes,7,opt,name=source_directories_error,json=sourceDirectoriesError,proto3" json:"source_directories_error,omitempty"`
 	// the Slack Connect channels the workspaces' bots can see, merged into
 	// one row per channel, whether or not a record manages them. Only what
 	// the caller may see.
@@ -135,6 +138,13 @@ func (x *ListSlackSharedChannelsResponse) GetSourceDirectories() []*SlackSourceD
 		return x.SourceDirectories
 	}
 	return nil
+}
+
+func (x *ListSlackSharedChannelsResponse) GetSourceDirectoriesError() string {
+	if x != nil {
+		return x.SourceDirectoriesError
+	}
+	return ""
 }
 
 func (x *ListSlackSharedChannelsResponse) GetDiscovered() []*SlackDiscoveredChannel {
@@ -554,7 +564,7 @@ type SlackSharedChannelDefinition struct {
 	// exactly. When non-empty, private is ignored.
 	PrivatePerSide map[string]bool `protobuf:"bytes,6,rep,name=private_per_side,json=privatePerSide,proto3" json:"private_per_side,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	// the Slack id of a channel that already exists and is already shared,
-	// which the record takes over instead of the host creating one. Set from
+	// which the record adopts instead of the host creating one. Set from
 	// a discovered channel; immutable.
 	ChannelId string `protobuf:"bytes,7,opt,name=channel_id,json=channelId,proto3" json:"channel_id,omitempty"`
 	// individual addresses whose owners belong, beside the groups: each a user
@@ -997,14 +1007,15 @@ var File_directoryroster_v1_slack_connect_proto protoreflect.FileDescriptor
 const file_directoryroster_v1_slack_connect_proto_rawDesc = "" +
 	"\n" +
 	"&directoryroster/v1/slack_connect.proto\x12\x12directoryroster.v1\" \n" +
-	"\x1eListSlackSharedChannelsRequest\"\x81\x03\n" +
+	"\x1eListSlackSharedChannelsRequest\"\xbb\x03\n" +
 	"\x1fListSlackSharedChannelsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12B\n" +
 	"\bchannels\x18\x02 \x03(\v2&.directoryroster.v1.SlackSharedChannelR\bchannels\x12I\n" +
 	"\n" +
 	"workspaces\x18\x03 \x03(\v2).directoryroster.v1.SlackConnectWorkspaceR\n" +
 	"workspaces\x12W\n" +
-	"\x12source_directories\x18\x06 \x03(\v2(.directoryroster.v1.SlackSourceDirectoryR\x11sourceDirectories\x12J\n" +
+	"\x12source_directories\x18\x06 \x03(\v2(.directoryroster.v1.SlackSourceDirectoryR\x11sourceDirectories\x128\n" +
+	"\x18source_directories_error\x18\a \x01(\tR\x16sourceDirectoriesError\x12J\n" +
 	"\n" +
 	"discovered\x18\x05 \x03(\v2*.directoryroster.v1.SlackDiscoveredChannelR\n" +
 	"discoveredJ\x04\b\x04\x10\x05R\x06groups\"\xb9\x02\n" +

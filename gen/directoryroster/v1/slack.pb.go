@@ -613,7 +613,8 @@ type SlackWorkspaceStatus struct {
 	OwnerDomain string `protobuf:"bytes,16,opt,name=owner_domain,json=ownerDomain,proto3" json:"owner_domain,omitempty"`
 	// whether the caller may change the owner: the installation-wide
 	// operator, once the workspace is connected.
-	CanChangeOwner bool `protobuf:"varint,17,opt,name=can_change_owner,json=canChangeOwner,proto3" json:"can_change_owner,omitempty"` // whether the policy still names the workspace key. A key it no longer
+	CanChangeOwner bool `protobuf:"varint,17,opt,name=can_change_owner,json=canChangeOwner,proto3" json:"can_change_owner,omitempty"`
+	// whether the policy still names the workspace key. A key it no longer
 	// names can only be disconnected.
 	Declared bool `protobuf:"varint,18,opt,name=declared,proto3" json:"declared,omitempty"`
 	// when an operator last asked for a pass now; unset when nobody has. The

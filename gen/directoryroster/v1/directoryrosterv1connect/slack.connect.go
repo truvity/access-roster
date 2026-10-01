@@ -61,7 +61,9 @@ type SlackServiceClient interface {
 	// workspace recorded as the Slack workspace's owner when it was
 	// connected: a scoped viewer sees only the workspaces its directory
 	// owns, and a workspace nobody has connected yet is shown to anyone who
-	// could connect it. Never a client secret or a bot token.
+	// could connect it. A scoped viewer over a directory that owns no Slack
+	// workspace is refused (permission denied) rather than shown an empty
+	// list. Never a client secret or a bot token.
 	GetSlackStatus(context.Context, *connect.Request[v1.GetSlackStatusRequest]) (*connect.Response[v1.GetSlackStatusResponse], error)
 	// BeginSlackWorkspaceConnect creates the roster's Slack App for a
 	// workspace from its manifest with the configuration token, or — for a
@@ -200,7 +202,9 @@ type SlackServiceHandler interface {
 	// workspace recorded as the Slack workspace's owner when it was
 	// connected: a scoped viewer sees only the workspaces its directory
 	// owns, and a workspace nobody has connected yet is shown to anyone who
-	// could connect it. Never a client secret or a bot token.
+	// could connect it. A scoped viewer over a directory that owns no Slack
+	// workspace is refused (permission denied) rather than shown an empty
+	// list. Never a client secret or a bot token.
 	GetSlackStatus(context.Context, *connect.Request[v1.GetSlackStatusRequest]) (*connect.Response[v1.GetSlackStatusResponse], error)
 	// BeginSlackWorkspaceConnect creates the roster's Slack App for a
 	// workspace from its manifest with the configuration token, or — for a
