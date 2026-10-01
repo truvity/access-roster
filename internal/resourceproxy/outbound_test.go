@@ -1,7 +1,9 @@
 package resourceproxy
 
 import (
+	"context"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"log/slog"
 	"net/http"
@@ -285,5 +287,97 @@ func TestOutboundReplacesAnEmptyBearer(t *testing.T) {
 	_ = resp.Body.Close()
 	if len(seen) != 1 || seen[0] != "Bearer minted-1" {
 		t.Errorf("target saw Authorization %q, want exactly the minted token", seen)
+	}
+}
+
+func caFileOf(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	if err := os.WriteFile(path, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func getVia(t *testing.T, out *Outbound) int {
+	t.Helper()
+	srv := httptest.NewServer(out.Handler())
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestOutboundCAFileTrustsAPrivateTarget(t *testing.T) {
+	t.Parallel()
+	tokenEP := newTokenEndpoint(t, 3600)
+	target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	t.Cleanup(target.Close)
+	sa := filepath.Join(t.TempDir(), "token")
+	_ = os.WriteFile(sa, []byte("sa"), 0o600)
+	log := slog.New(slog.DiscardHandler)
+
+	cfg := outboundCfg(t, tokenEP.URL, target.URL, sa)
+	src, _ := NewTokenSource(cfg, log, nil)
+	unset, err := NewOutbound(cfg, log, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := getVia(t, unset); code != http.StatusBadGateway {
+		t.Errorf("without OUTBOUND_CA_FILE: status %d, want 502", code)
+	}
+
+	cfg.OutboundCAFile = caFileOf(t, target)
+	withCA, err := NewOutbound(cfg, log, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := getVia(t, withCA); code != http.StatusOK {
+		t.Errorf("with OUTBOUND_CA_FILE: status %d, want 200", code)
+	}
+}
+
+func TestOutboundCAFileRefusedAtStartWhenInvalid(t *testing.T) {
+	t.Parallel()
+	log := slog.New(slog.DiscardHandler)
+	empty := filepath.Join(t.TempDir(), "empty.pem")
+	_ = os.WriteFile(empty, []byte("not a certificate\n"), 0o600)
+	for name, file := range map[string]string{
+		"missing": filepath.Join(t.TempDir(), "absent.pem"), "no certificates": empty,
+	} {
+		cfg := outboundCfg(t, "https://i.example", "https://vmauth.example", "/f")
+		cfg.OutboundCAFile = file
+		if _, err := NewOutbound(cfg, log, nil); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	half := Config{Listen: ":8080", Upstream: "http://127.0.0.1:8081", IssuerURL: "https://i.example", ResourceURL: resURL,
+		OutboundCAFile: "/ca.pem"}
+	if err := half.Validate(); err == nil {
+		t.Error("OUTBOUND_CA_FILE without OUTBOUND_LISTEN was accepted")
+	}
+}
+
+// The CA bundle is for the target alone: an issuer served by that same
+// private CA is still refused by the token-exchange client.
+func TestOutboundCAFileDoesNotReachTheIssuerClient(t *testing.T) {
+	t.Parallel()
+	issuer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "x", "expires_in": 60, "token_type": "Bearer"})
+	}))
+	t.Cleanup(issuer.Close)
+	sa := filepath.Join(t.TempDir(), "token")
+	_ = os.WriteFile(sa, []byte("sa"), 0o600)
+	cfg := outboundCfg(t, issuer.URL, "https://vmauth.example", sa)
+	cfg.OutboundCAFile = caFileOf(t, issuer)
+	src, _ := NewTokenSource(cfg, slog.New(slog.DiscardHandler), nil)
+	if _, err := src.Token(context.Background()); err == nil {
+		t.Error("the issuer client trusted the outbound CA bundle")
 	}
 }

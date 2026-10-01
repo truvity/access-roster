@@ -1,5 +1,12 @@
 ## Unreleased
 
+- **New: `OUTBOUND_CA_FILE` for resource-proxy.** A PEM bundle appended to the
+  system root pool, used only by the outbound forwarder's connection to
+  `OUTBOUND_TARGET`, so a target served by a private CA is reachable while
+  everything else (the issuer, the token exchange) keeps trusting public roots
+  only. Flag `--outbound-ca-file`. Read once at start; a file that is unreadable
+  or holds no certificate refuses to start; it needs `OUTBOUND_LISTEN` like the
+  other `OUTBOUND_*` values. Restart to rotate.
 - **New: Slack Connect channels, created and edited on the console.** A
   shared channel between the installation's own Slack workspaces is a record,
   not policy: `name`, `host` (the workspace that creates and owns it,
