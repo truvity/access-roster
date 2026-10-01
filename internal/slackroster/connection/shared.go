@@ -2,6 +2,7 @@ package connection
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -41,14 +42,28 @@ func EncodeShared(s reconcile.SharedChannel) (string, error) {
 	return string(raw), err
 }
 
+// ErrLegacySources is a shared channel record written when its `from` named
+// internal groups. Its members now come from directory groups, and an
+// internal group's name is not one: the record is reported invalid, never
+// reread as if it were.
+var ErrLegacySources = errors.New("connection: this shared channel record is fed by internal groups (`from`), " +
+	"and shared channels are now fed by directory groups (`sources`): edit it on the console and pick directory groups, or delete it")
+
 // DecodeShared reads a shared channel's record.
 func DecodeShared(raw string) (reconcile.SharedChannel, error) {
-	var s Shared
+	var s struct {
+		Shared
+		// Legacy is the key sources replaced.
+		Legacy []string `json:"from"`
+	}
 	if err := json.Unmarshal([]byte(raw), &s); err != nil {
 		return reconcile.SharedChannel{}, fmt.Errorf("connection: decode a shared channel: %w", err)
 	}
 	if s.Version != Version {
 		return reconcile.SharedChannel{}, fmt.Errorf("%w: %d", ErrVersion, s.Version)
+	}
+	if len(s.Legacy) > 0 && len(s.Sources) == 0 {
+		return reconcile.SharedChannel{}, ErrLegacySources
 	}
 	return s.SharedChannel, nil
 }

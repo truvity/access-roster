@@ -10,7 +10,7 @@ package directoryroster.v1;
 // feed it and how private each side is. The Slack controller reads the
 // records and does the rest: the host creates the channel, invites each
 // guest workspace's bot, the guest accepts, and each side manages its own
-// people. Members come only from groups, never from individuals.
+// people. Members come only from directory groups, never from individuals.
 //
 // Every create, edit and delete is audited.
 service SlackSharedChannelService {
@@ -24,7 +24,7 @@ service SlackSharedChannelService {
   // installation-wide operator. Refuses a name that is already a record.
   rpc CreateSlackSharedChannel(CreateSlackSharedChannelRequest) returns (CreateSlackSharedChannelResponse);
 
-  // UpdateSlackSharedChannel changes `with`, `from` and `private`. The host
+  // UpdateSlackSharedChannel changes `with`, `from` (directory groups) and `private`. The host
   // and the name are immutable: a request naming a different host is
   // refused, and the answer says to create a new channel instead.
   rpc UpdateSlackSharedChannel(UpdateSlackSharedChannelRequest) returns (UpdateSlackSharedChannelResponse);
@@ -45,8 +45,14 @@ message ListSlackSharedChannelsResponse {
   // form's host and with choices. can_operate says whether the caller may
   // host a channel from it.
   repeated SlackConnectWorkspace workspaces = 3;
-  // every group the policy declares, for the form's from choice.
-  repeated string groups = 4;
+  // 4 was every group the policy declares: sources are directory groups
+  // now, which the form lists with ListDirectoryGroups.
+  reserved 4;
+  reserved "groups";
+  // every connected directory with the groups a source may be chosen from,
+  // for an operator who may host a channel; empty for anyone else. A
+  // Slack Connect channel may be fed from ANY connected directory.
+  repeated SlackSourceDirectory source_directories = 6;
   // the Slack Connect channels the workspaces' bots can see, merged into
   // one row per channel, whether or not a record manages them. Only what
   // the caller may see.
@@ -89,6 +95,12 @@ message SlackDiscoveredSide {
   int32 members = 4;
   // whether this workspace's bot saw the channel.
   bool seen = 5;
+  // whether something says the channel reaches this workspace: its bot saw
+  // it, or Slack lists the workspace's team among the channel's. False for
+  // a connected workspace nothing places the channel in: its bot may simply
+  // not list it (a public channel it has not joined, a private one it is
+  // not in), so it is "unknown", not "not shared".
+  bool listed = 6;
 }
 
 message SlackConnectWorkspace {
@@ -96,6 +108,27 @@ message SlackConnectWorkspace {
   string key = 1;
   // whether the caller may create channels this workspace hosts.
   bool can_operate = 2;
+  // the directory workspace id recorded as the owner: the directory whose
+  // domains decide which of the channel's people join on this side. Empty
+  // when none.
+  string owner = 3;
+}
+
+// SlackSourceDirectory is one connected directory and the groups a channel
+// may be fed from.
+message SlackSourceDirectory {
+  // the directory workspace id.
+  string workspace_id = 1;
+  // the domains it is authoritative for, sorted.
+  repeated string domains = 2;
+  repeated SlackSourceGroup groups = 3;
+}
+
+// SlackSourceGroup is one directory group.
+message SlackSourceGroup {
+  string email = 1;
+  // the flat membership count at the last snapshot.
+  int32 members = 2;
 }
 
 // SlackSharedChannelDefinition is what an operator writes: the record.
@@ -106,7 +139,9 @@ message SlackSharedChannelDefinition {
   string host = 2;
   // the other workspaces, in order.
   repeated string with = 3;
-  // the policy groups whose holders belong, whichever side.
+  // the DIRECTORY groups, by address, whose members belong, whichever side.
+  // (The wire name stays `from`: it carried policy groups before, and a
+  // record written then is reported invalid.)
   repeated string from = 4;
   // one visibility for every side, unless private_per_side is set.
   bool private = 5;

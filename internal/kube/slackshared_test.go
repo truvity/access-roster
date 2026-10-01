@@ -25,7 +25,7 @@ func TestSlackSharedKeepsOnlyItsOwnKeys(t *testing.T) {
 	if _, err := client.api.CoreV1().ConfigMaps("ns").Update(ctx, cm, metav1.UpdateOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	want := reconcile.SharedChannel{Name: "joint", Host: "acme", With: []string{"globex"}, From: []string{"g"}}
+	want := reconcile.SharedChannel{Name: "joint", Host: "acme", With: []string{"globex"}, Sources: []string{"g"}}
 	err := store.Apply(ctx, "joint", func(current *reconcile.SharedChannel) (*reconcile.SharedChannel, error) {
 		if current != nil {
 			t.Error("a record that does not exist was found")

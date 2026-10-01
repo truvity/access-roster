@@ -228,7 +228,7 @@ func TestConfirmationKeysReadBackAndExpire(t *testing.T) {
 func TestASharedRecordKeepsTheChannelIDItTakesOver(t *testing.T) {
 	t.Parallel()
 	raw, err := connection.EncodeShared(reconcile.SharedChannel{
-		Name: "legacy", Host: "acme", With: []string{"globex"}, From: []string{"g"}, ChannelID: "C0LEGACY1"})
+		Name: "legacy", Host: "acme", With: []string{"globex"}, Sources: []string{"g"}, ChannelID: "C0LEGACY1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestASharedRecordKeepsTheChannelIDItTakesOver(t *testing.T) {
 		t.Errorf("decoded %+v %v", got, err)
 	}
 	// A record without one still reads, and writes none.
-	raw, _ = connection.EncodeShared(reconcile.SharedChannel{Name: "fresh", Host: "acme", With: []string{"globex"}, From: []string{"g"}})
+	raw, _ = connection.EncodeShared(reconcile.SharedChannel{Name: "fresh", Host: "acme", With: []string{"globex"}, Sources: []string{"g"}})
 	if strings.Contains(raw, "channel_id") {
 		t.Errorf("a record that creates a channel carries an id: %s", raw)
 	}

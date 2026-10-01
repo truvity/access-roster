@@ -33,8 +33,8 @@ func newEnv(ws string) *env {
 			"globex": {Team: "TGLOBEX", Owner: "C0globex", Domains: []string{domain["globex"]}},
 		},
 		People:  map[string][]string{"jdoe": {"j.doe@acme.example", "john@globex.example"}},
-		Holders: rails.Holders{},
-		Bots:    map[string]string{"acme": "BACME", "globex": "BGLOBEX"},
+		Holders: rails.Holders{}, DirHolders: rails.Holders{},
+		Bots: map[string]string{"acme": "BACME", "globex": "BGLOBEX"},
 		Observed: reconcile.Observed{
 			TeamID: team[ws], BotUserID: "B" + strings.ToUpper(ws),
 			Accounts: map[string]reconcile.Account{}, Members: map[string]reconcile.Member{},
@@ -56,6 +56,9 @@ func (e *env) bind(name string, c policy.SlackChannel) *env {
 func (e *env) holders(group string, addrs ...string) *env {
 	for _, a := range addrs {
 		e.in.Holders[group] = append(e.in.Holders[group], rails.Holder{Email: a, Live: true})
+		// The same table serves a directory group of that name: a shared or
+		// console channel's sources are looked up there.
+		e.in.DirHolders[group] = append(e.in.DirHolders[group], rails.Holder{Email: a, Live: true})
 	}
 	return e
 }
@@ -947,7 +950,7 @@ func TestAPartialReadFailsTheDecisionNeverReadsAsNoAccount(t *testing.T) {
 // ---------------------------------------------------------------- rule 8
 
 func sharedPlatform() reconcile.SharedChannel {
-	return reconcile.SharedChannel{Name: "platform", Host: "acme", With: []string{"globex"}, From: []string{"g"}}
+	return reconcile.SharedChannel{Name: "platform", Host: "acme", With: []string{"globex"}, Sources: []string{"g"}}
 }
 
 func TestSharedHostCreatesInvitesGuestBotThenItsOwnPeople(t *testing.T) {
@@ -1123,7 +1126,7 @@ func TestSharedGuestManagesItsOwnPeopleInTheAcceptedChannel(t *testing.T) {
 
 func TestSharedPeopleJoinFromTheHostElseTheFirstGuestElseAreHeld(t *testing.T) {
 	t.Parallel()
-	s := reconcile.SharedChannel{Name: "platform", Host: "acme", With: []string{"globex", "initech"}, From: []string{"g"}}
+	s := reconcile.SharedChannel{Name: "platform", Host: "acme", With: []string{"globex", "initech"}, Sources: []string{"g"}}
 	workspaces := func(e *env) {
 		e.in.Workspaces["initech"] = policy.SlackWorkspace{}
 		e.in.Facts["initech"] = reconcile.Facts{Team: "TINITECH", Owner: "C0initech", Domains: []string{"initech.example"}}
@@ -1260,14 +1263,14 @@ func TestSharedChannelValidation(t *testing.T) {
 		return policy.Policy{
 			Groups: map[string]policy.Group{"g": {}},
 			Slack: policy.Slack{Workspaces: map[string]policy.SlackWorkspace{
-				"acme":    {Channels: map[string]policy.SlackChannel{"eng": {From: []string{"g"}}}},
+				"acme":    {Channels: map[string]policy.SlackChannel{"eng": {From: []string{"g"}, Adopt: "C0ADOPTED1"}}},
 				"globex":  {},
 				"initech": {},
 			}},
 		}
 	}
 	good := func() reconcile.SharedChannel {
-		return reconcile.SharedChannel{Name: "platform", Host: "acme", With: []string{"globex"}, From: []string{"g"}}
+		return reconcile.SharedChannel{Name: "platform", Host: "acme", With: []string{"globex"}, Sources: []string{"g@acme.example"}}
 	}
 	if err := good().Validate(base()); err != nil {
 		t.Fatalf("a good definition was refused: %v", err)
@@ -1286,13 +1289,16 @@ func TestSharedChannelValidation(t *testing.T) {
 		"name too long":          {func(s *reconcile.SharedChannel) { s.Name = strings.Repeat("a", 81) }, "channel name"},
 		"name empty":             {func(s *reconcile.SharedChannel) { s.Name = "" }, "channel name"},
 		"host undeclared":        {func(s *reconcile.SharedChannel) { s.Host = "hooli" }, "host"},
-		"name binds on the host": {func(s *reconcile.SharedChannel) { s.Name = "eng" }, "already binds"},
+		"name binds on the host": {func(s *reconcile.SharedChannel) { s.Name = "eng" }, "defined in git"},
+		"id adopted on the host": {func(s *reconcile.SharedChannel) { s.ChannelID = "C0ADOPTED1" }, "defined in git"},
 		"with empty":             {func(s *reconcile.SharedChannel) { s.With = nil }, "shares with no workspace"},
 		"with undeclared":        {func(s *reconcile.SharedChannel) { s.With = []string{"hooli"} }, "not a declared workspace"},
 		"host in with":           {func(s *reconcile.SharedChannel) { s.With = []string{"acme"} }, "also listed in with"},
 		"with twice":             {func(s *reconcile.SharedChannel) { s.With = []string{"globex", "globex"} }, "twice"},
-		"from empty":             {func(s *reconcile.SharedChannel) { s.From = nil }, "fed by no group"},
-		"from undeclared":        {func(s *reconcile.SharedChannel) { s.From = []string{"nobody"} }, "not a declared group"},
+		"sources empty":          {func(s *reconcile.SharedChannel) { s.Sources = nil }, "fed by no directory group"},
+		"source not an address":  {func(s *reconcile.SharedChannel) { s.Sources = []string{"all:platform:engineer"} }, "not a directory group address"},
+		"source uppercase":       {func(s *reconcile.SharedChannel) { s.Sources = []string{"Eng@acme.example"} }, "not lowercase"},
+		"source twice":           {func(s *reconcile.SharedChannel) { s.Sources = []string{"eng@acme.example", "eng@acme.example"} }, "twice"},
 		"per side misses a side": {func(s *reconcile.SharedChannel) {
 			s.Private = reconcile.Privacy{PerSide: map[string]bool{"acme": true}}
 		}, "names no value for globex"},
@@ -1359,7 +1365,7 @@ func TestAnArchivedSharedChannelIsHeldOnBothSides(t *testing.T) {
 // ---------------------------------------------------------------- taking over a channel that is already shared
 
 func existingShared(name string) reconcile.SharedChannel {
-	return reconcile.SharedChannel{Name: name, Host: "acme", With: []string{"globex"}, From: []string{"g"}, ChannelID: "C7"}
+	return reconcile.SharedChannel{Name: name, Host: "acme", With: []string{"globex"}, Sources: []string{"g"}, ChannelID: "C7"}
 }
 
 func TestAnAlreadySharedChannelIsTakenOverByTheHostWithoutInvitingASideThatIsConnected(t *testing.T) {
@@ -1518,6 +1524,7 @@ func TestSharedChannelIDIsValidated(t *testing.T) {
 	t.Parallel()
 	p := policy.Policy{Slack: policy.Slack{Workspaces: map[string]policy.SlackWorkspace{"acme": {}, "globex": {}}}, Groups: map[string]policy.Group{"g": {}}}
 	good := existingShared("legacy")
+	good.Sources = []string{"g@acme.example"}
 	if err := good.Validate(p); err != nil {
 		t.Fatalf("a good record: %v", err)
 	}
@@ -1532,7 +1539,7 @@ func TestSharedChannelIDIsValidated(t *testing.T) {
 
 func TestTheReportListsEverySharedChannelTheBotSeesAndMarksTheManagedOnes(t *testing.T) {
 	t.Parallel()
-	byName := reconcile.SharedChannel{Name: "byname", Host: "acme", With: []string{"globex"}, From: []string{"g"}}
+	byName := reconcile.SharedChannel{Name: "byname", Host: "acme", With: []string{"globex"}, Sources: []string{"g"}}
 	e := newEnv("acme").shared(existingShared("legacy")).shared(byName).
 		channel(reconcile.Channel{ID: "C7", Name: "legacy", BotIn: true, Shared: true, SharedTeamIDs: []string{"TACME", "TGLOBEX"}, HostTeamID: "TACME",
 			Teams: []string{"TACME", "TGLOBEX"}, NumMembers: 5, Members: []string{"BACME"}}).

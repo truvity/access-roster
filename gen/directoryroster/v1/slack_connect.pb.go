@@ -67,8 +67,10 @@ type ListSlackSharedChannelsResponse struct {
 	// form's host and with choices. can_operate says whether the caller may
 	// host a channel from it.
 	Workspaces []*SlackConnectWorkspace `protobuf:"bytes,3,rep,name=workspaces,proto3" json:"workspaces,omitempty"`
-	// every group the policy declares, for the form's from choice.
-	Groups []string `protobuf:"bytes,4,rep,name=groups,proto3" json:"groups,omitempty"`
+	// every connected directory with the groups a source may be chosen from,
+	// for an operator who may host a channel; empty for anyone else. A
+	// Slack Connect channel may be fed from ANY connected directory.
+	SourceDirectories []*SlackSourceDirectory `protobuf:"bytes,6,rep,name=source_directories,json=sourceDirectories,proto3" json:"source_directories,omitempty"`
 	// the Slack Connect channels the workspaces' bots can see, merged into
 	// one row per channel, whether or not a record manages them. Only what
 	// the caller may see.
@@ -128,9 +130,9 @@ func (x *ListSlackSharedChannelsResponse) GetWorkspaces() []*SlackConnectWorkspa
 	return nil
 }
 
-func (x *ListSlackSharedChannelsResponse) GetGroups() []string {
+func (x *ListSlackSharedChannelsResponse) GetSourceDirectories() []*SlackSourceDirectory {
 	if x != nil {
-		return x.Groups
+		return x.SourceDirectories
 	}
 	return nil
 }
@@ -267,7 +269,13 @@ type SlackDiscoveredSide struct {
 	Privacy string `protobuf:"bytes,3,opt,name=privacy,proto3" json:"privacy,omitempty"`
 	Members int32  `protobuf:"varint,4,opt,name=members,proto3" json:"members,omitempty"`
 	// whether this workspace's bot saw the channel.
-	Seen          bool `protobuf:"varint,5,opt,name=seen,proto3" json:"seen,omitempty"`
+	Seen bool `protobuf:"varint,5,opt,name=seen,proto3" json:"seen,omitempty"`
+	// whether something says the channel reaches this workspace: its bot saw
+	// it, or Slack lists the workspace's team among the channel's. False for
+	// a connected workspace nothing places the channel in: its bot may simply
+	// not list it (a public channel it has not joined, a private one it is
+	// not in), so it is "unknown", not "not shared".
+	Listed        bool `protobuf:"varint,6,opt,name=listed,proto3" json:"listed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -337,12 +345,23 @@ func (x *SlackDiscoveredSide) GetSeen() bool {
 	return false
 }
 
+func (x *SlackDiscoveredSide) GetListed() bool {
+	if x != nil {
+		return x.Listed
+	}
+	return false
+}
+
 type SlackConnectWorkspace struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// the policy's workspace key.
 	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	// whether the caller may create channels this workspace hosts.
-	CanOperate    bool `protobuf:"varint,2,opt,name=can_operate,json=canOperate,proto3" json:"can_operate,omitempty"`
+	CanOperate bool `protobuf:"varint,2,opt,name=can_operate,json=canOperate,proto3" json:"can_operate,omitempty"`
+	// the directory workspace id recorded as the owner: the directory whose
+	// domains decide which of the channel's people join on this side. Empty
+	// when none.
+	Owner         string `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -391,6 +410,131 @@ func (x *SlackConnectWorkspace) GetCanOperate() bool {
 	return false
 }
 
+func (x *SlackConnectWorkspace) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+// SlackSourceDirectory is one connected directory and the groups a channel
+// may be fed from.
+type SlackSourceDirectory struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// the directory workspace id.
+	WorkspaceId string `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// the domains it is authoritative for, sorted.
+	Domains       []string            `protobuf:"bytes,2,rep,name=domains,proto3" json:"domains,omitempty"`
+	Groups        []*SlackSourceGroup `protobuf:"bytes,3,rep,name=groups,proto3" json:"groups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SlackSourceDirectory) Reset() {
+	*x = SlackSourceDirectory{}
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SlackSourceDirectory) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SlackSourceDirectory) ProtoMessage() {}
+
+func (x *SlackSourceDirectory) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SlackSourceDirectory.ProtoReflect.Descriptor instead.
+func (*SlackSourceDirectory) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SlackSourceDirectory) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *SlackSourceDirectory) GetDomains() []string {
+	if x != nil {
+		return x.Domains
+	}
+	return nil
+}
+
+func (x *SlackSourceDirectory) GetGroups() []*SlackSourceGroup {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
+}
+
+// SlackSourceGroup is one directory group.
+type SlackSourceGroup struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Email string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
+	// the flat membership count at the last snapshot.
+	Members       int32 `protobuf:"varint,2,opt,name=members,proto3" json:"members,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SlackSourceGroup) Reset() {
+	*x = SlackSourceGroup{}
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SlackSourceGroup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SlackSourceGroup) ProtoMessage() {}
+
+func (x *SlackSourceGroup) ProtoReflect() protoreflect.Message {
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SlackSourceGroup.ProtoReflect.Descriptor instead.
+func (*SlackSourceGroup) Descriptor() ([]byte, []int) {
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SlackSourceGroup) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *SlackSourceGroup) GetMembers() int32 {
+	if x != nil {
+		return x.Members
+	}
+	return 0
+}
+
 // SlackSharedChannelDefinition is what an operator writes: the record.
 type SlackSharedChannelDefinition struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -400,7 +544,9 @@ type SlackSharedChannelDefinition struct {
 	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
 	// the other workspaces, in order.
 	With []string `protobuf:"bytes,3,rep,name=with,proto3" json:"with,omitempty"`
-	// the policy groups whose holders belong, whichever side.
+	// the DIRECTORY groups, by address, whose members belong, whichever side.
+	// (The wire name stays `from`: it carried policy groups before, and a
+	// record written then is reported invalid.)
 	From []string `protobuf:"bytes,4,rep,name=from,proto3" json:"from,omitempty"`
 	// one visibility for every side, unless private_per_side is set.
 	Private bool `protobuf:"varint,5,opt,name=private,proto3" json:"private,omitempty"`
@@ -417,7 +563,7 @@ type SlackSharedChannelDefinition struct {
 
 func (x *SlackSharedChannelDefinition) Reset() {
 	*x = SlackSharedChannelDefinition{}
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[5]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -429,7 +575,7 @@ func (x *SlackSharedChannelDefinition) String() string {
 func (*SlackSharedChannelDefinition) ProtoMessage() {}
 
 func (x *SlackSharedChannelDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[5]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -442,7 +588,7 @@ func (x *SlackSharedChannelDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackSharedChannelDefinition.ProtoReflect.Descriptor instead.
 func (*SlackSharedChannelDefinition) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{5}
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SlackSharedChannelDefinition) GetName() string {
@@ -503,7 +649,7 @@ type CreateSlackSharedChannelRequest struct {
 
 func (x *CreateSlackSharedChannelRequest) Reset() {
 	*x = CreateSlackSharedChannelRequest{}
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[6]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -515,7 +661,7 @@ func (x *CreateSlackSharedChannelRequest) String() string {
 func (*CreateSlackSharedChannelRequest) ProtoMessage() {}
 
 func (x *CreateSlackSharedChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[6]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -528,7 +674,7 @@ func (x *CreateSlackSharedChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSlackSharedChannelRequest.ProtoReflect.Descriptor instead.
 func (*CreateSlackSharedChannelRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{6}
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateSlackSharedChannelRequest) GetChannel() *SlackSharedChannelDefinition {
@@ -547,7 +693,7 @@ type CreateSlackSharedChannelResponse struct {
 
 func (x *CreateSlackSharedChannelResponse) Reset() {
 	*x = CreateSlackSharedChannelResponse{}
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[7]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -559,7 +705,7 @@ func (x *CreateSlackSharedChannelResponse) String() string {
 func (*CreateSlackSharedChannelResponse) ProtoMessage() {}
 
 func (x *CreateSlackSharedChannelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[7]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +718,7 @@ func (x *CreateSlackSharedChannelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSlackSharedChannelResponse.ProtoReflect.Descriptor instead.
 func (*CreateSlackSharedChannelResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{7}
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CreateSlackSharedChannelResponse) GetChannel() *SlackSharedChannel {
@@ -593,7 +739,7 @@ type UpdateSlackSharedChannelRequest struct {
 
 func (x *UpdateSlackSharedChannelRequest) Reset() {
 	*x = UpdateSlackSharedChannelRequest{}
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[8]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -605,7 +751,7 @@ func (x *UpdateSlackSharedChannelRequest) String() string {
 func (*UpdateSlackSharedChannelRequest) ProtoMessage() {}
 
 func (x *UpdateSlackSharedChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[8]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -618,7 +764,7 @@ func (x *UpdateSlackSharedChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSlackSharedChannelRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSlackSharedChannelRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{8}
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UpdateSlackSharedChannelRequest) GetChannel() *SlackSharedChannelDefinition {
@@ -637,7 +783,7 @@ type UpdateSlackSharedChannelResponse struct {
 
 func (x *UpdateSlackSharedChannelResponse) Reset() {
 	*x = UpdateSlackSharedChannelResponse{}
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[9]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -649,7 +795,7 @@ func (x *UpdateSlackSharedChannelResponse) String() string {
 func (*UpdateSlackSharedChannelResponse) ProtoMessage() {}
 
 func (x *UpdateSlackSharedChannelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[9]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -662,7 +808,7 @@ func (x *UpdateSlackSharedChannelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSlackSharedChannelResponse.ProtoReflect.Descriptor instead.
 func (*UpdateSlackSharedChannelResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{9}
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UpdateSlackSharedChannelResponse) GetChannel() *SlackSharedChannel {
@@ -681,7 +827,7 @@ type DeleteSlackSharedChannelRequest struct {
 
 func (x *DeleteSlackSharedChannelRequest) Reset() {
 	*x = DeleteSlackSharedChannelRequest{}
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[10]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -693,7 +839,7 @@ func (x *DeleteSlackSharedChannelRequest) String() string {
 func (*DeleteSlackSharedChannelRequest) ProtoMessage() {}
 
 func (x *DeleteSlackSharedChannelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[10]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -706,7 +852,7 @@ func (x *DeleteSlackSharedChannelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSlackSharedChannelRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSlackSharedChannelRequest) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{10}
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DeleteSlackSharedChannelRequest) GetName() string {
@@ -726,7 +872,7 @@ type DeleteSlackSharedChannelResponse struct {
 
 func (x *DeleteSlackSharedChannelResponse) Reset() {
 	*x = DeleteSlackSharedChannelResponse{}
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[11]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -738,7 +884,7 @@ func (x *DeleteSlackSharedChannelResponse) String() string {
 func (*DeleteSlackSharedChannelResponse) ProtoMessage() {}
 
 func (x *DeleteSlackSharedChannelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[11]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -751,7 +897,7 @@ func (x *DeleteSlackSharedChannelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSlackSharedChannelResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSlackSharedChannelResponse) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{11}
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeleteSlackSharedChannelResponse) GetNote() string {
@@ -780,7 +926,7 @@ type SlackSharedChannel struct {
 
 func (x *SlackSharedChannel) Reset() {
 	*x = SlackSharedChannel{}
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[12]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -792,7 +938,7 @@ func (x *SlackSharedChannel) String() string {
 func (*SlackSharedChannel) ProtoMessage() {}
 
 func (x *SlackSharedChannel) ProtoReflect() protoreflect.Message {
-	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[12]
+	mi := &file_directoryroster_v1_slack_connect_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -805,7 +951,7 @@ func (x *SlackSharedChannel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SlackSharedChannel.ProtoReflect.Descriptor instead.
 func (*SlackSharedChannel) Descriptor() ([]byte, []int) {
-	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{12}
+	return file_directoryroster_v1_slack_connect_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SlackSharedChannel) GetChannel() *SlackSharedChannelDefinition {
@@ -841,17 +987,17 @@ var File_directoryroster_v1_slack_connect_proto protoreflect.FileDescriptor
 const file_directoryroster_v1_slack_connect_proto_rawDesc = "" +
 	"\n" +
 	"&directoryroster/v1/slack_connect.proto\x12\x12directoryroster.v1\" \n" +
-	"\x1eListSlackSharedChannelsRequest\"\xb2\x02\n" +
+	"\x1eListSlackSharedChannelsRequest\"\x81\x03\n" +
 	"\x1fListSlackSharedChannelsResponse\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12B\n" +
 	"\bchannels\x18\x02 \x03(\v2&.directoryroster.v1.SlackSharedChannelR\bchannels\x12I\n" +
 	"\n" +
 	"workspaces\x18\x03 \x03(\v2).directoryroster.v1.SlackConnectWorkspaceR\n" +
-	"workspaces\x12\x16\n" +
-	"\x06groups\x18\x04 \x03(\tR\x06groups\x12J\n" +
+	"workspaces\x12W\n" +
+	"\x12source_directories\x18\x06 \x03(\v2(.directoryroster.v1.SlackSourceDirectoryR\x11sourceDirectories\x12J\n" +
 	"\n" +
 	"discovered\x18\x05 \x03(\v2*.directoryroster.v1.SlackDiscoveredChannelR\n" +
-	"discovered\"\xb9\x02\n" +
+	"discoveredJ\x04\b\x04\x10\x05R\x06groups\"\xb9\x02\n" +
 	"\x16SlackDiscoveredChannel\x12\x1d\n" +
 	"\n" +
 	"channel_id\x18\x01 \x01(\tR\tchannelId\x12%\n" +
@@ -863,17 +1009,26 @@ const file_directoryroster_v1_slack_connect_proto_rawDesc = "" +
 	"\n" +
 	"managed_as\x18\a \x01(\tR\tmanagedAs\x12\x1d\n" +
 	"\n" +
-	"can_manage\x18\b \x01(\bR\tcanManage\"\x8f\x01\n" +
+	"can_manage\x18\b \x01(\bR\tcanManage\"\xa7\x01\n" +
 	"\x13SlackDiscoveredSide\x12\x1c\n" +
 	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
 	"\aprivacy\x18\x03 \x01(\tR\aprivacy\x12\x18\n" +
 	"\amembers\x18\x04 \x01(\x05R\amembers\x12\x12\n" +
-	"\x04seen\x18\x05 \x01(\bR\x04seen\"J\n" +
+	"\x04seen\x18\x05 \x01(\bR\x04seen\x12\x16\n" +
+	"\x06listed\x18\x06 \x01(\bR\x06listed\"`\n" +
 	"\x15SlackConnectWorkspace\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1f\n" +
 	"\vcan_operate\x18\x02 \x01(\bR\n" +
-	"canOperate\"\xda\x02\n" +
+	"canOperate\x12\x14\n" +
+	"\x05owner\x18\x03 \x01(\tR\x05owner\"\x91\x01\n" +
+	"\x14SlackSourceDirectory\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x18\n" +
+	"\adomains\x18\x02 \x03(\tR\adomains\x12<\n" +
+	"\x06groups\x18\x03 \x03(\v2$.directoryroster.v1.SlackSourceGroupR\x06groups\"B\n" +
+	"\x10SlackSourceGroup\x12\x14\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\x12\x18\n" +
+	"\amembers\x18\x02 \x01(\x05R\amembers\"\xda\x02\n" +
 	"\x1cSlackSharedChannelDefinition\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
@@ -923,47 +1078,51 @@ func file_directoryroster_v1_slack_connect_proto_rawDescGZIP() []byte {
 	return file_directoryroster_v1_slack_connect_proto_rawDescData
 }
 
-var file_directoryroster_v1_slack_connect_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_directoryroster_v1_slack_connect_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_directoryroster_v1_slack_connect_proto_goTypes = []any{
 	(*ListSlackSharedChannelsRequest)(nil),   // 0: directoryroster.v1.ListSlackSharedChannelsRequest
 	(*ListSlackSharedChannelsResponse)(nil),  // 1: directoryroster.v1.ListSlackSharedChannelsResponse
 	(*SlackDiscoveredChannel)(nil),           // 2: directoryroster.v1.SlackDiscoveredChannel
 	(*SlackDiscoveredSide)(nil),              // 3: directoryroster.v1.SlackDiscoveredSide
 	(*SlackConnectWorkspace)(nil),            // 4: directoryroster.v1.SlackConnectWorkspace
-	(*SlackSharedChannelDefinition)(nil),     // 5: directoryroster.v1.SlackSharedChannelDefinition
-	(*CreateSlackSharedChannelRequest)(nil),  // 6: directoryroster.v1.CreateSlackSharedChannelRequest
-	(*CreateSlackSharedChannelResponse)(nil), // 7: directoryroster.v1.CreateSlackSharedChannelResponse
-	(*UpdateSlackSharedChannelRequest)(nil),  // 8: directoryroster.v1.UpdateSlackSharedChannelRequest
-	(*UpdateSlackSharedChannelResponse)(nil), // 9: directoryroster.v1.UpdateSlackSharedChannelResponse
-	(*DeleteSlackSharedChannelRequest)(nil),  // 10: directoryroster.v1.DeleteSlackSharedChannelRequest
-	(*DeleteSlackSharedChannelResponse)(nil), // 11: directoryroster.v1.DeleteSlackSharedChannelResponse
-	(*SlackSharedChannel)(nil),               // 12: directoryroster.v1.SlackSharedChannel
-	nil,                                      // 13: directoryroster.v1.SlackSharedChannelDefinition.PrivatePerSideEntry
+	(*SlackSourceDirectory)(nil),             // 5: directoryroster.v1.SlackSourceDirectory
+	(*SlackSourceGroup)(nil),                 // 6: directoryroster.v1.SlackSourceGroup
+	(*SlackSharedChannelDefinition)(nil),     // 7: directoryroster.v1.SlackSharedChannelDefinition
+	(*CreateSlackSharedChannelRequest)(nil),  // 8: directoryroster.v1.CreateSlackSharedChannelRequest
+	(*CreateSlackSharedChannelResponse)(nil), // 9: directoryroster.v1.CreateSlackSharedChannelResponse
+	(*UpdateSlackSharedChannelRequest)(nil),  // 10: directoryroster.v1.UpdateSlackSharedChannelRequest
+	(*UpdateSlackSharedChannelResponse)(nil), // 11: directoryroster.v1.UpdateSlackSharedChannelResponse
+	(*DeleteSlackSharedChannelRequest)(nil),  // 12: directoryroster.v1.DeleteSlackSharedChannelRequest
+	(*DeleteSlackSharedChannelResponse)(nil), // 13: directoryroster.v1.DeleteSlackSharedChannelResponse
+	(*SlackSharedChannel)(nil),               // 14: directoryroster.v1.SlackSharedChannel
+	nil,                                      // 15: directoryroster.v1.SlackSharedChannelDefinition.PrivatePerSideEntry
 }
 var file_directoryroster_v1_slack_connect_proto_depIdxs = []int32{
-	12, // 0: directoryroster.v1.ListSlackSharedChannelsResponse.channels:type_name -> directoryroster.v1.SlackSharedChannel
+	14, // 0: directoryroster.v1.ListSlackSharedChannelsResponse.channels:type_name -> directoryroster.v1.SlackSharedChannel
 	4,  // 1: directoryroster.v1.ListSlackSharedChannelsResponse.workspaces:type_name -> directoryroster.v1.SlackConnectWorkspace
-	2,  // 2: directoryroster.v1.ListSlackSharedChannelsResponse.discovered:type_name -> directoryroster.v1.SlackDiscoveredChannel
-	3,  // 3: directoryroster.v1.SlackDiscoveredChannel.sides:type_name -> directoryroster.v1.SlackDiscoveredSide
-	13, // 4: directoryroster.v1.SlackSharedChannelDefinition.private_per_side:type_name -> directoryroster.v1.SlackSharedChannelDefinition.PrivatePerSideEntry
-	5,  // 5: directoryroster.v1.CreateSlackSharedChannelRequest.channel:type_name -> directoryroster.v1.SlackSharedChannelDefinition
-	12, // 6: directoryroster.v1.CreateSlackSharedChannelResponse.channel:type_name -> directoryroster.v1.SlackSharedChannel
-	5,  // 7: directoryroster.v1.UpdateSlackSharedChannelRequest.channel:type_name -> directoryroster.v1.SlackSharedChannelDefinition
-	12, // 8: directoryroster.v1.UpdateSlackSharedChannelResponse.channel:type_name -> directoryroster.v1.SlackSharedChannel
-	5,  // 9: directoryroster.v1.SlackSharedChannel.channel:type_name -> directoryroster.v1.SlackSharedChannelDefinition
-	0,  // 10: directoryroster.v1.SlackSharedChannelService.ListSlackSharedChannels:input_type -> directoryroster.v1.ListSlackSharedChannelsRequest
-	6,  // 11: directoryroster.v1.SlackSharedChannelService.CreateSlackSharedChannel:input_type -> directoryroster.v1.CreateSlackSharedChannelRequest
-	8,  // 12: directoryroster.v1.SlackSharedChannelService.UpdateSlackSharedChannel:input_type -> directoryroster.v1.UpdateSlackSharedChannelRequest
-	10, // 13: directoryroster.v1.SlackSharedChannelService.DeleteSlackSharedChannel:input_type -> directoryroster.v1.DeleteSlackSharedChannelRequest
-	1,  // 14: directoryroster.v1.SlackSharedChannelService.ListSlackSharedChannels:output_type -> directoryroster.v1.ListSlackSharedChannelsResponse
-	7,  // 15: directoryroster.v1.SlackSharedChannelService.CreateSlackSharedChannel:output_type -> directoryroster.v1.CreateSlackSharedChannelResponse
-	9,  // 16: directoryroster.v1.SlackSharedChannelService.UpdateSlackSharedChannel:output_type -> directoryroster.v1.UpdateSlackSharedChannelResponse
-	11, // 17: directoryroster.v1.SlackSharedChannelService.DeleteSlackSharedChannel:output_type -> directoryroster.v1.DeleteSlackSharedChannelResponse
-	14, // [14:18] is the sub-list for method output_type
-	10, // [10:14] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	5,  // 2: directoryroster.v1.ListSlackSharedChannelsResponse.source_directories:type_name -> directoryroster.v1.SlackSourceDirectory
+	2,  // 3: directoryroster.v1.ListSlackSharedChannelsResponse.discovered:type_name -> directoryroster.v1.SlackDiscoveredChannel
+	3,  // 4: directoryroster.v1.SlackDiscoveredChannel.sides:type_name -> directoryroster.v1.SlackDiscoveredSide
+	6,  // 5: directoryroster.v1.SlackSourceDirectory.groups:type_name -> directoryroster.v1.SlackSourceGroup
+	15, // 6: directoryroster.v1.SlackSharedChannelDefinition.private_per_side:type_name -> directoryroster.v1.SlackSharedChannelDefinition.PrivatePerSideEntry
+	7,  // 7: directoryroster.v1.CreateSlackSharedChannelRequest.channel:type_name -> directoryroster.v1.SlackSharedChannelDefinition
+	14, // 8: directoryroster.v1.CreateSlackSharedChannelResponse.channel:type_name -> directoryroster.v1.SlackSharedChannel
+	7,  // 9: directoryroster.v1.UpdateSlackSharedChannelRequest.channel:type_name -> directoryroster.v1.SlackSharedChannelDefinition
+	14, // 10: directoryroster.v1.UpdateSlackSharedChannelResponse.channel:type_name -> directoryroster.v1.SlackSharedChannel
+	7,  // 11: directoryroster.v1.SlackSharedChannel.channel:type_name -> directoryroster.v1.SlackSharedChannelDefinition
+	0,  // 12: directoryroster.v1.SlackSharedChannelService.ListSlackSharedChannels:input_type -> directoryroster.v1.ListSlackSharedChannelsRequest
+	8,  // 13: directoryroster.v1.SlackSharedChannelService.CreateSlackSharedChannel:input_type -> directoryroster.v1.CreateSlackSharedChannelRequest
+	10, // 14: directoryroster.v1.SlackSharedChannelService.UpdateSlackSharedChannel:input_type -> directoryroster.v1.UpdateSlackSharedChannelRequest
+	12, // 15: directoryroster.v1.SlackSharedChannelService.DeleteSlackSharedChannel:input_type -> directoryroster.v1.DeleteSlackSharedChannelRequest
+	1,  // 16: directoryroster.v1.SlackSharedChannelService.ListSlackSharedChannels:output_type -> directoryroster.v1.ListSlackSharedChannelsResponse
+	9,  // 17: directoryroster.v1.SlackSharedChannelService.CreateSlackSharedChannel:output_type -> directoryroster.v1.CreateSlackSharedChannelResponse
+	11, // 18: directoryroster.v1.SlackSharedChannelService.UpdateSlackSharedChannel:output_type -> directoryroster.v1.UpdateSlackSharedChannelResponse
+	13, // 19: directoryroster.v1.SlackSharedChannelService.DeleteSlackSharedChannel:output_type -> directoryroster.v1.DeleteSlackSharedChannelResponse
+	16, // [16:20] is the sub-list for method output_type
+	12, // [12:16] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_directoryroster_v1_slack_connect_proto_init() }
@@ -977,7 +1136,7 @@ func file_directoryroster_v1_slack_connect_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directoryroster_v1_slack_connect_proto_rawDesc), len(file_directoryroster_v1_slack_connect_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

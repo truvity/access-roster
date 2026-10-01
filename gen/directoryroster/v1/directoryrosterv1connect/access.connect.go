@@ -54,6 +54,9 @@ const (
 	// AccessServiceGetDirectoryGroupProcedure is the fully-qualified name of the AccessService's
 	// GetDirectoryGroup RPC.
 	AccessServiceGetDirectoryGroupProcedure = "/directoryroster.v1.AccessService/GetDirectoryGroup"
+	// AccessServiceResolveDirectoryGroupsProcedure is the fully-qualified name of the AccessService's
+	// ResolveDirectoryGroups RPC.
+	AccessServiceResolveDirectoryGroupsProcedure = "/directoryroster.v1.AccessService/ResolveDirectoryGroups"
 )
 
 // AccessServiceClient is a client for the directoryroster.v1.AccessService service.
@@ -113,6 +116,15 @@ type AccessServiceClient interface {
 	// that direction is not derivable from the policy alone. Viewer, for
 	// the same reason as Explain.
 	GetDirectoryGroup(context.Context, *connect.Request[v1.GetDirectoryGroupRequest]) (*connect.Response[v1.GetDirectoryGroupResponse], error)
+	// ResolveDirectoryGroups returns, for each directory group asked, who is
+	// in it with nested groups expanded, and which directory it comes from:
+	// the question a controller asks to feed a channel from directory groups
+	// (a console channel), where ListHolders asks it of an internal group.
+	// Viewer, installation-wide: a scoped viewer is told found=false of a
+	// group of a directory it may not view, so the answer never reveals a
+	// directory the caller cannot see. The answer carries the policy digest,
+	// like ListHolders, so a consumer checks it decided under the same policy.
+	ResolveDirectoryGroups(context.Context, *connect.Request[v1.ResolveDirectoryGroupsRequest]) (*connect.Response[v1.ResolveDirectoryGroupsResponse], error)
 }
 
 // NewAccessServiceClient constructs a client for the directoryroster.v1.AccessService service. By
@@ -174,19 +186,26 @@ func NewAccessServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(accessServiceMethods.ByName("GetDirectoryGroup")),
 			connect.WithClientOptions(opts...),
 		),
+		resolveDirectoryGroups: connect.NewClient[v1.ResolveDirectoryGroupsRequest, v1.ResolveDirectoryGroupsResponse](
+			httpClient,
+			baseURL+AccessServiceResolveDirectoryGroupsProcedure,
+			connect.WithSchema(accessServiceMethods.ByName("ResolveDirectoryGroups")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // accessServiceClient implements AccessServiceClient.
 type accessServiceClient struct {
-	whoAmI              *connect.Client[v1.WhoAmIRequest, v1.WhoAmIResponse]
-	explain             *connect.Client[v1.ExplainRequest, v1.ExplainResponse]
-	listHolders         *connect.Client[v1.ListHoldersRequest, v1.ListHoldersResponse]
-	searchPeople        *connect.Client[v1.SearchPeopleRequest, v1.SearchPeopleResponse]
-	listServedDomains   *connect.Client[v1.ListServedDomainsRequest, v1.ListServedDomainsResponse]
-	getPolicy           *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
-	listDirectoryGroups *connect.Client[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse]
-	getDirectoryGroup   *connect.Client[v1.GetDirectoryGroupRequest, v1.GetDirectoryGroupResponse]
+	whoAmI                 *connect.Client[v1.WhoAmIRequest, v1.WhoAmIResponse]
+	explain                *connect.Client[v1.ExplainRequest, v1.ExplainResponse]
+	listHolders            *connect.Client[v1.ListHoldersRequest, v1.ListHoldersResponse]
+	searchPeople           *connect.Client[v1.SearchPeopleRequest, v1.SearchPeopleResponse]
+	listServedDomains      *connect.Client[v1.ListServedDomainsRequest, v1.ListServedDomainsResponse]
+	getPolicy              *connect.Client[v1.GetPolicyRequest, v1.GetPolicyResponse]
+	listDirectoryGroups    *connect.Client[v1.ListDirectoryGroupsRequest, v1.ListDirectoryGroupsResponse]
+	getDirectoryGroup      *connect.Client[v1.GetDirectoryGroupRequest, v1.GetDirectoryGroupResponse]
+	resolveDirectoryGroups *connect.Client[v1.ResolveDirectoryGroupsRequest, v1.ResolveDirectoryGroupsResponse]
 }
 
 // WhoAmI calls directoryroster.v1.AccessService.WhoAmI.
@@ -227,6 +246,11 @@ func (c *accessServiceClient) ListDirectoryGroups(ctx context.Context, req *conn
 // GetDirectoryGroup calls directoryroster.v1.AccessService.GetDirectoryGroup.
 func (c *accessServiceClient) GetDirectoryGroup(ctx context.Context, req *connect.Request[v1.GetDirectoryGroupRequest]) (*connect.Response[v1.GetDirectoryGroupResponse], error) {
 	return c.getDirectoryGroup.CallUnary(ctx, req)
+}
+
+// ResolveDirectoryGroups calls directoryroster.v1.AccessService.ResolveDirectoryGroups.
+func (c *accessServiceClient) ResolveDirectoryGroups(ctx context.Context, req *connect.Request[v1.ResolveDirectoryGroupsRequest]) (*connect.Response[v1.ResolveDirectoryGroupsResponse], error) {
+	return c.resolveDirectoryGroups.CallUnary(ctx, req)
 }
 
 // AccessServiceHandler is an implementation of the directoryroster.v1.AccessService service.
@@ -286,6 +310,15 @@ type AccessServiceHandler interface {
 	// that direction is not derivable from the policy alone. Viewer, for
 	// the same reason as Explain.
 	GetDirectoryGroup(context.Context, *connect.Request[v1.GetDirectoryGroupRequest]) (*connect.Response[v1.GetDirectoryGroupResponse], error)
+	// ResolveDirectoryGroups returns, for each directory group asked, who is
+	// in it with nested groups expanded, and which directory it comes from:
+	// the question a controller asks to feed a channel from directory groups
+	// (a console channel), where ListHolders asks it of an internal group.
+	// Viewer, installation-wide: a scoped viewer is told found=false of a
+	// group of a directory it may not view, so the answer never reveals a
+	// directory the caller cannot see. The answer carries the policy digest,
+	// like ListHolders, so a consumer checks it decided under the same policy.
+	ResolveDirectoryGroups(context.Context, *connect.Request[v1.ResolveDirectoryGroupsRequest]) (*connect.Response[v1.ResolveDirectoryGroupsResponse], error)
 }
 
 // NewAccessServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -343,6 +376,12 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(accessServiceMethods.ByName("GetDirectoryGroup")),
 		connect.WithHandlerOptions(opts...),
 	)
+	accessServiceResolveDirectoryGroupsHandler := connect.NewUnaryHandler(
+		AccessServiceResolveDirectoryGroupsProcedure,
+		svc.ResolveDirectoryGroups,
+		connect.WithSchema(accessServiceMethods.ByName("ResolveDirectoryGroups")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/directoryroster.v1.AccessService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AccessServiceWhoAmIProcedure:
@@ -361,6 +400,8 @@ func NewAccessServiceHandler(svc AccessServiceHandler, opts ...connect.HandlerOp
 			accessServiceListDirectoryGroupsHandler.ServeHTTP(w, r)
 		case AccessServiceGetDirectoryGroupProcedure:
 			accessServiceGetDirectoryGroupHandler.ServeHTTP(w, r)
+		case AccessServiceResolveDirectoryGroupsProcedure:
+			accessServiceResolveDirectoryGroupsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -400,4 +441,8 @@ func (UnimplementedAccessServiceHandler) ListDirectoryGroups(context.Context, *c
 
 func (UnimplementedAccessServiceHandler) GetDirectoryGroup(context.Context, *connect.Request[v1.GetDirectoryGroupRequest]) (*connect.Response[v1.GetDirectoryGroupResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.GetDirectoryGroup is not implemented"))
+}
+
+func (UnimplementedAccessServiceHandler) ResolveDirectoryGroups(context.Context, *connect.Request[v1.ResolveDirectoryGroupsRequest]) (*connect.Response[v1.ResolveDirectoryGroupsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("directoryroster.v1.AccessService.ResolveDirectoryGroups is not implemented"))
 }

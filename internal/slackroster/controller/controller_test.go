@@ -17,10 +17,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
+	"github.com/truvity/access-roster/backend/fake"
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit/audittest"
+	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/slackapp"
@@ -34,6 +36,9 @@ import (
 
 // testPolicy is the digest the rig's controller decides with.
 const testPolicy = "rig-policy"
+
+// dirAll is the directory group the shared channels in these tests are fed from.
+const dirAll = "all@dir.example"
 
 // console answers the two questions the controller asks, from a directory
 // the test edits between passes.
@@ -51,6 +56,68 @@ type console struct {
 	// workspace id; servedErr is the answer when it cannot be read.
 	served    map[string][]string
 	servedErr error
+	// dirGroups describe directory groups beyond what dir implies: an
+	// address in dir that holds a group named like an address is in that
+	// directory group.
+	dirGroups map[string]*fakeDirGroup
+	// resolveErr is the answer to a question about directory groups when
+	// the console cannot give one.
+	resolveErr error
+}
+
+// fakeDirGroup is what the fake console says of one directory group, over
+// what the dir table implies.
+type fakeDirGroup struct {
+	// owner is the directory the group belongs to; empty is C0acme.
+	owner string
+	// nested are groups the members came through; truncated says the
+	// expansion was cut short; missing makes the group not found.
+	nested             []string
+	truncated, missing bool
+	// extra are members the dir table does not hold.
+	extra []string
+}
+
+func (c *console) ResolveDirectoryGroups(
+	_ context.Context, req *connect.Request[directoryrosterv1.ResolveDirectoryGroupsRequest],
+) (*connect.Response[directoryrosterv1.ResolveDirectoryGroupsResponse], error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.resolveErr != nil {
+		return nil, c.resolveErr
+	}
+	out := &directoryrosterv1.ResolveDirectoryGroupsResponse{PolicyDigest: c.policy}
+	for _, g := range req.Msg.GetGroups() {
+		resolved := &directoryrosterv1.ResolvedDirectoryGroup{Email: g}
+		out.Groups = append(out.Groups, resolved)
+		explicit := c.dirGroups[g]
+		if explicit != nil && explicit.missing {
+			continue
+		}
+		var members []string
+		for _, addr := range slices.Sorted(maps.Keys(c.dir)) {
+			if slices.Contains(c.dir[addr], g) {
+				members = append(members, addr)
+			}
+		}
+		if explicit != nil {
+			members = append(members, explicit.extra...)
+		}
+		if len(members) == 0 && explicit == nil {
+			continue
+		}
+		resolved.Found, resolved.Authoritative, resolved.WorkspaceId = true, true, "C0acme"
+		if explicit != nil {
+			if explicit.owner != "" {
+				resolved.WorkspaceId = explicit.owner
+			}
+			resolved.Nested, resolved.Truncated = explicit.nested, explicit.truncated
+		}
+		for _, m := range members {
+			resolved.Members = append(resolved.Members, &directoryrosterv1.DirectoryGroupMember{Email: m, Known: true, Live: true})
+		}
+	}
+	return connect.NewResponse(out), nil
 }
 
 func (c *console) ListServedDomains(
@@ -95,6 +162,9 @@ func (c *console) Explain(
 	out := &directoryrosterv1.ExplainResponse{PolicyDigest: c.policy, Authoritative: !c.unsure[addr], Found: found}
 	for _, g := range groups {
 		out.Held = append(out.Held, &directoryrosterv1.HeldGroup{Group: g})
+		if strings.Contains(g, "@") {
+			out.DirectoryGroups = append(out.DirectoryGroups, g)
+		}
 	}
 	return connect.NewResponse(out), nil
 }
@@ -195,7 +265,7 @@ func newRig(t *testing.T) *rig {
 		t: t, fake: fake, audit: audittest.New(t), reports: &reports{}, now: time.Now(),
 		creds: t.TempDir(), records: t.TempDir(), users: map[string]string{}, controllers: map[string]*controller.Controller{},
 		console: &console{
-			policy: testPolicy, dir: map[string][]string{}, unsure: map[string]bool{}, explained: map[string]int{},
+			policy: testPolicy, dir: map[string][]string{}, dirGroups: map[string]*fakeDirGroup{}, unsure: map[string]bool{}, explained: map[string]int{},
 			// Each Slack workspace is owned by a directory that serves its domain.
 			served: map[string][]string{"C0acme": {"acme.example"}, "C0globex": {"globex.example"}},
 		},
@@ -752,9 +822,9 @@ func TestTheDirectoryIsAskedOncePerAddressPerPass(t *testing.T) {
 // its host and acted on by nobody.
 func TestSharedChannelRecordsAreValidatedAndReported(t *testing.T) {
 	r := newRig(t)
-	r.person("ann@acme.example", []string{"g-all"}, "acme")
-	good := reconcile.SharedChannel{Name: "joint", Host: "acme", With: []string{"globex"}, From: []string{"g-all"}}
-	bad := reconcile.SharedChannel{Name: "broken", Host: "acme", With: []string{"nowhere"}, From: []string{"g-all"}}
+	r.person("ann@acme.example", []string{"g-all", dirAll}, "acme")
+	good := reconcile.SharedChannel{Name: "joint", Host: "acme", With: []string{"globex"}, Sources: []string{dirAll}}
+	bad := reconcile.SharedChannel{Name: "broken", Host: "acme", With: []string{"nowhere"}, Sources: []string{dirAll}}
 	for _, s := range []reconcile.SharedChannel{good, bad} {
 		raw, err := connection.EncodeShared(s)
 		if err != nil {
@@ -784,7 +854,7 @@ func TestSharedChannelRecordsAreValidatedAndReported(t *testing.T) {
 // single visibility and for one with a visibility per side.
 func TestTheControllerReadsWhatTheConsoleWrites(t *testing.T) {
 	r := newRig(t)
-	r.person("ann@acme.example", []string{"g-all"}, "acme")
+	r.person("ann@acme.example", []string{"g-all", dirAll}, "acme")
 	// The service validates against the same policy in the shape the real
 	// one has.
 	declared := r.policy
@@ -796,14 +866,21 @@ func TestTheControllerReadsWhatTheConsoleWrites(t *testing.T) {
 	}
 	client := kube.NewClient(k8sfake.NewClientset(), "ns", "release")
 	shared := kube.NewSlackShared(client)
-	console, err := server.NewConsole(context.Background(), server.ConsoleDeps{Authorizer: access.NewAuthorizer(set, nil, 0), SlackShared: shared})
+	// The directory the shared channels' source groups are looked up in.
+	directory := hub.New(hub.NewMemoryStore(), hub.NewMemorySnapshots(), hub.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err = directory.Adopt(context.Background(), hub.Workspace{ID: "C0acme", Admin: "admin@dir.example"},
+		fake.New("C0acme", "dir.example").WithAccount("admin@dir.example", "Admin", "A").WithGroup(dirAll, "admin@dir.example")); err != nil {
+		t.Fatal(err)
+	}
+	directory.Wait()
+	console, err := server.NewConsole(context.Background(), server.ConsoleDeps{Authorizer: access.NewAuthorizer(set, nil, 0), SlackShared: shared, Hub: directory})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := server.WithIdentity(context.Background(), access.Identity{Email: "ada@acme.example", Role: access.RoleOperator})
 	for _, def := range []*directoryrosterv1.SlackSharedChannelDefinition{
-		{Name: "joint", Host: "acme", With: []string{"globex"}, From: []string{"g-all"}, Private: true},
-		{Name: "sided", Host: "acme", With: []string{"globex"}, From: []string{"g-all"}, PrivatePerSide: map[string]bool{"acme": true, "globex": false}},
+		{Name: "joint", Host: "acme", With: []string{"globex"}, From: []string{dirAll}, Private: true},
+		{Name: "sided", Host: "acme", With: []string{"globex"}, From: []string{dirAll}, PrivatePerSide: map[string]bool{"acme": true, "globex": false}},
 	} {
 		if _, err = console.CreateSlackSharedChannel(ctx, connect.NewRequest(&directoryrosterv1.CreateSlackSharedChannelRequest{Channel: def})); err != nil {
 			t.Fatalf("create %s: %v", def.Name, err)
@@ -1162,9 +1239,9 @@ func TestAChannelAlreadySharedAcrossThreeWorkspacesIsDiscoveredAndTakenOver(t *t
 	r.writeCredential("initech", slackfake.Token("TINITECH"))
 	r.writeConnection("initech", "TINITECH", "C0initech")
 
-	ann := r.person("ann@acme.example", []string{"g-all"}, "acme")
-	bob := r.person("bob@globex.example", []string{"g-all"}, "globex")
-	cy := r.person("cy@initech.example", []string{"g-all"}, "initech")
+	ann := r.person("ann@acme.example", []string{"g-all", dirAll}, "acme")
+	bob := r.person("bob@globex.example", []string{"g-all", dirAll}, "globex")
+	cy := r.person("cy@initech.example", []string{"g-all", dirAll}, "initech")
 	old := r.fake.AddUser("TACME", "old@acme.example").ID
 	shared := r.fake.AddSharedChannel("legacy", "TACME", []string{"TGLOBEX", "TINITECH"},
 		map[string]bool{"TACME": false, "TGLOBEX": false, "TINITECH": true}, old)
@@ -1192,7 +1269,7 @@ func TestAChannelAlreadySharedAcrossThreeWorkspacesIsDiscoveredAndTakenOver(t *t
 	}
 
 	// The console writes a record that names the channel.
-	rec := reconcile.SharedChannel{Name: "legacy", Host: "acme", With: []string{"globex", "initech"}, From: []string{"g-all"}, ChannelID: shared.ID,
+	rec := reconcile.SharedChannel{Name: "legacy", Host: "acme", With: []string{"globex", "initech"}, Sources: []string{dirAll}, ChannelID: shared.ID,
 		Private: reconcile.Privacy{PerSide: map[string]bool{"acme": false, "globex": false, "initech": true}}}
 	raw, err := connection.EncodeShared(rec)
 	if err != nil {
@@ -1247,9 +1324,9 @@ func TestAChannelAlreadySharedAcrossThreeWorkspacesIsDiscoveredAndTakenOver(t *t
 // record, the host creates it, invites the guest bot, the guest accepts.
 func TestANewSharedChannelStillFlowsThroughInviteAndAccept(t *testing.T) {
 	r := newRig(t)
-	r.person("ann@acme.example", []string{"g-all"}, "acme")
-	r.person("bob@globex.example", []string{"g-all"}, "globex")
-	raw, err := connection.EncodeShared(reconcile.SharedChannel{Name: "fresh", Host: "acme", With: []string{"globex"}, From: []string{"g-all"}})
+	r.person("ann@acme.example", []string{"g-all", dirAll}, "acme")
+	r.person("bob@globex.example", []string{"g-all", dirAll}, "globex")
+	raw, err := connection.EncodeShared(reconcile.SharedChannel{Name: "fresh", Host: "acme", With: []string{"globex"}, Sources: []string{dirAll}})
 	if err != nil {
 		t.Fatal(err)
 	}

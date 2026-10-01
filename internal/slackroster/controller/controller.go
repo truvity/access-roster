@@ -173,9 +173,16 @@ func (c *Controller) Run(ctx context.Context) error {
 
 // pass is what one pass shares between its workspaces.
 type pass struct {
-	store      store
-	shared     []reconcile.SharedChannel
-	refused    map[string][]refusal
+	store   store
+	shared  []reconcile.SharedChannel
+	console []reconcile.ConsoleChannel
+	refused map[string][]refusal
+	// consoleRefused are the console channels refused, by workspace.
+	consoleRefused map[string][]consoleRefusal
+	// dir is who is in every directory group a console or shared channel
+	// names; dirErr is why that could not be read.
+	dir        directoryGroups
+	dirErr     error
 	holders    reconcile.Holders
 	holdersErr error
 	// served are the domains each connected directory serves now, by its
@@ -210,8 +217,17 @@ func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
 				"channel", logsafe.Value(list[i].name), "host", logsafe.Value(host), "error", logsafe.Error(list[i].err))
 		}
 	}
+	p.console, p.consoleRefused = p.store.consoleChannels(c.deps.Policy)
+	p.holders, p.holdersErr = c.directory().Holders(ctx, c.groups())
+	c.resolveSources(ctx, p)
+	for ws, list := range p.consoleRefused {
+		for i := range list {
+			invalid++
+			c.deps.Log.WarnContext(ctx, "a console channel's record is refused and not acted on",
+				"channel", logsafe.Value(list[i].name), "workspace", logsafe.Value(ws), "error", logsafe.Error(list[i].err))
+		}
+	}
 	c.metrics.recordInvalid(ctx, invalid)
-	p.holders, p.holdersErr = c.directory().Holders(ctx, c.groups(p.shared))
 	p.served, p.servedErr = c.servedDomains(ctx)
 
 	workspaces := c.deps.Policy.Slack.Workspaces
@@ -226,18 +242,72 @@ func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
 	return otherPolicy
 }
 
-// groups are every group a channel here, or a shared channel, is bound to.
-func (c *Controller) groups(shared []reconcile.SharedChannel) []string {
+// groups are every internal group a policy channel is bound to.
+func (c *Controller) groups() []string {
 	var groups []string
 	for _, ws := range c.deps.Policy.Slack.Workspaces {
 		for _, ch := range ws.Channels {
 			groups = append(groups, ch.From...)
 		}
 	}
-	for i := range shared {
-		groups = append(groups, shared[i].From...)
-	}
 	return groups
+}
+
+// resolveSources reads who is in the directory groups the console channels
+// and the shared channels name, and moves the records whose sources cannot
+// be acted on to the refused. A directory that cannot be read leaves every
+// record in place, and fails the workspaces that depend on them (see
+// [Controller.workspace]) rather than read as "nobody is in these groups".
+func (c *Controller) resolveSources(ctx context.Context, p *pass) {
+	var sources []string
+	for i := range p.console {
+		sources = append(sources, p.console[i].Sources...)
+	}
+	for i := range p.shared {
+		sources = append(sources, p.shared[i].Sources...)
+	}
+	if len(sources) == 0 {
+		return
+	}
+	if p.dir, p.dirErr = c.resolveDirectory(ctx, sources); p.dirErr != nil {
+		return
+	}
+	var console []reconcile.ConsoleChannel
+	for i := range p.console {
+		ch := p.console[i]
+		if why := p.dir.checkSources(ch.Sources, p.store.recorded[ch.Workspace].owner, true); why != "" {
+			p.consoleRefused[ch.Workspace] = append(p.consoleRefused[ch.Workspace], consoleRefusal{name: ch.Name, channel: ch, err: errors.New(why)})
+			continue
+		}
+		console = append(console, ch)
+	}
+	p.console = console
+	var shared []reconcile.SharedChannel
+	for i := range p.shared {
+		ch := p.shared[i]
+		if why := p.dir.checkSources(ch.Sources, "", false); why != "" {
+			p.refused[ch.Host] = append(p.refused[ch.Host], refusal{name: ch.Name, channel: ch, err: errors.New(why)})
+			continue
+		}
+		shared = append(shared, ch)
+	}
+	p.shared = shared
+}
+
+// dependsOnDirectory reports whether a workspace's pass uses directory
+// groups: it has console channels, or takes part in a shared channel.
+func (p *pass) dependsOnDirectory(key string) bool {
+	for i := range p.console {
+		if p.console[i].Workspace == key {
+			return true
+		}
+	}
+	for i := range p.shared {
+		if p.shared[i].Host == key || slices.Contains(p.shared[i].With, key) {
+			return true
+		}
+	}
+	return false
 }
 
 // workspace is one workspace's pass, ending in its report whatever
@@ -259,6 +329,9 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 
 	if p.holdersErr != nil {
 		return fail(p.holdersErr)
+	}
+	if p.dirErr != nil && p.dependsOnDirectory(key) {
+		return fail(p.dirErr)
 	}
 	token, err := p.store.token(key)
 	if errors.Is(err, errNotConnected) || errors.Is(err, errNotInstalled) {
@@ -297,7 +370,8 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	}
 	in := reconcile.Input{
 		Workspace: key, Workspaces: c.deps.Policy.Slack.Workspaces, Facts: facts, People: c.deps.Policy.People,
-		Holders: p.holders, Shared: p.shared, Bots: p.store.botsFor(),
+		Holders: p.holders, Shared: p.shared, Console: p.console, Bots: p.store.botsFor(),
+		DirHolders: p.dir.holders, DirNested: p.dir.nestedOf(allSources(p.console, p.shared)),
 	}
 	if in.Observed, err = apply.Observe(ctx, client, in); err != nil {
 		return fail(err)
@@ -313,6 +387,7 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	report.Enabled = enabled
 	report.Tick.At = started
 	c.reportRefused(&report, key, p.refused[key])
+	c.reportConsoleRefused(&report, key, p.consoleRefused[key])
 
 	// enabled is this workspace's dry-run switch (internal/rails): disabled
 	// derives and reports what would change, and changes nothing.
@@ -393,6 +468,34 @@ func (c *Controller) reportRefused(report *status.Workspace, key string, refused
 	}
 }
 
+// reportConsoleRefused puts a refused console channel record in its
+// workspace's report, held with the reason.
+func (c *Controller) reportConsoleRefused(report *status.Workspace, _ string, refused []consoleRefusal) {
+	for i := range refused {
+		r := &refused[i]
+		mode := r.channel.Mode
+		if mode == "" {
+			mode = policy.SlackModeExtend
+		}
+		report.Channels = append(report.Channels, status.Channel{
+			Name: r.name, ID: r.channel.ChannelID, Console: true, Mode: mode, Private: r.channel.Private,
+			State: status.ChannelHeld, Reason: "the console channel's record is refused and not acted on: " + r.err.Error(),
+		})
+	}
+}
+
+// allSources are every directory group the console and shared channels name.
+func allSources(console []reconcile.ConsoleChannel, shared []reconcile.SharedChannel) []string {
+	var out []string
+	for i := range console {
+		out = append(out, console[i].Sources...)
+	}
+	for i := range shared {
+		out = append(out, shared[i].Sources...)
+	}
+	return out
+}
+
 // directory is the console as the controller asks it: the generic
 // [rails.Directory], with this controller's client and policy digest.
 func (c *Controller) directory() rails.Directory {
@@ -426,6 +529,7 @@ func (c *Controller) directory() rails.Directory {
 			for _, held := range msg.GetHeld() {
 				vouch.Groups = append(vouch.Groups, held.GetGroup())
 			}
+			vouch.DirectoryGroups = msg.GetDirectoryGroups()
 			return vouch, msg.GetPolicyDigest(), nil
 		},
 	}

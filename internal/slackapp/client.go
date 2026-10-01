@@ -135,6 +135,15 @@ type Channel struct {
 	// ConnectedTeamIDs are the external workspaces a Slack Connect channel
 	// reaches, from this side's view.
 	ConnectedTeamIDs []string `json:"connected_team_ids"`
+	// PendingSharedTeamIDs and PendingConnectedTeamIDs are the workspaces a
+	// Slack Connect channel has been shared with and that have not accepted
+	// yet. Their sides are not visible to their own bots, but Slack names
+	// them here.
+	PendingSharedTeamIDs    []string `json:"pending_shared"`
+	PendingConnectedTeamIDs []string `json:"pending_connected_team_ids"`
+	// InternalTeamIDs are the workspaces of the same organisation an
+	// Enterprise Grid channel is shared across.
+	InternalTeamIDs []string `json:"internal_team_ids"`
 	// ConversationHostID is the team that owns a Slack Connect channel
 	// (`conversation_host_id`); empty for an ordinary channel.
 	ConversationHostID string `json:"conversation_host_id"`
@@ -144,7 +153,7 @@ type Channel struct {
 }
 
 // Teams are every workspace a Slack Connect channel reaches, as this side
-// reports it: the shared and the connected teams and the host, without
+// reports it: the shared, connected, pending and internal teams and the host, without
 // repeats, in first-seen order.
 func (c Channel) Teams() []string {
 	var out []string
@@ -158,6 +167,15 @@ func (c Channel) Teams() []string {
 		add(id)
 	}
 	for _, id := range c.ConnectedTeamIDs {
+		add(id)
+	}
+	for _, id := range c.PendingSharedTeamIDs {
+		add(id)
+	}
+	for _, id := range c.PendingConnectedTeamIDs {
+		add(id)
+	}
+	for _, id := range c.InternalTeamIDs {
 		add(id)
 	}
 	return out

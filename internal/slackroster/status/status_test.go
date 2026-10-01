@@ -159,3 +159,41 @@ func TestDiscoveredSharedIsAdditiveAndEncodedInAFixedOrder(t *testing.T) {
 		t.Errorf("old document: %+v %v", old, err)
 	}
 }
+
+func TestDiscoveredChannelsAndTheConsoleMarkAreAdditiveAndOrdered(t *testing.T) {
+	t.Parallel()
+	in := sample()
+	in.Discovered = []status.Discovered{{ID: "C2", Name: "zeta"}, {ID: "G1", Name: "alpha", Private: true, Members: 3}}
+	in.DiscoveredMore = 12
+	in.Channels = append(in.Channels, status.Channel{Name: "club", Console: true, Mode: "strict", State: status.ChannelOK})
+	raw, err := status.Encode(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := status.Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Discovered) != 2 || out.Discovered[0].Name != "alpha" || !out.Discovered[0].Private || out.Discovered[0].Members != 3 || out.DiscoveredMore != 12 {
+		t.Errorf("discovered = %+v more %d", out.Discovered, out.DiscoveredMore)
+	}
+	if in.Discovered[0].Name != "zeta" {
+		t.Error("Encode reordered the caller's slice")
+	}
+	var club status.Channel
+	for _, c := range out.Channels {
+		if c.Name == "club" {
+			club = c
+		}
+	}
+	if !club.Console || club.Shared {
+		t.Errorf("club = %+v", club)
+	}
+	// A document from before the fields decodes, with none, and a channel with
+	// no console mark is not a console channel.
+	old, err := status.Decode(`{"version":1,"workspace":"acme","enabled":true,` +
+		`"tick":{"at":"2026-10-01T00:00:00Z","outcome":"in-sync","changes":0,"held":0},"channels":[{"name":"x","mode":"extend","state":"ok"}]}`)
+	if err != nil || len(old.Discovered) != 0 || old.DiscoveredMore != 0 || old.Channels[0].Console {
+		t.Errorf("old document: %+v %v", old, err)
+	}
+}

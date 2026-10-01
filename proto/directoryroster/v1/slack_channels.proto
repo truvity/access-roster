@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package directoryroster.v1;
+
+import "google/protobuf/timestamp.proto";
+
+import "directoryroster/v1/slack_connect.proto";
+
+// SlackChannelService is where ordinary Slack channels are managed from the
+// console: one workspace, members from DIRECTORY groups of the directory
+// that owns the workspace.
+//
+// They live beside the policy's own channels, which stay in git and are fed
+// by internal groups (alert channels, say), and never overlap them: a
+// channel the policy binds is refused here as "defined in git". The Slack
+// controller reads the records and does the rest, with the same rules as for
+// a policy channel: create or take over by name or id, extend or strict,
+// removals only on the directory's say-so and never past the breaker.
+//
+// Slack Connect channels are SlackSharedChannelService.
+//
+// Every create, edit and delete is audited, and the records are backed up
+// with the workspaces' own.
+service SlackChannelService {
+  // ListSlackChannels returns every record the caller may see (a viewer of
+  // the workspace's owner), with what the controller last reported for it,
+  // the workspaces a form offers, and every channel the workspaces' bots can
+  // see that nothing manages.
+  rpc ListSlackChannels(ListSlackChannelsRequest) returns (ListSlackChannelsResponse);
+
+  // CreateSlackChannel validates and keeps a record. Operator of the
+  // workspace's owner, or the installation-wide operator.
+  rpc CreateSlackChannel(CreateSlackChannelRequest) returns (CreateSlackChannelResponse);
+
+  // UpdateSlackChannel changes the mode, the ignore list and the
+  // sources. The workspace, the name, the channel id and the visibility are
+  // immutable.
+  rpc UpdateSlackChannel(UpdateSlackChannelRequest) returns (UpdateSlackChannelResponse);
+
+  // DeleteSlackChannel forgets the record and nothing else: the channel
+  // stays in Slack and the reconciler stops managing its members.
+  rpc DeleteSlackChannel(DeleteSlackChannelRequest) returns (DeleteSlackChannelResponse);
+}
+
+message ListSlackChannelsRequest {}
+
+message ListSlackChannelsResponse {
+  // whether this deployment keeps records at all.
+  bool available = 1;
+  repeated SlackChannelRecord channels = 2;
+  // every workspace the policy declares that the caller may see. can_operate
+  // says whether the caller may manage channels in it; owner is the directory
+  // workspace id whose groups may feed an ordinary channel there.
+  repeated SlackChannelWorkspace workspaces = 3;
+  // the ordinary channels the bots can see that no policy binding and no
+  // record manages, per workspace, only what the caller may see.
+  repeated SlackDiscoveredOrdinary discovered = 4;
+  // the directories an ordinary channel may be fed from: the owning
+  // directory of each workspace the caller may manage, with its groups.
+  repeated SlackSourceDirectory source_directories = 5;
+}
+
+message SlackChannelWorkspace {
+  string key = 1;
+  bool can_operate = 2;
+  // the directory workspace id recorded as the owner; empty when the
+  // workspace has none yet, which leaves no group to pick.
+  string owner = 3;
+  // how many channels the bot saw that the report did not list (the report
+  // is capped).
+  int32 discovered_more = 4;
+}
+
+// SlackDiscoveredOrdinary is one channel a workspace's bot can see.
+message SlackDiscoveredOrdinary {
+  string workspace = 1;
+  string channel_id = 2;
+  string name = 3;
+  bool private = 4;
+  int32 members = 5;
+  // whether the caller may take it under management.
+  bool can_manage = 6;
+}
+
+// SlackChannelDefinition is what an operator writes.
+message SlackChannelDefinition {
+  string workspace = 1;
+  string name = 2;
+  // the Slack id of an existing channel the record takes over; empty to take
+  // over, or create, by name. Immutable.
+  string channel_id = 3;
+  // immutable: converting a channel's visibility is never done.
+  bool private = 4;
+  // extend (the default) or strict. Strict only for a private channel.
+  string mode = 5;
+  // people a strict channel never removes: addresses or Slack user ids.
+  repeated string ignore = 6;
+  // directory group addresses whose members belong. Of the workspace's
+  // owning directory.
+  repeated string sources = 7;
+}
+
+// SlackChannelRecord is one record and where the controller has it.
+message SlackChannelRecord {
+  SlackChannelDefinition channel = 1;
+  // not_reported, pending (the controller will create or adopt it), active,
+  // held (waiting on a person) or invalid.
+  string state = 2;
+  string reason = 3;
+  // whether the caller may edit and delete it.
+  bool can_operate = 4;
+  string created_by = 5;
+  google.protobuf.Timestamp created_at = 6;
+  string updated_by = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message CreateSlackChannelRequest {
+  SlackChannelDefinition channel = 1;
+}
+
+message CreateSlackChannelResponse {
+  SlackChannelRecord channel = 1;
+}
+
+message UpdateSlackChannelRequest {
+  // the record as it should become; workspace, name, channel_id and private
+  // must be the stored ones.
+  SlackChannelDefinition channel = 1;
+}
+
+message UpdateSlackChannelResponse {
+  SlackChannelRecord channel = 1;
+}
+
+message DeleteSlackChannelRequest {
+  string workspace = 1;
+  string name = 2;
+}
+
+message DeleteSlackChannelResponse {
+  // says plainly what was and was not done.
+  string note = 1;
+}

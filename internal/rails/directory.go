@@ -28,6 +28,10 @@ type Vouch struct {
 	Suspended     bool
 	// Groups are the internal groups the address holds.
 	Groups []string
+	// DirectoryGroups are the directory groups, by address, the directory
+	// reports the address in: what a channel fed by directory groups asks
+	// about instead of internal groups.
+	DirectoryGroups []string
 }
 
 // Gone reports an address the directory authoritatively no longer has, or
@@ -98,7 +102,8 @@ func (d Directory) log() *slog.Logger {
 }
 
 // Removal says whether somebody with these addresses may be removed from
-// something that wants any of the groups in wanted. Every address must have
+// something that wants any of the groups in wanted (internal groups, or
+// directory groups by address). Every address must have
 // been asked about and vouched for. An address not asked, or not vouched
 // for, settles nothing this pass: no removal and a reason to retry. An
 // address the directory still finds, live, in a wanted group means the
@@ -111,7 +116,7 @@ func Removal(emails []string, vouches map[string]Vouch, wanted []string) (reason
 			return "the directory was not asked about " + email, false
 		case !v.Authoritative:
 			return "the directory cannot vouch for " + email + " right now", false
-		case v.Found && !v.Suspended && holdsAny(v.Groups, wanted):
+		case v.Found && !v.Suspended && (holdsAny(v.Groups, wanted) || holdsAny(v.DirectoryGroups, wanted)):
 			return "", false
 		}
 	}
