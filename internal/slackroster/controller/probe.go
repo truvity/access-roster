@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"slices"
 
@@ -17,8 +18,9 @@ import (
 // channel any report discovered, each other connected workspace that did not
 // list it is asked once, by id, with conversations.info: an answer is that
 // side (public or private as it says, bot not joined), and Slack's
-// channel_not_found (a private side the bot is not in, or no such side) leaves
-// the side unknown. One call per channel per workspace per pass, the transport's
+// channel_not_found (a private side the bot is not in) leaves the side
+// unknown, logged at debug. Only a workspace whose team a report lists in the
+// channel is asked at all (host, shared, connected, pending, internal teams). One call per channel per workspace per pass, the transport's
 // own rate-limit retry, and a failure only logs: it never fails the pass.
 func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[string]status.Workspace) {
 	// channel id -> first sighting (by workspace key order), and who listed it.
@@ -37,10 +39,40 @@ func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[s
 			listed[d.ID][key] = true
 		}
 	}
+	// channel id -> the teams any report says are in it: only those are asked.
+	inChannel := map[string]map[string]bool{}
+	for _, key := range slices.Sorted(maps.Keys(reports)) {
+		for _, d := range reports[key].DiscoveredShared {
+			if inChannel[d.ID] == nil {
+				inChannel[d.ID] = map[string]bool{}
+			}
+			if d.HostTeam != "" {
+				inChannel[d.ID][d.HostTeam] = true
+			}
+			for _, team := range d.Teams {
+				inChannel[d.ID][team] = true
+			}
+		}
+	}
+	var probed, visible, invisible int
+	defer func() {
+		if probed > 0 {
+			c.deps.Log.InfoContext(ctx, "guest-side probe", "probed", probed, "visible", visible, "invisible", invisible)
+		}
+	}()
 	clients := map[string]*slackapp.Client{}
 	for _, id := range slices.Sorted(maps.Keys(first)) {
 		for _, key := range slices.Sorted(maps.Keys(c.deps.Policy.Slack.Workspaces)) {
 			if listed[id][key] {
+				continue
+			}
+			// A workspace whose team Slack does not list in the channel has
+			// no side to find: skip it without a call.
+			team := reports[key].Team
+			if team == "" {
+				team = p.store.recorded[key].team
+			}
+			if team == "" || !inChannel[id][team] {
 				continue
 			}
 			client, ok := clients[key]
@@ -53,17 +85,26 @@ func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[s
 			if client == nil {
 				continue
 			}
+			probed++
 			info, err := client.ProbeChannel(ctx, id)
 			if err != nil {
-				if !slackapp.ErrChannelNotFound.Is(err) {
+				invisible++
+				if errors.Is(err, slackapp.ErrChannelNotFound) || errors.Is(err, slackapp.ErrNotInChannel) {
+					// Expected: Slack lists the team, and its side is private
+					// to a bot that is not in it.
+					c.deps.Log.DebugContext(ctx, "a listed workspace's side of a shared channel is not visible to its bot",
+						"workspace", logsafe.Value(key), "channel", logsafe.Value(id), "error", logsafe.Error(err))
+				} else {
 					c.deps.Log.WarnContext(ctx, "probing a workspace for a shared channel failed; its side stays unknown",
 						"workspace", logsafe.Value(key), "channel", logsafe.Value(id), "error", logsafe.Error(err))
 				}
 				continue
 			}
 			if info.ID != id || !info.IsExtShared || info.IsArchived {
+				invisible++
 				continue
 			}
+			visible++
 			host := info.ConversationHostID
 			if host == "" {
 				host = first[id].HostTeam
