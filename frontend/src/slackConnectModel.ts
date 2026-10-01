@@ -59,9 +59,10 @@ export function formOf(def: SlackSharedChannelDefinition): Form {
 type DiscoveredSideView = Pick<SlackDiscoveredSide, "workspace" | "name" | "privacy"> & { seen?: boolean; listed?: boolean };
 
 /** The create form for a discovered channel: the name on the host's side,
- *  the host, the other connected workspaces something places the channel
- *  in, and each side's visibility as seen. A side nobody could see starts as
- *  public and is listed in `unknownSides`: the operator must choose it. A
+ *  the host, every connected workspace whose report lists the channel (found
+ *  or probed) or that Slack names, and each side's visibility as reported. A
+ *  side nobody could see is listed in `unknownSides` and is never defaulted:
+ *  the form shows no choice for it and refuses to submit until one is made. A
  *  workspace nothing places the channel in is not prefilled (see
  *  [unplacedSides]) but may be added by hand. */
 export function discoveredForm(row: Pick<SlackDiscoveredChannel, "channelId" | "hostWorkspace"> & { sides: DiscoveredSideView[] }): Form {
@@ -101,6 +102,9 @@ export function sideLabel(side: Omit<DiscoveredSideView, "workspace">): string {
   if (side.listed === false) return "no trace: its bot may not list it (private and the bot is not in it, or public and not joined), or it is not shared here";
   return "private, the bot is not in it, or not shared here";
 }
+
+/** Why a side's visibility must be chosen by hand. */
+export const unknownSideHint = "Private there and the bot is not in it, or not shared: the controller could not see this side, so say what it is.";
 
 /** What the Managed column says for a discovered channel. */
 export function discoveredStatus(row: Pick<SlackDiscoveredChannel, "hostWorkspace" | "managed" | "managedAs">): string {
@@ -201,4 +205,15 @@ export function definitionOf(form: Form): Definition {
     privatePerSide: form.perSide ? { ...form.perSide } : {},
     channelId: form.channelId,
   };
+}
+
+/** The controller holds a channel whose visibility in Slack is not what the
+ *  record says ("the channel is private in Slack but the policy says
+ *  public"). The roster never converts visibility: the record is what an
+ *  operator changes. */
+export const visibilityMismatchHint = "A side's visibility in Slack differs from this record. Edit the record to match what Slack reports.";
+
+/** Whether a reason is that hold. */
+export function isVisibilityMismatch(reason: string | undefined): boolean {
+  return !!reason && /in Slack but the (policy|record) says/.test(reason);
 }

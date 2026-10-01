@@ -25,8 +25,11 @@ const (
 type discoveredRow struct {
 	hostTeam string
 	teams    map[string]bool
-	seen     map[string]status.Discovered // by workspace key
-	managed  bool
+	// reporters are the workspaces whose own report lists the channel,
+	// found or probed: each is a side whether or not its team id is known.
+	reporters map[string]bool
+	seen      map[string]status.Discovered // by workspace key
+	managed   bool
 }
 
 // discoveredChannels merges every connected workspace's discovered shared
@@ -43,8 +46,13 @@ func discoveredChannels(
 	for key := range p.Slack.Workspaces {
 		if team := book.team(key); team != "" {
 			workspaceOfTeam[team] = key
-		} else if team := reports[key].Team; team != "" {
-			workspaceOfTeam[team] = key
+		}
+		// The report's own team names the workspace too, so a team recorded
+		// differently at install does not turn a connected side external.
+		if team := reports[key].Team; team != "" {
+			if _, claimed := workspaceOfTeam[team]; !claimed {
+				workspaceOfTeam[team] = key
+			}
 		}
 	}
 	rows := map[string]*discoveredRow{}
@@ -55,10 +63,11 @@ func discoveredChannels(
 		for _, d := range reports[key].DiscoveredShared {
 			row := rows[d.ID]
 			if row == nil {
-				row = &discoveredRow{teams: map[string]bool{}, seen: map[string]status.Discovered{}}
+				row = &discoveredRow{teams: map[string]bool{}, reporters: map[string]bool{}, seen: map[string]status.Discovered{}}
 				rows[d.ID] = row
 			}
 			row.seen[key] = d
+			row.reporters[key] = true
 			if row.hostTeam == "" {
 				row.hostTeam = d.HostTeam
 			}
@@ -77,12 +86,17 @@ func discoveredChannels(
 		row := rows[channelID]
 		host := workspaceOfTeam[row.hostTeam]
 		view := &directoryrosterv1.SlackDiscoveredChannel{ChannelId: channelID, HostWorkspace: host, HostTeam: row.hostTeam}
+		// A workspace whose report lists the channel is a side by that fact,
+		// whatever its team id says.
+		placed := maps.Clone(row.reporters)
 		for _, team := range slices.Sorted(maps.Keys(row.teams)) {
-			key, connected := workspaceOfTeam[team]
-			if !connected {
+			if key, connected := workspaceOfTeam[team]; connected {
+				placed[key] = true
+			} else {
 				view.ExternalTeams++
-				continue
 			}
+		}
+		for _, key := range slices.Sorted(maps.Keys(placed)) {
 			side := &directoryrosterv1.SlackDiscoveredSide{Workspace: key, Privacy: privacyUnknown, Listed: true}
 			if d, ok := row.seen[key]; ok {
 				side.Seen, side.Name, side.Members = true, d.Name, int32(d.Members) //nolint:gosec // a member count
