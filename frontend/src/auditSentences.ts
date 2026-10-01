@@ -3,7 +3,7 @@ import type { Sentences } from "@truvity/audit";
 
 export const roster: Sentences = {
   "source": "roster",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "locales": [
     "en"
   ],
@@ -228,6 +228,12 @@ export const roster: Sentences = {
       "summary": "An existing Slack channel was taken over by id.",
       "message": {
         "en": "{outcome, select, success {{targets_1_id} was adopted} other {Slack refused to let {targets_1_id} be adopted}}"
+      }
+    },
+    "roster.slack_channel.archived": {
+      "summary": "An operator archived a Slack channel when forgetting its console record.",
+      "message": {
+        "en": "{outcome, select, success {{actor} archived {targets_1_id} in {targets_0_id}} other {Slack refused to archive {targets_1_id}; archive it in Slack by hand}}"
       }
     },
     "roster.slack_channel.created": {

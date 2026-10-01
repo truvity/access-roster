@@ -37,8 +37,9 @@ service SlackChannelService {
   // immutable.
   rpc UpdateSlackChannel(UpdateSlackChannelRequest) returns (UpdateSlackChannelResponse);
 
-  // DeleteSlackChannel forgets the record and nothing else: the channel
-  // stays in Slack and the reconciler stops managing its members.
+  // DeleteSlackChannel forgets the record: the channel stays in Slack and the
+  // reconciler stops managing its members, unless archive is set, which also
+  // archives the channel in Slack (audited as roster.slack_channel.archived).
   rpc DeleteSlackChannel(DeleteSlackChannelRequest) returns (DeleteSlackChannelResponse);
 }
 
@@ -140,9 +141,17 @@ message UpdateSlackChannelResponse {
 message DeleteSlackChannelRequest {
   string workspace = 1;
   string name = 2;
+  // also archive the channel in Slack, after the record is forgotten. Off
+  // unless asked for. When the bot cannot (it is not in the channel, or Slack
+  // refuses) the record is still deleted and the note says to archive it by
+  // hand. Refused, with nothing changed, for a Slack Connect channel:
+  // archiving closes it for every organisation in it.
+  bool archive = 3;
 }
 
 message DeleteSlackChannelResponse {
   // says plainly what was and was not done.
   string note = 1;
+  // the channel was archived in Slack.
+  bool archived = 2;
 }

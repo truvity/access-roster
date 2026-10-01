@@ -95,6 +95,8 @@ var (
 	ErrCantKickSelf = &APIError{Code: "cant_kick_self"}
 	// ErrCantKickFromGeneral: nobody is removed from #general.
 	ErrCantKickFromGeneral = &APIError{Code: "cant_kick_from_general"}
+	// ErrAlreadyArchived: the channel is archived already.
+	ErrAlreadyArchived = &APIError{Code: "already_archived"}
 	// ErrChannelNotFound: no such channel, or a private one the bot is
 	// not in — Slack does not say which.
 	ErrChannelNotFound = &APIError{Code: "channel_not_found"}

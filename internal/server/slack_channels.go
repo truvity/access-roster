@@ -16,6 +16,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/slackapp"
 	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 	"github.com/truvity/access-roster/internal/slackroster/status"
 	"github.com/truvity/access-roster/policy"
@@ -455,7 +456,8 @@ func modeWord(mode string) string {
 	return mode
 }
 
-// DeleteSlackChannel forgets the record. The channel stays in Slack.
+// DeleteSlackChannel forgets the record. The channel stays in Slack, unless
+// the request asks for it to be archived too.
 func (c *Console) DeleteSlackChannel(
 	ctx context.Context, req *connect.Request[directoryrosterv1.DeleteSlackChannelRequest],
 ) (*connect.Response[directoryrosterv1.DeleteSlackChannelResponse], error) {
@@ -470,6 +472,18 @@ func (c *Console) DeleteSlackChannel(
 	if _, err = c.requireSlack(ctx, access.RoleOperator, workspace); err != nil {
 		return nil, err
 	}
+	if req.Msg.GetArchive() {
+		// Only an ordinary channel is archived from here: archiving a Slack
+		// Connect channel closes it for every organisation in it.
+		channels := c.slackReports(ctx)[workspace].Channels
+		for i := range channels {
+			if channels[i].Name == name && channels[i].Shared {
+				return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+					"%s is a Slack Connect channel: archive it by hand in Slack, because archiving closes the channel for every organisation in it; "+
+						"nothing was changed", name))
+			}
+		}
+	}
 	var gone reconcile.ConsoleChannel
 	err = store.Apply(ctx, workspace, name, func(current *reconcile.ConsoleChannel, _ []kube.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		if current == nil {
@@ -482,7 +496,64 @@ func (c *Console) DeleteSlackChannel(
 		return nil, channelError(err)
 	}
 	c.record(ctx, audit.SlackConsoleChannelDeleted(actorOf(ctx), auditConsole(gone)))
+	if req.Msg.GetArchive() {
+		archived, note := c.archiveForgotten(ctx, gone)
+		return connect.NewResponse(&directoryrosterv1.DeleteSlackChannelResponse{Note: note, Archived: archived}), nil
+	}
 	return connect.NewResponse(&directoryrosterv1.DeleteSlackChannelResponse{Note: fmt.Sprintf(
 		"The record of %s in %s is deleted. The channel itself stays in Slack, and the reconciler no longer manages its members: "+
-			"people who were added stay until someone removes them in Slack.", name, workspace)}), nil
+			"people who were added stay until someone removes them in Slack.", gone.Name, gone.Workspace)}), nil
+}
+
+// archiveForgotten archives, in Slack, the channel whose record was just
+// forgotten, and says plainly what happened. The record is gone either way:
+// when the bot cannot archive the channel (it is not in it, Slack refuses)
+// the note says to archive it by hand. A Slack Connect channel never gets here:
+// the request is refused up front.
+func (c *Console) archiveForgotten(ctx context.Context, gone reconcile.ConsoleChannel) (archived bool, note string) {
+	kept := fmt.Sprintf("The record of %s in %s is deleted and the reconciler no longer manages its members.", gone.Name, gone.Workspace)
+	by := func(why string) string {
+		return kept + " It was not archived: " + why + ". Archive it in Slack by hand."
+	}
+	id := gone.ChannelID
+	channels := c.slackReports(ctx)[gone.Workspace].Channels
+	for i := range channels {
+		if id == "" && channels[i].Console && channels[i].Name == gone.Name {
+			id = channels[i].ID
+		}
+	}
+	if id == "" {
+		return false, by("the controller has not seen the channel yet, so its Slack id is unknown")
+	}
+	store, err := c.slackWorkspaceStore()
+	if err != nil {
+		return false, by("this deployment keeps no Slack connections")
+	}
+	_, credential, found, err := store.Get(ctx, gone.Workspace)
+	if err != nil || !found || credential.BotToken == "" {
+		return false, by("the workspace has no bot token to act with")
+	}
+	callCtx, cancel := context.WithTimeout(ctx, slackTimeout)
+	defer cancel()
+	err = slackapp.New(credential.BotToken, c.deps.SlackAPI...).Archive(callCtx, id)
+	target := audit.SlackChannel{Workspace: gone.Workspace, Name: gone.Name, ID: id, Private: gone.Private}
+	if err != nil {
+		c.record(ctx, audit.SlackChannelArchived(actorOf(ctx), target, audit.Failed(slackErrorWord(err))))
+		return false, by(slackErrorWord(err))
+	}
+	c.record(ctx, audit.SlackChannelArchived(actorOf(ctx), target, audit.Succeeded()))
+	return true, fmt.Sprintf("The record of %s in %s is deleted and the channel is archived in Slack.", gone.Name, gone.Workspace)
+}
+
+// slackErrorWord says why Slack would not archive a channel, in words.
+func slackErrorWord(err error) string {
+	switch {
+	case errors.Is(err, slackapp.ErrNotInChannel), errors.Is(err, slackapp.ErrChannelNotFound):
+		return "the bot is not in the channel (a private channel it cannot see)"
+	case errors.Is(err, slackapp.ErrMissingScope):
+		return "the App lacks the scope to archive"
+	case errors.Is(err, slackapp.ErrRestricted):
+		return "the workspace's settings forbid a bot archiving it"
+	}
+	return "Slack refused: " + err.Error()
 }

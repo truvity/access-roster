@@ -596,6 +596,13 @@ func SlackChannelAdopted(c SlackChannel, o Outcome) *record.Record {
 	return build("roster.slack_channel.adopted", System(), o, nil, c.targets(), c.data())
 }
 
+// SlackChannelArchived is a channel archived in Slack by an operator who
+// forgot its console record and asked for it; the outcome says whether Slack
+// did it.
+func SlackChannelArchived(actor Actor, c SlackChannel, o Outcome) *record.Record {
+	return build("roster.slack_channel.archived", actor, o, nil, c.targets(), c.data())
+}
+
 // SlackMember is one person in one Slack channel: the address the directory
 // knows, the Slack user id (which may be missing), the groups bound to the
 // channel that admit them and the reason for the change.

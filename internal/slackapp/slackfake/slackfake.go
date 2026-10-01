@@ -439,6 +439,21 @@ func (s *Slack) dispatch(method, team, token string, r *http.Request, p url.Valu
 			c.Members = append(c.Members, BotID(team))
 		}
 		return reply{"ok": true, "channel": s.channelJSON(c, team)}
+	case "conversations.archive":
+		c, bad := s.visible(team, p.Get("channel"))
+		if bad != nil {
+			return bad
+		}
+		switch {
+		case !slices.Contains(c.Members, BotID(team)):
+			return fail("not_in_channel")
+		case c.Archived:
+			return fail("already_archived")
+		case c.General:
+			return fail("cant_archive_general")
+		}
+		c.Archived = true
+		return reply{"ok": true}
 	case "conversations.invite":
 		return s.invite(team, p)
 	case "conversations.kick":

@@ -307,6 +307,16 @@ func (c *Client) JoinChannel(ctx context.Context, channel string) (Channel, erro
 	return out.Channel, err
 }
 
+// Archive archives a channel the bot is in (conversations.archive). A
+// channel already archived is success: the goal is that it is archived.
+func (c *Client) Archive(ctx context.Context, channel string) error {
+	err := c.call(ctx, "conversations.archive", url.Values{"channel": {channel}}, nil)
+	if err != nil && errors.Is(err, ErrAlreadyArchived) {
+		return nil
+	}
+	return err
+}
+
 // Invite adds users to a channel, in batches of [InviteLimit]. Somebody
 // already in is success — the reconcile asked for them to be there and
 // they are — so a batch refused for one such user is retried user by user

@@ -57,6 +57,13 @@ export function ownerOf(workspaces: Pick<SlackChannelWorkspace, "key" | "owner">
   return workspaces.find((w) => w.key === workspace)?.owner ?? "";
 }
 
+/** The opt-in on the delete dialog: archiving is never the default. */
+export const archiveLabel = (name: string) => `Also archive #${name} in Slack`;
+
+/** What the delete dialog of a Slack Connect channel says instead of offering
+ *  to archive it: archiving closes the channel for every organisation in it. */
+export const connectArchiveNote = "Slack Connect channels are archived by hand in Slack: archiving closes the channel for every organisation in it.";
+
 /** Why the console refuses a channel the policy defines. */
 export const definedInGit = "This channel is defined in git; remove it there to manage it here.";
 

@@ -61,8 +61,9 @@ type SlackChannelServiceClient interface {
 	// sources. The workspace, the name, the channel id and the visibility are
 	// immutable.
 	UpdateSlackChannel(context.Context, *connect.Request[v1.UpdateSlackChannelRequest]) (*connect.Response[v1.UpdateSlackChannelResponse], error)
-	// DeleteSlackChannel forgets the record and nothing else: the channel
-	// stays in Slack and the reconciler stops managing its members.
+	// DeleteSlackChannel forgets the record: the channel stays in Slack and the
+	// reconciler stops managing its members, unless archive is set, which also
+	// archives the channel in Slack (audited as roster.slack_channel.archived).
 	DeleteSlackChannel(context.Context, *connect.Request[v1.DeleteSlackChannelRequest]) (*connect.Response[v1.DeleteSlackChannelResponse], error)
 }
 
@@ -147,8 +148,9 @@ type SlackChannelServiceHandler interface {
 	// sources. The workspace, the name, the channel id and the visibility are
 	// immutable.
 	UpdateSlackChannel(context.Context, *connect.Request[v1.UpdateSlackChannelRequest]) (*connect.Response[v1.UpdateSlackChannelResponse], error)
-	// DeleteSlackChannel forgets the record and nothing else: the channel
-	// stays in Slack and the reconciler stops managing its members.
+	// DeleteSlackChannel forgets the record: the channel stays in Slack and the
+	// reconciler stops managing its members, unless archive is set, which also
+	// archives the channel in Slack (audited as roster.slack_channel.archived).
 	DeleteSlackChannel(context.Context, *connect.Request[v1.DeleteSlackChannelRequest]) (*connect.Response[v1.DeleteSlackChannelResponse], error)
 }
 
