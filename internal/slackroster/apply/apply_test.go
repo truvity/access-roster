@@ -288,24 +288,115 @@ func TestAdoptingAPublicChannelJoinsItThenInvites(t *testing.T) {
 	}
 }
 
-func TestNameCollisionAndPrivateAdoptAreHeldAndChangeNothing(t *testing.T) {
+// A private `adopt` the bot cannot see is held, and nothing is changed.
+func TestAPrivateAdoptTheBotCannotSeeIsHeldAndChangesNothing(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	w.fake.AddChannel("TACME", "eng", false)
 	priv := w.fake.AddChannel("TACME", "hidden", true) // the bot is not in it
-	w.bind("acme", "eng", policy.SlackChannel{From: []string{"g"}})
 	w.bind("acme", "ops", policy.SlackChannel{Private: true, From: []string{"g"}, Adopt: priv.ID})
 	w.person("ann@acme.example", []string{"g"}, "acme")
 	dec, res := w.mustPass("acme")
-	if len(res.Outcomes) != 0 || len(dec.Held) != 2 {
+	if len(res.Outcomes) != 0 || len(dec.Held) != 1 || !strings.Contains(dec.Held[0].Reason, "invite the bot first") {
 		t.Fatalf("outcomes %+v held %+v", res.Outcomes, dec.Held)
-	}
-	reasons := dec.Held[0].Reason + " | " + dec.Held[1].Reason
-	if !strings.Contains(reasons, "adopt it by id") || !strings.Contains(reasons, "invite the bot first") {
-		t.Errorf("reasons = %s", reasons)
 	}
 	if rec := apply.HeldRecord("acme", dec.Held[0]); rec.GetAction() != "roster.slack_action.held" {
 		t.Errorf("held record = %v", rec.GetAction())
+	}
+}
+
+// A channel of the declared name that already exists is taken over by name:
+// a public one is joined and managed, with no `adopt` and no second channel.
+func TestAnExistingPublicChannelIsAdoptedByNameJoinedThenInvited(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	existing := w.fake.AddChannel("TACME", "eng", false)
+	w.bind("acme", "eng", policy.SlackChannel{From: []string{"g"}})
+	ann := w.person("ann@acme.example", []string{"g"}, "acme")
+	dec, res := w.mustPass("acme")
+	if res.Done() != 2 || len(dec.Adopted) != 1 || !dec.Adopted[0].Joins {
+		t.Fatalf("outcomes %+v adopted %+v", res.Outcomes, dec.Adopted)
+	}
+	if got := w.fake.Members(existing.ID); !slices.Contains(got, slackfake.BotID("TACME")) || !slices.Contains(got, ann) {
+		t.Errorf("members = %v", got)
+	}
+	if w.fake.Count("conversations.create") != 0 {
+		t.Error("a channel of that name was created beside the existing one")
+	}
+	if got := w.rec.Actions(); !slices.Equal(got, []string{"roster.slack_channel.adopted", "roster.slack_member.invited"}) {
+		t.Errorf("audit = %v", got)
+	}
+	// The next pass finds it in step: it is managed now, not adopted again.
+	if dec, res = w.mustPass("acme"); len(res.Outcomes) != 0 || len(dec.Held) != 0 {
+		t.Errorf("second pass: outcomes %+v held %+v", res.Outcomes, dec.Held)
+	}
+}
+
+// A private channel the bot is in is adopted by name and managed with
+// nothing to join.
+func TestAnExistingPrivateChannelTheBotIsInIsAdoptedByName(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	existing := w.fake.AddChannel("TACME", "eng", true, slackfake.BotID("TACME"))
+	w.bind("acme", "eng", policy.SlackChannel{Private: true, From: []string{"g"}})
+	ann := w.person("ann@acme.example", []string{"g"}, "acme")
+	dec, res := w.mustPass("acme")
+	if res.Done() != 1 || len(dec.Adopted) != 1 || dec.Adopted[0].Joins || !dec.Adopted[0].Private {
+		t.Fatalf("outcomes %+v adopted %+v", res.Outcomes, dec.Adopted)
+	}
+	if got := w.fake.Members(existing.ID); !slices.Contains(got, ann) || w.fake.Count("conversations.join") != 0 || w.fake.Count("conversations.create") != 0 {
+		t.Errorf("members %v, joins %d, creates %d", got, w.fake.Count("conversations.join"), w.fake.Count("conversations.create"))
+	}
+}
+
+// A private channel of that name the bot cannot see is found out by asking
+// Slack to create it: the refusal is a hold, never a duplicate under another
+// name, and is not recorded as a failed change every pass.
+func TestAPrivateChannelOfThatNameTheBotCannotSeeIsAHoldNotAFailure(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.fake.AddChannel("TACME", "eng", true) // private, the bot is not in it
+	channels := len(w.fake.Channels)
+	w.bind("acme", "eng", policy.SlackChannel{Private: true, From: []string{"g"}})
+	w.person("ann@acme.example", []string{"g"}, "acme")
+	dec, res, err := w.pass("acme", false, reconcile.Confirmed{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held string
+	for i := range res.Outcomes {
+		if res.Outcomes[i].Action.Kind == "create" {
+			held = res.Outcomes[i].Held
+		}
+	}
+	if held == "" || !strings.Contains(held, "a private channel named eng exists that the bot cannot see; invite the bot to it") {
+		t.Fatalf("outcomes %+v: the refused create is not a hold (decision held %+v)", res.Outcomes, dec.Held)
+	}
+	if w.fake.Count("conversations.create") != 1 || len(w.fake.Channels) != channels {
+		t.Errorf("creates %d, channels %d, want %d: nothing may be created under another name",
+			w.fake.Count("conversations.create"), len(w.fake.Channels), channels)
+	}
+	for _, action := range w.rec.Actions() {
+		if action == "roster.slack_channel.created" {
+			t.Error("a hold was recorded as a failed channel creation")
+		}
+	}
+}
+
+// An archived channel keeps its name: it is held, never unarchived and never
+// created again, and the read says so rather than the create being refused.
+func TestAnArchivedChannelOfThatNameIsHeldNotUnarchived(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	old := w.fake.AddChannel("TACME", "eng", false)
+	w.fake.Channels[old.ID].Archived = true
+	w.bind("acme", "eng", policy.SlackChannel{From: []string{"g"}})
+	w.person("ann@acme.example", []string{"g"}, "acme")
+	dec, res := w.mustPass("acme")
+	if len(res.Outcomes) != 0 || len(dec.Held) != 1 || !strings.Contains(dec.Held[0].Reason, "archived") {
+		t.Fatalf("outcomes %+v held %+v", res.Outcomes, dec.Held)
+	}
+	if w.fake.Count("conversations.create") != 0 || w.fake.Count("conversations.join") != 0 || !w.fake.Channels[old.ID].Archived {
+		t.Error("an archived channel was touched, or a second one created")
 	}
 }
 

@@ -1151,9 +1151,22 @@ domains** (and `people` links their other addresses).
 
 Channels are bound to **internal groups directly**, exactly as a GitHub
 team is: the holders of `from` are who the channel should contain. (Slack
-user groups are out of scope.) A channel is created if absent, or taken
-over by **ID** with `adopt` — by ID, because a name can be changed or
-reused and an ID cannot.
+user groups are out of scope.) A channel is **created if missing, otherwise
+taken over by name**: a visible channel with the declared name is adopted (a
+public one is joined, a private one the bot is in is managed) and recorded once
+as `roster.slack_channel.adopted`, so declaring a channel that already exists
+is safe and a second declaration of it changes nothing. `adopt: <id>` is
+**optional disambiguation**, never a requirement: for a renamed channel, or
+when two channels are candidates, naming the id says which; by ID, because a
+name can be changed or reused and an ID cannot. What is never done, each held
+with its reason: converting a channel's visibility (a channel that is public in
+Slack and declared `private`, or the other way round), unarchiving an archived
+channel of that name (*archived: unarchive it in Slack or rename it*), and
+creating a second channel under another name when the name is taken by a
+private channel the bot cannot see (*a private channel with this name exists;
+invite the bot to it*). A `strict` adopted channel removes only after the usual
+vouching by the directory, and the first pass after adopting it is subject to
+the breaker like any other.
 
 **What the controller will do.** Each channel has a `mode`:
 
@@ -1196,7 +1209,7 @@ What is refused, and why each would otherwise be silent:
 | `ignore` without `mode: strict`, or an entry that is neither an address nor a Slack user id, or one listed twice | an extend channel removes nobody, so the list would mean nothing |
 | a channel with no `from` | *empty this channel* is not something to express by leaving a list out |
 | a group nothing declares | the binding would name something with no meaning |
-| `adopt` not `^[CG][A-Z0-9]{8,}$`, or one ID adopted twice in a workspace | two bindings would fight over one channel |
+| `adopt` not `^[CG][A-Z0-9]{8,}$`, or one ID adopted twice in a workspace | two bindings would fight over one channel (`adopt` itself is optional: a channel is taken over by name without it) |
 
 Across merged files a workspace merges field by field, as a GitHub
 organisation does: one file may declare it and another bind channels in it.

@@ -47,8 +47,8 @@ type SlackWorkspace struct {
 	// Channels are the channels bound in this workspace, keyed by channel
 	// NAME as Slack spells it (lowercase letters, digits, `-` and `_`, at
 	// most 80 characters). The controller creates a channel that is
-	// absent, or takes over an existing one when [SlackChannel.Adopt]
-	// names it.
+	// missing and otherwise takes over the existing one BY NAME;
+	// [SlackChannel.Adopt] is only a disambiguation.
 	Channels map[string]SlackChannel `yaml:"channels,omitempty"`
 }
 
@@ -81,10 +81,11 @@ type SlackChannel struct {
 	// a list out.
 	From []string `yaml:"from,omitempty"`
 	// Adopt is the ID (`C0123ABCD`, or `G…` for an older private channel)
-	// of an existing channel to take over instead of creating one. By ID
-	// rather than name because a name can be changed or reused and an ID
-	// cannot: adopting by name would let a rename hand this binding a
-	// different channel. One ID may be adopted once per workspace.
+	// of an existing channel to take over, optionally. A channel with the
+	// declared name is taken over by name without it; the ID is for a
+	// renamed channel, or when two channels are candidates, and by ID
+	// because a name can be changed or reused and an ID cannot. One ID may
+	// be adopted once per workspace.
 	Adopt string `yaml:"adopt,omitempty"`
 }
 

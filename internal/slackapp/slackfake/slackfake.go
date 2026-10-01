@@ -344,7 +344,7 @@ func (s *Slack) dispatch(method, team, token string, r *http.Request, p url.Valu
 	case "conversations.list":
 		var rows []any
 		for _, c := range s.sortedChannels() {
-			if !slices.Contains(c.Teams, team) || c.Archived {
+			if !slices.Contains(c.Teams, team) || (c.Archived && p.Get("exclude_archived") == "true") {
 				continue
 			}
 			if c.Private && !slices.Contains(c.Members, BotID(team)) {

@@ -602,3 +602,23 @@ func TestRevokeEndsTheTokenAndIsIdempotent(t *testing.T) {
 		t.Fatal("a refusal other than an already-dead token must surface")
 	}
 }
+
+// AllChannels includes the archived ones, marked, where Channels leaves them
+// out: it is how an archived channel's name is told from a free one.
+func TestAllChannelsIncludeTheArchivedOnesMarkedAsSuch(t *testing.T) {
+	w := newWorld(t)
+	w.fake.AddChannel("TACME", "live", false)
+	old := w.fake.AddChannel("TACME", "old", false)
+	w.fake.Channels[old.ID].Archived = true
+	got, err := w.acme.AllChannels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived := map[string]bool{}
+	for _, c := range got {
+		archived[c.Name] = c.IsArchived
+	}
+	if archived["live"] || !archived["old"] || len(archived) != 3 {
+		t.Errorf("channels = %v, want general and live live, old archived", archived)
+	}
+}

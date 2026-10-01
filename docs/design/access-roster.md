@@ -721,12 +721,15 @@ Slack account yet"), never an error and never created. Guests are never
 invited and never removed; they are reported.
 
 **Channels.** A channel is bound to groups, and its wanted members are those
-groups' holders. It is created when absent, public or private as the policy
-says. When `adopt` names an id it is never created: a public channel is
-joined; a private one the bot is not in is held ("invite the bot first"). A
-name already taken by a channel the bot did not create is held ("adopt it by
-id"), and a channel the bot created on an earlier pass is recognised by its
-creator. A visibility that disagrees with the policy is held, never changed.
+groups' holders. It is an idempotent upsert: created when no channel of that
+name is visible, public or private as the policy says, and otherwise taken over
+**by name**: a public channel is joined, a private one the bot is in is managed,
+and each adoption is recorded once (`roster.slack_channel.adopted`). `adopt`
+names an id only to disambiguate (a renamed channel, two candidates). A
+visibility that disagrees with the policy is held, never changed; an archived
+channel of that name is held, never unarchived; and when creating a channel is
+refused because its name is taken by a private channel the bot cannot see, it is
+held ("invite the bot to it"), never created again under another name.
 
 **Two modes.** An `extend` channel (the default) only adds. A `strict`
 channel, private only, also removes: it makes membership match the bindings.

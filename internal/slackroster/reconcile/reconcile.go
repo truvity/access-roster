@@ -20,10 +20,13 @@
 // # Channels
 //
 // A channel is bound to groups; its wanted members are those groups'
-// holders. It is created when absent. When `adopt` names an id it is never
-// created: a public channel is joined, a private one the bot is not in is
-// held until somebody invites the bot. A name already taken by a channel the
-// bot did not create is held, never adopted by guesswork.
+// holders. It is created when absent, and otherwise taken over BY NAME: a
+// visible channel with the declared name is adopted (a public one is joined,
+// a private one the bot is in is managed). `adopt` names an id to
+// disambiguate (a renamed channel, two candidates) and is never required.
+// What is never done: converting a channel's visibility, unarchiving one, or
+// creating a second channel under another name; each is held, with the
+// reason.
 //
 // `extend` channels only add. `strict` channels (private only, enforced at
 // policy load) also remove, and never touch bots or apps, the bot itself,
@@ -190,6 +193,9 @@ type Member struct {
 type Channel struct {
 	ID, Name, Creator string
 	Private, BotIn    bool
+	// Archived channels keep their name, so one is listed to be told from a
+	// free name; it is never managed and never unarchived.
+	Archived bool
 	// Shared is a Slack Connect channel; SharedTeamIDs the workspaces it
 	// reaches.
 	Shared        bool
@@ -348,6 +354,19 @@ type Decision struct {
 	Report  status.Workspace
 	Actions []Action
 	Held    []Held
+	// Adopted are the bound channels that exist and that the bot did not
+	// create, now managed: taken over by name, or by `adopt`. The controller
+	// records each once.
+	Adopted []Adoption
+}
+
+// Adoption is one existing channel the roster manages without having made it.
+type Adoption struct {
+	Channel, ID string
+	Private     bool
+	// Joins is true when this pass has the bot join it, which is audited by
+	// the join itself.
+	Joins bool
 }
 
 // normalise trims and lowercases an address.

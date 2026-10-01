@@ -55,6 +55,26 @@
   its **owner's** domains. A workspace with no owner holds its people (*no owning
   directory: set the owner on the console*); a directory that cannot be read or
   is no longer connected fails the workspace's pass and changes nothing.
+- **Changed: a bound Slack channel is an idempotent upsert, taken over by
+  name.** Create if missing, otherwise adopt the existing channel by its
+  declared name: a public one is joined and then managed, a private one the bot
+  is in is managed, and each adoption is recorded once as
+  `roster.slack_channel.adopted`. Before, a same-name channel the bot did not
+  create was held (*adopt it by id*); `adopt: <id>` is now only an optional
+  disambiguation (a renamed channel, two candidates), still validated as before.
+  Kept safe, each held with its reason and tested: a channel whose visibility
+  differs from the declared `private` is never converted; an archived channel of
+  that name is never unarchived (the controller now lists archived channels,
+  `slackapp.Client.AllChannels`, to tell an archived name from a free one); a
+  private channel the bot cannot see makes `conversations.create` answer
+  `name_taken`, which is a hold (*a private channel named X exists that the bot
+  cannot see; invite the bot to it*), recorded once as
+  `roster.slack_action.held`, never a duplicate under another name and no longer
+  a failed `roster.slack_channel.created` every pass; and a `strict` adopted
+  channel removes only after the directory vouches, with the first pass after
+  adoption subject to the breaker like any other. A channel that was held for
+  this reason before is adopted on the first pass after the upgrade, in a
+  workspace listed in `slackRoster.actsIn`: review a dry run first.
 - **State:** `access.Binding` carries the owner a flow will record; a state
   issued before it (four parts) still verifies, as one with no owner.
 

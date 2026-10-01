@@ -146,12 +146,25 @@ type listed struct {
 // controller finds the channel a policy names by name before deciding to
 // create or adopt it.
 func (c *Client) Channels(ctx context.Context) ([]Channel, error) {
+	return c.listChannels(ctx, true)
+}
+
+// AllChannels is [Client.Channels] with the archived ones included, marked
+// by IsArchived. It is how the controller tells "a channel of that name
+// exists and is archived" from "none does": Slack keeps an archived
+// channel's name, so creating a channel of that name is refused as taken, and
+// the roster never unarchives.
+func (c *Client) AllChannels(ctx context.Context) ([]Channel, error) {
+	return c.listChannels(ctx, false)
+}
+
+func (c *Client) listChannels(ctx context.Context, excludeArchived bool) ([]Channel, error) {
 	var all []Channel
 	cursor := ""
 	for {
 		params := url.Values{
 			"types":            {"public_channel,private_channel"},
-			"exclude_archived": {"true"},
+			"exclude_archived": {strconv.FormatBool(excludeArchived)},
 			"limit":            {strconv.Itoa(c.t.pageSize)},
 		}
 		if cursor != "" {
