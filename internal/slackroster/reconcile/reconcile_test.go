@@ -410,21 +410,117 @@ func TestAdoptIsByIDAndNeverCreates(t *testing.T) {
 	})
 }
 
-func TestANameTakenByAChannelNotAdoptedIsHeldAndOurOwnIsManaged(t *testing.T) {
+// A bound channel is an idempotent upsert: created when no channel of that
+// name is visible, otherwise taken over BY NAME, with `adopt` only
+// disambiguating. What is never done is held, with the reason.
+func TestABoundChannelIsCreatedOrTakenOverByNameAndOurOwnIsManaged(t *testing.T) {
 	t.Parallel()
-	t.Run("an existing channel the bot did not create is held: adopt it by id", func(t *testing.T) {
+	t.Run("an existing public channel the bot did not create is adopted by name: joined, then managed", func(t *testing.T) {
 		t.Parallel()
 		e := newEnv("acme").bind("eng", extendCh("g")).holders("g", "ann@acme.example").account("ann@acme.example", "U1").
-			channel(reconcile.Channel{ID: "C9", Name: "eng", Creator: "USOMEONE", BotIn: true})
+			channel(reconcile.Channel{ID: "C9", Name: "eng", Creator: "USOMEONE"})
 		d := e.decide(t, nil, reconcile.Confirmed{})
-		wantKinds(t, d)
-		c := channelOf(t, d, "eng")
-		if c.State != status.ChannelHeld || !strings.Contains(c.Reason, "adopt it by id with adopt: C9") {
+		wantKinds(t, d, "adopt:eng", "invite:eng:U1")
+		if c := channelOf(t, d, "eng"); c.State != status.ChannelWillAdopt || c.ID != "C9" {
 			t.Errorf("channel = %+v", c)
 		}
-		if d.Held[0].Change != "create" {
-			t.Errorf("held = %+v", d.Held)
+		if len(d.Held) != 0 || len(d.Adopted) != 1 || d.Adopted[0] != (reconcile.Adoption{Channel: "eng", ID: "C9", Joins: true}) {
+			t.Errorf("held %+v adopted %+v", d.Held, d.Adopted)
 		}
+	})
+	t.Run("a private channel the bot is in is adopted by name and managed, with nothing to join", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv("acme").bind("eng", policy.SlackChannel{Private: true, From: []string{"g"}}).holders("g", "ann@acme.example").
+			account("ann@acme.example", "U1").
+			channel(reconcile.Channel{ID: "C9", Name: "eng", Creator: "USOMEONE", Private: true, BotIn: true, Members: []string{"BACME"}})
+		d := e.decide(t, nil, reconcile.Confirmed{})
+		wantKinds(t, d, "invite:eng:U1")
+		if len(d.Held) != 0 || len(d.Adopted) != 1 || d.Adopted[0] != (reconcile.Adoption{Channel: "eng", ID: "C9", Private: true}) {
+			t.Errorf("held %+v adopted %+v", d.Held, d.Adopted)
+		}
+	})
+	t.Run("adopt is only a disambiguation: a channel under another name, by id", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv("acme").bind("eng", policy.SlackChannel{From: []string{"g"}, Adopt: "C9"}).holders("g", "ann@acme.example").
+			account("ann@acme.example", "U1").
+			channel(reconcile.Channel{ID: "C9", Name: "engineering", Creator: "USOMEONE", BotIn: true}).
+			channel(reconcile.Channel{ID: "C8", Name: "eng", Creator: "USOMEONE", BotIn: true})
+		d := e.decide(t, nil, reconcile.Confirmed{})
+		wantKinds(t, d, "invite:eng:U1")
+		if d.Actions[0].ChannelID != "C9" || len(d.Adopted) != 1 || d.Adopted[0].ID != "C9" {
+			t.Errorf("actions %+v adopted %+v: the id wins over a channel of the declared name", d.Actions, d.Adopted)
+		}
+	})
+	t.Run("a visibility that disagrees with the declared one is held, never converted", func(t *testing.T) {
+		t.Parallel()
+		for name, c := range map[string]struct {
+			declared policy.SlackChannel
+			existing reconcile.Channel
+			want     string
+		}{
+			"public in Slack, private declared": {
+				policy.SlackChannel{Private: true, From: []string{"g"}},
+				reconcile.Channel{ID: "C9", Name: "eng", Creator: "USOMEONE", BotIn: true}, "public in Slack but the policy says private"},
+			"private in Slack, public declared": {
+				extendCh("g"),
+				reconcile.Channel{ID: "C9", Name: "eng", Creator: "USOMEONE", Private: true, BotIn: true}, "private in Slack but the policy says public"},
+		} {
+			e := newEnv("acme").bind("eng", c.declared).holders("g", "ann@acme.example").account("ann@acme.example", "U1").channel(c.existing)
+			d := e.decide(t, nil, reconcile.Confirmed{})
+			wantKinds(t, d)
+			if got := channelOf(t, d, "eng"); got.State != status.ChannelHeld || !strings.Contains(got.Reason, c.want) {
+				t.Errorf("%s: channel = %+v", name, got)
+			}
+			if len(d.Adopted) != 0 {
+				t.Errorf("%s: adopted %+v a channel it holds", name, d.Adopted)
+			}
+		}
+	})
+	t.Run("an archived channel of that name is held, never unarchived or created again", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv("acme").bind("eng", extendCh("g")).holders("g", "ann@acme.example").account("ann@acme.example", "U1").
+			channel(reconcile.Channel{ID: "C9", Name: "eng", Creator: "USOMEONE", Archived: true})
+		d := e.decide(t, nil, reconcile.Confirmed{})
+		wantKinds(t, d)
+		got := channelOf(t, d, "eng")
+		if got.State != status.ChannelHeld || !strings.Contains(got.Reason, "archived: unarchive it in Slack or rename it") {
+			t.Errorf("channel = %+v", got)
+		}
+		if len(d.Held) != 1 || d.Held[0].Change != "adopt" || len(d.Adopted) != 0 {
+			t.Errorf("held %+v adopted %+v", d.Held, d.Adopted)
+		}
+		// Likewise when it is named by id.
+		e = newEnv("acme").bind("eng", policy.SlackChannel{From: []string{"g"}, Adopt: "C9"}).holders("g", "ann@acme.example").
+			channel(reconcile.Channel{ID: "C9", Name: "eng", Archived: true})
+		if got = channelOf(t, e.decide(t, nil, reconcile.Confirmed{}), "eng"); got.State != status.ChannelHeld || !strings.Contains(got.Reason, "archived") {
+			t.Errorf("an archived channel named by id = %+v", got)
+		}
+	})
+	t.Run("a Slack Connect channel of that name is not adopted as a plain one", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv("acme").bind("eng", extendCh("g")).holders("g", "ann@acme.example").account("ann@acme.example", "U1").
+			channel(reconcile.Channel{ID: "C9", Name: "eng", Creator: "USOMEONE", BotIn: true, Shared: true})
+		d := e.decide(t, nil, reconcile.Confirmed{})
+		wantKinds(t, d)
+		if got := channelOf(t, d, "eng"); got.State != status.ChannelHeld || !strings.Contains(got.Reason, "Slack Connect") {
+			t.Errorf("channel = %+v", got)
+		}
+	})
+	t.Run("a channel the bot created is ours, not an adoption", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv("acme").bind("eng", extendCh("g")).holders("g", "ann@acme.example").account("ann@acme.example", "U1").
+			channel(ours(reconcile.Channel{ID: "C9", Name: "eng", Members: []string{"BACME"}}))
+		d := e.decide(t, nil, reconcile.Confirmed{})
+		wantKinds(t, d, "invite:eng:U1")
+		if len(d.Adopted) != 0 {
+			t.Errorf("adopted %+v a channel the bot made", d.Adopted)
+		}
+	})
+	t.Run("a channel with no visible namesake is created", func(t *testing.T) {
+		t.Parallel()
+		d := newEnv("acme").bind("eng", extendCh("g")).holders("g", "ann@acme.example").account("ann@acme.example", "U1").
+			decide(t, nil, reconcile.Confirmed{})
+		wantKinds(t, d, "create:eng", "invite:eng:U1")
 	})
 	t.Run("a channel the bot created last pass is ours", func(t *testing.T) {
 		t.Parallel()
@@ -693,6 +789,31 @@ func TestTheChannelBreakerHoldsRemovalsOverHalfUnlessTheExactSetIsConfirmed(t *t
 	if len(dec.Actions) != 3 {
 		// 3 of 6 is half: passes by itself; the point is it is not the confirmed set.
 		t.Errorf("reduced set: %v", kinds(dec))
+	}
+}
+
+// A strict channel the roster adopted removes only after the usual
+// vouching, and the first pass after adopting it is subject to the breaker
+// like any other: taking a channel over is not a licence to empty it.
+func TestAnAdoptedStrictChannelIsHeldToTheBreakerAndTheVouchingOnTheFirstPass(t *testing.T) {
+	t.Parallel()
+	// 4 of 6 would leave: over half.
+	e, gone4 := breakerEnv(6, 4)
+	e.in.Observed.Channels[0].Creator = "USOMEONE" // adopted, not made by the bot
+	dec := e.decide(t, vouch(gone(), gone4...), reconcile.Confirmed{})
+	c := dec.Report.Channels[0]
+	if len(dec.Adopted) != 1 || len(dec.Actions) != 0 || c.Breaker == nil || c.Breaker.Affected != 4 || c.Breaker.Confirmed {
+		t.Fatalf("adopted %+v actions %v breaker %+v: the first pass after adoption must trip the breaker", dec.Adopted, kinds(dec), c.Breaker)
+	}
+
+	// 3 of 6 is half and passes the breaker, and still needs the directory's word.
+	e, gone3 := breakerEnv(6, 3)
+	e.in.Observed.Channels[0].Creator = "USOMEONE"
+	if dec = e.decide(t, nil, reconcile.Confirmed{}); len(dec.Actions) != 0 {
+		t.Errorf("removals with no vouching from the directory: %v", kinds(dec))
+	}
+	if dec = e.decide(t, vouch(gone(), gone3...), reconcile.Confirmed{}); len(dec.Actions) != 3 || len(dec.Adopted) != 1 {
+		t.Errorf("vouched removals in an adopted channel: %v adopted %+v", kinds(dec), dec.Adopted)
 	}
 }
 

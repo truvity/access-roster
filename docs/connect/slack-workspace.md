@@ -43,6 +43,29 @@ For every workspace the policy declares:
 6. **Publishes every workspace's report together** into the ConfigMap
    `<release>-slack-status`, one key per workspace.
 
+### Channels: created if missing, otherwise taken over by name
+
+A bound channel is an **idempotent upsert**. When no channel of the declared
+name is visible to the bot it is created; when one is, it is **adopted**: a
+public channel is joined, then managed; a private channel the bot is in is
+managed. Each adoption is recorded once as `roster.slack_channel.adopted`.
+`adopt: <id>` stays as an optional disambiguation for a renamed channel or two
+candidates. The roster never converts a channel, never unarchives one and never
+makes a second channel under another name; each of those is **held**, with the
+reason on the channel:
+
+| Found | Held as |
+|---|---|
+| the channel's visibility differs from the declared `private` | *the channel is public in Slack but the policy says private* (or the reverse): change one of them |
+| an archived channel has the name | *archived: unarchive it in Slack or rename it* |
+| Slack refuses to create it as `name_taken` and no such channel is visible | *a private channel named X exists that the bot cannot see; invite the bot to it* (or unarchive it, if that is what it is) |
+| the name is a Slack Connect channel | managed as a shared channel, not bound here |
+
+A `strict` adopted channel removes only after the usual vouching and breakers:
+the first pass after adopting it is subject to the breaker like any other, so a
+channel that holds many people the policy does not name is held for an
+operator's confirmation, never emptied.
+
 ### Modes
 
 - **`extend`** (the default) only adds. Nobody is ever removed from an
@@ -56,7 +79,7 @@ For every workspace the policy declares:
 
 | State | Means |
 |---|---|
-| `held` | something is to be done and is not being done until a person acts. The reason says what: no Slack account yet, the account is deactivated or a bot's, it belongs to another workspace, no address of the person is in the owning directory's served domains, the workspace has no owner, a channel of that name exists and was not made by the bot (adopt it by id), a private channel the bot is not in (invite the bot), the visibility disagrees with the policy |
+| `held` | something is to be done and is not being done until a person acts. The reason says what: no Slack account yet, the account is deactivated or a bot's, it belongs to another workspace, no address of the person is in the owning directory's served domains, the workspace has no owner, a private channel of that name exists that the bot cannot see (invite the bot to it), an archived channel has that name (unarchive it or rename it), the visibility disagrees with the policy |
 | `retrying` | a removal the directory could not vouch for this pass, or a change Slack refused (with Slack's words); tried again next pass |
 | `reported` | said, never acted on: a guest, an account of another workspace, an account with no address |
 | `ignored` | on the channel's `ignore` list |

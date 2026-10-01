@@ -916,3 +916,123 @@ func TestATokenForAnotherTeamThanTheRecordedOneFailsThePass(t *testing.T) {
 		t.Error("a token for the wrong team was acted with")
 	}
 }
+
+// A bound channel that already exists is taken over by name, and the
+// adoption is recorded once: a public one the bot joins (recorded by the
+// join), a private one the bot is in (recorded when first managed), and
+// neither again on the next pass or after a restart. Nothing is created
+// beside them.
+func TestAnExistingChannelIsAdoptedByNameAndRecordedOnce(t *testing.T) {
+	r := newRig(t)
+	ann := r.person("ann@acme.example", []string{"g-all", "g-eng"}, "acme")
+	public := r.fake.AddChannel("TACME", "announce", false)
+	private := r.fake.AddChannel("TACME", "eng", true, slackfake.BotID("TACME"))
+	adopted := func() int { return r.actions("roster.slack_channel.adopted") }
+
+	r.pass("acme")
+
+	if got := r.fake.Members(public.ID); !slices.Contains(got, slackfake.BotID("TACME")) || !slices.Contains(got, ann) {
+		t.Errorf("the public channel's members = %v, want the bot joined and ann invited", got)
+	}
+	if got := r.fake.Members(private.ID); !slices.Contains(got, ann) {
+		t.Errorf("the private channel's members = %v, want ann invited", got)
+	}
+	if r.fake.Count("conversations.create") != 0 || adopted() != 2 {
+		t.Fatalf("creates %d adopted records %d (%v), want none and two", r.fake.Count("conversations.create"), adopted(), r.audit.Actions())
+	}
+	if c := r.reports.channel(t, "acme", "eng"); c.State != status.ChannelOK || c.ID != private.ID {
+		t.Errorf("eng = %+v, want ok under the existing channel's id", c)
+	}
+
+	r.pass("acme")
+	r.fresh("acme").Pass(context.Background())
+	if adopted() != 2 {
+		t.Errorf("adoptions were recorded %d times in all, want 2 (once each, not again after a pass or a restart)", adopted())
+	}
+}
+
+// A private channel of the declared name that the bot cannot see is found out
+// when Slack refuses to create it: the channel is held, saying to invite the
+// bot, nothing is created under another name, the hold is recorded once and
+// no failed channel creation is recorded for it, pass after pass.
+func TestAPrivateChannelTheBotCannotSeeIsHeldOnceAndNeverDuplicated(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-eng"}, "acme")
+	r.fake.AddChannel("TACME", "eng", true) // the bot is not in it
+
+	r.pass("acme")
+	r.pass("acme")
+
+	eng := r.reports.channel(t, "acme", "eng")
+	if eng.State != status.ChannelHeld || !strings.Contains(eng.Reason, "a private channel named eng exists that the bot cannot see; invite the bot to it") {
+		t.Fatalf("eng = %+v, want held, saying to invite the bot", eng)
+	}
+	engs := 0
+	for _, ch := range r.fake.Channels {
+		if strings.Contains(ch.Name, "eng") {
+			engs++
+		}
+	}
+	if engs != 1 {
+		t.Errorf("%d channels are named for eng, want the one that was there: a duplicate was made", engs)
+	}
+	if got := r.actions("roster.slack_channel.created"); got != 1 {
+		// "announce" is created; the refused "eng" is a hold, not a failed creation.
+		t.Errorf("channel creations recorded = %d (%v), want only announce's", got, r.audit.Actions())
+	}
+	if got := r.actions("roster.slack_action.held"); got != 1 {
+		t.Errorf("the hold was recorded %d times (%v), want once", got, r.audit.Actions())
+	}
+	if h := r.reports.workspace(t, "acme").Tick.Held; h == 0 {
+		t.Error("the tick does not count the hold")
+	}
+}
+
+// An archived channel of the declared name is held and left archived.
+func TestAnArchivedChannelIsHeldAndNeverUnarchived(t *testing.T) {
+	r := newRig(t)
+	r.person("ann@acme.example", []string{"g-all"}, "acme")
+	old := r.fake.AddChannel("TACME", "announce", false)
+	r.fake.Channels[old.ID].Archived = true
+
+	r.pass("acme")
+
+	got := r.reports.channel(t, "acme", "announce")
+	if got.State != status.ChannelHeld || !strings.Contains(got.Reason, "archived: unarchive it in Slack or rename it") {
+		t.Errorf("announce = %+v", got)
+	}
+	if !r.fake.Channels[old.ID].Archived || len(r.fake.Members(old.ID)) != 0 {
+		t.Error("an archived channel was touched")
+	}
+}
+
+// Adopting a strict channel is not a licence to empty it: the first pass
+// after adopting it is subject to the breaker like any other, and nobody is
+// removed.
+func TestTheFirstPassOverAnAdoptedStrictChannelIsHeldToTheBreaker(t *testing.T) {
+	r := newRig(t)
+	ann := r.person("ann@acme.example", []string{"g-eng"}, "acme")
+	var members []string
+	for _, who := range []string{"a", "b", "c"} {
+		members = append(members, r.person(who+"@acme.example", nil, "acme")) // in Slack, gone from the directory
+	}
+	// Made by somebody else, so the roster adopts it: one wanted, three gone.
+	ch := r.fake.AddChannel("TACME", "eng", true, append([]string{slackfake.BotID("TACME"), ann}, members...)...)
+
+	r.pass("acme")
+
+	for _, id := range members {
+		if !slices.Contains(r.fake.Members(ch.ID), id) {
+			t.Fatalf("%s was removed on the first pass after adoption", id)
+		}
+	}
+	if r.fake.Count("conversations.kick") != 0 {
+		t.Errorf("%d removals went through the breaker", r.fake.Count("conversations.kick"))
+	}
+	if eng := r.reports.channel(t, "acme", "eng"); eng.Breaker == nil || eng.Breaker.Affected != 3 || eng.Breaker.Total != 4 {
+		t.Errorf("eng breaker = %+v, want 3 of 4 held", eng.Breaker)
+	}
+	if r.actions("roster.slack_channel.adopted") != 1 {
+		t.Errorf("adoptions recorded = %d (%v)", r.actions("roster.slack_channel.adopted"), r.audit.Actions())
+	}
+}

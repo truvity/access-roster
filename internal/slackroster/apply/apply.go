@@ -38,6 +38,20 @@ type Outcome struct {
 	// Skipped says why nothing was tried: a dry run, or the channel it
 	// depends on was not made.
 	Skipped string
+	// Held is set when Slack refused the action in a way that is a hold, not
+	// a failure to retry: a person has to act. It is the reason, and the
+	// refusal is not recorded as a failed change every pass; the controller
+	// records the hold once.
+	Held string
+}
+
+// TakenReason is why a channel could not be created under a name Slack says
+// is taken although no channel of that name is visible to the bot: a private
+// channel it is not in, or an archived one. The roster never creates a
+// duplicate under another name, converts a channel or unarchives one.
+func TakenReason(name string) string {
+	return "a private channel named " + name + " exists that the bot cannot see; invite the bot to it " +
+		"(or, if it is archived, unarchive it in Slack or rename it): the roster never creates a second channel under another name"
 }
 
 // Result is a decision carried out.
@@ -99,6 +113,12 @@ func Apply(ctx context.Context, client *slackapp.Client, dec reconcile.Decision,
 				channel.ID = ch.ID
 			}
 			out.Done = out.Err == nil
+			if errors.Is(out.Err, slackapp.ErrNameTaken) {
+				// The name is taken by a channel the bot cannot see. That is a
+				// hold, found by asking, and not a change that failed.
+				out.Held = TakenReason(a.Channel)
+				break
+			}
 			emit(ctx, opt, audit.SlackChannelCreated(channel, outcomeOf(out.Err)))
 		case status.ActionAdopt:
 			_, out.Err = client.JoinChannel(ctx, a.ChannelID)

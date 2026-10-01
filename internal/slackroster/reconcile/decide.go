@@ -186,6 +186,9 @@ func (d *Draft) Decide(vouches map[string]rails.Vouch, confirmed Confirmed) Deci
 		phase1 = append(phase1, p.shareActs...)
 		phase2 = append(phase2, p.inviteActs...)
 		held = append(held, p.held...)
+		if p.res.adopted {
+			dec.Adopted = append(dec.Adopted, Adoption{Channel: p.lc.name, ID: p.res.ch.ID, Private: p.res.ch.Private, Joins: p.res.kind == resJoin})
+		}
 		dec.Report.Channels = append(dec.Report.Channels, ch)
 		if ch.State == status.ChannelWaiting {
 			dec.Report.Tick.Waiting++

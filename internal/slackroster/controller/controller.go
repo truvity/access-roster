@@ -118,6 +118,9 @@ type Controller struct {
 	held rails.Ledger
 	// leavers is the same for leaver reports.
 	leavers rails.Ledger
+	// adopted is the same for the channels taken over, so that each is
+	// recorded once, when it is first managed, and not every pass.
+	adopted rails.Ledger
 	// journal is each workspace's last report that was not a failure, so a
 	// failed pass can keep what was last known instead of blanking it, and
 	// the place the reports are written.
@@ -291,8 +294,8 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 	// derives and reports what would change, and changes nothing.
 	rails.Switch(enabled).Act(func() {
 		result := apply.Apply(ctx, client, decision, apply.Options{Workspace: key, Audit: c.deps.Audit})
-		c.fold(ctx, key, &report, result)
-		c.recordNew(ctx, key, decision, &report)
+		found := c.fold(ctx, key, &report, result)
+		c.recordNew(ctx, key, decision, found, &report)
 	})
 	report.Tick.Waiting = countWaiting(report)
 	report.Tick.Outcome = status.OutcomeOf(rails.Switch(enabled).Decide(rails.Tick{
@@ -426,11 +429,21 @@ func (c *Controller) vouch(ctx context.Context, p *pass, emails []string) (map[s
 // fold puts what Slack accepted and refused in the report: a change made
 // shows as made, one Slack refused shows as retrying with Slack's words, and
 // the rest go on.
-func (c *Controller) fold(ctx context.Context, workspace string, report *status.Workspace, result apply.Result) {
+func (c *Controller) fold(ctx context.Context, workspace string, report *status.Workspace, result apply.Result) (found []reconcile.Held) {
 	done, failed := 0, 0
 	for i := range result.Outcomes {
 		o := &result.Outcomes[i]
 		c.metrics.recordChange(ctx, workspace, o.Action.Kind, o.Err == nil)
+		if o.Held != "" {
+			// A hold found by asking Slack: the channel says why, nobody is
+			// asked to retry, and the hold is recorded once like any other.
+			if ch := channelOf(report, o.Action); ch != nil {
+				ch.State, ch.Reason = status.ChannelHeld, o.Held
+			}
+			found = append(found, reconcile.Held{Channel: o.Action.Channel, Change: "create", Reason: o.Held})
+			report.Tick.Held++
+			continue
+		}
 		if o.Err != nil {
 			failed++
 			c.deps.Log.WarnContext(ctx, "Slack refused a change", "workspace", workspace, "kind", o.Action.Kind,
@@ -443,18 +456,32 @@ func (c *Controller) fold(ctx context.Context, workspace string, report *status.
 	}
 	report.Tick.Changes = done
 	report.Tick.Retrying += failed
+	return found
 }
 
 // recordNew records each hold and each leaver that is new since last pass
 // — once, rather than every pass for as long as it stays, and not again
 // after a restart: the first pass takes "last pass" from the report the
 // previous process wrote (status.Workspace.Recorded).
-func (c *Controller) recordNew(ctx context.Context, workspace string, decision reconcile.Decision, report *status.Workspace) {
-	var holdKeys, leaverKeys []string
-	var holdEvents, leaverEvents []*record.Record
-	for _, h := range decision.Held {
+func (c *Controller) recordNew(
+	ctx context.Context, workspace string, decision reconcile.Decision, found []reconcile.Held, report *status.Workspace,
+) {
+	var holdKeys, leaverKeys, adoptedKeys []string
+	var holdEvents, leaverEvents, adoptedEvents []*record.Record
+	// found are the holds Slack itself told us of while acting (a channel
+	// that could not be created because its name is taken by one the bot
+	// cannot see); they are recorded like any other.
+	for _, h := range slices.Concat(decision.Held, found) {
 		holdKeys = append(holdKeys, h.Key())
 		holdEvents = append(holdEvents, apply.HeldRecord(workspace, h))
+	}
+	for _, a := range decision.Adopted {
+		adoptedKeys = append(adoptedKeys, a.Channel+"|"+a.ID)
+		// A channel the bot joins this pass is recorded by the join itself,
+		// which says whether Slack allowed it; the ledger still remembers it,
+		// so that the next pass does not record it again.
+		adoptedEvents = append(adoptedEvents, audit.SlackChannelAdopted(
+			audit.SlackChannel{Workspace: workspace, Name: a.Channel, ID: a.ID, Private: a.Private}, audit.Succeeded()))
 	}
 	for _, l := range report.Leavers {
 		leaverKeys = append(leaverKeys, l.UserID)
@@ -465,7 +492,17 @@ func (c *Controller) recordNew(ctx context.Context, workspace string, decision r
 	}
 	c.emit(ctx, holdEvents, c.held.Fresh(workspace, holdKeys, previous(holdPrefix)))
 	c.emit(ctx, leaverEvents, c.leavers.Fresh(workspace, leaverKeys, previous(leaverPrefix)))
+	freshAdopted := c.adopted.Fresh(workspace, adoptedKeys, previous(adoptedPrefix))
+	for i, a := range decision.Adopted {
+		if a.Joins {
+			freshAdopted[i] = false
+		}
+	}
+	c.emit(ctx, adoptedEvents, freshAdopted)
 	report.Recorded = nil
+	for _, k := range adoptedKeys {
+		report.Recorded = append(report.Recorded, adoptedPrefix+k)
+	}
 	for _, k := range holdKeys {
 		report.Recorded = append(report.Recorded, holdPrefix+k)
 	}
@@ -475,8 +512,9 @@ func (c *Controller) recordNew(ctx context.Context, workspace string, decision r
 }
 
 const (
-	holdPrefix   = "hold|"
-	leaverPrefix = "leaver|"
+	holdPrefix    = "hold|"
+	leaverPrefix  = "leaver|"
+	adoptedPrefix = "adopted|"
 )
 
 // recordedOf are the keys with a prefix in a report's Recorded, prefix

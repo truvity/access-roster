@@ -68,17 +68,19 @@ func Observe(ctx context.Context, client *slackapp.Client, in reconcile.Input) (
 	}
 
 	// Channels, and members of those a binding names.
-	channels, err := client.Channels(ctx)
+	// Archived ones included: a name an archived channel keeps is taken, and
+	// the roster must say so rather than try to create it again.
+	channels, err := client.AllChannels(ctx)
 	if err != nil {
 		return reconcile.Observed{}, fmt.Errorf("apply: list channels: %w", err)
 	}
 	names, ids := named(in, cfg)
 	for _, ch := range channels {
 		c := reconcile.Channel{
-			ID: ch.ID, Name: ch.Name, Creator: ch.Creator, Private: ch.IsPrivate, BotIn: ch.IsMember,
+			ID: ch.ID, Name: ch.Name, Creator: ch.Creator, Private: ch.IsPrivate, BotIn: ch.IsMember, Archived: ch.IsArchived,
 			Shared: ch.IsExtShared, SharedTeamIDs: slices.Clone(ch.SharedTeamIDs),
 		}
-		if (names[ch.Name] || ids[ch.ID]) && (ch.IsMember || !ch.IsPrivate) {
+		if !ch.IsArchived && (names[ch.Name] || ids[ch.ID]) && (ch.IsMember || !ch.IsPrivate) {
 			members, err := client.Members(ctx, ch.ID)
 			if err != nil {
 				return reconcile.Observed{}, fmt.Errorf("apply: read the members of a channel: %w", err)

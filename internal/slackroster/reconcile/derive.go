@@ -23,6 +23,9 @@ const (
 type resolved struct {
 	kind   resKind
 	reason string
+	// adopted marks a bound channel that exists, was not made by the bot and
+	// is being managed: taken over by name or by `adopt`.
+	adopted bool
 	// change names what a hold is about: create, adopt, share.
 	change string
 	ch     *Channel
@@ -114,9 +117,15 @@ func ready(ch *Channel, private bool, joinable bool) resolved {
 	return resolved{kind: resOK, ch: ch}
 }
 
+// resolveBound is where a bound channel stands: an idempotent upsert. It is
+// created when no channel of that name is visible, and otherwise taken over
+// BY NAME (or by `adopt`, which only disambiguates). Visibility is never
+// converted, an archived channel is never unarchived, and a channel the bot
+// cannot see is found out when creating it is refused (see package apply).
 func (d *Draft) resolveBound(lc layoutChannel) resolved {
+	var ch *Channel
 	if id := lc.binding.Adopt; id != "" {
-		ch := d.byID(id)
+		ch = d.byID(id)
 		switch {
 		case ch == nil:
 			return resolved{kind: resHeld, change: "adopt",
@@ -125,17 +134,19 @@ func (d *Draft) resolveBound(lc layoutChannel) resolved {
 			return resolved{kind: resHeld, ch: ch, change: "adopt",
 				reason: "adopt " + id + " is a Slack Connect channel; it is managed as a shared channel, not bound here"}
 		}
-		return ready(ch, lc.private, true)
-	}
-	ch := d.byName(lc.name)
-	switch {
-	case ch == nil:
+	} else if ch = d.byName(lc.name); ch == nil {
 		return resolved{kind: resCreate}
-	case ch.Creator != d.in.Observed.BotUserID:
-		return resolved{kind: resHeld, ch: ch, change: "create",
-			reason: "a channel named " + lc.name + " already exists (" + ch.ID + "); adopt it by id with adopt: " + ch.ID}
+	} else if ch.Shared {
+		return resolved{kind: resHeld, ch: ch, change: "adopt",
+			reason: "a channel named " + lc.name + " (" + ch.ID + ") is a Slack Connect channel; it is managed as a shared channel, not bound here"}
 	}
-	return ready(ch, lc.private, true)
+	if ch.Archived {
+		return resolved{kind: resHeld, ch: ch, change: "adopt",
+			reason: "the channel " + lc.name + " (" + ch.ID + ") is archived: unarchive it in Slack or rename it; the roster never unarchives"}
+	}
+	res := ready(ch, lc.private, true)
+	res.adopted = res.usable() && ch.Creator != d.in.Observed.BotUserID
+	return res
 }
 
 func (d *Draft) resolveHost(lc layoutChannel) resolved {
