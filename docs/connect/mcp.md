@@ -252,6 +252,7 @@ underscores; a flag given wins.
 | `--outbound-client-id` / `OUTBOUND_CLIENT_ID` | | the exchange client this workload presents |
 | `--outbound-audience` / `OUTBOUND_AUDIENCE` | | the audience to exchange for |
 | `--outbound-sa-token-file` / `OUTBOUND_SA_TOKEN_FILE` | | the projected ServiceAccount token (audience: the issuer), re-read for every exchange |
+| `--outbound-ca-file` / `OUTBOUND_CA_FILE` | empty = system roots only | PEM bundle of CA certificates, appended to the system roots, trusted only for the connection to `OUTBOUND_TARGET` (a target served by a private CA). The issuer and token-exchange connections never use it. Read once at start; unreadable or certificate-less is refused at start; restart to rotate |
 | `--outbound-allow-non-loopback` / `OUTBOUND_ALLOW_NON_LOOPBACK` | `false` | see below |
 | `--refresh-before` / `REFRESH_BEFORE` | `1m` | exchange again this long before expiry (never more than half a token's life) |
 

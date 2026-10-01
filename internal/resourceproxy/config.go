@@ -55,6 +55,10 @@ type Config struct {
 	OutboundClientID      string
 	OutboundAudience      string
 	OutboundSATokenFile   string
+	// OutboundCAFile is a PEM bundle appended to the system roots for the
+	// outbound forwarder's connection to OutboundTarget, and only that
+	// one: the issuer and the token exchange keep the system roots alone.
+	OutboundCAFile string
 	// OutboundAllowNonLoopback lets the outbound listener bind anything
 	// but loopback. Anyone who can reach it borrows this workload's
 	// identity, so it is refused unless asked for by name.
@@ -108,7 +112,7 @@ func (c *Config) Validate() error {
 
 	if !c.OutboundEnabled() {
 		if c.OutboundTarget != "" || c.OutboundTokenEndpoint != "" || c.OutboundClientID != "" ||
-			c.OutboundAudience != "" || c.OutboundSATokenFile != "" {
+			c.OutboundAudience != "" || c.OutboundSATokenFile != "" || c.OutboundCAFile != "" {
 			return errors.New("resource-proxy: an OUTBOUND_* value is set but OUTBOUND_LISTEN is not; " +
 				"refusing to start with the outbound side half-configured")
 		}

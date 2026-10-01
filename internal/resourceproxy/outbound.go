@@ -2,6 +2,8 @@ package resourceproxy
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -153,6 +155,10 @@ func NewOutbound(cfg Config, log *slog.Logger, source *TokenSource) (*Outbound, 
 	if err != nil {
 		return nil, err
 	}
+	roots, err := outboundRoots(cfg.OutboundCAFile)
+	if err != nil {
+		return nil, err
+	}
 	o := &Outbound{source: source, log: log}
 	o.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -167,6 +173,7 @@ func NewOutbound(cfg Config, log *slog.Logger, source *TokenSource) (*Outbound, 
 			ResponseHeaderTimeout: cfg.UpstreamTimeout,
 			MaxIdleConns:          32,
 			IdleConnTimeout:       90 * time.Second,
+			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots},
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.WarnContext(r.Context(), "outbound target failed", slog.String("error", err.Error()))
@@ -190,4 +197,27 @@ func (o *Outbound) Handler() http.Handler {
 		r.Header.Set("Authorization", "Bearer "+token)
 		o.proxy.ServeHTTP(w, r)
 	})
+}
+
+// outboundRoots is the root pool for the outbound target: the system roots
+// plus the PEM bundle in file, when one is named. nil (the system roots)
+// when none is. A named file that cannot be read, or holds no certificate,
+// is an error: a CA that was asked for and silently not loaded would only
+// surface as a TLS failure on the first request.
+func outboundRoots(file string) (*x509.CertPool, error) {
+	if file == "" {
+		return nil, nil
+	}
+	pem, err := os.ReadFile(file)
+	if err != nil {
+		return nil, fmt.Errorf("resource-proxy: OUTBOUND_CA_FILE: %w", err)
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("resource-proxy: OUTBOUND_CA_FILE %q contains no PEM certificate", file)
+	}
+	return pool, nil
 }
