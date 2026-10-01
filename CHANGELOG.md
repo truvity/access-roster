@@ -1,3 +1,21 @@
+## Unreleased
+
+- **In cluster mode the Valkey client follows a failover by itself.** When a
+  shard's primary died, its replica was promoted within seconds, but the client
+  kept sending that shard's commands to the dead address until its once-a-minute
+  topology refresh: measured against a three-shard cluster, a third of all
+  writes were still failing 30 seconds after the kill. A command that fails
+  without an answer from the server (a dial timeout, a reset connection) or with
+  `CLUSTERDOWN` now asks for a topology reload (asynchronous, coalesced), the
+  periodic reload runs every 5 seconds instead of 60, and a dial gives up after
+  1 second and 2 attempts instead of 5 seconds and 5 attempts, so a reload that
+  happens to ask the dead node first does not wait half a minute on it. The same
+  cluster now takes every write again 3–6 seconds after a primary is killed,
+  with nothing written before the kill lost. The dial limits apply in
+  non-cluster mode too. New `TestTheClientSurvivesTheLossOfAPrimary`
+  (docker, opt-in via `VALKEY_TEST_CLUSTER_ADDR` and
+  `VALKEY_TEST_CLUSTER_CONTAINERS`) kills a primary and asserts both.
+
 ## v1.50.0
 
 - **A test keeps `contracts.md` in step with the protos.** `just docs-check` now
