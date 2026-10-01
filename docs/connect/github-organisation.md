@@ -92,6 +92,13 @@ the same reason every other grant lives here.
    carries `github.<org>.owner` is refused at load: delete the key. The rule,
    once, is in [the policy
    reference](../reference/policy.md#who-owns-a-github-organisation).
+
+   Connecting an organisation nobody has connected records the **connecting
+   operator's directory** as its owner: whoever connects it first owns it.
+   That is a rule about who operates the connection inside access-roster;
+   GitHub itself still requires an owner of the target organisation to install
+   the App, so the console grants nothing in GitHub. The installation-wide
+   operator can change the owner afterwards, and the change is audited.
 6. **Run the controller**, disabled for the organisation. See *Running the
    controller* below. Its first pass reports on the GitHub page what it
    WOULD do; read it.

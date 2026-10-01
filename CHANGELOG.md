@@ -19,6 +19,11 @@
   `.Owner`, `GitHubOrg.Owner`, `Set.SlackWorkspaceTeam`, `Set.SlackOwner`,
   `Set.GitHubOwner` and `SlackWorkspace.NormalisedDomains`; added
   `Set.SlackWorkspaceDeclared`.
+- **Upgrade order: roll the console before the slack-roster controller.** The
+  controller now needs the new `ListServedDomains` RPC and fails every pass
+  against an older console. Its identity must also hold the installation-wide
+  viewer role (or the viewer role over each owning directory) to read the
+  served domains.
 - **New: the owner is recorded when a connection is made.** One rule for Slack
   workspaces and GitHub organisations. The installation-wide operator chooses
   the owning directory from the connected ones, or none; an operator of
