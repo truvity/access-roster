@@ -1,4 +1,7 @@
 import type { SlackChannelStatus, SlackMemberStatus, SlackWorkspaceStatus } from "./gen/directoryroster/v1/slack_pb";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { timestampMs } from "@bufbuild/protobuf/wkt";
+
 import type { StateKind } from "./ui";
 
 /** The one thing a workspace waits for from a person, in the order they
@@ -57,6 +60,12 @@ export function offersDisconnect(ws: Pick<SlackWorkspaceStatus, "connectionState
 /** Whether Reconnect is offered on an installed workspace that holds every
  *  scope: it always may, to re-approve or rotate the token. */
 export function offersReconnect(ws: Pick<SlackWorkspaceStatus, "connectionState">): boolean {
+  return ws.connectionState === "installed" || ws.connectionState === "scopes_missing";
+}
+
+/** Whether Refresh is offered: a pass needs a bot token, so only an
+ *  installed workspace has anything to pass with. */
+export function offersRefresh(ws: Pick<SlackWorkspaceStatus, "connectionState">): boolean {
   return ws.connectionState === "installed" || ws.connectionState === "scopes_missing";
 }
 
@@ -121,14 +130,42 @@ export function split(members: SlackMemberStatus[]): { settled: SlackMemberStatu
   return { settled: all.filter((m) => m.state === "ok"), open: all.filter((m) => m.state !== "ok") };
 }
 
-/** The sentence for the top of a workspace's card. */
+/** What is shown between an install and the first pass after it. */
+export const awaitingText = "Installed \u2014 waiting for the first pass.";
+
+/** What is shown between an operator's Refresh and the report it asked for. */
+export const requestedText = "Pass requested \u2014 waiting for the controller to report.";
+
+/** Whether a report is older than a moment: one with no time is older than
+ *  anything, and a moment with no time is older than every report. */
+function reportOlderThan(tick: SlackWorkspaceStatus["tick"], moment: Timestamp | undefined): boolean {
+  if (!moment) return false;
+  return !tick?.at || timestampMs(tick.at) < timestampMs(moment);
+}
+
+/** Whether the workspace was installed after the last pass the controller
+ *  reported. Until a report newer than the connection exists, the previous
+ *  pass's banner (a failure, "not installed", or an old all-clear) is about
+ *  the workspace as it was, not as it is. */
+export function awaitingFirstPass(ws: Pick<SlackWorkspaceStatus, "connectionState" | "tick" | "connection">): boolean {
+  if (ws.connectionState !== "installed" && ws.connectionState !== "scopes_missing") return false;
+  return reportOlderThan(ws.tick, ws.connection?.connectedAt);
+}
+
+/** Whether an operator asked for a pass that has not reported yet. */
+export function passRequested(ws: Pick<SlackWorkspaceStatus, "tick" | "passRequestedAt">): boolean {
+  return reportOlderThan(ws.tick, ws.passRequestedAt);
+}
+
 /** The note under a workspace's header about its last pass: neutral where
  *  the workspace simply is not connected or installed yet (an expected
  *  state, even if an older report recorded it as a failure), red only for a
  *  real failure. */
 export function tickNotice(
-  ws: Pick<SlackWorkspaceStatus, "connectionState" | "workspace" | "tick">,
+  ws: Pick<SlackWorkspaceStatus, "connectionState" | "workspace" | "tick" | "connection" | "passRequestedAt">,
 ): { severity: "info" | "error"; text: string } | undefined {
+  if (awaitingFirstPass(ws)) return { severity: "info", text: awaitingText };
+  if (passRequested(ws)) return { severity: "info", text: requestedText };
   switch (ws.connectionState) {
     case "not_connected":
       return { severity: "info", text: "Not connected yet \u2014 Connect it to start." };
@@ -141,6 +178,7 @@ export function tickNotice(
 }
 
 export function summaryOf(ws: SlackWorkspaceStatus): string {
+  if (awaitingFirstPass(ws)) return awaitingText;
   switch (ws.connectionState) {
     case "not_connected":
       return `Not connected. Connect it to ${ws.workspace} to let the controller manage its channels.`;

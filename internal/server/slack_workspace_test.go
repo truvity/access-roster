@@ -545,6 +545,84 @@ func TestAConnectedWorkspaceIsOperatedByItsRecordedOwnerOnly(t *testing.T) {
 	}
 }
 
+// Refresh: the operator of the workspace's owner, or the installation-wide
+// operator, asks for a pass now; it is kept as a marker the controller
+// compares with its last pass, shown on the status, and refused again within
+// a minute. A viewer, a foreign operator and a workspace with nothing
+// installed are refused.
+func TestRequestingASlackPassIsForTheWorkspacesOperatorsAndRateLimited(t *testing.T) {
+	h := newConnectedWorkspaceHarness(t)
+	ask := func(ctx context.Context, workspace string) error {
+		_, err := h.console.RequestSlackPass(ctx, connect.NewRequest(&directoryrosterv1.RequestSlackPassRequest{Workspace: workspace}))
+		return err
+	}
+	for name, who := range map[string]context.Context{
+		"a viewer of the owner":  asSlackIdentity(northViewer),
+		"a foreign operator":     asSlackIdentity(southOp),
+		"an installation viewer": viewer(),
+		"nobody signed in":       context.Background(),
+	} {
+		if err := ask(who, "acme"); connect.CodeOf(err) != connect.CodePermissionDenied && connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("%s = %v, want refused", name, err)
+		}
+	}
+	if err := ask(operator(), "not a key"); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("a bad key = %v", err)
+	}
+	if requests, _ := h.workspaces.PassRequests(context.Background()); len(requests) != 0 {
+		t.Fatalf("a refused request left a marker: %v", requests)
+	}
+
+	if err := ask(asSlackIdentity(northOp), "acme"); err != nil {
+		t.Fatalf("the owner's operator = %v", err)
+	}
+	if err := ask(operator(), "acme"); connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Errorf("a second request within a minute = %v, want resource exhausted", err)
+	}
+	// Another workspace has its own limit; the installation-wide operator may ask.
+	if err := ask(operator(), "globex"); err != nil {
+		t.Errorf("the installation-wide operator = %v", err)
+	}
+	requests, err := h.workspaces.PassRequests(context.Background())
+	if err != nil || len(requests) != 2 || requests["acme"].By != "someone@north.example" || requests["acme"].At.IsZero() {
+		t.Fatalf("markers = %+v, %v", requests, err)
+	}
+	if got := h.row(operator(), t, "acme").GetPassRequestedAt(); got == nil || got.AsTime().Sub(requests["acme"].At).Abs() > time.Second {
+		t.Errorf("the status says the pass was requested at %v, want %v", got, requests["acme"].At)
+	}
+	if got := h.row(operator(), t, "initech").GetPassRequestedAt(); got != nil {
+		t.Errorf("a workspace nobody asked for shows a request: %v", got)
+	}
+
+	// Past the gap, a new request replaces the marker.
+	old := requests["acme"]
+	old.At = old.At.Add(-2 * connection.PassGap)
+	raw, _ := connection.EncodePassRequest(old)
+	cm, err := h.client.API().CoreV1().ConfigMaps("access-issuer").Get(context.Background(), h.workspaces.ConfigMapName(), metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cm.Data[connection.PassKey("acme")] = raw
+	if _, err = h.client.API().CoreV1().ConfigMaps("access-issuer").Update(context.Background(), cm, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err = ask(asSlackIdentity(northOp), "acme"); err != nil {
+		t.Errorf("a request after the gap = %v", err)
+	}
+
+	// Disconnecting forgets the marker with the rest.
+	if _, err = h.disconnect(operator(), "acme", true); err != nil {
+		t.Fatal(err)
+	}
+	if requests, _ = h.workspaces.PassRequests(context.Background()); len(requests) != 1 || requests["globex"].Workspace == "" {
+		t.Errorf("markers after disconnecting acme = %+v", requests)
+	}
+	h.console.deps.SlackWorkspaces = nil
+	if err = ask(operator(), "globex"); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("without a store = %v", err)
+	}
+}
+
 // Only the installation-wide operator changes a recorded owner, to a
 // connected directory or to none, and the change is audited.
 func TestOnlyTheInstallationWideOperatorChangesAnOwner(t *testing.T) {

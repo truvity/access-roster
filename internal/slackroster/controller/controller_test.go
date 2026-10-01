@@ -268,11 +268,20 @@ func (r *rig) controller(enabled ...string) *controller.Controller {
 
 // fresh is a controller that remembers nothing: a restart.
 func (r *rig) fresh(enabled ...string) *controller.Controller {
+	return r.freshWith(0, enabled...)
+}
+
+// freshWith is a restart that polls the credentials every poll.
+func (r *rig) freshWith(poll time.Duration, enabled ...string) *controller.Controller {
 	on := map[string]bool{}
 	for _, ws := range enabled {
 		on[ws] = true
 	}
-	return controller.New(controller.Config{Enabled: on, CredentialsDir: r.creds, RecordsDir: r.records}, controller.Deps{
+	cfg := controller.Config{Enabled: on, CredentialsDir: r.creds, RecordsDir: r.records, CredentialPoll: poll}
+	if poll > 0 {
+		cfg.Interval = time.Hour
+	}
+	return controller.New(cfg, controller.Deps{
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Access: r.console, Audit: r.audit, Status: r.reports, Policy: r.policy, Digest: testPolicy,
 		Now: func() time.Time { return r.now },
@@ -1034,5 +1043,105 @@ func TestTheFirstPassOverAnAdoptedStrictChannelIsHeldToTheBreaker(t *testing.T) 
 	}
 	if r.actions("roster.slack_channel.adopted") != 1 {
 		t.Errorf("adoptions recorded = %d (%v)", r.actions("roster.slack_channel.adopted"), r.audit.Actions())
+	}
+}
+
+func (r *reports) published() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.replaced
+}
+
+// waitFor polls until cond holds, or fails after the timeout.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// An install lands as a changed credential in the mounted Secret. The
+// controller notices within its poll period and passes then, instead of
+// leaving the result for the full interval (an hour here); a poll that finds
+// nothing changed passes nothing, and a change to a reserved key (an
+// operator's confirmation, a consumed install state) is not a connect.
+func TestAChangedCredentialRunsAPassWithoutWaitingForTheInterval(t *testing.T) {
+	r := newRig(t)
+	r.writeCredential("globex", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.freshWith(10*time.Millisecond, "acme").Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	waitFor(t, "the first pass", func() bool { return r.reports.published() >= 1 })
+	if got := r.reports.workspace(t, "globex").Tick.Outcome; got != status.OutcomeWaiting {
+		t.Fatalf("globex before its install = %q, want waiting", got)
+	}
+
+	// Nothing changed: no further pass in many polls.
+	time.Sleep(150 * time.Millisecond)
+	if got := r.reports.published(); got != 1 {
+		t.Fatalf("%d publications with nothing changed, want 1", got)
+	}
+	// A reserved key changing is not a credential.
+	if err := os.WriteFile(filepath.Join(r.creds, "_consumed.x"), []byte("1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if got := r.reports.published(); got != 1 {
+		t.Fatalf("%d publications after a reserved key changed, want 1", got)
+	}
+
+	r.writeCredential("globex", slackfake.Token("TGLOBEX"))
+	waitFor(t, "a pass after the credential changed", func() bool { return r.reports.published() >= 2 })
+	if got := r.reports.workspace(t, "globex").Tick.Outcome; got == status.OutcomeWaiting {
+		t.Errorf("globex after its install is still %q", got)
+	}
+}
+
+// An operator's request for a pass is a marker in the records. A request newer
+// than the last one acted on runs a pass at once; the one that was already
+// there when the controller started, and one that is not newer, run nothing.
+func TestARequestedPassRunsOnceForANewerMarkerOnly(t *testing.T) {
+	r := newRig(t)
+	marker := func(at time.Time) {
+		raw, err := connection.EncodePassRequest(connection.PassRequest{Workspace: "acme", At: at, By: "ada@acme.example"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.writeRecord(connection.PassKey("acme"), raw)
+	}
+	base := time.Now().UTC().Truncate(time.Second)
+	marker(base)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.freshWith(10*time.Millisecond, "acme").Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	waitFor(t, "the first pass", func() bool { return r.reports.published() >= 1 })
+	time.Sleep(150 * time.Millisecond)
+	if got := r.reports.published(); got != 1 {
+		t.Fatalf("%d publications with only the marker that was there at start, want 1", got)
+	}
+	marker(base.Add(-time.Hour))
+	time.Sleep(150 * time.Millisecond)
+	if got := r.reports.published(); got != 1 {
+		t.Fatalf("%d publications after an older marker, want 1", got)
+	}
+	marker(base.Add(time.Minute))
+	waitFor(t, "a pass after a newer marker", func() bool { return r.reports.published() >= 2 })
+	time.Sleep(150 * time.Millisecond)
+	if got := r.reports.published(); got != 2 {
+		t.Errorf("%d publications, want exactly one pass for one request", got)
 	}
 }

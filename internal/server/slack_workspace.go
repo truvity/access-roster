@@ -35,6 +35,11 @@ type SlackWorkspaces interface {
 	// SetOwner changes only a record's owner, under the object's version;
 	// found is false when the workspace has no record.
 	SetOwner(ctx context.Context, workspace, owner string) (previous string, found bool, err error)
+	// RequestPass keeps an operator's request for a pass now; kept is false,
+	// with the time of the last request, when that was under a minute ago.
+	RequestPass(ctx context.Context, request connection.PassRequest) (kept bool, last time.Time, err error)
+	// PassRequests are the last request for each workspace.
+	PassRequests(ctx context.Context) (map[string]connection.PassRequest, error)
 	// Delete forgets a workspace and what belongs to it.
 	Delete(ctx context.Context, workspace string) error
 	PutConfirmation(ctx context.Context, confirmation connection.Confirmation) error
@@ -204,6 +209,50 @@ func (c *Console) BeginSlackWorkspaceConnect(
 	response := connect.NewResponse(&directoryrosterv1.BeginSlackWorkspaceConnectResponse{Url: target})
 	c.pinFlow(response.Header(), state)
 	return response, nil
+}
+
+// RequestSlackPass asks the Slack controller to pass over a workspace now.
+// The request is a marker the controller notices within its poll (see the
+// controller's watch); a second one under a minute after the first is
+// refused, so the button cannot be leaned on.
+func (c *Console) RequestSlackPass(
+	ctx context.Context, req *connect.Request[directoryrosterv1.RequestSlackPassRequest],
+) (*connect.Response[directoryrosterv1.RequestSlackPassResponse], error) {
+	if _, err := requireAnywhere(ctx, access.RoleOperator); err != nil {
+		return nil, err
+	}
+	store, err := c.slackWorkspaceStore()
+	if err != nil {
+		return nil, err
+	}
+	workspace := strings.TrimSpace(req.Msg.GetWorkspace())
+	if !status.ValidWorkspace(workspace) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not a workspace key", workspace))
+	}
+	who, err := c.requireSlack(ctx, access.RoleOperator, workspace)
+	if err != nil {
+		return nil, err
+	}
+	book, err := c.slackBook(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !book[workspace].Installed() {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("slack workspace %s is not installed: there is nothing for a pass to act with", workspace))
+	}
+	now := time.Now().UTC()
+	kept, last, err := store.RequestPass(ctx, connection.PassRequest{Workspace: workspace, At: now, By: who.Who()})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, err)
+	}
+	if !kept {
+		return nil, connect.NewError(connect.CodeResourceExhausted, fmt.Errorf(
+			"a pass over %s was asked for %s ago: the controller notices a request within a minute, so wait for it",
+			workspace, now.Sub(last).Round(time.Second)))
+	}
+	c.log().InfoContext(ctx, "a Slack pass was requested", "workspace", logsafe.Value(workspace), "by", logsafe.Value(who.Who()))
+	return connect.NewResponse(&directoryrosterv1.RequestSlackPassResponse{RequestedAt: timestampOf(now)}), nil
 }
 
 // DisconnectSlackWorkspace revokes the bot token and forgets the

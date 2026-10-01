@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -218,6 +219,7 @@ func (s *SlackWorkspaces) Delete(ctx context.Context, workspace string) error {
 				delete(data, name)
 			}
 		}
+		delete(data, connection.PassKey(workspace))
 	}); err != nil {
 		return err
 	}
@@ -256,6 +258,55 @@ func (s *SlackWorkspaces) Confirmations(ctx context.Context) (map[string]connect
 		if confirmation, err := connection.DecodeConfirmation(raw); err == nil &&
 			confirmation.Workspace == workspace && confirmation.Channel == channel {
 			out[key] = confirmation
+		}
+	}
+	return out, nil
+}
+
+// RequestPass keeps an operator's request for a pass now, replacing the
+// workspace's last one. It keeps nothing, and reports false with when the
+// last request was, if that is under connection.PassGap before r.At. The
+// check and the write are one change under the object's version, so two
+// requests at once cannot both pass it.
+func (s *SlackWorkspaces) RequestPass(ctx context.Context, r connection.PassRequest) (kept bool, last time.Time, err error) {
+	raw, err := connection.EncodePassRequest(r)
+	if err != nil {
+		return false, time.Time{}, err
+	}
+	key := connection.PassKey(r.Workspace)
+	err = s.editConfigMap(ctx, func(data map[string]string) {
+		kept, last = false, time.Time{}
+		if old, ok := data[key]; ok {
+			if prev, derr := connection.DecodePassRequest(old); derr == nil {
+				last = prev.At
+				if r.At.Sub(prev.At) < connection.PassGap {
+					return
+				}
+			}
+		}
+		data[key] = raw
+		kept = true
+	})
+	return kept && err == nil, last, err
+}
+
+// PassRequests reads every workspace's last request for a pass.
+func (s *SlackWorkspaces) PassRequests(ctx context.Context) (map[string]connection.PassRequest, error) {
+	cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", s.ConfigMapName(), err)
+	}
+	out := map[string]connection.PassRequest{}
+	for key, raw := range cm.Data {
+		workspace, ok := connection.ParsePassKey(key)
+		if !ok {
+			continue
+		}
+		if r, err := connection.DecodePassRequest(raw); err == nil && r.Workspace == workspace {
+			out[workspace] = r
 		}
 	}
 	return out, nil
