@@ -604,7 +604,7 @@ func TestOneWorkspacesFailureDoesNotBlockAnother(t *testing.T) {
 }
 
 // A workspace that is not connected, or created and not installed, is
-// reported so, and the rest go on.
+// reported as WAITING (an expected state, never a failure), and the rest go on.
 func TestAWorkspaceWithoutABotTokenIsNotInstalled(t *testing.T) {
 	r := newRig(t)
 	r.person("ann@acme.example", []string{"g-all"}, "acme")
@@ -622,11 +622,11 @@ func TestAWorkspaceWithoutABotTokenIsNotInstalled(t *testing.T) {
 
 	r.pass("acme", "globex")
 
-	if got := r.reports.workspace(t, "globex").Tick; got.Outcome != status.OutcomeFailed || !strings.Contains(got.Error, "not installed") {
-		t.Errorf("globex tick = %+v, want failed, not installed", got)
+	if got := r.reports.workspace(t, "globex").Tick; got.Outcome != status.OutcomeWaiting || got.Error != "" {
+		t.Errorf("globex tick = %+v, want waiting with no error (created, not installed)", got)
 	}
-	if got := r.reports.workspace(t, "acme").Tick; got.Outcome != status.OutcomeFailed || !strings.Contains(got.Error, "not connected") {
-		t.Errorf("acme tick = %+v, want failed, not connected", got)
+	if got := r.reports.workspace(t, "acme").Tick; got.Outcome != status.OutcomeWaiting || got.Error != "" {
+		t.Errorf("acme tick = %+v, want waiting with no error (not connected)", got)
 	}
 	if n := r.mutations(); n != 0 {
 		t.Errorf("a workspace with no bot token was changed %d times", n)
