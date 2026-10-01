@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **Documentation brought up to date with the Slack reconciler, console channels,
+  Slack Connect and the v1.41–v1.49 changes; nine new decision records
+  (0017–0025).**
+
+## v1.49.1
+
 - **The guest-side probe asks only about managed Slack Connect channels.** A
   shared channel no console record manages is no longer probed with
   `conversations.info`, so the roster stops spending a call per other
@@ -533,14 +539,16 @@
   across files as `github` is, covered by the policy digest, and their groups
   count as consumed. Slack Connect shared channels are not in the policy:
   they are managed on the console. A controller that reads these keys is
-  being built; until it ships, nothing does.
+  being built; until it ships, nothing does. (The controller ships in this same
+  release, in the first bullet above.)
   See [docs/reference/policy.md](docs/reference/policy.md#slack-channels).
 - **Internal: the Slack reconciler's core (`internal/slackroster`): the pure
   decision (who to invite, remove, hold and report in each workspace's
   channels, and in Slack Connect channels given as input), its status
   document, the per-workspace connection record and credential, and the step
   that applies a decision through the Slack client.** No controller runs it
-  yet. `internal/slackapp` gains `UserInfo` (a member's address) and
+  yet. (The controller ships in this same release, in the first bullet above.)
+  `internal/slackapp` gains `UserInfo` (a member's address) and
   `SharedTeamIDs` on a channel. See
   [docs/design/access-roster.md](docs/design/access-roster.md#the-slack-reconciler).
 - **Internal: `internal/rails` now holds what the GitHub controller and the
