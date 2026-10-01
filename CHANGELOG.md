@@ -1,5 +1,13 @@
 ## Unreleased
 
+- **The chart refuses an `actsIn` entry the policy does not define.** With the
+  policy given inline in values, `slackRoster.actsIn` must name keys of
+  `policy.slack.workspaces` and `githubRoster.actsIn` must name organisations of
+  `policy.github`; an unknown entry now fails `helm template` with the entry
+  named, instead of crash-looping the controller (which would be down for every
+  workspace) after the rollout. With no policy in the values the check is
+  skipped; the controller's own refusal to start stays as the backstop.
+
 - **Disconnecting a Slack workspace clears its old report, and the dialog says
   its records stay.** A workspace with no bot token (not connected, or created and
   not installed) is now reported as waiting with nothing carried over, so the

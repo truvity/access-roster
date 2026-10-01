@@ -90,6 +90,15 @@ valkey:
 # A declared `version` is dropped: the chart writes its own.
 policy:
   version: 1
+  # What githubRoster.actsIn and slackRoster.actsIn below name: the chart
+  # refuses an entry the policy does not define.
+  github:
+    acme: {}
+    globex: {}
+  slack:
+    workspaces:
+      acme: {}
+      globex-eu: {}
   groups:
     all:access-roster:operator:
       members:

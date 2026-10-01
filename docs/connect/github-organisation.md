@@ -108,6 +108,8 @@ the same reason every other grant lives here.
    WOULD do; read it.
 7. **Enable the organisation** by adding its login to
    `githubRoster.actsIn`. That is a reviewed change, and the next pass acts.
+   Remove an organisation from `actsIn` before removing it from the policy: the
+   chart refuses to render an `actsIn` entry the policy does not bind.
 
 The service reaches `api.github.com` for Create, Install and Disconnect,
 so the cluster's egress policy must allow it.
