@@ -22,6 +22,8 @@ import { at, ago, reason, slack } from "./api";
 import type { SlackBreaker, SlackChannelStatus, SlackRemovalConfirmation, SlackWorkspaceStatus } from "./gen/directoryroster/v1/slack_pb";
 import { useAsync } from "./hooks";
 import { paths } from "./router";
+import { ChangeOwnerDialog, OwnerField } from "./Owner";
+import { initialOwner, ownerSentence, ownerValid, type OwnerOffer } from "./ownerModel";
 import { configurationTokenUrl, looksLikeConfigurationToken } from "./slackAppsModel";
 import {
   breakerSentence,
@@ -43,7 +45,10 @@ type Props = { onDone: (message: string) => void };
 
 /** What a dialog is asking for: a configuration token to connect a
  *  workspace or to update its App, or confirmation of a disconnect. */
-type Asking = { ws: SlackWorkspaceStatus; purpose: "connect" | "reconnect" } | { ws: SlackWorkspaceStatus; purpose: "disconnect" };
+type Asking =
+  | { ws: SlackWorkspaceStatus; purpose: "connect" | "reconnect" }
+  | { ws: SlackWorkspaceStatus; purpose: "disconnect" }
+  | { ws: SlackWorkspaceStatus; purpose: "owner" };
 
 /** The Slack workspaces the policy declares: whether each is connected,
  *  what the controller last did there, and the things an operator of its
@@ -55,17 +60,19 @@ type Asking = { ws: SlackWorkspaceStatus; purpose: "connect" | "reconnect" } | {
 export function SlackPage({ onDone }: Props) {
   const loaded = useAsync(() => slack.getSlackStatus({}), []);
   const workspaces = loaded.value?.workspaces ?? [];
+  // What the caller may name as an owner, which the server decides.
+  const offer: OwnerOffer = { choices: loaded.value?.ownerChoices ?? [], mayBeNone: loaded.value?.mayConnectWithoutOwner ?? false };
   const [asking, setAsking] = useState<Asking | undefined>();
   const [busy, setBusy] = useState<string | undefined>();
   const [failure, setFailure] = useState<string | undefined>();
 
   // Install is a navigation to Slack: Slack's own page, then back to the
   // console's callback, which finishes it.
-  const begin = async (ws: SlackWorkspaceStatus, configurationToken = "") => {
+  const begin = async (ws: SlackWorkspaceStatus, configurationToken = "", owner = "") => {
     setBusy(ws.workspace);
     setFailure(undefined);
     try {
-      const started = await slack.beginSlackWorkspaceConnect({ workspace: ws.workspace, configurationToken });
+      const started = await slack.beginSlackWorkspaceConnect({ workspace: ws.workspace, configurationToken, owner });
       window.location.href = started.url;
     } catch (error) {
       setFailure(reason(error));
@@ -77,7 +84,7 @@ export function SlackPage({ onDone }: Props) {
   return (
     <Page
       title="Slack"
-      lede="The Slack workspaces the policy declares. Connecting one creates the roster's own Slack App in it from a manifest, with a throwaway app configuration token that is used once and never kept; an owner of the workspace installs it in Slack; the bot token that comes back is kept in a Secret, and only for the workspace the policy names. The controller then keeps the channels the policy binds in step with the directory."
+      lede="The Slack workspaces the policy declares by key. Connecting one creates the roster's own Slack App in it from a manifest, with a throwaway app configuration token that is used once and never kept; an owner of the workspace installs it in Slack; the bot token that comes back is kept in a Secret, and the Slack team of the first install is the only one a later install is accepted from. The owning directory is chosen when it is connected: its operators operate the workspace, and its served domains are how people are found in it. The controller then keeps the channels the policy binds in step with the directory."
     >
       <Loading busy={loaded.loading} />
       <Failure error={loaded.error ?? failure} />
@@ -92,7 +99,7 @@ export function SlackPage({ onDone }: Props) {
         </Alert>
       ) : null}
       {loaded.value && workspaces.length === 0 ? (
-        <Nothing>No Slack workspace is declared for a directory you may see. Declare one in the policy&apos;s slack.workspaces, with its team_id.</Nothing>
+        <Nothing>No Slack workspace is declared for a directory you may see. Declare one in the policy&apos;s slack.workspaces by its key, then connect it here.</Nothing>
       ) : null}
       <Stack sx={{ gap: 3 }}>
         {workspaces.map((ws) => (
@@ -104,20 +111,41 @@ export function SlackPage({ onDone }: Props) {
             onStep={(step) => (step === "install" ? void begin(ws) : setAsking({ ws, purpose: step === "connect" ? "connect" : "reconnect" }))}
             onReconnect={() => setAsking({ ws, purpose: "reconnect" })}
             onDisconnect={() => setAsking({ ws, purpose: "disconnect" })}
+            onChangeOwner={() => setAsking({ ws, purpose: "owner" })}
             onDone={onDone}
             reload={loaded.reload}
           />
         ))}
       </Stack>
-      {asking && asking.purpose !== "disconnect" ? (
+      {asking && (asking.purpose === "connect" || asking.purpose === "reconnect") ? (
         <TokenDialog
           key={`${asking.purpose}:${asking.ws.workspace}`}
           ws={asking.ws}
           purpose={asking.purpose}
+          offer={offer}
           onCancel={() => setAsking(undefined)}
-          onSubmit={(token) => {
+          onSubmit={(token, owner) => {
             setAsking(undefined);
-            void begin(asking.ws, token);
+            void begin(asking.ws, token, owner);
+          }}
+        />
+      ) : null}
+      {asking && asking.purpose === "owner" ? (
+        <ChangeOwnerDialog
+          key={`owner:${asking.ws.workspace}`}
+          title={`Change the owner of ${asking.ws.workspace}`}
+          current={asking.ws.owner}
+          offer={offer}
+          noun="Slack workspace"
+          save={async (owner) => {
+            await slack.changeSlackWorkspaceOwner({ workspace: asking.ws.workspace, owner });
+          }}
+          onCancel={() => setAsking(undefined)}
+          onDone={() => {
+            const ws = asking.ws.workspace;
+            setAsking(undefined);
+            onDone(`The owner of ${ws} is changed.`);
+            loaded.reload();
           }}
         />
       ) : null}
@@ -144,6 +172,7 @@ function WorkspaceCard({
   onStep,
   onReconnect,
   onDisconnect,
+  onChangeOwner,
   onDone,
   reload,
 }: {
@@ -153,6 +182,7 @@ function WorkspaceCard({
   onStep: (step: Step) => void;
   onReconnect: () => void;
   onDisconnect: () => void;
+  onChangeOwner: () => void;
   onDone: (message: string) => void;
   reload: () => void;
 }) {
@@ -171,6 +201,13 @@ function WorkspaceCard({
       buttons.push(
         <Button key="reconnect" size="small" variant={step === "reconnect" ? "contained" : "text"} disabled={busy} onClick={onReconnect}>
           Reconnect
+        </Button>,
+      );
+    }
+    if (ws.canChangeOwner) {
+      buttons.push(
+        <Button key="owner" size="small" variant="text" disabled={busy} onClick={onChangeOwner}>
+          Change owner
         </Button>,
       );
     }
@@ -215,8 +252,10 @@ function WorkspaceCard({
             {summaryOf(ws)}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-            {ws.teamId ? <Mono>{ws.teamId}</Mono> : "not declared in the policy"}
-            {ws.owner ? <> · owned by <Mono>{ws.owner}</Mono>&apos;s directory</> : " · no owning directory: the installation-wide role only"}
+            {!ws.declared ? "no longer declared in the policy" : ws.teamId ? <Mono>{ws.teamId}</Mono> : "team recorded at the first install"}
+            {ws.connectionState !== "not_connected" ? (
+              <> · {ownerSentence(ws.owner, ws.ownerDomain, "only the installation-wide role operates it, and its people are held until an owner is set")}</>
+            ) : null}
             {ws.connection?.appSettingsUrl ? (
               <>
                 {" · "}
@@ -453,21 +492,26 @@ function ChannelBlock({
 function TokenDialog({
   ws,
   purpose,
+  offer,
   onCancel,
   onSubmit,
 }: {
   ws: SlackWorkspaceStatus;
   purpose: "connect" | "reconnect";
+  offer: OwnerOffer;
   onCancel: () => void;
-  onSubmit: (token: string) => void;
+  onSubmit: (token: string, owner: string) => void;
 }) {
   const [token, setToken] = useState("");
+  const [owner, setOwner] = useState(() => initialOwner(offer));
   const required = needsToken(ws, purpose);
-  const valid = token === "" ? !required : looksLikeConfigurationToken(token);
+  // The owner is chosen once, when the workspace is first connected.
+  const choosesOwner = purpose === "connect";
+  const valid = (token === "" ? !required : looksLikeConfigurationToken(token)) && (!choosesOwner || ownerValid(offer, owner));
   const submit = () => {
     const submitted = token.trim();
     setToken("");
-    onSubmit(submitted);
+    onSubmit(submitted, choosesOwner ? owner : "");
   };
   return (
     <Dialog open onClose={onCancel} fullWidth maxWidth="sm">
@@ -507,6 +551,7 @@ function TokenDialog({
             slotProps={{ htmlInput: { spellCheck: false, autoCapitalize: "off", "data-lpignore": "true" } }}
           />
         ) : null}
+        {choosesOwner ? <OwnerField offer={offer} noun="Slack workspace" value={owner} onChange={setOwner} /> : null}
       </DialogContent>
       <DialogActions>
         <Button onClick={onCancel}>Cancel</Button>

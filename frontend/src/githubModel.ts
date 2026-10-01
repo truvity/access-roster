@@ -187,6 +187,14 @@ export type GitHubAppView = {
    *  organisation (its owning directory's operator, or installation-wide),
    *  so the console does not carry the rule a second time. */
   canOperate: boolean;
+  /** The directory workspace id recorded as the owner of the organisation
+   *  when it was connected, empty for none, and the domain people know that
+   *  directory by. Whether the caller may change it is the server's answer
+   *  too: the installation-wide operator, on a connected organisation's
+   *  controller App. */
+  ownerDirectory: string;
+  ownerDomain: string;
+  canChangeOwner: boolean;
   origin: "preset" | "catalogue";
   /** The App's name on GitHub once created; the declared name before. */
   name: string;
@@ -320,6 +328,9 @@ export function appView(app: GitHubApp): GitHubAppView {
     purpose: purposeOf(app.purpose),
     tier: app.tier || undefined,
     canOperate: app.canOperate,
+    ownerDirectory: app.ownerDirectory,
+    ownerDomain: app.ownerDomain,
+    canChangeOwner: app.canChangeOwner,
     origin: app.origin === WireOrigin.CATALOGUE ? "catalogue" : "preset",
     name: app.name,
     slug: app.appSlug,

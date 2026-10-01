@@ -54,13 +54,15 @@ export function summaryOf(app: SlackApp): string {
   }
   switch (app.state) {
     case "created":
-      return `Created in Slack. Install it into ${app.workspace} (${app.teamId}) to get its bot token.`;
+      return `Created in Slack. Install it into ${app.workspace}${app.teamId ? ` (${app.teamId})` : ""} to get its bot token.`;
     case "installed":
       return `Installed in ${app.installedTeamName || app.installedTeamId}.`;
     case "scopes_missing":
       return `Granted too little: ${app.missingScopes.join(", ")} ${app.missingScopes.length === 1 ? "is" : "are"} declared and not granted.`;
     default:
-      return `Not created. Create it for ${app.workspace} (${app.teamId}).`;
+      return app.teamId
+        ? `Not created. Create it for ${app.workspace} (${app.teamId}).`
+        : `Not created. Connect ${app.workspace} on the Slack page first: an App is created in a workspace that is connected.`;
   }
 }
 

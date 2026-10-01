@@ -35,6 +35,8 @@ describe("the Slack App catalogue's steps", () => {
   it("says what the missing scopes are", () => {
     expect(summaryOf(app({ state: "scopes_missing", missingScopes: ["users:read.email"] }))).toContain("users:read.email is declared and not granted");
     expect(summaryOf(app({ state: "created" }))).toContain("T0123ABCD");
+    // An App of a workspace nobody has connected has no team to name yet.
+    expect(summaryOf(app({ state: "declared", teamId: "" }))).toContain("Connect acme on the Slack page first");
   });
 });
 

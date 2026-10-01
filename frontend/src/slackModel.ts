@@ -18,7 +18,7 @@ export function connectionView(ws: Pick<SlackWorkspaceStatus, "connectionState">
         title: "The App is created in Slack and not installed: there is no bot token yet. An owner of the workspace installs it.",
       };
     case "installed":
-      return { kind: "installed", title: "Installed in the workspace the policy names, and Slack granted every scope the roster asks for." };
+      return { kind: "installed", title: "Installed in the Slack team recorded at the first install, and Slack granted every scope the roster asks for." };
     case "scopes_missing":
       return {
         kind: "needs-you",
@@ -33,10 +33,10 @@ export function connectionView(ws: Pick<SlackWorkspaceStatus, "connectionState">
 /** The step a workspace waits for. A viewer, or a caller who may not
  *  operate this workspace, waits for nobody: the server says which through
  *  `canOperate`, never the caller's own role. */
-export function nextStep(ws: Pick<SlackWorkspaceStatus, "connectionState" | "teamId">): Step {
+export function nextStep(ws: Pick<SlackWorkspaceStatus, "connectionState" | "declared">): Step {
   // A workspace the policy no longer declares cannot be connected, only
   // disconnected.
-  if (!ws.teamId && ws.connectionState === "not_connected") return "none";
+  if (!ws.declared && ws.connectionState === "not_connected") return "none";
   switch (ws.connectionState) {
     case "not_connected":
       return "connect";
@@ -125,7 +125,7 @@ export function split(members: SlackMemberStatus[]): { settled: SlackMemberStatu
 export function summaryOf(ws: SlackWorkspaceStatus): string {
   switch (ws.connectionState) {
     case "not_connected":
-      return `Not connected. Connect it to ${ws.teamId ? `${ws.workspace} (${ws.teamId})` : ws.workspace} to let the controller manage its channels.`;
+      return `Not connected. Connect it to ${ws.workspace} to let the controller manage its channels.`;
     case "created":
       return `The App is created. An owner of ${ws.workspace} installs it in Slack to give the controller its bot token.`;
     case "scopes_missing":

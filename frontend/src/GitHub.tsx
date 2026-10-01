@@ -53,6 +53,8 @@ import {
   type GitHubAppView,
   type Row,
 } from "./githubModel";
+import { ChangeOwnerDialog } from "./Owner";
+import { initialOwner, offersChoice, ownerName, ownerSentence, ownerValid, type OwnerOffer } from "./ownerModel";
 import { useAsync } from "./hooks";
 import { go, paths } from "./router";
 import { Facts, Failure, Loading, Mono, Names, Nothing, Page, Ref, Rows, Section, ShortNames, State, type StateKind } from "./ui";
@@ -89,7 +91,14 @@ export function GitHubPage({ section, rest, onDone }: Omit<Props, "operator"> & 
       ) : rest[1] === "teams" && rest[2] ? (
         <TeamPage org={org} team={rest[2]} />
       ) : (
-        <OrganisationPage org={org} apps={apps} operator={org.canOperate} onDone={onDone} reload={reload} />
+        <OrganisationPage
+          org={org}
+          apps={apps}
+          operator={org.canOperate}
+          offer={{ choices: catalogue.ownerChoices, mayBeNone: catalogue.mayConnectWithoutOwner }}
+          onDone={onDone}
+          reload={reload}
+        />
       );
     } else if (tab === "organisations") {
       body = <OrganisationsList status={value} apps={apps} />;
@@ -297,8 +306,16 @@ function OrganisationsList({ status, apps }: { status: GetGitHubStatusResponse; 
   );
 }
 
-function OrganisationPage({ org, apps, operator, onDone, reload }: Props & { org: GitHubOrganisation; apps: GitHubAppView[]; reload: () => void }) {
+function OrganisationPage({
+  org,
+  apps,
+  operator,
+  offer,
+  onDone,
+  reload,
+}: Props & { org: GitHubOrganisation; apps: GitHubAppView[]; offer: OwnerOffer; reload: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [changingOwner, setChangingOwner] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
   const rows = rowsOf(org);
   const acting = org.enabled;
@@ -379,6 +396,13 @@ function OrganisationPage({ org, apps, operator, onDone, reload }: Props & { org
     <Page
       title={org.org}
       mono
+      actions={
+        org.canChangeOwner ? (
+          <Button size="small" onClick={() => setChangingOwner(true)}>
+            Change owner
+          </Button>
+        ) : null
+      }
       lede={
         !org.reported
           ? "The controller has not reported on this organisation yet."
@@ -393,8 +417,29 @@ function OrganisationPage({ org, apps, operator, onDone, reload }: Props & { org
         { label: "Acts on it", value: org.reported ? (acting ? "yes" : "no — dry run") : undefined },
         { label: "Last pass", value: at(org.tick?.at) ? ago(at(org.tick?.at)) : undefined },
         { label: "Seats", value: seats?.known ? `${seats.free} free of ${seats.total}` : undefined },
+        {
+          label: "Owner",
+          value: org.connection ? ownerSentence(org.ownerDirectory, org.ownerDomain, "only the installation-wide role operates it") : undefined,
+        },
       ]}
     >
+      {changingOwner ? (
+        <ChangeOwnerDialog
+          title={`Change the owner of ${org.org}`}
+          current={org.ownerDirectory}
+          offer={offer}
+          noun="organisation"
+          save={async (ownerDirectory) => {
+            await github.changeGitHubOrganisationOwner({ org: org.org, ownerDirectory });
+          }}
+          onCancel={() => setChangingOwner(false)}
+          onDone={() => {
+            setChangingOwner(false);
+            onDone(`The owner of ${org.org} is changed.`);
+            reload();
+          }}
+        />
+      ) : null}
       <Stack sx={{ gap: 2, mb: 4 }}>
         <Failure error={failure} />
         {org.reportError ? <Failure error={`The last report could not be read: ${org.reportError}`} /> : null}
@@ -795,8 +840,13 @@ function AppPage({
   const [failure, setFailure] = useState<string | undefined>();
   const [checked, setChecked] = useState<GitHubAppView | undefined>();
   const [asking, setAsking] = useState(false);
+  const [changingOwner, setChangingOwner] = useState(false);
   const bound = listed.boundOrganisations;
   const [owner, setOwner] = useState(bound[0] ?? "");
+  // Where an organisation's controller App is created, the owning directory
+  // is chosen too, from what the server says the caller may name.
+  const offer: OwnerOffer = { choices: listed.ownerChoices, mayBeNone: listed.mayConnectWithoutOwner };
+  const [ownerDirectory, setOwnerDirectory] = useState(() => initialOwner(offer));
   const shown = checked ?? app;
   const org = status.organisations.find((o) => o.org === shown.org);
 
@@ -817,7 +867,7 @@ function AppPage({
   // the per-kind call always did.
   const begin = () =>
     act(async () => {
-      const started = await github.beginGitHubAppConnect({ id: shown.id, owner });
+      const started = await github.beginGitHubAppConnect({ id: shown.id, owner, ownerDirectory });
       if (started.manifest) postManifest(started.url, started.manifest);
       else window.location.href = started.url;
     });
@@ -860,6 +910,29 @@ function AppPage({
           ))}
         </TextField>
       ) : null}
+      {shown.fix === "create" && shown.purpose === "controller" && canCreate && offersChoice(offer) ? (
+        <TextField
+          select
+          size="small"
+          label="Owning directory"
+          value={ownerDirectory}
+          onChange={(event) => setOwnerDirectory(event.target.value)}
+          disabled={busy}
+          sx={{ minWidth: 200 }}
+        >
+          {offer.mayBeNone ? <MenuItem value="">None</MenuItem> : null}
+          {offer.choices.map((choice) => (
+            <MenuItem key={choice.workspaceId} value={choice.workspaceId}>
+              {ownerName(choice)}
+            </MenuItem>
+          ))}
+        </TextField>
+      ) : null}
+      {shown.canChangeOwner ? (
+        <Button size="small" disabled={busy} onClick={() => setChangingOwner(true)}>
+          Change owner
+        </Button>
+      ) : null}
       {shown.fix === "create" ? (
         <Tooltip
           title={
@@ -873,7 +946,12 @@ function AppPage({
           }
         >
           <span>
-            <Button size="small" variant="contained" disabled={busy || !canCreate || (shown.purpose === "link" && !owner)} onClick={() => void begin()}>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={busy || !canCreate || (shown.purpose === "link" && !owner) || (shown.purpose === "controller" && !ownerValid(offer, ownerDirectory))}
+              onClick={() => void begin()}
+            >
               Create
             </Button>
           </span>
@@ -922,12 +1000,37 @@ function AppPage({
           ) : undefined,
         },
         { label: "Purpose", value: purposeWords(shown) },
+        {
+          label: "Owner",
+          value:
+            shown.purpose !== "link" && shown.stage !== "not-created" && shown.purpose === "controller"
+              ? ownerSentence(shown.ownerDirectory, shown.ownerDomain, "only the installation-wide role operates it")
+              : undefined,
+        },
         { label: "Repositories", value: shown.repositories },
         { label: "On GitHub", value: shown.slug ? appLink(shown.slug, shown.htmlUrl) : undefined },
         { label: "Created", value: shown.slug ? since(shown.connectedAt, shown.connectedBy) : undefined },
         { label: "Checked", value: at(shown.checkedAt) ? ago(at(shown.checkedAt)) : undefined },
       ]}
     >
+      {changingOwner ? (
+        <ChangeOwnerDialog
+          title={`Change the owner of ${shown.org}`}
+          current={shown.ownerDirectory}
+          offer={offer}
+          noun="organisation"
+          save={async (next) => {
+            await github.changeGitHubOrganisationOwner({ org: shown.org, ownerDirectory: next });
+          }}
+          onCancel={() => setChangingOwner(false)}
+          onDone={() => {
+            setChangingOwner(false);
+            onDone(`The owner of ${shown.org} is changed.`);
+            setChecked(undefined);
+            reload();
+          }}
+        />
+      ) : null}
       <Stack sx={{ gap: 2, mb: 4 }}>
         <Failure error={failure} />
         {needsYou ? (
