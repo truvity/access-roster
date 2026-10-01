@@ -257,6 +257,9 @@ data:
         - all:platform:engineer
         secret: reports-client
         secretKey: oidc-secret
+    github:
+      acme: {}
+      globex: {}
     groups:
       all:access-roster:operator:
         members:
@@ -265,6 +268,10 @@ data:
         members:
         - engineering@acme.example
         - engineering@globex.example
+    slack:
+      workspaces:
+        acme: {}
+        globex-eu: {}
 
 ---
 # Source: access-issuer/templates/serviceaccount.yaml
@@ -487,7 +494,7 @@ spec:
         app.kubernetes.io/instance: access-issuer
       annotations:
         # A policy change is a rollout: the file is read at start.
-        checksum/policy: 965badeda797e9dffee9caa0f389683d5697ef863a8500eb793c358efdecb3df
+        checksum/policy: 4a7c38384d5824d0198422ed37f2e7e0c25530ca6d66342c31bcf2d90822b7b5
         # A federated cluster is read once at start. A row added without a
         # rollout is a cluster whose workloads go on being refused, with
         # nothing to see but an error naming the wrong cause.
@@ -823,7 +830,7 @@ spec:
         app.kubernetes.io/instance: access-issuer
       annotations:
         # The bindings are read at start, like the service's policy.
-        checksum/policy: 965badeda797e9dffee9caa0f389683d5697ef863a8500eb793c358efdecb3df
+        checksum/policy: 4a7c38384d5824d0198422ed37f2e7e0c25530ca6d66342c31bcf2d90822b7b5
         # The catalogue is read once at start, like the service's own copy
         # (see deployment.yaml): this controller keeps no App keys and mints
         # no installation tokens, so it reads the catalogue for one reason
@@ -979,7 +986,7 @@ spec:
         app.kubernetes.io/instance: access-issuer
       annotations:
         # The bindings are read at start, like the service's policy.
-        checksum/policy: 965badeda797e9dffee9caa0f389683d5697ef863a8500eb793c358efdecb3df
+        checksum/policy: 4a7c38384d5824d0198422ed37f2e7e0c25530ca6d66342c31bcf2d90822b7b5
     spec:
       serviceAccountName: access-issuer-slack-roster
       securityContext:

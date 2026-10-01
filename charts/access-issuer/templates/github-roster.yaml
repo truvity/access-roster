@@ -5,6 +5,20 @@
 {{- if not (include "access-issuer.consoleMount" .) }}
 {{- fail "githubRoster.enabled needs console.mount: the controller reads the console's API, and with no mount there is none" }}
 {{- end }}
+{{- /*
+  The controller refuses to start when ENABLED_ORGS names an organisation the
+  policy does not bind. The policy is inline in values, so say so here, at
+  render time, before the rollout stops the running controller. Skipped when
+  the values carry no policy at all.
+*/ -}}
+{{- if .Values.policy }}
+{{- $bound := dig "github" dict .Values.policy }}
+{{- range .Values.githubRoster.actsIn }}
+{{- if not (hasKey $bound .) }}
+{{- fail (printf "githubRoster.actsIn names %q, which policy.github does not bind: remove it from actsIn, or bind the organisation in the policy" .) }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- $name := printf "%s-github-roster" (include "access-issuer.fullname" .) }}
 ---
 # The controller's own account. It holds two permissions: updating its one

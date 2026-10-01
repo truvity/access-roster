@@ -298,7 +298,9 @@ change, and calls Slack for nothing that changes it and records nothing in the
 audit trail. Enabling one is a reviewed change to `slackRoster.actsIn`; removing
 it again stops the controller acting in it, and undoes nothing. The console's
 own Slack calls (connect, disconnect, revoke, archive on delete) are not part of
-a pass and are not gated by `actsIn`.
+a pass and are not gated by `actsIn`. Remove a workspace from `actsIn` before
+removing it from the policy: the controller refuses to start naming a key the
+policy does not declare, and the chart refuses to render it.
 
 ### What it never does
 

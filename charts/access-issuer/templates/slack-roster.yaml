@@ -5,6 +5,20 @@
 {{- if not (include "access-issuer.consoleMount" .) }}
 {{- fail "slackRoster.enabled needs console.mount: the controller reads the console's API, and with no mount there is none" }}
 {{- end }}
+{{- /*
+  The controller refuses to start when ENABLED_WORKSPACES names a key the
+  policy does not declare. The policy is inline in values, so say so here, at
+  render time, before the rollout stops the running controller. Skipped when
+  the values carry no policy at all.
+*/ -}}
+{{- if .Values.policy }}
+{{- $declared := dig "slack" "workspaces" dict .Values.policy }}
+{{- range .Values.slackRoster.actsIn }}
+{{- if not (hasKey $declared .) }}
+{{- fail (printf "slackRoster.actsIn names %q, which policy.slack.workspaces does not declare: remove it from actsIn, or declare the workspace in the policy" .) }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- $name := printf "%s-slack-roster" (include "access-issuer.fullname" .) }}
 ---
 # The controller's own account. It holds one permission: updating its one
