@@ -56,6 +56,8 @@ yet know which of those you want.
 | see how the console is organised (IDENTITY, ACCESS, SYSTEMS, ADMIN) and what each Systems tab does | [design/access-roster.md](design/access-roster.md#the-console) |
 | understand how the GitHub and Slack controllers share one set of rails, and what neither will ever do | [design/access-roster.md](design/access-roster.md#reconciler-rails), [safety.md](safety.md#the-reconcilers-what-they-refuse-to-do) |
 | read the trail: what each Slack action is recorded as | [architecture.md](architecture.md#the-audit-trail-and-who-writes-it), [CHANGELOG.md](../CHANGELOG.md) (audit catalogue 1.6.0) |
+| see what runs on which platform, and how far each piece has got | [capabilities.md](capabilities.md) |
+| read the specification of the storage, trigger, sealing and identity ports | [design/ports.md](design/ports.md) |
 | see why a decision was made, and what it forecloses | [decisions/](decisions/README.md) |
 | extend it — a new directory backend, a new kind of client | [development/extending.md](development/extending.md) |
 | change the console or run it locally | [CONTRIBUTING.md](../CONTRIBUTING.md) |
