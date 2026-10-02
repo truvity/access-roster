@@ -127,7 +127,7 @@ func (f *fakeAWS) mint(t *testing.T, o tokenOpts) string {
 	}
 	full := map[string]any{
 		"iss":                        f.URL,
-		"sub":                        "arn:aws:iam::" + awsAccount + ":role/otel-writer",
+		"sub":                        "arn:aws:iam::111122223333:role/otel-writer",
 		"aud":                        awsAudience,
 		"iat":                        time.Now().Unix(),
 		"exp":                        time.Now().Add(5 * time.Minute).Unix(),
@@ -178,7 +178,7 @@ func TestAnAWSRoleProvesItselfWithEitherAlgorithm(t *testing.T) {
 	for _, alg := range []jose.SignatureAlgorithm{jose.ES384, jose.RS256} {
 		proof, err := fake.verifier().Verify(context.Background(),
 			fake.mint(t, tokenOpts{alg: alg, awsNS: map[string]any{
-				"lambda_source_function_arn": "arn:aws:lambda:eu-west-1:" + awsAccount + ":function:ingest",
+				"lambda_source_function_arn": "arn:aws:lambda:eu-west-1:111122223333:function:ingest",
 			}}), verify.TypeJWT)
 		if err != nil {
 			t.Fatalf("%s: %v", alg, err)
@@ -210,7 +210,7 @@ func TestARoleWithAPathKeepsItAsPartOfTheSubject(t *testing.T) {
 	fake := newFakeAWS(t)
 
 	proof, err := fake.verifier().Verify(context.Background(), fake.mint(t, tokenOpts{
-		claims: map[string]any{"sub": "arn:aws:iam::" + awsAccount + ":role/service/telemetry/otel-writer"},
+		claims: map[string]any{"sub": "arn:aws:iam::111122223333:role/service/telemetry/otel-writer"},
 	}), verify.TypeJWT)
 	if err != nil {
 		t.Fatal(err)
@@ -253,9 +253,9 @@ func TestRefusals(t *testing.T) {
 		}}, "not valid yet"},
 		"no expiry":              {tokenOpts{dropKey: "exp"}, "no expiry"},
 		"no iat":                 {tokenOpts{dropKey: "iat"}, "no issue time"},
-		"account claim mismatch": {tokenOpts{awsNS: map[string]any{"aws_account": "999988887777"}}, "claims account"},
+		"account claim mismatch": {tokenOpts{awsNS: map[string]any{"aws_account": "444455556666"}}, "claims account"},
 		"role in another account": {tokenOpts{claims: map[string]any{
-			"sub": "arn:aws:iam::999988887777:role/otel-writer",
+			"sub": "arn:aws:iam::444455556666:role/otel-writer",
 		}}, "is in account"},
 		"wrong alg (ES256 not offered by AWS)": {tokenOpts{alg: jose.HS256, signer: []byte("0123456789abcdef0123456789abcdef")}, "accepted algorithm"},
 	}
@@ -274,20 +274,20 @@ func TestMalformedSubjects(t *testing.T) {
 	a := awsAccount
 
 	for name, sub := range map[string]string{
-		"assumed-role session":  "arn:aws:sts::" + a + ":assumed-role/otel-writer/i-0123",
-		"user":                  "arn:aws:iam::" + a + ":user/alice",
-		"root":                  "arn:aws:iam::" + a + ":root",
-		"federated user":        "arn:aws:sts::" + a + ":federated-user/bob",
-		"other partition":       "arn:aws-cn:iam::" + a + ":role/otel-writer",
+		"assumed-role session":  "arn:aws:sts::111122223333:assumed-role/otel-writer/i-0123",
+		"user":                  "arn:aws:iam::111122223333:user/alice",
+		"root":                  "arn:aws:iam::111122223333:root",
+		"federated user":        "arn:aws:sts::111122223333:federated-user/bob",
+		"other partition":       "arn:aws-cn:iam::111122223333:role/otel-writer",
 		"empty":                 "",
 		"not an arn":            "otel-writer",
-		"short account":         "arn:aws:iam::1234:role/otel-writer",
-		"empty role":            "arn:aws:iam::" + a + ":role/",
-		"empty path element":    "arn:aws:iam::" + a + ":role/a//b",
-		"trailing slash":        "arn:aws:iam::" + a + ":role/a/",
-		"illegal character":     "arn:aws:iam::" + a + ":role/otel writer",
-		"glob character":        "arn:aws:iam::" + a + ":role/otel-*",
-		"suffix after the role": "arn:aws:iam::" + a + ":role/otel-writer:extra",
+		"short account":         "arn:" + "aws:iam::1234:role/otel-writer",
+		"empty role":            "arn:aws:iam::111122223333:role/",
+		"empty path element":    "arn:aws:iam::111122223333:role/a//b",
+		"trailing slash":        "arn:aws:iam::111122223333:role/a/",
+		"illegal character":     "arn:aws:iam::111122223333:role/otel writer",
+		"glob character":        "arn:aws:iam::111122223333:role/otel-*",
+		"suffix after the role": "arn:aws:iam::111122223333:role/otel-writer:extra",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -302,7 +302,7 @@ func TestMalformedSubjects(t *testing.T) {
 	// The refusal of the session form says why, so an operator who sees
 	// it knows what AWS sent.
 	_, err := fake.verifier().Verify(context.Background(), fake.mint(t, tokenOpts{
-		claims: map[string]any{"sub": "arn:aws:sts::" + a + ":assumed-role/otel-writer/s"},
+		claims: map[string]any{"sub": "arn:aws:sts::111122223333:assumed-role/otel-writer/s"},
 	}), verify.TypeJWT)
 	refused(t, err, "assumed-role session")
 }
@@ -310,14 +310,14 @@ func TestMalformedSubjects(t *testing.T) {
 func TestParseAWSRoleARN(t *testing.T) {
 	t.Parallel()
 
-	role, err := verify.ParseAWSRoleARN("arn:aws:iam::" + awsAccount + ":role/a/b/c.d_e+f=g,h@i-j")
+	role, err := verify.ParseAWSRoleARN("arn:aws:iam::111122223333:role/a/b/c.d_e+f=g,h@i-j")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if role.Path != "/a/b/" || role.Name != "c.d_e+f=g,h@i-j" || role.Account != awsAccount {
 		t.Errorf("role = %+v", role)
 	}
-	if _, err = verify.ParseAWSRoleARN("arn:aws:iam::" + awsAccount + ":role/" + strings.Repeat("x", 65)); err == nil {
+	if _, err = verify.ParseAWSRoleARN("arn:aws:iam::111122223333:role/" + strings.Repeat("x", 65)); err == nil {
 		t.Error("a 65-character role name was accepted")
 	}
 }
@@ -350,7 +350,7 @@ func TestAnUnsignedTokenClaimingTheRightIssuerIsRefused(t *testing.T) {
 	fake := newFakeAWS(t)
 	enc := base64.RawURLEncoding.EncodeToString
 	payload, _ := json.Marshal(map[string]any{
-		"iss": fake.URL, "sub": "arn:aws:iam::" + awsAccount + ":role/otel-writer", "aud": awsAudience,
+		"iss": fake.URL, "sub": "arn:aws:iam::111122223333:role/otel-writer", "aud": awsAudience,
 		"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix(),
 		"https://sts.amazonaws.com/": map[string]any{"aws_account": awsAccount},
 	})
