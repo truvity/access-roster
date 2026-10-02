@@ -1,3 +1,12 @@
+## Unreleased
+
+- **A group address is no longer read as a user.** The directory answers a
+  user read of a group (or a group alias) with a 400 "Type not supported:
+  userKey", which the hub logged as a `live account read failed` warning on
+  every lookup. A group the snapshot knows is answered from it without a
+  directory read, and that one answer from Google is an absence rather than
+  an error. Authentication failures, rate limits and 5xx still warn.
+
 ## v1.52.0
 
 - **The Lambda extension forwards Lambda platform logs as OTLP logs.** It

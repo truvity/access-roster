@@ -334,3 +334,13 @@ func (m *MemorySnapshots) Delete(_ context.Context, workspace string) error {
 	delete(m.byWS, workspace)
 	return nil
 }
+
+// isGroup reports whether the directory returned this address as a group on
+// the pass that took the snapshot, kept or narrowed away.
+func (s *Snapshot) isGroup(email string) bool {
+	if _, ok := s.Groups[email]; ok {
+		return true
+	}
+	_, ok := slices.BinarySearch(s.Discovered, email)
+	return ok
+}

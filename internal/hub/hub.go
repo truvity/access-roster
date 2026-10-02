@@ -538,7 +538,10 @@ func (h *Hub) point(ctx context.Context, v view, email string, maxAge *time.Dura
 	}
 	if !goLive {
 		if _, present := snap.Accounts[lower]; !present {
-			goLive = true
+			// A group address is not an account and the directory
+			// refuses to read one as a user, so a miss on a known group
+			// is already the answer: not an account.
+			goLive = !snap.isGroup(lower)
 		}
 	}
 
