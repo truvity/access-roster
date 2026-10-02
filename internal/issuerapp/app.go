@@ -58,6 +58,7 @@ type Config struct {
 	recoveryAudience  string
 	clientSecretsDir  string
 	clustersPath      string
+	awsPath           string
 	consoleClientID   string
 	valkey            valkey.Config
 	audience          string
@@ -119,6 +120,7 @@ func Load() (Config, error) {
 		recoveryAudience: envString("RECOVERY_AUDIENCE", ""),
 		clientSecretsDir: envString("CLIENT_SECRETS_DIR", ""),
 		clustersPath:     envString("CLUSTERS_FILE", ""),
+		awsPath:          envString("AWS_FEDERATION_FILE", ""),
 		consoleClientID:  envString("CONSOLE_CLIENT_ID", ""),
 		valkey: valkey.Config{
 			Address:  envString("VALKEY_ADDRESS", ""),
@@ -934,6 +936,24 @@ func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (all, clus
 			"clusters", federation.Names(), "audience", cfg.audience)
 	} else {
 		log.InfoContext(ctx, "no workload token can be verified: no cluster's key set is declared")
+	}
+
+	// AWS accounts, by each account's own published key set. Like a
+	// cluster, an account is a row naming where its keys are; unlike one
+	// there is no default, because any AWS account can mint a valid token
+	// for a role of its own.
+	awsFederation, err := verify.LoadAWSFederation(cfg.awsPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, account := range awsFederation.Verifiers(nil) {
+		verifiers = append(verifiers, account)
+	}
+	if len(awsFederation.Accounts) > 0 {
+		log.InfoContext(ctx, "AWS role tokens are verified against each account's own key set",
+			"accounts", awsFederation.Names(), "audience", awsFederation.Audience)
+	} else {
+		log.InfoContext(ctx, "no AWS role token can be verified: no account is declared")
 	}
 
 	// GitHub, only when this installation has said whose repositories it

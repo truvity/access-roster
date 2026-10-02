@@ -127,6 +127,38 @@ metadata:
     app.kubernetes.io/component: slack-roster
 
 ---
+# Source: access-issuer/templates/aws-configmap.yaml
+# The AWS accounts whose IAM roles may exchange their outbound identity
+# federation token for one of this issuer's, each verified against the key
+# set that account's issuer publishes.
+#
+# Nothing here is a secret: an account, a name and a URL per row.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-aws
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  aws.yaml: |
+    audience: "https://access.example"
+    maxAge: "3m"
+    accounts:
+      - account: "111122223333"
+        name: "apps"
+        issuer: "https://example-id.tokens.sts.global.api.aws"
+        orgId: "o-example1234"
+        algs:
+          - "ES384"
+      - account: "444455556666"
+        name: "data"
+        issuer: "https://other-id.tokens.sts.global.api.aws"
+        jwksUri: "https://keys.example/jwks.json"
+
+---
 # Source: access-issuer/templates/clusters-configmap.yaml
 # The clusters whose workloads may exchange a ServiceAccount token for one
 # of this issuer's, each verified against the key set that cluster
@@ -501,6 +533,8 @@ spec:
         # rollout is a cluster whose workloads go on being refused, with
         # nothing to see but an error naming the wrong cause.
         checksum/clusters: 8cae85f24bdedc9b3e5da732b7a1ff510b8a4df3098b3ed32f44d73b016bb903
+        # An AWS account is read once at start, for the same reason.
+        checksum/aws: 51f74dd70948f495acefb8198b9137572df7bc46b12de21ea911bee0ac59c81e
         # A declared workspace is read once at start, so a workspace added
         # to the values without a rollout is one an operator can see in
         # git and nowhere in the running service.
@@ -634,6 +668,8 @@ spec:
               value: "access-exchange"
             - name: CLUSTERS_FILE
               value: /var/run/access-issuer/clusters.yaml
+            - name: AWS_FEDERATION_FILE
+              value: /var/run/access-issuer/aws.yaml
             # Recovery is the one thing left that asks the API server, and
             # deliberately so: on the day everything else is broken it
             # should depend on nothing but the cluster.
@@ -691,6 +727,10 @@ spec:
             - name: clusters
               mountPath: /var/run/access-issuer/clusters.yaml
               subPath: clusters.yaml
+              readOnly: true
+            - name: aws
+              mountPath: /var/run/access-issuer/aws.yaml
+              subPath: aws.yaml
               readOnly: true
             - name: tmp
               mountPath: /tmp
@@ -763,6 +803,9 @@ spec:
         - name: clusters
           configMap:
             name: access-issuer-clusters
+        - name: aws
+          configMap:
+            name: access-issuer-aws
         - name: github-apps-catalogue
           configMap:
             name: access-issuer-github-apps-catalogue

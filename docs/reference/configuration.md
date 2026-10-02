@@ -82,6 +82,9 @@ service writes *itself*, where it is the producer and gets to choose.
 | `console.origin` | `""` | the one **other** origin allowed to call `SessionService` from a browser. Obsolete on one origin, which is the shipped shape; it remains for a console served from somewhere else |
 | `exchange.audience` | the release name | the audience a workload's ServiceAccount token must be minted for. Without one, every mounted token in every federated cluster would be a proof |
 | `exchange.clusters[]` | `[]` | the clusters whose workloads may exchange: `{name, issuer, jwksUri}` per cluster, verified against the key set that cluster publishes. **No secret in any row**, and this service holds access to no cluster — including its own, which is a row like any other |
+| `exchange.aws.accounts[]` | `[]` | the AWS accounts whose IAM roles may exchange their outbound-identity-federation token: `{account, name, issuer, jwksUri, orgId, algs}` per account, verified against the key set that account's issuer publishes. **No secret in any row. Empty verifies no AWS token at all**: any AWS account can mint a valid token for a role of its own, so the row is the trust boundary. See [connect/aws-workloads.md](../connect/aws-workloads.md) |
+| `exchange.aws.audience` | the issuer URL | the audience the role must request from `sts:GetWebIdentityToken`; a token for any other is refused |
+| `exchange.aws.maxAge` | `5m` | refuse a token whose `iat` is older, whatever its `exp` allows (AWS permits an hour). At most `1h` |
 | `github.owners[]` | `[]` | the GitHub organisations whose workflows may exchange. **Empty verifies no CI token at all**, deliberately: anybody may run a workflow in their own repository and get a valid GitHub token, so a list invented by the chart would admit every repository there is |
 | `cluster` | `""` | what this cluster is called, which becomes part of a ServiceAccount's subject. Empty keeps the older unqualified form |
 | `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch. Caps: the policy may ask for shorter |
@@ -261,6 +264,7 @@ so the hash carries the uniqueness the readable part may have lost.
 | the signing key | a PEM private key, mounted as a file | **not the issuer** — cert-manager issues one, or external-secrets delivers one. The issuer reads it from the file, never through the API; its key id is the key's own RFC 7638 thumbprint, so nothing has to carry one beside it |
 | `ConfigMap <release>-policy` | the declared layer of the policy, plus the console's own settings and the consumer allow-list | the chart |
 | `ConfigMap <release>-overlay` | the declared workspaces | the chart |
+| `ConfigMap <release>-aws` | the AWS accounts whose roles may exchange, each an account id, a name and the issuer URL AWS gave it. **No secret in any row** | the chart, only when `exchange.aws.accounts` is non-empty |
 | `ConfigMap <release>-clusters` | the clusters whose workloads may exchange, each a name and the URL of the key set it publishes. **No secret in any row** | the chart |
 | `ConfigMap <release>-github-apps-catalogue` | the declared GitHub App catalogue, `catalogue.yaml`. **No secret in it** | the chart, when `githubApps.catalogue` is not empty |
 | `PushSecret <release>-github-app-<id>` | the instruction to copy one catalogue App's `app_id`, `installation_id` and `private_key` to the store and path its entry names — that App's three property keys and nothing else. **What lands there is the App's key**, a second durable copy, rotated as one | the chart, for each `githubApps.catalogue` entry carrying `push`; External Secrets does the copying |
@@ -365,6 +369,7 @@ from the values above.
 | `OAUTH_CLIENT_SECRET_NAME`, `OAUTH_CLIENT_ID_KEY`, `OAUTH_CLIENT_SECRET_KEY` | the same client, through the API, for the admin-consent flow. One credential read two ways, from one value, so it cannot be half rotated |
 | `OVERLAY_FILE` | set when `directory.workspaces` is non-empty |
 | `CLUSTERS_FILE` | set when `exchange.clusters` is non-empty |
+| `AWS_FEDERATION_FILE` | set when `exchange.aws.accounts` is non-empty: a mounted YAML file `{audience, maxAge, accounts: [{account, name, issuer, jwksUri?, orgId?, algs?}]}`. A malformed file stops the service at start: a duplicate account, issuer or name, an account that is not twelve digits, an issuer that is not `https`, an algorithm other than `ES384` or `RS256`, an unknown key, or accounts with no `audience` |
 | `CONSOLE_CLIENT_ID` | `console.client` |
 | `CONSOLE_ORIGIN` | `console.origin`, for a console on another host |
 | `PUBLIC_URL` | `https://<route.host><console.mount>` — where a browser reaches the console |

@@ -254,6 +254,66 @@
               }
             }
           }
+        },
+        "aws": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "AWS accounts whose IAM roles may exchange their outbound-identity-federation token. Empty verifies none.",
+          "properties": {
+            "audience": {
+              "type": "string",
+              "description": "The audience the role must request from STS. Empty means the issuer's own URL."
+            },
+            "maxAge": {
+              "type": "string",
+              "description": "Refuse a token whose iat is older, whatever its exp allows. Default 5m, at most 1h."
+            },
+            "accounts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "account",
+                  "name",
+                  "issuer"
+                ],
+                "properties": {
+                  "account": {
+                    "type": "string",
+                    "pattern": "^[0-9]{12}$",
+                    "description": "The 12-digit AWS account id."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "The estate's word for the account, for logs."
+                  },
+                  "issuer": {
+                    "type": "string",
+                    "description": "The account's token issuer, from get-outbound-web-identity-federation-info."
+                  },
+                  "jwksUri": {
+                    "type": "string",
+                    "description": "Where its public keys are. Empty means <issuer>/.well-known/jwks.json."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Require this AWS Organizations id in the token."
+                  },
+                  "algs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "ES384",
+                        "RS256"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
