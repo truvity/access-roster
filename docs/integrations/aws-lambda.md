@@ -186,14 +186,23 @@ a VPC function without a NAT needs an STS interface endpoint.
   "Action": "sts:GetWebIdentityToken",
   "Resource": "*",
   "Condition": {
-    "StringEquals": {
-      "sts:IdentityTokenAudience": "https://access.example",
-      "sts:SigningAlgorithm": "ES384"
+    "ForAllValues:StringEquals": {
+      "sts:IdentityTokenAudience": "https://access.example"
     },
+    "StringEquals": { "sts:SigningAlgorithm": "ES384" },
     "NumericLessThanEquals": { "sts:DurationSeconds": "300" }
   }
 }
 ```
+
+`sts:IdentityTokenAudience` is a multi-valued key (the API takes a list of
+audiences), so it needs the `ForAllValues:StringEquals` operator. A plain
+`StringEquals` evaluates to an implicit deny when the request carries the
+audience as a list, and STS answers `AccessDenied ... no identity-based policy
+allows the sts:GetWebIdentityToken action`. `ForAllValues` also passes on an
+empty set, which is safe here only because `Audience` is a required parameter
+of [GetWebIdentityToken](https://docs.aws.amazon.com/STS/latest/APIReference/API_GetWebIdentityToken.html).
+`sts:SigningAlgorithm` is single-valued and keeps `StringEquals`.
 
 3. **The roster** must admit the role: the issuer-side AWS verifier recognises
    the account, and a group matcher selects the role, for example
