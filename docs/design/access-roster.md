@@ -1016,6 +1016,16 @@ looking at a conformance screenshot, not a test.
 
 ## The store
 
+> **Current state, until the migration.** What follows describes the store
+> as it runs today. The target — a State port with NATS JetStream key-value
+> on Kubernetes and DynamoDB on AWS, secrets sealed into it, Valkey retired
+> — is decided in [ADR 0027](../decisions/0027-the-state-port-nats-jetstream-and-dynamodb.md)
+> and [ADR 0028](../decisions/0028-nothing-writes-configmaps-or-secrets.md)
+> and specified in [ports.md](ports.md). Those records supersede the
+> statements below that the store is plain Kubernetes objects with no cloud
+> parameter store and no cache, once
+> [the migration](../decisions/0031-a-generic-migration-tool.md) has run.
+
 Plain Kubernetes objects in the process's own namespace, read and written
 by it. Nothing else is in the loop: no external-secrets operator, no cloud
 parameter store, no cache. How a *declared* Secret gets into the namespace

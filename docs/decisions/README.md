@@ -41,6 +41,13 @@ timeline and nothing is silently rewritten under an old date.
 | [0023](0023-guest-side-probe-only-for-managed-slack-connect-channels.md) | The guest-side probe asks only about managed Slack Connect channels |
 | [0024](0024-reconciler-rails-are-shared-pieces-not-a-framework.md) | Reconciler rails are shared pieces, not a framework |
 | [0025](0025-slack-apps-catalogue-keeps-credentials-mints-none.md) | The Slack Apps catalogue keeps credentials but mints none |
+| [0026](0026-two-platforms-permanently-kubernetes-and-aws-lambda.md) | Two platforms, permanently: Kubernetes and AWS Lambda |
+| [0027](0027-the-state-port-nats-jetstream-and-dynamodb.md) | The State port: NATS JetStream on Kubernetes, DynamoDB on AWS |
+| [0028](0028-nothing-writes-configmaps-or-secrets.md) | Nothing writes ConfigMaps or Secrets; written secrets are sealed |
+| [0029](0029-ticks-per-target-under-a-lease.md) | Ticks per target, under a lease |
+| [0030](0030-workload-identity-on-both-platforms.md) | Workload identity: both mechanisms on both platforms |
+| [0031](0031-a-generic-migration-tool.md) | A generic migration tool, and the order of the move |
+| [0032](0032-one-configuration-file-one-binary-one-chart.md) | One configuration file, one binary, one chart |
 
 ## Template
 
