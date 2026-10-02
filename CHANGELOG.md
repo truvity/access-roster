@@ -1,3 +1,12 @@
+## v1.52.2
+
+- **The documented IAM policy for `sts:GetWebIdentityToken` now works.** The
+  examples in the AWS workloads and Lambda guides pinned the audience with
+  `StringEquals`, but `sts:IdentityTokenAudience` is multi-valued, so STS
+  answered `AccessDenied` for a correctly configured role. The audience
+  condition is now `ForAllValues:StringEquals`; `sts:SigningAlgorithm` keeps
+  `StringEquals`.
+
 ## v1.52.1
 
 - **A group address is no longer read as a user.** The directory answers a
