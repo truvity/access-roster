@@ -1,4 +1,4 @@
-## Unreleased
+## v1.52.0
 
 - **The Lambda extension forwards Lambda platform logs as OTLP logs.** It
   subscribes to the Lambda Telemetry API and sends `platform.*` events
