@@ -1,4 +1,4 @@
-## Unreleased
+## v1.52.1
 
 - **A group address is no longer read as a user.** The directory answers a
   user read of a group (or a group alias) with a 400 "Type not supported:
