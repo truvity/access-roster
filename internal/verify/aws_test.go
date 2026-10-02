@@ -271,7 +271,6 @@ func TestRefusals(t *testing.T) {
 func TestMalformedSubjects(t *testing.T) {
 	t.Parallel()
 	fake := newFakeAWS(t)
-	a := awsAccount
 
 	for name, sub := range map[string]string{
 		"assumed-role session":  "arn:aws:sts::111122223333:assumed-role/otel-writer/i-0123",
