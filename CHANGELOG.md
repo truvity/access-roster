@@ -1,52 +1,5 @@
-## Unreleased
+## v1.51.0
 
-- **A Lambda extension layer sends a function's OpenTelemetry data with the
-  function role's identity.** The release now carries
-  `access-roster-lambda-layer_<version>_linux_{amd64,arm64}.zip`, whose only
-  file is `extensions/access-roster-otlp` (about 10 MB, 4 MB zipped). Set
-  `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` in the function: the
-  extension gets an identity token from regional STS
-  (`sts:GetWebIdentityToken`), trades it at the issuer for a short-lived access
-  token, refreshing on demand because a frozen Lambda runs no timers, and
-  forwards each export with it as the bearer. It is fail-open: with no token the
-  exporter gets a retryable 503 and the extension logs one line per failure
-  window; the function is never blocked. `ACCESS_ROSTER_TOKEN_FILE` also writes
-  the token for a function's own collector. `docs/integrations/aws-lambda.md`
-  has the settings and the IAM policy. It needs an issuer that accepts AWS
-  identity tokens. The release publishes the zip only; a layer version is yours
-  to publish.
-
-- **A write that meets a lost Valkey node is retried once, after the topology
-  reloads.** The failover fix below still left one failure: the command that
-  discovered the dead primary was refused (`dial tcp <old primary>: i/o
-  timeout`) although a replica was already serving its key. Every call the
-  shared login state makes (`Get`, `Set`, `Delete`, `Add`, `Remove`, `Members`)
-  that fails with no answer from the server (a dial error, a timeout or reset
-  connection, `EOF`) or with `CLUSTERDOWN`/`TRYAGAIN` now waits (at most two
-  dial timeouts) until the client sees a different primary for the key, then runs
-  once more and logs one warning with the key's prefix. All of them are safe to
-  repeat; `SetIfAbsent` is the exception, since a lost reply would turn "you
-  took it" into "taken", so it is retried only when it certainly never ran (a
-  dial error or `CLUSTERDOWN`). A server's own error, or the caller's context
-  ending, is never retried. New `TestNoWriteFailsOnceTheReplicaHasTakenOver`
-  (same opt-in docker cluster) streams writes through a primary kill and fails
-  on any write still in flight after the takeover; it failed on every run
-  without the retry.
-- **In cluster mode the Valkey client follows a failover by itself.** When a
-  shard's primary died, its replica was promoted within seconds, but the client
-  kept sending that shard's commands to the dead address until its once-a-minute
-  topology refresh: measured against a three-shard cluster, a third of all
-  writes were still failing 30 seconds after the kill. A command that fails
-  without an answer from the server (a dial timeout, a reset connection) or with
-  `CLUSTERDOWN` now asks for a topology reload (asynchronous, coalesced), the
-  periodic reload runs every 5 seconds instead of 60, and a dial gives up after
-  1 second and 2 attempts instead of 5 seconds and 5 attempts, so a reload that
-  happens to ask the dead node first does not wait half a minute on it. The same
-  cluster now takes every write again 3–6 seconds after a primary is killed,
-  with nothing written before the kill lost. The dial limits apply in
-  non-cluster mode too. New `TestTheClientSurvivesTheLossOfAPrimary`
-  (docker, opt-in via `VALKEY_TEST_CLUSTER_ADDR` and
-  `VALKEY_TEST_CLUSTER_CONTAINERS`) kills a primary and asserts both.
 - **AWS workloads exchange their IAM role's token.** A Lambda function, ECS
   task or EC2 instance can call `sts:GetWebIdentityToken` (AWS outbound
   identity federation) and exchange the JWT it gets for a token of this
@@ -67,6 +20,70 @@
   since an older issuer refuses the key). Audited as `roster.token.exchanged`
   with proof `workload`; the catalogue is unchanged. See
   [connect/aws-workloads.md](docs/connect/aws-workloads.md).
+
+- **A Lambda extension layer sends a function's OpenTelemetry data with the
+  function role's identity.** The release now carries
+  `access-roster-lambda-layer_<version>_linux_{amd64,arm64}.zip`, whose only
+  file is `extensions/access-roster-otlp` (about 10 MB, 4 MB zipped). Set
+  `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` in the function: the
+  extension gets an identity token from regional STS
+  (`sts:GetWebIdentityToken`), trades it at the issuer for a short-lived access
+  token, refreshing on demand because a frozen Lambda runs no timers, and
+  forwards each export with it as the bearer. It is fail-open: with no token the
+  exporter gets a retryable 503 and the extension logs one line per failure
+  window; the function is never blocked. `ACCESS_ROSTER_TOKEN_FILE` also writes
+  the token for a function's own collector. `docs/integrations/aws-lambda.md`
+  has the settings and the IAM policy. It needs an issuer that accepts AWS
+  identity tokens. The release publishes the zip only; a layer version is yours
+  to publish.
+
+## v1.50.3
+
+- **When a rollout replaces every Valkey pod at once, the client finds the new
+  ones through the Service.** The topology reload asked the pod addresses it
+  already held first, each costing the whole dial budget, and fell back to the
+  configured Service name only after the last had failed, so both issuer
+  replicas dialled the old pods for minutes while sign-in and token calls
+  failed. The reload now reads `CLUSTER SLOTS` through the configured address on
+  a fresh connection every time; the Service follows the pods, so one dial finds
+  a live node. A test with six replaced pods goes from about 29s to about 2s.
+
+## v1.50.2
+
+- **A write that meets a lost Valkey node is retried once, after the topology
+  reloads.** The failover fix below still left one failure: the command that
+  discovered the dead primary was refused (`dial tcp <old primary>: i/o
+  timeout`) although a replica was already serving its key. Every call the
+  shared login state makes (`Get`, `Set`, `Delete`, `Add`, `Remove`, `Members`)
+  that fails with no answer from the server (a dial error, a timeout or reset
+  connection, `EOF`) or with `CLUSTERDOWN`/`TRYAGAIN` now waits (at most two
+  dial timeouts) until the client sees a different primary for the key, then runs
+  once more and logs one warning with the key's prefix. All of them are safe to
+  repeat; `SetIfAbsent` is the exception, since a lost reply would turn "you
+  took it" into "taken", so it is retried only when it certainly never ran (a
+  dial error or `CLUSTERDOWN`). A server's own error, or the caller's context
+  ending, is never retried. New `TestNoWriteFailsOnceTheReplicaHasTakenOver`
+  (same opt-in docker cluster) streams writes through a primary kill and fails
+  on any write still in flight after the takeover; it failed on every run
+  without the retry.
+
+## v1.50.1
+
+- **In cluster mode the Valkey client follows a failover by itself.** When a
+  shard's primary died, its replica was promoted within seconds, but the client
+  kept sending that shard's commands to the dead address until its once-a-minute
+  topology refresh: measured against a three-shard cluster, a third of all
+  writes were still failing 30 seconds after the kill. A command that fails
+  without an answer from the server (a dial timeout, a reset connection) or with
+  `CLUSTERDOWN` now asks for a topology reload (asynchronous, coalesced), the
+  periodic reload runs every 5 seconds instead of 60, and a dial gives up after
+  1 second and 2 attempts instead of 5 seconds and 5 attempts, so a reload that
+  happens to ask the dead node first does not wait half a minute on it. The same
+  cluster now takes every write again 3–6 seconds after a primary is killed,
+  with nothing written before the kill lost. The dial limits apply in
+  non-cluster mode too. New `TestTheClientSurvivesTheLossOfAPrimary`
+  (docker, opt-in via `VALKEY_TEST_CLUSTER_ADDR` and
+  `VALKEY_TEST_CLUSTER_CONTAINERS`) kills a primary and asserts both.
 
 ## v1.50.0
 
