@@ -45,7 +45,7 @@ the issuer is recognised is a final refusal:
 
 ### The identity is the role
 
-`sub` is parsed strictly as `arn:aws:iam::<account>:role/<path><name>`. The
+`sub` is parsed strictly as `arn:aws:iam::111122223333:role/<path><name>`. The
 minted token's subject is `aws:<account>:role/<path><name>`
 (`aws:111122223333:role/telemetry/otel-writer`). It does not change with the
 session, the function or the instance, so an audit trail does not fragment.
@@ -55,7 +55,7 @@ never the subject.
 
 AWS documents `sub` as "the ARN of the IAM principal that requested the
 token", and every example it gives is the role ARN — never the
-`arn:aws:sts::<account>:assumed-role/<name>/<session>` form that
+`arn:aws:sts::111122223333:assumed-role/<name>/<session>` form that
 `sts:GetCallerIdentity` returns for the same caller. Nothing documents that
 form as a subject, so it is **refused**. A session name is chosen by whoever
 assumes the role, so a rule that depended on it would be a rule its caller

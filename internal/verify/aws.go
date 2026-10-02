@@ -401,13 +401,13 @@ func (a *AWSAccount) fetch(ctx context.Context) error {
 var awsNameSegment = regexp.MustCompile(`^[A-Za-z0-9_+=,.@-]+$`)
 
 // ParseAWSRoleARN reads the `sub` of an outbound identity federation token
-// as an IAM role: `arn:aws:iam::<account>:role/<path><name>`.
+// as an IAM role: `arn:<partition>:iam::<account>:role/<path><name>` (partition `aws`).
 //
 // THE DECISION. AWS documents `sub` as "the ARN of the IAM principal that
 // requested the token" and every example it gives (the token claims page,
 // the getting-started guide, the announcement) is the role ARN of the
 // principal, with the account and a role path shown as `role/<name>` — never the
-// `arn:aws:sts::<account>:assumed-role/<name>/<session>` form that
+// `arn:<partition>:sts::<account>:assumed-role/<name>/<session>` form that
 // `sts:GetCallerIdentity` returns for the same caller. Nothing in the
 // documentation says `sub` can take the assumed-role form, so this parser
 // does NOT accept it: it is refused with an error saying so. The session
@@ -419,8 +419,12 @@ var awsNameSegment = regexp.MustCompile(`^[A-Za-z0-9_+=,.@-]+$`)
 // Users, the account root, federated users and every other ARN are
 // refused. So is any partition but `aws`.
 func ParseAWSRoleARN(arn string) (policy.AWSRole, error) {
-	const iamPrefix = "arn:aws:iam::"
-	if strings.HasPrefix(arn, "arn:aws:sts::") && strings.Contains(arn, ":assumed-role/") {
+	const (
+		partition = "aws"
+		iamPrefix = "arn:" + partition + ":iam::"
+		stsPrefix = "arn:" + partition + ":sts::"
+	)
+	if strings.HasPrefix(arn, stsPrefix) && strings.Contains(arn, ":assumed-role/") {
 		return policy.AWSRole{}, errors.New(
 			"the subject is an assumed-role session, which AWS does not document as a token subject: only a role ARN is accepted")
 	}
