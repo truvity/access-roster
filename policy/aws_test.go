@@ -22,7 +22,7 @@ groups:
   glob:     { matchers: [{ aws: { account: "111122223333", role: "billing-*" } }] }
   pathed:   { matchers: [{ aws: { account: "111122223333", path: /telemetry/, role: "*" } }] }
   onelevel: { matchers: [{ aws: { account: "111122223333", path: "/svc/*/" } }] }
-  anyrole:  { matchers: [{ aws: { account: "444455556666" } }] }
+  anyrole:  { matchers: [{ aws: { account: "111122223333", path: /any/ } }] }
   function: { matchers: [{ aws: { account: "111122223333", function: "arn:aws:lambda:eu-west-1:111122223333:function:ingest-*" } }] }
   org:      { matchers: [{ aws: { account: "111122223333", org_id: o-abc1234567 } }] }
 `)
@@ -40,7 +40,7 @@ groups:
 		"one level":                                 {awsRole("111122223333", "/svc/a/", "x"), []string{"onelevel"}},
 		"no path matches root":                      {awsRole("111122223333", "/", "other"), nil},
 		"another account with the same role":        {awsRole("444455556666", "/", "otel-writer"), nil},
-		"any role in the account":                   {awsRole("444455556666", "/x/y/", "anything"), []string{"anyrole"}},
+		"any role at a path":                        {awsRole("111122223333", "/any/", "anything"), []string{"anyrole"}},
 		"function":                                  {&policy.AWSRole{Account: "111122223333", Path: "/", Name: "z", Function: fn}, []string{"function"}},
 		"no function never matches a function rule": {awsRole("111122223333", "/", "z"), nil},
 		"org":       {&policy.AWSRole{Account: "111122223333", Path: "/", Name: "z", OrgID: "o-abc1234567"}, []string{"org"}},
@@ -120,7 +120,13 @@ func TestAnAWSRoleSubjectIsScopeFirstAndNeverNamesASession(t *testing.T) {
 	}{
 		{policy.AWSRole{Account: "111122223333", Path: "/", Name: "w"}, "aws:111122223333:role/w"},
 		{policy.AWSRole{Account: "111122223333", Name: "w"}, "aws:111122223333:role/w"},
-		{policy.AWSRole{Account: "111122223333", Path: "/a/b/", Name: "w", Function: "arn:aws:lambda:eu-west-1:111122223333:function:f"}, "aws:111122223333:role/a/b/w"},
+		{
+			policy.AWSRole{
+				Account: "111122223333", Path: "/a/b/", Name: "w",
+				Function: "arn:aws:lambda:eu-west-1:111122223333:function:f",
+			},
+			"aws:111122223333:role/a/b/w",
+		},
 	} {
 		if got := c.role.Subject(); got != c.want {
 			t.Errorf("subject = %q, want %q", got, c.want)
