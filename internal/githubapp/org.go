@@ -2,6 +2,7 @@ package githubapp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -67,6 +68,35 @@ const membersQuery = `query($org: String!, $after: String) {
 
 // Members reads every member of the organisation.
 func (o Org) Members(ctx context.Context, token string) ([]Member, error) {
+	type membersPage struct {
+		Data struct {
+			RateLimit *struct {
+				Cost      int       `json:"cost"`
+				Remaining int       `json:"remaining"`
+				ResetAt   time.Time `json:"resetAt"`
+			} `json:"rateLimit"`
+			Organization *struct {
+				MembersWithRole struct {
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+					Edges []struct {
+						Role string `json:"role"`
+						Node struct {
+							ID     int64    `json:"databaseId"`
+							Login  string   `json:"login"`
+							Emails []string `json:"organizationVerifiedDomainEmails"`
+						} `json:"node"`
+					} `json:"edges"`
+				} `json:"membersWithRole"`
+			} `json:"organization"`
+		} `json:"data"`
+		Errors []struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
 	var out []Member
 	after := ""
 	for {
@@ -74,38 +104,27 @@ func (o Org) Members(ctx context.Context, token string) ([]Member, error) {
 		if after != "" {
 			variables["after"] = after
 		}
-		var body struct {
-			Data struct {
-				RateLimit *struct {
-					Cost      int       `json:"cost"`
-					Remaining int       `json:"remaining"`
-					ResetAt   time.Time `json:"resetAt"`
-				} `json:"rateLimit"`
-				Organization *struct {
-					MembersWithRole struct {
-						PageInfo struct {
-							HasNextPage bool   `json:"hasNextPage"`
-							EndCursor   string `json:"endCursor"`
-						} `json:"pageInfo"`
-						Edges []struct {
-							Role string `json:"role"`
-							Node struct {
-								ID     int64    `json:"databaseId"`
-								Login  string   `json:"login"`
-								Emails []string `json:"organizationVerifiedDomainEmails"`
-							} `json:"node"`
-						} `json:"edges"`
-					} `json:"membersWithRole"`
-				} `json:"organization"`
-			} `json:"data"`
-			Errors []struct {
-				Message string `json:"message"`
-			} `json:"errors"`
-		}
-		err := send(ctx, o.HTTP, http.MethodPost, APIBase+"/graphql", token,
-			map[string]any{"query": membersQuery, "variables": variables}, http.StatusOK, &body)
-		if err != nil {
-			return nil, fmt.Errorf("github: read %s's members: %w", o.Login, err)
+		var body membersPage
+		for attempt := 0; ; attempt++ {
+			body = membersPage{}
+			header, err := o.membersPage(ctx, token, variables, &body)
+			if err != nil {
+				return nil, fmt.Errorf("github: read %s's members: %w", o.Login, err)
+			}
+			if !graphqlLimited(body.Errors) || attempt >= Retries {
+				break
+			}
+			// GitHub also answers a rate limit as a 200 with the reason in
+			// the body. Nothing was read, so the page is asked for again.
+			wait := maxWait
+			if limit := body.Data.RateLimit; limit != nil && !limit.ResetAt.IsZero() {
+				wait = untilReset(limit.ResetAt)
+			} else if hinted, ok := headerWait(header); ok {
+				wait = hinted
+			}
+			if err = waitOut(ctx, "graphql", wait); err != nil {
+				return nil, fmt.Errorf("github: read %s's members: %w", o.Login, err)
+			}
 		}
 		// A GraphQL error is a 200 with the reason inside. An answer with
 		// errors is refused whole: a partial membership list read as the
@@ -140,6 +159,34 @@ func (o Org) Members(ctx context.Context, token string) ([]Member, error) {
 		}
 		after = page.PageInfo.EndCursor
 	}
+}
+
+// membersPage asks for one page of members, decoding the answer into out.
+func (o Org) membersPage(ctx context.Context, token string, variables map[string]any, out any) (http.Header, error) {
+	response, err := do(ctx, o.HTTP, http.MethodPost, APIBase+"/graphql", token,
+		map[string]any{"query": membersQuery, "variables": variables})
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close() //nolint:errcheck // a read body's close has nothing to report
+	if response.StatusCode != http.StatusOK {
+		return nil, statusError(response)
+	}
+	return response.Header, json.NewDecoder(response.Body).Decode(out)
+}
+
+// graphqlLimited reports whether a 200's errors are a rate limit: the
+// RATE_LIMITED type, or a secondary limit named in the message.
+func graphqlLimited(errs []struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}) bool {
+	for _, e := range errs {
+		if e.Type == "RATE_LIMITED" || strings.Contains(strings.ToLower(e.Message), "secondary rate limit") {
+			return true
+		}
+	}
+	return false
 }
 
 // Invitations reads the organisation's pending invitations.

@@ -200,3 +200,78 @@ func TestMembersWaitsForTheBudgetBetweenPages(t *testing.T) {
 		t.Errorf("err = %v, waits = %v; 2x cost left is enough", err, *waits)
 	}
 }
+
+// GitHub also answers a rate limit as a 200 with the reason in the body.
+func TestAGraphQLRateLimitInTheBodyIsWaitedOut(t *testing.T) {
+	const limited = `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`
+
+	t.Run("the reset in the answer", func(t *testing.T) {
+		fake := githubfake.Start(t, "globex")
+		waits := slept(t)
+		fake.AddMember("ada", false)
+		fake.Rejections = append(fake.Rejections, reject("/graphql", 200,
+			`{"data":{"rateLimit":{"cost":1,"remaining":0,"resetAt":"1970-01-01T01:00:20Z"}},"errors":[{"type":"RATE_LIMITED","message":"x"}]}`, nil))
+		org := githubapp.Org{HTTP: fake.Client(), Login: "globex"}
+		members, err := org.Members(context.Background(), fake.Token)
+		if err != nil || len(members) != 1 {
+			t.Fatalf("members = %v, %v", members, err)
+		}
+		if !slices.Equal(*waits, []time.Duration{20 * time.Second}) || fake.Hit("POST /graphql") != 2 {
+			t.Errorf("waits = %v, hits = %d", *waits, fake.Hit("POST /graphql"))
+		}
+	})
+	t.Run("the headers, else a minute", func(t *testing.T) {
+		fake := githubfake.Start(t, "globex")
+		waits := slept(t)
+		fake.AddMember("ada", false)
+		fake.Rejections = append(fake.Rejections,
+			reject("/graphql", 200, limited, map[string]string{"Retry-After": "4"}),
+			reject("/graphql", 200, limited, nil))
+		org := githubapp.Org{HTTP: fake.Client(), Login: "globex"}
+		if _, err := org.Members(context.Background(), fake.Token); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(*waits, []time.Duration{4 * time.Second, time.Minute}) {
+			t.Errorf("waits = %v", *waits)
+		}
+	})
+	t.Run("it gives up after the retries", func(t *testing.T) {
+		fake := githubfake.Start(t, "globex")
+		waits := slept(t)
+		for range githubapp.Retries + 1 {
+			fake.Rejections = append(fake.Rejections, reject("/graphql", 200, limited, nil))
+		}
+		org := githubapp.Org{HTTP: fake.Client(), Login: "globex"}
+		if _, err := org.Members(context.Background(), fake.Token); err == nil {
+			t.Fatal("want the refusal")
+		}
+		if len(*waits) != githubapp.Retries || fake.Hit("POST /graphql") != githubapp.Retries+1 {
+			t.Errorf("waits = %v, hits = %d", *waits, fake.Hit("POST /graphql"))
+		}
+	})
+	t.Run("another GraphQL error is not retried", func(t *testing.T) {
+		fake := githubfake.Start(t, "globex")
+		waits := slept(t)
+		fake.GraphQLError = "Could not resolve to an Organization"
+		org := githubapp.Org{HTTP: fake.Client(), Login: "globex"}
+		if _, err := org.Members(context.Background(), fake.Token); err == nil {
+			t.Fatal("want the error")
+		}
+		if len(*waits) != 0 || fake.Hit("POST /graphql") != 1 {
+			t.Errorf("waits = %v, hits = %d", *waits, fake.Hit("POST /graphql"))
+		}
+	})
+	t.Run("the wait ends with the context", func(t *testing.T) {
+		fake := githubfake.Start(t, "globex")
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		sleep := githubapp.Sleep
+		githubapp.Sleep = func(ctx context.Context, _ time.Duration) error { cancel(); return ctx.Err() }
+		t.Cleanup(func() { githubapp.Sleep = sleep })
+		fake.Rejections = append(fake.Rejections, reject("/graphql", 200, limited, nil))
+		org := githubapp.Org{HTTP: fake.Client(), Login: "globex"}
+		if _, err := org.Members(ctx, fake.Token); !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
