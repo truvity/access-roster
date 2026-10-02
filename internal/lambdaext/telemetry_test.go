@@ -39,11 +39,11 @@ const (
 	fxOOMReport   = `{"time":"2022-10-12T00:05:50.000Z","type":"platform.report","record":{"requestId":"c2","status":"error","errorType":"Runtime.OutOfMemory",` +
 		`"metrics":{"durationMs":800.1,"billedDurationMs":801,"memorySizeMB":128,"maxMemoryUsedMB":128}}}`
 	fxInitStart = `{"time":"2022-10-12T00:00:15.000Z","type":"platform.initStart","record":{"initializationType":"on-demand","phase":"init",` +
-		`"runtimeVersion":"python:3.13.v10","runtimeVersionArn":"arn:aws:lambda:eu-west-1::runtime:abc","functionName":"billing","functionVersion":"$LATEST","instanceId":"i-1","instanceMaxMemory":134217728}}`
+		`"runtimeVersion":"python:3.13.v10","runtimeVersionArn":"runtime-arn","functionName":"billing","functionVersion":"$LATEST","instanceId":"i-1","instanceMaxMemory":134217728}}`
 	fxInitRuntimeDone = `{"time":"2022-10-12T00:00:16.000Z","type":"platform.initRuntimeDone","record":{"initializationType":"on-demand","phase":"init","status":"success"}}`
 	fxInitError       = `{"time":"2022-10-12T00:00:16.000Z","type":"platform.initRuntimeDone","record":{"initializationType":"on-demand","phase":"init","status":"error","errorType":"Runtime.ImportModuleError"}}`
 	fxInitReport      = `{"time":"2022-10-12T00:00:16.000Z","type":"platform.initReport","record":{"initializationType":"on-demand","phase":"init","status":"success","metrics":{"durationMs":500.8}}}`
-	fxRestoreStart    = `{"time":"2022-10-12T00:00:15.000Z","type":"platform.restoreStart","record":{"runtimeVersion":"java17","runtimeVersionArn":"arn:aws:lambda:eu-west-1::runtime:abc"}}`
+	fxRestoreStart    = `{"time":"2022-10-12T00:00:15.000Z","type":"platform.restoreStart","record":{"runtimeVersion":"java17","runtimeVersionArn":"runtime-arn"}}`
 	fxRestoreReport   = `{"time":"2022-10-12T00:00:16.000Z","type":"platform.restoreReport","record":{"status":"success","metrics":{"durationMs":120.5}}}`
 	fxLogsDropped     = `{"time":"2022-10-12T00:00:17.000Z","type":"platform.logsDropped","record":{"droppedBytes":12000,"droppedRecords":40,"reason":"Consumer seems to have fallen behind as it has not acknowledged receipt of logs."}}`
 	fxFunction        = `{"time":"2022-10-12T00:03:50.000Z","type":"function","record":"hello from the function\n"}`
