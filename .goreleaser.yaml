@@ -100,6 +100,21 @@ builds:
     ldflags:
       - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
 
+  # The Lambda extension layer: a runtime-agnostic binary that Lambda runs
+  # from /opt/extensions, so the ARCHIVE must hold it at exactly
+  # extensions/access-roster-otlp (the file name is the extension's name).
+  # Linux only, both Lambda architectures. Not an image and not in the
+  # `binaries` archive: it is the zip a layer version is published from.
+  - id: access-roster-lambda
+    main: ./cmd/access-roster-lambda
+    binary: extensions/access-roster-otlp
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
+
 archives:
   # TWO archives, because accessctl is the only thing built for Windows.
   # In one archive that makes the Windows download hold a single binary
@@ -121,6 +136,19 @@ archives:
     ids: [access-issuer, github-roster, slack-roster, resource-proxy, acceptance]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  # The Lambda layer, one zip per architecture (a layer version lists its
+  # compatible architectures, and the binary is arch-specific). The zip root
+  # is the layer root: extensions/access-roster-otlp. amd64 is Lambda's
+  # x86_64.
+  - id: lambda-layer
+    ids: [access-roster-lambda]
+    formats: [zip]
+    wrap_in_directory: false
+    # Nothing but the extension: the zip root IS /opt in the function, and a
+    # README or LICENSE there is clutter in somebody else's layer.
+    files: ["none*"]
+    name_template: "access-roster-lambda-layer_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 kos:
   # base_import_paths appends the cmd directory's basename, so with the
@@ -226,6 +254,10 @@ release:
     this tag is the policy engine, `identity` and `tokens`; `authz` and
     `directory` are not built yet, and `docs/reference/go-module.md` says
     so.
+
+    The Lambda extension layer is `access-roster-lambda-layer_{{ .Version }}_linux_{{ "{amd64,arm64}" }}.zip`
+    (`docs/integrations/aws-lambda.md`); it is a zip to publish as a layer,
+    not a published layer.
 
     `accessctl` is its own archive, because it is the one thing here that
     runs on somebody's own laptop.

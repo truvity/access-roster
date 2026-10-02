@@ -1,5 +1,21 @@
 ## Unreleased
 
+- **A Lambda extension layer sends a function's OpenTelemetry data with the
+  function role's identity.** The release now carries
+  `access-roster-lambda-layer_<version>_linux_{amd64,arm64}.zip`, whose only
+  file is `extensions/access-roster-otlp` (about 10 MB, 4 MB zipped). Set
+  `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318` in the function: the
+  extension gets an identity token from regional STS
+  (`sts:GetWebIdentityToken`), trades it at the issuer for a short-lived access
+  token, refreshing on demand because a frozen Lambda runs no timers, and
+  forwards each export with it as the bearer. It is fail-open: with no token the
+  exporter gets a retryable 503 and the extension logs one line per failure
+  window; the function is never blocked. `ACCESS_ROSTER_TOKEN_FILE` also writes
+  the token for a function's own collector. `docs/integrations/aws-lambda.md`
+  has the settings and the IAM policy. It needs an issuer that accepts AWS
+  identity tokens. The release publishes the zip only; a layer version is yours
+  to publish.
+
 - **A write that meets a lost Valkey node is retried once, after the topology
   reloads.** The failover fix below still left one failure: the command that
   discovered the dead primary was refused (`dial tcp <old primary>: i/o
