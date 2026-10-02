@@ -1,5 +1,21 @@
 ## Unreleased
 
+- **A write that meets a lost Valkey node is retried once, after the topology
+  reloads.** The failover fix below still left one failure: the command that
+  discovered the dead primary was refused (`dial tcp <old primary>: i/o
+  timeout`) although a replica was already serving its key. Every call the
+  shared login state makes (`Get`, `Set`, `Delete`, `Add`, `Remove`, `Members`)
+  that fails with no answer from the server (a dial error, a timeout or reset
+  connection, `EOF`) or with `CLUSTERDOWN`/`TRYAGAIN` now waits (at most two
+  dial timeouts) until the client sees a different primary for the key, then runs
+  once more and logs one warning with the key's prefix. All of them are safe to
+  repeat; `SetIfAbsent` is the exception, since a lost reply would turn "you
+  took it" into "taken", so it is retried only when it certainly never ran (a
+  dial error or `CLUSTERDOWN`). A server's own error, or the caller's context
+  ending, is never retried. New `TestNoWriteFailsOnceTheReplicaHasTakenOver`
+  (same opt-in docker cluster) streams writes through a primary kill and fails
+  on any write still in flight after the takeover; it failed on every run
+  without the retry.
 - **In cluster mode the Valkey client follows a failover by itself.** When a
   shard's primary died, its replica was promoted within seconds, but the client
   kept sending that shard's commands to the dead address until its once-a-minute
