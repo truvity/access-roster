@@ -338,7 +338,7 @@ func (b *Backend) membersOf(ctx context.Context, groupEmail string) ([]string, e
 func (b *Backend) Account(ctx context.Context, email string) (backend.Account, bool, error) {
 	user, err := b.svc.Users.Get(strings.ToLower(email)).Projection("basic").Context(ctx).Do()
 	switch {
-	case isNotFound(err):
+	case isNotFound(err), isNotAUser(err):
 		return backend.Account{Email: strings.ToLower(email)}, false, nil
 	case err != nil:
 		return backend.Account{}, false, fmt.Errorf("google: read %s: %w", email, reason(err))
@@ -413,6 +413,16 @@ func account(user *directory.User) backend.Account {
 		out.GivenName, out.FamilyName = user.Name.GivenName, user.Name.FamilyName
 	}
 	return out
+}
+
+// isNotAUser recognises the 400 users.get answers when the key is an
+// address that exists but is not a user: a group, a group's alias or a
+// resource. It is an answer ("not an account"), not a failure; every other
+// 400, and every 401, 403, 429 and 5xx, stays an error.
+func isNotAUser(err error) bool {
+	var api *googleapi.Error
+	return errors.As(err, &api) && api.Code == http.StatusBadRequest &&
+		strings.Contains(api.Message, "Type not supported: userKey")
 }
 
 func isNotFound(err error) bool {

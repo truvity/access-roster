@@ -341,3 +341,53 @@ func TestGroupMembersAreReadConcurrentlyAndAtomically(t *testing.T) {
 		t.Error("one failing group did not fail the pass")
 	}
 }
+
+// users.get answers 400 "Type not supported: userKey" for an address that
+// is a group (or its alias). That is "not an account", not a failure; every
+// other failure must still come back as an error.
+func TestAGroupKeyIsNotAnAccountButRealFailuresStayErrors(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	cases := []struct {
+		name      string
+		status    int
+		message   string
+		wantError bool
+	}{
+		{"group key", http.StatusBadRequest, "Type not supported: userKey", false},
+		{"absent user", http.StatusNotFound, "Resource Not Found: userKey", false},
+		{"other bad request", http.StatusBadRequest, "Invalid Input: userKey", true},
+		{"unauthorized", http.StatusUnauthorized, "Login Required", true},
+		{"forbidden", http.StatusForbidden, "Not Authorized to access this resource/api", true},
+		{"rate limited", http.StatusTooManyRequests, "Rate Limit Exceeded", true},
+		{"unavailable", http.StatusServiceUnavailable, "Backend Error", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_, _ = fmt.Fprintf(w, `{"error":{"code":%d,"message":%q}}`, tc.status, tc.message)
+			}))
+			defer server.Close()
+			svc, err := directory.NewService(ctx, option.WithEndpoint(server.URL), option.WithoutAuthentication())
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := &Backend{svc: svc}
+
+			account, found, err := b.Account(ctx, "Team@north.example")
+			if tc.wantError {
+				if err == nil {
+					t.Fatalf("a %d %q was swallowed", tc.status, tc.message)
+				}
+				return
+			}
+			if err != nil || found || account.Email != "team@north.example" {
+				t.Errorf("Account = %+v, %v, %v; want an absence without an error", account, found, err)
+			}
+		})
+	}
+}

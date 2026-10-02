@@ -640,3 +640,22 @@ func TestPeopleCarryAndFilterByTheGitHubAccountTheyLinked(t *testing.T) {
 		}
 	}
 }
+
+// A group address is not an account: the directory refuses to read it as a
+// user, so a lookup of one is answered from the snapshot and never goes to
+// the backend, however often it is asked.
+func TestAGroupAddressIsNotReadLiveAsAUser(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	before := h.one.Calls(fake.OpAccount)
+
+	for range 3 {
+		got := h.resolve("platform@one.example", nil)
+		if got.Found || !got.InDomain || !got.Authoritative {
+			t.Errorf("result = %+v, want an authoritative absence in the domain", got)
+		}
+	}
+	if h.one.Calls(fake.OpAccount) != before {
+		t.Error("a group address was read as a user")
+	}
+}
