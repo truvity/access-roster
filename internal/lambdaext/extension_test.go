@@ -25,6 +25,8 @@ type fakeRuntime struct {
 	registered []string // the Lambda-Extension-Name of each registration
 	regBody    string
 	nexts      int
+	subscribe  []string // bodies of PUT /2022-07-01/telemetry
+	subStatus  int      // 0 is 200
 }
 
 func newFakeRuntime(t *testing.T) *fakeRuntime {
@@ -39,6 +41,22 @@ func newFakeRuntime(t *testing.T) *fakeRuntime {
 		f.mu.Unlock()
 		w.Header().Set("Lambda-Extension-Identifier", "ext-1")
 		_, _ = w.Write([]byte(`{"functionName":"f"}`))
+	})
+	mux.HandleFunc("PUT /2022-07-01/telemetry", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if r.Header.Get("Lambda-Extension-Identifier") != "ext-1" {
+			http.Error(w, "unregistered", http.StatusForbidden)
+			return
+		}
+		f.mu.Lock()
+		f.subscribe = append(f.subscribe, string(body))
+		status := f.subStatus
+		f.mu.Unlock()
+		if status != 0 {
+			http.Error(w, `{"errorMessage":"refused"}`, status)
+			return
+		}
+		_, _ = w.Write([]byte("OK"))
 	})
 	mux.HandleFunc("GET /2020-01-01/extension/event/next", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Lambda-Extension-Identifier") != "ext-1" {
@@ -68,6 +86,13 @@ func (f *fakeRuntime) state() (names []string, body string, nexts int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.registered...), f.regBody, f.nexts
+}
+
+// subscription returns the Telemetry API subscription bodies seen so far.
+func (f *fakeRuntime) subscriptions() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.subscribe...)
 }
 
 func eventually(t *testing.T, what string, cond func() bool) {
@@ -176,6 +201,7 @@ func baseEnv(rt *fakeRuntime, sts *fakeSTS, issuer *fakeIssuer, up *fakeUpstream
 		"AWS_SESSION_TOKEN=session", "AWS_ENDPOINT_URL_STS=" + sts.URL, "AWS_EC2_METADATA_DISABLED=true",
 		"ACCESS_ROSTER_ISSUER=" + issuer.URL, "ACCESS_ROSTER_AUDIENCE=" + issuer.URL,
 		"ACCESS_ROSTER_OTLP_ENDPOINT=" + up.URL, "ACCESS_ROSTER_LISTEN=" + addr,
+		"ACCESS_ROSTER_PLATFORM_LOGS=false", // the Telemetry API tests opt in
 	}
 }
 

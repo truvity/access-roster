@@ -1,3 +1,23 @@
+## Unreleased
+
+- **The Lambda extension forwards Lambda platform logs as OTLP logs.** It
+  subscribes to the Lambda Telemetry API and sends `platform.*` events
+  (timeouts, out-of-memory kills, init and restore errors, and the `REPORT`
+  metrics: duration, billed duration, max memory, init duration) to
+  `<endpoint>/v1/logs` with the same bearer token as the proxy, so they reach
+  the log store without CloudWatch. Failures (`status` other than `success`,
+  any `errorType`) are ERROR records; X-Ray trace context is carried when the
+  event has it; the resource is `service.name` (`OTEL_SERVICE_NAME`, else the
+  function name), `faas.*` and `cloud.*`. On by default
+  (`ACCESS_ROSTER_PLATFORM_LOGS=false` turns it off). `function` and
+  `extension` logs are opt-in (`ACCESS_ROSTER_FUNCTION_LOGS`,
+  `ACCESS_ROSTER_EXTENSION_LOGS`) because a function that exports its own logs
+  through OpenTelemetry would send each line twice. The queue is bounded
+  (`ACCESS_ROSTER_TELEMETRY_BUFFER_*`; oldest dropped and counted), exports are
+  fail-open, and what is queued is exported before the environment can freeze
+  and on `SHUTDOWN`. The binary grows by about 65 KB. See
+  [integrations/aws-lambda.md](docs/integrations/aws-lambda.md#platform-logs).
+
 ## v1.51.0
 
 - **AWS workloads exchange their IAM role's token.** A Lambda function, ECS
