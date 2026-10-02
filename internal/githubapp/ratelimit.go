@@ -141,6 +141,18 @@ type readCloser struct {
 	io.Closer
 }
 
+// headerWait is the wait a response's own headers ask for: Retry-After,
+// else the time left to X-RateLimit-Reset.
+func headerWait(header http.Header) (time.Duration, bool) {
+	if wait, ok := seconds(header.Get("Retry-After")); ok {
+		return min(wait, maxWait), true
+	}
+	if reset, ok := seconds(header.Get("X-RateLimit-Reset")); ok {
+		return untilReset(time.Unix(int64(reset/time.Second), 0)), true
+	}
+	return 0, false
+}
+
 // seconds reads a header of whole seconds. For X-RateLimit-Reset it is an
 // epoch, which fits the same type.
 func seconds(header string) (time.Duration, bool) {
