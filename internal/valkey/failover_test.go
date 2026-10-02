@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -152,6 +153,159 @@ func primaryContainer(ctx context.Context, t *testing.T, seed, key string, conta
 	}
 
 	t.Fatalf("no container among %v has the address %s", containers, host)
+
+	return ""
+}
+
+// The failure that remained after the client learned to follow a
+// failover by itself: one write that was already on its way to the dead
+// primary when the replica took over. The topology is reloaded by then,
+// but the command that found out is the one that fails -- a sign-in
+// refused, with a healthy shard already serving its key.
+//
+// The test keeps a steady stream of writes going while the primary of
+// their shard is killed, each with the deadline a request has. Writes
+// that finish before the takeover may fail: nothing can take them. One
+// still in flight when a fresh client sees the new primary may not.
+func TestNoWriteFailsOnceTheReplicaHasTakenOver(t *testing.T) {
+	seed, names := os.Getenv("VALKEY_TEST_CLUSTER_ADDR"), os.Getenv("VALKEY_TEST_CLUSTER_CONTAINERS")
+	if seed == "" || names == "" {
+		t.Skip("set VALKEY_TEST_CLUSTER_ADDR and VALKEY_TEST_CLUSTER_CONTAINERS")
+	}
+
+	ctx := context.Background()
+
+	store, err := valkey.OpenState(ctx, valkey.Config{Address: seed, Cluster: true, Prefix: "stream-test"})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	containers := strings.Split(names, ",")
+	victim := primaryContainer(ctx, t, seed, "stream-test:w-0", containers)
+
+	type result struct {
+		started, ended time.Time
+		err            error
+	}
+
+	var (
+		mu      sync.Mutex
+		results []result
+		stop    = make(chan struct{})
+		done    = make(chan struct{})
+	)
+
+	// Every key hashes to the victim's shard only by luck, so the stream
+	// is wide: some keys on every shard, a third of them on the victim's.
+	go func() {
+		defer close(done)
+
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			case <-time.After(20 * time.Millisecond):
+			}
+
+			go func() {
+				started := time.Now()
+				call, cancel := context.WithTimeout(ctx, 10*time.Second)
+				defer cancel()
+
+				err := store.Set(call, fmt.Sprintf("w-%d", i), []byte("v"), time.Minute)
+
+				mu.Lock()
+				results = append(results, result{started, time.Now(), err})
+				mu.Unlock()
+			}()
+		}
+	}()
+
+	time.Sleep(time.Second)
+
+	if out, err := exec.Command("docker", "kill", "--signal", "KILL", victim).CombinedOutput(); err != nil {
+		t.Fatalf("kill: %v %s", err, out)
+	}
+	defer func() {
+		if out, err := exec.Command("docker", "start", victim).CombinedOutput(); err != nil {
+			t.Logf("start %s again: %v %s", victim, err, out)
+		}
+	}()
+
+	// A client that has never seen the old topology is the judge of when
+	// the election is over.
+	var elected time.Time
+
+	for deadline := time.Now().Add(30 * time.Second); elected.IsZero(); time.Sleep(100 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("no replica took over within 30s")
+		}
+
+		if now := primaryContainerOrEmpty(ctx, seed, "stream-test:w-0", containers); now != "" && now != victim {
+			elected = time.Now()
+		}
+	}
+
+	t.Logf("a replica took over; the stream goes on for 10s")
+	time.Sleep(10 * time.Second)
+	close(stop)
+	<-done
+	time.Sleep(11 * time.Second) // the last writes' own deadlines
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	var during, after int
+
+	for _, r := range results {
+		switch {
+		case r.err == nil:
+		case r.ended.Before(elected):
+			during++
+		default:
+			after++
+			t.Errorf("a write that started %s before the takeover failed %s after it: %v",
+				elected.Sub(r.started).Round(time.Millisecond), r.ended.Sub(elected).Round(time.Millisecond), r.err)
+		}
+	}
+
+	t.Logf("%d writes, %d failed before the takeover (tolerated), %d at or after", len(results), during, after)
+}
+
+// primaryContainerOrEmpty is primaryContainer for a poll: "" while the
+// cluster cannot say.
+//
+// The seed may be the very node that was killed, so the probe dials them
+// all.
+func primaryContainerOrEmpty(ctx context.Context, _, key string, containers []string) string {
+	var addrs []string
+
+	for _, name := range containers {
+		out, err := exec.Command("docker", "inspect", "--format",
+			"{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", name).Output()
+		if err == nil && strings.TrimSpace(string(out)) != "" {
+			addrs = append(addrs, strings.TrimSpace(string(out))+":6379")
+		}
+	}
+
+	probe := redis.NewClusterClient(&redis.ClusterOptions{Addrs: addrs, DialTimeout: time.Second})
+	defer func() { _ = probe.Close() }()
+
+	primary, err := probe.MasterForKey(ctx, key)
+	if err != nil {
+		return ""
+	}
+
+	host, _, _ := strings.Cut(primary.Options().Addr, ":")
+
+	for _, name := range containers {
+		out, err := exec.Command("docker", "inspect", "--format",
+			"{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", name).Output()
+		if err == nil && strings.TrimSpace(string(out)) == host {
+			return name
+		}
+	}
 
 	return ""
 }

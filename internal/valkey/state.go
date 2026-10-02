@@ -46,9 +46,21 @@ func (s *State) Close() error { return s.client.Close() }
 
 func (s *State) key(key string) string { return s.prefix + ":" + key }
 
+// retry runs one command, once more if its node was lost. See
+// [retryAfterFailover]. Nothing State does consumes what it reads -- a
+// redemption is a Get followed by a separate Delete, issued by the
+// issuer -- so no read here is unsafe to repeat.
+func (s *State) retry(ctx context.Context, name, key string, idempotent bool, op func() error) error {
+	return retryAfterFailover(ctx, s.client, name, s.key(key), idempotent, op)
+}
+
 // Get implements [issuer.State].
 func (s *State) Get(ctx context.Context, key string) ([]byte, bool, error) {
-	value, err := s.client.Get(ctx, s.key(key)).Bytes()
+	var value []byte
+	err := s.retry(ctx, "get", key, true, func() (err error) {
+		value, err = s.client.Get(ctx, s.key(key)).Bytes()
+		return err
+	})
 	if errors.Is(err, redis.Nil) {
 		// Expired or never written, and those are the same answer: there
 		// is nothing to continue.
@@ -68,7 +80,9 @@ func (s *State) Set(ctx context.Context, key string, value []byte, ttl time.Dura
 		// becomes a database nobody meant to run.
 		return fmt.Errorf("valkey: %s was stored with no lifetime", key)
 	}
-	if err := s.client.Set(ctx, s.key(key), value, ttl).Err(); err != nil {
+	if err := s.retry(ctx, "set", key, true, func() error {
+		return s.client.Set(ctx, s.key(key), value, ttl).Err()
+	}); err != nil {
 		return fmt.Errorf("valkey: store %s: %w", key, err)
 	}
 	return nil
@@ -85,7 +99,11 @@ func (s *State) SetIfAbsent(
 	// the same short user code at the same moment must not both believe
 	// they own it, and a check followed by a write leaves exactly that
 	// gap.
-	taken, err := s.client.SetNX(ctx, s.key(key), value, ttl).Result()
+	var taken bool
+	err := s.retry(ctx, "setnx", key, false, func() (err error) {
+		taken, err = s.client.SetNX(ctx, s.key(key), value, ttl).Result()
+		return err
+	})
 	if err != nil {
 		return false, fmt.Errorf("valkey: claim %s: %w", key, err)
 	}
@@ -94,7 +112,9 @@ func (s *State) SetIfAbsent(
 
 // Delete implements [issuer.State].
 func (s *State) Delete(ctx context.Context, key string) error {
-	if err := s.client.Del(ctx, s.key(key)).Err(); err != nil {
+	if err := s.retry(ctx, "del", key, true, func() error {
+		return s.client.Del(ctx, s.key(key)).Err()
+	}); err != nil {
 		return fmt.Errorf("valkey: delete %s: %w", key, err)
 	}
 	return nil
@@ -107,12 +127,16 @@ func (s *State) Delete(ctx context.Context, key string) error {
 // refresh an identity that signs in daily would have its whole index
 // vanish on the anniversary of its first login.
 func (s *State) Add(ctx context.Context, key, member string, ttl time.Duration) error {
-	if err := s.client.SAdd(ctx, s.key(key), member).Err(); err != nil {
+	if err := s.retry(ctx, "sadd", key, true, func() error {
+		return s.client.SAdd(ctx, s.key(key), member).Err()
+	}); err != nil {
 		return fmt.Errorf("valkey: add to %s: %w", key, err)
 	}
 
 	if ttl > 0 {
-		if err := s.client.Expire(ctx, s.key(key), ttl).Err(); err != nil {
+		if err := s.retry(ctx, "expire", key, true, func() error {
+			return s.client.Expire(ctx, s.key(key), ttl).Err()
+		}); err != nil {
 			return fmt.Errorf("valkey: expire %s: %w", key, err)
 		}
 	}
@@ -122,7 +146,9 @@ func (s *State) Add(ctx context.Context, key, member string, ttl time.Duration) 
 
 // Remove implements [issuer.State].
 func (s *State) Remove(ctx context.Context, key, member string) error {
-	if err := s.client.SRem(ctx, s.key(key), member).Err(); err != nil {
+	if err := s.retry(ctx, "srem", key, true, func() error {
+		return s.client.SRem(ctx, s.key(key), member).Err()
+	}); err != nil {
 		return fmt.Errorf("valkey: remove from %s: %w", key, err)
 	}
 
@@ -131,7 +157,11 @@ func (s *State) Remove(ctx context.Context, key, member string) error {
 
 // Members implements [issuer.State].
 func (s *State) Members(ctx context.Context, key string) ([]string, error) {
-	members, err := s.client.SMembers(ctx, s.key(key)).Result()
+	var members []string
+	err := s.retry(ctx, "smembers", key, true, func() (err error) {
+		members, err = s.client.SMembers(ctx, s.key(key)).Result()
+		return err
+	})
 	if errors.Is(err, redis.Nil) {
 		return nil, nil
 	}
