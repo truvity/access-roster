@@ -42,6 +42,15 @@ type Org struct {
 	// GraphQLError, when set, is returned inside a 200 from the members
 	// query, as GitHub does.
 	GraphQLError string
+	// Budget, when set, is what the members query reports as its
+	// `rateLimit`, so a test can ask for a wait before the next page.
+	Budget *Budget
+
+	// Rejections are answers served before any handler, in order, each
+	// once: a rate limit as GitHub sends it. Hits counts every request by
+	// "METHOD path", rejected ones included.
+	Rejections []Rejection
+	Hits       map[string]int
 
 	// Accounts are the GitHub accounts people link, by login, whether or
 	// not they are members.
@@ -125,6 +134,56 @@ type TokenRequest struct {
 	Body *githubapp.Narrowing
 }
 
+// Budget is a GraphQL point budget as the query reports it.
+type Budget struct {
+	Cost, Remaining int
+	ResetAt         time.Time
+}
+
+// Rejection is one canned answer to the next request for a path.
+type Rejection struct {
+	// Path is the request path it answers, e.g. "/graphql".
+	Path   string
+	Status int
+	Header map[string]string
+	Body   string
+}
+
+// Hit is how many requests "METHOD path" has had, rejected ones included.
+func (o *Org) Hit(key string) int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.Hits[key]
+}
+
+// rejecting serves the first pending rejection for a request's path, if
+// any, and counts every request.
+func (o *Org) rejecting(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		o.mu.Lock()
+		o.Hits[r.Method+" "+r.URL.Path]++
+		var rejection *Rejection // a copy: Delete clears the slot it leaves
+		for i := range o.Rejections {
+			if o.Rejections[i].Path == r.URL.Path {
+				copied := o.Rejections[i]
+				rejection = &copied
+				o.Rejections = slices.Delete(o.Rejections, i, i+1)
+				break
+			}
+		}
+		o.mu.Unlock()
+		if rejection == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		for name, value := range rejection.Header {
+			w.Header().Set(name, value)
+		}
+		w.WriteHeader(rejection.Status)
+		_, _ = io.WriteString(w, rejection.Body)
+	})
+}
+
 // Member is one member.
 type Member struct {
 	ID     int64
@@ -158,7 +217,7 @@ func Start(t *testing.T, login string) *Org {
 		Login: login, Members: map[string]*Member{}, Teams: map[string]*Team{},
 		Invitations: map[string]*Invitation{}, Token: "installation-token", Refuse: map[string]string{}, nextID: 100,
 		Accounts: map[string]*Account{}, codes: map[string]string{}, access: map[string]string{}, fresh: map[string]string{},
-		Public: map[string]string{}, Seats: 100, Installations: map[int64]*Installation{},
+		Public: map[string]string{}, Hits: map[string]int{}, Seats: 100, Installations: map[int64]*Installation{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /app/installations/{id}/access_tokens", org.accessToken)
@@ -181,7 +240,7 @@ func Start(t *testing.T, login string) *Org {
 	mux.HandleFunc("GET /user", org.user)
 	mux.HandleFunc("GET /user/emails", org.userEmails)
 	mux.HandleFunc("POST /applications/{client}/token", org.checkToken)
-	org.server = httptest.NewServer(mux)
+	org.server = httptest.NewServer(org.rejecting(mux))
 	t.Cleanup(org.server.Close)
 	api, web := githubapp.APIBase, githubapp.WebBase
 	githubapp.APIBase, githubapp.WebBase = org.server.URL, org.server.URL
@@ -662,12 +721,16 @@ func (o *Org) graphql(w http.ResponseWriter, r *http.Request) {
 			"databaseId": member.ID, "login": login, "organizationVerifiedDomainEmails": member.Emails,
 		}})
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"organization": map[string]any{
+	data := map[string]any{"organization": map[string]any{
 		"membersWithRole": map[string]any{
 			"pageInfo": map[string]any{"hasNextPage": end < len(logins), "endCursor": strconv.Itoa(end)},
 			"edges":    edges,
 		},
-	}}})
+	}}
+	if b := o.Budget; b != nil {
+		data["rateLimit"] = map[string]any{"cost": b.Cost, "remaining": b.Remaining, "resetAt": b.ResetAt.UTC().Format(time.RFC3339)}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
 }
 
 func (o *Org) invitations(w http.ResponseWriter, r *http.Request) {

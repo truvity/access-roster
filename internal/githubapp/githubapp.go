@@ -403,27 +403,32 @@ func callPage(ctx context.Context, client *http.Client, endpoint, bearer string,
 }
 
 func do(ctx context.Context, client *http.Client, method, endpoint, bearer string, body any) (*http.Response, error) {
-	var reader io.Reader = http.NoBody
+	var raw []byte
 	if body != nil {
-		raw, err := json.Marshal(body)
+		var err error
+		if raw, err = json.Marshal(body); err != nil {
+			return nil, err
+		}
+	}
+	return roundTrip(ctx, client, func() (*http.Request, error) {
+		var reader io.Reader = http.NoBody
+		if body != nil {
+			reader = bytes.NewReader(raw)
+		}
+		request, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
 		if err != nil {
 			return nil, err
 		}
-		reader = bytes.NewReader(raw)
-	}
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
-	if err != nil {
-		return nil, err
-	}
-	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("X-GitHub-Api-Version", apiVersion)
-	if bearer != "" {
-		request.Header.Set("Authorization", "Bearer "+bearer)
-	}
-	return client.Do(request) //nolint:gosec // the host is one of the two above, never configuration
+		if body != nil {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		request.Header.Set("Accept", "application/vnd.github+json")
+		request.Header.Set("X-GitHub-Api-Version", apiVersion)
+		if bearer != "" {
+			request.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		return request, nil
+	})
 }
 
 // statusError keeps GitHub's own message, which names the problem more
