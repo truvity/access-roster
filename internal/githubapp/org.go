@@ -56,6 +56,7 @@ type TeamMember struct {
 // addresses in one paginated query: the REST API has no way to ask for the
 // addresses at all.
 const membersQuery = `query($org: String!, $after: String) {
+  rateLimit { cost remaining resetAt }
   organization(login: $org) {
     membersWithRole(first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
@@ -75,6 +76,11 @@ func (o Org) Members(ctx context.Context, token string) ([]Member, error) {
 		}
 		var body struct {
 			Data struct {
+				RateLimit *struct {
+					Cost      int       `json:"cost"`
+					Remaining int       `json:"remaining"`
+					ResetAt   time.Time `json:"resetAt"`
+				} `json:"rateLimit"`
 				Organization *struct {
 					MembersWithRole struct {
 						PageInfo struct {
@@ -123,6 +129,14 @@ func (o Org) Members(ctx context.Context, token string) ([]Member, error) {
 		}
 		if page.PageInfo.EndCursor == "" || page.PageInfo.EndCursor == after {
 			return nil, errors.New("github: the members listing did not advance")
+		}
+		// A big organisation is many pages, each costing points. With less
+		// than two pages' worth left, wait for the budget to reset rather
+		// than run into a refusal halfway through the listing.
+		if limit := body.Data.RateLimit; limit != nil && limit.Remaining < 2*limit.Cost {
+			if err := waitOut(ctx, "graphql_budget", "/graphql", untilReset(limit.ResetAt)); err != nil {
+				return nil, fmt.Errorf("github: read %s's members: %w", o.Login, err)
+			}
 		}
 		after = page.PageInfo.EndCursor
 	}

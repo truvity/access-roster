@@ -98,13 +98,18 @@ func RefreshUserTokens(ctx context.Context, client *http.Client, clientID, secre
 }
 
 func tokenRequest(ctx context.Context, client *http.Client, form url.Values, now time.Time) (UserTokens, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, WebBase+"/login/oauth/access_token", strings.NewReader(form.Encode()))
-	if err != nil {
-		return UserTokens{}, err
-	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.Header.Set("Accept", "application/json")
-	response, err := client.Do(request) //nolint:gosec // the host is GitHub's, never configuration
+	// The exchange spends a single-use grant, so it is sent again only
+	// after GitHub's explicit rate-limit rejection, which means it was
+	// never processed; any other answer, an error included, is final.
+	response, err := roundTrip(ctx, client, func() (*http.Request, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, WebBase+"/login/oauth/access_token", strings.NewReader(form.Encode()))
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.Header.Set("Accept", "application/json")
+		return request, nil
+	})
 	if err != nil {
 		return UserTokens{}, fmt.Errorf("github: token request: %w", err)
 	}
@@ -212,15 +217,17 @@ func CheckUserToken(ctx context.Context, client *http.Client, clientID, secret, 
 		return false, err
 	}
 	endpoint := APIBase + "/applications/" + url.PathEscape(clientID) + "/token"
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(raw)))
-	if err != nil {
-		return false, err
-	}
-	request.SetBasicAuth(clientID, secret)
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("X-GitHub-Api-Version", apiVersion)
-	response, err := client.Do(request) //nolint:gosec // the host is GitHub's, never configuration
+	response, err := roundTrip(ctx, client, func() (*http.Request, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(raw)))
+		if err != nil {
+			return nil, err
+		}
+		request.SetBasicAuth(clientID, secret)
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Accept", "application/vnd.github+json")
+		request.Header.Set("X-GitHub-Api-Version", apiVersion)
+		return request, nil
+	})
 	if err != nil {
 		return false, fmt.Errorf("github: check a token: %w", err)
 	}

@@ -1,3 +1,17 @@
+## v1.52.3
+
+- **The GitHub controller waits out a rate limit instead of failing the
+  pass.** A 429, or a 403 with `Retry-After`, an empty `X-RateLimit-Remaining`
+  or a secondary-limit message, is waited for (`Retry-After`, else the
+  `X-RateLimit-Reset` time, at most 60 seconds) and retried up to three times;
+  the wait ends with the context. Only such an explicit rejection is retried,
+  never a call GitHub may have processed, so the single-use OAuth token refresh
+  is not repeated after any other answer. The members listing reads its
+  GraphQL point budget and waits for the reset before the next page when less
+  than two pages' worth is left. Each wait is one log line and counts in the
+  new `github_roster.rate_limited` metric; `github_roster.rate_limit_remaining`
+  reports the budget GitHub last stated.
+
 ## v1.52.2
 
 - **The documented IAM policy for `sts:GetWebIdentityToken` now works.** The
