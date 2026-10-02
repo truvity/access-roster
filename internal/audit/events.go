@@ -41,7 +41,7 @@ func Workload(id string) Actor { return Actor{Kind: "workload", ID: id} }
 func System() Actor { return Actor{Kind: "system"} }
 
 // Identified is whoever an identity string names, where only the string is
-// known: an address is a person, a service account a workload, a
+// known: an address is a person, a service account or an AWS role a workload, a
 // repository a CI job. A recovery sign-in completes as a service account,
 // so what it does afterwards is recorded as that workload's; the sign-in
 // itself is recorded as recovery.
@@ -49,7 +49,7 @@ func Identified(id string) Actor {
 	switch {
 	case id == "" || id == "system":
 		return System()
-	case strings.HasPrefix(id, "system:serviceaccount:"):
+	case strings.HasPrefix(id, "system:serviceaccount:"), strings.HasPrefix(id, "aws:"):
 		return Workload(id)
 	case strings.HasPrefix(id, "github:"):
 		return CI(id)

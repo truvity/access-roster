@@ -51,6 +51,7 @@ yet know which of those you want.
 | reach PostgreSQL with a short-lived client certificate | [connect/postgresql.md](connect/postgresql.md) |
 | see what the conformance suite said, and why | [conformance.md](conformance.md) |
 | run the conformance suite | [operations/conformance.md](operations/conformance.md) |
+| let an AWS Lambda, ECS task or EC2 instance exchange its IAM role's token | [connect/aws-workloads.md](connect/aws-workloads.md) |
 | build a service that accepts both people and workloads | [connect/service-to-service.md](connect/service-to-service.md) |
 | see how the console is organised (IDENTITY, ACCESS, SYSTEMS, ADMIN) and what each Systems tab does | [design/access-roster.md](design/access-roster.md#the-console) |
 | understand how the GitHub and Slack controllers share one set of rails, and what neither will ever do | [design/access-roster.md](design/access-roster.md#reconciler-rails), [safety.md](safety.md#the-reconcilers-what-they-refuse-to-do) |

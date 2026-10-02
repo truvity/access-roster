@@ -211,7 +211,7 @@ asking anyone.
 |---|---|
 | [corporate directories](docs/connect/corporate-directory.md): several Google Workspaces, Entra next — each a workspace with its own credential and its own served domains | [Kubernetes clusters, for people](docs/connect/kubernetes-cluster.md): each trusts the one issuer as its identity provider |
 | [CI platforms](docs/connect/github-actions.md) — GitHub Actions today: one federated issuer, an owner allow-list | [AWS accounts](docs/connect/aws-account.md): each trusts the one issuer as an OIDC provider |
-| [every cluster's own ServiceAccount tokens](docs/connect/service-to-service.md), for workloads: one row per cluster naming its key set | [GitHub organisations](docs/connect/github-organisation.md): one controller App each, bindings in the same policy, and a runner App per tier for self-hosted runners |
+| [every cluster's own ServiceAccount tokens](docs/connect/service-to-service.md), for workloads: one row per cluster naming its key set; [AWS IAM roles' outbound-federation tokens](docs/connect/aws-workloads.md), one row per account | [GitHub organisations](docs/connect/github-organisation.md): one controller App each, bindings in the same policy, and a runner App per tier for self-hosted runners |
 | | [Slack workspaces](docs/connect/slack-workspace.md): one bot each, channels bound in the same policy, console channels fed by directory groups, and [Slack Connect channels](docs/connect/slack-connect-channels.md) between your own workspaces; [Slack Apps](docs/connect/slack-apps-catalogue.md) declared as data |
 | | [consoles and applications](docs/connect/console-app.md): one client row each |
 

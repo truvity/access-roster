@@ -336,6 +336,32 @@ exchange:
   #    # document at an address this service can reach.
   #    jwksUri: ""
 
+  # AWS accounts whose IAM roles may exchange the token AWS gives them
+  # (`sts:GetWebIdentityToken`, outbound identity federation), each
+  # verified against the key set its own account issuer publishes.
+  #
+  # Like `clusters`, no secret in any row. UNLIKE any default anywhere
+  # else, an empty list verifies no AWS token at all: any AWS account can
+  # mint a valid token for a role of its own with any audience, so the
+  # row is the trust boundary and the chart will not invent one.
+  aws:
+    # The audience the role must request from STS. Empty means this
+    # issuer's own URL, the same rule as for CI tokens. Ignored while
+    # `accounts` is empty.
+    audience: ""
+    # Refuse a token whose `iat` is older than this, whatever its `exp`
+    # allows: AWS lets one live for an hour, and nothing needs that.
+    maxAge: 5m
+    accounts: []
+    #  - account: "111122223333"   # 12 digits; the token's account claim and
+    #                              # the account in the role's ARN must match
+    #    name: apps                # the estate's word for it, for logs
+    #    # From `aws iam get-outbound-web-identity-federation-info`.
+    #    issuer: https://example-id.tokens.sts.global.api.aws
+    #    jwksUri: ""               # default: <issuer>/.well-known/jwks.json
+    #    orgId: ""                 # optional: require this AWS Organizations id
+    #    algs: [ES384, RS256]      # default both; narrow, never widen
+
 # The way in when no directory can vouch for anybody.
 #
 # It exists because of a deadlock that is otherwise complete: a console

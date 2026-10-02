@@ -23,6 +23,8 @@ type Proof struct {
 	GitHub *policy.GitHubClaims
 	// ServiceAccount is set for a workload token.
 	ServiceAccount *policy.ServiceAccountRef
+	// AWS is set for an AWS IAM role's outbound identity federation token.
+	AWS *policy.AWSRole
 }
 
 // Subject is the token's `sub`: stable, and never a person. A CI job that
@@ -36,6 +38,8 @@ func (p Proof) Subject() string {
 		return "github:" + p.GitHub.Repository
 	case p.ServiceAccount != nil:
 		return p.ServiceAccount.Subject()
+	case p.AWS != nil:
+		return p.AWS.Subject()
 	default:
 		return ""
 	}
@@ -126,7 +130,7 @@ func (i *Issuer) Exchange(ctx context.Context, proof Proof, audience string) (Gr
 // a proof becomes groups, so a token exchange and an installation token
 // cannot disagree about what the same caller holds.
 func (i *Issuer) evaluate(ctx context.Context, proof Proof) (policy.Result, bool, error) {
-	in := policy.Input{GitHub: proof.GitHub, ServiceAccount: proof.ServiceAccount}
+	in := policy.Input{GitHub: proof.GitHub, ServiceAccount: proof.ServiceAccount, AWS: proof.AWS}
 	var held bool
 	if proof.Email != "" {
 		resolved, err := i.resolver.Resolve(ctx, proof.Email)
@@ -134,7 +138,7 @@ func (i *Issuer) evaluate(ctx context.Context, proof Proof) (policy.Result, bool
 			return policy.Result{}, false, err
 		}
 		in = resolved.Input(proof.Email)
-		in.GitHub, in.ServiceAccount = proof.GitHub, proof.ServiceAccount
+		in.GitHub, in.ServiceAccount, in.AWS = proof.GitHub, proof.ServiceAccount, proof.AWS
 		held = resolved.Held
 	}
 	return i.set.Evaluate(in), held, nil
@@ -165,7 +169,7 @@ func (p Proof) actor() audit.Actor {
 		return audit.Person(p.Email)
 	case p.GitHub != nil:
 		return audit.CI(p.Subject())
-	case p.ServiceAccount != nil:
+	case p.ServiceAccount != nil, p.AWS != nil:
 		return audit.Workload(p.Subject())
 	default:
 		return audit.Anonymous()
@@ -177,7 +181,10 @@ func (p Proof) kind() string {
 	switch {
 	case p.GitHub != nil:
 		return "ci"
-	case p.ServiceAccount != nil:
+	case p.ServiceAccount != nil, p.AWS != nil:
+		// An AWS role is a workload too: the audit's `proof` says what
+		// KIND of proof it was, and the actor id (`aws:<account>:role/..`)
+		// says which.
 		return "workload"
 	case p.Email != "":
 		return "person"

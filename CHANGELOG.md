@@ -47,6 +47,26 @@
   non-cluster mode too. New `TestTheClientSurvivesTheLossOfAPrimary`
   (docker, opt-in via `VALKEY_TEST_CLUSTER_ADDR` and
   `VALKEY_TEST_CLUSTER_CONTAINERS`) kills a primary and asserts both.
+- **AWS workloads exchange their IAM role's token.** A Lambda function, ECS
+  task or EC2 instance can call `sts:GetWebIdentityToken` (AWS outbound
+  identity federation) and exchange the JWT it gets for a token of this
+  issuer's, with no stored secret. New `exchange.aws` chart value
+  (`audience`, `maxAge`, `accounts[]` of `{account, name, issuer, jwksUri,
+  orgId, algs}`), mounted as a file named by `AWS_FEDERATION_FILE`; **an empty
+  list verifies no AWS token**, because any AWS account can mint one for a role
+  of its own. A token is accepted only from a configured account's issuer, with
+  its signature checked against that account's key set (ES384 or RS256, pinned
+  per row), the configured audience, `iat` no older than `maxAge` (default
+  5 minutes) and the account claim, the role's ARN and the row all agreeing.
+  The identity is the IAM **role**: the minted subject is
+  `aws:<account>:role/<path><name>`, never a session or a function. `sub` is
+  accepted only as a role ARN (AWS documents no other form), so an
+  `assumed-role` session ARN is refused. New policy matcher
+  `aws: {account, role, path, function, org_id}` (account exact and required,
+  the rest `path.Match` globs; roll the issuer before the policy that uses it,
+  since an older issuer refuses the key). Audited as `roster.token.exchanged`
+  with proof `workload`; the catalogue is unchanged. See
+  [connect/aws-workloads.md](docs/connect/aws-workloads.md).
 
 ## v1.50.0
 

@@ -22,6 +22,41 @@ type Input struct {
 	GitHub *GitHubClaims
 	// ServiceAccount carries a verified Kubernetes ServiceAccount.
 	ServiceAccount *ServiceAccountRef
+	// AWS carries a verified AWS IAM role.
+	AWS *AWSRole
+}
+
+// AWSRole is a verified AWS IAM role: the principal an outbound identity
+// federation token names. It is the role and never the session, so the
+// subject of everything it does stays one subject.
+type AWSRole struct {
+	// Account is the 12-digit account id, taken from the configured row
+	// that verified the token and cross-checked with the token's own
+	// claim and the ARN.
+	Account string
+	// Name is the role's name without its path.
+	Name string
+	// Path is the role's IAM path: `/`, or `/service/team/`.
+	Path string
+	// OrgID is the account's AWS Organizations id, when the token states
+	// one. Audit and matching only.
+	OrgID string
+	// Function is the Lambda function ARN the token was requested from,
+	// when it says so. It qualifies a matcher and is recorded; it is never
+	// the subject.
+	Function string
+}
+
+// Subject is how a role is spelled as a token's `sub`:
+// `aws:<account>:role/<path><name>`, scope first like every other
+// subject. The session is never part of it.
+func (r AWSRole) Subject() string {
+	path := r.Path
+	if path == "" {
+		path = "/"
+	}
+
+	return "aws:" + r.Account + ":role" + path + r.Name
 }
 
 // GitHubClaims are a CI identity token's verified claims.

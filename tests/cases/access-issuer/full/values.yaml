@@ -68,6 +68,18 @@ exchange:
       jwksUri: https://oidc.eu-example-1.example/id/EXAMPLE/keys
     - name: example-edge
       issuer: https://edge.example
+  aws:
+    maxAge: 3m
+    accounts:
+      - account: "111122223333"
+        name: apps
+        issuer: https://example-id.tokens.sts.global.api.aws
+        orgId: o-example1234
+        algs: [ES384]
+      - account: "444455556666"
+        name: data
+        issuer: https://other-id.tokens.sts.global.api.aws
+        jwksUri: https://keys.example/jwks.json
 
 recovery:
   enabled: true

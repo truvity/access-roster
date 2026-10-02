@@ -393,6 +393,9 @@ type Matcher struct {
 	GitHub *GitHubMatcher `yaml:"github,omitempty"`
 	// ServiceAccount matches a Kubernetes ServiceAccount exactly.
 	ServiceAccount *ServiceAccountMatcher `yaml:"service_account,omitempty"`
+	// AWS matches an AWS IAM role that proved itself with its outbound
+	// identity federation token.
+	AWS *AWSMatcher `yaml:"aws,omitempty"`
 	// Email matches one signed-in address, case-insensitively.
 	Email string `yaml:"email,omitempty"`
 	// EmailDomain matches every signed-in address in a domain.
@@ -439,6 +442,32 @@ type ServiceAccountMatcher struct {
 	Cluster   string `yaml:"cluster,omitempty"`
 	Namespace string `yaml:"namespace"`
 	Name      string `yaml:"name"`
+}
+
+// AWSMatcher matches an AWS IAM role. The identity is the ROLE, never the
+// function, instance or task that happens to be running as it: which
+// workload uses a role is the account owner's business, and a rule here
+// that named one would be a rule the owner could silently outgrow.
+type AWSMatcher struct {
+	// Account is the 12-digit AWS account id. Exact and required: a role
+	// name means nothing without its account, and a pattern here would let
+	// a role of that name in any account at all be admitted.
+	Account string `yaml:"account"`
+	// Role is the role's name, without its path. A glob in the sense of
+	// path.Match.
+	Role string `yaml:"role,omitempty"`
+	// Path is the role's IAM path, `/` for a role with none and
+	// `/service/team/` otherwise: leading and trailing slash, as AWS spells
+	// it. A glob where `*` does not cross a `/`, so `/service/*/` is one
+	// level; leave it out to match any path.
+	Path string `yaml:"path,omitempty"`
+	// Function pins the Lambda function the token was requested from, by
+	// ARN (a glob). A role shared by several functions is admitted as a
+	// role; this is for the rule that must admit one of them only. A
+	// proof that carries no function never matches a rule that sets it.
+	Function string `yaml:"function,omitempty"`
+	// OrgID pins the AWS Organizations id of the account (a glob).
+	OrgID string `yaml:"org_id,omitempty"`
 }
 
 // Fragment is what a group adds to a token: an arbitrary claim shape,
@@ -582,7 +611,7 @@ func Parse(data []byte) (Policy, error) {
 func (m Matcher) kinds() int {
 	n := 0
 	for _, set := range []bool{
-		m.GitHub != nil, m.ServiceAccount != nil, m.Email != "", m.EmailDomain != "",
+		m.GitHub != nil, m.ServiceAccount != nil, m.AWS != nil, m.Email != "", m.EmailDomain != "",
 	} {
 		if set {
 			n++
@@ -615,6 +644,8 @@ func (m Matcher) Describe() string {
 		}
 
 		return "ServiceAccount " + m.ServiceAccount.Namespace + "/" + m.ServiceAccount.Name + where
+	case m.AWS != nil:
+		return "AWS role " + m.AWS.Rule()
 	case m.Email != "":
 		return "signed in as " + m.Email
 	case m.EmailDomain != "":
@@ -629,7 +660,7 @@ func (m Matcher) Kind() string {
 	switch {
 	case m.GitHub != nil:
 		return "ci"
-	case m.ServiceAccount != nil:
+	case m.ServiceAccount != nil, m.AWS != nil:
 		return "workload"
 	case m.Email != "", m.EmailDomain != "":
 		return "sign-in"
@@ -646,6 +677,8 @@ func (m Matcher) Rule() string {
 		return strings.TrimPrefix(m.Describe(), "CI job with ")
 	case m.ServiceAccount != nil:
 		return m.ServiceAccount.Namespace + "/" + m.ServiceAccount.Name
+	case m.AWS != nil:
+		return m.AWS.Rule()
 	case m.Email != "":
 		return m.Email
 	case m.EmailDomain != "":
@@ -683,6 +716,15 @@ func (m Matcher) matches(in Input) bool {
 			m.ServiceAccount.Cluster == in.ServiceAccount.Cluster) &&
 			m.ServiceAccount.Namespace == in.ServiceAccount.Namespace &&
 			m.ServiceAccount.Name == in.ServiceAccount.Name
+	case m.AWS != nil:
+		if in.AWS == nil {
+			return false
+		}
+		return m.AWS.Account == in.AWS.Account &&
+			globs(m.AWS.Role, in.AWS.Name) &&
+			globs(m.AWS.Path, in.AWS.Path) &&
+			globs(m.AWS.Function, in.AWS.Function) &&
+			globs(m.AWS.OrgID, in.AWS.OrgID)
 	case m.Email != "":
 		return in.Email != "" && strings.EqualFold(m.Email, in.Email)
 	case m.EmailDomain != "":
@@ -691,6 +733,27 @@ func (m Matcher) matches(in Input) bool {
 	default:
 		return false
 	}
+}
+
+// Rule renders the matcher's pattern: the account, then whatever else it
+// pins, in the order an ARN reads.
+func (a AWSMatcher) Rule() string {
+	rule := a.Account + ":role"
+	switch {
+	case a.Path != "" && a.Role != "":
+		rule += a.Path + a.Role
+	case a.Path != "":
+		rule += a.Path + "*"
+	case a.Role != "":
+		rule += "/" + a.Role
+	}
+	if a.Function != "" {
+		rule += " function " + a.Function
+	}
+	if a.OrgID != "" {
+		rule += " org " + a.OrgID
+	}
+	return rule
 }
 
 // globs reports whether value satisfies pattern; an empty pattern is any.
@@ -857,8 +920,46 @@ func (g Group) validate(name string) error {
 		if sa := g.Matchers[i].ServiceAccount; sa != nil && (sa.Namespace == "" || sa.Name == "") {
 			return fmt.Errorf("group %q: matcher %d needs a namespace and a name", name, i)
 		}
+		if err := g.Matchers[i].AWS.validate(); err != nil {
+			return fmt.Errorf("group %q: matcher %d: %w", name, i, err)
+		}
 	}
 	return nil
+}
+
+// validate checks an aws matcher: an account that is exactly twelve
+// digits, and patterns that compile. A matcher is checked at load because
+// a malformed glob never matches, which reads as a role that is simply
+// refused with nothing to say why.
+func (a *AWSMatcher) validate() error {
+	if a == nil {
+		return nil
+	}
+	if !ValidAWSAccount(a.Account) {
+		return fmt.Errorf("aws: account %q is not a 12-digit AWS account id", a.Account)
+	}
+	for field, pattern := range map[string]string{
+		"role": a.Role, "path": a.Path, "function": a.Function, "org_id": a.OrgID,
+	} {
+		if _, err := path.Match(pattern, ""); err != nil {
+			return fmt.Errorf("aws: %s %q is not a valid pattern: %w", field, pattern, err)
+		}
+	}
+	return nil
+}
+
+// ValidAWSAccount reports whether s is an AWS account id: exactly twelve
+// ASCII digits.
+func ValidAWSAccount(s string) bool {
+	if len(s) != 12 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (c Client) validate(id string, p Policy) error {

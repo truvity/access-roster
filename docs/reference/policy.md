@@ -364,6 +364,7 @@ point a person and a job are the same thing.
 | a corporate sign-in | whose `members` contain a directory group the service confirms the account is in, **authoritatively** |
 | a CI identity token | whose `matchers` the token's claims satisfy: `repository`, `owner`, `ref`, `workflow`, `environment`, `workflow_ref`, `job_workflow_ref`, `sha`, `event_name` and `ref_type` as globs, and `visibility` (`public`, `private` or `internal`) exactly |
 | a Kubernetes ServiceAccount token | whose `matchers` name that namespace and ServiceAccount |
+| an AWS IAM role's outbound identity federation token | whose `matchers` (`aws`) name that account and role: see [the `aws` matcher](#the-aws-matcher) |
 
 Globs are Go's `path.Match`, where `*` does not cross a `/`. Every field
 left out matches anything, so a matcher written before a field existed
@@ -390,6 +391,38 @@ role binding cannot read an attribute.
 A token describes **one account**, never a person. Someone with accounts
 in two Workspaces has two identities with two subjects. Linking accounts
 is a consumer's concern (github-roster's), never the issuer's.
+
+### The `aws` matcher
+
+```yaml
+groups:
+  otlp:billing:writer:
+    matchers:
+      - aws: { account: "111122223333", role: "billing-*" }
+      - aws: { account: "111122223333", path: /telemetry/, role: "*" }
+      - aws:
+          account: "444455556666"
+          role: otel-writer
+          function: "arn:aws:lambda:eu-west-1:444455556666:function:billing-*"
+          org_id: o-example1234
+```
+
+| Field | Match | Meaning |
+|---|---|---|
+| `account` | exact, **required** | the 12-digit AWS account id. A role name means nothing without its account, and a pattern here would admit a role of that name in any account |
+| `role` | glob | the role's name, without its path |
+| `path` | glob | the role's IAM path as AWS spells it: `/` for none, `/service/team/` otherwise. `*` does not cross a `/`, so `/service/*/` is one level; omit it to match any path (a `path: "*"` does not match the root path `/`) |
+| `function` | glob | the Lambda function ARN the token was requested from. Omit it to admit the role whichever function runs as it; a proof with no function never matches a rule that sets this |
+| `org_id` | glob | the AWS Organizations id of the account |
+
+The identity is the **role**, never the session, function or instance
+running as it: the subject of the minted token is
+`aws:<account>:role/<path><name>` (`aws:111122223333:role/telemetry/otel-writer`),
+and it does not change per invocation. A matcher is `workload` in the
+console. At load, an empty `aws: {}`, an account that is not twelve digits
+and a pattern that does not compile are refused. An issuer older than the
+one that introduced this matcher refuses the key as unknown, so roll the
+issuer before the policy that uses it.
 
 ## Groups → token, by deep merge
 
@@ -1278,7 +1311,8 @@ Unknown keys refused, `memberships` among them. Every key in `claims`
 and `lifetimes` names a declared group. Every `requires` entry names one.
 Every member address has a domain. No scalar conflict across any two
 fragments. A matcher has at least one field; a `service_account` matcher
-names `namespace` and `name`, with `cluster` optional; a `github`
+names `namespace` and `name`, with `cluster` optional; an `aws` matcher
+names a twelve-digit `account` and patterns that compile; a `github`
 matcher's `visibility` is `public`, `private` or `internal`. A client's
 `display_name` and `description` are one bounded line each;
 `sign_in_exchange` is allowed on a `public` client only; a confidential

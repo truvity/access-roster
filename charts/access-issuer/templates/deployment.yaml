@@ -24,6 +24,10 @@ spec:
         # nothing to see but an error naming the wrong cause.
         checksum/clusters: {{ include (print $.Template.BasePath "/clusters-configmap.yaml") . | sha256sum }}
         {{- end }}
+        {{- if .Values.exchange.aws.accounts }}
+        # An AWS account is read once at start, for the same reason.
+        checksum/aws: {{ include (print $.Template.BasePath "/aws-configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.directory.workspaces }}
         # A declared workspace is read once at start, so a workspace added
         # to the values without a rollout is one an operator can see in
@@ -197,6 +201,10 @@ spec:
             - name: CLUSTERS_FILE
               value: /var/run/access-issuer/clusters.yaml
             {{- end }}
+            {{- if .Values.exchange.aws.accounts }}
+            - name: AWS_FEDERATION_FILE
+              value: /var/run/access-issuer/aws.yaml
+            {{- end }}
             {{- if .Values.recovery.enabled }}
             # Recovery is the one thing left that asks the API server, and
             # deliberately so: on the day everything else is broken it
@@ -281,6 +289,12 @@ spec:
               subPath: clusters.yaml
               readOnly: true
             {{- end }}
+            {{- if .Values.exchange.aws.accounts }}
+            - name: aws
+              mountPath: /var/run/access-issuer/aws.yaml
+              subPath: aws.yaml
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
             {{- include "access-issuer.auditMounts" . | nindent 12 }}
@@ -360,6 +374,11 @@ spec:
         - name: clusters
           configMap:
             name: {{ include "access-issuer.fullname" . }}-clusters
+        {{- end }}
+        {{- if .Values.exchange.aws.accounts }}
+        - name: aws
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-aws
         {{- end }}
         {{- if .Values.githubApps.catalogue }}
         - name: github-apps-catalogue
