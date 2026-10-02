@@ -21,7 +21,9 @@ const riePort = "8080"
 // TestInTheRuntimeInterfaceEmulator runs the extension beside a shell
 // "function" inside the real Lambda base image, whose emulator implements the
 // Extensions API. It is opt-in (ACCESS_ROSTER_RIE=1): it needs docker, a pull
-// of public.ecr.aws/lambda/provided:al2023 and a free port 8080.
+// of public.ecr.aws/lambda/provided:al2023 and a free port 8080. The emulator
+// has no Telemetry API (it answers the subscription 202 Telemetry.NotSupported),
+// so this test proves the extension tolerates that, not that logs flow.
 func TestInTheRuntimeInterfaceEmulator(t *testing.T) {
 	if os.Getenv("ACCESS_ROSTER_RIE") != "1" {
 		t.Skip("set ACCESS_ROSTER_RIE=1 to run against aws-lambda-rie in docker")
@@ -70,6 +72,7 @@ done
 		"-e", "AWS_SESSION_TOKEN=session", "-e", "AWS_ENDPOINT_URL_STS="+sts.URL, "-e", "AWS_EC2_METADATA_DISABLED=true",
 		"-e", "ACCESS_ROSTER_ISSUER="+issuer.URL, "-e", "ACCESS_ROSTER_AUDIENCE="+issuer.URL,
 		"-e", "ACCESS_ROSTER_OTLP_ENDPOINT="+up.URL,
+		"-e", "ACCESS_ROSTER_FUNCTION_LOGS=true", "-e", "ACCESS_ROSTER_EXTENSION_LOGS=true",
 		"public.ecr.aws/lambda/provided:al2023", "handler")
 	logs := &syncBuffer{}
 	run.Stdout, run.Stderr = logs, logs
@@ -94,6 +97,13 @@ done
 	if !strings.Contains(answer, `"export":200`) {
 		t.Fatalf("the function's export was answered %q", answer)
 	}
+	// The emulator implements the Extensions API only: it answers a Telemetry
+	// API subscription 202 "Telemetry.NotSupported" and delivers no events,
+	// so the platform-log path is covered by the fake-Telemetry-API tests in
+	// telemetry_test.go. Here it must degrade to one log line and nothing else.
+	eventually(t, "the unsupported Telemetry API to be reported", func() bool {
+		return strings.Contains(logs.String(), "Lambda telemetry logs are off: telemetry subscribe: 202")
+	})
 	if seen := up.seen(); len(seen) == 0 || seen[0].Auth != "Bearer access-1" {
 		t.Fatalf("upstream saw %+v", seen)
 	}
