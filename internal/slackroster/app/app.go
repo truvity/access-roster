@@ -25,8 +25,9 @@ import (
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/config"
-	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/slackroster/controller"
+	"github.com/truvity/access-roster/internal/store"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
 )
@@ -34,7 +35,9 @@ import (
 // Config is what a deployment decides. It is built from the configuration
 // file, which is what the chart renders.
 type Config struct {
-	release        string
+	release string
+	// stores says which adapter backs the storage ports.
+	stores         store.Config
 	policyDir      string
 	console        string
 	tokenFile      string
@@ -66,6 +69,7 @@ func Load(file string) (Config, error) {
 func FromConfig(f *config.ControllerSlack) (Config, error) {
 	c := Config{
 		release:        orDefault(f.Release, "access-roster"),
+		stores:         store.FromRoster(&f.Roster),
 		policyDir:      f.PolicyDir,
 		console:        strings.TrimSuffix(f.ConsoleURL, "/"),
 		tokenFile:      orDefault(f.TokenFile, "/var/run/secrets/slack-roster/token"),
@@ -128,9 +132,9 @@ type App struct {
 // its timeout and drops the rest, saying so. Nothing survives the process.
 func (a *App) Close() error { return a.trail.Close() }
 
-// The cluster's status store reads back what it wrote, so a restarted
-// controller does not record every hold and leaver again.
-var _ controller.StatusReader = (*kube.SlackStatus)(nil)
+// The report store reads back what it wrote, so a restarted controller does
+// not record every hold and leaver again.
+var _ controller.StatusReader = (*rails.BlobReports)(nil)
 
 // New assembles the controller.
 func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
@@ -153,7 +157,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		}
 	}
 
-	client, err := kube.InCluster(cfg.release)
+	stores, err := store.Open(ctx, cfg.stores, log)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +202,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			Log:    log,
 			Access: directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, bearer),
 			Audit:  trail,
-			Status: kube.NewSlackStatus(client),
+			Status: rails.NewBlobReports(stores.Ports.Blob, "reports/slack/"),
 			Policy: declared,
 			Digest: set.Digest(),
 		}),

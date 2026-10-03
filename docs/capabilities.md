@@ -23,7 +23,9 @@ series.
 | Piece | Kubernetes | AWS Lambda |
 |---|---|---|
 | State: in-memory (tests, one local process) | ✅ | — |
+| State, Blob, Trigger, Sealing, Identity: the ports' in-memory adapter (`internal/port/memory`) | 🧪 | — |
 | State: Kubernetes objects and Valkey (the current store) | ✅ | — |
+| State: the ports' `legacy` adapter over that store (temporary, until the migration of [0031](decisions/0031-a-generic-migration-tool.md) has run) | 🧪 | — |
 | State: NATS JetStream KV | 📄 | — |
 | State: DynamoDB | — | 📄 |
 | Blob: S3 (reports, snapshots) | 📄 | 📄 |
@@ -37,7 +39,9 @@ series.
 | Audit sink: `http` | ✅ | — |
 | Audit sink: `nats` | 📄 | — |
 | Audit sink: `sqs` | — | 📄 |
-| Port conformance suite (in-memory, NATS, DynamoDB) | 📄 | 📄 |
+| Ports as Go interfaces (`internal/port`) and the apps depending on them | 🧪 | 📄 |
+| Port conformance suite: in-memory and legacy | 🧪 | — |
+| Port conformance suite: NATS, DynamoDB | 📄 | 📄 |
 
 ## Runtime
 

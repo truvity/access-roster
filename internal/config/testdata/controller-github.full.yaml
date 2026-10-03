@@ -9,3 +9,4 @@ audit: {writer: "http://audit.access-issuer.svc:8080", tokenFile: /var/run/audit
 appsDir: /var/run/github-roster/apps
 catalogueFile: /var/run/github-roster/github-apps-catalogue.yaml
 enabledOrgs: [example-org]
+ports: {adapter: legacy}

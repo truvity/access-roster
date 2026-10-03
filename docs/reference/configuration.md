@@ -361,6 +361,7 @@ The issuer, the console and the directory hub, one process.
 | `release` | `access-roster` | the name this installation's objects carry (`<release>-github-orgs`, the prefix of its keys in Valkey). **The chart requires it to be the release's full name**, and says what to write |
 | `cluster` | unset | what this cluster is called, which becomes part of a ServiceAccount's subject: `<cluster>:k8s:<namespace>:<name>`. Empty keeps the older unqualified form |
 | `store` | `memory` (the chart: `kubernetes`) | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
+| `ports.adapter` | `legacy` | the adapter behind the storage ports ([design/ports.md](../design/ports.md)): `legacy` keeps state where it has always been kept (the namespace's ConfigMaps and Secrets, and Valkey when `valkey.address` is set); `memory` keeps all of it in the process, so a restart loses every login in progress, and is refused with `store: kubernetes` or `valkey.address` |
 | `listen.address` | `:8080` | everything a browser and a relying party reach: discovery, the key set, the flows, the login page, and the console under `console.mount`. The chart takes the Service's and the routes' port from it, and refuses one outside 1-65535 |
 | `probes.address` | `:7070` | `/healthz`, `/readyz` |
 | `log.level` | `info` | `debug`, `info`, `warn`, `error` |
@@ -417,6 +418,7 @@ The GitHub controller: it makes each organisation's teams match the policy's
 | `tokenFile` | `/var/run/secrets/github-roster/token` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
 | `appsDir` | `/var/run/github-roster/apps` | the mounted `<release>-github-apps` Secret, one file per connected organisation |
 | `recordsDir` | `/var/run/github-roster/records` | the mounted `<release>-github-orgs` ConfigMap: the organisations' records and the console's requests for a pass. With `appsDir` it is looked at every 30 seconds, and a change (an install, a Refresh) runs a pass at once |
+| `ports.adapter` | `legacy` | the adapter behind the storage ports, as for `serve`. With `memory` the controller reports into its own process and checks no link: for a local run only |
 | `catalogueFile` | unset | the GitHub App catalogue, read only so the warning about an internal group nothing consumes does not name a group a grant consumes. Never fatal here |
 | `interval` | `15m` | how long between passes. Positive |
 | `enabledOrgs[]` | unset | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled. Each must be bound by the policy: the controller refuses to start otherwise, and the chart refuses to render |
@@ -440,6 +442,7 @@ controllers would make every change twice.
 |---|---|---|
 | `policyDir` | **required** | the same policy ConfigMap the service mounts; its `slack` and `people` tables are the bindings. The chart requires `/var/run/slack-roster/policy` |
 | `consoleURL` | **required** | as for `controller-github` |
+| `ports.adapter` | `legacy` | the adapter behind the storage ports, as for `serve`. With `memory` the controller reports into its own process and checks no link: for a local run only |
 | `release` | `access-roster` | as for `controller-github`; it finds `<release>-slack-status` |
 | `tokenFile` | `/var/run/secrets/slack-roster/token` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
 | `credentialsDir` | `/var/run/slack-roster/credentials` | the mounted `<release>-slack-credentials` Secret, one file per connected workspace; optional |

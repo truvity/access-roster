@@ -68,14 +68,15 @@ type grant struct {
 }
 
 var (
-	_ port.State    = (*Store)(nil)
-	_ port.Index    = (*Store)(nil)
-	_ port.Blob     = (*Blobs)(nil)
-	_ port.Replacer = (*Blobs)(nil)
-	_ port.Trigger  = (*Trigger)(nil)
-	_ port.Trigger  = (*Store)(nil)
-	_ port.Sealer   = (*Store)(nil)
-	_ port.Identity = (*Store)(nil)
+	_ port.State     = (*Store)(nil)
+	_ port.Index     = (*Store)(nil)
+	_ port.Blob      = (*Blobs)(nil)
+	_ port.Replacer  = (*Blobs)(nil)
+	_ port.ReaderAll = (*Blobs)(nil)
+	_ port.Trigger   = (*Trigger)(nil)
+	_ port.Trigger   = (*Store)(nil)
+	_ port.Sealer    = (*Store)(nil)
+	_ port.Identity  = (*Store)(nil)
 )
 
 // Option configures [New].
@@ -482,4 +483,17 @@ func (s *Store) Verify(_ context.Context, token string, audiences []string) (str
 		return "", port.ErrUnauthenticated
 	}
 	return g.subject, nil
+}
+
+// ReadAll implements [port.ReaderAll].
+func (b *Blobs) ReadAll(_ context.Context, prefix string) (map[string][]byte, error) {
+	b.s.mu.Lock()
+	defer b.s.mu.Unlock()
+	out := map[string][]byte{}
+	for name, o := range b.s.blobs {
+		if strings.HasPrefix(name, prefix) {
+			out[strings.TrimPrefix(name, prefix)] = slices.Clone(o.body)
+		}
+	}
+	return out, nil
 }

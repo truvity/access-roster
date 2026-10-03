@@ -151,6 +151,12 @@ type (
 		Cluster     *bool  `json:"cluster,omitempty"`
 	}
 
+	// Ports chooses the adapter behind the storage ports of
+	// docs/design/ports.md.
+	Ports struct {
+		Adapter string `json:"adapter,omitempty"`
+	}
+
 	// GitHub is what the service knows of GitHub: whose CI it verifies and which
 	// Apps it may make.
 	GitHub struct {
@@ -195,6 +201,7 @@ type Serve struct {
 	Log    *Log     `json:"log,omitempty"`
 
 	Store         string `json:"store,omitempty"`
+	Ports         *Ports `json:"ports,omitempty"`
 	PolicyDir     string `json:"policyDir,omitempty"`
 	OverlayFile   string `json:"overlayFile,omitempty"`
 	PublicURL     string `json:"publicURL,omitempty"`
@@ -229,6 +236,7 @@ type Roster struct {
 	RecordsDir string       `json:"recordsDir,omitempty"`
 	Interval   *Duration    `json:"interval,omitempty"`
 	Log        *Log         `json:"log,omitempty"`
+	Ports      *Ports       `json:"ports,omitempty"`
 	Audit      *RosterAudit `json:"audit,omitempty"`
 }
 

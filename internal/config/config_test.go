@@ -335,3 +335,22 @@ func TestTheReferenceListsEveryRetiredVariable(t *testing.T) {
 		}
 	}
 }
+
+// `ports.adapter` is one of the two adapters that exist, and the default is
+// the one that keeps state where it has always been kept.
+func TestThePortsAdapterIsOneOfTheTwo(t *testing.T) {
+	for _, adapter := range []string{"legacy", "memory"} {
+		if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: "+adapter+"}\n")); err != nil {
+			t.Errorf("adapter %s was refused: %v", adapter, err)
+		}
+	}
+	if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: nats}\n")); err == nil {
+		t.Error("an adapter that does not exist was accepted")
+	}
+	if _, err := config.LoadControllerGitHub(write(t, "policyDir: /p\nconsoleURL: http://c:8080\nports: {adapter: dynamodb}\n")); err == nil {
+		t.Error("a controller accepted an adapter that does not exist")
+	}
+	if _, err := config.LoadControllerSlack(write(t, "policyDir: /p\nconsoleURL: http://c:8080\nports: {adapter: memory}\n")); err != nil {
+		t.Errorf("a controller refused the memory adapter: %v", err)
+	}
+}

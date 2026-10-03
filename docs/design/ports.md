@@ -7,7 +7,10 @@ to [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md); thi
 page is the specification. Which adapter exists today is in
 [../capabilities.md](../capabilities.md).
 
-**Status: designed, not shipped.** The running service still keeps its state as
+**Status: the ports and two adapters are built; the target adapters are
+designed.** The interfaces, an in-memory adapter and a temporary `legacy` adapter
+exist ([Implementation status](#implementation-status)); NATS JetStream and
+DynamoDB do not. The running service still keeps its state as
 described in [access-roster.md](access-roster.md#the-store) and
 [../operations/high-availability.md](../operations/high-availability.md). This
 page is what an adapter is built and tested against; the current layout stays
@@ -253,3 +256,90 @@ The suite asserts, at least:
 An adapter that cannot pass an assertion for a stated engine reason documents the
 reason in its own page and the suite names the exception; a silent skip fails the
 suite.
+
+## Implementation status
+
+The Go interfaces are in `internal/port` (`State`, `Blob`, `Trigger`, `Sealer`,
+`Identity`; the audit sink is `audit.Recorder`, unchanged), the conformance
+suite is `internal/port/porttest`, and `internal/store` builds one set of ports
+from the `ports.adapter` key of the configuration file and hands it to the
+apps. Business packages depend on the interfaces only; a test
+(`internal/port/guard_test.go`) fails if one imports `internal/kube`,
+`internal/valkey` or the legacy adapter. The interfaces differ from the tables
+above in three ways, all small:
+
+- `Blob` also has `Delete` and `List(prefix)`, because a report family is
+  replaced as a whole and a snapshot is deleted with its workspace, and two
+  optional capabilities, `Replacer` (replace every object under a prefix in one
+  write) and `ReaderAll` (read them in one request).
+- `State` is accompanied by `Index`, an unordered set with an expiry refreshed
+  on `Add`. It is **transitional**: the issuer's session index is a Valkey set
+  today, the layout replaces it with a prefix listing, and until the migration
+  has run the legacy adapter has to keep writing sets. A new feature does not use
+  it.
+- `Identity` is `Verify(token, audiences) (subject, error)`, the seam over the
+  existing verifiers; the legacy adapter is the cluster's `TokenReview`.
+
+### The in-memory adapter
+
+`internal/port/memory` implements every port in process memory, with the
+semantics above (revisions are a counter, expiry is judged by an injectable
+clock, `Watch` delivers put, delete and expiry, `Trigger` coalesces, `Sealer` is
+AES-GCM under a key that lives and dies with the store). It is what tests and the
+demonstration use, and what `ports.adapter: memory` selects.
+
+### The legacy adapter
+
+`internal/port/legacy` is temporary: it implements the ports over today's
+ConfigMaps, Secrets and Valkey, writing exactly the bytes the domain stores
+write, and is deleted when the migration of
+[0031](../decisions/0031-a-generic-migration-tool.md) has run. Its package
+documentation holds the whole mapping; in short:
+
+| Port key or name | Where it lives today |
+|---|---|
+| `req.<id>`, `code.<id>`, `codesess.<id>`, `tok.<jti>`, `sso.<id>`, `rt.<hash>`, `rtrot.<hash>`, `keyring.<alg>:<kid>` | the Valkey key the issuer writes (`issuer:request:<id>`, `issuer:code:<id>`, ...), under the installation's prefix |
+| `lease.<kind>:<workspace>` | `{<workspace>}:lease:<kind>`, the hub's refresh lease; `lease.<name>` is `lease:<name>` |
+| a key containing `:` | itself: the legacy namespace the issuer's own state is written in |
+| `gh.org.<org>` | the `<org>.json` entry of the `<release>-github-orgs` ConfigMap (the record; the credential is a separate Secret) |
+| `snapshots/<workspace>` | `{<workspace>}:snapshot`, the same gzip bytes, for the cache's lifetime |
+| `reports/github/<key>`, `reports/slack/<key>` | an entry of `<release>-github-status`, `<release>-slack-status` |
+
+Every other key of the layout (`ses.`, `sid.`, `ws.`, `gh.link.`, `app.`,
+`gate.`, `share.`, `cache.`, `dedupe.`, `notify.`) has no object of its own
+today, and is `ErrUnsupported`: a session is one Valkey value that does not carry
+its person, a link is a Secret entry keyed by account id, and presenting either
+under the layout's key would write different bytes.
+
+Where a port operation cannot be met exactly, the adapter does the closest safe
+thing, and the conformance suite names the exception:
+
+- **Revisions are the SHA-1 of the stored bytes.** Neither Valkey nor a
+  ConfigMap entry has a per-key version, and adding one would change what is
+  written. A rewrite of identical bytes keeps its revision
+  (`revisions/change-on-identical-rewrite` is skipped), and a compare-and-swap
+  cannot tell a record that went A, B, A from one that never moved. The swap is
+  atomic: a Lua script in Valkey, the ConfigMap's own `resourceVersion` for an
+  entry.
+- **`Watch` polls** the prefix by listing it (every two seconds by default) and
+  reports differences; an expiry is seen as a delete when a poll finds the record
+  gone.
+- **A ConfigMap entry has no lifetime**, so `gh.org.` accepts only the permanent
+  writes the layout allows. Report entries are text: a blob of invalid UTF-8 under
+  `reports/` is `ErrUnsupported`.
+- **`Trigger` is in-process.** A notification reaches this process's
+  subscribers; a controller's tick is still its interval and its 30-second look
+  at the mounted records.
+- **`Sealer` is `ErrUnsupported`** (`sealing/context` is skipped): nothing is
+  sealed today, and a process-local key would produce envelopes no restart could
+  open.
+- **Listing is a scan** (`SCAN` of every primary, or one `GET` of the ConfigMap),
+  for an operator or a watcher and not a request path.
+
+What does not go through the ports yet: the ConfigMap and Secret domain stores
+of a connected workspace and its credential, an organisation's credential, a
+person's GitHub link, the catalogue Apps, the OAuth client and memberships, and
+the Slack records with their recovery mirror. They stay behind their own
+interfaces and are written by `internal/kube`, which only `internal/app`,
+`internal/githubroster/app` and the legacy adapter import. Each moves when its
+key family of the layout has an adapter that can hold it.

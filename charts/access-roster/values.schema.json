@@ -73,6 +73,21 @@
           "minLength": 1,
           "type": "string"
         },
+        "ports": {
+          "additionalProperties": false,
+          "description": "The adapter behind the storage ports (docs/design/ports.md).",
+          "properties": {
+            "adapter": {
+              "default": "legacy",
+              "description": "`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`.",
+              "enum": [
+                "legacy",
+                "memory"
+              ]
+            }
+          },
+          "type": "object"
+        },
         "recordsDir": {
           "default": "/var/run/github-roster/records",
           "description": "The console's records, mounted.",
@@ -179,6 +194,21 @@
           "description": "The directory the policy is mounted at: the bindings are the policy's slack table.",
           "minLength": 1,
           "type": "string"
+        },
+        "ports": {
+          "additionalProperties": false,
+          "description": "The adapter behind the storage ports (docs/design/ports.md).",
+          "properties": {
+            "adapter": {
+              "default": "legacy",
+              "description": "`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`.",
+              "enum": [
+                "legacy",
+                "memory"
+              ]
+            }
+          },
+          "type": "object"
         },
         "recordsDir": {
           "default": "/var/run/slack-roster/workspaces",
@@ -603,6 +633,21 @@
           "description": "The directory the policy is mounted at. Unset is the built-in two groups, or the demonstration policy under `demo`.",
           "minLength": 1,
           "type": "string"
+        },
+        "ports": {
+          "additionalProperties": false,
+          "description": "The adapter behind the storage ports (docs/design/ports.md).",
+          "properties": {
+            "adapter": {
+              "default": "legacy",
+              "description": "`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`.",
+              "enum": [
+                "legacy",
+                "memory"
+              ]
+            }
+          },
+          "type": "object"
         },
         "probes": {
           "additionalProperties": false,

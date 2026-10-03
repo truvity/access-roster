@@ -53,10 +53,11 @@ import (
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/logsafe"
+	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
 	slackcatalogue "github.com/truvity/access-roster/internal/slackapp/catalogue"
-	"github.com/truvity/access-roster/internal/valkey"
+	"github.com/truvity/access-roster/internal/store"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
 )
@@ -107,7 +108,6 @@ type Config struct {
 	oauthSecretName   string
 	oauthIDKey        string
 	oauthSecretKey    string
-	valkey            valkey.Config
 	// audit is the audit installation this service connects to, if any.
 	audit audit.Config
 	// auditQuery is its query service, for the console's Audit page, and
@@ -208,18 +208,11 @@ func FromConfig(f *config.Serve) (Config, error) {
 	} else {
 		c.auditAudience = "audit"
 	}
-	c.valkey = valkey.Config{Cluster: true, Prefix: c.release}
-	if v := f.Valkey; v != nil {
-		c.valkey.Address = v.Address
-		c.valkey.TLS = v.TLS
-		if v.Cluster != nil {
-			c.valkey.Cluster = *v.Cluster
-		}
-		if v.PasswordEnv != "" {
-			if c.valkey.Password, err = config.Secret(v.PasswordEnv); err != nil {
-				return Config{}, fmt.Errorf("valkey.passwordEnv: %w", err)
-			}
-		}
+	// What the storage ports need is read from the same file by [store.FromServe]
+	// at start; read here too so a bad value (an unset password variable)
+	// is refused with the rest of the configuration.
+	if _, err = store.FromServe(f); err != nil {
+		return Config{}, err
 	}
 	// Secure follows the scheme the BROWSER will use, which the service
 	// knows because it is told its own public URL. Defaulting to false
@@ -339,25 +332,22 @@ const (
 
 // openSnapshots decides where snapshots live.
 //
-// In memory unless a Valkey is configured, and the difference matters at
+// In memory unless the ports hold state every replica sees (a Valkey is
+// configured, or the memory adapter is chosen), and the difference matters at
 // more than one replica: two hubs each holding their own snapshots answer
 // the same question two ways and read the same directory twice, and a
 // directory's API quota is per tenant, not per reader. So a deployment
 // running more than one replica without a Valkey is a mistake worth
 // saying out loud, rather than one that shows up as somebody's quota.
-func openSnapshots(ctx context.Context, cfg Config, log *slog.Logger) (hub.SnapshotStore, func(), error) {
-	if cfg.valkey.Address == "" {
+func openSnapshots(ctx context.Context, st *store.Stores, log *slog.Logger) hub.SnapshotStore {
+	if !st.Usable {
 		log.InfoContext(ctx, "keeping snapshots in memory: correct for one replica, "+
 			"wasteful and inconsistent for more", "cache", "memory")
-		return hub.NewMemorySnapshots(), func() {}, nil
+		return hub.NewMemorySnapshots()
 	}
-	shared, err := valkey.Open(ctx, cfg.valkey)
-	if err != nil {
-		return nil, nil, err
-	}
-	log.InfoContext(ctx, "sharing snapshots and the refresh lease",
-		"cache", "valkey", "address", cfg.valkey.Address, "cluster", cfg.valkey.Cluster)
-	return shared, func() { _ = shared.Close() }, nil
+	log.InfoContext(ctx, "keeping snapshots and the refresh lease in the state ports",
+		"cache", st.Name(), "adapter", st.Adapter)
+	return hub.NewBlobSnapshots(st.Ports.Blob, st.Ports.State)
 }
 
 // openRecovery builds the way in for the day the ordinary one is broken.
@@ -468,9 +458,9 @@ type stores struct {
 	// password shape of recovery.
 	reviewToken func(ctx context.Context, token string, audiences []string) (string, error)
 	namespace   string
-	// github is where the GitHub controller reports. Nil with the memory
-	// store, which has nowhere a separate process could write to.
-	github *kube.GitHubStatus
+	// githubReports is where the GitHub controller reports. Nil with the
+	// memory store, which has nowhere a separate process could write to.
+	githubReports server.GitHubReports
 	// githubOrgs is where connected GitHub organisations are kept. Nil
 	// with the memory store, for the same reason.
 	githubOrgs *kube.GitHubOrgs
@@ -491,7 +481,8 @@ type stores struct {
 	slackShared *kube.SlackShared
 	// slackChannels keeps console channels' records, in the same ConfigMap.
 	slackChannels *kube.SlackChannels
-	slackStatus   *kube.SlackStatus
+	// slackReports is what the Slack controller reported.
+	slackReports server.SlackStatusReports
 	// slackWorkspaces is where Slack workspaces are connected.
 	slackWorkspaces *kube.SlackWorkspaces
 }
@@ -499,7 +490,7 @@ type stores struct {
 // openStores builds them, and says plainly in the log which was chosen.
 // The memory store losing everything on restart is correct for a
 // prototype and catastrophic for a deployment, so it is never silent.
-func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, error) {
+func openStores(ctx context.Context, cfg Config, st *store.Stores, log *slog.Logger) (stores, error) {
 	if cfg.store == storeMemory {
 		key, err := access.NewSessionKey()
 		if err != nil {
@@ -514,9 +505,13 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		}, nil
 	}
 
-	client, err := kube.InCluster(cfg.release)
-	if err != nil {
-		return stores{}, err
+	// Today's ConfigMaps and Secrets, opened once by the ports' factory.
+	var client *kube.Client
+	if st.Backend != nil {
+		client = st.Backend.Kube
+	}
+	if client == nil {
+		return stores{}, errors.New("store: kubernetes needs the namespace's objects, and this process has none")
 	}
 	key, err := client.SessionKey(ctx, access.NewSessionKey)
 	if err != nil {
@@ -636,9 +631,12 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		log.InfoContext(ctx, "restored workspace records from their credentials", "workspaces", restored)
 	}
 	return stores{
-		github:      github,
-		githubOrgs:  githubOrgs,
-		githubLinks: githubLinks,
+		// The controllers' reports are read through the blob port, which is
+		// the same two ConfigMaps in this adapter.
+		githubReports: rails.NewBlobReports(st.Ports.Blob, "reports/github/"),
+		slackReports:  rails.NewBlobReports(st.Ports.Blob, "reports/slack/"),
+		githubOrgs:    githubOrgs,
+		githubLinks:   githubLinks,
 		// runner Apps are created only for declared tiers, but the store
 		// is kept either way: an App created before a tier was dropped
 		// stays visible, so it can be disconnected.
@@ -648,7 +646,6 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 		slackCatalogueApps:  slackCatalogueApps,
 		slackShared:         slackShared,
 		slackChannels:       kube.NewSlackChannels(client),
-		slackStatus:         slackStatus,
 		slackWorkspaces:     slackWorkspaces,
 		workspaces:          workspaces,
 		credentials:         credentials,
@@ -658,7 +655,7 @@ func openStores(ctx context.Context, cfg Config, log *slog.Logger) (stores, erro
 			SecretKey: cfg.oauthSecretKey,
 		}),
 		sessionKey:  key,
-		reviewToken: client.ReviewToken,
+		reviewToken: st.Ports.Identity.Verify,
 		namespace:   client.Namespace(),
 	}, nil
 }
@@ -778,18 +775,15 @@ func (a *App) Close() {
 
 // New assembles the hub. The caller runs it with [App.Run] and releases
 // it with [App.Close].
-func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
+func New(ctx context.Context, cfg Config, st *store.Stores, log *slog.Logger) (*App, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	kept, err := openStores(ctx, cfg, log)
+	kept, err := openStores(ctx, cfg, st, log)
 	if err != nil {
 		return nil, err
 	}
-	snapshots, closeSnapshots, err := openSnapshots(ctx, cfg, log)
-	if err != nil {
-		return nil, err
-	}
+	snapshots := openSnapshots(ctx, st, log)
 	// The audit trail is an installation of this service's own, in its
 	// namespace; without one, every record is a log line and nothing more.
 	// A refusal found after the start is fatal the way one at the start is:
@@ -804,7 +798,6 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	recorder, err := audit.Open(ctx, cfg.audit)
 	if err != nil {
-		closeSnapshots()
 		return nil, err
 	}
 	closeStores := func() {
@@ -812,7 +805,6 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			log.WarnContext(ctx, "the audit emitter could not be closed cleanly; what its queue held is dropped",
 				"error", err)
 		}
-		closeSnapshots()
 	}
 
 	directory := hub.New(kept.workspaces, snapshots, cfg.freshness, log)
@@ -952,13 +944,13 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		Connectors:   connectors,
 		Recovery:     recovery,
 		LoginSources: loginSources,
-		CacheBackend: cacheName(cfg),
+		CacheBackend: st.Name(),
 		SecureCookie: cfg.secureCookies,
 		PublicURL:    cfg.publicURL,
 		RootURL:      cfg.publicRootURL,
 		IssuerURL:    cfg.forwardedIssuer,
 		SignIn:       cfg.loginDirectory,
-		GitHub:       githubReports(kept.github, cfg.demo),
+		GitHub:       githubReports(kept.githubReports, cfg.demo),
 		GitHubOrgs:   githubConnections(kept.githubOrgs, cfg.demo, demoAppKey),
 		// Typed nils again: an interface holding a nil store is not nil.
 		GitHubLinkApp:       githubLinkApp(kept.githubOrgs, cfg.demo),
@@ -973,7 +965,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		SlackCatalogueApps:  slackCatalogueApps(kept.slackCatalogueApps),
 		SlackShared:         slackSharedRecords(kept.slackShared),
 		SlackChannels:       slackChannelRecords(kept.slackChannels),
-		SlackStatus:         slackStatusReports(kept.slackStatus),
+		SlackStatus:         kept.slackReports,
 		SlackWorkspaces:     slackWorkspaces(kept.slackWorkspaces),
 		GitHubHTTP:          demoGitHub(cfg.demo && kept.githubCatalogueApps == nil),
 		Audit:               recorder,
@@ -1023,7 +1015,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	// that cannot read a snapshot cannot answer anything, and saying
 	// ready through that is how a moved Valkey became a half-hour of
 	// hanging requests on 2026-09-10 with every pod green.
-	ready := health.Follow("the snapshot store", snapshots)
+	ready := health.Follow("the snapshot store", st.Readiness())
 	healthMux := health.Mux(0, ready)
 
 	// "the directory", not the old service name: in the merged process
@@ -1032,7 +1024,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	log.InfoContext(ctx, "the directory is assembled",
 		"api", cfg.apiPort, "console", cfg.consolePort, "health", cfg.healthPort,
 		"demo", cfg.demo, "recovery", recoveryKind(recovery), "public", cfg.publicURL,
-		"signIn", cfg.loginDirectory, "cache", cacheName(cfg), "store", cfg.store,
+		"signIn", cfg.loginDirectory, "cache", st.Name(), "store", cfg.store,
 		"version", version.String(), "policy", policySource(cfg.policyPath, cfg.demo))
 
 	return &App{
@@ -1372,14 +1364,6 @@ func cappedSessionLifetime(session, absolute time.Duration) time.Duration {
 	return session
 }
 
-// cacheName is what the console shows for where snapshots live.
-func cacheName(cfg Config) string {
-	if cfg.valkey.Address == "" {
-		return "memory"
-	}
-	return "valkey"
-}
-
 // recoveryKind names the shape of the recovery path for the startup line.
 func recoveryKind(r server.Recovery) string {
 	if r == nil {
@@ -1394,7 +1378,7 @@ func recoveryKind(r server.Recovery) string {
 //
 // A demonstration run with no Kubernetes gets the demonstration report
 // instead, so the GitHub page can be walked through like every other.
-func githubReports(store *kube.GitHubStatus, demonstration bool) server.GitHubReports {
+func githubReports(store server.GitHubReports, demonstration bool) server.GitHubReports {
 	switch {
 	case store != nil:
 		return store
@@ -1437,7 +1421,7 @@ func githubRunnerApps(store *kube.GitHubRunnerApps, demonstration bool, key stri
 	}
 }
 
-// slackSharedRecords and slackStatusReports are the stores as the console's
+// slackSharedRecords and slackChannelRecords are the stores as the console's
 // interfaces, or nil: a typed nil pointer in an interface is not nil.
 func slackSharedRecords(store *kube.SlackShared) server.SlackSharedRecords {
 	if store == nil {
@@ -1447,13 +1431,6 @@ func slackSharedRecords(store *kube.SlackShared) server.SlackSharedRecords {
 }
 
 func slackChannelRecords(store *kube.SlackChannels) server.SlackChannelRecords {
-	if store == nil {
-		return nil
-	}
-	return store
-}
-
-func slackStatusReports(store *kube.SlackStatus) server.SlackStatusReports {
 	if store == nil {
 		return nil
 	}
