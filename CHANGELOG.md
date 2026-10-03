@@ -13,6 +13,15 @@
   whose Sealer sends that key. Tested with Pulumi's mocks (`just pulumi-test`).
   [docs/deployment/aws.md](docs/deployment/aws.md).
 
+- **Deprecated: the Lambda extension layer (`access-roster-lambda-layer`).**
+  The extension moved to `truvity/observability`
+  (`github.com/truvity/observability/lambdaext`), which releases it as
+  `otlp-lambda-layer_<version>_linux_<arch>.zip`. This release still builds
+  the old `access-roster-lambda-layer_<version>_linux_<arch>.zip`, from that
+  package, so a consumer can switch; it is dropped in the release after
+  this. The protocol and every `ACCESS_ROSTER_*` setting are unchanged.
+  `internal/lambdaext` is removed from this module.
+
 - **A longer absolute session for a read-only resource: `absolute_cap` and
   `read_only` on a policy resource.** The 24-hour absolute limit of
   [ADR 0001](docs/decisions/0001-sessions-and-an-absolute-limit.md) made every

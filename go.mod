@@ -13,7 +13,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.70.0
 	github.com/aws/aws-sdk-go-v2/service/kms v1.61.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.0
-	github.com/aws/aws-sdk-go-v2/service/sts v1.51.1
 	github.com/aws/smithy-go v1.28.1
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/go-jose/go-jose/v4 v4.1.5
@@ -22,6 +21,7 @@ require (
 	github.com/nats-io/nats.go v1.53.1
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/truvity/audit/sdk v0.6.1
+	github.com/truvity/observability v0.47.0
 	github.com/truvity/policy v1.37.0
 	github.com/zitadel/oidc/v3 v3.49.6
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
@@ -32,7 +32,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.46.0
 	go.opentelemetry.io/otel/sdk/metric v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
-	go.opentelemetry.io/proto/otlp v1.11.0
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.57.0
 	golang.org/x/oauth2 v0.36.0
@@ -65,6 +64,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/signin v1.10.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.51.1 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -114,13 +114,14 @@ require (
 	github.com/zitadel/schema v1.3.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260825221802-da73d73af1c5 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260904194346-d0f1323225a4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5 // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect

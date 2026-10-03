@@ -1,5 +1,14 @@
 # AWS Lambda — telemetry with the function role's identity
 
+> **Deprecated: the extension moved to
+> [truvity/observability](https://github.com/truvity/observability/blob/master/docs/integrations/aws-lambda.md).**
+> The source is `github.com/truvity/observability/lambdaext` and the layer is
+> `otlp-lambda-layer_<version>_linux_<arch>.zip` in that repository's
+> releases. This repository keeps building `access-roster-lambda-layer` for
+> one more release so that a consumer can switch, and then stops. The
+> behaviour and every `ACCESS_ROSTER_*` setting below are identical in both.
+> This page is kept for that one release.
+
 A Lambda function can send its OpenTelemetry data to an OTLP endpoint that
 trusts access-roster **without holding any secret**. The release carries an
 extension layer, `access-roster-lambda-layer_<version>_linux_<arch>.zip`,
@@ -248,12 +257,12 @@ like function time; the proxy is idle between exports.
 
 ## Tests
 
-`internal/lambdaext` has unit tests (token cache, expiry after a freeze,
+The extension's package (now `github.com/truvity/observability/lambdaext`) has unit tests (token cache, expiry after a freeze,
 single flight, failure backoff, STS and exchange against fakes, proxy
 headers/body/encoding, 503 and refusals) and end-to-end tests that run the
 real binary against a fake Extensions API, STS, issuer and OTLP upstream. One
 more test runs it in the real Lambda base image with `aws-lambda-rie`; it is
-opt-in (`ACCESS_ROSTER_RIE=1`, needs docker and port 8080).
+opt-in (`OTLP_LAMBDA_RIE=1` in the new repository, needs docker and port 8080).
 
 The Telemetry API is covered by tests against a fake Telemetry API
 (subscription, batches POSTed to the extension's listener, records arriving at
