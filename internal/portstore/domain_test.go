@@ -493,7 +493,7 @@ func TestSlackSharedAndChannelRecordsAreEditedUnderTheirRevision(t *testing.T) {
 			t.Fatal(err)
 		}
 		other := reconcile.ConsoleChannel{Workspace: "acme", Name: "dev", Sources: []string{"dev@acme.example"}}
-		if err = channels.Apply(ctx, "acme", "dev", func(cur *reconcile.ConsoleChannel, all []slackconnection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
+		if err = channels.Apply(ctx, "acme", "dev", func(_ *reconcile.ConsoleChannel, all []slackconnection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 			if len(all) != 1 || all[0].Name != "ops" {
 				t.Errorf("all = %+v, want the one record already there", all)
 			}
