@@ -164,11 +164,11 @@ func TestARerunCopiesNothingAndAFailedRunCompletes(t *testing.T) {
 	src := newLegacy(t)
 	seed(t, src.stores)
 	seedLogins(t, src.stores)
-	real := env.Open(t)
+	healthy := env.Open(t)
 
 	// The destination's State fails on its seventh write: a run that stops half way.
-	flaky := &failing{State: real.State, after: 7}
-	set := real
+	flaky := &failing{State: healthy.State, after: 7}
+	set := healthy
 	set.State = flaky
 	dst := portSide(set, store.AdapterNATS)
 
@@ -183,7 +183,7 @@ func TestARerunCopiesNothingAndAFailedRunCompletes(t *testing.T) {
 
 	// Run again against the healthy destination: what is missing is copied, and what is
 	// there is left alone.
-	dst = portSide(real, store.AdapterNATS)
+	dst = portSide(healthy, store.AdapterNATS)
 	report, err = migrate.Run(ctx, side("old", src.stores), side("new", dst), stopped)
 	if err != nil || !report.OK {
 		t.Fatalf("the re-run = %v\n%s", err, report.JSON())
@@ -200,7 +200,7 @@ func TestARerunCopiesNothingAndAFailedRunCompletes(t *testing.T) {
 }
 
 // failing is a State whose writes fail after a number of them, and which says
-// what it holds the way the real one does.
+// what it holds the way the healthy one does.
 type failing struct {
 	port.State
 	after, n int
@@ -406,13 +406,13 @@ func TestNATSBackToLegacyIsTheRollback(t *testing.T) {
 	if _, ok, err := sessions.ByRefreshToken(ctx, "refresh-ada"); err != nil || !ok {
 		t.Fatalf("ByRefreshToken after the rollback = %v, %v", ok, err)
 	}
-	if ttl := back.redis.TTL("access-roster:" + "issuer:session-token:" + hashed(t, back, "refresh-ada")); ttl < 29*24*time.Hour || ttl > sessionLifetime {
+	if ttl := back.redis.TTL("access-roster:" + "issuer:session-token:" + hashed(t, back)); ttl < 29*24*time.Hour || ttl > sessionLifetime {
 		t.Errorf("the restored refresh token has %s left", ttl)
 	}
 }
 
-// hashed finds the key a refresh token was filed under on the legacy side.
-func hashed(t *testing.T, l *legacySide, token string) string {
+// hashed finds the hash a refresh token was filed under on the legacy side.
+func hashed(t *testing.T, l *legacySide) string {
 	t.Helper()
 	for _, k := range l.redis.Keys() {
 		if rest, ok := strings.CutPrefix(k, "access-roster:issuer:session-token:"); ok {
