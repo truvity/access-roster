@@ -202,4 +202,7 @@ type Set struct {
 	Trigger  Trigger
 	Sealer   Sealer
 	Identity Identity
+	// Export is the copy of a secret OUT of the service into a store a
+	// consumer reads. It is nil when no export is configured.
+	Export Export
 }
