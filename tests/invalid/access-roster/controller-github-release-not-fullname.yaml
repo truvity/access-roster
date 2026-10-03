@@ -1,0 +1,17 @@
+# The controller reads the report and the records the service writes under the release's name.
+# error: controllerGithub.config.release must be "access-roster"
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+controllerGithub:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.default.svc:8080/console
+    release: other

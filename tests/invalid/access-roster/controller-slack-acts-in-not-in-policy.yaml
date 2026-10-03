@@ -1,0 +1,23 @@
+# controllerSlack.actsIn names a workspace the inline policy does not declare.
+# error: controllerSlack.config.enabledWorkspaces names "old", which policy.slack.workspaces does not declare
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+controllerSlack:
+  enabled: true
+  config:
+    enabledWorkspaces:
+    - acme
+    - old
+    consoleURL: http://access-roster.default.svc:8080/console
+exchange:
+  clusters:
+  - name: example
+    issuer: https://oidc.example
+console:
+  mount: /console
+policy:
+  slack:
+    workspaces:
+      acme: {}

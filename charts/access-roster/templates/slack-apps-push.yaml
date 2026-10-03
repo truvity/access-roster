@@ -1,0 +1,70 @@
+{{- /*
+One PushSecret per catalogue Slack App that carries `push`: the supported
+way one App's bot token leaves this service.
+
+The doctrine is the GitHub catalogue's (see github-apps-push.yaml): a
+credential Slack hands over has ONE copy, held by the service. Slack has no
+token exchange, so there is nothing a consumer can ask the issuer for
+instead; a program that acts in the workspace as its bot holds the bot
+token, and holding it is the same blast radius as holding the App. That is
+why the copy is made deliberately, per App, to a store and a path the
+operator names -- this chart invents neither -- and why it is exactly ONE
+key: the bot token. Never the record, never the client id or secret (the
+consumer cannot use them), never another App's keys, never the whole
+Secret. What lands in the store IS the App's token: it is rotated as one,
+and a store that holds it is in the blast radius of the App.
+*/ -}}
+{{- $root := . }}
+{{- $pushed := dict }}
+{{- range .Values.slackApps }}
+{{- if .push }}
+{{- if ne (dig "store" "memory" $root.Values.config) "kubernetes" }}
+{{- fail (printf "slackApps[%s].push needs config.store: kubernetes: the App's bot token is kept in a Secret only that store writes, so with any other there is nothing to push" .id) }}
+{{- end }}
+{{- $kind := .push.secretStore.kind | default "SecretStore" }}
+{{- $where := printf "%s/%s/%s" $kind .push.secretStore.name .push.remoteKey }}
+{{- if hasKey $pushed $where }}
+{{- fail (printf "slackApps: %s and %s both push to remoteKey %s in %s %s: one would overwrite the other, and whoever read that path could not tell which App's token they held" (index $pushed $where) .id .push.remoteKey $kind .push.secretStore.name) }}
+{{- end }}
+{{- $_ := set $pushed $where .id }}
+---
+# The bot token of catalogue Slack App {{ .id }}, copied to {{ $kind }} {{ .push.secretStore.name }}.
+# A consumer reads the property `bot_token` from {{ .push.remoteKey }}; the
+# name is the contract and does not change for the life of the App.
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: {{ include "access-roster.fullname" $root }}-slack-app-{{ .id }}
+  labels:
+    {{- include "access-roster.labels" $root | nindent 4 }}
+spec:
+  refreshInterval: {{ .push.refreshInterval | default "1h" }}
+  # Declared rather than left to the API's default, and `conversionStrategy`
+  # below likewise. A field the CRD defaults but the manifest omits reads
+  # as drift to anything that compares desired against live: an ArgoCD
+  # Application carrying this chart sits permanently OutOfSync on a
+  # PushSecret that is doing its job, and a permanent OutOfSync is a
+  # health signal nobody can read any more.
+  updatePolicy: Replace
+  # None by default: a declaration removed here leaves the copy for
+  # somebody to remove deliberately rather than breaking a consumer's next
+  # run from a distance.
+  deletionPolicy: {{ .push.deletionPolicy | default "None" }}
+  secretStoreRefs:
+    - name: {{ .push.secretStore.name }}
+      kind: {{ $kind }}
+  selector:
+    secret:
+      # The one Secret the service keeps every catalogue Slack App in. The
+      # bot token key below exists only once the App is INSTALLED, so
+      # nothing is pushed for an App an operator created and stopped at.
+      name: {{ include "access-roster.fullname" $root }}-slack-catalogue-apps
+  data:
+    - conversionStrategy: None
+      match:
+        secretKey: {{ .id }}.slack_bot_token
+        remoteRef:
+          remoteKey: {{ .push.remoteKey }}
+          property: bot_token
+{{- end }}
+{{- end }}

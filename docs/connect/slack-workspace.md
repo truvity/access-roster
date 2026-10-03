@@ -4,7 +4,7 @@ The Slack controller, `slack-roster`, makes each Slack workspace's channels
 match the policy's `slack` table: a channel is bound to groups, its wanted
 members are those groups' holders, and every pass the controller invites the
 people who belong and, where the channel is `strict`, removes the people who do
-not. It is a second process from the `access-issuer` chart, like the
+not. It is a second process from the `access-roster` chart, like the
 [GitHub controller](github-organisation.md), and has no listener.
 
 There are three kinds of channel. A **policy channel** is bound in git, to

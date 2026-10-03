@@ -21,7 +21,7 @@ const policy = "https://github.com/truvity/policy/schemas/"
 
 // Names are the binaries that read a file, as the schema files are named:
 // schemas/config/<name>.schema.json.
-var Names = []string{"access-issuer", "github-roster", "slack-roster"}
+var Names = []string{"serve", "controller-github", "controller-slack"}
 
 type m = map[string]any
 
@@ -170,10 +170,10 @@ func envField(description string) m {
 	return m{"$ref": "#/$defs/envName", "description": description}
 }
 
-func issuerSchema() m {
+func serveSchema() m {
 	props := m{
 		"issuerURL":     m{"$ref": "#/$defs/url", "description": "The issuer: baked into every token and every relying party's trust, so there is no default. No trailing slash is kept."},
-		"release":       strDefault("The name this installation's objects carry: the Kubernetes object names (`<release>-github-orgs`, ...) and the prefix of its keys in a shared store. The chart requires it to be the release's full name.", "access-issuer"),
+		"release":       strDefault("The name this installation's objects carry: the Kubernetes object names (`<release>-github-orgs`, ...) and the prefix of its keys in a shared store. The chart requires it to be the release's full name.", "access-roster"),
 		"cluster":       str("Names this cluster in a ServiceAccount's subject. A pod cannot discover it; unset keeps the older unqualified subject."),
 		"allowInsecure": boolean("Accept a plain-http issuer URL, for a local run."),
 		"demo":          boolean("Two tenants held in memory, which need no credential and no network."),
@@ -268,8 +268,8 @@ func issuerSchema() m {
 			"forwardedForTrustedHops": integer("How many of the deployment's own proxies append to X-Forwarded-For; zero records the peer.", 0, 0),
 		}),
 	}
-	return document("access-issuer", "access-issuer",
-		"The configuration of access-issuer: the issuer, the console and the directory hub, one process."+secretsNote,
+	return document("serve", "access-roster serve",
+		"The configuration of `access-roster serve`: the issuer, the console and the directory hub, one process."+secretsNote,
 		props, []string{"issuerURL"}, []string{"duration", "url", "envName"},
 		m{
 			"allOf": []any{
@@ -282,7 +282,7 @@ func issuerSchema() m {
 
 func rosterProps(kind, mountDefault, recordsDefault string) m {
 	return m{
-		"release":    strDefault("The name the installation's objects carry. It must be the release's full name: the controller reads the report and the records the service writes under it.", "access-issuer"),
+		"release":    strDefault("The name the installation's objects carry. It must be the release's full name: the controller reads the report and the records the service writes under it.", "access-roster"),
 		"policyDir":  str("The directory the policy is mounted at: the bindings are the policy's " + kind + " table."),
 		"consoleURL": url("The console's API, which answers who holds a group."),
 		"tokenFile":  strDefault("This pod's projected ServiceAccount token, presented to the console and read afresh on every call.", mountDefault),
@@ -296,22 +296,22 @@ func rosterProps(kind, mountDefault, recordsDefault string) m {
 	}
 }
 
-func githubRosterSchema() m {
+func controllerGitHubSchema() m {
 	props := rosterProps("github", "/var/run/secrets/github-roster/token", "/var/run/github-roster/records")
 	props["appsDir"] = strDefault("One file per connected organisation: its App's credentials.", "/var/run/github-roster/apps")
 	props["catalogueFile"] = str("The GitHub App catalogue, read only so the warning about an internal group nothing consumes does not name a group a grant consumes. A missing or malformed one is never fatal here.")
 	props["enabledOrgs"] = list("The organisations the controller changes. Every other bound organisation is derived and reported, and left alone. Each must be one the policy binds.", m{"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$"})
-	return document("github-roster", "github-roster",
-		"The configuration of github-roster: the controller that makes each GitHub organisation's teams match the policy's github table."+secretsNote,
+	return document("controller-github", "access-roster controller github",
+		"The configuration of `access-roster controller github`: the controller that makes each GitHub organisation's teams match the policy's github table."+secretsNote,
 		props, []string{"policyDir", "consoleURL"}, []string{"duration", "url"}, nil)
 }
 
-func slackRosterSchema() m {
+func controllerSlackSchema() m {
 	props := rosterProps("slack", "/var/run/secrets/slack-roster/token", "/var/run/slack-roster/workspaces")
 	props["credentialsDir"] = strDefault("One file per connected workspace: the app's credentials and its bot token.", "/var/run/slack-roster/credentials")
 	props["enabledWorkspaces"] = list("The workspaces the controller changes, by the policy's key. Each must be one the policy declares.", m{"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$"})
-	return document("slack-roster", "slack-roster",
-		"The configuration of slack-roster: the controller that makes each Slack workspace's user groups match the policy's slack table."+secretsNote,
+	return document("controller-slack", "access-roster controller slack",
+		"The configuration of `access-roster controller slack`: the controller that makes each Slack workspace's user groups match the policy's slack table."+secretsNote,
 		props, []string{"policyDir", "consoleURL"}, []string{"duration", "url"}, nil)
 }
 
@@ -319,12 +319,12 @@ func slackRosterSchema() m {
 func Schema(name string) ([]byte, bool) {
 	var s m
 	switch name {
-	case "access-issuer":
-		s = issuerSchema()
-	case "github-roster":
-		s = githubRosterSchema()
-	case "slack-roster":
-		s = slackRosterSchema()
+	case "serve":
+		s = serveSchema()
+	case "controller-github":
+		s = controllerGitHubSchema()
+	case "controller-slack":
+		s = controllerSlackSchema()
 	default:
 		return nil, false
 	}

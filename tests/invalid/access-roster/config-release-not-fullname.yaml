@@ -1,0 +1,5 @@
+# The objects the service and the controllers share are named from the release, so `config.release` must be this release's full name.
+# error: config.release must be "access-roster", this release's full name
+config:
+  issuerURL: https://issuer.example
+  release: other

@@ -1,0 +1,1742 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "_comment": "Nothing is required here that the template already refuses to render without. The schema catches typos and wrong types; `required` in the template catches an unset value, with a sentence saying why it matters. Each component's `config` is generated into this file from the schema its binary validates against (`just config-schemas`); the rest is written in internal/config/schema/values.base.json.",
+  "additionalProperties": false,
+  "definitions": {
+    "config-controller-github": {
+      "additionalProperties": false,
+      "description": "The configuration of `access-roster controller github`: the controller that makes each GitHub organisation's teams match the policy's github table. Secrets are never in this file: a field ending in ...Env holds the NAME of the environment variable that holds the secret, and a field ending in ...File holds a path. Telemetry is the OTEL_* environment, not configuration.",
+      "properties": {
+        "appsDir": {
+          "default": "/var/run/github-roster/apps",
+          "description": "One file per connected organisation: its App's credentials.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "audit": {
+          "additionalProperties": false,
+          "description": "The audit installation the controller records to, as its own workload. Unset only logs what it did.",
+          "properties": {
+            "tokenFile": {
+              "description": "This workload's projected service-account token.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "writer": {
+              "$ref": "#/definitions/config-controller-github.url",
+              "description": "The installation's receiver."
+            }
+          },
+          "type": "object"
+        },
+        "catalogueFile": {
+          "description": "The GitHub App catalogue, read only so the warning about an internal group nothing consumes does not name a group a grant consumes. A missing or malformed one is never fatal here.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "consoleURL": {
+          "$ref": "#/definitions/config-controller-github.url",
+          "description": "The console's API, which answers who holds a group."
+        },
+        "enabledOrgs": {
+          "description": "The organisations the controller changes. Every other bound organisation is derived and reported, and left alone. Each must be one the policy binds.",
+          "items": {
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "interval": {
+          "$ref": "#/definitions/config-controller-github.duration",
+          "default": "15m",
+          "description": "How long between passes. Positive."
+        },
+        "log": {
+          "additionalProperties": false,
+          "description": "Structured logging. One level for the whole service: per-package levels are deliberately not part of the contract.",
+          "properties": {
+            "level": {
+              "default": "info",
+              "description": "The lowest level that is written.",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "policyDir": {
+          "description": "The directory the policy is mounted at: the bindings are the policy's github table.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "recordsDir": {
+          "default": "/var/run/github-roster/records",
+          "description": "The console's records, mounted.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "release": {
+          "default": "access-roster",
+          "description": "The name the installation's objects carry. It must be the release's full name: the controller reads the report and the records the service writes under it.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "tokenFile": {
+          "default": "/var/run/secrets/github-roster/token",
+          "description": "This pod's projected ServiceAccount token, presented to the console and read afresh on every call.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "title": "access-roster controller github",
+      "type": "object"
+    },
+    "config-controller-github.duration": {
+      "description": "A Go duration: 30s, 2m, 168h.",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+      "type": "string"
+    },
+    "config-controller-github.url": {
+      "allOf": [
+        {
+          "pattern": "^https?://\\S+$"
+        },
+        {
+          "not": {
+            "pattern": "^https?://[^/?#\\s]*@"
+          }
+        }
+      ],
+      "description": "An http or https URL with a host and no credentials: a password in a URL is a secret in the file, and a secret is named, never carried.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "config-controller-slack": {
+      "additionalProperties": false,
+      "description": "The configuration of `access-roster controller slack`: the controller that makes each Slack workspace's user groups match the policy's slack table. Secrets are never in this file: a field ending in ...Env holds the NAME of the environment variable that holds the secret, and a field ending in ...File holds a path. Telemetry is the OTEL_* environment, not configuration.",
+      "properties": {
+        "audit": {
+          "additionalProperties": false,
+          "description": "The audit installation the controller records to, as its own workload. Unset only logs what it did.",
+          "properties": {
+            "tokenFile": {
+              "description": "This workload's projected service-account token.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "writer": {
+              "$ref": "#/definitions/config-controller-slack.url",
+              "description": "The installation's receiver."
+            }
+          },
+          "type": "object"
+        },
+        "consoleURL": {
+          "$ref": "#/definitions/config-controller-slack.url",
+          "description": "The console's API, which answers who holds a group."
+        },
+        "credentialsDir": {
+          "default": "/var/run/slack-roster/credentials",
+          "description": "One file per connected workspace: the app's credentials and its bot token.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "enabledWorkspaces": {
+          "description": "The workspaces the controller changes, by the policy's key. Each must be one the policy declares.",
+          "items": {
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "interval": {
+          "$ref": "#/definitions/config-controller-slack.duration",
+          "default": "15m",
+          "description": "How long between passes. Positive."
+        },
+        "log": {
+          "additionalProperties": false,
+          "description": "Structured logging. One level for the whole service: per-package levels are deliberately not part of the contract.",
+          "properties": {
+            "level": {
+              "default": "info",
+              "description": "The lowest level that is written.",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "policyDir": {
+          "description": "The directory the policy is mounted at: the bindings are the policy's slack table.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "recordsDir": {
+          "default": "/var/run/slack-roster/workspaces",
+          "description": "The console's records, mounted.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "release": {
+          "default": "access-roster",
+          "description": "The name the installation's objects carry. It must be the release's full name: the controller reads the report and the records the service writes under it.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "tokenFile": {
+          "default": "/var/run/secrets/slack-roster/token",
+          "description": "This pod's projected ServiceAccount token, presented to the console and read afresh on every call.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "title": "access-roster controller slack",
+      "type": "object"
+    },
+    "config-controller-slack.duration": {
+      "description": "A Go duration: 30s, 2m, 168h.",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+      "type": "string"
+    },
+    "config-controller-slack.url": {
+      "allOf": [
+        {
+          "pattern": "^https?://\\S+$"
+        },
+        {
+          "not": {
+            "pattern": "^https?://[^/?#\\s]*@"
+          }
+        }
+      ],
+      "description": "An http or https URL with a host and no credentials: a password in a URL is a secret in the file, and a secret is named, never carried.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "config-serve": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "valkey"
+            ]
+          },
+          "then": {
+            "properties": {
+              "valkey": {
+                "required": [
+                  "address"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "audit": {
+                "required": [
+                  "queryURL"
+                ]
+              }
+            },
+            "required": [
+              "audit"
+            ]
+          },
+          "then": {
+            "properties": {
+              "audit": {
+                "required": [
+                  "writer"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "description": "The configuration of `access-roster serve`: the issuer, the console and the directory hub, one process. Secrets are never in this file: a field ending in ...Env holds the NAME of the environment variable that holds the secret, and a field ending in ...File holds a path. Telemetry is the OTEL_* environment, not configuration.",
+      "properties": {
+        "adminPasswordEnv": {
+          "$ref": "#/definitions/config-serve.envName",
+          "description": "The NAME of the variable holding the hub's recovery password, for a run outside a cluster. Unset generates one and prints it once."
+        },
+        "allowInsecure": {
+          "description": "Accept a plain-http issuer URL, for a local run.",
+          "type": "boolean"
+        },
+        "api": {
+          "additionalProperties": false,
+          "description": "The directory API's guard.",
+          "properties": {
+            "audience": {
+              "default": "directory-roster",
+              "description": "The audience a consumer's token must carry.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "consumersFile": {
+              "description": "The file naming the ServiceAccounts that may call it. None named admits nobody in a cluster.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "audit": {
+          "additionalProperties": false,
+          "description": "The audit installation this service records to. Unset keeps the trail in the log only.",
+          "properties": {
+            "audience": {
+              "default": "audit",
+              "description": "The client whose audience the Audit page's tokens carry.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "forwardedForTrustedHops": {
+              "default": 0,
+              "description": "How many of the deployment's own proxies append to X-Forwarded-For; zero records the peer.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "queryURL": {
+              "$ref": "#/definitions/config-serve.url",
+              "description": "The query service, for the console's Audit page. Needs `writer`."
+            },
+            "tokenFile": {
+              "description": "This workload's projected service-account token, presented on every call.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "writer": {
+              "$ref": "#/definitions/config-serve.url",
+              "description": "The installation's receiver."
+            }
+          },
+          "type": "object"
+        },
+        "clientSecretsDir": {
+          "description": "A directory holding one file per confidential client, named after the client id, each the client's secret. Read per call, so a rotated Secret takes effect without a restart.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "cluster": {
+          "description": "Names this cluster in a ServiceAccount's subject. A pod cannot discover it; unset keeps the older unqualified subject.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "console": {
+          "additionalProperties": false,
+          "description": "Where the console is published, for the sign-in that starts there.",
+          "properties": {
+            "client": {
+              "description": "The client id the console signs in as.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "origin": {
+              "description": "The console's origin, when it is not the issuer's.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "demo": {
+          "description": "Two tenants held in memory, which need no credential and no network.",
+          "type": "boolean"
+        },
+        "exchange": {
+          "additionalProperties": false,
+          "description": "What the token exchange verifies workloads against.",
+          "properties": {
+            "audience": {
+              "description": "The audience a workload token must be minted for. Defaults to `release`, so two issuers in one cluster cannot accept each other's proofs.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "awsFile": {
+              "description": "The file naming the AWS accounts, each by its published key set. Read once at start.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "clustersFile": {
+              "description": "The file naming the federated clusters, each by its published key set. Read once at start.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "freshness": {
+          "additionalProperties": false,
+          "description": "How the directory's snapshot is kept current.",
+          "properties": {
+            "freshnessWindow": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "30m",
+              "description": "How old a snapshot may be and still be answered from."
+            },
+            "probeInterval": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "5m",
+              "description": "How often the directory is probed."
+            },
+            "refreshInterval": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "15m",
+              "description": "How often a snapshot is refreshed."
+            }
+          },
+          "type": "object"
+        },
+        "github": {
+          "additionalProperties": false,
+          "description": "What the service knows of GitHub.",
+          "properties": {
+            "catalogueFile": {
+              "description": "The file declaring every GitHub App. A malformed one stops the service.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "owners": {
+              "description": "The organisations whose repositories' CI tokens are verified. None names none: an empty list would admit every repository there is.",
+              "items": {
+                "description": "An organisation.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "runnerTiers": {
+              "description": "The tiers an operator may create a runner App for: lower-case letters, digits and dashes, at most 16, each once.",
+              "items": {
+                "pattern": "^[a-z0-9]([a-z0-9-]{0,14}[a-z0-9])?$",
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "type": "object"
+        },
+        "groupsScoping": {
+          "default": "report",
+          "description": "How far this installation has moved toward per-audience `groups` scoping: `off`, `report` or `enforce`.",
+          "enum": [
+            "off",
+            "report",
+            "enforce"
+          ]
+        },
+        "inCluster": {
+          "description": "Prove recovery against the cluster the pod runs in. Set by a deployment that turns recovery on.",
+          "type": "boolean"
+        },
+        "issuerURL": {
+          "$ref": "#/definitions/config-serve.url",
+          "description": "The issuer: baked into every token and every relying party's trust, so there is no default. No trailing slash is kept."
+        },
+        "lifetimes": {
+          "additionalProperties": false,
+          "description": "How long what the issuer hands out lives.",
+          "properties": {
+            "absolute": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "24h",
+              "description": "A session, at most. Positive, and at least `token`: a session has to end SOMETIME after sign-in, and an access token cannot outlive the session that grants it."
+            },
+            "hold": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "4h",
+              "description": "How long a removal is held before it takes effect."
+            },
+            "refresh": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "12h",
+              "description": "A refresh token."
+            },
+            "session": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "12h",
+              "description": "The console's own session cookie, capped at `absolute`."
+            },
+            "token": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "1h",
+              "description": "An access token."
+            }
+          },
+          "type": "object"
+        },
+        "listen": {
+          "additionalProperties": false,
+          "default": {
+            "address": ":8080"
+          },
+          "description": "A TCP listener. `address` is a host:port the service binds; an empty host binds every interface.",
+          "properties": {
+            "address": {
+              "description": "host:port, for example \":8080\" or \"127.0.0.1:8080\".",
+              "pattern": "^[^\\s]*:[0-9]{1,5}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "address"
+          ],
+          "type": "object"
+        },
+        "log": {
+          "additionalProperties": false,
+          "description": "Structured logging. One level for the whole service: per-package levels are deliberately not part of the contract.",
+          "properties": {
+            "level": {
+              "default": "info",
+              "description": "The lowest level that is written.",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "login": {
+          "additionalProperties": false,
+          "description": "How a person signs in to the console.",
+          "properties": {
+            "directory": {
+              "default": true,
+              "description": "Sign in with the corporate directory.",
+              "type": "boolean"
+            },
+            "forwarded": {
+              "additionalProperties": false,
+              "description": "A sign-in an authenticating proxy has already done.",
+              "properties": {
+                "audience": {
+                  "description": "The audience its token carries.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "emailHeader": {
+                  "description": "The header that carries the signed-in address.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "issuer": {
+                  "description": "The proxy's issuer.",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "signOutURL": {
+              "description": "Where sign-out sends the browser.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "oauthClient": {
+          "additionalProperties": false,
+          "description": "The OAuth client registered once with the directory backend: it drives both admin consent and operator sign-in.",
+          "properties": {
+            "id": {
+              "description": "The client id, for a local run. Not a secret.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "idFile": {
+              "description": "A file holding the client id.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "idKey": {
+              "description": "The key of the id in that Secret.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "secretEnv": {
+              "$ref": "#/definitions/config-serve.envName",
+              "description": "The NAME of the variable holding the client secret, for a local run."
+            },
+            "secretFile": {
+              "description": "A file holding the client secret.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "secretKey": {
+              "description": "The key of the secret in that Secret.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "secretName": {
+              "description": "The Kubernetes Secret the client is declared in, which the console shows and cannot change.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "overlayFile": {
+          "description": "The file of declared workspaces, mounted.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "policyDir": {
+          "description": "The directory the policy is mounted at. Unset is the built-in two groups, or the demonstration policy under `demo`.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "probes": {
+          "additionalProperties": false,
+          "default": {
+            "address": ":7070"
+          },
+          "description": "The health listener. Separate from the service's own traffic, so that readiness is answerable when the service's listener is saturated, and so that a probe is not reachable from outside.",
+          "properties": {
+            "address": {
+              "description": "host:port for /health/live and /health/ready.",
+              "pattern": "^[^\\s]*:[0-9]{1,5}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "address"
+          ],
+          "type": "object"
+        },
+        "publicRootURL": {
+          "$ref": "#/definitions/config-serve.url",
+          "description": "The host's root, never carrying the console's mount: the bootstrap surface stays there. Unset follows `publicURL`."
+        },
+        "publicURL": {
+          "$ref": "#/definitions/config-serve.url",
+          "description": "Where a browser reaches the console, including its mount. The admin-consent redirect URI and the values the setup steps show are built from it. Default http://localhost:8081."
+        },
+        "recovery": {
+          "additionalProperties": false,
+          "description": "The sign-in that needs no directory: a token for a ServiceAccount, proven against the cluster. Unset is off for the issuer and, for the hub, on.",
+          "properties": {
+            "audience": {
+              "description": "The audience its token must carry.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "enabled": {
+              "description": "Turn recovery on. Needs `inCluster`, `serviceAccount` and `audience` to be usable.",
+              "type": "boolean"
+            },
+            "serviceAccount": {
+              "description": "The ServiceAccount whose token signs in.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "release": {
+          "default": "access-roster",
+          "description": "The name this installation's objects carry: the Kubernetes object names (`<release>-github-orgs`, ...) and the prefix of its keys in a shared store. The chart requires it to be the release's full name.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "secureCookies": {
+          "description": "Mark session cookies Secure. Unset follows the scheme the browser will use: https in the URL.",
+          "type": "boolean"
+        },
+        "signingKey": {
+          "additionalProperties": false,
+          "description": "The issuer's signing keys: provisioned, never minted here.",
+          "properties": {
+            "activationDelay": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "15m",
+              "description": "How long a newly published key waits before a replica signs with it. At least `pollInterval`."
+            },
+            "additionalFiles": {
+              "description": "Every OTHER algorithm this installation signs with at once, one file per algorithm.",
+              "items": {
+                "description": "A key file.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "file": {
+              "description": "The primary key. Unset generates one for this process, which a local run may do and nothing else should.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "overlap": {
+              "$ref": "#/definitions/config-serve.duration",
+              "description": "How long a rotated key stays published. Unset is `lifetimes.token` plus a margin for clock skew."
+            },
+            "pollInterval": {
+              "$ref": "#/definitions/config-serve.duration",
+              "default": "30s",
+              "description": "How often the files are re-read."
+            }
+          },
+          "type": "object"
+        },
+        "slack": {
+          "additionalProperties": false,
+          "description": "What the service knows of Slack.",
+          "properties": {
+            "catalogueFile": {
+              "description": "The file declaring every Slack App. A malformed one stops the service.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "store": {
+          "default": "memory",
+          "description": "Where what an operator connected is kept: `memory` keeps nothing (a restart is a fresh installation), `kubernetes` keeps it in this namespace.",
+          "enum": [
+            "memory",
+            "kubernetes"
+          ]
+        },
+        "valkey": {
+          "additionalProperties": false,
+          "description": "The shared store for logins in progress and snapshots. Unset keeps both in memory, correct for one replica.",
+          "properties": {
+            "address": {
+              "allOf": [
+                {
+                  "pattern": "^[^\\s/]+:[0-9]{1,5}$"
+                },
+                {
+                  "not": {
+                    "pattern": "@"
+                  }
+                }
+              ],
+              "description": "host:port, with no credentials.",
+              "type": "string"
+            },
+            "cluster": {
+              "default": true,
+              "description": "Speak the cluster protocol. A plain single server needs it off.",
+              "type": "boolean"
+            },
+            "passwordEnv": {
+              "$ref": "#/definitions/config-serve.envName",
+              "description": "The NAME of the variable holding the password."
+            },
+            "tls": {
+              "description": "Speak TLS to the server.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "title": "access-roster serve",
+      "type": "object"
+    },
+    "config-serve.duration": {
+      "description": "A Go duration: 30s, 2m, 168h.",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+      "type": "string"
+    },
+    "config-serve.envName": {
+      "description": "The NAME of an environment variable: letters, digits and underscores. A value is refused.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^[0-9]|[^A-Za-z0-9_]"
+      },
+      "type": "string"
+    },
+    "config-serve.url": {
+      "allOf": [
+        {
+          "pattern": "^https?://\\S+$"
+        },
+        {
+          "not": {
+            "pattern": "^https?://[^/?#\\s]*@"
+          }
+        }
+      ],
+      "description": "An http or https URL with a host and no credentials: a password in a URL is a secret in the file, and a secret is named, never carried.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "duration": {
+      "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$",
+      "type": "string"
+    },
+    "privateKey": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "RSA",
+            "ECDSA"
+          ]
+        },
+        "encoding": {
+          "enum": [
+            "PKCS1",
+            "PKCS8"
+          ]
+        },
+        "rotationPolicy": {
+          "enum": [
+            "Never",
+            "Always"
+          ]
+        },
+        "size": {
+          "enum": [
+            256,
+            384,
+            521,
+            2048,
+            3072,
+            4096
+          ],
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "secretEnv": {
+      "description": "Environment variables from a Secret's keys: the holders of the secrets the config names (`valkey.passwordEnv`, `oauthClient.secretEnv`, `adminPasswordEnv`). A secret is never in `config`.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "description": "The key in the Secret.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "description": "The variable, as the config names it.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "optional": {
+            "description": "Start without it when the Secret or the key is absent.",
+            "type": "boolean"
+          },
+          "secretName": {
+            "description": "The Secret.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "secretName",
+          "key"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "secretMounts": {
+      "description": "Secrets mounted read-only as directories, for a file the config names by path (`oauthClient.idFile`, `oauthClient.secretFile`). Each key is a file.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "mountPath": {
+            "description": "The directory it appears in.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "secretName": {
+            "description": "The Secret.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "secretName",
+          "mountPath"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "properties": {
+    "audit": {
+      "additionalProperties": false,
+      "description": "The projected service-account token this service and the controllers present to the audit installation. The installation itself (`audit.writer` and the rest) is the `config`'s.",
+      "properties": {
+        "token": {
+          "additionalProperties": false,
+          "properties": {
+            "audience": {
+              "description": "The audience of the projected token presented to the receiver.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "expirationSeconds": {
+              "minimum": 600,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "config": {
+      "$ref": "#/definitions/config-serve",
+      "description": "Rendered as it stands into a ConfigMap and mounted as the file the binary reads with --config. Its schema is serve's: schemas/config/serve.schema.json."
+    },
+    "console": {
+      "additionalProperties": false,
+      "description": "Where the console is mounted on the issuer's origin. The rest of what the console is configured with is the `config`'s.",
+      "properties": {
+        "mount": {
+          "description": "Where the console is mounted on this issuer's origin, e.g. /console. Empty serves no console.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "controllerGithub": {
+      "additionalProperties": false,
+      "description": "The GitHub controller (`access-roster controller github`): a second process beside the service that makes each organisation's teams match the policy's github table. It runs the chart's one image.",
+      "properties": {
+        "config": {
+          "$ref": "#/definitions/config-controller-github",
+          "description": "Rendered as it stands into a ConfigMap and mounted as the file the binary reads with --config. Its schema is controller-github's: schemas/config/controller-github.schema.json."
+        },
+        "enabled": {
+          "description": "Render the controller. Needs exchange.clusters to name this cluster and console.mount to be set.",
+          "type": "boolean"
+        },
+        "resources": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "controllerSlack": {
+      "additionalProperties": false,
+      "description": "The Slack controller (`access-roster controller slack`): a second process beside the service that makes each workspace's channels match the policy's slack table. It runs the chart's one image.",
+      "properties": {
+        "config": {
+          "$ref": "#/definitions/config-controller-slack",
+          "description": "Rendered as it stands into a ConfigMap and mounted as the file the binary reads with --config. Its schema is controller-slack's: schemas/config/controller-slack.schema.json."
+        },
+        "enabled": {
+          "description": "Render the controller. Needs exchange.clusters to name this cluster and console.mount to be set.",
+          "type": "boolean"
+        },
+        "resources": {
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "directory": {
+      "additionalProperties": false,
+      "description": "The corporate directories this service reads itself.",
+      "properties": {
+        "push": {
+          "additionalProperties": false,
+          "description": "Copy the credential of every connected workspace to a secret store with an External Secrets PushSecret, for recovery: the whole Secret bundled under one remote key, because the key names inside it are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "properties": {
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
+            },
+            "remoteKey": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "secretStore": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "secretStore",
+            "remoteKey"
+          ],
+          "type": "object"
+        },
+        "workspaces": {
+          "description": "Declared workspaces: each names a Secret holding a service-account key and the admin to impersonate.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "admin": {
+                "type": "string"
+              },
+              "backend": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "secretKey": {
+                "type": "string"
+              },
+              "secretName": {
+                "type": "string"
+              },
+              "serve": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "syncGroups": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "backend",
+              "admin",
+              "secretName"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "exchange": {
+      "additionalProperties": false,
+      "properties": {
+        "aws": {
+          "additionalProperties": false,
+          "description": "AWS accounts whose IAM roles may exchange their outbound-identity-federation token. Empty verifies none.",
+          "properties": {
+            "accounts": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "account": {
+                    "description": "The 12-digit AWS account id.",
+                    "pattern": "^[0-9]{12}$",
+                    "type": "string"
+                  },
+                  "algs": {
+                    "items": {
+                      "enum": [
+                        "ES384",
+                        "RS256"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "issuer": {
+                    "description": "The account's token issuer, from get-outbound-web-identity-federation-info.",
+                    "type": "string"
+                  },
+                  "jwksUri": {
+                    "description": "Where its public keys are. Empty means <issuer>/.well-known/jwks.json.",
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "The estate's word for the account, for logs.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Require this AWS Organizations id in the token.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "account",
+                  "name",
+                  "issuer"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "audience": {
+              "description": "The audience the role must request from STS. Empty means the issuer's own URL.",
+              "type": "string"
+            },
+            "maxAge": {
+              "description": "Refuse a token whose iat is older, whatever its exp allows. Default 5m, at most 1h.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "clusters": {
+          "description": "Clusters whose workloads may exchange, each verified against the key set that cluster publishes. No secret in any row.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "issuer": {
+                "description": "The `iss` its ServiceAccount tokens carry.",
+                "type": "string"
+              },
+              "jwksUri": {
+                "description": "Where its public keys are. Empty discovers it from the issuer.",
+                "type": "string"
+              },
+              "name": {
+                "description": "The estate's word for the cluster; what a workload matcher names.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "issuer"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "fullnameOverride": {
+      "description": "Replaces the release's full name, the prefix of every object the chart renders and the value `config.release` must carry. An installation migrating from the access-issuer chart sets it to the old full name so no object is renamed.",
+      "type": "string"
+    },
+    "githubApps": {
+      "additionalProperties": false,
+      "properties": {
+        "catalogue": {
+          "description": "GitHub Apps declared as data, created and installed from the console. The service validates the whole catalogue again at start.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "events": {
+                "items": {
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "grants": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "group": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "additionalProperties": {
+                        "enum": [
+                          "read",
+                          "write",
+                          "admin"
+                        ],
+                        "type": "string"
+                      },
+                      "minProperties": 1,
+                      "propertyNames": {
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "type": "object"
+                    },
+                    "repositories": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "group",
+                    "repositories",
+                    "permissions"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "id": {
+                "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$",
+                "type": "string"
+              },
+              "installation": {
+                "enum": [
+                  "all",
+                  "selected"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 34,
+                "type": "string"
+              },
+              "org": {
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$",
+                "type": "string"
+              },
+              "permissions": {
+                "additionalProperties": {
+                  "enum": [
+                    "read",
+                    "write",
+                    "admin"
+                  ],
+                  "type": "string"
+                },
+                "minProperties": 1,
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "type": "object"
+              },
+              "public": {
+                "type": "boolean"
+              },
+              "push": {
+                "additionalProperties": false,
+                "description": "Copy this App's credential to a secret store with an External Secrets PushSecret: its three property keys only, to the store and path named here. Absent pushes nothing.",
+                "properties": {
+                  "deletionPolicy": {
+                    "enum": [
+                      "None",
+                      "Delete"
+                    ],
+                    "type": "string"
+                  },
+                  "refreshInterval": {
+                    "$ref": "#/definitions/duration"
+                  },
+                  "remoteKey": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "secretStore": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "SecretStore",
+                          "ClusterSecretStore"
+                        ],
+                        "type": "string"
+                      },
+                      "name": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "secretStore",
+                  "remoteKey"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "org",
+              "permissions"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "push": {
+          "additionalProperties": false,
+          "description": "Copy the link App and one App per bound organisation to a secret store with an External Secrets PushSecret, for recovery: the whole Secret bundled under one remote key, because the key names inside it are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "properties": {
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
+            },
+            "remoteKey": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "secretStore": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "secretStore",
+            "remoteKey"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "image": {
+      "additionalProperties": false,
+      "properties": {
+        "pullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "repository": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "nameOverride": {
+      "description": "Replaces the chart name in the `app.kubernetes.io/name` label and in the controllers' selector labels. An installation migrating from the access-issuer chart sets it to access-issuer so the Deployments' immutable selectors are unchanged.",
+      "type": "string"
+    },
+    "networkPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "clients": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "gatewayNamespace": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "nodeSelector": {
+      "type": "object"
+    },
+    "podAnnotations": {
+      "type": "object"
+    },
+    "policy": {
+      "type": "object"
+    },
+    "replicaCount": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "resources": {
+      "type": "object"
+    },
+    "route": {
+      "additionalProperties": false,
+      "properties": {
+        "certificate": {
+          "additionalProperties": false,
+          "properties": {
+            "issuerKind": {
+              "enum": [
+                "Issuer",
+                "ClusterIssuer"
+              ]
+            },
+            "issuerName": {
+              "type": "string"
+            },
+            "privateKey": {
+              "$ref": "#/definitions/privateKey"
+            }
+          },
+          "type": "object"
+        },
+        "gatewayClassName": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "parentRefs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "group": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer"
+              },
+              "sectionName": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "rootRedirect": {
+          "description": "Where a bare GET of the host root goes; empty serves 404.",
+          "type": "string"
+        },
+        "sharedWith": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "secretEnv": {
+      "$ref": "#/definitions/secretEnv"
+    },
+    "secretManagers": {
+      "description": "Removed in v1.30.0 — the console's secret-store view was removed. Setting this key fails the render with a clear message. See CHANGELOG.md and docs/decisions/0002-mission-boundary-tokens-and-memberships.md."
+    },
+    "secretMounts": {
+      "$ref": "#/definitions/secretMounts"
+    },
+    "serviceAccount": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "signingKey": {
+      "additionalProperties": false,
+      "properties": {
+        "additional": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "algorithm": {
+                "enum": [
+                  "RSA",
+                  "ECDSA"
+                ]
+              },
+              "duration": {
+                "$ref": "#/definitions/duration"
+              },
+              "encoding": {
+                "enum": [
+                  "PKCS1",
+                  "PKCS8"
+                ]
+              },
+              "issuerKind": {
+                "enum": [
+                  "Issuer",
+                  "ClusterIssuer"
+                ]
+              },
+              "issuerName": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "key": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "renewBefore": {
+                "$ref": "#/definitions/duration"
+              },
+              "size": {
+                "enum": [
+                  256,
+                  384,
+                  521,
+                  2048,
+                  3072,
+                  4096
+                ],
+                "type": "integer"
+              }
+            },
+            "required": [
+              "algorithm",
+              "size"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "certificate": {
+          "additionalProperties": false,
+          "properties": {
+            "algorithm": {
+              "enum": [
+                "RSA",
+                "ECDSA"
+              ]
+            },
+            "duration": {
+              "$ref": "#/definitions/duration"
+            },
+            "encoding": {
+              "enum": [
+                "PKCS1",
+                "PKCS8"
+              ]
+            },
+            "issuerKind": {
+              "enum": [
+                "Issuer",
+                "ClusterIssuer"
+              ]
+            },
+            "issuerName": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "renewBefore": {
+              "$ref": "#/definitions/duration"
+            },
+            "size": {
+              "enum": [
+                256,
+                384,
+                521,
+                2048,
+                3072,
+                4096
+              ],
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "slackApps": {
+      "description": "Slack Apps declared as data, created and installed from the console. The service validates the whole catalogue again at start, and refuses an entry for a workspace the policy's slack.workspaces does not name.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "botScopes": {
+            "items": {
+              "pattern": "^[a-z][a-z0-9_.:-]*$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "description": {
+            "maxLength": 140,
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 35,
+            "type": "string"
+          },
+          "push": {
+            "additionalProperties": false,
+            "description": "Copy this App's bot token to a secret store with an External Secrets PushSecret: that one key only, to the store and path named here. Absent pushes nothing.",
+            "properties": {
+              "deletionPolicy": {
+                "enum": [
+                  "None",
+                  "Delete"
+                ],
+                "type": "string"
+              },
+              "refreshInterval": {
+                "$ref": "#/definitions/duration"
+              },
+              "remoteKey": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "secretStore": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "SecretStore",
+                      "ClusterSecretStore"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "secretStore",
+              "remoteKey"
+            ],
+            "type": "object"
+          },
+          "workspace": {
+            "description": "A key of the policy's slack.workspaces.",
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace",
+          "botScopes"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "slackState": {
+      "additionalProperties": false,
+      "description": "A recovery copy of the Slack state: see push.",
+      "properties": {
+        "push": {
+          "additionalProperties": false,
+          "description": "Copy the credential of every connected Slack workspace, and the mirror of the records that say which workspaces and Slack Connect channels the console holds, to a secret store with an External Secrets PushSecret, for recovery: each whole Secret bundled under its own remote key (remoteKey for the credentials, recordsRemoteKey for the records), because the key names inside are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "properties": {
+            "recordsRemoteKey": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
+            },
+            "remoteKey": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "secretStore": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "secretStore",
+            "remoteKey",
+            "recordsRemoteKey"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "tolerations": {
+      "type": "array"
+    }
+  },
+  "title": "access-roster",
+  "type": "object"
+}

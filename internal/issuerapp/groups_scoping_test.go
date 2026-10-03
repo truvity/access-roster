@@ -25,7 +25,7 @@ func TestGroupsScopingIsValidatedAtLoad(t *testing.T) {
 		{"an unknown value is refused", "sometimes", "", `is not one of "off", "report" or "enforce"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, err := FromConfig(&config.Issuer{IssuerURL: "https://issuer.example", GroupsScoping: tc.value})
+			cfg, err := FromConfig(&config.Serve{IssuerURL: "https://issuer.example", GroupsScoping: tc.value})
 			if tc.wantError != "" {
 				if err == nil {
 					t.Fatalf("FromConfig() succeeded, want a refusal containing %q", tc.wantError)

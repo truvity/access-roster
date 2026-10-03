@@ -48,3 +48,46 @@ and pin for one product, and `tick` on Lambda is the same binary as `serve`.
 
 **Accept retired variables with a warning for a release.** Rejected for the
 reason 0007 gives: a warning that no pipeline surfaces is silence.
+
+## Implementation note: the command surface
+
+Shipped in two changes. The configuration file came first (v1.53.0); the one
+binary and the one chart came second, and `tick` is a third, with the leases
+of [0029](0029-ticks-per-target-under-a-lease.md).
+
+```
+access-roster serve --config <file>               the issuer, the hub and the console
+access-roster controller github --config <file>   the GitHub reconciler's loop
+access-roster controller slack --config <file>    the Slack reconciler's loop
+access-roster migrate                             reserved for 0031: prints "not yet available", exits non-zero
+access-roster --version | --help
+```
+
+**`controller <target>` is the loop, `tick <target>` is one pass.** The
+Deployments the chart renders today are loops (an interval, a watch, one
+replica, no lease), and calling them `tick` would promise a lease and a single
+pass that do not exist yet. They are named for what they are, `controller`, and
+`tick <target>` will be added beside them when 0029's lease is built, calling
+the same reconciler `Tick`; `controller <target>` then becomes the loop that
+calls it on an interval, and nothing about it is renamed. The ADR's `tick` for
+"one target or all" is the later command; there is no rename to make now.
+
+Each command reads one file with its own schema: `serve.schema.json`,
+`controller-github.schema.json` and `controller-slack.schema.json` under
+`schemas/config/`, replacing `access-issuer`, `github-roster` and `slack-roster`
+(the Go types are `config.Serve`, `config.ControllerGitHub` and
+`config.ControllerSlack`). The chart's values follow: `config` is `serve`'s,
+and `controllerGithub.config` and `controllerSlack.config` are the controllers'.
+The chart's Deployments run the one image with the command as their first
+arguments.
+
+The chart keeps what an installation's objects are named from, so the move is a
+rollout and not a re-creation: the controllers' objects are still
+`<full name>-github-roster` and `<full name>-slack-roster`, the paths the chart
+mounts are unchanged, and the telemetry service names are unchanged. The one
+change of name an installation must act on is the chart's own, which is part of
+every object's name; `nameOverride` and `fullnameOverride` keep it, and the
+migration is in
+[reference/configuration.md](../reference/configuration.md#migrating-from-the-access-issuer-chart).
+The old binaries, the three images and the `access-issuer` chart are not
+published after this change: as the decision says, no alias is kept.

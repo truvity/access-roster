@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "duration": {
+      "description": "A Go duration: 30s, 2m, 168h.",
+      "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+      "type": "string"
+    },
+    "url": {
+      "allOf": [
+        {
+          "pattern": "^https?://\\S+$"
+        },
+        {
+          "not": {
+            "pattern": "^https?://[^/?#\\s]*@"
+          }
+        }
+      ],
+      "description": "An http or https URL with a host and no credentials: a password in a URL is a secret in the file, and a secret is named, never carried.",
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "$id": "https://truvity.github.io/access-roster/schemas/v1/config/controller-slack.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The configuration of `access-roster controller slack`: the controller that makes each Slack workspace's user groups match the policy's slack table. Secrets are never in this file: a field ending in ...Env holds the NAME of the environment variable that holds the secret, and a field ending in ...File holds a path. Telemetry is the OTEL_* environment, not configuration.",
+  "properties": {
+    "audit": {
+      "additionalProperties": false,
+      "description": "The audit installation the controller records to, as its own workload. Unset only logs what it did.",
+      "properties": {
+        "tokenFile": {
+          "description": "This workload's projected service-account token.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "writer": {
+          "$ref": "#/$defs/url",
+          "description": "The installation's receiver."
+        }
+      },
+      "type": "object"
+    },
+    "consoleURL": {
+      "$ref": "#/$defs/url",
+      "description": "The console's API, which answers who holds a group."
+    },
+    "credentialsDir": {
+      "default": "/var/run/slack-roster/credentials",
+      "description": "One file per connected workspace: the app's credentials and its bot token.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "enabledWorkspaces": {
+      "description": "The workspaces the controller changes, by the policy's key. Each must be one the policy declares.",
+      "items": {
+        "pattern": "^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$",
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "interval": {
+      "$ref": "#/$defs/duration",
+      "default": "15m",
+      "description": "How long between passes. Positive."
+    },
+    "log": {
+      "$ref": "https://github.com/truvity/policy/schemas/fragments/log.json"
+    },
+    "policyDir": {
+      "description": "The directory the policy is mounted at: the bindings are the policy's slack table.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "recordsDir": {
+      "default": "/var/run/slack-roster/workspaces",
+      "description": "The console's records, mounted.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "release": {
+      "default": "access-roster",
+      "description": "The name the installation's objects carry. It must be the release's full name: the controller reads the report and the records the service writes under it.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "tokenFile": {
+      "default": "/var/run/secrets/slack-roster/token",
+      "description": "This pod's projected ServiceAccount token, presented to the console and read afresh on every call.",
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "policyDir",
+    "consoleURL"
+  ],
+  "title": "access-roster controller slack",
+  "type": "object"
+}

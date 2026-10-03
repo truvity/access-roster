@@ -1,7 +1,0 @@
-# slackRoster.image.pullPolicy is one of Always, IfNotPresent, Never.
-# error: at '/slackRoster/image/pullPolicy': value must be one of
-config:
-  issuerURL: https://issuer.example
-slackRoster:
-  image:
-    pullPolicy: Sometimes

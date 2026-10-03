@@ -1175,8 +1175,8 @@ console.
 
 ## Slack channels
 
-> **The Slack controller, `slack-roster`, reads this table.** It is a second
-> process from the `access-issuer` chart and changes only the workspaces listed
+> **The Slack controller, `access-roster controller slack`, reads this table.** It is a second
+> process from the `access-roster` chart and changes only the workspaces listed
 > in `slackRoster.config.enabledWorkspaces`; every other declared workspace is a dry run. What it
 > does with the keys is on
 > [Connect a Slack workspace](../connect/slack-workspace.md) and in

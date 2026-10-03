@@ -1,0 +1,6 @@
+# fullnameOverride is the full name, so config.release must carry it, not the release's own name.
+# error: config.release must be "legacy-access-issuer", this release's full name
+fullnameOverride: legacy-access-issuer
+config:
+  issuerURL: https://issuer.example
+  release: access-roster

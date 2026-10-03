@@ -4,7 +4,7 @@
 # Disable go.work (a parent workspace interferes with standalone module builds)
 export GOWORK := "off"
 
-charts := "access-issuer"
+charts := "access-roster"
 
 # Format all Go files
 fmt:
@@ -144,12 +144,12 @@ chart-lint:
       helm lint "charts/$chart" -f "tests/cases/$chart/minimal/values.yaml"
       # `if`, not `!`: under `set -e` a negated command that fails does
       # not stop the script, so `! cmd` would check nothing.
-      if helm template access-issuer "charts/$chart" --set bogusKey=1 >/dev/null 2>&1; then
+      if helm template access-roster "charts/$chart" --set bogusKey=1 >/dev/null 2>&1; then
         echo "$chart: an unknown key rendered" >&2
         exit 1
       fi
       for values in tests/invalid/"$chart"/*.yaml; do
-        if err="$(helm template access-issuer "charts/$chart" -f "$values" 2>&1 >/dev/null)"; then
+        if err="$(helm template access-roster "charts/$chart" -f "$values" 2>&1 >/dev/null)"; then
           echo "RENDERED BUT SHOULD HAVE FAILED: $values" >&2
           exit 1
         fi
@@ -169,7 +169,7 @@ chart-lint:
       # stranger; nothing else in this repository reads these files.
       for example in charts/"$chart"/examples/*.yaml; do
         [ -e "$example" ] || continue
-        helm template access-issuer "charts/$chart" \
+        helm template access-roster "charts/$chart" \
           -f "tests/cases/$chart/minimal/values.yaml" -f "$example" >/dev/null
       done
       echo "$chart: schema and $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
@@ -179,7 +179,7 @@ chart-lint:
     # the committed files: a diff here is a builder changed without
     # `just config-schemas`.
     just config-schemas
-    git diff --exit-code -- schemas/config charts/access-issuer/values.schema.json
+    git diff --exit-code -- schemas/config charts/access-roster/values.schema.json
     # What the chart renders for each component's `config` is what the values
     # say, and is a file that component's binary accepts. Required rather than
     # skipped: a test that quietly does not run proves nothing.
@@ -188,14 +188,14 @@ chart-lint:
     # of an App's declaration: the service's loader refuses a key it does
     # not know, so an entry's push block reaching the rendered catalogue
     # would stop the service at start.
-    if grep -n '^      push:' tests/golden/access-issuer/*.yaml; then
+    if grep -n '^      push:' tests/golden/access-roster/*.yaml; then
       echo "a catalogue entry's push block reached the rendered catalogue" >&2
       exit 1
     fi
     # "/console" and "/console/" are the same place: both spellings must
     # render the same, and never a route to "/console//".
-    diff tests/golden/access-issuer/route.yaml tests/golden/access-issuer/route-trailing-slash.yaml
-    if grep -l 'console//' tests/golden/access-issuer/*.yaml; then exit 1; fi
+    diff tests/golden/access-roster/route.yaml tests/golden/access-roster/route-trailing-slash.yaml
+    if grep -l 'console//' tests/golden/access-roster/*.yaml; then exit 1; fi
     # Every backendRefs entry writes `weight` out. A desired/live
     # comparison normalises core-API defaults but not CRDs, so a field the
     # API server fills in is a permanent diff. Routes and policies alike.

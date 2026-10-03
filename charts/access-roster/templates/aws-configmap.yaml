@@ -1,0 +1,35 @@
+{{- if .Values.exchange.aws.accounts }}
+# The AWS accounts whose IAM roles may exchange their outbound identity
+# federation token for one of this issuer's, each verified against the key
+# set that account's issuer publishes.
+#
+# Nothing here is a secret: an account, a name and a URL per row.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-roster.fullname" . }}-aws
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+data:
+  aws.yaml: |
+    audience: {{ .Values.exchange.aws.audience | default (required "config.issuerURL is required" .Values.config.issuerURL | trimSuffix "/") | quote }}
+    maxAge: {{ .Values.exchange.aws.maxAge | default "5m" | quote }}
+    accounts:
+    {{- range .Values.exchange.aws.accounts }}
+      - account: {{ required "exchange.aws.accounts[].account is required" .account | quote }}
+        name: {{ required "exchange.aws.accounts[].name is required" .name | quote }}
+        issuer: {{ required "exchange.aws.accounts[].issuer is required" .issuer | quote }}
+      {{- with .jwksUri }}
+        jwksUri: {{ . | quote }}
+      {{- end }}
+      {{- with .orgId }}
+        orgId: {{ . | quote }}
+      {{- end }}
+      {{- with .algs }}
+        algs:
+        {{- range . }}
+          - {{ . | quote }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+{{- end }}

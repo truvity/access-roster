@@ -1,0 +1,14 @@
+# controllerSlack.enabled needs console.mount (template `fail`).
+# error: controllerSlack.enabled needs console.mount
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+controllerSlack:
+  enabled: true
+exchange:
+  clusters:
+  - name: example
+    issuer: https://oidc.example
+console:
+  mount: ''

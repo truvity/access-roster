@@ -1,0 +1,17 @@
+# The Apps' Secret is mounted at one path.
+# error: controllerGithub.config.appsDir must be /var/run/github-roster/apps
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+controllerGithub:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.default.svc:8080/console
+    appsDir: /etc/apps

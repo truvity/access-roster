@@ -6,19 +6,18 @@ One repository, one tag, several deliverables, each installable or
 importable alone:
 
 ```
-cmd/access-issuer         the whole service: the directory, the policy,
-                          the OpenID provider, the login page, the
-                          console, and what it records to the audit
-                          trail
-cmd/github-roster         the GitHub controller, a second process from
-                          the same chart
-cmd/slack-roster          the Slack controller, a second process from
-                          the same chart
+cmd/access-roster         the one binary and image: `serve` (the
+                          directory, the policy, the OpenID provider,
+                          the login page, the console, and what it
+                          records to the audit trail), `controller
+                          github` and `controller slack` (the two
+                          controllers, a second and third process from
+                          the same chart), and `migrate` (reserved)
 cmd/resource-proxy        the sidecar that fronts a stock MCP server
                           with a resource server's front door
 cmd/accessctl             the CLI, for laptops and CI jobs
 cmd/acceptance            the acceptance runner against a kind cluster
-charts/access-issuer      the chart: the service and both controllers
+charts/access-roster      the chart: the service and both controllers
 action.yml                the GitHub Action, at the root so
                           `uses: truvity/access-roster@<tag>` works
 identity/ tokens/ policy/ backend/
@@ -109,17 +108,23 @@ in order and skipping one is the usual mistake:
 ```
 just generate              # proto → gen/ (Go) and frontend/src/gen (TS)
 just console               # ts/dist first, then frontend/dist — built, never committed
-go build ./cmd/access-issuer             # embeds frontend/dist
+go build ./cmd/access-roster             # embeds frontend/dist
 ```
 
 A running `go run` keeps the bundle it started with; restart it after a
 frontend build. To see every mechanic without a credential:
 
 ```
-DEMO=1 STORE=memory ALLOW_INSECURE=true \
-  ISSUER_URL=http://localhost:8099 PUBLIC_URL=http://localhost:8099/console \
-  PORT=8099 HEALTH_PORT=7099 \
-  go run ./cmd/access-issuer
+cat > /tmp/demo.yaml <<'EOF'
+demo: true
+store: memory
+allowInsecure: true
+issuerURL: http://localhost:8099
+publicURL: http://localhost:8099/console
+listen: {address: ":8099"}
+probes: {address: ":7099"}
+EOF
+go run ./cmd/access-roster serve --config /tmp/demo.yaml
 ```
 
 Then open `http://localhost:8099/console/` and take *Continue with the
@@ -198,9 +203,9 @@ its own set of anti-patterns, out of this file's scope — see
 ## Releasing
 
 Push a `v*` tag. The release workflow builds the binaries, the images
-(`ghcr.io/truvity/access-roster/access-issuer`, `/github-roster` and
-`/slack-roster`),
-the chart (`oci://ghcr.io/truvity/charts/access-issuer`), `accessctl`'s
+(`ghcr.io/truvity/access-roster/access-roster`, and the sidecar
+`/resource-proxy`),
+the chart (`oci://ghcr.io/truvity/charts/access-roster`), `accessctl`'s
 archives and its Nix flake, and publishes the TypeScript package to GitHub
 Packages, all stamped with the tag.
 The Go module and the GitHub Action are the same tag. One tag, every

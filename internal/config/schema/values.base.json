@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "title": "access-issuer",
+  "title": "access-roster",
   "type": "object",
   "additionalProperties": false,
   "_comment": "Nothing is required here that the template already refuses to render without. The schema catches typos and wrong types; `required` in the template catches an unset value, with a sentence saying why it matters. Each component's `config` is generated into this file from the schema its binary validates against (`just config-schemas`); the rest is written in internal/config/schema/values.base.json.",
@@ -8,6 +8,14 @@
     "replicaCount": {
       "type": "integer",
       "minimum": 1
+    },
+    "nameOverride": {
+      "type": "string",
+      "description": "Replaces the chart name in the `app.kubernetes.io/name` label and in the controllers' selector labels. An installation migrating from the access-issuer chart sets it to access-issuer so the Deployments' immutable selectors are unchanged."
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Replaces the release's full name, the prefix of every object the chart renders and the value `config.release` must carry. An installation migrating from the access-issuer chart sets it to the old full name so no object is renamed."
     },
     "image": {
       "type": "object",
@@ -343,68 +351,28 @@
         }
       }
     },
-    "githubRoster": {
+    "controllerGithub": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The GitHub controller: a second process beside the service that makes each organisation's teams match the policy's github table.",
+      "description": "The GitHub controller (`access-roster controller github`): a second process beside the service that makes each organisation's teams match the policy's github table. It runs the chart's one image.",
       "properties": {
         "enabled": {
           "type": "boolean",
           "description": "Render the controller. Needs exchange.clusters to name this cluster and console.mount to be set."
-        },
-        "image": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "repository": {
-              "type": "string"
-            },
-            "tag": {
-              "type": "string"
-            },
-            "pullPolicy": {
-              "type": "string",
-              "enum": [
-                "Always",
-                "IfNotPresent",
-                "Never"
-              ]
-            }
-          }
         },
         "resources": {
           "type": "object"
         }
       }
     },
-    "slackRoster": {
+    "controllerSlack": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The Slack controller: a second process beside the service that makes each workspace's channels match the policy's slack table.",
+      "description": "The Slack controller (`access-roster controller slack`): a second process beside the service that makes each workspace's channels match the policy's slack table. It runs the chart's one image.",
       "properties": {
         "enabled": {
           "type": "boolean",
           "description": "Render the controller. Needs exchange.clusters to name this cluster and console.mount to be set."
-        },
-        "image": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "repository": {
-              "type": "string"
-            },
-            "tag": {
-              "type": "string"
-            },
-            "pullPolicy": {
-              "type": "string",
-              "enum": [
-                "Always",
-                "IfNotPresent",
-                "Never"
-              ]
-            }
-          }
         },
         "resources": {
           "type": "object"
@@ -604,7 +572,7 @@
       }
     },
     "secretManagers": {
-      "description": "Removed in v1.30.0 — the console's secret-store view was removed. Setting this key fails the render with a clear message. See CHANGELOG.md and docs/decisions/0002-mission-boundary-tokens-and-memberships.md."
+      "description": "Removed in v1.30.0 \u2014 the console's secret-store view was removed. Setting this key fails the render with a clear message. See CHANGELOG.md and docs/decisions/0002-mission-boundary-tokens-and-memberships.md."
     },
     "audit": {
       "type": "object",
@@ -919,7 +887,7 @@
     },
     "duration": {
       "type": "string",
-      "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$"
+      "pattern": "^[0-9]+(ns|us|\u00b5s|ms|s|m|h)([0-9]+(ns|us|\u00b5s|ms|s|m|h))*$"
     },
     "secretEnv": {
       "type": "array",

@@ -1,0 +1,215 @@
+{{- if .Values.controllerGithub.enabled }}
+{{- $cfg := .Values.controllerGithub.config }}
+{{- include "access-roster.rosterChecks" (dict "root" . "name" "controllerGithub" "cfg" $cfg "dir" "github-roster") }}
+{{- include "access-roster.expectPath" (dict "key" "controllerGithub.config.appsDir" "got" $cfg.appsDir "want" "/var/run/github-roster/apps" "source" "the apps Secret" "present" true) }}
+{{- include "access-roster.expectPath" (dict "key" "controllerGithub.config.recordsDir" "got" $cfg.recordsDir "want" "/var/run/github-roster/records" "source" "the records ConfigMap" "present" true) }}
+{{- include "access-roster.expectPath" (dict "key" "controllerGithub.config.catalogueFile" "got" $cfg.catalogueFile "want" "/var/run/github-roster/github-apps-catalogue.yaml" "source" "githubApps.catalogue" "present" (not (empty .Values.githubApps.catalogue))) }}
+{{- /*
+  The controller refuses to start when enabledOrgs names an organisation the
+  policy does not bind. The policy is inline in values, so say so here, at
+  render time, before the rollout stops the running controller. Skipped when
+  the values carry no policy at all.
+*/ -}}
+{{- if .Values.policy }}
+{{- $bound := dig "github" dict .Values.policy }}
+{{- range $cfg.enabledOrgs }}
+{{- if not (hasKey $bound .) }}
+{{- fail (printf "controllerGithub.config.enabledOrgs names %q, which policy.github does not bind: remove it from enabledOrgs, or bind the organisation in the policy" .) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $name := printf "%s-github-roster" (include "access-roster.fullname" .) }}
+---
+# The controller's own account. It holds two permissions: updating its one
+# report, and updating the one Secret people's linked GitHub accounts are
+# kept in — each link's token pair rotates every time it is renewed, and
+# the renewed pair has to be written back. The Secret with the Apps' keys
+# and the ConfigMap with the console's records are mounted volumes, so no
+# other Secret or ConfigMap is readable at all, and watching them for a
+# change (an install, a Refresh) needs no permission either.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-github
+---
+# Update, by name, the one ConfigMap it reports into. The service creates
+# that object — `create` cannot be narrowed to a name — so this account
+# cannot create any ConfigMap, and in particular none that would read to
+# the service as a workspace record.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-github
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: [{{ printf "%s-github-status" (include "access-roster.fullname" .) | quote }}]
+    verbs: ["get", "update", "patch"]
+  # Created by the service, like the report, so this can name it.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: [{{ printf "%s-github-links" (include "access-roster.fullname" .) | quote }}]
+    verbs: ["get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-github
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-github
+data:
+  # What `access-roster controller github --config` reads: `controllerGithub.config`, as the values give
+  # it. The binary validates it against schemas/config/controller-github.schema.json.
+  config.yaml: |
+    {{- toYaml $cfg | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-github
+spec:
+  # One: two controllers would make every change twice, and GitHub's answer
+  # to the second is an error that reads as a failure.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "access-roster.controllerGithubSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "access-roster.controllerGithubSelectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ toYaml $cfg | sha256sum }}
+        # The bindings are read at start, like the service's policy.
+        checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
+        {{- if .Values.githubApps.catalogue }}
+        # The catalogue is read once at start, like the service's own copy
+        # (see deployment.yaml): this controller keeps no App keys and mints
+        # no installation tokens, so it reads the catalogue for one reason
+        # only — the groups its grants name are not reported as unconsumed
+        # — and a changed catalogue should still restart it, the same way a
+        # changed policy does.
+        checksum/github-apps-catalogue: {{ include (print $.Template.BasePath "/github-apps-catalogue-configmap.yaml") . | sha256sum }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $name }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller-github
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          args:
+            - controller
+            - github
+            - --config=/etc/access-roster/controller-github.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/access-roster/controller-github.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/github-roster/policy
+              readOnly: true
+            - name: token
+              mountPath: /var/run/secrets/github-roster
+              readOnly: true
+            - name: apps
+              mountPath: /var/run/github-roster/apps
+              readOnly: true
+            - name: records
+              mountPath: /var/run/github-roster/records
+              readOnly: true
+            {{- if .Values.githubApps.catalogue }}
+            - name: github-apps-catalogue
+              mountPath: /var/run/github-roster/github-apps-catalogue.yaml
+              subPath: catalogue.yaml
+              readOnly: true
+            {{- end }}
+            {{- include "access-roster.auditMounts" (dict "root" . "cfg" $cfg) | nindent 12 }}
+          {{- with .Values.controllerGithub.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}-config
+        - name: policy
+          configMap:
+            name: {{ include "access-roster.fullname" . }}-policy
+        # The token the console verifies, for the audience it accepts a
+        # workload's token for. Rotated by the kubelet; the controller reads
+        # the file on every call.
+        - name: token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: {{ include "access-roster.exchangeAudience" . }}
+                  expirationSeconds: 3600
+                  path: token
+        # One file per connected organisation. Optional: before anything is
+        # connected there may be nothing, and the controller reports each
+        # bound organisation as not connected rather than failing to start.
+        - name: apps
+          secret:
+            secretName: {{ include "access-roster.fullname" . }}-github-apps
+            optional: true
+        # The console's records beside them: each organisation's record, the
+        # operators' confirmations and their requests for a pass now. The
+        # controller watches it, so a Refresh runs a pass at once. Optional
+        # for the same reason.
+        - name: records
+          configMap:
+            name: {{ include "access-roster.fullname" . }}-github-orgs
+            optional: true
+        {{- if .Values.githubApps.catalogue }}
+        - name: github-apps-catalogue
+          configMap:
+            name: {{ include "access-roster.fullname" . }}-github-apps-catalogue
+        {{- end }}
+        {{- include "access-roster.auditVolumes" (dict "root" . "cfg" $cfg) | nindent 8 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

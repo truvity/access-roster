@@ -1,0 +1,7 @@
+# controllerGithub.interval is a Go duration.
+# error: at '/controllerGithub/config/interval': 'hourly' does not match pattern
+config:
+  issuerURL: https://issuer.example
+controllerGithub:
+  config:
+    interval: hourly

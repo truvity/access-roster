@@ -3,8 +3,8 @@
 - **Breaking: each binary is configured by one validated file, in place of
   environment variables, and the chart passes it through.**
   [0032](docs/decisions/0032-one-configuration-file-one-binary-one-chart.md)
-  (its configuration-file half; the single binary and the single chart are later
-  changes). `access-issuer`, `github-roster` and `slack-roster` take
+  (its configuration-file half; the single binary and the single chart are the
+  next entry). `access-issuer`, `github-roster` and `slack-roster` take
   `--config <file>` and nothing else but `--version` and `--help`. The file is
   validated against a committed JSON Schema before anything starts
   (`schemas/config/access-issuer.schema.json`, `github-roster.schema.json`,
@@ -107,6 +107,52 @@
       enabledOrgs: [acme]
   # telemetry: set OTEL_EXPORTER_OTLP_ENDPOINT on the pods, outside the chart
   ```
+
+- **Breaking: one binary, `access-roster`, one image and one chart, in place of
+  three of each.**
+  [0032](docs/decisions/0032-one-configuration-file-one-binary-one-chart.md)
+  (its second half; `tick` is a later change, with
+  [0029](docs/decisions/0029-ticks-per-target-under-a-lease.md)'s leases).
+  `access-issuer`, `github-roster` and `slack-roster` are `access-roster serve`,
+  `access-roster controller github` and `access-roster controller slack`, each
+  still `--config <file>` and nothing else but `--version` and `--help`;
+  `access-roster migrate` is reserved by
+  [0031](docs/decisions/0031-a-generic-migration-tool.md) and prints that it is
+  not yet available. Each command's file has its own schema:
+  `schemas/config/serve.schema.json`, `controller-github.schema.json` and
+  `controller-slack.schema.json` replace the three above. **Removed, not kept as
+  an alias:** the three `cmd/` mains, the images
+  `ghcr.io/truvity/access-roster/access-issuer`, `/github-roster` and
+  `/slack-roster`, and the chart `oci://ghcr.io/truvity/charts/access-issuer`;
+  none is published again. **Published instead:**
+  `ghcr.io/truvity/access-roster/access-roster` and
+  `oci://ghcr.io/truvity/charts/access-roster`. Migrating an installation
+  (the full walk-through, with every name that changes, is in
+  [docs/reference/configuration.md](docs/reference/configuration.md#migrating-from-the-access-issuer-chart)):
+
+  1. Be on the config-file form of the values (the entry above).
+  2. Rename the values `githubRoster` to `controllerGithub` and `slackRoster` to
+     `controllerSlack`, and delete `githubRoster.image` and `slackRoster.image`:
+     a controller runs the chart's one `image`. If `image.repository` is set,
+     point it at `ghcr.io/truvity/access-roster/access-roster`.
+  3. Add `nameOverride: access-issuer` and `fullnameOverride: <the release's old
+     full name>`. The chart's name is part of every object's name, so without
+     them every object is renamed, the signing key's Secret is a new key and the
+     service starts on an empty store, because `config.release` (which must be
+     the full name) names the objects it writes. With them nothing is renamed and
+     no Deployment selector changes. Write `config.release` and each
+     controller's `config.release` out if they were unset: the default is now
+     `access-roster`, not `access-issuer`.
+  4. Point the chart reference (`helm`, Argo CD, Flux) at
+     `oci://ghcr.io/truvity/charts/access-roster` at this version, run
+     `helm template`, and roll out.
+  5. Change anything outside the chart that ran a binary or an image by name.
+
+  The container names, the `app.kubernetes.io/component` labels and where the
+  config file is mounted change (`serve`, `controller-github`,
+  `controller-slack`; `/etc/access-roster/...`). Unchanged: the controllers'
+  object names (`<full name>-github-roster`, `-slack-roster`), every path the
+  chart mounts under `/var/run/...`, and the telemetry service names.
 
 ## v1.52.3
 

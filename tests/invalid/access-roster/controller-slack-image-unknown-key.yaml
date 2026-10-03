@@ -1,0 +1,7 @@
+# The controller runs the chart's one image: an image under controllerSlack is refused, not ignored.
+# error: at '/controllerSlack': additional properties 'image' not allowed
+config:
+  issuerURL: https://issuer.example
+controllerSlack:
+  image:
+    repository: registry.example/access-roster/slack-roster

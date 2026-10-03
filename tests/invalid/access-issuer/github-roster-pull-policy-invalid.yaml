@@ -1,7 +1,0 @@
-# githubRoster.image.pullPolicy is one of Always, IfNotPresent, Never.
-# error: at '/githubRoster/image/pullPolicy': value must be one of
-config:
-  issuerURL: https://issuer.example
-githubRoster:
-  image:
-    pullPolicy: Sometimes

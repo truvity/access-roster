@@ -1,0 +1,6 @@
+# controllerSlack.enabled needs exchange.clusters (template `fail`).
+# error: controllerSlack.enabled needs exchange.clusters
+config:
+  issuerURL: https://issuer.example
+controllerSlack:
+  enabled: true

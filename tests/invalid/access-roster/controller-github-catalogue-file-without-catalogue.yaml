@@ -1,0 +1,17 @@
+# A catalogueFile with no githubApps.catalogue names a file nothing mounts.
+# error: controllerGithub.config.catalogueFile is "/var/run/github-roster/github-apps-catalogue.yaml" and the chart renders nothing there
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+controllerGithub:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.default.svc:8080/console
+    catalogueFile: /var/run/github-roster/github-apps-catalogue.yaml

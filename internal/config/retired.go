@@ -28,7 +28,7 @@ var retiredIssuer = map[string]string{
 	"ISSUER_URL":                       "issuerURL",
 	"PORT":                             "listen.address",
 	"HEALTH_PORT":                      "probes.address",
-	"API_PORT":                         "nothing: the directory's own listeners are not served by access-issuer",
+	"API_PORT":                         "nothing: the directory's own listeners are not served by access-roster serve",
 	"CONSOLE_PORT":                     "nothing: the console is served on the issuer's listener",
 	"DEMO":                             "demo",
 	"ALLOW_INSECURE":                   "allowInsecure",
@@ -121,7 +121,7 @@ func Retired(binary string) map[string]string {
 		}
 	}
 	switch binary {
-	case "access-issuer":
+	case "serve":
 		add(retiredIssuer)
 		// The service's own spelling of what the controllers share.
 		out["POLICY_DIR"] = "policyDir"
@@ -129,12 +129,12 @@ func Retired(binary string) map[string]string {
 		out["LOG_LEVEL"] = "log.level"
 		out["AUDIT_WRITER_URL"] = "audit.writer"
 		out["AUDIT_TOKEN_FILE"] = "audit.tokenFile"
-	case "github-roster":
+	case "controller-github":
 		add(retiredCommon)
 		add(retiredGitHubRoster)
 		out["AUDIT_WRITER_URL"] = "audit.writer"
 		out["AUDIT_TOKEN_FILE"] = "audit.tokenFile"
-	case "slack-roster":
+	case "controller-slack":
 		add(retiredCommon)
 		add(retiredSlackRoster)
 	}
@@ -142,7 +142,7 @@ func Retired(binary string) map[string]string {
 }
 
 // RefuseRetired is the start-up check: it fails when the environment still
-// holds a variable the binary no longer reads, naming each with what replaces
+// holds a variable the subcommand no longer reads, naming each with what replaces
 // it. environ is os.Environ's shape.
 func RefuseRetired(binary string, environ []string) error {
 	retired := Retired(binary)
@@ -158,8 +158,8 @@ func RefuseRetired(binary string, environ []string) error {
 	}
 	slices.Sort(found)
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s is configured by one file, --config <file>, and no longer reads these environment "+
-		"variables, which are set: ", binary)
+	fmt.Fprintf(&b, "access-roster %s is configured by one file, --config <file>, and no longer reads these environment "+
+		"variables, which are set: ", strings.ReplaceAll(binary, "-", " "))
 	for i, name := range found {
 		if i > 0 {
 			b.WriteString("; ")

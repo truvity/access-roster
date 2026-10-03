@@ -31,9 +31,7 @@ repository.
 
 | Artifact | Published at | For | |
 |---|---|---|---|
-| `access-issuer` chart and image | `oci://ghcr.io/truvity/charts/access-issuer`, `ghcr.io/truvity/access-roster/access-issuer` | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail | shipped |
-| `github-roster` image, in the same chart | `ghcr.io/truvity/access-roster/github-roster` | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console | shipped |
-| `slack-roster` image, in the same chart | `ghcr.io/truvity/access-roster/slack-roster` | a second process: one loop that keeps every connected Slack workspace's channels as the policy says, and the console's channel records; a dry run until a workspace is in `slackRoster.config.enabledWorkspaces` | shipped |
+| `access-roster` chart and image | `oci://ghcr.io/truvity/charts/access-roster`, `ghcr.io/truvity/access-roster/access-roster` | the installation, once. One binary with three jobs, one image, one chart: `serve` (the directory, the policy, the OpenID provider, the login page, the console and the audit trail), `controller github` (one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console) and `controller slack` (the same for Slack channels; a dry run until a workspace is in `controllerSlack.config.enabledWorkspaces`). The chart runs each as its own Deployment. Replaces the `access-issuer` chart and the `access-issuer`, `github-roster` and `slack-roster` images: [the migration](docs/reference/configuration.md#migrating-from-the-access-issuer-chart) | shipped |
 | `access-proxy` chart | removed in v1.32.0 | the chart was Envoy Gateway's external authorization backend; gateway-native OIDC replaces it there. For a gateway that is not Envoy Gateway, run upstream oauth2-proxy yourself — see [docs/design/access-proxy.md](docs/design/access-proxy.md), [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md). Versions already published stay available. | removed |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
@@ -227,19 +225,19 @@ row is expressed in configuration.
 ## Install and a worked example
 
 ```sh
-helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \
-  --version X.Y.Z --namespace access-issuer --create-namespace \
+helm install access-roster oci://ghcr.io/truvity/charts/access-roster \
+  --version X.Y.Z --namespace access-roster --create-namespace \
   --values issuer-values.yaml
 ```
 
 ```yaml
-config:                                    # access-issuer's configuration file, as it stands
+config:                                    # `access-roster serve`'s configuration file, as it stands
   issuerURL: https://access.example.com    # stable for the life of the installation
-  release: access-issuer                   # the release's full name
+  release: access-roster                   # the release's full name
   publicRootURL: https://access.example.com
   publicURL: https://access.example.com/console
   valkey:
-    address: valkey.access-issuer.svc:6379
+    address: valkey.access-roster.svc:6379
   oauthClient:                             # keys client-id and client-secret
     secretName: access-issuer-google-client
     idFile: /var/run/access-issuer/oauth-client/client-id
@@ -261,7 +259,7 @@ policy:
     all:access-roster:operator:
       members: [platform-admins@example.com]
       matchers:                                   # the first way in: recovery
-        - service_account: { namespace: access-issuer, name: access-issuer-recovery }
+        - service_account: { namespace: access-roster, name: access-issuer-recovery }
     all:access-roster:viewer:
       matchers: [{ email_domain: example.com }]
   clients:
@@ -272,7 +270,7 @@ policy:
 ```
 
 Then sign in once with a recovery token
-(`kubectl -n access-issuer create token access-issuer-recovery --audience access-issuer-recovery`),
+(`kubectl -n access-roster create token access-issuer-recovery --audience access-issuer-recovery`),
 and the console's Overview walks the rest: connecting the directory, and
 the first operator who signs in as themselves.
 [docs/operations/adoption-plain-helm.md](docs/operations/adoption-plain-helm.md)
@@ -281,10 +279,10 @@ setup for consoles with no authorization model of their own.
 
 ## Consumers
 
-The access-issuer chart installs in `truvity/gitops` and a second, non-AWS estate.
+The access-roster chart installs in `truvity/gitops` and a second, non-AWS estate.
 The Go module is imported by `truvity/gitops` (for `policy`, in its render
 tests) and by `truvity/gemaal` (for `identity`), and used by CI workflows
-via the `accessctl` command. The `access-issuer` chart
+via the `accessctl` command. The `access-roster` chart
 serves as a token audience for `truvity/cloudflare` (r2broker) and
 `truvity/observability` (vmauth). Developers use `accessctl` to mint
 credentials locally; it is also used in CI jobs. The GitHub Action

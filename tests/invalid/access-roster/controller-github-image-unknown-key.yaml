@@ -1,0 +1,7 @@
+# The controller runs the chart's one image: an image under controllerGithub is refused, not ignored.
+# error: at '/controllerGithub': additional properties 'image' not allowed
+config:
+  issuerURL: https://issuer.example
+controllerGithub:
+  image:
+    repository: registry.example/access-roster/github-roster

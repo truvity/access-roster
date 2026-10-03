@@ -36,19 +36,21 @@ func load[T any](file, name string) (*T, error) {
 	return &c, nil
 }
 
-// LoadIssuer reads and validates access-issuer's configuration. Defaults that
+// LoadServe reads and validates the configuration of `access-roster serve`. Defaults that
 // depend on the other keys, and the checks that need what the issuer knows, are
 // the assembling packages': this reads the file and holds it to its schema.
-func LoadIssuer(file string) (*Issuer, error) { return load[Issuer](file, "access-issuer") }
+func LoadServe(file string) (*Serve, error) { return load[Serve](file, "serve") }
 
-// LoadGitHubRoster reads and validates github-roster's configuration.
-func LoadGitHubRoster(file string) (*GitHubRoster, error) {
-	return load[GitHubRoster](file, "github-roster")
+// LoadControllerGitHub reads and validates the configuration of
+// `access-roster controller github`.
+func LoadControllerGitHub(file string) (*ControllerGitHub, error) {
+	return load[ControllerGitHub](file, "controller-github")
 }
 
-// LoadSlackRoster reads and validates slack-roster's configuration.
-func LoadSlackRoster(file string) (*SlackRoster, error) {
-	return load[SlackRoster](file, "slack-roster")
+// LoadControllerSlack reads and validates the configuration of
+// `access-roster controller slack`.
+func LoadControllerSlack(file string) (*ControllerSlack, error) {
+	return load[ControllerSlack](file, "controller-slack")
 }
 
 // Secret reads the environment variable the configuration names. An unset or

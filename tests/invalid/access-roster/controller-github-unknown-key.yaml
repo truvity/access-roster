@@ -1,0 +1,7 @@
+# A key under controllerGithub does not know must fail the render, not be ignored.
+# error: at '/controllerGithub': additional properties
+config:
+  issuerURL: https://issuer.example
+controllerGithub:
+  acts_in:
+  - acme

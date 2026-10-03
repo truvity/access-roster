@@ -1,0 +1,186 @@
+{{- if .Values.controllerSlack.enabled }}
+{{- $cfg := .Values.controllerSlack.config }}
+{{- include "access-roster.rosterChecks" (dict "root" . "name" "controllerSlack" "cfg" $cfg "dir" "slack-roster") }}
+{{- include "access-roster.expectPath" (dict "key" "controllerSlack.config.credentialsDir" "got" $cfg.credentialsDir "want" "/var/run/slack-roster/credentials" "source" "the credentials Secret" "present" true) }}
+{{- include "access-roster.expectPath" (dict "key" "controllerSlack.config.recordsDir" "got" $cfg.recordsDir "want" "/var/run/slack-roster/workspaces" "source" "the records ConfigMap" "present" true) }}
+{{- /*
+  The controller refuses to start when enabledWorkspaces names a key the
+  policy does not declare. The policy is inline in values, so say so here, at
+  render time, before the rollout stops the running controller. Skipped when
+  the values carry no policy at all.
+*/ -}}
+{{- if .Values.policy }}
+{{- $bound := dig "slack" "workspaces" dict .Values.policy }}
+{{- range $cfg.enabledWorkspaces }}
+{{- if not (hasKey $bound .) }}
+{{- fail (printf "controllerSlack.config.enabledWorkspaces names %q, which policy.slack.workspaces does not declare: remove it from enabledWorkspaces, or declare the workspace in the policy" .) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $name := printf "%s-slack-roster" (include "access-roster.fullname" .) }}
+---
+# The controller's own account. It holds one permission: updating its one
+# report. The Secret with the workspaces' bot tokens and the ConfigMap with
+# the console's records are mounted volumes, so no Secret or other ConfigMap
+# is readable at all.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-slack
+---
+# Update, by name, the one ConfigMap it reports into. The service creates
+# that object — `create` cannot be narrowed to a name — so this account
+# cannot create any ConfigMap, and in particular none that would read to
+# the service as a workspace record.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-slack
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: [{{ printf "%s-slack-status" (include "access-roster.fullname" .) | quote }}]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-slack
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-slack
+data:
+  # What `access-roster controller slack --config` reads: `controllerSlack.config`, as the values give
+  # it. The binary validates it against schemas/config/controller-slack.schema.json.
+  config.yaml: |
+    {{- toYaml $cfg | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller-slack
+spec:
+  # One: two controllers would make every change twice, and Slack's answer
+  # to the second is an error that reads as a failure.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "access-roster.controllerSlackSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "access-roster.controllerSlackSelectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ toYaml $cfg | sha256sum }}
+        # The bindings are read at start, like the service's policy.
+        checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ $name }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller-slack
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          args:
+            - controller
+            - slack
+            - --config=/etc/access-roster/controller-slack.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/access-roster/controller-slack.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/slack-roster/policy
+              readOnly: true
+            - name: token
+              mountPath: /var/run/secrets/slack-roster
+              readOnly: true
+            - name: credentials
+              mountPath: /var/run/slack-roster/credentials
+              readOnly: true
+            - name: workspaces
+              mountPath: /var/run/slack-roster/workspaces
+              readOnly: true
+            {{- include "access-roster.auditMounts" (dict "root" . "cfg" $cfg) | nindent 12 }}
+          {{- with .Values.controllerSlack.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}-config
+        - name: policy
+          configMap:
+            name: {{ include "access-roster.fullname" . }}-policy
+        # The token the console verifies, for the audience it accepts a
+        # workload's token for. Rotated by the kubelet; the controller reads
+        # the file on every call.
+        - name: token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: {{ include "access-roster.exchangeAudience" . }}
+                  expirationSeconds: 3600
+                  path: token
+        # One file per connected workspace: the app's credentials and its bot
+        # token. Optional: before anything is connected there may be nothing,
+        # and the controller reports each declared workspace as not connected
+        # rather than failing to start.
+        - name: credentials
+          secret:
+            secretName: {{ include "access-roster.fullname" . }}-slack-credentials
+            optional: true
+        # The console's records beside them: each workspace's record, the
+        # shared channels' definitions and the operators' confirmations.
+        # Optional for the same reason.
+        - name: workspaces
+          configMap:
+            name: {{ include "access-roster.fullname" . }}-slack-workspaces
+            optional: true
+        {{- include "access-roster.auditVolumes" (dict "root" . "cfg" $cfg) | nindent 8 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

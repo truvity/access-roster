@@ -45,7 +45,7 @@ func TestTheCommittedSchemasAreTheGeneratedOnes(t *testing.T) {
 			t.Errorf("%s is not what `just config-schemas` writes", name)
 		}
 	}
-	got, err := os.ReadFile(filepath.Join("..", "..", "charts", "access-issuer", "values.schema.json"))
+	got, err := os.ReadFile(filepath.Join("..", "..", "charts", "access-roster", "values.schema.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,9 +64,9 @@ func TestTheTypesAndTheSchemasDescribeTheSameKeys(t *testing.T) {
 		name string
 		into any
 	}{
-		{"access-issuer", &config.Issuer{}},
-		{"github-roster", &config.GitHubRoster{}},
-		{"slack-roster", &config.SlackRoster{}},
+		{"serve", &config.Serve{}},
+		{"controller-github", &config.ControllerGitHub{}},
+		{"controller-slack", &config.ControllerSlack{}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			raw, err := os.ReadFile(filepath.Join("testdata", c.name+".full.yaml"))
@@ -147,25 +147,25 @@ func jsonEqual(a, b any) bool {
 const minimalIssuer = "issuerURL: https://access.example\n"
 
 func TestAValidFileLoads(t *testing.T) {
-	f, err := config.LoadIssuer(write(t, minimalIssuer))
+	f, err := config.LoadServe(write(t, minimalIssuer))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if f.IssuerURL != "https://access.example" {
 		t.Errorf("not decoded: %+v", f)
 	}
-	g, err := config.LoadGitHubRoster(write(t, "policyDir: /p\nconsoleURL: http://c:8080/console\ninterval: 5m\nenabledOrgs: [a]\n"))
+	g, err := config.LoadControllerGitHub(write(t, "policyDir: /p\nconsoleURL: http://c:8080/console\ninterval: 5m\nenabledOrgs: [a]\n"))
 	if err != nil || g.Interval.D().String() != "5m0s" || g.EnabledOrgs[0] != "a" {
-		t.Errorf("github-roster: %v %+v", err, g)
+		t.Errorf("controller-github: %v %+v", err, g)
 	}
-	if _, err := config.LoadSlackRoster(write(t, "policyDir: /p\nconsoleURL: http://c:8080/console\n")); err != nil {
-		t.Errorf("slack-roster: %v", err)
+	if _, err := config.LoadControllerSlack(write(t, "policyDir: /p\nconsoleURL: http://c:8080/console\n")); err != nil {
+		t.Errorf("controller-slack: %v", err)
 	}
 }
 
 // What a typo must do: fail, and say which key.
 func TestAnUnknownKeyIsRefusedAndNamed(t *testing.T) {
-	_, err := config.LoadIssuer(write(t, minimalIssuer+"valkey2: {}\nlisten: {adr: ':1'}\n"))
+	_, err := config.LoadServe(write(t, minimalIssuer+"valkey2: {}\nlisten: {adr: ':1'}\n"))
 	var ce *policyconfig.Error
 	if !errors.As(err, &ce) {
 		t.Fatalf("want a configuration error, got %v", err)
@@ -179,13 +179,13 @@ func TestAnUnknownKeyIsRefusedAndNamed(t *testing.T) {
 }
 
 func TestAMissingRequiredKeyIsRefusedAndNamed(t *testing.T) {
-	if _, err := config.LoadIssuer(write(t, "store: memory\n")); err == nil || !strings.Contains(err.Error(), "issuerURL") {
+	if _, err := config.LoadServe(write(t, "store: memory\n")); err == nil || !strings.Contains(err.Error(), "issuerURL") {
 		t.Fatalf("want a refusal naming issuerURL, got %v", err)
 	}
-	if _, err := config.LoadGitHubRoster(write(t, "consoleURL: http://c:8080\n")); err == nil || !strings.Contains(err.Error(), "policyDir") {
+	if _, err := config.LoadControllerGitHub(write(t, "consoleURL: http://c:8080\n")); err == nil || !strings.Contains(err.Error(), "policyDir") {
 		t.Fatalf("want a refusal naming policyDir, got %v", err)
 	}
-	if _, err := config.LoadSlackRoster(write(t, "policyDir: /p\n")); err == nil || !strings.Contains(err.Error(), "consoleURL") {
+	if _, err := config.LoadControllerSlack(write(t, "policyDir: /p\n")); err == nil || !strings.Contains(err.Error(), "consoleURL") {
 		t.Fatalf("want a refusal naming consoleURL, got %v", err)
 	}
 }
@@ -202,7 +202,7 @@ func TestASecretInTheFileIsRefused(t *testing.T) {
 		"a password in the issuer":   "issuerURL: https://u:hunter2@access.example\n",
 		"a password in the writer":   minimalIssuer + "audit: {writer: 'http://u:hunter2@audit:8080'}\n",
 	} {
-		_, err := config.LoadIssuer(write(t, body))
+		_, err := config.LoadServe(write(t, body))
 		if err == nil {
 			t.Errorf("%s was accepted", name)
 			continue
@@ -212,7 +212,7 @@ func TestASecretInTheFileIsRefused(t *testing.T) {
 		}
 	}
 	// A variable NAME is not a value: a value that is not a name is refused.
-	if _, err := config.LoadIssuer(write(t, minimalIssuer+"valkey: {address: 'v:6379', passwordEnv: 'hunter 2!'}\n")); err == nil {
+	if _, err := config.LoadServe(write(t, minimalIssuer+"valkey: {address: 'v:6379', passwordEnv: 'hunter 2!'}\n")); err == nil {
 		t.Error("a password value in a ...Env field was accepted")
 	}
 }
@@ -230,10 +230,10 @@ func TestADeclaredSecretIsReadFromTheEnvironment(t *testing.T) {
 }
 
 func TestAnEmptyOrMissingFileIsRefused(t *testing.T) {
-	if _, err := config.LoadIssuer(write(t, "")); err == nil {
+	if _, err := config.LoadServe(write(t, "")); err == nil {
 		t.Error("an empty file was accepted")
 	}
-	if _, err := config.LoadIssuer(filepath.Join(t.TempDir(), "absent.yaml")); err == nil {
+	if _, err := config.LoadServe(filepath.Join(t.TempDir(), "absent.yaml")); err == nil {
 		t.Error("a missing file was accepted")
 	}
 }
@@ -254,7 +254,7 @@ func TestTheSchemaRefusesWhatTheEnvironmentWasTrustedWith(t *testing.T) {
 		"the query service without the writer": "audit: {queryURL: 'http://q:1'}\n",
 		"a signing key list that is a string":  "signingKey: {additionalFiles: /k}\n",
 	} {
-		if _, err := config.LoadIssuer(write(t, minimalIssuer+extra)); err == nil {
+		if _, err := config.LoadServe(write(t, minimalIssuer+extra)); err == nil {
 			t.Errorf("%s was accepted", name)
 		}
 	}
@@ -262,14 +262,14 @@ func TestTheSchemaRefusesWhatTheEnvironmentWasTrustedWith(t *testing.T) {
 
 func TestACommandLineIsTheFileAndNothingElse(t *testing.T) {
 	var out bytes.Buffer
-	file, done, err := config.Command("access-issuer", []string{"--config", "/etc/c.yaml"}, &out)
+	file, done, err := config.Command("access-roster serve", "serve", []string{"--config", "/etc/c.yaml"}, &out)
 	if err != nil || done || file != "/etc/c.yaml" {
 		t.Errorf("--config: %q %v %v", file, done, err)
 	}
-	if _, done, err = config.Command("access-issuer", []string{"--version"}, &out); err != nil || !done {
+	if _, done, err = config.Command("access-roster serve", "serve", []string{"--version"}, &out); err != nil || !done {
 		t.Errorf("--version: %v %v", done, err)
 	}
-	if _, done, err = config.Command("access-issuer", []string{"--help"}, &out); err != nil || !done {
+	if _, done, err = config.Command("access-roster serve", "serve", []string{"--help"}, &out); err != nil || !done {
 		t.Errorf("--help: %v %v", done, err)
 	}
 	for name, args := range map[string][]string{
@@ -278,7 +278,7 @@ func TestACommandLineIsTheFileAndNothingElse(t *testing.T) {
 		"an argument":   {"--config", "/c", "extra"},
 		"an empty file": {"--config", ""},
 	} {
-		if _, _, err := config.Command("access-issuer", args, &out); err == nil {
+		if _, _, err := config.Command("access-roster serve", "serve", args, &out); err == nil {
 			t.Errorf("%s was accepted", name)
 		}
 	}
@@ -287,7 +287,7 @@ func TestACommandLineIsTheFileAndNothingElse(t *testing.T) {
 // A retired variable that is still set is refused at start, naming what
 // replaces it, and only when it holds something.
 func TestARetiredVariableIsRefused(t *testing.T) {
-	err := config.RefuseRetired("access-issuer", []string{"PATH=/bin", "ISSUER_URL=https://x", "VALKEY_PASSWORD=hunter2", "LOG_LEVEL="})
+	err := config.RefuseRetired("serve", []string{"PATH=/bin", "ISSUER_URL=https://x", "VALKEY_PASSWORD=hunter2", "LOG_LEVEL="})
 	if err == nil {
 		t.Fatal("retired variables were accepted")
 	}
@@ -299,17 +299,17 @@ func TestARetiredVariableIsRefused(t *testing.T) {
 	if strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "LOG_LEVEL") {
 		t.Errorf("the refusal quotes a value or names an empty variable: %v", err)
 	}
-	if err := config.RefuseRetired("access-issuer", []string{"SECRET_MANAGERS_FILE=/x"}); err == nil || !strings.Contains(err.Error(), "v1.30.0") {
+	if err := config.RefuseRetired("serve", []string{"SECRET_MANAGERS_FILE=/x"}); err == nil || !strings.Contains(err.Error(), "v1.30.0") {
 		t.Errorf("the removed secret-store view's variable must still be refused, with its reason: %v", err)
 	}
-	if err := config.RefuseRetired("access-issuer", []string{"PATH=/bin", "OTEL_EXPORTER_OTLP_ENDPOINT=http://c:4318", "NAMESPACE=x"}); err != nil {
+	if err := config.RefuseRetired("serve", []string{"PATH=/bin", "OTEL_EXPORTER_OTLP_ENDPOINT=http://c:4318", "NAMESPACE=x"}); err != nil {
 		t.Errorf("OpenTelemetry's variables and the pod's own are not retired: %v", err)
 	}
-	if err := config.RefuseRetired("github-roster", []string{"ENABLED_ORGS=a"}); err == nil || !strings.Contains(err.Error(), "enabledOrgs") {
-		t.Errorf("github-roster: %v", err)
+	if err := config.RefuseRetired("controller-github", []string{"ENABLED_ORGS=a"}); err == nil || !strings.Contains(err.Error(), "enabledOrgs") {
+		t.Errorf("controller-github: %v", err)
 	}
-	if err := config.RefuseRetired("slack-roster", []string{"ENABLED_WORKSPACES=a"}); err == nil || !strings.Contains(err.Error(), "enabledWorkspaces") {
-		t.Errorf("slack-roster: %v", err)
+	if err := config.RefuseRetired("controller-slack", []string{"ENABLED_WORKSPACES=a"}); err == nil || !strings.Contains(err.Error(), "enabledWorkspaces") {
+		t.Errorf("controller-slack: %v", err)
 	}
 }
 

@@ -1,0 +1,6 @@
+# controllerGithub.enabled needs exchange.clusters (template `fail`).
+# error: controllerGithub.enabled needs exchange.clusters
+config:
+  issuerURL: https://issuer.example
+controllerGithub:
+  enabled: true
