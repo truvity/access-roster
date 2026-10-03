@@ -1271,9 +1271,12 @@ func TestAChangedCredentialRunsAPassWithoutWaitingForTheInterval(t *testing.T) {
 
 	r.writeCredential("globex", slackfake.Token("TGLOBEX"))
 	waitFor(t, "a pass after the credential changed", func() bool { return r.reports.published() >= 2 })
-	if got := r.reports.workspace(t, "globex").Tick.Outcome; got == status.OutcomeWaiting {
-		t.Errorf("globex after its install is still %q", got)
-	}
+	// Each workspace publishes its own report, one after the other, so the
+	// pass that counted for acme may not have reached globex yet: wait for
+	// globex's own report to leave "waiting" instead of reading it at once.
+	waitFor(t, "globex's report after its install", func() bool {
+		return r.reports.workspace(t, "globex").Tick.Outcome != status.OutcomeWaiting
+	})
 }
 
 // An operator's save of a channel or Slack Connect record wakes a pass; a
