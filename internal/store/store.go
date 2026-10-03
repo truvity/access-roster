@@ -22,6 +22,7 @@ import (
 	"github.com/truvity/access-roster/internal/port/memory"
 	natsport "github.com/truvity/access-roster/internal/port/nats"
 	"github.com/truvity/access-roster/internal/port/observe"
+	"github.com/truvity/access-roster/internal/port/openbao"
 	"github.com/truvity/access-roster/internal/port/s3blob"
 	"github.com/truvity/access-roster/internal/valkey"
 )
@@ -41,6 +42,13 @@ const (
 const (
 	BlobS3    = "s3"
 	SealerKMS = "kms"
+)
+
+// The adapters `ports.export.adapter` names. The Export port has none unless
+// a deployment names one: nothing is copied out of the service by default.
+const (
+	ExportOpenBao = "openbao"
+	ExportMemory  = "memory"
 )
 
 // KubeNeed says how much a process needs the namespace's objects.
@@ -73,6 +81,8 @@ type Config struct {
 	NATS natsport.Config
 	// DynamoDB is the table of the `dynamodb` adapter.
 	DynamoDB dynamoport.Config
+	// Export is the Export port's adapter; nil is none.
+	Export *config.PortsExport
 }
 
 // validatePorts refuses a Blob or Sealer the file names but this build has no
@@ -96,6 +106,43 @@ func (c Config) validatePorts() error {
 		}
 	}
 	return nil
+}
+
+// validateExport refuses an Export the file names but this build has no
+// adapter for, or names without its settings. The schema says the same; this
+// is the check for a Config that was not read from a file.
+func (c Config) validateExport() error {
+	e := c.Export
+	if e == nil {
+		return nil
+	}
+	switch e.Adapter {
+	case ExportMemory:
+		return nil
+	case ExportOpenBao:
+		if e.OpenBao == nil || e.OpenBao.Address == "" || e.OpenBao.Auth == nil {
+			return errors.New("ports.export.openbao: address and auth are required with ports.export.adapter: openbao")
+		}
+		return nil
+	default:
+		return fmt.Errorf("ports.export.adapter: %q is %q or %q", e.Adapter, ExportOpenBao, ExportMemory)
+	}
+}
+
+// exportOf builds the Export port. It connects to nothing: an OpenBao that is
+// down at start must not stop the service, since a copy is never a dependency.
+func (c Config) exportOf() (port.Export, error) {
+	if err := c.validateExport(); err != nil || c.Export == nil {
+		return nil, err
+	}
+	if c.Export.Adapter == ExportMemory {
+		return memory.NewExport(), nil
+	}
+	o := c.Export.OpenBao
+	return openbao.New(openbao.Config{
+		Address: o.Address, CAFile: o.CAFile, Mount: o.Mount, Namespace: o.Namespace,
+		Auth: openbao.Auth{Method: o.Auth.Method, Mount: o.Auth.Mount, Role: o.Auth.Role, TokenFile: o.Auth.TokenFile},
+	})
 }
 
 // compose replaces the Blob and the Sealer the base adapter brought with the
@@ -124,6 +171,11 @@ func (c Config) compose(ctx context.Context, set port.Set, log *slog.Logger) (po
 		set.Sealer = sealer
 		log.InfoContext(ctx, "secrets are sealed by KMS", "adapter", SealerKMS)
 	}
+	exp, err := c.exportOf()
+	if err != nil {
+		return port.Set{}, fmt.Errorf("ports.export: %w", err)
+	}
+	set.Export = exp
 	return set, nil
 }
 
@@ -138,6 +190,7 @@ func FromServe(f *config.Serve) (Config, error) {
 		NATS:    natsOf(f.Ports),
 
 		DynamoDB: dynamoOf(f.Ports),
+		Export:   exportConfigOf(f.Ports),
 	}
 	var err error
 	if (c.Adapter == AdapterNATS || c.Adapter == AdapterDynamoDB) && f.Valkey != nil && f.Valkey.Address != "" {
@@ -213,6 +266,13 @@ func blobOf(p *config.Ports) *config.PortsBlob {
 		return nil
 	}
 	return p.Blob
+}
+
+func exportConfigOf(p *config.Ports) *config.PortsExport {
+	if p == nil {
+		return nil
+	}
+	return p.Export
 }
 
 func sealerOf(p *config.Ports) *config.PortsSealer {

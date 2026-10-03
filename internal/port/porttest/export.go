@@ -16,7 +16,7 @@ type ExportEnv struct {
 	Read func(t *testing.T, target port.ExportTarget) (map[string]string, bool)
 }
 
-// RunExport runs the assertions of the Export port (docs/decisions/0033):
+// RunExport runs the assertions of the Export port (docs/decisions/0034):
 // replace is exactly the properties, patch keeps the others and creates the
 // key, a Put of nothing is refused, a namespace is a separate place, an
 // identical Put is harmless and a Delete of what is absent is not an error.

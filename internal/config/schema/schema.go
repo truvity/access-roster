@@ -183,7 +183,7 @@ func serveSchema() m {
 		"log":           logLevel(),
 		"store": enum("Where what an operator connected is kept: `memory` keeps nothing (a restart is a fresh installation), `kubernetes` keeps it in this namespace.", "memory",
 			"memory", "kubernetes"),
-		"ports":            portsSchema(),
+		"ports":            portsSchema(true),
 		"policyDir":        str("The directory the policy is mounted at. Unset is the built-in two groups, or the demonstration policy under `demo`."),
 		"overlayFile":      str("The file of declared workspaces, mounted."),
 		"publicURL":        m{"$ref": "#/$defs/url", "description": "Where a browser reaches the console, including its mount. The admin-consent redirect URI and the values the setup steps show are built from it. Default http://localhost:8081."},
@@ -261,6 +261,7 @@ func serveSchema() m {
 		"slack": obj("What the service knows of Slack.", m{
 			"catalogueFile": str("The file declaring every Slack App. A malformed one stops the service."),
 		}),
+		"exports": exportsSchema(),
 		"audit": obj("The audit installation this service records to. Unset keeps the trail in the log only.", m{
 			"writer":                  url("The installation's receiver."),
 			"tokenFile":               str("This workload's projected service-account token, presented on every call."),
@@ -281,8 +282,9 @@ func serveSchema() m {
 		})
 }
 
-// portsSchema is the `ports` section both kinds of file share.
-func portsSchema() m {
+// portsSchema is the `ports` section both kinds of file share. Only the
+// service copies secrets out of itself, so only its file may name an Export.
+func portsSchema(export bool) m {
 	o := obj("The adapters behind the storage ports (docs/design/ports.md).", m{
 		"adapter": enum("`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`. `nats` keeps State, the session index and the trigger in a NATS JetStream KV bucket (`ports.nats`), shared by every replica and process; its Blob and Sealer are `legacy`'s unless `ports.blob` and `ports.sealer` name their own. `dynamodb` keeps the same in one DynamoDB table (`ports.dynamodb`), with the platform's credentials, and takes its Blob and Sealer from `legacy` in the same way.", "legacy",
 			"legacy", "memory", "nats", "dynamodb"),
@@ -291,11 +293,60 @@ func portsSchema() m {
 		"nats":     portsNATSSchema(),
 		"dynamodb": portsDynamoDBSchema(),
 	})
+	if export {
+		o["properties"].(m)["export"] = portsExportSchema()
+	}
 	o["allOf"] = []any{
 		m{"if": m{"properties": m{"adapter": m{"const": "nats"}}, "required": []string{"adapter"}}, "then": m{"required": []string{"nats"}}},
 		m{"if": m{"properties": m{"adapter": m{"const": "dynamodb"}}, "required": []string{"adapter"}}, "then": m{"required": []string{"dynamodb"}}},
 	}
 	return o
+}
+
+// portsExportSchema is `ports.export`: where the copies of `exports` go.
+func portsExportSchema() m {
+	s := obj("The store the copies of `exports` are written to (docs/decisions/0034). Absent, nothing is copied out of the service, and `exports` must be empty.", m{
+		"adapter": enum("`openbao` writes to a KV version 2 mount of an OpenBao. `memory` keeps the copies in this process and is for a test or the demonstration.", "", "openbao", "memory"),
+		"openbao": obj("The OpenBao the copies are written to. Nothing is contacted at start: an OpenBao that is down must not stop the service, since a copy is never a dependency.", m{
+			"address":   url("The server, with no path: `https://openbao.example`."),
+			"caFile":    str("A PEM bundle of the authorities that sign the server's certificate, in place of the system's."),
+			"mount":     strDefault("The KV version 2 mount.", "kv"),
+			"namespace": str("The OpenBao namespace an export that names none is written to."),
+			"auth": obj("How the service logs in, inside each namespace it writes to. The `kubernetes` and `jwt` methods take the same request (`auth/<mount>/login` with a role and a JWT) and differ in the mount they default to and where the JWT comes from.", m{
+				"method":    enum("`kubernetes`: the Kubernetes auth method, with this pod's ServiceAccount token. `jwt`: the JWT/OIDC method, with a token the platform projects (a ServiceAccount token of another audience, or, on AWS Lambda, the web identity token of outbound federation) from `tokenFile`.", "", "kubernetes", "jwt"),
+				"mount":     str("The auth method's mount path in each namespace. Absent, the method's name."),
+				"role":      str("The role the login asks for. It must be bound to this workload's identity and carry a policy that reads, creates, updates and patches only the paths `exports` names."),
+				"tokenFile": str("Where the JWT is read from, afresh on every login. Absent with `kubernetes`, the pod's ServiceAccount token; required with `jwt`."),
+			}, "method", "role"),
+		}, "address", "auth"),
+	}, "adapter")
+	s["allOf"] = []any{
+		m{"if": m{"properties": m{"adapter": m{"const": "openbao"}}}, "then": m{"required": []string{"openbao"}}},
+		m{"if": m{"properties": m{"auth": m{"properties": m{"method": m{"const": "jwt"}}}}}, "then": m{"properties": m{"auth": m{"required": []string{"tokenFile"}}}}},
+	}
+	return s
+}
+
+// exportsSchema is `exports`: the copies of secrets made out of the service.
+func exportsSchema() m {
+	item := obj("One copy: what is copied (`source` and the field that names it) and where it goes (`path`, in `namespace`).", m{
+		"name":       str("Identifies the export in the log, the metrics and its lease: lower-case letters, digits, '.', '_' and '-'. Absent, the source and what it names, e.g. `slack-app.alerts`."),
+		"source":     enum("What is copied. `slack-app`: a catalogue Slack App's bot token (`app`). `github-app`: a catalogue GitHub App's id, installation id and private key (`app`). `runner-app`: a runner App's id, installation id and private key (`tier`, `org`). `bundle`: one of the disaster-recovery bundles, whole (`bundle`).", "", "slack-app", "github-app", "runner-app", "bundle"),
+		"app":        str("The catalogue id, for `slack-app` and `github-app`. It must be declared in the catalogue."),
+		"tier":       str("A runner tier, for `runner-app`. It must be one of `github.runnerTiers`."),
+		"org":        str("The organisation, for `runner-app`."),
+		"bundle":     enum("The bundle, for `bundle`: each is what the Kubernetes Secret of that name held, one JSON document per entry. Written with `replace`: the key holds exactly the bundle.", "", "workspace-credentials", "github-apps", "github-links", "github-runner-apps", "github-catalogue-apps"),
+		"namespace":  str("The OpenBao namespace. Absent, `ports.export.openbao.namespace`."),
+		"path":       str("The key under the KV mount: `slack-apps/alerts`. No leading or trailing slash."),
+		"properties": m{"type": "object", "additionalProperties": m{"type": "string", "minLength": 1}, "description": "Which properties of the App are written and under what names: `{private_key: github-private-key}`. Absent, all of the source's, under the names the External Secrets PushSecrets wrote: `bot_token`; `app_id`, `installation_id`, `private_key`; `github-app-id`, `github-installation-id`, `github-private-key` for a runner App. A property export is a PATCH: other properties of the key are left as they are. Not for `bundle`."},
+		"interval":   duration("How often the copy is made again with nothing changed, to put back what somebody altered. A change is copied at once; this is the backstop.", "1h"),
+	}, "source", "path")
+	item["allOf"] = []any{
+		m{"if": m{"properties": m{"source": m{"enum": []string{"slack-app", "github-app"}}}}, "then": m{"required": []string{"app"}}},
+		m{"if": m{"properties": m{"source": m{"const": "runner-app"}}}, "then": m{"required": []string{"tier", "org"}}},
+		m{"if": m{"properties": m{"source": m{"const": "bundle"}}}, "then": m{"required": []string{"bundle"}}},
+	}
+	return m{"type": "array", "items": item, "description": "The secrets this service copies out of itself into the store `ports.export` names (docs/decisions/0034): a copy is asynchronous, retried with backoff and never a dependency. Validated at start; an unknown source, a source this deployment does not declare and two exports that would write one key stop the service before it serves."}
 }
 
 // portsNATSSchema is `ports.nats`: the bucket of the `nats` adapter.
@@ -362,7 +413,7 @@ func rosterProps(kind, mountDefault, recordsDefault string) m {
 		"recordsDir": strDefault("The console's records, mounted.", recordsDefault),
 		"interval":   duration("How long between passes. Positive.", "15m"),
 		"log":        logLevel(),
-		"ports":      portsSchema(),
+		"ports":      portsSchema(false),
 		"audit": obj("The audit installation the controller records to, as its own workload. Unset only logs what it did.", m{
 			"writer":    url("The installation's receiver."),
 			"tokenFile": str("This workload's projected service-account token."),

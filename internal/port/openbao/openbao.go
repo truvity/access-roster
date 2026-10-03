@@ -11,7 +11,7 @@
 // kept until most of its lease has passed, per OpenBao namespace, because a
 // login inside a namespace opens a token for that namespace alone.
 //
-// The writes are shaped for the way copies are consumed (docs/decisions/0033):
+// The writes are shaped for the way copies are consumed (docs/decisions/0034):
 //
 //   - ExportReplace is `POST data/<path>`: the key holds exactly the
 //     properties. A whole-secret copy.

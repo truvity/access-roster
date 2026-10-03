@@ -78,7 +78,7 @@ func (t ExportTarget) String() string {
 }
 
 // Export copies a secret OUT of the service into a secret store a consumer
-// reads (docs/decisions/0033). It is the reverse of State: nothing here is
+// reads (docs/decisions/0034). It is the reverse of State: nothing here is
 // read back by the service, and nothing depends on it. A caller treats a
 // failed Put as "the copy is stale", never as a failure of what it copies, and
 // retries it out of band; an Export is never on a request's path.
