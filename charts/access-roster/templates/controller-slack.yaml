@@ -16,7 +16,7 @@
 {{- range dig "slack" list (.Values.access | default dict) }}{{ $_ := set $bound .workspace true }}{{ end }}
 {{- range $cfg.enabledWorkspaces }}
 {{- if not (hasKey $bound .) }}
-{{- fail (printf "controllerSlack.config.enabledWorkspaces names %q, which policy.slack.workspaces and access.slack do not declare: remove it from enabledWorkspaces, or declare the workspace in the policy" .) }}
+{{- fail (printf "controllerSlack.config.enabledWorkspaces names %q, which policy.slack.workspaces does not declare, and nor does access.slack: remove it from enabledWorkspaces, or declare the workspace in the policy" .) }}
 {{- end }}
 {{- end }}
 {{- end }}

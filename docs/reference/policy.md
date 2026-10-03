@@ -1307,7 +1307,7 @@ access:
       emails: [ada@example.com]        # one `email` matcher each
       github: [{owner: example-org, visibility: private}]
       service_accounts: [{cluster: alpha, namespace: widgets, name: e2e}]
-      aws: [{account: "123456789012", role: probe, path: /}]
+      aws: [{account: "111122223333", role: probe, path: /}]
   people: [{name: ada, addresses: [ada@example.com]}]
   slack: [{workspace: acme, channels: [{name: ops, mode: strict, from: [env:ssh:admin]}]}]
   github: [{org: example-org, teams: [{slug: platform, members: [example-org:platform:member]}]}]

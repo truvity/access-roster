@@ -33,7 +33,7 @@ access:
       namespace: widgets
       name: widgets-e2e
     aws:
-    - account: '123456789012'
+    - account: '111122223333'
       role: probe-role
       path: /
   - name: alpha:docs:reader
