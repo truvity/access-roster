@@ -1,7 +1,0 @@
-# slackRoster.interval is a Go duration.
-# error: at '/slackRoster/config/interval': 'hourly' does not match pattern
-config:
-  issuerURL: https://issuer.example
-slackRoster:
-  config:
-    interval: hourly

@@ -30,7 +30,7 @@ func TestAbsoluteLifetimeIsRefused(t *testing.T) {
 		{"shorter than the token lifetime is refused", d(2 * time.Hour), d(time.Hour), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := FromConfig(&config.Issuer{
+			_, err := FromConfig(&config.Serve{
 				IssuerURL: "https://issuer.example",
 				Lifetimes: &config.Lifetimes{Token: tc.token, Absolute: tc.absolute},
 			})
@@ -48,7 +48,7 @@ func TestAbsoluteLifetimeIsRefused(t *testing.T) {
 // the default this setting exists to change, and the value every
 // existing deployment gets without touching a chart.
 func TestAbsoluteLifetimeDefaultsToTwentyFourHours(t *testing.T) {
-	cfg, err := FromConfig(&config.Issuer{IssuerURL: "https://issuer.example"})
+	cfg, err := FromConfig(&config.Serve{IssuerURL: "https://issuer.example"})
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}

@@ -19,12 +19,12 @@ import (
 
 // issuerFile is the service's configuration file as a test states it: the
 // defaults a test wants, then what the test changes.
-func issuerFile(t *testing.T, change ...func(*config.Issuer)) *config.Issuer {
+func issuerFile(t *testing.T, change ...func(*config.Serve)) *config.Serve {
 	t.Helper()
 	// The recovery password is a declared secret: the file names the variable.
 	t.Setenv("ACCESS_TEST_ADMIN_PASSWORD", "recover-me")
 	enabled := true
-	f := &config.Issuer{
+	f := &config.Serve{
 		IssuerURL:        "https://issuer.example",
 		Demo:             true,
 		Store:            "memory",
@@ -39,7 +39,7 @@ func issuerFile(t *testing.T, change ...func(*config.Issuer)) *config.Issuer {
 
 // boot assembles a hub the way a deployment would: from the configuration
 // file's settings, which is the contract the chart writes to.
-func boot(t *testing.T, change ...func(*config.Issuer)) *app.App {
+func boot(t *testing.T, change ...func(*config.Serve)) *app.App {
 	t.Helper()
 	cfg, err := app.FromConfig(issuerFile(t, change...))
 	if err != nil {
@@ -54,7 +54,7 @@ func boot(t *testing.T, change ...func(*config.Issuer)) *app.App {
 }
 
 // noDirectoryLogin turns the directory sign-in off.
-func noDirectoryLogin(f *config.Issuer) {
+func noDirectoryLogin(f *config.Serve) {
 	off := false
 	f.Login = &config.Login{Directory: &off}
 }
@@ -65,7 +65,7 @@ func noDirectoryLogin(f *config.Issuer) {
 // hub has to be told where it is before it can send a browser back to
 // itself. The listener is opened first with a handler it does not have
 // yet, which is the only way round the circle.
-func console(t *testing.T, change ...func(*config.Issuer)) (*http.Client, string, *app.App) {
+func console(t *testing.T, change ...func(*config.Serve)) (*http.Client, string, *app.App) {
 	t.Helper()
 	var handler http.Handler
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +73,7 @@ func console(t *testing.T, change ...func(*config.Issuer)) (*http.Client, string
 	}))
 	t.Cleanup(server.Close)
 
-	assembled := boot(t, append([]func(*config.Issuer){func(f *config.Issuer) { f.PublicURL = server.URL }}, change...)...)
+	assembled := boot(t, append([]func(*config.Serve){func(f *config.Serve) { f.PublicURL = server.URL }}, change...)...)
 	handler = assembled.ConsoleHandler()
 
 	jar, err := cookiejar.New(nil)
@@ -177,7 +177,7 @@ func TestTheRedirectsFollowThePublicURL(t *testing.T) {
 	// A fixed public URL, so the values are assertable — and recovery
 	// rather than a sign-in to read them, because a sign-in redirect
 	// built from that URL would go somewhere this test is not.
-	client, at, _ := console(t, func(f *config.Issuer) { f.PublicURL = "https://directory.example" })
+	client, at, _ := console(t, func(f *config.Serve) { f.PublicURL = "https://directory.example" })
 	if code, body := rpc(t, client, at+"/login/recovery", `{"proof":"recover-me"}`); code != http.StatusNoContent {
 		t.Fatalf("recovery = %d, %q", code, body)
 	}
@@ -256,7 +256,7 @@ func TestRecoveryReachesTheConsole(t *testing.T) {
 // A deployment with no recovery path has none: the page offers nothing
 // and the route is closed.
 func TestRecoveryCanBeTurnedOff(t *testing.T) {
-	client, at, _ := console(t, func(f *config.Issuer) { off := false; f.Recovery.Enabled = &off })
+	client, at, _ := console(t, func(f *config.Serve) { off := false; f.Recovery.Enabled = &off })
 
 	code, page := get(t, client, at+"/login")
 	if code != http.StatusOK || strings.Contains(page, "Recovery sign-in") {
@@ -272,12 +272,12 @@ func TestRecoveryCanBeTurnedOff(t *testing.T) {
 func TestImpossibleConfigurationIsRefused(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		change func(*config.Issuer)
+		change func(*config.Serve)
 	}{
-		{"an unknown store", func(f *config.Issuer) { f.Store = "postgres" }},
-		{"a log level that is not one", func(f *config.Issuer) { f.Log = &config.Log{Level: "chatty"} }},
-		{"a runner tier that is not one", func(f *config.Issuer) { f.GitHub = &config.GitHub{RunnerTiers: []string{"Not A Tier"}} }},
-		{"a recovery password variable that is not set", func(f *config.Issuer) { f.AdminPasswordEnv = "ACCESS_TEST_NOT_SET" }},
+		{"an unknown store", func(f *config.Serve) { f.Store = "postgres" }},
+		{"a log level that is not one", func(f *config.Serve) { f.Log = &config.Log{Level: "chatty"} }},
+		{"a runner tier that is not one", func(f *config.Serve) { f.GitHub = &config.GitHub{RunnerTiers: []string{"Not A Tier"}} }},
+		{"a recovery password variable that is not set", func(f *config.Serve) { f.AdminPasswordEnv = "ACCESS_TEST_NOT_SET" }},
 	} {
 		if _, err := app.FromConfig(issuerFile(t, tc.change)); err == nil {
 			t.Errorf("%s was accepted", tc.name)
@@ -298,8 +298,8 @@ func TestAMalformedGitHubAppCatalogueIsRefusedAtStart(t *testing.T) {
 		return path
 	}
 
-	withCatalogue := func(path string) func(*config.Issuer) {
-		return func(f *config.Issuer) { f.GitHub = &config.GitHub{CatalogueFile: path} }
+	withCatalogue := func(path string) func(*config.Serve) {
+		return func(f *config.Serve) { f.GitHub = &config.GitHub{CatalogueFile: path} }
 	}
 	level := write("level.yaml", "apps:\n  - id: renovate\n    org: example-org\n    permissions: {contents: owner}\n")
 	if _, err := app.FromConfig(issuerFile(t, withCatalogue(level))); err == nil || !strings.Contains(err.Error(), "github.catalogueFile") {

@@ -1,0 +1,7 @@
+# A key under controllerSlack the chart does not know must fail the render, not be ignored.
+# error: at '/controllerSlack': additional properties
+config:
+  issuerURL: https://issuer.example
+controllerSlack:
+  acts_in:
+  - acme

@@ -1,0 +1,19 @@
+# A receiver is named and the token it is presented is not where the chart mounts it.
+# error: controllerSlack.config.audit.tokenFile must be /var/run/audit/token
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+controllerSlack:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.default.svc:8080/console
+    audit:
+      writer: http://audit.access-issuer.svc:8080
+      tokenFile: /etc/token

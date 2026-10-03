@@ -41,10 +41,10 @@ logins.
 7. **The rest of the consoles**, the CD system, the CLIs.
 8. **GitHub organisations.** Bind their teams in the policy, connect each
    from the console, read the dry run on its page, then list it in
-   `githubRoster.config.enabledOrgs`; the tool that synced teams before retires with
+   `controllerGithub.config.enabledOrgs`; the tool that synced teams before retires with
    it, and the pairings it approved are imported once.
    **Slack workspaces.** Declare the workspace in the policy, connect it from
-   the console, read the dry run, then list it in `slackRoster.config.enabledWorkspaces`. A channel
+   the console, read the dry run, then list it in `controllerSlack.config.enabledWorkspaces`. A channel
    the infrastructure owns is a policy channel fed by internal groups; a channel
    people manage themselves is a console channel fed by directory groups.
 9. **Retire.** When the old IdP has no relying party left: the IdP, its

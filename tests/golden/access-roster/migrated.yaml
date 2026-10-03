@@ -1,0 +1,762 @@
+---
+# Source: access-roster/templates/controller-github.yaml
+# The controller's own account. It holds two permissions: updating its one
+# report, and updating the one Secret people's linked GitHub accounts are
+# kept in — each link's token pair rotates every time it is renewed, and
+# the renewed pair has to be written back. The Secret with the Apps' keys
+# and the ConfigMap with the console's records are mounted volumes, so no
+# other Secret or ConfigMap is readable at all, and watching them for a
+# change (an install, a Refresh) needs no permission either.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer-github-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-github
+
+---
+# Source: access-roster/templates/controller-slack.yaml
+# The controller's own account. It holds one permission: updating its one
+# report. The Secret with the workspaces' bot tokens and the ConfigMap with
+# the console's records are mounted volumes, so no Secret or other ConfigMap
+# is readable at all.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer-slack-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-slack
+
+---
+# Source: access-roster/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: access-roster/templates/serviceaccount.yaml
+# The account a recovery token is minted for. Deliberately bound to
+# NOTHING: it needs no permissions, because the token is a proof of
+# identity and not a way to act. Granting `create` on
+# `serviceaccounts/token` for this account is how an installation says who
+# may recover, and that grant is the whole of the access control.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-issuer-recovery
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+
+---
+# Source: access-roster/templates/clusters-configmap.yaml
+# The clusters whose workloads may exchange a ServiceAccount token for one
+# of this issuer's, each verified against the key set that cluster
+# publishes for itself.
+#
+# Nothing here is a secret: a name and two URLs per cluster. That is the
+# whole point — the alternative is a kubeconfig per cluster held by the
+# service whose design is to hold almost no credential.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-clusters
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  clusters.yaml: |
+    clusters:
+      - name: "example"
+        issuer: "https://oidc.example"
+
+---
+# Source: access-roster/templates/configmap.yaml
+# What `access-roster serve --config` reads: `config`, as the values give it, with
+# nothing added, renamed or dropped. The binary validates it against
+# schemas/config/serve.schema.json at start, and values.schema.json
+# holds the values to the same schema before this renders.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-config
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: serve
+data:
+  config.yaml: |
+    audit:
+      tokenFile: /var/run/audit/token
+    exchange:
+      clustersFile: /var/run/access-issuer/clusters.yaml
+    inCluster: true
+    issuerURL: https://issuer.example
+    lifetimes:
+      absolute: 24h
+      hold: 4h
+      refresh: 12h
+      token: 1h
+    listen:
+      address: :8080
+    policyDir: /var/run/access-issuer/policy
+    probes:
+      address: :7070
+    recovery:
+      audience: access-issuer-recovery
+      enabled: true
+      serviceAccount: access-issuer-recovery
+    release: access-issuer
+    signingKey:
+      activationDelay: 15m
+      file: /var/run/access-issuer/signing-key/tls.key
+      pollInterval: 30s
+    store: kubernetes
+
+---
+# Source: access-roster/templates/controller-github.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-github-roster-config
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-github
+data:
+  # What `access-roster controller github --config` reads: `controllerGithub.config`, as the values give
+  # it. The binary validates it against schemas/config/controller-github.schema.json.
+  config.yaml: |
+    appsDir: /var/run/github-roster/apps
+    audit:
+      tokenFile: /var/run/audit/token
+    consoleURL: http://access-issuer.default.svc:8080/console
+    interval: 15m
+    policyDir: /var/run/github-roster/policy
+    recordsDir: /var/run/github-roster/records
+    release: access-issuer
+    tokenFile: /var/run/secrets/github-roster/token
+
+---
+# Source: access-roster/templates/controller-slack.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-slack-roster-config
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-slack
+data:
+  # What `access-roster controller slack --config` reads: `controllerSlack.config`, as the values give
+  # it. The binary validates it against schemas/config/controller-slack.schema.json.
+  config.yaml: |
+    audit:
+      tokenFile: /var/run/audit/token
+    consoleURL: http://access-issuer.default.svc:8080/console
+    credentialsDir: /var/run/slack-roster/credentials
+    interval: 15m
+    policyDir: /var/run/slack-roster/policy
+    recordsDir: /var/run/slack-roster/workspaces
+    release: access-issuer
+    tokenFile: /var/run/secrets/slack-roster/token
+
+---
+# Source: access-roster/templates/policy-configmap.yaml
+# The declared layer of the policy — the same file the hub reads, and the
+# same schema. See docs/reference/policy.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-policy
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  policy.yaml: |
+    # The version belongs to the chart, not to the values: the loader
+    # refuses a document whose version it does not know, so a policy
+    # written without one is a service that will not start.
+    version: 1
+
+---
+# Source: access-roster/templates/serviceaccount.yaml
+# The one cluster-scoped permission this service ever needs, and the one
+# thing left that asks the API server anything: creating TokenReviews, so
+# that recovery can check a token proving cluster access. It reads
+# nothing.
+#
+# Workloads used to need it too. They do not any more: a
+# ServiceAccount token is verified against the key set its own cluster
+# publishes, so this service holds no access to any cluster including its
+# own. Recovery keeps it because on the day everything else is broken it
+# should depend on nothing but the cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: access-issuer-default-tokenreview
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+
+---
+# Source: access-roster/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: access-issuer-default-tokenreview
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: access-issuer-default-tokenreview
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer
+    namespace: default
+
+---
+# Source: access-roster/templates/controller-github.yaml
+# Update, by name, the one ConfigMap it reports into. The service creates
+# that object — `create` cannot be narrowed to a name — so this account
+# cannot create any ConfigMap, and in particular none that would read to
+# the service as a workspace record.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: access-issuer-github-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-github
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["access-issuer-github-status"]
+    verbs: ["get", "update", "patch"]
+  # Created by the service, like the report, so this can name it.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["access-issuer-github-links"]
+    verbs: ["get", "update"]
+
+---
+# Source: access-roster/templates/controller-slack.yaml
+# Update, by name, the one ConfigMap it reports into. The service creates
+# that object — `create` cannot be narrowed to a name — so this account
+# cannot create any ConfigMap, and in particular none that would read to
+# the service as a workspace record.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: access-issuer-slack-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-slack
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["access-issuer-slack-status"]
+    verbs: ["get", "update", "patch"]
+
+---
+# Source: access-roster/templates/serviceaccount.yaml
+# The directory store is plain Kubernetes objects in THIS namespace:
+# workspace records (ConfigMaps) and their credentials (Secrets), written
+# by this service itself. A namespaced Role and never a ClusterRole —
+# which is why this service gets a namespace of its own.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+# Source: access-roster/templates/controller-github.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: access-issuer-github-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-github
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: access-issuer-github-roster
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer-github-roster
+    namespace: default
+
+---
+# Source: access-roster/templates/controller-slack.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: access-issuer-slack-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-slack
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: access-issuer-slack-roster
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer-slack-roster
+    namespace: default
+
+---
+# Source: access-roster/templates/serviceaccount.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: access-issuer
+subjects:
+  - kind: ServiceAccount
+    name: access-issuer
+    namespace: default
+
+---
+# Source: access-roster/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+  ports:
+    - name: issuer
+      port: 8080
+      targetPort: issuer
+
+---
+# Source: access-roster/templates/controller-github.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: access-issuer-github-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-github
+spec:
+  # One: two controllers would make every change twice, and GitHub's answer
+  # to the second is an error that reads as a failure.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: access-issuer-github-roster
+      app.kubernetes.io/instance: access-roster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: access-issuer-github-roster
+        app.kubernetes.io/instance: access-roster
+      annotations:
+        checksum/config: 21b52bf8b4ff35fae69c5f04ba6f01c680e2b261daa96e683e58e16a13977cc3
+        # The bindings are read at start, like the service's policy.
+        checksum/policy: 390bfb7eb0412bf623cdfbafb3aa9fb82d5ee067d774ebad3e12205d869bdc73
+    spec:
+      serviceAccountName: access-issuer-github-roster
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller-github
+          image: "ghcr.io/truvity/access-roster/access-roster:0.0.0"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          args:
+            - controller
+            - github
+            - --config=/etc/access-roster/controller-github.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/access-roster/controller-github.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/github-roster/policy
+              readOnly: true
+            - name: token
+              mountPath: /var/run/secrets/github-roster
+              readOnly: true
+            - name: apps
+              mountPath: /var/run/github-roster/apps
+              readOnly: true
+            - name: records
+              mountPath: /var/run/github-roster/records
+              readOnly: true
+            
+      volumes:
+        - name: config
+          configMap:
+            name: access-issuer-github-roster-config
+        - name: policy
+          configMap:
+            name: access-issuer-policy
+        # The token the console verifies, for the audience it accepts a
+        # workload's token for. Rotated by the kubelet; the controller reads
+        # the file on every call.
+        - name: token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: access-issuer
+                  expirationSeconds: 3600
+                  path: token
+        # One file per connected organisation. Optional: before anything is
+        # connected there may be nothing, and the controller reports each
+        # bound organisation as not connected rather than failing to start.
+        - name: apps
+          secret:
+            secretName: access-issuer-github-apps
+            optional: true
+        # The console's records beside them: each organisation's record, the
+        # operators' confirmations and their requests for a pass now. The
+        # controller watches it, so a Refresh runs a pass at once. Optional
+        # for the same reason.
+        - name: records
+          configMap:
+            name: access-issuer-github-orgs
+            optional: true
+        
+
+---
+# Source: access-roster/templates/controller-slack.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: access-issuer-slack-roster
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller-slack
+spec:
+  # One: two controllers would make every change twice, and Slack's answer
+  # to the second is an error that reads as a failure.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: access-issuer-slack-roster
+      app.kubernetes.io/instance: access-roster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: access-issuer-slack-roster
+        app.kubernetes.io/instance: access-roster
+      annotations:
+        checksum/config: a4ac0660379aa30a31812d4e6a47633a463754c746ed464effadb203fec3c0eb
+        # The bindings are read at start, like the service's policy.
+        checksum/policy: 390bfb7eb0412bf623cdfbafb3aa9fb82d5ee067d774ebad3e12205d869bdc73
+    spec:
+      serviceAccountName: access-issuer-slack-roster
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller-slack
+          image: "ghcr.io/truvity/access-roster/access-roster:0.0.0"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          args:
+            - controller
+            - slack
+            - --config=/etc/access-roster/controller-slack.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/access-roster/controller-slack.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/slack-roster/policy
+              readOnly: true
+            - name: token
+              mountPath: /var/run/secrets/slack-roster
+              readOnly: true
+            - name: credentials
+              mountPath: /var/run/slack-roster/credentials
+              readOnly: true
+            - name: workspaces
+              mountPath: /var/run/slack-roster/workspaces
+              readOnly: true
+            
+      volumes:
+        - name: config
+          configMap:
+            name: access-issuer-slack-roster-config
+        - name: policy
+          configMap:
+            name: access-issuer-policy
+        # The token the console verifies, for the audience it accepts a
+        # workload's token for. Rotated by the kubelet; the controller reads
+        # the file on every call.
+        - name: token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: access-issuer
+                  expirationSeconds: 3600
+                  path: token
+        # One file per connected workspace: the app's credentials and its bot
+        # token. Optional: before anything is connected there may be nothing,
+        # and the controller reports each declared workspace as not connected
+        # rather than failing to start.
+        - name: credentials
+          secret:
+            secretName: access-issuer-slack-credentials
+            optional: true
+        # The console's records beside them: each workspace's record, the
+        # shared channels' definitions and the operators' confirmations.
+        # Optional for the same reason.
+        - name: workspaces
+          configMap:
+            name: access-issuer-slack-workspaces
+            optional: true
+        
+
+---
+# Source: access-roster/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: access-issuer
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: access-issuer
+      app.kubernetes.io/instance: access-roster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: access-issuer
+        app.kubernetes.io/instance: access-roster
+      annotations:
+        # A configuration change is a rollout: the file is read at start.
+        checksum/config: 02073401db6fd7084fb2ff6467b712262150ac9470d573c791a2d83470a7eece
+        # A policy change is a rollout: the file is read at start.
+        checksum/policy: 390bfb7eb0412bf623cdfbafb3aa9fb82d5ee067d774ebad3e12205d869bdc73
+        # A federated cluster is read once at start. A row added without a
+        # rollout is a cluster whose workloads go on being refused, with
+        # nothing to see but an error naming the wrong cause.
+        checksum/clusters: 0270e3104658ff5fb37886d6e3d4d473887ae1f1ecd845453c655f8378e1c3a8
+    spec:
+      serviceAccountName: access-issuer
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: serve
+          image: "ghcr.io/truvity/access-roster/access-roster:0.0.0"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: issuer
+              containerPort: 8080
+            - name: health
+              containerPort: 7070
+          # The whole of the configuration is the file: `config`, rendered as it
+          # stands. The environment carries only the secrets that file names.
+          args:
+            - serve
+            - --config=/etc/access-roster/config.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/access-roster/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: signing-key
+              mountPath: /var/run/access-issuer/signing-key
+              readOnly: true
+            - name: policy
+              mountPath: /var/run/access-issuer/policy
+              readOnly: true
+            - name: clusters
+              mountPath: /var/run/access-issuer/clusters.yaml
+              subPath: clusters.yaml
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            
+          livenessProbe:
+            httpGet: { path: /healthz, port: health }
+          readinessProbe:
+            # Readiness follows the shared store; liveness deliberately
+            # does not. A replica that cannot reach it leaves the
+            # rotation, and the gateway answers fast instead of hanging;
+            # nothing is restarted, so one blip cannot restart the fleet.
+            #
+            # timeoutSeconds exceeds the service's own 2s check so the
+            # answer is the reason ("the session store does not answer:
+            # i/o timeout") rather than the kubelet's timeout. Three
+            # failures at ten seconds is thirty seconds of trouble before
+            # a replica leaves, which a reconnect comfortably beats.
+            httpGet: { path: /readyz, port: health }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: access-issuer-config
+        - name: signing-key
+          secret:
+            secretName: access-issuer-signing-key
+        - name: policy
+          configMap:
+            name: access-issuer-policy
+        # The root filesystem is read-only, and the directory backends
+        # want somewhere to write.
+        - name: tmp
+          emptyDir: {}
+        
+        - name: clusters
+          configMap:
+            name: access-issuer-clusters
+
+---
+# Source: access-roster/templates/signing-key.yaml
+# The signing key, issued by cert-manager.
+#
+# The certificate is a by-product: only the key is used. cert-manager is
+# here because it generates the key in the cluster, keeps it out of every
+# other system, and rotates it on a schedule the platform already
+# understands — none of which is true of a key this service minted for
+# itself, and the last of which is the reason it does not.
+#
+# `rotationPolicy: Always` makes a renewal a *new key*, which is the
+# point: a renewed certificate over the same key would rotate nothing.
+#
+# The algorithm decides what the issuer signs with -- RSA signs RS256, and
+# P-256, P-384 and P-521 sign ES256, ES384 and ES512 -- and that is what
+# the discovery document advertises, so every relying party has to accept
+# it. Changing it here rotates the key, so tokens signed with the previous
+# one stop verifying once the old public key leaves the JWKS -- which the
+# issuer itself now schedules, with no restart of this Deployment needed
+# either to notice the new key or to retire the old one; see
+# `signingKey.rotation` for the delays that govern it.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: access-issuer-signing-key
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-roster
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretName: access-issuer-signing-key
+  commonName: access-issuer
+  duration: "8760h"
+  renewBefore: "720h"
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+    encoding: PKCS8
+    rotationPolicy: Always
+  issuerRef:
+    name: "selfsigned"
+    kind: "ClusterIssuer"
+    group: cert-manager.io

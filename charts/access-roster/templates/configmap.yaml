@@ -1,0 +1,14 @@
+# What `access-roster serve --config` reads: `config`, as the values give it, with
+# nothing added, renamed or dropped. The binary validates it against
+# schemas/config/serve.schema.json at start, and values.schema.json
+# holds the values to the same schema before this renders.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-roster.fullname" . }}-config
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: serve
+data:
+  config.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}

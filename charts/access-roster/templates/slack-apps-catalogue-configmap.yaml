@@ -1,0 +1,25 @@
+{{- if .Values.slackApps }}
+{{- /*
+`push` is dropped from every entry: it is a chart-side instruction to
+External Secrets, not part of an App's declaration, and the service's
+loader refuses a key it does not know rather than ignoring it.
+*/ -}}
+{{- $apps := list }}
+{{- range .Values.slackApps }}
+{{- $apps = append $apps (omit . "push") }}
+{{- end }}
+# The Slack Apps this deployment declares, created from the console with a
+# throwaway app configuration token and installed by an owner of the
+# workspace. Nothing here is a secret: ids, workspace keys and scopes. The
+# credentials Slack hands over are kept by the service, in the Secret
+# <release>-slack-catalogue-apps.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-roster.fullname" . }}-slack-apps-catalogue
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+data:
+  catalogue.yaml: |
+    {{- toYaml (dict "apps" $apps) | nindent 4 }}
+{{- end }}

@@ -1,0 +1,31 @@
+# An installation moved from the access-issuer chart, as the migration guide
+# says: both overrides name what it had, so every object keeps its name and
+# every Deployment keeps its selector.
+nameOverride: access-issuer
+fullnameOverride: access-issuer
+
+console:
+  mount: /console
+
+exchange:
+  clusters:
+    - name: example
+      issuer: https://oidc.example
+
+config:
+  issuerURL: https://issuer.example
+  release: access-issuer
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+
+controllerGithub:
+  enabled: true
+  config:
+    release: access-issuer
+    consoleURL: http://access-issuer.default.svc:8080/console
+
+controllerSlack:
+  enabled: true
+  config:
+    release: access-issuer
+    consoleURL: http://access-issuer.default.svc:8080/console

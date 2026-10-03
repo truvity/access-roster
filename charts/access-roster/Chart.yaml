@@ -1,0 +1,13 @@
+apiVersion: v2
+name: access-roster
+description: >-
+  access-roster in one chart and one image: the token service (`serve`),
+  which verifies proofs produced elsewhere, applies the shared policy and
+  issues tokens, and the GitHub and Slack controllers (`controller github`,
+  `controller slack`). It authenticates nobody itself and holds no user
+  records. See docs/design/access-issuer.md.
+type: application
+# Placeholder. The git tag is the sole version authority — the release
+# workflow stamps `--version`/`--app-version` from it at package time.
+version: 0.0.0
+appVersion: "0.0.0"

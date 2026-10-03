@@ -7,7 +7,7 @@ tables. For a map of every page in the repository, not just these, see
 [index.md](index.md).
 
 - [reference/configuration.md](reference/configuration.md) — every value
-  of the `access-issuer` chart, the overlay format, every endpoint the
+  of the `access-roster` chart, the overlay format, every endpoint the
   issuer serves, the objects the service writes, and each controller's
   environment
 - [reference/policy.md](reference/policy.md) — the policy file: groups,

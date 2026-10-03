@@ -1,10 +1,10 @@
-# access-issuer — chart and configuration
+# access-roster — chart and configuration
 
 How the service is configured: the chart's boundary, its values, the
 overlay format, the Kubernetes objects it owns, the roles, and the two
 things it expects the deployment to provide.
 
-**One chart, `charts/access-issuer`, for one service.** It renders the
+**One chart, `charts/access-roster`, and one image, for the whole product.** It renders the
 whole of access-roster — the directory, the policy, the OpenID provider,
 the login page and the console — and, when enabled, the GitHub
 controller and the Slack controller beside it. It keeps no audit trail of its own: it records
@@ -44,13 +44,14 @@ service writes *itself*, where it is the producer and gets to choose.
 
 | Value | Default | Meaning |
 |---|---|---|
-| `config` | see [the file](#the-configuration-file) | **the service's configuration**, rendered as it stands into the ConfigMap `<release>-config` and mounted at `/etc/access-issuer/config.yaml`. Validated by `values.schema.json` against the schema the binary uses. Everything the service decides is here (the issuer URL, lifetimes, the store, Valkey, recovery, audit, the signing key's rotation); `issuerURL` is **required** and has no default, because one would be a value nobody chose spread across an estate |
+| `config` | see [the file](#the-configuration-file) | **the service's configuration**, rendered as it stands into the ConfigMap `<release>-config` and mounted at `/etc/access-roster/config.yaml`. Validated by `values.schema.json` against the schema the binary uses. Everything the service decides is here (the issuer URL, lifetimes, the store, Valkey, recovery, audit, the signing key's rotation); `issuerURL` is **required** and has no default, because one would be a value nobody chose spread across an estate |
 | `secretEnv[]` | `[]` | the only way a secret reaches a process: `{name, secretName, key, optional}` puts a Secret's key in the variable `name`, which the config names (`valkey.passwordEnv`, `oauthClient.secretEnv`, `adminPasswordEnv`). A secret is never in `config` |
 | `secretMounts[]` | `[]` | `{secretName, mountPath}`: a Secret mounted read-only as a directory, for a file the config names by path (`oauthClient.idFile`, `oauthClient.secretFile`). Each key is a file |
-| `githubRoster.config` | see [the file](#the-configuration-file) | the GitHub controller's configuration, rendered as it stands into `<release>-github-roster-config`. `consoleURL` is required, and is this release's own Service |
-| `slackRoster.config` | see [the file](#the-configuration-file) | the Slack controller's, into `<release>-slack-roster-config` |
+| `controllerGithub.config` | see [the file](#the-configuration-file) | the GitHub controller's configuration, rendered as it stands into `<release>-github-roster-config`. `consoleURL` is required, and is this release's own Service |
+| `controllerSlack.config` | see [the file](#the-configuration-file) | the Slack controller's, into `<release>-slack-roster-config` |
 | `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory store. Every replica serves every workspace, including one connected through the console on the other replica: a reader missing locally is opened from the stored credential on first use |
-| `image.repository` / `tag` | `ghcr.io/truvity/access-roster/access-issuer` / app version | |
+| `image.repository` / `tag` | `ghcr.io/truvity/access-roster/access-roster` / app version | the one image: `serve` and both controllers are subcommands of it, each Deployment passing its own arguments |
+| `nameOverride` / `fullnameOverride` | `""` / `""` | replace the chart name (the `app.kubernetes.io/name` label and the controllers' selectors) and the release's full name (the prefix of every object, and the value `config.release` must carry). For an installation moving from the access-issuer chart: [see below](#migrating-from-the-access-issuer-chart) |
 | `signingKey.existingSecret` / `.key` | `""` / `tls.key` | a Secret holding a PEM private key -- RSA, or ECDSA on P-256, P-384 or P-521. Empty renders a cert-manager `Certificate` instead. **Never minted by the service**: two replicas with two keys hand out tokens half the fleet cannot verify |
 | `signingKey.certificate.issuerName` / `.issuerKind` | `selfsigned` / `ClusterIssuer` | the cert-manager issuer that produces the key, when no `existingSecret` is named. The certificate is a by-product; only the key is used |
 | `signingKey.certificate.algorithm` / `.size` / `.encoding` | `ECDSA` / `384` / `PKCS8` | the key, and so what the issuer signs with BY DEFAULT: RSA signs RS256, and P-256, P-384 and P-521 sign ES256, ES384 and ES512. ECDSA takes 256, 384 or 521; RSA takes 2048, 3072 or 4096; PKCS1 encodes only RSA. A combination cert-manager would not issue is refused at render. The default P-384 key means ES384 for every audience that pins no `signing_alg` of its own — for the one relying party that lags (Kargo; EKS's associated OIDC provider; both RS256-only), pin **that audience's** policy row instead of this whole installation's default; see `signingKey.additional` below and [policy.md#signing-algorithm-per-audience](policy.md#signing-algorithm-per-audience). Changing THIS value changes the default for every audience that names none, and is not "just a rotation" the way adding a `signingKey.additional` entry is: every other algorithm now lives on its own track, and this value decides which one is "the default" |
@@ -81,13 +82,11 @@ service writes *itself*, where it is the producer and gets to choose.
 | `networkPolicy.clients[]` | `[]` | namespaces allowed to reach the service in-cluster: the proxies verifying tokens and the workloads exchanging them |
 | `networkPolicy.gatewayNamespace` | `""` | the gateway's namespace, admitted to the service's port besides `clients`. Empty admits no gateway, so with the policy enabled nothing with a browser reaches it |
 | `serviceAccount.annotations` | `{}` | annotations on the ServiceAccount, which is how a cloud identity reaches this service: an admission webhook (EKS Pod Identity, GKE Workload Identity, the self-hosted `amazon-eks-pod-identity-webhook`) reads one and injects credentials into every pod using the account. Without it a self-hosted installation cannot give the service an AWS identity, and `audit.s3` has nothing to authenticate with; the chart mounts no credential of its own and takes none as a value. On AWS: `eks.amazonaws.com/role-arn: <the role's ARN>` |
-| `githubRoster.enabled` | `false` | render the GitHub controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, because either is a controller that can read nothing |
-| `githubRoster.image.repository` / `.tag` / `.pullPolicy` | `ghcr.io/truvity/access-roster/github-roster` / app version / `IfNotPresent` | from the same release as the service |
-| `slackRoster.enabled` | `false` | render the Slack controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, for the same reason. The policy must put the controller's ServiceAccount (`<release>-slack-roster`) in `all:access-roster:viewer`; without it every pass fails on the first read. Roll the console before the controller when upgrading from before 1.42.0 (the controller needs `ListServedDomains`) |
-| `slackRoster.image.repository` / `.tag` / `.pullPolicy` | `ghcr.io/truvity/access-roster/slack-roster` / app version / `IfNotPresent` | from the same release as the service |
-| `slackRoster.resources` | `{}` | the controller pod's resources |
+| `controllerGithub.enabled` | `false` | render the GitHub controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, because either is a controller that can read nothing |
+| `controllerSlack.enabled` | `false` | render the Slack controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, for the same reason. The policy must put the controller's ServiceAccount (`<release>-slack-roster`) in `all:access-roster:viewer`; without it every pass fails on the first read. Roll the console before the controller when upgrading from before 1.42.0 (the controller needs `ListServedDomains`) |
+| `controllerSlack.resources` | `{}` | the controller pod's resources |
 | `audit.token.audience` / `.expirationSeconds` | `audit` / `3600` | the projected token presented to the receiver |
-| `image.pullPolicy`, `serviceAccount.name`, `resources`, `podAnnotations`, `nodeSelector`, `tolerations`, `githubRoster.image.pullPolicy`, `githubRoster.resources` | | passthrough |
+| `image.pullPolicy`, `serviceAccount.name`, `resources`, `podAnnotations`, `nodeSelector`, `tolerations`, `controllerGithub.resources` | | passthrough |
 
 **Two routes, and the second is not tidiness.** A gateway policy attaches
 to an `HTTPRoute`, so the console's path is a separate object: anything
@@ -318,7 +317,7 @@ first line, naming what a restart would lose.
 
 ## The configuration file
 
-Each binary is configured by **one YAML file**, given with `--config <file>`,
+Each subcommand of `access-roster` (`serve`, `controller github`, `controller slack`) is configured by **one YAML file**, given with `--config <file>`,
 and by nothing else: `--version` and `--help` are the only other flags.
 [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md) is the
 decision, and truvity/policy's
@@ -326,7 +325,7 @@ decision, and truvity/policy's
 the rule it follows.
 
 - **Validated before anything starts.** The file is held to its JSON Schema
-  (`schemas/config/<binary>.schema.json`, embedded in the binary) first. An
+  (`schemas/config/<command>.schema.json`: `serve`, `controller-github` or `controller-slack`, embedded in the binary) first. An
   unknown key, a missing required key or a value of the wrong type refuses to
   start and names the path to it. The chart's `values.schema.json` embeds the
   same schemas under each component's `config`, so the same mistake fails
@@ -352,14 +351,14 @@ default. What follows is the orientation: each key, its default when unset, and
 what to know. A key the table gives no default for is unset by default, which
 is the binary's own behaviour.
 
-### `access-issuer` (the chart's `config`)
+### `serve` (the chart's `config`; `access-roster serve`)
 
 The issuer, the console and the directory hub, one process.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `issuerURL` | **required** | baked into every token and every relying party's trust. There is no default, because one would be a value nobody chose spread across an estate. An http or https URL with no credentials |
-| `release` | `access-issuer` | the name this installation's objects carry (`<release>-github-orgs`, the prefix of its keys in Valkey). **The chart requires it to be the release's full name**, and says what to write |
+| `release` | `access-roster` | the name this installation's objects carry (`<release>-github-orgs`, the prefix of its keys in Valkey). **The chart requires it to be the release's full name**, and says what to write |
 | `cluster` | unset | what this cluster is called, which becomes part of a ServiceAccount's subject: `<cluster>:k8s:<namespace>:<name>`. Empty keeps the older unqualified form |
 | `store` | `memory` (the chart: `kubernetes`) | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
 | `listen.address` | `:8080` | everything a browser and a relying party reach: discovery, the key set, the flows, the login page, and the console under `console.mount`. The chart takes the Service's and the routes' port from it, and refuses one outside 1-65535 |
@@ -405,7 +404,7 @@ The issuer, the console and the directory hub, one process.
 | `audit.audience` | `audit` | the policy client whose audience the Audit page's tokens carry. The policy must declare it, requiring the groups that may read the trail |
 | `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. A record's client address is the entry just left of them, read from the right; the left end is whatever a caller sent, so it is never taken on its own. `0` records the peer |
 
-### `github-roster` (the chart's `githubRoster.config`)
+### `controller-github` (the chart's `controllerGithub.config`; `access-roster controller github`)
 
 The GitHub controller: it makes each organisation's teams match the policy's
 `github` table. It has no listener.
@@ -414,7 +413,7 @@ The GitHub controller: it makes each organisation's teams match the policy's
 |---|---|---|
 | `policyDir` | **required** | the same policy ConfigMap the service mounts; its `github` table is the bindings. The chart requires `/var/run/github-roster/policy` |
 | `consoleURL` | **required** | the console's API, which answers who holds a group. The chart requires this release's own Service plus `console.mount`, and prints it |
-| `release` | `access-issuer` | the name the service's objects carry, so the controller finds `<release>-github-status`. The chart requires the release's full name |
+| `release` | `access-roster` | the name the service's objects carry, so the controller finds `<release>-github-status`. The chart requires the release's full name |
 | `tokenFile` | `/var/run/secrets/github-roster/token` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
 | `appsDir` | `/var/run/github-roster/apps` | the mounted `<release>-github-apps` Secret, one file per connected organisation |
 | `recordsDir` | `/var/run/github-roster/records` | the mounted `<release>-github-orgs` ConfigMap: the organisations' records and the console's requests for a pass. With `appsDir` it is looked at every 30 seconds, and a change (an install, a Refresh) runs a pass at once |
@@ -431,7 +430,7 @@ Secret `<release>-github-links` it rewrites as it checks links. The App
 keys and the console's records are volumes, so it holds no permission to read
 any other Secret or ConfigMap, and watching them for a change takes none.
 
-### `slack-roster` (the chart's `slackRoster.config`)
+### `controller-slack` (the chart's `controllerSlack.config`; `access-roster controller slack`)
 
 The Slack controller: it makes each workspace's channels match the policy's
 `slack` table. It has no listener, and runs as one replica with `Recreate`: two
@@ -440,8 +439,8 @@ controllers would make every change twice.
 | Key | Default | Meaning |
 |---|---|---|
 | `policyDir` | **required** | the same policy ConfigMap the service mounts; its `slack` and `people` tables are the bindings. The chart requires `/var/run/slack-roster/policy` |
-| `consoleURL` | **required** | as for `github-roster` |
-| `release` | `access-issuer` | as for `github-roster`; it finds `<release>-slack-status` |
+| `consoleURL` | **required** | as for `controller-github` |
+| `release` | `access-roster` | as for `controller-github`; it finds `<release>-slack-status` |
 | `tokenFile` | `/var/run/secrets/slack-roster/token` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
 | `credentialsDir` | `/var/run/slack-roster/credentials` | the mounted `<release>-slack-credentials` Secret, one file per connected workspace; optional |
 | `recordsDir` | `/var/run/slack-roster/workspaces` | the mounted `<release>-slack-workspaces` ConfigMap: workspace records, Slack Connect records, console channel records, confirmations and pass requests; optional |
@@ -456,9 +455,110 @@ The credentials and records are volumes, so it holds no permission to read any
 Secret or other ConfigMap. See [Connect a Slack
 workspace](../connect/slack-workspace.md).
 
+## Migrating from the access-issuer chart
+
+[0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md)
+replaces three binaries, three images and the `access-issuer` chart with **one
+binary, `access-roster`, one image and one chart**. This is a breaking change
+in one release; nothing is kept as an alias.
+
+| Before | After |
+|---|---|
+| `oci://ghcr.io/truvity/charts/access-issuer` | `oci://ghcr.io/truvity/charts/access-roster` |
+| `ghcr.io/truvity/access-roster/access-issuer` | `ghcr.io/truvity/access-roster/access-roster`, run as `access-roster serve --config <file>` |
+| `ghcr.io/truvity/access-roster/github-roster` | the same image, run as `access-roster controller github --config <file>` |
+| `ghcr.io/truvity/access-roster/slack-roster` | the same image, run as `access-roster controller slack --config <file>` |
+| `schemas/config/access-issuer.schema.json`, `github-roster.schema.json`, `slack-roster.schema.json` | `serve.schema.json`, `controller-github.schema.json`, `controller-slack.schema.json` |
+| values `githubRoster:`, `slackRoster:` | `controllerGithub:`, `controllerSlack:` (`enabled`, `config`, `resources` as before) |
+| values `githubRoster.image`, `slackRoster.image` | removed: a controller runs the chart's one `image` |
+| `config.release` and each controller's `config.release`, unset: `access-issuer` | unset: `access-roster` |
+
+`access-roster migrate` is reserved by [0031](../decisions/0031-a-generic-migration-tool.md)
+and prints that it is not yet available. `access-roster tick` (one reconciler
+pass, [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md))
+is a later change; the controllers' loops are `controller github` and
+`controller slack`.
+
+**What the chart renames.** The chart's name is part of the full name
+(`<release>-<chart>`, or the release alone when it is the chart's name), and so
+of every object. Moving to the `access-roster` chart without a value renames
+**every** object: the Deployments, the Service, the ServiceAccounts and their
+Roles, every ConfigMap and the Secrets the chart generates (the cert-manager
+signing key's Secret among them, which would be a new key). `config.release`,
+the name the service writes its Kubernetes objects under (`<release>-github-orgs`,
+`<release>-github-apps`, `<release>-slack-workspaces`, the status ConfigMaps and
+the links Secret), must be the full name, so it moves with them and the service
+would start with an empty store. Two values keep all of it:
+
+```yaml
+nameOverride: access-issuer
+fullnameOverride: <the release's current full name>   # `kubectl get deploy` shows it
+config:
+  release: <the same>                                  # unchanged: it is what it was
+controllerGithub:
+  config:
+    release: <the same>
+```
+
+With them, every object keeps its name, every Deployment keeps its immutable
+selector, and the upgrade is a rollout of the same objects onto the new image.
+Without them, it is a new installation beside the old, with a new store and a
+new signing key.
+
+**Names that change either way.**
+
+| Object | Before | After |
+|---|---|---|
+| Container names | `access-issuer`, `github-roster`, `slack-roster` | `serve`, `controller-github`, `controller-slack` |
+| `app.kubernetes.io/component` on the config ConfigMaps and the controllers' objects | `access-issuer`, `github-roster`, `slack-roster` | `serve`, `controller-github`, `controller-slack` |
+| Where the config file is mounted | `/etc/access-issuer/config.yaml`, `/etc/github-roster/config.yaml`, `/etc/slack-roster/config.yaml` | `/etc/access-roster/config.yaml`, `/etc/access-roster/controller-github.yaml`, `/etc/access-roster/controller-slack.yaml` |
+
+**Names that do not change** (given the two overrides, or in a fresh
+installation they are `<full name>` plus): the controllers' Deployments,
+ServiceAccounts, Roles and ConfigMaps (`-github-roster`, `-slack-roster`,
+`-github-roster-config`, `-slack-roster-config`), `-config`, `-policy`,
+`-clusters`, `-signing-key`, the Service, the status and records objects the
+service writes, the paths the chart mounts the policy, the signing key, the
+catalogues and the controllers' credentials at (`/var/run/access-issuer/...`,
+`/var/run/github-roster/...`, `/var/run/slack-roster/...`), the controllers'
+ServiceAccount subjects the policy lists (`<release>-github-roster`), and the
+telemetry service names (`access-issuer`, `github-roster`, `slack-roster`), so
+a dashboard that selects on them still does.
+
+**Steps, for an installation.**
+
+1. Be on the configuration-file form first ([below](#migrating-from-environment-variables)):
+   the environment variables went in v1.53.0, and the binaries refuse them.
+2. In your values, rename `githubRoster` to `controllerGithub` and `slackRoster`
+   to `controllerSlack`, and delete `githubRoster.image` and `slackRoster.image`.
+   Move nothing else: `config` stays where it is.
+3. If the values set `image.repository`, change it to
+   `ghcr.io/truvity/access-roster/access-roster` (or your mirror's name for it);
+   if they do not, there is nothing to do. Pin or mirror one image instead of
+   three.
+4. Add `nameOverride: access-issuer` and `fullnameOverride: <the old full name>`
+   (the Deployment's name without a suffix). `config.release` and each
+   controller's `config.release` stay the old full name, as the old chart
+   required. **Write them out if the values left them unset**: the default was
+   `access-issuer` and is now `access-roster`, so an installation that relied on
+   it must now say `release: access-issuer`, or the render is refused and says
+   what to write. Without the two overrides the installation is renamed
+   (above).
+5. Point the chart reference at `oci://ghcr.io/truvity/charts/access-roster` at
+   this version: a Helm release, an Argo CD `Application`'s `chart:`, a
+   `HelmRelease`. Run `helm template` first: a misspelt key or a `release` that
+   is not the full name is refused at render, with the value to write.
+6. Roll out. The pods restart onto the one image; the old images and the old
+   chart are no longer published, so a pin on one of them stops resolving at the
+   next pull.
+7. Anything outside the chart that ran `access-issuer`, `github-roster` or
+   `slack-roster` by name (a `docker run`, a Compose file, a systemd unit) runs
+   `access-roster serve`, `access-roster controller github` or `access-roster
+   controller slack` with the same `--config` file.
+
 ## Migrating from environment variables
 
-Everything the binaries read from the environment is a key of the file, and the
+Everything the subcommands read from the environment is a key of the file, and the
 chart's flat values that fed them are now the component's `config`. An old
 variable that is still set is **refused at start** with the key that replaces
 it; nothing is ignored. The platform-supplied `NAMESPACE` (now read from the
@@ -468,12 +568,12 @@ longer sets them.
 
 ### The service
 
-| Old variable | Key of `access-issuer`'s file |
+| Old variable | Key of `serve`'s file |
 |---|---|
 | `ISSUER_URL` | `issuerURL` |
 | `PORT` | `listen.address` (`:<port>`) |
 | `HEALTH_PORT` | `probes.address` |
-| `API_PORT`, `CONSOLE_PORT` | none: the directory's own listeners are not served by `access-issuer`; the console is on the issuer's listener |
+| `API_PORT`, `CONSOLE_PORT` | none: the directory's own listeners are not served by `access-roster serve`; the console is on the issuer's listener |
 | `DEMO` | `demo` |
 | `ALLOW_INSECURE` | `allowInsecure` |
 | `IN_CLUSTER` | `inCluster` |
@@ -513,7 +613,7 @@ longer sets them.
 
 ### The controllers
 
-| Old variable | `github-roster` | `slack-roster` |
+| Old variable | `controller-github` | `controller-slack` |
 |---|---|---|
 | `RELEASE_NAME` | `release` | `release` |
 | `POLICY_DIR` | `policyDir` | `policyDir` |
@@ -550,8 +650,8 @@ longer sets them.
 | `console.origin`, `console.client` | `config.console.origin`, `config.console.client` (`console.mount` stays: it is the route's) |
 | `signingKey.rotation.*` | `config.signingKey.pollInterval`, `.activationDelay`, `.overlap` |
 | `audit.writer`, `.query`, `.audience`, `.forwardedForTrustedHops` | `config.audit.writer`, `.queryURL`, `.audience`, `.forwardedForTrustedHops` (`audit.token.*` stays: it is the chart's) |
-| `githubRoster.interval`, `githubRoster.actsIn` | `githubRoster.config.interval`, `githubRoster.config.enabledOrgs` |
-| `slackRoster.interval`, `slackRoster.actsIn` | `slackRoster.config.interval`, `slackRoster.config.enabledWorkspaces` |
+| `controllerGithub.interval`, `controllerGithub.actsIn` | `controllerGithub.config.interval`, `controllerGithub.config.enabledOrgs` |
+| `controllerSlack.interval`, `controllerSlack.actsIn` | `controllerSlack.config.interval`, `controllerSlack.config.enabledWorkspaces` |
 | `telemetry.otlpEndpoint` | removed: `OTEL_*` is set on the pods by the platform |
 
 The old values are removed, not aliased: an old key is refused at render
@@ -588,9 +688,8 @@ from.
 
 ## The repository
 
-access-roster ships from one repository: the `access-issuer` chart with
-its three images — the service, the GitHub controller and the Slack
-controller — `accessctl`, the GitHub Action, the Go module and the TypeScript
+access-roster ships from one repository: the `access-roster` chart with
+its one image — `serve`, `controller github` and `controller slack` are its subcommands — `accessctl`, the GitHub Action, the Go module and the TypeScript
 package, all stamped with one tag. Shared Go packages —
 the backends, the policy engine, the verifiers, the exchange — are
 importable behind interfaces.

@@ -1,0 +1,17 @@
+# The projected token is mounted at one path.
+# error: controllerSlack.config.tokenFile must be /var/run/secrets/slack-roster/token
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+controllerSlack:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.default.svc:8080/console
+    tokenFile: /etc/token

@@ -1,0 +1,8 @@
+# controllerSlack.actsIn names the policy's workspace keys.
+# error: at '/controllerSlack/config/enabledWorkspaces/0': 'Acme_Corp' does not match pattern
+config:
+  issuerURL: https://issuer.example
+controllerSlack:
+  config:
+    enabledWorkspaces:
+    - Acme_Corp

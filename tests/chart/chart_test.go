@@ -23,9 +23,9 @@ var components = map[string]struct {
 	path   []string
 	schema string
 }{
-	"access-issuer": {[]string{"config"}, "access-issuer"},
-	"github-roster": {[]string{"githubRoster", "config"}, "github-roster"},
-	"slack-roster":  {[]string{"slackRoster", "config"}, "slack-roster"},
+	"serve":             {[]string{"config"}, "serve"},
+	"controller-github": {[]string{"controllerGithub", "config"}, "controller-github"},
+	"controller-slack":  {[]string{"controllerSlack", "config"}, "controller-slack"},
 }
 
 func helm(t *testing.T) string {
@@ -42,7 +42,7 @@ func helm(t *testing.T) string {
 
 func render(t *testing.T, values, namespace string) []map[string]any {
 	t.Helper()
-	cmd := exec.Command(helm(t), "template", "access-issuer", filepath.Join("..", "..", "charts", "access-issuer"),
+	cmd := exec.Command(helm(t), "template", "access-roster", filepath.Join("..", "..", "charts", "access-roster"),
 		"--namespace", namespace, "-f", values)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -116,8 +116,8 @@ func load(t *testing.T, path string) map[string]any {
 // holds exactly the block the values gave, with nothing added, renamed or
 // dropped, and that block is a file its binary accepts.
 func TestTheRenderedConfigurationIsTheValuesConfiguration(t *testing.T) {
-	defaults := load(t, filepath.Join("..", "..", "charts", "access-issuer", "values.yaml"))
-	cases, err := filepath.Glob(filepath.Join("..", "cases", "access-issuer", "*", "values.yaml"))
+	defaults := load(t, filepath.Join("..", "..", "charts", "access-roster", "values.yaml"))
+	cases, err := filepath.Glob(filepath.Join("..", "cases", "access-roster", "*", "values.yaml"))
 	if err != nil || len(cases) == 0 {
 		t.Fatalf("no cases found: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestTheRenderedConfigurationIsTheValuesConfiguration(t *testing.T) {
 			// ConfigMap, and the service always does. One that is switched off
 			// renders nothing, and that is not a drop.
 			for component, c := range components {
-				on := component == "access-issuer"
+				on := component == "serve"
 				if !on {
 					parent, _ := dig(values, c.path[0], "enabled")
 					on = parent == true
@@ -195,16 +195,16 @@ func TestTheRenderedConfigurationIsTheValuesConfiguration(t *testing.T) {
 // merged over the chart's defaults and a minimal install, is a file the
 // service accepts.
 func TestEveryShippedExampleConfigurationIsAccepted(t *testing.T) {
-	examples, _ := filepath.Glob(filepath.Join("..", "..", "charts", "access-issuer", "examples", "*.yaml"))
-	defaults := load(t, filepath.Join("..", "..", "charts", "access-issuer", "values.yaml"))
-	minimal := load(t, filepath.Join("..", "cases", "access-issuer", "minimal", "values.yaml"))
+	examples, _ := filepath.Glob(filepath.Join("..", "..", "charts", "access-roster", "examples", "*.yaml"))
+	defaults := load(t, filepath.Join("..", "..", "charts", "access-roster", "values.yaml"))
+	minimal := load(t, filepath.Join("..", "cases", "access-roster", "minimal", "values.yaml"))
 	for _, example := range examples {
 		values := merge(merge(defaults, minimal), load(t, example))
 		cfg, ok := dig(values, "config")
 		if !ok {
 			t.Fatalf("%s: no config", example)
 		}
-		if err := config.Validate("access-issuer", cfg); err != nil {
+		if err := config.Validate("serve", cfg); err != nil {
 			t.Errorf("%s: %v", example, err)
 		}
 	}

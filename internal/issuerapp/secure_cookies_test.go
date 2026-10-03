@@ -33,7 +33,7 @@ func TestSecureCookiesFollowsTheIssuerScheme(t *testing.T) {
 		{"an override turns it off", "https://access.example", ptr(false), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, err := FromConfig(&config.Issuer{IssuerURL: tc.issuerURL, SecureCookies: tc.override})
+			cfg, err := FromConfig(&config.Serve{IssuerURL: tc.issuerURL, SecureCookies: tc.override})
 			if err != nil {
 				t.Fatalf("load: %v", err)
 			}

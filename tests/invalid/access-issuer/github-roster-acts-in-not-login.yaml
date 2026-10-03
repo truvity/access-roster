@@ -1,8 +1,0 @@
-# githubRoster.actsIn names GitHub logins.
-# error: at '/githubRoster/config/enabledOrgs/0': 'acme_corp' does not match pattern
-config:
-  issuerURL: https://issuer.example
-githubRoster:
-  config:
-    enabledOrgs:
-    - acme_corp

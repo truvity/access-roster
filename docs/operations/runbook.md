@@ -215,7 +215,7 @@ and must be re-entered; channels in Slack are untouched.
 **The Secrets and ConfigMaps are a projection, not a live source.**
 Nothing in the service watches them: writing a new value into one
 rotates nothing on a running pod. Which ones need a restart differs, so
-the rule is per object, as `charts/access-issuer/values.yaml` states it:
+the rule is per object, as `charts/access-roster/values.yaml` states it:
 
 > `workspace-credentials` — RESTART. The credential is read once, when
 > a replica first opens that workspace — at start, or at the console's
@@ -384,13 +384,13 @@ workspace](../connect/slack-workspace.md).
 
 **Before the first step:** the policy declares the workspace under
 `slack.workspaces.<key>`, the controller's ServiceAccount is in
-`all:access-roster:viewer`, `slackRoster.enabled` is true, and the console is
+`all:access-roster:viewer`, `controllerSlack.enabled` is true, and the console is
 rolled out before the controller (it needs `ListServedDomains`, 1.42.0).
 
-1. Connect and install the workspace, list nothing in `slackRoster.config.enabledWorkspaces`,
+1. Connect and install the workspace, list nothing in `controllerSlack.config.enabledWorkspaces`,
    and let a pass run. The report's `tick.outcome` is `dry-run` and its rows are
    what enabling would do; read the held and retrying rows and the leavers.
-2. Add the workspace's key to `slackRoster.config.enabledWorkspaces` and roll out. Its changes
+2. Add the workspace's key to `controllerSlack.config.enabledWorkspaces` and roll out. Its changes
    appear in the audit trail as `roster.slack_*`.
 3. To stop, remove the key. Nothing is undone. That is also the emergency stop.
 
@@ -468,7 +468,7 @@ The controller needs egress to `slack.com:443`, which the chart does not open.
 
 1. The organisation is bound in the policy, **connected** on the GitHub
    page, and the controller runs with the organisation *not* in
-   `githubRoster.config.enabledOrgs`. The **link App** is created, and the people
+   `controllerGithub.config.enabledOrgs`. The **link App** is created, and the people
    who belong in it have linked their accounts — send them the link page
    the GitHub page shows. Until somebody links, their rows say
    `not linked` and their accounts are left alone.
@@ -478,7 +478,7 @@ The controller needs egress to `slack.com:443`, which the chart does not open.
    held rows: each carries its reason. *Controller* says `waiting on
    links` when the only thing left is people who have not linked — that
    is not in sync, and enabling changes nothing for them.
-3. Add the login to `githubRoster.config.enabledOrgs` and roll out. The next pass
+3. Add the login to `controllerGithub.config.enabledOrgs` and roll out. The next pass
    acts; its changes appear in the audit trail as `roster.github_member.*`.
 4. To stop acting in it, remove the login again. Nothing is undone: the
    organisation is simply left as it is.

@@ -1,0 +1,6 @@
+# The old value controllerGithub.interval is `controllerGithub.config.interval`: removed, not aliased.
+# error: at '/controllerGithub': additional properties 'interval' not allowed
+config:
+  issuerURL: https://issuer.example
+controllerGithub:
+  interval: 5m

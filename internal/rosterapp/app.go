@@ -53,7 +53,7 @@ func (c Config) LogLevel() slog.Level { return c.Issuer.LogLevel() }
 // Load reads the configuration file, holds it to its schema, and builds both
 // halves' settings from it.
 func Load(file string) (Config, error) {
-	f, err := config.LoadIssuer(file)
+	f, err := config.LoadServe(file)
 	if err != nil {
 		return Config{}, err
 	}
@@ -61,7 +61,7 @@ func Load(file string) (Config, error) {
 }
 
 // FromConfig builds both halves' settings from a configuration already read.
-func FromConfig(f *config.Issuer) (Config, error) {
+func FromConfig(f *config.Serve) (Config, error) {
 	directory, err := app.FromConfig(f)
 	if err != nil {
 		return Config{}, err

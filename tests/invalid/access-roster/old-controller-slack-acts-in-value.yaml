@@ -1,0 +1,7 @@
+# The old value controllerSlack.actsIn is `controllerSlack.config.enabledWorkspaces`: removed, not aliased.
+# error: at '/controllerSlack': additional properties 'actsIn' not allowed
+config:
+  issuerURL: https://issuer.example
+controllerSlack:
+  actsIn:
+  - acme

@@ -70,7 +70,7 @@ edit on GitHub, because nothing here can change an App's permissions.
 
 Every estate on GitHub needs the same few automations, and every estate
 builds them by hand. The set below is shipped as values to copy —
-`charts/access-issuer/examples/github-apps.yaml` in this repository —
+`charts/access-roster/examples/github-apps.yaml` in this repository —
 rather than as a default the chart applies, because creating an App is an
 owner of the organisation confirming a manifest, and that stays a
 deliberate act.

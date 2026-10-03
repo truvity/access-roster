@@ -1,0 +1,7 @@
+# controllerSlack.interval is a Go duration.
+# error: at '/controllerSlack/config/interval': 'hourly' does not match pattern
+config:
+  issuerURL: https://issuer.example
+controllerSlack:
+  config:
+    interval: hourly

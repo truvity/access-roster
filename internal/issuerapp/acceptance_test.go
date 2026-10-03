@@ -26,13 +26,13 @@ import (
 
 // Each of these assembles a whole issuer from the configuration the chart
 // would render, built here as the struct the file decodes into.
-func boot(t *testing.T, change ...func(*config.Issuer)) *issuerapp.App {
+func boot(t *testing.T, change ...func(*config.Serve)) *issuerapp.App {
 	return bootWith(t, nobody{}, change...)
 }
 
 // bootWith is the same with a directory of the caller's choosing, which
 // the sign-in tests need: they are about what the DIRECTORY says.
-func bootWith(t *testing.T, directory issuer.Directory, change ...func(*config.Issuer)) *issuerapp.App {
+func bootWith(t *testing.T, directory issuer.Directory, change ...func(*config.Serve)) *issuerapp.App {
 	t.Helper()
 	policyDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(policyDir, "policy.yaml"), []byte(`
@@ -47,7 +47,7 @@ clients:
 `), 0o600); err != nil {
 		t.Fatalf("write the policy: %v", err)
 	}
-	f := &config.Issuer{
+	f := &config.Serve{
 		IssuerURL: "https://issuer.example",
 		PolicyDir: policyDir,
 		Listen:    &config.Address{Address: ":0"},
@@ -70,9 +70,9 @@ clients:
 
 // signingKeys names the key files, and how fast they rotate, for the tests
 // that watch a rotation happen.
-func signingKeys(file string, additional []string, poll, activation, overlap time.Duration) func(*config.Issuer) {
+func signingKeys(file string, additional []string, poll, activation, overlap time.Duration) func(*config.Serve) {
 	d := func(v time.Duration) *config.Duration { c := config.Duration(v); return &c }
-	return func(f *config.Issuer) {
+	return func(f *config.Serve) {
 		f.SigningKey = &config.SigningKey{
 			File: file, AdditionalFiles: additional,
 			PollInterval: d(poll), ActivationDelay: d(activation), Overlap: d(overlap),
@@ -210,21 +210,21 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 	d := func(v time.Duration) *config.Duration { c := config.Duration(v); return &c }
 	for _, tc := range []struct {
 		name   string
-		change func(*config.Issuer)
+		change func(*config.Serve)
 	}{
-		{"no issuer URL", func(f *config.Issuer) { f.IssuerURL = "" }},
-		{"a log level that is not one", func(f *config.Issuer) { f.Log = &config.Log{Level: "chatty"} }},
-		{"activation delay less than poll interval", func(f *config.Issuer) {
+		{"no issuer URL", func(f *config.Serve) { f.IssuerURL = "" }},
+		{"a log level that is not one", func(f *config.Serve) { f.Log = &config.Log{Level: "chatty"} }},
+		{"activation delay less than poll interval", func(f *config.Serve) {
 			f.SigningKey = &config.SigningKey{PollInterval: d(30 * time.Second), ActivationDelay: d(10 * time.Second)}
 		}},
-		{"a valkey password variable that is not set", func(f *config.Issuer) {
+		{"a valkey password variable that is not set", func(f *config.Serve) {
 			f.Valkey = &config.Valkey{Address: "valkey:6379", PasswordEnv: "ACCESS_TEST_NOT_SET"}
 		}},
-		{"an OAuth secret variable that is not set", func(f *config.Issuer) {
+		{"an OAuth secret variable that is not set", func(f *config.Serve) {
 			f.OAuthClient = &config.OAuthClient{ID: "id", SecretEnv: "ACCESS_TEST_NOT_SET"}
 		}},
 	} {
-		f := &config.Issuer{IssuerURL: "https://issuer.example"}
+		f := &config.Serve{IssuerURL: "https://issuer.example"}
 		tc.change(f)
 		if _, err := issuerapp.FromConfig(f); err == nil {
 			t.Errorf("%s was accepted", tc.name)
@@ -235,7 +235,7 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 	// not at load, because there are now two ways to supply it: an
 	// address to dial, or a directory in this process. Neither
 	// is a failure on its own; having neither is.
-	cfg, err := issuerapp.FromConfig(&config.Issuer{IssuerURL: "https://issuer.example"})
+	cfg, err := issuerapp.FromConfig(&config.Serve{IssuerURL: "https://issuer.example"})
 	if err != nil {
 		t.Fatalf("FromConfig: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestTheSigningKeyIsTheOneItWasGiven(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	app := boot(t, func(f *config.Issuer) { f.SigningKey = &config.SigningKey{File: path} })
+	app := boot(t, func(f *config.Serve) { f.SigningKey = &config.SigningKey{File: path} })
 	code, body := get(t, app.Handler(), "/keys")
 	if code != http.StatusOK {
 		t.Fatalf("keys = %d, %q", code, body)
@@ -322,7 +322,7 @@ func TestAMissingSigningKeyStopsTheService(t *testing.T) {
 		"a path that is not there": filepath.Join(policyDir, "absent.key"),
 		"a file that is not a key": mustWrite(t, policyDir, "junk.key", "hello"),
 	} {
-		cfg, err := issuerapp.FromConfig(&config.Issuer{
+		cfg, err := issuerapp.FromConfig(&config.Serve{
 			IssuerURL: "https://issuer.example", PolicyDir: policyDir,
 			SigningKey: &config.SigningKey{File: value},
 		})

@@ -51,9 +51,9 @@ series.
 | Slack Connect handoff by pending-share record | 📄 | 📄 |
 | HTTP function behind the Lambda Web Adapter and an API Gateway HTTP API | — | 📄 |
 | Tick function on EventBridge Scheduler | — | 📄 |
-| One binary `access-roster` (`serve`, `tick`, `migrate`) | 📄 | 📄 |
-| One chart `access-roster` | 📄 | — |
-| One configuration file validated against a schema | 🧪 | 📄 |
+| One binary `access-roster` (`serve`, `controller github`, `controller slack`; `migrate` is a stub; `tick` is to come) | 🧪 | 📄 |
+| One chart `access-roster` (`serve`, `controller-github`, `controller-slack`) | 🧪 | — |
+| One configuration file validated against a schema (per subcommand) | 🧪 | 📄 |
 
 ## Identity
 

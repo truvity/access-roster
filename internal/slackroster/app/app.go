@@ -54,7 +54,7 @@ func (c Config) LogLevel() slog.Level { return c.logLevel }
 // Load reads the configuration file, holds it to its schema, and builds the
 // settings from it.
 func Load(file string) (Config, error) {
-	f, err := config.LoadSlackRoster(file)
+	f, err := config.LoadControllerSlack(file)
 	if err != nil {
 		return Config{}, err
 	}
@@ -63,9 +63,9 @@ func Load(file string) (Config, error) {
 
 // FromConfig builds the settings from a configuration already read. What a
 // schema cannot say is checked here, before anything starts.
-func FromConfig(f *config.SlackRoster) (Config, error) {
+func FromConfig(f *config.ControllerSlack) (Config, error) {
 	c := Config{
-		release:        orDefault(f.Release, "access-issuer"),
+		release:        orDefault(f.Release, "access-roster"),
 		policyDir:      f.PolicyDir,
 		console:        strings.TrimSuffix(f.ConsoleURL, "/"),
 		tokenFile:      orDefault(f.TokenFile, "/var/run/secrets/slack-roster/token"),

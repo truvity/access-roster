@@ -1,0 +1,8 @@
+# controllerGithub.actsIn names GitHub logins.
+# error: at '/controllerGithub/config/enabledOrgs/0': 'acme_corp' does not match pattern
+config:
+  issuerURL: https://issuer.example
+controllerGithub:
+  config:
+    enabledOrgs:
+    - acme_corp

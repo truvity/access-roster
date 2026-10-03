@@ -1,0 +1,7 @@
+# The old value controllerGithub.actsIn is `controllerGithub.config.enabledOrgs`: removed, not aliased.
+# error: at '/controllerGithub': additional properties 'actsIn' not allowed
+config:
+  issuerURL: https://issuer.example
+controllerGithub:
+  actsIn:
+  - acme

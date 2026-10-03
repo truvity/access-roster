@@ -180,9 +180,9 @@ type (
 	}
 )
 
-// Issuer is the configuration of access-issuer: the issuer, the console and
-// the directory hub, which run as one process.
-type Issuer struct {
+// Serve is the configuration of `access-roster serve`: the issuer, the console
+// and the directory hub, which run as one process.
+type Serve struct {
 	IssuerURL     string `json:"issuerURL"`
 	Release       string `json:"release,omitempty"`
 	Cluster       string `json:"cluster,omitempty"`
@@ -232,16 +232,16 @@ type Roster struct {
 	Audit      *RosterAudit `json:"audit,omitempty"`
 }
 
-// GitHubRoster is the configuration of github-roster.
-type GitHubRoster struct {
+// ControllerGitHub is the configuration of `access-roster controller github`.
+type ControllerGitHub struct {
 	Roster
 	AppsDir       string   `json:"appsDir,omitempty"`
 	CatalogueFile string   `json:"catalogueFile,omitempty"`
 	EnabledOrgs   []string `json:"enabledOrgs,omitempty"`
 }
 
-// SlackRoster is the configuration of slack-roster.
-type SlackRoster struct {
+// ControllerSlack is the configuration of `access-roster controller slack`.
+type ControllerSlack struct {
 	Roster
 	CredentialsDir    string   `json:"credentialsDir,omitempty"`
 	EnabledWorkspaces []string `json:"enabledWorkspaces,omitempty"`

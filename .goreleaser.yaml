@@ -1,4 +1,5 @@
-# Release: three images and their binaries, from one tag.
+# Release: two images (access-roster and the resource-proxy sidecar) and
+# their binaries, from one tag.
 #
 # The tag is the sole version authority. The chart's own version field is
 # a placeholder the release workflow stamps, and this file stamps the
@@ -28,31 +29,14 @@ before:
     - just console
 
 builds:
-  - id: access-issuer
-    main: ./cmd/access-issuer
-    binary: access-issuer
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
-
-  # The GitHub controller: a second process from the same chart, because
-  # it holds GitHub App keys and writes to GitHub, and neither belongs in
-  # the login path. The same platforms as the service, so the archive
-  # both are in holds the same binaries everywhere.
-  - id: github-roster
-    main: ./cmd/github-roster
-    binary: github-roster
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w -X github.com/truvity/access-roster/internal/version.Version={{.Version}}
-
-  - id: slack-roster
-    main: ./cmd/slack-roster
-    binary: slack-roster
+  # One binary, three jobs: `serve` is the service (issuer, console and hub),
+  # `controller github` and `controller slack` are the two controllers, and
+  # `migrate` is reserved for 0031. One image, one archive entry, one
+  # version: a service and a controller from two releases cannot run
+  # together by accident.
+  - id: access-roster
+    main: ./cmd/access-roster
+    binary: access-roster
     env: [CGO_ENABLED=0]
     goos: [linux, darwin]
     goarch: [amd64, arm64]
@@ -133,7 +117,7 @@ archives:
   # The service and the acceptance runner: what an operator pulls to run
   # a build outside a container.
   - id: binaries
-    ids: [access-issuer, github-roster, slack-roster, resource-proxy, acceptance]
+    ids: [access-roster, resource-proxy, acceptance]
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
@@ -153,18 +137,14 @@ archives:
 kos:
   # base_import_paths appends the cmd directory's basename, so with the
   # caller's ko-docker-repo ghcr.io/truvity/access-roster the published
-  # slug nests as access-roster/access-issuer.
+  # slug nests as access-roster/access-roster.
   #
-  # One SERVICE image, because there is one service. (The GitHub
-  # controller below is a second process beside it, not a second service.)
-  # The hub was a second binary
-  # and a second image until the merge folded it into the issuer, which
-  # runs it in process -- internal/app is still here and still does the
-  # directory work; what is gone is the separate deployment of it. It
-  # went on being built and pushed on every release for a while after
-  # that, which is how its package accumulated versions nothing pulled.
-  - id: access-issuer
-    build: access-issuer
+  # One image for the whole product: the service and both controllers are
+  # subcommands of the one binary, and the chart runs each with its own
+  # arguments. (access-issuer, github-roster and slack-roster were three
+  # images until 0032; they are no longer published.)
+  - id: access-roster
+    build: access-roster
     tags:
       - "{{ .Version }}"
       - "{{ if not .IsSnapshot }}latest{{ end }}"
@@ -175,42 +155,7 @@ kos:
     base_image: gcr.io/distroless/static:nonroot
     sbom: none
     labels:
-      org.opencontainers.image.title: access-issuer
-      org.opencontainers.image.version: "{{ .Version }}"
-      org.opencontainers.image.source: https://github.com/truvity/access-roster
-
-  # The GitHub controller's image, beside the service's, from the same
-  # tag: the chart renders it from the same appVersion, so a service and a
-  # controller from two releases never run together by accident.
-  - id: github-roster
-    build: github-roster
-    tags:
-      - "{{ .Version }}"
-      - "{{ if not .IsSnapshot }}latest{{ end }}"
-    platforms: [linux/amd64, linux/arm64]
-    bare: true
-    preserve_import_paths: false
-    base_import_paths: true
-    base_image: gcr.io/distroless/static:nonroot
-    sbom: none
-    labels:
-      org.opencontainers.image.title: github-roster
-      org.opencontainers.image.version: "{{ .Version }}"
-      org.opencontainers.image.source: https://github.com/truvity/access-roster
-
-  - id: slack-roster
-    build: slack-roster
-    tags:
-      - "{{ .Version }}"
-      - "{{ if not .IsSnapshot }}latest{{ end }}"
-    platforms: [linux/amd64, linux/arm64]
-    bare: true
-    preserve_import_paths: false
-    base_import_paths: true
-    base_image: gcr.io/distroless/static:nonroot
-    sbom: none
-    labels:
-      org.opencontainers.image.title: slack-roster
+      org.opencontainers.image.title: access-roster
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.source: https://github.com/truvity/access-roster
 
@@ -242,9 +187,9 @@ release:
 
     | | |
     |---|---|
-    | Image | `ghcr.io/truvity/access-roster/access-issuer:{{ .Version }}` |
+    | Image | `ghcr.io/truvity/access-roster/access-roster:{{ .Version }}` |
     | Sidecar image | `ghcr.io/truvity/access-roster/resource-proxy:{{ .Version }}` |
-    | Chart | `oci://ghcr.io/truvity/charts/access-issuer:{{ .Version }}` |
+    | Chart | `oci://ghcr.io/truvity/charts/access-roster:{{ .Version }}` |
     | TypeScript | `@truvity/access-roster@{{ .Version }}` on GitHub Packages |
     | Go | `go get github.com/truvity/access-roster@{{ .Tag }}` |
 

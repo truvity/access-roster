@@ -31,7 +31,7 @@ clients:
 `), 0o600); err != nil {
 		t.Fatalf("write the policy: %v", err)
 	}
-	cfg, err := issuerapp.FromConfig(&config.Issuer{
+	cfg, err := issuerapp.FromConfig(&config.Serve{
 		IssuerURL: "https://issuer.example", PolicyDir: policyDir,
 		Listen: &config.Address{Address: ":0"}, Probes: &config.Address{Address: ":0"},
 	})

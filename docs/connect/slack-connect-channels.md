@@ -68,7 +68,7 @@ its host and acts on nothing until then.
    directory and is still in the channel is reported as a **leaver**
    (`roster.slack_leaver.reported`), and somebody has to remove them in Slack.
 
-A workspace only acts where `slackRoster.config.enabledWorkspaces` names it; every other one is
+A workspace only acts where `controllerSlack.config.enabledWorkspaces` names it; every other one is
 derived and reported, and left alone. See
 [slack-workspace.md](slack-workspace.md).
 

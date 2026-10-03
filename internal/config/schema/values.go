@@ -22,9 +22,9 @@ var configAt = []struct {
 	path   []string
 	schema string
 }{
-	{[]string{"config"}, "access-issuer"},
-	{[]string{"githubRoster", "config"}, "github-roster"},
-	{[]string{"slackRoster", "config"}, "slack-roster"},
+	{[]string{"config"}, "serve"},
+	{[]string{"controllerGithub", "config"}, "controller-github"},
+	{[]string{"controllerSlack", "config"}, "controller-slack"},
 }
 
 // Values returns the schema of the chart's values.

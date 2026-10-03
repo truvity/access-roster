@@ -26,7 +26,7 @@ func main() {
 			fail(err)
 		}
 	}
-	chart := "charts/access-issuer/values.schema.json"
+	chart := "charts/access-roster/values.schema.json"
 	if len(os.Args) > 2 {
 		chart = os.Args[2]
 	}

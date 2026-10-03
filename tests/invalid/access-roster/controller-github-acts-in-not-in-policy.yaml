@@ -1,0 +1,22 @@
+# controllerGithub.actsIn names an organisation the inline policy does not bind.
+# error: controllerGithub.config.enabledOrgs names "old", which policy.github does not bind
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+controllerGithub:
+  enabled: true
+  config:
+    enabledOrgs:
+    - acme
+    - old
+    consoleURL: http://access-roster.default.svc:8080/console
+exchange:
+  clusters:
+  - name: example
+    issuer: https://oidc.example
+console:
+  mount: /console
+policy:
+  github:
+    acme: {}

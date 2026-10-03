@@ -1,6 +1,6 @@
 # Adopting it with plain Helm
 
-Nothing in access-roster assumes a GitOps controller. The `access-issuer`
+Nothing in access-roster assumes a GitOps controller. The `access-roster`
 chart is an ordinary OCI Helm chart, every value an installation needs is in its
 own values file, and every Secret it reads is one the installation creates. This
 page installs the issuer with `helm install`, signs in for the first time, and
@@ -45,14 +45,14 @@ gateway, run upstream oauth2-proxy yourself (step 4).
    at the same version.
 
    ```sh
-   helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \
+   helm install access-roster oci://ghcr.io/truvity/charts/access-roster \
      --version X.Y.Z --namespace access-issuer --values issuer-values.yaml
    ```
 
    ```yaml
-   config:                                    # access-issuer's configuration file, as it stands
+   config:                                    # `access-roster serve`'s configuration file, as it stands
      issuerURL: https://access.example.com    # stable for the life of the installation
-     release: access-issuer                   # the release's full name
+     release: access-roster                   # the release's full name
      publicRootURL: https://access.example.com
      publicURL: https://access.example.com/console
      valkey:
@@ -173,9 +173,9 @@ Helm:
   render the pinned version and the new one with your values and compare.
 
   ```sh
-  helm template access-issuer oci://ghcr.io/truvity/charts/access-issuer \
+  helm template access-roster oci://ghcr.io/truvity/charts/access-roster \
     --version OLD --namespace access-issuer -f issuer-values.yaml > old.yaml
-  helm template access-issuer oci://ghcr.io/truvity/charts/access-issuer \
+  helm template access-roster oci://ghcr.io/truvity/charts/access-roster \
     --version NEW --namespace access-issuer -f issuer-values.yaml > new.yaml
   diff -u old.yaml new.yaml
   ```

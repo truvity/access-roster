@@ -142,7 +142,7 @@ const (
 // FromConfig builds the hub's settings from the service's configuration file,
 // which the caller has already held to its schema. What a schema cannot say is
 // checked here, before anything starts.
-func FromConfig(f *config.Issuer) (Config, error) {
+func FromConfig(f *config.Serve) (Config, error) {
 	c := Config{
 		apiPort:       defaultAPIPort,
 		consolePort:   defaultConsolePort,
@@ -160,7 +160,7 @@ func FromConfig(f *config.Issuer) (Config, error) {
 		policyPath:       f.PolicyDir,
 		overlayPath:      f.OverlayFile,
 		store:            orDefault(f.Store, storeMemory),
-		release:          orDefault(f.Release, "access-issuer"),
+		release:          orDefault(f.Release, "access-roster"),
 	}
 	if r := f.Recovery; r != nil {
 		if r.Enabled != nil {

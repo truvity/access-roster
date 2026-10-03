@@ -1,6 +1,6 @@
 # High availability
 
-Running access-issuer at more than one replica, safely: what has to be
+Running `access-roster serve` at more than one replica, safely: what has to be
 shared for that to work, what happens to each piece when the shared store
 is unreachable, and how key rotation stays safe across a rollout. For the
 directory (hub) half's own scaling and cache behaviour, see
@@ -213,7 +213,7 @@ when I retried" as a fluke.
 
 ## The controllers are single-replica on purpose
 
-`githubRoster` and `slackRoster` each run one pod with `strategy: Recreate`: two
+`controllerGithub` and `controllerSlack` each run one pod with `strategy: Recreate`: two
 controllers would make every change twice, and Slack's answer to the second is
 an error that reads as a failure. A rollout or a node loss pauses reconciling
 for the time the pod needs to start; every pass recomputes from the console and
@@ -228,7 +228,7 @@ team.
 
 **The chart renders neither a PodDisruptionBudget nor any pod
 anti-affinity or topology-spread rule** (checked against
-`charts/access-issuer/templates/`). An installation that wants replicas
+`charts/access-roster/templates/`). An installation that wants replicas
 kept off the same node, or wants to guarantee at least one stays up
 through a voluntary disruption (a node drain, a cluster upgrade), adds
 these itself, for example:
@@ -237,14 +237,14 @@ these itself, for example:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: access-issuer
+  name: access-roster
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      # The chart's own selector labels (`access-issuer.selectorLabels` in
-      # _helpers.tpl): the chart name and the release name together.
-      app.kubernetes.io/name: access-issuer
+      # The chart's own selector labels (`access-roster.selectorLabels` in
+      # _helpers.tpl): the chart name (or `nameOverride`) and the release name together.
+      app.kubernetes.io/name: access-roster
       app.kubernetes.io/instance: <the release name>
 ```
 
@@ -252,7 +252,7 @@ spec:
 `values.yaml` at all.** The chart passes through `nodeSelector` and
 `tolerations` (both rendered in `deployment.yaml`), but there is no
 `affinity` or `topologySpreadConstraints` value anywhere in
-`charts/access-issuer/values.schema.json` — and the schema's top level is
+`charts/access-roster/values.schema.json` — and the schema's top level is
 `"additionalProperties": false`, so a stray `affinity:` key at the top of
 a values file is refused at render rather than silently ignored. An
 installation that wants pods spread across nodes has to patch the

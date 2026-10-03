@@ -1,7 +1,0 @@
-# A key under githubRoster.image does not know must fail the render, not be ignored.
-# error: at '/githubRoster/image': additional properties
-config:
-  issuerURL: https://issuer.example
-githubRoster:
-  image:
-    registry: registry.example

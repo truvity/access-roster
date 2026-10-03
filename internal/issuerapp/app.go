@@ -100,7 +100,7 @@ func (c Config) LogLevel() slog.Level { return c.logLevel }
 // is checked here, before anything starts: lifetimes that contradict each
 // other, a rotation schedule that cannot work, a scoping mode this build does
 // not know.
-func FromConfig(f *config.Issuer) (Config, error) {
+func FromConfig(f *config.Serve) (Config, error) {
 	c := Config{
 		port:       listenOr(f.Listen, ":8080"),
 		healthPort: listenOr(f.Probes, ":7070"),
@@ -109,7 +109,7 @@ func FromConfig(f *config.Issuer) (Config, error) {
 		allowInsecure:    f.AllowInsecure,
 		policyPath:       f.PolicyDir,
 		inCluster:        f.InCluster,
-		release:          orDefault(f.Release, "access-issuer"),
+		release:          orDefault(f.Release, "access-roster"),
 		consoleOrigin:    "",
 		clientSecretsDir: f.ClientSecretsDir,
 		// Names this cluster in a ServiceAccount's subject. A pod cannot
@@ -552,7 +552,7 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		health.Follow("the session store", shared),
 	}, deps.Ready...)...)
 
-	log.InfoContext(ctx, "access-issuer assembled",
+	log.InfoContext(ctx, "access-roster assembled",
 		"issuer", cfg.issuerURL, "directory", directorySource(deps, cfg), "inCluster", cfg.inCluster,
 		"exchangeAudience", cfg.audience, "port", cfg.port, "health", cfg.healthPort,
 		"tokenLifetime", cfg.tokenLifetime, "refreshLifetime", cfg.refreshLifetime,

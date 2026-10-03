@@ -1,0 +1,9 @@
+# access-roster.privateKey's own checks apply to every additional entry.
+# error: PKCS1 encodes only RSA keys; an ECDSA key is PKCS8
+config:
+  issuerURL: https://issuer.example
+signingKey:
+  additional:
+  - algorithm: ECDSA
+    size: 384
+    encoding: PKCS1

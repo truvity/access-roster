@@ -1,0 +1,17 @@
+# A key the controller does not read is refused at render.
+# error: at '/controllerGithub/config': additional properties 'bogusKey' not allowed
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+controllerGithub:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.default.svc:8080/console
+    bogusKey: 1
