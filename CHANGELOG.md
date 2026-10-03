@@ -1,4 +1,4 @@
-## Unreleased
+## v1.56.0
 
 - **A longer absolute session for a read-only resource: `absolute_cap` and
   `read_only` on a policy resource.** The 24-hour absolute limit of
