@@ -111,7 +111,7 @@ func TestTickSlackRunsOneWorkspaceOnce(t *testing.T) {
 	console := newStubConsole(t)
 	file := tickRig(t, "slack", slackPolicy, console)
 	var out bytes.Buffer
-	if err := run([]string{"tick", "slack", "acme", "--config", file}, &out); err != nil {
+	if err := run([]string{"tick", "slack", "acme", "--config", file, "--unsafe-local-lease"}, &out); err != nil {
 		t.Fatalf("tick slack acme = %v", err)
 	}
 	if got := console.called("ListHolders"); got != 1 {
@@ -125,7 +125,7 @@ func TestTickRefusesATargetThePolicyDoesNotHave(t *testing.T) {
 	console := newStubConsole(t)
 	for kind, policyYAML := range map[string]string{"slack": slackPolicy, "github": githubPolicy} {
 		file := tickRig(t, kind, policyYAML, console)
-		err := run([]string{"tick", kind, "initech", "--config", file}, &bytes.Buffer{})
+		err := run([]string{"tick", kind, "initech", "--config", file, "--unsafe-local-lease"}, &bytes.Buffer{})
 		if err == nil || !strings.Contains(err.Error(), "not a target") {
 			t.Errorf("tick %s initech = %v, want a refusal that names it", kind, err)
 		}
@@ -141,18 +141,35 @@ func TestTickRefusesATargetThePolicyDoesNotHave(t *testing.T) {
 func TestTickGitHubRunsOneOrganisationOrTheLinkCheck(t *testing.T) {
 	console := newStubConsole(t)
 	file := tickRig(t, "github", githubPolicy, console)
-	if err := run([]string{"tick", "github", "globex", "--config", file}, &bytes.Buffer{}); err != nil {
+	if err := run([]string{"tick", "github", "globex", "--config", file, "--unsafe-local-lease"}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("tick github globex = %v", err)
 	}
 	if got := console.called("GetGitHubStatus"); got != 1 {
 		t.Errorf("the organisation's tick read the confirmations %d times, want once", got)
 	}
 	before := len(console.calls)
-	if err := run([]string{"tick", "github", "github:links", "--config", file}, &bytes.Buffer{}); err != nil {
+	if err := run([]string{"tick", "github", "github:links", "--config", file, "--unsafe-local-lease"}, &bytes.Buffer{}); err != nil {
 		t.Fatalf("tick github github:links = %v", err)
 	}
 	if len(console.calls) != before {
 		t.Errorf("the link check asked the console: %v", console.calls[before:])
+	}
+}
+
+// With no shared State the tick would not exclude a running controller, so it
+// refuses, says why, and asks nothing of anybody; the flag is the opt-in.
+func TestTickRefusesWhenItsLeaseIsNotSharedUnlessOptedIn(t *testing.T) {
+	console := newStubConsole(t)
+	for kind, policyYAML := range map[string]string{"slack": slackPolicy, "github": githubPolicy} {
+		file := tickRig(t, kind, policyYAML, console)
+		target := map[string]string{"slack": "acme", "github": "globex"}[kind]
+		err := run([]string{"tick", kind, target, "--config", file}, &bytes.Buffer{})
+		if err == nil || !strings.Contains(err.Error(), "--unsafe-local-lease") || !strings.Contains(err.Error(), "shared State") {
+			t.Errorf("tick %s without the flag = %v, want a refusal that says why and names the flag", kind, err)
+		}
+	}
+	if len(console.calls) != 0 {
+		t.Errorf("a refused tick asked the console: %v", console.calls)
 	}
 }
 

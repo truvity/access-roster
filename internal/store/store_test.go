@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -111,3 +112,24 @@ func TestTheMemoryAdapterKeepsNothingAndRefusesWhatWouldContradictIt(t *testing.
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// A one-shot tick runs when its lease is shared with the controller's, or
+// when the operator opted in; otherwise it is refused with the reason.
+func TestRequireSharedLease(t *testing.T) {
+	for name, c := range map[string]struct {
+		shared, unsafeLocal, refused bool
+	}{
+		"a shared State":              {shared: true},
+		"a shared State and the flag": {shared: true, unsafeLocal: true},
+		"no shared State, the flag":   {unsafeLocal: true},
+		"no shared State, no flag":    {refused: true},
+	} {
+		err := store.RequireSharedLease(c.shared, c.unsafeLocal)
+		if (err != nil) != c.refused {
+			t.Errorf("%s: %v", name, err)
+		}
+		if c.refused && (!errors.Is(err, store.ErrLocalLease) || !strings.Contains(err.Error(), "B3")) {
+			t.Errorf("%s: the refusal does not say why: %v", name, err)
+		}
+	}
+}

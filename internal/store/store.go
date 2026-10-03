@@ -174,6 +174,22 @@ func (s *Stores) LeaseState() (state port.State, shared bool) {
 	return memory.New().Set().State, false
 }
 
+// ErrLocalLease is the refusal of a one-shot tick whose lease would not exclude
+// the running controller.
+var ErrLocalLease = errors.New("the tick leases are held in this process only, so a running controller " +
+	"would not be kept off the same target and both could act on it (duplicate invites or removals): " +
+	"this is safe once a shared State exists (docs/decisions/0029, B3). Scale the controller to 0 and " +
+	"pass --unsafe-local-lease to run the tick anyway")
+
+// RequireSharedLease refuses a one-shot tick when its lease State is not
+// shared with the controller's, unless the operator opted in.
+func RequireSharedLease(shared, unsafeLocal bool) error {
+	if shared || unsafeLocal {
+		return nil
+	}
+	return ErrLocalLease
+}
+
 // Readiness is what readiness should ask: the Valkey, or nothing.
 func (s *Stores) Readiness() any { return s.pinger }
 

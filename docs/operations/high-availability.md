@@ -223,7 +223,9 @@ when the State is shared, and a controller is configured with no Valkey, so on
 today's storage its leases are in its own process and the chart stays at one
 replica. Two replicas wait for the NATS State. `access-roster tick <github|slack>
 <target> --config <file>` runs one target's tick once under its lease, for an
-operator. A rollout or a node loss pauses reconciling
+operator, but only with the controller scaled to 0 and `--unsafe-local-lease`:
+with no shared State the controller's lease does not exclude it, so it refuses
+otherwise. A rollout or a node loss pauses reconciling
 for the time the pod needs to start; every pass recomputes from the console and
 the target system, so nothing is missed, and a pass that meets a console on
 another policy is retried within seconds (5s doubling to a minute, six times).
