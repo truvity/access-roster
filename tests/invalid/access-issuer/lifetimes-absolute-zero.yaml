@@ -1,5 +1,6 @@
 # A session that ends before or the instant it begins is not a limit.
-# error: lifetimes.absolute: "0h" is zero
-issuerURL: https://issuer.example
-lifetimes:
-  absolute: 0h
+# error: config.lifetimes.absolute: "0h" is zero
+config:
+  issuerURL: https://issuer.example
+  lifetimes:
+    absolute: 0h

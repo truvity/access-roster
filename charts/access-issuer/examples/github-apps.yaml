@@ -4,7 +4,7 @@
 # every estate builds them by hand: a form on GitHub, a permission
 # picked, a key downloaded, an id written down. This is that set,
 # declared as data. Copy the entries you want into your own values under
-# `githubApps.catalogue`, change `example-org` to your organisation, and
+# `githubApps.catalogue` and set `config.github.catalogueFile`, change `example-org` to your organisation, and
 # create and install each App from the console's GitHub page (Apps, then
 # Catalogue). Nothing here creates anything by itself: this file is a
 # starting point an operator reads, not a default the chart applies —
@@ -27,6 +27,12 @@
 # See docs/connect/github-apps-catalogue.md for the field-by-field
 # meaning, and docs/connect/infrastructure-as-code.md for handing the
 # `iac` App's credential to a Pulumi or Terraform program.
+#
+# The catalogue is rendered into a file the config names, so the config
+# says where: `github.catalogueFile` below, which the chart checks.
+config:
+  github:
+    catalogueFile: /var/run/access-issuer/github-apps-catalogue.yaml
 githubApps:
   catalogue:
     # Dependency updates, SPLIT IN TWO. The split is the privilege

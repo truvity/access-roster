@@ -1,0 +1,9 @@
+# Served over TLS, the session cookies must say so.
+# error: config.secureCookies: false
+config:
+  issuerURL: https://issuer.example
+  secureCookies: false
+  publicURL: https://issuer.example/console
+  publicRootURL: https://issuer.example
+route:
+  host: issuer.example

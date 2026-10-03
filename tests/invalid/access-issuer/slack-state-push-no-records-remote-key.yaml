@@ -1,7 +1,9 @@
 # The records are a second Secret and need an address of their own; a push that names only one would silently leave them uncopied.
 # error: recordsRemoteKey
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 slackState:
   push:
-    secretStore: {name: example-store}
+    secretStore:
+      name: example-store
     remoteKey: platform/access-issuer/slack-credentials

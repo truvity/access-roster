@@ -1,0 +1,5 @@
+# The old value `groupsScoping` is removed, not aliased: it is `config.groupsScoping`.
+# error: additional properties 'groupsScoping' not allowed
+config:
+  issuerURL: https://issuer.example
+groupsScoping: report

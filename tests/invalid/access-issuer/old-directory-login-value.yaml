@@ -1,0 +1,6 @@
+# The old value directory.login is `config.login.directory`: removed, not aliased.
+# error: at '/directory': additional properties 'login' not allowed
+config:
+  issuerURL: https://issuer.example
+directory:
+  login: false

@@ -1,0 +1,6 @@
+# A listener is host:port.
+# error: at '/config/listen/address'
+config:
+  issuerURL: https://issuer.example
+  listen:
+    address: '8080'

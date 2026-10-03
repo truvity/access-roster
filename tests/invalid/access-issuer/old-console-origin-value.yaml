@@ -1,0 +1,6 @@
+# The old value console.origin is `config.console.origin`: removed, not aliased.
+# error: at '/console': additional properties 'origin' not allowed
+config:
+  issuerURL: https://issuer.example
+console:
+  origin: https://access.example

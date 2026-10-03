@@ -1,0 +1,4 @@
+# The old value `issuerURL` is removed, not aliased: the issuer URL is `config.issuerURL`.
+# error: additional properties 'issuerURL' not allowed
+config: {}
+issuerURL: https://issuer.example

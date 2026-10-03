@@ -1,0 +1,15 @@
+# The chart mounts the policy at one path, and the controller's config must name it.
+# error: githubRoster.config.policyDir must be /var/run/github-roster/policy
+config:
+  issuerURL: https://issuer.example
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+githubRoster:
+  enabled: true
+  config:
+    consoleURL: http://access-issuer.default.svc:8080/console
+    policyDir: /etc/policy

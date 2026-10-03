@@ -1,0 +1,6 @@
+# A token path with no receiver to present it to.
+# error: no audit receiver is named
+config:
+  issuerURL: https://issuer.example
+  audit:
+    tokenFile: /etc/token

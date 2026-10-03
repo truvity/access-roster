@@ -1,0 +1,8 @@
+# exchange.clusters is rendered and mounted, and the config must name where.
+# error: config.exchange.clustersFile must be /var/run/access-issuer/clusters.yaml
+config:
+  issuerURL: https://issuer.example
+exchange:
+  clusters:
+  - name: example
+    issuer: https://oidc.example

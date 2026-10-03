@@ -1,0 +1,6 @@
+# The Audit page would read a trail nothing writes.
+# error: missing property 'writer'
+config:
+  issuerURL: https://issuer.example
+  audit:
+    queryURL: http://audit-query.access-issuer.svc:8080

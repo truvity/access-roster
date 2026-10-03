@@ -1,6 +1,6 @@
 # A key under directory.freshness does not know must fail the render, not be ignored.
-# error: at '/directory/freshness': additional properties
-issuerURL: https://issuer.example
-directory:
+# error: at '/config/freshness': additional properties
+config:
+  issuerURL: https://issuer.example
   freshness:
-    refresh: 10m
+    bogus: 1

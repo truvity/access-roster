@@ -1,0 +1,9 @@
+# directory.workspaces is rendered and mounted, and the config must name where.
+# error: config.overlayFile must be /var/run/access-issuer/directory/overlay.yaml
+config:
+  issuerURL: https://issuer.example
+directory:
+  workspaces:
+  - backend: google
+    admin: a@example.com
+    secretName: k

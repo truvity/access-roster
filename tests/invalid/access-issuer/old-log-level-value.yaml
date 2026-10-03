@@ -1,0 +1,5 @@
+# The old value `logLevel` is removed, not aliased: the level is `config.log.level`.
+# error: additional properties 'logLevel' not allowed
+config:
+  issuerURL: https://issuer.example
+logLevel: debug

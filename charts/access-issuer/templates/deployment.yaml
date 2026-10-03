@@ -1,5 +1,4 @@
-{{- include "access-issuer.validateLifetimes" . }}
-{{- include "access-issuer.validateSecretManagers" . }}
+{{- include "access-issuer.checks" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,6 +15,8 @@ spec:
       labels:
         {{- include "access-issuer.selectorLabels" . | nindent 8 }}
       annotations:
+        # A configuration change is a rollout: the file is read at start.
+        checksum/config: {{ toYaml .Values.config | sha256sum }}
         # A policy change is a rollout: the file is read at start.
         checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
         {{- if .Values.exchange.clusters }}
@@ -63,214 +64,31 @@ spec:
               drop: [ALL]
           ports:
             - name: issuer
-              containerPort: {{ .Values.listeners.port }}
+              containerPort: {{ include "access-issuer.port" . }}
             - name: health
-              containerPort: {{ .Values.listeners.healthPort }}
+              containerPort: {{ include "access-issuer.healthPort" . }}
+          # The whole of the configuration is the file: `config`, rendered as it
+          # stands. The environment carries only the secrets that file names.
+          args:
+            - --config=/etc/access-issuer/config.yaml
+          {{- with .Values.secretEnv }}
           env:
-            - name: ISSUER_URL
-              value: {{ required "issuerURL is required: it is baked into every token and every relying party's trust" .Values.issuerURL | quote }}
-            - name: PORT
-              value: {{ .Values.listeners.port | quote }}
-            - name: HEALTH_PORT
-              value: {{ .Values.listeners.healthPort | quote }}
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            # Names this replica on every audit record, as the instance
-            # that emitted it.
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # What an operator connected — the workspaces and their
-            # credentials, the memberships, the OAuth client it was
-            # given, the session key — kept as ConfigMaps and Secrets in
-            # this namespace. Anything else and a restart is a fresh
-            # installation.
-            - name: STORE
-              value: {{ .Values.directory.store | quote }}
-            - name: REFRESH_INTERVAL
-              value: {{ .Values.directory.freshness.refreshInterval | quote }}
-            - name: FRESHNESS_WINDOW
-              value: {{ .Values.directory.freshness.freshnessWindow | quote }}
-            - name: PROBE_INTERVAL
-              value: {{ .Values.directory.freshness.probeInterval | quote }}
-            {{- include "access-issuer.auditEnv" . | nindent 12 }}
-            - name: AUDIT_QUERY_URL
-              value: {{ .Values.audit.query | quote }}
-            - name: AUDIT_AUDIENCE
-              value: {{ .Values.audit.audience | quote }}
-            - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
-              value: {{ .Values.audit.forwardedForTrustedHops | quote }}
-{{- with .Values.telemetry.otlpEndpoint }}
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: {{ . | quote }}
-{{- end }}
-            - name: SESSION_LIFETIME
-              value: {{ .Values.directory.sessionLifetime | quote }}
-            - name: LOGIN_DIRECTORY
-              value: {{ .Values.directory.login | quote }}
-            {{- if .Values.directory.workspaces }}
-            - name: OVERLAY_FILE
-              value: /var/run/access-issuer/directory/overlay.yaml
-            {{- end }}
-            {{- if and .Values.route.host .Values.console.mount }}
-            # Where a browser reaches the console, and where this origin's
-            # root is. Everything that has to name itself to somebody else
-            # is built from the first: the admin-consent redirect URI, and
-            # the values the setup steps tell an operator to paste into a
-            # cloud console.
-            - name: PUBLIC_URL
-              value: https://{{ .Values.route.host }}{{ include "access-issuer.consoleMount" . }}
-            # The admin-consent callback stays at the origin ROOT. It is
-            # the one flow that runs before anybody can be signed in, and
-            # its redirect URI is registered with every corporate tenant —
-            # so moving it under the console's path would mean
-            # re-registering it in each of them.
-            - name: PUBLIC_ROOT_URL
-              value: https://{{ .Values.route.host }}
-            {{- end }}
-            # Provisioned, never minted here — see values.yaml.
-            - name: SIGNING_KEY_FILE
-              value: /var/run/access-issuer/signing-key/{{ .Values.signingKey.key }}
-            {{- if .Values.signingKey.additional }}
-            # Every OTHER algorithm this installation signs with at once —
-            # see `signingKey.additional` in values.yaml. One file per
-            # algorithm, each on its own rotation track in the issuer.
-            - name: SIGNING_KEY_FILES
-              value: {{ include "access-issuer.additionalSigningKeyFiles" . | quote }}
-            {{- end }}
-            # Live rotation: how often this replica re-reads the file
-            # above, and the schedule it keeps once it sees a new key —
-            # see `signingKey.rotation` in values.yaml.
-            - name: SIGNING_KEY_POLL_INTERVAL
-              value: {{ .Values.signingKey.rotation.pollInterval | quote }}
-            - name: SIGNING_KEY_ACTIVATION_DELAY
-              value: {{ .Values.signingKey.rotation.activationDelay | quote }}
-            {{- if .Values.signingKey.rotation.overlap }}
-            - name: SIGNING_KEY_OVERLAP
-              value: {{ .Values.signingKey.rotation.overlap | quote }}
-            {{- end }}
-            {{- if .Values.valkey.address }}
-            - name: VALKEY_ADDRESS
-              value: {{ .Values.valkey.address | quote }}
-            - name: VALKEY_TLS
-              value: {{ .Values.valkey.tls | quote }}
-            - name: VALKEY_CLUSTER
-              value: {{ .Values.valkey.cluster | quote }}
-            {{- if .Values.valkey.passwordSecret.name }}
-            - name: VALKEY_PASSWORD
+            {{- range . }}
+            - name: {{ .name }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.valkey.passwordSecret.name }}
-                  key: {{ .Values.valkey.passwordSecret.key }}
+                  name: {{ .secretName }}
+                  key: {{ .key }}
+                  {{- if hasKey . "optional" }}
+                  optional: {{ .optional }}
+                  {{- end }}
             {{- end }}
-            {{- end }}
-            - name: RELEASE_NAME
-              value: {{ include "access-issuer.fullname" . }}
-            {{- with .Values.githubRunnerApps.tiers }}
-            - name: GITHUB_RUNNER_TIERS
-              value: {{ join "," . | quote }}
-            {{- end }}
-            {{- if .Values.githubApps.catalogue }}
-            - name: GITHUB_APPS_CATALOGUE_FILE
-              value: /var/run/access-issuer/github-apps-catalogue.yaml
-            {{- end }}
-            {{- if .Values.slackApps }}
-            - name: SLACK_APPS_CATALOGUE_FILE
-              value: /var/run/access-issuer/slack-apps-catalogue.yaml
-            {{- end }}
-            - name: POLICY_DIR
-              value: /var/run/access-issuer/policy
-            - name: TOKEN_LIFETIME
-              value: {{ .Values.lifetimes.token | quote }}
-            - name: REFRESH_LIFETIME
-              value: {{ .Values.lifetimes.refresh | quote }}
-            - name: ABSOLUTE_LIFETIME
-              value: {{ .Values.lifetimes.absolute | quote }}
-            - name: HOLD_WINDOW
-              value: {{ .Values.lifetimes.hold | quote }}
-            {{- with .Values.cluster }}
-            - name: CLUSTER
-              value: {{ . | quote }}
-            {{- end }}
-            - name: EXCHANGE_AUDIENCE
-              value: {{ include "access-issuer.exchangeAudience" . | quote }}
-            {{- if .Values.exchange.clusters }}
-            - name: CLUSTERS_FILE
-              value: /var/run/access-issuer/clusters.yaml
-            {{- end }}
-            {{- if .Values.exchange.aws.accounts }}
-            - name: AWS_FEDERATION_FILE
-              value: /var/run/access-issuer/aws.yaml
-            {{- end }}
-            {{- if .Values.recovery.enabled }}
-            # Recovery is the one thing left that asks the API server, and
-            # deliberately so: on the day everything else is broken it
-            # should depend on nothing but the cluster.
-            - name: IN_CLUSTER
-              value: "true"
-            {{- end }}
-            {{- if include "access-issuer.confidentialClients" . }}
-            - name: CLIENT_SECRETS_DIR
-              value: /var/run/access-issuer/clients
-            {{- end }}
-            {{- with .Values.console.origin }}
-            - name: CONSOLE_ORIGIN
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.console.client }}
-            - name: CONSOLE_CLIENT_ID
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.github.owners }}
-            - name: GITHUB_OWNERS
-              value: {{ join "," . | quote }}
-            {{- end }}
-            - name: RECOVERY_ENABLED
-              value: {{ .Values.recovery.enabled | quote }}
-            {{- if .Values.recovery.enabled }}
-            - name: RECOVERY_SERVICE_ACCOUNT
-              value: {{ include "access-issuer.recoveryServiceAccountName" . | quote }}
-            - name: RECOVERY_AUDIENCE
-              value: {{ include "access-issuer.recoveryAudience" . | quote }}
-            {{- end }}
-            {{- with .Values.oauthClient.secret }}
-            {{- if .name }}
-            # ONE credential, read two ways, because the two halves want
-            # different things of it. Signing a person in reads it from a
-            # FILE, so this service holds no RBAC to read Secrets and a
-            # compromise of it cannot become a read of every credential in
-            # the namespace. Connecting a directory reads it through the
-            # API, because that one the console can also WRITE: an
-            # installation with no client yet is bootstrapped by pasting
-            # one into Settings.
-            - name: OAUTH_CLIENT_ID_FILE
-              value: /var/run/access-issuer/oauth-client/{{ .keys.clientId }}
-            - name: OAUTH_CLIENT_SECRET_FILE
-              value: /var/run/access-issuer/oauth-client/{{ .keys.clientSecret }}
-            - name: OAUTH_CLIENT_SECRET_NAME
-              value: {{ .name | quote }}
-            - name: OAUTH_CLIENT_ID_KEY
-              value: {{ .keys.clientId | quote }}
-            - name: OAUTH_CLIENT_SECRET_KEY
-              value: {{ .keys.clientSecret | quote }}
-            {{- end }}
-            {{- end }}
-            {{- if .Values.route.host }}
-            # Served over TLS, so its cookies say so. Stated rather
-            # than left to the binary's default, which reads the same
-            # scheme off the issuer url above: a chart that says it
-            # out loud is a chart a reader can check against the route.
-            - name: SECURE_COOKIES
-              value: "true"
-            {{- end }}
-            - name: LOG_LEVEL
-              value: {{ .Values.logLevel | quote }}
-            - name: GROUPS_SCOPING
-              value: {{ .Values.groupsScoping | quote }}
+          {{- end }}
           volumeMounts:
+            - name: config
+              mountPath: /etc/access-issuer/config.yaml
+              subPath: config.yaml
+              readOnly: true
             - name: signing-key
               mountPath: /var/run/access-issuer/signing-key
               readOnly: true
@@ -297,7 +115,7 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
-            {{- include "access-issuer.auditMounts" . | nindent 12 }}
+            {{- include "access-issuer.auditMounts" (dict "root" . "cfg" .Values.config) | nindent 12 }}
             {{- if .Values.githubApps.catalogue }}
             - name: github-apps-catalogue
               mountPath: /var/run/access-issuer/github-apps-catalogue.yaml
@@ -326,9 +144,9 @@ spec:
               mountPath: /var/run/access-issuer/clients
               readOnly: true
             {{- end }}
-            {{- if .Values.oauthClient.secret.name }}
-            - name: oauth-client
-              mountPath: /var/run/access-issuer/oauth-client
+            {{- range .Values.secretMounts }}
+            - name: secret-{{ .secretName }}
+              mountPath: {{ .mountPath }}
               readOnly: true
             {{- end }}
           livenessProbe:
@@ -353,6 +171,9 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: config
+          configMap:
+            name: {{ include "access-issuer.fullname" . }}-config
         - name: signing-key
           secret:
             secretName: {{ include "access-issuer.signingKeySecret" . }}
@@ -369,7 +190,7 @@ spec:
         # want somewhere to write.
         - name: tmp
           emptyDir: {}
-        {{- include "access-issuer.auditVolumes" . | nindent 8 }}
+        {{- include "access-issuer.auditVolumes" (dict "root" . "cfg" .Values.config) | nindent 8 }}
         {{- if .Values.exchange.clusters }}
         - name: clusters
           configMap:
@@ -418,10 +239,10 @@ spec:
               {{- end }}
               {{- end }}
         {{- end }}
-        {{- if .Values.oauthClient.secret.name }}
-        - name: oauth-client
+        {{- range .Values.secretMounts }}
+        - name: secret-{{ .secretName }}
           secret:
-            secretName: {{ .Values.oauthClient.secret.name }}
+            secretName: {{ .secretName }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

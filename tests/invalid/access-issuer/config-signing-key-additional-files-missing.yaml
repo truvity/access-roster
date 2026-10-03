@@ -1,0 +1,9 @@
+# One file per signingKey.additional entry, in the order they are declared.
+# error: config.signingKey.additionalFiles must be [/var/run/access-issuer/signing-key-rs256/tls.key]
+config:
+  issuerURL: https://issuer.example
+signingKey:
+  additional:
+  - algorithm: RSA
+    size: 2048
+    encoding: PKCS1

@@ -1,0 +1,7 @@
+# The old value githubRoster.actsIn is `githubRoster.config.enabledOrgs`: removed, not aliased.
+# error: at '/githubRoster': additional properties 'actsIn' not allowed
+config:
+  issuerURL: https://issuer.example
+githubRoster:
+  actsIn:
+  - acme

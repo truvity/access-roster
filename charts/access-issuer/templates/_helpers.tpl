@@ -35,26 +35,46 @@ or the one cert-manager issues for this release.
 {{- end }}
 
 {{/*
-The audience a workload token must be minted for. Defaults to the release
-name so that two issuers in one cluster cannot accept each other's
-exchange proofs.
+The name this installation's objects carry: the config's `release`, which the
+binary defaults to access-issuer. The chart requires it to be the release's
+full name (see access-issuer.checks): the Role names, the ConfigMaps and the
+Secrets the service writes and the controllers read are `<full name>-...`.
 */}}
-{{- define "access-issuer.exchangeAudience" -}}
-{{- .Values.exchange.audience | default (include "access-issuer.fullname" .) }}
+{{- define "access-issuer.release" -}}
+{{- dig "release" "access-issuer" .Values.config -}}
 {{- end }}
 
 {{/*
-The account a recovery token must be minted for, and the audience it must
-carry. Both default to the release's own name so that an installation
-that turns recovery on gets working names without choosing any.
+The audience a workload token must be minted for: the config's
+`exchange.audience`, which the binary defaults to the release name so that
+two issuers in one cluster cannot accept each other's exchange proofs. The
+controllers' projected tokens are minted for it.
 */}}
-{{- define "access-issuer.recoveryServiceAccountName" -}}
-{{- .Values.recovery.serviceAccountName | default (printf "%s-recovery" (include "access-issuer.fullname" .)) }}
+{{- define "access-issuer.exchangeAudience" -}}
+{{- (dig "exchange" "audience" "" .Values.config) | default (include "access-issuer.release" .) }}
 {{- end }}
 
-{{- define "access-issuer.recoveryAudience" -}}
-{{- .Values.recovery.audience | default (printf "%s-recovery" (include "access-issuer.fullname" .)) }}
-{{- end }}
+{{/*
+The listeners' ports, from the addresses the config gives. The config says
+`host:port`; what the chart needs is the port, for the container, the Service,
+the NetworkPolicy and the routes. A port outside 1-65535 is refused here, at
+render: the binary would start on a port nothing can reach.
+*/}}
+{{- define "access-issuer.portOf" -}}
+{{- $port := regexFind "[0-9]+$" .address | int -}}
+{{- if or (lt $port 1) (gt $port 65535) -}}
+{{- fail (printf "%s: the port in %q must be between 1 and 65535" .path .address) -}}
+{{- end -}}
+{{- $port -}}
+{{- end -}}
+
+{{- define "access-issuer.port" -}}
+{{- include "access-issuer.portOf" (dict "path" "config.listen.address" "address" (dig "listen" "address" ":8080" .Values.config)) -}}
+{{- end -}}
+
+{{- define "access-issuer.healthPort" -}}
+{{- include "access-issuer.portOf" (dict "path" "config.probes.address" "address" (dig "probes" "address" ":7070" .Values.config)) -}}
+{{- end -}}
 
 {{/*
 Non-empty when any declared client carries a secret, which is what decides
@@ -198,7 +218,7 @@ signing-key-{{ include "access-issuer.signingAlgorithmOf" . | lower }}
 {{- end -}}
 
 {{/*
-access-issuer.additionalSigningKeyFiles is SIGNING_KEY_FILES: every
+access-issuer.additionalSigningKeyFiles is `config.signingKey.additionalFiles`: every
 `signingKey.additional` entry's mounted key file, comma-joined, in the
 order they are declared. Empty when there are none, which is every
 deployment before per-audience signing existed.
@@ -210,21 +230,6 @@ deployment before per-audience signing existed.
 {{- $paths = append $paths (printf "/var/run/access-issuer/%s/%s" $name (.key | default "tls.key")) -}}
 {{- end -}}
 {{- join "," $paths -}}
-{{- end -}}
-
-{{/*
-Whether an audit installation is connected: the address its receiver serves.
-
-One address is the whole connection. The receiver takes the records and
-answers RegisterCatalogue on the same port, because an installation belongs
-to one application and a registry of its own would be a Deployment for a
-single call.
-*/}}
-{{- define "access-issuer.auditConnected" -}}
-{{- $a := .Values.audit -}}
-{{- if and $a.query (not $a.writer) }}{{ fail "audit.query needs audit.writer: the page would read a trail nothing writes" }}{{ end -}}
-{{- if and $a.query (not $a.audience) }}{{ fail "audit.query needs audit.audience: the client the page's tokens are minted for" }}{{ end -}}
-{{- if $a.writer }}true{{ end -}}
 {{- end -}}
 
 {{/*
@@ -247,74 +252,73 @@ that with the pattern below before calling it.
 {{- end -}}
 
 {{/*
-access-issuer.validateLifetimes refuses lifetimes.absolute: zero (a
+access-issuer.validateLifetimes refuses config.lifetimes.absolute: zero (a
 session that ends before or the instant it begins is not a limit, it is a
 login that can never complete) or, for the common case of a single-unit
-duration, shorter than lifetimes.token (an access token cannot outlive
-the session that grants it).
+duration, shorter than config.lifetimes.token (an access token cannot outlive
+the session that grants it). Unset is the binary's default: 1h and 24h.
 
-A compound duration ("1h30m") is not compared against lifetimes.token:
+A compound duration ("1h30m") is not compared against the token lifetime:
 parsing one fully needs a real duration parser, which Helm's template
 language has none of, and a comparison that WRONGLY refuses a valid value
 is worse than one silently skipped. The running service checks this
 exactly, with Go's time.ParseDuration, and refuses to start if it is
-wrong -- see issuerapp.Load. The zero check does not have this problem:
+wrong -- see issuerapp.FromConfig. The zero check does not have this problem:
 "contains no digit but 0" is true or false regardless of how many units
 a duration mixes.
 */}}
 {{- define "access-issuer.validateLifetimes" -}}
-{{- $l := .Values.lifetimes -}}
+{{- $l := dig "lifetimes" dict .Values.config -}}
+{{- $absolute := $l.absolute | default "24h" -}}
+{{- $token := $l.token | default "1h" -}}
 {{- $simple := "^[0-9]+(ns|us|µs|ms|s|m|h)$" -}}
-{{- if not (regexMatch "[1-9]" $l.absolute) -}}
-{{- fail (printf "lifetimes.absolute: %q is zero -- a session has to end SOMETIME after sign-in, not before it" $l.absolute) -}}
+{{- if not (regexMatch "[1-9]" $absolute) -}}
+{{- fail (printf "config.lifetimes.absolute: %q is zero -- a session has to end SOMETIME after sign-in, not before it" $absolute) -}}
 {{- end -}}
-{{- if and (regexMatch $simple $l.absolute) (regexMatch $simple $l.token) -}}
-{{- $absoluteNanos := include "access-issuer.simpleDurationNanos" $l.absolute | int64 -}}
-{{- $tokenNanos := include "access-issuer.simpleDurationNanos" $l.token | int64 -}}
+{{- if and (regexMatch $simple $absolute) (regexMatch $simple $token) -}}
+{{- $absoluteNanos := include "access-issuer.simpleDurationNanos" $absolute | int64 -}}
+{{- $tokenNanos := include "access-issuer.simpleDurationNanos" $token | int64 -}}
 {{- if lt $absoluteNanos $tokenNanos -}}
-{{- fail (printf "lifetimes.absolute (%s) must be at least lifetimes.token (%s): an access token cannot outlive the session that grants it" $l.absolute $l.token) -}}
+{{- fail (printf "config.lifetimes.absolute (%s) must be at least config.lifetimes.token (%s): an access token cannot outlive the session that grants it" $absolute $token) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-The environment that connects a process to the audit installation: the
-service and the GitHub controller both record, each with its own identity.
+Whether a component's config connects it to an audit installation: the
+address its receiver serves. One address is the whole connection. The receiver
+takes the records and answers RegisterCatalogue on the same port, because an
+installation belongs to one application and a registry of its own would be a
+Deployment for a single call.
+
+Takes the component's config.
 */}}
-{{- define "access-issuer.auditEnv" -}}
-- name: AUDIT_WRITER_URL
-  value: {{ .Values.audit.writer | quote }}
-{{- if include "access-issuer.auditConnected" . }}
-- name: AUDIT_TOKEN_FILE
-  value: /var/run/audit/token
-{{- else }}
-- name: AUDIT_TOKEN_FILE
-  value: ""
-{{- end }}
+{{- define "access-issuer.auditConnected" -}}
+{{- if (dig "audit" "writer" "" .) }}true{{ end -}}
 {{- end -}}
 
+{{/*
+The mount and the projected token the installation knows a workload by, with
+its audience. There is nothing else to mount: a record that cannot be
+delivered waits in the emitter's own queue, in memory, and the pod's disk
+holds none of the trail. Both take (dict "root" $ "cfg" <the component's config>).
+*/}}
 {{- define "access-issuer.auditMounts" -}}
-{{- if include "access-issuer.auditConnected" . }}
+{{- if include "access-issuer.auditConnected" .cfg }}
 - name: audit-token
   mountPath: /var/run/audit
   readOnly: true
 {{- end }}
 {{- end -}}
 
-{{/*
-The projected token the installation knows this workload by, with its
-audience. There is nothing else to mount: a record that cannot be delivered
-waits in the emitter's own queue, in memory, and the pod's disk holds none
-of the trail.
-*/}}
 {{- define "access-issuer.auditVolumes" -}}
-{{- if include "access-issuer.auditConnected" . }}
+{{- if include "access-issuer.auditConnected" .cfg }}
 - name: audit-token
   projected:
     sources:
       - serviceAccountToken:
-          audience: {{ .Values.audit.token.audience | quote }}
-          expirationSeconds: {{ .Values.audit.token.expirationSeconds }}
+          audience: {{ .root.Values.audit.token.audience | quote }}
+          expirationSeconds: {{ .root.Values.audit.token.expirationSeconds }}
           path: token
 {{- end }}
 {{- end -}}

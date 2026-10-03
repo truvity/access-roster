@@ -1,6 +1,7 @@
 # An access token cannot outlive the session that grants it.
-# error: lifetimes.absolute (30m) must be at least lifetimes.token (1h)
-issuerURL: https://issuer.example
-lifetimes:
-  token: 1h
-  absolute: 30m
+# error: config.lifetimes.absolute (30m) must be at least config.lifetimes.token (1h)
+config:
+  issuerURL: https://issuer.example
+  lifetimes:
+    token: 1h
+    absolute: 30m

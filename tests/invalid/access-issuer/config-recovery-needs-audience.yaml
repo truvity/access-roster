@@ -1,0 +1,6 @@
+# Without an audience every mounted ServiceAccount token would be a proof.
+# error: config.recovery.enabled needs config.recovery.audience
+config:
+  issuerURL: https://issuer.example
+  recovery:
+    audience: null

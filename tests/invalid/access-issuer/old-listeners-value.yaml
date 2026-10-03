@@ -1,0 +1,6 @@
+# The old value `listeners` is removed, not aliased: the ports are `config.listen.address` and `config.probes.address`.
+# error: additional properties 'listeners' not allowed
+config:
+  issuerURL: https://issuer.example
+listeners:
+  port: 8080

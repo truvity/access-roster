@@ -1,10 +1,11 @@
 # Copying Slack state the service keeps nowhere must fail the render rather than render a PushSecret over a Secret that does not exist.
-# error: needs directory.store: kubernetes
-issuerURL: https://issuer.example
-directory:
+# error: needs config.store: kubernetes
+config:
+  issuerURL: https://issuer.example
   store: memory
 slackState:
   push:
-    secretStore: {name: example-store}
+    secretStore:
+      name: example-store
     remoteKey: platform/access-issuer/slack-credentials
     recordsRemoteKey: platform/access-issuer/slack-records

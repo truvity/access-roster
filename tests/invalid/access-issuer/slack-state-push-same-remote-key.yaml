@@ -1,8 +1,11 @@
 # The credentials and the records are two Secrets: written to one remote key, one would overwrite the other.
 # error: both write remoteKey
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 slackState:
   push:
-    secretStore: {name: example-store, kind: ClusterSecretStore}
+    secretStore:
+      name: example-store
+      kind: ClusterSecretStore
     remoteKey: platform/access-issuer/slack
     recordsRemoteKey: platform/access-issuer/slack

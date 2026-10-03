@@ -1,0 +1,15 @@
+# The controller reads the report and the records the service writes under the release's name.
+# error: slackRoster.config.release must be "access-issuer"
+config:
+  issuerURL: https://issuer.example
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+slackRoster:
+  enabled: true
+  config:
+    consoleURL: http://access-issuer.default.svc:8080/console
+    release: other

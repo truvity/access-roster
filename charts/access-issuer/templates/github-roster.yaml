@@ -1,21 +1,20 @@
 {{- if .Values.githubRoster.enabled }}
-{{- if not .Values.exchange.clusters }}
-{{- fail "githubRoster.enabled needs exchange.clusters to name this cluster: the service verifies the controller's ServiceAccount token against that key set, and with no row it verifies nothing" }}
-{{- end }}
-{{- if not (include "access-issuer.consoleMount" .) }}
-{{- fail "githubRoster.enabled needs console.mount: the controller reads the console's API, and with no mount there is none" }}
-{{- end }}
+{{- $cfg := .Values.githubRoster.config }}
+{{- include "access-issuer.rosterChecks" (dict "root" . "name" "githubRoster" "cfg" $cfg "dir" "github-roster") }}
+{{- include "access-issuer.expectPath" (dict "key" "githubRoster.config.appsDir" "got" $cfg.appsDir "want" "/var/run/github-roster/apps" "source" "the apps Secret" "present" true) }}
+{{- include "access-issuer.expectPath" (dict "key" "githubRoster.config.recordsDir" "got" $cfg.recordsDir "want" "/var/run/github-roster/records" "source" "the records ConfigMap" "present" true) }}
+{{- include "access-issuer.expectPath" (dict "key" "githubRoster.config.catalogueFile" "got" $cfg.catalogueFile "want" "/var/run/github-roster/github-apps-catalogue.yaml" "source" "githubApps.catalogue" "present" (not (empty .Values.githubApps.catalogue))) }}
 {{- /*
-  The controller refuses to start when ENABLED_ORGS names an organisation the
+  The controller refuses to start when enabledOrgs names an organisation the
   policy does not bind. The policy is inline in values, so say so here, at
   render time, before the rollout stops the running controller. Skipped when
   the values carry no policy at all.
 */ -}}
 {{- if .Values.policy }}
 {{- $bound := dig "github" dict .Values.policy }}
-{{- range .Values.githubRoster.actsIn }}
+{{- range $cfg.enabledOrgs }}
 {{- if not (hasKey $bound .) }}
-{{- fail (printf "githubRoster.actsIn names %q, which policy.github does not bind: remove it from actsIn, or bind the organisation in the policy" .) }}
+{{- fail (printf "githubRoster.config.enabledOrgs names %q, which policy.github does not bind: remove it from enabledOrgs, or bind the organisation in the policy" .) }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -74,6 +73,19 @@ subjects:
     name: {{ $name }}
     namespace: {{ .Release.Namespace }}
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: github-roster
+data:
+  # What `github-roster --config` reads: `githubRoster.config`, as the values give
+  # it. The binary validates it against schemas/config/github-roster.schema.json.
+  config.yaml: |
+    {{- toYaml $cfg | nindent 4 }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -95,6 +107,7 @@ spec:
       labels:
         {{- include "access-issuer.githubRosterSelectorLabels" . | nindent 8 }}
       annotations:
+        checksum/config: {{ toYaml $cfg | sha256sum }}
         # The bindings are read at start, like the service's policy.
         checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
         {{- if .Values.githubApps.catalogue }}
@@ -121,52 +134,13 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          env:
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: RELEASE_NAME
-              value: {{ include "access-issuer.fullname" . }}
-            - name: POLICY_DIR
-              value: /var/run/github-roster/policy
-            - name: CONSOLE_URL
-              value: {{ printf "http://%s.%s.svc:%v%s" (include "access-issuer.fullname" .) .Release.Namespace .Values.listeners.port (include "access-issuer.consoleMount" .) | quote }}
-            - name: TOKEN_FILE
-              value: /var/run/secrets/github-roster/token
-            - name: APPS_DIR
-              value: /var/run/github-roster/apps
-            - name: RECORDS_DIR
-              value: /var/run/github-roster/records
-            {{- if .Values.githubApps.catalogue }}
-            # Read-only, and for one reason only: so the "internal groups
-            # are declared but nothing consumes them" warning does not name
-            # a GitHub-derived group a catalogue grant actually consumes.
-            # This controller mints no installation tokens itself and keeps
-            # no App key, so an absent or malformed catalogue here is never
-            # fatal — see app.go.
-            - name: GITHUB_APPS_CATALOGUE_FILE
-              value: /var/run/github-roster/github-apps-catalogue.yaml
-            {{- end }}
-            - name: INTERVAL
-              value: {{ .Values.githubRoster.interval | quote }}
-            - name: ENABLED_ORGS
-              value: {{ join "," .Values.githubRoster.actsIn | quote }}
-            - name: LOG_LEVEL
-              value: {{ .Values.logLevel | quote }}
-            # The controller records what it did to the audit installation
-            # itself, as its own workload, which the writer stamps as the
-            # records' observer.
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            {{- include "access-issuer.auditEnv" . | nindent 12 }}
-{{- with .Values.telemetry.otlpEndpoint }}
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: {{ . | quote }}
-{{- end }}
+          args:
+            - --config=/etc/github-roster/config.yaml
           volumeMounts:
+            - name: config
+              mountPath: /etc/github-roster/config.yaml
+              subPath: config.yaml
+              readOnly: true
             - name: policy
               mountPath: /var/run/github-roster/policy
               readOnly: true
@@ -185,12 +159,15 @@ spec:
               subPath: catalogue.yaml
               readOnly: true
             {{- end }}
-            {{- include "access-issuer.auditMounts" . | nindent 12 }}
+            {{- include "access-issuer.auditMounts" (dict "root" . "cfg" $cfg) | nindent 12 }}
           {{- with .Values.githubRoster.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}-config
         - name: policy
           configMap:
             name: {{ include "access-issuer.fullname" . }}-policy
@@ -224,7 +201,7 @@ spec:
           configMap:
             name: {{ include "access-issuer.fullname" . }}-github-apps-catalogue
         {{- end }}
-        {{- include "access-issuer.auditVolumes" . | nindent 8 }}
+        {{- include "access-issuer.auditVolumes" (dict "root" . "cfg" $cfg) | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -1,5 +1,6 @@
 # signingKey.key may not be empty.
 # error: at '/signingKey/key': minLength
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 signingKey:
-  key: ""
+  key: ''

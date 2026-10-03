@@ -1,0 +1,6 @@
+# The old value directory.sessionLifetime is `config.lifetimes.session`: removed, not aliased.
+# error: at '/directory': additional properties 'sessionLifetime' not allowed
+config:
+  issuerURL: https://issuer.example
+directory:
+  sessionLifetime: 8h

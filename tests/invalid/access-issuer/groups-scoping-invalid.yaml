@@ -1,4 +1,5 @@
 # groupsScoping is off, report or enforce.
-# error: at '/groupsScoping': value must be one of
-issuerURL: https://issuer.example
-groupsScoping: sometimes
+# error: at '/config/groupsScoping': value must be one of
+config:
+  issuerURL: https://issuer.example
+  groupsScoping: sometimes

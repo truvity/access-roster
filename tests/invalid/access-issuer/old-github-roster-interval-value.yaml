@@ -1,0 +1,6 @@
+# The old value githubRoster.interval is `githubRoster.config.interval`: removed, not aliased.
+# error: at '/githubRoster': additional properties 'interval' not allowed
+config:
+  issuerURL: https://issuer.example
+githubRoster:
+  interval: 5m

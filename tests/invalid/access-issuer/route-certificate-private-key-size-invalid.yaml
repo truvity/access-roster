@@ -1,6 +1,7 @@
 # The route certificate's key follows the same per-algorithm sizes.
 # error: route.certificate.privateKey: an ECDSA key takes size 256, 384 or 521
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 route:
   host: issuer.example
   certificate:

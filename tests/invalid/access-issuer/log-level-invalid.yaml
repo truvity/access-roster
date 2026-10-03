@@ -1,4 +1,6 @@
 # logLevel is debug, info, warn or error.
-# error: at '/logLevel': value must be one of
-issuerURL: https://issuer.example
-logLevel: trace
+# error: at '/config/log/level': value must be one of
+config:
+  issuerURL: https://issuer.example
+  log:
+    level: trace

@@ -1,0 +1,7 @@
+# The old value `githubRunnerApps` is removed, not aliased: the tiers are `config.github.runnerTiers`.
+# error: additional properties 'githubRunnerApps' not allowed
+config:
+  issuerURL: https://issuer.example
+githubRunnerApps:
+  tiers:
+  - stable

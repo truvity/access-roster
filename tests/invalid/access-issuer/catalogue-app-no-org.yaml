@@ -1,7 +1,9 @@
 # A catalogue App needs org.
 # error: at '/githubApps/catalogue/0': missing property 'org'
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 githubApps:
   catalogue:
-    - id: releases
-      permissions: {contents: write}
+  - id: releases
+    permissions:
+      contents: write

@@ -1,5 +1,7 @@
 # githubRoster.interval is a Go duration.
-# error: at '/githubRoster/interval': 'hourly' does not match pattern
-issuerURL: https://issuer.example
+# error: at '/githubRoster/config/interval': 'hourly' does not match pattern
+config:
+  issuerURL: https://issuer.example
 githubRoster:
-  interval: hourly
+  config:
+    interval: hourly

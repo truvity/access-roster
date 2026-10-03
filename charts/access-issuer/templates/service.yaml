@@ -9,5 +9,5 @@ spec:
     {{- include "access-issuer.selectorLabels" . | nindent 4 }}
   ports:
     - name: issuer
-      port: {{ .Values.listeners.port }}
+      port: {{ include "access-issuer.port" . }}
       targetPort: issuer

@@ -1,0 +1,5 @@
+# A key the binary does not read is refused at render, not ignored at start.
+# error: at '/config': additional properties 'bogusKey' not allowed
+config:
+  issuerURL: https://issuer.example
+  bogusKey: 1

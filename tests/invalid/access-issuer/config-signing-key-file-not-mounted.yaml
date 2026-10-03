@@ -1,0 +1,6 @@
+# The signing key is mounted from signingKey.key at one path.
+# error: config.signingKey.file must be /var/run/access-issuer/signing-key/tls.key
+config:
+  issuerURL: https://issuer.example
+  signingKey:
+    file: /etc/key.pem

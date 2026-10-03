@@ -3,7 +3,10 @@
 # service never sees: it is stripped from the rendered catalogue, because
 # the loader refuses an unknown key rather than ignoring it — which this
 # render pins.
-issuerURL: https://access.example
+config:
+  issuerURL: https://access.example
+  github:
+    catalogueFile: /var/run/access-issuer/github-apps-catalogue.yaml
 githubApps:
   catalogue:
     - id: iac

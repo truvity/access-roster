@@ -1,0 +1,5 @@
+# An overlayFile with no directory.workspaces names a file nothing mounts.
+# error: config.overlayFile is "/var/run/access-issuer/directory/overlay.yaml" and the chart renders nothing there
+config:
+  issuerURL: https://issuer.example
+  overlayFile: /var/run/access-issuer/directory/overlay.yaml

@@ -1,3 +1,4 @@
 # issuerURL must be an http(s) URL.
-# error: at '/issuerURL': 'issuer.example' does not match pattern
-issuerURL: issuer.example
+# error: at '/config/issuerURL'
+config:
+  issuerURL: issuer.example

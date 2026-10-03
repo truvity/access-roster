@@ -1,5 +1,6 @@
-# listeners.port has a minimum of 1.
-# error: at '/listeners/port': minimum
-issuerURL: https://issuer.example
-listeners:
-  port: 0
+# config.listen.address needs a port in 1-65535 (template `fail`: the schema fragment checks the shape, not the range).
+# error: config.listen.address: the port in ":0" must be between 1 and 65535
+config:
+  issuerURL: https://issuer.example
+  listen:
+    address: :0

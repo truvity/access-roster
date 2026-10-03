@@ -1,7 +1,9 @@
 # A catalogue App needs id.
 # error: at '/githubApps/catalogue/0': missing property 'id'
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 githubApps:
   catalogue:
-    - org: acme
-      permissions: {contents: write}
+  - org: acme
+    permissions:
+      contents: write

@@ -22,8 +22,8 @@ it is in the blast radius of the App.
 {{- $pushed := dict }}
 {{- range .Values.githubApps.catalogue }}
 {{- if .push }}
-{{- if ne $root.Values.directory.store "kubernetes" }}
-{{- fail (printf "githubApps.catalogue[%s].push needs directory.store: kubernetes: the App's key is kept in a Secret only that store writes, so with any other there is nothing to push" .id) }}
+{{- if ne (dig "store" "memory" $root.Values.config) "kubernetes" }}
+{{- fail (printf "githubApps.catalogue[%s].push needs config.store: kubernetes: the App's key is kept in a Secret only that store writes, so with any other there is nothing to push" .id) }}
 {{- end }}
 {{- $kind := .push.secretStore.kind | default "SecretStore" }}
 {{- $where := printf "%s/%s/%s" $kind .push.secretStore.name .push.remoteKey }}

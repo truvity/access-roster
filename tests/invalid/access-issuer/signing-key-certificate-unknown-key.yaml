@@ -1,6 +1,7 @@
 # A key under signingKey.certificate the chart does not know must fail the
 # error: at '/signingKey/certificate': additional properties
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 signingKey:
   certificate:
     curve: P-384

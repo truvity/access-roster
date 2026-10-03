@@ -1,0 +1,8 @@
+# A browser reaches the console at route.host plus console.mount.
+# error: config.publicURL must be https://issuer.example/console
+config:
+  issuerURL: https://issuer.example
+  publicRootURL: https://issuer.example
+  publicURL: https://elsewhere.example/console
+route:
+  host: issuer.example
